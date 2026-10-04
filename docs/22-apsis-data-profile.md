@@ -1,0 +1,50 @@
+# 22 — What the Apsis Data Sample Tells Us
+
+Source: the partial Apsis export AKTCL shared on 2026-10-04: `May to July 2026 Sales data.csv` and `1st October Retailer List.xlsx`. The raw files are **not** in this repo (1.6 GB, and the retailer list carries owner names and phone numbers). The numbers below come from `scripts/profile-apsis-data.py`, which prints aggregates only and reproduces this document from the raw files in about 30 seconds. Re-run it on the full dump (`docs/11`).
+
+IDs in this document are `P-nn`. Where a finding changes a number or rule in another document, the last column says which. `MUST-CONFIRM` means the business has to answer before the dependent phase.
+
+## What was provided, and what is missing
+
+| File | Content | Size |
+|---|---|---|
+| Sales | `date, outlet_code, sku_id, sku_name, volume`: one row per outlet × SKU × day, 2 May to 30 July 2026 | 37.3 M rows, 79 trading days |
+| Retailer list | one row per outlet as of 1 October 2026: Wing → Zone → Route, outlet code/name/owner/phone, cluster, lat/long, geo class, sub-channel, created/updated | 734,789 outlets, 24 columns |
+
+The sales file is **already aggregated** per outlet × SKU × day. It has no SR or AMO, no route, no memo number, no price or discount, no paid/due amount, no time of day, no GPS fix, no force-sale or mock-GPS flag, no photos, no targets, no loyalty. The full dump request in `docs/11` must ask for all of those at memo level; without them the importer cannot rebuild dues, loyalty, targets or the SR-level KPIs.
+
+## Findings
+
+| ID | Finding (numbers) | Why it matters | Changes |
+|---|---|---|---|
+| P-01 | Outlets with positive volume per day: average 275k (May), 306k (Jun), 268k (Jul); peak **346,772 on 25 Jun**. The spec says ~1.2 lakh successful calls/day. | The real daily call volume is about **3× the figure the load model was built on**. Size for ≥ 3.5 lakh visits/day plus growth headroom. `MUST-CONFIRM`: does the export include sales not made through the app (e.g. direct distributor billing)? | docs/01, 18, 14 |
+| P-02 | Rows per day grew 53% May → Jul (381k → 582k) while outlets per day fell. SKU lines per outlet-day rose 1.26 → 1.95. | Memos are getting longer (more SKUs per call). Memo and `memo_line` row counts, print length and bundle size grow faster than visits. | docs/17, 18 |
+| P-03 | Calendar: Friday is the weekly off-day (only one Friday, 22 May, has real trading: 276k outlets, just before the Eid break). No data 27–31 May (Eid break), nor 13 Jun or 19 Jun. | "Today's route", login %, submit % and "target outlets" all depend on whether a day is a trading day. Needs an admin-editable **working-day calendar** (default Friday off, holidays, make-up days) rather than hard-coded weekdays. | docs/19 (cfg), docs/16 |
+| P-04 | Every positive volume is an exact multiple of the SKU's pack size (checked on the top SKUs: 100%). | Volume is stored in **sticks** (cigarettes/bidi) and pieces, not packs. Resolves the unit question for cigarettes (`docs/13` Q8) as: base unit = sticks. Lighter/match units still `MUST-CONFIRM`. | docs/03, 13, 16 |
+| P-05 | 3.24 M rows (8.7%) have volume 0. SKU `MaxR-10S` is 100% zero lines. Entirely-zero outlet-days: 16.3% (May), 9.7% (Jun), 13.6% (Jul). | Zero lines are not sales. KPIs and STD must exclude them; zero-sale calls must count as visits. If an all-zero outlet-day is a zero-sale call (`ASSUMPTION`, to confirm against the memo-level dump), the strike rate is 84–90% by month. A SKU that is offered but never sold still appears. | docs/10, 16 |
+| P-06 | 68 duplicate (date, outlet, SKU) keys, some with different values on the same day (e.g. 10 and 20). | Evidence that an outlet can be visited twice on one day (two routes or two SRs) or a memo was edited. The idempotency design must not assume one memo per outlet per day. | docs/16, 17 |
+| P-07 | Outlet codes: 693k are 7-digit numbers; others are 8–13 characters, some with letters (e.g. a route code + `N` + counter, probably outlets created in the field; `ASSUMPTION`), some with stray leading symbols (`:`, `*`, `।`), and a handful are 1–2 digits. | The importer needs a normalisation + crosswalk table and a quarantine for codes it cannot parse. `outlet_code` is a text identifier, never a number. | docs/11, 16 |
+| P-08 | **175,031 outlets in the sales file (2.6 M rows, 277 M sticks) are not in the 1 Oct retailer list.** | The list holds active outlets only. Closed or merged outlets still own history, dues and loyalty. The importer must create **archived outlet stubs**; closure must be a status, never a delete. | docs/11, 16 |
+| P-09 | Coordinates: 1,093 outlets have none; none are outside Bangladesh or zero. **34,454 outlets sit on 11,222 identical points** (up to 85 on one point). | Identical points are placeholder pins, not real locations. Flag them as *location unconfirmed* so the first visit is routed through the force-sale/Update-Base correction path instead of a wrong geo-fail. | docs/05, 19 |
+| P-10 | **80% of outlets share a ~55 m cell with at least one other outlet; 35% with five or more; the densest cell holds 383.** | A 100 m geofence mostly proves "in this market", not "at this shop". The radius must be adjustable per zone and per outlet from the admin panel, with a density view; and geo-validation should not be the only control (photo, sequence and supervisor flags). The 55 m cell is a coarse proxy; exact nearest-neighbour distances should be computed on the full dump. | docs/05, 19, 21 |
+| P-11 | Outlet creation: 586k created in Dec 2025 and 91k in Jun 2026 (bulk loads), then 2–13k per month. `Created At` is written like `2025-12-19 01AM` (hour precision, 12-hour clock, no timezone). `Updated At` exists for only 281k. | App-created outlet requests are a trickle, so the approval queue is small (well under 500 a day). The timestamp format needs an explicit parser and a stated timezone (assume Asia/Dhaka). | docs/11, 16 |
+| P-12 | PII reality: phone and owner are filled for 100%. NID is the placeholder `123` for 589k and blank for 145k. TIN and trade licence are empty for all. Address is filled for 13. | The sensitive fields in practice are **phone and owner name**. NID/TIN/licence columns are unused today: keep them nullable and PII-classified, but do not build features that depend on them. | docs/21 |
+| P-13 | Hierarchy matches the spec: 10 wings, 50 divisions, 291 territories, 1,051 zones. **11,336 routes** (median 64 outlets, 99th percentile 112, max 214). Zones hold 4 to 54 routes. | 11,336 routes for ~8,500 SRs means one SR covers more than one route (alternate days or cover). The day plan must be driven by route visit-days and assignment history, not "one SR = one route". Bundle size per SR ≈ 65–110 outlets per route-day. | docs/03, 17, 18 |
+| P-14 | Sub-channel: GT 626k, Gold 33k, Platinum 23k, RCC 18.6k, Diamond 17.5k, DCC 13.4k, Silver 2.6k, MT 555, HoReCa 444. Geo class: Rural 317k, Urban 157k, Semi Urban 107k, Hill 12k, **blank 142k (19%)**. Cluster type: Transit Hub 99.7%. | `geo_class` must allow null and the importer must map `Semi Urban` to the enum's `SemiUrban`. Astha tiers (Platinum/Gold/Diamond/Silver) are sub-channels of channel Astha. 19% of outlets lack a geo class: the AMO sets it on verification, so the gap closes over time. | docs/03, 16 |
+| P-15 | All 40 SKUs sold match the seed catalog's `sku_code` exactly. The seed's `SupSty-10S` and `SupSty-20S` were not sold in these 3 months. The export's `sku_id` values run 1–43 with gaps at 19, 20, 40. | Use the export's `sku_id` as the importer's SKU crosswalk key. | db/seed, docs/11 |
+| P-16 | Median outlet is sold to on 19 of 79 days; 90th percentile 57. Largest single lines are 10⁵–6.5×10⁵ sticks; 26,683 lines (21,092 outlets) are ≥ 10,000 sticks. | Visit frequency is weekly-ish, consistent with visit-day patterns. Very large lines are wholesale/C&C buyers (price types `cc`/`distributor`): so wholesale outlets exist (`docs/13` Q17). Quantity validation needs a configurable soft ceiling and anomaly flag, not a hard cap. | docs/13, 19 |
+
+## What this changes in the plan
+
+1. **Load model** (`docs/18`): use 3.5 lakh visits/day at peak and ~2 SKU lines per outlet-day (July average 1.95; 99th percentile 4; maximum 40); add growth headroom (row count grew 53% in 3 months).
+2. **Config** (`docs/19`): add `cfg.calendar.*` (weekly off-day, holidays, make-up days) and a "location unconfirmed" flag with its handling.
+3. **Importer** (`docs/11`): archived-outlet stubs, outlet-code normalisation and crosswalk, SKU crosswalk from the export's `sku_id`, timestamp parser, quarantine for unparseable rows.
+4. **Geofence** (`docs/05`, `docs/19`): density-aware radius management; geo is one signal among several.
+5. **Dump request** (`docs/11`): the export must include memo-level rows with SR, route, memo id and number, time, price, discount, paid/due, geo fix with mock flag, force-sale flag, photos and their record ids.
+
+## Open items
+
+- `MUST-CONFIRM`: P-01, whether all sales in the export come through the SR/AMO apps.
+- `MUST-CONFIRM`: P-04, base units for lighters and matches.
+- `ASSUMPTION` P-07: letters in outlet codes mark field-created outlets. Check with the full dump.
+- Exact outlet nearest-neighbour distances (P-10) were not computed; the pairwise join is too heavy on dense city cells for this sample. Use a spatial index (PostGIS `ST_DWithin`) on the full dump.
