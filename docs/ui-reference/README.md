@@ -23,6 +23,12 @@ Each note file contains: what the screen shows (labels in Bangla with an English
 | SR stock | `sr/stock.md`, `sr/stock.webp` | UI-SR-15 to UI-SR-20 |
 | SR sale: choose retailer | `sr/sale-select.md`, `sr/sale-select.png` | UI-SR-21 to UI-SR-25 |
 | SR memo | `sr/memo.md` (image held back, see note) | UI-SR-26 to UI-SR-29 |
+| SR sales summary | `sr/sales-summary.md`, `sr/summary.png` | UI-SR-30 to UI-SR-34 |
+| SR sales submit | `sr/sales-submit.md`, `sr/sales-submit.png` | UI-SR-35 to UI-SR-39 |
+| SR outlet menu | `sr/outlet-menu.md`, `sr/outlet-menu.png` | UI-SR-40 to UI-SR-42 |
+| SR task and Astha menus | `sr/tasks-and-astha.md`, `sr/tasks.png`, `sr/astha.png` | UI-SR-43 to UI-SR-46 |
+
+Open questions raised by these notes are collected in [`questions.md`](questions.md).
 
 ## Rules for this folder
 
