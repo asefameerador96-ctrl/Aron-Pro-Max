@@ -1,0 +1,43 @@
+category,segment,brand,variant,sku_code,short_name,pack_size,pack_type,price_outlet,price_cc,price_distributor,price_reporting,price_nto,status
+Cigarette,Medium,Maxim,Maxim Regular,MaxR-10S,MaxR-10S,10,HLP,9.2,9.2,7.935,9.2,0.0,1
+Cigarette,Medium,Maxim,Maxim Regular,MaxR-20S,MaxR-20S,20,HLP,9.2,9.2,7.935,9.2,0.0,1
+Cigarette,Medium,Maxim,Maxim Bolt,MaxB-10S,MaxB-10S,10,HLP,9.2,9.2,7.935,9.2,0.0,1
+Cigarette,Medium,Maxim,Maxim Bolt,MaxB-20S,MaxB-20S,20,HLP,9.2,9.2,7.935,9.2,0.0,1
+Cigarette,Medium,Maxim,Maxim Wild Berry,MaxWB-10S,MaxWB-10S,10,HLP,9.2,9.2,7.935,9.2,0.0,1
+Cigarette,Medium,Maxim,Maxim Wild Berry,MaxWB-20S,MaxWB-20S,20,HLP,9.2,9.2,7.935,9.2,0.0,1
+Cigarette,Medium,Maxim,Maxim Double Burst,MaxDB-20S 20HL,MaxDB-20S 20HL,20,HLP,9.2,9.2,9.125,9.2,0.0,1
+Cigarette,Medium,Maxim,Maxim Double Burst,MaxDB-10S 10HL,MaxDB-10S 10HL,10,HLP,0.0,0.0,0.0,0.0,0.0,1
+Cigarette,Medium,Maxim,Maxim Prime,MaxPrime-20S 20HL,MaxPrime-20S 20HL,20,HLP,9.2,9.2,7.935,9.2,0.0,1
+Cigarette,Slim,Avon,Avon,Avon-20S,Avon-20S,20,HLP,7.0,7.0,6.945,7.0,0.0,1
+Cigarette,Slim,ARIS,ARIS Apple,ARIS-A-20s,ARIS-A-20s,20,HLP,6.5,6.5,6.445,6.5,0.0,1
+Cigarette,Slim,ARIS,ARIS Original,ARIS-O-20s,ARIS-O-20s,20,HLP,6.5,6.5,6.445,6.5,0.0,1
+Cigarette,Slim,ARIS,ARIS Strawberry,ARIS-S-20s,ARIS-S-20s,20,HLP,6.5,6.5,6.445,6.5,0.0,1
+Cigarette,Low,Marise,Marise Special Blend,MSB-10s,MSB-10s,10,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Marise,Marise Special Blend,MSB-20s,MSB-20s,20,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Black Diamond,Black Diamond Double Filter,BDDF-10s,BDDF-10s,10,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Black Diamond,Black Diamond Double Filter,BDDF-20s,BDDF-20s,20,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Black Diamond,Black Diamond Advanced,BDA-10s,BDA-10s,10,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Black Diamond,Black Diamond Advanced,BDA-20s,BDA-20s,20,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Sunmoon,Sunmoon American blend,SM-American-10s,SM-American-10s,10,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Sunmoon,Sunmoon American blend,SM-American-20s,SM-American-20s,20,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Supreme,Supreme Signature,SupSig-10S,SupSig-10S,10,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Supreme,Supreme Signature,SupSig-20S,SupSig-20S,20,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Supreme,Supreme,Supreme-10S,Supreme-10S,10,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Supreme,Supreme,Supreme-20S,Supreme-20S,20,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Supreme,Supreme Style,SupSty-10S,SupSty-10S,10,HLP,0.0,0.0,0.0,0.0,0.0,1
+Cigarette,Low,Supreme,Supreme Style,SupSty-20S,SupSty-20S,20,HLP,0.0,0.0,0.0,0.0,0.0,1
+Cigarette,Low,Supreme,Supreme Fresh Max,SupFM-10S,SupFM-10S,10,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Low,Supreme,Supreme Fresh Max,SupFM-20S,SupFM-20S,20,HLP,6.5,6.5,6.5,6.5,0.0,1
+Cigarette,Slim,ESSE,ESSE Prime,EssP-20S 20HL,EssP-20S 20HL,20,HLP,9.0,9.0,8.92,9.0,0.0,1
+Cigarette,Slim,ESSE,ESSE Change Mango,EssCM-20S 20HL,EssCM-20S 20HL,20,HLP,11.0,11.0,10.92,11.0,0.0,1
+Bidi,Bidi,Special Abul Bidi,Special Abul Bidi 25,SAB-25s,SAB-25s,25,Soft Pack,0.88,0.88,0.873,0.88,0.0,1
+Bidi,Bidi,Special Abul Bidi,Special Abul Bidi 12,SAB-12s,SAB-12s,12,Hard Pack,0.833,0.833,0.826,0.833,0.0,1
+Bidi,Bidi,Existing Abul Bidi/ 42 No. Abul Bidi,Existing Abul Bidi/ 42 No. Abul Bidi,EAB,EAB,25,Soft Pack,0.56,0.56,0.556,0.56,0.0,1
+Bidi,Bidi,Ananda Bidi,Ananda Bidi 25,AB-25s,AB-25s,25,Soft Pack,0.8,0.8,0.792,0.8,0.0,1
+Bidi,Bidi,Ananda Bidi,Ananda Bidi 12,AB-12s,AB-12s,12,Hard Pack,0.75,0.75,0.742,0.75,0.0,1
+Bidi,Bidi,Abul Bidi Gold,Abul Bidi Gold,ABG,ABG,25,Soft Pack,0.52,0.52,0.515,0.52,0.0,1
+Bidi,Bidi,Abul Bidi Style,Abul Bidi Style,ABS,ABS,25,Soft Pack,0.8,0.8,0.792,0.8,0.0,1
+Lighter,Lighter,Aster,Aster,Aster,Aster,1,Box,12.5,12.5,12.3,12.5,0.0,1
+Lighter,Lighter,MAX,MAX,MAX,Max,1,Box,12.0,12.0,11.8,12.0,0.0,1
+Match,Match,Flame Box,Flame Box,FB,FB,1,Dozen,28.0,28.0,27.5,28.0,0.0,1
+Match,Match,Salmon,Salmon,SL,SL,1,Dozen,19.0,19.0,18.667,19.0,0.0,1
