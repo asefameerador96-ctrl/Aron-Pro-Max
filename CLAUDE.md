@@ -14,7 +14,8 @@ cd ~/.claude/skills/gstack && ./setup --team
 ```
 
 Then restart Claude Code. `--team` makes gstack auto-update at the start of each session.
-Cloud (Claude Code on the web) containers are fresh each session, so run the install there again.
+In Claude Code on the web, `.claude/hooks/install-gstack.sh` (a SessionStart hook) installs it
+automatically at the start of each session; the log is at `~/.gstack-install.log`.
 
 ### Rules
 
