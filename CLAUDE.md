@@ -35,3 +35,19 @@ automatically at the start of each session; the log is at `~/.gstack-install.log
 | Reflect | `/retro`, `/learn` |
 | Safety  | `/careful`, `/freeze`, `/guard`, `/unfreeze` |
 | Other   | `/make-pdf`, `/setup-gbrain`, `/gstack-upgrade` |
+
+## Android and Azure skills
+
+Vendored in `.claude/skills/`, loaded automatically for this repo. Sources and pinned commits:
+`.claude/skills/SOURCES.md`. Update with `scripts/update-agent-skills.sh`, then review and commit.
+
+- **Android** (Kotlin, Jetpack Compose): Google's official [android/skills](https://github.com/android/skills)
+  (edge-to-edge, Navigation 3, R8, profiler, intent/permission security, testing setup, Play policy and billing,
+  AGP 9) plus `claude-android-ninja` (modular architecture, MVVM, Hilt, Room, Gradle conventions).
+  Follow these skills for Android work.
+- **Azure**: Microsoft's [azure-skills](https://github.com/microsoft/azure-skills) (`azure-enterprise-infra-planner`,
+  `azure-prepare`, `azure-validate`, `azure-deploy`, `azure-reliability`, `azure-diagnostics`, `azure-quotas`, ...)
+  plus Microsoft Learn docs skills (`azure-well-architected`, `azure-architecture`, `azure-resiliency`, and per-service guides).
+  Design every Azure component against the Well-Architected reliability and performance pillars.
+- **MCP servers** (`.mcp.json`): `azure` (Azure MCP Server; needs `az login` for live resources) and
+  `microsoftdocs` (Microsoft Learn docs, no sign-in).
