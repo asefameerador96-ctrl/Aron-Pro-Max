@@ -1,5 +1,7 @@
 # Aron Rebuild — Build Package
 
+> **Status (2026-10-04):** the build plan now exists. Start at [`docs/00-start-here.md`](docs/00-start-here.md); the master plan is `docs/14-master-build-plan.md`, which supersedes `docs/12-phases.md`.
+
 This repository is the complete, self-contained specification for rebuilding **Aron**, AKTCL's field-sales and distribution platform, in-house. AKTCL owns the IP; this is a clean-room rebuild designed from the running product and its user manuals, to replace the current vendor (Apsis) build with zero disruption to the field sales team.
 
 It is written to be handed to **Claude Code** (or any engineer) and built from, phase by phase.
