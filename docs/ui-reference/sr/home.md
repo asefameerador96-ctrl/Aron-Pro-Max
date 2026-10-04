@@ -85,7 +85,7 @@ Footer: `App Developed by Apsis Solutions` (vendor credit; the new app drops it)
 | UI-SR-07 | **The same Bangla word means different totals.** `সর্বমোট` is the *net* (4,391.00) on the first card but `সর্ব মোট` is the *gross* (4,828.50) on the second; `মোট` is gross on the first card. | Define canonical terms in the new app (gross, offer discount, DRP discount, QC deduction, net payable) and use one Bangla label for each. Retailers see these terms on the printed memo. | docs/17, localisation |
 | UI-SR-08 | **Bengali digits (০–৯)** are used for every number, with a trailing `৳` for money and two decimals for taka. | Numerals are a display setting: store ASCII, render per locale. Add `cfg.locale.digits` (`bn` default, `en`). Confirm what the *printed* memo uses. | docs/19 |
 | UI-SR-09 | Strike rate = successful calls ÷ target outlets (6 ÷ 60). | Confirms the CPR definition in `docs/10`. The denominator is the day's target outlets, so the day's route plan must be fixed at bundle time. | docs/10 |
-| UI-SR-10 | `Issue` and `Current stock` have no unit. | Stock mixes sticks, pieces and dozens by SKU; the tile needs a defined unit or a per-category split. | docs/10, 13 |
+| UI-SR-10 | `Issue` and `Current stock` have no unit. **Resolved by the Stock screen (`stock.md`, UI-SR-15):** 800 = 400 lighters + 400 dozen match; 419 = 25 + 394. The tiles add pieces and dozens together. | Show per category with its unit, or drop the combined figure. | docs/10, 16 |
 
 ## Assets
 
