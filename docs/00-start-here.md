@@ -1,5 +1,7 @@
 # Start here
 
+> **2026-10-05: scope changed.** The first build is now **seven days**, one human plus Claude, native Kotlin apps, no Apsis migration. See [`23-seven-day-plan.md`](23-seven-day-plan.md); its schedule replaces the one on this page and in `docs/14`.
+
 This repository holds the plan and specification for rebuilding Aron, AKTCL's field-sales platform, in-house. This page is the entry point: what exists, what the plan says in one page, what AKTCL must decide, and where the detail lives. Every number below is quoted from the documents named beside it; nothing here is new.
 
 ## Read in this order
