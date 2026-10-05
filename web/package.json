@@ -1,0 +1,47 @@
+{
+  "name": "aron-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@fontsource-variable/noto-sans-bengali": "^5.3.0",
+    "next": "^16.3.8",
+    "openapi-fetch": "^0.17.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "@vitest/coverage-v8": "^5.0.3",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.8",
+    "openapi-typescript": "^7.13.0",
+    "postcss": "^8.5.29",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "5.9",
+    "vitest": "^5.0.3"
+  },
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "mock": "tsx mock/server.ts",
+    "gen:contract": "openapi-typescript ../contract/openapi.yaml -o src/contract/openapi.d.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prebuild": "npm run lint",
+    "build": "next build",
+    "test:e2e": "playwright test",
+    "ci": "bash scripts/ci.sh all",
+    "start": "node scripts/start-standalone.mjs"
+  }
+}

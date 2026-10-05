@@ -23,13 +23,55 @@ on:
 permissions:
   contents: read
 
+# Six lanes push to the integration branch every few minutes: a push run is NEVER cancelled (grouped by commit, so
+# every commit gets its own complete run). Only pull_request runs are grouped by ref and cancel their predecessor.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    # Cheap path filter without a third-party action: a docs-only push skips the JVM and Android builds.
+    # Anything unknown (manual dispatch, a new branch, a force-push, a diff failure) runs everything.
+    name: Detect changed areas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      contract: ${{ steps.filter.outputs.contract }}
+      jvm: ${{ steps.filter.outputs.jvm }}
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          all() { printf 'contract=true\njvm=true\nandroid=true\n' >> "${GITHUB_OUTPUT}"; echo "running everything: $1"; exit 0; }
+          case "${EVENT}" in
+            pull_request) base="${PR_BASE}" ;;
+            push) base="${BEFORE}" ;;
+            *) all "event ${EVENT}" ;;
+          esac
+          if [ -z "${base}" ] || [ "${base}" = "0000000000000000000000000000000000000000" ]; then all "no base commit"; fi
+          files="$(git diff --name-only "${base}" "${GITHUB_SHA}" 2>/dev/null)" || all "base ${base} not reachable"
+          printf '%s\n' "${files}"
+          # Files that can change any build: root Gradle, the version catalogue, the wrapper and this workflow.
+          common='^(build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew|gradlew\.bat|gradle/|\.github/workflows/ci\.yml)'
+          has() { printf '%s\n' "${files}" | grep -Eq "$1" && echo true || echo false; }
+          {
+            echo "contract=$(has '^(contract/|\.github/workflows/ci\.yml)')"
+            echo "jvm=$(has "${common}|^(contract/|shared/|db/|backend/)")"
+            echo "android=$(has "${common}|^(contract/|shared/|android/|tools/android-sdk\.sh)")"
+          } | tee -a "${GITHUB_OUTPUT}"
+
   contract:
     name: Contract lint
+    needs: changes
+    if: needs.changes.outputs.contract == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -42,6 +84,8 @@ jobs:
 
   jvm:
     name: Shared, db and backend (build and tests)
+    needs: changes
+    if: needs.changes.outputs.jvm == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
@@ -87,6 +131,8 @@ jobs:
 
   android:
     name: Android debug APKs, unit tests and lint
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -130,7 +176,7 @@ jobs:
       - name: Remove google-services.json from the workspace
         if: always()
         run: rm -f android/app-sr/google-services.json android/app-amo/google-services.json android/app-tso/google-services.json
-      - name: Upload debug APKs
+      - name: Upload debug APKs (every successful Android run)
         uses: actions/upload-artifact@v7
         with:
           name: aron-debug-apks-${{ github.sha }}

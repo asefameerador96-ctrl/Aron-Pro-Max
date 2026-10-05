@@ -1,0 +1,298 @@
+// Mock Aron API for web development and tests (there is no live backend on Day 1).
+// Every payload is typed with the types GENERATED from contract/openapi.yaml, so a contract rename breaks `tsc` here too.
+// It implements only what the web rows use: login (+MFA), refresh, logout, me, admin clusters, audit. Run: `npm run mock`.
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { pathToFileURL } from "node:url";
+import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
+
+interface MockUser {
+  summary: UserSummary;
+  password: string;
+  scope: ScopeSummary;
+  mfa: boolean;
+  state?: "locked" | "password_change";
+}
+
+const nationalScope: ScopeSummary = { scope_version: 3, nodes: [{ type: "national", id: 0, code: null, name: null }] };
+
+function users(): Record<string, MockUser> {
+  const u = (user_id: number, username: string, full_name: string, role: Role, password: string, scope: ScopeSummary, mfa = false, state?: MockUser["state"]): MockUser => ({
+    summary: { user_id, username, full_name, role, designation: role, locale: "bn" },
+    password,
+    scope,
+    mfa,
+    state,
+  });
+  return {
+    tso334: u(2001, "tso334", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 334, code: "T-334", name: "Banani" }] }),
+    wm1: u(2002, "wm1", "Karim Hossain", "WM", "wm-pass-1", { scope_version: 2, nodes: [{ type: "wing", id: 1, code: "W-1", name: "Dhaka Wing" }] }),
+    analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
+    admin1: u(3001, "admin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true),
+    support1: u(3002, "support1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true),
+    sr334001: u(1001, "sr334001", "Testing Banani", "SR", "sr-pass-1", { scope_version: 7, nodes: [{ type: "route", id: 10231, code: "R-334-01", name: "RouteDaily" }] }),
+    locked1: u(4001, "locked1", "Locked User", "TSO", "locked-pass-1", nationalScope, false, "locked"),
+    pwchange1: u(4002, "pwchange1", "New User", "TSO", "pwchange-pass-1", nationalScope, false, "password_change"),
+  };
+}
+
+interface State {
+  users: Record<string, MockUser>;
+  clusters: Cluster[];
+  audit: AuditEntry[];
+  access: Map<string, { userId: string; exp: number }>;
+  refresh: Map<string, { userId: string }>;
+  mfaTokens: Map<string, string>;
+  refreshCount: number;
+  nextId: number;
+  accessTtlS: number;
+}
+
+function seedClusters(): Cluster[] {
+  const now = "2026-10-01T04:00:00.000Z";
+  const c = (id: number, zone_id: number, name: string, cluster_type: string | null): Cluster => ({ id, zone_id, name, cluster_type, status: "active", created_at: now, updated_at: now, version: 1 });
+  return [c(1, 1, "Banani Market", "market"), c(2, 1, "Gulshan-1 Circle", "urban"), c(3, 2, "Mirpur-10", "urban"), c(4, 2, "Uttara Sector 7", null), c(5, 3, "Savar Bazar", "semi_urban"), c(6, 3, "Ashulia Haat", "rural"), c(7, 3, "Hatirjheel", "urban")];
+}
+
+export interface MockOptions {
+  port?: number;
+  accessTtlS?: number;
+}
+
+export function createMock(opts: MockOptions = {}): { server: Server; state: State; reset: () => void } {
+  const state: State = freshState(opts.accessTtlS);
+  const reset = () => Object.assign(state, freshState(opts.accessTtlS));
+  const server = createServer((req, res) => {
+    handle(state, reset, req, res).catch((e) => {
+      send(res, 500, problem(500, "ERR_INTERNAL", { detail: String(e) }));
+    });
+  });
+  return { server, state, reset };
+}
+
+function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
+  return { users: users(), clusters: seedClusters(), audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
+}
+
+function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
+  return { type: `urn:aron:problem:${code.toLowerCase()}`, title: code, status, code, request_id: randomUUID(), server_time: new Date().toISOString(), ...extra };
+}
+
+function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string | string[]> = {}): void {
+  const isProblem = status >= 400;
+  const text = body === undefined ? "" : JSON.stringify(body);
+  res.writeHead(status, {
+    "Content-Type": isProblem ? "application/problem+json" : "application/json; charset=utf-8",
+    "X-Aron-Api": "1",
+    "X-Request-Id": randomUUID(),
+    "X-Server-Time": new Date().toISOString(),
+    "X-Config-Version": "318",
+    "X-Server-Generation": "00000000-0000-4000-8000-000000000001",
+    ...headers,
+  });
+  res.end(status === 204 ? undefined : text);
+}
+
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  const raw = Buffer.concat(chunks).toString("utf8");
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return Symbol.for("malformed");
+  }
+}
+
+function unknownMembers(body: Record<string, unknown>, allowed: string[]): Problem["errors"] {
+  return Object.keys(body)
+    .filter((k) => !allowed.includes(k))
+    .map((k) => ({ pointer: `/${k}`, code: "unknown_member" }));
+}
+
+function rtCookie(token: string, maxAgeS: number): string {
+  return `aron_rt=${token}; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth/refresh; Max-Age=${maxAgeS}`;
+}
+
+function newTokens(state: State, username: string) {
+  const at = `at.${randomBytes(24).toString("base64url")}`;
+  const rt = randomBytes(32).toString("base64url");
+  const exp = Date.now() + state.accessTtlS * 1000;
+  state.access.set(at, { userId: username, exp });
+  state.refresh.set(rt, { userId: username });
+  return { at, rt, exp };
+}
+
+function loginBody(state: State, u: MockUser, extra: Partial<LoginResponse>): LoginResponse {
+  return {
+    status: "ok",
+    access_token: null,
+    access_expires_at: null,
+    refresh_token: null,
+    refresh_expires_at: null,
+    upload_refresh_token: null,
+    bind_token: null,
+    mfa_token: null,
+    user: u.summary,
+    scope: null,
+    device: null,
+    config_version: 318,
+    server_time: new Date().toISOString(),
+    min_app_version_code: null,
+    ...extra,
+  };
+}
+
+function authed(state: State, req: IncomingMessage): { user: MockUser } | { error: Problem; status: number } {
+  const h = req.headers.authorization;
+  const token = h?.startsWith("Bearer ") ? h.slice(7) : "";
+  const rec = state.access.get(token);
+  if (!rec) return { status: 401, error: problem(401, "ERR_UNAUTHENTICATED") };
+  if (rec.exp < Date.now()) return { status: 401, error: problem(401, "ERR_TOKEN_EXPIRED", { retryable: true }) };
+  const user = state.users[rec.userId];
+  return user ? { user } : { status: 401, error: problem(401, "ERR_UNAUTHENTICATED") };
+}
+
+const ADMIN_READ: Role[] = ["ADMIN", "SUPERADMIN", "SUPPORT", "ANALYST"];
+const ADMIN_WRITE: Role[] = ["ADMIN", "SUPERADMIN"];
+
+function audit(state: State, user: MockUser, entity: string, entity_id: number, action: string, before: AuditEntry["before"], after: AuditEntry["after"], reason: string | null): void {
+  const prev = state.audit[state.audit.length - 1]?.row_hash ?? "0".repeat(64);
+  const entry = { id: state.audit.length + 1, at: new Date().toISOString(), actor_user_id: user.summary.user_id, actor_username: user.summary.username, actor_role: user.summary.role, via: "web" as const, entity, entity_id: String(entity_id), action, before, after, reason, request_id: randomUUID() };
+  state.audit.push({ ...entry, row_hash: createHash("sha256").update(prev + JSON.stringify(entry)).digest("hex") });
+}
+
+async function handle(state: State, reset: () => void, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const url = new URL(req.url ?? "/", "http://mock");
+  const path = url.pathname;
+  const method = req.method ?? "GET";
+
+  if (path === "/__mock/health") return send(res, 200, { ok: true }, { "X-Aron-Api": "0" });
+  if (path === "/__mock/reset" && method === "POST") {
+    reset();
+    return send(res, 204, undefined);
+  }
+  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters });
+
+  if (path === "/v1/health") return send(res, 200, { status: "ok", api: "/v1", server_time: new Date().toISOString(), generation: "00000000-0000-4000-8000-000000000001", build: "mock" });
+
+  if (path === "/v1/auth/login" && method === "POST") {
+    const body = await readJson(req);
+    if (typeof body !== "object" || body === null || Array.isArray(body)) return send(res, 400, problem(400, "ERR_MALFORMED_JSON"));
+    const b = body as Record<string, unknown>;
+    const extra = unknownMembers(b, ["username", "password", "client", "device_uuid"]);
+    if (extra?.length || typeof b.username !== "string" || typeof b.password !== "string" || b.client !== "web") return send(res, 400, problem(400, "ERR_VALIDATION", { errors: extra }));
+    const u = state.users[b.username.toLowerCase()];
+    if (!u || u.password !== b.password) return send(res, 401, problem(401, "ERR_AUTH_INVALID_CREDENTIALS"));
+    if (u.state === "locked") return send(res, 403, problem(403, "ERR_AUTH_ACCOUNT_LOCKED", { retry_after_s: 900 }));
+    if (u.state === "password_change") return send(res, 200, loginBody(state, u, { status: "password_change_required" }));
+    if (u.mfa) {
+      const mfa = `mfa.${randomBytes(18).toString("base64url")}`;
+      state.mfaTokens.set(mfa, u.summary.username);
+      return send(res, 200, loginBody(state, u, { status: "mfa_required", mfa_token: mfa }));
+    }
+    const t = newTokens(state, u.summary.username);
+    return send(res, 200, loginBody(state, u, { access_token: t.at, access_expires_at: new Date(t.exp).toISOString(), refresh_expires_at: "2027-01-02T00:00:00.000Z", scope: u.scope }), { "Set-Cookie": rtCookie(t.rt, 86400) });
+  }
+
+  if (path === "/v1/auth/mfa/verify" && method === "POST") {
+    const b = (await readJson(req)) as Record<string, unknown> | undefined;
+    const username = typeof b?.mfa_token === "string" ? state.mfaTokens.get(b.mfa_token) : undefined;
+    if (!b || !username) return send(res, 401, problem(401, "ERR_AUTH_MFA_INVALID"));
+    if (b.code !== "123456" && b.code !== "AAAA-BBBB") return send(res, 401, problem(401, "ERR_AUTH_MFA_INVALID"));
+    state.mfaTokens.delete(b.mfa_token as string);
+    const u = state.users[username]!;
+    const t = newTokens(state, username);
+    return send(res, 200, loginBody(state, u, { access_token: t.at, access_expires_at: new Date(t.exp).toISOString(), refresh_expires_at: "2027-01-02T00:00:00.000Z", scope: u.scope }), { "Set-Cookie": rtCookie(t.rt, 86400) });
+  }
+
+  if (path === "/v1/auth/refresh" && method === "POST") {
+    const m = /(?:^|;\s*)aron_rt=([^;]+)/.exec(req.headers.cookie ?? "");
+    const rec = m?.[1] ? state.refresh.get(m[1]) : undefined;
+    if (!m?.[1] || !rec) return send(res, 401, problem(401, "ERR_AUTH_REFRESH_INVALID"));
+    state.refresh.delete(m[1]);
+    state.refreshCount++;
+    const t = newTokens(state, rec.userId);
+    const pair: TokenPair = { access_token: t.at, access_expires_at: new Date(t.exp).toISOString(), refresh_token: null, refresh_expires_at: "2027-01-02T00:00:00.000Z", scope_version: 7, server_time: new Date().toISOString() };
+    return send(res, 200, pair, { "Set-Cookie": rtCookie(t.rt, 86400) });
+  }
+
+  if (path === "/v1/auth/logout" && method === "POST") return send(res, 204, undefined);
+
+  // Everything below needs a bearer token.
+  const a = authed(state, req);
+  if ("error" in a) return send(res, a.status, a.error);
+  const user = a.user;
+
+  if (path === "/v1/me") {
+    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: false, mfa_enabled: user.mfa };
+    return send(res, 200, me);
+  }
+
+  if (path.startsWith("/v1/admin/")) {
+    const write = method !== "GET";
+    if (!(write ? ADMIN_WRITE : ADMIN_READ).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+  }
+
+  if (path === "/v1/admin/clusters" && method === "GET") {
+    const q = url.searchParams;
+    const limit = Math.min(500, Number(q.get("limit") ?? 100));
+    const offset = q.get("cursor") ? Number(Buffer.from(q.get("cursor")!, "base64url").toString()) : 0;
+    let rows = state.clusters.filter((c) => (!q.get("zone_id") || c.zone_id === Number(q.get("zone_id"))) && (!q.get("status") || c.status === q.get("status")) && (!q.get("q") || c.name.toLowerCase().includes(q.get("q")!.toLowerCase())));
+    rows = rows.sort((x, y) => x.id - y.id);
+    const page = rows.slice(offset, offset + limit);
+    const next = offset + limit < rows.length ? Buffer.from(String(offset + limit)).toString("base64url") : null;
+    return send(res, 200, { items: page, next_cursor: next });
+  }
+  if (path === "/v1/admin/clusters" && method === "POST") {
+    const b = (await readJson(req)) as Record<string, unknown> | undefined;
+    if (!b || typeof b !== "object") return send(res, 400, problem(400, "ERR_MALFORMED_JSON"));
+    const errors = [...(unknownMembers(b, ["zone_id", "name", "cluster_type"]) ?? [])];
+    if (typeof b.name !== "string" || b.name.length < 1 || b.name.length > 120) errors.push({ pointer: "/name", code: "required" });
+    if (!Number.isInteger(b.zone_id)) errors.push({ pointer: "/zone_id", code: "required" });
+    if (errors.length) return send(res, 400, problem(400, "ERR_VALIDATION", { errors }));
+    if (state.clusters.some((c) => c.zone_id === b.zone_id && c.name === b.name)) return send(res, 409, problem(409, "ERR_MASTER_DUPLICATE_CODE"));
+    const now = new Date().toISOString();
+    const row: Cluster = { id: state.nextId++, zone_id: b.zone_id as number, name: b.name as string, cluster_type: (b.cluster_type as string | null | undefined) ?? null, status: "active", created_at: now, updated_at: now, version: 1 };
+    state.clusters.push(row);
+    audit(state, user, "cluster", row.id, "cluster.create", null, { name: row.name, zone_id: row.zone_id }, null);
+    return send(res, 201, row);
+  }
+  const item = /^\/v1\/admin\/clusters\/([0-9]+)$/.exec(path);
+  if (item && method === "PATCH") {
+    const row = state.clusters.find((c) => c.id === Number(item[1]));
+    if (!row) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+    if (req.headers["if-match"] !== `"${row.version}"`) return send(res, 412, problem(412, "ERR_PRECONDITION_FAILED"));
+    const b = (await readJson(req)) as Record<string, unknown> | undefined;
+    if (!b || typeof b !== "object" || Object.keys(b).length === 0) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    const errors = [...(unknownMembers(b, ["zone_id", "name", "cluster_type", "status", "change_reason"]) ?? [])];
+    if (b.change_reason !== undefined && b.change_reason !== null && (typeof b.change_reason !== "string" || b.change_reason.length < 10)) errors.push({ pointer: "/change_reason", code: "too_short" });
+    if (b.status !== undefined && b.status !== "active" && b.status !== "inactive") errors.push({ pointer: "/status", code: "pattern" });
+    if (errors.length) return send(res, 400, problem(400, "ERR_VALIDATION", { errors }));
+    const before = { name: row.name, zone_id: row.zone_id, cluster_type: row.cluster_type ?? null, status: row.status };
+    if (typeof b.name === "string") row.name = b.name;
+    if (Number.isInteger(b.zone_id)) row.zone_id = b.zone_id as number;
+    if (b.cluster_type !== undefined) row.cluster_type = b.cluster_type as string | null;
+    if (b.status === "active" || b.status === "inactive") row.status = b.status;
+    row.version++;
+    row.updated_at = new Date().toISOString();
+    audit(state, user, "cluster", row.id, "cluster.update", before, { name: row.name, zone_id: row.zone_id, cluster_type: row.cluster_type ?? null, status: row.status }, (b.change_reason as string | null | undefined) ?? null);
+    return send(res, 200, row);
+  }
+
+  if (path === "/v1/admin/audit" && method === "GET") {
+    const q = url.searchParams;
+    const items = state.audit.filter((e) => (!q.get("entity") || e.entity === q.get("entity")) && (!q.get("entity_id") || e.entity_id === q.get("entity_id")) && (!q.get("action") || e.action === q.get("action"))).reverse();
+    return send(res, 200, { items, next_cursor: null });
+  }
+
+  return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+}
+
+// Start when run directly (`npm run mock`, Playwright webServer).
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  const port = Number(process.env.MOCK_PORT ?? 4010);
+  const { server } = createMock();
+  server.listen(port, "127.0.0.1", () => console.log(`mock API on http://127.0.0.1:${port}`));
+}
