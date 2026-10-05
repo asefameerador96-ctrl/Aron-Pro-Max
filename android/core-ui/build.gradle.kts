@@ -16,7 +16,7 @@ android {
             it.systemProperty("aron.androidRoot", androidRoot.asFile.absolutePath)
             it.inputs.files(
                 rootProject.fileTree("android") {
-                    include("app-*/src/**", "feature-*/src/**", "core-ui/src/**", "dpc/src/**")
+                    include("app-*/src/**", "feature-*/src/**", "core-ui/src/**", "core-printing/src/**", "core-sync/src/**", "dpc/src/**")
                     exclude("**/src/test/**", "**/src/androidTest/**")
                 },
             ).withPropertyName("scannedSources").withPathSensitivity(PathSensitivity.RELATIVE)

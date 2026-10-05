@@ -131,4 +131,27 @@ class CheckerN016Test {
             fail("QC line with a foreign memo_client_uuid committed with the memo")
         } catch (_: IllegalArgumentException) { }
     }
+
+    // ---- second re-check (b35af37) ----
+    @Test
+    fun anEditedMemoWithoutEditFixOrReasonIsRefused() = runTest {
+        val (visit, f) = TestRows.visit()
+        repo.recordVisitOpen(visit, f)
+        val sale = TestRows.sale(visit.clientUuid)
+        val edit = sale.copy(memo = sale.memo.copy(supersedesClientUuid = ClientIds.newUuid(), editReasonCode = null, editFixClientUuid = null))
+        try {
+            repo.recordSale(edit)
+            fail("edited memo committed without edit_fix and edit_reason_code")
+        } catch (_: IllegalArgumentException) { }
+    }
+    @Test
+    fun aMemoForAnotherOutletThanItsVisitIsRefused() = runTest {
+        val (visit, f) = TestRows.visit(outletId = 50001)
+        repo.recordVisitOpen(visit, f)
+        val sale = TestRows.sale(visit.clientUuid)
+        try {
+            repo.recordSale(sale.copy(memo = sale.memo.copy(outletId = 50002)))
+            fail("memo committed for outlet 50002 inside a visit to outlet 50001")
+        } catch (_: IllegalArgumentException) { } catch (_: IllegalStateException) { }
+    }
 }

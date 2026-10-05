@@ -15,6 +15,8 @@ data class UserProfile(
     val verifier: String,
     /** Trusted time of the last successful online login; offline unlock is allowed for 7 days after it. */
     val lastOnlineLoginMs: Long,
+    /** elapsedRealtime at that login: while the phone has not rebooted, real time since login is at least elapsed minus this. */
+    val lastOnlineLoginElapsedMs: Long = 0,
     val offlineFailures: Int = 0,
     /** Wall-clock end of the offline cool-down (shown to the user; used only after a reboot). */
     val cooldownUntilMs: Long = 0,

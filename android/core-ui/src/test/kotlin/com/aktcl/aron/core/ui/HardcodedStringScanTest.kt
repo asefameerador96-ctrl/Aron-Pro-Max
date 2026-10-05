@@ -11,7 +11,7 @@ class HardcodedStringScanTest {
     @Test
     fun noHardcodedUserVisibleStringsInTheAppAndFeatureModules() {
         val root = File(System.getProperty("aron.androidRoot") ?: error("aron.androidRoot not set"))
-        val violations = HardcodedStringScanner.scanTree(root) { it.startsWith("app-") || it.startsWith("feature-") || it == "core-ui" || it == "dpc" }
+        val violations = HardcodedStringScanner.scanTree(root)
         assertTrue(
             "User-visible text must live in res/values/strings.xml and res/values-bn/strings.xml (docs/24 s5.6):\n" +
                 violations.joinToString("\n"),
@@ -78,6 +78,8 @@ class HardcodedStringScanTest {
     fun xmlLiteralsAndMissingTranslationsAreCaught() {
         val xml = """<TextView android:text="Hello" /><TextView android:text="@string/ok" /><application android:label="${'$'}{appLabel}" />"""
         assertEquals(1, HardcodedStringScanner.scanXml("l.xml", xml).size)
+        val more = """<device-admin android:description="Lets ARON manage the phone" /><item app:title="Sync now" /><x android:summary="@string/s" />"""
+        assertEquals(2, HardcodedStringScanner.scanXml("x.xml", more).size)
         val en = """<resources><string name="a">A</string><string name="b" translatable="false">B</string><plurals name="c"></plurals></resources>"""
         assertEquals(setOf("a", "c"), HardcodedStringScanner.translatableNames(en))
         assertEquals(setOf("d"), HardcodedStringScanner.translatableNames("""<string translatable="false" name="x">X</string><string-array name="d"></string-array>"""))

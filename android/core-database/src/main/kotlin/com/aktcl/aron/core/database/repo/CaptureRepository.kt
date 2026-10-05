@@ -79,6 +79,10 @@ class CaptureRepository(
         // QC lines saved with the memo are deducted on it (s7.4); a line for another memo would break qc_deduction.
         require(sale.qcLines.all { it.memoClientUuid == m.clientUuid && it.appliedToMemo }) { "QC lines saved with a memo must be applied to that memo" }
         require((m.editFixClientUuid == null) == (sale.editFix == null)) { "an edited memo carries its edit fix, and only then" }
+        // An edit is a new memo that supersedes the old one, with a reason and a fresh fix for the server's geofence re-check.
+        require((m.supersedesClientUuid != null) == (sale.editFix != null && m.editReasonCode != null)) {
+            "an edited memo carries supersedes_client_uuid, edit_reason_code and its edit fix together"
+        }
         requireUuids(
             m.clientUuid, m.visitClientUuid, *sale.lines.map { it.clientUuid }.toTypedArray(),
             *sale.discounts.map { it.clientUuid }.toTypedArray(), *sale.qcLines.map { it.clientUuid }.toTypedArray(),
@@ -90,7 +94,8 @@ class CaptureRepository(
             "memo counts must match the lines committed with it"
         }
         db.withTransaction {
-            checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
+            val visit = checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
+            require(visit.outletId == m.outletId) { "memo ${m.memoNo} is for another outlet than its visit" }
             sale.editFix?.let {
                 requireFixOf(it, m.clientUuid, m.editFixClientUuid)
                 capture.insertFix(it)

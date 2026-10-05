@@ -32,7 +32,9 @@ check(testCopySuffix == null || Regex("^\\.[a-z][a-z0-9_]{0,20}$").matches(testC
 // A release build never talks plain HTTP (docs/24 s5.8): fail it here instead of crashing the app at launch.
 val apiBaseUrlIsHttps = apiBaseUrl.startsWith("https://")
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
-    doFirst { check(apiBaseUrlIsHttps) { "release builds need an https aron.apiBaseUrl (docs/24 s5.8)" } }
+    // Copied into a local so the action captures a Boolean, not the build script (configuration cache).
+    val https = apiBaseUrlIsHttps
+    doFirst { check(https) { "release builds need an https aron.apiBaseUrl (docs/24 s5.8)" } }
 }
 
 android {

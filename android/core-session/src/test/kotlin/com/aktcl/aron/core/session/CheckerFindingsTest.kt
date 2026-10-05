@@ -154,13 +154,15 @@ class CheckerFindingsTest {
     }
 
     @Test
-    fun aCooldownStillEndsAfterARebootOnWallClockTime() = runBlocking {
+    fun aCooldownEndsAfterARebootOnlyWhenBothClocksAgree() = runBlocking {
         val phone = Phone()
         phone.loginOnlineThenLogoutAndGoOffline()
         repeat(10) { phone.session.login("sr334001", "nope") }
         clock.elapsed = 1_000 // reboot: the monotonic clock restarted
         assertEquals(OfflineRefusal.COOLDOWN, (phone.session.login("sr334001", "secret-1") as LoginOutcome.OfflineUnavailable).refusal)
-        clock.wall += 61_000
+        clock.wall += 61_000 // the wall-clock end alone is not enough after a reboot...
+        assertEquals(OfflineRefusal.COOLDOWN, (phone.session.login("sr334001", "secret-1") as LoginOutcome.OfflineUnavailable).refusal)
+        clock.elapsed = 61_000 // ...the full cool-down must also have run since boot
         assertTrue(phone.session.login("sr334001", "secret-1") is LoginOutcome.LoggedIn)
     }
 
@@ -190,5 +192,39 @@ class CheckerFindingsTest {
         val phone = Phone()
         server.enqueue(api(401, problem(401, "ERR_DEVICE_PROOF_INVALID")).build())
         assertEquals(LoginOutcome.Refused("ERR_DEVICE_PROOF_INVALID", null), phone.session.login("sr334001", "x"))
+    }
+
+    // ---- second re-check (b35af37) ----
+    @Test
+    fun rollbackWithoutAnInterveningAttemptDoesNotReopenAnExpiredUnlock() = runBlocking {
+        val phone = Phone()
+        phone.loginOnlineThenLogoutAndGoOffline()
+        val loginAt = clock.wall
+        clock.elapsed += 30L * 86_400_000L // 30 real days, phone on, app untouched
+        clock.wall = loginAt + 86_400_000L // date set to the day after the login
+        val outcome = phone.session.login("sr334001", "secret-1")
+        assertFalse("expired offline unlock reopened by a date rollback: $outcome", outcome is LoginOutcome.LoggedIn)
+    }
+    @Test
+    fun rebootPlusClockForwardDoesNotEndTheCooldown() = runBlocking {
+        val phone = Phone()
+        phone.loginOnlineThenLogoutAndGoOffline()
+        repeat(16) { phone.session.login("sr334001", "nope") } // cool-down now at the 1 h cap
+        clock.elapsed = 30_000 // rebooted 30 s ago
+        clock.wall += 3_600_000L + 60_000L // date moved forward by an hour
+        val outcome = phone.session.login("sr334001", "secret-1")
+        assertTrue("cool-down bypassed by reboot + clock forward: $outcome",
+            outcome is LoginOutcome.OfflineUnavailable && outcome.refusal == OfflineRefusal.COOLDOWN)
+    }
+    @Test
+    fun passwordChangedDoesNotDropTheUploadGrant() = runBlocking {
+        val phone = Phone()
+        server.enqueue(api(200, loginOk).build())
+        phone.session.login("sr334001", "secret-1")
+        val upload = phone.store.tokens(1001).uploadRefreshToken
+        assertTrue(upload != null)
+        server.enqueue(api(401, problem(401, "ERR_PASSWORD_CHANGED")).build())
+        phone.session.refresh(1001, Grant.UPLOAD)
+        assertEquals("upload grant dropped on password change", upload, phone.store.tokens(1001).uploadRefreshToken)
     }
 }

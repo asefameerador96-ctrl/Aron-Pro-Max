@@ -134,6 +134,7 @@ class SessionRepository(
                     locale = answer.user.locale,
                     verifier = verifier.create(password),
                     lastOnlineLoginMs = clock.nowMs(),
+                    lastOnlineLoginElapsedMs = clock.elapsedRealtimeMs(),
                     highWaterMs = clock.nowMs(),
                     deviceId = answer.device?.deviceId ?: previous?.deviceId,
                     bindOrdinal = answer.device?.bindOrdinal ?: previous?.bindOrdinal,
@@ -183,7 +184,9 @@ class SessionRepository(
             store.saveProfile(profile)
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.COOLDOWN, profile.cooldownUntilMs, serverAnswer)
         }
-        if (now - profile.lastOnlineLoginMs > policy.maxDays * DAY_MS) {
+        // Without a reboot since the login, the monotonic clock proves how much real time has passed, whatever the date says.
+        val realAge = if (elapsed >= profile.lastOnlineLoginElapsedMs) elapsed - profile.lastOnlineLoginElapsedMs else 0L
+        if (maxOf(now - profile.lastOnlineLoginMs, realAge) > policy.maxDays * DAY_MS) {
             store.saveProfile(profile)
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.EXPIRED, serverAnswer = serverAnswer)
         }
@@ -209,13 +212,15 @@ class SessionRepository(
     }
 
     /**
-     * The cool-down runs on elapsedRealtime, which date changes cannot move. After a reboot (elapsed below the start)
-     * the monotonic clock restarted, so the wall-clock end (on the high-water time) applies instead.
+     * The cool-down runs on elapsedRealtime, which date changes cannot move. After a reboot (elapsed below the start) the
+     * monotonic clock restarted: the cool-down then lasts until BOTH its wall-clock end has passed and its full length has
+     * run since boot, so neither a reboot nor a date change shortens it.
      */
     private fun inCooldown(p: UserProfile, now: Long, elapsed: Long): Boolean {
         if (p.cooldownUntilMs == 0L) return false
         val rebooted = elapsed < p.cooldownStartElapsedMs
-        return if (rebooted) now < p.cooldownUntilMs else elapsed < p.cooldownUntilElapsedMs
+        if (!rebooted) return elapsed < p.cooldownUntilElapsedMs
+        return now < p.cooldownUntilMs || elapsed < p.cooldownUntilElapsedMs - p.cooldownStartElapsedMs
     }
 
     private fun activate(profile: UserProfile, mode: UnlockMode, reauthRequired: Boolean, updateRequired: Boolean) {
@@ -322,12 +327,12 @@ class SessionRepository(
 
     /**
      * Only these answers end a refresh family (docs/24 s3.4). A bad device proof, a suspended device or a lockout keeps
-     * the tokens: the next attempt (fixed key, lifted suspension) can still succeed. The upload grant survives user
-     * disable (D24-57), so USER_DISABLED ends only the full grant.
+     * the tokens: the next attempt (fixed key, lifted suspension) can still succeed. The upload grant survives a password
+     * change and a user disable (D24-57), so those end only the full grant.
      */
     private fun endsFamily(grant: Grant, code: ProblemCode?): Boolean = when (code) {
-        ProblemCode.ERR_AUTH_REFRESH_INVALID, ProblemCode.ERR_AUTH_REFRESH_REUSED, ProblemCode.ERR_PASSWORD_CHANGED -> true
-        ProblemCode.ERR_AUTH_USER_DISABLED -> grant == Grant.FULL
+        ProblemCode.ERR_AUTH_REFRESH_INVALID, ProblemCode.ERR_AUTH_REFRESH_REUSED -> true
+        ProblemCode.ERR_PASSWORD_CHANGED, ProblemCode.ERR_AUTH_USER_DISABLED -> grant == Grant.FULL
         else -> false
     }
 

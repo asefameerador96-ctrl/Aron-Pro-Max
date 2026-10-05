@@ -183,4 +183,22 @@ class CaptureRepositoryTest {
         fileDb.close()
         context.deleteDatabase(name)
     }
+
+    @Test
+    fun aValidEditedMemoCommitsWithItsEditFix() = runTest {
+        val (visit, fix) = TestRows.visit()
+        repo.recordVisitOpen(visit, fix)
+        val original = TestRows.sale(visit.clientUuid)
+        repo.recordSale(original)
+        val editUuid = ClientIds.newUuid()
+        val editFix = TestRows.fix(editUuid, "memo_edit")
+        val base = TestRows.sale(visit.clientUuid, memoNo = "sr334001-261005-018", memoUuid = editUuid)
+        repo.recordSale(base.copy(
+            memo = base.memo.copy(supersedesClientUuid = original.memo.clientUuid, editReasonCode = "qty_wrong", editFixClientUuid = editFix.clientUuid),
+            editFix = editFix,
+        ))
+        val payload = Json.parseToJsonElement(db.outboxDao().byClientUuid(editUuid)!!.payloadJson).jsonObject["payload"]!!.jsonObject
+        assertEquals(original.memo.clientUuid, payload["supersedes_client_uuid"]!!.jsonPrimitive.content)
+        assertEquals("memo_edit", payload["edit_fix"]!!.jsonObject["purpose"]!!.jsonPrimitive.content)
+    }
 }

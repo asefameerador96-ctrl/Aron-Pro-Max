@@ -23,6 +23,11 @@
   - Tests: migration from the exported schema plus an identity-hash check; duplicate-uuid rejection in every table; kill and relaunch with a persisted in-flight batch; a seeded SR day (200 outlets, 60 SKUs) loads in about 0.2 s on the host.
   - A per-user database file (`aron-u<id>.db`) with a SQLCipher factory.
 
+## Second re-check (independent agent, on the pushed fixes)
+- Found a release-build regression: the https guard broke the configuration cache. Fixed; `assembleRelease` now builds (10.7 MB unsigned with R8) and an http base URL fails. **Ask to infra:** add `:android:app-sr:assembleRelease` to CI so this cannot regress silently.
+- Three session edge cases (rollback without an unlock attempt, reboot plus clock forward, upload grant on password change), two memo checks, and the scanner's misses and false positives: all fixed, every case is a test.
+- Scanner false-positive budget: realistic Day-2 code (Room `@Query`, log tags, Timber, MIME types, date patterns, time zones, exceptions, previews, `@Named`, headers, work names, routes, JSON keys) passes. Other lanes opt a line out only with `// i18n-ignore: <reason>`.
+
 ## Awaiting a device or the CI emulator job (prepared, compiled, not run here)
 - `core-session` `DeviceCryptoTest`: Keystore cipher round trip and tamper rejection; native Argon2id parameters and time on the phone.
 - `core-database` `SqlCipherDeviceTest`: the per-user file is encrypted and reopens with its key only.
