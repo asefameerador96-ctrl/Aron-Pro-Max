@@ -1,5 +1,6 @@
 // android:app-tso: the ARON TSO app, applicationId com.aktcl.aron.tso (docs/23 s8, docs/24 s2.1).
-// Lane: android (TSO app agent). Each field app embeds android:dpc and is its own device owner (docs/24 s10.1).
+// Lane: android-core owns the shell and build wiring; the TSO app lane owns the feature content. Each field app
+// embeds android:dpc and is its own device owner (docs/24 s10.1).
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -13,6 +14,21 @@ if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
 
+// API origin (docs/24 s3.1): scheme and host only, no path; the contract paths start with /v1. Validated here so a wrong
+// value fails the build instead of the field app. Plain HTTP is accepted only for loopback or the emulator host (debug).
+val apiBaseUrl: String = ((findProperty("aron.apiBaseUrl") as String?) ?: "https://api.aron-dev.invalid").trim().trimEnd('/')
+check(
+    Regex("^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$").matches(apiBaseUrl) ||
+        Regex("^http://(localhost|127\\.0\\.0\\.1|10\\.0\\.2\\.2)(:[0-9]{1,5})?$").matches(apiBaseUrl),
+) { "aron.apiBaseUrl must be a bare origin such as https://api.example.com (docs/24 s3.1), got: $apiBaseUrl" }
+
+// F-SYS-044: a test copy under a fourth package id (for example -Paron.applicationIdSuffix=.copy gives
+// com.aktcl.aron.tso.copy) proves the apps share no authority, permission or file. Field builds never set it.
+val testCopySuffix: String? = (findProperty("aron.applicationIdSuffix") as String?)?.trim()?.takeIf { it.isNotEmpty() }
+check(testCopySuffix == null || Regex("^\\.[a-z][a-z0-9_]{0,20}$").matches(testCopySuffix)) {
+    "aron.applicationIdSuffix must look like .copy, got: $testCopySuffix"
+}
+
 android {
     namespace = "com.aktcl.aron.tso"
     defaultConfig {
@@ -20,9 +36,12 @@ android {
         versionCode = (findProperty("aron.versionCode") as String?)?.toInt() ?: 1
         versionName = (findProperty("aron.versionName") as String?) ?: "0.1.0"
         buildConfigField("String", "ARON_ROLE", "\"TSO\"")
-        buildConfigField("String", "API_BASE_URL", "\"" + ((findProperty("aron.apiBaseUrl") as String?) ?: "https://api.aron-dev.invalid") + "\"")
+        buildConfigField("String", "API_BASE_URL", "\"" + apiBaseUrl + "\"")
+        if (testCopySuffix != null) applicationIdSuffix = testCopySuffix
     }
     buildFeatures { compose = true }
+    // Only the two app languages ship (docs/24 s5.6); drops library translations and keeps the APK lean (s5.7).
+    androidResources { localeFilters += listOf("en", "bn") }
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -55,4 +74,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit4)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
 }
