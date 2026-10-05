@@ -25,5 +25,18 @@ object Money {
 
     /** Line gross in mtk: div_half_up(qty_base x base_price_mtk, price_per_qty) (docs/24 s7.3, s7.6). */
     fun lineGrossMtk(qtyBase: Long, basePriceMtk: Long, pricePerQty: Long = 1L): Long =
-        divHalfUp(qtyBase * basePriceMtk, pricePerQty)
+        divHalfUp(checkedMul(qtyBase, basePriceMtk), pricePerQty)
+
+    /** Formats mtk as taka with [decimals] (0..3) digits, half away from zero, `,` thousands grouping: 4_391_000 -> "4,391.00". */
+    fun formatTaka(mtk: Long, decimals: Int = 2): String {
+        require(decimals in 0..3) { "decimals must be 0..3" }
+        val unit = when (decimals) { 0 -> 1_000L; 1 -> 100L; 2 -> 10L; else -> 1L }
+        val scaled = divHalfUp(mtk, unit)
+        val negative = scaled < 0
+        val abs = if (negative) -scaled else scaled
+        val scale = when (decimals) { 0 -> 1L; 1 -> 10L; 2 -> 100L; else -> 1_000L }
+        val whole = (abs / scale).toString().reversed().chunked(3).joinToString(",").reversed()
+        val frac = if (decimals == 0) "" else "." + (abs % scale).toString().padStart(decimals, '0')
+        return (if (negative) "-" else "") + whole + frac
+    }
 }

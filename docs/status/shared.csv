@@ -1,0 +1,4 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+N-003,L,,2026-10-05T12:00Z,,pending,built; checker running; start time not recorded
+N-004,M,,2026-10-05T12:00Z,,pending,built; checker running; start time not recorded
+F-SYS-017,S,,2026-10-05T12:00Z,,pending,built; checker running; start time not recorded
