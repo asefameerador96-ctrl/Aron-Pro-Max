@@ -1,0 +1,2 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+N-005,L,2026-10-05T11:53Z,2026-10-05T12:18Z,25,9 (7 first pass + 1 re-check + 1 hardening),"V0001-V0006; Azure dev DB run pending infra (btree_gist allow-list); docs/19 keys deferred by request"

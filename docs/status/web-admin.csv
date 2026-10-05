@@ -1,0 +1,2 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+N-011,M,2026-10-05T12:00Z,2026-10-05T12:25Z,25,3,"Checker found cursor truncation, If-Match not validated, write pages 200 not 403; all fixed with tests. Create cannot store the reason until the contract adds it (request filed)"

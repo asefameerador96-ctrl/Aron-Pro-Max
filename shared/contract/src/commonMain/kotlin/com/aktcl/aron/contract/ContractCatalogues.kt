@@ -85,6 +85,8 @@ enum class FixPurpose(val wire: String) {
     @SerialName("due_collection") DUE_COLLECTION("due_collection"),
     @SerialName("refresh") REFRESH("refresh"),
     @SerialName("breadcrumb") BREADCRUMB("breadcrumb"),
+    @SerialName("gift_photo") GIFT_PHOTO("gift_photo"),
+    @SerialName("redemption") REDEMPTION("redemption"),
 }
 
 /** Risk-signal catalogue (docs/24 s11.4). */
@@ -107,9 +109,11 @@ enum class RiskSignalCode(val wire: String) {
     @SerialName("DEVICE_MOCK_APP_PRESENT") DEVICE_MOCK_APP_PRESENT("DEVICE_MOCK_APP_PRESENT"),
     @SerialName("DEVICE_POLICY_DRIFT") DEVICE_POLICY_DRIFT("DEVICE_POLICY_DRIFT"),
     @SerialName("CLOCK_SKEW") CLOCK_SKEW("CLOCK_SKEW"),
+    @SerialName("GEO_OUT_OF_BOUNDS") GEO_OUT_OF_BOUNDS("GEO_OUT_OF_BOUNDS"),
+    @SerialName("CONFIG_STAMP_REGRESS") CONFIG_STAMP_REGRESS("CONFIG_STAMP_REGRESS"),
 }
 
-/** Phase 1 report registry (docs/24 s12.3). */
+/** Report registry (docs/24 s12.3). */
 @Serializable
 enum class ReportKey(val wire: String) {
     @SerialName("std-memo") STD_MEMO("std-memo"),
@@ -140,6 +144,129 @@ enum class ReportKey(val wire: String) {
     @SerialName("qc-report") QC_REPORT("qc-report"),
     @SerialName("stock-summary") STOCK_SUMMARY("stock-summary"),
     @SerialName("memo-number-gaps") MEMO_NUMBER_GAPS("memo-number-gaps"),
+    @SerialName("sales-summary") SALES_SUMMARY("sales-summary"),
+    @SerialName("task-planner") TASK_PLANNER("task-planner"),
+    @SerialName("by-route-geo-capture") BY_ROUTE_GEO_CAPTURE("by-route-geo-capture"),
+    @SerialName("free-sample") FREE_SAMPLE("free-sample"),
+    @SerialName("target-allocation") TARGET_ALLOCATION("target-allocation"),
+    @SerialName("route-qc") ROUTE_QC("route-qc"),
+    @SerialName("geofence-calibration") GEOFENCE_CALIBRATION("geofence-calibration"),
+    @SerialName("astha") ASTHA("astha"),
+    @SerialName("astha-gift-choice") ASTHA_GIFT_CHOICE("astha-gift-choice"),
+    @SerialName("campaign-gift-redemption") CAMPAIGN_GIFT_REDEMPTION("campaign-gift-redemption"),
+    @SerialName("diamond-league") DIAMOND_LEAGUE("diamond-league"),
+    @SerialName("superstar-campaign") SUPERSTAR_CAMPAIGN("superstar-campaign"),
+    @SerialName("retailer-list") RETAILER_LIST("retailer-list"),
+    @SerialName("sku-list") SKU_LIST("sku-list"),
+}
+
+/** Kind of visit; AMO calls never count in the SR strike rate (docs/24 s12.4). */
+@Serializable
+enum class VisitKind(val wire: String) {
+    @SerialName("sr_call") SR_CALL("sr_call"),
+    @SerialName("amo_control_call") AMO_CONTROL_CALL("amo_control_call"),
+    @SerialName("amo_joint_call") AMO_JOINT_CALL("amo_joint_call"),
+    @SerialName("tso_visit") TSO_VISIT("tso_visit"),
+    @SerialName("web_entry") WEB_ENTRY("web_entry"),
+}
+
+/** How a visit ended (docs/24 s4.2, D24-78). */
+@Serializable
+enum class VisitOutcome(val wire: String) {
+    @SerialName("sold") SOLD("sold"),
+    @SerialName("zero_sale_stock_ok") ZERO_SALE_STOCK_OK("zero_sale_stock_ok"),
+    @SerialName("closed") CLOSED("closed"),
+    @SerialName("owner_absent") OWNER_ABSENT("owner_absent"),
+    @SerialName("refused") REFUSED("refused"),
+    @SerialName("competitor_exclusive") COMPETITOR_EXCLUSIVE("competitor_exclusive"),
+    @SerialName("not_reached") NOT_REACHED("not_reached"),
+    @SerialName("abandoned") ABANDONED("abandoned"),
+}
+
+/** Stock ledger movement kind (docs/24 s12.5). */
+@Serializable
+enum class StockMovementKind(val wire: String) {
+    @SerialName("issue") ISSUE("issue"),
+    @SerialName("return") RETURN("return"),
+    @SerialName("adjustment") ADJUSTMENT("adjustment"),
+    @SerialName("damaged") DAMAGED("damaged"),
+    @SerialName("short") SHORT("short"),
+    @SerialName("qc_return") QC_RETURN("qc_return"),
+}
+
+/** Outlet change request type (docs/24 s12.2). */
+@Serializable
+enum class OutletRequestType(val wire: String) {
+    @SerialName("new") NEW("new"),
+    @SerialName("close") CLOSE("close"),
+    @SerialName("info") INFO("info"),
+    @SerialName("cluster") CLUSTER("cluster"),
+    @SerialName("location") LOCATION("location"),
+    @SerialName("route_add") ROUTE_ADD("route_add"),
+}
+
+/** Business code lists (docs/24 s12.1). */
+@Serializable
+enum class CodeListKey(val wire: String) {
+    @SerialName("force_reason") FORCE_REASON("force_reason"),
+    @SerialName("edit_reason") EDIT_REASON("edit_reason"),
+    @SerialName("void_reason") VOID_REASON("void_reason"),
+    @SerialName("visit_outcome") VISIT_OUTCOME("visit_outcome"),
+    @SerialName("skip_reason") SKIP_REASON("skip_reason"),
+    @SerialName("day_exception_reason") DAY_EXCEPTION_REASON("day_exception_reason"),
+    @SerialName("stock_variance_reason") STOCK_VARIANCE_REASON("stock_variance_reason"),
+    @SerialName("task_type") TASK_TYPE("task_type"),
+    @SerialName("leave_type") LEAVE_TYPE("leave_type"),
+    @SerialName("feedback_category") FEEDBACK_CATEGORY("feedback_category"),
+    @SerialName("qc_fault_type") QC_FAULT_TYPE("qc_fault_type"),
+    @SerialName("payment_mode") PAYMENT_MODE("payment_mode"),
+    @SerialName("outlet_close_reason") OUTLET_CLOSE_REASON("outlet_close_reason"),
+    @SerialName("submit_void_reason") SUBMIT_VOID_REASON("submit_void_reason"),
+    @SerialName("channel") CHANNEL("channel"),
+    @SerialName("sub_channel") SUB_CHANNEL("sub_channel"),
+    @SerialName("geo_class") GEO_CLASS("geo_class"),
+}
+
+/** Why a photo was taken (docs/24 s4.11). */
+@Serializable
+enum class MediaPurpose(val wire: String) {
+    @SerialName("force_sale") FORCE_SALE("force_sale"),
+    @SerialName("outlet_capture") OUTLET_CAPTURE("outlet_capture"),
+    @SerialName("outlet_verification") OUTLET_VERIFICATION("outlet_verification"),
+    @SerialName("survey") SURVEY("survey"),
+    @SerialName("feedback") FEEDBACK("feedback"),
+    @SerialName("support") SUPPORT("support"),
+    @SerialName("gift_photo") GIFT_PHOTO("gift_photo"),
+}
+
+/** Bundle sections that may be paged or delta-updated (docs/24 s4.10). */
+@Serializable
+enum class BundleSectionName(val wire: String) {
+    @SerialName("outlets") OUTLETS("outlets"),
+    @SerialName("open_memos") OPEN_MEMOS("open_memos"),
+    @SerialName("prices") PRICES("prices"),
+    @SerialName("offers") OFFERS("offers"),
+    @SerialName("tasks") TASKS("tasks"),
+    @SerialName("team") TEAM("team"),
+    @SerialName("pending_outlet_requests") PENDING_OUTLET_REQUESTS("pending_outlet_requests"),
+    @SerialName("programmes") PROGRAMMES("programmes"),
+    @SerialName("content") CONTENT("content"),
+}
+
+/** Programme kind (docs/24 s4.14). */
+@Serializable
+enum class ProgrammeKind(val wire: String) {
+    @SerialName("diamond_league") DIAMOND_LEAGUE("diamond_league"),
+    @SerialName("astha") ASTHA("astha"),
+    @SerialName("campaign") CAMPAIGN("campaign"),
+    @SerialName("superstar") SUPERSTAR("superstar"),
+}
+
+/** Marketing content kind shown during a call (docs/24 s4.14). */
+@Serializable
+enum class ContentKind(val wire: String) {
+    @SerialName("av") AV("av"),
+    @SerialName("kv") KV("kv"),
 }
 
 /** Config scope level with its resolution precedence; the highest precedence wins (docs/24 s9.2). */
@@ -193,6 +320,10 @@ enum class RecordOutcomeCode(val wire: String, val status: AckStatus, val retrya
     @SerialName("device_revoked") DEVICE_REVOKED("device_revoked", AckStatus.QUARANTINED, null),
     @SerialName("app_version_blocked") APP_VERSION_BLOCKED("app_version_blocked", AckStatus.QUARANTINED, null),
     @SerialName("after_month_close") AFTER_MONTH_CLOSE("after_month_close", AckStatus.QUARANTINED, null),
+    @SerialName("unknown_gift") UNKNOWN_GIFT("unknown_gift", AckStatus.REJECTED, false),
+    @SerialName("insufficient_points") INSUFFICIENT_POINTS("insufficient_points", AckStatus.REJECTED, false),
+    @SerialName("gift_photo_exists") GIFT_PHOTO_EXISTS("gift_photo_exists", AckStatus.REJECTED, false),
+    @SerialName("programme_inactive") PROGRAMME_INACTIVE("programme_inactive", AckStatus.QUARANTINED, null),
 }
 
 /** Stable RFC 9457 problem code with its HTTP status (docs/24 s3.4). */
@@ -268,4 +399,6 @@ enum class ProblemCode(val wire: String, val httpStatus: Int) {
     @SerialName("ERR_REPORT_INVALID_QUERY") ERR_REPORT_INVALID_QUERY("ERR_REPORT_INVALID_QUERY", 400),
     @SerialName("ERR_REPORT_TOO_LARGE") ERR_REPORT_TOO_LARGE("ERR_REPORT_TOO_LARGE", 413),
     @SerialName("ERR_PUSH_DISABLED") ERR_PUSH_DISABLED("ERR_PUSH_DISABLED", 409),
+    @SerialName("ERR_ENTRY_WINDOW_CLOSED") ERR_ENTRY_WINDOW_CLOSED("ERR_ENTRY_WINDOW_CLOSED", 409),
+    @SerialName("ERR_GIFT_CHOICE_LOCKED") ERR_GIFT_CHOICE_LOCKED("ERR_GIFT_CHOICE_LOCKED", 409),
 }

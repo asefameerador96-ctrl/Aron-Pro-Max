@@ -28,6 +28,22 @@ class ContractDriftTest {
     @Test fun configScopeTypes() = assertMirrors("ConfigScopeType", ConfigScopeType.entries.map { it.wire })
     @Test fun recordOutcomeCodes() = assertMirrors("RecordOutcomeCode", RecordOutcomeCode.entries.map { it.wire })
     @Test fun problemCodes() = assertMirrors("ProblemCode", ProblemCode.entries.map { it.wire })
+    @Test fun visitKinds() = assertMirrors("VisitKind", VisitKind.entries.map { it.wire })
+    @Test fun visitOutcomes() = assertMirrors("VisitOutcome", VisitOutcome.entries.map { it.wire })
+    @Test fun stockMovementKinds() = assertMirrors("StockMovementKind", StockMovementKind.entries.map { it.wire })
+    @Test fun outletRequestTypes() = assertMirrors("OutletRequestType", OutletRequestType.entries.map { it.wire })
+    @Test fun codeListKeys() = assertMirrors("CodeListKey", CodeListKey.entries.map { it.wire })
+    @Test fun mediaPurposes() = assertMirrors("MediaPurpose", MediaPurpose.entries.map { it.wire })
+    @Test fun bundleSectionNames() = assertMirrors("BundleSectionName", BundleSectionName.entries.map { it.wire })
+    @Test fun programmeKinds() = assertMirrors("ProgrammeKind", ProgrammeKind.entries.map { it.wire })
+    @Test fun contentKinds() = assertMirrors("ContentKind", ContentKind.entries.map { it.wire })
+
+    @Test
+    fun everyRecordTypeHasAPayloadMapping() {
+        @Suppress("UNCHECKED_CAST")
+        val mapping = (OpenApi.schema("SyncRecord")["discriminator"] as Map<String, Any?>)["mapping"] as Map<String, String>
+        assertEquals(RecordType.entries.map { it.wire }.toSet(), mapping.keys)
+    }
 
     @Test
     fun scopePrecedenceMatchesContractDescription() {

@@ -1,0 +1,2 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+N-009,M,2026-10-05T11:40Z,2026-10-05T12:30Z,50,"7 confirmed + 8 suspicions (all fixed or decided)","Front Door/Container Apps health check depends on infra's image and deploy; ~15 min lost to Maven Central HTTP 429"
