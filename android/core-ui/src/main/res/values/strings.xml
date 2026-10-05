@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shared UI strings (core-ui). English default; Bangla in values-bn (docs/24 s5.6). -->
+<resources>
+    <string name="core_ui_language_english" translatable="false">English</string>
+    <string name="core_ui_language_bangla" translatable="false">বাংলা</string>
+    <string name="core_ui_brand_footer">© AKTCL</string>
+    <string name="core_ui_offline_mode">Offline: your work is saved on this phone and will sync later</string>
+</resources>

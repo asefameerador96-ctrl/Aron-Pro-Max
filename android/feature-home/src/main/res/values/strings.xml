@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- feature-home strings (Day-1 placeholder). English default; Bangla in values-bn (docs/24 s5.6). -->
+<resources>
+    <string name="home_header">%1$s - %2$s (%3$s)</string>
+    <string name="home_business_date">Business date: %1$s</string>
+    <string name="home_reauth_required">Your login has expired on the server. Keep working; enter your password again when you are online.</string>
+    <string name="home_update_required">A new version of the app is required. Finish today\'s work, then update.</string>
+    <string name="home_bundle_checking">Checking today\'s data…</string>
+    <string name="home_bundle_ready">Today\'s data is available for %1$s (version %2$s).</string>
+    <string name="home_bundle_unchanged">Today\'s data is up to date.</string>
+    <string name="home_bundle_offline">No connection to the server. You can keep working; data will sync later.</string>
+    <string name="home_bundle_refused">The server did not send today\'s data (%1$s, %2$s).</string>
+    <string name="home_placeholder_note">Home screen placeholder. Selling screens arrive on Day 2.</string>
+    <string name="home_logout">Log out</string>
+</resources>

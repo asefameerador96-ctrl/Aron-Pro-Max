@@ -1,0 +1,125 @@
+# Deploy Aron to Azure (docs/23 s6, docs/24 s6 and s13.6). Owner: infra lane. Order and reasons: infra/README.md.
+#
+# Triggers
+#   - called by ci.yml after the contract, JVM, web, Android and infra jobs passed on a push to the integration branch
+#     (nothing untested is deployed; pull requests never deploy);
+#   - manual dispatch, from the integration branch only.
+# The GitHub environment azure-dev additionally allows deployments from the integration branch only
+# (infra/bootstrap-azure.ps1), so editing this file on another branch does not reach Azure.
+#
+# All deploy logic lives in infra/deploy.sh (the same one command a person runs); this file signs in, proves the
+# identity's scope, and calls it. No GitHub concurrency group: it would cancel pending CI runs. deploy.sh waits for
+# a running deployment instead and never replaces a deployed commit by one of its ancestors.
+#
+# Needs (created by infra/bootstrap-azure.ps1): secrets AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID;
+# variables AZURE_RESOURCE_GROUP, AZURE_LOCATION, ARON_ALERT_EMAILS. Optional: variables ARON_BUDGET_AMOUNT,
+# ARON_NAME_SUFFIX; secrets FCM_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY.
+# Actions are pinned by commit SHA (tag in the comment), resolved with `git ls-remote` on 2026-10-05.
+
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        default: dev
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target (parameter files infra/params/<environment>*.bicepparam)
+        type: choice
+        options: [dev, prod]
+        default: dev
+      run_migrations:
+        description: Database migrations (auto = only when the backend has the migrate role)
+        type: choice
+        options: [auto, "true", "false"]
+        default: auto
+      force_infra:
+        description: Run main.bicep even when infra/ is unchanged since the deployed commit
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  INTEGRATION_BRANCH: claude/wonderful-thompson-k6ejnf
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment || 'dev' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || 'azure-dev' }}
+    env:
+      ENV_NAME: ${{ inputs.environment || 'dev' }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      ARON_ALERT_EMAILS: ${{ vars.ARON_ALERT_EMAILS }}
+      ARON_BUDGET_AMOUNT: ${{ vars.ARON_BUDGET_AMOUNT }}
+      ARON_NAME_SUFFIX: ${{ vars.ARON_NAME_SUFFIX }}
+      RUN_MIGRATIONS: ${{ inputs.run_migrations || 'auto' }}
+      FORCE_INFRA: ${{ inputs.force_infra && 'true' || 'false' }}
+    steps:
+      - name: Deploy only from the integration branch
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then
+            echo "::error::Deploys run only from ${INTEGRATION_BRANCH}; this run is on ${REF}."
+            exit 1
+          fi
+
+      - name: Check the Azure secrets and variables exist
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          missing=""
+          for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            [ -n "${!v}" ] || missing="${missing} secret:${v}"
+          done
+          for v in AZURE_RESOURCE_GROUP AZURE_LOCATION ARON_ALERT_EMAILS; do
+            [ -n "${!v}" ] || missing="${missing} variable:${v}"
+          done
+          if [ -n "${missing}" ]; then
+            echo "::error title=Azure is not set up for this repository::Missing:${missing}. Run infra/bootstrap-azure.ps1 once with -AlertEmails (it creates the AZURE_* secrets and the variables), or set ARON_ALERT_EMAILS under Settings > Secrets and variables > Actions > Variables. See infra/README.md, 'Sponsor steps'."
+            exit 1
+          fi
+          echo "Azure settings present: group ${AZURE_RESOURCE_GROUP}, region ${AZURE_LOCATION}"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      - name: Sign in to Azure (OIDC, no client secret)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure CLI settings
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt core.only_show_errors=true
+          az bicep install
+          az version -o tsv
+
+      - name: Scope check (rights on the resource group only)
+        run: infra/scripts/scope-check.sh "${AZURE_RESOURCE_GROUP}"
+
+      - name: Deploy (infra/deploy.sh)
+        env:
+          GIT_SHA: ${{ github.sha }}
+          FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
+          MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
+        run: infra/deploy.sh "${ENV_NAME}"
