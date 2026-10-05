@@ -48,7 +48,7 @@ class SeedTest {
              ORDER BY r.sequence_no
             """.trimIndent(),
         )
-        assertEquals(listOf("daily:127", "3f:21", "2f:34"), routes)
+        assertEquals(listOf("daily:127", "3f:42", "2f:36"), routes)   // Daily; Sun/Tue/Thu; Mon/Thu (docs/22 P-17)
         val perRoute = c.column(
             """
             SELECT r.visit_kind || ':' || count(o.id) FROM app.route_assignment a
@@ -80,8 +80,9 @@ class SeedTest {
               JOIN app.outlet o ON o.route_id = r.id
              WHERE NOT EXISTS (
                SELECT 1 FROM app.user_scope s JOIN app.app_user t ON t.id = s.user_id AND t.username = 'tso1001' AND t.role = 'TSO'
+                 JOIN app.zone z ON z.id = r.zone_id
                 WHERE daterange(s.valid_from, s.valid_to, '[)') @> app.dhaka_date(now())
-                  AND s.node_type = 'zone' AND s.node_id = r.zone_id AND o.zone_id = r.zone_id)
+                  AND s.node_type = 'territory' AND s.node_id = z.territory_id AND o.zone_id = r.zone_id)
             """.trimIndent(),
         )
         assertEquals("0", uncovered)
@@ -89,12 +90,44 @@ class SeedTest {
     }
 
     @Test
-    fun everyRoleOfTheChecksHasATestAccountWithoutAPassword() = db.connect().use { c ->
+    fun everyRoleOfTheChecksHasATestAccountWithoutAPasswordUnlessOneIsGiven() {
+        db.connect().use { c ->
+            assertEquals(
+                listOf("ADMIN", "AMO", "DMO", "SR", "SUPERADMIN", "SUPPORT", "TSO"),
+                c.column("SELECT role FROM app.app_user WHERE pilot ORDER BY role"),
+            )
+            assertEquals("0", c.scalar("SELECT count(*) FROM app.app_user WHERE password_hash IS NOT NULL"))
+            assertEquals("0", c.scalar("SELECT count(*) FROM app.app_user WHERE pilot AND must_change_password"))
+        }
+        // With a password (generated here, never stored in the repository) every test account gets its Argon2id hash.
+        val password = java.util.UUID.randomUUID().toString()
+        TestPostgres.createDatabase().migrated().use { other ->
+            other.connect().use { SeedLoader.load(it, password = password) }
+            other.connect().use { c ->
+                val hashes = c.column("SELECT password_hash FROM app.app_user WHERE pilot").filterNotNull()
+                assertEquals(7, hashes.size)
+                val argon2 = de.mkammerer.argon2.Argon2Factory.create(de.mkammerer.argon2.Argon2Factory.Argon2Types.ARGON2id)
+                hashes.forEach { h ->
+                    assertTrue(h.startsWith("\$argon2id\$v=19\$m=19456,t=2,p=1\$"), h)
+                    assertTrue(argon2.verify(h, password.toCharArray()))
+                }
+                val before = c.column("SELECT password_hash FROM app.app_user WHERE pilot ORDER BY id")
+                SeedLoader.load(c, password = "another")
+                assertEquals(before, c.column("SELECT password_hash FROM app.app_user WHERE pilot ORDER BY id"), "a re-run keeps the hashes")
+            }
+        }
+    }
+
+    @Test
+    fun theSeededSrHasAnActiveDevBindingAndTheCalendarAHoliday() = db.connect().use { c ->
         assertEquals(
-            listOf("ADMIN", "AMO", "DMO", "SR", "SUPERADMIN", "SUPPORT", "TSO"),
-            c.column("SELECT role FROM app.app_user WHERE pilot ORDER BY role"),
+            "active:0:active",
+            c.scalar(
+                "SELECT d.status || ':' || b.bind_ordinal || ':' || b.status FROM app.device d JOIN app.device_binding b ON b.device_id = d.id " +
+                    "JOIN app.app_user u ON u.id = b.user_id WHERE u.username = 'sr1001' AND d.device_uuid = '00000000-0000-4000-8000-000000000001'",
+            ),
         )
-        assertEquals("0", c.scalar("SELECT count(*) FROM app.app_user WHERE password_hash IS NOT NULL"))
+        assertEquals("Victory Day", c.scalar("SELECT name_en FROM app.calendar_holiday WHERE date = '2026-12-16'"))
     }
 
     @Test
@@ -122,7 +155,25 @@ class SeedTest {
         assertEquals("7935", c.scalar("SELECT amount_mtk FROM app.sku_price p JOIN app.sku s ON s.id = p.sku_id WHERE s.code = 'MaxR-10S' AND price_type = 'distributor'"))
         assertEquals(listOf("4", "6", "17", "30"), c.column("SELECT count(*) FROM app.product_node GROUP BY level ORDER BY array_position(ARRAY['category','segment','brand','variant'], level)"))
         assertEquals("MaxDB-20S 20HL", c.scalar("SELECT short_name FROM app.sku WHERE code = 'MaxDB-20S_20HL'"))
-        assertEquals("42", c.scalar("SELECT count(*) FROM app.sales_plan"))
+        // The three SKUs priced 0 in every type stay off the sales plan.
+        assertEquals("39", c.scalar("SELECT count(*) FROM app.sales_plan"))
+        assertEquals("0", c.scalar("SELECT count(*) FROM app.sales_plan sp JOIN app.sku_price p ON p.sku_id = sp.sku_id AND p.price_type = 'outlet' WHERE p.amount_mtk = 0"))
+    }
+
+    @Test
+    fun theDevOverridesGetTheirOwnNewConfigVersionOnABusyDatabase() = TestPostgres.createDatabase().migrated().use { other ->
+        other.connect().use { c ->
+            c.exec(
+                "INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT v, 'change', id, 'earlier change ' || v " +
+                    "FROM app.app_user, generate_series(2, 3) AS v WHERE username = 'aron.system'",
+            )
+            SeedLoader.load(c)
+            assertEquals(
+                listOf("4", "4", "4"),
+                c.column("SELECT config_version FROM app.cfg_value WHERE key LIKE 'cfg.device.%' AND scope_type = 'global' ORDER BY key"),
+            )
+            assertEquals("Dev database overrides (docs/24 s9.4, seed)", c.scalar("SELECT summary FROM app.cfg_version WHERE config_version = 4"))
+        }
     }
 
     @Test

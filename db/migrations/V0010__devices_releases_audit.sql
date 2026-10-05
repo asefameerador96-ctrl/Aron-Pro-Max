@@ -24,8 +24,10 @@ CREATE TABLE app.app_release (
   updated_at          timestamptz NOT NULL DEFAULT now(),
   version             int NOT NULL DEFAULT 1 CHECK (version >= 1),
   UNIQUE (flavour, version_code, abi),
-  CHECK (status = 'draft' OR published_at IS NOT NULL OR status = 'retired'),
-  CHECK (published_by IS NULL OR published_by <> created_by)            -- release publish is maker-checker (s8.6)
+  -- release publish is maker-checker (s8.6): a published or blocked release names its author and a different publisher
+  CHECK ((published_at IS NULL) = (published_by IS NULL)),
+  CHECK (status NOT IN ('published','blocked') OR published_at IS NOT NULL),
+  CHECK (published_by IS NULL OR (created_by IS NOT NULL AND published_by <> created_by))
 );
 CREATE TRIGGER app_release_touch BEFORE UPDATE ON app.app_release FOR EACH ROW EXECUTE FUNCTION app.touch_master();
 
@@ -80,6 +82,7 @@ CREATE TABLE app.device (
   pending_rows_reported    int CHECK (pending_rows_reported >= 0),
   zone_id                  bigint REFERENCES app.zone(id),
   replaced_by_device_id    bigint REFERENCES app.device(id),
+  CHECK (app_package = 'com.aktcl.aron.' || flavour),
   external_ref             varchar(64) UNIQUE,
   created_at               timestamptz NOT NULL DEFAULT now(),
   updated_at               timestamptz NOT NULL DEFAULT now(),
@@ -254,11 +257,15 @@ BEGIN
 END $$;
 
 -- ---------- audit log (s8.6): append-only and hash-chained ----------
--- Each row carries the SHA-256 of the previous row (prev_hash) and its own row_hash over its content and prev_hash,
--- so any edit or removal breaks the chain (app.audit_verify). Inserts are serialised by an advisory lock so the
--- chain is linear; audit is written by web and admin actions, not by the sync hot path.
+-- The chain runs in chain_seq order, a number the insert trigger assigns while holding an advisory lock (the identity
+-- id is drawn before the lock, so ids of concurrent writers may interleave). Each row carries the previous row's hash
+-- (prev_hash) and its own row_hash over its content, so an edit or a removal inside the chain breaks it
+-- (app.audit_verify). at and business_date are set by the server, never by the caller. A writer whose snapshot misses
+-- a concurrent row (REPEATABLE READ) gets a unique violation on chain_seq instead of forking the chain. Audit is written
+-- by web and admin actions, not by the sync hot path.
 CREATE TABLE app.audit_log (
   id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  chain_seq       bigint NOT NULL UNIQUE CHECK (chain_seq >= 1),
   at              timestamptz NOT NULL DEFAULT now(),
   business_date   date NOT NULL DEFAULT app.dhaka_date(now()),
   actor_user_id   bigint REFERENCES app.app_user(id),
@@ -283,11 +290,11 @@ CREATE INDEX ON app.audit_log (business_date);
 CREATE FUNCTION app.audit_row_hash(r app.audit_log) RETURNS bytea
 LANGUAGE sql STABLE
 AS $$
-  SELECT sha256(coalesce(r.prev_hash, '\x'::bytea) || convert_to(concat_ws(E'\x1f',
-    r.id::text, to_char(r.at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), r.business_date::text,
-    coalesce(r.actor_user_id::text, ''), coalesce(r.actor_username, ''), coalesce(r.actor_role, ''), r.via, r.entity,
-    r.entity_id, r.action, coalesce(r.before::text, ''), coalesce(r.after::text, ''), coalesce(r.reason, ''),
-    coalesce(r.request_id::text, ''), coalesce(r.ip_class, '')), 'UTF8'))
+  -- A JSON array of the fields: unambiguous boundaries, and no dependence on DateStyle or other session settings.
+  SELECT sha256(coalesce(r.prev_hash, '\x'::bytea) || convert_to(jsonb_build_array(
+    r.chain_seq, r.id, to_char(r.at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), to_char(r.business_date, 'YYYY-MM-DD'),
+    r.actor_user_id, r.actor_username, r.actor_role, r.via, r.entity, r.entity_id, r.action, r.before, r.after, r.reason,
+    r.request_id::text, r.ip_class)::text, 'UTF8'))
 $$;
 
 CREATE FUNCTION app.audit_log_chain() RETURNS trigger
@@ -295,7 +302,10 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   PERFORM pg_advisory_xact_lock(7322841001);           -- one writer at a time keeps the chain linear
-  SELECT row_hash INTO NEW.prev_hash FROM app.audit_log ORDER BY id DESC LIMIT 1;
+  NEW.at := now();
+  NEW.business_date := app.dhaka_date(NEW.at);
+  SELECT chain_seq + 1, row_hash INTO NEW.chain_seq, NEW.prev_hash FROM app.audit_log ORDER BY chain_seq DESC LIMIT 1;
+  NEW.chain_seq := coalesce(NEW.chain_seq, 1);
   NEW.row_hash := app.audit_row_hash(NEW);
   RETURN NEW;
 END $$;
@@ -304,14 +314,17 @@ CREATE TRIGGER audit_log_append_only BEFORE UPDATE OR DELETE ON app.audit_log FO
 CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON app.audit_log FOR EACH STATEMENT EXECUTE FUNCTION app.deny_mutation();
 REVOKE UPDATE, DELETE, TRUNCATE ON app.audit_log FROM PUBLIC;
 
--- First audit row whose hash or link does not verify (null = the whole chain is intact).
+-- First audit row (id) whose hash, link or sequence does not verify (null = the whole chain is intact). Removing the
+-- newest rows is not detectable from inside the table; the daily export of the last row_hash anchors it.
 CREATE FUNCTION app.audit_verify() RETURNS bigint
 LANGUAGE sql STABLE
 AS $$
   SELECT id FROM (
-    SELECT a.id, a.row_hash, a.prev_hash, app.audit_row_hash(a) AS expected,
-           lag(a.row_hash) OVER (ORDER BY a.id) AS previous
+    SELECT a.id, a.chain_seq, a.row_hash, a.prev_hash, app.audit_row_hash(a) AS expected,
+           lag(a.row_hash) OVER (ORDER BY a.chain_seq) AS previous,
+           lag(a.chain_seq) OVER (ORDER BY a.chain_seq) AS previous_seq
       FROM app.audit_log a) x
    WHERE x.row_hash <> x.expected OR x.prev_hash IS DISTINCT FROM x.previous
-   ORDER BY id LIMIT 1
+      OR x.chain_seq <> coalesce(x.previous_seq, 0) + 1
+   ORDER BY chain_seq LIMIT 1
 $$;

@@ -37,8 +37,10 @@ INSERT INTO app.outlet_location_history (outlet_id, lat, lng, accuracy_m, source
   SELECT o.id, o.lat, o.lng, o.location_accuracy_m, 'migration', TIMESTAMPTZ '2026-01-01 00:00:00+06' FROM app.outlet o
    WHERE o.code LIKE 'MIR-%' AND NOT EXISTS (SELECT 1 FROM app.outlet_location_history h WHERE h.outlet_id = o.id);
 
--- Every active SKU is on the Mirpur zone's sales plan.
+-- Every active SKU with a non-zero outlet price is on the Mirpur zone's sales plan (the catalogue lists three SKUs
+-- priced 0 in every type; they stay off the plan so nothing sells for 0 Tk).
 INSERT INTO app.sales_plan (zone_id, sku_id, valid_from)
   SELECT z.id, s.id, DATE '2026-01-01' FROM app.zone z, app.sku s
    WHERE z.code = 'Z-MIR' AND s.status = 'active'
+     AND EXISTS (SELECT 1 FROM app.sku_price p WHERE p.sku_id = s.id AND p.price_type = 'outlet' AND p.amount_mtk > 0)
      AND NOT EXISTS (SELECT 1 FROM app.sales_plan p WHERE p.zone_id = z.id AND p.sku_id = s.id);

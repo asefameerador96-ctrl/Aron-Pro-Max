@@ -356,6 +356,16 @@ class SchemaV1bTest {
     }
 
     @Test
+    fun aVisitInsertedAlreadyClosedCannotReuseAnotherVisitsCloseUuid() = tx { c ->
+        val shared = UUID.randomUUID()
+        fun closed(id: UUID, date: String) = insertSql(c, "visit", id, date)
+            .replace(") VALUES (", ", close_client_uuid, outcome_code) VALUES (")
+            .dropLast(1) + ", '$shared', 'sold')"
+        c.exec(closed(UUID.randomUUID(), "2026-10-05"))
+        assertEquals("23505", assertFailsWith<SQLException> { c.exec(closed(UUID.randomUUID(), "2026-10-06")) }.sqlState)
+    }
+
+    @Test
     fun terminalStatesAndTombstonesNeverMoveBack() = tx { c ->
         val id = UUID.randomUUID()
         c.exec(insertSql(c, "memo", id))

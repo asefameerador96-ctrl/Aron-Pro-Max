@@ -17,6 +17,7 @@ dependencies {
     testImplementation(libs.flyway.postgresql)
     testImplementation(libs.postgresql)
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.argon2.jvm)                 // seed loader: Argon2id hash of ARON_SEED_PASSWORD
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

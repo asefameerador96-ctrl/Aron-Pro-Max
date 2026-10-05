@@ -191,6 +191,7 @@ CREATE TABLE dw.agg_daily_route (
   geo_valid_visits         int NOT NULL DEFAULT 0,
   force_sale_visits        int NOT NULL DEFAULT 0,
   mock_visits              int NOT NULL DEFAULT 0,
+  suspicious_visits        int NOT NULL DEFAULT 0,          -- visits of suspicious user-days (s11.4)
   active_memo_count        int NOT NULL DEFAULT 0,
   gross_mtk                bigint NOT NULL DEFAULT 0,
   offer_discount_mtk       bigint NOT NULL DEFAULT 0,
@@ -223,6 +224,20 @@ CREATE TABLE dw.agg_daily_route_sku (
 );
 CREATE INDEX ON dw.agg_daily_route_sku (sku_id, business_date);
 
+-- BSR per brand (s12.4): memos containing the brand, counted once per memo whatever the number of its SKUs.
+CREATE TABLE dw.agg_daily_route_brand (
+  business_date       date NOT NULL,
+  route_id            bigint NOT NULL,
+  brand_id            bigint NOT NULL,
+  memo_count          int NOT NULL DEFAULT 0,          -- active memos with at least one line of the brand
+  sold_qty_base       bigint NOT NULL DEFAULT 0,
+  gross_mtk           bigint NOT NULL DEFAULT 0,
+  last_event_id       bigint NOT NULL DEFAULT 0,
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (business_date, route_id, brand_id)
+);
+CREATE INDEX ON dw.agg_daily_route_brand (brand_id, business_date);
+
 CREATE TABLE dw.agg_daily_zone (
   business_date            date NOT NULL,
   zone_id                  bigint NOT NULL,
@@ -238,6 +253,7 @@ CREATE TABLE dw.agg_daily_zone (
   geo_valid_visits         int NOT NULL DEFAULT 0,
   force_sale_visits        int NOT NULL DEFAULT 0,
   mock_visits              int NOT NULL DEFAULT 0,
+  suspicious_visits        int NOT NULL DEFAULT 0,
   suspicious_user_days     int NOT NULL DEFAULT 0,
   active_memo_count        int NOT NULL DEFAULT 0,
   gross_mtk                bigint NOT NULL DEFAULT 0,
@@ -282,7 +298,9 @@ CREATE INDEX ON dw.agg_daily_outlet (outlet_id);
 -- ---------- dirty keys ----------
 -- Work queue of things to rebuild: a user's bundle snapshot (refreshed at cfg.bundle.refresh_time and on delta),
 -- an aggregate row to recompute after a late, voided or resolved record. One row per kind, subject and date;
--- repeated dirtying bumps the counter. Workers claim with FOR UPDATE SKIP LOCKED and delete when done.
+-- repeated dirtying bumps the counter and clears the claim. Workers claim with FOR UPDATE SKIP LOCKED (rows unclaimed,
+-- or claimed longer ago than the worker's lease, which covers a crashed worker), and when done delete only if
+-- dirty_count is unchanged since the claim (a key dirtied again meanwhile stays queued).
 CREATE TABLE app.dirty_key (
   kind              text NOT NULL CHECK (kind IN ('bundle_user','route_day_agg','zone_day_agg','outlet_day_agg','device_day_agg',
                                                   'route_snapshot','risk_user_day')),
@@ -296,7 +314,7 @@ CREATE TABLE app.dirty_key (
   claimed_by        text,
   PRIMARY KEY (kind, subject_id, business_date)
 );
-CREATE INDEX dirty_key_pending ON app.dirty_key (kind, last_dirtied_at) WHERE claimed_at IS NULL;
+CREATE INDEX dirty_key_queue ON app.dirty_key (kind, claimed_at, last_dirtied_at);
 
 -- Marks a key dirty (idempotent; safe inside any write transaction).
 CREATE FUNCTION app.mark_dirty(p_kind text, p_subject bigint, p_date date, p_reason text DEFAULT NULL) RETURNS void

@@ -618,14 +618,15 @@ CREATE FUNCTION app.visit_close_uuid_once() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF NEW.close_client_uuid IS NOT NULL AND NEW.close_client_uuid IS DISTINCT FROM OLD.close_client_uuid
+  IF NEW.close_client_uuid IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.close_client_uuid IS DISTINCT FROM OLD.close_client_uuid)
      AND EXISTS (SELECT 1 FROM app.visit WHERE close_client_uuid = NEW.close_client_uuid AND client_uuid <> NEW.client_uuid) THEN
     RAISE EXCEPTION 'duplicate key value violates unique constraint "visit_close_client_uuid_once"'
       USING ERRCODE = 'unique_violation', DETAIL = format('Key (close_client_uuid)=(%s) already exists.', NEW.close_client_uuid);
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER visit_close_uuid_once BEFORE UPDATE OF close_client_uuid ON app.visit FOR EACH ROW EXECUTE FUNCTION app.visit_close_uuid_once();
+CREATE TRIGGER visit_close_uuid_once BEFORE INSERT OR UPDATE OF close_client_uuid ON app.visit FOR EACH ROW EXECUTE FUNCTION app.visit_close_uuid_once();
 CREATE INDEX visit_close_lookup ON app.visit (close_client_uuid) WHERE close_client_uuid IS NOT NULL;
 CREATE INDEX ON app.visit (outlet_id, business_date);
 CREATE INDEX ON app.visit (user_id, business_date);

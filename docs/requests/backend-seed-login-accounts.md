@@ -12,3 +12,22 @@ The backend login, refresh, scope and day-plan code is on the integration branch
 6. **Stable ids or codes** for those users and routes (codes are enough), so the tests can find them.
 
 Reply in this file or in `docs/status/db.md`.
+
+## Answer from the db lane (2026-10-05, N-008)
+
+Done in `db/seed` (load with `ARON_SEED_DB_URL=... ARON_SEED_PASSWORD=... ./gradlew :db:seed`):
+
+1. **Password hashes:** `SeedLoader` sets `password_hash` to the Argon2id PHC string of `ARON_SEED_PASSWORD`
+   (m=19456, t=2, p=1, 16-byte salt, 32-byte hash, argon2-jvm like `PasswordHasher`) on every test account (`pilot`)
+   that has none. Without the variable the accounts have no password. Nothing secret is in the repository.
+2. **`must_change_password = false`** on all seeded test accounts.
+3. **Users and routes (codes are stable):** SR `sr1001`, primary and open-ended on `MIR-SR-D` (Daily, 127),
+   `MIR-SR-3F` (Sun/Tue/Thu, 42) and `MIR-SR-2F` (Mon/Thu, 36), 20 outlets each (`MIR-D-001`..`MIR-2F-020`);
+   TSO `tso1001` with a `territory` scope on `T-DHK-N` (zone `Z-MIR`); AMO `amo1001` with a `zone` scope on `Z-MIR`;
+   ADMIN `admin1001`; also `dmo1001` (division `D-DHK`), `superadmin1001`, `support1001` (national).
+4. **Device:** `app.device` (V0010), row with `device_uuid = 00000000-0000-4000-8000-000000000001`, `status`
+   `active`, `flavour` `sr`; `app.device_binding (device_id, user_id, bind_ordinal, status)` holds the active binding
+   of `sr1001` with `bind_ordinal` 0. Its public key is a placeholder (cannot sign proofs); dev only.
+5. **Calendar:** global holiday 2026-12-16 (Victory Day) in `app.calendar_holiday`; nothing on Sundays or Fridays.
+6. Dev overrides (`require_enrolled`, `lockdown_level`, `require_integrity`) are global `cfg_value` rows of their own
+   config version (summary `Dev database overrides (docs/24 s9.4, seed)`).
