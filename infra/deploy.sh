@@ -11,10 +11,10 @@
 #
 # Environment: AZURE_RESOURCE_GROUP (required), ARON_ALERT_EMAILS (required, comma-separated), AZURE_LOCATION,
 # ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX, FCM_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY (all optional),
-# RUN_MIGRATIONS (auto | true | false; default auto), FORCE_INFRA (true = always run main.bicep).
+# RUN_MIGRATIONS (true | false; default true), FORCE_INFRA (true = always run main.bicep).
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/scripts/lib.sh"
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 ENV_NAME="${1:-dev}"
 case "$ENV_NAME" in dev|prod) ;; *) die "environment must be dev or prod, was $ENV_NAME" ;; esac
@@ -22,7 +22,7 @@ need AZURE_RESOURCE_GROUP "the resource group to deploy into"
 need ARON_ALERT_EMAILS "who receives the budget and platform alerts"
 RG="$AZURE_RESOURCE_GROUP"
 SHA="${GIT_SHA:-$(git rev-parse HEAD)}"
-RUN_MIGRATIONS="${RUN_MIGRATIONS:-auto}"
+RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 export AZURE_LOCATION="${AZURE_LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_SUFFIX="${ARON_NAME_SUFFIX:-}"
 summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMMARY"; echo "$*"; }
@@ -54,10 +54,29 @@ note "deploying $SHA (currently deployed: ${deployed_sha:-nothing})"
 # ------------------------------------------------------------------------------------------------------- infra
 infra_paths=(infra/main.bicep infra/modules infra/lib "infra/params/${ENV_NAME}.bicepparam")
 previous="$(az deployment group show -g "$RG" -n aron-infra --query properties.outputs -o json 2>/dev/null || true)"
+# The parameters main.bicep would get now (GitHub variables included), compared with the last successful run, so a
+# changed ARON_ALERT_EMAILS / ARON_BUDGET_AMOUNT / ARON_NAME_SUFFIX / AZURE_LOCATION also re-runs the infra stage.
+params_unchanged() {
+  local now last
+  now="$(ARON_DB_ADMIN_PASSWORD=compare-only-not-a-secret-0 ARON_BUDGET_START_DATE=2000-01-01 \
+    az bicep build-params --file "infra/params/${ENV_NAME}.bicepparam" --stdout 2>/dev/null)" || return 1
+  last="$(az deployment group show -g "$RG" -n aron-infra --query properties.parameters -o json 2>/dev/null)" || return 1
+  python3 - "$now" "$last" <<'PY'
+import json, sys
+now = json.loads(json.loads(sys.argv[1])["parametersJson"])["parameters"]
+last = json.loads(sys.argv[2])
+ignore = {"postgresAdminPassword", "budgetStartDate", "deployerObjectId"}
+diff = [k for k, v in now.items() if k not in ignore and last.get(k, {}).get("value") != v.get("value")]
+if diff:
+    print("infra parameters changed: " + ", ".join(sorted(diff)), file=sys.stderr)
+sys.exit(1 if diff else 0)
+PY
+}
 skip_infra=false
 if [ "${FORCE_INFRA:-false}" != "true" ] && [ -n "$previous" ] && [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] \
    && git diff --quiet "$deployed_sha" "$SHA" -- "${infra_paths[@]}" 2>/dev/null \
-   && [ "$(az deployment group show -g "$RG" -n aron-infra --query properties.provisioningState -o tsv)" = "Succeeded" ]; then
+   && [ "$(az deployment group show -g "$RG" -n aron-infra --query properties.provisioningState -o tsv)" = "Succeeded" ] \
+   && params_unchanged; then
   skip_infra=true
 fi
 
@@ -108,20 +127,6 @@ else
   note "web/ has no package.json: no web app"
 fi
 export ARON_BACKEND_IMAGE="$BACKEND_IMAGE" ARON_WEB_IMAGE="$WEB_IMAGE"
-
-# Day-1 backend gaps (docs/requests/infra-backend-runtime.md). Detected from the source so the pipeline turns itself
-# back on when the backend lane ships them; remove these two checks once both have landed.
-main_kt=backend/app/src/main/kotlin/com/aktcl/aron/backend/app/Main.kt
-if [ "$RUN_MIGRATIONS" = auto ]; then
-  if grep -qs '"migrate"' "$main_kt"; then RUN_MIGRATIONS=true; else
-    RUN_MIGRATIONS=false
-    echo "::warning title=Migrations skipped::the backend has no ARON_ROLE=migrate yet (docs/requests/infra-backend-runtime.md item 1)"
-  fi
-fi
-if grep -qs 'worker: placeholder' "$main_kt"; then
-  export ARON_WORKER_MIN_REPLICAS=0
-  echo "::warning title=Worker scaled to 0::the backend worker is still a placeholder that exits (request item 3)"
-fi
 
 # ------------------------------------------------------------------------------------------------ migrations
 note "migrate job with $BACKEND_IMAGE"

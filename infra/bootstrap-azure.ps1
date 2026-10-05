@@ -53,11 +53,15 @@ $providers = @(
 )
 foreach ($p in $providers) { az provider register --namespace $p --only-show-errors | Out-Null; Check "register $p" }
 
-# 2. The isolated resource group.
+# 2. The isolated resource group, plus an EMPTY probe group the GitHub identity gets no rights on: every deploy proves
+#    the scope by attempting a test deployment into it and expecting AuthorizationFailed (infra/scripts/scope-check.sh).
 Step "Creating resource group $ResourceGroup in $Location"
 az group create --name $ResourceGroup --location $Location `
   --tags project=aron environment=dev owner=aktcl --only-show-errors | Out-Null
 Check 'az group create'
+az group create --name 'rg-aron-scope-probe' --location $Location `
+  --tags project=aron purpose=scope-probe --only-show-errors | Out-Null
+Check 'az group create (scope probe)'
 
 # 3. The GitHub identity (app registration + service principal), created once.
 Step "Creating the GitHub identity $AppName"
@@ -76,6 +80,7 @@ Write-Host "Client id: $appId"
 Step "Granting rights on $ResourceGroup only"
 $scope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"
 $has = az role assignment list --assignee $spObjectId --scope $scope --role 'Contributor' --query 'length(@)' -o tsv
+Check 'list Contributor assignments (re-run in a minute if the new identity has not replicated yet)'
 if ($has -eq '0') {
   az role assignment create --assignee-object-id $spObjectId --assignee-principal-type ServicePrincipal `
     --role 'Contributor' --scope $scope --only-show-errors | Out-Null
@@ -94,11 +99,10 @@ $allowed = @(
 ) -join ', '
 $condition = "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$allowed})) AND ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$allowed}))"
 $assignments = az role assignment list --assignee $spObjectId --scope $scope --role $rbacAdmin --query '[].{id:id, condition:condition}' -o json | ConvertFrom-Json
-$good = $assignments | Where-Object { $_.condition -eq $condition }
-foreach ($a in ($assignments | Where-Object { $_.condition -ne $condition })) {
-  Write-Host "Replacing an RBAC Administrator assignment without the role condition: $($a.id)"
-  az role assignment delete --ids $a.id --only-show-errors; Check 'delete unconditional RBAC Administrator'
-}
+Check 'list RBAC Administrator assignments'
+function Normalize([string]$c) { if ($c) { ($c -replace '\s+', '') } else { '' } }
+$good = $assignments | Where-Object { (Normalize $_.condition) -eq (Normalize $condition) }
+$stale = $assignments | Where-Object { (Normalize $_.condition) -ne (Normalize $condition) }
 if (-not $good) {
   $body = Join-Path $env:TEMP 'ra-rbac-admin.json'
   @{ properties = @{
@@ -111,6 +115,11 @@ if (-not $good) {
     --body "@$body" --only-show-errors | Out-Null
   Check 'role RBAC Administrator (conditional)'
   Remove-Item $body -Force
+}
+# Only after the conditional assignment exists, remove any older one without the condition (no gap in rights).
+foreach ($a in $stale) {
+  Write-Host "Removing an RBAC Administrator assignment without the role condition: $($a.id)"
+  az role assignment delete --ids $a.id --only-show-errors; Check 'delete unconditional RBAC Administrator'
 }
 
 # 5. GitHub may sign in as this identity ONLY from the named environment, which accepts deployments only from

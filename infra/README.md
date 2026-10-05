@@ -31,7 +31,8 @@ infra/
    ```
 
    It registers the resource providers (now including `Microsoft.EventGrid`), creates `rg-aron-dev` in
-   `southeastasia`, and the GitHub identity `sp-aron-github-dev` with, **on that group only**, Contributor plus
+   `southeastasia` and an empty `rg-aron-scope-probe` (the identity gets no rights there; every deploy proves a test
+   deployment into it is denied), and the GitHub identity `sp-aron-github-dev` with, **on that group only**, Contributor plus
    Role Based Access Control Administrator **limited by a condition** to the eight data-plane roles the templates
    grant (it can never hand out Owner or Contributor). The identity trusts only the GitHub environment `azure-dev`,
    and that environment accepts deployments only from `claude/wonderful-thompson-k6ejnf` (the Day-0
@@ -49,9 +50,10 @@ infra/
    skip `main.bicep` when nothing under `infra/` changed and take about 6 to 8 minutes after CI.
 4. **Check**: the run summary prints `https://<front-door-host>/v1/health`; open it on the phone.
 
-Temporary, until the backend lane ships the items of `docs/requests/infra-backend-runtime.md`: `deploy.sh` reads the
-backend source and **skips the migrations** (warning in the run) while there is no `ARON_ROLE=migrate`, and runs the
-worker at **0 replicas** while it is still the placeholder that exits. Both switch back on by themselves.
+The migrations job always runs before the apps on an automatic deploy; only a manual dispatch can untick it (to
+redeploy apps without a schema change). Changing a GitHub variable (`ARON_ALERT_EMAILS`, `ARON_BUDGET_AMOUNT`,
+`ARON_NAME_SUFFIX`, `AZURE_LOCATION`) takes effect at the next deploy: `deploy.sh` compares the compiled parameters
+with the last infra deployment and re-runs `main.bicep` when they differ.
 
 **Rebuilding a deleted group.** A deleted Key Vault keeps its name for 90 days. Either purge it (sponsor, subscription
 rights: `az keyvault purge -n <name>`) or set the GitHub variable `ARON_NAME_SUFFIX` to a new short value before the
@@ -68,10 +70,10 @@ Azure identity. The workflow checks the branch and the settings, signs in with O
 |---|---|---|
 | 0 | Preflight: integration branch; Azure secrets and variables exist | A missing secret fails with a message naming what to run |
 | 1 | OIDC sign-in (`azure/login`, environment `azure-dev`) | No client secret anywhere |
-| 2 | **Scope check** (`scripts/scope-check.sh`) | Acceptance of N-012: a test deployment into another group must fail with `AuthorizationFailed`, creating a group must fail, and no other visible group accepts a deployment |
+| 2 | **Scope check** (`scripts/scope-check.sh`) | Acceptance of N-012: a test deployment into `rg-aron-scope-probe` must fail with `AuthorizationFailed`, creating a group must fail, and no other visible group accepts a deployment |
 | 3 | Lock: wait while another `aron-*` deployment runs in the group | One deploy at a time without a GitHub concurrency group (which would cancel pending CI runs) |
 | 4 | Ordering guard: skip when this commit is an ancestor of the deployed one | CI runs finish out of order; an older commit never replaces a newer one, and a commit whose newer sibling did not deploy still deploys |
-| 5 | `main.bicep` (skipped when `infra/` is unchanged since the deployed commit) | The database password is read back from Key Vault, generated only when the vault or the secret does not exist; the budget start date is read back, or the 1st of the current month |
+| 5 | `main.bicep` (skipped when `infra/` and the compiled parameters are unchanged since the deployed commit) | The database password is read back from Key Vault, generated only when the vault or the secret does not exist; the budget start date is read back, or the 1st of the current month |
 | 6 | Seed Key Vault | `aron-jwt-signing-key` (ES256 PKCS#8) and `aron-jwt-kid` once; `aron-web-session-secret` once; `aron-fcm-service-account` from the GitHub secret or `{}` |
 | 7 | Images: `aron-backend:<sha>` (and `aron-web:<sha>`) to ACR | One backend image for api, worker and migrate (D24-27) |
 | 8 | `apps.bicep` with `deployServices=false`, start the migrate job, wait for `Succeeded` | Migrations run **before** any app revision changes; a failure stops the deploy with the old apps serving |
@@ -97,7 +99,7 @@ The three debug APKs are uploaded by `ci.yml` on every successful Android run (a
 | Container Apps environment | `cae-aron-dev` | Workload profiles (Consumption), VNet-injected, **zone-redundant** (creation-time choice); prod: public access off, Front Door reaches it over Private Link |
 | Managed identities | `id-aron-dev-{api,worker,migrate,web}` | Least privilege: all AcrPull and Key Vault Secrets User (each reads only the secrets its app references); api and worker read/write blobs; only api mints user-delegation SAS; only worker reads the media queue. The deploying identity gets AcrPush and Key Vault Secrets Officer |
 | Migrate job | `caj-aron-dev-migrate` | `ARON_ROLE=migrate`, direct connection (Flyway's advisory lock does not survive PgBouncer transaction mode) |
-| api app | `ca-aron-dev-api` | `ARON_ROLE=api`, 1 vCPU / 2 GiB, HTTP scale rule 50 concurrent requests per replica, startup/liveness `/v1/health`, readiness `/v1/health/ready` (dev uses `/v1/health` until the backend ships ready) |
+| api app | `ca-aron-dev-api` | `ARON_ROLE=api`, 1 vCPU / 2 GiB, HTTP scale rule 50 concurrent requests per replica, startup/liveness `/v1/health`, readiness `/v1/health/ready` (database check) |
 | worker app | `ca-aron-dev-worker` | `ARON_ROLE=worker`, no ingress, direct database connection (advisory locks for run-once jobs) |
 | web app | `ca-aron-dev-web` | Next.js standalone server (the BFF cookie needs a server runtime); `ARON_SESSION_SECRET` from Key Vault, `ARON_API_BASE_URL` = the Front Door host |
 | Front Door + WAF | `afd-aron-dev`, `fde-aron-dev-<suffix>`, `wafarondev` | Standard dev (custom rules: allowed methods, per-IP backstop), Premium prod (+ Default Rule Set 2.1 in **Log** mode through the pilot and Bot Manager 1.1, Private Link origins). No caching on `/v1/*`. Origin response timeout 60 s |
@@ -134,7 +136,8 @@ into a new server, not by editing the size.
   security defaults (no shared keys, no public blobs, TLS 1.2, RBAC Key Vault, no ACR admin, private PostgreSQL);
   sizing rules of both environments; every workflow action pinned by commit SHA; deploy only from the integration
   branch with OIDC; deploy steps in the order above;
-- `actionlint` with `shellcheck` on the workflows, `shellcheck` on the scripts;
+- `actionlint` with `shellcheck` on the workflows, `shellcheck` on `deploy.sh` and the scripts, and the executable bit
+  of every script the workflow runs;
 - a `what-if` against the group **only** when `az` is signed in and `AZURE_RESOURCE_GROUP` is set.
 
 **Not validated without a subscription** (proved by the first deploy run, whose steps fail loudly): SKU and zone
@@ -151,6 +154,8 @@ budget API in this subscription type, Event Grid delivery to the queue, and the 
   per-role logins (api, worker, migrate) and the rotation is designed.
 - Multiple-revision canary deploys (docs/18 s2.5) and a KEDA rule on the worker backlog: need backend metrics.
 - Cross-region replica and the second-group move rehearsal (reserve days, docs/23 s7).
+- `budgetStartDate` in the parameter files is only a fallback for offline builds; a manual `az deployment group create`
+  outside `deploy.sh` must pass `ARON_BUDGET_START_DATE` (the first day of the current month on a new budget).
 - The prod GitHub environment `azure-prod` needs its own identity, federated credential and branch policy (bootstrap
   creates only `azure-dev`); run the bootstrap against the final subscription with `-Environment azure-prod`.
 - Normal-run time: CI (Android is the longest job) plus about 6 to 8 minutes of deploy. The 15-minute target holds

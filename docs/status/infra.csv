@@ -1,4 +1,4 @@
 row_id,size,started_utc,finished_utc,minutes,review_findings,notes
 LEAD-CI-CONCURRENCY,S,2026-10-05T00:00Z,2026-10-05T00:20Z,20,0,"Lead request: push runs never cancelled; path filter job; APK artifact on every successful Android run"
-N-012,L,2026-10-05T00:20Z,2026-10-05T06:30Z,370,13,"Bicep for one RG; checker found 13 defects (shared with N-013), all fixed; not deployable-tested without credentials"
-N-013,L,2026-10-05T03:30Z,2026-10-05T06:30Z,180,13,"ci.yml web+infra+deploy jobs, deploy.yml + infra/deploy.sh; review findings counted once with N-012"
+N-012,L,2026-10-05T00:20Z,2026-10-05T08:00Z,460,19,"Bicep for one RG; checker found 13 defects (shared with N-013), all fixed; not deployable-tested without credentials"
+N-013,L,2026-10-05T03:30Z,2026-10-05T08:00Z,270,19,"ci.yml web+infra+deploy jobs, deploy.yml + infra/deploy.sh; review findings counted once with N-012"

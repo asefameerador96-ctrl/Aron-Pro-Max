@@ -85,7 +85,14 @@ ARON_COMPILED="$OUT" python3 infra/tests/check_infra.py || fail=1
 
 step "actionlint + shellcheck"
 check env SHELLCHECK_OPTS="-e SC1091" "$ACTIONLINT" -shellcheck "$SHELLCHECK" .github/workflows/*.yml
-check "$SHELLCHECK" -x -P SCRIPTDIR infra/scripts/*.sh infra/validate.sh
+check "$SHELLCHECK" -x -P SCRIPTDIR infra/scripts/*.sh infra/validate.sh infra/deploy.sh
+# Every script the workflow or a person runs directly must be executable in git (checkout keeps the mode).
+for f in infra/deploy.sh infra/validate.sh infra/scripts/*.sh; do
+  [ "$f" = infra/scripts/lib.sh ] && continue
+  mode="$(git ls-files -s "$f" 2>/dev/null | cut -d' ' -f1)"
+  if [ -n "$mode" ] && [ "$mode" != 100755 ]; then echo "FAILED: $f is committed without the executable bit ($mode)"; fail=1; fi
+  [ -x "$f" ] || { echo "FAILED: $f is not executable"; fail=1; }
+done
 
 step "what-if against Azure (needs a signed-in az and AZURE_RESOURCE_GROUP)"
 if command -v az >/dev/null && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && az account show >/dev/null 2>&1; then

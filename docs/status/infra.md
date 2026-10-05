@@ -43,6 +43,18 @@ skipped when unchanged, password generation only on NotFound, self-repair of the
 deferred on the first prod deploy, Private Link waits for every origin, preflight inside the environment job, trimmed
 alert e-mails.
 
+## Second review (fresh re-checker on the fixes, 6 confirmed, all fixed)
+
+1 `infra/deploy.sh` committed without the executable bit (validate.sh now checks modes); 2 web session secret seeding
+died on SIGPIPE under pipefail (now `openssl rand`); 3 the migrations gate grepped for a string the new backend no
+longer has (source sniffing removed: migrations always run; the backend now has the migrate role, a blocking worker
+and `/v1/health/ready`, so dev probes readiness too); 4 `deploy.sh` was not shellchecked; 5 the infra-skip ignored
+changed GitHub variables (now compares compiled parameters with the last deployment); 6 checks did not pair app
+secret references with their creation, nor guard the replica PgBouncer loop. Also: scope probe uses an existing empty
+group `rg-aron-scope-probe` created by the bootstrap; password read keeps stderr apart; bootstrap creates the
+conditional role assignment before deleting an old one and checks every `az` call. Mutation run: 14 of 14 mutations
+of guarded properties fail validation.
+
 ## In progress
 
 - Nothing. Next (Day 2+ per backlog): observability workbooks, load-test infrastructure (Day 6).
@@ -50,7 +62,8 @@ alert e-mails.
 ## Blocked / waiting
 
 - First real deploy: needs the sponsor to re-run `infra/bootstrap-azure.ps1 -AlertEmails ...` (README "Sponsor steps").
-- Backend runtime items (migrate role, readiness, blocking worker, env vars): `docs/requests/infra-backend-runtime.md`.
+- Backend runtime items 1 to 3 (migrate role, readiness, blocking worker) and the Front Door id have landed; items 5 to 8 of
+  `docs/requests/infra-backend-runtime.md` (queue, client id, FCM placeholder, metric names) remain open.
 
 ## Requests filed
 

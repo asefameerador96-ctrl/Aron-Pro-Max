@@ -190,8 +190,15 @@ class StackIsComplete(unittest.TestCase):
         for s in ("aron-jwt-signing-key", "aron-fcm-service-account", "aron-db-url", "aron-db-read-url"):
             self.assertIn(s, text, f"Key Vault secret {s} is not used")
         seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
-        for s in ("aron-jwt-signing-key", "aron-jwt-kid", "aron-fcm-service-account"):
-            self.assertIn(s, seed)
+        for s in ("aron-jwt-signing-key", "aron-jwt-kid", "aron-fcm-service-account", "aron-web-session-secret"):
+            self.assertIn(s, seed, f"apps reference {s} but seed-secrets.sh never creates it")
+        apps = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        naming = (ROOT / "infra" / "lib" / "naming.bicep").read_text(encoding="utf-8")
+        for key in re.findall(r"secretNames\.(\w+)", apps):
+            name = re.search(r"%s: '([\w-]+)'" % key, naming).group(1)
+            created = name in seed or name in (ROOT / "infra" / "modules" / "keyvault.bicep").read_text(encoding="utf-8") \
+                or re.search(r"secretNames\.%s\b" % key, (ROOT / "infra" / "modules" / "keyvault.bicep").read_text(encoding="utf-8"))
+            self.assertTrue(created, f"apps.bicep references Key Vault secret {name}, which nothing creates")
 
     def test_one_image_three_roles(self):
         text = json.dumps(load("apps.json"))
@@ -258,9 +265,13 @@ class ReliabilityProperties(unittest.TestCase):
         self.assertIs(param_default("main.json", "postgresGeoRedundantBackup"), True)
         settings = {x["name"]: x["value"] for x in t["variables"]["settings"]}
         self.assertEqual(settings.get("pgbouncer.enabled"), "true", "built-in PgBouncer must be on")
-        self.assertIn("pgbouncer.", json.dumps(t["variables"]), "replica PgBouncer settings")
-        configs = resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers/configurations")
-        self.assertEqual(len(configs), 2, "primary and replica configuration loops")
+        self.assertEqual(t["variables"]["replicaSettings"],
+                         "[filter(variables('settings'), lambda('s', startsWith(lambdaVariables('s').name, 'pgbouncer.')))]",
+                         "the replica must get the PgBouncer settings of the primary")
+        loops = {r["copy"]["name"]: r for r in resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers/configurations")}
+        self.assertEqual(loops["config"]["copy"]["count"], "[length(variables('settings'))]")
+        self.assertEqual(loops["replicaConfig"]["copy"]["count"], "[length(variables('replicaSettings'))]")
+        self.assertIn("parameters('replicaName')", loops["replicaConfig"]["name"])
 
     def test_container_apps_environment_is_zone_redundant(self):
         t, bound = module("main.json", "containerenv")
@@ -354,6 +365,7 @@ class Workflows(unittest.TestCase):
         self.assertNotRegex(d, r"(?m)^\s*(push|pull_request|pull_request_target):", "deploy is called or dispatched only")
         # A GitHub concurrency group would cancel pending CI runs; deploy.sh serialises instead.
         self.assertNotIn("concurrency:", d)
+        self.assertIn("RUN_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_migrations && 'false' || 'true' }}", d)
         self.assertNotRegex(d, r"(?m)^\s*if:", "no step or job of the deploy may be switched off by a condition")
         steps = ["Deploy only from the integration branch", "Check the Azure secrets", "azure/login@",
                  "scope-check.sh", "infra/deploy.sh"]
@@ -372,7 +384,8 @@ class Workflows(unittest.TestCase):
         self.assertIn('die "migrations $execution ended $status; the apps were NOT updated', d)
         self.assertIn('if [ "$RUN_MIGRATIONS" = true ]; then\n  execution="$(az containerapp job start', d)
         full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn('RUN_MIGRATIONS="${RUN_MIGRATIONS:-auto}"', full)
+        self.assertIn('RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"', full)
+        self.assertNotIn("grep -qs", full, "no source sniffing to decide what to deploy")
 
     def test_ci_calls_deploy_only_for_pushes_to_the_integration_branch(self):
         c = self.text("ci.yml")

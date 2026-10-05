@@ -32,10 +32,9 @@ on:
         options: [dev, prod]
         default: dev
       run_migrations:
-        description: Database migrations (auto = only when the backend has the migrate role)
-        type: choice
-        options: [auto, "true", "false"]
-        default: auto
+        description: Run the database migrations job before the apps (untick only to redeploy apps without a migration)
+        type: boolean
+        default: true
       force_infra:
         description: Run main.bicep even when infra/ is unchanged since the deployed commit
         type: boolean
@@ -61,7 +60,8 @@ jobs:
       ARON_ALERT_EMAILS: ${{ vars.ARON_ALERT_EMAILS }}
       ARON_BUDGET_AMOUNT: ${{ vars.ARON_BUDGET_AMOUNT }}
       ARON_NAME_SUFFIX: ${{ vars.ARON_NAME_SUFFIX }}
-      RUN_MIGRATIONS: ${{ inputs.run_migrations || 'auto' }}
+      # Only a manual dispatch can turn migrations off (under workflow_call the input is absent, i.e. null).
+      RUN_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_migrations && 'false' || 'true' }}
       FORCE_INFRA: ${{ inputs.force_infra && 'true' || 'false' }}
     steps:
       - name: Deploy only from the integration branch

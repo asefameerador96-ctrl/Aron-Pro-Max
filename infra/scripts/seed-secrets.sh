@@ -54,7 +54,7 @@ fi
 if exists aron-web-session-secret; then
   note "aron-web-session-secret present (kept)"
 else
-  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48 > "$tmp/session"
+  openssl rand -hex 24 > "$tmp/session"
   put_file aron-web-session-secret "$tmp/session" text/plain
   note "aron-web-session-secret created"
 fi
