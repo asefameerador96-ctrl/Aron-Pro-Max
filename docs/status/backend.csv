@@ -1,2 +1,8 @@
 row_id,size,started_utc,finished_utc,minutes,review_findings,notes
 N-009,M,2026-10-05T11:40Z,2026-10-05T12:30Z,50,"7 confirmed + 8 suspicions (all fixed or decided)","Front Door/Container Apps health check depends on infra's image and deploy; ~15 min lost to Maven Central HTTP 429"
+F-SYS-001,S,2026-10-05T12:00Z,2026-10-05T13:00Z,25,"4 confirmed with F-API-001/F-SYS-002/F-API-002 (lockout IP spoof, unbound phone grant, refused refresh consumed token, temp-password token too wide); all fixed","shares code with F-API-001; seeded-SR run waits on N-008 (request filed)"
+F-API-001,S,2026-10-05T12:00Z,2026-10-05T13:00Z,20,"see F-SYS-001","200 parallel logins: 503 + Retry-After, peak 4 hashes; in-memory and PostgreSQL stores"
+F-SYS-002,S,2026-10-05T12:00Z,2026-10-05T13:00Z,20,"see F-SYS-001","airplane-mode clause is the android-core lane's"
+F-API-002,S,2026-10-05T12:00Z,2026-10-05T13:00Z,15,"see F-SYS-001","device_uuid on refresh_family requested from db lane"
+F-SYS-005,M,2026-10-05T12:20Z,2026-10-05T13:00Z,40,"5 confirmed (cursor/updated_since 500s, cluster outside reach, stale geo snapshot) + harness gap (HTTP path, refusal oracle); all fixed","harness: 200 queries in memory, over SQL and over HTTP; mutant of the endpoint killed"
+N-017,M,2026-10-05T12:20Z,2026-10-05T13:00Z,30,"2 confirmed (geo snapshot crash, kind/mask from different rows); fixed","planner done; bundle carriage and first-fetch freeze land with F-API-005 (Day 2)"

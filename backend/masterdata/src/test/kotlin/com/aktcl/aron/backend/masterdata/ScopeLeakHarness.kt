@@ -83,6 +83,35 @@ class ScopeWorld(seed: Long) {
         }
     }
 
+    private fun assigned(u: User, route: Long, date: LocalDate) = u.assignments.any { it.routeId == route && inDates(it.validFrom, it.validTo, date) }
+    private fun nationalRole(u: User) = u.role in setOf(Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+    private fun scopeCovers(u: User, zone: Long, date: LocalDate) =
+        u.scope.any { s -> inDates(s.validFrom, s.validTo, date) && ancestors(zone)[s.nodeType] == s.nodeId }
+
+    /** Oracle: may [u] name zone [z] in a selector on [date] (it has something of the user's reach)? */
+    fun zoneVisible(u: User, z: Long, date: LocalDate): Boolean = when {
+        nationalRole(u) -> true
+        u.role == Role.SR -> routeZone.any { (r, rz) -> rz == z && assigned(u, r, date) }
+        else -> scopeCovers(u, z, date) || routeZone.any { (r, rz) -> rz == z && assigned(u, r, date) }
+    }
+
+    /** Oracle: must [sel] be refused with 403 for [u] on [date]? (Independent of ReachFilter.) */
+    fun shouldRefuse(u: User, date: LocalDate, sel: GeoSelector): Boolean {
+        sel.routeId?.let { r ->
+            val z = routeZone.getValue(r)
+            val ok = when {
+                nationalRole(u) -> true
+                u.role == Role.SR -> assigned(u, r, date)
+                else -> assigned(u, r, date) || scopeCovers(u, z, date)
+            }
+            return !ok
+        }
+        val named = listOfNotNull(sel.wingId?.let { "wing" to it }, sel.divisionId?.let { "division" to it }, sel.territoryId?.let { "territory" to it }, sel.zoneId?.let { "zone" to it })
+        if (named.isEmpty()) return false
+        val zones = zoneTerritory.keys.filter { z -> named.all { (t, id) -> ancestors(z)[t] == id } }
+        return zones.none { zoneVisible(u, it, date) }
+    }
+
     fun inSelector(o: OutletRef, s: GeoSelector): Boolean {
         val a = ancestors(o.zoneId)
         return (s.wingId == null || a["wing"] == s.wingId) && (s.divisionId == null || a["division"] == s.divisionId) &&
@@ -110,6 +139,8 @@ class ScopeWorld(seed: Long) {
      * Runs [n] randomised queries through [sut] and returns every disagreement with the oracle: a row outside the
      * reach (a leak), a row in reach and selector that is missing, or a refusal when the oracle sees rows.
      */
+    private fun w403(u: User, date: LocalDate, sel: GeoSelector) = shouldRefuse(u, date, sel)
+
     fun run(n: Int, sut: (User, LocalDate, GeoSelector) -> Outcome): List<Leak> {
         val leaks = mutableListOf<Leak>()
         repeat(n) { q ->
@@ -117,6 +148,7 @@ class ScopeWorld(seed: Long) {
             val expected = outlets.filter { visible(u, it, date) && inSelector(it, sel) }.map { it.id }.toSet()
             when (val got = sut(u, date, sel)) {
                 is Outcome.Rows -> {
+                    if (w403(u, date, sel)) leaks += Leak(q, u, date, sel, "answered rows (${got.ids.size}) where 403 is due")
                     val leaked = got.ids - expected
                     val missing = expected - got.ids
                     if (leaked.isNotEmpty()) leaks += Leak(q, u, date, sel, "leaked ${leaked.take(5)}")
@@ -124,7 +156,7 @@ class ScopeWorld(seed: Long) {
                 }
                 is Outcome.Refused -> {
                     if (got.code != ProblemCode.ERR_OUT_OF_SCOPE) leaks += Leak(q, u, date, sel, "unexpected ${got.code}")
-                    if (expected.isNotEmpty()) leaks += Leak(q, u, date, sel, "refused but ${expected.size} rows are in reach")
+                    if (!w403(u, date, sel)) leaks += Leak(q, u, date, sel, "refused but the selector is in reach (${expected.size} rows)")
                 }
             }
         }

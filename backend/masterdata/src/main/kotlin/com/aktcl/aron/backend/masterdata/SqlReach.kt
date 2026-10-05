@@ -21,6 +21,14 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
 
     fun invalidate() = cached.set(null)
 
+    /** The snapshot, reloaded once when it lacks a route or zone that live rows already reference (no 60 s blind spot). */
+    fun geoCovering(routeIds: Collection<Long> = emptyList(), zoneIds: Collection<Long> = emptyList()): Geo {
+        val g = geo()
+        if (routeIds.all { it in g.routeZone } && zoneIds.all { it in g.zoneTerritory }) return g
+        invalidate()
+        return geo()
+    }
+
     private fun load(): Geo = db.jdbi.withHandle<Geo, Exception> { h ->
         fun pairs(sql: String) = h.createQuery(sql).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
         val names = HashMap<Pair<String, Long>, Pair<String?, String?>>()
@@ -57,7 +65,7 @@ class SqlReachResolver(private val db: Database, private val geo: GeoRepository,
                 h.createQuery("SELECT route_id, kind, valid_from, valid_to FROM app.route_assignment WHERE user_id = :u").bind("u", userId)
                     .map { rs, _ -> AssignmentRow(rs.getLong(1), rs.getString(2), rs.getObject(3, LocalDate::class.java), rs.getObject(4, LocalDate::class.java)) }.list()
         }
-        val r = ReachCalculator.compute(userId, role, businessDate, scope, asg, geo.geo())
+        val r = ReachCalculator.compute(userId, role, businessDate, scope, asg, geo.geoCovering(routeIds = asg.map { it.routeId }))
         if (cache.size > 50_000) cache.clear()
         cache[key] = now to r
         return r

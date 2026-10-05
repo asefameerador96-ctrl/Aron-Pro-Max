@@ -18,7 +18,6 @@ import java.time.LocalDate
  */
 class SqlRoutePlanner(private val db: Database, private val geo: GeoRepository, private val config: ServerConfig) : RoutePlanner {
     override fun routesFor(userId: Long, businessDate: LocalDate): List<RouteDayPlan> {
-        val g = geo.geo()
         val weekend = runCatching { config.value("cfg.calendar.weekend_days").jsonArray.mapNotNull { it.jsonPrimitive.intOrNull }.toSet() }
             .getOrDefault(DayPlan.DEFAULT_WEEKEND)
         return db.jdbi.withHandle<List<RouteDayPlan>, Exception> { h ->
@@ -26,13 +25,15 @@ class SqlRoutePlanner(private val db: Database, private val geo: GeoRepository, 
             val rows = h.createQuery(
                 """
                 SELECT r.id, r.code, r.name, r.zone_id, r.display_label, r.status,
-                       COALESCE(p.visit_kind, r.visit_kind) AS visit_kind, COALESCE(p.visit_days_mask, r.visit_days_mask) AS mask,
-                       min(a.kind) AS asg   -- 'cover' < 'primary': a user holding both kinds of one route is shown as cover
+                       -- kind and mask always from the same row: the effective route_planned row, else the route itself
+                       CASE WHEN p.id IS NOT NULL THEN p.visit_kind ELSE r.visit_kind END AS visit_kind,
+                       CASE WHEN p.id IS NOT NULL THEN p.visit_days_mask ELSE r.visit_days_mask END AS mask,
+                       max(a.kind) AS asg   -- 'primary' > 'cover': a user holding both kinds of one route is its primary
                 FROM app.route_assignment a
                 JOIN app.route r ON r.id = a.route_id
                 LEFT JOIN app.route_planned p ON p.route_id = r.id AND p.valid_from <= :d AND (p.valid_to IS NULL OR p.valid_to > :d)
                 WHERE a.user_id = :u AND a.valid_from <= :d AND (a.valid_to IS NULL OR a.valid_to > :d)
-                GROUP BY r.id, r.code, r.name, r.zone_id, r.display_label, r.status, p.visit_kind, r.visit_kind, p.visit_days_mask, r.visit_days_mask
+                GROUP BY r.id, r.code, r.name, r.zone_id, r.display_label, r.status, p.id, p.visit_kind, r.visit_kind, p.visit_days_mask, r.visit_days_mask
                 ORDER BY r.id
                 """.trimIndent(),
             ).bind("u", userId).bind("d", businessDate).map { rs, _ ->
@@ -46,14 +47,15 @@ class SqlRoutePlanner(private val db: Database, private val geo: GeoRepository, 
                 }.list()
             val counts = h.createQuery("SELECT route_id, count(*) FROM app.outlet WHERE route_id = ANY(:r) AND status = 'active' GROUP BY route_id")
                 .bindArray("r", Long::class.javaObjectType, rows.map { it.id }).map { rs, _ -> rs.getLong(1) to rs.getInt(2) }.list().toMap()
+            val g = geo.geoCovering(zoneIds = rows.map { it.zone })
             rows.map { r ->
                 val t = g.zoneTerritory.getValue(r.zone); val dv = g.territoryDivision.getValue(t); val w = g.divisionWing.getValue(dv)
                 val planned = DayPlan.isPlanned(DayPlan.PlanRoute(r.id, r.mask, DayPlan.ZoneChain(r.zone, t, dv, w), r.active), businessDate, calendar, weekend)
-                RouteDayPlan(r.id, r.code, r.name, r.zone, r.kind, r.mask, r.label, r.asg, planned, counts[r.id] ?: 0)
+                RouteDayPlan(r.id, r.code, r.name, r.zone, r.kind, r.mask, r.label, r.asg, planned, if (planned) counts[r.id] ?: 0 else 0, counts[r.id] ?: 0)
             }
         }
     }
 
     /** Target outlets of the user's date: the active outlets of the planned routes (docs/24 s12.4). */
-    fun targetOutlets(userId: Long, businessDate: LocalDate): Int = routesFor(userId, businessDate).filter { it.plannedToday }.sumOf { it.targetOutlets }
+    fun targetOutlets(userId: Long, businessDate: LocalDate): Int = routesFor(userId, businessDate).sumOf { it.targetOutlets }
 }

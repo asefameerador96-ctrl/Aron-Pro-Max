@@ -131,6 +131,27 @@ open class LoginTest {
     }
 
     @Test
+    fun theLockoutIpClassComesOnlyFromOurFrontDoor() {
+        val f = fixture(mapOf("cfg.auth.lockout_attempts" to JsonPrimitive(3)))
+        testApplication {
+            application { f.application(this) }
+            suspend fun attempt(pw: String, ip: String, fdid: String?) = client.post("/v1/auth/login") {
+                contentType(ContentType.Application.Json)
+                header("X-Azure-ClientIP", ip); fdid?.let { header("X-Azure-FDID", it) }
+                setBody("""{"username":"sr334001","password":"$pw","client":"app_sr","device_uuid":"${f.srDevice}"}""")
+            }
+            repeat(3) { attempt("bad", "203.0.113.7", "fd-test") }
+            // Same Front Door client IP: locked.
+            assertEquals("ERR_AUTH_ACCOUNT_LOCKED", json(attempt("correct horse 1", "203.0.113.9", "fd-test").bodyAsText()).code)
+            // A forged X-Azure-ClientIP without our Front Door id does not count as another network.
+            repeat(3) { attempt("bad", "198.51.100.1", null) }
+            assertEquals("ERR_AUTH_ACCOUNT_LOCKED", json(attempt("correct horse 1", "192.0.2.77", null).bodyAsText()).code)
+            assertEquals("ERR_AUTH_ACCOUNT_LOCKED", json(attempt("correct horse 1", "192.0.2.77", "someone-elses-fd").bodyAsText()).code)
+        }
+        assertEquals("10.1.2.0/24", LoginService.ipClass("::ffff:10.1.2.3"))
+    }
+
+    @Test
     fun lockDoublesOnTheSecondLock() {
         val f = fixture(mapOf("cfg.auth.lockout_attempts" to JsonPrimitive(3)))
         testApplication {
