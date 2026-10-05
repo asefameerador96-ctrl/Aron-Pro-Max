@@ -1,0 +1,19 @@
+# Lint configuration for contract/openapi.yaml (owner: contract lane). CI runs:
+#   npx --yes @redocly/cli@2 lint contract/openapi.yaml --config contract/redocly.yaml
+# The build fails on any error or warning (docs/24 s13.2).
+extends:
+  - recommended
+rules:
+  operation-operationId: error
+  operation-summary: error
+  operation-4xx-response: error
+  operation-2xx-response: error
+  no-unused-components: error
+  no-invalid-media-type-examples: error
+  no-invalid-schema-examples: error
+  tag-description: error
+  info-contact: error
+  security-defined: error
+  no-ambiguous-paths: error
+  path-parameters-defined: error
+  operation-parameters-unique: error
