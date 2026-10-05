@@ -1,0 +1,6 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+N-001,L,2026-10-05T11:54Z,2026-10-05T13:02Z,70,4,checker: clock rollback reopened offline unlock; cool-down on wall clock; refresh-vs-logout race resurrected the full grant; verifier in toString; plus minors (refresh dropped tokens on any 401/403, any login 401 shown as wrong password, release cleartext URL crash, androidx exports unlisted, fsync) - all fixed with tests
+F-SYS-033,S,2026-10-05T12:25Z,2026-10-05T12:40Z,10,0,checker passed (aapt2 labels and package ids)
+F-SYS-044,S,2026-10-05T12:25Z,2026-10-05T12:40Z,15,0,checker passed the build part; printing from each app awaits the phone
+F-SYS-018,M,2026-10-05T12:28Z,2026-10-05T13:02Z,40,8,checker: scanner missed 17 realistic hard-coded forms (rewritten to flag prose literals; all 17 now tests); loose opt-out; dpc and other source sets unscanned; only strings.xml twin-checked; OFL text not in APK; Locale.setDefault leaked to formatting; digits converted inside identifiers - all fixed
+N-016,M,2026-10-05T12:45Z,2026-10-05T13:02Z,30,6,checker: BLOCKER required-null GeoFix members dropped from payload (schema_invalid); route_id and uuid shape not enforced; applyAck accepted non-states; edit fix and QC line consistency; payload_sha256 meaning documented (local hash, server computes JCS) - all fixed with tests

@@ -8,8 +8,8 @@
 Copyright The Noto Project Authors (the exact notice is in the name table of each file). Licensed under the SIL Open Font License, Version 1.1
 (https://openfontlicense.org). The OFL permits bundling the fonts in an application; the subset Latin files are
 "Modified Versions" under the OFL and keep the original font name only as permitted for unreserved names (Noto has no
-Reserved Font Name). The licence text must accompany redistribution of the font files themselves; the in-app
-licence screen (Settings, android-sr lane) lists it.
+Reserved Font Name). The copyright notices and the full OFL text ship inside every APK as
+`assets/licenses/OFL-noto-fonts.txt` (OFL section 2); the Settings licence screen (android-sr lane) can show that file.
 
 Why these four (docs/24 s5.6, F-SYS-018): Bangla mode renders with Noto Sans Bengali, which also covers Basic Latin, so
 usernames, codes and English words in Bangla screens use one consistent face; English mode renders with the subset Noto

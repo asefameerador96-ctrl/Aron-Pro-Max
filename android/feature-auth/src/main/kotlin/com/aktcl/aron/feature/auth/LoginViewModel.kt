@@ -29,6 +29,7 @@ sealed interface LoginMessage {
     data object OfflineExpired : LoginMessage
     data object OfflineWrongPassword : LoginMessage
     data class OfflineCooldown(val untilMs: Long) : LoginMessage
+    data object OfflineClockWrong : LoginMessage
 }
 
 data class LoginUiState(
@@ -97,6 +98,7 @@ class LoginViewModel(
                 OfflineRefusal.EXPIRED -> LoginMessage.OfflineExpired
                 OfflineRefusal.WRONG_PASSWORD -> LoginMessage.OfflineWrongPassword
                 OfflineRefusal.COOLDOWN -> LoginMessage.OfflineCooldown(outcome.cooldownUntilMs ?: 0)
+                OfflineRefusal.CLOCK_INCONSISTENT -> LoginMessage.OfflineClockWrong
             }
         }
 

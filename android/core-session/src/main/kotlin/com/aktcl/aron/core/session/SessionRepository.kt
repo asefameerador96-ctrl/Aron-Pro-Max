@@ -34,7 +34,15 @@ data class OfflineUnlockPolicy(
 }
 
 /** Why an offline unlock was not possible. */
-enum class OfflineRefusal { NEVER_ONLINE_ON_THIS_PHONE, EXPIRED, WRONG_PASSWORD, COOLDOWN }
+enum class OfflineRefusal {
+    NEVER_ONLINE_ON_THIS_PHONE,
+    EXPIRED,
+    WRONG_PASSWORD,
+    COOLDOWN,
+
+    /** The phone's date is before the last online login: wrong clock (or a rollback); offline unlock is refused. */
+    CLOCK_INCONSISTENT,
+}
 
 /** What the login screen shows after a tap. */
 sealed interface LoginOutcome {
@@ -94,7 +102,8 @@ class SessionRepository(
             is ApiResult.NotModified -> offlineUnlock(username, password, serverAnswer = 304, updateRequired = false)
             is ApiResult.Transport -> offlineUnlock(username, password, serverAnswer = null, updateRequired = false)
             is ApiResult.Failure -> when {
-                r.httpStatus == 401 -> LoginOutcome.InvalidCredentials
+                r.problem.problemCode == ProblemCode.ERR_AUTH_INVALID_CREDENTIALS -> LoginOutcome.InvalidCredentials
+                r.httpStatus == 401 -> LoginOutcome.Refused(r.problem.code, null)
                 r.httpStatus == 426 -> offlineUnlock(username, password, 426, updateRequired = true).let {
                     if (it is LoginOutcome.OfflineUnavailable) LoginOutcome.Refused(ProblemCode.ERR_APP_VERSION_UNSUPPORTED.wire, null) else it
                 }
@@ -125,6 +134,7 @@ class SessionRepository(
                     locale = answer.user.locale,
                     verifier = verifier.create(password),
                     lastOnlineLoginMs = clock.nowMs(),
+                    highWaterMs = clock.nowMs(),
                     deviceId = answer.device?.deviceId ?: previous?.deviceId,
                     bindOrdinal = answer.device?.bindOrdinal ?: previous?.bindOrdinal,
                     memoSeqBlockSize = answer.device?.memoSeqBlockSize ?: previous?.memoSeqBlockSize,
@@ -159,28 +169,53 @@ class SessionRepository(
     }
 
     private fun offlineUnlock(username: String, password: String, serverAnswer: Int?, updateRequired: Boolean): LoginOutcome {
-        val profile = store.profileByUsername(username)
+        val stored = store.profileByUsername(username)
             ?: return LoginOutcome.OfflineUnavailable(OfflineRefusal.NEVER_ONLINE_ON_THIS_PHONE, serverAnswer = serverAnswer)
-        val now = clock.nowMs()
-        if (profile.cooldownUntilMs > now) {
+        val wall = clock.nowMs()
+        val elapsed = clock.elapsedRealtimeMs()
+        if (wall < stored.lastOnlineLoginMs - CLOCK_TOLERANCE_MS) {
+            return LoginOutcome.OfflineUnavailable(OfflineRefusal.CLOCK_INCONSISTENT, serverAnswer = serverAnswer)
+        }
+        // Setting the date back never helps: time only moves forward from the highest value seen.
+        val now = maxOf(wall, stored.highWaterMs)
+        val profile = stored.copy(highWaterMs = now)
+        if (inCooldown(profile, now, elapsed)) {
+            store.saveProfile(profile)
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.COOLDOWN, profile.cooldownUntilMs, serverAnswer)
         }
-        val ageMs = now - profile.lastOnlineLoginMs
-        if (ageMs > policy.maxDays * DAY_MS) {
+        if (now - profile.lastOnlineLoginMs > policy.maxDays * DAY_MS) {
+            store.saveProfile(profile)
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.EXPIRED, serverAnswer = serverAnswer)
         }
         if (!verifier.matches(password, profile.verifier)) {
             val failures = profile.offlineFailures + 1
             val cooldown = policy.cooldownAfter(failures)
-            val until = if (cooldown > 0) now + cooldown else 0L
-            store.saveProfile(profile.copy(offlineFailures = failures, cooldownUntilMs = until))
-            return if (until > 0) LoginOutcome.OfflineUnavailable(OfflineRefusal.COOLDOWN, until, serverAnswer)
+            val updated = if (cooldown > 0) {
+                profile.copy(
+                    offlineFailures = failures, cooldownUntilMs = now + cooldown,
+                    cooldownStartElapsedMs = elapsed, cooldownUntilElapsedMs = elapsed + cooldown,
+                )
+            } else {
+                profile.copy(offlineFailures = failures)
+            }
+            store.saveProfile(updated)
+            return if (cooldown > 0) LoginOutcome.OfflineUnavailable(OfflineRefusal.COOLDOWN, updated.cooldownUntilMs, serverAnswer)
             else LoginOutcome.OfflineUnavailable(OfflineRefusal.WRONG_PASSWORD, serverAnswer = serverAnswer)
         }
-        val unlocked = profile.copy(offlineFailures = 0, cooldownUntilMs = 0)
+        val unlocked = profile.copy(offlineFailures = 0, cooldownUntilMs = 0, cooldownStartElapsedMs = 0, cooldownUntilElapsedMs = 0)
         store.saveProfile(unlocked)
         activate(unlocked, UnlockMode.OFFLINE, store.tokens(unlocked.userId).reauthRequired, updateRequired)
         return LoginOutcome.LoggedIn(unlocked, UnlockMode.OFFLINE, updateRequired)
+    }
+
+    /**
+     * The cool-down runs on elapsedRealtime, which date changes cannot move. After a reboot (elapsed below the start)
+     * the monotonic clock restarted, so the wall-clock end (on the high-water time) applies instead.
+     */
+    private fun inCooldown(p: UserProfile, now: Long, elapsed: Long): Boolean {
+        if (p.cooldownUntilMs == 0L) return false
+        val rebooted = elapsed < p.cooldownStartElapsedMs
+        return if (rebooted) now < p.cooldownUntilMs else elapsed < p.cooldownUntilElapsedMs
     }
 
     private fun activate(profile: UserProfile, mode: UnlockMode, reauthRequired: Boolean, updateRequired: Boolean) {
@@ -228,47 +263,72 @@ class SessionRepository(
     /**
      * Rotates the refresh token of [grant] for [userId] (also used by the sync engine to obtain an upload access token
      * for a user who is not the active one). Returns true when a new access token is stored.
+     *
+     * The network call runs outside the session lock; the result is written under it and only if the token that was
+     * sent is still the stored one, so a logout or a new login that happened meanwhile is never overwritten.
      */
     suspend fun refresh(userId: Long, grant: Grant, rejectedToken: String? = null): Boolean = refreshMutex.withLock {
-        withContext(dispatchers.io) {
+        val sent = withContext(dispatchers.io) {
             val tokens = store.tokens(userId)
             val current = if (grant == Grant.FULL) tokens.accessToken else tokens.uploadAccessToken
-            if (current != null && rejectedToken != null && current != rejectedToken) return@withContext true // rotated meanwhile
-            val refreshToken = (if (grant == Grant.FULL) tokens.refreshToken else tokens.uploadRefreshToken) ?: return@withContext false
-            when (val r = authApi.refresh(refreshToken, grant)) {
-                is ApiResult.Success -> {
-                    val pair = r.value
-                    val updated = if (grant == Grant.FULL) {
-                        tokens.copy(
-                            accessToken = pair.accessToken, accessExpiresAt = pair.accessExpiresAt,
-                            refreshToken = pair.refreshToken ?: refreshToken, refreshExpiresAt = pair.refreshExpiresAt,
-                            scopeVersion = pair.scopeVersion, reauthRequired = false,
-                        )
-                    } else {
-                        tokens.copy(
-                            uploadAccessToken = pair.accessToken, uploadAccessExpiresAt = pair.accessExpiresAt,
-                            uploadRefreshToken = pair.refreshToken ?: refreshToken, uploadReauthRequired = false,
-                        )
-                    }
-                    store.saveTokens(userId, updated)
-                    if (grant == Grant.FULL) setReauth(userId, false)
-                    true
-                }
-                is ApiResult.Failure -> {
-                    if (r.httpStatus == 401 || r.httpStatus == 403) {
-                        // The family is gone (reused, revoked, password changed, user disabled): keep selling, ask later.
+            if (current != null && rejectedToken != null && current != rejectedToken) return@withContext null // rotated meanwhile
+            (if (grant == Grant.FULL) tokens.refreshToken else tokens.uploadRefreshToken) ?: ""
+        } ?: return@withLock true
+        if (sent.isEmpty()) return@withLock false
+        val result = withContext(dispatchers.io) { authApi.refresh(sent, grant) }
+        loginMutex.withLock {
+            withContext(dispatchers.io) {
+                val tokens = store.tokens(userId)
+                val stillSame = (if (grant == Grant.FULL) tokens.refreshToken else tokens.uploadRefreshToken) == sent
+                if (!stillSame) return@withContext false // logged out or logged in again meanwhile: drop the result
+                when (result) {
+                    is ApiResult.Success -> {
+                        val pair = result.value
                         store.saveTokens(
                             userId,
-                            if (grant == Grant.FULL) tokens.copy(accessToken = null, refreshToken = null, reauthRequired = true)
-                            else tokens.copy(uploadAccessToken = null, uploadRefreshToken = null, uploadReauthRequired = true),
+                            if (grant == Grant.FULL) {
+                                tokens.copy(
+                                    accessToken = pair.accessToken, accessExpiresAt = pair.accessExpiresAt,
+                                    refreshToken = pair.refreshToken ?: sent, refreshExpiresAt = pair.refreshExpiresAt,
+                                    scopeVersion = pair.scopeVersion, reauthRequired = false,
+                                )
+                            } else {
+                                tokens.copy(
+                                    uploadAccessToken = pair.accessToken, uploadAccessExpiresAt = pair.accessExpiresAt,
+                                    uploadRefreshToken = pair.refreshToken ?: sent, uploadReauthRequired = false,
+                                )
+                            },
                         )
-                        if (grant == Grant.FULL) setReauth(userId, true)
+                        if (grant == Grant.FULL) setReauth(userId, false)
+                        true
                     }
-                    false
+                    is ApiResult.Failure -> {
+                        if (endsFamily(grant, result.problem.problemCode)) {
+                            // The family is gone (reused, invalid, password changed): keep selling, ask for the password later.
+                            store.saveTokens(
+                                userId,
+                                if (grant == Grant.FULL) tokens.copy(accessToken = null, refreshToken = null, reauthRequired = true)
+                                else tokens.copy(uploadAccessToken = null, uploadRefreshToken = null, uploadReauthRequired = true),
+                            )
+                            if (grant == Grant.FULL) setReauth(userId, true)
+                        }
+                        false
+                    }
+                    is ApiResult.NotModified, is ApiResult.Transport -> false
                 }
-                is ApiResult.NotModified, is ApiResult.Transport -> false
             }
         }
+    }
+
+    /**
+     * Only these answers end a refresh family (docs/24 s3.4). A bad device proof, a suspended device or a lockout keeps
+     * the tokens: the next attempt (fixed key, lifted suspension) can still succeed. The upload grant survives user
+     * disable (D24-57), so USER_DISABLED ends only the full grant.
+     */
+    private fun endsFamily(grant: Grant, code: ProblemCode?): Boolean = when (code) {
+        ProblemCode.ERR_AUTH_REFRESH_INVALID, ProblemCode.ERR_AUTH_REFRESH_REUSED, ProblemCode.ERR_PASSWORD_CHANGED -> true
+        ProblemCode.ERR_AUTH_USER_DISABLED -> grant == Grant.FULL
+        else -> false
     }
 
     private fun setReauth(userId: Long, value: Boolean) {
@@ -278,5 +338,8 @@ class SessionRepository(
 
     private companion object {
         const val DAY_MS = 86_400_000L
+
+        /** A clock a little behind the server-stamped login time (NTP drift) is not a rollback. */
+        const val CLOCK_TOLERANCE_MS = 10 * 60_000L
     }
 }

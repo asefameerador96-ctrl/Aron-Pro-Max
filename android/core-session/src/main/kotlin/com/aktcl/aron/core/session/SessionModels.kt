@@ -16,13 +16,25 @@ data class UserProfile(
     /** Trusted time of the last successful online login; offline unlock is allowed for 7 days after it. */
     val lastOnlineLoginMs: Long,
     val offlineFailures: Int = 0,
+    /** Wall-clock end of the offline cool-down (shown to the user; used only after a reboot). */
     val cooldownUntilMs: Long = 0,
+    /** elapsedRealtime at which the cool-down started and ends: date changes cannot shorten it (no reboot in between). */
+    val cooldownStartElapsedMs: Long = 0,
+    val cooldownUntilElapsedMs: Long = 0,
+    /**
+     * Highest wall-clock time seen for this user on this phone. Offline-unlock age is measured from max(now, this), so
+     * setting the date back never reopens an expired unlock (docs/24 s8.1, checker finding on N-001).
+     */
+    val highWaterMs: Long = 0,
     val deviceId: Long? = null,
     val bindOrdinal: Int? = null,
     val memoSeqBlockSize: Int? = null,
     val configVersion: Long? = null,
     val scopeVersion: Long? = null,
-)
+) {
+    override fun toString(): String =
+        "UserProfile(userId=$userId, username=$username, role=$role, locale=$locale, offlineFailures=$offlineFailures, verifier=***)"
+}
 
 /** Token set of one user on this phone. Stored encrypted; never logged. */
 @Serializable

@@ -30,8 +30,13 @@ import java.security.MessageDigest
  * outbox can never say something the database does not. Family and rank follow the table of s4.2.
  */
 object RecordMapping {
-    /** Encodes payloads: only declared members, nulls omitted (the server treats omitted and null the same, s3.1 item 3). */
-    val json: Json = Json { encodeDefaults = true; explicitNulls = false }
+    /**
+     * Encodes payloads with the contract's null rules: a member WITHOUT a default in the DTO is a required member and is
+     * always written, as `null` when it has no value (GeoFix `lat`, `lng`, `accuracy_m` on a fix that failed); a member
+     * WITH a default is optional and is left out while it holds its default. The server rejects a payload that omits a
+     * required member (`schema_invalid`), and some optional members may not be null (`refresh_count`).
+     */
+    val json: Json = Json { encodeDefaults = false; explicitNulls = true }
 
     /** WGS84 degrees with at most 7 decimals (docs/24 s3.1 item 5). */
     fun coord(value: Double?): Double? =
@@ -159,6 +164,10 @@ object RecordMapping {
         )
     }
 
+    /**
+     * The outbox's `payload_sha256`: SHA-256 of the exact `payload_json` bytes, a local integrity check of the stored
+     * record. It is not the server's ingest hash, which the server computes itself over the RFC 8785 form (docs/24 s3.3).
+     */
     fun sha256Hex(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 }

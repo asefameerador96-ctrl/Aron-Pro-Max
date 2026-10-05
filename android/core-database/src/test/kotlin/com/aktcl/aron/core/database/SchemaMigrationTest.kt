@@ -64,9 +64,13 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun theExportedSchemaMatchesTheEntities() {
-        // Opening with Room validates the identity hash of the entities against the schema created from JSON.
+    fun theExportedSchemaMatchesTheCompiledEntities() {
+        // The file is created from the exported JSON; opening it with the compiled Room database runs Room's identity-hash
+        // check, which throws when the entities and the exported schema differ.
         helper.createDatabase("identity-test", 1).close()
-        helper.runMigrationsAndValidate("identity-test", 1, true).close()
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = androidx.room.Room.databaseBuilder(context, AronDatabase::class.java, "identity-test").build()
+        db.openHelper.writableDatabase
+        db.close()
     }
 }

@@ -31,4 +31,5 @@
     <string name="auth_error_offline_expired">No internet, and your last online login was more than 7 days ago. Connect to the internet to log in.</string>
     <string name="auth_error_offline_wrong_password">No internet, and the password does not match your last online login.</string>
     <string name="auth_error_offline_cooldown">Too many wrong passwords. Try again after %1$s.</string>
+    <string name="auth_error_offline_clock_wrong">No internet, and the phone\'s date is earlier than your last online login. Set the correct date or connect to the internet.</string>
 </resources>

@@ -30,4 +30,5 @@
     <string name="auth_error_offline_expired">ইন্টারনেট নেই, এবং শেষ অনলাইন লগইন ৭ দিনের বেশি আগে। লগইন করতে ইন্টারনেটে যুক্ত হন।</string>
     <string name="auth_error_offline_wrong_password">ইন্টারনেট নেই, এবং পাসওয়ার্ডটি শেষ অনলাইন লগইনের সাথে মেলে না।</string>
     <string name="auth_error_offline_cooldown">অনেকবার ভুল পাসওয়ার্ড দেওয়া হয়েছে। %1$s-এর পরে আবার চেষ্টা করুন।</string>
+    <string name="auth_error_offline_clock_wrong">ইন্টারনেট নেই, এবং ফোনের তারিখ আপনার শেষ অনলাইন লগইনের আগের। সঠিক তারিখ দিন অথবা ইন্টারনেটে যুক্ত হন।</string>
 </resources>

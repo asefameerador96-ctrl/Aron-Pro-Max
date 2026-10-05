@@ -8,7 +8,7 @@ import java.security.MessageDigest
 /**
  * Encrypted per-user session files under the app's no-backup directory (allowBackup is false as well):
  * `profiles/<sha256(username)>.bin` (profile and offline verifier), `tokens/u<user_id>.bin` and `active.bin`.
- * Every write goes to a temp file and is renamed, so a kill mid-write leaves the previous version intact.
+ * Every write goes to a synced temp file and is renamed, so a kill or power loss mid-write leaves the previous version.
  */
 class SessionStore(private val root: File, private val cipher: SecretCipher) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -45,7 +45,10 @@ class SessionStore(private val root: File, private val cipher: SecretCipher) {
     private fun <T> write(file: File, serializer: KSerializer<T>, value: T) {
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeBytes(cipher.encrypt(json.encodeToString(serializer, value).toByteArray(Charsets.UTF_8)))
+        java.io.FileOutputStream(tmp).use { out ->
+            out.write(cipher.encrypt(json.encodeToString(serializer, value).toByteArray(Charsets.UTF_8)))
+            out.fd.sync() // survive power loss, not only a kill: an unreadable token file would lose the upload grant
+        }
         if (!tmp.renameTo(file)) {
             file.delete()
             check(tmp.renameTo(file)) { "cannot replace ${file.name}" }

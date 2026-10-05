@@ -177,6 +177,7 @@ private fun messageText(message: LoginMessage): String = when (message) {
     LoginMessage.OfflineNeverOnline -> stringResource(R.string.auth_error_offline_never_online)
     LoginMessage.OfflineExpired -> stringResource(R.string.auth_error_offline_expired)
     LoginMessage.OfflineWrongPassword -> stringResource(R.string.auth_error_offline_wrong_password)
+    LoginMessage.OfflineClockWrong -> stringResource(R.string.auth_error_offline_clock_wrong)
     is LoginMessage.OfflineCooldown -> stringResource(R.string.auth_error_offline_cooldown, localizedDigits(dhakaTime(message.untilMs)))
 }
 

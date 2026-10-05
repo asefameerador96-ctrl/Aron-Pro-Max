@@ -11,7 +11,7 @@ class HardcodedStringScanTest {
     @Test
     fun noHardcodedUserVisibleStringsInTheAppAndFeatureModules() {
         val root = File(System.getProperty("aron.androidRoot") ?: error("aron.androidRoot not set"))
-        val violations = HardcodedStringScanner.scanTree(root) { it.startsWith("app-") || it.startsWith("feature-") || it == "core-ui" }
+        val violations = HardcodedStringScanner.scanTree(root) { it.startsWith("app-") || it.startsWith("feature-") || it == "core-ui" || it == "dpc" }
         assertTrue(
             "User-visible text must live in res/values/strings.xml and res/values-bn/strings.xml (docs/24 s5.6):\n" +
                 violations.joinToString("\n"),
@@ -38,7 +38,7 @@ class HardcodedStringScanTest {
             }
         """.trimIndent()
         val v = HardcodedStringScanner.scanKotlin("S.kt", src)
-        assertEquals(v.joinToString("\n"), listOf(3, 4, 5, 6, 9, 10, 11, 12, 13), v.map { it.line }.sorted())
+        assertEquals(v.joinToString("\n"), listOf(3, 4, 5, 7, 9, 10, 11, 12, 13), v.map { it.line }.sorted())
         assertTrue(v.any { it.rule == "bangla-literal" && it.line == 11 })
         assertEquals(1, HardcodedStringScanner.scanKotlin("T.kt", "val t = Text(\"Total: ${'$'}count\")").size)
     }
@@ -56,6 +56,9 @@ class HardcodedStringScanTest {
                 Log.d("Aron", "debug text")
                 val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
                 Text("ARON") // i18n-ignore: brand name
+                require(x > 0) { "quantity must be positive" }
+                val key = "aron_ui"; val tag = "home-"; val f = SimpleDateFormat("HH:mm", Locale.US); val hex = "%02x"
+                val v = BuildConfig.VERSION_NAME + "+" + BuildConfig.VERSION_CODE
                 val url = "https://api.aron-dev.invalid"
                 Text("${'$'}count")
                 Text("${'$'}{user.name}")
@@ -66,10 +69,17 @@ class HardcodedStringScanTest {
     }
 
     @Test
+    fun aLooseOptOutDoesNotCount() {
+        assertEquals(1, HardcodedStringScanner.scanKotlin("T.kt", "Text(text = \"Retry later\") /* i18n-ignore */").size)
+        assertEquals(0, HardcodedStringScanner.scanKotlin("T.kt", "Text(text = \"Retry later\") // i18n-ignore: debug screen").size)
+    }
+
+    @Test
     fun xmlLiteralsAndMissingTranslationsAreCaught() {
         val xml = """<TextView android:text="Hello" /><TextView android:text="@string/ok" /><application android:label="${'$'}{appLabel}" />"""
         assertEquals(1, HardcodedStringScanner.scanXml("l.xml", xml).size)
         val en = """<resources><string name="a">A</string><string name="b" translatable="false">B</string><plurals name="c"></plurals></resources>"""
         assertEquals(setOf("a", "c"), HardcodedStringScanner.translatableNames(en))
+        assertEquals(setOf("d"), HardcodedStringScanner.translatableNames("""<string translatable="false" name="x">X</string><string-array name="d"></string-array>"""))
     }
 }

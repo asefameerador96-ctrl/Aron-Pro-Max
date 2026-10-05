@@ -83,4 +83,45 @@ class RecordPayloadContractTest {
             assertTrue(s.jsonObject.keys.containsAll(ContractYaml.requiredNames("Sku")))
         }
     }
+
+    /** Encoded payloads (not just DTO names): every required member present (null when empty), nothing extra, nested too. */
+    @Test
+    fun encodedPayloadsCarryEveryRequiredMemberEvenWhenNull() {
+        val at = "2026-10-05T04:36:00.000Z"
+        val (visit, fix) = TestRows.visit()
+        val noFix = fix.copy(fixStatus = "timeout", lat = null, lng = null, accuracyM = null, gnssJson = null, refreshCount = null, requestPriority = null)
+        val (att, attFix) = TestRows.attendance()
+        val sale = TestRows.sale(visit.clientUuid)
+        val rows = listOf(
+            RecordMapping.visit(visit.copy(geoVerdict = "no_fix", geoDistanceM = null, geoOutletLat = null, geoOutletLng = null), noFix, at),
+            RecordMapping.attendance(att, attFix.copy(lat = null, lng = null, accuracyM = null, fixStatus = "location_off"), at),
+            RecordMapping.stock(TestRows.stock(), at),
+            RecordMapping.memo(sale.memo, null, at),
+            RecordMapping.memoLine(sale.lines[0], visit.clientUuid, at),
+            RecordMapping.memoDiscount(sale.discounts[0].copy(skuId = null, qtyBase = null, offerId = null, offerVersionId = null, lineNo = null), visit.clientUuid, at),
+            RecordMapping.qcLine(sale.qcLines[0], at),
+            RecordMapping.visitClose(TestRows.close(visit.clientUuid), at),
+        )
+        val schemaOf = mapOf(
+            "visit" to "VisitPayload", "attendance_event" to "AttendanceEventPayload", "stock_movement" to "StockMovementPayload",
+            "memo" to "MemoPayload", "memo_line" to "MemoLinePayload", "memo_discount" to "MemoDiscountPayload",
+            "qc_line" to "QcLinePayload", "visit_close" to "VisitClosePayload",
+        )
+        fun verify(obj: kotlinx.serialization.json.JsonObject, schema: String) {
+            val missing = ContractYaml.requiredNames(schema) - obj.keys
+            assertTrue("$schema missing required members: $missing", missing.isEmpty())
+            val extra = obj.keys - ContractYaml.propertyNames(schema)
+            assertTrue("$schema extra members: $extra", extra.isEmpty())
+            obj["fix"]?.takeIf { it is kotlinx.serialization.json.JsonObject }?.let { f ->
+                verify(f.jsonObject, "GeoFix")
+                verify(f.jsonObject["device"]!!.jsonObject, "FixDeviceState")
+                assertTrue("refresh_count may not be null", f.jsonObject["refresh_count"] !is kotlinx.serialization.json.JsonNull)
+            }
+            obj["geo"]?.let { verify(it.jsonObject, "DeviceGeoVerdict") }
+        }
+        rows.forEach { row ->
+            val record = Json.parseToJsonElement(row.payloadJson).jsonObject
+            verify(record["payload"]!!.jsonObject, schemaOf.getValue(row.recordType))
+        }
+    }
 }

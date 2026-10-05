@@ -2,6 +2,7 @@ package com.aktcl.aron.core.session
 
 import android.content.Context
 import com.aktcl.aron.contract.ProblemCode
+import com.aktcl.aron.core.common.WallClock
 import com.aktcl.aron.core.network.AccessTokenSource
 import com.aktcl.aron.core.network.ApiOrigin
 import com.aktcl.aron.core.network.ApiResponseListener
@@ -29,14 +30,16 @@ class SessionComponents(
     okHttp: OkHttpClient = AronApiClient.defaultOkHttp(),
     proofSigner: DeviceProofSigner? = null,
     listener: ApiResponseListener? = null,
+    /** Trusted time once F-SYS-049 lands (Day 2); proofs and offline-unlock rules read it. */
+    clock: WallClock = WallClock.System,
 ) {
     private val tokens = DelegatingTokenSource()
 
     val deviceIdentity = DeviceIdentity(storageDir)
     val apiClient = AronApiClient(origin, okHttp, ClientIdentity(appVersion) { deviceIdentity.deviceUuid }, tokens, listener)
-    val authApi = AuthApi(apiClient, proofSigner)
+    val authApi = AuthApi(apiClient, proofSigner, clock::nowMs)
     val syncApi = SyncApi(apiClient)
-    val session = SessionRepository(authApi, SessionStore(File(storageDir, "session"), cipher), verifier, deviceIdentity, client)
+    val session = SessionRepository(authApi, SessionStore(File(storageDir, "session"), cipher), verifier, deviceIdentity, client, clock)
 
     init {
         tokens.target = session

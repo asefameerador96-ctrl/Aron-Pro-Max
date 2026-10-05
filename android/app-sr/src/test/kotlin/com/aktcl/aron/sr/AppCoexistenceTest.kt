@@ -56,11 +56,21 @@ class AppCoexistenceTest {
         val components: List<android.content.pm.ComponentInfo> = info.activities.orEmpty().toList() + info.receivers.orEmpty().toList() + info.services.orEmpty().toList()
         val exported = components
             .filter { it.exported }.map { it.name }.toSet()
+        // docs/24 s5.8 allows the launcher, the device-admin receiver and Firebase's service. The three androidx entries
+        // are exported by WorkManager and profileinstaller and are guarded by system-only permissions (BIND_JOB_SERVICE,
+        // DUMP); they are listed by name so any new exported component fails this test.
         val allowed = setOf(
             "com.aktcl.aron.sr.MainActivity",
             "com.aktcl.aron.dpc.AronDeviceAdminReceiver",
+            "com.google.firebase.messaging.FirebaseMessagingService",
+            "com.google.firebase.iid.FirebaseInstanceIdReceiver",
+            "androidx.work.impl.background.systemjob.SystemJobService",
+            "androidx.work.impl.diagnostics.DiagnosticsReceiver",
+            "androidx.profileinstaller.ProfileInstallReceiver",
         )
-        val unexpected = exported - allowed - exported.filter { it.startsWith("com.google.firebase.") || it.startsWith("androidx.") }.toSet()
+        // Compose tooling's PreviewActivity comes from debugImplementation(ui-tooling) and exists only in debug APKs.
+        val debugOnly = if (BuildConfig.DEBUG) setOf("androidx.compose.ui.tooling.PreviewActivity") else emptySet()
+        val unexpected = exported - allowed - debugOnly
         assertTrue("unexpected exported components: $unexpected", unexpected.isEmpty())
         assertTrue((context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP) == 0)
     }

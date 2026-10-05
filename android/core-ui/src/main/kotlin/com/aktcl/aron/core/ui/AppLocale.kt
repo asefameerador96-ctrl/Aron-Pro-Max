@@ -39,7 +39,8 @@ object AppLocale {
 
     fun wrap(base: Context, language: AppLanguage): Context {
         val locale = Locale.forLanguageTag(if (language == AppLanguage.BN) "bn-BD" else "en")
-        Locale.setDefault(locale)
+        // The process default locale is deliberately NOT changed: String.format, SimpleDateFormat and friends without an
+        // explicit Locale would then write Bengali digits into wire payloads, memo numbers and timestamps.
         val config = Configuration(base.resources.configuration)
         config.setLocales(LocaleList(locale))
         config.setLayoutDirection(locale)

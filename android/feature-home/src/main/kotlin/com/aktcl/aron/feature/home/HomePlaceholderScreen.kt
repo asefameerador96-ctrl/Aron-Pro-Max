@@ -70,7 +70,7 @@ fun HomePlaceholderContent(state: HomeUiState, user: HomeUser, onLogout: () -> U
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = localizedDigits(stringResource(R.string.home_business_date, state.businessDate)),
+            text = stringResource(R.string.home_business_date, localizedDigits(state.businessDate)),
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.testTag(HomeTags.DATE),
         )
@@ -97,8 +97,9 @@ private fun Banner(text: String, tag: String?) {
 @Composable
 private fun bundleText(status: BundleStatus): String = when (status) {
     BundleStatus.Checking -> stringResource(R.string.home_bundle_checking)
-    is BundleStatus.Ready -> localizedDigits(stringResource(R.string.home_bundle_ready, status.validFor, status.bundleVersion))
+    // Only the date takes Bengali digits; the bundle version and codes are identifiers and stay as sent.
+    is BundleStatus.Ready -> stringResource(R.string.home_bundle_ready, localizedDigits(status.validFor), status.bundleVersion)
     BundleStatus.Unchanged -> stringResource(R.string.home_bundle_unchanged)
     BundleStatus.Offline -> stringResource(R.string.home_bundle_offline)
-    is BundleStatus.Refused -> localizedDigits(stringResource(R.string.home_bundle_refused, status.httpStatus.toString(), status.code ?: "-"))
+    is BundleStatus.Refused -> stringResource(R.string.home_bundle_refused, status.httpStatus.toString(), status.code ?: "-")
 }
