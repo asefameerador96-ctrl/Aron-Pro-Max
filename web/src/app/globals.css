@@ -1,0 +1,22 @@
+@import "tailwindcss";
+@import "@fontsource-variable/noto-sans-bengali/index.css";
+
+@theme {
+  /* Bengali font is bundled with the app (no runtime font CDN, docs/24 s5.6). Latin falls back to the system stack. */
+  --font-sans: "Noto Sans Bengali Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-brand-50: #eef6ff;
+  --color-brand-100: #d9eaff;
+  --color-brand-600: #1d5fd1;
+  --color-brand-700: #174ca8;
+  --color-brand-900: #0f2f6b;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  font-family: var(--font-sans);
+  /* Bangla glyphs have tall ascenders and deep matras; a slightly looser line height avoids clipping. */
+  line-height: 1.6;
+}
