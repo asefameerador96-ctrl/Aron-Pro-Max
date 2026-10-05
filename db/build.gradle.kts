@@ -31,3 +31,12 @@ tasks.withType<Test>().configureEach {
     // server; the role needs CREATEDB because every test class gets its own throwaway database), else Testcontainers.
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
 }
+
+// Loads db/seed/*.sql into the development database named by ARON_SEED_DB_URL (row N-008). Never run in production.
+tasks.register<JavaExec>("seed") {
+    group = "aron"
+    description = "Loads the idempotent development seed (db/seed) into ARON_SEED_DB_URL"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.aktcl.aron.db.SeedLoader")
+    systemProperty("aron.seed", seedDir)
+}
