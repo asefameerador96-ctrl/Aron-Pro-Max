@@ -1,118 +1,139 @@
-# 23 — Seven-day build plan (Phase 1)
+# 23 — Build plan: 7 days, hard cap 10
 
-**Status: DRAFT for the sponsor's confirmation, 2026-10-05.** This document replaces the schedule of `docs/14` (34 to 38 weeks, 8 to 10 engineers) for the first build. `docs/14` to `21` stay as reference for rules, schema and risks; where they conflict with this page, this page wins.
+**Status: v2, 2026-10-05. Sponsor decisions applied.** This replaces the schedule of `docs/14` (34 to 38 weeks, 8 to 10 engineers). `docs/14` to `22` stay as reference for rules, schema and risks; where they conflict with this page, this page wins.
 
-## 1. Constraints and aim
+## 1. Targets and rules
 
-One human (the sponsor) plus Claude (Max 20x), one laptop, GitHub, Azure, a paid Google Maps API. Seven days at most. Aim: something better and smoother than Apsis, built so that Phase 2 plugs in without a rewrite.
+- **Deadline:** 7 days. If needed, 3 more days (day 10). Nothing beyond day 10.
+- **Scope: everything.** Everything the current Aron's three apps and web do (`docs/06` to `10`, corrected by the manuals and the screenshots in `docs/ui-reference/`), plus what the sponsor added: native Kotlin apps, precise low-battery geo tracking, fencing and validation, anti-spoofing, scheduled app blocking from check-in to check-out, offline with immediate sync, an admin portal that controls everything without a backend change, and an Azure back end built not to slow down or lose data.
+- **Not in this build:** Apsis data import and cutover (Apsis is switched off when we are ready), and the Phase 2 portals (discount, Astha, target, indent, the BOD "mother dashboard", the target engine). Phase 1 keeps their hooks (section 3).
+- **The backlog** is `docs/25-build-backlog.md`, written on Day 1 from `docs/15`: every parity and changed feature (253) is built; of the 256 "new" features of the earlier plan, those the sponsor's list or the running of the system needs are built, and the ones that are process rather than product (runbook libraries, parity-exception registers and the like) are not. The dropped list goes to the sponsor for review.
 
-**Phase 1 ships (7 days):**
+## 2. How the work is divided
 
-| Piece | What it is |
+The work is cut into small tasks, each owned by one expert agent with a written acceptance test.
+
+| Lane (owns this folder) | Expert agents |
 |---|---|
-| Backend | API, sync service, workers and PostgreSQL on Azure, designed and load-tested for 8,500 users at once |
-| SR app | native Kotlin Android: the full offline selling day, Bluetooth printing, sync |
-| AMO app | native Kotlin: control and joint calls, outlet verification, tasks, team view |
-| TSO app | native Kotlin: dashboard, Final Submit, visit plans, leave |
-| Web | one web app with role-based access: dashboards, reports, and the **admin portal** |
-| Admin portal | change the geofence radius and every other operating setting, manage users, devices, releases and the app-block list from a screen, no backend change |
-| Device control | Device Owner mode on enrolled phones: block chosen apps from check-in to check-out, lock down spoofing routes |
-| Geo integrity | precise low-battery location, on-device geofence, layered anti-spoofing |
+| `contract/`, `shared/` (Kotlin Multiplatform) | API contract; shared business rules: money, memo totals, discount lines, geofence maths, business date |
+| `db/` | schema and migrations; seed data |
+| `backend/` | auth and scope; sync (bundle, batch, ingest, idempotency); master data; config service; aggregates and dashboards API; notifications; media |
+| `android/` | core (database, outbox, sync); geo and integrity; device-owner policy; printing; SR app; AMO app; TSO app; shared UI |
+| `web/` | dashboards and reports; admin portal; maps |
+| `infra/` | Azure as code; CI/CD; observability |
+| `qa/` | contract tests; sync property tests; Android tests; load and chaos tests; security review |
 
-**Not in the 7 days (Phase 2 or later):** Apsis data import and cutover (Apsis is simply switched off when the new system is ready), the discount portal, Astha portal, target portal and target engine, the BOD "mother dashboard", the indent portal, Astha / Diamond League / Superstar logic, and the long tail of the 37 web reports (the 8 to 10 that matter come first).
+Rules that keep it accurate:
 
-## 2. What changes against the earlier plan
-
-| Earlier plan | Now | Why |
-|---|---|---|
-| Flutter app, three flavours | **Native Kotlin** (Jetpack Compose), three apps from one Gradle build | direct device control: Device Owner, Play Integrity, GNSS raw data, fused location, battery tuning |
-| Node.js backend | **Kotlin (Ktor) backend** with a shared Kotlin Multiplatform module for the sync contract, pricing, memo totals and geofence maths | the phone and the server run the same code, so a memo total or a distance can never differ between them |
-| Web in Next.js | unchanged: Next.js + TypeScript | fastest route to dashboards and the admin portal |
-| No device management (shared phones) | **Device Owner** on enrolled phones; apps still work on non-enrolled phones, with no app-blocking or lock-down | what the sponsor asked for; it needs a factory-reset phone (see section 4) |
-| Migration, pilot, waves (Phase 7) | removed | sponsor's decision |
-| 34 to 38 weeks | 7 days | sponsor's constraint |
+1. **Contract first.** The API contract and the shared module land on Day 1, so lanes work in parallel without drifting.
+2. **Builder, then checker.** Every task is built by one agent and then checked by a different agent that runs the build and tests and reviews the diff against the acceptance test. Nothing merges on one agent's word.
+3. **One folder, one owner.** Lanes never edit each other's folders; changes go through the contract.
+4. **Parallel sessions.** Each lane runs in its own Claude session on its own machine, on its own branch, merged to `main` through CI at least daily.
+5. **Daily proof.** CI builds the APKs and the web app each day; you run a 10-minute check.
 
 ## 3. Architecture
 
 ```
- SR / AMO / TSO apps (Kotlin)          Web (Next.js)  = dashboards + admin portal
-   Room local DB + outbox                       |
-   WorkManager, FCM nudge                       |
-   Device Owner policy                          |
-        \                                      /
-         \____ HTTPS (gzip, idempotent) ______/
-                        |
-              Azure Front Door (TLS, WAF)
-                        |
-        Azure Container Apps: API (Ktor)   Worker (aggregates, jobs)
-                        |                        |
-        Azure Database for PostgreSQL Flexible Server (zone-redundant HA,
-        built-in pooling, read replica for dashboards)
-                        |
-        Blob Storage (photos via SAS, bundle snapshots)   Key Vault   App Insights
+ SR / AMO / TSO apps (native Kotlin)        Web (Next.js): dashboards + admin portal
+   Room database + outbox                            |
+   WorkManager, FCM nudge                            |
+   Device-owner policy                               |
+          \                                          /
+           \______ HTTPS, gzip, idempotent _________/
+                           |
+                 Azure Front Door (TLS, WAF)
+                           |
+        Azure Container Apps: API (Ktor)    Worker (aggregates, jobs)
+                           |                       |
+        Azure Database for PostgreSQL, zone-redundant HA
+        (pooling, read replica for dashboards, point-in-time restore)
+                           |
+        Blob Storage (photos by SAS, bundle snapshots)   Key Vault   App Insights
 ```
 
-- **Offline first.** Every action writes to the phone's database and an outbox in one transaction. The sync service sends it as soon as there is a connection (a short debounce, no polling), and the server saves it by a phone-made UUID, so a retry never doubles anything. Push (FCM) only nudges; data always arrives by sync.
-- **Reads come from stored aggregates**, never the transaction log, so dashboards stay fast during the morning download and evening upload peaks.
-- **Extensible for Phase 2.** Offers, targets, programmes and stock movements are data (rule tables and append-only ledgers), not code; every record has a stable external reference; domain events are written to an outbox so the mother dashboard and indent portal can subscribe later.
-- Sizing and failure modes come from `docs/18`, rebased to this scope in Day 6.
+- **Offline first.** Every action is written to the phone's database and an outbox in one transaction. Sync sends it as soon as there is a connection, with a short debounce and no polling; the server saves it by a phone-made UUID, so a retry never doubles anything. Push (FCM) only nudges.
+- **Dashboards read stored aggregates**, never the transaction log.
+- **Hooks for Phase 2:** offers, targets, programmes and stock movements are data (rule tables, append-only ledgers); every record has a stable external reference; domain events go to an outbox that a later mother dashboard or indent portal can subscribe to.
+- **Stack:** native Kotlin with Jetpack Compose, three apps from one Gradle build; Kotlin (Ktor) backend; a Kotlin Multiplatform module shared by phone and server so a memo total or a distance can never differ between them; Next.js and TypeScript for the web; PostgreSQL; Azure Container Apps.
 
-## 4. Geo integrity and device control: what is possible
+## 4. Geo integrity and device control
 
-| Layer | What it does | Limit |
+Every field phone is factory-reset and enrolled as **device owner**. On such a phone:
+
+| Layer | What it does |
+|---|---|
+| Lock-down | developer options and USB debugging off, installing from unknown sources off, Aron cannot be uninstalled, location permission granted and pinned, approved app list only, factory reset from Settings blocked |
+| Scheduled app blocking | the configured apps (social media, games) are suspended at check-in and released at check-out, applied on the phone so it works offline |
+| Location | one on-demand fix at attendance, outlet open and force sale; optional batched low-power breadcrumbs (admin-set, off by default); geofence maths on the phone, re-checked on the server |
+| Mock detection | the mock-location flag is read on every fix; a mocked fix never validates a call |
+| Integrity | Play Integrity and hardware key attestation tell the server the phone is genuine and unmodified; the phone also proves it is enrolled |
+| GNSS consistency | satellite count, signal strength and raw measurements are checked against the claimed position |
+| Server rules | impossible speed, teleporting, zero jitter, one coordinate for a whole route, phone-versus-server disagreement |
+| Enrolment gate | in production the server accepts attendance and sales only from enrolled phones that pass integrity (`cfg.device.require_enrolled`); a phone wiped outside the process cannot log in until it is enrolled again |
+
+**What is promised, and how it is proven.** With every phone enrolled, the software spoofing routes (mock-location apps, spoofing subscriptions, app cloning, developer tools) are closed: they cannot be installed or switched on, and where one exists the call is refused and flagged. I prove it on Day 3 by testing at least five well-known mock-location apps and one app-cloning tool on your test phones, before and after enrolment, and report each result. The one thing no software can stop is **RF-level GPS simulator hardware or a physically modified phone**; the server flags those statistically and supervisors see the flag. So "software spoofing: closed, tested" is a promise; "no one can ever cheat by any physical means" is not.
+
+## 5. "It cannot break at 8,500 users": what is engineered and tested
+
+No one can honestly sign "the cloud never fails". These three properties can be built and measured, and they are what keeps the business running:
+
+| Property | How | Proof |
 |---|---|---|
-| Location | one on-demand fix at attendance, outlet open and force sale; optional low-power breadcrumbs (batched, admin-set, off by default); geofence maths on the phone, re-checked on the server | no continuous GPS, by design (battery) |
-| Mock detection | reads Android's mock-location flag on every fix; a mocked fix can never validate a call | a rooted phone can hide it |
-| Play Integrity and key attestation | the server learns whether the phone is genuine, unmodified and unrooted | needs Google Play services |
-| GNSS consistency | satellite count, signal strength and raw measurements checked against the claimed fix; faked fixes rarely carry consistent satellite data | needs per-device tuning |
-| Server plausibility | impossible speed, teleporting, zero jitter, one coordinate for a whole route, device-versus-server disagreement | statistical, not instant |
-| **Device Owner lock-down** | disable developer options and USB debugging, block installing from unknown sources, block uninstall of Aron, auto-grant and pin the location permission, allow only an approved app list | **only on enrolled phones** |
+| **No sale is ever blocked or lost by the cloud** | offline-first: selling never waits for the network; data stays on the phone until the server confirms it | Day 2 airplane-mode day; Day 6 server killed mid-day |
+| **Phones cannot overload the server into failure** | admission control (429 with retry-after and jitter), buffered ingest, autoscaling, connection pooling, reads from aggregates, dashboards shed first | Day 6 load test at the design point |
+| **No confirmed write is ever lost or doubled** | zone-redundant PostgreSQL with a synchronous standby in a second zone, point-in-time restore, geo-redundant backup, idempotent writes | Day 6 failover and restore drills with a row-by-row reconciliation |
 
-**Honest limit:** on a locked-down Device Owner phone with a strong integrity verdict, every software spoofing route is either impossible or detected. Nothing in software stops an RF-level GPS simulator or a physically modified phone; the server flags those statistically and supervisors see the flag. "Cannot be faked at all" cannot be promised; "very hard and always visible" can.
+Day 6 test, on Azure Load Testing against our own resources only: the design point (4.5 lakh calls and 5 lakh visits a day, 8,500 users, morning download storm, evening upload storm, the 17:00 wave), then 1.5 times the fleet (12,750 users) and a 3 times burst; kill a server instance; fail over the database; compare every row. Pass: no lost or duplicated rows, dashboards p95 at most one second throughout, no sale blocked. A region-wide Azure outage is covered by a cross-region replica built in the reserve days, with a stated recovery time.
 
-**App blocking.** With Device Owner, the app can suspend a configured list of packages (social media, games) at check-in and release them at check-out, even offline. Without Device Owner this is not reliable, so it is offered only on enrolled phones. **Enrolling a phone means a factory reset** (QR code at first boot, or `adb` on a fresh phone), so it is an operational step for the fleet, not a software switch.
+## 6. Azure: separate from what is live, and movable
 
-## 5. Day by day
+- Everything lives in one resource group, **`rg-aron-dev`**, in the temporary subscription. The GitHub deploy identity has rights **only on that group**, so the services already live cannot be touched.
+- All infrastructure is code, with the subscription, region and names as parameters. **The move to the final account is re-running the same code** there, restoring the database from a backup, and re-pointing the web address. I rehearse the move once before the end into a second group.
+- Costs are watched by a budget alert in the group. Subscription quotas are shared with the live services, so I check regional quota first (the bootstrap script saves a snapshot) and cap load-test size to what is safe.
 
-Each day ends with a 10-minute check you can run on a real phone or in the browser; a day is done only when its check passes.
+## 7. Day by day
 
-| Day | Build | Your 10-minute check |
+Each day ends with a 10-minute check you run. A day is done only when its check passes. Lanes run in parallel, so Android, backend and web progress together.
+
+| Day | Done when | Your 10-minute check |
 |---|---|---|
-| 1 | Monorepo, CI/CD, Azure infrastructure as code and first deploy; schema v1; login with device binding and server-side scope; Android project skeleton (shared modules, Room, sync engine core, Device Owner module) | log in on the phone; the API answers from Azure; a test row syncs |
-| 2 | SR offline selling loop: bundle download, route of the day (Daily, 3F, 2F), attendance, stock, outlet pick, geofence, sale with prices and discount lines, memo, **Bluetooth print**, outbox and idempotent ingest | airplane mode: check in, sell, print; turn the network on; the sale appears on the server once |
-| 3 | SR day completed: dues, edit and reprint, summary, Sales Submit with reconciliation, outlet requests, tasks with push, QC; anti-spoofing layers; app-block on check-in | enable a mock-location app: the call is refused and flagged; check in: chosen apps are suspended; check out: released |
-| 4 | Web dashboard with roles; sync-health; core reports; **admin portal** (geofence radius at all levels, rules, users, devices, releases, block list) with audit | change the radius in the portal; the phone obeys at its next sync |
-| 5 | AMO and TSO apps on the shared modules; Final Submit; verification; team map (Google Maps) | an AMO verifies an outlet request; a TSO closes a zone-day |
-| 6 | Scale and resilience: Azure Load Testing at the design point (4.5 lakh calls and 5 lakh visits a day, 8,500 users, morning and evening storms), failover and restore drills; battery and data measurement on the phone | the load report passes its thresholds; battery log for a scripted 8-hour day |
-| 7 | Fixes, security pass, signed release APKs, field-test script, hand-over notes | a full day on a real route with real printed memos |
+| 0 (tonight) | laptop set up; Azure bootstrap run; Google and Firebase set up; backlog and contract written | `adb devices` shows your phone; the bootstrap prints "Done" |
+| 1 | contract, shared module, schema v1, backend skeleton, three app skeletons, web skeleton; infrastructure deployed to `rg-aron-dev`; CI builds everything | install the skeleton app on the Galaxy A06; log in; the API answers from Azure |
+| 2 | SR selling loop: bundle, route of the day (Daily, 3F, 2F), attendance, stock, outlet pick, geofence, sale, discount lines, memo, **printing on the MP-58N**, outbox and idempotent ingest | airplane mode: check in, sell, print; network on; the sale appears once on the server |
+| 3 | SR complete (dues, edit, reprint, summary, Sales Submit, outlet requests, tasks with push, QC); geo integrity; device-owner policy and app blocking; anti-spoofing tests | the spoofing apps are refused; check in suspends the chosen apps; check out releases them |
+| 4 | web dashboards and reports; admin portal (radius at all levels, rules, master data, users, devices and enrolment QR, releases, block list, audit) | change the radius in the portal; the phone obeys at its next sync |
+| 5 | AMO app and TSO app complete; Final Submit; verification; team map | an AMO verifies an outlet request; a TSO closes a zone-day |
+| 6 | scale, failover, restore, battery and data runs; security pass | the load report passes; the battery log for a scripted 8-hour day |
+| 7 | fixes; release candidate APKs; field-test script | a real route with printed memos |
+| 8 to 10 | reserve: anything that failed a check, cross-region replica, move rehearsal | the failed checks pass |
 
-## 6. What I need from you
+## 8. What I need from you
 
 | When | What |
 |---|---|
-| Today | **Azure:** subscription ID and one service principal for GitHub Actions (I will write `infra/bootstrap.sh`; you run it once with `az login`). **Google:** a Maps key for Android and one for the web, and a Firebase project for push. All go in GitHub secrets, never in the repo. |
-| Today | **Phones:** the model and Android version of one or two test phones; one that can be factory-reset for Device Owner. **Printer:** the Bluetooth model. |
+| Tonight | follow `docs/setup/`: `tools/setup-laptop.ps1`, `gh auth login`, `az login`, `infra/bootstrap-azure.ps1`; run the browser setup (`docs/setup/chrome-google-firebase-github.md`); turn on USB debugging on the Galaxy A06 |
 | Before Day 2 | photos of a printed memo, a stock slip and a day summary |
 | Each evening | run the day's 10-minute check and tell me what broke |
 
-Faster loop: if Claude Code runs on your laptop, install Android Studio, `adb` and the Azure CLI there. I can then install to your phone, read its logs and run the emulator myself. This cloud session builds and unit-tests but cannot touch a phone.
+**Decided by the sponsor (2026-10-05):** every phone is factory-reset and enrolled; test phones Samsung Galaxy A06, Galaxy A07, Honor X5c Plus; printer MP-58N; temporary Azure subscription `fdd05880-48dd-46bd-be4c-36f7039e71d7` (final account later); repository `asefameerador96-ctrl/Aron-Pro-Max`; package ids `com.aktcl.aron.sr`, `.amo`, `.tso`.
 
-## 7. Risks, said plainly
+## 9. Risks
 
-1. **7 days is tight for the full scope.** The earlier plan costed full parity at 333 to 437 person-weeks. Seven days delivers the core of each piece, built well and extensible, not all 509 features. If time runs short, order of sacrifice: web report long tail, AMO and TSO extras, SR convenience features. Never: offline correctness, idempotent sync, geo integrity, load test.
-2. **Real-device testing is your time.** Printing, Bluetooth, GPS and battery cannot be tested without a phone and a printer.
-3. **"Cannot break at 8,500 users"** means designed and load-tested to the design point with failure drills. It is a measured claim, not a guarantee.
-4. **Device Owner needs a factory reset** and is only as good as the fleet's enrollment.
-5. **Claude usage limits.** Heavy parallel agent runs use the quota fast; I will fan out only where it saves real time.
-6. **Google's rule on apps installed outside Play** (developer verification, rolling out from September 2026): check on Day 1 how it affects sideloaded and Device Owner apps.
+1. **Scope against the clock.** Full scope in 7 days is only possible with strict lanes, small tasks and parallel sessions; day 8 to 10 are the buffer, not the plan. Any day that fails its check is reported to you the same evening, with what moves.
+2. **Claude usage limits.** Many parallel sessions use the plan's quota quickly; if a window runs out, work pauses until it resets. I sequence the heaviest runs.
+3. **Real-device testing is your time** (printing, Bluetooth, GPS, battery).
+4. **Enrolling the fleet is operational work** (a factory reset per phone, a QR scan); the portal makes it quick but someone still touches each phone.
+5. **Google's rule for apps installed outside Play** (developer verification, rolling out from September 2026): checked on Day 1 against enrolled-device installs.
+6. **Phone makers' battery savers** (Samsung, Honor) can stop background work; the device-owner policy exempts Aron and Day 6 measures it on all three phones.
+7. **Shared Azure quota** with the live services (section 6).
 
-## 8. Questions, with the default I will use if you do not answer
+## 10. Questions still open, with the default I use
 
 | # | Question | Default |
 |---|---|---|
-| 1 | Are the field phones AKTCL's to factory-reset and enrol? | Device Owner is optional per phone; everything else works without it |
-| 2 | Lowest Android version in the fleet? | Android 8 (API 26) |
-| 3 | Which apps to block, and when? | a list set in the admin portal, blocked from check-in to check-out; phone, SMS, Maps always allowed |
-| 4 | Azure region? | Southeast Asia (Singapore), as in the earlier plan; changeable on Day 1 |
-| 5 | Bangla in the 7 days? | Bangla and English toggle with the core strings; the full string catalogue later |
-| 6 | The cut list in section 1: agreed? | agreed |
+| 1 | Which apps to block between check-in and check-out? Is WhatsApp allowed? | list set in the admin portal; blocked: Facebook, Instagram, TikTok, YouTube, Snapchat, games; WhatsApp and Messenger allowed; phone, SMS, Maps, camera always allowed |
+| 2 | Bangla and English in the apps? | Bangla first with an English switch, as today; Bengali digits |
+| 3 | Azure region while building? | Southeast Asia (Singapore); decided again for the final account |
+| 4 | Lowest Android version in the fleet? | Android 8 (API 26); your test phones are newer |
+| 5 | How do web users log in? | username and password with a second step for admins; single sign-on later |
+| 6 | Which web roles? | wing manager, division manager (DMO), territory (TSO), admin, super admin, read-only analyst |
