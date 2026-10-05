@@ -31,6 +31,8 @@ class SchemaV1bTest {
             // contract v1.1
             "content_view", "redemption", "redemption_line", "gift_photo", "price_compliance_check", "risk_signal_review",
             "activity_log", "app_error", "sale_abort", "user_consent",
+            // v1c (N-007): the device_status record
+            "device_status_report",
         )
         val PARTITIONED = setOf("visit", "memo", "memo_line")
 
@@ -68,6 +70,7 @@ class SchemaV1bTest {
             "gift_photo" to mapOf("redemption_client_uuid" to "gen_random_uuid()"),
             "sale_abort" to mapOf("memo_no" to "'sr0001-261005-002'"),
             "user_consent" to mapOf("policy_key" to "'location_notice'"),
+            "device_status_report" to mapOf("source" to "'record'", "report" to "'{}'"),
             "app_error" to mapOf("app_version" to "'1.0.3+103'"),
             "activity_log" to mapOf("events" to "'[{\"at\": \"2026-10-05T04:00:00.000Z\", \"screen\": \"home\", \"action\": \"open\"}]'"),
         )
@@ -103,6 +106,8 @@ class SchemaV1bTest {
                   VALUES ('kv', 'KV', 'https://example.invalid/kv.jpg', decode(repeat('ab', 32), 'hex'), 100, '2026-10-01', '2026-10-31', 1);
                 INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, score, config_version)
                   VALUES ('GEO_MOCK', 4, '2026-10-05', 'user', '1', 100, 0);
+                INSERT INTO app.device (device_uuid, flavour, app_package, device_owner, lockdown_level, public_key_jwk, public_key_thumbprint, app_signing_cert_sha256)
+                  VALUES (gen_random_uuid(), 'sr', 'com.aktcl.aron.sr', true, 'dev', '{"kty": "EC"}', 'thumb', decode(repeat('ab', 32), 'hex'));
                 INSERT INTO app.qc_entry (visit_client_uuid, business_date, user_id, outlet_id)
                   SELECT gen_random_uuid(), '2026-10-05', u.id, o.id FROM app.app_user u, app.outlet o WHERE u.username = 'sr0001';
                 """.trimIndent(),
@@ -118,6 +123,7 @@ class SchemaV1bTest {
             fk["gift"] = c.scalar("SELECT id FROM app.gift")!!
             fk["content"] = c.scalar("SELECT id FROM app.content_item")!!
             fk["signal"] = c.scalar("SELECT id FROM app.risk_signal")!!
+            fk["device"] = c.scalar("SELECT id FROM app.device")!!
         }
     }
 
@@ -162,6 +168,7 @@ class SchemaV1bTest {
                 col.name == "gift_id" -> fk["gift"]!!
                 col.name == "content_id" -> fk["content"]!!
                 col.name == "signal_id" -> fk["signal"]!!
+                col.name == "device_id" -> fk["device"]!!
                 firstEnumValue(col.name) != null -> "'${firstEnumValue(col.name)}'"
                 col.type == "uuid" -> "gen_random_uuid()"
                 col.type == "date" -> "'2026-10-05'"
