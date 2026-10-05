@@ -105,7 +105,7 @@ class RefreshService(
     private fun invalid() = ApiProblem(ProblemCode.ERR_AUTH_REFRESH_INVALID, "refresh token invalid or expired")
 
     companion object {
-        const val REASON_REUSE = "reuse"
+        const val REASON_REUSE = "reuse_detected"
         const val REASON_PASSWORD = "password_changed"
         const val REASON_LOGOUT = "logout"
 

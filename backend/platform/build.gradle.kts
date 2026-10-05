@@ -4,6 +4,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
+    `java-test-fixtures`
 }
 
 dependencies {
@@ -17,6 +18,8 @@ dependencies {
     api(libs.nimbus.jose.jwt)
     implementation(libs.logback.classic)
 
+    testFixturesApi(libs.hikari)
+    testFixturesApi(project(":db"))
     testImplementation(project(":db"))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)

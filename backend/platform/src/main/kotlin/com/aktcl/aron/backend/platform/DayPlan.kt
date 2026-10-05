@@ -77,3 +77,23 @@ object DayPlan {
     fun targetOutlets(planned: Collection<Long>, outletRouteIds: Map<Long, Long?>, activeOutletIds: Set<Long>): Int =
         outletRouteIds.count { (id, route) -> route != null && route in planned && id in activeOutletIds }
 }
+
+/** One route of a user on a business date, as the bundle's RouteSnapshot needs it (N-017). */
+data class RouteDayPlan(
+    val routeId: Long,
+    val code: String,
+    val name: String,
+    val zoneId: Long,
+    val visitKind: String?,
+    val visitDaysMask: Int,
+    val displayLabel: String?,
+    val assignmentKind: String,
+    val plannedToday: Boolean,
+    /** Active outlets of the route (the strike-rate denominator when planned; frozen by the bundle at first fetch). */
+    val targetOutlets: Int,
+)
+
+/** The routes a user holds on a date with their plan (implemented in backend:masterdata, read by backend:sync). */
+fun interface RoutePlanner {
+    fun routesFor(userId: Long, businessDate: java.time.LocalDate): List<RouteDayPlan>
+}

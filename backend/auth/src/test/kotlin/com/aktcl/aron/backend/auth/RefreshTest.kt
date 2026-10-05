@@ -44,7 +44,18 @@ internal suspend fun HttpClient.refresh(token: String, device: String?, grant: S
         setBody("""{"grant":"$grant","refresh_token":"$token"}""")
     }
 
-class RefreshTest {
+open class RefreshTest {
+    private val made = mutableListOf<AuthFixture>()
+
+    /** Builds the fixture; [RefreshTestDb] overrides it to run the same tests on PostgreSQL stores. */
+    open fun fixture(overrides: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(), hashConcurrency: Int = 4, hashQueue: Int = 32): AuthFixture =
+        AuthFixture(overrides, hashConcurrency, hashQueue).also { made += it }
+
+    protected fun track(f: AuthFixture) = f.also { made += it }
+
+    @org.junit.jupiter.api.AfterEach
+    fun closeFixtures() { made.forEach { it.close() }; made.clear() }
+
     private suspend fun HttpClient.loginTokens(f: AuthFixture): Pair<String, String> {
         val b = json(login("sr334001", "correct horse 1", f.srDevice).bodyAsText())
         return b["refresh_token"]!!.jsonPrimitive.content to b["upload_refresh_token"]!!.jsonPrimitive.content
@@ -52,7 +63,7 @@ class RefreshTest {
 
     @Test
     fun rotatesOnUseAndAReplayWithinSixtySecondsGetsTheSameResult() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val (rt, _) = client.loginTokens(f)
@@ -74,7 +85,7 @@ class RefreshTest {
 
     @Test
     fun aUsedTokenReplayedAfterSixtySecondsRevokesTheGrant() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val (rt, upload) = client.loginTokens(f)
@@ -94,7 +105,7 @@ class RefreshTest {
 
     @Test
     fun concurrentUseOfOneTokenRotatesOnce() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val (rt, _) = client.loginTokens(f)
@@ -106,7 +117,7 @@ class RefreshTest {
 
     @Test
     fun grantAndDeviceAreBound() {
-        val f = AuthFixture()
+        val f = fixture()
         val other = "9b0c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4"
         f.devices.byUuid[other] = DeviceRecord(777, other, "active", "sr", null)
         testApplication {
@@ -124,7 +135,7 @@ class RefreshTest {
 
     @Test
     fun aDeviceWithAKeyMustProveIt() {
-        val f = AuthFixture()
+        val f = fixture()
         val kp = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
         val jwk = ECKey.Builder(Curve.P_256, kp.public as ECPublicKey).build().toJSONString()
         f.devices.byUuid[f.srDevice] = DeviceRecord(501, f.srDevice, "active", "sr", jwk)
@@ -145,11 +156,11 @@ class RefreshTest {
 
     @Test
     fun disabledUserKeepsOnlyTheUploadGrant() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val (rt, upload) = client.loginTokens(f)
-            f.users.add(f.user(1001, "sr334001", Role.SR, status = "disabled"))
+            f.addUser(f.user(1001, "sr334001", Role.SR, status = "disabled"))
             assertEquals("ERR_AUTH_USER_DISABLED", json(client.refresh(rt, f.srDevice).bodyAsText()).code)
             assertEquals(HttpStatusCode.OK, client.refresh(upload, f.srDevice, grant = "upload").status)
         }
@@ -157,7 +168,7 @@ class RefreshTest {
 
     @Test
     fun slidingAndAbsoluteExpiry() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val b = json(client.login("sr334001", "correct horse 1", f.srDevice).bodyAsText())
@@ -172,7 +183,7 @@ class RefreshTest {
 
     @Test
     fun scopeChangeAnswers401AndARefreshRecovers() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val b = json(client.login("sr334001", "correct horse 1", f.srDevice).bodyAsText())
@@ -180,7 +191,7 @@ class RefreshTest {
             suspend fun me(t: String) = client.get("/v1/me") { bearerAuth(t); header("X-Device-Id", f.srDevice) }
             assertEquals(HttpStatusCode.OK, me(access).status)
             assertEquals("ERR_DEVICE_PROOF_INVALID", json(client.get("/v1/me") { bearerAuth(access); header("X-Device-Id", "9b0c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4") }.bodyAsText()).code)
-            f.users.add(f.users.findById(1001)!!.copy(scopeVersion = 8))
+            f.addUser(f.users.findById(1001)!!.copy(scopeVersion = 8))
             val stale = me(access)
             assertEquals(HttpStatusCode.Unauthorized, stale.status)
             assertEquals("ERR_SCOPE_CHANGED", json(stale.bodyAsText()).code)
@@ -192,7 +203,7 @@ class RefreshTest {
 
     @Test
     fun accessTokenLifetimesAreJitteredForPhonesAndFifteenMinutesOnTheWeb() {
-        val f = AuthFixture()
+        val f = fixture()
         val sr = f.users.findById(1001)!!
         val ttls = (1..60).map {
             val a = f.issuer.access(TokenSubject(sr, 501, f.srDevice, "sr"))
@@ -206,7 +217,7 @@ class RefreshTest {
 
     @Test
     fun jwksPublishesTheVerificationKey() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val k = json(client.get("/v1/auth/jwks").bodyAsText())["keys"]!!.let { it as kotlinx.serialization.json.JsonArray }.single().jsonObject

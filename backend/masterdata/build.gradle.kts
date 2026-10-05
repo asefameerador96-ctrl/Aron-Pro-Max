@@ -8,6 +8,7 @@ dependencies {
     implementation(project(":backend:platform"))
 
     testImplementation(project(":db"))
+    testImplementation(testFixtures(project(":backend:platform")))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(kotlin("test"))

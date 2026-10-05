@@ -93,6 +93,21 @@ object ReachFilter {
      * 403 ERR_OUT_OF_SCOPE; an SR sees only the outlets of the routes assigned on the date.
      */
     fun outlets(reach: Reach, sel: GeoSelector, geo: Geo, outlets: Sequence<OutletRef>): List<OutletRef> {
+        val check = check(reach, sel, geo)
+        if (check.empty) return emptyList()
+        val selZones = check.zones
+        return outlets.filter { o ->
+            val inReach = if (reach.ownRecordsOnly) o.routeId != null && o.routeId in reach.routeIds
+            else reach.national || o.zoneId in reach.zoneIds || (o.routeId != null && o.routeId in reach.routeIds)
+            inReach && (selZones == null || o.zoneId in selZones) && (sel.routeId == null || o.routeId == sel.routeId)
+        }.sortedBy { it.id }.toList()
+    }
+
+    /** Result of validating a selector: the zones it narrows to (null = no zone narrowing) or nothing at all. */
+    data class Check(val zones: Set<Long>?, val empty: Boolean)
+
+    /** Validates [sel] against [reach]: 403 when a named node or route has no overlap with the reach. */
+    fun check(reach: Reach, sel: GeoSelector, geo: Geo): Check {
         val selZones = allowedZones(reach, sel, geo)
         if (selZones != null && sel.routeId == null) {
             val overlap = if (reach.ownRecordsOnly) reach.routeIds.any { geo.routeZone[it] in selZones } else reach.national || selZones.any { it in reach.zoneIds } || reach.routeIds.any { geo.routeZone[it] in selZones }
@@ -101,13 +116,9 @@ object ReachFilter {
         sel.routeId?.let { r ->
             val z = geo.routeZone[r] ?: throw outOfScope()
             if (!reach.coversRoute(r, z)) throw outOfScope()
-            if (selZones != null && z !in selZones) return emptyList()
+            if (selZones != null && z !in selZones) return Check(selZones, true)
         }
-        return outlets.filter { o ->
-            val inReach = if (reach.ownRecordsOnly) o.routeId != null && o.routeId in reach.routeIds
-            else reach.national || o.zoneId in reach.zoneIds || (o.routeId != null && o.routeId in reach.routeIds)
-            inReach && (selZones == null || o.zoneId in selZones) && (sel.routeId == null || o.routeId == sel.routeId)
-        }.sortedBy { it.id }.toList()
+        return Check(selZones, false)
     }
 
     fun outOfScope() = ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "the selected node is outside your reach")
