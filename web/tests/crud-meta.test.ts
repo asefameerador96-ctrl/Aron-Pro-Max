@@ -29,6 +29,12 @@ describe("entity metadata → validation", () => {
     expect(reasonSchema.safeParse("1234567890").success).toBe(true);
     expect(reasonSchema.safeParse("   123456789   ").success).toBe(false);
     expect(reasonSchema.safeParse("x".repeat(501)).success).toBe(false);
+    // the contract counts code points: 5 emoji are 5 characters (10 UTF-16 units), 10 emoji are enough
+    expect(reasonSchema.safeParse("😀😀😀😀😀").success).toBe(false);
+    expect(reasonSchema.safeParse("😀".repeat(10)).success).toBe(true);
+    expect(reasonSchema.safeParse("😀".repeat(500)).success).toBe(true);
+    expect(reasonSchema.safeParse("😀".repeat(501)).success).toBe(false);
+    expect(reasonSchema.safeParse("কারণ লিখুন এখানে").success).toBe(true); // Bangla: combining marks count as code points
   });
   it("every entity label and field label exists in the catalogue; slugs are unique; reasons are wired", () => {
     expect(new Set(ENTITIES.map((e) => e.slug)).size).toBe(ENTITIES.length);

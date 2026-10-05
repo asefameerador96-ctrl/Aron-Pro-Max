@@ -56,7 +56,7 @@ export function EntityForm({ mode, slug, id, version: initialVersion, fields, in
       sent[f.name] = v;
     }
     const local: Record<string, string> = {};
-    if (reason.trim().length < REASON_MIN_LENGTH) local.reason = t("admin.reason.too_short");
+    if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) local.reason = t("admin.reason.too_short");
     if (mode === "update" && Object.keys(sent).length === 0) {
       setBanner({ kind: "error", text: t("admin.no_changes") });
       if (local.reason) setErrors(local);
