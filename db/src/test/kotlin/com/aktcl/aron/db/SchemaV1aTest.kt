@@ -145,7 +145,7 @@ class SchemaV1aTest {
     fun configValuesNeverOverlapAndAreClosedNotEdited() {
         val insert = """
             INSERT INTO app.cfg_version (config_version, kind, committed_by, summary)
-              SELECT 2, 'change', id, 't' FROM app.app_user WHERE username = 'system';
+              SELECT 2, 'change', id, 't' FROM app.app_user WHERE username = 'aron.system';
             INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason)
               VALUES ('cfg.geo.radius_m', 'zone', 7, '120', '2026-10-01T00:00Z', 2, 'test');
         """.trimIndent()
@@ -234,6 +234,38 @@ class SchemaV1aTest {
         val e = assertFailsWith<SQLException> { c.exec("DELETE FROM app.t_ledger") }
         assertEquals("42501", e.sqlState)                                                        // still append-only
         c.exec("ROLLBACK TO SAVEPOINT s")
+    }
+
+    @Test
+    fun oneBlockedParentNeverStopsTheOthersAndIsRecorded() = tx { c ->
+        c.exec(
+            """
+            DELETE FROM app.partition_policy;
+            CREATE TABLE app.t_memo (id bigint GENERATED ALWAYS AS IDENTITY, business_date date NOT NULL, PRIMARY KEY (id, business_date))
+              PARTITION BY RANGE (business_date);
+            CREATE TABLE app.t_line (id serial PRIMARY KEY, memo_id bigint, business_date date,
+              FOREIGN KEY (memo_id, business_date) REFERENCES app.t_memo (id, business_date));
+            CREATE TABLE app.u_other (id bigint GENERATED ALWAYS AS IDENTITY, business_date date NOT NULL, PRIMARY KEY (id, business_date))
+              PARTITION BY RANGE (business_date);
+            INSERT INTO app.partition_policy (parent) VALUES ('app.t_memo'), ('app.u_other');
+            """.trimIndent(),
+        )
+        assertEquals("2", c.scalar("SELECT app.ensure_partitions('2026-10-01', '2026-10-01')"))
+        c.exec("INSERT INTO app.t_memo (business_date) VALUES ('2026-12-15'); INSERT INTO app.t_line (memo_id, business_date) SELECT id, business_date FROM app.t_memo")
+        // t_memo cannot re-route its default rows (a foreign key points at them); u_other still gets its months.
+        assertEquals("2", c.scalar("SELECT app.ensure_partitions('2026-11-01', '2026-12-01')"))
+        assertEquals("app.u_other_y2026m12", c.scalar("SELECT to_regclass('app.u_other_y2026m12')::text"))
+        assertEquals("app.t_memo_default", c.scalar("SELECT tableoid::regclass::text FROM app.t_memo"))
+        assertTrue(c.scalar("SELECT last_error FROM app.partition_policy WHERE parent = 'app.t_memo'")!!.isNotBlank())
+        assertEquals(null, c.scalar("SELECT last_error FROM app.partition_policy WHERE parent = 'app.u_other'"))
+    }
+
+    @Test
+    fun noForeignKeyPointsAtAMaintainedPartitionedTable() = db.connect().use { c ->
+        assertEquals(
+            emptyList(),
+            c.column("SELECT conname FROM pg_constraint WHERE contype = 'f' AND confrelid::regclass::text IN (SELECT parent FROM app.partition_policy)"),
+        )
     }
 
     @Test

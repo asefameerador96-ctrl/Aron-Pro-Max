@@ -51,8 +51,13 @@ END $$;
 CREATE TABLE app.partition_policy (
   parent       text PRIMARY KEY,                    -- schema-qualified parent table name
   key_column   text NOT NULL DEFAULT 'business_date',
-  ahead_months int  NOT NULL DEFAULT 3 CHECK (ahead_months BETWEEN 1 AND 24)
+  ahead_months int  NOT NULL DEFAULT 3 CHECK (ahead_months BETWEEN 1 AND 24),
+  last_error    text,                               -- set when the last run failed for this parent (the worker alerts)
+  last_error_at timestamptz
 );
+COMMENT ON TABLE app.partition_policy IS
+  'Range-partitioned parents maintained by app.ensure_partitions. A parent listed here must not be the target of a '
+  'foreign key: re-routing default-partition rows detaches the default, which a referencing row would block.';
 
 CREATE FUNCTION app.ensure_partitions(p_from date DEFAULT NULL, p_to date DEFAULT NULL) RETURNS int
 LANGUAGE plpgsql
@@ -67,8 +72,11 @@ DECLARE
   swap     text;
   has_rows boolean;
   n        int := 0;
+  made     int;
 BEGIN
   FOR p IN SELECT * FROM app.partition_policy ORDER BY parent LOOP
+   BEGIN                                            -- one parent's failure never blocks the others
+    made := 0;
     dflt := p.parent || '_default';
     swap := p.parent || '_default_swap';
     IF to_regclass(dflt) IS NULL THEN
@@ -95,10 +103,18 @@ BEGIN
         ELSE
           EXECUTE format('CREATE TABLE %s PARTITION OF %s FOR VALUES FROM (%L) TO (%L)', part, p.parent, m, m_end);
         END IF;
-        n := n + 1;
+        made := made + 1;
       END IF;
       m := m_end;
     END LOOP;
+    n := n + made;                                  -- counted only when the whole parent succeeded
+    IF p.last_error IS NOT NULL THEN
+      UPDATE app.partition_policy SET last_error = NULL, last_error_at = NULL WHERE parent = p.parent;
+    END IF;
+   EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'ensure_partitions(%): %', p.parent, SQLERRM;
+    UPDATE app.partition_policy SET last_error = SQLERRM, last_error_at = now() WHERE parent = p.parent;
+   END;
   END LOOP;
   RETURN n;
 END $$;

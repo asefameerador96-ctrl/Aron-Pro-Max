@@ -182,18 +182,18 @@ INSERT INTO app.cfg_key (key, area, kind, value_type, default_value, bounds, bou
   ('cfg.sla.pending_rows_alert_h', 'sla', 'S', 'int', '4'::jsonb, '{"min": 1, "max": 24}'::jsonb, NULL, ARRAY['global']::text[], 1, NULL, 'B', 'server', false, false, 'cfg.edit.ops', 'System, retention, SLA (docs/24 s9.5)');
 
 -- Role-dependent defaults that s9.5 states in its Default column ("8 field roles, 12 web roles"; "60 (15 for
--- web-only roles)") are role-scoped values of config version 1, committed by the built-in `system` account
+-- web-only roles)") are role-scoped values of config version 1, committed by the built-in `aron.system` account
 -- (disabled, no password, never logs in). Web-only roles: DMO, WM, TOP, ANALYST, SUPPORT, ADMIN, SUPERADMIN.
 INSERT INTO app.app_user (username, full_name, role, status, must_change_password, disabled_at)
-VALUES ('system', 'Aron system (migrations and jobs)', 'SUPERADMIN', 'disabled', false, now());
+VALUES ('aron.system', 'Aron system (migrations and jobs)', 'SUPERADMIN', 'disabled', false, now());
 
 INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class)
 SELECT 1, 'change', id, 'Role defaults of docs/24 s9.5 (web-role password length and access-token lifetime)', 2
-  FROM app.app_user WHERE username = 'system';
+  FROM app.app_user WHERE username = 'aron.system';
 
 INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, created_by, reason)
 SELECT k.key, 'role', r.ordinal, k.value, '2026-01-01T00:00:00Z', 1, u.id, 'docs/24 s9.5 default for web roles'
   FROM (VALUES ('cfg.auth.password_min_len', '12'::jsonb), ('cfg.auth.access_ttl_min', '15'::jsonb)) AS k(key, value)
  CROSS JOIN app.role_def r
  CROSS JOIN app.app_user u
- WHERE NOT r.field_role AND u.username = 'system';
+ WHERE NOT r.field_role AND u.username = 'aron.system';
