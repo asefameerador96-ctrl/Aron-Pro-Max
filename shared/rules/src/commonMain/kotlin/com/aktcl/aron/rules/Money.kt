@@ -15,13 +15,13 @@ object Money {
         val r = dividend % divisor
         return when {
             r == 0L -> q
-            dividend > 0 -> if (2 * r >= divisor) q + 1 else q
-            else -> if (2 * -r >= divisor) q - 1 else q
+            dividend > 0 -> if (r >= divisor - r) q + 1 else q
+            else -> if (-r >= divisor + r) q - 1 else q
         }
     }
 
     /** Rounds an mtk amount to a whole paisa, half away from zero (cfg.memo.rounding_mode = half_up_paisa). */
-    fun roundToPaisaHalfUp(mtk: Long): Long = divHalfUp(mtk, MTK_PER_PAISA) * MTK_PER_PAISA
+    fun roundToPaisaHalfUp(mtk: Long): Long = checkedMul(divHalfUp(mtk, MTK_PER_PAISA), MTK_PER_PAISA)
 
     /** Line gross in mtk: div_half_up(qty_base x base_price_mtk, price_per_qty) (docs/24 s7.3, s7.6). */
     fun lineGrossMtk(qtyBase: Long, basePriceMtk: Long, pricePerQty: Long = 1L): Long =
@@ -33,10 +33,9 @@ object Money {
         val unit = when (decimals) { 0 -> 1_000L; 1 -> 100L; 2 -> 10L; else -> 1L }
         val scaled = divHalfUp(mtk, unit)
         val negative = scaled < 0
-        val abs = if (negative) -scaled else scaled
-        val scale = when (decimals) { 0 -> 1L; 1 -> 10L; 2 -> 100L; else -> 1_000L }
-        val whole = (abs / scale).toString().reversed().chunked(3).joinToString(",").reversed()
-        val frac = if (decimals == 0) "" else "." + (abs % scale).toString().padStart(decimals, '0')
+        val digits = scaled.toString().removePrefix("-").padStart(decimals + 1, '0')
+        val whole = digits.dropLast(decimals).reversed().chunked(3).joinToString(",").reversed()
+        val frac = if (decimals == 0) "" else "." + digits.takeLast(decimals)
         return (if (negative) "-" else "") + whole + frac
     }
 }

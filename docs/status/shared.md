@@ -1,6 +1,6 @@
 # Status: lane shared (Day 1)
 
-## Done (pending checker sign-off, see time log)
+## Done (checker found 3 defects, all fixed with tests in RulesCheckerTest)
 - **N-003** shared rules v1: `Money` (checked arithmetic, `formatTaka`), `Quantity` (units, pack badge), `MemoMath` (totals, settle, verify), `DiscountLine`/`QcLine`. Golden vectors from docs/ui-reference/sr/ and docs/24 s7.4 are tests; oracle and shuffle property tests.
 - **N-004** geofence maths: `Geo.haversineM` (20 independent reference pairs, `shared/rules/reference/haversine_reference.py`), `RadiusResolver`, `GeoVerdicts.verdict` (s11.2 order), teleport and route-single-point helpers.
 - **F-SYS-017** business date: `BusinessDate.of`, `TrustedClock`, `BusinessDateRules.reconcile/classify` (s3.8).

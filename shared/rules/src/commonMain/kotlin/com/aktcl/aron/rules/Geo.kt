@@ -37,7 +37,7 @@ object Geo {
     fun impliedSpeedKmh(distanceM: Double, elapsedMs: Long): Double = when {
         distanceM <= 0.0 -> 0.0
         elapsedMs <= 0L -> Double.POSITIVE_INFINITY
-        else -> distanceM / (elapsedMs / 1000.0) * 3.6
+        else -> distanceM * 3600.0 / elapsedMs
     }
 
     /** GEO_TELEPORT test (docs/24 s11.4): at least [minDistanceM] apart and implied speed above [maxSpeedKmh]. */
