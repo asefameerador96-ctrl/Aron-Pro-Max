@@ -302,7 +302,7 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   PERFORM pg_advisory_xact_lock(7322841001);           -- one writer at a time keeps the chain linear
-  NEW.at := now();
+  NEW.at := clock_timestamp();                        -- taken under the lock, so at follows chain_seq
   NEW.business_date := app.dhaka_date(NEW.at);
   SELECT chain_seq + 1, row_hash INTO NEW.chain_seq, NEW.prev_hash FROM app.audit_log ORDER BY chain_seq DESC LIMIT 1;
   NEW.chain_seq := coalesce(NEW.chain_seq, 1);
