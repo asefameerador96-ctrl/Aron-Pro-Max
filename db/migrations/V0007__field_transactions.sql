@@ -44,6 +44,164 @@ BEGIN
   RETURN NEW;
 END $$;
 
+-- ---------- programmes, loyalty and content (contract v1.1, docs/24 s4.14; masters the field records point at) ----------
+CREATE TABLE app.programme (
+  id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  kind              text NOT NULL CHECK (kind IN ('diamond_league','astha','campaign','superstar')),
+  code              text NOT NULL UNIQUE CHECK (code ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$'),
+  name_en           text NOT NULL CHECK (length(name_en) BETWEEN 1 AND 120),
+  name_bn           text CHECK (length(name_bn) <= 120),
+  period_label      text CHECK (length(period_label) <= 40),          -- 2026-10 (Diamond League month), 2026-Q4 (Astha quarter)
+  active_from       date NOT NULL,
+  active_to         date NOT NULL,
+  points_expire_on  date,
+  rules             jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(rules) = 'object'),
+  status            text NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
+  external_ref      varchar(64) UNIQUE,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  version           int NOT NULL DEFAULT 1 CHECK (version >= 1),
+  created_by        bigint,
+  updated_by        bigint,
+  CHECK (active_to >= active_from)
+);
+CREATE TRIGGER programme_touch BEFORE UPDATE ON app.programme FOR EACH ROW EXECUTE FUNCTION app.touch_master();
+
+CREATE TABLE app.programme_enrolment (
+  id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  programme_id      bigint NOT NULL REFERENCES app.programme(id),
+  outlet_id         bigint NOT NULL REFERENCES app.outlet(id),
+  league_label      text CHECK (length(league_label) <= 40),
+  tier_code         text CHECK (tier_code ~ '^[a-z][a-z0-9_]{1,40}$'),
+  base_target       numeric(16,3) CHECK (base_target >= 0),
+  valid_from        date NOT NULL,
+  valid_to          date,                              -- exclusive; null = open
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  created_by        bigint,
+  CHECK (valid_to IS NULL OR valid_to > valid_from),
+  EXCLUDE USING gist (programme_id WITH =, outlet_id WITH =, daterange(valid_from, valid_to, '[)') WITH &&)
+);
+CREATE INDEX ON app.programme_enrolment (outlet_id);
+
+CREATE TABLE app.gift (
+  id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  programme_id      bigint NOT NULL REFERENCES app.programme(id),
+  code              text NOT NULL CHECK (code ~ '^[a-z][a-z0-9_]{1,40}$'),
+  name_en           text NOT NULL CHECK (length(name_en) BETWEEN 1 AND 120),
+  name_bn           text CHECK (length(name_bn) <= 120),
+  points_cost       int CHECK (points_cost BETWEEN 1 AND 100000),    -- null for Astha gifts (chosen, not redeemed)
+  tier_codes        text[] NOT NULL DEFAULT '{}' CHECK (cardinality(tier_codes) <= 10),
+  image_url         text CHECK (length(image_url) <= 1000),
+  status            text NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  version           int NOT NULL DEFAULT 1 CHECK (version >= 1),
+  UNIQUE (programme_id, code)
+);
+CREATE TRIGGER gift_touch BEFORE UPDATE ON app.gift FOR EACH ROW EXECUTE FUNCTION app.touch_master();
+
+-- Astha gift chosen for an outlet and quarter (TSO on the web); locked by the SR's hand-over photo.
+CREATE TABLE app.gift_assignment (
+  id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  programme_id      bigint NOT NULL REFERENCES app.programme(id),
+  quarter           text NOT NULL CHECK (quarter ~ '^[0-9]{4}-Q[1-4]$'),
+  outlet_id         bigint NOT NULL REFERENCES app.outlet(id),
+  route_id          bigint NOT NULL REFERENCES app.route(id),
+  gift_id           bigint NOT NULL REFERENCES app.gift(id),
+  tier_code         text CHECK (tier_code ~ '^[a-z][a-z0-9_]{1,40}$'),
+  chosen_by_user_id bigint REFERENCES app.app_user(id),
+  chosen_at         timestamptz,
+  photo_media_uuid  uuid,
+  locked_at         timestamptz,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  version           int NOT NULL DEFAULT 1 CHECK (version >= 1),
+  UNIQUE (programme_id, quarter, outlet_id)
+);
+CREATE TRIGGER gift_assignment_touch BEFORE UPDATE ON app.gift_assignment FOR EACH ROW EXECUTE FUNCTION app.touch_master();
+
+-- Astha targets by route (and optionally outlet and brand) and month; never negative.
+CREATE TABLE app.astha_target (
+  id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  programme_id      bigint REFERENCES app.programme(id),
+  month             date NOT NULL CHECK (extract(day FROM month) = 1),
+  route_id          bigint NOT NULL REFERENCES app.route(id),
+  outlet_id         bigint REFERENCES app.outlet(id),
+  brand_id          bigint REFERENCES app.product_node(id),
+  std_target        numeric(16,3) NOT NULL CHECK (std_target >= 0),
+  memo_target       int NOT NULL CHECK (memo_target >= 0),
+  batch_uuid        uuid,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  created_by        bigint
+);
+CREATE UNIQUE INDEX astha_target_one ON app.astha_target (month, route_id, coalesce(outlet_id, 0), coalesce(brand_id, 0));
+
+-- Points ledger, derived on the server, idempotent on (source_type, source_id) (s4.14 item 1). Append-only.
+CREATE TABLE app.loyalty_ledger (
+  id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  outlet_id         bigint NOT NULL REFERENCES app.outlet(id),
+  programme_id      bigint NOT NULL REFERENCES app.programme(id),
+  source_type       text NOT NULL CHECK (source_type ~ '^[a-z][a-z_]{1,40}$'),   -- survey_response, redemption, expiry, adjustment, migration
+  source_id         text NOT NULL CHECK (length(source_id) <= 64),
+  points            int NOT NULL CHECK (points <> 0),                           -- + earning, - debit or expiry
+  business_date     date NOT NULL,
+  expires_on        date,
+  flags             text[] NOT NULL DEFAULT '{}',
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (source_type, source_id)
+);
+CREATE INDEX ON app.loyalty_ledger (outlet_id, programme_id, business_date);
+CREATE TRIGGER loyalty_ledger_append_only BEFORE UPDATE OR DELETE ON app.loyalty_ledger FOR EACH ROW EXECUTE FUNCTION app.deny_mutation();
+
+-- AV and KV items played during calls (ContentItem). A changed asset bumps version.
+CREATE TABLE app.content_item (
+  id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  version           int NOT NULL DEFAULT 1 CHECK (version >= 1),
+  kind              text NOT NULL CHECK (kind IN ('av','kv')),
+  title_en          text NOT NULL CHECK (length(title_en) BETWEEN 1 AND 120),
+  title_bn          text CHECK (length(title_bn) <= 120),
+  asset_url         text NOT NULL CHECK (length(asset_url) <= 1000),
+  sha256            bytea NOT NULL CHECK (length(sha256) = 32),
+  bytes             int NOT NULL CHECK (bytes BETWEEN 1 AND 20971520),
+  duration_s        int CHECK (duration_s BETWEEN 1 AND 600),
+  valid_from        date NOT NULL,
+  valid_to          date NOT NULL,
+  sequence          smallint NOT NULL CHECK (sequence BETWEEN 1 AND 20),
+  outlet_ids        bigint[] NOT NULL DEFAULT '{}' CHECK (cardinality(outlet_ids) <= 5000),   -- empty = every outlet
+  status            text NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  created_by        bigint,
+  CHECK (valid_to >= valid_from)
+);
+
+-- Risk signals computed by the worker (s11.4), one per code, subject and business date (idempotent re-evaluation).
+CREATE TABLE app.risk_signal (
+  id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  code              text NOT NULL CHECK (code IN ('GEO_MOCK','GEO_TELEPORT','GEO_ZERO_JITTER','GEO_PERFECT_ACCURACY','GEO_SAME_POINT',
+                                                  'GEO_ROUTE_SINGLE_POINT','GEO_STALE_FIX','GEO_GNSS_INCONSISTENT','GEO_GNSS_TIME_SKEW',
+                                                  'GEO_DEVICE_SERVER_MISMATCH','GEO_SHORT_VISIT_GAPS','DEVICE_NOT_OWNER','DEVICE_INTEGRITY_FAIL',
+                                                  'DEVICE_DEBUG_ENABLED','DEVICE_MOCK_APP_PRESENT','DEVICE_POLICY_DRIFT','CLOCK_SKEW',
+                                                  'GEO_OUT_OF_BOUNDS','CONFIG_STAMP_REGRESS')),
+  severity          smallint NOT NULL CHECK (severity BETWEEN 1 AND 4),
+  business_date     date NOT NULL,
+  subject_type      text NOT NULL CHECK (subject_type IN ('user','device','visit','outlet','route','memo')),
+  subject_id        text NOT NULL CHECK (length(subject_id) <= 64),
+  user_id           bigint REFERENCES app.app_user(id),
+  route_id          bigint REFERENCES app.route(id),
+  zone_id           bigint REFERENCES app.zone(id),
+  score             numeric(6,2) NOT NULL CHECK (score BETWEEN 0 AND 300),
+  evidence          jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(evidence) = 'object'),
+  status            text NOT NULL DEFAULT 'open' CHECK (status IN ('open','reviewed','dismissed','confirmed')),
+  config_version    bigint NOT NULL CHECK (config_version >= 0),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (code, subject_type, subject_id, business_date)
+);
+CREATE INDEX ON app.risk_signal (business_date, status);
+CREATE INDEX ON app.risk_signal (user_id, business_date);
+
 -- Every location fix embedded in a record (s11.1), keyed by the record that carried it and the slot it filled
 -- (fix, or edit_fix on an edited memo). Feeds the server re-check and the risk rules (s11.3, s11.4). Immutable.
 CREATE TABLE app.geo_fix (
@@ -57,7 +215,8 @@ CREATE TABLE app.geo_fix (
   route_id                bigint REFERENCES app.route(id),
   captured_at             timestamptz NOT NULL,
   purpose                 text NOT NULL CHECK (purpose IN ('attendance_in','attendance_out','visit_open','force_sale','outlet_capture',
-                                                           'outlet_verification','memo_edit','memo_void','due_collection','refresh','breadcrumb')),
+                                                           'outlet_verification','memo_edit','memo_void','due_collection','refresh','breadcrumb',
+                                                           'gift_photo','redemption')),
   fix_status              text NOT NULL CHECK (fix_status IN ('ok','timeout','permission_denied','location_off','provider_unavailable')),
   lat                     double precision CHECK (lat BETWEEN -90 AND 90),
   lng                     double precision CHECK (lng BETWEEN -180 AND 180),
@@ -327,7 +486,7 @@ CREATE TABLE app.stock_movement (
   created_at           timestamptz NOT NULL DEFAULT now(),
   voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
   external_ref         varchar(64) UNIQUE,
-  kind                 text NOT NULL CHECK (kind IN ('issue','return','adjustment','damaged','short')),
+  kind                 text NOT NULL CHECK (kind IN ('issue','return','adjustment','damaged','short','qc_return')),
   sku_id               bigint NOT NULL REFERENCES app.sku(id),
   qty_entered          int NOT NULL CHECK (qty_entered <> 0 AND qty_entered BETWEEN -10000000 AND 10000000),
   unit_entered         text NOT NULL CHECK (unit_entered IN ('stick','piece','dozen','pack')),
@@ -371,7 +530,7 @@ CREATE TABLE app.visit (
   created_at           timestamptz NOT NULL DEFAULT now(),
   voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
   external_ref         varchar(64),
-  visit_kind           text NOT NULL CHECK (visit_kind IN ('sr_call','amo_control_call','amo_joint_call','tso_visit')),
+  visit_kind           text NOT NULL CHECK (visit_kind IN ('sr_call','amo_control_call','amo_joint_call','tso_visit','web_entry')),
   outlet_id            bigint NOT NULL REFERENCES app.outlet(id),
   opened_at            timestamptz NOT NULL,
   sequence_no          int NOT NULL CHECK (sequence_no BETWEEN 1 AND 1000),
@@ -403,7 +562,7 @@ CREATE TABLE app.visit (
   close_client_uuid    uuid,
   close_received_at    timestamptz,
   close_captured_at    timestamptz,
-  outcome_code         text CHECK (outcome_code IN ('sold','zero_sale_stock_ok','closed','owner_absent','refused','competitor_exclusive','abandoned')),
+  outcome_code         text CHECK (outcome_code IN ('sold','zero_sale_stock_ok','closed','owner_absent','refused','competitor_exclusive','abandoned','not_reached')),
   call_started_at      timestamptz,
   call_declined        boolean,
   ended_at             timestamptz,
@@ -1021,7 +1180,7 @@ CREATE TABLE app.outlet_change_request (
   created_at           timestamptz NOT NULL DEFAULT now(),
   voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
   external_ref         varchar(64) UNIQUE,
-  request_type         text NOT NULL CHECK (request_type IN ('new','close','info','cluster','location')),
+  request_type         text NOT NULL CHECK (request_type IN ('new','close','info','cluster','location','route_add')),
   outlet_id            bigint REFERENCES app.outlet(id),
   proposed             jsonb NOT NULL CHECK (jsonb_typeof(proposed) = 'object'),   -- OutletProposal
   fix_status           text CHECK (fix_status IN ('ok','timeout','permission_denied','location_off','provider_unavailable')),
@@ -1285,7 +1444,7 @@ CREATE TABLE app.media (
   created_at           timestamptz NOT NULL DEFAULT now(),
   voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
   external_ref         varchar(64) UNIQUE,
-  purpose              text NOT NULL CHECK (purpose IN ('force_sale','outlet_capture','outlet_verification','survey','feedback','support')),
+  purpose              text NOT NULL CHECK (purpose IN ('force_sale','outlet_capture','outlet_verification','survey','feedback','support','gift_photo')),
   ref_type             text NOT NULL,
   ref_client_uuid      uuid NOT NULL,
   sha256               bytea NOT NULL CHECK (length(sha256) = 32),
@@ -1380,6 +1539,387 @@ CREATE TRIGGER cfg_ack_immutable BEFORE UPDATE OR DELETE ON app.cfg_ack
   FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
 CREATE INDEX ON app.cfg_ack (acked_config_version);
 CREATE INDEX ON app.cfg_ack (device_id, acked_config_version);
+
+-- AV / KV item shown or skipped during a call (telemetry class, s4.14 item 5).
+CREATE TABLE app.content_view (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  route_id             bigint REFERENCES app.route(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  visit_client_uuid    uuid NOT NULL,
+  content_id           bigint NOT NULL REFERENCES app.content_item(id),
+  content_version      int NOT NULL CHECK (content_version >= 1),
+  kind                 text NOT NULL CHECK (kind IN ('av','kv')),
+  outcome              text NOT NULL CHECK (outcome IN ('viewed','skipped_missing','skipped_user')),
+  sequence_no          smallint NOT NULL CHECK (sequence_no BETWEEN 1 AND 20),
+  started_at           timestamptz,
+  duration_ms          int CHECK (duration_ms BETWEEN 0 AND 3600000)
+);
+CREATE INDEX ON app.content_view (business_date);
+CREATE TRIGGER content_view_immutable BEFORE UPDATE OR DELETE ON app.content_view
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+CREATE INDEX ON app.content_view (content_id, business_date);
+
+-- Loyalty redemption basket (Diamond League, campaign); the server debits app.loyalty_ledger.
+CREATE TABLE app.redemption (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  route_id             bigint REFERENCES app.route(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  sig                  text CHECK (sig ~ '^[A-Za-z0-9_-]{86}$'),  -- ES256 over the record (s8.3)
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  outlet_id            bigint NOT NULL REFERENCES app.outlet(id),
+  programme_id         bigint NOT NULL REFERENCES app.programme(id),
+  visit_client_uuid    uuid,
+  balance_before_points int NOT NULL CHECK (balance_before_points >= 0),
+  points_total         int NOT NULL CHECK (points_total BETWEEN 1 AND 100000),
+  cash_points          int NOT NULL CHECK (cash_points BETWEEN 0 AND 100000),
+  cash_mtk             bigint NOT NULL CHECK (cash_mtk >= 0),
+  cash_rate_mtk_per_point bigint NOT NULL CHECK (cash_rate_mtk_per_point BETWEEN 0 AND 100000),
+  line_count           smallint NOT NULL CHECK (line_count BETWEEN 0 AND 20),
+  confirmed_at         timestamptz NOT NULL,
+  fix_status           text CHECK (fix_status IN ('ok','timeout','permission_denied','location_off','provider_unavailable')),
+  fix_lat              double precision CHECK (fix_lat BETWEEN -90 AND 90),
+  fix_lng              double precision CHECK (fix_lng BETWEEN -180 AND 180),
+  fix_accuracy_m       double precision CHECK (fix_accuracy_m >= 0),
+  fix_is_mock          boolean,
+  server_flags         text[] NOT NULL DEFAULT '{}'  -- negative_balance and the like (cfg.loyalty.negative_balance_policy)
+);
+CREATE INDEX ON app.redemption (business_date);
+CREATE TRIGGER redemption_immutable BEFORE UPDATE OR DELETE ON app.redemption
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at', 'server_flags');
+CREATE INDEX ON app.redemption (outlet_id, programme_id);
+
+-- One gift of a redemption basket; points_total = qty x points_each.
+CREATE TABLE app.redemption_line (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  route_id             bigint REFERENCES app.route(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  redemption_client_uuid uuid NOT NULL,
+  gift_id              bigint NOT NULL REFERENCES app.gift(id),
+  qty                  smallint NOT NULL CHECK (qty BETWEEN 1 AND 50),
+  points_each          int NOT NULL CHECK (points_each BETWEEN 1 AND 100000),
+  points_total         int NOT NULL CHECK (points_total BETWEEN 1 AND 1000000),
+  CHECK (points_total = qty * points_each)
+);
+CREATE INDEX ON app.redemption_line (business_date);
+CREATE TRIGGER redemption_line_immutable BEFORE UPDATE OR DELETE ON app.redemption_line
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+CREATE INDEX ON app.redemption_line (redemption_client_uuid);
+
+-- Gift hand-over photo: one per Astha assignment, one per redeemed campaign unit (gift_photo_exists).
+CREATE TABLE app.gift_photo (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  route_id             bigint REFERENCES app.route(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  sig                  text CHECK (sig ~ '^[A-Za-z0-9_-]{86}$'),  -- ES256 over the record (s8.3)
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  programme_kind       text NOT NULL CHECK (programme_kind IN ('diamond_league','astha','campaign','superstar')),
+  outlet_id            bigint NOT NULL REFERENCES app.outlet(id),
+  gift_id              bigint NOT NULL REFERENCES app.gift(id),
+  gift_assignment_id   bigint REFERENCES app.gift_assignment(id),
+  redemption_client_uuid uuid,
+  unit_no              smallint CHECK (unit_no BETWEEN 1 AND 50),
+  photo_uuid           uuid NOT NULL,
+  fix_status           text CHECK (fix_status IN ('ok','timeout','permission_denied','location_off','provider_unavailable')),
+  fix_lat              double precision CHECK (fix_lat BETWEEN -90 AND 90),
+  fix_lng              double precision CHECK (fix_lng BETWEEN -180 AND 180),
+  fix_accuracy_m       double precision CHECK (fix_accuracy_m >= 0),
+  fix_is_mock          boolean,
+  CHECK (gift_assignment_id IS NOT NULL OR redemption_client_uuid IS NOT NULL)
+);
+CREATE INDEX ON app.gift_photo (business_date);
+CREATE TRIGGER gift_photo_immutable BEFORE UPDATE OR DELETE ON app.gift_photo
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+CREATE UNIQUE INDEX gift_photo_one_per_assignment ON app.gift_photo (gift_assignment_id)
+  WHERE gift_assignment_id IS NOT NULL AND voided_at IS NULL;
+CREATE UNIQUE INDEX gift_photo_one_per_unit ON app.gift_photo (redemption_client_uuid, gift_id, unit_no)
+  WHERE redemption_client_uuid IS NOT NULL AND voided_at IS NULL;
+
+-- AMO check of the retail price of a SKU during a visit.
+CREATE TABLE app.price_compliance_check (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  route_id             bigint REFERENCES app.route(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  visit_client_uuid    uuid NOT NULL,
+  sku_id               bigint NOT NULL REFERENCES app.sku(id),
+  price_type           text NOT NULL CHECK (price_type IN ('outlet','cc','distributor')),
+  reference_price_mtk  bigint NOT NULL CHECK (reference_price_mtk >= 0),
+  observed_price_mtk   bigint NOT NULL CHECK (observed_price_mtk >= 0),
+  compliant            boolean NOT NULL,
+  note                 text CHECK (length(note) <= 300)
+);
+CREATE INDEX ON app.price_compliance_check (business_date);
+CREATE TRIGGER price_compliance_check_immutable BEFORE UPDATE OR DELETE ON app.price_compliance_check
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+CREATE INDEX ON app.price_compliance_check (visit_client_uuid);
+
+-- Review of a risk signal (record risk_review from the AMO Exceptions screen, or the online review_uuid). Append-only.
+CREATE TABLE app.risk_signal_review (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  signal_id            bigint NOT NULL REFERENCES app.risk_signal(id),
+  action               text NOT NULL CHECK (action IN ('reviewed','dismissed','confirmed')),
+  note                 text CHECK (length(note) <= 500),
+  source               text NOT NULL DEFAULT 'record' CHECK (source IN ('record','online'))
+);
+CREATE INDEX ON app.risk_signal_review (business_date);
+CREATE TRIGGER risk_signal_review_immutable BEFORE UPDATE OR DELETE ON app.risk_signal_review
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+CREATE INDEX ON app.risk_signal_review (signal_id, captured_at);
+
+-- Sampled screen and action events (cfg.app.activity_log_sample_pct); one row per record.
+CREATE TABLE app.activity_log (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  events               jsonb NOT NULL CHECK (jsonb_typeof(events) = 'array' AND jsonb_array_length(events) BETWEEN 1 AND 200)
+);
+CREATE INDEX ON app.activity_log (business_date);
+CREATE TRIGGER activity_log_immutable BEFORE UPDATE OR DELETE ON app.activity_log
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+
+-- Scrubbed crash, ANR and handled-error report from a phone.
+CREATE TABLE app.app_error (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  occurred_at          timestamptz NOT NULL,
+  kind                 text NOT NULL CHECK (kind IN ('crash','anr','handled')),
+  exception_class      text NOT NULL CHECK (length(exception_class) <= 200),
+  message              text CHECK (length(message) <= 500),
+  stack                text CHECK (length(stack) <= 16000),
+  screen               text CHECK (length(screen) <= 60),
+  app_version          text NOT NULL CHECK (app_version ~ '^[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[+][0-9]{1,10}$')
+);
+CREATE INDEX ON app.app_error (business_date);
+CREATE TRIGGER app_error_immutable BEFORE UPDATE OR DELETE ON app.app_error
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+CREATE INDEX ON app.app_error (app_version, occurred_at);
+
+-- A memo number consumed without a memo (explains the gap in the memo-number-gaps report).
+CREATE TABLE app.sale_abort (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  route_id             bigint REFERENCES app.route(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  memo_no              text NOT NULL CHECK (memo_no ~ '^[a-z][a-z0-9]{3,31}-[0-9]{6}-[0-9]{3,4}$'),
+  reason               text NOT NULL CHECK (reason IN ('user_cancelled','app_killed','commit_failed')),
+  visit_client_uuid    uuid,
+  outlet_id            bigint REFERENCES app.outlet(id)
+);
+CREATE INDEX ON app.sale_abort (business_date);
+CREATE TRIGGER sale_abort_immutable BEFORE UPDATE OR DELETE ON app.sale_abort
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+CREATE INDEX ON app.sale_abort (memo_no);
+
+-- Acceptance of a notice (record consent_accept, once per user and policy version on a phone).
+CREATE TABLE app.user_consent (
+  id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_uuid          uuid NOT NULL UNIQUE,          -- the record's client_uuid (idempotency key, docs/24 s3.3)
+  family_uuid          uuid NOT NULL,
+  business_date        date NOT NULL,                -- Asia/Dhaka date of the trusted capture time
+  business_date_device date,                         -- the phone's date when the server re-dated the row (s3.8 item 3)
+  user_id              bigint NOT NULL REFERENCES app.app_user(id),   -- from the token, never from the body
+  device_id            bigint,                       -- FK to app.device added in V0010
+  acting_for_user_id   bigint REFERENCES app.app_user(id),
+  captured_at          timestamptz NOT NULL,
+  captured_elapsed_ms  bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count           int CHECK (boot_count >= 0),
+  clock_offset_ms      bigint,
+  captured_offline     boolean NOT NULL DEFAULT false,
+  schema_version       int NOT NULL DEFAULT 1 CHECK (schema_version >= 1),
+  config_version       bigint NOT NULL CHECK (config_version >= 0),
+  bundle_version       text,
+  bundle_stale         boolean NOT NULL DEFAULT false,
+  first_batch_uuid     uuid,
+  received_at          timestamptz NOT NULL DEFAULT now(),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  voided_at            timestamptz,                  -- admin data void tombstone (D24-45); never deleted
+  external_ref         varchar(64) UNIQUE,
+  policy_key           text NOT NULL CHECK (policy_key IN ('location_notice')),
+  policy_version       int NOT NULL CHECK (policy_version >= 1),
+  accepted             boolean NOT NULL,
+  locale               text NOT NULL CHECK (locale IN ('bn','en')),
+  shown_at             timestamptz NOT NULL
+);
+CREATE INDEX ON app.user_consent (business_date);
+CREATE TRIGGER user_consent_immutable BEFORE UPDATE OR DELETE ON app.user_consent
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+CREATE INDEX ON app.user_consent (user_id, policy_key, policy_version);
 
 ALTER TABLE app.qc_entry_line ADD CONSTRAINT qc_entry_line_entry_fk FOREIGN KEY (qc_entry_id) REFERENCES app.qc_entry(id);
 

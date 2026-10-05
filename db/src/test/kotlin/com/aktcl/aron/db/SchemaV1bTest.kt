@@ -28,13 +28,16 @@ class SchemaV1bTest {
             "distribution_check", "distribution_check_line", "call_assessment", "call_assessment_answer",
             "outlet_change_request", "outlet_request_event", "task", "task_event", "visit_plan", "visit_plan_outlet",
             "leave_application", "feedback", "media", "geo_breadcrumb", "cfg_ack",
+            // contract v1.1
+            "content_view", "redemption", "redemption_line", "gift_photo", "price_compliance_check", "risk_signal_review",
+            "activity_log", "app_error", "sale_abort", "user_consent",
         )
         val PARTITIONED = setOf("visit", "memo", "memo_line")
 
         /** Tables of row N-006 that must carry business_date and a timestamptz column. */
         val V1B_TABLES = DEVICE_TABLES + listOf(
             "geo_fix", "route_day", "supervisor_day", "qc_entry", "due_ledger", "indent_movement", "final_submit",
-            "submit_void_event", "route_day_void_barrier", "domain_event",
+            "submit_void_event", "route_day_void_barrier", "domain_event", "loyalty_ledger", "risk_signal",
         )
 
         @JvmStatic fun deviceTables() = DEVICE_TABLES
@@ -62,6 +65,11 @@ class SchemaV1bTest {
                 "mime" to "'image/jpeg'",
             ),
             "outlet_request_event" to mapOf("via" to "'device'"),
+            "gift_photo" to mapOf("redemption_client_uuid" to "gen_random_uuid()"),
+            "sale_abort" to mapOf("memo_no" to "'sr0001-261005-002'"),
+            "user_consent" to mapOf("policy_key" to "'location_notice'"),
+            "app_error" to mapOf("app_version" to "'1.0.3+103'"),
+            "activity_log" to mapOf("events" to "'[{\"at\": \"2026-10-05T04:00:00.000Z\", \"screen\": \"home\", \"action\": \"open\"}]'"),
         )
     }
 
@@ -89,6 +97,12 @@ class SchemaV1bTest {
                 INSERT INTO app.product_node (level, parent_id, name) SELECT 'variant', id, 'Maxim Regular' FROM app.product_node WHERE name = 'Maxim';
                 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, entry_unit_default)
                   SELECT 'MaxR-10S', id, 'cigarette', 'Maxim Regular 10', 'MaxR-10S', 'stick', 10, 'stick' FROM app.product_node WHERE level = 'variant';
+                INSERT INTO app.programme (kind, code, name_en, active_from, active_to) VALUES ('diamond_league', 'DL-2026-10', 'Diamond League', '2026-10-01', '2026-10-31');
+                INSERT INTO app.gift (programme_id, code, name_en, points_cost) SELECT id, 'mug', 'Mug', 100 FROM app.programme;
+                INSERT INTO app.content_item (kind, title_en, asset_url, sha256, bytes, valid_from, valid_to, sequence)
+                  VALUES ('kv', 'KV', 'https://example.invalid/kv.jpg', decode(repeat('ab', 32), 'hex'), 100, '2026-10-01', '2026-10-31', 1);
+                INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, score, config_version)
+                  VALUES ('GEO_MOCK', 4, '2026-10-05', 'user', '1', 100, 0);
                 INSERT INTO app.qc_entry (visit_client_uuid, business_date, user_id, outlet_id)
                   SELECT gen_random_uuid(), '2026-10-05', u.id, o.id FROM app.app_user u, app.outlet o WHERE u.username = 'sr0001';
                 """.trimIndent(),
@@ -100,6 +114,10 @@ class SchemaV1bTest {
             fk["sku"] = c.scalar("SELECT id FROM app.sku")!!
             fk["brand"] = c.scalar("SELECT id FROM app.product_node WHERE level = 'brand'")!!
             fk["qc_entry"] = c.scalar("SELECT id FROM app.qc_entry")!!
+            fk["programme"] = c.scalar("SELECT id FROM app.programme")!!
+            fk["gift"] = c.scalar("SELECT id FROM app.gift")!!
+            fk["content"] = c.scalar("SELECT id FROM app.content_item")!!
+            fk["signal"] = c.scalar("SELECT id FROM app.risk_signal")!!
         }
     }
 
@@ -140,6 +158,10 @@ class SchemaV1bTest {
                 col.name == "sku_id" -> fk["sku"]!!
                 col.name == "brand_id" -> fk["brand"]!!
                 col.name == "qc_entry_id" -> fk["qc_entry"]!!
+                col.name == "programme_id" -> fk["programme"]!!
+                col.name == "gift_id" -> fk["gift"]!!
+                col.name == "content_id" -> fk["content"]!!
+                col.name == "signal_id" -> fk["signal"]!!
                 firstEnumValue(col.name) != null -> "'${firstEnumValue(col.name)}'"
                 col.type == "uuid" -> "gen_random_uuid()"
                 col.type == "date" -> "'2026-10-05'"
@@ -276,6 +298,26 @@ class SchemaV1bTest {
         val id = UUID.randomUUID()
         c.exec(insertSql(c, "visit", id))
         assertEquals("app.visit_y2026m10", c.scalar("SELECT tableoid::regclass::text FROM app.visit WHERE client_uuid = '$id'"))
+    }
+
+    @Test
+    fun oneHandOverPhotoPerAsthaAssignmentAndPerRedeemedUnit() = tx { c ->
+        c.exec(
+            "INSERT INTO app.gift_assignment (programme_id, quarter, outlet_id, route_id, gift_id) " +
+                "VALUES (${fk["programme"]}, '2026-Q4', ${fk["outlet"]}, ${fk["route"]}, ${fk["gift"]})",
+        )
+        val assignment = c.scalar("SELECT id FROM app.gift_assignment")!!
+        val photo = "INSERT INTO app.gift_photo (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, " +
+            "programme_kind, outlet_id, gift_id, gift_assignment_id, redemption_client_uuid, unit_no, photo_uuid) VALUES " +
+            "(gen_random_uuid(), gen_random_uuid(), '2026-10-05', ${fk["user"]}, now(), 0, '%s', ${fk["outlet"]}, ${fk["gift"]}, %s, %s, %s, gen_random_uuid())"
+        c.exec(photo.format("astha", assignment, "NULL", "NULL"))
+        c.exec("SAVEPOINT s")
+        assertEquals("23505", assertFailsWith<SQLException> { c.exec(photo.format("astha", assignment, "NULL", "NULL")) }.sqlState)
+        c.exec("ROLLBACK TO SAVEPOINT s")
+        val redemption = UUID.randomUUID()
+        c.exec(photo.format("campaign", "NULL", "'$redemption'", "1"))
+        c.exec(photo.format("campaign", "NULL", "'$redemption'", "2"))
+        assertEquals("23505", assertFailsWith<SQLException> { c.exec(photo.format("campaign", "NULL", "'$redemption'", "2")) }.sqlState)
     }
 
     @Test

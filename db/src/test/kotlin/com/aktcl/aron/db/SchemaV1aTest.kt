@@ -275,13 +275,15 @@ class SchemaV1aTest {
         val end = spec.indexOfFirst { it.startsWith("Keys of `docs/19` not listed") }
         val specKeys = spec.subList(start, end).mapNotNull { Regex("^\\| `(cfg\\.[^`]+)`").find(it)?.groupValues?.get(1) }.toSet()
         val dbKeys = db.connect().use { it.column("SELECT key FROM app.cfg_key") }.filterNotNull().toSet()
-        assertEquals(172, specKeys.size)
+        assertTrue(specKeys.size >= 226, "s9.5 of contract v1.1 names 226 keys, parsed ${specKeys.size}")
         assertEquals(specKeys, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))
             assertEquals("\"block_sale\"", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.mock_policy'"))
             assertEquals("true", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.device.require_enrolled'"))
             assertEquals("100", c.scalar("SELECT default_value->>'GEO_MOCK' FROM app.cfg_key WHERE key = 'cfg.geo.integrity_weight'"))
+            assertEquals("40", c.scalar("SELECT default_value->>'GEO_OUT_OF_BOUNDS' FROM app.cfg_key WHERE key = 'cfg.geo.integrity_weight'"))
+            assertEquals("2000", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.loyalty.cash_rate_mtk_per_point'"))
             assertTrue(c.scalar("SELECT requires_ack FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'") == "t")
         }
     }
