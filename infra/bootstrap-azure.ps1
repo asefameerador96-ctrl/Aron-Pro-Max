@@ -24,7 +24,9 @@ param(
   [string]$ResourceGroup  = 'rg-aron-dev',
   [string]$Repo           = 'asefameerador96-ctrl/Aron-Pro-Max',
   [string]$Environment    = 'azure-dev',
-  [string]$AppName        = 'sp-aron-github-dev'
+  [string]$AppName        = 'sp-aron-github-dev',
+  # Who receives the budget and platform alerts (comma-separated). Stored as the GitHub variable ARON_ALERT_EMAILS.
+  [string]$AlertEmails    = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,7 +47,7 @@ $providers = @(
   'Microsoft.OperationalInsights', 'Microsoft.Cdn', 'Microsoft.Network',
   'Microsoft.ManagedIdentity', 'Microsoft.LoadTestService', 'Microsoft.Cache',
   'Microsoft.ServiceBus', 'Microsoft.Consumption', 'Microsoft.AlertsManagement',
-  'Microsoft.Authorization'
+  'Microsoft.Authorization', 'Microsoft.EventGrid'
 )
 foreach ($p in $providers) { az provider register --namespace $p --only-show-errors | Out-Null; Check "register $p" }
 
@@ -104,6 +106,11 @@ gh secret set AZURE_TENANT_ID       --body $tenantId       --repo $Repo; Check '
 gh secret set AZURE_SUBSCRIPTION_ID --body $SubscriptionId --repo $Repo; Check 'secret AZURE_SUBSCRIPTION_ID'
 gh variable set AZURE_RESOURCE_GROUP --body $ResourceGroup --repo $Repo; Check 'variable AZURE_RESOURCE_GROUP'
 gh variable set AZURE_LOCATION       --body $Location      --repo $Repo; Check 'variable AZURE_LOCATION'
+if ($AlertEmails) {
+  gh variable set ARON_ALERT_EMAILS  --body $AlertEmails   --repo $Repo; Check 'variable ARON_ALERT_EMAILS'
+} else {
+  Write-Host 'No -AlertEmails given: set the GitHub variable ARON_ALERT_EMAILS before the first deploy.' -ForegroundColor Yellow
+}
 
 # 7. A snapshot of regional compute quota, so heavy load tests cannot starve live services.
 Step "Saving a compute-quota snapshot for $Location"
