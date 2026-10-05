@@ -15,7 +15,8 @@ import { canRead, canWrite, isWritable, type AnyEntity, type AnyField } from "./
 import { getRow, history, listRows } from "./server";
 
 type SearchParams = Record<string, string | string[] | undefined>;
-const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v)?.slice(0, 80) || undefined;
+const one = (v: string | string[] | undefined, max = 80): string | undefined => (Array.isArray(v) ? v[0] : v)?.slice(0, max) || undefined;
+const CURSOR_MAX = 512; // PageCursor maxLength in the contract
 
 /** 401 from the API: rotate the cookies once through the refresh route; a second 401 means sign in again. */
 async function onApiFailure(status: number, problem: Problem, locale: Locale): Promise<ReactNode> {
@@ -65,7 +66,7 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
 
   const query: Record<string, string | undefined> = {};
   for (const f of meta.filters) query[f.param] = one(searchParams[f.param]);
-  const cursor = one(searchParams.cursor);
+  const cursor = one(searchParams.cursor, CURSOR_MAX);
   const r = await listRows(meta, session.at, query, cursor);
   if (!r.ok) return onApiFailure(r.status, r.problem, locale);
 
@@ -133,7 +134,7 @@ export async function EntityEditPage({ meta, id, searchParams }: { meta: AnyEnti
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
   if (!canRead(meta, session.user.role)) return <Forbidden locale={locale} />;
   if (!canWrite(meta, session.user.role)) return <Forbidden locale={locale} />;
-  const row = await getRow(meta, session.at, id, one(searchParams.c));
+  const row = await getRow(meta, session.at, id, one(searchParams.c, CURSOR_MAX));
   if (!row.ok) return onApiFailure(row.status, row.problem, locale);
   if (!row.data) notFound();
   const hist = await history(meta, session.at, id);
