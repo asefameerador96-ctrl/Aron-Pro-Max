@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aron_dpc_label">Aron device policy</string>
+    <string name="aron_dpc_description">Keeps this AKTCL field phone configured for Aron.</string>
+</resources>

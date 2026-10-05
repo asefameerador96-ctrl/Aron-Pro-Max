@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aron_dpc_label">আরন ডিভাইস নীতি</string>
+    <string name="aron_dpc_description">এই AKTCL ফিল্ড ফোনটি আরনের জন্য সেট করে রাখে।</string>
+</resources>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- android:dpc. Each field app (SR, AMO, TSO) embeds this library and is its own device owner (docs/24 s10.1).
+     The component name in the enrolment QR is <applicationId>/com.aktcl.aron.dpc.AronDeviceAdminReceiver. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name="com.aktcl.aron.dpc.AronDeviceAdminReceiver"
+            android:description="@string/aron_dpc_description"
+            android:exported="true"
+            android:label="@string/aron_dpc_label"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/aron_device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

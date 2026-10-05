@@ -1,0 +1,164 @@
+# Aron version catalogue. Owner: infra lane (docs/24-build-spec.md s1, s2).
+# Every version below was checked on 2026-10-05 against Maven Central (repo1.maven.org), Google Maven
+# (dl.google.com/dl/android/maven2) or the Gradle plugin portal, and is the newest STABLE release on that day
+# unless the comment says why not. Rules: lanes may APPEND a library in their own PR (infra reviews);
+# only infra bumps a version; no dynamic versions ("+", "latest.release") anywhere.
+
+[versions]
+# Toolchain
+kotlin = "2.4.20"                      # Kotlin Gradle plugin, stdlib, compose and serialization compiler plugins
+agp = "9.4.1"                          # Android Gradle plugin; needs Gradle >= 9.6.0, compileSdk <= 37, JDK >= 17
+ksp = "2.3.12"                         # KSP2 (versioned independently of Kotlin since 2.3.0)
+android-compileSdk = "37"
+android-targetSdk = "36"               # Android 16 behaviour; 37 is adopted after a device-lab pass (docs/24 s14)
+android-minSdk = "26"                  # Android 8.0 (docs/23 s10 Q4)
+jvm-target = "17"                      # bytecode target for every module (Android D8 and the server JRE 21 both accept it)
+
+# Kotlin libraries (shared by phone and server)
+coroutines = "1.11.0"
+serialization = "1.11.0"
+datetime = "0.8.0"
+
+# Backend
+ktor = "3.6.0"
+flyway = "13.9.0"
+postgresql = "42.7.13"
+hikari = "7.1.0"
+jdbi = "3.55.0"                        # DB access decision: JDBI + hand-written SQL, no jOOQ codegen (docs/24 s2.5)
+logback = "1.6.5"
+nimbus-jose-jwt = "10.10"              # ES256 JWT + JWKS
+argon2-jvm = "2.12"                    # Argon2id (bundled native libargon2, linux-x86-64 glibc)
+azure-sdk-bom = "1.3.8"                # azure-storage-blob (user-delegation SAS), azure-identity (managed identity)
+firebase-admin = "9.11.0"              # FCM HTTP v1 sender
+fastexcel = "0.20.2"                   # streaming xlsx writer for report exports
+appinsights-agent = "3.7.10"           # attached by the container image (infra), listed here so the pin is in one place
+
+# Android
+compose-bom = "2026.09.00"
+activity-compose = "1.13.0"
+lifecycle = "2.11.0"
+navigation-compose = "2.10.2"
+core-ktx = "1.19.1"
+room = "2.8.5"
+hilt = "2.60.1"                        # >= 2.59.2 is required by AGP 9
+androidx-hilt = "1.4.0"
+work = "2.12.0"
+datastore = "1.2.1"
+play-integrity = "1.6.0"
+play-services-location = "21.4.0"
+maps-compose = "9.0.0"                 # AMO and TSO flavours only; never in the SR app (docs/17 s10.5)
+firebase-bom = "34.19.0"
+google-services = "4.5.0"
+okhttp = "5.5.0"                       # phone HTTP client (no Retrofit, no Ktor client on the phone)
+argon2kt = "1.6.0"                     # offline-unlock verifier on the phone (Argon2id, native)
+sqlcipher = "4.19.1"                   # local DB encryption (D-67); wired by the android core lane
+
+# Tests
+junit4 = "4.13.2"                      # Android local unit tests and Robolectric
+junit-bom = "6.1.3"                    # JUnit Platform / Jupiter for shared and backend
+mockk = "1.14.11"                      # the one mocking library (Mockito is not used)
+robolectric = "4.17"
+androidx-test-core = "1.7.0"
+androidx-test-ext-junit = "1.3.0"
+testcontainers = "2.0.5"               # fallback only: CI uses a postgres service container, the dev box a local PostgreSQL 16
+snakeyaml-engine = "3.2"               # reads contract/openapi.yaml in the contract drift tests
+
+[libraries]
+# Kotlin
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "datetime" }
+
+# Backend
+ktor-bom = { module = "io.ktor:ktor-bom", version.ref = "ktor" }
+ktor-server-core = { module = "io.ktor:ktor-server-core" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation" }
+ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages" }
+ktor-server-compression = { module = "io.ktor:ktor-server-compression" }
+ktor-server-call-id = { module = "io.ktor:ktor-server-call-id" }
+ktor-server-auth-jwt = { module = "io.ktor:ktor-server-auth-jwt" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json" }
+ktor-server-test-host = { module = "io.ktor:ktor-server-test-host" }
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+jdbi-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
+jdbi-kotlin = { module = "org.jdbi:jdbi3-kotlin", version.ref = "jdbi" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbus-jose-jwt" }
+argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2-jvm" }
+azure-sdk-bom = { module = "com.azure:azure-sdk-bom", version.ref = "azure-sdk-bom" }
+azure-storage-blob = { module = "com.azure:azure-storage-blob" }
+azure-identity = { module = "com.azure:azure-identity" }
+firebase-admin = { module = "com.google.firebase:firebase-admin", version.ref = "firebase-admin" }
+fastexcel = { module = "org.dhatim:fastexcel", version.ref = "fastexcel" }
+
+# Android
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
+hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
+androidx-hilt-work = { module = "androidx.hilt:hilt-work", version.ref = "androidx-hilt" }
+androidx-hilt-compiler = { module = "androidx.hilt:hilt-compiler", version.ref = "androidx-hilt" }
+androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "androidx-hilt" }
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+play-integrity = { module = "com.google.android.play:integrity", version.ref = "play-integrity" }
+play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "play-services-location" }
+maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = "maps-compose" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
+okhttp-bom = { module = "com.squareup.okhttp3:okhttp-bom", version.ref = "okhttp" }
+okhttp = { module = "com.squareup.okhttp3:okhttp" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3" }
+argon2kt = { module = "com.lambdapioneer.argon2kt:argon2kt", version.ref = "argon2kt" }
+sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
+
+# Tests
+junit4 = { module = "junit:junit", version.ref = "junit4" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit-bom" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidx-test-core" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-test-ext-junit" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
+snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyaml-engine" }
+
+[bundles]
+ktor-server = ["ktor-server-core", "ktor-server-netty", "ktor-server-content-negotiation", "ktor-server-status-pages",
+  "ktor-server-compression", "ktor-server-call-id", "ktor-server-auth-jwt", "ktor-serialization-kotlinx-json"]
+db = ["postgresql", "hikari", "jdbi-core", "jdbi-kotlin", "flyway-core", "flyway-postgresql"]
+compose = ["androidx-compose-ui", "androidx-compose-ui-tooling-preview", "androidx-compose-material3",
+  "androidx-activity-compose", "androidx-lifecycle-runtime-compose", "androidx-lifecycle-viewmodel-compose"]
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+room = { id = "androidx.room", version.ref = "room" }
+google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
