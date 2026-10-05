@@ -20,9 +20,7 @@ param frontDoorPrivateLink = false
 param apiMinReplicas = 1
 param apiMaxReplicas = 3
 param apiPrescaleReplicas = 0
-// The Day-1 backend serves /v1/health only; switch to /v1/health/ready when the backend lane ships it
-// (docs/requests/infra-backend-runtime.md).
-param apiReadinessPath = empty(envReadiness) ? '/v1/health' : envReadiness
+param apiReadinessPath = empty(envReadiness) ? '/v1/health/ready' : envReadiness
 
 param workerMinReplicas = int(empty(envWorkerMin) ? '1' : envWorkerMin)
 param workerMaxReplicas = 2

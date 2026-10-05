@@ -16,7 +16,11 @@ generate() {
 
 [ -n "$kv" ] || { generate "no Key Vault in $rg yet (first deployment)"; exit 0; }
 
-if ! show="$(az keyvault show --resource-group "$rg" --name "$kv" --query id -o tsv 2>&1)"; then
+err="$(mktemp)"; trap 'rm -f "$err"' EXIT
+# stdout carries only the value; error texts (and any CLI warning) go to a file, so a warning can never end up in
+# the password.
+if ! show="$(az keyvault show --resource-group "$rg" --name "$kv" --query id -o tsv 2>"$err")"; then
+  show="$(cat "$err")"
   case "$show" in
     *ResourceNotFound*|*"was not found"*|*NotFound*) generate "Key Vault $kv not found (first deployment)"; exit 0 ;;
     *) die "cannot read Key Vault $kv (not generating a new password): $show" ;;
@@ -24,14 +28,16 @@ if ! show="$(az keyvault show --resource-group "$rg" --name "$kv" --query id -o 
 fi
 vault_id="$show"
 
-read_secret() { az keyvault secret show --vault-name "$kv" --name aron-db-admin-password --query value -o tsv 2>&1; }
+read_secret() { az keyvault secret show --vault-name "$kv" --name aron-db-admin-password --query value -o tsv 2>"$err"; }
 if out="$(read_secret)"; then printf '%s' "$out"; exit 0; fi
+out="$(cat "$err")"
 case "$out" in
   *SecretNotFound*|*"was not found"*) generate "secret absent in $kv"; exit 0 ;;
   *Forbidden*|*"not authorized"*|*AuthorizationFailed*)
     echo "== no read access to $kv yet: granting Key Vault Secrets Officer to the deploy identity" >&2
     ensure_secrets_officer "$vault_id" "$kv" || die "still no data-plane access to $kv after the role assignment"
     if out="$(read_secret)"; then printf '%s' "$out"; exit 0; fi
+    out="$(cat "$err")"
     case "$out" in
       *SecretNotFound*|*"was not found"*) generate "secret absent in $kv"; exit 0 ;;
     esac
