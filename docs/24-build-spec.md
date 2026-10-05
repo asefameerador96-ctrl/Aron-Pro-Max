@@ -273,7 +273,7 @@ Every non-2xx API response is `application/problem+json` with members `type` (`u
 | 401 | `ERR_UNAUTHENTICATED`, `ERR_TOKEN_EXPIRED`, `ERR_SCOPE_CHANGED`, `ERR_PASSWORD_CHANGED`, `ERR_AUTH_INVALID_CREDENTIALS`, `ERR_AUTH_REFRESH_INVALID`, `ERR_AUTH_REFRESH_REUSED`, `ERR_AUTH_MFA_INVALID`, `ERR_AUTH_OTP_INVALID`, `ERR_AUTH_OTP_EXPIRED`, `ERR_DEVICE_PROOF_INVALID` | `ERR_TOKEN_EXPIRED` and `ERR_SCOPE_CHANGED`: yes after one refresh | `ERR_TOKEN_EXPIRED`/`ERR_SCOPE_CHANGED`: refresh once and repeat; `ERR_SCOPE_CHANGED` also schedules a full bundle. Refresh failures (`REFRESH_*`, `PASSWORD_CHANGED`): the phone keeps selling offline on the local session and asks for the password at the next online moment; the outbox keeps uploading on the upload grant |
 | 403 | `ERR_FORBIDDEN`, `ERR_OUT_OF_SCOPE`, `ERR_AUTH_ACCOUNT_LOCKED` (with `retry_after_s`, D24-60), `ERR_AUTH_USER_DISABLED`, `ERR_AUTH_PASSWORD_CHANGE_REQUIRED`, `ERR_AUTH_BIND_LOCKED`, `ERR_AUTH_OTP_ATTEMPTS_EXCEEDED`, `ERR_DEVICE_NOT_ENROLLED`, `ERR_DEVICE_UNBOUND`, `ERR_DEVICE_SUSPENDED`, `ERR_DEVICE_REVOKED`, `ERR_DEVICE_INTEGRITY_FAILED`, `ERR_ENROLMENT_TOKEN_INVALID`, `ERR_ENROLMENT_TOKEN_EXPIRED`, `ERR_ENROLMENT_TOKEN_EXHAUSTED`, `ERR_ENROLMENT_ATTESTATION_FAILED` | no (`ACCOUNT_LOCKED` after `retry_after_s`) | show the localised message; never retry automatically |
 | 404 | `ERR_NOT_FOUND` | no | also returned for an id outside the caller's reach on a single-resource GET (no existence leak) |
-| 409 | `ERR_CONFLICT`, `ERR_REQUEST_STATE`, `ERR_SEPARATION_OF_DUTIES`, `ERR_CFG_SELF_APPROVAL`, `ERR_CFG_FREEZE_WINDOW`, `ERR_MASTER_DUPLICATE_CODE`, `ERR_MASTER_OVERLAP`, `ERR_MASTER_IN_USE`, `ERR_SYNC_BATCH_UUID_REUSED`, `ERR_BUNDLE_NEW_BUSINESS_DATE`, `ERR_DAY_ALREADY_FINAL_SUBMITTED`, `ERR_DAY_NOT_FINAL_SUBMITTED`, `ERR_DAY_SUBMIT_VOID_NOT_ALLOWED`, `ERR_DAY_DATA_VOID_NOT_ALLOWED`, `ERR_DEVICE_LIMIT_REACHED`, `ERR_PUSH_DISABLED` | no | `ERR_SYNC_BATCH_UUID_REUSED`: the phone mints a new `batch_uuid` for the same rows (a phone bug if it happens); `ERR_BUNDLE_NEW_BUSINESS_DATE`: fetch the full bundle |
+| 409 | `ERR_CONFLICT`, `ERR_REQUEST_STATE`, `ERR_SEPARATION_OF_DUTIES`, `ERR_CFG_SELF_APPROVAL`, `ERR_CFG_FREEZE_WINDOW`, `ERR_MASTER_DUPLICATE_CODE`, `ERR_MASTER_OVERLAP`, `ERR_MASTER_IN_USE`, `ERR_SYNC_BATCH_UUID_REUSED`, `ERR_BUNDLE_NEW_BUSINESS_DATE`, `ERR_DAY_ALREADY_FINAL_SUBMITTED`, `ERR_DAY_NOT_FINAL_SUBMITTED`, `ERR_DAY_SUBMIT_VOID_NOT_ALLOWED`, `ERR_DAY_DATA_VOID_NOT_ALLOWED`, `ERR_DEVICE_LIMIT_REACHED`, `ERR_PUSH_DISABLED`, `ERR_ENTRY_WINDOW_CLOSED`, `ERR_GIFT_CHOICE_LOCKED` | no | `ERR_SYNC_BATCH_UUID_REUSED`: the phone mints a new `batch_uuid` for the same rows (a phone bug if it happens); `ERR_BUNDLE_NEW_BUSINESS_DATE`: fetch the full bundle |
 | 410 | `ERR_BUNDLE_CURSOR_EXPIRED` | no | fetch the full bundle (or restart paging) |
 | 412 | `ERR_PRECONDITION_FAILED` | no | reload and re-apply the edit |
 | 413 | `ERR_PAYLOAD_TOO_LARGE`, `ERR_SYNC_BATCH_TOO_LARGE`, `ERR_SYNC_DECOMPRESSION_LIMIT`, `ERR_REPORT_TOO_LARGE` | no | phones halve the batch (s4.7); reports switch to the export job |
@@ -367,17 +367,27 @@ A **family** is a header record and its children, linked by `family_uuid` (the h
 | `device_status` | self | 0 | — | all | `device_status_report` |
 | `config_ack` | self | 0 | — | all | `config_ack` |
 | `day_submit` (scope `route_day` or `supervisor_day`) | self | 0 | — | SR (route-day), AMO (supervisor-day, D24-54) | `route_day_event` |
+| `content_view` (AV or KV shown or skipped) | `visit` | 2 | `visit_client_uuid` | SR, AMO | `content_view` |
+| `redemption` (loyalty basket) | self | 0 | optional `visit_client_uuid` | SR, AMO (`cfg.loyalty.redemption_roles`) | `redemption` (+ `loyalty_ledger` debit) |
+| `redemption_line` | `redemption` | 1 | `redemption_client_uuid` | SR, AMO | `redemption_line` |
+| `gift_photo` (Astha hand-over or campaign Gift Verify) | self | 0 | `gift_assignment_id` or `redemption_client_uuid` | SR, AMO | `gift_photo` |
+| `price_compliance_check` | `visit` | 2 | `visit_client_uuid` | AMO | `price_compliance_check` |
+| `risk_review` (Exceptions screen, offline) | self | 0 | `signal_id` | AMO | `risk_signal_review` |
+| `activity_log` | self | 0 | — | all | `activity_log` |
+| `app_error` | self | 0 | — | all | `app_error` |
+| `sale_abort` (memo number burned without a memo) | self | 0 | optional `visit_client_uuid` | SR, AMO | `sale_abort` |
+| `consent_accept` (location notice) | self | 0 | — | all | `user_consent` |
 
 Ordering rules (the phone MUST follow them; the server tolerates violations by parking):
 1. Outbox order is commit order (`seq`). A batch is the next rows in `seq` order, whole families first.
 2. `day_open` precedes everything of its business date; `day_submit` is always the **last** record of its route-day in the outbox (s4.9).
 3. A child whose parent has not arrived is **parked** (ack `rejected`, `retryable: true`, code `parent_missing`; the phone resends it later). After `cfg.sync.parked_ttl_days` (7) the server converts it to a final rejection and lists it on the quarantine page.
 4. `memo_void` and `due_collection` reference a memo by `client_uuid`; if the memo is unknown they are parked the same way.
-5. The record that references a photo (`visit` with a force-sale photo, `outlet_change_request`, `feedback`) syncs **before** the photo's `media_meta`; the blob upload follows its `media_meta` ack (s4.11).
+5. The record that references a photo (`visit` with a force-sale photo, `outlet_change_request`, `feedback`, `survey_response`, `gift_photo`) syncs **before** the photo's `media_meta`; the blob upload follows its `media_meta` ack (s4.11).
 
 ### 4.3 Record envelope
 
-Every record = envelope + `payload` (schema per type; `unevaluatedProperties: false`). Envelope members: `type`, `client_uuid`, `family_uuid`, `rank` (0 to 3), `schema_version`, `business_date`, `captured_at`, `captured_elapsed_ms`, `boot_count`, `clock_offset_ms`, `captured_offline`, `route_id` (required on visit families and route-day records), `acting_for_user_id` (cover assignments), `bundle_version`, `bundle_stale`, `config_version`, and `sig` on header records (`visit`, `memo`, `attendance_event`, `stock_movement`, `due_collection`, `memo_void`, `outlet_change_request`): an ES256 signature by the device key over the JCS form of the record without `sig` (s8.3). Identity (user, device) is never in the envelope.
+Every record = envelope + `payload` (schema per type; `unevaluatedProperties: false`). Envelope members: `type`, `client_uuid`, `family_uuid`, `rank` (0 to 3), `schema_version`, `business_date`, `captured_at`, `captured_elapsed_ms`, `boot_count`, `clock_offset_ms`, `captured_offline`, `route_id` (required on visit families and route-day records), `acting_for_user_id` (cover assignments), `bundle_version`, `bundle_stale`, `config_version`, and `sig` on header records (`visit`, `memo`, `attendance_event`, `stock_movement`, `due_collection`, `memo_void`, `outlet_change_request`, `redemption`, `gift_photo`): an ES256 signature by the device key over the JCS form of the record without `sig` (s8.3). Identity (user, device) is never in the envelope.
 
 ### 4.4 Batch request
 
@@ -429,6 +439,10 @@ Code catalogue (`RecordOutcomeCode`):
 | `device_revoked` | quarantined | — | device revoked; upload grant still accepted during the grace window |
 | `app_version_blocked` | quarantined | — | captured on a blocked build after the block took effect |
 | `after_month_close` | quarantined | — | business date in a closed month beyond `cfg.day.month_close_grace_days` |
+| `unknown_gift` | rejected | no | gift id unknown or not offered by the programme |
+| `insufficient_points` | rejected | no | redemption above the server balance while `cfg.loyalty.negative_balance_policy` = reject (the default accept_and_flag never uses it) |
+| `gift_photo_exists` | rejected | no | a second hand-over photo for the same Astha assignment or redeemed unit under another `client_uuid` |
+| `programme_inactive` | quarantined | — | programme not active on the business date or outlet not enrolled |
 
 ### 4.6 Resume, retry and ordering guarantees
 
@@ -484,10 +498,10 @@ Rules:
 
 ### 4.10 Bundle
 
-`GET /v1/sync/bundle?for=<date>` returns one snapshot for the caller and a business date (default today). Contents (`Bundle`): `meta` (`bundle_version` = `<date>:<snapshot_seq>`, `valid_for_business_date`, `server_time`, `config_version`, `schema_version`, delta `cursor`, `is_prefetch`, `paged_sections`), `user` (role, locale, `bind_ordinal`, `memo_seq_block_size`), `config` (resolved values plus `scheduled` values within `cfg.sys.schedule_horizon_days` = 7), `code_lists`, `products` (tree and SKUs with base unit and pack factor), `prices` (selling price types valid today plus scheduled), `offers`, `calendar` (holidays and make-up days), `templates` (print templates), **`routes[]`** (one `RouteSnapshot` per route assigned to the user for that date: route, `assignment_kind` primary or cover, `planned_today`, `target_outlets` frozen at the first bundle of the day, `outlets` with **resolved `radius_m` and `max_accuracy_m` per outlet**, open memos for dues, sales plan SKUs, targets, month-to-date achievement, `day_state`), `tasks`, `surveys`, `rubrics`, `supervisor` (AMO and TSO: team members and their routes), `reason_texts` (bn and en text per outcome code), `device_policy_version`.
+`GET /v1/sync/bundle?for=<date>` returns one snapshot for the caller and a business date (default today). Contents (`Bundle`): `meta` (`bundle_version` = `<date>:<snapshot_seq>`, `valid_for_business_date`, `server_time`, `config_version`, `schema_version`, delta `cursor`, `is_prefetch`, `paged_sections`), `user` (role, locale, `bind_ordinal`, `memo_seq_block_size`), `config` (resolved values plus `scheduled` values within `cfg.sys.schedule_horizon_days` = 7), `code_lists`, `products` (tree and SKUs with base unit and pack factor), `prices` (selling price types valid today plus scheduled), `offers`, `calendar` (holidays and make-up days), `templates` (print templates), **`routes[]`** (one `RouteSnapshot` per route assigned to the user for that date: route, `assignment_kind` primary or cover, `planned_today`, `target_outlets` frozen at the first bundle of the day, `outlets` with **resolved `radius_m` and `max_accuracy_m` per outlet**, open memos for dues, sales plan SKUs, targets, month-to-date achievement, `day_state`), `tasks`, `surveys`, `rubrics`, `supervisor` (AMO and TSO: team members and their routes, pending outlet requests, and for the AMO the zone's open `risk_signals` for the offline Exceptions screen), `reason_texts` (bn and en text per outcome code), `device_policy_version`, **`programmes`** (s4.14: programme periods, loyalty balances per outlet as of the previous business day with league label, expiring points and expiry date, the gift catalogue, Astha targets of the user's routes, Astha gift assignments and pending campaign Gift Verify slots; `null` when no programme is active), **`content`** (AV and KV items with assets to download on Wi-Fi) **`tutorials`** and **`my_outlet_requests`** (the user's own outlet requests of the last 30 days with status and rejection reason). Each `BundleOutlet` also carries `suggested_qty` (the suggested-order hook, empty while `cfg.sale.suggested_qty_enabled` is false).
 
 - **Snapshot generation.** The worker pre-builds D+1 snapshots at `cfg.bundle.d1_generation_time` (22:00), refreshes dirtied users at `cfg.bundle.refresh_time` (03:30) and checks coverage at `cfg.bundle.coverage_check_time` (04:30). Snapshots are stored gzip in Blob Storage; the API serves them with `ETag` = `bundle_version` and answers `If-None-Match` with 304.
-- **Sections.** The list sections that may be paged or delta-updated are named by `BundleSectionName`: `outlets`, `open_memos`, `prices`, `offers`, `tasks`, `team`, `pending_outlet_requests`.
+- **Sections.** The list sections that may be paged or delta-updated are named by `BundleSectionName`: `outlets`, `open_memos`, `prices`, `offers`, `tasks`, `team`, `pending_outlet_requests`, `programmes`, `content`.
 - **Size.** An SR bundle MUST stay under `cfg.bundle.max_gz_kb` (2,048 KiB gz). A section with more than `cfg.bundle.page_threshold_rows` (2,000) rows (AMO zone-wide outlets) is paged: listed in `meta.paged_sections` and fetched with `GET /v1/sync/bundle/page?section=&page=` (`cfg.bundle.page_rows` = 1,000 per page).
 - **Delta.** `GET /v1/sync/delta?since=<cursor>&for=<date>` returns `BundleDelta` (`sections` with `upsert`/`delete` per section, `routes_added`, `routes_removed`, `day_states`, `resolutions`, new `cursor`), 304 when nothing changed, `409 ERR_BUNDLE_NEW_BUSINESS_DATE` when the cursor is from an older date, `410 ERR_BUNDLE_CURSOR_EXPIRED` when older than `cfg.bundle.delta_max_age_h` (72 h). A route newly assigned during the day arrives as a whole `RouteSnapshot` in `routes_added`. The phone pulls a delta when `X-Bundle-Version-Current` is newer than its own, on foreground at most every `cfg.bundle.delta_min_interval_min` (30 min), and on an FCM nudge.
 - **Config delta.** `GET /v1/config/delta?since=<version>` returns the resolved values that changed for the caller's scope chain (`ConfigDelta`: `values`, `scheduled`, `removed_keys`, `calendar_changes`, `outlet_radius_changes`, `policy_changed`); 304 when unchanged; 410 when the phone is more than `cfg.sys.config_delta_max_age_versions` (500) behind (fetch the bundle). Triggered when a response's `X-Config-Version` is above the phone's, at most every `cfg.sync.config_check_min_gap_min`.
@@ -507,6 +521,18 @@ For each business date the phone keeps counts of **committed** rows per record t
 Rows are accepted up to `cfg.sync.max_backdate_days` (7) late (older ones are quarantined, s3.8). A month closes at its last day plus `cfg.day.month_close_grace_days` (3); later rows for it are quarantined `after_month_close`. The ingest registry keeps `client_uuid`s for `cfg.retention.ingest_registry_days` (45). The phone keeps acked rows 7 days and photos `cfg.media.local_keep_days` (2) after upload; it never deletes a row that is not acked.
 
 ---
+
+### 4.14 Programme, content and telemetry records
+
+Full parity includes the programmes of the current app (sponsor, overruling D24-56); only the new Phase 2 portals stay out.
+
+1. **Loyalty ledger.** `loyalty_ledger (outlet_id, programme_id, source_type, source_id, points, business_date, expires_on, flags)` is derived on the server and idempotent on `(source_type, source_id)`: one earning row per qualifying `survey_response` (`cfg.loyalty.earning_rules`: the POSM survey photo gives 50 points once per response `client_uuid`; the AMO survey earns nothing), one debit per `redemption`, one expiry row per period from the nightly job after the period's `points_expire_on` (`cfg.loyalty.expiry_days` = 7 days after the period end), and finance adjustments. A replayed upload never posts points twice.
+2. **Redemption.** The phone shows the bundle balance (as of the previous business day) minus its own unsynced redemptions, or the live value of `GET /v1/programmes/loyalty/balances` when online. Confirm commits `redemption` and its `redemption_line` rows in one transaction; cash-back points are at most `cfg.loyalty.cash_max_points`, valued at `cfg.loyalty.cash_rate_mtk_per_point` (2 Tk a point). Server rules: `points_total` = cash points + Σ line points and `cash_mtk` = cash points × rate (otherwise quarantined `arithmetic_mismatch`); an unknown gift is rejected `unknown_gift`; an inactive programme or a non-enrolled outlet is quarantined `programme_inactive`; a balance lower than the phone could know (another phone redeemed first) is **accepted and flagged** `overdraw` (`cfg.loyalty.negative_balance_policy` = accept_and_flag; `reject` returns `insufficient_points`). With `cfg.loyalty.redemption_requires_photo` every redeemed unit waits for a Gift Verify photo (`programmes.pending_gift_verifications`).
+3. **Gift photos.** `gift_photo` carries the hand-over photo (media purpose `gift_photo`, s4.11) and a fix. Astha: one photo per gift assignment (`cfg.astha.one_photo_per_outlet`); the first accepted photo locks the TSO's choice (`cfg.astha.gift_choice_lock` = on_sr_photo; a later edit gets `ERR_GIFT_CHOICE_LOCKED`). Campaign: one photo per redeemed unit (`unit_no`); Submit is enabled only when every slot has a photo. A second photo for the same slot under another `client_uuid` is rejected `gift_photo_exists` (the phone shows "photo already captured").
+4. **Astha.** Targets by outlet, brand and month inside a quarter (`cfg.astha.quarter_start_month`) are entered by `cfg.astha.target_entry_roles` with `PUT /v1/programmes/astha/targets` (never negative; a zero target displays a dash); achievement comes from `dw`; the bundle carries the rows of the user's routes and the AMO picks a route. Gift choices are saved on the web panel with `PUT /v1/programmes/astha/gift-choices` (`cfg.astha.gift_choice_roles`).
+5. **Content.** AV and KV items (`content` in the bundle) download on Wi-Fi into the bounded cache (`cfg.content.download_network_policy`, at most `cfg.content.max_item_mb` each). During a call they play in `sequence` before survey and sale; each shown or skipped item is one `content_view` (telemetry class, duplicates tolerated); a missing asset is `skipped_missing` and never blocks the sale.
+6. **Telemetry and control records.** `activity_log` (sampled at `cfg.app.activity_log_sample_pct`), `app_error` (scrubbed crash and ANR reports), `consent_accept` (once per user and policy version; with `cfg.app.location_notice_required` no sale starts before acceptance), `sale_abort` (a consumed memo number with no memo; it explains the line in the `memo-number-gaps` report), `price_compliance_check` (AMO control call; counted in the AMO reconciliation row) and `risk_review` (the AMO Exceptions screen offline; the same event as the online review with `review_uuid` = `client_uuid`) follow the ack rules of s4.5. Telemetry records (`content_view`, `activity_log`, `app_error`) are never quarantined for scope.
+7. **Superstar.** Server-side only: enrolment slabs and base targets through `PUT /v1/admin/programmes/{id}/enrolments`, criteria from `cfg.superstar.criteria_met_rule`, read through the `superstar-campaign` report. No phone record.
 
 ## 5. Android architecture contract
 
@@ -540,6 +566,7 @@ Several users may log in on one phone (D-66 kept, D24-32). Each user has their o
 | `aron-media` | one-time | `UNMETERED` (or `CONNECTED` after the evidence fallback) | photo upload (s4.11) |
 | `aron-prefetch` | one-time, evening | `UNMETERED`, charging | D+1 bundle pre-fetch |
 | `aron-status` | one-time | `CONNECTED` | device status report on the events of s10.3 |
+| `aron-content` | one-time | `UNMETERED` (per `cfg.content.download_network_policy`) | AV, KV and tutorial asset download into the bounded cache |
 
 No foreground service runs during the day except while printing (Bluetooth) and during a sync triggered by the user. The DPC exempts the app from battery optimisation (s10.2) so Samsung and Honor savers do not kill WorkManager.
 
@@ -591,12 +618,12 @@ One container image `aron-backend` (JRE 21, `backend:app` distribution) runs in 
 |---|---|---|
 | `platform` | env config, Hikari pools (write and read replica), JDBI, transactions, problem mapping, request id, JSON, auth plugin (JWT verify, device proof verify), reach resolver interface, clock, metrics, `RecordHandler` registry, domain-event outbox writer, audit writer | — |
 | `auth` | users' credentials, login, tokens, refresh families, MFA, device enrolment, nonce, device binding and OTP, device admin, enrolment tokens, audit reads | `auth`, `devices`, `admin-devices`, `admin-audit`; `/v1/me` |
-| `sync` | bundle and delta, batch ingest, digest, totals, generation, route-day state machine, Sales Submit, Final Submit, submit void, reopen, cover, data void, quarantine, memos read | `sync`, `day`, `memos`; `/v1/admin/quarantine*`, `/v1/admin/data-void` |
-| `masterdata` | geography, clusters, routes and assignments, product tree, SKUs, prices, sales plans, offers, outlets, users admin and scope, targets, calendar, code lists, outlet requests, leave, visit plans, feedback | `admin-geography`, `admin-routes`, `admin-products`, `admin-outlets`, `admin-users`, `admin-targets`, `admin-calendar`, `outlet-requests`, `people` |
-| `config` | key registry, scoped values, resolution, change requests and approvals, versions, reach, device policy rendering, release policy and app releases, public config, update check | `config`, `admin-config`, `admin-releases`; `/v1/app/update-check` |
-| `analytics` | aggregate projector, dashboards, reports and exports, risk-signal rules and reviews, team locations and stock, app home | `dashboards`, `reports`, `risk`, `team`; `/v1/app/home` |
+| `sync` | bundle and delta, batch ingest, digest, totals, generation, route-day state machine, Sales Submit, Final Submit, submit void, reopen, cover, data void, quarantine, memos read, web entry (route-day, Astha outlet-SKU, QC), paper backfill and entry unlocks (same ingest path) | `sync`, `day`, `memos`, `web-entry`; `/v1/admin/quarantine*`, `/v1/admin/data-void` |
+| `masterdata` | geography, clusters, routes and assignments, product tree, SKUs, prices (preview, approval), sales plans, offers, outlets (incl. bulk outlet kind), users admin and scope, targets and target revisions, supervisor targets, calendar, code lists, outlet requests, leave, visit plans, feedback (incl. status), programmes, enrolments, gifts, Astha targets and gift choices, surveys, rubrics, AV and KV content, tutorials, print templates, dues adjustments | `admin-geography`, `admin-routes`, `admin-products`, `admin-outlets`, `admin-users` (except permissions), `admin-targets`, `admin-calendar`, `outlet-requests`, `people`, `programmes`, `admin-content`, `admin-finance` |
+| `config` | key registry, scoped values, resolution, change requests and approvals, versions, reach, what-if, blast radius, density and calibration, permission matrix (`cfg.web.menu_by_role`), device policy rendering, release policy and app releases, public config, update check | `config`, `admin-config`, `admin-releases`; `/v1/admin/permissions*`, `/v1/app/update-check` |
+| `analytics` | aggregate projector, loyalty ledger and expiry job, dashboards and tracking actions, reports, exports and the export log, risk-signal rules and reviews, team locations, nearby outlets and stock, app home, tutorials read | `dashboards`, `reports`, `risk`, `team`; `/v1/app/home`, `/v1/tutorials`, `/v1/programmes/loyalty/balances` |
 | `notify` | FCM tokens, notifications, task records and task API | `notifications`, `tasks`; `/v1/devices/me/push-token` |
-| `media` | SAS issue, read URLs, blob-created handling | `media` |
+| `media` | SAS issue, read URLs, blob-created handling, multipart fallback, admin asset uploads, PDA to Support uploads, web error reports | `media`, `support`; `/v1/admin/assets` |
 | `app` | wiring, health and readiness, `main` | `health` |
 
 Ingest is one path: `sync` validates the envelope, checks idempotency and reach, then calls the `RecordHandler` registered for the type (handlers live in the module that owns the table: for example `outlet_change_request` in `masterdata`, `task` in `notify`). The handler writes its rows and a `domain_event` row in the same transaction.
@@ -760,12 +787,19 @@ Reach is computed on the server from the user's role, `user_scope` (effective-da
 | Dashboards, reports, team map | — | R (app home) | R | R | R | R | R | R (sync health) | R | R |
 | Risk signals | — | — | R, W (review) | R, W | R, W | R | R | R | R, W | R, W |
 | Master data (geo, routes, products, prices, offers, outlets, targets, calendar, code lists) | — | — | W (radius proposals, D24-59) | R | R | R | R | R | W | W |
-| Users and scope | — | — | — | R | R | R | — | W (credentials) | W | W (incl. ADMIN roles) |
+| Users and scope | — | — | W (reset password and unlock SR and AMO users of own zones) | R | R | R | — | W (credentials) | W | W (incl. ADMIN roles) |
 | Devices, enrolment tokens, device OTPs | — | — | R (OTP of own zones, view) | R | R | — | — | W | W | W |
-| Config changes | — | — | — | — | — | — | — | — | W (C0 to C2) | W, A (C3) |
+| Config changes | — | — | W (radius proposals, own territory) | — | — | — | — | — | W (C0 to C2), adopt proposals | W, A (C3) |
 | Releases | — | — | — | — | — | — | — | R | W (draft) | W, A (publish) |
 | Quarantine resolve, data void | — | — | — | — | — | — | — | — | W | W, A |
 | Audit log | — | — | — | — | — | — | R | R | R | R |
+| Loyalty redemption, gift photos (sync) | W | W | — | — | — | — | — | — | — | — |
+| Astha targets / gift choices | — | R | W / W (own zones) | R | R | R | R | — | W / W | W / W |
+| Programmes, gifts, surveys, rubrics, content, tutorials, print templates | — | — | — | — | — | — | — | — | W | W |
+| Web entry and QC entry / paper backfill / entry unlocks | — | — | W (own zones) / — / — | — | — | — | — | — / W / W | W / W / W | W / W / W |
+| Target revisions, supervisor targets | — | — | R | R | A (level 1) | R | R | — | W | W, A |
+| Price batches above `cfg.price.max_change_pct`, dues adjustments | — | — | — | — | — | — | — | — | W (maker) | W, A (checker) |
+| Permission matrix (`cfg.web.menu_by_role`) | — | — | — | — | — | — | — | — | R | W (C3 change, second SUPERADMIN approves) |
 
 ### 8.6 Maker-checker and separation of duties
 
@@ -773,7 +807,7 @@ A second person is required for: C3 config changes (approver ≠ requester, `ERR
 
 ### 8.7 Device lifecycle
 
-`DeviceState`: `enrolled` (after `POST /v1/devices/enrol`) → `active` (first successful bind) → `suspended` (reversible; login refused, uploads accepted) → `revoked` (login refused; upload grant accepted for 7 days, then refused) or `replaced` (a new phone took over the user's bindings). How the server knows a phone is genuine: (1) at enrolment, the Keystore **key attestation** chain is verified to a Google root, with the attestation challenge, `attestationApplicationId` package and signing-certificate digest matching the flavour, and verified-boot state; the app also reports `isDeviceOwnerApp` (s10.4); (2) every status report (s10.3) repeats `device_owner`, the applied policy version and the restriction states; (3) **Play Integrity** (standard request; `requestHash` = SHA-256 of a server nonce from `POST /v1/devices/nonce`) every `cfg.device.integrity_refresh_h` (24 h) and at check-in, decoded server-side with Google's `decodeIntegrityToken`. `deviceRecognitionVerdict` containing `MEETS_DEVICE_INTEGRITY` is required when `cfg.device.require_integrity` is true; `appRecognitionVerdict` is recorded but not required because the APK is installed outside Play (`UNRECOGNIZED_VERSION` expected, D24-18). The result is `DeviceTrust` (`trust_level` `high`, `normal`, `low`, `blocked`).
+`DeviceState`: `enrolled` (after `POST /v1/devices/enrol`) → `active` (first successful bind) → `suspended` (reversible; login refused, uploads accepted) → `revoked` (login refused; upload grant accepted for 7 days, then refused) or `replaced` (a new phone took over the user's bindings). How the server knows a phone is genuine: (1) at enrolment, the Keystore **key attestation** chain is verified to a Google root, with the attestation challenge, `attestationApplicationId` package and signing-certificate digest matching the flavour, and verified-boot state; the app also reports `isDeviceOwnerApp` (s10.4); (2) every status report (s10.3) repeats `device_owner`, the applied policy version and the restriction states; (3) **Play Integrity** (standard request; `requestHash` = SHA-256 of a server nonce from `POST /v1/devices/nonce`) every `cfg.device.integrity_refresh_h` (24 h) and at check-in, decoded server-side with Google's `decodeIntegrityToken`. `deviceRecognitionVerdict` containing `MEETS_DEVICE_INTEGRITY` is required when `cfg.device.require_integrity` is true, which the **production** database seed sets (sponsor, D24-18; the dev seed keeps false); `appRecognitionVerdict` is recorded but never required because the APK is installed outside Play (`UNRECOGNIZED_VERSION` expected). A phone failing the device verdict keeps capturing; its attendance and sales are quarantined `device_integrity_failed` (never rejected, as D24-17) and supervisors see `DEVICE_INTEGRITY_FAIL`. The result is `DeviceTrust` (`trust_level` `high`, `normal`, `low`, `blocked`).
 
 ---
 
@@ -811,7 +845,7 @@ For a key and a subject at an instant: collect the subject's scope chain (device
 | C2 | after `cfg.sys.c2_delay_min` (10 min), cancellable | none; audited |
 | C3 | after approval by a second person with `SUPERADMIN` (`ERR_CFG_SELF_APPROVAL` for the requester), at most `cfg.sys.c3_max_per_hour` (5) fleet-wide, refused inside `cfg.sys.change_freeze_windows` (07:00 to 09:30 and 16:30 to 19:30 Dhaka, `ERR_CFG_FREEZE_WINDOW`) | yes |
 
-The radius is C1 at outlet, C2 at route, zone, geo_class and territory, C3 at division, wing and global; any radius change that ends above 150 m and increases the resolved value is C3 (`docs/19` escalation). **Environments:** the dev database is seeded with global overrides `cfg.device.require_enrolled = false`, `cfg.device.lockdown_level = dev` and `cfg.device.require_integrity = false` (D24-17); production uses the registry defaults.
+The radius is C1 at outlet, C2 at route, zone, geo_class and territory, C3 at division, wing and global; any radius change that ends above 150 m and increases the resolved value is C3 (`docs/19` escalation). **Environments:** the dev database is seeded with global overrides `cfg.device.require_enrolled = false`, `cfg.device.lockdown_level = dev` and `cfg.device.require_integrity = false` (D24-17); the **production** database is seeded with `cfg.device.require_integrity = true` (sponsor overrule of D24-18: the device verdict `MEETS_DEVICE_INTEGRITY` only) and otherwise uses the registry defaults.
 
 ### 9.5 Phase 1 key registry
 
@@ -858,7 +892,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.sec.fraud.location_move_alert_m` | int | 300 | 50..2000 | G | S | B | srv | C2 |
 | **Device policy and integrity** (all **new**; `docs/19` has no `cfg.device.*`) |||||||||
 | `cfg.device.require_enrolled` | bool | true (dev database: false) | — | G W D T Z U | S | B | srv | C3 |
-| `cfg.device.require_integrity` | bool | false (D24-18) | — | G W D T Z | S | B | srv | C3 |
+| `cfg.device.require_integrity` | bool | false; **production seed true** (device verdict only, D24-18 sponsor) | — | G W D T Z | S | B | srv | C3 |
 | `cfg.device.integrity_refresh_h` | int | 24 | 1..168 | G | S | B | both | C2 |
 | `cfg.device.key_attestation_required` | bool | true | — | G | S | B | srv | C3 |
 | `cfg.device.lockdown_level` | enum(dev, prod) | prod (dev database: dev) | — | G W D T Z DEV | S | B* | both | C3 |
@@ -1002,6 +1036,63 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.retention.sync_batch_response_h` | int | 48 | 24..72 | G | O | S | srv | C1 |
 | `cfg.retention.ingest_registry_days` | int | 45 | 30..400 (must exceed `cfg.sync.max_backdate_days` + 30) | G | O | S | srv | C2 |
 | `cfg.sla.pending_rows_alert_h` | int | 4 | 1..24 | G | O | B | srv | C1 |
+| **Programmes and content** (sponsor parity, s4.14) |||||||||
+| `cfg.loyalty.program_active` | bool | true | — | G W D T | P | B | both | C2 |
+| `cfg.loyalty.earning_rules` | json | POSM survey photo 50 points once per response; AMO survey 0 | points 0..100000 | G W | P | S | srv | C3 |
+| `cfg.loyalty.expiry_days` | int | 7 (days after the period end; MUST-CONFIRM, D24-68) | 0..365 | G | P | S | srv | C3 |
+| `cfg.loyalty.cash_rate_mtk_per_point` | money_mtk | 2000 (2 Tk a point) | 0..100000 | G W | P | B* | both | C3 |
+| `cfg.loyalty.cash_max_points` | int | 199 | 0..100000 | G W | P | B | both | C2 |
+| `cfg.loyalty.redemption_requires_photo` | bool | true | — | G | P | B | both | C1 |
+| `cfg.loyalty.redemption_roles` | list<role> | [SR, AMO] | subset of roles | G | P | B | both | C1 |
+| `cfg.loyalty.negative_balance_policy` | enum(accept_and_flag, reject) | accept_and_flag | — | G | P | B | srv | C2 |
+| `cfg.astha.program_active` | bool | true | — | G W | P | B | both | C2 |
+| `cfg.astha.quarter_start_month` | int | 1 | 1..12 | G | P | S, FD | both | C3 |
+| `cfg.astha.target_entry_roles` | list<role> | [ADMIN, TSO] | subset of roles | G | P | S | srv | C2 |
+| `cfg.astha.gift_choice_roles` | list<role> | [TSO] | subset of roles | G | P | S | srv | C1 |
+| `cfg.astha.gift_choice_lock` | enum(none, on_sr_photo) | on_sr_photo | — | G | P | S | srv | C1 |
+| `cfg.astha.one_photo_per_outlet` | bool | true | — | G | P | B | both | C1 |
+| `cfg.superstar.program_active` | bool | false | — | G W | P | B | both | C2 |
+| `cfg.superstar.criteria_met_rule` | json | {std_pct 100, memo_pct 100} | 0..200 each | G W | P | S | srv | C2 |
+| `cfg.content.max_item_mb` | int | 8 | 1..20 | G | O | B | srv | C2 |
+| `cfg.content.download_network_policy` | enum(wifi_only, wifi_preferred, any) | wifi_only | — | G W | O | B | dev | C2 |
+| `cfg.flag.loyalty_ui` | bool | true | — | G ROLE W D T Z U DEV | R | B | both | C2 |
+| `cfg.flag.astha_ui` | bool | true | — | G ROLE W D T Z U DEV | R | B | both | C2 |
+| `cfg.flag.superstar_ui` | bool | false | — | G ROLE W D T Z U DEV | R | B | both | C2 |
+| `cfg.flag.print_enabled` | bool | true | — | G ROLE W D T Z U DEV | R | B | both | C2 |
+| `cfg.flag.credit_ui` | bool | true | — | G ROLE W D T Z U DEV | R | B | both | C2 |
+| **Field app details** (backlog coverage) |||||||||
+| `cfg.app.home_tiles` | json (role → tile ids) | per role; Loyalty Point and Photo Capture only for accounts with programme outlets | must keep Attendance, Sale, Memo, Sales Submit | G ROLE U | O | B | dev | C1 |
+| `cfg.app.activity_log_sample_pct` | pct | 10 | 0..100 | G ROLE | O | B | dev | C1 |
+| `cfg.app.location_notice_required` (**new**) | bool | true | — | G | S | B | dev | C2 |
+| `cfg.sale.sort_by_distance` | bool | false | — | G ROLE | F | B | dev | C0 |
+| `cfg.sale.suggested_qty_enabled` | bool | false | — | G W T | P | B | both | C1 |
+| `cfg.stock.resave_guard_window_min` | int | 5 | 1..60 | G | O | B | both | C1 |
+| `cfg.visit.closed_streak_task` | int | 3 | 0..10 (0 = off) | G W | F | B | srv | C1 |
+| `cfg.calendar.weekend_days` | list<int> (ISO weekday) | [5] (Friday) | 0..3 days | G W D | F | S, FD | both | C3 |
+| `cfg.day.take_action_after` | time | 17:00 | 12:00..23:00 | G W | F | B | srv | C1 |
+| `cfg.tso.periphery_radius_options_m` | list<int> | [50, 100, 300] | 1..6 values, 10..5000 | G W | F | B | both | C0 |
+| `cfg.tso.periphery_max_markers` | int | 300 | 50..2000 | G | O | B | both | C1 |
+| `cfg.support.max_upload_mb` | int | 20 | 5..100 | G | O | B | dev | C1 |
+| `cfg.support.pda_upload_wifi_only` | bool | true | — | G | O | B | dev | C1 |
+| **Back office** (s12.6) |||||||||
+| `cfg.web.entry_backdate_days` | int | 0 (today only) | 0..31 | G Z | F | B | srv | C2 |
+| `cfg.web.entry_classes` | list<sub_channel> | [GT] | subset of sub-channels | G Z | F | B | srv | C1 |
+| `cfg.web.entry_validate_calls_le_target` | bool | true | — | G | F | B | srv | C1 |
+| `cfg.web.entry_app_overlap_policy` | enum(exclusive_flag, replace, add) | exclusive_flag | — | G | F | B | srv | C2 |
+| `cfg.web.entry_unlock_roles` | list<role> | [SUPPORT, ADMIN] | subset of roles | G | S | B | srv | C2 |
+| `cfg.web.entry_unlock_max_days` | int | 7 | 1..31 | G | S | B | srv | C2 |
+| `cfg.web.entry_unlock_ttl_h` | int | 24 | 1..168 | G | S | B | srv | C2 |
+| `cfg.web.menu_by_role` | json (role → menu → actions) | the seed matrix of `docs/19` s5.3 mapped to the roles of s8.5 | menu ids from the page registry | ROLE | S | B | srv | C3 |
+| `cfg.entry.paper_backfill_window_days` | int | 7 | 1..30 | G | F | B | srv | C2 |
+| `cfg.target.approval_levels` | json | [{level 1, role WM}] | 1..5 levels | G W | P | S | srv | C3 |
+| `cfg.target.lock_after_month_start` | bool | true | — | G | S | S | srv | C3 |
+| `cfg.target.template_version` | int | 1 | 1..999 | G | P | S | srv | C1 |
+| `cfg.target.upload_max_rows` | int | 12000 | 100..50000 | G | P | S | srv | C1 |
+| `cfg.price.max_change_pct` | pct | 15 | 1..100 | G | FIN | B | srv | C2 |
+| `cfg.geo.density_neighbour_radii_m` | list<int> | [25, 50, 100, 150, 300] | 1..8 values, 10..1000 | G | O | B | srv | C1 |
+| `cfg.geo.calibration_min_visits` | int | 500 | 100..5000 | G | F | B | srv | C1 |
+| `cfg.sys.break_glass_mode` | enum(restore_or_restrict_only, restore_only, off) | restore_or_restrict_only | — | G | S | B | srv | C3 |
+| `cfg.sys.break_glass_max_h` | int | 4 | 1..8 | G | S | B | srv | C3 |
 
 Keys of `docs/19` not listed here keep their `docs/19` definition and are seeded too, but no Phase 1 code may depend on them without adding them to this table first (a PR to this page).
 
@@ -1052,7 +1143,7 @@ The server renders a `DevicePolicy` from the resolved `cfg.device.*` and `cfg.ge
   "schedule": { "enabled": true, "starts_on": "check_in", "ends_on": "check_out", "hard_end_time": "20:00", "working_days_only": true },
   "location": { "require_precise": true, "require_location_on": true, "breadcrumbs_enabled": false, "breadcrumb_interval_min": 30 },
   "status_report": { "on_events": ["enrolment", "policy_applied", "check_in", "check_out", "boot", "integrity_change", "app_update"], "min_interval_min": 60 },
-  "integrity": { "play_integrity_required": false, "refresh_h": 24, "key_attestation_required": true }
+  "integrity": { "play_integrity_required": true, "refresh_h": 24, "key_attestation_required": true }
 }
 ```
 
@@ -1066,7 +1157,7 @@ The server renders a `DevicePolicy` from the resolved `cfg.device.*` and `cfg.ge
 | Permission pinning | granted, not pinned | granted and pinned (`setPermissionGrantState`) |
 | App blocking schedule | as configured (to test it) | as configured |
 
-`ACCESS_BACKGROUND_LOCATION` is granted only while `cfg.geo.breadcrumbs_enabled` is true. `RECORD_AUDIO` is denied (the app never asks for the microphone).
+In production `integrity.play_integrity_required` is true (seeded `cfg.device.require_integrity`, D24-18) and covers the device verdict only. `ACCESS_BACKGROUND_LOCATION` is granted only while `cfg.geo.breadcrumbs_enabled` is true. `RECORD_AUDIO` is denied (the app never asks for the microphone).
 
 ### 10.3 Status report
 
@@ -1139,6 +1230,8 @@ Signals are computed by the worker from fixes, visits and status reports of one 
 | `DEVICE_MOCK_APP_PRESENT` | `mock_location_apps` not empty or `mock_app_present` | — | 3 | 30 |
 | `DEVICE_POLICY_DRIFT` | applied policy version older than the current one for > 24 h, or policy apply errors | `cfg.device.policy_drift_max_h` | 2 | 10 |
 | `CLOCK_SKEW` | `captured_at` differs from the server-derived instant by > 10 min, or auto time off | `cfg.sync.max_clock_skew_min` | 2 | 10 |
+| `GEO_OUT_OF_BOUNDS` | a fix outside the Bangladesh bounding box (lat 20.5 to 26.7, lng 88.0 to 92.7) | — | 3 | 40 |
+| `CONFIG_STAMP_REGRESS` | a device stamps a third row with a config version below one it had already received (FS-34) | — | 2 | 20 |
 
 The weights are the default of `cfg.geo.integrity_weight`. Thresholds are read at evaluation time; a change applies to signals computed after it and the evidence records which version was used.
 
@@ -1165,20 +1258,23 @@ All tables live in schema `app` unless marked `dw`. Every transaction table has 
 | Outlets | `outlet` (code, names, owner, contact, location, `location_confirmed`, provisional location, cluster, channel, geo class, price type, kind, status), `outlet_location_history`, `outlet_change_request`, `outlet_request_event` (verify, approve, reject trail) |
 | Field transactions | `route_day` (route, date, state timestamps, `submit_cycle`, mismatch flag), `route_day_event` (`day_open`, `day_submit`), `supervisor_day`, `attendance_event`, `stock_movement` (append-only ledger, s12.5), `visit` (with close columns and both verdicts), `visit_skip`, `geo_fix` (every embedded fix, keyed by the record that carried it), `memo` (status active, voided, superseded), `memo_line`, `memo_discount` (replaces `docs/16` `memo_offer`; kinds offer, drp, free_goods), `qc_entry` and `qc_entry_line` (from `qc_line` records; one `qc_entry` per visit), `print_event`, `memo_void`, `due_collection`, `survey_response`, `distribution_check`, `distribution_check_line`, `call_assessment`, `call_assessment_answer`, `task`, `task_event`, `visit_plan`, `visit_plan_outlet`, `leave_application`, `feedback`, `day_exception`, `media`, `geo_breadcrumb`, `config_ack`, `final_submit`, `submit_void_event`, `route_day_void_barrier` |
 | Sync | `ingest_registry` (s3.3), `sync_batch` (stored responses, 48 h), `sync_rejected`, `sync_quarantine` (with resolution), `server_generation` |
-| Config | `cfg_key`, `cfg_value`, `cfg_change`, `cfg_version`, `cfg_ack` (s9.1), `calendar_holiday`, `code_list`, `code_list_item` (business code lists keyed by `CodeListKey`: `force_reason`, `edit_reason`, `void_reason`, `visit_outcome`, `skip_reason`, `day_exception_reason`, `stock_variance_reason`, `task_type`, `leave_type`, `feedback_category`, `qc_fault_type`, `payment_mode`, `outlet_close_reason`, `submit_void_reason`; codes are immutable and retired by `valid_to`) |
+| Config | `cfg_key`, `cfg_value`, `cfg_change`, `cfg_version`, `cfg_ack` (s9.1), `calendar_holiday`, `code_list`, `code_list_item` (business code lists keyed by `CodeListKey`: `channel`, `sub_channel`, `geo_class`, `force_reason`, `edit_reason`, `void_reason`, `visit_outcome`, `skip_reason`, `day_exception_reason`, `stock_variance_reason`, `task_type`, `leave_type`, `feedback_category`, `qc_fault_type`, `payment_mode`, `outlet_close_reason`, `submit_void_reason`; codes are immutable and retired by `valid_to`) |
 | Risk, audit, events | `risk_signal`, `risk_signal_review`, `audit_log` (append-only, hash-chained), `domain_event` (s6.3) |
-| Targets | `target_set`, `target_revision`, `target` (month, scope route or zone, sku or brand, quantity or value, never negative) |
+| Targets | `target_set`, `target_revision` (status `pending_approval`, `approved`, `rejected`, `superseded`; decisions per level of `cfg.target.approval_levels`), `target` (month, scope route or zone, sku or brand, quantity or value, never negative), `supervisor_target` (AMO call targets by user and month) |
+| Programmes and loyalty | `programme`, `programme_enrolment`, `gift`, `gift_assignment`, `gift_photo`, `redemption`, `redemption_line`, `loyalty_ledger` (server-derived, idempotent on `(source_type, source_id)`), `astha_target` |
+| Content and telemetry | `survey`, `survey_question`, `rubric`, `content_item`, `content_view`, `tutorial`, `print_template`, `activity_log`, `app_error`, `sale_abort`, `user_consent`, `price_compliance_check` |
+| Back office | `web_entry_route_day`, `web_entry_line`, `web_entry_outlet_sku`, `qc_summary_entry` (market and warehouse, source web), `entry_unlock`, `dues_adjustment`, `price_batch`, `tracking_action`, `report_export_log`, `client_error` |
 | Aggregates (`dw`) | `dw.agg_daily_route`, `dw.agg_daily_route_sku`, `dw.agg_daily_zone`, `dw.agg_hourly_zone`, `dw.agg_daily_outlet`, `dw.fact_visit`, `dw.fact_memo`, `dw.fact_geo_fix`, `dw.fact_device_day`, `dw.dim_date`, `dw.dim_geo`, `dw.dim_product`, `dw.dim_outlet` |
 
 The db lane writes these as Flyway migrations `db/migrations/V0001__<name>.sql` onward (four-digit, lower snake case, checked by `MigrationNamingTest`; D24-52). Forward-only: a shipped migration is never edited.
 
 ### 12.2 Outlet change requests
 
-`OutletRequestType` and the `proposed` members each type requires: `new` (name, owner_name, contact_number, address, cluster_id, sub_channel_id, lat, lng; `outlet_id` null; at least one photo), `close` (close_reason_code; `outlet_id`), `info` (any subset of name, name_bn, owner_name, contact_number, address, sub_channel_id; `outlet_id`), `cluster` (cluster_id; `outlet_id`), `location` (lat, lng from the request's own fix; `outlet_id`; photo required). Life cycle (`OutletRequestStatus`): `pending` → `verified` (AMO, in the app or on the web) → `approved` or `rejected` (DMO or admin on the web; approver ≠ requester ≠ verifier) ; `lapsed` after 30 days without decision; `discarded` by an admin. An approved `new` request creates the outlet with a code; `location` moves the pin (history kept) and sets `location_confirmed`; a move above `cfg.sec.fraud.location_move_alert_m` (300 m) also needs the TSO's approval.
+`OutletRequestType` and the `proposed` members each type requires: `new` (name, owner_name, contact_number, address, cluster_id, sub_channel_id, lat, lng; `outlet_id` null; at least one photo), `close` (close_reason_code; `outlet_id`), `info` (any subset of name, name_bn, owner_name, contact_number, address, sub_channel_id; `outlet_id`), `cluster` (cluster_id; `outlet_id`), `location` (lat, lng from the request's own fix; `outlet_id`; photo required), `route_add` (an existing outlet missing from the requester's route or cluster: `outlet_id` and `cluster_id`; verified by the AMO). Life cycle (`OutletRequestStatus`): `pending` → `verified` (AMO, in the app or on the web) → `approved` or `rejected` (DMO or admin on the web; approver ≠ requester ≠ verifier) ; `lapsed` after 30 days without decision; `discarded` by an admin. An approved `new` request creates the outlet with a code; `location` moves the pin (history kept) and sets `location_confirmed`; a move above `cfg.sec.fraud.location_move_alert_m` (300 m) also needs the TSO's approval.
 
 ### 12.3 Report registry (Phase 1)
 
-Every report is one `POST /v1/reports/{report_key}/query` with a `ReportQuery` (dates, geo selectors that narrow the reach, product selectors, format `json` or `xlsx`). `xlsx` is returned inline up to `cfg.ops.report_sync_max_rows` (10,000) rows, otherwise as an export job (`202`, then `GET /v1/report-exports/{export_id}`), refused above `cfg.ops.report_export_max_rows` (200,000, `413 ERR_REPORT_TOO_LARGE`). All read `dw`.
+Every report is one `POST /v1/reports/{report_key}/query` with a `ReportQuery` (dates, geo selectors that narrow the reach, product selectors, format `json`, `xlsx`, `pdf` or `print`). `print` returns a server-rendered HTML print view; `pdf` is always an export job; `xlsx` is returned inline up to `cfg.ops.report_sync_max_rows` (10,000) rows, otherwise as an export job (`202`, then `GET /v1/report-exports/{export_id}`), refused above `cfg.ops.report_export_max_rows` (200,000, `413 ERR_REPORT_TOO_LARGE`). All read `dw`.
 
 | `report_key` | Content |
 |---|---|
@@ -1210,8 +1306,22 @@ Every report is one `POST /v1/reports/{report_key}/query` with a `ReportQuery` (
 | `qc-report` | QC entries by visit, SKU and fault |
 | `stock-summary` | issued, sold, returned and closing stock per SR and SKU |
 | `memo-number-gaps` | gaps and voids in memo number series per user and day |
+| `sales-summary` | AMO Sales Summary Up To Now: route cards (CPR, memos) and a brand table per route |
+| `task-planner` | tasks assigned and resolved by scope and date |
+| `by-route-geo-capture` | outlets per route with and without coordinates, placeholders included |
+| `free-sample` | free-sample quantities by SKU and route (`line_kind` free_sample) |
+| `target-allocation` | monthly targets by route and zone |
+| `route-qc` | QC by route for a date range and QC type |
+| `geofence-calibration` | distance histogram per geo class and territory with force-sale share |
+| `astha` | Astha target, achievement, remaining and percent per outlet and brand for year, quarter and months |
+| `astha-gift-choice` | Astha gift choices and photo status, filtered by gift status |
+| `campaign-gift-redemption` | redemptions, points and the photo-verified flag |
+| `diamond-league` | outlet points statement: earned, spent, balance and expiring for a date range |
+| `superstar-campaign` | per outlet category, slab, base target and criteria-met flag |
+| `retailer-list` | Browse Retailer list export (PII columns by role) |
+| `sku-list` | Browse SKU list export with the price types the role may see (three decimals) |
 
-Column sets whose sample workbook is not yet seen carry `columns_known: false` in `GET /v1/reports` and are fixed when the sponsor provides the sample.
+Every export (xlsx, pdf, print) is listed in the export log `GET /v1/report-exports` with its filters, row count and PII flag. Column sets whose sample workbook is not yet seen carry `columns_known: false` in `GET /v1/reports` and are fixed when the sponsor provides the sample.
 
 ### 12.4 KPI definitions (dashboards and app home)
 
@@ -1237,13 +1347,26 @@ Percentages: 0 to 100 with 2 decimals; `null` when the denominator is 0 (shown a
 
 ### 12.5 Phase 2 extension points (built now, used later)
 
-1. **Offers as data:** `offer` and `offer_version` hold typed rule rows (Phase 1 types: `flat_per_qty`, `pct_of_value`, `free_goods`, `slab`, D24-38); a memo records the `offer_version_ids` it used. The Phase 2 discount portal adds rule tables without changing memos.
+1. **Offers as data:** `offer` and `offer_version` hold typed rule rows (types in this build: `pct_discount`, `amount_per_unit`, `free_qty`, `drp_slide`, D24-38); a memo records the `offer_version_ids` it used. The Phase 2 discount portal adds rule tables without changing memos.
 2. **Targets as data:** `target_set` → `target_revision` → `target` rows (month, scope, SKU or brand, measure); the Phase 2 target engine writes new revisions.
 3. **Ledgers:** `stock_movement` is an append-only ledger (issue, return, adjustment, damaged, short; every row signed quantity in base units); an `indent` ledger table is reserved for the Phase 2 indent portal (created empty in Phase 1 with the same shape).
 4. **Domain-event outbox:** every write emits `domain_event` rows (`memo.created`, `memo.voided`, `visit.closed`, `route_day.state_changed`, `outlet.changed`, `stock.moved`, `target.revised`); the mother dashboard and the indent portal subscribe by reading in id order.
 5. **External references:** master data and transaction tables carry `external_ref varchar(64) null` (unique per table when set) for ERP and Apsis cross-walks; the Apsis import (not in this build) fills `stg.id_crosswalk`.
 
 ---
+
+### 12.6 Back-office entry, approvals and administration
+
+1. **Web Entry (route-day aggregate).** `GET`/`POST /v1/web-entry/route-day`: one entry per route-day (Issue, Return, Memos per SKU and Successful Calls at most the target outlets), browser `client_uuid` idempotency, a re-save replaces with an audit row, web rows and app rows never added (`cfg.web.entry_app_overlap_policy`), window `cfg.web.entry_backdate_days` unless an **entry unlock** (`/v1/admin/entry-unlocks`; `cfg.web.entry_unlock_roles`, `cfg.web.entry_unlock_max_days`, `cfg.web.entry_unlock_ttl_h`) is active (`409 ERR_ENTRY_WINDOW_CLOSED` otherwise), refused after Final Submit. Visits created by web entry carry `visit_kind` = `web_entry`.
+2. **Astha Web Entry.** `GET`/`POST /v1/web-entry/outlet-sku`: Astha-channel outlets by SKU, explicit Save, overlap with app memos flagged, never added.
+3. **QC Entry.** `POST /v1/web-entry/qc`: market (route) or warehouse (zone) QC by SKU and fault type, stored as a separate web source, never added to app QC; warehouse entries need a reason.
+4. **Paper backfill.** `POST /v1/admin/data-entry`: a dead-phone day keyed from the printed memo within `cfg.entry.paper_backfill_window_days`, written through the ingest path with `source = manual`; a memo number already stored is stored once (`duplicate_memo_no`).
+5. **Targets.** `PUT /v1/admin/targets` and `POST /v1/admin/targets/upload` (all-or-nothing, error sheet) create a revision `pending_approval`; `GET /v1/admin/target-revisions` is the approval queue and `POST .../{revision_id}/decision` approves per level of `cfg.target.approval_levels` (maker ≠ approver); the last approval makes it live and supersedes the older revision. AMO call targets use `/v1/admin/supervisor-targets`.
+6. **Prices.** `POST /v1/admin/prices/preview` is mandatory before a publish; a batch moving any price by more than `cfg.price.max_change_pct` is stored `pending_approval` until a second person decides (`POST /v1/admin/prices/batches/{batch_uuid}/decision`).
+7. **Dues adjustments.** `/v1/admin/dues-adjustments`: correction or write-off with a reason; a different person approves; approval adds a dues-ledger row and changes the outlet balance.
+8. **Permissions and flags.** The role × menu × action matrix is the config key `cfg.web.menu_by_role`: `GET /v1/admin/permissions` shows it with the admin roster and `PUT /v1/admin/permissions/roles/{role}` creates a C3 change request (never an immediate grant); the server enforces permissions per action whatever the menu shows. Feature flags are the `cfg.flag.*` keys edited in the config console; a flag never changes the shape of captured data.
+9. **Admin content.** Programmes, enrolments and gifts, surveys, rubrics, AV and KV content, tutorials and print templates are versioned admin data under `/v1/admin/*` (tag `admin-content`); files upload through `POST /v1/admin/assets` (write-only SAS) and reach phones in the next bundle or delta.
+10. **Other operations.** Daily Tracking "take action" (`POST /v1/dashboards/daily-tracking/actions`, after `cfg.day.take_action_after`), the feedback inbox status (`PATCH /v1/feedback/{feedback_uuid}`), the TSO retailer radius map (`GET /v1/outlets/nearby`), bulk outlet kind (`POST /v1/admin/outlets/outlet-kind`), the replace-device wizard (`POST /v1/admin/devices/{device_id}/replace`), config what-if, blast radius, density, calibration, version detail and pending reach (`/v1/admin/config/*`), PDA to Support (`POST /v1/support/pda-upload`), web error reports (`POST /v1/client-errors`) and the multipart media fallback (`POST /v1/media/upload`).
 
 ## 13. Quality, CI and delivery
 
@@ -1268,7 +1391,7 @@ Alerts (Azure Monitor): batch 5xx > 1 % over 5 min; p95 batch > 3 s over 10 min;
 
 | Lane | Gate (all must pass) |
 |---|---|
-| shared | Redocly lint of `contract/openapi.yaml` with `contract/redocly.yaml` (0 errors, 0 warnings); `:shared:contract:build` (drift tests: every enum in `shared/contract` equals the YAML); `:shared:rules:build` (money, totals, distance, business-date fixtures) |
+| shared | Redocly lint of `contract/openapi.yaml` with `contract/redocly.yaml` (0 errors, 0 warnings); `:shared:contract:build` (drift tests: every enum in `shared/contract` equals the YAML; `SpecCrossCheckTest`: this page agrees with the YAML; `BacklogCoverageTest`: every in-scope `docs/25` row's needs exist); `:shared:rules:build` (money, totals, distance, business-date fixtures) |
 | db | `:db:build` (naming test); migrations apply to an empty PostgreSQL 16 and to the previous release's schema |
 | backend | `:backend:*:build` against the `postgres:16` service (`ARON_TEST_PG_URL`); sync property and fuzz tests (duplicate, reordered, partial and replayed batches never change the stored count) |
 | android-* | `assembleDebug` of the three apps; `testDebugUnitTest` (Robolectric Room and outbox tests); Android lint `abortOnError`; release builds check the APK size budget |
@@ -1335,7 +1458,7 @@ Each row is a question the sources left open or answered in conflicting ways, wi
 | D24-15 | Who resolves the radius? | The server resolves `radius_m` and `max_accuracy_m` per outlet into the bundle | The phone cannot know the full chain offline; one resolution point avoids drift |
 | D24-16 | `cfg.geo.mock_policy` default: `warn_rep` (`docs/19`) or refuse (`docs/23`)? | `block_sale`; the blocked attempt is recorded as a visit closed `abandoned` with action `blocked` | `docs/23` s4 promises "the call is refused and flagged"; `docs/23` outranks `docs/19` |
 | D24-17 | Enrolment gate in dev | `cfg.device.require_enrolled` true by default, overridden to false in the dev database; an unenrolled phone gets 403 at login in prod; records from unenrolled or failing devices are quarantined, not rejected | Test phones must work before every phone is enrolled; production follows `docs/23` |
-| D24-18 | Is Play Integrity mandatory? | Collected from Day 3, enforced only when `cfg.device.require_integrity` is set (default false); `appRecognitionVerdict` is never required | Sideloaded APKs are `UNRECOGNIZED_VERSION`; a false negative would lock out honest reps; key attestation already proves the device |
+| D24-18 | Is Play Integrity mandatory? (**sponsor overrule**, 2026-10-05) | The registry default of `cfg.device.require_integrity` stays false, but the **production seed sets it true** for the device verdict only (`MEETS_DEVICE_INTEGRITY`); `appRecognitionVerdict` is never required (sideloaded APKs are `UNRECOGNIZED_VERSION`); the dev seed keeps false; failing devices stay quarantined, not rejected (as D24-17), and supervisors see `DEVICE_INTEGRITY_FAIL` | The sponsor wants anti-spoofing layered, and every phone will be enrolled |
 | D24-19 | JWT signing keys | One ES256 key from Key Vault loaded at startup; JWKS publishes current and next key; delegated signing deferred | Simple and rotatable; no runtime Key Vault dependency per request |
 | D24-20 | Redis for rate limits and caches? | No Redis in Phase 1 | Fewer moving parts; limits are per replica (D24-58) and caches are short-lived in-process |
 | D24-21 | Roles beyond the brief | Add `TOP` (national read) and `SUPPORT` (helpdesk) | Helpdesk needs OTP and device actions without business edits; top management needs national read |
@@ -1354,9 +1477,9 @@ Each row is a question the sources left open or answered in conflicting ways, wi
 | D24-34 | Enrolment token shape | 256-bit, multi-use up to 500 phones, TTL at most 168 h, hash stored, shown once | One QR per enrolment session for a zone; short life limits leaks |
 | D24-35 | Default app lists | Block Facebook, Instagram, TikTok, YouTube, Snapchat, Free Fire, PUBG; always allow WhatsApp, Messenger, dialer, SMS, Maps, camera, Settings, keyboard, launcher; hard end 20:00 | `docs/23` Q1 default, made concrete as package names |
 | D24-36 | `no_install_apps` in prod | On; the DPC lifts it only around its own self-update | Stops side-loading spoofing tools while keeping updates possible |
-| D24-37 | Targets in Phase 1 | Batch upsert per month without approval workflow | The target engine and approvals are Phase 2 |
-| D24-38 | Offer rule types | `flat_per_qty`, `pct_of_value`, `free_goods`, `slab` | Covers the promotions seen in the manuals; the rest is Phase 2 data |
-| D24-39 | Which records are signed | Header records only (`visit`, `memo`, `attendance_event`, `stock_movement`, `due_collection`, `memo_void`, `outlet_change_request`) | Proves origin of the money and attendance facts at low CPU cost |
+| D24-37 | Target approval in this build (revised) | Every target set or upload is a revision that goes live after the approvals of `cfg.target.approval_levels` (default one level, WM); AMO call targets have their own API | The backlog (F-ADM-014, F-WEB-030, F-API-021) requires the approval queue; my earlier approval-free choice is withdrawn |
+| D24-38 | Offer rule types | `pct_discount`, `amount_per_unit`, `free_qty`, `drp_slide` (the contract's `Offer.offer_type`) | Covers the promotions seen in the manuals; further types are data added later |
+| D24-39 | Which records are signed | Header records only (`visit`, `memo`, `attendance_event`, `stock_movement`, `due_collection`, `memo_void`, `outlet_change_request`, `redemption`, `gift_photo`) | Proves origin of the money, points and attendance facts at low CPU cost |
 | D24-40 | GNSS plausibility thresholds | ≥ 4 satellites used; with ≥ 6 used, C/N0 standard deviation ≥ 1.0 dB-Hz; C/N0 mean ≤ 48 dB-Hz | Simulator signals are uniformly strong; real sky views vary |
 | D24-41 | Single-point route rule | ≥ 80 % of visit fixes within 30 m, at least 8 visits | Catches a rep "visiting" a whole route from one tea stall without flagging dense markets |
 | D24-42 | Problem `type` URIs | `urn:aron:problem:<code>` | Stable, no documentation host needed |
@@ -1373,7 +1496,7 @@ Each row is a question the sources left open or answered in conflicting ways, wi
 | D24-53 | Device status offline | `device_status` is also a sync record type | Status must reach the server from phones that are offline at the event |
 | D24-54 | AMO Sales Submit | A supervisor-day submit (`scope: supervisor_day`) | AMOs sell on several routes; their day is not a route-day |
 | D24-55 | TSO leave | Applied by a `leave_application` record, decided by the DMO on the web | Matches the TSO manual; DMO is the TSO's manager |
-| D24-56 | Content views, redemptions, gifts | Deferred to Phase 2 (no record types in Phase 1) | Programme portals are out of this build (`docs/23` s1) |
+| D24-56 | Content views, redemptions, gifts (**overruled by the sponsor**, 2026-10-05) | Built in this build: record types `content_view`, `redemption`, `redemption_line`, `gift_photo`, bundle members `programmes` and `content`, programme, Astha and loyalty APIs, the loyalty ledger and expiry job, programme reports (s4.14) | The sponsor's rule is full parity; only the new Phase 2 portals are out |
 | D24-57 | Upload after logout | An upload-only grant survives logout and password change | Captured sales must always reach the server |
 | D24-58 | Rate-limit storage | In-memory per replica | No Redis (D24-20); limits are protective, not billing |
 | D24-59 | TSO radius edits | Proposals that an F editor adopts (`cfg.geo.tso_radius_mode` = propose) | Separation of duties on the anti-fraud control |
@@ -1384,13 +1507,28 @@ Each row is a question the sources left open or answered in conflicting ways, wi
 | D24-64 | Who owns shared feature modules | The SR lane owns auth, home, attendance, stock, sale, memo, dayclose, outlet and tasks; AMO and TSO extend through their own modules | One owner per folder (`docs/23` rule 3) while reusing the SR screens |
 | D24-65 | Lighter and match base units (**sponsor**) | Lighter: piece; match: dozen, until confirmed (`cfg.sale.qty_entry_unit`, C3, future-dated) | MUST-CONFIRM in `docs/19`; changing it later is a config change, not code |
 | D24-66 | Report column sets (**sponsor**) | Reports without a sample workbook ship with `columns_known: false` | Avoids inventing column orders the business will reject |
+| D24-67 | Names of the added record types | `redemption`, `redemption_line`, `gift_photo`, `price_compliance_check`, `activity_log`, `consent_accept` as in `docs/16`; `sale_abort` and `app_error` from the backlog; DRP empties stay in `memo_discount.basis_qty_base` (no `drp_collection` record) | One name across the documents; DRP empties already reconcile inside the memo |
+| D24-68 | Loyalty points expiry (**sponsor**) | `cfg.loyalty.expiry_days` = 7 days after the period end | The only evidence: April points expire on 7 May; a config change if wrong |
+| D24-69 | Feature flags | The `cfg.flag.*` config keys, edited in the config console; no separate flag API | One change, audit and reach path for every switch |
+| D24-70 | Role × menu × action matrix | The config key `cfg.web.menu_by_role`; edits are C3 change requests through `PUT /v1/admin/permissions/roles/{role}` | A permission grant must be two-person and versioned |
+| D24-71 | Report formats | `json`, `xlsx`, `pdf` (always an export job) and `print` (HTML) | The backlog needs print views and PDF downloads (F-API-017, F-API-053, F-WEB-053, F-WEB-061) |
+| D24-72 | Export log | `GET /v1/report-exports` lists every export with filters, rows and PII flag | The viewer needs inline exports and jobs in one list |
+| D24-73 | Web Entry, Astha Web Entry, QC entry, paper backfill | Online web endpoints with browser `client_uuid`s, not sync records; paper backfill goes through the ingest path with `source = manual` | Office staff key them online; idempotency is the same |
+| D24-74 | AMO Exceptions screen offline | `risk_review` record plus the zone's open signals in the AMO bundle | F-AMO-038 requires offline review as idempotent events |
+| D24-75 | Price-change rail | A batch above `cfg.price.max_change_pct` waits for a second approver | `docs/19` rail and F-ADM-081 |
+| D24-76 | AMO call targets | `/v1/admin/supervisor-targets` (counts per user and month), not product target rows | They are call counts, not product quantities |
+| D24-77 | Nearby outlets | `GET /v1/outlets/nearby` limited to Bangladesh coordinates, the configured radii and `cfg.tso.periphery_max_markers` | Protects PII and the geo index |
+| D24-78 | Enum additions from the backlog | `VisitOutcome` + `not_reached`, `StockMovementKind` + `qc_return`, `OutletRequestType` + `route_add`, `VisitKind` + `web_entry`, `CodeListKey` + `channel`, `sub_channel`, `geo_class` | F-SR-057, F-SR-053, F-SR-076, F-SYS-078, F-ADM-011 |
+| D24-79 | Risk signals from the backlog | `GEO_OUT_OF_BOUNDS`, `CONFIG_STAMP_REGRESS` | F-SYS-062, F-SYS-091 |
+| D24-80 | Error reporting | Phones send `app_error` records in the batch; the web posts `POST /v1/client-errors`; no third-party crash SDK | F-SYS-032 with privacy scrubbing and no extra SDK in the APK |
+| D24-81 | TSO web powers | A TSO may reset passwords and unlock SR and AMO users of its own zones; TSO radius edits are proposals an editor adopts | F-TSO-023, F-TSO-025 |
 
 
 ---
 
 ## Appendix A. Endpoint index (generated from `contract/openapi.yaml`)
 
-Generated by the cross-check script (`--appendix`); 140 operations on 115 paths, grouped by tag in the order of the contract. Request and response schemas, statuses and examples are in the YAML.
+Generated by the cross-check script (`--appendix`); 206 operations on 166 paths, grouped by tag in the order of the contract. Request and response schemas, statuses and examples are in the YAML.
 
 | Tag | Method | Path | operationId | Summary |
 |---|---|---|---|---|
@@ -1422,9 +1560,11 @@ Generated by the cross-check script (`--appendix`); 140 operations on 115 paths,
 | sync | POST | `/v1/admin/quarantine/{quarantine_id}/resolve` | `resolveQuarantine` | Accept, accept with a fix, or discard a quarantined record; re-ingests through the same path. |
 | media | POST | `/v1/media/sas` | `createMediaUploadUrls` | Write-only user-delegation SAS URLs for up to 10 photos (15 minutes, one blob path each). |
 | media | GET | `/v1/media/{media_uuid}/read-url` | `getMediaReadUrl` | Short-lived read URL for a photo in the caller's reach (supervisors, web). |
+| media | POST | `/v1/media/upload` | `uploadMediaMultipart` | Multipart fallback for one small non-evidence image (feedback); evidence photos always use SAS. |
 | config | GET | `/v1/config/delta` | `getConfigDelta` | Resolved config changes for the caller's scope chain since a version. |
 | app | GET | `/v1/app/home` | `getAppHome` | Role-scoped KPI snapshot for the AMO and TSO app home screens (explicit open, never a timer). |
 | app | GET | `/v1/app/update-check` | `checkForUpdate` | Latest published release for this flavour and ABI, with the minimum and blocked versions. |
+| app | GET | `/v1/tutorials` | `listTutorials` | Tutorial videos and manuals for the caller's role (also in the bundle; playback is online only). |
 | day | POST | `/v1/day/sales-submit` | `postSalesSubmit` | Online Sales Submit for a route-day or a supervisor-day (the phone normally sends a `day_submit` record). |
 | day | GET | `/v1/day/final-submit/preview` | `getFinalSubmitPreview` | Read before Final Submit (the "already submitted" alert fires here, at Get Sales Data). |
 | day | POST | `/v1/day/final-submit` | `postFinalSubmit` | Close a zone-day (TSO app or web). Online-only, once per zone and day. |
@@ -1448,21 +1588,25 @@ Generated by the cross-check script (`--appendix`); 140 operations on 115 paths,
 | notifications | POST | `/v1/admin/notifications` | `sendNotification` | Send an FCM data nudge (announcement or config pull) to devices in a scope. |
 | team | GET | `/v1/team/locations` | `getTeamLocations` | Last synced fix per team member (no live tracking; age and source shown). |
 | team | GET | `/v1/team/stock` | `getTeamStock` | Issued, sold, returned and current stock per SR and SKU for a date (SR phones never returned). |
+| team | GET | `/v1/outlets/nearby` | `getNearbyOutlets` | Outlets within a radius of a point (TSO Retailer radius map), capped and scoped. |
 | people | GET | `/v1/leave` | `listLeave` | Leave applications in the caller's reach. |
 | people | POST | `/v1/leave/{leave_uuid}/decision` | `decideLeave` | Approve or reject a TSO leave application (DMO by default). |
 | people | GET | `/v1/visit-plans` | `listVisitPlans` | TSO visit plans with outlet completion. |
 | people | GET | `/v1/feedback` | `listFeedback` | Feedback submitted from the TSO app. |
+| people | PATCH | `/v1/feedback/{feedback_uuid}` | `updateFeedbackStatus` | Set the status of a feedback item in the inbox (audited with a reason). |
 | dashboards | GET | `/v1/dashboards/summary` | `getDashboardSummary` | National, wing, division, territory or zone dashboard for a date or range (p95 at most 1 s). |
 | dashboards | GET | `/v1/dashboards/daily-tracking` | `getDailyTracking` | Daily Tracking by route with achievement buckets (100, 90-100, 80-90, below 80, exception, not logged in). |
 | dashboards | GET | `/v1/dashboards/login-submit` | `getLoginSubmitStatus` | Login and Sales Submit status with the lists behind each count (Bikroy Joma status). |
 | dashboards | GET | `/v1/dashboards/sync-health` | `getSyncHealth` | Sync health per device and route-day (pending rows, last contact, rejects, quarantine, mismatch). |
 | dashboards | GET | `/v1/dashboards/geo-validation` | `getGeoValidation` | Geo-validation, force-sale, mock, mismatch and suspicious-visit rates with risk-signal counts. |
 | dashboards | GET | `/v1/dashboards/targets` | `getTargetAchievement` | Monthly target and achievement (till-date basis per surface) for a node. |
+| dashboards | POST | `/v1/dashboards/daily-tracking/actions` | `createTrackingAction` | Daily Tracking "take action" note on a route-day; notifies the route's TSO and AMO, never reassigns. |
 | risk | GET | `/v1/risk-signals` | `listRiskSignals` | Risk signals for supervisors (the SR never sees them, except the mock warning on the phone). |
 | risk | POST | `/v1/risk-signals/{signal_id}/review` | `reviewRiskSignal` | Review, dismiss or confirm a signal with a note (append-only event). |
 | reports | GET | `/v1/reports` | `listReports` | Reports the caller may run, with parameters, columns and formats. |
 | reports | POST | `/v1/reports/{report_key}/query` | `runReport` | Run a report with one ReportQuery object; json inline, xlsx inline up to the row limit or as an export job. |
 | reports | GET | `/v1/report-exports/{export_id}` | `getExportJob` | Status of an export job; a short-lived download URL when done. |
+| reports | GET | `/v1/report-exports` | `listExportLog` | Export log viewer (who exported which report with which filters, rows and PII flag). |
 | admin-geography | GET | `/v1/admin/geo/{level}` | `listGeoNodes` | List wings, divisions, territories, houses or zones in reach. |
 | admin-geography | POST | `/v1/admin/geo/{level}` | `createGeoNode` | Create a geography node. |
 | admin-geography | GET | `/v1/admin/geo/{level}/{id}` | `getGeoNode` | One geography node. |
@@ -1490,6 +1634,8 @@ Generated by the cross-check script (`--appendix`); 140 operations on 115 paths,
 | admin-products | GET | `/v1/admin/offers` | `listOffers` | Offer and promotion rules (data, not code). |
 | admin-products | POST | `/v1/admin/offers` | `createOffer` | Create an offer rule (future-dated `valid_from`). |
 | admin-products | PATCH | `/v1/admin/offers/{id}` | `updateOffer` | Change an offer; a rule change creates a new offer version (memos keep the version they used). |
+| admin-products | POST | `/v1/admin/prices/preview` | `previewPrices` | Mandatory preview of a price publish (SKUs, price types, outlets and devices affected; whether a second approver is needed). |
+| admin-products | POST | `/v1/admin/prices/batches/{batch_uuid}/decision` | `decidePriceBatch` | Second-approver decision on a price batch that moves a price by more than cfg.price.max_change_pct. |
 | admin-users | GET | `/v1/admin/users` | `listUsers` | Users in reach. |
 | admin-users | POST | `/v1/admin/users` | `createUser` | Create a user with a temporary password (shown once, must be changed at first login). |
 | admin-users | GET | `/v1/admin/users/{id}` | `getUser` | One user. |
@@ -1497,12 +1643,21 @@ Generated by the cross-check script (`--appendix`); 140 operations on 115 paths,
 | admin-users | GET | `/v1/admin/users/{id}/scope` | `getUserScope` | Effective-dated supervisory scope nodes of a user. |
 | admin-users | PUT | `/v1/admin/users/{id}/scope` | `putUserScope` | Replace a user's scope from a date (bumps scope_version; tokens refresh with 401 ERR_SCOPE_CHANGED). |
 | admin-users | POST | `/v1/admin/users/{id}/credentials` | `manageUserCredentials` | Reset password (temporary, shown once), unlock, or force logout (revoke full-grant families). |
+| admin-users | GET | `/v1/admin/permissions` | `getPermissionMatrix` | Role by menu by action matrix (data, cfg.web.menu_by_role) and the admin roster. |
+| admin-users | PUT | `/v1/admin/permissions/roles/{role}` | `putRolePermissions` | Change one role's menus and actions; creates a C3 config change request (never an immediate grant). |
 | admin-outlets | GET | `/v1/admin/outlets` | `listOutlets` | Outlets in reach (PII columns only with the pii claim). |
 | admin-outlets | POST | `/v1/admin/outlets` | `createOutlet` | Create an outlet directly (admin); field-created outlets go through outlet requests. |
 | admin-outlets | GET | `/v1/admin/outlets/{id}` | `getOutlet` | One outlet with placement and location history. |
 | admin-outlets | PATCH | `/v1/admin/outlets/{id}` | `updateOutlet` | Update an outlet (status close is never a delete; placement changes keep history). |
+| admin-outlets | POST | `/v1/admin/outlets/outlet-kind` | `bulkSetOutletKind` | Mark outlets wholesale or retail in bulk, idempotent by batch_uuid, one audit row per outlet. |
 | admin-targets | GET | `/v1/admin/targets` | `listTargets` | Live monthly targets for routes or zones. |
 | admin-targets | PUT | `/v1/admin/targets` | `putTargets` | Upsert a month's targets for a set of scopes (all-or-nothing; targets are never negative). |
+| admin-targets | GET | `/v1/admin/target-revisions` | `listTargetRevisions` | Target revise list (approval queue) with month and status filters. |
+| admin-targets | POST | `/v1/admin/target-revisions/{revision_id}/decision` | `decideTargetRevision` | Approve or reject a target revision at the caller's level of cfg.target.approval_levels. |
+| admin-targets | POST | `/v1/admin/targets/upload` | `uploadTargets` | Upload a target workbook (all-or-nothing); a bad row rejects the whole file with a downloadable error sheet. |
+| admin-targets | GET | `/v1/admin/targets/template` | `getTargetTemplate` | Target sample workbook for a month and scope (cfg.target.template_version). |
+| admin-targets | GET | `/v1/admin/supervisor-targets` | `listSupervisorTargets` | AMO call targets (total, control-call, joint-call) by user and month; they feed the AMO home tiles. |
+| admin-targets | PUT | `/v1/admin/supervisor-targets` | `putSupervisorTargets` | Upsert AMO call targets for a month (all-or-nothing, never negative). |
 | admin-calendar | GET | `/v1/admin/calendar/holidays` | `listHolidays` | Holidays, make-up days and emergency off-days with their scope. |
 | admin-calendar | POST | `/v1/admin/calendar/holidays` | `createHoliday` | Declare a holiday, make-up day or emergency off-day (an emergency declaration is effective now). |
 | admin-calendar | GET | `/v1/admin/code-lists` | `listCodeLists` | Business code lists (force, edit, void, visit outcome, day exception, QC fault types, ...). |
@@ -1517,6 +1672,12 @@ Generated by the cross-check script (`--appendix`); 140 operations on 115 paths,
 | admin-config | GET | `/v1/admin/config/versions` | `listConfigVersions` | Committed config versions. |
 | admin-config | POST | `/v1/admin/config/versions/{version}/rollback` | `rollbackConfigVersion` | Revert one version (or roll back to it); produces a NEW version, deletes nothing. |
 | admin-config | GET | `/v1/admin/config/reach/{version}` | `getConfigReach` | How many targeted devices applied and acknowledged a version. |
+| admin-config | GET | `/v1/admin/config/whatif` | `configWhatIf` | Re-evaluate stored fixes under a candidate radius and count visits whose verdict would change. |
+| admin-config | GET | `/v1/admin/config/blast-radius` | `configBlastRadius` | Zones, routes, outlets, users and devices a change at a scope would touch. |
+| admin-config | GET | `/v1/admin/config/density` | `configDensity` | Outlet density index (neighbours within cfg.geo.density_neighbour_radii_m) for a scope. |
+| admin-config | GET | `/v1/admin/config/calibration` | `configCalibration` | Geofence calibration (distance histogram per geo class and territory, force-sale share, suggested radius). |
+| admin-config | GET | `/v1/admin/config/versions/{version}` | `getConfigVersion` | One committed config version with its values (compare and history views). |
+| admin-config | GET | `/v1/admin/config/reach/{version}/pending` | `listConfigReachPending` | Devices targeted by a version that have not applied it yet, with their lag. |
 | admin-devices | GET | `/v1/admin/devices` | `listDevices` | Device fleet with enrolment, trust, policy and last contact. |
 | admin-devices | GET | `/v1/admin/devices/{device_id}` | `getDevice` | One device with bound users and its latest status report. |
 | admin-devices | POST | `/v1/admin/devices/{device_id}/state` | `changeDeviceState` | Suspend, revoke or reactivate a device (revoked devices keep the upload grant for the grace window). |
@@ -1529,48 +1690,91 @@ Generated by the cross-check script (`--appendix`); 140 operations on 115 paths,
 | admin-devices | POST | `/v1/admin/enrolment-tokens/{token_id}/revoke` | `revokeEnrolmentToken` | Revoke an unused or partly used enrolment token. |
 | admin-devices | GET | `/v1/admin/device-otps` | `listDeviceOtps` | SR Device OTP panel (view-only for the TSO; one aggregated audit event per page view). |
 | admin-devices | POST | `/v1/admin/device-otps` | `issueDeviceOtp` | Re-issue a device OTP for a user (support and ops roles; the TSO for own zones). |
+| admin-devices | POST | `/v1/admin/devices/{device_id}/replace` | `replaceDevice` | Replace-device wizard - upload-first or revoke-now for the old phone, and an OTP for the new one. |
 | admin-releases | GET | `/v1/admin/releases` | `listReleases` | App releases by flavour. |
 | admin-releases | POST | `/v1/admin/releases` | `createRelease` | Register an APK built by CI (SHA-256 and signing certificate checked) as a draft release. |
 | admin-releases | PATCH | `/v1/admin/releases/{release_id}` | `updateRelease` | Publish, block or retire a release, or change its staged rollout percentage. |
 | admin-releases | GET | `/v1/admin/releases/policy` | `getReleasePolicy` | Minimum, latest and blocked version codes per flavour (edited through config changes of cfg.release.*). |
 | admin-audit | GET | `/v1/admin/audit` | `listAudit` | Append-only, hash-chained audit log. |
+| programmes | GET | `/v1/programmes/loyalty/balances` | `getLoyaltyBalances` | Live loyalty balance of outlets in reach (online refresh of the bundle's previous-day balance). |
+| programmes | GET | `/v1/programmes/astha/targets` | `listAsthaTargets` | Astha targets and achievement by outlet and brand for a quarter (route and shop information, web reads). |
+| programmes | PUT | `/v1/programmes/astha/targets` | `putAsthaTargets` | Upsert Astha targets for a quarter (roles in cfg.astha.target_entry_roles; targets never negative). |
+| programmes | GET | `/v1/programmes/astha/gift-choices` | `listGiftChoices` | Astha gift choice per outlet (TSO panel and Astha Gift Choice report source). |
+| programmes | PUT | `/v1/programmes/astha/gift-choices` | `putGiftChoices` | Save gift choices explicitly (roles in cfg.astha.gift_choice_roles); a choice locks once the SR's photo exists. |
+| web-entry | GET | `/v1/web-entry/route-day` | `getWebEntryRouteDay` | The web route-day aggregate entry of a route and date (with the app's sale quantities read-only). |
+| web-entry | POST | `/v1/web-entry/route-day` | `saveWebEntryRouteDay` | Save one route-day aggregate entry (Issue, Return, Memos, Successful Call per SKU); a re-save replaces with audit. |
+| web-entry | GET | `/v1/web-entry/outlet-sku` | `getAsthaWebEntry` | Astha Web Entry grid (Astha-channel outlets by SKU) of a route and date. |
+| web-entry | POST | `/v1/web-entry/outlet-sku` | `saveAsthaWebEntry` | Save the Astha outlet-by-SKU entry explicitly; overlap with app memos is flagged, never added. |
+| web-entry | POST | `/v1/web-entry/qc` | `saveQcEntry` | Market or Warehouse QC entry (SKU by fault type) stored as a separate web source, never added to app QC. |
+| web-entry | POST | `/v1/admin/data-entry` | `createPaperBackfill` | Key a dead-phone day from a printed memo (source manual) through the same ingest path. |
+| web-entry | GET | `/v1/admin/entry-unlocks` | `listEntryUnlocks` | Entry unlock grants (zone or route, date range, reason, expiry). |
+| web-entry | POST | `/v1/admin/entry-unlocks` | `createEntryUnlock` | Grant back-dated web entry for a zone or route (roles in cfg.web.entry_unlock_roles), audited. |
+| web-entry | POST | `/v1/admin/entry-unlocks/{unlock_id}/expire` | `expireEntryUnlock` | Expire an unlock grant now (an expired grant no longer allows back-dated entry). |
+| admin-content | GET | `/v1/admin/surveys` | `listSurveys` | Survey and questionnaire definitions (POSM, AMO survey, TSO visit query) with validity and assignment. |
+| admin-content | POST | `/v1/admin/surveys` | `createSurvey` | Create a survey (version 1); questions are immutable once answered, a change is a new version. |
+| admin-content | PATCH | `/v1/admin/surveys/{id}` | `updateSurvey` | Publish a new survey version, change validity or assignment, or deactivate. |
+| admin-content | GET | `/v1/admin/rubrics` | `listRubrics` | Assessment rubrics (joint-call stars, TSO visit query). |
+| admin-content | POST | `/v1/admin/rubrics` | `createRubric` | Create a rubric. |
+| admin-content | PATCH | `/v1/admin/rubrics/{id}` | `updateRubric` | Publish a new rubric version or deactivate. |
+| admin-content | GET | `/v1/admin/content` | `listContentItems` | AV and KV marketing content with per-outlet assignment and validity. |
+| admin-content | POST | `/v1/admin/content` | `createContentItem` | Create an AV or KV item from an uploaded asset (at most cfg.content.max_item_mb). |
+| admin-content | PATCH | `/v1/admin/content/{id}` | `updateContentItem` | Change validity, assignment or order, replace the asset (new version) or deactivate. |
+| admin-content | GET | `/v1/admin/tutorials` | `listAdminTutorials` | Tutorial videos and the four manuals per role. |
+| admin-content | POST | `/v1/admin/tutorials` | `createTutorial` | Add a tutorial video or manual from an uploaded asset. |
+| admin-content | PATCH | `/v1/admin/tutorials/{id}` | `updateTutorial` | Edit, reorder or retire a tutorial. |
+| admin-content | POST | `/v1/admin/assets` | `createAdminAssetUpload` | Write-only SAS for an admin asset (AV video, KV image, tutorial, manual PDF, SKU pack image, gift image). |
+| admin-content | GET | `/v1/admin/print-templates` | `listPrintTemplates` | Versioned print templates (memo kinds, stock slip, day summary, void slip, due receipt). |
+| admin-content | POST | `/v1/admin/print-templates` | `createPrintTemplateVersion` | Publish a new template version (future-dated); phones print it after their next sync. |
+| admin-content | GET | `/v1/admin/programmes` | `listProgrammes` | Programme definitions (Diamond League, Astha, campaigns, Superstar). |
+| admin-content | POST | `/v1/admin/programmes` | `createProgramme` | Create a programme period (for example "Diamond League (October)" or a campaign). |
+| admin-content | PATCH | `/v1/admin/programmes/{id}` | `updateProgramme` | Change dates, rules or status of a programme. |
+| admin-content | GET | `/v1/admin/programmes/{id}/enrolments` | `listProgrammeEnrolments` | Outlets enrolled in a programme with league, tier or slab and base target. |
+| admin-content | PUT | `/v1/admin/programmes/{id}/enrolments` | `putProgrammeEnrolments` | Upsert enrolments (idempotent by batch_uuid, all-or-nothing). |
+| admin-content | GET | `/v1/admin/gifts` | `listGifts` | Gift catalogue (points cost for Diamond League, tier for Astha, cash-back line). |
+| admin-content | POST | `/v1/admin/gifts` | `createGift` | Add a gift to a programme's catalogue (code immutable). |
+| admin-content | PATCH | `/v1/admin/gifts/{id}` | `updateGift` | Change cost, labels or status of a gift (memos and redemptions keep the cost they used). |
+| admin-finance | GET | `/v1/admin/dues-adjustments` | `listDuesAdjustments` | Dues adjustments and write-offs with their maker-checker state. |
+| admin-finance | POST | `/v1/admin/dues-adjustments` | `createDuesAdjustment` | Propose a correction or write-off of an outlet due (pending until a different person approves). |
+| admin-finance | POST | `/v1/admin/dues-adjustments/{adjustment_id}/decision` | `decideDuesAdjustment` | Approve or reject a dues adjustment (checker ≠ maker); approval adds a ledger row and changes the outlet balance. |
+| support | POST | `/v1/support/pda-upload` | `createSupportUpload` | Write-only SAS for one "PDA to Support" data file (encrypted zip, size-capped). |
+| support | POST | `/v1/client-errors` | `reportClientError` | Privacy-scrubbed error report from the web app (phones send `app_error` records in the batch). |
 
 ---
 
-## Appendix B. Cross-check against `contract/openapi.yaml` (2026-10-05)
+## Appendix B. Cross-check against `contract/openapi.yaml` (2026-10-05, rerun after the backlog coverage changes)
 
-Permanent gate: the same checks run on every build in `shared/contract` (`SpecCrossCheckTest`: Appendix A equals the contract's operations, every `/v1` path named here exists, the s4.2 record types, the s3.4 HTTP status of every `ProblemCode`, the s4.5 status and retryability of every `RecordOutcomeCode`, the s11.4 and s12.3 catalogues, every `cfg.*` key in the s9.5 registry, every header; `ContractDriftTest`: 15 enums of the Kotlin mirror equal the YAML). A change to this page or to the contract that breaks agreement fails `./gradlew :shared:contract:build`.
+Permanent gate: the same checks run on every build in `shared/contract` (`SpecCrossCheckTest`: Appendix A equals the contract's operations, every `/v1` path named here exists, the s4.2 record types, the s3.4 HTTP status of every `ProblemCode`, the s4.5 status and retryability of every `RecordOutcomeCode`, the s11.4 and s12.3 catalogues, every `cfg.*` key in the s9.5 registry, every header; `ContractDriftTest`: 24 enums of the Kotlin mirror equal the YAML and every record type has a payload mapping; `BacklogCoverageTest`: every in-scope backlog row's needs exist, docs/24-build-spec-verification.md s10). A change to this page or to the contract that breaks agreement fails `./gradlew :shared:contract:build`.
 
-One-off run while writing: a script parses the YAML and this page (sections 1 to 14, appendices excluded) and checks both directions: every `/v1` path named here exists in the contract and every contract operation is in Appendix A; every value of the contract enums below appears in the matching section and every value listed in those sections exists in the enum; every `cfg.*` key named here or in the contract is in the s9.5 registry and matches the contract's `ConfigKeyName` pattern; every `X-*` header and every schema name cited here exists in the contract; every record type has a payload mapping. Drift found while writing (all fixed before this run): `location_mode` enum value `off` quoted so YAML 1.1 parsers do not read it as a boolean; `number` added to the config `value_type` enum (D24-62); `ERR_PUSH_DISABLED` fixed to 409 in both documents.
+One-off run: a script parses the YAML and this page (sections 1 to 14, appendices excluded) and checks both directions: every `/v1` path named here exists in the contract and every contract operation is in Appendix A; every value of the contract enums below appears in the matching section and every value listed in those sections exists in the enum; every `cfg.*` key named here or in the contract is in the s9.5 registry and matches the contract's `ConfigKeyName` pattern; every `X-*` header and every schema name cited here exists in the contract; every record type has a payload mapping. Drift found and fixed while writing: `location_mode` enum value `off` quoted (YAML 1.1 parsers read it as a boolean); `number` added to the config `value_type` enum (D24-62); `ERR_PUSH_DISABLED` fixed to 409 in both documents; the offer types of s12.5 and D24-38 aligned with the contract's `Offer.offer_type`; then the 120 elements of the backlog coverage check (verification log s10).
 
 Result (exit code 0):
 
 ```text
-Endpoints: contract has 140 operations on 115 paths; spec body names 43 distinct /v1 paths; not in contract: none
-Appendix A rows: 140 (contract operations: 140) -> identical
-Enum RecordType (32 values) vs s4.2 table: contract-only none; spec-only none -> ok
-Enum RecordOutcomeCode (32 values) vs s4.5: contract-only none; spec-only none -> ok
+Endpoints: contract has 206 operations on 166 paths; spec body names 75 distinct /v1 paths; not in contract: none
+Appendix A rows: 206 (contract operations: 206) -> identical
+Enum RecordType (42 values) vs s4.2 table: contract-only none; spec-only none -> ok
+Enum RecordOutcomeCode (36 values) vs s4.5: contract-only none; spec-only none -> ok
 Enum AckStatus (4 values) vs s4.5: contract-only none; spec-only none -> ok
-Enum ProblemCode (70 values) vs s3.4 table: contract-only none; spec-only none -> ok
+Enum ProblemCode (72 values) vs s3.4 table: contract-only none; spec-only none -> ok
 Enum DayState (7 values) vs s4.9 table: contract-only none; spec-only none -> ok
 Enum SyncTrigger (11 values) vs s4.7 table: contract-only none; spec-only none -> ok
-Enum RiskSignalCode (17 values) vs s11.4 table: contract-only none; spec-only none -> ok
-Enum ReportKey (28 values) vs s12.3 table: contract-only none; spec-only none -> ok
+Enum RiskSignalCode (19 values) vs s11.4 table: contract-only none; spec-only none -> ok
+Enum ReportKey (42 values) vs s12.3 table: contract-only none; spec-only none -> ok
 Enum Role (10 values) vs s8.5: contract-only none; spec-only none -> ok
 Enum ConfigScopeType (11 values) vs s9.2: contract-only none; spec-only none -> ok
 Enum GeoVerdict (6 values) vs s11.2 table: contract-only none; spec-only none -> ok
-Enum OutletRequestType (5 values) vs s12.2: contract-only none; spec-only none -> ok
+Enum OutletRequestType (6 values) vs s12.2: contract-only none; spec-only none -> ok
 Enum OutletRequestStatus (6 values) vs s12.2: contract-only none; spec-only none -> ok
 Enum DeviceState (5 values) vs s8.7: contract-only none; spec-only none -> ok
 Enum LockdownLevel (2 values) vs s10.2: contract-only none; spec-only none -> ok
-Enum BundleSectionName (7 values) vs anywhere: contract-only none; spec-only none -> ok
-Enum CodeListKey (14 values) vs anywhere: contract-only none; spec-only none -> ok
+Enum BundleSectionName (9 values) vs anywhere: contract-only none; spec-only none -> ok
+Enum CodeListKey (17 values) vs anywhere: contract-only none; spec-only none -> ok
 Enum AppFlavour (3 values) vs s2.1: contract-only none; spec-only none -> ok
-Config keys: registry s9.5 has 172 keys; spec names 172; contract names 29; spec keys missing from registry: none; contract keys missing from registry: none
-Registry key names matching contract ConfigKeyName pattern: 172/172 (bad: none)
+Config keys: registry s9.5 has 226 keys; spec names 226; contract names 64; spec keys missing from registry: none; contract keys missing from registry: none
+Registry key names matching contract ConfigKeyName pattern: 226/226 (bad: none)
 Headers: spec names ['X-App-Version', 'X-Aron-Api', 'X-Batch-Attempt', 'X-Bundle-Version-Current', 'X-Config-Version', 'X-Device-Id', 'X-Device-Proof', 'X-Device-Time', 'X-Last-Sync-Error', 'X-Pending-Rows', 'X-Request-Id', 'X-Server-Generation', 'X-Server-Time']; missing from contract: none
-Schema names cited in the spec: 35; not components.schemas: none
-SyncRecord discriminator maps 32/32 record types (unmapped: none)
+Schema names cited in the spec: 41; not components.schemas: none
+SyncRecord discriminator maps 42/42 record types (unmapped: none)
 
 RESULT: PASS (no drift)
 ```

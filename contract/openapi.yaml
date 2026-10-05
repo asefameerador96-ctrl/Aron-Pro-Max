@@ -95,6 +95,16 @@ tags:
     description: App releases, minimum and blocked versions, staged rollout.
   - name: admin-audit
     description: Immutable audit log reads.
+  - name: programmes
+    description: Loyalty (Diamond League), Astha targets and gift choices, campaign gifts (docs/24 s4.14).
+  - name: web-entry
+    description: Web back-office entry - route-day aggregate, Astha outlet-SKU, QC, paper backfill, unlock grants (docs/24 s12.6).
+  - name: admin-content
+    description: Surveys, rubrics, AV and KV content, tutorials, print templates, programmes and gifts.
+  - name: admin-finance
+    description: Dues adjustments and write-offs (maker-checker).
+  - name: support
+    description: PDA to Support uploads and web error reports.
 paths:
   /v1/health:
     get:
@@ -1535,7 +1545,8 @@ paths:
       operationId: runReport
       summary: Run a report with one ReportQuery object; json inline, xlsx inline up to the row limit or as an export job.
       description: |
-        `output.format = json` returns 200 `ReportResult`. `xlsx` returns 200 with the workbook when the row count
+        `output.format = json` returns 200 `ReportResult`; `print` returns 200 `text/html` (server-rendered print view,
+        logged as an export); `pdf` always returns 202 with an `ExportJob`. `xlsx` returns 200 with the workbook when the row count
         is at most `cfg.ops.report_sync_max_rows` (10,000), else 202 with an `ExportJob`. Above
         `cfg.ops.report_export_max_rows` the query is refused (413 `ERR_REPORT_TOO_LARGE`). Every export is logged
         with a watermark; formula-leading cells are sanitised.
@@ -1557,6 +1568,8 @@ paths:
               schema: { $ref: '#/components/schemas/ReportResult' }
             application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
               schema: { type: string, contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet }
+            text/html:
+              schema: { type: string, contentMediaType: text/html, description: Print view (output.format = print). }
         '202':
           description: Export job queued.
           content:
@@ -2130,7 +2143,7 @@ paths:
       tags: [admin-products]
       operationId: createPrices
       summary: Publish new prices from a future Dhaka date (closes the open row of each SKU and type at that date).
-      description: Back-dating needs `finance.backdate` and is refused otherwise (400 `ERR_MASTER_EFFECTIVE_DATE_PAST`). A publish bumps `cfg.price.list_version`.
+      description: Back-dating needs `finance.backdate` and is refused otherwise (400 `ERR_MASTER_EFFECTIVE_DATE_PAST`). A publish bumps `cfg.price.list_version`. A batch that moves any price by more than `cfg.price.max_change_pct` is stored `pending_approval` until a second person decides (`POST /v1/admin/prices/batches/{batch_uuid}/decision`); preview first with `POST /v1/admin/prices/preview`.
       requestBody:
         required: true
         content:
@@ -2377,6 +2390,7 @@ paths:
       tags: [admin-users]
       operationId: manageUserCredentials
       summary: Reset password (temporary, shown once), unlock, or force logout (revoke full-grant families).
+      description: SUPPORT and ADMIN for any user in reach; a TSO may `reset_password` and `unlock` SR and AMO users of its own zones (docs/24 s8.5). Every action is audited.
       parameters:
         - $ref: '#/components/parameters/IdPath'
       requestBody:
@@ -2516,7 +2530,7 @@ paths:
       tags: [admin-targets]
       operationId: putTargets
       summary: Upsert a month's targets for a set of scopes (all-or-nothing; targets are never negative).
-      description: 'Phase 1 hook of the Phase 2 target engine: one approval-free write by `master.target` holders, idempotent by `batch_uuid`.'
+      description: 'Creates a target revision `pending_approval` that goes live after the approvals of cfg.target.approval_levels (docs/24 s12.6); idempotent by `batch_uuid`. After the month starts (cfg.target.lock_after_month_start) every change is a revision.'
       requestBody:
         required: true
         content:
@@ -3177,6 +3191,1311 @@ paths:
               schema: { $ref: '#/components/schemas/AuditPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  # ---------- backlog coverage additions (docs/24 s4.14, s12.6; docs/24-build-spec-verification.md s10) ----------
+  /v1/outlets/nearby:
+    get:
+      tags: [team]
+      operationId: getNearbyOutlets
+      summary: Outlets within a radius of a point (TSO Retailer radius map), capped and scoped.
+      description: |
+        Served from a geo index on confirmed outlet coordinates within the caller's reach. `radius_m` must be one
+        of `cfg.tso.periphery_radius_options_m` (50, 100, 300); at most `cfg.tso.periphery_max_markers` (300)
+        outlets are returned, nearest first, with `truncated` set when more exist. Contact numbers only with the
+        `pii` claim.
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, minimum: 20.0, maximum: 27.0 }, description: Latitude of the centre (Bangladesh bounds). }
+        - { name: lng, in: query, required: true, schema: { type: number, minimum: 88.0, maximum: 93.0 }, description: Longitude of the centre (Bangladesh bounds). }
+        - { name: radius_m, in: query, required: true, schema: { type: integer, minimum: 10, maximum: 5000 }, description: Radius in metres; one of cfg.tso.periphery_radius_options_m. }
+        - $ref: '#/components/parameters/ZoneIdQuery'
+      responses:
+        '200':
+          description: Outlets inside the circle.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NearbyOutlets' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/dashboards/daily-tracking/actions:
+    post:
+      tags: [dashboards]
+      operationId: createTrackingAction
+      summary: Daily Tracking "take action" note on a route-day; notifies the route's TSO and AMO, never reassigns.
+      description: |
+        Allowed after `cfg.day.take_action_after` (17:00 Dhaka) of the business date (`409 ERR_REQUEST_STATE`
+        before it). Idempotent by `action_uuid`. The notification is an FCM nudge to the TSO and AMO of the route.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrackingActionRequest' }
+      responses:
+        '201':
+          description: Stored (or the stored action on replay).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackingAction' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/tutorials:
+    get:
+      tags: [app]
+      operationId: listTutorials
+      summary: Tutorial videos and manuals for the caller's role (also in the bundle; playback is online only).
+      responses:
+        '200':
+          description: Tutorial list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TutorialList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/support/pda-upload:
+    post:
+      tags: [support]
+      operationId: createSupportUpload
+      summary: Write-only SAS for one "PDA to Support" data file (encrypted zip, size-capped).
+      description: |
+        Idempotent by `upload_uuid` (a repeat returns the same blob path with a fresh SAS). The file is at most
+        `cfg.support.max_upload_mb` (20 MB); on mobile data the phone waits for Wi-Fi when
+        `cfg.support.pda_upload_wifi_only` is true. The zip is encrypted on the phone with the support public key.
+      parameters:
+        - $ref: '#/components/parameters/XDeviceIdRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupportUploadRequest' }
+      responses:
+        '200':
+          description: Upload URL.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportUpload' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/client-errors:
+    post:
+      tags: [support]
+      operationId: reportClientError
+      summary: Privacy-scrubbed error report from the web app (phones send `app_error` records in the batch).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientErrorReport' }
+      responses:
+        '202': { description: Accepted (deduplicated by error_uuid). }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/media/upload:
+    post:
+      tags: [media]
+      operationId: uploadMediaMultipart
+      summary: Multipart fallback for one small non-evidence image (feedback); evidence photos always use SAS.
+      description: |
+        Idempotent by (`media_uuid`, `purpose`): a repeat returns `replayed: true` and stores nothing. Only purposes
+        `feedback` and `support` are accepted here; at most 300 KB JPEG.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/MediaMultipartUpload' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaUploaded' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+
+  /v1/report-exports:
+    get:
+      tags: [reports]
+      operationId: listExportLog
+      summary: Export log viewer (who exported which report with which filters, rows and PII flag).
+      parameters:
+        - { name: user_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: Exports of one user. }
+        - { name: report_key, in: query, required: false, schema: { $ref: '#/components/schemas/ReportKey' }, description: Exports of one report. }
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of export log entries, newest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportLogPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/programmes/loyalty/balances:
+    get:
+      tags: [programmes]
+      operationId: getLoyaltyBalances
+      summary: Live loyalty balance of outlets in reach (online refresh of the bundle's previous-day balance).
+      parameters:
+        - { name: outlet_id, in: query, required: false, schema: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/Id' } }, style: form, explode: true, description: Outlets to read; omitted = the outlets of the caller's routes today. }
+        - { name: programme_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: One programme. }
+      responses:
+        '200':
+          description: Balances.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoyaltyBalanceList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/programmes/astha/targets:
+    get:
+      tags: [programmes]
+      operationId: listAsthaTargets
+      summary: Astha targets and achievement by outlet and brand for a quarter (route and shop information, web reads).
+      parameters:
+        - { name: quarter, in: query, required: true, schema: { type: string, pattern: '^\d{4}-Q[1-4]$' }, description: 'Quarter `YYYY-Qn` (quarter start month from cfg.astha.quarter_start_month).' }
+        - { name: route_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: One route (the AMO route selector). }
+        - $ref: '#/components/parameters/ZoneIdQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Target rows with achievement.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AsthaTargetPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [programmes]
+      operationId: putAsthaTargets
+      summary: Upsert Astha targets for a quarter (roles in cfg.astha.target_entry_roles; targets never negative).
+      description: Idempotent by `batch_uuid`; all-or-nothing. A negative target is `400 ERR_VALIDATION`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AsthaTargetWrite' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetBatchResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/programmes/astha/gift-choices:
+    get:
+      tags: [programmes]
+      operationId: listGiftChoices
+      summary: Astha gift choice per outlet (TSO panel and Astha Gift Choice report source).
+      parameters:
+        - { name: quarter, in: query, required: true, schema: { type: string, pattern: '^\d{4}-Q[1-4]$' }, description: 'Quarter `YYYY-Qn`.' }
+        - { name: route_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: One route. }
+        - $ref: '#/components/parameters/ZoneIdQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Gift assignments.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftAssignmentPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [programmes]
+      operationId: putGiftChoices
+      summary: Save gift choices explicitly (roles in cfg.astha.gift_choice_roles); a choice locks once the SR's photo exists.
+      description: |
+        Idempotent by each row's `client_uuid`. A row whose assignment already has a `gift_photo` is refused per row
+        with `ERR_GIFT_CHOICE_LOCKED` in `results[]` (cfg.astha.gift_choice_lock = on_sr_photo); the other rows are saved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GiftChoiceWrite' }
+      responses:
+        '200':
+          description: Per-row results.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftChoiceResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/web-entry/route-day:
+    get:
+      tags: [web-entry]
+      operationId: getWebEntryRouteDay
+      summary: The web route-day aggregate entry of a route and date (with the app's sale quantities read-only).
+      parameters:
+        - { name: route_id, in: query, required: true, schema: { $ref: '#/components/schemas/Id' }, description: Route. }
+        - $ref: '#/components/parameters/BusinessDateQueryRequired'
+      responses:
+        '200':
+          description: Current entry (empty lines when none).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebEntryRouteDay' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [web-entry]
+      operationId: saveWebEntryRouteDay
+      summary: Save one route-day aggregate entry (Issue, Return, Memos, Successful Call per SKU); a re-save replaces with audit.
+      description: |
+        One entry per route-day; idempotent by `client_uuid`; a re-save with a new `client_uuid` replaces the previous
+        entry and writes an audit row. Web rows and app rows for one route-day are never added
+        (`cfg.web.entry_app_overlap_policy` = exclusive_flag: stored and flagged). Successful calls may not exceed
+        the target-outlet snapshot. Outside `cfg.web.entry_backdate_days` without an active entry unlock:
+        `409 ERR_ENTRY_WINDOW_CLOSED`; after Final Submit: `409 ERR_DAY_ALREADY_FINAL_SUBMITTED`. Astha-channel
+        outlets are excluded (they use the outlet-SKU entry).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebEntryRouteDayWrite' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebEntryRouteDay' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/web-entry/outlet-sku:
+    get:
+      tags: [web-entry]
+      operationId: getAsthaWebEntry
+      summary: Astha Web Entry grid (Astha-channel outlets by SKU) of a route and date.
+      parameters:
+        - { name: route_id, in: query, required: true, schema: { $ref: '#/components/schemas/Id' }, description: Route. }
+        - $ref: '#/components/parameters/BusinessDateQueryRequired'
+      responses:
+        '200':
+          description: Grid rows with app-memo overlap flags.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AsthaWebEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [web-entry]
+      operationId: saveAsthaWebEntry
+      summary: Save the Astha outlet-by-SKU entry explicitly; overlap with app memos is flagged, never added.
+      description: Idempotent by `client_uuid` (the same uuid sent twice stores one entry). Only Astha-channel outlets (`400 ERR_VALIDATION` otherwise); window rules as for the route-day entry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AsthaWebEntryWrite' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AsthaWebEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/web-entry/qc:
+    post:
+      tags: [web-entry]
+      operationId: saveQcEntry
+      summary: Market or Warehouse QC entry (SKU by fault type) stored as a separate web source, never added to app QC.
+      description: Idempotent by `client_uuid`. Warehouse entries need a reason and the warehouse QC permission (403 otherwise); each save writes an audit row.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QcEntryWrite' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QcEntryResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/data-entry:
+    post:
+      tags: [web-entry]
+      operationId: createPaperBackfill
+      summary: Key a dead-phone day from a printed memo (source manual) through the same ingest path.
+      description: |
+        Allowed within `cfg.entry.paper_backfill_window_days` (7) of the business date. Idempotent by `client_uuid`;
+        a memo number already stored (from the phone or an earlier backfill) is stored once and answered with
+        `status: duplicate_memo_no`. The memo is flagged `source = manual` in every report (Online/Offline).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaperBackfillRequest' }
+      responses:
+        '200':
+          description: Result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaperBackfillResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/entry-unlocks:
+    get:
+      tags: [web-entry]
+      operationId: listEntryUnlocks
+      summary: Entry unlock grants (zone or route, date range, reason, expiry).
+      parameters:
+        - $ref: '#/components/parameters/ZoneIdQuery'
+        - { name: active, in: query, required: false, schema: { type: boolean }, description: Only grants not yet expired. }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of grants.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntryUnlockPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [web-entry]
+      operationId: createEntryUnlock
+      summary: Grant back-dated web entry for a zone or route (roles in cfg.web.entry_unlock_roles), audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EntryUnlockWrite' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntryUnlock' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/entry-unlocks/{unlock_id}/expire:
+    post:
+      tags: [web-entry]
+      operationId: expireEntryUnlock
+      summary: Expire an unlock grant now (an expired grant no longer allows back-dated entry).
+      parameters:
+        - { name: unlock_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' }, description: Grant id. }
+      responses:
+        '200':
+          description: Expired.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EntryUnlock' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/target-revisions:
+    get:
+      tags: [admin-targets]
+      operationId: listTargetRevisions
+      summary: Target revise list (approval queue) with month and status filters.
+      parameters:
+        - { name: month, in: query, required: false, schema: { $ref: '#/components/schemas/Month' }, description: Target month. }
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/TargetRevisionStatus' }, description: Revision status. }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of revisions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetRevisionPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/target-revisions/{revision_id}/decision:
+    post:
+      tags: [admin-targets]
+      operationId: decideTargetRevision
+      summary: Approve or reject a target revision at the caller's level of cfg.target.approval_levels.
+      description: The approver is never the maker (`409 ERR_SEPARATION_OF_DUTIES`). The last approval makes the revision live; nothing is overwritten (older revisions become superseded).
+      parameters:
+        - { name: revision_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' }, description: Revision id. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecisionRequest' }
+      responses:
+        '200':
+          description: Decided.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetRevision' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/targets/upload:
+    post:
+      tags: [admin-targets]
+      operationId: uploadTargets
+      summary: Upload a target workbook (all-or-nothing); a bad row rejects the whole file with a downloadable error sheet.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/TargetUpload' }
+      responses:
+        '200':
+          description: Accepted as a pending revision, or rejected with the error sheet.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetUploadResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+  /v1/admin/targets/template:
+    get:
+      tags: [admin-targets]
+      operationId: getTargetTemplate
+      summary: Target sample workbook for a month and scope (cfg.target.template_version).
+      parameters:
+        - { name: month, in: query, required: true, schema: { $ref: '#/components/schemas/Month' }, description: Target month. }
+        - $ref: '#/components/parameters/TerritoryIdQuery'
+      responses:
+        '200':
+          description: The workbook.
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/admin/supervisor-targets:
+    get:
+      tags: [admin-targets]
+      operationId: listSupervisorTargets
+      summary: AMO call targets (total, control-call, joint-call) by user and month; they feed the AMO home tiles.
+      parameters:
+        - { name: month, in: query, required: true, schema: { $ref: '#/components/schemas/Month' }, description: Target month. }
+        - $ref: '#/components/parameters/ZoneIdQuery'
+      responses:
+        '200':
+          description: Targets.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupervisorTargetList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [admin-targets]
+      operationId: putSupervisorTargets
+      summary: Upsert AMO call targets for a month (all-or-nothing, never negative).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupervisorTargetWrite' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetBatchResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/admin/prices/preview:
+    post:
+      tags: [admin-products]
+      operationId: previewPrices
+      summary: Mandatory preview of a price publish (SKUs, price types, outlets and devices affected; whether a second approver is needed).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PricePublishRequest' }
+      responses:
+        '200':
+          description: Preview.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PricePreview' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/prices/batches/{batch_uuid}/decision:
+    post:
+      tags: [admin-products]
+      operationId: decidePriceBatch
+      summary: Second-approver decision on a price batch that moves a price by more than cfg.price.max_change_pct.
+      parameters:
+        - { name: batch_uuid, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' }, description: The publish batch. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecisionRequest' }
+      responses:
+        '200':
+          description: Decided; on approval the prices become effective from their date.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PriceBatch' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/outlets/outlet-kind:
+    post:
+      tags: [admin-outlets]
+      operationId: bulkSetOutletKind
+      summary: Mark outlets wholesale or retail in bulk, idempotent by batch_uuid, one audit row per outlet.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OutletKindBulkWrite' }
+      responses:
+        '200':
+          description: Applied (or the stored result on replay).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/admin/dues-adjustments:
+    get:
+      tags: [admin-finance]
+      operationId: listDuesAdjustments
+      summary: Dues adjustments and write-offs with their maker-checker state.
+      parameters:
+        - { name: outlet_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: One outlet. }
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/DecisionStatus' }, description: Decision status. }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of adjustments.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DuesAdjustmentPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-finance]
+      operationId: createDuesAdjustment
+      summary: Propose a correction or write-off of an outlet due (pending until a different person approves).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DuesAdjustmentWrite' }
+      responses:
+        '201':
+          description: Created as pending.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DuesAdjustment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/dues-adjustments/{adjustment_id}/decision:
+    post:
+      tags: [admin-finance]
+      operationId: decideDuesAdjustment
+      summary: Approve or reject a dues adjustment (the checker is not the maker); approval adds a ledger row and changes the outlet balance.
+      parameters:
+        - { name: adjustment_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' }, description: Adjustment id. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecisionRequest' }
+      responses:
+        '200':
+          description: Decided.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DuesAdjustment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/devices/{device_id}/replace:
+    post:
+      tags: [admin-devices]
+      operationId: replaceDevice
+      summary: Replace-device wizard - upload-first or revoke-now for the old phone, and an OTP for the new one.
+      description: '`upload_first` keeps the old device active until its outbox is empty (state `replaced` afterwards); `revoke_now` revokes it with the usual upload grace. Either way a device OTP is issued for the user.'
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceReplaceRequest' }
+      responses:
+        '200':
+          description: Result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceReplaceResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/config/whatif:
+    get:
+      tags: [admin-config]
+      operationId: configWhatIf
+      summary: Re-evaluate stored fixes under a candidate radius and count visits whose verdict would change.
+      parameters:
+        - $ref: '#/components/parameters/ScopeTypeQuery'
+        - $ref: '#/components/parameters/ScopeIdQuery'
+        - { name: value, in: query, required: true, schema: { type: integer, minimum: 10, maximum: 5000 }, description: Candidate radius in metres. }
+        - { name: days, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 90, default: 30 }, description: Look-back in business days. }
+      responses:
+        '200':
+          description: What-if result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RadiusWhatIf' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/config/blast-radius:
+    get:
+      tags: [admin-config]
+      operationId: configBlastRadius
+      summary: Zones, routes, outlets, users and devices a change at a scope would touch.
+      parameters:
+        - $ref: '#/components/parameters/ScopeTypeQuery'
+        - $ref: '#/components/parameters/ScopeIdQuery'
+      responses:
+        '200':
+          description: Counts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BlastRadius' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/config/density:
+    get:
+      tags: [admin-config]
+      operationId: configDensity
+      summary: Outlet density index (neighbours within cfg.geo.density_neighbour_radii_m) for a scope.
+      parameters:
+        - $ref: '#/components/parameters/ScopeTypeQuery'
+        - $ref: '#/components/parameters/ScopeIdQuery'
+      responses:
+        '200':
+          description: Density report.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DensityReport' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/config/calibration:
+    get:
+      tags: [admin-config]
+      operationId: configCalibration
+      summary: Geofence calibration (distance histogram per geo class and territory, force-sale share, suggested radius).
+      parameters:
+        - $ref: '#/components/parameters/ScopeTypeQuery'
+        - $ref: '#/components/parameters/ScopeIdQuery'
+      responses:
+        '200':
+          description: Calibration report.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalibrationReport' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/config/versions/{version}:
+    get:
+      tags: [admin-config]
+      operationId: getConfigVersion
+      summary: One committed config version with its values (compare and history views).
+      parameters:
+        - $ref: '#/components/parameters/ConfigVersionPath'
+      responses:
+        '200':
+          description: The version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigVersionDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/config/reach/{version}/pending:
+    get:
+      tags: [admin-config]
+      operationId: listConfigReachPending
+      summary: Devices targeted by a version that have not applied it yet, with their lag.
+      parameters:
+        - $ref: '#/components/parameters/ConfigVersionPath'
+        - $ref: '#/components/parameters/ZoneIdQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of pending devices.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigPendingDevicePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/permissions:
+    get:
+      tags: [admin-users]
+      operationId: getPermissionMatrix
+      summary: Role by menu by action matrix (data, cfg.web.menu_by_role) and the admin roster.
+      responses:
+        '200':
+          description: The matrix.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PermissionMatrix' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/permissions/roles/{role}:
+    put:
+      tags: [admin-users]
+      operationId: putRolePermissions
+      summary: Change one role's menus and actions; creates a C3 config change request (never an immediate grant).
+      parameters:
+        - { name: role, in: path, required: true, schema: { $ref: '#/components/schemas/Role' }, description: Role to change. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RolePermissionsWrite' }
+      responses:
+        '202':
+          description: Pending change request created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigChange' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/admin/surveys:
+    get:
+      tags: [admin-content]
+      operationId: listSurveys
+      summary: Survey and questionnaire definitions (POSM, AMO survey, TSO visit query) with validity and assignment.
+      parameters:
+        - $ref: '#/components/parameters/StatusQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of surveys.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurveyPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-content]
+      operationId: createSurvey
+      summary: Create a survey (version 1); questions are immutable once answered, a change is a new version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SurveyWrite' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurveyAdmin' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/surveys/{id}:
+    patch:
+      tags: [admin-content]
+      operationId: updateSurvey
+      summary: Publish a new survey version, change validity or assignment, or deactivate.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SurveyWrite' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurveyAdmin' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+  /v1/admin/rubrics:
+    get:
+      tags: [admin-content]
+      operationId: listRubrics
+      summary: Assessment rubrics (joint-call stars, TSO visit query).
+      parameters:
+        - $ref: '#/components/parameters/StatusQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of rubrics.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RubricPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-content]
+      operationId: createRubric
+      summary: Create a rubric.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RubricWrite' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RubricAdmin' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/rubrics/{id}:
+    patch:
+      tags: [admin-content]
+      operationId: updateRubric
+      summary: Publish a new rubric version or deactivate.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RubricWrite' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RubricAdmin' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+  /v1/admin/content:
+    get:
+      tags: [admin-content]
+      operationId: listContentItems
+      summary: AV and KV marketing content with per-outlet assignment and validity.
+      parameters:
+        - $ref: '#/components/parameters/StatusQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of content items.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentAdminPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-content]
+      operationId: createContentItem
+      summary: Create an AV or KV item from an uploaded asset (at most cfg.content.max_item_mb).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContentWrite' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentAdmin' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+  /v1/admin/content/{id}:
+    patch:
+      tags: [admin-content]
+      operationId: updateContentItem
+      summary: Change validity, assignment or order, replace the asset (new version) or deactivate.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContentWrite' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentAdmin' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+  /v1/admin/tutorials:
+    get:
+      tags: [admin-content]
+      operationId: listAdminTutorials
+      summary: Tutorial videos and the four manuals per role.
+      parameters:
+        - $ref: '#/components/parameters/StatusQuery'
+      responses:
+        '200':
+          description: Tutorials.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TutorialAdminList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-content]
+      operationId: createTutorial
+      summary: Add a tutorial video or manual from an uploaded asset.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TutorialWrite' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TutorialAdmin' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/tutorials/{id}:
+    patch:
+      tags: [admin-content]
+      operationId: updateTutorial
+      summary: Edit, reorder or retire a tutorial.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TutorialWrite' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TutorialAdmin' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+  /v1/admin/assets:
+    post:
+      tags: [admin-content]
+      operationId: createAdminAssetUpload
+      summary: Write-only SAS for an admin asset (AV video, KV image, tutorial, manual PDF, SKU pack image, gift image).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminAssetUploadRequest' }
+      responses:
+        '200':
+          description: Upload URL.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAssetUpload' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+  /v1/admin/print-templates:
+    get:
+      tags: [admin-content]
+      operationId: listPrintTemplates
+      summary: Versioned print templates (memo kinds, stock slip, day summary, void slip, due receipt).
+      responses:
+        '200':
+          description: Current and earlier versions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrintTemplateList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-content]
+      operationId: createPrintTemplateVersion
+      summary: Publish a new template version (future-dated); phones print it after their next sync.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PrintTemplateWrite' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PrintTemplate' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/programmes:
+    get:
+      tags: [admin-content]
+      operationId: listProgrammes
+      summary: Programme definitions (Diamond League, Astha, campaigns, Superstar).
+      parameters:
+        - $ref: '#/components/parameters/StatusQuery'
+      responses:
+        '200':
+          description: Programmes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProgrammeList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-content]
+      operationId: createProgramme
+      summary: Create a programme period (for example "Diamond League (October)" or a campaign).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProgrammeWrite' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Programme' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/programmes/{id}:
+    patch:
+      tags: [admin-content]
+      operationId: updateProgramme
+      summary: Change dates, rules or status of a programme.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProgrammeWrite' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Programme' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+  /v1/admin/programmes/{id}/enrolments:
+    get:
+      tags: [admin-content]
+      operationId: listProgrammeEnrolments
+      summary: Outlets enrolled in a programme with league, tier or slab and base target.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/ZoneIdQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of enrolments.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProgrammeEnrolmentPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [admin-content]
+      operationId: putProgrammeEnrolments
+      summary: Upsert enrolments (idempotent by batch_uuid, all-or-nothing).
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProgrammeEnrolmentWrite' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetBatchResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/gifts:
+    get:
+      tags: [admin-content]
+      operationId: listGifts
+      summary: Gift catalogue (points cost for Diamond League, tier for Astha, cash-back line).
+      parameters:
+        - { name: programme_id, in: query, required: false, schema: { $ref: '#/components/schemas/Id' }, description: One programme. }
+        - $ref: '#/components/parameters/StatusQuery'
+      responses:
+        '200':
+          description: Gifts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-content]
+      operationId: createGift
+      summary: Add a gift to a programme's catalogue (code immutable).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GiftWrite' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Gift' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/gifts/{id}:
+    patch:
+      tags: [admin-content]
+      operationId: updateGift
+      summary: Change cost, labels or status of a gift (memos and redemptions keep the cost they used).
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GiftWrite' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Gift' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+
+  /v1/feedback/{feedback_uuid}:
+    patch:
+      tags: [people]
+      operationId: updateFeedbackStatus
+      summary: Set the status of a feedback item in the inbox (audited with a reason).
+      parameters:
+        - { name: feedback_uuid, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' }, description: Feedback id. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FeedbackStatusWrite' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Feedback' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3691,7 +5010,7 @@ components:
       description: User role (docs/24 s8.5). One role per user; admin permission bundles are separate.
     RecordType:
       type: string
-      enum: [geo_breadcrumb, attendance_event, day_open, day_submit, day_exception, stock_movement, visit, visit_close, visit_skip, memo, memo_line, memo_discount, qc_line, print_event, memo_void, due_collection, survey_response, outlet_change_request, outlet_request_verification, distribution_check, distribution_check_line, call_assessment, call_assessment_answer, task, task_event, visit_plan, visit_plan_outlet, leave_application, feedback, media_meta, device_status, config_ack]
+      enum: [geo_breadcrumb, attendance_event, day_open, day_submit, day_exception, stock_movement, visit, visit_close, visit_skip, memo, memo_line, memo_discount, qc_line, print_event, memo_void, due_collection, survey_response, outlet_change_request, outlet_request_verification, distribution_check, distribution_check_line, call_assessment, call_assessment_answer, task, task_event, visit_plan, visit_plan_outlet, leave_application, feedback, media_meta, device_status, config_ack, content_view, redemption, redemption_line, gift_photo, price_compliance_check, risk_review, activity_log, app_error, sale_abort, consent_accept]
       description: Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise.
     AckStatus:
       type: string
@@ -3704,11 +5023,11 @@ components:
     RecordOutcomeCode:
       type: string
       description: Stable code on a rejected or quarantined record (docs/24 s4.5 lists retryability and the phone action).
-      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close]
+      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close, unknown_gift, insufficient_points, gift_photo_exists, programme_inactive]
     ProblemCode:
       type: string
       description: Stable problem codes (HTTP status in docs/24 s3.4).
-      enum: [ERR_VALIDATION, ERR_MALFORMED_JSON, ERR_UNSUPPORTED_SCHEMA_VERSION, ERR_UNAUTHENTICATED, ERR_TOKEN_EXPIRED, ERR_SCOPE_CHANGED, ERR_PASSWORD_CHANGED, ERR_FORBIDDEN, ERR_OUT_OF_SCOPE, ERR_NOT_FOUND, ERR_CONFLICT, ERR_PRECONDITION_FAILED, ERR_PAYLOAD_TOO_LARGE, ERR_UNSUPPORTED_MEDIA_TYPE, ERR_RATE_LIMITED, ERR_INTERNAL, ERR_SERVICE_UNAVAILABLE, ERR_READ_ONLY_MODE, ERR_AUTH_INVALID_CREDENTIALS, ERR_AUTH_ACCOUNT_LOCKED, ERR_AUTH_USER_DISABLED, ERR_AUTH_PASSWORD_POLICY, ERR_AUTH_PASSWORD_CHANGE_REQUIRED, ERR_AUTH_REFRESH_INVALID, ERR_AUTH_REFRESH_REUSED, ERR_AUTH_MFA_INVALID, ERR_AUTH_OTP_INVALID, ERR_AUTH_OTP_EXPIRED, ERR_AUTH_OTP_ATTEMPTS_EXCEEDED, ERR_AUTH_BIND_LOCKED, ERR_DEVICE_NOT_ENROLLED, ERR_DEVICE_UNBOUND, ERR_DEVICE_SUSPENDED, ERR_DEVICE_REVOKED, ERR_DEVICE_INTEGRITY_FAILED, ERR_DEVICE_PROOF_INVALID, ERR_DEVICE_LIMIT_REACHED, ERR_ENROLMENT_TOKEN_INVALID, ERR_ENROLMENT_TOKEN_EXPIRED, ERR_ENROLMENT_TOKEN_EXHAUSTED, ERR_ENROLMENT_ATTESTATION_FAILED, ERR_NONCE_INVALID, ERR_APP_VERSION_UNSUPPORTED, ERR_SYNC_BATCH_UUID_REUSED, ERR_SYNC_BATCH_TOO_LARGE, ERR_SYNC_DECOMPRESSION_LIMIT, ERR_SYNC_HOLD, ERR_BUNDLE_NEW_BUSINESS_DATE, ERR_BUNDLE_CURSOR_EXPIRED, ERR_BUNDLE_NOT_READY, ERR_DAY_ALREADY_FINAL_SUBMITTED, ERR_DAY_NOT_FINAL_SUBMITTED, ERR_DAY_SUBMIT_VOID_NOT_ALLOWED, ERR_DAY_DATA_VOID_NOT_ALLOWED, ERR_CFG_UNKNOWN_KEY, ERR_CFG_OUT_OF_BOUNDS, ERR_CFG_SCOPE_NOT_ALLOWED, ERR_CFG_DEPENDENCY, ERR_CFG_SELF_APPROVAL, ERR_CFG_REASON_REQUIRED, ERR_CFG_FREEZE_WINDOW, ERR_MASTER_DUPLICATE_CODE, ERR_MASTER_EFFECTIVE_DATE_PAST, ERR_MASTER_OVERLAP, ERR_MASTER_IN_USE, ERR_REQUEST_STATE, ERR_SEPARATION_OF_DUTIES, ERR_REPORT_INVALID_QUERY, ERR_REPORT_TOO_LARGE, ERR_PUSH_DISABLED]
+      enum: [ERR_VALIDATION, ERR_MALFORMED_JSON, ERR_UNSUPPORTED_SCHEMA_VERSION, ERR_UNAUTHENTICATED, ERR_TOKEN_EXPIRED, ERR_SCOPE_CHANGED, ERR_PASSWORD_CHANGED, ERR_FORBIDDEN, ERR_OUT_OF_SCOPE, ERR_NOT_FOUND, ERR_CONFLICT, ERR_PRECONDITION_FAILED, ERR_PAYLOAD_TOO_LARGE, ERR_UNSUPPORTED_MEDIA_TYPE, ERR_RATE_LIMITED, ERR_INTERNAL, ERR_SERVICE_UNAVAILABLE, ERR_READ_ONLY_MODE, ERR_AUTH_INVALID_CREDENTIALS, ERR_AUTH_ACCOUNT_LOCKED, ERR_AUTH_USER_DISABLED, ERR_AUTH_PASSWORD_POLICY, ERR_AUTH_PASSWORD_CHANGE_REQUIRED, ERR_AUTH_REFRESH_INVALID, ERR_AUTH_REFRESH_REUSED, ERR_AUTH_MFA_INVALID, ERR_AUTH_OTP_INVALID, ERR_AUTH_OTP_EXPIRED, ERR_AUTH_OTP_ATTEMPTS_EXCEEDED, ERR_AUTH_BIND_LOCKED, ERR_DEVICE_NOT_ENROLLED, ERR_DEVICE_UNBOUND, ERR_DEVICE_SUSPENDED, ERR_DEVICE_REVOKED, ERR_DEVICE_INTEGRITY_FAILED, ERR_DEVICE_PROOF_INVALID, ERR_DEVICE_LIMIT_REACHED, ERR_ENROLMENT_TOKEN_INVALID, ERR_ENROLMENT_TOKEN_EXPIRED, ERR_ENROLMENT_TOKEN_EXHAUSTED, ERR_ENROLMENT_ATTESTATION_FAILED, ERR_NONCE_INVALID, ERR_APP_VERSION_UNSUPPORTED, ERR_SYNC_BATCH_UUID_REUSED, ERR_SYNC_BATCH_TOO_LARGE, ERR_SYNC_DECOMPRESSION_LIMIT, ERR_SYNC_HOLD, ERR_BUNDLE_NEW_BUSINESS_DATE, ERR_BUNDLE_CURSOR_EXPIRED, ERR_BUNDLE_NOT_READY, ERR_DAY_ALREADY_FINAL_SUBMITTED, ERR_DAY_NOT_FINAL_SUBMITTED, ERR_DAY_SUBMIT_VOID_NOT_ALLOWED, ERR_DAY_DATA_VOID_NOT_ALLOWED, ERR_CFG_UNKNOWN_KEY, ERR_CFG_OUT_OF_BOUNDS, ERR_CFG_SCOPE_NOT_ALLOWED, ERR_CFG_DEPENDENCY, ERR_CFG_SELF_APPROVAL, ERR_CFG_REASON_REQUIRED, ERR_CFG_FREEZE_WINDOW, ERR_MASTER_DUPLICATE_CODE, ERR_MASTER_EFFECTIVE_DATE_PAST, ERR_MASTER_OVERLAP, ERR_MASTER_IN_USE, ERR_REQUEST_STATE, ERR_SEPARATION_OF_DUTIES, ERR_REPORT_INVALID_QUERY, ERR_REPORT_TOO_LARGE, ERR_PUSH_DISABLED, ERR_ENTRY_WINDOW_CLOSED, ERR_GIFT_CHOICE_LOCKED]
     DayState:
       type: string
       enum: [not_started, logged_in, in_field, synced, submit_pending_rows, sales_submitted, final_submitted]
@@ -3749,7 +5068,7 @@ components:
       enum: [active, closed, merged, archived]
     OutletRequestType:
       type: string
-      enum: [new, close, info, cluster, location]
+      enum: [new, close, info, cluster, location, route_add]
     OutletRequestStatus:
       type: string
       enum: [pending, verified, approved, rejected, lapsed, discarded]
@@ -3778,10 +5097,10 @@ components:
       enum: [pending_approval, scheduled, applied, rejected, cancelled, expired, reverted]
     VisitKind:
       type: string
-      enum: [sr_call, amo_control_call, amo_joint_call, tso_visit]
+      enum: [sr_call, amo_control_call, amo_joint_call, tso_visit, web_entry]
     VisitOutcome:
       type: string
-      enum: [sold, zero_sale_stock_ok, closed, owner_absent, refused, competitor_exclusive, abandoned]
+      enum: [sold, zero_sale_stock_ok, closed, owner_absent, refused, competitor_exclusive, not_reached, abandoned]
     GeoVerdict:
       type: string
       enum: [in_range, out_of_range, accuracy_too_low, no_fix, mocked, no_outlet_location]
@@ -3790,7 +5109,7 @@ components:
       enum: [master, provisional, placeholder, none]
     FixPurpose:
       type: string
-      enum: [attendance_in, attendance_out, visit_open, force_sale, outlet_capture, outlet_verification, memo_edit, memo_void, due_collection, refresh, breadcrumb]
+      enum: [attendance_in, attendance_out, visit_open, force_sale, outlet_capture, outlet_verification, memo_edit, memo_void, due_collection, refresh, breadcrumb, gift_photo, redemption]
     LocationProvider:
       type: string
       enum: [fused, gps, network, passive, unknown]
@@ -3812,20 +5131,20 @@ components:
       enum: [printed, failed, failed_user]
     StockMovementKind:
       type: string
-      enum: [issue, return, adjustment, damaged, short]
+      enum: [issue, return, adjustment, damaged, short, qc_return]
     AttendanceKind:
       type: string
       enum: [check_in, check_out]
     MediaPurpose:
       type: string
-      enum: [force_sale, outlet_capture, outlet_verification, survey, feedback, support]
+      enum: [force_sale, outlet_capture, outlet_verification, survey, feedback, support, gift_photo]
     SyncTrigger:
       type: string
       enum: [write_debounce, foreground, connectivity, workmanager_connectivity, periodic, manual, day_submit, checkout, resync, digest_resend, directive]
     RiskSignalCode:
       type: string
       description: Risk signal catalogue (docs/24 s11.4).
-      enum: [GEO_MOCK, GEO_TELEPORT, GEO_ZERO_JITTER, GEO_PERFECT_ACCURACY, GEO_SAME_POINT, GEO_ROUTE_SINGLE_POINT, GEO_STALE_FIX, GEO_GNSS_INCONSISTENT, GEO_GNSS_TIME_SKEW, GEO_DEVICE_SERVER_MISMATCH, GEO_SHORT_VISIT_GAPS, DEVICE_NOT_OWNER, DEVICE_INTEGRITY_FAIL, DEVICE_DEBUG_ENABLED, DEVICE_MOCK_APP_PRESENT, DEVICE_POLICY_DRIFT, CLOCK_SKEW]
+      enum: [GEO_MOCK, GEO_TELEPORT, GEO_ZERO_JITTER, GEO_PERFECT_ACCURACY, GEO_SAME_POINT, GEO_ROUTE_SINGLE_POINT, GEO_STALE_FIX, GEO_GNSS_INCONSISTENT, GEO_GNSS_TIME_SKEW, GEO_DEVICE_SERVER_MISMATCH, GEO_SHORT_VISIT_GAPS, DEVICE_NOT_OWNER, DEVICE_INTEGRITY_FAIL, DEVICE_DEBUG_ENABLED, DEVICE_MOCK_APP_PRESENT, DEVICE_POLICY_DRIFT, CLOCK_SKEW, GEO_OUT_OF_BOUNDS, CONFIG_STAMP_REGRESS]
     RiskSignalStatus:
       type: string
       enum: [open, reviewed, dismissed, confirmed]
@@ -3837,14 +5156,14 @@ components:
       enum: [open, accepted, accepted_with_fix, discarded]
     CodeListKey:
       type: string
-      enum: [force_reason, edit_reason, void_reason, visit_outcome, skip_reason, day_exception_reason, stock_variance_reason, task_type, leave_type, feedback_category, qc_fault_type, payment_mode, outlet_close_reason, submit_void_reason]
+      enum: [force_reason, edit_reason, void_reason, visit_outcome, skip_reason, day_exception_reason, stock_variance_reason, task_type, leave_type, feedback_category, qc_fault_type, payment_mode, outlet_close_reason, submit_void_reason, channel, sub_channel, geo_class]
     BundleSectionName:
       type: string
-      enum: [outlets, open_memos, prices, offers, tasks, team, pending_outlet_requests]
+      enum: [outlets, open_memos, prices, offers, tasks, team, pending_outlet_requests, programmes, content]
     ReportKey:
       type: string
-      description: Phase 1 report registry keys (docs/24 s12.3). Phase 2 programme reports are not listed.
-      enum: [std-memo, sr-efficiency, route-std, route-memo, route-bsr-cpr, data-entry-log, final-submit-log, final-submit-status, by-outlet, by-outlet-by-day, gigo, attendance, discount, online-offline, tso-top-sheet, daily-tracking, sr-outlets, leaderboard, suspicious-location, sync-health, ds-rrs, dss, amo-call, dues-ageing, settlement, qc-report, stock-summary, memo-number-gaps]
+      description: Report registry keys of this build, programme reports included (docs/24 s12.3).
+      enum: [std-memo, sr-efficiency, route-std, route-memo, route-bsr-cpr, data-entry-log, final-submit-log, final-submit-status, by-outlet, by-outlet-by-day, gigo, attendance, discount, online-offline, tso-top-sheet, daily-tracking, sr-outlets, leaderboard, suspicious-location, sync-health, ds-rrs, dss, amo-call, dues-ageing, settlement, qc-report, stock-summary, memo-number-gaps, sales-summary, task-planner, by-route-geo-capture, free-sample, target-allocation, route-qc, geofence-calibration, astha, astha-gift-choice, campaign-gift-redemption, diamond-league, superstar-campaign, retailer-list, sku-list]
 
     # ---------- problem details ----------
     Problem:
@@ -4581,7 +5900,7 @@ components:
             - type: 'null'
         bundle_stale: { type: boolean, default: false }
         config_version: { $ref: '#/components/schemas/ConfigVersionNumber' }
-        sig: { type: [string, 'null'], pattern: '^[A-Za-z0-9_-]{86}$', description: 'ES256 family signature on header records (visit, memo, attendance_event, stock_movement, due_collection, memo_void, outlet_change_request); docs/24 s8.3.' }
+        sig: { type: [string, 'null'], pattern: '^[A-Za-z0-9_-]{86}$', description: 'ES256 family signature on header records (visit, memo, attendance_event, stock_movement, due_collection, memo_void, outlet_change_request, redemption, gift_photo); docs/24 s8.3.' }
     GeoBreadcrumbRecord:
       allOf:
         - { $ref: '#/components/schemas/RecordEnvelope' }
@@ -4905,6 +6224,16 @@ components:
         - { $ref: '#/components/schemas/MediaMetaRecord' }
         - { $ref: '#/components/schemas/DeviceStatusRecord' }
         - { $ref: '#/components/schemas/ConfigAckRecord' }
+        - { $ref: '#/components/schemas/ContentViewRecord' }
+        - { $ref: '#/components/schemas/RedemptionRecord' }
+        - { $ref: '#/components/schemas/RedemptionLineRecord' }
+        - { $ref: '#/components/schemas/GiftPhotoRecord' }
+        - { $ref: '#/components/schemas/PriceComplianceCheckRecord' }
+        - { $ref: '#/components/schemas/RiskReviewRecord' }
+        - { $ref: '#/components/schemas/ActivityLogRecord' }
+        - { $ref: '#/components/schemas/AppErrorRecord' }
+        - { $ref: '#/components/schemas/SaleAbortRecord' }
+        - { $ref: '#/components/schemas/ConsentAcceptRecord' }
       discriminator:
         propertyName: type
         mapping:
@@ -4940,6 +6269,107 @@ components:
           media_meta: '#/components/schemas/MediaMetaRecord'
           device_status: '#/components/schemas/DeviceStatusRecord'
           config_ack: '#/components/schemas/ConfigAckRecord'
+          content_view: '#/components/schemas/ContentViewRecord'
+          redemption: '#/components/schemas/RedemptionRecord'
+          redemption_line: '#/components/schemas/RedemptionLineRecord'
+          gift_photo: '#/components/schemas/GiftPhotoRecord'
+          price_compliance_check: '#/components/schemas/PriceComplianceCheckRecord'
+          risk_review: '#/components/schemas/RiskReviewRecord'
+          activity_log: '#/components/schemas/ActivityLogRecord'
+          app_error: '#/components/schemas/AppErrorRecord'
+          sale_abort: '#/components/schemas/SaleAbortRecord'
+          consent_accept: '#/components/schemas/ConsentAcceptRecord'
+
+    ContentViewRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: content_view }
+            payload: { $ref: '#/components/schemas/ContentViewPayload' }
+      unevaluatedProperties: false
+    RedemptionRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: redemption }
+            payload: { $ref: '#/components/schemas/RedemptionPayload' }
+      unevaluatedProperties: false
+    RedemptionLineRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: redemption_line }
+            payload: { $ref: '#/components/schemas/RedemptionLinePayload' }
+      unevaluatedProperties: false
+    GiftPhotoRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: gift_photo }
+            payload: { $ref: '#/components/schemas/GiftPhotoPayload' }
+      unevaluatedProperties: false
+    PriceComplianceCheckRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: price_compliance_check }
+            payload: { $ref: '#/components/schemas/PriceComplianceCheckPayload' }
+      unevaluatedProperties: false
+    RiskReviewRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: risk_review }
+            payload: { $ref: '#/components/schemas/RiskReviewPayload' }
+      unevaluatedProperties: false
+    ActivityLogRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: activity_log }
+            payload: { $ref: '#/components/schemas/ActivityLogPayload' }
+      unevaluatedProperties: false
+    AppErrorRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: app_error }
+            payload: { $ref: '#/components/schemas/AppErrorPayload' }
+      unevaluatedProperties: false
+    SaleAbortRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: sale_abort }
+            payload: { $ref: '#/components/schemas/SaleAbortPayload' }
+      unevaluatedProperties: false
+    ConsentAcceptRecord:
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: consent_accept }
+            payload: { $ref: '#/components/schemas/ConsentAcceptPayload' }
+      unevaluatedProperties: false
 
     # ---------- record payloads ----------
     GeoBreadcrumbPayload:
@@ -5933,6 +7363,11 @@ components:
           description: Eligibility dots shown before the outlet (codes and colours from cfg.ui.outlet_badges).
           items: { type: string, pattern: '^[a-z][a-z0-9_]{1,30}$' }
         pending_request: { type: boolean }
+        suggested_qty:
+          type: array
+          maxItems: 500
+          description: Suggested order quantity hook; empty until the formula is confirmed (cfg.sale.suggested_qty_enabled).
+          items: { $ref: '#/components/schemas/SuggestedQty' }
     OpenMemo:
       type: object
       description: Credit memo with an open due, so the phone can collect and print the balance offline.
@@ -6037,6 +7472,11 @@ components:
           type: array
           maxItems: 2000
           items: { $ref: '#/components/schemas/OutletRequestSummary' }
+        risk_signals:
+          type: array
+          maxItems: 500
+          description: Open risk signals of the zone for the AMO Exceptions screen (reviewed offline with risk_review records).
+          items: { $ref: '#/components/schemas/RiskSignal' }
         supervisor_day:
           oneOf:
             - { $ref: '#/components/schemas/SupervisorDayState' }
@@ -6177,6 +7617,25 @@ components:
               bn: { type: string, maxLength: 300 }
               en: { type: string, maxLength: 300 }
         device_policy_version: { $ref: '#/components/schemas/ConfigVersionNumber' }
+        programmes:
+          description: Loyalty, Astha and campaign data of the user's routes (docs/24 s4.14); null when no programme is active.
+          oneOf:
+            - { $ref: '#/components/schemas/ProgrammesSection' }
+            - type: 'null'
+        content:
+          type: array
+          maxItems: 50
+          description: AV and KV items valid today or within cfg.sys.schedule_horizon_days.
+          items: { $ref: '#/components/schemas/ContentItem' }
+        tutorials:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/TutorialItem' }
+        my_outlet_requests:
+          type: array
+          maxItems: 200
+          description: The user's own outlet change requests of the last 30 days with status and rejection reason (SR and AMO own-request list).
+          items: { $ref: '#/components/schemas/OutletRequestSummary' }
     BundlePage:
       type: object
       required: [bundle_version, section, page, pages, rows]
@@ -6989,6 +8448,7 @@ components:
             - { $ref: '#/components/schemas/Uuid' }
             - type: 'null'
         created_at: { $ref: '#/components/schemas/Timestamp' }
+        status: { $ref: '#/components/schemas/FeedbackStatus' }
     FeedbackPage:
       type: object
       required: [items, next_cursor]
@@ -7042,6 +8502,7 @@ components:
     DashboardSummary:
       type: object
       required: [as_of, from, to, node, kpis, by_category, children]
+      description: Dashboard of a node; `by_channel`, `by_segment` and `by_brand` feed the TSO cards (By Channel STD, By Segment Value Contribution, By Brand Call/Memo Ratio).
       additionalProperties: false
       properties:
         as_of: { $ref: '#/components/schemas/Timestamp' }
@@ -7053,6 +8514,18 @@ components:
           type: array
           maxItems: 10
           items: { $ref: '#/components/schemas/CategoryVolume' }
+        by_channel:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ChannelVolume' }
+        by_segment:
+          type: array
+          maxItems: 50
+          items: { $ref: '#/components/schemas/ChannelVolume' }
+        by_brand:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/ChannelVolume' }
         children:
           type: array
           maxItems: 2000
@@ -7312,7 +8785,7 @@ components:
         grain: { type: string, maxLength: 80 }
         formats:
           type: array
-          items: { type: string, enum: [json, xlsx] }
+          items: { type: string, enum: [json, xlsx, pdf, print] }
         columns:
           type: array
           maxItems: 120
@@ -7376,7 +8849,7 @@ components:
           required: [format]
           additionalProperties: false
           properties:
-            format: { type: string, enum: [json, xlsx] }
+            format: { type: string, enum: [json, xlsx, pdf, print] }
             page: { type: integer, minimum: 1, default: 1 }
             page_size: { type: integer, enum: [10, 25, 50, 100, 500], default: 50 }
             sort:
@@ -7469,7 +8942,7 @@ components:
       required: [action, reason]
       additionalProperties: false
       properties:
-        action: { type: string, enum: [accept, accept_with_fix, discard] }
+        action: { type: string, enum: [accept, accept_with_fix, discard, return_to_device], description: return_to_device asks the phone to re-send the row after a bundle refresh (it becomes retryable). }
         fixed_record:
           description: Required for accept_with_fix; same client_uuid and type as the quarantined record.
           oneOf:
@@ -8331,6 +9804,11 @@ components:
         inserted: { type: integer, minimum: 0 }
         updated: { type: integer, minimum: 0 }
         unchanged: { type: integer, minimum: 0 }
+        revision_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Monthly targets - the pending revision created (live after approval). }
+        revision_status:
+          oneOf:
+            - { $ref: '#/components/schemas/TargetRevisionStatus' }
+            - type: 'null'
     Holiday:
       type: object
       required: [id, date, scope_type, scope_id, kind, selling_day, name_en]
@@ -8476,6 +9954,7 @@ components:
       additionalProperties: false
       properties:
         reason: { $ref: '#/components/schemas/ChangeReason' }
+        break_glass: { type: boolean, default: false, description: 'Break-glass apply (cfg.sys.break_glass_mode, at most cfg.sys.break_glass_max_h); reviewed afterwards.' }
         changes:
           type: array
           minItems: 1
@@ -8543,7 +10022,7 @@ components:
       required: [decision]
       additionalProperties: false
       properties:
-        decision: { type: string, enum: [approve, reject, cancel] }
+        decision: { type: string, enum: [approve, reject, cancel, adopt], description: adopt turns a TSO radius proposal into a change request of the adopting editor. }
         note: { type: [string, 'null'], maxLength: 500 }
     ConfigVersion:
       type: object
@@ -8944,6 +10423,1428 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/PageCursor' }
             - type: 'null'
+    ContentViewPayload:
+      type: object
+      description: One AV or KV item shown during a call (docs/24 s4.14). Telemetry class; a missing asset is logged as skipped and never blocks the sale.
+      required: [visit_client_uuid, content_id, content_version, kind, outcome, sequence_no]
+      additionalProperties: false
+      properties:
+        visit_client_uuid: { $ref: '#/components/schemas/Uuid' }
+        content_id: { $ref: '#/components/schemas/Id' }
+        content_version: { type: integer, minimum: 1 }
+        kind: { $ref: '#/components/schemas/ContentKind' }
+        outcome: { type: string, enum: [viewed, skipped_missing, skipped_user] }
+        sequence_no: { type: integer, minimum: 1, maximum: 20 }
+        started_at:
+          oneOf:
+            - { $ref: '#/components/schemas/Timestamp' }
+            - type: 'null'
+        duration_ms: { type: [integer, 'null'], minimum: 0, maximum: 3600000 }
+    RedemptionPayload:
+      type: object
+      description: |
+        A loyalty redemption basket confirmed on the phone (Diamond League). Points are deducted once per
+        `client_uuid` (docs/24 s4.14). points_total = cash_points + sum(redemption_line.points_total);
+        cash_mtk = cash_points x cash_rate_mtk_per_point (otherwise quarantined `arithmetic_mismatch`).
+      required: [outlet_id, programme_id, balance_before_points, points_total, cash_points, cash_mtk, cash_rate_mtk_per_point, line_count, confirmed_at]
+      additionalProperties: false
+      properties:
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        programme_id: { $ref: '#/components/schemas/Id' }
+        visit_client_uuid:
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+        balance_before_points: { type: integer, minimum: 0, description: Balance the phone showed (bundle balance minus local unsynced redemptions). }
+        points_total: { type: integer, minimum: 1, maximum: 100000 }
+        cash_points: { type: integer, minimum: 0, maximum: 100000, description: 'Cash-back points (at most cfg.loyalty.cash_max_points).' }
+        cash_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
+        cash_rate_mtk_per_point: { type: integer, minimum: 0, maximum: 100000, description: Rate used (cfg.loyalty.cash_rate_mtk_per_point at capture). }
+        line_count: { type: integer, minimum: 0, maximum: 20 }
+        confirmed_at: { $ref: '#/components/schemas/Timestamp' }
+        fix:
+          oneOf:
+            - { $ref: '#/components/schemas/GeoFix' }
+            - type: 'null'
+    RedemptionLinePayload:
+      type: object
+      required: [redemption_client_uuid, gift_id, qty, points_each, points_total]
+      additionalProperties: false
+      properties:
+        redemption_client_uuid: { $ref: '#/components/schemas/Uuid' }
+        gift_id: { $ref: '#/components/schemas/Id' }
+        qty: { type: integer, minimum: 1, maximum: 50 }
+        points_each: { type: integer, minimum: 1, maximum: 100000, description: Gift cost in the bundle at capture. }
+        points_total: { type: integer, minimum: 1, maximum: 1000000, description: qty x points_each. }
+    GiftPhotoPayload:
+      type: object
+      description: |
+        Hand-over photo of a gift: an Astha gift assignment (one photo per assignment, cfg.astha.one_photo_per_outlet)
+        or one redeemed campaign gift (Gift Verify). The first accepted photo locks the Astha choice.
+      required: [programme_kind, outlet_id, gift_id, photo_uuid, fix]
+      additionalProperties: false
+      properties:
+        programme_kind: { $ref: '#/components/schemas/ProgrammeKind' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        gift_id: { $ref: '#/components/schemas/Id' }
+        gift_assignment_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Set for Astha. }
+        redemption_client_uuid:
+          description: Set for a campaign Gift Verify photo.
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+        unit_no: { type: [integer, 'null'], minimum: 1, maximum: 50, description: Which unit of a redeemed line (one slot per redeemed gift). }
+        photo_uuid: { $ref: '#/components/schemas/Uuid' }
+        fix: { $ref: '#/components/schemas/GeoFix' }
+    PriceComplianceCheckPayload:
+      type: object
+      description: Observed shelf price of one SKU at an AMO control call; counted in the AMO reconciliation row.
+      required: [visit_client_uuid, sku_id, price_type, reference_price_mtk, observed_price_mtk, compliant]
+      additionalProperties: false
+      properties:
+        visit_client_uuid: { $ref: '#/components/schemas/Uuid' }
+        sku_id: { $ref: '#/components/schemas/Id' }
+        price_type: { $ref: '#/components/schemas/SellingPriceType' }
+        reference_price_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
+        observed_price_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
+        compliant: { type: boolean }
+        note: { type: [string, 'null'], maxLength: 300 }
+    RiskReviewPayload:
+      type: object
+      description: Offline review of a risk signal from the AMO Exceptions screen; the same event as POST /v1/risk-signals/{signal_id}/review with review_uuid = client_uuid.
+      required: [signal_id, action]
+      additionalProperties: false
+      properties:
+        signal_id: { $ref: '#/components/schemas/Id' }
+        action: { type: string, enum: [reviewed, dismissed, confirmed] }
+        note: { type: [string, 'null'], maxLength: 500 }
+    ActivityLogPayload:
+      type: object
+      description: Screen and action events sampled at cfg.app.activity_log_sample_pct; telemetry, duplicates tolerated.
+      required: [events]
+      additionalProperties: false
+      properties:
+        events:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            required: [at, screen, action]
+            additionalProperties: false
+            properties:
+              at: { $ref: '#/components/schemas/Timestamp' }
+              screen: { type: string, pattern: '^[a-z][a-z0-9_.]{1,60}$' }
+              action: { type: string, pattern: '^[a-z][a-z0-9_.]{1,60}$' }
+              duration_ms: { type: [integer, 'null'], minimum: 0, maximum: 86400000 }
+    AppErrorPayload:
+      type: object
+      description: A crash, ANR or handled error from the phone, scrubbed of phone numbers and outlet names before capture.
+      required: [occurred_at, kind, exception_class, app_version]
+      additionalProperties: false
+      properties:
+        occurred_at: { $ref: '#/components/schemas/Timestamp' }
+        kind: { type: string, enum: [crash, anr, handled] }
+        exception_class: { type: string, maxLength: 200 }
+        message: { type: [string, 'null'], maxLength: 500 }
+        stack: { type: [string, 'null'], maxLength: 16000 }
+        screen: { type: [string, 'null'], maxLength: 60 }
+        app_version: { $ref: '#/components/schemas/AppVersionString' }
+    SaleAbortPayload:
+      type: object
+      description: A memo number that was consumed without a committed memo; explains the gap in the memo-number-gaps report.
+      required: [memo_no, reason]
+      additionalProperties: false
+      properties:
+        memo_no: { $ref: '#/components/schemas/MemoNo' }
+        reason: { type: string, enum: [user_cancelled, app_killed, commit_failed] }
+        visit_client_uuid:
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+        outlet_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+    ConsentAcceptPayload:
+      type: object
+      description: Acceptance of the employee-location notice (cfg.app.location_notice_required), uploaded once per user and policy version.
+      required: [policy_key, policy_version, accepted, locale, shown_at]
+      additionalProperties: false
+      properties:
+        policy_key: { type: string, enum: [location_notice] }
+        policy_version: { type: integer, minimum: 1 }
+        accepted: { type: boolean }
+        locale: { type: string, enum: [bn, en] }
+        shown_at: { $ref: '#/components/schemas/Timestamp' }
+
+    # ---------- programmes, content, web entry and admin additions (docs/24 s4.14, s12.6) ----------
+    ProgrammeKind:
+      type: string
+      enum: [diamond_league, astha, campaign, superstar]
+    ContentKind:
+      type: string
+      enum: [av, kv]
+    TargetRevisionStatus:
+      type: string
+      enum: [pending_approval, approved, rejected, superseded]
+    Programme:
+      type: object
+      required: [programme_id, kind, code, name_en, active_from, active_to, status, version]
+      additionalProperties: false
+      properties:
+        programme_id: { $ref: '#/components/schemas/Id' }
+        kind: { $ref: '#/components/schemas/ProgrammeKind' }
+        code: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$' }
+        name_en: { type: string, maxLength: 120 }
+        name_bn: { type: [string, 'null'], maxLength: 120 }
+        period_label: { type: [string, 'null'], maxLength: 40, description: 'For example `2026-10` (Diamond League month) or `2026-Q4` (Astha quarter).' }
+        active_from: { $ref: '#/components/schemas/BusinessDate' }
+        active_to: { $ref: '#/components/schemas/BusinessDate' }
+        points_expire_on:
+          description: Diamond League points of this period expire after this date (period end + cfg.loyalty.expiry_days).
+          oneOf:
+            - { $ref: '#/components/schemas/BusinessDate' }
+            - type: 'null'
+        rules:
+          type: object
+          description: Kind-specific rules as data (Superstar slabs and criteria, campaign gift list); validated against the kind's schema.
+          additionalProperties: { $ref: '#/components/schemas/JsonScalar' }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        version: { type: integer, minimum: 1 }
+    ProgrammeWrite:
+      type: object
+      required: [kind, code, name_en, active_from, active_to, change_reason]
+      additionalProperties: false
+      properties:
+        kind: { $ref: '#/components/schemas/ProgrammeKind' }
+        code: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$' }
+        name_en: { type: string, maxLength: 120 }
+        name_bn: { type: [string, 'null'], maxLength: 120 }
+        period_label: { type: [string, 'null'], maxLength: 40 }
+        active_from: { $ref: '#/components/schemas/BusinessDate' }
+        active_to: { $ref: '#/components/schemas/BusinessDate' }
+        rules:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/JsonScalar' }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    ProgrammeList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/Programme' }
+    ProgrammeEnrolment:
+      type: object
+      required: [programme_id, outlet_id, valid_from]
+      additionalProperties: false
+      properties:
+        programme_id: { $ref: '#/components/schemas/Id' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        league_label: { type: [string, 'null'], maxLength: 40, description: Diamond League label shown on Outlet Points. }
+        tier_code: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$', description: Astha tier (sub-channel) or Superstar slab. }
+        base_target: { oneOf: [{ $ref: '#/components/schemas/Decimal3' }, { type: 'null' }] }
+        valid_from: { $ref: '#/components/schemas/BusinessDate' }
+        valid_to:
+          oneOf:
+            - { $ref: '#/components/schemas/BusinessDate' }
+            - type: 'null'
+    ProgrammeEnrolmentPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ProgrammeEnrolment' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    ProgrammeEnrolmentWrite:
+      type: object
+      required: [batch_uuid, rows, change_reason]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/ProgrammeEnrolment' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    Gift:
+      type: object
+      required: [gift_id, programme_id, code, name_en, points_cost, status, version]
+      additionalProperties: false
+      properties:
+        gift_id: { $ref: '#/components/schemas/Id' }
+        programme_id: { $ref: '#/components/schemas/Id' }
+        code: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+        name_en: { type: string, maxLength: 120 }
+        name_bn: { type: [string, 'null'], maxLength: 120 }
+        points_cost: { type: [integer, 'null'], minimum: 1, maximum: 100000, description: 'Null for Astha gifts (chosen, not redeemed).' }
+        tier_codes: { type: array, maxItems: 10, items: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }, description: Astha tiers the gift is offered to. }
+        image_url: { type: [string, 'null'], format: uri, maxLength: 1000 }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        version: { type: integer, minimum: 1 }
+    GiftWrite:
+      type: object
+      required: [programme_id, code, name_en, change_reason]
+      additionalProperties: false
+      properties:
+        programme_id: { $ref: '#/components/schemas/Id' }
+        code: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+        name_en: { type: string, maxLength: 120 }
+        name_bn: { type: [string, 'null'], maxLength: 120 }
+        points_cost: { type: [integer, 'null'], minimum: 1, maximum: 100000 }
+        tier_codes: { type: array, maxItems: 10, items: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' } }
+        image_asset_id: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }] }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    GiftList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/Gift' }
+    LoyaltyBalance:
+      type: object
+      required: [outlet_id, programme_id, balance_points, expiring_points, as_of_date]
+      additionalProperties: false
+      properties:
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        programme_id: { $ref: '#/components/schemas/Id' }
+        league_label: { type: [string, 'null'], maxLength: 40 }
+        balance_points: { type: integer, description: Ledger balance; negative only after a flagged overdraw. }
+        expiring_points: { type: integer, minimum: 0 }
+        expiry_date:
+          oneOf:
+            - { $ref: '#/components/schemas/BusinessDate' }
+            - type: 'null'
+        as_of_date: { $ref: '#/components/schemas/BusinessDate' }
+    LoyaltyBalanceList:
+      type: object
+      required: [as_of, items]
+      additionalProperties: false
+      properties:
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        items:
+          type: array
+          maxItems: 2000
+          items: { $ref: '#/components/schemas/LoyaltyBalance' }
+    AsthaTargetRow:
+      type: object
+      description: One Astha target line; `outlet_id` null = the route row, `brand_id` null = the All Brand memo row.
+      required: [route_id, month, std_target, std_achieved, memo_target, memo_achieved]
+      additionalProperties: false
+      properties:
+        route_id: { $ref: '#/components/schemas/Id' }
+        outlet_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        brand_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        month: { $ref: '#/components/schemas/Month' }
+        std_target: { $ref: '#/components/schemas/Decimal3' }
+        std_achieved: { $ref: '#/components/schemas/Decimal3' }
+        memo_target: { type: integer, minimum: 0 }
+        memo_achieved: { type: integer, minimum: 0 }
+    AsthaTargetPage:
+      type: object
+      required: [quarter, as_of, items, next_cursor]
+      additionalProperties: false
+      properties:
+        quarter: { type: string, pattern: '^\d{4}-Q[1-4]$' }
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AsthaTargetRow' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    AsthaTargetWrite:
+      type: object
+      required: [batch_uuid, quarter, rows, change_reason]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        quarter: { type: string, pattern: '^\d{4}-Q[1-4]$' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 50000
+          items:
+            type: object
+            required: [outlet_id, month, std_target, memo_target]
+            additionalProperties: false
+            properties:
+              outlet_id: { $ref: '#/components/schemas/Id' }
+              brand_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+              month: { $ref: '#/components/schemas/Month' }
+              std_target: { type: string, pattern: '^\d{1,13}(\.\d{1,3})?$', description: Never negative. }
+              memo_target: { type: integer, minimum: 0 }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    GiftAssignment:
+      type: object
+      required: [gift_assignment_id, quarter, outlet_id, route_id, gift_id, photo_captured, locked]
+      additionalProperties: false
+      properties:
+        gift_assignment_id: { $ref: '#/components/schemas/Id' }
+        quarter: { type: string, pattern: '^\d{4}-Q[1-4]$' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        route_id: { $ref: '#/components/schemas/Id' }
+        gift_id: { $ref: '#/components/schemas/Id' }
+        tier_code: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$' }
+        photo_captured: { type: boolean }
+        photo_media_uuid: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }] }
+        locked: { type: boolean, description: True once the SR's photo exists (cfg.astha.gift_choice_lock = on_sr_photo). }
+        chosen_by_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        chosen_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+    GiftAssignmentPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/GiftAssignment' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    GiftChoiceWrite:
+      type: object
+      required: [quarter, rows]
+      additionalProperties: false
+      properties:
+        quarter: { type: string, pattern: '^\d{4}-Q[1-4]$' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items:
+            type: object
+            required: [client_uuid, outlet_id, gift_id]
+            additionalProperties: false
+            properties:
+              client_uuid: { $ref: '#/components/schemas/Uuid' }
+              outlet_id: { $ref: '#/components/schemas/Id' }
+              gift_id: { $ref: '#/components/schemas/Id' }
+    GiftChoiceResult:
+      type: object
+      required: [results]
+      additionalProperties: false
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            required: [client_uuid, outlet_id, status]
+            additionalProperties: false
+            properties:
+              client_uuid: { $ref: '#/components/schemas/Uuid' }
+              outlet_id: { $ref: '#/components/schemas/Id' }
+              status: { type: string, enum: [saved, unchanged, locked] }
+              code: { oneOf: [{ $ref: '#/components/schemas/ProblemCode' }, { type: 'null' }] }
+              assignment: { oneOf: [{ $ref: '#/components/schemas/GiftAssignment' }, { type: 'null' }] }
+    PendingGiftVerification:
+      type: object
+      description: A redeemed campaign gift still waiting for its Gift Verify photo.
+      required: [redemption_client_uuid, outlet_id, gift_id, qty, photos_captured]
+      additionalProperties: false
+      properties:
+        redemption_client_uuid: { $ref: '#/components/schemas/Uuid' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        gift_id: { $ref: '#/components/schemas/Id' }
+        qty: { type: integer, minimum: 1, maximum: 50 }
+        photos_captured: { type: integer, minimum: 0, maximum: 50 }
+    ProgrammesSection:
+      type: object
+      description: Programme data for the user's routes (docs/24 s4.10, s4.14). Balances are as of the previous business day.
+      required: [programmes, loyalty, gifts, astha_targets, gift_assignments, pending_gift_verifications]
+      additionalProperties: false
+      properties:
+        programmes:
+          type: array
+          maxItems: 50
+          items: { $ref: '#/components/schemas/Programme' }
+        loyalty:
+          type: array
+          maxItems: 11000
+          items: { $ref: '#/components/schemas/LoyaltyBalance' }
+        gifts:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/Gift' }
+        astha_targets:
+          type: array
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/AsthaTargetRow' }
+        gift_assignments:
+          type: array
+          maxItems: 2000
+          items: { $ref: '#/components/schemas/GiftAssignment' }
+        pending_gift_verifications:
+          type: array
+          maxItems: 2000
+          items: { $ref: '#/components/schemas/PendingGiftVerification' }
+    ContentItem:
+      type: object
+      description: An AV or KV item delivered to phones; assets download on Wi-Fi (cfg.content.download_network_policy) into a bounded cache.
+      required: [content_id, version, kind, title_en, asset_url, sha256, bytes, valid_from, valid_to, sequence, outlet_ids]
+      additionalProperties: false
+      properties:
+        content_id: { $ref: '#/components/schemas/Id' }
+        version: { type: integer, minimum: 1 }
+        kind: { $ref: '#/components/schemas/ContentKind' }
+        title_en: { type: string, maxLength: 120 }
+        title_bn: { type: [string, 'null'], maxLength: 120 }
+        asset_url: { type: string, format: uri, maxLength: 1000 }
+        sha256: { $ref: '#/components/schemas/Sha256Hex' }
+        bytes: { type: integer, minimum: 1, maximum: 20971520 }
+        duration_s: { type: [integer, 'null'], minimum: 1, maximum: 600 }
+        valid_from: { $ref: '#/components/schemas/BusinessDate' }
+        valid_to: { $ref: '#/components/schemas/BusinessDate' }
+        sequence: { type: integer, minimum: 1, maximum: 20, description: Play order in the call (AV before KV). }
+        outlet_ids: { type: array, maxItems: 5000, items: { $ref: '#/components/schemas/Id' }, description: Empty = every outlet of the user's routes. }
+    ContentAdmin:
+      allOf:
+        - { $ref: '#/components/schemas/ContentItem' }
+        - type: object
+          required: [status, updated_at]
+          properties:
+            status: { $ref: '#/components/schemas/ActiveStatus' }
+            assigned_scope:
+              type: array
+              maxItems: 200
+              items:
+                type: object
+                required: [node_type, node_id]
+                additionalProperties: false
+                properties:
+                  node_type: { type: string, enum: [wing, division, territory, zone, route, outlet] }
+                  node_id: { $ref: '#/components/schemas/Id' }
+            updated_at: { $ref: '#/components/schemas/Timestamp' }
+      unevaluatedProperties: false
+    ContentWrite:
+      type: object
+      required: [kind, title_en, asset_id, valid_from, valid_to, sequence, change_reason]
+      additionalProperties: false
+      properties:
+        kind: { $ref: '#/components/schemas/ContentKind' }
+        title_en: { type: string, maxLength: 120 }
+        title_bn: { type: [string, 'null'], maxLength: 120 }
+        asset_id: { $ref: '#/components/schemas/Uuid' }
+        valid_from: { $ref: '#/components/schemas/BusinessDate' }
+        valid_to: { $ref: '#/components/schemas/BusinessDate' }
+        sequence: { type: integer, minimum: 1, maximum: 20 }
+        assigned_scope:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            required: [node_type, node_id]
+            additionalProperties: false
+            properties:
+              node_type: { type: string, enum: [wing, division, territory, zone, route, outlet] }
+              node_id: { $ref: '#/components/schemas/Id' }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    ContentAdminPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ContentAdmin' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    TutorialItem:
+      type: object
+      required: [tutorial_id, kind, title_en, url, sort]
+      additionalProperties: false
+      properties:
+        tutorial_id: { $ref: '#/components/schemas/Id' }
+        kind: { type: string, enum: [video, manual] }
+        title_en: { type: string, maxLength: 120 }
+        title_bn: { type: [string, 'null'], maxLength: 120 }
+        url: { type: string, format: uri, maxLength: 1000 }
+        bytes: { type: [integer, 'null'], minimum: 1 }
+        duration_s: { type: [integer, 'null'], minimum: 1, maximum: 7200 }
+        sort: { type: integer, minimum: 0 }
+    TutorialList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/TutorialItem' }
+    TutorialAdmin:
+      allOf:
+        - { $ref: '#/components/schemas/TutorialItem' }
+        - type: object
+          required: [roles, status, version]
+          properties:
+            roles: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Role' } }
+            status: { $ref: '#/components/schemas/ActiveStatus' }
+            version: { type: integer, minimum: 1 }
+      unevaluatedProperties: false
+    TutorialWrite:
+      type: object
+      required: [kind, title_en, asset_id, roles, sort, change_reason]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [video, manual] }
+        title_en: { type: string, maxLength: 120 }
+        title_bn: { type: [string, 'null'], maxLength: 120 }
+        asset_id: { $ref: '#/components/schemas/Uuid' }
+        roles: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Role' } }
+        sort: { type: integer, minimum: 0 }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    TutorialAdminList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/TutorialAdmin' }
+    AdminAssetUploadRequest:
+      type: object
+      required: [asset_id, purpose, mime, bytes, sha256]
+      additionalProperties: false
+      properties:
+        asset_id: { $ref: '#/components/schemas/Uuid' }
+        purpose: { type: string, enum: [content_av, content_kv, tutorial_video, tutorial_manual, sku_image, gift_image] }
+        mime: { type: string, enum: [video/mp4, image/jpeg, image/png, application/pdf] }
+        bytes: { type: integer, minimum: 1, maximum: 104857600, description: 'AV and KV at most cfg.content.max_item_mb; images at most 300 KB (stored as one compressed thumbnail).' }
+        sha256: { $ref: '#/components/schemas/Sha256Hex' }
+    AdminAssetUpload:
+      type: object
+      required: [asset_id, upload_url, blob_path, expires_at]
+      additionalProperties: false
+      properties:
+        asset_id: { $ref: '#/components/schemas/Uuid' }
+        upload_url: { type: string, format: uri, maxLength: 2000 }
+        blob_path: { type: string, maxLength: 300 }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+    SurveyAdmin:
+      allOf:
+        - { $ref: '#/components/schemas/SurveyDef' }
+        - type: object
+          required: [kind, status, valid_from]
+          properties:
+            kind: { type: string, enum: [posm, amo_survey, tso_visit_query] }
+            status: { $ref: '#/components/schemas/ActiveStatus' }
+            valid_from: { $ref: '#/components/schemas/BusinessDate' }
+            valid_to: { oneOf: [{ $ref: '#/components/schemas/BusinessDate' }, { type: 'null' }] }
+            points_per_photo: { type: [integer, 'null'], minimum: 0, maximum: 100000, description: Loyalty points earned once per response (POSM 50; never for the AMO survey). }
+      unevaluatedProperties: false
+    SurveyWrite:
+      type: object
+      required: [kind, title_en, questions, valid_from, change_reason]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [posm, amo_survey, tso_visit_query] }
+        title_en: { type: string, maxLength: 120 }
+        title_bn: { type: [string, 'null'], maxLength: 120 }
+        questions:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            required: [key, answer_type, label_en]
+            additionalProperties: false
+            properties:
+              key: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+              answer_type: { type: string, enum: [bool, num, option, text, photo_only] }
+              label_en: { type: string, maxLength: 300 }
+              label_bn: { type: [string, 'null'], maxLength: 300 }
+              required: { type: boolean }
+              show_if_key: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$' }
+              show_if_bool: { type: [boolean, 'null'] }
+              photo: { type: boolean }
+        valid_from: { $ref: '#/components/schemas/BusinessDate' }
+        valid_to: { oneOf: [{ $ref: '#/components/schemas/BusinessDate' }, { type: 'null' }] }
+        points_per_photo: { type: [integer, 'null'], minimum: 0, maximum: 100000 }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    SurveyPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SurveyAdmin' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    RubricAdmin:
+      allOf:
+        - { $ref: '#/components/schemas/RubricDef' }
+        - type: object
+          required: [status]
+          properties:
+            status: { $ref: '#/components/schemas/ActiveStatus' }
+      unevaluatedProperties: false
+    RubricWrite:
+      type: object
+      required: [kind, criteria, change_reason]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [joint_call, retailer_questionnaire] }
+        criteria:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            required: [key, label_en, answer_type]
+            additionalProperties: false
+            properties:
+              key: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+              label_en: { type: string, maxLength: 300 }
+              label_bn: { type: [string, 'null'], maxLength: 300 }
+              answer_type: { type: string, enum: [stars_1_5, bool, text] }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    RubricPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RubricAdmin' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    PrintTemplateWrite:
+      type: object
+      required: [kind, font_columns, template_json, effective_from, change_reason]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [cash_memo, credit_memo, offer_memo, drp_memo, zero_memo, edited_memo, stock_slip, day_summary, due_receipt, void_slip] }
+        font_columns: { type: integer, enum: [32, 42] }
+        template_json: { type: string, maxLength: 20000 }
+        effective_from: { $ref: '#/components/schemas/BusinessDate' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    PrintTemplateList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/PrintTemplate' }
+    NearbyOutlet:
+      type: object
+      required: [outlet_id, code, name, lat, lng, distance_m, route_id]
+      additionalProperties: false
+      properties:
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        code: { type: string, maxLength: 32 }
+        name: { type: string, maxLength: 120 }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+        distance_m: { type: number, minimum: 0 }
+        route_id: { $ref: '#/components/schemas/Id' }
+        cluster_name: { type: [string, 'null'], maxLength: 120 }
+        channel: { type: [string, 'null'], maxLength: 20 }
+        contact_number: { oneOf: [{ $ref: '#/components/schemas/PhoneBd' }, { type: 'null' }] }
+    NearbyOutlets:
+      type: object
+      required: [as_of, radius_m, truncated, items]
+      additionalProperties: false
+      properties:
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        radius_m: { type: integer, minimum: 10, maximum: 5000 }
+        truncated: { type: boolean }
+        items:
+          type: array
+          maxItems: 2000
+          items: { $ref: '#/components/schemas/NearbyOutlet' }
+    TrackingActionRequest:
+      type: object
+      required: [action_uuid, route_id, business_date, note]
+      additionalProperties: false
+      properties:
+        action_uuid: { $ref: '#/components/schemas/Uuid' }
+        route_id: { $ref: '#/components/schemas/Id' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        note: { type: string, minLength: 3, maxLength: 500 }
+    TrackingAction:
+      type: object
+      required: [action_uuid, route_id, business_date, note, created_by_user_id, created_at, notified_user_ids]
+      additionalProperties: false
+      properties:
+        action_uuid: { $ref: '#/components/schemas/Uuid' }
+        route_id: { $ref: '#/components/schemas/Id' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        note: { type: string, maxLength: 500 }
+        created_by_user_id: { $ref: '#/components/schemas/Id' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        notified_user_ids: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/Id' } }
+    SupportUploadRequest:
+      type: object
+      required: [upload_uuid, bytes, sha256, app_version]
+      additionalProperties: false
+      properties:
+        upload_uuid: { $ref: '#/components/schemas/Uuid' }
+        bytes: { type: integer, minimum: 1, maximum: 104857600 }
+        sha256: { $ref: '#/components/schemas/Sha256Hex' }
+        app_version: { $ref: '#/components/schemas/AppVersionString' }
+        last_sync_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+        pending_rows: { type: integer, minimum: 0 }
+    SupportUpload:
+      type: object
+      required: [upload_uuid, upload_url, blob_path, expires_at]
+      additionalProperties: false
+      properties:
+        upload_uuid: { $ref: '#/components/schemas/Uuid' }
+        upload_url: { type: string, format: uri, maxLength: 2000 }
+        blob_path: { type: string, maxLength: 300 }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+    ClientErrorReport:
+      type: object
+      required: [error_uuid, source, occurred_at, message]
+      additionalProperties: false
+      properties:
+        error_uuid: { $ref: '#/components/schemas/Uuid' }
+        source: { type: string, enum: [web] }
+        occurred_at: { $ref: '#/components/schemas/Timestamp' }
+        page: { type: [string, 'null'], maxLength: 200 }
+        message: { type: string, maxLength: 500 }
+        stack: { type: [string, 'null'], maxLength: 16000 }
+        build: { type: [string, 'null'], maxLength: 40 }
+    MediaMultipartUpload:
+      type: object
+      required: [media_uuid, purpose, sha256, file]
+      properties:
+        media_uuid: { $ref: '#/components/schemas/Uuid' }
+        purpose: { type: string, enum: [feedback, support] }
+        sha256: { $ref: '#/components/schemas/Sha256Hex' }
+        file: { type: string, contentMediaType: image/jpeg, maxLength: 307200 }
+    MediaUploaded:
+      type: object
+      required: [media_uuid, replayed]
+      additionalProperties: false
+      properties:
+        media_uuid: { $ref: '#/components/schemas/Uuid' }
+        replayed: { type: boolean }
+    ExportLogEntry:
+      type: object
+      required: [export_id, report_key, user_id, format, rows, pii_included, created_at]
+      additionalProperties: false
+      properties:
+        export_id: { $ref: '#/components/schemas/Uuid' }
+        report_key: { $ref: '#/components/schemas/ReportKey' }
+        user_id: { $ref: '#/components/schemas/Id' }
+        username: { type: [string, 'null'], maxLength: 40 }
+        format: { type: string, enum: [xlsx, pdf, print] }
+        filters: { type: object, additionalProperties: { $ref: '#/components/schemas/JsonScalar' } }
+        rows: { type: integer, minimum: 0 }
+        pii_included: { type: boolean }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+    ExportLogPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ExportLogEntry' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    WebEntryLine:
+      type: object
+      required: [sku_id, issue_qty_base, return_qty_base, memo_count]
+      additionalProperties: false
+      properties:
+        sku_id: { $ref: '#/components/schemas/Id' }
+        issue_qty_base: { type: integer, minimum: 0, maximum: 10000000 }
+        return_qty_base: { type: integer, minimum: 0, maximum: 10000000 }
+        memo_count: { type: integer, minimum: 0, maximum: 100000 }
+        sale_qty_base: { type: [integer, 'null'], minimum: 0, description: 'Read-only: issue minus return (server-computed).' }
+        class_qty_base:
+          type: object
+          description: Sale split by web-entry class (cfg.web.entry_classes), sub-channel id to quantity.
+          propertyNames: { type: string, pattern: '^[1-9][0-9]{0,17}$' }
+          additionalProperties: { type: integer, minimum: 0 }
+    WebEntryRouteDayWrite:
+      type: object
+      required: [client_uuid, route_id, business_date, lines, successful_calls]
+      additionalProperties: false
+      properties:
+        client_uuid: { $ref: '#/components/schemas/Uuid' }
+        route_id: { $ref: '#/components/schemas/Id' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        lines:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/WebEntryLine' }
+        successful_calls: { type: integer, minimum: 0, description: At most the route-day's target outlets (cfg.web.entry_validate_calls_le_target). }
+        change_reason: { oneOf: [{ $ref: '#/components/schemas/ChangeReason' }, { type: 'null' }], description: Required on a re-save. }
+    WebEntryRouteDay:
+      type: object
+      required: [route_id, business_date, lines, successful_calls, target_outlets, app_overlap, source]
+      additionalProperties: false
+      properties:
+        client_uuid: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }] }
+        route_id: { $ref: '#/components/schemas/Id' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        lines:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/WebEntryLine' }
+        successful_calls: { type: integer, minimum: 0 }
+        target_outlets: { type: integer, minimum: 0 }
+        app_overlap: { type: boolean, description: 'True when app memos exist for the same route-day (flagged, never added).' }
+        source: { type: string, enum: [web_entry] }
+        saved_by_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        saved_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+    AsthaWebEntryWrite:
+      type: object
+      required: [client_uuid, route_id, business_date, rows]
+      additionalProperties: false
+      properties:
+        client_uuid: { $ref: '#/components/schemas/Uuid' }
+        route_id: { $ref: '#/components/schemas/Id' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: object
+            required: [outlet_id, sku_id, qty_base]
+            additionalProperties: false
+            properties:
+              outlet_id: { $ref: '#/components/schemas/Id' }
+              sku_id: { $ref: '#/components/schemas/Id' }
+              qty_base: { type: integer, minimum: 0, maximum: 10000000 }
+        change_reason: { oneOf: [{ $ref: '#/components/schemas/ChangeReason' }, { type: 'null' }] }
+    AsthaWebEntry:
+      type: object
+      required: [route_id, business_date, rows]
+      additionalProperties: false
+      properties:
+        client_uuid: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }] }
+        route_id: { $ref: '#/components/schemas/Id' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        rows:
+          type: array
+          maxItems: 20000
+          items:
+            type: object
+            required: [outlet_id, sku_id, qty_base, app_overlap]
+            additionalProperties: false
+            properties:
+              outlet_id: { $ref: '#/components/schemas/Id' }
+              sku_id: { $ref: '#/components/schemas/Id' }
+              qty_base: { type: integer, minimum: 0 }
+              app_overlap: { type: boolean, description: 'An app memo exists for this outlet and SKU on the date (flagged, never added).' }
+    QcEntryWrite:
+      type: object
+      required: [client_uuid, source, business_date, zone_id, rows]
+      additionalProperties: false
+      properties:
+        client_uuid: { $ref: '#/components/schemas/Uuid' }
+        source: { type: string, enum: [market, warehouse] }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        zone_id: { $ref: '#/components/schemas/Id' }
+        route_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Required for market QC. }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 5000
+          items:
+            type: object
+            required: [sku_id, fault_type_code, qty_base]
+            additionalProperties: false
+            properties:
+              sku_id: { $ref: '#/components/schemas/Id' }
+              fault_type_code: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+              qty_base: { type: integer, minimum: 0, maximum: 10000000 }
+        reason: { oneOf: [{ $ref: '#/components/schemas/ChangeReason' }, { type: 'null' }], description: Required for warehouse QC. }
+    QcEntryResult:
+      type: object
+      required: [client_uuid, stored_rows, replayed]
+      additionalProperties: false
+      properties:
+        client_uuid: { $ref: '#/components/schemas/Uuid' }
+        stored_rows: { type: integer, minimum: 0 }
+        replayed: { type: boolean }
+    PaperBackfillRequest:
+      type: object
+      required: [client_uuid, memo_no, business_date, user_id, route_id, outlet_id, lines, paid_mtk, reason]
+      additionalProperties: false
+      properties:
+        client_uuid: { $ref: '#/components/schemas/Uuid' }
+        memo_no: { $ref: '#/components/schemas/MemoNo' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        user_id: { $ref: '#/components/schemas/Id' }
+        route_id: { $ref: '#/components/schemas/Id' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        lines:
+          type: array
+          minItems: 0
+          maxItems: 60
+          items:
+            type: object
+            required: [sku_id, qty_base, line_kind]
+            additionalProperties: false
+            properties:
+              sku_id: { $ref: '#/components/schemas/Id' }
+              qty_base: { type: integer, minimum: 1, maximum: 10000000 }
+              line_kind: { $ref: '#/components/schemas/LineKind' }
+        discount_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
+        paid_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+    PaperBackfillResult:
+      type: object
+      required: [memo_client_uuid, status, net_mtk]
+      additionalProperties: false
+      properties:
+        memo_client_uuid: { $ref: '#/components/schemas/Uuid' }
+        status: { type: string, enum: [created, replayed, duplicate_memo_no] }
+        net_mtk: { $ref: '#/components/schemas/Mtk' }
+    EntryUnlock:
+      type: object
+      required: [unlock_id, scope_type, scope_id, from, to, reason, expires_at, created_by_user_id, status]
+      additionalProperties: false
+      properties:
+        unlock_id: { $ref: '#/components/schemas/Id' }
+        scope_type: { type: string, enum: [zone, route] }
+        scope_id: { $ref: '#/components/schemas/Id' }
+        from: { $ref: '#/components/schemas/BusinessDate' }
+        to: { $ref: '#/components/schemas/BusinessDate' }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        created_by_user_id: { $ref: '#/components/schemas/Id' }
+        status: { type: string, enum: [active, expired] }
+    EntryUnlockWrite:
+      type: object
+      description: '`to` is at most cfg.web.entry_unlock_max_days after `from`.'
+      required: [scope_type, scope_id, from, to, reason]
+      additionalProperties: false
+      properties:
+        scope_type: { type: string, enum: [zone, route] }
+        scope_id: { $ref: '#/components/schemas/Id' }
+        from: { $ref: '#/components/schemas/BusinessDate' }
+        to: { $ref: '#/components/schemas/BusinessDate' }
+        ttl_h: { type: integer, minimum: 1, maximum: 168, description: Defaults to cfg.web.entry_unlock_ttl_h. }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+    EntryUnlockPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/EntryUnlock' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    TargetRevision:
+      type: object
+      required: [revision_id, batch_uuid, month, status, level, rows, created_by_user_id, created_at]
+      additionalProperties: false
+      properties:
+        revision_id: { $ref: '#/components/schemas/Id' }
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        month: { $ref: '#/components/schemas/Month' }
+        status: { $ref: '#/components/schemas/TargetRevisionStatus' }
+        level: { type: integer, minimum: 1, maximum: 5, description: Approval level reached (cfg.target.approval_levels). }
+        rows: { type: integer, minimum: 0 }
+        scope_summary: { type: [string, 'null'], maxLength: 200 }
+        created_by_user_id: { $ref: '#/components/schemas/Id' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        decisions:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            required: [level, decision, user_id, at]
+            additionalProperties: false
+            properties:
+              level: { type: integer, minimum: 1, maximum: 5 }
+              decision: { type: string, enum: [approve, reject] }
+              user_id: { $ref: '#/components/schemas/Id' }
+              at: { $ref: '#/components/schemas/Timestamp' }
+              note: { type: [string, 'null'], maxLength: 500 }
+    TargetRevisionPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TargetRevision' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    TargetUpload:
+      type: object
+      required: [batch_uuid, month, file, change_reason]
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        month: { $ref: '#/components/schemas/Month' }
+        file: { type: string, contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    TargetUploadResult:
+      type: object
+      required: [batch_uuid, status, rows, errors]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        status: { type: string, enum: [accepted, rejected] }
+        rows: { type: integer, minimum: 0 }
+        revision: { oneOf: [{ $ref: '#/components/schemas/TargetRevision' }, { type: 'null' }] }
+        error_sheet_url: { type: [string, 'null'], format: uri, maxLength: 2000 }
+        errors:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            required: [row, column, message]
+            additionalProperties: false
+            properties:
+              row: { type: integer, minimum: 1 }
+              column: { type: string, maxLength: 40 }
+              message: { type: string, maxLength: 300 }
+    SupervisorTarget:
+      type: object
+      required: [user_id, month, total_call_target, control_call_target, joint_call_target]
+      additionalProperties: false
+      properties:
+        user_id: { $ref: '#/components/schemas/Id' }
+        month: { $ref: '#/components/schemas/Month' }
+        daily_call_target: { type: [integer, 'null'], minimum: 0 }
+        total_call_target: { type: integer, minimum: 0 }
+        control_call_target: { type: integer, minimum: 0 }
+        joint_call_target: { type: integer, minimum: 0 }
+    SupervisorTargetList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 5000
+          items: { $ref: '#/components/schemas/SupervisorTarget' }
+    SupervisorTargetWrite:
+      type: object
+      required: [batch_uuid, rows, change_reason]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 5000
+          items: { $ref: '#/components/schemas/SupervisorTarget' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    PricePreview:
+      type: object
+      required: [batch_uuid, skus_affected, outlets_affected, devices_affected, max_change_pct, approval_required]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        skus_affected: { type: integer, minimum: 0 }
+        price_types: { type: array, items: { $ref: '#/components/schemas/PriceType' } }
+        outlets_affected: { type: integer, minimum: 0 }
+        devices_affected: { type: integer, minimum: 0 }
+        max_change_pct: { type: number, minimum: 0, description: Largest absolute change against the price in force. }
+        approval_required: { type: boolean, description: True when max_change_pct exceeds cfg.price.max_change_pct (a second approver must decide). }
+    PriceBatch:
+      type: object
+      required: [batch_uuid, status, valid_from, rows]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        status: { type: string, enum: [pending_approval, published, rejected] }
+        valid_from: { $ref: '#/components/schemas/BusinessDate' }
+        rows: { type: integer, minimum: 0 }
+        decided_by_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        decided_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+    OutletKindBulkWrite:
+      type: object
+      required: [batch_uuid, outlet_kind, outlet_ids, reason]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        outlet_kind: { type: string, enum: [retail, wholesale] }
+        outlet_ids: { type: array, minItems: 1, maxItems: 5000, items: { $ref: '#/components/schemas/Id' } }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+    BulkResult:
+      type: object
+      required: [batch_uuid, updated, unchanged, replayed]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        updated: { type: integer, minimum: 0 }
+        unchanged: { type: integer, minimum: 0 }
+        replayed: { type: boolean }
+    DuesAdjustment:
+      type: object
+      required: [adjustment_id, outlet_id, kind, amount_mtk, reason, status, created_by_user_id, created_at]
+      additionalProperties: false
+      properties:
+        adjustment_id: { $ref: '#/components/schemas/Id' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        memo_client_uuid: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }] }
+        kind: { type: string, enum: [correction, write_off] }
+        amount_mtk: { $ref: '#/components/schemas/Mtk' }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+        status: { $ref: '#/components/schemas/DecisionStatus' }
+        created_by_user_id: { $ref: '#/components/schemas/Id' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        decided_by_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        decided_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+    DuesAdjustmentWrite:
+      type: object
+      description: '`amount_mtk` is the signed change of the outlet balance.'
+      required: [client_uuid, outlet_id, kind, amount_mtk, reason]
+      additionalProperties: false
+      properties:
+        client_uuid: { $ref: '#/components/schemas/Uuid' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        memo_client_uuid: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }] }
+        kind: { type: string, enum: [correction, write_off] }
+        amount_mtk: { $ref: '#/components/schemas/Mtk' }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+    DuesAdjustmentPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DuesAdjustment' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    DeviceReplaceRequest:
+      type: object
+      required: [mode, reason]
+      additionalProperties: false
+      properties:
+        mode: { type: string, enum: [upload_first, revoke_now] }
+        new_device_user_id: { type: [integer, 'null'], format: int64, minimum: 1, description: User to issue the new-phone OTP for; defaults to the old device's bound user. }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+    DeviceReplaceResult:
+      type: object
+      required: [old_device_id, old_state, pending_rows]
+      additionalProperties: false
+      properties:
+        old_device_id: { $ref: '#/components/schemas/Id' }
+        old_state: { $ref: '#/components/schemas/DeviceState' }
+        pending_rows: { type: integer, minimum: 0, description: Rows the old phone reported pending at its last contact. }
+        otp: { oneOf: [{ $ref: '#/components/schemas/DeviceOtp' }, { type: 'null' }] }
+    RadiusWhatIf:
+      type: object
+      required: [scope_type, value, days, visits_evaluated, to_valid, to_invalid, unchanged]
+      additionalProperties: false
+      properties:
+        scope_type: { $ref: '#/components/schemas/ConfigScopeType' }
+        scope_id: { type: [integer, 'null'], format: int64, minimum: 0 }
+        value: { type: integer, minimum: 10, maximum: 5000 }
+        days: { type: integer, minimum: 1, maximum: 90 }
+        visits_evaluated: { type: integer, minimum: 0 }
+        to_valid: { type: integer, minimum: 0, description: Visits invalid today that the candidate radius would make valid. }
+        to_invalid: { type: integer, minimum: 0 }
+        unchanged: { type: integer, minimum: 0 }
+    BlastRadius:
+      type: object
+      required: [zones, routes, outlets, users, devices]
+      additionalProperties: false
+      properties:
+        zones: { type: integer, minimum: 0 }
+        routes: { type: integer, minimum: 0 }
+        outlets: { type: integer, minimum: 0 }
+        users: { type: integer, minimum: 0 }
+        devices: { type: integer, minimum: 0 }
+    DensityReport:
+      type: object
+      required: [as_of, radii_m, rows]
+      additionalProperties: false
+      properties:
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        radii_m: { type: array, maxItems: 8, items: { type: integer, minimum: 10, maximum: 1000 } }
+        rows:
+          type: array
+          maxItems: 5000
+          items:
+            type: object
+            required: [node, outlets, median_neighbours]
+            additionalProperties: false
+            properties:
+              node: { $ref: '#/components/schemas/NodeRef' }
+              outlets: { type: integer, minimum: 0 }
+              median_neighbours: { type: array, maxItems: 8, items: { type: number, minimum: 0 } }
+              density_index_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
+    CalibrationReport:
+      type: object
+      required: [as_of, rows]
+      additionalProperties: false
+      properties:
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        rows:
+          type: array
+          maxItems: 5000
+          items:
+            type: object
+            required: [territory_id, geo_class, visits, histogram, force_sale_pct]
+            additionalProperties: false
+            properties:
+              territory_id: { $ref: '#/components/schemas/Id' }
+              geo_class: { type: [string, 'null'], maxLength: 20 }
+              visits: { type: integer, minimum: 0 }
+              histogram:
+                type: array
+                maxItems: 40
+                items:
+                  type: object
+                  required: [upper_m, visits]
+                  additionalProperties: false
+                  properties:
+                    upper_m: { type: integer, minimum: 0 }
+                    visits: { type: integer, minimum: 0 }
+              force_sale_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
+              suggested_radius_m: { type: [integer, 'null'], minimum: 10, maximum: 5000, description: Shown only with at least cfg.geo.calibration_min_visits visits. }
+    ConfigVersionDetail:
+      type: object
+      required: [config_version, committed_at, values]
+      additionalProperties: false
+      properties:
+        config_version: { $ref: '#/components/schemas/ConfigVersionNumber' }
+        committed_at: { $ref: '#/components/schemas/Timestamp' }
+        change_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        values:
+          type: array
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/ResolvedConfigValue' }
+    ConfigPendingDevicePage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [device_id, user_id, zone_id, applied_version, lag_min]
+            additionalProperties: false
+            properties:
+              device_id: { $ref: '#/components/schemas/Id' }
+              user_id: { $ref: '#/components/schemas/Id' }
+              zone_id: { $ref: '#/components/schemas/Id' }
+              applied_version: { $ref: '#/components/schemas/ConfigVersionNumber' }
+              last_contact_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+              lag_min: { type: integer, minimum: 0 }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    PermissionMatrix:
+      type: object
+      required: [config_version, roles, admin_roster]
+      additionalProperties: false
+      properties:
+        config_version: { $ref: '#/components/schemas/ConfigVersionNumber' }
+        roles:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [role, menus]
+            additionalProperties: false
+            properties:
+              role: { $ref: '#/components/schemas/Role' }
+              menus:
+                type: array
+                maxItems: 200
+                items: { $ref: '#/components/schemas/MenuPermission' }
+        admin_roster:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            required: [user_id, username, role]
+            additionalProperties: false
+            properties:
+              user_id: { $ref: '#/components/schemas/Id' }
+              username: { $ref: '#/components/schemas/Username' }
+              role: { $ref: '#/components/schemas/Role' }
+              mfa_enabled: { type: boolean }
+    MenuPermission:
+      type: object
+      required: [menu_id, actions]
+      additionalProperties: false
+      properties:
+        menu_id: { type: string, pattern: '^[a-z][a-z0-9_.]{1,60}$' }
+        actions: { type: array, maxItems: 10, items: { type: string, enum: [view, create, edit, approve, export, void] } }
+    RolePermissionsWrite:
+      type: object
+      required: [menus, reason]
+      additionalProperties: false
+      properties:
+        menus:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/MenuPermission' }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+    FeedbackStatusWrite:
+      type: object
+      required: [status, reason]
+      additionalProperties: false
+      properties:
+        status: { $ref: '#/components/schemas/FeedbackStatus' }
+        reason: { $ref: '#/components/schemas/ChangeReason' }
+    FeedbackStatus:
+      type: string
+      enum: [new, in_progress, resolved, closed]
+    ChannelVolume:
+      type: object
+      required: [code, net_mtk, memo_count, successful_calls]
+      additionalProperties: false
+      properties:
+        code: { type: string, maxLength: 40, description: 'Channel, segment or brand code.' }
+        name: { type: [string, 'null'], maxLength: 120 }
+        net_mtk: { $ref: '#/components/schemas/Mtk' }
+        qty_base: { type: [integer, 'null'], format: int64, minimum: 0 }
+        memo_count: { type: integer, minimum: 0 }
+        successful_calls: { type: integer, minimum: 0 }
+        memo_ratio_pct: { type: [number, 'null'], minimum: 0, maximum: 100, description: BSR for brands (memos containing the brand / active memos). }
+    SuggestedQty:
+      type: object
+      required: [sku_id, qty_base]
+      additionalProperties: false
+      properties:
+        sku_id: { $ref: '#/components/schemas/Id' }
+        qty_base: { type: integer, minimum: 0, maximum: 10000000 }
+
   examples:
     SyncBatchRequestExample:
       summary: One visit family (visit, memo, two lines, one discount line, visit close) sent after an offline sale
