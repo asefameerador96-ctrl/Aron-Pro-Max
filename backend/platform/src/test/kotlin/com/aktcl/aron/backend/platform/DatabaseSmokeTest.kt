@@ -1,44 +1,31 @@
 package com.aktcl.aron.backend.platform
 
-import com.zaxxer.hikari.HikariConfig
-import com.zaxxer.hikari.HikariDataSource
-import org.flywaydb.core.Flyway
-import org.jdbi.v3.core.Jdbi
-import org.testcontainers.postgresql.PostgreSQLContainer
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
- * Proves the backend data path end to end: JDBC driver + HikariCP + Flyway (db module migrations) + JDBI against a
- * real PostgreSQL 16. Database source (docs/24 s2.5): ARON_TEST_PG_URL if set (CI service container, local
- * server), otherwise Testcontainers when Docker is available. With neither, the test FAILS on purpose.
+ * The data path end to end on a real PostgreSQL 16 (docs/24 s2.5): Hikari + the Flyway runner of the `migrate` role
+ * over the db module's migrations + JDBI. A second migrate is a no-op.
  */
 class DatabaseSmokeTest {
     @Test
     fun migratesAndQueries() {
-        val url = System.getenv("ARON_TEST_PG_URL").orEmpty()
-        val container = if (url.isBlank()) PostgreSQLContainer("postgres:16-alpine").also { it.start() } else null
-        try {
-            val cfg = HikariConfig().apply {
-                if (container != null) {
-                    jdbcUrl = container.jdbcUrl; username = container.username; password = container.password
-                } else {
-                    jdbcUrl = url
-                }
-                maximumPoolSize = 2
+        TestPg.dataSource().use { ds ->
+            Migrator.migrate(ds)
+            assertEquals(0, Migrator.migrate(ds), "second run applies nothing")
+            val db = Database(ds)
+            assertTrue(db.ping())
+            val d = db.jdbi.withHandle<String, Exception> { h ->
+                h.createQuery("select (timestamptz '2026-10-04 18:30:00+00' at time zone 'Asia/Dhaka')::date::text").mapTo(String::class.java).one()
             }
-            HikariDataSource(cfg).use { ds ->
-                Flyway.configure().dataSource(ds).locations("classpath:db/migration").load().migrate()
-                val jdbi = Jdbi.create(ds)
-                val tz = jdbi.withHandle<String, Exception> { h ->
-                    h.createQuery("select (timestamptz '2026-10-04 18:30:00+00' at time zone 'Asia/Dhaka')::date::text")
-                        .mapTo(String::class.java).one()
-                }
-                // 18:30 UTC on 4 Oct is 00:30 on 5 Oct in Dhaka: the business date rule of docs/24 s3.8.
-                assertEquals("2026-10-05", tz)
-            }
-        } finally {
-            container?.stop()
+            assertEquals("2026-10-05", d)
         }
+    }
+
+    @Test
+    fun pingIsFalseWhenTheDatabaseIsDown() {
+        Database.pool("jdbc:postgresql://127.0.0.1:1/none", null, null, 1, "down").use { ds -> assertFalse(Database(ds).ping()) }
     }
 }

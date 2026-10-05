@@ -13,11 +13,21 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(kotlin("test"))
+    testImplementation(libs.flyway.core)
+    testImplementation(libs.flyway.postgresql)
+    testImplementation(libs.postgresql)
+    testImplementation(libs.testcontainers.postgresql)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 val migrationsDir: String = layout.projectDirectory.dir("migrations").asFile.absolutePath
+val seedDir: String = layout.projectDirectory.dir("seed").asFile.absolutePath
 tasks.withType<Test>().configureEach {
     inputs.dir(migrationsDir).withPropertyName("migrations").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(seedDir).withPropertyName("seed").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("aron.migrations", migrationsDir)
+    systemProperty("aron.seed", seedDir)
+    // Integration tests need PostgreSQL 16 (docs/24 s2.5): ARON_TEST_PG_URL (CI service container or the local
+    // server; the role needs CREATEDB because every test class gets its own throwaway database), else Testcontainers.
+    environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
 }

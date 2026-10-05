@@ -13,7 +13,7 @@ object ContractInfo {
     const val SCHEMA_VERSION: Int = 1
 }
 
-/** Sync record types of Phase 1 (docs/24 s4.2). Wire names are snake_case. */
+/** Sync record types of this build (docs/24 s4.2, s4.14). Wire names are snake_case. */
 @Serializable
 enum class RecordType(val wire: String) {
     @SerialName("geo_breadcrumb") GEO_BREADCRUMB("geo_breadcrumb"),
@@ -48,6 +48,16 @@ enum class RecordType(val wire: String) {
     @SerialName("media_meta") MEDIA_META("media_meta"),
     @SerialName("device_status") DEVICE_STATUS("device_status"),
     @SerialName("config_ack") CONFIG_ACK("config_ack"),
+    @SerialName("content_view") CONTENT_VIEW("content_view"),
+    @SerialName("redemption") REDEMPTION("redemption"),
+    @SerialName("redemption_line") REDEMPTION_LINE("redemption_line"),
+    @SerialName("gift_photo") GIFT_PHOTO("gift_photo"),
+    @SerialName("price_compliance_check") PRICE_COMPLIANCE_CHECK("price_compliance_check"),
+    @SerialName("risk_review") RISK_REVIEW("risk_review"),
+    @SerialName("activity_log") ACTIVITY_LOG("activity_log"),
+    @SerialName("app_error") APP_ERROR("app_error"),
+    @SerialName("sale_abort") SALE_ABORT("sale_abort"),
+    @SerialName("consent_accept") CONSENT_ACCEPT("consent_accept"),
 }
 
 /** Roles (docs/24 s8.5). */
