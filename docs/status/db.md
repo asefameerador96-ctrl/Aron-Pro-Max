@@ -14,9 +14,22 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   calendar, code lists, targets. Tests: `MigrationApplyTest` (empty DB, second run no-op, edited and removed
   migrations refused), `SchemaV1aTest` (16 rules). Checker: two rounds, all confirmed defects fixed.
 
-## In progress
+## Pushed, checker sign-off pending (fixes, if any, come as new forward-only migrations)
 
-- **N-006 schema v1b** (field transactions, sync, events).
+- **N-006 schema v1b** (`V0007`–`V0009`): every contract v1.1 record type has its table with the shared envelope
+  (client_uuid, family_uuid, business_date + business_date_device, UTC captured_at, clock evidence, config/bundle
+  versions, voided_at); partitioned visit/memo/memo_line/geo_fix/domain_event; immutability guard with write-once
+  columns and state-flow triggers; memo arithmetic and line gross as CHECKs; route-day, supervisor-day, QC header,
+  due ledger, indent ledger (Phase 2), final submit, submit void, data-void barrier, request trail; programmes,
+  gifts, Astha targets, loyalty ledger, content, risk signals; hash-partitioned ingest registry, batch replay,
+  rejected, quarantine, server generation, domain-event outbox; V0009 adds the v1.1 code lists and 54 config keys.
+  Checker round 1: 3 defects, fixed in 7c3db48; round 2 running.
+- **N-007 schema v1c** (`V0010`, `V0011`): devices, bindings (ordinals 0..3), nonces, status reports, rendered
+  policy, app package catalogue for the block list, directives, push tokens, releases (maker-checker), enrolment
+  tokens (hash only), device FKs, hash-chained append-only audit log with `app.audit_verify()`; dw dimensions,
+  partitioned facts, aggregates; `app.dirty_key` with `app.mark_dirty`. Checker running.
+- **N-008 seed** (`db/seed/`, `:db:seed`): Daily/3F/2F routes for `sr1001` with 60 outlets, TSO and AMO zone scope,
+  42 SKUs x 5 prices from the CSV, test accounts without passwords, dev config overrides; idempotent. Checker running.
 
 ## Not verified here
 
