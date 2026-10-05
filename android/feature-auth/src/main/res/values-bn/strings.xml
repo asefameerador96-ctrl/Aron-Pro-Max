@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="auth_login_title">লগইন</string>
+    <string name="auth_username">ইউজারনেম</string>
+    <string name="auth_password">পাসওয়ার্ড</string>
+    <string name="auth_password_show">দেখান</string>
+    <string name="auth_password_hide">লুকান</string>
+    <string name="auth_login_button">লগইন করুন</string>
+    <string name="auth_version">সংস্করণ %1$s</string>
+    <string name="auth_error_empty">ইউজারনেম ও পাসওয়ার্ড দিন।</string>
+    <string name="auth_error_invalid_credentials">ইউজারনেম বা পাসওয়ার্ড ভুল।</string>
+    <string name="auth_error_bind_required">এই ফোনটি এখনো আপনার অ্যাকাউন্টের সাথে যুক্ত হয়নি। আপনার TSO-র কাছ থেকে ৪ সংখ্যার কোড নিন।</string>
+    <string name="auth_error_password_change_required">লগইন করার আগে নতুন পাসওয়ার্ড দিতে হবে।</string>
+    <string name="auth_error_locked">আপনার অ্যাকাউন্ট এখন লক করা আছে। পরে আবার চেষ্টা করুন।</string>
+    <plurals name="auth_error_locked_minutes">
+        <item quantity="one">আপনার অ্যাকাউন্ট লক করা আছে। %1$s মিনিট পরে আবার চেষ্টা করুন।</item>
+        <item quantity="other">আপনার অ্যাকাউন্ট লক করা আছে। %1$s মিনিট পরে আবার চেষ্টা করুন।</item>
+    </plurals>
+    <string name="auth_error_user_disabled">আপনার অ্যাকাউন্ট বন্ধ করা আছে। আপনার সুপারভাইজারের সাথে যোগাযোগ করুন।</string>
+    <string name="auth_error_device_not_enrolled">এই ফোনটি ARON-এর জন্য নিবন্ধিত নয়। সাপোর্টে যোগাযোগ করুন।</string>
+    <string name="auth_error_device_blocked">এই ফোনটি ARON-এর জন্য বন্ধ করা হয়েছে। সাপোর্টে যোগাযোগ করুন।</string>
+    <string name="auth_error_update_required">লগইন করতে অ্যাপটি আপডেট করুন।</string>
+    <string name="auth_error_rate_limited">অনেকবার চেষ্টা করা হয়েছে। পরে আবার চেষ্টা করুন।</string>
+    <plurals name="auth_error_rate_limited_minutes">
+        <item quantity="one">অনেকবার চেষ্টা করা হয়েছে। %1$s মিনিট পরে আবার চেষ্টা করুন।</item>
+        <item quantity="other">অনেকবার চেষ্টা করা হয়েছে। %1$s মিনিট পরে আবার চেষ্টা করুন।</item>
+    </plurals>
+    <string name="auth_error_refused">সার্ভার লগইন গ্রহণ করেনি (%1$s)।</string>
+    <string name="auth_error_offline_never_online">ইন্টারনেট নেই। প্রথমবার এই ফোনে ইন্টারনেট চালু রেখে লগইন করুন।</string>
+    <string name="auth_error_offline_expired">ইন্টারনেট নেই, এবং শেষ অনলাইন লগইন ৭ দিনের বেশি আগে। লগইন করতে ইন্টারনেটে যুক্ত হন।</string>
+    <string name="auth_error_offline_wrong_password">ইন্টারনেট নেই, এবং পাসওয়ার্ডটি শেষ অনলাইন লগইনের সাথে মেলে না।</string>
+    <string name="auth_error_offline_cooldown">অনেকবার ভুল পাসওয়ার্ড দেওয়া হয়েছে। %1$s-এর পরে আবার চেষ্টা করুন।</string>
+</resources>
