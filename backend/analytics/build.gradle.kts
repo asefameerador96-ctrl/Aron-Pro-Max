@@ -1,4 +1,4 @@
-// backend:analytics. Lane: backend. Owner agent and scope: docs/24-build-spec.md s2.2.
+// backend:analytics. Lane: backend. Owner and scope: docs/24-build-spec.md s1, s2.1, s6.2.
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)

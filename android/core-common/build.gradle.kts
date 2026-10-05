@@ -1,4 +1,4 @@
-// android:core-common. Lane: android. Owner agent and scope: docs/24-build-spec.md s2.2.
+// android:core-common. Lane: android. Owner and scope: docs/24-build-spec.md s1.2, s2.1, s5.
 plugins {
     alias(libs.plugins.android.library)
 }

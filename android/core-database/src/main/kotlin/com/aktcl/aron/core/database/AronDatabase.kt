@@ -9,7 +9,7 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 
 /**
- * Day-1 seed of the outbox (docs/24 s4.1). The core agent replaces it with the full schema of s5.1; the columns
+ * Day-1 seed of the outbox (docs/24 s5.2). The core agent replaces it with the full schema of s5.2; the columns
  * here already follow the contract: client_uuid is the identity, seq is the send order, state is the s4.6 machine.
  */
 @Entity(tableName = "outbox")

@@ -1,6 +1,6 @@
 // backend:platform: server infrastructure shared by every backend module (Ktor plugins, problem+json,
 // principal and scope context, DB pool and transactions, clock, config loading, audit writer, observability).
-// Lane: backend (auth-and-scope agent). docs/24-build-spec.md s2.2, s5.
+// Lane: backend (auth-and-scope agent). docs/24-build-spec.md s2.1, s6.
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
@@ -26,6 +26,6 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     // Integration tests need PostgreSQL 16: ARON_TEST_PG_URL (CI service container or the local server), else
-    // Testcontainers when Docker is present. See docs/24 s13.3.
+    // Testcontainers when Docker is present. See docs/24 s2.5.
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
 }

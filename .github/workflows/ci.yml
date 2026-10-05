@@ -1,0 +1,151 @@
+# CI for the Aron monorepo (docs/24-build-spec.md s13.2). Owner: infra lane.
+#
+# Jobs: contract lint -> JVM build and tests (shared, db, backend on PostgreSQL 16) -> three debug APKs plus Android
+# unit tests. Web and infra jobs are added by their lanes when web/ and infra/ have buildable content.
+#
+# Secrets (never committed; set them in GitHub > Settings > Secrets and variables > Actions, docs/24 s13.6):
+#   MAPS_ANDROID_KEY          Google Maps SDK for Android key (AMO and TSO apps); manifest placeholder mapsApiKey
+#   MAPS_WEB_KEY              Google Maps JavaScript API key for web/ (NEXT_PUBLIC_MAPS_WEB_KEY at next build)
+#   GOOGLE_SERVICES_JSON      Firebase google-services.json content, written into android/app-{sr,amo,tso}/
+#   FCM_SERVICE_ACCOUNT_JSON  Firebase service account for the backend FCM sender; copied to Key Vault by the deploy
+#                             workflow (secret aron-fcm-service-account); never used by this workflow
+# Every secret is optional here: without them the debug APKs still build (maps show no tiles, push is off).
+# Action versions were checked on 2026-10-05 with `git ls-remote --tags` (major tags v7, v6, v7, v7, v6, v6).
+
+name: ci
+
+on:
+  push:
+    branches: [main, "lane/**", "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Contract lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Lint contract/openapi.yaml (Redocly, 0 errors and 0 warnings)
+        run: npx --yes @redocly/cli@2 lint contract/openapi.yaml --config contract/redocly.yaml
+
+  jvm:
+    name: Shared, db and backend (build and tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aron_test
+          POSTGRES_DB: aron_test
+          # Throwaway service container reachable only from this job: trust auth, no password at all.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aron_test -d aron_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      ARON_TEST_PG_URL: jdbc:postgresql://localhost:5432/aron_test?user=aron_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build and test shared, db and backend
+        run: >-
+          ./gradlew --console=plain
+          :shared:contract:build :shared:rules:build :db:build
+          :backend:platform:build :backend:auth:build :backend:sync:build :backend:masterdata:build
+          :backend:config:build :backend:analytics:build :backend:notify:build :backend:media:build
+          :backend:app:build
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jvm-test-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          retention-days: 7
+
+  android:
+    name: Android debug APKs, unit tests and lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
+        # The runner context is not available in job-level env, so the path is exported here.
+        run: |
+          echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
+          echo "ANDROID_SDK_ROOT=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Cache the Android SDK
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/android-sdk
+          key: android-sdk-${{ runner.os }}-${{ hashFiles('tools/android-sdk.sh') }}
+      - name: Install Android SDK packages (same script as the dev box)
+        run: tools/android-sdk.sh
+      - name: Write google-services.json from the secret (only when it is set)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "${GOOGLE_SERVICES_JSON}" ]; then
+            for app in app-sr app-amo app-tso; do
+              printf '%s' "${GOOGLE_SERVICES_JSON}" > "android/${app}/google-services.json"
+            done
+            echo "google-services.json written for the three apps"
+          else
+            echo "GOOGLE_SERVICES_JSON not set: building without Firebase (push disabled)"
+          fi
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Assemble the three debug APKs, run Android unit tests and lint
+        run: >-
+          ./gradlew --console=plain
+          :android:app-sr:assembleDebug :android:app-amo:assembleDebug :android:app-tso:assembleDebug
+          testDebugUnitTest lintDebug
+      - name: Remove google-services.json from the workspace
+        if: always()
+        run: rm -f android/app-sr/google-services.json android/app-amo/google-services.json android/app-tso/google-services.json
+      - name: Upload debug APKs
+        uses: actions/upload-artifact@v7
+        with:
+          name: aron-debug-apks-${{ github.sha }}
+          path: |
+            android/app-sr/build/outputs/apk/debug/*.apk
+            android/app-amo/build/outputs/apk/debug/*.apk
+            android/app-tso/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Android test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-test-reports
+          path: |
+            android/**/build/reports/tests/
+            android/**/build/test-results/
+          retention-days: 7

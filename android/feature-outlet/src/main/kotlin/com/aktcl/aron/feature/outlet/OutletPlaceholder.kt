@@ -3,7 +3,7 @@ package com.aktcl.aron.feature.outlet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 
-/** Placeholder for android:feature-outlet (docs/24 s2.2). Replace with the module's screens, view models and use cases. */
+/** Placeholder for android:feature-outlet (docs/24 s1.2, s2.1). Replace with the module's screens, view models and use cases. */
 object OutletPlaceholder {
     const val MODULE: String = "feature-outlet"
 }

@@ -9,7 +9,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** Proves Room + KSP + Robolectric work in this build (docs/24 s13.3 android gate). */
+/** Proves Room + KSP + Robolectric work in this build (docs/24 s13.2 android gate). */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [36])
 class OutboxDaoTest {

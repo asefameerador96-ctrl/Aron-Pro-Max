@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # tools/android-sdk.sh: install the Android SDK pieces the Aron Gradle build needs, headless.
 #
-# Owner: tools/ lane. Used by: Claude build sessions (Linux containers), CI (.github/workflows/ci.yml
-# uses android-actions/setup-android instead, with the same package list), and any Linux laptop.
+# Owner: infra lane (docs/24-build-spec.md s1.1). Used by: Claude build sessions (Linux containers), CI
+# (.github/workflows/ci.yml runs this same script with ANDROID_HOME in the runner temp folder, cached), and any
+# Linux laptop.
 #
 # Usage:
 #   tools/android-sdk.sh                      # installs into /opt/android-sdk (or $ANDROID_HOME if set)

@@ -29,6 +29,15 @@ val compileSdkVersion = v("android-compileSdk").toInt()
 val targetSdkVersion = v("android-targetSdk").toInt()
 val minSdkVersion = v("android-minSdk").toInt()
 
+// Robolectric 4.17 with the Android 16 (API 36) runtime on JDK 21 reflects into java.base internals
+// (FileDescriptor via jdk.internal.access.SharedSecrets); without these flags Room tests fail with
+// "Failed to interact with raw FileDescriptor internals" (seen 2026-10-05, docs/24-build-spec-verification.md).
+val robolectricJvmArgs = listOf(
+    "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+    "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+    "--add-opens=java.base/java.io=ALL-UNNAMED",
+)
+
 subprojects {
     group = "com.aktcl.aron"
     version = (findProperty("aron.version") as String?) ?: "0.1.0"
@@ -87,6 +96,7 @@ subprojects {
             testOptions {
                 unitTests.isIncludeAndroidResources = true
                 unitTests.isReturnDefaultValues = true
+                unitTests.all { it.jvmArgs(robolectricJvmArgs) }
             }
             lint {
                 abortOnError = true
@@ -120,6 +130,7 @@ subprojects {
             testOptions {
                 unitTests.isIncludeAndroidResources = true
                 unitTests.isReturnDefaultValues = true
+                unitTests.all { it.jvmArgs(robolectricJvmArgs) }
             }
             lint {
                 abortOnError = true

@@ -22,7 +22,7 @@ fun main() {
     when (val role = System.getenv("ARON_ROLE") ?: "api") {
         "api" -> embeddedServer(Netty, port = System.getenv("PORT")?.toInt() ?: 8080, module = Application::aronApi)
             .start(wait = true)
-        "worker" -> println("aron worker: placeholder (docs/24 s5.2); the analytics lane adds the job loop")
+        "worker" -> println("aron worker: placeholder (docs/24 s6.1); the analytics lane adds the job loop")
         else -> error("ARON_ROLE must be api or worker, was $role")
     }
 }
@@ -30,7 +30,7 @@ fun main() {
 @Serializable
 data class Health(val status: String, val api: String, val server_time: String)
 
-/** Day-1 skeleton of the API: only GET/HEAD /v1/health. Every lane mounts its routes here (docs/24 s3, s5.2). */
+/** Day-1 skeleton of the API: only GET/HEAD /v1/health. Every lane mounts its routes here (docs/24 s3, s6.1). */
 fun Application.aronApi() {
     install(ContentNegotiation) { json() }
     routing {

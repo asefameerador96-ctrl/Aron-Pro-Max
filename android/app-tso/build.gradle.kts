@@ -1,4 +1,4 @@
-// android:app-tso: the ARON TSO app, applicationId com.aktcl.aron.tso (docs/23 s8, docs/24 s2.3).
+// android:app-tso: the ARON TSO app, applicationId com.aktcl.aron.tso (docs/23 s8, docs/24 s2.1).
 // Lane: android (TSO app agent). Each field app embeds android:dpc and is its own device owner (docs/24 s10.1).
 plugins {
     alias(libs.plugins.android.application)
@@ -8,7 +8,7 @@ plugins {
 }
 
 // FCM config comes from the GOOGLE_SERVICES_JSON secret at build time (written to this folder by CI, git-ignored).
-// Without it the app builds and runs with push disabled (cfg.ops.push_enabled is false in the pilot anyway).
+// Without it the app builds and runs with push disabled (FCM only nudges pulls, docs/24 s4.7, s13.6).
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
@@ -20,7 +20,7 @@ android {
         versionCode = (findProperty("aron.versionCode") as String?)?.toInt() ?: 1
         versionName = (findProperty("aron.versionName") as String?) ?: "0.1.0"
         buildConfigField("String", "ARON_ROLE", "\"TSO\"")
-        buildConfigField("String", "API_BASE_URL", "\"" + ((findProperty("aron.apiBaseUrl") as String?) ?: "https://api-dev.aron.invalid/v1") + "\"")
+        buildConfigField("String", "API_BASE_URL", "\"" + ((findProperty("aron.apiBaseUrl") as String?) ?: "https://api.aron-dev.invalid") + "\"")
     }
     buildFeatures { compose = true }
     buildTypes {

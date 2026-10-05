@@ -1192,7 +1192,7 @@ paths:
       tags: [notifications]
       operationId: sendNotification
       summary: Send an FCM data nudge (announcement or config pull) to devices in a scope.
-      description: Payload carries `pull_after_s` jitter; FCM never triggers an upload (docs/24 s4.7). Refused while `cfg.ops.push_enabled` is false.
+      description: Payload carries `pull_after_s` jitter; FCM never triggers an upload (docs/24 s4.7). Refused with 409 `ERR_PUSH_DISABLED` while `cfg.ops.push_enabled` is false.
       requestBody:
         required: true
         content:
@@ -4348,7 +4348,7 @@ components:
         battery_optimisation_ignored: { type: [boolean, 'null'] }
         user_control_disabled: { type: [boolean, 'null'] }
         location_enabled: { type: boolean }
-        location_mode: { type: string, enum: [high_accuracy, battery_saving, device_only, off, unknown] }
+        location_mode: { type: string, enum: [high_accuracy, battery_saving, device_only, 'off', unknown] }
         dev_options_enabled: { type: boolean }
         adb_enabled: { type: boolean }
         auto_time_enabled: { type: boolean }
@@ -8392,7 +8392,7 @@ components:
         key: { $ref: '#/components/schemas/ConfigKeyName' }
         area: { type: string, pattern: '^[a-z]+$' }
         kind: { type: string, enum: [S, T, O], description: 'S setting, T time-shaped, O operational switch (auto-expires).' }
-        value_type: { type: string, enum: [int, bool, time, text, url, pct, money_mtk, enum, list, json] }
+        value_type: { type: string, enum: [int, number, bool, time, text, url, pct, money_mtk, enum, list, json] }
         default_value: { $ref: '#/components/schemas/ConfigValueJson' }
         bounds: { $ref: '#/components/schemas/ConfigBounds' }
         scope_levels:

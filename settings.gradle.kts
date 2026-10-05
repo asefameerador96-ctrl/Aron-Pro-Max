@@ -1,6 +1,6 @@
 // Aron: ONE root Gradle build for shared, db, backend and android (docs/24-build-spec.md s1 and s2).
 // The web app (web/, Next.js) and the contract linter (contract/, Redocly) are not Gradle projects.
-// Owner: infra lane. Adding a module = a PR that edits this file and the module table in docs/24 s2.2.
+// Owner: infra lane. Adding a module = a PR that edits this file and the module table in docs/24 s2.1.
 
 pluginManagement {
     repositories {

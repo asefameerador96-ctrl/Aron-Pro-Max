@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 
 /**
  * Proves the backend data path end to end: JDBC driver + HikariCP + Flyway (db module migrations) + JDBI against a
- * real PostgreSQL 16. Database source (docs/24 s13.3): ARON_TEST_PG_URL if set (CI service container, local
+ * real PostgreSQL 16. Database source (docs/24 s2.5): ARON_TEST_PG_URL if set (CI service container, local
  * server), otherwise Testcontainers when Docker is available. With neither, the test FAILS on purpose.
  */
 class DatabaseSmokeTest {

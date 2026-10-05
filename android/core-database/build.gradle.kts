@@ -1,5 +1,5 @@
 // android:core-database: the phone's Room database (reference cache, domain rows, outbox, media queue).
-// Lane: android (core agent). docs/24-build-spec.md s4, s5.1. Schemas are exported for migration tests.
+// Lane: android (core agent). docs/24-build-spec.md s4, s5.2. Schemas are exported for migration tests.
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.ksp)

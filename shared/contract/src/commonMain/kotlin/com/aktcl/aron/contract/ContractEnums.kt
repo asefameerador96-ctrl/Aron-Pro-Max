@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
  */
 object ContractInfo {
     const val API_BASE_PATH: String = "/v1"
-    /** Payload schema version the phone stamps on every record (docs/24 s4.3); the server accepts N, N-1, N-2. */
+    /** Payload schema version the phone stamps on every record (docs/24 s4.3); the server accepts 1..current (s3.7). */
     const val SCHEMA_VERSION: Int = 1
 }
 
