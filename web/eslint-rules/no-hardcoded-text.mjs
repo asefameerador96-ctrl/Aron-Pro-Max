@@ -10,6 +10,23 @@ function hasVisibleLetters(text) {
   return /\p{L}/u.test(stripped);
 }
 
+/** Visible string pieces an expression can render: literals, template text, either branch of ?: / && / ||, both sides of +. */
+function literals(e) {
+  switch (e.type) {
+    case "Literal":
+      return typeof e.value === "string" ? [e] : [];
+    case "TemplateLiteral":
+      return e.quasis.filter((q) => hasVisibleLetters(q.value.cooked ?? "")).map((q) => ({ ...q, value: q.value.cooked }));
+    case "ConditionalExpression":
+      return [...literals(e.consequent), ...literals(e.alternate)];
+    case "LogicalExpression":
+    case "BinaryExpression":
+      return [...literals(e.left), ...literals(e.right)];
+    default:
+      return [];
+  }
+}
+
 /** @type {import("eslint").Rule.RuleModule} */
 export const noHardcodedText = {
   meta: {
@@ -21,27 +38,24 @@ export const noHardcodedText = {
   },
   create(context) {
     const report = (node, raw) =>
-      context.report({ node, messageId: "text", data: { text: JSON.stringify(raw.trim().slice(0, 40)) } });
+      context.report({ node, messageId: "text", data: { text: JSON.stringify(String(raw).trim().slice(0, 40)) } });
+    const check = (expr) => {
+      for (const l of literals(expr)) if (hasVisibleLetters(String(l.value))) report(l, l.value);
+    };
     return {
       JSXText(node) {
         if (hasVisibleLetters(node.value)) report(node, node.value);
       },
       JSXExpressionContainer(node) {
         if (node.parent.type === "JSXAttribute") return;
-        const e = node.expression;
-        if (e.type === "Literal" && typeof e.value === "string" && hasVisibleLetters(e.value)) report(node, e.value);
-        if (e.type === "TemplateLiteral" && e.expressions.length === 0 && e.quasis.some((q) => hasVisibleLetters(q.value.cooked ?? ""))) {
-          report(node, e.quasis.map((q) => q.value.cooked ?? "").join(""));
-        }
+        check(node.expression);
       },
       JSXAttribute(node) {
         if (node.name.type !== "JSXIdentifier" || !VISIBLE_ATTRS.has(node.name.name)) return;
         const v = node.value;
         if (!v) return;
         if (v.type === "Literal" && typeof v.value === "string" && hasVisibleLetters(v.value)) report(v, v.value);
-        if (v.type === "JSXExpressionContainer" && v.expression.type === "Literal" && typeof v.expression.value === "string" && hasVisibleLetters(v.expression.value)) {
-          report(v, v.expression.value);
-        }
+        if (v.type === "JSXExpressionContainer") check(v.expression);
       },
     };
   },

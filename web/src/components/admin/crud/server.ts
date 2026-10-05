@@ -101,7 +101,10 @@ export async function handleUpdate(req: NextRequest, meta: AnyEntity, id: string
   if (!/^[0-9]{1,15}$/.test(id)) return problemResponse(404, "ERR_NOT_FOUND");
   const body = await readWrite(req);
   if (!body) return problemResponse(400, "ERR_MALFORMED_JSON");
-  if (body.version === undefined) return validationProblem([{ pointer: "/version", code: "required" }]);
+  // If-Match must match ^"[0-9]{1,10}"$ (contract): an integer of at most 10 digits, at least 1.
+  if (typeof body.version !== "number" || !Number.isInteger(body.version) || body.version < 1 || body.version > 9_999_999_999) {
+    return validationProblem([{ pointer: "/version", code: body.version === undefined ? "required" : "invalid" }]);
+  }
 
   const reason = reasonSchema.safeParse(body.reason);
   const values = valuesSchema(meta, "update").safeParse(body.values);

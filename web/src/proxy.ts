@@ -7,6 +7,7 @@ import { publicUrl } from "@/lib/api/origin";
 import { SESSION_COOKIE } from "@/lib/auth/cookies";
 import { forbiddenPage } from "@/lib/forbidden-page";
 import { LOCALE_COOKIE, isLocale, DEFAULT_LOCALE } from "@/lib/i18n/types";
+import { entityBySlug } from "@/app/admin/_entities/registry";
 import { accessFor } from "@/lib/auth/roles";
 import { readSession } from "@/lib/auth/session";
 
@@ -21,6 +22,14 @@ export function proxy(req: NextRequest) {
   const session = readSession(req.cookies.get(SESSION_COOKIE)?.value);
   const access = accessFor(session?.user.role, pathname);
   const isApi = pathname.startsWith("/api/");
+
+  // Write pages of an entity (create, edit) need its write roles: a read-only portal role gets a real 403 there too.
+  const writePage = /^\/admin\/([^/]+)\/(new|[0-9]+)\/?$/.exec(pathname);
+  const entity = writePage?.[1] ? entityBySlug(writePage[1]) : undefined;
+  if (access === "ok" && session && entity && !entity.writeRoles.includes(session.user.role)) {
+    const l = req.cookies.get(LOCALE_COOKIE)?.value;
+    return forbiddenPage(isLocale(l) ? l : DEFAULT_LOCALE);
+  }
 
   if (access === "ok") {
     if (pathname === "/login" && session) return NextResponse.redirect(publicUrl(req, "/"));
