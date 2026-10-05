@@ -143,6 +143,17 @@ resource replica 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = if (en
   }
 }
 
+// Server parameters are not replicated: the replica needs its own PgBouncer, or ARON_DB_READ_URL (port 6432) would point
+// at nothing (Learn: read replicas, PgBouncer).
+var replicaSettings = filter(settings, s => startsWith(s.name, 'pgbouncer.'))
+
+@batchSize(1)
+resource replicaConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = [for s in replicaSettings: if (enableReadReplica) {
+  parent: replica
+  name: s.name
+  properties: { value: s.value, source: 'user-override' }
+}]
+
 resource diag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'to-log-analytics'
   scope: server

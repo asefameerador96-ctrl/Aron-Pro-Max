@@ -1,7 +1,7 @@
 # CI for the Aron monorepo (docs/24-build-spec.md s13.2). Owner: infra lane.
 #
-# Jobs: changed-area filter -> contract lint, JVM build and tests (shared, db, backend on PostgreSQL 16), three debug
-# APKs plus Android unit tests and lint, infra validation (Bicep build/lint/checks, actionlint) -> on a push to the
+# Jobs: changed-area filter -> contract lint, JVM build and tests (shared, db, backend on PostgreSQL 16), web (lint,
+# types, unit tests, build, e2e), three debug APKs plus Android unit tests and lint, infra validation (Bicep build/lint/checks, actionlint) -> on a push to the
 # integration branch only, and only when all of those passed, the Azure deploy (deploy.yml, reusable workflow).
 #
 # Secrets (never committed; set them in GitHub > Settings > Secrets and variables > Actions, docs/24 s13.6):
@@ -24,10 +24,11 @@ on:
 permissions:
   contents: read
 
-# Six lanes push to the integration branch every few minutes: a push run is NEVER cancelled (grouped by commit, so
-# every commit gets its own complete run). Only pull_request runs are grouped by ref and cancel their predecessor.
+# Six lanes push to the integration branch every few minutes: a push run is NEVER cancelled (grouped by branch AND
+# commit, so every push gets its own complete run, even when the same commit lands on two branches). Only
+# pull_request runs are grouped by ref and cancel their predecessor.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -41,6 +42,7 @@ jobs:
       contract: ${{ steps.filter.outputs.contract }}
       jvm: ${{ steps.filter.outputs.jvm }}
       android: ${{ steps.filter.outputs.android }}
+      web: ${{ steps.filter.outputs.web }}
       infra: ${{ steps.filter.outputs.infra }}
       deploy: ${{ steps.filter.outputs.deploy }}
     steps:
@@ -53,7 +55,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          all() { printf 'contract=true\njvm=true\nandroid=true\ninfra=true\ndeploy=true\n' >> "${GITHUB_OUTPUT}"; echo "running everything: $1"; exit 0; }
+          all() { printf 'contract=true\njvm=true\nandroid=true\nweb=true\ninfra=true\ndeploy=true\n' >> "${GITHUB_OUTPUT}"; echo "running everything: $1"; exit 0; }
           case "${EVENT}" in
             pull_request) base="${PR_BASE}" ;;
             push) base="${BEFORE}" ;;
@@ -67,8 +69,10 @@ jobs:
           has() { printf '%s\n' "${files}" | grep -Eq "$1" && echo true || echo false; }
           {
             echo "contract=$(has '^(contract/|\.github/workflows/ci\.yml)')"
-            echo "jvm=$(has "${common}|^(contract/|shared/|db/|backend/)")"
+            # shared/contract's drift tests read docs/24-build-spec.md, so a spec edit re-runs them.
+            echo "jvm=$(has "${common}|^(contract/|shared/|db/|backend/|docs/24-build-spec\.md)")"
             echo "android=$(has "${common}|^(contract/|shared/|android/|tools/android-sdk\.sh)")"
+            echo "web=$(has '^(web/|contract/openapi\.yaml|\.github/workflows/ci\.yml)')"
             echo "infra=$(has '^(infra/|\.github/)')"
             # What ends up in Azure: the backend image (shared, db, backend), the web image, the Bicep, the deploy.
             echo "deploy=$(has "${common}|^(shared/|db/|backend/|web/|infra/|\.github/workflows/deploy\.yml)")"
@@ -202,6 +206,44 @@ jobs:
             android/**/build/test-results/
           retention-days: 7
 
+  web:
+    # docs/24 s13.2 web gate; steps from web/scripts/ci.sh (docs/requests/web-infra-ci-job.md).
+    name: Web (lint, types, tests, build, e2e)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: bash scripts/ci.sh install
+      - name: Generated contract types are up to date
+        run: bash scripts/ci.sh generate
+      - run: bash scripts/ci.sh lint
+      - run: bash scripts/ci.sh typecheck
+      - run: bash scripts/ci.sh test
+      - name: next build
+        env:
+          NEXT_PUBLIC_MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
+        run: bash scripts/ci.sh build
+      - run: npx playwright install --with-deps chromium
+      - run: bash scripts/ci.sh e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-playwright-results
+          path: web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   infra:
     name: Infra validation (Bicep, workflows)
     needs: changes
@@ -216,7 +258,7 @@ jobs:
   deploy:
     # Only a push to the integration branch deploys, and only after every check above passed or was not needed.
     name: Deploy to Azure (dev)
-    needs: [changes, contract, jvm, android, infra]
+    needs: [changes, contract, jvm, web, android, infra]
     if: >-
       !cancelled() && !failure()
       && github.event_name == 'push'

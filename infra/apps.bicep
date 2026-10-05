@@ -295,6 +295,7 @@ resource web 'Microsoft.App/containerApps@2025-07-01' = if (deployWeb) {
         traffic: [{ latestRevision: true, weight: 100 }]
       }
       registries: [{ server: acr.properties.loginServer, identity: idWeb.id }]
+      secrets: [kvSecret('session-secret', secretNames.webSessionSecret, kvSecretUrl, idWeb.id)]
     }
     template: {
       containers: [
@@ -309,6 +310,8 @@ resource web 'Microsoft.App/containerApps@2025-07-01' = if (deployWeb) {
             { name: 'ARON_ENV', value: environmentName }
             // The BFF calls the API through Front Door, the same path (and WAF) as every other client.
             { name: 'ARON_API_BASE_URL', value: 'https://${fdEndpoint.properties.hostName}' }
+            // Seals the BFF session cookies; the web server refuses to start in production without it.
+            { name: 'ARON_SESSION_SECRET', secretRef: 'session-secret' }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
           ]
         }

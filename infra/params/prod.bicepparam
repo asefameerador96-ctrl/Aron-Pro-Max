@@ -2,8 +2,18 @@
 // The same file deploys into the final subscription's group; only AZURE_LOCATION and the group change.
 using '../main.bicep'
 
+// Values from the deploy environment (infra/deploy.sh). An unset OR empty variable takes the default, because GitHub
+// passes an unset repository variable as an empty string.
+var envLocation = readEnvironmentVariable('AZURE_LOCATION', '')
+var envSuffix = readEnvironmentVariable('ARON_NAME_SUFFIX', '')
+var envEmails = readEnvironmentVariable('ARON_ALERT_EMAILS', '')
+var envBudget = readEnvironmentVariable('ARON_BUDGET_AMOUNT', '')
+var envBudgetStart = readEnvironmentVariable('ARON_BUDGET_START_DATE', '')
+var envReplica = readEnvironmentVariable('ARON_PG_READ_REPLICA', '')
+
 param environmentName = 'prod'
-param location = readEnvironmentVariable('AZURE_LOCATION', 'southeastasia')
+param location = empty(envLocation) ? 'southeastasia' : envLocation
+param nameSuffix = envSuffix
 
 param vnetAddressPrefix = '10.40.0.0/16'
 param acaSubnetPrefix = '10.40.0.0/23'
@@ -11,9 +21,11 @@ param postgresSubnetPrefix = '10.40.2.0/28'
 
 param logRetentionDays = 90
 param logDailyQuotaGb = 8
-param alertEmails = split(readEnvironmentVariable('ARON_ALERT_EMAILS', 'alerts@aron.invalid'), ',')
-param budgetAmount = int(readEnvironmentVariable('ARON_BUDGET_AMOUNT', '7000'))
-param budgetStartDate = '2026-10-01'
+param alertEmails = map(split(empty(envEmails) ? 'alerts@aron.invalid' : envEmails, ','), e => trim(e))
+param budgetAmount = int(empty(envBudget) ? '7000' : envBudget)
+// Azure refuses a start date before the current month on create and refuses to move it later, so deploy.sh passes
+// the existing budget's date, or the first day of the current month when the budget does not exist yet.
+param budgetStartDate = empty(envBudgetStart) ? '2026-10-01' : envBudgetStart
 
 param keyVaultPurgeProtection = true
 param registrySku = 'Premium'
@@ -27,7 +39,9 @@ param postgresStorageThroughputMBps = 300
 param postgresHaMode = 'ZoneRedundant'
 param postgresBackupRetentionDays = 35
 param postgresGeoRedundantBackup = true
-param postgresReadReplica = true
+// Premium SSD v2 must finish its first backup before an in-region replica can be created (Learn), so the first prod
+// deploy runs with ARON_PG_READ_REPLICA=false and the next one adds the replica.
+param postgresReadReplica = empty(envReplica) ? true : bool(envReplica)
 param postgresAdminPassword = readEnvironmentVariable('ARON_DB_ADMIN_PASSWORD', '')
 
 param frontDoorSku = 'Premium_AzureFrontDoor'

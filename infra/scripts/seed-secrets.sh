@@ -4,6 +4,7 @@
 #   aron-jwt-kid               its key id
 #   aron-fcm-service-account   Firebase service account JSON from the GitHub secret FCM_SERVICE_ACCOUNT_JSON;
 #                              "{}" when the secret is not set (push disabled until it is)
+#   aron-web-session-secret    48 random characters sealing the web BFF session cookies (ARON_SESSION_SECRET)
 # Idempotent: an existing value is kept, except the FCM account, which follows the GitHub secret when one is given.
 # Usage: infra/scripts/seed-secrets.sh <key-vault-name>
 # shellcheck source=lib.sh
@@ -48,4 +49,12 @@ else
   printf '{}' > "$tmp/fcm.json"
   put_file aron-fcm-service-account "$tmp/fcm.json" application/json
   note "aron-fcm-service-account created as {} (push disabled until FCM_SERVICE_ACCOUNT_JSON is set)"
+fi
+
+if exists aron-web-session-secret; then
+  note "aron-web-session-secret present (kept)"
+else
+  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48 > "$tmp/session"
+  put_file aron-web-session-secret "$tmp/session" text/plain
+  note "aron-web-session-secret created"
 fi

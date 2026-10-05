@@ -62,6 +62,22 @@ def types_of(template):
     return [r.get("type") for r, _ in walk_resources(template)]
 
 
+def module(template_name, deployment_name):
+    """The compiled template of one module deployment (main.json -> 'postgres', 'frontdoor', ...)."""
+    for r, _ in walk_resources(load(template_name)):
+        if r.get("type") == "Microsoft.Resources/deployments" and r.get("name") == deployment_name:
+            return r["properties"]["template"], r["properties"].get("parameters", {})
+    raise AssertionError(f"module {deployment_name} not found in {template_name}")
+
+
+def resources_of(template, type_):
+    return [r for r, _ in walk_resources(template) if r.get("type") == type_]
+
+
+def param_default(template_name, name):
+    return load(template_name)["parameters"][name].get("defaultValue")
+
+
 def params(name):
     return {k: v.get("value") for k, v in load(name)["parameters"].items()}
 
@@ -220,6 +236,62 @@ class SecurityDefaults(unittest.TestCase):
                     self.assertNotIn("listKeys", json.dumps(o), f"{name}: output {k} leaks a key")
 
 
+class ReliabilityProperties(unittest.TestCase):
+    """The settings N-012 promises, asserted on the compiled resources (not only on the parameter files)."""
+
+    def test_postgres_ha_backup_and_pooling_follow_the_parameters(self):
+        t, bound = module("main.json", "postgres")
+        primary = [r for r in resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers") if "createMode" not in r["properties"]]
+        self.assertEqual(len(primary), 1)
+        p = primary[0]["properties"]
+        self.assertEqual(
+            p["highAvailability"],
+            "[if(equals(parameters('haMode'), 'Disabled'), createObject('mode', 'Disabled'), createObject('mode', "
+            "parameters('haMode'), 'standbyAvailabilityZone', if(equals(parameters('haMode'), 'ZoneRedundant'), "
+            "parameters('standbyZone'), parameters('primaryZone'))))]",
+            "PostgreSQL HA no longer follows haMode with the standby in another zone")
+        self.assertEqual(p["backup"]["geoRedundantBackup"], "[if(parameters('geoRedundantBackup'), 'Enabled', 'Disabled')]")
+        self.assertIn("parameters('backupRetentionDays')", json.dumps(p["backup"]))
+        self.assertEqual(bound["haMode"]["value"], "[parameters('postgresHaMode')]")
+        self.assertEqual(bound["geoRedundantBackup"]["value"], "[parameters('postgresGeoRedundantBackup')]")
+        self.assertEqual(param_default("main.json", "postgresHaMode"), "ZoneRedundant")
+        self.assertIs(param_default("main.json", "postgresGeoRedundantBackup"), True)
+        settings = {x["name"]: x["value"] for x in t["variables"]["settings"]}
+        self.assertEqual(settings.get("pgbouncer.enabled"), "true", "built-in PgBouncer must be on")
+        self.assertIn("pgbouncer.", json.dumps(t["variables"]), "replica PgBouncer settings")
+        configs = resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers/configurations")
+        self.assertEqual(len(configs), 2, "primary and replica configuration loops")
+
+    def test_container_apps_environment_is_zone_redundant(self):
+        t, bound = module("main.json", "containerenv")
+        (env,) = resources_of(t, "Microsoft.App/managedEnvironments")
+        self.assertEqual(env["properties"]["zoneRedundant"], "[parameters('zoneRedundant')]")
+        self.assertEqual(bound["zoneRedundant"]["value"], "[parameters('containerEnvZoneRedundant')]")
+        self.assertIs(param_default("main.json", "containerEnvZoneRedundant"), True)
+        for env_name in ("dev", "prod"):
+            self.assertNotIn("containerEnvZoneRedundant", params(f"{env_name}.parameters.json"))
+
+    def test_budget_notifications_are_on(self):
+        t, _ = module("main.json", "budget")
+        (b,) = resources_of(t, "Microsoft.Consumption/budgets")
+        notes = b["properties"]["notifications"]
+        self.assertGreaterEqual(len(notes), 2)
+        for k, n in notes.items():
+            self.assertIs(n["enabled"], True, f"budget notification {k} disabled")
+            self.assertEqual(n["contactEmails"], "[parameters('contactEmails')]")
+
+    def test_waf_is_attached_and_follows_its_mode(self):
+        t, bound = module("main.json", "frontdoor")
+        (waf,) = resources_of(t, "Microsoft.Network/FrontDoorWebApplicationFirewallPolicies")
+        self.assertEqual(waf["properties"]["policySettings"]["mode"], "[parameters('wafMode')]")
+        self.assertEqual(waf["properties"]["policySettings"]["enabledState"], "Enabled")
+        self.assertEqual(bound["wafMode"]["value"], "[parameters('wafMode')]")
+        for env_name in ("dev", "prod"):
+            self.assertEqual(params(f"{env_name}.parameters.json")["wafMode"], "Prevention", env_name)
+        (sp,) = resources_of(t, "Microsoft.Cdn/profiles/securityPolicies")
+        self.assertEqual(sp["properties"]["parameters"]["type"], "WebApplicationFirewall")
+
+
 class SizingParameters(unittest.TestCase):
     def test_both_environments_are_zone_redundant_with_geo_backup(self):
         for env in ("dev", "prod"):
@@ -268,39 +340,66 @@ class Workflows(unittest.TestCase):
 
     def test_deploy_signs_in_with_oidc_from_the_integration_branch(self):
         d = self.text("deploy.yml")
-        self.assertIn("id-token: write", d)
+        self.assertIn("  id-token: write", d)
         self.assertIn("azure/login@", d)
         self.assertNotRegex(d, r"client-secret|creds:", "OIDC only, no client secret")
-        for s in ("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"):
-            self.assertIn(f"secrets.{s}", d)
-        self.assertIn("'azure-dev'", d)
+        for sname in ("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID"):
+            self.assertIn(f"secrets.{sname}", d)
+        self.assertIn("|| 'azure-dev' }}", d)
         self.assertIn(f"INTEGRATION_BRANCH: {INTEGRATION_BRANCH}", d)
-        self.assertIn('"refs/heads/${INTEGRATION_BRANCH}"', d)
+        # The exact guard (an inverted comparison would let every other branch deploy).
+        self.assertIn('if [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then\n'
+                      '            echo "::error::Deploys run only from', d)
         self.assertIn("title=Azure is not set up for this repository", d, "clear failure when secrets are absent")
         self.assertNotRegex(d, r"(?m)^\s*(push|pull_request|pull_request_target):", "deploy is called or dispatched only")
+        # A GitHub concurrency group would cancel pending CI runs; deploy.sh serialises instead.
+        self.assertNotIn("concurrency:", d)
+        self.assertNotRegex(d, r"(?m)^\s*if:", "no step or job of the deploy may be switched off by a condition")
+        steps = ["Deploy only from the integration branch", "Check the Azure secrets", "azure/login@",
+                 "scope-check.sh", "infra/deploy.sh"]
+        body = d[d.index("\njobs:"):]
+        pos = [body.index(x) for x in steps]
+        self.assertEqual(pos, sorted(pos), "deploy workflow steps out of order")
 
-    def test_deploy_order(self):
-        d = self.text("deploy.yml")
-        order = ["scope-check.sh", "infra/main.bicep", "seed-secrets.sh", "backend.Dockerfile",
-                 'ARON_DEPLOY_SERVICES: "false"', "containerapp job start", 'ARON_DEPLOY_SERVICES: "true"', "smoke.sh",
-                 "consumption budget show"]
+    def test_deploy_script_order(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        d = d[d.index("# ---") :]  # the executable part, after the header comment
+        order = ["merge-base --is-ancestor", "--template-file infra/main.bicep", "seed-secrets.sh", "backend.Dockerfile",
+                 "ARON_DEPLOY_SERVICES=false", "containerapp job start", "ARON_DEPLOY_SERVICES=true",
+                 "approve-private-link.sh", "smoke.sh", "die \"budget $BUDGET not found"]
         positions = [d.index(step) for step in order]
         self.assertEqual(positions, sorted(positions), "deploy steps out of order")
+        self.assertIn('die "migrations $execution ended $status; the apps were NOT updated', d)
+        self.assertIn('if [ "$RUN_MIGRATIONS" = true ]; then\n  execution="$(az containerapp job start', d)
+        full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('RUN_MIGRATIONS="${RUN_MIGRATIONS:-auto}"', full)
 
     def test_ci_calls_deploy_only_for_pushes_to_the_integration_branch(self):
         c = self.text("ci.yml")
         block = c[c.index("\n  deploy:"):]
         self.assertIn("uses: ./.github/workflows/deploy.yml", block)
-        self.assertIn("github.event_name == 'push'", block)
-        self.assertIn(f"github.ref == 'refs/heads/{INTEGRATION_BRANCH}'", block)
-        for job in ("contract", "jvm", "android", "infra"):
-            self.assertRegex(block, r"needs:.*\b%s\b" % job)
-        self.assertIn("!failure()", block)
+        expected_if = ("!cancelled() && !failure() && github.event_name == 'push' "
+                       f"&& github.ref == 'refs/heads/{INTEGRATION_BRANCH}' && needs.changes.outputs.deploy == 'true'")
+        m = re.search(r"if: >-\n((?:\s{6}.*\n)+)", block)
+        self.assertTrue(m, "deploy job has no if:")
+        self.assertEqual(" ".join(m.group(1).split()), expected_if)
+        self.assertIn("needs: [changes, contract, jvm, web, android, infra]", block)
+        self.assertIn("secrets: inherit", block)
 
     def test_push_runs_are_never_cancelled(self):
         c = self.text("ci.yml")
         self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c)
-        self.assertIn("github.event_name == 'pull_request' && github.ref || github.sha", c)
+        self.assertIn("github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha)", c)
+        self.assertEqual(c.count("cancel-in-progress"), 1)
+
+    def test_apks_are_uploaded_on_every_successful_android_run(self):
+        c = self.text("ci.yml")
+        i = c.index("name: Upload debug APKs")
+        block = c[i:c.index("- name:", i + 10)]
+        self.assertNotIn("if:", block)
+        for app in ("app-sr", "app-amo", "app-tso"):
+            self.assertIn(f"android/{app}/build/outputs/apk/debug/*.apk", block)
+        self.assertIn("if-no-files-found: error", block)
 
 
 if __name__ == "__main__":

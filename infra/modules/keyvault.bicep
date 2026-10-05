@@ -1,13 +1,13 @@
 // Key Vault (RBAC authorisation, soft delete) holding the runtime secrets of docs/24 s6.4 and s13.6.
 // Secrets whose value Bicep knows (database URLs built from the admin password) are written here; the JWT key and
-// the FCM service account are seeded by the deploy workflow (infra/scripts/seed-secrets.sh) only when absent, so a
+// the FCM service account and the web session secret are seeded by the deploy workflow (infra/scripts/seed-secrets.sh) only when absent, so a
 // redeploy never rotates them by accident.
 
 param location string
 param tags object
 param keyVaultName string
 param logAnalyticsId string
-@description('Purge protection cannot be turned off again; on for prod, off for dev so a rehearsal group can be torn down.')
+@description('Purge protection cannot be turned off again; on for prod. Off for dev so the sponsor can purge a deleted vault; a rebuilt group within 90 days otherwise needs a new nameSuffix (GitHub variable ARON_NAME_SUFFIX).')
 param purgeProtection bool
 @secure()
 param postgresAdminPassword string

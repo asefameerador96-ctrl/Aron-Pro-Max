@@ -2,7 +2,7 @@
 //   api     pull image, read secrets, read/write blobs and mint user-delegation SAS for phones
 //   worker  pull image, read secrets, read/write blobs (bundles), drain the media-events queue
 //   migrate pull image, read secrets (the direct database URL)
-//   web     pull image only (the BFF holds no Azure secret in Phase 1)
+//   web     pull image, read secrets (the BFF session secret)
 // The deploying principal (the GitHub identity) gets AcrPush and Key Vault Secrets Officer so the workflow can push
 // images and seed secrets; it already holds Contributor + RBAC Administrator on this group only (bootstrap).
 
@@ -46,8 +46,8 @@ resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for (n,
   }
 }]
 
-// api, worker and migrate read secrets; web does not.
-resource kvRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for i in [api, worker, migrate]: {
+// Every role reads its secrets through Key Vault references.
+resource kvRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for i in [api, worker, migrate, web]: {
   name: guid(kv.id, identityNames[i], roles.keyVaultSecretsUser)
   scope: kv
   properties: {

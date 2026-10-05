@@ -24,6 +24,8 @@ param(
   [string]$ResourceGroup  = 'rg-aron-dev',
   [string]$Repo           = 'asefameerador96-ctrl/Aron-Pro-Max',
   [string]$Environment    = 'azure-dev',
+  # The only branch the environment (and so the Azure identity) accepts deployments from.
+  [string]$Branch         = 'claude/wonderful-thompson-k6ejnf',
   [string]$AppName        = 'sp-aron-github-dev',
   # Who receives the budget and platform alerts (comma-separated). Stored as the GitHub variable ARON_ALERT_EMAILS.
   [string]$AlertEmails    = ''
@@ -68,23 +70,59 @@ $spObjectId = az ad sp show --id $appId --query id -o tsv; Check 'read service p
 Write-Host "Client id: $appId"
 
 # 4. Permissions: ONLY on the new resource group.
+#    Contributor, plus Role Based Access Control Administrator LIMITED BY A CONDITION: the identity may create or delete
+#    role assignments only for the data-plane roles the templates grant (infra/lib/naming.bicep), never Owner,
+#    Contributor or User Access Administrator. An older unconditional assignment is replaced.
 Step "Granting rights on $ResourceGroup only"
 $scope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"
-foreach ($role in @('Contributor', 'Role Based Access Control Administrator')) {
-  $has = az role assignment list --assignee $spObjectId --scope $scope --role $role --query 'length(@)' -o tsv
-  if ($has -eq '0') {
-    az role assignment create --assignee-object-id $spObjectId --assignee-principal-type ServicePrincipal `
-      --role $role --scope $scope --only-show-errors | Out-Null
-    Check "role $role"
-  }
+$has = az role assignment list --assignee $spObjectId --scope $scope --role 'Contributor' --query 'length(@)' -o tsv
+if ($has -eq '0') {
+  az role assignment create --assignee-object-id $spObjectId --assignee-principal-type ServicePrincipal `
+    --role 'Contributor' --scope $scope --only-show-errors | Out-Null
+  Check 'role Contributor'
+}
+$rbacAdmin = 'f58310d9-a9f6-439a-9e8d-f62e7b41a168'
+$allowed = @(
+  '7f951dda-4ed3-4680-a7ca-43fe172d538d', # AcrPull
+  '8311e382-0749-4cb8-b61a-304f252e45ec', # AcrPush
+  '4633458b-17de-408a-b874-0445c86b69e6', # Key Vault Secrets User
+  'b86a8fe4-44ce-4948-aee5-eccb2c155cd7', # Key Vault Secrets Officer
+  'ba92f5b4-2d11-453d-a403-e96b0029c9fe', # Storage Blob Data Contributor
+  'db58b8e5-c6ad-4a2a-8342-4190687cbf4a', # Storage Blob Delegator
+  '8a0f0c08-91a1-4084-bc3d-661d67233fed', # Storage Queue Data Message Processor
+  'c6a89b2d-59bc-44d0-9896-0f6e12d7b80a'  # Storage Queue Data Message Sender
+) -join ', '
+$condition = "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$allowed})) AND ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {$allowed}))"
+$assignments = az role assignment list --assignee $spObjectId --scope $scope --role $rbacAdmin --query '[].{id:id, condition:condition}' -o json | ConvertFrom-Json
+$good = $assignments | Where-Object { $_.condition -eq $condition }
+foreach ($a in ($assignments | Where-Object { $_.condition -ne $condition })) {
+  Write-Host "Replacing an RBAC Administrator assignment without the role condition: $($a.id)"
+  az role assignment delete --ids $a.id --only-show-errors; Check 'delete unconditional RBAC Administrator'
+}
+if (-not $good) {
+  $body = Join-Path $env:TEMP 'ra-rbac-admin.json'
+  @{ properties = @{
+       roleDefinitionId = "/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/roleDefinitions/$rbacAdmin"
+       principalId = $spObjectId; principalType = 'ServicePrincipal'
+       condition = $condition; conditionVersion = '2.0' } } |
+    ConvertTo-Json -Depth 5 | Set-Content -Path $body -Encoding utf8
+  $raName = [guid]::NewGuid().ToString()
+  az rest --method put --url "https://management.azure.com$scope/providers/Microsoft.Authorization/roleAssignments/${raName}?api-version=2022-04-01" `
+    --body "@$body" --only-show-errors | Out-Null
+  Check 'role RBAC Administrator (conditional)'
+  Remove-Item $body -Force
 }
 
-# 5. GitHub may sign in as this identity from the named environment (and for pull-request checks).
+# 5. GitHub may sign in as this identity ONLY from the named environment, which accepts deployments only from
+#    $Branch (step 6). Pull requests get no Azure identity: a credential for them would let any PR act as the deployer.
 Step 'Creating the GitHub sign-in trust (OIDC)'
 $existing = az ad app federated-credential list --id $appId --query '[].name' -o tsv
+if ($existing -contains 'github-pull-request') {
+  az ad app federated-credential delete --id $appId --federated-credential-id 'github-pull-request' --only-show-errors
+  Check 'remove the pull-request credential'
+}
 $creds = @(
-  @{ name = 'github-environment-azure-dev'; subject = "repo:${Repo}:environment:$Environment" },
-  @{ name = 'github-pull-request';          subject = "repo:${Repo}:pull_request" }
+  @{ name = 'github-environment-azure-dev'; subject = "repo:${Repo}:environment:$Environment" }
 )
 foreach ($c in $creds) {
   if ($existing -notcontains $c.name) {
@@ -100,7 +138,16 @@ foreach ($c in $creds) {
 
 # 6. Tell GitHub (these three values are identifiers, not passwords).
 Step "Writing settings into GitHub repo $Repo"
-gh api --method PUT "repos/$Repo/environments/$Environment" | Out-Null; Check 'create environment'
+$envBody = Join-Path $env:TEMP 'gh-environment.json'
+'{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
+  Set-Content -Path $envBody -Encoding ascii
+gh api --method PUT "repos/$Repo/environments/$Environment" --input $envBody | Out-Null; Check 'create environment'
+Remove-Item $envBody -Force
+$policies = gh api "repos/$Repo/environments/$Environment/deployment-branch-policies" --jq '.branch_policies[].name'
+if ($policies -notcontains $Branch) {
+  gh api --method POST "repos/$Repo/environments/$Environment/deployment-branch-policies" -f "name=$Branch" -f type=branch | Out-Null
+  Check "environment branch policy $Branch"
+}
 gh secret set AZURE_CLIENT_ID       --body $appId          --repo $Repo; Check 'secret AZURE_CLIENT_ID'
 gh secret set AZURE_TENANT_ID       --body $tenantId       --repo $Repo; Check 'secret AZURE_TENANT_ID'
 gh secret set AZURE_SUBSCRIPTION_ID --body $SubscriptionId --repo $Repo; Check 'secret AZURE_SUBSCRIPTION_ID'
@@ -125,7 +172,8 @@ Write-Host @"
 Created:
   resource group   $ResourceGroup ($Location)
   GitHub identity  $AppName  (client id $appId)
-  rights           Contributor + RBAC Administrator on $ResourceGroup ONLY
+  rights           Contributor + RBAC Administrator (data-plane roles only) on $ResourceGroup ONLY
+  deploys from     branch $Branch only (environment '$Environment')
   GitHub           environment '$Environment', 3 secrets, 2 variables in $Repo
 
 Nothing outside $ResourceGroup was changed. Tell me when this finished.

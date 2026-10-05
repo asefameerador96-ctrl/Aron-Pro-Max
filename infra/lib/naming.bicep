@@ -46,6 +46,7 @@ var secretNames = {
   dbUrl: 'aron-db-url'
   dbDirectUrl: 'aron-db-direct-url'
   dbReadUrl: 'aron-db-read-url'
+  webSessionSecret: 'aron-web-session-secret'
 }
 
 @export()

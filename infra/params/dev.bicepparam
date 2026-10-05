@@ -2,8 +2,17 @@
 // day one because zone redundancy and geo-redundant backup can only be chosen at creation. See infra/README.md.
 using '../main.bicep'
 
+// Values from the deploy environment (infra/deploy.sh). An unset OR empty variable takes the default, because GitHub
+// passes an unset repository variable as an empty string.
+var envLocation = readEnvironmentVariable('AZURE_LOCATION', '')
+var envSuffix = readEnvironmentVariable('ARON_NAME_SUFFIX', '')
+var envEmails = readEnvironmentVariable('ARON_ALERT_EMAILS', '')
+var envBudget = readEnvironmentVariable('ARON_BUDGET_AMOUNT', '')
+var envBudgetStart = readEnvironmentVariable('ARON_BUDGET_START_DATE', '')
+
 param environmentName = 'dev'
-param location = readEnvironmentVariable('AZURE_LOCATION', 'southeastasia')
+param location = empty(envLocation) ? 'southeastasia' : envLocation
+param nameSuffix = envSuffix
 
 param vnetAddressPrefix = '10.51.0.0/16'
 param acaSubnetPrefix = '10.51.0.0/24'
@@ -11,9 +20,11 @@ param postgresSubnetPrefix = '10.51.2.0/28'
 
 param logRetentionDays = 30
 param logDailyQuotaGb = 1
-param alertEmails = split(readEnvironmentVariable('ARON_ALERT_EMAILS', 'alerts@aron.invalid'), ',')
-param budgetAmount = int(readEnvironmentVariable('ARON_BUDGET_AMOUNT', '800'))
-param budgetStartDate = '2026-10-01'
+param alertEmails = map(split(empty(envEmails) ? 'alerts@aron.invalid' : envEmails, ','), e => trim(e))
+param budgetAmount = int(empty(envBudget) ? '800' : envBudget)
+// Azure refuses a start date before the current month on create and refuses to move it later, so deploy.sh passes
+// the existing budget's date, or the first day of the current month when the budget does not exist yet.
+param budgetStartDate = empty(envBudgetStart) ? '2026-10-01' : envBudgetStart
 
 param keyVaultPurgeProtection = false
 param registrySku = 'Basic'
