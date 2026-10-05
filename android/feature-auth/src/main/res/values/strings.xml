@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- feature-auth strings. English default; Bangla in values-bn (docs/24 s5.6). Bangla is the first-run language. -->
+<resources>
+    <string name="auth_login_title">Log in</string>
+    <string name="auth_username">Username</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_password_show">Show</string>
+    <string name="auth_password_hide">Hide</string>
+    <string name="auth_login_button">Log in</string>
+    <string name="auth_version">Version %1$s</string>
+    <string name="auth_error_empty">Enter your username and password.</string>
+    <string name="auth_error_invalid_credentials">Wrong username or password.</string>
+    <string name="auth_error_bind_required">This phone is not linked to your account yet. Ask your TSO for the 4-digit code.</string>
+    <string name="auth_error_password_change_required">You must set a new password before you can log in.</string>
+    <string name="auth_error_locked">Your account is locked for now. Try again later.</string>
+    <plurals name="auth_error_locked_minutes">
+        <item quantity="one">Your account is locked. Try again in %1$s minute.</item>
+        <item quantity="other">Your account is locked. Try again in %1$s minutes.</item>
+    </plurals>
+    <string name="auth_error_user_disabled">Your account is disabled. Contact your supervisor.</string>
+    <string name="auth_error_device_not_enrolled">This phone is not enrolled for ARON. Contact support.</string>
+    <string name="auth_error_device_blocked">This phone is blocked for ARON. Contact support.</string>
+    <string name="auth_error_update_required">Please update the app to log in.</string>
+    <string name="auth_error_rate_limited">Too many attempts. Try again later.</string>
+    <plurals name="auth_error_rate_limited_minutes">
+        <item quantity="one">Too many attempts. Try again in %1$s minute.</item>
+        <item quantity="other">Too many attempts. Try again in %1$s minutes.</item>
+    </plurals>
+    <string name="auth_error_refused">Login refused by the server (%1$s).</string>
+    <string name="auth_error_offline_never_online">No internet. Log in once with internet on this phone first.</string>
+    <string name="auth_error_offline_expired">No internet, and your last online login was more than 7 days ago. Connect to the internet to log in.</string>
+    <string name="auth_error_offline_wrong_password">No internet, and the password does not match your last online login.</string>
+    <string name="auth_error_offline_cooldown">Too many wrong passwords. Try again after %1$s.</string>
+</resources>

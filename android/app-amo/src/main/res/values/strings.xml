@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ARON AMO</string>
-    <string name="skeleton_greeting">ARON AMO: skeleton build</string>
+    <!-- Launcher label (F-SYS-033): the same in Bangla and English, as on the current phones. -->
+    <string name="app_name" translatable="false">ARON AMO</string>
 </resources>
