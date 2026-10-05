@@ -62,7 +62,10 @@ private fun listOutlets(call: ApplicationCall, d: OutletsDeps): OutletPage {
     val q = call.request.queryParameters
     val limit = q["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..500 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "limit must be 1..500", errors = listOf(FieldError("query.limit", "out_of_range"))) } ?: 100
     val status = q["status"]?.also { if (it !in setOf("active", "closed", "merged", "archived")) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad status", errors = listOf(FieldError("query.status", "invalid_value"))) }
-    val updatedSince = q["updated_since"]?.let { runCatching { Instant.parse(it) }.getOrElse { throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad updated_since", errors = listOf(FieldError("query.updated_since", "invalid_value"))) } }
+    val updatedSince = q["updated_since"]?.let {
+        runCatching { Instant.parse(it) }.getOrNull()?.takeIf { t -> t.isAfter(MIN_TS) && t.isBefore(MAX_TS) }
+            ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad updated_since", errors = listOf(FieldError("query.updated_since", "invalid_value")))
+    }
     val search = q["q"]?.also { if (it.length !in 2..80) throw ApiProblem(ProblemCode.ERR_VALIDATION, "q must be 2..80 characters", errors = listOf(FieldError("query.q", "out_of_range"))) }
     val sel = GeoSelector(zoneId = call.longParam("zone_id"), routeId = call.longParam("route_id"))
     val clusterId = call.longParam("cluster_id")
@@ -70,6 +73,13 @@ private fun listOutlets(call: ApplicationCall, d: OutletsDeps): OutletPage {
 
     val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate())
     val check = ReachFilter.check(reach, sel, d.geo.geo())
+    // A cluster is checked like its zone: outside the reach, or unknown (no existence leak), is 403.
+    if (clusterId != null) {
+        val clusterZone = d.db.jdbi.withHandle<Long?, Exception> { h ->
+            h.createQuery("SELECT zone_id FROM app.cluster WHERE id = :c").bind("c", clusterId).mapTo(Long::class.java).findOne().orElse(null)
+        } ?: throw ReachFilter.outOfScope()
+        ReachFilter.check(reach, GeoSelector(zoneId = clusterZone), d.geo.geoCovering(zoneIds = listOf(clusterZone)))
+    }
     if (check.empty) return OutletPage(emptyList(), null)
 
     val where = mutableListOf(reachPredicate(reach), selectorPredicate(check, sel))
@@ -115,12 +125,22 @@ private fun mapOutlet(rs: ResultSet, pii: Boolean) = OutletDto(
 private fun encodeCursor(at: Instant?, id: Long): String =
     Base64.getUrlEncoder().withoutPadding().encodeToString(((at?.let { "${it.epochSecond}.${it.nano}" } ?: "") + "|" + id).toByteArray())
 
+private val MIN_TS: Instant = Instant.parse("1970-01-01T00:00:00Z")
+private val MAX_TS: Instant = Instant.parse("9999-12-31T00:00:00Z")
+
+/** Any malformed or tampered cursor is 400 ERR_VALIDATION, never a 500 (phones retry 5xx). */
 private fun decodeCursor(c: String, keyed: Boolean): Pair<Instant?, Long> {
     val bad = ApiProblem(ProblemCode.ERR_VALIDATION, "invalid cursor", errors = listOf(FieldError("query.cursor", "invalid_value")))
-    val text = runCatching { String(Base64.getUrlDecoder().decode(c)) }.getOrElse { throw bad }
-    val (a, b) = text.split('|').takeIf { it.size == 2 } ?: throw bad
-    val id = b.toLongOrNull() ?: throw bad
-    if (keyed != a.isNotEmpty()) throw bad
-    val at = if (a.isEmpty()) null else a.split('.').let { (s, n) -> Instant.ofEpochSecond(s.toLongOrNull() ?: throw bad, n.toLongOrNull() ?: throw bad) }
-    return at to id
+    return runCatching {
+        val text = String(Base64.getUrlDecoder().decode(c))
+        val parts = text.split('|')
+        require(parts.size == 2)
+        val id = parts[1].toLong()
+        require(id >= 0 && keyed == parts[0].isNotEmpty())
+        val at = if (parts[0].isEmpty()) null else parts[0].split('.').let { p ->
+            require(p.size == 2)
+            Instant.ofEpochSecond(p[0].toLong(), p[1].toLong()).also { require(it.isAfter(MIN_TS) && it.isBefore(MAX_TS)) }
+        }
+        at to id
+    }.getOrElse { throw bad }
 }

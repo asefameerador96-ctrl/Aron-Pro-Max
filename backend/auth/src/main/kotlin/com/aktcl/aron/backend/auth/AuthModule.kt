@@ -21,6 +21,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.toJavaLocalDate
 
 /** Everything the auth routes need, wired by backend:app. */
@@ -35,6 +37,8 @@ class AuthDeps(
     val config: ServerConfig,
     val guard: AuthGuardDeps,
     val clock: AronClock = AronClock.SYSTEM,
+    /** Front Door profile id (`X-Azure-FDID`); only then is `X-Azure-ClientIP` trusted for the lockout IP class. */
+    val trustedFrontDoorId: String? = null,
 )
 
 /** Mounts the auth endpoints of this build under /v1 (contract tag `auth`). */
@@ -42,9 +46,15 @@ fun Route.authRoutes(d: AuthDeps) {
     route("/auth") {
         post("/login") {
             val req = call.receiveStrict(LoginRequest.serializer())
-            call.respond(d.login.login(req, LoginContext(call.request.headers["X-App-Version"], call.clientIp())))
+            val res = withContext(Dispatchers.IO) { d.login.login(req, LoginContext(call.request.headers["X-App-Version"], call.clientIp(d.trustedFrontDoorId))) }
+            call.respond(if (req.client == "web") call.webCookie(res.refresh_token, res.refresh_expires_at).let { res.copy(refresh_token = null) } else res)
         }
-        post("/refresh") { call.respond(refresh(call, d)) }
+        post("/refresh") {
+            val req = call.receiveStrict(RefreshRequest.serializer())
+            val pair = withContext(Dispatchers.IO) { refresh(call, req, d) }
+            val web = req.refresh_token == null
+            call.respond(if (web) call.webCookie(pair.refresh_token, pair.refresh_expires_at).let { pair.copy(refresh_token = null) } else pair)
+        }
         get("/jwks") {
             call.respond(Jwks(d.keys.publicJwks().map {
                 JwkEcPublic("EC", "P-256", it.x.toString(), it.y.toString(), it.keyID, "sig", "ES256")
@@ -54,23 +64,25 @@ fun Route.authRoutes(d: AuthDeps) {
     authenticated(d.guard) {
         get("/me") {
             val p = call.principal
-            val user = d.users.findById(p.userId) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED)
-            val reach = d.reach.reach(user.id, user.role, user.scopeVersion, BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate())
-            call.respond(
-                Me(
-                    user = UserSummary(user.id, user.username, user.fullName, user.role, user.designation, user.locale),
-                    permissions = p.permissions,
-                    scope = ScopeSummary(user.scopeVersion, reach.topNodes.take(16).map { NodeRef(it.type, it.id, it.code, it.name) }),
-                    pii = p.pii,
-                    mfa_enabled = false,
-                ),
-            )
+            withContext(Dispatchers.IO) { me(call, d) }.let { call.respond(it) }
         }
     }
 }
 
-private suspend fun refresh(call: ApplicationCall, d: AuthDeps): TokenPair {
-    val req = call.receiveStrict(RefreshRequest.serializer())
+private fun me(call: ApplicationCall, d: AuthDeps): Me {
+            val p = call.principal
+            val user = d.users.findById(p.userId) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED)
+            val reach = d.reach.reach(user.id, user.role, user.scopeVersion, BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate())
+            return Me(
+                user = UserSummary(user.id, user.username, user.fullName, user.role, user.designation, user.locale),
+                permissions = p.permissions,
+                scope = ScopeSummary(user.scopeVersion, reach.topNodes.take(16).map { NodeRef(it.type, it.id, it.code, it.name) }),
+                pii = p.pii,
+                mfa_enabled = false,
+            )
+}
+
+private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps): TokenPair {
     val token = req.refresh_token ?: call.request.cookies["aron_rt"]
         ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "refresh_token is required", errors = listOf(FieldError("/refresh_token", "required")))
     val grant = if (req.grant == "upload") Grant.UPLOAD else Grant.FULL
@@ -80,6 +92,8 @@ private suspend fun refresh(call: ApplicationCall, d: AuthDeps): TokenPair {
     // A phone grant is bound to its device: X-Device-Id must name it and, once the device has a key, prove it.
     var deviceUuid: String? = null
     if (fam.flavour != "web") {
+        // A phone family must be bound to a device row; an unbound one could be replayed from any phone.
+        if (fam.deviceId == null) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "grant is not bound to a device")
         val headerUuid = call.request.headers["X-Device-Id"]?.lowercase()
             ?: throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "X-Device-Id is required")
         if (req.device_uuid != null && req.device_uuid != headerUuid) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device_uuid differs from X-Device-Id")
@@ -102,10 +116,11 @@ private suspend fun refresh(call: ApplicationCall, d: AuthDeps): TokenPair {
         deviceUuid = headerUuid
     }
 
-    val rotated = d.refresh.rotate(token, grant)
+    // Every refusal happens BEFORE rotation, so a refused attempt never consumes the token.
     val user = d.users.findById(fam.userId) ?: throw ApiProblem(ProblemCode.ERR_AUTH_REFRESH_INVALID)
     // The upload grant survives user disable so captured rows always reach the server (docs/24 s8.1, D24-57).
     if (grant == Grant.FULL && user.status != "active") throw ApiProblem(ProblemCode.ERR_AUTH_USER_DISABLED)
+    val rotated = d.refresh.rotate(token, grant)
     val access = d.issuer.access(
         TokenSubject(user, fam.deviceId, deviceUuid, fam.flavour),
         if (grant == Grant.UPLOAD) Audience.UPLOAD else Audience.API,
@@ -120,7 +135,27 @@ private suspend fun refresh(call: ApplicationCall, d: AuthDeps): TokenPair {
     )
 }
 
-/** Client address for the lockout IP class only (never for rate limits): Front Door's header, then the socket. */
-fun ApplicationCall.clientIp(): String? =
-    request.headers["X-Azure-ClientIP"] ?: request.headers["X-Forwarded-For"]?.substringBefore(',')?.trim()
-        ?: request.local.remoteAddress
+/**
+ * Client address for the lockout IP class only (never for rate limits). `X-Azure-ClientIP` is trusted only when the
+ * request carries our Front Door id (`X-Azure-FDID` = ARON_FRONT_DOOR_ID); `X-Forwarded-For` is never trusted
+ * (the client writes it). Otherwise the socket address.
+ */
+fun ApplicationCall.clientIp(trustedFrontDoorId: String?): String? {
+    val fd = request.headers["X-Azure-FDID"]
+    if (trustedFrontDoorId != null && fd == trustedFrontDoorId) request.headers["X-Azure-ClientIP"]?.let { return it }
+    return request.local.remoteAddress
+}
+
+/**
+ * Web refresh token as the `aron_rt` cookie (contract: null in the body on the web; HttpOnly, Secure,
+ * SameSite=Strict, Path=/v1/auth/refresh). The BFF is the cookie jar for the browser.
+ */
+private fun ApplicationCall.webCookie(token: String?, expiresAt: String?) {
+    if (token == null) return
+    val maxAge = expiresAt?.let { java.time.Duration.between(java.time.Instant.now(), java.time.Instant.parse(it)).seconds.coerceAtLeast(0) }
+    response.headers.append(
+        "Set-Cookie",
+        "aron_rt=$token; Path=/v1/auth/refresh; HttpOnly; Secure; SameSite=Strict" + (maxAge?.let { "; Max-Age=$it" } ?: ""),
+        safeOnly = false,
+    )
+}

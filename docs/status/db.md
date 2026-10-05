@@ -14,9 +14,32 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   calendar, code lists, targets. Tests: `MigrationApplyTest` (empty DB, second run no-op, edited and removed
   migrations refused), `SchemaV1aTest` (16 rules). Checker: two rounds, all confirmed defects fixed.
 
-## In progress
+- **N-006 schema v1b** (`V0007`–`V0009`): every one of the 42 record types of contract v1.1 has its table with the
+  shared envelope (client_uuid, family_uuid, business_date + business_date_device, UTC captured_at, clock evidence,
+  config/bundle versions, voided_at); partitioned visit/memo/memo_line/geo_fix/domain_event (unique keys include
+  business_date, plus `app.client_uuid_once`); immutability guard with write-once columns and state-flow triggers;
+  memo arithmetic and line gross as CHECKs; route-day, supervisor-day, QC header, due ledger, indent ledger (Phase 2),
+  final submit, submit void, data-void barrier, request trail; programmes, enrolments, gifts, gift assignments, Astha
+  targets, loyalty ledger (idempotent on source), content items, risk signals; hash-partitioned ingest registry,
+  batch replay, rejected, quarantine, server generation, domain-event outbox; V0009 adds the v1.1 code lists and 54
+  config keys. Checker: three rounds, PASS.
+- **N-007 schema v1c** (`V0010`, `V0011`): devices (package = flavour), bindings (ordinals 0..3), nonces, status
+  reports, rendered policy, app package catalogue for the block list, directives, push tokens, releases
+  (maker-checker), enrolment tokens (hash only), device FKs, append-only hash-chained audit log (`chain_seq` under a
+  lock, `app.audit_verify()`); dw dimensions (dim_date 2026–2030), partitioned facts, route/route-SKU/route-brand/
+  zone/hourly/outlet aggregates; `app.dirty_key` with `app.mark_dirty`. Checker: two rounds, PASS.
+- **N-008 seed** (`db/seed/`, `:db:seed`): `sr1001` primary on Daily (127), 3F Sun/Tue/Thu (42), 2F Mon/Thu (36)
+  with 60 outlets near Mirpur 10; TSO territory and AMO zone scope; 42 SKUs x 5 prices from the CSV; test accounts
+  (password hash only from `ARON_SEED_PASSWORD`); dev phone bound with ordinal 0; dev config overrides in their own
+  version; idempotent. Answers `docs/requests/backend-seed-login-accounts.md`. Checker: two rounds, PASS.
 
-- **N-006 schema v1b** (field transactions, sync, events).
+## Next (not started)
+
+- Follow-up migrations once the lead answers: docs/19 config keys, `cfg.app.home_tiles` and `cfg.web.menu_by_role`
+  defaults, SKU code spaces.
+- Back-office tables of docs/24 s12.1 that no Day 1 row names (`survey`, `survey_question`, `rubric`, `tutorial`,
+  `print_template`, `supervisor_target`, `web_entry_*`, `qc_summary_entry`, `entry_unlock`, `dues_adjustment`,
+  `price_batch`, `tracking_action`, `report_export_log`, `client_error`): ready to add when their rows come up.
 
 ## Not verified here
 
@@ -43,6 +66,13 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
 | 2026-10-05 | Tables listed in `app.partition_policy` are never the target of a foreign key; children reference parents by `client_uuid` | re-routing default-partition rows detaches the default partition |
 
 ## Notes for other lanes
+
+- Backend: `app.ensure_partitions()` daily; prune `app.ingest_registry` by `received_at` after
+  `cfg.retention.ingest_registry_days`; write the registry row first in the ingest transaction (it is the
+  concurrency-safe uniqueness point); use `app.mark_dirty(kind, subject, date)` for bundle and aggregate refresh.
+- Backend: the domain-event id is not commit order; the projector should read with a small lag window or track gaps.
+- Anyone with a local database migrated before 2026-10-05 13:00 UTC: drop and recreate it (V0007 to V0011 changed
+  before they were first pushed).
 
 - Backend: run Flyway with the defaults (`validateOnMigrate` on, `cleanDisabled` true). Call
   `SELECT app.ensure_partitions()` daily from the worker and alert on `app.partition_policy.last_error`.

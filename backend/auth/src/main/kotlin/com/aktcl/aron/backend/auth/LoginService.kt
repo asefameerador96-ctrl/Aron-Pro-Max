@@ -111,6 +111,12 @@ class LoginService(
         }
 
         val access = issuer.access(subject, Audience.API)
+        if (phone && device == null) {
+            // REQUEST: docs/requests/backend-refresh-family-device-uuid.md. A refresh family binds a phone by device_id
+            // only; a phone with no device row (dev, before enrolment) cannot be bound, so it gets no refresh grant:
+            // it logs in again when the access token expires, and its grant can never be replayed from another phone.
+            return base("ok").copy(access_token = access.token, access_expires_at = access.expiresAt.wire())
+        }
         val full = refresh.issue(user.id, device?.id, Grant.FULL, flavour)
         val upload = if (phone) refresh.issue(user.id, device?.id, Grant.UPLOAD, flavour) else null
         return base("ok").copy(
@@ -153,7 +159,7 @@ class LoginService(
         /** IPv4 /24 or IPv6 /48 of the client (the lockout key's IP class); "-" when unknown. */
         fun ipClass(ip: String?): String {
             if (ip.isNullOrBlank()) return "-"
-            val v = ip.trim()
+            val v = ip.trim().removePrefix("::ffff:").removePrefix("::FFFF:")
             return if (v.contains(':')) v.split(':').take(3).joinToString(":") + "::/48"
             else v.split('.').let { if (it.size == 4) "${it[0]}.${it[1]}.${it[2]}.0/24" else "-" }
         }

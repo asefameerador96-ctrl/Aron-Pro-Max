@@ -39,12 +39,14 @@ data class Settings(
     /** Concurrent Argon2id verifications per replica (memory guard for the login storm). */
     val hashConcurrency: Int,
     val hashQueueMax: Int,
+    /** Azure Front Door profile id (X-Azure-FDID); only requests carrying it have a trusted X-Azure-ClientIP. */
+    val frontDoorId: String? = null,
 ) {
     /** Like the data-class form, with credentials in the database URLs redacted (secrets are never printed). */
     override fun toString(): String =
         "Settings(role=$role, env=$env, port=$port, build=$build, dbUrl=${redactUrl(dbUrl)}, dbUser=$dbUser, dbPassword=$dbPassword, " +
             "dbReadUrl=${dbReadUrl?.let(::redactUrl)}, dbPoolMax=$dbPoolMax, dbReadPoolMax=$dbReadPoolMax, jwtSigningKeyPem=$jwtSigningKeyPem, " +
-            "jwtKid=$jwtKid, jwtNextKid=$jwtNextKid, hashConcurrency=$hashConcurrency, hashQueueMax=$hashQueueMax)"
+            "jwtKid=$jwtKid, jwtNextKid=$jwtNextKid, hashConcurrency=$hashConcurrency, hashQueueMax=$hashQueueMax, frontDoorId=$frontDoorId)"
 
     companion object {
         /** Removes `password=...` parameters and `user:password@` credentials from a JDBC URL. */
@@ -94,6 +96,7 @@ data class Settings(
                 jwtNextKid = src.get("ARON_JWT_NEXT_KID"),
                 hashConcurrency = src.int("ARON_HASH_CONCURRENCY", 4),
                 hashQueueMax = src.int("ARON_HASH_QUEUE_MAX", 32),
+                frontDoorId = src.get("ARON_FRONT_DOOR_ID"),
             )
         }
     }

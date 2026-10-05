@@ -50,7 +50,7 @@ class Wiring(
             // Device tables arrive with N-007 (V0010); until then no phone is known and cfg.device.require_enrolled decides.
             val devices = NoDevices
             val login = LoginService(users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock)
-            val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock)
+            val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             // The server generation table arrives with the sync schema (N-006); until then the nil generation is sent.
             return Wiring(clock, config, db, { NIL_GENERATION }, s.build) {

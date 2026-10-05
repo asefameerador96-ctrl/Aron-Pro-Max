@@ -89,8 +89,10 @@ data class RouteDayPlan(
     val displayLabel: String?,
     val assignmentKind: String,
     val plannedToday: Boolean,
-    /** Active outlets of the route (the strike-rate denominator when planned; frozen by the bundle at first fetch). */
+    /** Strike-rate denominator: the route's active outlets when planned, 0 when not (the bundle freezes it at first fetch). */
     val targetOutlets: Int,
+    /** Active outlets on the route, planned or not. */
+    val activeOutlets: Int,
 )
 
 /** The routes a user holds on a date with their plan (implemented in backend:masterdata, read by backend:sync). */
