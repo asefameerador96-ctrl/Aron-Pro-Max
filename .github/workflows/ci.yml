@@ -1,7 +1,8 @@
 # CI for the Aron monorepo (docs/24-build-spec.md s13.2). Owner: infra lane.
 #
-# Jobs: contract lint -> JVM build and tests (shared, db, backend on PostgreSQL 16) -> three debug APKs plus Android
-# unit tests. Web and infra jobs are added by their lanes when web/ and infra/ have buildable content.
+# Jobs: changed-area filter -> contract lint, JVM build and tests (shared, db, backend on PostgreSQL 16), three debug
+# APKs plus Android unit tests and lint, infra validation (Bicep build/lint/checks, actionlint) -> on a push to the
+# integration branch only, and only when all of those passed, the Azure deploy (deploy.yml, reusable workflow).
 #
 # Secrets (never committed; set them in GitHub > Settings > Secrets and variables > Actions, docs/24 s13.6):
 #   MAPS_ANDROID_KEY          Google Maps SDK for Android key (AMO and TSO apps); manifest placeholder mapsApiKey
@@ -10,7 +11,7 @@
 #   FCM_SERVICE_ACCOUNT_JSON  Firebase service account for the backend FCM sender; copied to Key Vault by the deploy
 #                             workflow (secret aron-fcm-service-account); never used by this workflow
 # Every secret is optional here: without them the debug APKs still build (maps show no tiles, push is off).
-# Action versions were checked on 2026-10-05 with `git ls-remote --tags` (major tags v7, v6, v7, v7, v6, v6).
+# Actions are pinned by commit SHA (release tag in the comment), resolved with `git ls-remote` on 2026-10-05.
 
 name: ci
 
@@ -40,8 +41,10 @@ jobs:
       contract: ${{ steps.filter.outputs.contract }}
       jvm: ${{ steps.filter.outputs.jvm }}
       android: ${{ steps.filter.outputs.android }}
+      infra: ${{ steps.filter.outputs.infra }}
+      deploy: ${{ steps.filter.outputs.deploy }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - id: filter
@@ -50,7 +53,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          all() { printf 'contract=true\njvm=true\nandroid=true\n' >> "${GITHUB_OUTPUT}"; echo "running everything: $1"; exit 0; }
+          all() { printf 'contract=true\njvm=true\nandroid=true\ninfra=true\ndeploy=true\n' >> "${GITHUB_OUTPUT}"; echo "running everything: $1"; exit 0; }
           case "${EVENT}" in
             pull_request) base="${PR_BASE}" ;;
             push) base="${BEFORE}" ;;
@@ -66,6 +69,9 @@ jobs:
             echo "contract=$(has '^(contract/|\.github/workflows/ci\.yml)')"
             echo "jvm=$(has "${common}|^(contract/|shared/|db/|backend/)")"
             echo "android=$(has "${common}|^(contract/|shared/|android/|tools/android-sdk\.sh)")"
+            echo "infra=$(has '^(infra/|\.github/)')"
+            # What ends up in Azure: the backend image (shared, db, backend), the web image, the Bicep, the deploy.
+            echo "deploy=$(has "${common}|^(shared/|db/|backend/|web/|infra/|\.github/workflows/deploy\.yml)")"
           } | tee -a "${GITHUB_OUTPUT}"
 
   contract:
@@ -75,8 +81,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
       - name: Lint contract/openapi.yaml (Redocly, 0 errors and 0 warnings)
@@ -106,12 +112,12 @@ jobs:
     env:
       ARON_TEST_PG_URL: jdbc:postgresql://localhost:5432/aron_test?user=aron_test
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Build and test shared, db and backend
         run: >-
           ./gradlew --console=plain
@@ -121,7 +127,7 @@ jobs:
           :backend:app:build
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: jvm-test-reports
           path: |
@@ -138,18 +144,18 @@ jobs:
     env:
       MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
         # The runner context is not available in job-level env, so the path is exported here.
         run: |
           echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
           echo "ANDROID_SDK_ROOT=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "21"
       - name: Cache the Android SDK
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/android-sdk
           key: android-sdk-${{ runner.os }}-${{ hashFiles('tools/android-sdk.sh') }}
@@ -167,7 +173,7 @@ jobs:
           else
             echo "GOOGLE_SERVICES_JSON not set: building without Firebase (push disabled)"
           fi
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Assemble the three debug APKs, run Android unit tests and lint
         run: >-
           ./gradlew --console=plain
@@ -177,7 +183,7 @@ jobs:
         if: always()
         run: rm -f android/app-sr/google-services.json android/app-amo/google-services.json android/app-tso/google-services.json
       - name: Upload debug APKs (every successful Android run)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: aron-debug-apks-${{ github.sha }}
           path: |
@@ -188,10 +194,38 @@ jobs:
           retention-days: 14
       - name: Upload Android test reports
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-test-reports
           path: |
             android/**/build/reports/tests/
             android/**/build/test-results/
           retention-days: 7
+
+  infra:
+    name: Infra validation (Bicep, workflows)
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Bicep build, lint and parameter files; template checks; actionlint; shellcheck
+        run: infra/validate.sh
+
+  deploy:
+    # Only a push to the integration branch deploys, and only after every check above passed or was not needed.
+    name: Deploy to Azure (dev)
+    needs: [changes, contract, jvm, android, infra]
+    if: >-
+      !cancelled() && !failure()
+      && github.event_name == 'push'
+      && github.ref == 'refs/heads/claude/wonderful-thompson-k6ejnf'
+      && needs.changes.outputs.deploy == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: dev
+    secrets: inherit

@@ -1,0 +1,278 @@
+# Deploy Aron to Azure (docs/23 s6, docs/24 s6 and s13.6). Owner: infra lane. Order and reasons: infra/README.md.
+#
+# Triggers
+#   - called by ci.yml after the contract, JVM and Android jobs passed on a push to the integration branch
+#     (so nothing untested is deployed; pull requests never deploy);
+#   - manual dispatch, from the integration branch only.
+#
+# Steps: OIDC sign-in -> scope check (rights on the group only) -> infra Bicep -> Key Vault seeding -> backend image
+# (and web image when web/ exists) to ACR -> migrate job with the new image, wait for success -> api, worker, web and
+# Front Door routes -> Private Link approval (Premium) -> smoke test through Front Door -> budget check.
+#
+# Needs (created by infra/bootstrap-azure.ps1): secrets AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID;
+# variables AZURE_RESOURCE_GROUP, AZURE_LOCATION. Set by the sponsor: variable ARON_ALERT_EMAILS (comma-separated).
+# Optional: variable ARON_BUDGET_AMOUNT, secrets FCM_SERVICE_ACCOUNT_JSON and MAPS_WEB_KEY.
+# Actions are pinned by commit SHA (tag in the comment), resolved with `git ls-remote` on 2026-10-05.
+
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        default: dev
+      run_migrations:
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target (the parameter files infra/params/<environment>*.bicepparam)
+        type: choice
+        options: [dev, prod]
+        default: dev
+      run_migrations:
+        description: Run the database migrations job before the apps (turn off only while the backend has no migrate role)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  INTEGRATION_BRANCH: claude/wonderful-thompson-k6ejnf
+
+jobs:
+  preflight:
+    name: Preflight (branch, Azure settings)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      superseded: ${{ steps.head.outputs.superseded }}
+    steps:
+      - name: Deploy only from the integration branch
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then
+            echo "::error::Deploys run only from ${INTEGRATION_BRANCH}; this run is on ${REF}."
+            exit 1
+          fi
+      - name: Check the Azure secrets and variables exist
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          ARON_ALERT_EMAILS: ${{ vars.ARON_ALERT_EMAILS }}
+        run: |
+          missing=""
+          for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            [ -n "${!v}" ] || missing="${missing} secret:${v}"
+          done
+          for v in AZURE_RESOURCE_GROUP AZURE_LOCATION ARON_ALERT_EMAILS; do
+            [ -n "${!v}" ] || missing="${missing} variable:${v}"
+          done
+          if [ -n "${missing}" ]; then
+            echo "::error title=Azure is not set up for this repository::Missing:${missing}. Run infra/bootstrap-azure.ps1 once (it creates the AZURE_* secrets and variables), then set the repository variable ARON_ALERT_EMAILS (Settings > Secrets and variables > Actions > Variables). See infra/README.md, 'Sponsor steps'."
+            exit 1
+          fi
+          echo "Azure settings present: group ${AZURE_RESOURCE_GROUP}, region ${AZURE_LOCATION}"
+      - name: Skip if a newer commit is already on the branch
+        id: head
+        env:
+          SHA: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # CI runs of several pushes finish out of order; an older commit must never overwrite a newer deploy.
+          head="$(gh api "repos/${REPO}/branches/${INTEGRATION_BRANCH}" --jq .commit.sha)"
+          if [ "${EVENT}" != "workflow_dispatch" ] && [ -n "${head}" ] && [ "${head}" != "${SHA}" ]; then
+            echo "superseded=true" >> "${GITHUB_OUTPUT}"
+            echo "::notice::${SHA} is no longer the head of ${INTEGRATION_BRANCH} (${head}); its own CI run deploys it."
+          else
+            echo "superseded=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+  deploy:
+    name: Deploy to ${{ inputs.environment || 'dev' }}
+    needs: preflight
+    if: needs.preflight.outputs.superseded != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || 'azure-dev' }}
+    concurrency:
+      group: deploy-${{ inputs.environment || 'dev' }}
+      cancel-in-progress: false
+    env:
+      ENV_NAME: ${{ inputs.environment || 'dev' }}
+      RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      ARON_ALERT_EMAILS: ${{ vars.ARON_ALERT_EMAILS }}
+      ARON_BUDGET_AMOUNT: ${{ vars.ARON_BUDGET_AMOUNT }}
+      RUN_MIGRATIONS: ${{ inputs.run_migrations && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      - name: Sign in to Azure (OIDC, no client secret)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure CLI settings
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt core.only_show_errors=true
+          az bicep install
+          az version -o tsv
+
+      - name: Scope check (the identity has rights on its group only)
+        run: infra/scripts/scope-check.sh "${RG}"
+
+      - name: Infrastructure (main.bicep)
+        id: infra
+        run: |
+          kv="$(az keyvault list -g "${RG}" --query "[?starts_with(name, 'kv-aron-${ENV_NAME}-')].name | [0]" -o tsv)"
+          if [ -n "${kv}" ]; then
+            ARON_DB_ADMIN_PASSWORD="$(infra/scripts/db-password.sh "${RG}" "${kv}")"
+          else
+            ARON_DB_ADMIN_PASSWORD="$(infra/scripts/db-password.sh "${RG}" "kv-absent")"
+          fi
+          echo "::add-mask::${ARON_DB_ADMIN_PASSWORD}"
+          export ARON_DB_ADMIN_PASSWORD
+          az deployment group create -g "${RG}" -n aron-infra \
+            --template-file infra/main.bicep \
+            --parameters "infra/params/${ENV_NAME}.bicepparam" \
+            --query properties.outputs -o json > infra-outputs.json
+          python3 - <<'PY' >> "${GITHUB_OUTPUT}"
+          import json
+          o = json.load(open("infra-outputs.json"))
+          for k in ["registryLoginServer", "registryName", "keyVaultName", "containerEnvName", "migrateJobName",
+                    "frontDoorEndpointHost", "privateLinkOrigin", "budgetName"]:
+              v = o[k]["value"]
+              print(f"{k}={str(v).lower() if isinstance(v, bool) else v}")
+          PY
+          rm -f infra-outputs.json
+
+      - name: Seed Key Vault secrets (JWT key, FCM account) when absent
+        env:
+          FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
+        run: infra/scripts/seed-secrets.sh "${{ steps.infra.outputs.keyVaultName }}"
+
+      - name: Build and push the backend image
+        id: backend
+        env:
+          REGISTRY: ${{ steps.infra.outputs.registryLoginServer }}
+          REGISTRY_NAME: ${{ steps.infra.outputs.registryName }}
+        run: |
+          ./gradlew --console=plain :backend:app:installDist
+          image="${REGISTRY}/aron-backend:${GITHUB_SHA}"
+          docker build --pull -f infra/docker/backend.Dockerfile -t "${image}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" backend/app/build/install/aron-backend
+          az acr login --name "${REGISTRY_NAME}"
+          docker push "${image}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push the web image (once web/ exists)
+        id: web
+        env:
+          REGISTRY: ${{ steps.infra.outputs.registryLoginServer }}
+          MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
+        run: |
+          if [ ! -f web/package.json ]; then
+            echo "web/ has no package.json yet: no web app deployed"
+            echo "image=" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          image="${REGISTRY}/aron-web:${GITHUB_SHA}"
+          docker build --pull -f infra/docker/web.Dockerfile -t "${image}" \
+            --build-arg "NEXT_PUBLIC_MAPS_WEB_KEY=${MAPS_WEB_KEY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" web
+          docker push "${image}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Migrate job with the new image (apps.bicep, services untouched)
+        env:
+          ARON_BACKEND_IMAGE: ${{ steps.backend.outputs.image }}
+          ARON_WEB_IMAGE: ${{ steps.web.outputs.image }}
+          ARON_DEPLOY_SERVICES: "false"
+        run: |
+          az deployment group create -g "${RG}" -n aron-apps-migrate \
+            --template-file infra/apps.bicep --parameters "infra/params/${ENV_NAME}.apps.bicepparam" -o none
+
+      - name: Run the database migrations and wait for the result
+        if: env.RUN_MIGRATIONS == 'true'
+        env:
+          JOB: ${{ steps.infra.outputs.migrateJobName }}
+        run: |
+          execution="$(az containerapp job start -g "${RG}" -n "${JOB}" --query name -o tsv)"
+          echo "started ${execution}"
+          for _ in $(seq 1 120); do
+            status="$(az containerapp job execution show -g "${RG}" -n "${JOB}" --job-execution-name "${execution}" --query properties.status -o tsv)"
+            case "${status}" in
+              Succeeded) echo "migrations succeeded"; exit 0 ;;
+              Failed|Stopped|Degraded)
+                echo "::error title=Database migrations failed::Execution ${execution} of ${JOB} ended ${status}. The apps were NOT updated. Logs: Log Analytics table ContainerAppConsoleLogs, filter ContainerJobName_s == '${JOB}'."
+                exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::migrations did not finish in 20 minutes (execution ${execution})"
+          exit 1
+
+      - name: Apps and Front Door routes (apps.bicep)
+        id: apps
+        env:
+          ARON_BACKEND_IMAGE: ${{ steps.backend.outputs.image }}
+          ARON_WEB_IMAGE: ${{ steps.web.outputs.image }}
+          ARON_DEPLOY_SERVICES: "true"
+        run: |
+          az deployment group create -g "${RG}" -n aron-apps \
+            --template-file infra/apps.bicep --parameters "infra/params/${ENV_NAME}.apps.bicepparam" \
+            --query properties.outputs -o json > apps-outputs.json
+          python3 -c 'import json; o=json.load(open("apps-outputs.json")); print("frontDoorHost=" + o["frontDoorHost"]["value"]); print("apiFqdn=" + o["apiFqdn"]["value"])' >> "${GITHUB_OUTPUT}"
+          rm -f apps-outputs.json
+
+      - name: Approve the Front Door Private Link (Premium only)
+        if: steps.infra.outputs.privateLinkOrigin == 'true'
+        run: infra/scripts/approve-private-link.sh "${RG}" "${{ steps.infra.outputs.containerEnvName }}"
+
+      - name: Smoke test through Front Door
+        run: infra/scripts/smoke.sh "${{ steps.apps.outputs.frontDoorHost }}"
+
+      - name: Budget alert exists
+        env:
+          BUDGET: ${{ steps.infra.outputs.budgetName }}
+        run: |
+          amount="$(az consumption budget show --resource-group "${RG}" --budget-name "${BUDGET}" --query amount -o tsv)" \
+            || { echo "::error::budget ${BUDGET} not found in ${RG}"; exit 1; }
+          echo "budget ${BUDGET}: ${amount} a month"
+
+      - name: Summary
+        if: always()
+        env:
+          FD_HOST: ${{ steps.apps.outputs.frontDoorHost }}
+          IMAGE: ${{ steps.backend.outputs.image }}
+          WEB_IMAGE: ${{ steps.web.outputs.image }}
+        run: |
+          {
+            echo "### Aron ${ENV_NAME} deploy"
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Resource group | ${RG} |"
+            echo "| API through Front Door | https://${FD_HOST:-?}/v1/health |"
+            echo "| Backend image | ${IMAGE:-not built} |"
+            echo "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
+            echo "| Migrations | ${RUN_MIGRATIONS} |"
+            echo "| Debug APKs | artifact aron-debug-apks-${GITHUB_SHA} of the ci run |"
+          } >> "${GITHUB_STEP_SUMMARY}"
