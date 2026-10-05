@@ -34,7 +34,6 @@ class SchemaV1bTest {
             // v1c (N-007): the device_status record
             "device_status_report",
         )
-        val PARTITIONED = setOf("visit", "memo", "memo_line")
 
         /** Tables of row N-006 that must carry business_date and a timestamptz column. */
         val V1B_TABLES = DEVICE_TABLES + listOf(
@@ -66,7 +65,10 @@ class SchemaV1bTest {
                 "blob_path" to "'photos/2026-10-05/' || gen_random_uuid() || '/' || gen_random_uuid() || '.jpg'",
                 "mime" to "'image/jpeg'",
             ),
-            "outlet_request_event" to mapOf("via" to "'device'"),
+            "outlet_request_event" to mapOf(
+                "via" to "'device'", "family_uuid" to "gen_random_uuid()", "config_version" to "0",
+                "actor_user_id" to "(SELECT id FROM app.app_user WHERE username = 'sr0001')",
+            ),
             "gift_photo" to mapOf("redemption_client_uuid" to "gen_random_uuid()"),
             "sale_abort" to mapOf("memo_no" to "'sr0001-261005-002'"),
             "user_consent" to mapOf("policy_key" to "'location_notice'"),
@@ -196,12 +198,14 @@ class SchemaV1bTest {
         c.exec("SAVEPOINT s")
         val again = assertFailsWith<SQLException>("second insert of $id into $table") { c.exec(insertSql(c, table, id)) }
         assertEquals("23505", again.sqlState, again.message)
+        assertTrue(again.message!!.contains("client_uuid"), "the client_uuid key fired, not another one: ${again.message}")
         c.exec("ROLLBACK TO SAVEPOINT s")
         // Under another business date too: the partitioned tables refuse it through app.client_uuid_once.
         val otherDate = assertFailsWith<SQLException>("same $id on another date in $table") {
             c.exec(insertSql(c, table, id, "2026-10-06"))
         }
         assertEquals("23505", otherDate.sqlState, otherDate.message)
+        assertTrue(otherDate.message!!.contains("client_uuid"), "the client_uuid key fired: ${otherDate.message}")
     }
 
     @ParameterizedTest
@@ -325,6 +329,72 @@ class SchemaV1bTest {
         c.exec(photo.format("campaign", "NULL", "'$redemption'", "1"))
         c.exec(photo.format("campaign", "NULL", "'$redemption'", "2"))
         assertEquals("23505", assertFailsWith<SQLException> { c.exec(photo.format("campaign", "NULL", "'$redemption'", "2")) }.sqlState)
+    }
+
+    @Test
+    fun aVisitCloseIsWriteOnceAndItsUuidIsGloballyUnique() = tx { c ->
+        val close = "UPDATE app.visit SET close_client_uuid = '%s', close_received_at = now(), close_captured_at = now(), " +
+            "outcome_code = '%s', call_declined = false, ended_at = now(), is_zero_sale = false WHERE client_uuid = '%s'"
+        val v = UUID.randomUUID()
+        c.exec(insertSql(c, "visit", v))
+        c.exec(close.format(UUID.randomUUID(), "sold", v))
+        listOf(
+            close.format(UUID.randomUUID(), "refused", v),
+            "UPDATE app.visit SET close_client_uuid = NULL, outcome_code = NULL WHERE client_uuid = '$v'",
+        ).forEach { sql ->
+            c.exec("SAVEPOINT s")
+            assertEquals("42501", assertFailsWith<SQLException>(sql) { c.exec(sql) }.sqlState)
+            c.exec("ROLLBACK TO SAVEPOINT s")
+        }
+        val shared = UUID.randomUUID()
+        val a = UUID.randomUUID()
+        val b = UUID.randomUUID()
+        c.exec(insertSql(c, "visit", a))
+        c.exec(insertSql(c, "visit", b, "2026-10-06"))
+        c.exec(close.format(shared, "sold", a))
+        assertEquals("23505", assertFailsWith<SQLException> { c.exec(close.format(shared, "sold", b)) }.sqlState)
+    }
+
+    @Test
+    fun terminalStatesAndTombstonesNeverMoveBack() = tx { c ->
+        val id = UUID.randomUUID()
+        c.exec(insertSql(c, "memo", id))
+        c.exec("UPDATE app.memo SET status = 'superseded', superseded_by_client_uuid = gen_random_uuid(), status_changed_at = now() WHERE client_uuid = '$id'")
+        c.exec("UPDATE app.memo SET voided_at = now() WHERE client_uuid = '$id'")
+        val req = UUID.randomUUID()
+        c.exec(insertSql(c, "outlet_change_request", req))
+        c.exec("UPDATE app.outlet_change_request SET status = 'verified', verified_by = ${fk["user2"]}, verified_at = now() WHERE client_uuid = '$req'")
+        c.exec("UPDATE app.outlet_change_request SET status = 'rejected', decided_at = now(), decision_reason = 'duplicate' WHERE client_uuid = '$req'")
+        listOf(
+            "UPDATE app.memo SET status = 'active', superseded_by_client_uuid = NULL WHERE client_uuid = '$id'",
+            "UPDATE app.memo SET voided_at = NULL WHERE client_uuid = '$id'",
+            "UPDATE app.memo SET voided_at = now() + interval '1 day' WHERE client_uuid = '$id'",
+            "UPDATE app.outlet_change_request SET status = 'pending' WHERE client_uuid = '$req'",
+            "UPDATE app.outlet_change_request SET status = 'approved' WHERE client_uuid = '$req'",
+            "UPDATE app.outlet_change_request SET verified_by = NULL WHERE client_uuid = '$req'",
+        ).forEach { sql ->
+            c.exec("SAVEPOINT s")
+            assertEquals("42501", assertFailsWith<SQLException>(sql) { c.exec(sql) }.sqlState, sql)
+            c.exec("ROLLBACK TO SAVEPOINT s")
+        }
+        // A task may be reopened after completion (task_event reopened) but never revived after cancellation.
+        val task = UUID.randomUUID()
+        c.exec(insertSql(c, "task", task))
+        c.exec("UPDATE app.task SET status = 'completed' WHERE client_uuid = '$task'")
+        c.exec("UPDATE app.task SET status = 'ongoing' WHERE client_uuid = '$task'")
+        c.exec("UPDATE app.task SET status = 'cancelled' WHERE client_uuid = '$task'")
+        assertEquals("42501", assertFailsWith<SQLException> { c.exec("UPDATE app.task SET status = 'ongoing' WHERE client_uuid = '$task'") }.sqlState)
+    }
+
+    @Test
+    fun aZeroSaleWithQcCreditMayCarryANegativeNet() = tx { c ->
+        c.exec(
+            "INSERT INTO app.memo (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, visit_client_uuid, " +
+                "outlet_id, memo_no, memo_kind, committed_at, price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, " +
+                "qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, is_credit, line_count, discount_line_count, qc_line_count) " +
+                "VALUES (gen_random_uuid(), gen_random_uuid(), '2026-10-05', ${fk["user"]}, now(), 0, gen_random_uuid(), ${fk["outlet"]}, " +
+                "'sr0001-261005-090', 'zero_sale', now(), '2026-10-05', 'outlet', 0, 0, 0, 5003, 3, -5000, 0, -5000, false, 0, 0, 1)",
+        )
     }
 
     @Test

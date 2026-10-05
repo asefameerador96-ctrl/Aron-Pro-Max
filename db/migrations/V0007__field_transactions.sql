@@ -12,18 +12,48 @@
 -- Parents are referenced by client_uuid (a child may arrive before its parent and is parked, s4.2); master data is
 -- referenced by foreign key.
 
--- Refuses DELETE, and any UPDATE that changes a column not named in the trigger arguments.
+-- Refuses DELETE, and any UPDATE that changes a column not named in the trigger arguments. A name written '=name'
+-- is write-once: it may go from NULL to a value, never change or go back (tombstones, closes, decisions).
 CREATE FUNCTION app.guard_synced_row() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  a     text;
+  col   text;
+  o     jsonb := to_jsonb(OLD);
+  n     jsonb := to_jsonb(NEW);
+  free  text[] := '{}';
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'app.%: synced rows are never deleted (tombstone with voided_at)', TG_TABLE_NAME
       USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF (to_jsonb(NEW) - TG_ARGV) IS DISTINCT FROM (to_jsonb(OLD) - TG_ARGV) THEN
-    RAISE EXCEPTION 'app.%: only % may change on a synced row', TG_TABLE_NAME, array_to_string(TG_ARGV, ', ')
+  FOREACH a IN ARRAY TG_ARGV LOOP
+    col := ltrim(a, '=');
+    free := free || col;
+    IF left(a, 1) = '=' AND o -> col <> 'null'::jsonb AND (n -> col) IS DISTINCT FROM (o -> col) THEN
+      RAISE EXCEPTION 'app.%: % is write-once', TG_TABLE_NAME, col USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END LOOP;
+  IF (n - free) IS DISTINCT FROM (o - free) THEN
+    RAISE EXCEPTION 'app.%: only % may change on a synced row', TG_TABLE_NAME, array_to_string(free, ', ')
       USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END $$;
+
+-- Allows a state column (TG_ARGV[0]) to move only along the listed 'from>to' edges; every other change is refused,
+-- so terminal states never move back.
+CREATE FUNCTION app.guard_transition() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  col  text := TG_ARGV[0];
+  f    text := to_jsonb(OLD) ->> col;
+  t    text := to_jsonb(NEW) ->> col;
+BEGIN
+  IF f IS DISTINCT FROM t AND NOT (f || '>' || t) = ANY (TG_ARGV[1:]) THEN
+    RAISE EXCEPTION 'app.%: % may not move from % to %', TG_TABLE_NAME, col, f, t USING ERRCODE = 'insufficient_privilege';
   END IF;
   RETURN NEW;
 END $$;
@@ -249,13 +279,14 @@ CREATE TABLE app.geo_fix (
   integrity_ref           uuid,
   received_at             timestamptz NOT NULL DEFAULT now(),
   created_at              timestamptz NOT NULL DEFAULT now(),
+  voided_at               timestamptz,                    -- follows its source record's data-void tombstone
   PRIMARY KEY (id, business_date),
   UNIQUE (source_client_uuid, slot, business_date),
   CHECK ((lat IS NULL) = (lng IS NULL)),
   CHECK (fix_status <> 'ok' OR (lat IS NOT NULL AND accuracy_m IS NOT NULL))
 ) PARTITION BY RANGE (business_date);
 CREATE INDEX ON app.geo_fix (user_id, business_date, captured_at);
-CREATE TRIGGER geo_fix_append_only BEFORE UPDATE OR DELETE ON app.geo_fix FOR EACH ROW EXECUTE FUNCTION app.deny_mutation();
+CREATE TRIGGER geo_fix_immutable BEFORE UPDATE OR DELETE ON app.geo_fix FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 INSERT INTO app.partition_policy (parent) VALUES ('app.geo_fix');
 
 -- Route-day: one row per route and business date, created by the server from assignments (D24-26). State is derived
@@ -362,7 +393,7 @@ CREATE TABLE app.attendance_event (
 );
 CREATE INDEX ON app.attendance_event (business_date);
 CREATE TRIGGER attendance_event_immutable BEFORE UPDATE OR DELETE ON app.attendance_event
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 -- The first check-in (or check-out) of a user and date stands; a second one under another client_uuid is rejected
 -- attendance_duplicate (s4.5). Rows tombstoned by a data void no longer count.
 CREATE UNIQUE INDEX attendance_event_once ON app.attendance_event (user_id, business_date, kind) WHERE voided_at IS NULL;
@@ -416,7 +447,7 @@ CREATE TABLE app.route_day_event (
 );
 CREATE INDEX ON app.route_day_event (business_date);
 CREATE TRIGGER route_day_event_immutable BEFORE UPDATE OR DELETE ON app.route_day_event
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.route_day_event (route_id, business_date);
 CREATE INDEX ON app.route_day_event (user_id, business_date);
 
@@ -458,7 +489,9 @@ CREATE TABLE app.day_exception (
 );
 CREATE INDEX ON app.day_exception (business_date);
 CREATE TRIGGER day_exception_immutable BEFORE UPDATE OR DELETE ON app.day_exception
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at', 'status', 'decided_by', 'decided_at', 'decision_note');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'status', '=decided_by', '=decided_at', '=decision_note');
+CREATE TRIGGER day_exception_status_flow BEFORE UPDATE OF status ON app.day_exception
+  FOR EACH ROW EXECUTE FUNCTION app.guard_transition('status', 'pending>approved', 'pending>rejected');
 
 -- Append-only stock ledger: one event per SKU per Save (s12.5 item 3). qty_base is signed.
 CREATE TABLE app.stock_movement (
@@ -500,7 +533,7 @@ CREATE TABLE app.stock_movement (
 );
 CREATE INDEX ON app.stock_movement (business_date);
 CREATE TRIGGER stock_movement_immutable BEFORE UPDATE OR DELETE ON app.stock_movement
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.stock_movement (user_id, business_date);
 CREATE INDEX ON app.stock_movement (sku_id, business_date);
 
@@ -575,11 +608,25 @@ CREATE TABLE app.visit (
 ) PARTITION BY RANGE (business_date);
 CREATE INDEX ON app.visit (business_date);
 CREATE TRIGGER visit_immutable BEFORE UPDATE OR DELETE ON app.visit
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at', 'server_verdict', 'server_distance_m', 'server_radius_m', 'server_max_accuracy_m', 'server_checked_at', 'close_client_uuid', 'close_received_at', 'close_captured_at', 'outcome_code', 'call_started_at', 'call_declined', 'ended_at', 'is_zero_sale');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'server_verdict', 'server_distance_m', 'server_radius_m', 'server_max_accuracy_m', 'server_checked_at', '=close_client_uuid', '=close_received_at', '=close_captured_at', '=outcome_code', '=call_started_at', '=call_declined', '=ended_at', '=is_zero_sale');
 CREATE TRIGGER visit_client_uuid_once BEFORE INSERT ON app.visit
   FOR EACH ROW EXECUTE FUNCTION app.client_uuid_once('visit');
 INSERT INTO app.partition_policy (parent) VALUES ('app.visit');
 CREATE UNIQUE INDEX visit_close_uuid ON app.visit (close_client_uuid, business_date);
+-- A visit_close client_uuid closes one visit only, whatever its business date.
+CREATE FUNCTION app.visit_close_uuid_once() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.close_client_uuid IS NOT NULL AND NEW.close_client_uuid IS DISTINCT FROM OLD.close_client_uuid
+     AND EXISTS (SELECT 1 FROM app.visit WHERE close_client_uuid = NEW.close_client_uuid AND client_uuid <> NEW.client_uuid) THEN
+    RAISE EXCEPTION 'duplicate key value violates unique constraint "visit_close_client_uuid_once"'
+      USING ERRCODE = 'unique_violation', DETAIL = format('Key (close_client_uuid)=(%s) already exists.', NEW.close_client_uuid);
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER visit_close_uuid_once BEFORE UPDATE OF close_client_uuid ON app.visit FOR EACH ROW EXECUTE FUNCTION app.visit_close_uuid_once();
+CREATE INDEX visit_close_lookup ON app.visit (close_client_uuid) WHERE close_client_uuid IS NOT NULL;
 CREATE INDEX ON app.visit (outlet_id, business_date);
 CREATE INDEX ON app.visit (user_id, business_date);
 CREATE INDEX ON app.visit (route_id, business_date);
@@ -614,7 +661,7 @@ CREATE TABLE app.visit_skip (
 );
 CREATE INDEX ON app.visit_skip (business_date);
 CREATE TRIGGER visit_skip_immutable BEFORE UPDATE OR DELETE ON app.visit_skip
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.visit_skip (route_id, business_date);
 
 -- Memo header (rank 1 of the visit family). The equations of docs/24 s7.4 hold for every stored row; a memo that fails them is quarantined arithmetic_mismatch and never reaches this table.
@@ -685,7 +732,9 @@ CREATE TABLE app.memo (
 ) PARTITION BY RANGE (business_date);
 CREATE INDEX ON app.memo (business_date);
 CREATE TRIGGER memo_immutable BEFORE UPDATE OR DELETE ON app.memo
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at', 'status', 'status_changed_at', 'voided_by_client_uuid', 'superseded_by_client_uuid', 'server_flags');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'status', 'status_changed_at', '=voided_by_client_uuid', '=superseded_by_client_uuid', 'server_flags');
+CREATE TRIGGER memo_status_flow BEFORE UPDATE OF status ON app.memo
+  FOR EACH ROW EXECUTE FUNCTION app.guard_transition('status', 'active>voided', 'active>superseded');
 CREATE TRIGGER memo_client_uuid_once BEFORE INSERT ON app.memo
   FOR EACH ROW EXECUTE FUNCTION app.client_uuid_once('memo');
 INSERT INTO app.partition_policy (parent) VALUES ('app.memo');
@@ -746,7 +795,7 @@ CREATE TABLE app.memo_line (
 ) PARTITION BY RANGE (business_date);
 CREATE INDEX ON app.memo_line (business_date);
 CREATE TRIGGER memo_line_immutable BEFORE UPDATE OR DELETE ON app.memo_line
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE TRIGGER memo_line_client_uuid_once BEFORE INSERT ON app.memo_line
   FOR EACH ROW EXECUTE FUNCTION app.client_uuid_once('memo_line');
 INSERT INTO app.partition_policy (parent) VALUES ('app.memo_line');
@@ -790,7 +839,7 @@ CREATE TABLE app.memo_discount (
 );
 CREATE INDEX ON app.memo_discount (business_date);
 CREATE TRIGGER memo_discount_immutable BEFORE UPDATE OR DELETE ON app.memo_discount
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.memo_discount (memo_client_uuid);
 CREATE INDEX ON app.memo_discount (business_date, kind);
 
@@ -833,7 +882,7 @@ CREATE TABLE app.qc_entry_line (
 );
 CREATE INDEX ON app.qc_entry_line (business_date);
 CREATE TRIGGER qc_entry_line_immutable BEFORE UPDATE OR DELETE ON app.qc_entry_line
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.qc_entry_line (qc_entry_id);
 CREATE INDEX ON app.qc_entry_line (memo_client_uuid);
 CREATE INDEX ON app.qc_entry_line (business_date, sku_id);
@@ -874,7 +923,7 @@ CREATE TABLE app.print_event (
 );
 CREATE INDEX ON app.print_event (business_date);
 CREATE TRIGGER print_event_immutable BEFORE UPDATE OR DELETE ON app.print_event
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.print_event (memo_client_uuid);
 
 -- Void of a memo (tombstone; the memo row turns status voided, never deleted).
@@ -916,7 +965,7 @@ CREATE TABLE app.memo_void (
 );
 CREATE INDEX ON app.memo_void (business_date);
 CREATE TRIGGER memo_void_immutable BEFORE UPDATE OR DELETE ON app.memo_void
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE UNIQUE INDEX memo_void_once ON app.memo_void (memo_client_uuid) WHERE voided_at IS NULL;
 
 -- Cash collected against a credit memo (record due_collection).
@@ -962,7 +1011,7 @@ CREATE TABLE app.due_collection (
 );
 CREATE INDEX ON app.due_collection (business_date);
 CREATE TRIGGER due_collection_immutable BEFORE UPDATE OR DELETE ON app.due_collection
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.due_collection (outlet_id, business_date);
 CREATE INDEX ON app.due_collection (against_memo_client_uuid);
 
@@ -1004,7 +1053,7 @@ CREATE TABLE app.survey_response (
 );
 CREATE INDEX ON app.survey_response (business_date);
 CREATE TRIGGER survey_response_immutable BEFORE UPDATE OR DELETE ON app.survey_response
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.survey_response (visit_client_uuid);
 
 -- AMO / TSO distribution check of a visited outlet.
@@ -1038,7 +1087,7 @@ CREATE TABLE app.distribution_check (
 );
 CREATE INDEX ON app.distribution_check (business_date);
 CREATE TRIGGER distribution_check_immutable BEFORE UPDATE OR DELETE ON app.distribution_check
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.distribution_check (visit_client_uuid);
 
 -- Brand presence and out-of-stock per distribution check (OOS implies present).
@@ -1074,7 +1123,7 @@ CREATE TABLE app.distribution_check_line (
 );
 CREATE INDEX ON app.distribution_check_line (business_date);
 CREATE TRIGGER distribution_check_line_immutable BEFORE UPDATE OR DELETE ON app.distribution_check_line
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.distribution_check_line (check_client_uuid);
 
 -- Joint-call assessment or retailer questionnaire (AMO, TSO).
@@ -1115,7 +1164,7 @@ CREATE TABLE app.call_assessment (
 );
 CREATE INDEX ON app.call_assessment (business_date);
 CREATE TRIGGER call_assessment_immutable BEFORE UPDATE OR DELETE ON app.call_assessment
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.call_assessment (visit_client_uuid);
 
 -- One criterion answer of a call assessment.
@@ -1151,7 +1200,7 @@ CREATE TABLE app.call_assessment_answer (
 );
 CREATE INDEX ON app.call_assessment_answer (business_date);
 CREATE TRIGGER call_assessment_answer_immutable BEFORE UPDATE OR DELETE ON app.call_assessment_answer
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.call_assessment_answer (assessment_client_uuid);
 
 -- New, close, info, cluster and location requests from the field (s12.2); client_uuid is the request_uuid.
@@ -1205,7 +1254,9 @@ CREATE TABLE app.outlet_change_request (
 );
 CREATE INDEX ON app.outlet_change_request (business_date);
 CREATE TRIGGER outlet_change_request_immutable BEFORE UPDATE OR DELETE ON app.outlet_change_request
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at', 'status', 'status_changed_at', 'verified_by', 'verified_at', 'decided_by', 'decided_at', 'decision_reason', 'created_outlet_id');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'status', 'status_changed_at', '=verified_by', '=verified_at', '=decided_by', '=decided_at', '=decision_reason', '=created_outlet_id');
+CREATE TRIGGER outlet_change_request_status_flow BEFORE UPDATE OF status ON app.outlet_change_request
+  FOR EACH ROW EXECUTE FUNCTION app.guard_transition('status', 'pending>verified', 'pending>rejected', 'pending>lapsed', 'pending>discarded', 'verified>approved', 'verified>rejected', 'verified>lapsed', 'verified>discarded');
 CREATE INDEX ON app.outlet_change_request (status, business_date);
 CREATE INDEX ON app.outlet_change_request (outlet_id);
 
@@ -1247,7 +1298,9 @@ CREATE TABLE app.task (
 );
 CREATE INDEX ON app.task (business_date);
 CREATE TRIGGER task_immutable BEFORE UPDATE OR DELETE ON app.task
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at', 'status', 'status_changed_at', 'cancelled_by');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'status', 'status_changed_at', '=cancelled_by');
+CREATE TRIGGER task_status_flow BEFORE UPDATE OF status ON app.task
+  FOR EACH ROW EXECUTE FUNCTION app.guard_transition('status', 'ongoing>completed', 'completed>ongoing', 'ongoing>cancelled');
 CREATE INDEX ON app.task (assignee_user_id, status);
 
 -- Resolve / reopen of a task by its assignee (record task_event).
@@ -1280,7 +1333,7 @@ CREATE TABLE app.task_event (
 );
 CREATE INDEX ON app.task_event (business_date);
 CREATE TRIGGER task_event_immutable BEFORE UPDATE OR DELETE ON app.task_event
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.task_event (task_uuid);
 
 -- TSO visit plan for a date.
@@ -1312,7 +1365,7 @@ CREATE TABLE app.visit_plan (
 );
 CREATE INDEX ON app.visit_plan (business_date);
 CREATE TRIGGER visit_plan_immutable BEFORE UPDATE OR DELETE ON app.visit_plan
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.visit_plan (user_id, plan_date);
 
 -- Outlet of a TSO visit plan.
@@ -1344,7 +1397,7 @@ CREATE TABLE app.visit_plan_outlet (
 );
 CREATE INDEX ON app.visit_plan_outlet (business_date);
 CREATE TRIGGER visit_plan_outlet_immutable BEFORE UPDATE OR DELETE ON app.visit_plan_outlet
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.visit_plan_outlet (plan_client_uuid);
 
 -- TSO leave, decided by the DMO on the web (D24-55).
@@ -1384,7 +1437,9 @@ CREATE TABLE app.leave_application (
 );
 CREATE INDEX ON app.leave_application (business_date);
 CREATE TRIGGER leave_application_immutable BEFORE UPDATE OR DELETE ON app.leave_application
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at', 'status', 'decided_by', 'decided_at', 'decision_note');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'status', '=decided_by', '=decided_at', '=decision_note');
+CREATE TRIGGER leave_application_status_flow BEFORE UPDATE OF status ON app.leave_application
+  FOR EACH ROW EXECUTE FUNCTION app.guard_transition('status', 'pending>approved', 'pending>rejected');
 CREATE INDEX ON app.leave_application (user_id, from_date);
 
 -- Feedback from the TSO app.
@@ -1418,7 +1473,7 @@ CREATE TABLE app.feedback (
 );
 CREATE INDEX ON app.feedback (business_date);
 CREATE TRIGGER feedback_immutable BEFORE UPDATE OR DELETE ON app.feedback
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 
 -- Photo metadata (record media_meta; client_uuid is the media uuid). The blob is in Blob Storage (s4.11).
 CREATE TABLE app.media (
@@ -1467,7 +1522,9 @@ CREATE TABLE app.media (
 );
 CREATE INDEX ON app.media (business_date);
 CREATE TRIGGER media_immutable BEFORE UPDATE OR DELETE ON app.media
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at', 'status', 'stored_at', 'blob_bytes', 'blob_sha256');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'status', '=stored_at', '=blob_bytes', '=blob_sha256');
+CREATE TRIGGER media_status_flow BEFORE UPDATE OF status ON app.media
+  FOR EACH ROW EXECUTE FUNCTION app.guard_transition('status', 'pending_blob>stored', 'pending_blob>mismatch', 'pending_blob>missing', 'missing>stored', 'missing>mismatch');
 CREATE INDEX ON app.media (ref_client_uuid);
 CREATE INDEX media_pending ON app.media (received_at) WHERE status = 'pending_blob';
 
@@ -1503,7 +1560,7 @@ CREATE TABLE app.geo_breadcrumb (
 );
 CREATE INDEX ON app.geo_breadcrumb (business_date);
 CREATE TRIGGER geo_breadcrumb_immutable BEFORE UPDATE OR DELETE ON app.geo_breadcrumb
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.geo_breadcrumb (user_id, business_date);
 
 -- Config applied on the phone (record config_ack, s9.3 item 5).
@@ -1536,7 +1593,7 @@ CREATE TABLE app.cfg_ack (
 );
 CREATE INDEX ON app.cfg_ack (business_date);
 CREATE TRIGGER cfg_ack_immutable BEFORE UPDATE OR DELETE ON app.cfg_ack
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.cfg_ack (acked_config_version);
 CREATE INDEX ON app.cfg_ack (device_id, acked_config_version);
 
@@ -1576,7 +1633,7 @@ CREATE TABLE app.content_view (
 );
 CREATE INDEX ON app.content_view (business_date);
 CREATE TRIGGER content_view_immutable BEFORE UPDATE OR DELETE ON app.content_view
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.content_view (content_id, business_date);
 
 -- Loyalty redemption basket (Diamond League, campaign); the server debits app.loyalty_ledger.
@@ -1624,7 +1681,7 @@ CREATE TABLE app.redemption (
 );
 CREATE INDEX ON app.redemption (business_date);
 CREATE TRIGGER redemption_immutable BEFORE UPDATE OR DELETE ON app.redemption
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at', 'server_flags');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at', 'server_flags');
 CREATE INDEX ON app.redemption (outlet_id, programme_id);
 
 -- One gift of a redemption basket; points_total = qty x points_each.
@@ -1661,7 +1718,7 @@ CREATE TABLE app.redemption_line (
 );
 CREATE INDEX ON app.redemption_line (business_date);
 CREATE TRIGGER redemption_line_immutable BEFORE UPDATE OR DELETE ON app.redemption_line
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.redemption_line (redemption_client_uuid);
 
 -- Gift hand-over photo: one per Astha assignment, one per redeemed campaign unit (gift_photo_exists).
@@ -1706,7 +1763,7 @@ CREATE TABLE app.gift_photo (
 );
 CREATE INDEX ON app.gift_photo (business_date);
 CREATE TRIGGER gift_photo_immutable BEFORE UPDATE OR DELETE ON app.gift_photo
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE UNIQUE INDEX gift_photo_one_per_assignment ON app.gift_photo (gift_assignment_id)
   WHERE gift_assignment_id IS NOT NULL AND voided_at IS NULL;
 CREATE UNIQUE INDEX gift_photo_one_per_unit ON app.gift_photo (redemption_client_uuid, gift_id, unit_no)
@@ -1747,7 +1804,7 @@ CREATE TABLE app.price_compliance_check (
 );
 CREATE INDEX ON app.price_compliance_check (business_date);
 CREATE TRIGGER price_compliance_check_immutable BEFORE UPDATE OR DELETE ON app.price_compliance_check
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.price_compliance_check (visit_client_uuid);
 
 -- Review of a risk signal (record risk_review from the AMO Exceptions screen, or the online review_uuid). Append-only.
@@ -1781,7 +1838,7 @@ CREATE TABLE app.risk_signal_review (
 );
 CREATE INDEX ON app.risk_signal_review (business_date);
 CREATE TRIGGER risk_signal_review_immutable BEFORE UPDATE OR DELETE ON app.risk_signal_review
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.risk_signal_review (signal_id, captured_at);
 
 -- Sampled screen and action events (cfg.app.activity_log_sample_pct); one row per record.
@@ -1812,7 +1869,7 @@ CREATE TABLE app.activity_log (
 );
 CREATE INDEX ON app.activity_log (business_date);
 CREATE TRIGGER activity_log_immutable BEFORE UPDATE OR DELETE ON app.activity_log
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 
 -- Scrubbed crash, ANR and handled-error report from a phone.
 CREATE TABLE app.app_error (
@@ -1848,7 +1905,7 @@ CREATE TABLE app.app_error (
 );
 CREATE INDEX ON app.app_error (business_date);
 CREATE TRIGGER app_error_immutable BEFORE UPDATE OR DELETE ON app.app_error
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.app_error (app_version, occurred_at);
 
 -- A memo number consumed without a memo (explains the gap in the memo-number-gaps report).
@@ -1883,7 +1940,7 @@ CREATE TABLE app.sale_abort (
 );
 CREATE INDEX ON app.sale_abort (business_date);
 CREATE TRIGGER sale_abort_immutable BEFORE UPDATE OR DELETE ON app.sale_abort
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.sale_abort (memo_no);
 
 -- Acceptance of a notice (record consent_accept, once per user and policy version on a phone).
@@ -1918,7 +1975,7 @@ CREATE TABLE app.user_consent (
 );
 CREATE INDEX ON app.user_consent (business_date);
 CREATE TRIGGER user_consent_immutable BEFORE UPDATE OR DELETE ON app.user_consent
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 CREATE INDEX ON app.user_consent (user_id, policy_key, policy_version);
 
 ALTER TABLE app.qc_entry_line ADD CONSTRAINT qc_entry_line_entry_fk FOREIGN KEY (qc_entry_id) REFERENCES app.qc_entry(id);
@@ -1952,21 +2009,29 @@ CREATE TRIGGER due_ledger_append_only BEFORE UPDATE OR DELETE ON app.due_ledger 
 -- Phase 2 extension point (s12.5 item 3): the indent portal's ledger, same shape as stock_movement, empty in Phase 1.
 CREATE TABLE app.indent_movement (LIKE app.stock_movement INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING IDENTITY INCLUDING INDEXES);
 CREATE TRIGGER indent_movement_immutable BEFORE UPDATE OR DELETE ON app.indent_movement
-  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('voided_at');
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 
 -- Verify / approve / reject / lapse trail of an outlet change request. Rows from the AMO app (record
 -- outlet_request_verification) carry its client_uuid; web and job events have none.
 CREATE TABLE app.outlet_request_event (
   id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   client_uuid         uuid UNIQUE,
+  family_uuid         uuid,
   request_uuid        uuid NOT NULL,                   -- app.outlet_change_request.client_uuid
   event               text NOT NULL CHECK (event IN ('created','verified','discarded','approved','rejected','lapsed')),
   actor_user_id       bigint REFERENCES app.app_user(id),
   via                 text NOT NULL CHECK (via IN ('device','web','job')),
   business_date       date NOT NULL,
+  business_date_device date,
   at                  timestamptz NOT NULL,             -- captured_at for device events
+  captured_elapsed_ms bigint CHECK (captured_elapsed_ms >= 0),
+  boot_count          int CHECK (boot_count >= 0),
+  clock_offset_ms     bigint,
+  captured_offline    boolean,
+  schema_version      int CHECK (schema_version >= 1),
   device_id           bigint,
   config_version      bigint,
+  bundle_version      text,
   sub_channel_id      bigint REFERENCES app.sub_channel(id),
   geo_class           text REFERENCES app.geo_class_def(geo_class),
   fix_status          text CHECK (fix_status IN ('ok','timeout','permission_denied','location_off','provider_unavailable')),
@@ -1978,11 +2043,13 @@ CREATE TABLE app.outlet_request_event (
   note                text CHECK (length(note) <= 500),
   received_at         timestamptz NOT NULL DEFAULT now(),
   created_at          timestamptz NOT NULL DEFAULT now(),
-  CHECK (via <> 'device' OR client_uuid IS NOT NULL)
+  voided_at           timestamptz,
+  CHECK (via = 'job' OR actor_user_id IS NOT NULL),
+  CHECK (via <> 'device' OR (client_uuid IS NOT NULL AND family_uuid IS NOT NULL AND config_version IS NOT NULL))
 );
 CREATE INDEX ON app.outlet_request_event (request_uuid, at);
-CREATE TRIGGER outlet_request_event_append_only BEFORE UPDATE OR DELETE ON app.outlet_request_event
-  FOR EACH ROW EXECUTE FUNCTION app.deny_mutation();
+CREATE TRIGGER outlet_request_event_immutable BEFORE UPDATE OR DELETE ON app.outlet_request_event
+  FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('=voided_at');
 
 -- Final Submit of a zone-day: online-only, once per zone and date unless reopened (s4.9 rules 3 and 4).
 CREATE TABLE app.final_submit (
