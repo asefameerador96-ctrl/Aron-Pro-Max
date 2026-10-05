@@ -119,6 +119,14 @@ CREATE TABLE app.cluster (
 -- visit_days_mask: bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127,
 -- Sun/Tue/Thu = 42, Sat/Mon/Wed = 21). visit_kind daily, 3f (three days a week), 2f (two days); display_label is
 -- the printed text, never a key. Route codes are text (both DHK-344-011 and 2689479 style codes occur).
+-- visit_kind and the mask agree: daily = 127 (contract Route), 3f = three days, 2f = two days.
+CREATE FUNCTION app.visit_kind_matches(p_kind text, p_mask smallint) RETURNS boolean
+LANGUAGE sql IMMUTABLE PARALLEL SAFE
+AS $$ SELECT p_kind IS NULL
+          OR (p_kind = 'daily' AND p_mask = 127)
+          OR (p_kind = '3f' AND bit_count(p_mask::int::bit(7)) = 3)
+          OR (p_kind = '2f' AND bit_count(p_mask::int::bit(7)) = 2) $$;
+
 CREATE TABLE app.route (
   id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   code            text NOT NULL UNIQUE CHECK (code ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$'),
@@ -135,7 +143,8 @@ CREATE TABLE app.route (
   updated_at      timestamptz NOT NULL DEFAULT now(),
   version         int NOT NULL DEFAULT 1 CHECK (version >= 1),
   created_by      bigint,
-  updated_by      bigint
+  updated_by      bigint,
+  CONSTRAINT route_visit_kind_mask CHECK (app.visit_kind_matches(visit_kind, visit_days_mask))
 );
 CREATE INDEX ON app.route (zone_id);
 
@@ -151,6 +160,7 @@ CREATE TABLE app.route_planned (
   created_at      timestamptz NOT NULL DEFAULT now(),
   created_by      bigint,
   CHECK (valid_to IS NULL OR valid_to > valid_from),
+  CHECK (app.visit_kind_matches(visit_kind, visit_days_mask)),
   EXCLUDE USING gist (route_id WITH =, daterange(valid_from, valid_to, '[)') WITH &&)
 );
 

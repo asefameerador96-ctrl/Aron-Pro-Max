@@ -32,9 +32,7 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   NEW.updated_at := now();
-  IF NEW.version = OLD.version THEN
-    NEW.version := OLD.version + 1;
-  END IF;
+  NEW.version := OLD.version + 1;          -- always forward: a stale If-Match version can never match again
   RETURN NEW;
 END $$;
 
@@ -47,9 +45,9 @@ BEGIN
     USING ERRCODE = 'insufficient_privilege';
 END $$;
 
--- Monthly range partitions as data (docs/24 s12.1). Every range-partitioned parent is listed here; the worker
--- calls app.ensure_partitions() daily so partitions exist cfg-free three months ahead. Rows outside every
--- monthly partition land in <parent>_default; ensure_partitions moves them into a new month when it is created.
+-- Monthly range partitions as data (docs/24 s12.1). Every range-partitioned parent is listed here (partition key of
+-- type date: business_date); the worker calls app.ensure_partitions() daily so partitions exist three months ahead.
+-- Rows outside every monthly partition land in <parent>_default; when their month is created they are re-routed.
 CREATE TABLE app.partition_policy (
   parent       text PRIMARY KEY,                    -- schema-qualified parent table name
   key_column   text NOT NULL DEFAULT 'business_date',
@@ -66,11 +64,13 @@ DECLARE
   last_m   date;
   part     text;
   dflt     text;
+  swap     text;
+  has_rows boolean;
   n        int := 0;
-  moved    bigint;
 BEGIN
   FOR p IN SELECT * FROM app.partition_policy ORDER BY parent LOOP
     dflt := p.parent || '_default';
+    swap := p.parent || '_default_swap';
     IF to_regclass(dflt) IS NULL THEN
       EXECUTE format('CREATE TABLE %s PARTITION OF %s DEFAULT', dflt, p.parent);
     END IF;
@@ -80,18 +80,21 @@ BEGIN
       m_end := (m + interval '1 month')::date;
       part := format('%s_y%sm%s', p.parent, to_char(m, 'YYYY'), to_char(m, 'MM'));
       IF to_regclass(part) IS NULL THEN
-        -- Rows of this month that fell into the default partition must leave it before the month can attach.
-        EXECUTE format('CREATE TEMP TABLE _aron_moved ON COMMIT DROP AS SELECT * FROM %s WHERE %I >= %L AND %I < %L',
-                       dflt, p.key_column, m, p.key_column, m_end);
-        GET DIAGNOSTICS moved = ROW_COUNT;
-        IF moved > 0 THEN
-          EXECUTE format('DELETE FROM %s WHERE %I >= %L AND %I < %L', dflt, p.key_column, m, p.key_column, m_end);
+        EXECUTE format('SELECT EXISTS (SELECT 1 FROM %s WHERE %I >= %L AND %I < %L)', dflt, p.key_column, m, p.key_column, m_end)
+          INTO has_rows;
+        IF has_rows THEN
+          -- The month cannot attach while the default partition holds its rows. Swap in a fresh default, attach the
+          -- month and re-route every row of the old default through the parent, then drop the old default. No row is
+          -- updated or deleted, so append-only triggers are not involved and every row survives.
+          EXECUTE format('ALTER TABLE %s DETACH PARTITION %s', p.parent, dflt);
+          EXECUTE format('ALTER TABLE %s RENAME TO %I', dflt, split_part(swap, '.', 2));
+          EXECUTE format('CREATE TABLE %s PARTITION OF %s DEFAULT', dflt, p.parent);
+          EXECUTE format('CREATE TABLE %s PARTITION OF %s FOR VALUES FROM (%L) TO (%L)', part, p.parent, m, m_end);
+          EXECUTE format('INSERT INTO %s OVERRIDING SYSTEM VALUE SELECT * FROM %s', p.parent, swap);
+          EXECUTE format('DROP TABLE %s', swap);
+        ELSE
+          EXECUTE format('CREATE TABLE %s PARTITION OF %s FOR VALUES FROM (%L) TO (%L)', part, p.parent, m, m_end);
         END IF;
-        EXECUTE format('CREATE TABLE %s PARTITION OF %s FOR VALUES FROM (%L) TO (%L)', part, p.parent, m, m_end);
-        IF moved > 0 THEN
-          EXECUTE format('INSERT INTO %s OVERRIDING SYSTEM VALUE SELECT * FROM _aron_moved', p.parent);
-        END IF;
-        DROP TABLE _aron_moved;
         n := n + 1;
       END IF;
       m := m_end;

@@ -49,7 +49,7 @@ CREATE TRIGGER product_node_parent BEFORE INSERT OR UPDATE OF parent_id, level O
 -- and match); the pack badge is computed, never stored (docs/24 s7.2).
 CREATE TABLE app.sku (
   id                    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  code                  text NOT NULL UNIQUE CHECK (code ~ '^[A-Za-z0-9][A-Za-z0-9._ -]{0,39}$'),
+  code                  text NOT NULL UNIQUE CHECK (code ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$'),   -- contract Sku.code
   variant_id            bigint NOT NULL REFERENCES app.product_node(id),
   category_code         text NOT NULL CHECK (category_code IN ('cigarette','bidi','lighter','match')),
   name                  text NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
@@ -73,6 +73,18 @@ CREATE TABLE app.sku (
   updated_by            bigint
 );
 CREATE INDEX ON app.sku (variant_id);
+
+-- A SKU hangs off a variant node, never a category, segment or brand.
+CREATE FUNCTION app.sku_check_variant() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM app.product_node WHERE id = NEW.variant_id AND level = 'variant') THEN
+    RAISE EXCEPTION 'sku %: variant_id % is not a variant node', NEW.code, NEW.variant_id USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER sku_variant BEFORE INSERT OR UPDATE OF variant_id ON app.sku FOR EACH ROW EXECUTE FUNCTION app.sku_check_variant();
 
 -- Effective-dated prices for the five price types; amount_mtk is the price of per_base_qty base units (1 for every
 -- seed price). Integer milli-taka because seed prices carry three decimals (7.935 Tk = 7,935 mtk).

@@ -10,7 +10,8 @@ CREATE TABLE app.cfg_key (
   kind              text NOT NULL DEFAULT 'S' CHECK (kind IN ('S','T','O')),
   value_type        text NOT NULL CHECK (value_type IN ('int','number','bool','time','text','url','pct','money_mtk','enum','list','json')),
   default_value     jsonb,                            -- JSON null = no value (for example cfg.ops.maintenance_banner)
-  bounds            jsonb NOT NULL DEFAULT '{}'::jsonb,
+  bounds            jsonb NOT NULL DEFAULT '{}'::jsonb,   -- ConfigBounds: min, max, enum, max_items, dynamic_min, dynamic_max
+  bounds_rule       text,                             -- bound the contract shape cannot express (time ranges, rules), enforced by backend:config
   scope_levels      text[] NOT NULL CHECK (cardinality(scope_levels) >= 1 AND scope_levels <@
                       ARRAY['global','role','wing','division','territory','geo_class','zone','route','outlet','user','device']::text[]),
   risk_class        smallint NOT NULL CHECK (risk_class BETWEEN 0 AND 3),
@@ -28,18 +29,17 @@ CREATE TABLE app.cfg_key (
   updated_at        timestamptz NOT NULL DEFAULT now()
 );
 
--- One row per committed change set; global and monotonic (D24-14). Version 0 = registry defaults only.
+-- One row per committed change set; global and monotonic (D24-14). No row yet = version 0 (registry defaults only).
 CREATE TABLE app.cfg_version (
-  config_version  bigint PRIMARY KEY CHECK (config_version >= 0),
-  kind            text NOT NULL CHECK (kind IN ('change','revert','rollback','schedule_apply','expiry','content','seed')),
+  config_version  bigint PRIMARY KEY CHECK (config_version >= 1),
+  kind            text NOT NULL CHECK (kind IN ('change','revert','rollback','schedule_apply','expiry','content')),
   change_id       bigint,                            -- FK added below
   committed_at    timestamptz NOT NULL DEFAULT now(),
-  committed_by    bigint REFERENCES app.app_user(id),
+  committed_by    bigint NOT NULL REFERENCES app.app_user(id),
   summary         text NOT NULL CHECK (length(summary) <= 500),
   max_risk_class  smallint NOT NULL DEFAULT 0 CHECK (max_risk_class BETWEEN 0 AND 3),
   is_revert_of    bigint REFERENCES app.cfg_version(config_version)
 );
-INSERT INTO app.cfg_version (config_version, kind, summary) VALUES (0, 'seed', 'registry defaults (no scoped values)');
 
 CREATE TABLE app.cfg_change (
   change_id      bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -106,6 +106,18 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER cfg_value_immutable BEFORE UPDATE OR DELETE ON app.cfg_value FOR EACH ROW EXECUTE FUNCTION app.cfg_value_close_only();
+
+-- A value may only sit on a level the key allows (ERR_CFG_SCOPE_NOT_ALLOWED at the API; this is the backstop).
+CREATE FUNCTION app.cfg_value_scope_allowed() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM app.cfg_key WHERE key = NEW.key AND NEW.scope_type = ANY (scope_levels)) THEN
+    RAISE EXCEPTION 'config key % does not allow scope %', NEW.key, NEW.scope_type USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER cfg_value_scope BEFORE INSERT ON app.cfg_value FOR EACH ROW EXECUTE FUNCTION app.cfg_value_scope_allowed();
 
 -- ---------- calendar ----------
 CREATE TABLE app.calendar_holiday (
