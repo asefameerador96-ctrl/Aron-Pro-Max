@@ -1144,7 +1144,8 @@ export interface paths {
         put?: never;
         /**
          * Run a report with one ReportQuery object; json inline, xlsx inline up to the row limit or as an export job.
-         * @description `output.format = json` returns 200 `ReportResult`. `xlsx` returns 200 with the workbook when the row count
+         * @description `output.format = json` returns 200 `ReportResult`; `print` returns 200 `text/html` (server-rendered print view,
+         *     logged as an export); `pdf` always returns 202 with an `ExportJob`. `xlsx` returns 200 with the workbook when the row count
          *     is at most `cfg.ops.report_sync_max_rows` (10,000), else 202 with an `ExportJob`. Above
          *     `cfg.ops.report_export_max_rows` the query is refused (413 `ERR_REPORT_TOO_LARGE`). Every export is logged
          *     with a watermark; formula-leading cells are sanitised.
@@ -1454,7 +1455,7 @@ export interface paths {
         put?: never;
         /**
          * Publish new prices from a future Dhaka date (closes the open row of each SKU and type at that date).
-         * @description Back-dating needs `finance.backdate` and is refused otherwise (400 `ERR_MASTER_EFFECTIVE_DATE_PAST`). A publish bumps `cfg.price.list_version`.
+         * @description Back-dating needs `finance.backdate` and is refused otherwise (400 `ERR_MASTER_EFFECTIVE_DATE_PAST`). A publish bumps `cfg.price.list_version`. A batch that moves any price by more than `cfg.price.max_change_pct` is stored `pending_approval` until a second person decides (`POST /v1/admin/prices/batches/{batch_uuid}/decision`); preview first with `POST /v1/admin/prices/preview`.
          */
         post: operations["createPrices"];
         delete?: never;
@@ -1579,7 +1580,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reset password (temporary, shown once), unlock, or force logout (revoke full-grant families). */
+        /**
+         * Reset password (temporary, shown once), unlock, or force logout (revoke full-grant families).
+         * @description SUPPORT and ADMIN for any user in reach; a TSO may `reset_password` and `unlock` SR and AMO users of its own zones (docs/24 s8.5). Every action is audited.
+         */
         post: operations["manageUserCredentials"];
         delete?: never;
         options?: never;
@@ -1634,7 +1638,7 @@ export interface paths {
         get: operations["listTargets"];
         /**
          * Upsert a month's targets for a set of scopes (all-or-nothing; targets are never negative).
-         * @description Phase 1 hook of the Phase 2 target engine: one approval-free write by `master.target` holders, idempotent by `batch_uuid`.
+         * @description Creates a target revision `pending_approval` that goes live after the approvals of cfg.target.approval_levels (docs/24 s12.6); idempotent by `batch_uuid`. After the month starts (cfg.target.lock_after_month_start) every change is a revision.
          */
         put: operations["putTargets"];
         post?: never;
@@ -2081,6 +2085,939 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/outlets/nearby": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Outlets within a radius of a point (TSO Retailer radius map), capped and scoped.
+         * @description Served from a geo index on confirmed outlet coordinates within the caller's reach. `radius_m` must be one
+         *     of `cfg.tso.periphery_radius_options_m` (50, 100, 300); at most `cfg.tso.periphery_max_markers` (300)
+         *     outlets are returned, nearest first, with `truncated` set when more exist. Contact numbers only with the
+         *     `pii` claim.
+         */
+        get: operations["getNearbyOutlets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/daily-tracking/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Daily Tracking "take action" note on a route-day; notifies the route's TSO and AMO, never reassigns.
+         * @description Allowed after `cfg.day.take_action_after` (17:00 Dhaka) of the business date (`409 ERR_REQUEST_STATE`
+         *     before it). Idempotent by `action_uuid`. The notification is an FCM nudge to the TSO and AMO of the route.
+         */
+        post: operations["createTrackingAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tutorials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tutorial videos and manuals for the caller's role (also in the bundle; playback is online only). */
+        get: operations["listTutorials"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/pda-upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write-only SAS for one "PDA to Support" data file (encrypted zip, size-capped).
+         * @description Idempotent by `upload_uuid` (a repeat returns the same blob path with a fresh SAS). The file is at most
+         *     `cfg.support.max_upload_mb` (20 MB); on mobile data the phone waits for Wi-Fi when
+         *     `cfg.support.pda_upload_wifi_only` is true. The zip is encrypted on the phone with the support public key.
+         */
+        post: operations["createSupportUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/client-errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Privacy-scrubbed error report from the web app (phones send `app_error` records in the batch). */
+        post: operations["reportClientError"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/media/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Multipart fallback for one small non-evidence image (feedback); evidence photos always use SAS.
+         * @description Idempotent by (`media_uuid`, `purpose`): a repeat returns `replayed: true` and stores nothing. Only purposes
+         *     `feedback` and `support` are accepted here; at most 300 KB JPEG.
+         */
+        post: operations["uploadMediaMultipart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/report-exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export log viewer (who exported which report with which filters, rows and PII flag). */
+        get: operations["listExportLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/programmes/loyalty/balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live loyalty balance of outlets in reach (online refresh of the bundle's previous-day balance). */
+        get: operations["getLoyaltyBalances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/programmes/astha/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Astha targets and achievement by outlet and brand for a quarter (route and shop information, web reads). */
+        get: operations["listAsthaTargets"];
+        /**
+         * Upsert Astha targets for a quarter (roles in cfg.astha.target_entry_roles; targets never negative).
+         * @description Idempotent by `batch_uuid`; all-or-nothing. A negative target is `400 ERR_VALIDATION`.
+         */
+        put: operations["putAsthaTargets"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/programmes/astha/gift-choices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Astha gift choice per outlet (TSO panel and Astha Gift Choice report source). */
+        get: operations["listGiftChoices"];
+        /**
+         * Save gift choices explicitly (roles in cfg.astha.gift_choice_roles); a choice locks once the SR's photo exists.
+         * @description Idempotent by each row's `client_uuid`. A row whose assignment already has a `gift_photo` is refused per row
+         *     with `ERR_GIFT_CHOICE_LOCKED` in `results[]` (cfg.astha.gift_choice_lock = on_sr_photo); the other rows are saved.
+         */
+        put: operations["putGiftChoices"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/web-entry/route-day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The web route-day aggregate entry of a route and date (with the app's sale quantities read-only). */
+        get: operations["getWebEntryRouteDay"];
+        put?: never;
+        /**
+         * Save one route-day aggregate entry (Issue, Return, Memos, Successful Call per SKU); a re-save replaces with audit.
+         * @description One entry per route-day; idempotent by `client_uuid`; a re-save with a new `client_uuid` replaces the previous
+         *     entry and writes an audit row. Web rows and app rows for one route-day are never added
+         *     (`cfg.web.entry_app_overlap_policy` = exclusive_flag: stored and flagged). Successful calls may not exceed
+         *     the target-outlet snapshot. Outside `cfg.web.entry_backdate_days` without an active entry unlock:
+         *     `409 ERR_ENTRY_WINDOW_CLOSED`; after Final Submit: `409 ERR_DAY_ALREADY_FINAL_SUBMITTED`. Astha-channel
+         *     outlets are excluded (they use the outlet-SKU entry).
+         */
+        post: operations["saveWebEntryRouteDay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/web-entry/outlet-sku": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Astha Web Entry grid (Astha-channel outlets by SKU) of a route and date. */
+        get: operations["getAsthaWebEntry"];
+        put?: never;
+        /**
+         * Save the Astha outlet-by-SKU entry explicitly; overlap with app memos is flagged, never added.
+         * @description Idempotent by `client_uuid` (the same uuid sent twice stores one entry). Only Astha-channel outlets (`400 ERR_VALIDATION` otherwise); window rules as for the route-day entry.
+         */
+        post: operations["saveAsthaWebEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/web-entry/qc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Market or Warehouse QC entry (SKU by fault type) stored as a separate web source, never added to app QC.
+         * @description Idempotent by `client_uuid`. Warehouse entries need a reason and the warehouse QC permission (403 otherwise); each save writes an audit row.
+         */
+        post: operations["saveQcEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/data-entry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Key a dead-phone day from a printed memo (source manual) through the same ingest path.
+         * @description Allowed within `cfg.entry.paper_backfill_window_days` (7) of the business date. Idempotent by `client_uuid`;
+         *     a memo number already stored (from the phone or an earlier backfill) is stored once and answered with
+         *     `status: duplicate_memo_no`. The memo is flagged `source = manual` in every report (Online/Offline).
+         */
+        post: operations["createPaperBackfill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/entry-unlocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entry unlock grants (zone or route, date range, reason, expiry). */
+        get: operations["listEntryUnlocks"];
+        put?: never;
+        /** Grant back-dated web entry for a zone or route (roles in cfg.web.entry_unlock_roles), audited. */
+        post: operations["createEntryUnlock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/entry-unlocks/{unlock_id}/expire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Expire an unlock grant now (an expired grant no longer allows back-dated entry). */
+        post: operations["expireEntryUnlock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/target-revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Target revise list (approval queue) with month and status filters. */
+        get: operations["listTargetRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/target-revisions/{revision_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or reject a target revision at the caller's level of cfg.target.approval_levels.
+         * @description The approver is never the maker (`409 ERR_SEPARATION_OF_DUTIES`). The last approval makes the revision live; nothing is overwritten (older revisions become superseded).
+         */
+        post: operations["decideTargetRevision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/targets/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload a target workbook (all-or-nothing); a bad row rejects the whole file with a downloadable error sheet. */
+        post: operations["uploadTargets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/targets/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Target sample workbook for a month and scope (cfg.target.template_version). */
+        get: operations["getTargetTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/supervisor-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** AMO call targets (total, control-call, joint-call) by user and month; they feed the AMO home tiles. */
+        get: operations["listSupervisorTargets"];
+        /** Upsert AMO call targets for a month (all-or-nothing, never negative). */
+        put: operations["putSupervisorTargets"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/prices/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mandatory preview of a price publish (SKUs, price types, outlets and devices affected; whether a second approver is needed). */
+        post: operations["previewPrices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/prices/batches/{batch_uuid}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Second-approver decision on a price batch that moves a price by more than cfg.price.max_change_pct. */
+        post: operations["decidePriceBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/outlets/outlet-kind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark outlets wholesale or retail in bulk, idempotent by batch_uuid, one audit row per outlet. */
+        post: operations["bulkSetOutletKind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/dues-adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dues adjustments and write-offs with their maker-checker state. */
+        get: operations["listDuesAdjustments"];
+        put?: never;
+        /** Propose a correction or write-off of an outlet due (pending until a different person approves). */
+        post: operations["createDuesAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/dues-adjustments/{adjustment_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve or reject a dues adjustment (the checker is not the maker); approval adds a ledger row and changes the outlet balance. */
+        post: operations["decideDuesAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/devices/{device_id}/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace-device wizard - upload-first or revoke-now for the old phone, and an OTP for the new one.
+         * @description `upload_first` keeps the old device active until its outbox is empty (state `replaced` afterwards); `revoke_now` revokes it with the usual upload grace. Either way a device OTP is issued for the user.
+         */
+        post: operations["replaceDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/whatif": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Re-evaluate stored fixes under a candidate radius and count visits whose verdict would change. */
+        get: operations["configWhatIf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/blast-radius": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Zones, routes, outlets, users and devices a change at a scope would touch. */
+        get: operations["configBlastRadius"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/density": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Outlet density index (neighbours within cfg.geo.density_neighbour_radii_m) for a scope. */
+        get: operations["configDensity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Geofence calibration (distance histogram per geo class and territory, force-sale share, suggested radius). */
+        get: operations["configCalibration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One committed config version with its values (compare and history views). */
+        get: operations["getConfigVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/config/reach/{version}/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Devices targeted by a version that have not applied it yet, with their lag. */
+        get: operations["listConfigReachPending"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Role by menu by action matrix (data, cfg.web.menu_by_role) and the admin roster. */
+        get: operations["getPermissionMatrix"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/permissions/roles/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change one role's menus and actions; creates a C3 config change request (never an immediate grant). */
+        put: operations["putRolePermissions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/surveys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Survey and questionnaire definitions (POSM, AMO survey, TSO visit query) with validity and assignment. */
+        get: operations["listSurveys"];
+        put?: never;
+        /** Create a survey (version 1); questions are immutable once answered, a change is a new version. */
+        post: operations["createSurvey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/surveys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Publish a new survey version, change validity or assignment, or deactivate. */
+        patch: operations["updateSurvey"];
+        trace?: never;
+    };
+    "/v1/admin/rubrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assessment rubrics (joint-call stars, TSO visit query). */
+        get: operations["listRubrics"];
+        put?: never;
+        /** Create a rubric. */
+        post: operations["createRubric"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/rubrics/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Publish a new rubric version or deactivate. */
+        patch: operations["updateRubric"];
+        trace?: never;
+    };
+    "/v1/admin/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** AV and KV marketing content with per-outlet assignment and validity. */
+        get: operations["listContentItems"];
+        put?: never;
+        /** Create an AV or KV item from an uploaded asset (at most cfg.content.max_item_mb). */
+        post: operations["createContentItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/content/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change validity, assignment or order, replace the asset (new version) or deactivate. */
+        patch: operations["updateContentItem"];
+        trace?: never;
+    };
+    "/v1/admin/tutorials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tutorial videos and the four manuals per role. */
+        get: operations["listAdminTutorials"];
+        put?: never;
+        /** Add a tutorial video or manual from an uploaded asset. */
+        post: operations["createTutorial"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tutorials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit, reorder or retire a tutorial. */
+        patch: operations["updateTutorial"];
+        trace?: never;
+    };
+    "/v1/admin/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Write-only SAS for an admin asset (AV video, KV image, tutorial, manual PDF, SKU pack image, gift image). */
+        post: operations["createAdminAssetUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/print-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Versioned print templates (memo kinds, stock slip, day summary, void slip, due receipt). */
+        get: operations["listPrintTemplates"];
+        put?: never;
+        /** Publish a new template version (future-dated); phones print it after their next sync. */
+        post: operations["createPrintTemplateVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/programmes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Programme definitions (Diamond League, Astha, campaigns, Superstar). */
+        get: operations["listProgrammes"];
+        put?: never;
+        /** Create a programme period (for example "Diamond League (October)" or a campaign). */
+        post: operations["createProgramme"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/programmes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change dates, rules or status of a programme. */
+        patch: operations["updateProgramme"];
+        trace?: never;
+    };
+    "/v1/admin/programmes/{id}/enrolments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Outlets enrolled in a programme with league, tier or slab and base target. */
+        get: operations["listProgrammeEnrolments"];
+        /** Upsert enrolments (idempotent by batch_uuid, all-or-nothing). */
+        put: operations["putProgrammeEnrolments"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gifts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gift catalogue (points cost for Diamond League, tier for Astha, cash-back line). */
+        get: operations["listGifts"];
+        put?: never;
+        /** Add a gift to a programme's catalogue (code immutable). */
+        post: operations["createGift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gifts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change cost, labels or status of a gift (memos and redemptions keep the cost they used). */
+        patch: operations["updateGift"];
+        trace?: never;
+    };
+    "/v1/feedback/{feedback_uuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the status of a feedback item in the inbox (audited with a reason). */
+        patch: operations["updateFeedbackStatus"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2187,7 +3124,7 @@ export interface components {
          * @description Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise.
          * @enum {string}
          */
-        RecordType: "geo_breadcrumb" | "attendance_event" | "day_open" | "day_submit" | "day_exception" | "stock_movement" | "visit" | "visit_close" | "visit_skip" | "memo" | "memo_line" | "memo_discount" | "qc_line" | "print_event" | "memo_void" | "due_collection" | "survey_response" | "outlet_change_request" | "outlet_request_verification" | "distribution_check" | "distribution_check_line" | "call_assessment" | "call_assessment_answer" | "task" | "task_event" | "visit_plan" | "visit_plan_outlet" | "leave_application" | "feedback" | "media_meta" | "device_status" | "config_ack";
+        RecordType: "geo_breadcrumb" | "attendance_event" | "day_open" | "day_submit" | "day_exception" | "stock_movement" | "visit" | "visit_close" | "visit_skip" | "memo" | "memo_line" | "memo_discount" | "qc_line" | "print_event" | "memo_void" | "due_collection" | "survey_response" | "outlet_change_request" | "outlet_request_verification" | "distribution_check" | "distribution_check_line" | "call_assessment" | "call_assessment_answer" | "task" | "task_event" | "visit_plan" | "visit_plan_outlet" | "leave_application" | "feedback" | "media_meta" | "device_status" | "config_ack" | "content_view" | "redemption" | "redemption_line" | "gift_photo" | "price_compliance_check" | "risk_review" | "activity_log" | "app_error" | "sale_abort" | "consent_accept";
         /**
          * @description accepted: stored now. duplicate: already stored with the same payload hash (the phone marks it synced).
          *     rejected: not stored as a business row; `code` says why and `retryable` says whether to resend after a
@@ -2200,12 +3137,12 @@ export interface components {
          * @description Stable code on a rejected or quarantined record (docs/24 s4.5 lists retryability and the phone action).
          * @enum {string}
          */
-        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close";
+        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close" | "unknown_gift" | "insufficient_points" | "gift_photo_exists" | "programme_inactive";
         /**
          * @description Stable problem codes (HTTP status in docs/24 s3.4).
          * @enum {string}
          */
-        ProblemCode: "ERR_VALIDATION" | "ERR_MALFORMED_JSON" | "ERR_UNSUPPORTED_SCHEMA_VERSION" | "ERR_UNAUTHENTICATED" | "ERR_TOKEN_EXPIRED" | "ERR_SCOPE_CHANGED" | "ERR_PASSWORD_CHANGED" | "ERR_FORBIDDEN" | "ERR_OUT_OF_SCOPE" | "ERR_NOT_FOUND" | "ERR_CONFLICT" | "ERR_PRECONDITION_FAILED" | "ERR_PAYLOAD_TOO_LARGE" | "ERR_UNSUPPORTED_MEDIA_TYPE" | "ERR_RATE_LIMITED" | "ERR_INTERNAL" | "ERR_SERVICE_UNAVAILABLE" | "ERR_READ_ONLY_MODE" | "ERR_AUTH_INVALID_CREDENTIALS" | "ERR_AUTH_ACCOUNT_LOCKED" | "ERR_AUTH_USER_DISABLED" | "ERR_AUTH_PASSWORD_POLICY" | "ERR_AUTH_PASSWORD_CHANGE_REQUIRED" | "ERR_AUTH_REFRESH_INVALID" | "ERR_AUTH_REFRESH_REUSED" | "ERR_AUTH_MFA_INVALID" | "ERR_AUTH_OTP_INVALID" | "ERR_AUTH_OTP_EXPIRED" | "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" | "ERR_AUTH_BIND_LOCKED" | "ERR_DEVICE_NOT_ENROLLED" | "ERR_DEVICE_UNBOUND" | "ERR_DEVICE_SUSPENDED" | "ERR_DEVICE_REVOKED" | "ERR_DEVICE_INTEGRITY_FAILED" | "ERR_DEVICE_PROOF_INVALID" | "ERR_DEVICE_LIMIT_REACHED" | "ERR_ENROLMENT_TOKEN_INVALID" | "ERR_ENROLMENT_TOKEN_EXPIRED" | "ERR_ENROLMENT_TOKEN_EXHAUSTED" | "ERR_ENROLMENT_ATTESTATION_FAILED" | "ERR_NONCE_INVALID" | "ERR_APP_VERSION_UNSUPPORTED" | "ERR_SYNC_BATCH_UUID_REUSED" | "ERR_SYNC_BATCH_TOO_LARGE" | "ERR_SYNC_DECOMPRESSION_LIMIT" | "ERR_SYNC_HOLD" | "ERR_BUNDLE_NEW_BUSINESS_DATE" | "ERR_BUNDLE_CURSOR_EXPIRED" | "ERR_BUNDLE_NOT_READY" | "ERR_DAY_ALREADY_FINAL_SUBMITTED" | "ERR_DAY_NOT_FINAL_SUBMITTED" | "ERR_DAY_SUBMIT_VOID_NOT_ALLOWED" | "ERR_DAY_DATA_VOID_NOT_ALLOWED" | "ERR_CFG_UNKNOWN_KEY" | "ERR_CFG_OUT_OF_BOUNDS" | "ERR_CFG_SCOPE_NOT_ALLOWED" | "ERR_CFG_DEPENDENCY" | "ERR_CFG_SELF_APPROVAL" | "ERR_CFG_REASON_REQUIRED" | "ERR_CFG_FREEZE_WINDOW" | "ERR_MASTER_DUPLICATE_CODE" | "ERR_MASTER_EFFECTIVE_DATE_PAST" | "ERR_MASTER_OVERLAP" | "ERR_MASTER_IN_USE" | "ERR_REQUEST_STATE" | "ERR_SEPARATION_OF_DUTIES" | "ERR_REPORT_INVALID_QUERY" | "ERR_REPORT_TOO_LARGE" | "ERR_PUSH_DISABLED";
+        ProblemCode: "ERR_VALIDATION" | "ERR_MALFORMED_JSON" | "ERR_UNSUPPORTED_SCHEMA_VERSION" | "ERR_UNAUTHENTICATED" | "ERR_TOKEN_EXPIRED" | "ERR_SCOPE_CHANGED" | "ERR_PASSWORD_CHANGED" | "ERR_FORBIDDEN" | "ERR_OUT_OF_SCOPE" | "ERR_NOT_FOUND" | "ERR_CONFLICT" | "ERR_PRECONDITION_FAILED" | "ERR_PAYLOAD_TOO_LARGE" | "ERR_UNSUPPORTED_MEDIA_TYPE" | "ERR_RATE_LIMITED" | "ERR_INTERNAL" | "ERR_SERVICE_UNAVAILABLE" | "ERR_READ_ONLY_MODE" | "ERR_AUTH_INVALID_CREDENTIALS" | "ERR_AUTH_ACCOUNT_LOCKED" | "ERR_AUTH_USER_DISABLED" | "ERR_AUTH_PASSWORD_POLICY" | "ERR_AUTH_PASSWORD_CHANGE_REQUIRED" | "ERR_AUTH_REFRESH_INVALID" | "ERR_AUTH_REFRESH_REUSED" | "ERR_AUTH_MFA_INVALID" | "ERR_AUTH_OTP_INVALID" | "ERR_AUTH_OTP_EXPIRED" | "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" | "ERR_AUTH_BIND_LOCKED" | "ERR_DEVICE_NOT_ENROLLED" | "ERR_DEVICE_UNBOUND" | "ERR_DEVICE_SUSPENDED" | "ERR_DEVICE_REVOKED" | "ERR_DEVICE_INTEGRITY_FAILED" | "ERR_DEVICE_PROOF_INVALID" | "ERR_DEVICE_LIMIT_REACHED" | "ERR_ENROLMENT_TOKEN_INVALID" | "ERR_ENROLMENT_TOKEN_EXPIRED" | "ERR_ENROLMENT_TOKEN_EXHAUSTED" | "ERR_ENROLMENT_ATTESTATION_FAILED" | "ERR_NONCE_INVALID" | "ERR_APP_VERSION_UNSUPPORTED" | "ERR_SYNC_BATCH_UUID_REUSED" | "ERR_SYNC_BATCH_TOO_LARGE" | "ERR_SYNC_DECOMPRESSION_LIMIT" | "ERR_SYNC_HOLD" | "ERR_BUNDLE_NEW_BUSINESS_DATE" | "ERR_BUNDLE_CURSOR_EXPIRED" | "ERR_BUNDLE_NOT_READY" | "ERR_DAY_ALREADY_FINAL_SUBMITTED" | "ERR_DAY_NOT_FINAL_SUBMITTED" | "ERR_DAY_SUBMIT_VOID_NOT_ALLOWED" | "ERR_DAY_DATA_VOID_NOT_ALLOWED" | "ERR_CFG_UNKNOWN_KEY" | "ERR_CFG_OUT_OF_BOUNDS" | "ERR_CFG_SCOPE_NOT_ALLOWED" | "ERR_CFG_DEPENDENCY" | "ERR_CFG_SELF_APPROVAL" | "ERR_CFG_REASON_REQUIRED" | "ERR_CFG_FREEZE_WINDOW" | "ERR_MASTER_DUPLICATE_CODE" | "ERR_MASTER_EFFECTIVE_DATE_PAST" | "ERR_MASTER_OVERLAP" | "ERR_MASTER_IN_USE" | "ERR_REQUEST_STATE" | "ERR_SEPARATION_OF_DUTIES" | "ERR_REPORT_INVALID_QUERY" | "ERR_REPORT_TOO_LARGE" | "ERR_PUSH_DISABLED" | "ERR_ENTRY_WINDOW_CLOSED" | "ERR_GIFT_CHOICE_LOCKED";
         /**
          * @description Route-day state (docs/24 s4.9). Derived from timestamps on the server, so a retry never moves a route-day backwards.
          * @enum {string}
@@ -2237,7 +3174,7 @@ export interface components {
         /** @enum {string} */
         OutletStatus: "active" | "closed" | "merged" | "archived";
         /** @enum {string} */
-        OutletRequestType: "new" | "close" | "info" | "cluster" | "location";
+        OutletRequestType: "new" | "close" | "info" | "cluster" | "location" | "route_add";
         /** @enum {string} */
         OutletRequestStatus: "pending" | "verified" | "approved" | "rejected" | "lapsed" | "discarded";
         /** @enum {string} */
@@ -2261,15 +3198,15 @@ export interface components {
         /** @enum {string} */
         ConfigChangeStatus: "pending_approval" | "scheduled" | "applied" | "rejected" | "cancelled" | "expired" | "reverted";
         /** @enum {string} */
-        VisitKind: "sr_call" | "amo_control_call" | "amo_joint_call" | "tso_visit";
+        VisitKind: "sr_call" | "amo_control_call" | "amo_joint_call" | "tso_visit" | "web_entry";
         /** @enum {string} */
-        VisitOutcome: "sold" | "zero_sale_stock_ok" | "closed" | "owner_absent" | "refused" | "competitor_exclusive" | "abandoned";
+        VisitOutcome: "sold" | "zero_sale_stock_ok" | "closed" | "owner_absent" | "refused" | "competitor_exclusive" | "not_reached" | "abandoned";
         /** @enum {string} */
         GeoVerdict: "in_range" | "out_of_range" | "accuracy_too_low" | "no_fix" | "mocked" | "no_outlet_location";
         /** @enum {string} */
         LocationBasis: "master" | "provisional" | "placeholder" | "none";
         /** @enum {string} */
-        FixPurpose: "attendance_in" | "attendance_out" | "visit_open" | "force_sale" | "outlet_capture" | "outlet_verification" | "memo_edit" | "memo_void" | "due_collection" | "refresh" | "breadcrumb";
+        FixPurpose: "attendance_in" | "attendance_out" | "visit_open" | "force_sale" | "outlet_capture" | "outlet_verification" | "memo_edit" | "memo_void" | "due_collection" | "refresh" | "breadcrumb" | "gift_photo" | "redemption";
         /** @enum {string} */
         LocationProvider: "fused" | "gps" | "network" | "passive" | "unknown";
         /** @enum {string} */
@@ -2286,18 +3223,18 @@ export interface components {
         /** @enum {string} */
         PrintOutcome: "printed" | "failed" | "failed_user";
         /** @enum {string} */
-        StockMovementKind: "issue" | "return" | "adjustment" | "damaged" | "short";
+        StockMovementKind: "issue" | "return" | "adjustment" | "damaged" | "short" | "qc_return";
         /** @enum {string} */
         AttendanceKind: "check_in" | "check_out";
         /** @enum {string} */
-        MediaPurpose: "force_sale" | "outlet_capture" | "outlet_verification" | "survey" | "feedback" | "support";
+        MediaPurpose: "force_sale" | "outlet_capture" | "outlet_verification" | "survey" | "feedback" | "support" | "gift_photo";
         /** @enum {string} */
         SyncTrigger: "write_debounce" | "foreground" | "connectivity" | "workmanager_connectivity" | "periodic" | "manual" | "day_submit" | "checkout" | "resync" | "digest_resend" | "directive";
         /**
          * @description Risk signal catalogue (docs/24 s11.4).
          * @enum {string}
          */
-        RiskSignalCode: "GEO_MOCK" | "GEO_TELEPORT" | "GEO_ZERO_JITTER" | "GEO_PERFECT_ACCURACY" | "GEO_SAME_POINT" | "GEO_ROUTE_SINGLE_POINT" | "GEO_STALE_FIX" | "GEO_GNSS_INCONSISTENT" | "GEO_GNSS_TIME_SKEW" | "GEO_DEVICE_SERVER_MISMATCH" | "GEO_SHORT_VISIT_GAPS" | "DEVICE_NOT_OWNER" | "DEVICE_INTEGRITY_FAIL" | "DEVICE_DEBUG_ENABLED" | "DEVICE_MOCK_APP_PRESENT" | "DEVICE_POLICY_DRIFT" | "CLOCK_SKEW";
+        RiskSignalCode: "GEO_MOCK" | "GEO_TELEPORT" | "GEO_ZERO_JITTER" | "GEO_PERFECT_ACCURACY" | "GEO_SAME_POINT" | "GEO_ROUTE_SINGLE_POINT" | "GEO_STALE_FIX" | "GEO_GNSS_INCONSISTENT" | "GEO_GNSS_TIME_SKEW" | "GEO_DEVICE_SERVER_MISMATCH" | "GEO_SHORT_VISIT_GAPS" | "DEVICE_NOT_OWNER" | "DEVICE_INTEGRITY_FAIL" | "DEVICE_DEBUG_ENABLED" | "DEVICE_MOCK_APP_PRESENT" | "DEVICE_POLICY_DRIFT" | "CLOCK_SKEW" | "GEO_OUT_OF_BOUNDS" | "CONFIG_STAMP_REGRESS";
         /** @enum {string} */
         RiskSignalStatus: "open" | "reviewed" | "dismissed" | "confirmed";
         /** @enum {string} */
@@ -2305,14 +3242,14 @@ export interface components {
         /** @enum {string} */
         QuarantineStatus: "open" | "accepted" | "accepted_with_fix" | "discarded";
         /** @enum {string} */
-        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason";
+        CodeListKey: "force_reason" | "edit_reason" | "void_reason" | "visit_outcome" | "skip_reason" | "day_exception_reason" | "stock_variance_reason" | "task_type" | "leave_type" | "feedback_category" | "qc_fault_type" | "payment_mode" | "outlet_close_reason" | "submit_void_reason" | "channel" | "sub_channel" | "geo_class";
         /** @enum {string} */
-        BundleSectionName: "outlets" | "open_memos" | "prices" | "offers" | "tasks" | "team" | "pending_outlet_requests";
+        BundleSectionName: "outlets" | "open_memos" | "prices" | "offers" | "tasks" | "team" | "pending_outlet_requests" | "programmes" | "content";
         /**
-         * @description Phase 1 report registry keys (docs/24 s12.3). Phase 2 programme reports are not listed.
+         * @description Report registry keys of this build, programme reports included (docs/24 s12.3).
          * @enum {string}
          */
-        ReportKey: "std-memo" | "sr-efficiency" | "route-std" | "route-memo" | "route-bsr-cpr" | "data-entry-log" | "final-submit-log" | "final-submit-status" | "by-outlet" | "by-outlet-by-day" | "gigo" | "attendance" | "discount" | "online-offline" | "tso-top-sheet" | "daily-tracking" | "sr-outlets" | "leaderboard" | "suspicious-location" | "sync-health" | "ds-rrs" | "dss" | "amo-call" | "dues-ageing" | "settlement" | "qc-report" | "stock-summary" | "memo-number-gaps";
+        ReportKey: "std-memo" | "sr-efficiency" | "route-std" | "route-memo" | "route-bsr-cpr" | "data-entry-log" | "final-submit-log" | "final-submit-status" | "by-outlet" | "by-outlet-by-day" | "gigo" | "attendance" | "discount" | "online-offline" | "tso-top-sheet" | "daily-tracking" | "sr-outlets" | "leaderboard" | "suspicious-location" | "sync-health" | "ds-rrs" | "dss" | "amo-call" | "dues-ageing" | "settlement" | "qc-report" | "stock-summary" | "memo-number-gaps" | "sales-summary" | "task-planner" | "by-route-geo-capture" | "free-sample" | "target-allocation" | "route-qc" | "geofence-calibration" | "astha" | "astha-gift-choice" | "campaign-gift-redemption" | "diamond-league" | "superstar-campaign" | "retailer-list" | "sku-list";
         /** @description RFC 9457 problem details with Aron extension members. */
         Problem: {
             /**
@@ -2857,7 +3794,7 @@ export interface components {
             /** @default false */
             bundle_stale: boolean;
             config_version: components["schemas"]["ConfigVersionNumber"];
-            /** @description ES256 family signature on header records (visit, memo, attendance_event, stock_movement, due_collection, memo_void, outlet_change_request); docs/24 s8.3. */
+            /** @description ES256 family signature on header records (visit, memo, attendance_event, stock_movement, due_collection, memo_void, outlet_change_request, redemption, gift_photo); docs/24 s8.3. */
             sig?: string | null;
         };
         GeoBreadcrumbRecord: components["schemas"]["RecordEnvelope"] & {
@@ -3213,7 +4150,117 @@ export interface components {
             type: "config_ack";
         };
         /** @description One outbox record; `type` selects the payload schema. */
-        SyncRecord: components["schemas"]["GeoBreadcrumbRecord"] | components["schemas"]["AttendanceEventRecord"] | components["schemas"]["DayOpenRecord"] | components["schemas"]["DaySubmitRecord"] | components["schemas"]["DayExceptionRecord"] | components["schemas"]["StockMovementRecord"] | components["schemas"]["VisitRecord"] | components["schemas"]["VisitCloseRecord"] | components["schemas"]["VisitSkipRecord"] | components["schemas"]["MemoRecord"] | components["schemas"]["MemoLineRecord"] | components["schemas"]["MemoDiscountRecord"] | components["schemas"]["QcLineRecord"] | components["schemas"]["PrintEventRecord"] | components["schemas"]["MemoVoidRecord"] | components["schemas"]["DueCollectionRecord"] | components["schemas"]["SurveyResponseRecord"] | components["schemas"]["OutletChangeRequestRecord"] | components["schemas"]["OutletRequestVerificationRecord"] | components["schemas"]["DistributionCheckRecord"] | components["schemas"]["DistributionCheckLineRecord"] | components["schemas"]["CallAssessmentRecord"] | components["schemas"]["CallAssessmentAnswerRecord"] | components["schemas"]["TaskRecord"] | components["schemas"]["TaskEventRecord"] | components["schemas"]["VisitPlanRecord"] | components["schemas"]["VisitPlanOutletRecord"] | components["schemas"]["LeaveApplicationRecord"] | components["schemas"]["FeedbackRecord"] | components["schemas"]["MediaMetaRecord"] | components["schemas"]["DeviceStatusRecord"] | components["schemas"]["ConfigAckRecord"];
+        SyncRecord: components["schemas"]["GeoBreadcrumbRecord"] | components["schemas"]["AttendanceEventRecord"] | components["schemas"]["DayOpenRecord"] | components["schemas"]["DaySubmitRecord"] | components["schemas"]["DayExceptionRecord"] | components["schemas"]["StockMovementRecord"] | components["schemas"]["VisitRecord"] | components["schemas"]["VisitCloseRecord"] | components["schemas"]["VisitSkipRecord"] | components["schemas"]["MemoRecord"] | components["schemas"]["MemoLineRecord"] | components["schemas"]["MemoDiscountRecord"] | components["schemas"]["QcLineRecord"] | components["schemas"]["PrintEventRecord"] | components["schemas"]["MemoVoidRecord"] | components["schemas"]["DueCollectionRecord"] | components["schemas"]["SurveyResponseRecord"] | components["schemas"]["OutletChangeRequestRecord"] | components["schemas"]["OutletRequestVerificationRecord"] | components["schemas"]["DistributionCheckRecord"] | components["schemas"]["DistributionCheckLineRecord"] | components["schemas"]["CallAssessmentRecord"] | components["schemas"]["CallAssessmentAnswerRecord"] | components["schemas"]["TaskRecord"] | components["schemas"]["TaskEventRecord"] | components["schemas"]["VisitPlanRecord"] | components["schemas"]["VisitPlanOutletRecord"] | components["schemas"]["LeaveApplicationRecord"] | components["schemas"]["FeedbackRecord"] | components["schemas"]["MediaMetaRecord"] | components["schemas"]["DeviceStatusRecord"] | components["schemas"]["ConfigAckRecord"] | components["schemas"]["ContentViewRecord"] | components["schemas"]["RedemptionRecord"] | components["schemas"]["RedemptionLineRecord"] | components["schemas"]["GiftPhotoRecord"] | components["schemas"]["PriceComplianceCheckRecord"] | components["schemas"]["RiskReviewRecord"] | components["schemas"]["ActivityLogRecord"] | components["schemas"]["AppErrorRecord"] | components["schemas"]["SaleAbortRecord"] | components["schemas"]["ConsentAcceptRecord"];
+        ContentViewRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "content_view";
+            payload: components["schemas"]["ContentViewPayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "content_view";
+        };
+        RedemptionRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "redemption";
+            payload: components["schemas"]["RedemptionPayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "redemption";
+        };
+        RedemptionLineRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "redemption_line";
+            payload: components["schemas"]["RedemptionLinePayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "redemption_line";
+        };
+        GiftPhotoRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "gift_photo";
+            payload: components["schemas"]["GiftPhotoPayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "gift_photo";
+        };
+        PriceComplianceCheckRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "price_compliance_check";
+            payload: components["schemas"]["PriceComplianceCheckPayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "price_compliance_check";
+        };
+        RiskReviewRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "risk_review";
+            payload: components["schemas"]["RiskReviewPayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "risk_review";
+        };
+        ActivityLogRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "activity_log";
+            payload: components["schemas"]["ActivityLogPayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "activity_log";
+        };
+        AppErrorRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "app_error";
+            payload: components["schemas"]["AppErrorPayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "app_error";
+        };
+        SaleAbortRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "sale_abort";
+            payload: components["schemas"]["SaleAbortPayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sale_abort";
+        };
+        ConsentAcceptRecord: components["schemas"]["RecordEnvelope"] & {
+            /** @constant */
+            type: "consent_accept";
+            payload: components["schemas"]["ConsentAcceptPayload"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "consent_accept";
+        };
         GeoBreadcrumbPayload: {
             fix: components["schemas"]["GeoFix"];
         };
@@ -3898,6 +4945,8 @@ export interface components {
             /** @description Eligibility dots shown before the outlet (codes and colours from cfg.ui.outlet_badges). */
             programme_flags: string[];
             pending_request: boolean;
+            /** @description Suggested order quantity hook; empty until the formula is confirmed (cfg.sale.suggested_qty_enabled). */
+            suggested_qty?: components["schemas"]["SuggestedQty"][];
         };
         /** @description Credit memo with an open due, so the phone can collect and print the balance offline. */
         OpenMemo: {
@@ -3965,6 +5014,8 @@ export interface components {
             route_ids: components["schemas"]["Id"][];
             team: components["schemas"]["TeamMember"][];
             pending_outlet_requests: components["schemas"]["OutletRequestSummary"][];
+            /** @description Open risk signals of the zone for the AMO Exceptions screen (reviewed offline with risk_review records). */
+            risk_signals?: components["schemas"]["RiskSignal"][];
             supervisor_day?: components["schemas"]["SupervisorDayState"] | null;
         };
         TeamMember: {
@@ -4035,6 +5086,13 @@ export interface components {
                 };
             };
             device_policy_version?: components["schemas"]["ConfigVersionNumber"];
+            /** @description Loyalty, Astha and campaign data of the user's routes (docs/24 s4.14); null when no programme is active. */
+            programmes?: components["schemas"]["ProgrammesSection"] | null;
+            /** @description AV and KV items valid today or within cfg.sys.schedule_horizon_days. */
+            content?: components["schemas"]["ContentItem"][];
+            tutorials?: components["schemas"]["TutorialItem"][];
+            /** @description The user's own outlet change requests of the last 30 days with status and rejection reason (SR and AMO own-request list). */
+            my_outlet_requests?: components["schemas"]["OutletRequestSummary"][];
         };
         BundlePage: {
             bundle_version: components["schemas"]["BundleVersion"];
@@ -4528,6 +5586,7 @@ export interface components {
             description: string;
             photo_uuid?: components["schemas"]["Uuid"] | null;
             created_at: components["schemas"]["Timestamp"];
+            status?: components["schemas"]["FeedbackStatus"];
         };
         FeedbackPage: {
             items: components["schemas"]["Feedback"][];
@@ -4567,6 +5626,7 @@ export interface components {
             qty_report?: components["schemas"]["Decimal3"] | null;
             net_mtk: components["schemas"]["Mtk"];
         };
+        /** @description Dashboard of a node; `by_channel`, `by_segment` and `by_brand` feed the TSO cards (By Channel STD, By Segment Value Contribution, By Brand Call/Memo Ratio). */
         DashboardSummary: {
             as_of: components["schemas"]["Timestamp"];
             from: components["schemas"]["BusinessDate"];
@@ -4574,6 +5634,9 @@ export interface components {
             node: components["schemas"]["NodeRef"];
             kpis: components["schemas"]["DashboardKpis"];
             by_category: components["schemas"]["CategoryVolume"][];
+            by_channel?: components["schemas"]["ChannelVolume"][];
+            by_segment?: components["schemas"]["ChannelVolume"][];
+            by_brand?: components["schemas"]["ChannelVolume"][];
             children: {
                 node: components["schemas"]["NodeRef"];
                 kpis: components["schemas"]["DashboardKpis"];
@@ -4744,7 +5807,7 @@ export interface components {
             /** @enum {string} */
             area: "sales" | "field_force" | "outlet" | "day_control" | "geo" | "finance" | "ops";
             grain: string;
-            formats: ("json" | "xlsx")[];
+            formats: ("json" | "xlsx" | "pdf" | "print")[];
             columns: components["schemas"]["ReportColumn"][];
             /** @description ReportQuery members this report honours. */
             filters: ("period" | "date_grouping" | "location" | "geo" | "category" | "product_type" | "products" | "active_status" | "sub_channels" | "field_force_type" | "std_criteria" | "memo_criteria" | "outlet_code")[];
@@ -4800,7 +5863,7 @@ export interface components {
             outlet_code?: string | null;
             output: {
                 /** @enum {string} */
-                format: "json" | "xlsx";
+                format: "json" | "xlsx" | "pdf" | "print";
                 /** @default 1 */
                 page: number;
                 /**
@@ -4866,8 +5929,11 @@ export interface components {
             next_cursor: components["schemas"]["PageCursor"] | null;
         };
         QuarantineResolveRequest: {
-            /** @enum {string} */
-            action: "accept" | "accept_with_fix" | "discard";
+            /**
+             * @description return_to_device asks the phone to re-send the row after a bundle refresh (it becomes retryable).
+             * @enum {string}
+             */
+            action: "accept" | "accept_with_fix" | "discard" | "return_to_device";
             /** @description Required for accept_with_fix; same client_uuid and type as the quarantined record. */
             fixed_record?: components["schemas"]["SyncRecord"] | null;
             reason: components["schemas"]["ChangeReason"];
@@ -5474,6 +6540,12 @@ export interface components {
             inserted: number;
             updated: number;
             unchanged: number;
+            /**
+             * Format: int64
+             * @description Monthly targets - the pending revision created (live after approval).
+             */
+            revision_id?: number | null;
+            revision_status?: components["schemas"]["TargetRevisionStatus"] | null;
         };
         Holiday: {
             id: components["schemas"]["Id"];
@@ -5578,6 +6650,11 @@ export interface components {
         };
         ConfigChangeRequest: {
             reason: components["schemas"]["ChangeReason"];
+            /**
+             * @description Break-glass apply (cfg.sys.break_glass_mode, at most cfg.sys.break_glass_max_h); reviewed afterwards.
+             * @default false
+             */
+            break_glass: boolean;
             changes: components["schemas"]["ConfigChangeItem"][];
         };
         ConfigChange: {
@@ -5612,8 +6689,11 @@ export interface components {
             next_cursor: components["schemas"]["PageCursor"] | null;
         };
         ConfigDecisionRequest: {
-            /** @enum {string} */
-            decision: "approve" | "reject" | "cancel";
+            /**
+             * @description adopt turns a TSO radius proposal into a change request of the adopting editor.
+             * @enum {string}
+             */
+            decision: "approve" | "reject" | "cancel" | "adopt";
             note?: string | null;
         };
         ConfigVersion: {
@@ -5886,6 +6966,948 @@ export interface components {
         AuditPage: {
             items: components["schemas"]["AuditEntry"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        /** @description One AV or KV item shown during a call (docs/24 s4.14). Telemetry class; a missing asset is logged as skipped and never blocks the sale. */
+        ContentViewPayload: {
+            visit_client_uuid: components["schemas"]["Uuid"];
+            content_id: components["schemas"]["Id"];
+            content_version: number;
+            kind: components["schemas"]["ContentKind"];
+            /** @enum {string} */
+            outcome: "viewed" | "skipped_missing" | "skipped_user";
+            sequence_no: number;
+            started_at?: components["schemas"]["Timestamp"] | null;
+            duration_ms?: number | null;
+        };
+        /**
+         * @description A loyalty redemption basket confirmed on the phone (Diamond League). Points are deducted once per
+         *     `client_uuid` (docs/24 s4.14). points_total = cash_points + sum(redemption_line.points_total);
+         *     cash_mtk = cash_points x cash_rate_mtk_per_point (otherwise quarantined `arithmetic_mismatch`).
+         */
+        RedemptionPayload: {
+            outlet_id: components["schemas"]["Id"];
+            programme_id: components["schemas"]["Id"];
+            visit_client_uuid?: components["schemas"]["Uuid"] | null;
+            /** @description Balance the phone showed (bundle balance minus local unsynced redemptions). */
+            balance_before_points: number;
+            points_total: number;
+            /** @description Cash-back points (at most cfg.loyalty.cash_max_points). */
+            cash_points: number;
+            cash_mtk: components["schemas"]["MtkNonNegative"];
+            /** @description Rate used (cfg.loyalty.cash_rate_mtk_per_point at capture). */
+            cash_rate_mtk_per_point: number;
+            line_count: number;
+            confirmed_at: components["schemas"]["Timestamp"];
+            fix?: components["schemas"]["GeoFix"] | null;
+        };
+        RedemptionLinePayload: {
+            redemption_client_uuid: components["schemas"]["Uuid"];
+            gift_id: components["schemas"]["Id"];
+            qty: number;
+            /** @description Gift cost in the bundle at capture. */
+            points_each: number;
+            /** @description qty x points_each. */
+            points_total: number;
+        };
+        /**
+         * @description Hand-over photo of a gift: an Astha gift assignment (one photo per assignment, cfg.astha.one_photo_per_outlet)
+         *     or one redeemed campaign gift (Gift Verify). The first accepted photo locks the Astha choice.
+         */
+        GiftPhotoPayload: {
+            programme_kind: components["schemas"]["ProgrammeKind"];
+            outlet_id: components["schemas"]["Id"];
+            gift_id: components["schemas"]["Id"];
+            /**
+             * Format: int64
+             * @description Set for Astha.
+             */
+            gift_assignment_id?: number | null;
+            /** @description Set for a campaign Gift Verify photo. */
+            redemption_client_uuid?: components["schemas"]["Uuid"] | null;
+            /** @description Which unit of a redeemed line (one slot per redeemed gift). */
+            unit_no?: number | null;
+            photo_uuid: components["schemas"]["Uuid"];
+            fix: components["schemas"]["GeoFix"];
+        };
+        /** @description Observed shelf price of one SKU at an AMO control call; counted in the AMO reconciliation row. */
+        PriceComplianceCheckPayload: {
+            visit_client_uuid: components["schemas"]["Uuid"];
+            sku_id: components["schemas"]["Id"];
+            price_type: components["schemas"]["SellingPriceType"];
+            reference_price_mtk: components["schemas"]["MtkNonNegative"];
+            observed_price_mtk: components["schemas"]["MtkNonNegative"];
+            compliant: boolean;
+            note?: string | null;
+        };
+        /** @description Offline review of a risk signal from the AMO Exceptions screen; the same event as POST /v1/risk-signals/{signal_id}/review with review_uuid = client_uuid. */
+        RiskReviewPayload: {
+            signal_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            action: "reviewed" | "dismissed" | "confirmed";
+            note?: string | null;
+        };
+        /** @description Screen and action events sampled at cfg.app.activity_log_sample_pct; telemetry, duplicates tolerated. */
+        ActivityLogPayload: {
+            events: {
+                at: components["schemas"]["Timestamp"];
+                screen: string;
+                action: string;
+                duration_ms?: number | null;
+            }[];
+        };
+        /** @description A crash, ANR or handled error from the phone, scrubbed of phone numbers and outlet names before capture. */
+        AppErrorPayload: {
+            occurred_at: components["schemas"]["Timestamp"];
+            /** @enum {string} */
+            kind: "crash" | "anr" | "handled";
+            exception_class: string;
+            message?: string | null;
+            stack?: string | null;
+            screen?: string | null;
+            app_version: components["schemas"]["AppVersionString"];
+        };
+        /** @description A memo number that was consumed without a committed memo; explains the gap in the memo-number-gaps report. */
+        SaleAbortPayload: {
+            memo_no: components["schemas"]["MemoNo"];
+            /** @enum {string} */
+            reason: "user_cancelled" | "app_killed" | "commit_failed";
+            visit_client_uuid?: components["schemas"]["Uuid"] | null;
+            /** Format: int64 */
+            outlet_id?: number | null;
+        };
+        /** @description Acceptance of the employee-location notice (cfg.app.location_notice_required), uploaded once per user and policy version. */
+        ConsentAcceptPayload: {
+            /** @enum {string} */
+            policy_key: "location_notice";
+            policy_version: number;
+            accepted: boolean;
+            /** @enum {string} */
+            locale: "bn" | "en";
+            shown_at: components["schemas"]["Timestamp"];
+        };
+        /** @enum {string} */
+        ProgrammeKind: "diamond_league" | "astha" | "campaign" | "superstar";
+        /** @enum {string} */
+        ContentKind: "av" | "kv";
+        /** @enum {string} */
+        TargetRevisionStatus: "pending_approval" | "approved" | "rejected" | "superseded";
+        Programme: {
+            programme_id: components["schemas"]["Id"];
+            kind: components["schemas"]["ProgrammeKind"];
+            code: string;
+            name_en: string;
+            name_bn?: string | null;
+            /** @description For example `2026-10` (Diamond League month) or `2026-Q4` (Astha quarter). */
+            period_label?: string | null;
+            active_from: components["schemas"]["BusinessDate"];
+            active_to: components["schemas"]["BusinessDate"];
+            /** @description Diamond League points of this period expire after this date (period end + cfg.loyalty.expiry_days). */
+            points_expire_on?: components["schemas"]["BusinessDate"] | null;
+            /** @description Kind-specific rules as data (Superstar slabs and criteria, campaign gift list); validated against the kind's schema. */
+            rules?: {
+                [key: string]: components["schemas"]["JsonScalar"];
+            };
+            status: components["schemas"]["ActiveStatus"];
+            version: number;
+        };
+        ProgrammeWrite: {
+            kind: components["schemas"]["ProgrammeKind"];
+            code: string;
+            name_en: string;
+            name_bn?: string | null;
+            period_label?: string | null;
+            active_from: components["schemas"]["BusinessDate"];
+            active_to: components["schemas"]["BusinessDate"];
+            rules?: {
+                [key: string]: components["schemas"]["JsonScalar"];
+            };
+            status?: components["schemas"]["ActiveStatus"];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        ProgrammeList: {
+            items: components["schemas"]["Programme"][];
+        };
+        ProgrammeEnrolment: {
+            programme_id: components["schemas"]["Id"];
+            outlet_id: components["schemas"]["Id"];
+            /** @description Diamond League label shown on Outlet Points. */
+            league_label?: string | null;
+            /** @description Astha tier (sub-channel) or Superstar slab. */
+            tier_code?: string | null;
+            base_target?: components["schemas"]["Decimal3"] | null;
+            valid_from: components["schemas"]["BusinessDate"];
+            valid_to?: components["schemas"]["BusinessDate"] | null;
+        };
+        ProgrammeEnrolmentPage: {
+            items: components["schemas"]["ProgrammeEnrolment"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        ProgrammeEnrolmentWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: components["schemas"]["ProgrammeEnrolment"][];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        Gift: {
+            gift_id: components["schemas"]["Id"];
+            programme_id: components["schemas"]["Id"];
+            code: string;
+            name_en: string;
+            name_bn?: string | null;
+            /** @description Null for Astha gifts (chosen, not redeemed). */
+            points_cost: number | null;
+            /** @description Astha tiers the gift is offered to. */
+            tier_codes?: string[];
+            /** Format: uri */
+            image_url?: string | null;
+            status: components["schemas"]["ActiveStatus"];
+            version: number;
+        };
+        GiftWrite: {
+            programme_id: components["schemas"]["Id"];
+            code: string;
+            name_en: string;
+            name_bn?: string | null;
+            points_cost?: number | null;
+            tier_codes?: string[];
+            image_asset_id?: components["schemas"]["Uuid"] | null;
+            status?: components["schemas"]["ActiveStatus"];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        GiftList: {
+            items: components["schemas"]["Gift"][];
+        };
+        LoyaltyBalance: {
+            outlet_id: components["schemas"]["Id"];
+            programme_id: components["schemas"]["Id"];
+            league_label?: string | null;
+            /** @description Ledger balance; negative only after a flagged overdraw. */
+            balance_points: number;
+            expiring_points: number;
+            expiry_date?: components["schemas"]["BusinessDate"] | null;
+            as_of_date: components["schemas"]["BusinessDate"];
+        };
+        LoyaltyBalanceList: {
+            as_of: components["schemas"]["Timestamp"];
+            items: components["schemas"]["LoyaltyBalance"][];
+        };
+        /** @description One Astha target line; `outlet_id` null = the route row, `brand_id` null = the All Brand memo row. */
+        AsthaTargetRow: {
+            route_id: components["schemas"]["Id"];
+            /** Format: int64 */
+            outlet_id?: number | null;
+            /** Format: int64 */
+            brand_id?: number | null;
+            month: components["schemas"]["Month"];
+            std_target: components["schemas"]["Decimal3"];
+            std_achieved: components["schemas"]["Decimal3"];
+            memo_target: number;
+            memo_achieved: number;
+        };
+        AsthaTargetPage: {
+            quarter: string;
+            as_of: components["schemas"]["Timestamp"];
+            items: components["schemas"]["AsthaTargetRow"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        AsthaTargetWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            quarter: string;
+            rows: {
+                outlet_id: components["schemas"]["Id"];
+                /** Format: int64 */
+                brand_id?: number | null;
+                month: components["schemas"]["Month"];
+                /** @description Never negative. */
+                std_target: string;
+                memo_target: number;
+            }[];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        GiftAssignment: {
+            gift_assignment_id: components["schemas"]["Id"];
+            quarter: string;
+            outlet_id: components["schemas"]["Id"];
+            route_id: components["schemas"]["Id"];
+            gift_id: components["schemas"]["Id"];
+            tier_code?: string | null;
+            photo_captured: boolean;
+            photo_media_uuid?: components["schemas"]["Uuid"] | null;
+            /** @description True once the SR's photo exists (cfg.astha.gift_choice_lock = on_sr_photo). */
+            locked: boolean;
+            /** Format: int64 */
+            chosen_by_user_id?: number | null;
+            chosen_at?: components["schemas"]["Timestamp"] | null;
+        };
+        GiftAssignmentPage: {
+            items: components["schemas"]["GiftAssignment"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        GiftChoiceWrite: {
+            quarter: string;
+            rows: {
+                client_uuid: components["schemas"]["Uuid"];
+                outlet_id: components["schemas"]["Id"];
+                gift_id: components["schemas"]["Id"];
+            }[];
+        };
+        GiftChoiceResult: {
+            results: {
+                client_uuid: components["schemas"]["Uuid"];
+                outlet_id: components["schemas"]["Id"];
+                /** @enum {string} */
+                status: "saved" | "unchanged" | "locked";
+                code?: components["schemas"]["ProblemCode"] | null;
+                assignment?: components["schemas"]["GiftAssignment"] | null;
+            }[];
+        };
+        /** @description A redeemed campaign gift still waiting for its Gift Verify photo. */
+        PendingGiftVerification: {
+            redemption_client_uuid: components["schemas"]["Uuid"];
+            outlet_id: components["schemas"]["Id"];
+            gift_id: components["schemas"]["Id"];
+            qty: number;
+            photos_captured: number;
+        };
+        /** @description Programme data for the user's routes (docs/24 s4.10, s4.14). Balances are as of the previous business day. */
+        ProgrammesSection: {
+            programmes: components["schemas"]["Programme"][];
+            loyalty: components["schemas"]["LoyaltyBalance"][];
+            gifts: components["schemas"]["Gift"][];
+            astha_targets: components["schemas"]["AsthaTargetRow"][];
+            gift_assignments: components["schemas"]["GiftAssignment"][];
+            pending_gift_verifications: components["schemas"]["PendingGiftVerification"][];
+        };
+        /** @description An AV or KV item delivered to phones; assets download on Wi-Fi (cfg.content.download_network_policy) into a bounded cache. */
+        ContentItem: {
+            content_id: components["schemas"]["Id"];
+            version: number;
+            kind: components["schemas"]["ContentKind"];
+            title_en: string;
+            title_bn?: string | null;
+            /** Format: uri */
+            asset_url: string;
+            sha256: components["schemas"]["Sha256Hex"];
+            bytes: number;
+            duration_s?: number | null;
+            valid_from: components["schemas"]["BusinessDate"];
+            valid_to: components["schemas"]["BusinessDate"];
+            /** @description Play order in the call (AV before KV). */
+            sequence: number;
+            /** @description Empty = every outlet of the user's routes. */
+            outlet_ids: components["schemas"]["Id"][];
+        };
+        ContentAdmin: components["schemas"]["ContentItem"] & {
+            status: components["schemas"]["ActiveStatus"];
+            assigned_scope?: {
+                /** @enum {string} */
+                node_type: "wing" | "division" | "territory" | "zone" | "route" | "outlet";
+                node_id: components["schemas"]["Id"];
+            }[];
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        ContentWrite: {
+            kind: components["schemas"]["ContentKind"];
+            title_en: string;
+            title_bn?: string | null;
+            asset_id: components["schemas"]["Uuid"];
+            valid_from: components["schemas"]["BusinessDate"];
+            valid_to: components["schemas"]["BusinessDate"];
+            sequence: number;
+            assigned_scope?: {
+                /** @enum {string} */
+                node_type: "wing" | "division" | "territory" | "zone" | "route" | "outlet";
+                node_id: components["schemas"]["Id"];
+            }[];
+            status?: components["schemas"]["ActiveStatus"];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        ContentAdminPage: {
+            items: components["schemas"]["ContentAdmin"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        TutorialItem: {
+            tutorial_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            kind: "video" | "manual";
+            title_en: string;
+            title_bn?: string | null;
+            /** Format: uri */
+            url: string;
+            bytes?: number | null;
+            duration_s?: number | null;
+            sort: number;
+        };
+        TutorialList: {
+            items: components["schemas"]["TutorialItem"][];
+        };
+        TutorialAdmin: components["schemas"]["TutorialItem"] & {
+            roles: components["schemas"]["Role"][];
+            status: components["schemas"]["ActiveStatus"];
+            version: number;
+        };
+        TutorialWrite: {
+            /** @enum {string} */
+            kind: "video" | "manual";
+            title_en: string;
+            title_bn?: string | null;
+            asset_id: components["schemas"]["Uuid"];
+            roles: components["schemas"]["Role"][];
+            sort: number;
+            status?: components["schemas"]["ActiveStatus"];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        TutorialAdminList: {
+            items: components["schemas"]["TutorialAdmin"][];
+        };
+        AdminAssetUploadRequest: {
+            asset_id: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            purpose: "content_av" | "content_kv" | "tutorial_video" | "tutorial_manual" | "sku_image" | "gift_image";
+            /** @enum {string} */
+            mime: "video/mp4" | "image/jpeg" | "image/png" | "application/pdf";
+            /** @description AV and KV at most cfg.content.max_item_mb; images at most 300 KB (stored as one compressed thumbnail). */
+            bytes: number;
+            sha256: components["schemas"]["Sha256Hex"];
+        };
+        AdminAssetUpload: {
+            asset_id: components["schemas"]["Uuid"];
+            /** Format: uri */
+            upload_url: string;
+            blob_path: string;
+            expires_at: components["schemas"]["Timestamp"];
+        };
+        SurveyAdmin: components["schemas"]["SurveyDef"] & {
+            /** @enum {string} */
+            kind: "posm" | "amo_survey" | "tso_visit_query";
+            status: components["schemas"]["ActiveStatus"];
+            valid_from: components["schemas"]["BusinessDate"];
+            valid_to?: components["schemas"]["BusinessDate"] | null;
+            /** @description Loyalty points earned once per response (POSM 50; never for the AMO survey). */
+            points_per_photo?: number | null;
+        };
+        SurveyWrite: {
+            /** @enum {string} */
+            kind: "posm" | "amo_survey" | "tso_visit_query";
+            title_en: string;
+            title_bn?: string | null;
+            questions: {
+                key: string;
+                /** @enum {string} */
+                answer_type: "bool" | "num" | "option" | "text" | "photo_only";
+                label_en: string;
+                label_bn?: string | null;
+                required?: boolean;
+                show_if_key?: string | null;
+                show_if_bool?: boolean | null;
+                photo?: boolean;
+            }[];
+            valid_from: components["schemas"]["BusinessDate"];
+            valid_to?: components["schemas"]["BusinessDate"] | null;
+            points_per_photo?: number | null;
+            status?: components["schemas"]["ActiveStatus"];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        SurveyPage: {
+            items: components["schemas"]["SurveyAdmin"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        RubricAdmin: components["schemas"]["RubricDef"] & {
+            status: components["schemas"]["ActiveStatus"];
+        };
+        RubricWrite: {
+            /** @enum {string} */
+            kind: "joint_call" | "retailer_questionnaire";
+            criteria: {
+                key: string;
+                label_en: string;
+                label_bn?: string | null;
+                /** @enum {string} */
+                answer_type: "stars_1_5" | "bool" | "text";
+            }[];
+            status?: components["schemas"]["ActiveStatus"];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        RubricPage: {
+            items: components["schemas"]["RubricAdmin"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        PrintTemplateWrite: {
+            /** @enum {string} */
+            kind: "cash_memo" | "credit_memo" | "offer_memo" | "drp_memo" | "zero_memo" | "edited_memo" | "stock_slip" | "day_summary" | "due_receipt" | "void_slip";
+            /** @enum {integer} */
+            font_columns: 32 | 42;
+            template_json: string;
+            effective_from: components["schemas"]["BusinessDate"];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        PrintTemplateList: {
+            items: components["schemas"]["PrintTemplate"][];
+        };
+        NearbyOutlet: {
+            outlet_id: components["schemas"]["Id"];
+            code: string;
+            name: string;
+            lat: number;
+            lng: number;
+            distance_m: number;
+            route_id: components["schemas"]["Id"];
+            cluster_name?: string | null;
+            channel?: string | null;
+            contact_number?: components["schemas"]["PhoneBd"] | null;
+        };
+        NearbyOutlets: {
+            as_of: components["schemas"]["Timestamp"];
+            radius_m: number;
+            truncated: boolean;
+            items: components["schemas"]["NearbyOutlet"][];
+        };
+        TrackingActionRequest: {
+            action_uuid: components["schemas"]["Uuid"];
+            route_id: components["schemas"]["Id"];
+            business_date: components["schemas"]["BusinessDate"];
+            note: string;
+        };
+        TrackingAction: {
+            action_uuid: components["schemas"]["Uuid"];
+            route_id: components["schemas"]["Id"];
+            business_date: components["schemas"]["BusinessDate"];
+            note: string;
+            created_by_user_id: components["schemas"]["Id"];
+            created_at: components["schemas"]["Timestamp"];
+            notified_user_ids: components["schemas"]["Id"][];
+        };
+        SupportUploadRequest: {
+            upload_uuid: components["schemas"]["Uuid"];
+            bytes: number;
+            sha256: components["schemas"]["Sha256Hex"];
+            app_version: components["schemas"]["AppVersionString"];
+            last_sync_at?: components["schemas"]["Timestamp"] | null;
+            pending_rows?: number;
+        };
+        SupportUpload: {
+            upload_uuid: components["schemas"]["Uuid"];
+            /** Format: uri */
+            upload_url: string;
+            blob_path: string;
+            expires_at: components["schemas"]["Timestamp"];
+        };
+        ClientErrorReport: {
+            error_uuid: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            source: "web";
+            occurred_at: components["schemas"]["Timestamp"];
+            page?: string | null;
+            message: string;
+            stack?: string | null;
+            build?: string | null;
+        };
+        MediaMultipartUpload: {
+            media_uuid: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            purpose: "feedback" | "support";
+            sha256: components["schemas"]["Sha256Hex"];
+            file: string;
+        };
+        MediaUploaded: {
+            media_uuid: components["schemas"]["Uuid"];
+            replayed: boolean;
+        };
+        ExportLogEntry: {
+            export_id: components["schemas"]["Uuid"];
+            report_key: components["schemas"]["ReportKey"];
+            user_id: components["schemas"]["Id"];
+            username?: string | null;
+            /** @enum {string} */
+            format: "xlsx" | "pdf" | "print";
+            filters?: {
+                [key: string]: components["schemas"]["JsonScalar"];
+            };
+            rows: number;
+            pii_included: boolean;
+            created_at: components["schemas"]["Timestamp"];
+        };
+        ExportLogPage: {
+            items: components["schemas"]["ExportLogEntry"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        WebEntryLine: {
+            sku_id: components["schemas"]["Id"];
+            issue_qty_base: number;
+            return_qty_base: number;
+            memo_count: number;
+            /** @description Read-only: issue minus return (server-computed). */
+            sale_qty_base?: number | null;
+            /** @description Sale split by web-entry class (cfg.web.entry_classes), sub-channel id to quantity. */
+            class_qty_base?: {
+                [key: string]: number;
+            };
+        };
+        WebEntryRouteDayWrite: {
+            client_uuid: components["schemas"]["Uuid"];
+            route_id: components["schemas"]["Id"];
+            business_date: components["schemas"]["BusinessDate"];
+            lines: components["schemas"]["WebEntryLine"][];
+            /** @description At most the route-day's target outlets (cfg.web.entry_validate_calls_le_target). */
+            successful_calls: number;
+            /** @description Required on a re-save. */
+            change_reason?: components["schemas"]["ChangeReason"] | null;
+        };
+        WebEntryRouteDay: {
+            client_uuid?: components["schemas"]["Uuid"] | null;
+            route_id: components["schemas"]["Id"];
+            business_date: components["schemas"]["BusinessDate"];
+            lines: components["schemas"]["WebEntryLine"][];
+            successful_calls: number;
+            target_outlets: number;
+            /** @description True when app memos exist for the same route-day (flagged, never added). */
+            app_overlap: boolean;
+            /** @enum {string} */
+            source: "web_entry";
+            /** Format: int64 */
+            saved_by_user_id?: number | null;
+            saved_at?: components["schemas"]["Timestamp"] | null;
+        };
+        AsthaWebEntryWrite: {
+            client_uuid: components["schemas"]["Uuid"];
+            route_id: components["schemas"]["Id"];
+            business_date: components["schemas"]["BusinessDate"];
+            rows: {
+                outlet_id: components["schemas"]["Id"];
+                sku_id: components["schemas"]["Id"];
+                qty_base: number;
+            }[];
+            change_reason?: components["schemas"]["ChangeReason"] | null;
+        };
+        AsthaWebEntry: {
+            client_uuid?: components["schemas"]["Uuid"] | null;
+            route_id: components["schemas"]["Id"];
+            business_date: components["schemas"]["BusinessDate"];
+            rows: {
+                outlet_id: components["schemas"]["Id"];
+                sku_id: components["schemas"]["Id"];
+                qty_base: number;
+                /** @description An app memo exists for this outlet and SKU on the date (flagged, never added). */
+                app_overlap: boolean;
+            }[];
+        };
+        QcEntryWrite: {
+            client_uuid: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            source: "market" | "warehouse";
+            business_date: components["schemas"]["BusinessDate"];
+            zone_id: components["schemas"]["Id"];
+            /**
+             * Format: int64
+             * @description Required for market QC.
+             */
+            route_id?: number | null;
+            rows: {
+                sku_id: components["schemas"]["Id"];
+                fault_type_code: string;
+                qty_base: number;
+            }[];
+            /** @description Required for warehouse QC. */
+            reason?: components["schemas"]["ChangeReason"] | null;
+        };
+        QcEntryResult: {
+            client_uuid: components["schemas"]["Uuid"];
+            stored_rows: number;
+            replayed: boolean;
+        };
+        PaperBackfillRequest: {
+            client_uuid: components["schemas"]["Uuid"];
+            memo_no: components["schemas"]["MemoNo"];
+            business_date: components["schemas"]["BusinessDate"];
+            user_id: components["schemas"]["Id"];
+            route_id: components["schemas"]["Id"];
+            outlet_id: components["schemas"]["Id"];
+            lines: {
+                sku_id: components["schemas"]["Id"];
+                qty_base: number;
+                line_kind: components["schemas"]["LineKind"];
+            }[];
+            discount_mtk?: components["schemas"]["MtkNonNegative"];
+            paid_mtk: components["schemas"]["MtkNonNegative"];
+            reason: components["schemas"]["ChangeReason"];
+        };
+        PaperBackfillResult: {
+            memo_client_uuid: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            status: "created" | "replayed" | "duplicate_memo_no";
+            net_mtk: components["schemas"]["Mtk"];
+        };
+        EntryUnlock: {
+            unlock_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            scope_type: "zone" | "route";
+            scope_id: components["schemas"]["Id"];
+            from: components["schemas"]["BusinessDate"];
+            to: components["schemas"]["BusinessDate"];
+            reason: components["schemas"]["ChangeReason"];
+            expires_at: components["schemas"]["Timestamp"];
+            created_by_user_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            status: "active" | "expired";
+        };
+        /** @description `to` is at most cfg.web.entry_unlock_max_days after `from`. */
+        EntryUnlockWrite: {
+            /** @enum {string} */
+            scope_type: "zone" | "route";
+            scope_id: components["schemas"]["Id"];
+            from: components["schemas"]["BusinessDate"];
+            to: components["schemas"]["BusinessDate"];
+            /** @description Defaults to cfg.web.entry_unlock_ttl_h. */
+            ttl_h?: number;
+            reason: components["schemas"]["ChangeReason"];
+        };
+        EntryUnlockPage: {
+            items: components["schemas"]["EntryUnlock"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        TargetRevision: {
+            revision_id: components["schemas"]["Id"];
+            batch_uuid: components["schemas"]["Uuid"];
+            month: components["schemas"]["Month"];
+            status: components["schemas"]["TargetRevisionStatus"];
+            /** @description Approval level reached (cfg.target.approval_levels). */
+            level: number;
+            rows: number;
+            scope_summary?: string | null;
+            created_by_user_id: components["schemas"]["Id"];
+            created_at: components["schemas"]["Timestamp"];
+            decisions?: {
+                level: number;
+                /** @enum {string} */
+                decision: "approve" | "reject";
+                user_id: components["schemas"]["Id"];
+                at: components["schemas"]["Timestamp"];
+                note?: string | null;
+            }[];
+        };
+        TargetRevisionPage: {
+            items: components["schemas"]["TargetRevision"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        TargetUpload: {
+            batch_uuid: components["schemas"]["Uuid"];
+            month: components["schemas"]["Month"];
+            file: string;
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        TargetUploadResult: {
+            batch_uuid: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            status: "accepted" | "rejected";
+            rows: number;
+            revision?: components["schemas"]["TargetRevision"] | null;
+            /** Format: uri */
+            error_sheet_url?: string | null;
+            errors: {
+                row: number;
+                column: string;
+                message: string;
+            }[];
+        };
+        SupervisorTarget: {
+            user_id: components["schemas"]["Id"];
+            month: components["schemas"]["Month"];
+            daily_call_target?: number | null;
+            total_call_target: number;
+            control_call_target: number;
+            joint_call_target: number;
+        };
+        SupervisorTargetList: {
+            items: components["schemas"]["SupervisorTarget"][];
+        };
+        SupervisorTargetWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: components["schemas"]["SupervisorTarget"][];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        PricePreview: {
+            batch_uuid: components["schemas"]["Uuid"];
+            skus_affected: number;
+            price_types?: components["schemas"]["PriceType"][];
+            outlets_affected: number;
+            devices_affected: number;
+            /** @description Largest absolute change against the price in force. */
+            max_change_pct: number;
+            /** @description True when max_change_pct exceeds cfg.price.max_change_pct (a second approver must decide). */
+            approval_required: boolean;
+        };
+        PriceBatch: {
+            batch_uuid: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            status: "pending_approval" | "published" | "rejected";
+            valid_from: components["schemas"]["BusinessDate"];
+            rows: number;
+            /** Format: int64 */
+            decided_by_user_id?: number | null;
+            decided_at?: components["schemas"]["Timestamp"] | null;
+        };
+        OutletKindBulkWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            outlet_kind: "retail" | "wholesale";
+            outlet_ids: components["schemas"]["Id"][];
+            reason: components["schemas"]["ChangeReason"];
+        };
+        BulkResult: {
+            batch_uuid: components["schemas"]["Uuid"];
+            updated: number;
+            unchanged: number;
+            replayed: boolean;
+        };
+        DuesAdjustment: {
+            adjustment_id: components["schemas"]["Id"];
+            outlet_id: components["schemas"]["Id"];
+            memo_client_uuid?: components["schemas"]["Uuid"] | null;
+            /** @enum {string} */
+            kind: "correction" | "write_off";
+            amount_mtk: components["schemas"]["Mtk"];
+            reason: components["schemas"]["ChangeReason"];
+            status: components["schemas"]["DecisionStatus"];
+            created_by_user_id: components["schemas"]["Id"];
+            created_at: components["schemas"]["Timestamp"];
+            /** Format: int64 */
+            decided_by_user_id?: number | null;
+            decided_at?: components["schemas"]["Timestamp"] | null;
+        };
+        /** @description `amount_mtk` is the signed change of the outlet balance. */
+        DuesAdjustmentWrite: {
+            client_uuid: components["schemas"]["Uuid"];
+            outlet_id: components["schemas"]["Id"];
+            memo_client_uuid?: components["schemas"]["Uuid"] | null;
+            /** @enum {string} */
+            kind: "correction" | "write_off";
+            amount_mtk: components["schemas"]["Mtk"];
+            reason: components["schemas"]["ChangeReason"];
+        };
+        DuesAdjustmentPage: {
+            items: components["schemas"]["DuesAdjustment"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        DeviceReplaceRequest: {
+            /** @enum {string} */
+            mode: "upload_first" | "revoke_now";
+            /**
+             * Format: int64
+             * @description User to issue the new-phone OTP for; defaults to the old device's bound user.
+             */
+            new_device_user_id?: number | null;
+            reason: components["schemas"]["ChangeReason"];
+        };
+        DeviceReplaceResult: {
+            old_device_id: components["schemas"]["Id"];
+            old_state: components["schemas"]["DeviceState"];
+            /** @description Rows the old phone reported pending at its last contact. */
+            pending_rows: number;
+            otp?: components["schemas"]["DeviceOtp"] | null;
+        };
+        RadiusWhatIf: {
+            scope_type: components["schemas"]["ConfigScopeType"];
+            /** Format: int64 */
+            scope_id?: number | null;
+            value: number;
+            days: number;
+            visits_evaluated: number;
+            /** @description Visits invalid today that the candidate radius would make valid. */
+            to_valid: number;
+            to_invalid: number;
+            unchanged: number;
+        };
+        BlastRadius: {
+            zones: number;
+            routes: number;
+            outlets: number;
+            users: number;
+            devices: number;
+        };
+        DensityReport: {
+            as_of: components["schemas"]["Timestamp"];
+            radii_m: number[];
+            rows: {
+                node: components["schemas"]["NodeRef"];
+                outlets: number;
+                median_neighbours: number[];
+                density_index_pct?: number | null;
+            }[];
+        };
+        CalibrationReport: {
+            as_of: components["schemas"]["Timestamp"];
+            rows: {
+                territory_id: components["schemas"]["Id"];
+                geo_class: string | null;
+                visits: number;
+                histogram: {
+                    upper_m: number;
+                    visits: number;
+                }[];
+                force_sale_pct: number | null;
+                /** @description Shown only with at least cfg.geo.calibration_min_visits visits. */
+                suggested_radius_m?: number | null;
+            }[];
+        };
+        ConfigVersionDetail: {
+            config_version: components["schemas"]["ConfigVersionNumber"];
+            committed_at: components["schemas"]["Timestamp"];
+            /** Format: int64 */
+            change_id?: number | null;
+            values: components["schemas"]["ResolvedConfigValue"][];
+        };
+        ConfigPendingDevicePage: {
+            items: {
+                device_id: components["schemas"]["Id"];
+                user_id: components["schemas"]["Id"];
+                zone_id: components["schemas"]["Id"];
+                applied_version: components["schemas"]["ConfigVersionNumber"];
+                last_contact_at?: components["schemas"]["Timestamp"] | null;
+                lag_min: number;
+            }[];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        PermissionMatrix: {
+            config_version: components["schemas"]["ConfigVersionNumber"];
+            roles: {
+                role: components["schemas"]["Role"];
+                menus: components["schemas"]["MenuPermission"][];
+            }[];
+            admin_roster: {
+                user_id: components["schemas"]["Id"];
+                username: components["schemas"]["Username"];
+                role: components["schemas"]["Role"];
+                mfa_enabled?: boolean;
+            }[];
+        };
+        MenuPermission: {
+            menu_id: string;
+            actions: ("view" | "create" | "edit" | "approve" | "export" | "void")[];
+        };
+        RolePermissionsWrite: {
+            menus: components["schemas"]["MenuPermission"][];
+            reason: components["schemas"]["ChangeReason"];
+        };
+        FeedbackStatusWrite: {
+            status: components["schemas"]["FeedbackStatus"];
+            reason: components["schemas"]["ChangeReason"];
+        };
+        /** @enum {string} */
+        FeedbackStatus: "new" | "in_progress" | "resolved" | "closed";
+        ChannelVolume: {
+            /** @description Channel, segment or brand code. */
+            code: string;
+            name?: string | null;
+            net_mtk: components["schemas"]["Mtk"];
+            /** Format: int64 */
+            qty_base?: number | null;
+            memo_count: number;
+            successful_calls: number;
+            /** @description BSR for brands (memos containing the brand / active memos). */
+            memo_ratio_pct?: number | null;
+        };
+        SuggestedQty: {
+            sku_id: components["schemas"]["Id"];
+            qty_base: number;
         };
     };
     responses: {
@@ -8058,6 +10080,7 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ReportResult"];
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                    "text/html": string;
                 };
             };
             /** @description Export job queued. */
@@ -10298,6 +12321,1901 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getNearbyOutlets: {
+        parameters: {
+            query: {
+                /** @description Latitude of the centre (Bangladesh bounds). */
+                lat: number;
+                /** @description Longitude of the centre (Bangladesh bounds). */
+                lng: number;
+                /** @description Radius in metres; one of cfg.tso.periphery_radius_options_m. */
+                radius_m: number;
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                zone_id?: components["parameters"]["ZoneIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Outlets inside the circle. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NearbyOutlets"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createTrackingAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackingActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored (or the stored action on replay). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingAction"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listTutorials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tutorial list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorialList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createSupportUpload: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The phone's device UUID (set at enrolment). */
+                "X-Device-Id": components["parameters"]["XDeviceIdRequired"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Upload URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportUpload"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    reportClientError: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientErrorReport"];
+            };
+        };
+        responses: {
+            /** @description Accepted (deduplicated by error_uuid). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    uploadMediaMultipart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["MediaMultipartUpload"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaUploaded"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+        };
+    };
+    listExportLog: {
+        parameters: {
+            query?: {
+                /** @description Exports of one user. */
+                user_id?: components["schemas"]["Id"];
+                /** @description Exports of one report. */
+                report_key?: components["schemas"]["ReportKey"];
+                /** @description First business date, inclusive. */
+                from?: components["parameters"]["FromDate"];
+                /** @description Last business date, inclusive (at most 92 days after `from`). */
+                to?: components["parameters"]["ToDate"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of export log entries, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportLogPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getLoyaltyBalances: {
+        parameters: {
+            query?: {
+                /** @description Outlets to read; omitted = the outlets of the caller's routes today. */
+                outlet_id?: components["schemas"]["Id"][];
+                /** @description One programme. */
+                programme_id?: components["schemas"]["Id"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Balances. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoyaltyBalanceList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listAsthaTargets: {
+        parameters: {
+            query: {
+                /** @description Quarter `YYYY-Qn` (quarter start month from cfg.astha.quarter_start_month). */
+                quarter: string;
+                /** @description One route (the AMO route selector). */
+                route_id?: components["schemas"]["Id"];
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                zone_id?: components["parameters"]["ZoneIdQuery"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Target rows with achievement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsthaTargetPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    putAsthaTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AsthaTargetWrite"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetBatchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listGiftChoices: {
+        parameters: {
+            query: {
+                /** @description Quarter `YYYY-Qn`. */
+                quarter: string;
+                /** @description One route. */
+                route_id?: components["schemas"]["Id"];
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                zone_id?: components["parameters"]["ZoneIdQuery"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gift assignments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GiftAssignmentPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    putGiftChoices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GiftChoiceWrite"];
+            };
+        };
+        responses: {
+            /** @description Per-row results. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GiftChoiceResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getWebEntryRouteDay: {
+        parameters: {
+            query: {
+                /** @description Route. */
+                route_id: components["schemas"]["Id"];
+                business_date: components["parameters"]["BusinessDateQueryRequired"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current entry (empty lines when none). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebEntryRouteDay"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveWebEntryRouteDay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebEntryRouteDayWrite"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebEntryRouteDay"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getAsthaWebEntry: {
+        parameters: {
+            query: {
+                /** @description Route. */
+                route_id: components["schemas"]["Id"];
+                business_date: components["parameters"]["BusinessDateQueryRequired"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grid rows with app-memo overlap flags. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsthaWebEntry"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    saveAsthaWebEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AsthaWebEntryWrite"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsthaWebEntry"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    saveQcEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QcEntryWrite"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QcEntryResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    createPaperBackfill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaperBackfillRequest"];
+            };
+        };
+        responses: {
+            /** @description Result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaperBackfillResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listEntryUnlocks: {
+        parameters: {
+            query?: {
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                zone_id?: components["parameters"]["ZoneIdQuery"];
+                /** @description Only grants not yet expired. */
+                active?: boolean;
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of grants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryUnlockPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createEntryUnlock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryUnlockWrite"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryUnlock"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    expireEntryUnlock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Grant id. */
+                unlock_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Expired. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryUnlock"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTargetRevisions: {
+        parameters: {
+            query?: {
+                /** @description Target month. */
+                month?: components["schemas"]["Month"];
+                /** @description Revision status. */
+                status?: components["schemas"]["TargetRevisionStatus"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of revisions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetRevisionPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    decideTargetRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Revision id. */
+                revision_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Decided. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetRevision"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    uploadTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["TargetUpload"];
+            };
+        };
+        responses: {
+            /** @description Accepted as a pending revision, or rejected with the error sheet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetUploadResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+        };
+    };
+    getTargetTemplate: {
+        parameters: {
+            query: {
+                /** @description Target month. */
+                month: components["schemas"]["Month"];
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                territory_id?: components["parameters"]["TerritoryIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workbook. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listSupervisorTargets: {
+        parameters: {
+            query: {
+                /** @description Target month. */
+                month: components["schemas"]["Month"];
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                zone_id?: components["parameters"]["ZoneIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Targets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupervisorTargetList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    putSupervisorTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupervisorTargetWrite"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetBatchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    previewPrices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PricePublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricePreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    decidePriceBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The publish batch. */
+                batch_uuid: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Decided; on approval the prices become effective from their date. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceBatch"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    bulkSetOutletKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutletKindBulkWrite"];
+            };
+        };
+        responses: {
+            /** @description Applied (or the stored result on replay). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listDuesAdjustments: {
+        parameters: {
+            query?: {
+                /** @description One outlet. */
+                outlet_id?: components["schemas"]["Id"];
+                /** @description Decision status. */
+                status?: components["schemas"]["DecisionStatus"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of adjustments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuesAdjustmentPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createDuesAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuesAdjustmentWrite"];
+            };
+        };
+        responses: {
+            /** @description Created as pending. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuesAdjustment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    decideDuesAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Adjustment id. */
+                adjustment_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Decided. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuesAdjustment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    replaceDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceReplaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceReplaceResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    configWhatIf: {
+        parameters: {
+            query: {
+                scope_type?: components["parameters"]["ScopeTypeQuery"];
+                scope_id?: components["parameters"]["ScopeIdQuery"];
+                /** @description Candidate radius in metres. */
+                value: number;
+                /** @description Look-back in business days. */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What-if result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadiusWhatIf"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    configBlastRadius: {
+        parameters: {
+            query?: {
+                scope_type?: components["parameters"]["ScopeTypeQuery"];
+                scope_id?: components["parameters"]["ScopeIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlastRadius"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    configDensity: {
+        parameters: {
+            query?: {
+                scope_type?: components["parameters"]["ScopeTypeQuery"];
+                scope_id?: components["parameters"]["ScopeIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Density report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DensityReport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    configCalibration: {
+        parameters: {
+            query?: {
+                scope_type?: components["parameters"]["ScopeTypeQuery"];
+                scope_id?: components["parameters"]["ScopeIdQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Calibration report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationReport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getConfigVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version: components["parameters"]["ConfigVersionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigVersionDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listConfigReachPending: {
+        parameters: {
+            query?: {
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                zone_id?: components["parameters"]["ZoneIdQuery"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                version: components["parameters"]["ConfigVersionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of pending devices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigPendingDevicePage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPermissionMatrix: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The matrix. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionMatrix"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    putRolePermissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Role to change. */
+                role: components["schemas"]["Role"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RolePermissionsWrite"];
+            };
+        };
+        responses: {
+            /** @description Pending change request created. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigChange"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listSurveys: {
+        parameters: {
+            query?: {
+                status?: components["parameters"]["StatusQuery"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of surveys. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurveyPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createSurvey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SurveyWrite"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurveyAdmin"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateSurvey: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SurveyWrite"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurveyAdmin"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    listRubrics: {
+        parameters: {
+            query?: {
+                status?: components["parameters"]["StatusQuery"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of rubrics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RubricPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createRubric: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RubricWrite"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RubricAdmin"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateRubric: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RubricWrite"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RubricAdmin"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    listContentItems: {
+        parameters: {
+            query?: {
+                status?: components["parameters"]["StatusQuery"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of content items. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentAdminPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createContentItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentWrite"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentAdmin"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+        };
+    };
+    updateContentItem: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentWrite"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentAdmin"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    listAdminTutorials: {
+        parameters: {
+            query?: {
+                status?: components["parameters"]["StatusQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tutorials. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorialAdminList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createTutorial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorialWrite"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorialAdmin"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateTutorial: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorialWrite"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorialAdmin"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    createAdminAssetUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAssetUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Upload URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAssetUpload"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+        };
+    };
+    listPrintTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current and earlier versions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintTemplateList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createPrintTemplateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrintTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintTemplate"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listProgrammes: {
+        parameters: {
+            query?: {
+                status?: components["parameters"]["StatusQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Programmes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgrammeList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createProgramme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeWrite"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Programme"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateProgramme: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeWrite"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Programme"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    listProgrammeEnrolments: {
+        parameters: {
+            query?: {
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                zone_id?: components["parameters"]["ZoneIdQuery"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of enrolments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgrammeEnrolmentPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putProgrammeEnrolments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgrammeEnrolmentWrite"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetBatchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listGifts: {
+        parameters: {
+            query?: {
+                /** @description One programme. */
+                programme_id?: components["schemas"]["Id"];
+                status?: components["parameters"]["StatusQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gifts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GiftList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createGift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GiftWrite"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Gift"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateGift: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GiftWrite"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Gift"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+        };
+    };
+    updateFeedbackStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Feedback id. */
+                feedback_uuid: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackStatusWrite"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Feedback"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

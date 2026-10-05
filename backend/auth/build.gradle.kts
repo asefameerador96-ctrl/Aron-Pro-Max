@@ -6,11 +6,18 @@ plugins {
 
 dependencies {
     implementation(project(":backend:platform"))
+    implementation(libs.argon2.jvm)
 
+    testImplementation(project(":db"))
+    testImplementation(testFixtures(project(":backend:platform")))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(kotlin("test"))
     testImplementation(libs.mockk)
     testImplementation(libs.ktor.server.test.host)
     testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.withType<Test>().configureEach {
+    environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
 }

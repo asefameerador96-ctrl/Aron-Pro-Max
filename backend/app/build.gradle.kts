@@ -24,9 +24,15 @@ dependencies {
     runtimeOnly(project(":db"))
     implementation(libs.logback.classic)
 
+    testImplementation(testFixtures(project(":backend:platform")))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(kotlin("test"))
     testImplementation(libs.ktor.server.test.host)
     testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.withType<Test>().configureEach {
+    environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
+    systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
 }

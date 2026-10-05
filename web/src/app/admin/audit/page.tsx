@@ -9,12 +9,12 @@ import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { formatDateTime, problemMessage, t } from "@/lib/i18n";
 
-const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.slice(0, 64) || undefined;
+const one = (v: string | string[] | undefined, max = 64) => (Array.isArray(v) ? v[0] : v)?.slice(0, max) || undefined;
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
-  const q = { entity: one(sp.entity), entity_id: one(sp.entity_id), action: one(sp.action), cursor: one(sp.cursor), limit: 50 };
+  const q = { entity: one(sp.entity), entity_id: one(sp.entity_id), action: one(sp.action), cursor: one(sp.cursor, 512), limit: 50 };
   const r = await outcome(apiClient(session.at).GET("/v1/admin/audit", { params: { query: q } }));
 
   const controls: FilterControl[] = [

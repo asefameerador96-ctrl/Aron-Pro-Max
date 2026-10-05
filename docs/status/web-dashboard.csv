@@ -1,0 +1,2 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+N-010,M,2026-10-05T11:55Z,2026-10-05T12:25Z,30,3,"Checker found open redirect, lint holes, refresh outage logs users out; all fixed with tests. Azure deploy clause not verifiable here; TSO login proven against the mock user tso334 (no db seed yet)"
