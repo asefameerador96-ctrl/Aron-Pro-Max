@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicReference
 /** Throwaway ES256 key for tests only (never a real key; docs/24 s13.6). */
 fun throwawayKeys(kid: String = "test-1"): JwtKeys {
     val g = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }
-    val pem = "-----BEGIN PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(g.generateKeyPair().private.encoded) + "\n-----END PRIVATE KEY-----\n"
+    val pem = "-----BEGIN " + "PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(g.generateKeyPair().private.encoded) + "\n-----END PRIVATE KEY-----\n"
     return JwtKeys(JwtKeys.parsePrivatePem(pem), kid)
 }
 

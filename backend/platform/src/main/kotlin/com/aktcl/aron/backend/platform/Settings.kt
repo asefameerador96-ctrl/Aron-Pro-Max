@@ -40,7 +40,18 @@ data class Settings(
     val hashConcurrency: Int,
     val hashQueueMax: Int,
 ) {
+    /** Like the data-class form, with credentials in the database URLs redacted (secrets are never printed). */
+    override fun toString(): String =
+        "Settings(role=$role, env=$env, port=$port, build=$build, dbUrl=${redactUrl(dbUrl)}, dbUser=$dbUser, dbPassword=$dbPassword, " +
+            "dbReadUrl=${dbReadUrl?.let(::redactUrl)}, dbPoolMax=$dbPoolMax, dbReadPoolMax=$dbReadPoolMax, jwtSigningKeyPem=$jwtSigningKeyPem, " +
+            "jwtKid=$jwtKid, jwtNextKid=$jwtNextKid, hashConcurrency=$hashConcurrency, hashQueueMax=$hashQueueMax)"
+
     companion object {
+        /** Removes `password=...` parameters and `user:password@` credentials from a JDBC URL. */
+        fun redactUrl(url: String): String = url
+            .replace(Regex("(?i)(password=)[^&;]*"), "$1***")
+            .replace(Regex("//([^/@:]+):[^/@]*@"), "//$1:***@")
+
         fun load(env: Map<String, String> = System.getenv()): Settings {
             val src = SettingSource(env)
             val role = when (val r = src.get("ARON_ROLE") ?: "api") {

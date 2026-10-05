@@ -12,6 +12,10 @@ class NoSecretsInRepoTest {
         Regex("SharedAccess" + "Signature=sig="),
         Regex("\"private_key\"\\s*:\\s*\"-----BEGIN"),
         Regex("Instrumentation" + "Key=[0-9a-f]{8}-"),
+        Regex("gh" + "p_[A-Za-z0-9]{36}"),
+        Regex("github" + "_pat_[A-Za-z0-9_]{40,}"),
+        Regex("AK" + "IA[0-9A-Z]{16}"),
+        Regex("xox" + "[baprs]-[A-Za-z0-9-]{10,}"),
     )
     private val skipDirs = setOf(".git", "build", ".gradle", "node_modules", ".next", ".idea", ".kotlin")
 

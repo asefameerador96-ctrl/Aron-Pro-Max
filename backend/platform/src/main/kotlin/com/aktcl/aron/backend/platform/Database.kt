@@ -15,9 +15,10 @@ class Database(val write: DataSource, val read: DataSource = write) : AutoClosea
     val jdbi: Jdbi = jdbiFor(write)
     val readJdbi: Jdbi = if (read === write) jdbi else jdbiFor(read)
 
-    /** True when a connection can be borrowed and answers within 2 s (readiness probe). */
-    fun ping(): Boolean = runCatching {
-        write.connection.use { c -> c.isValid(2) }
+    /** True when a connection can be borrowed and answers within [timeoutMs] (readiness probe; never blocks longer). */
+    fun ping(timeoutMs: Long = 2_000): Boolean = runCatching {
+        java.util.concurrent.CompletableFuture.supplyAsync { write.connection.use { c -> c.isValid(2) } }
+            .get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
     }.getOrDefault(false)
 
     override fun close() {

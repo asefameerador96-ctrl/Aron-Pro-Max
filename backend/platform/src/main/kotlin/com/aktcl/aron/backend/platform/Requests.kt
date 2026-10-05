@@ -56,6 +56,10 @@ fun <T> decodeStrict(serializer: KSerializer<T>, text: String): T {
     } catch (e: SerializationException) {
         throw ApiProblem(ProblemCode.ERR_MALFORMED_JSON, "request body is not valid JSON")
     }
+    duplicateMember(text)?.let { pointer ->
+        // Strict means unambiguous: two parsers must never read different values from one body (s3.1).
+        throw ApiProblem(ProblemCode.ERR_VALIDATION, "a member appears twice", errors = listOf(FieldError(pointer, "duplicate_member")))
+    }
     try {
         return RequestJson.decodeFromString(serializer, text)
     } catch (e: MissingFieldException) {
@@ -84,4 +88,43 @@ internal fun jsonPointer(message: String?): String {
     val path = message?.let { Regex("""at path:? \$([^\s]*)""").find(it)?.groupValues?.get(1) } ?: return ""
     return path.replace(Regex("""\[(\d+)]"""), ".$1").split('.').filter { it.isNotEmpty() }
         .joinToString("") { "/" + it.replace("~", "~0").replace("/", "~1") }
+}
+
+/**
+ * JSON Pointer of the first member that appears twice in one object, or null. [text] is already known to be valid
+ * JSON; keys are compared after unescaping (`"a"` and `"\u0061"` are the same member).
+ */
+internal fun duplicateMember(text: String): String? {
+    class Obj(val path: String) { val keys = HashSet<String>(); var expectKey = true; var lastKey: String? = null }
+    class Arr(val path: String) { var index = 0 }
+    val stack = ArrayDeque<Any>()
+    fun childPath(): String = when (val top = stack.lastOrNull()) {
+        is Obj -> top.path + "/" + (top.lastKey ?: "").replace("~", "~0").replace("/", "~1")
+        is Arr -> top.path + "/" + top.index
+        else -> ""
+    }
+    var i = 0
+    while (i < text.length) {
+        when (val c = text[i]) {
+            '{' -> { stack.addLast(Obj(childPath())) }
+            '[' -> { stack.addLast(Arr(childPath())) }
+            '}', ']' -> stack.removeLast()
+            ',' -> when (val top = stack.lastOrNull()) { is Obj -> top.expectKey = true; is Arr -> top.index++ }
+            ':' -> (stack.lastOrNull() as? Obj)?.expectKey = false
+            '"' -> {
+                val start = i
+                i++
+                while (text[i] != '"') { if (text[i] == '\\') i++; i++ }
+                val top = stack.lastOrNull()
+                if (top is Obj && top.expectKey) {
+                    val key = RequestJson.decodeFromString(kotlinx.serialization.serializer<String>(), text.substring(start, i + 1))
+                    top.lastKey = key
+                    if (!top.keys.add(key)) return top.path + "/" + key.replace("~", "~0").replace("/", "~1")
+                }
+            }
+            else -> if (c.isWhitespace()) Unit
+        }
+        i++
+    }
+    return null
 }

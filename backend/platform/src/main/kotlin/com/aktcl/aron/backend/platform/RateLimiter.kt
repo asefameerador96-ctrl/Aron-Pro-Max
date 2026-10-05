@@ -44,12 +44,16 @@ class RateLimiter(
 
     fun size(): Int = windows.size
 
+    /**
+     * Drops expired windows first; if the map is still full, drops the least-used keys that are not limited, so a
+     * flood of new keys can never hand a key that is already over its limit a fresh quota.
+     */
     private fun evict(currentStart: Long) {
         windows.entries.removeIf { it.value.startMs != currentStart }
-        if (windows.size >= maxKeys) {
-            val drop = windows.size - maxKeys / 2
-            windows.keys.take(drop).forEach { windows.remove(it) }
-        }
+        if (windows.size < maxKeys) return
+        val target = windows.size - maxKeys / 2
+        windows.entries.filter { it.value.count.get() <= limit }.sortedBy { it.value.count.get() }.take(target)
+            .forEach { windows.remove(it.key, it.value) }
     }
 }
 

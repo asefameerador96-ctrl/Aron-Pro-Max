@@ -51,7 +51,7 @@ class AccessTokenVerifier(private val keys: JwtKeys, private val clock: AronCloc
         val exp = c.expirationTime?.toInstant() ?: throw unauth("no exp")
         c.notBeforeTime?.toInstant()?.let { if (now.plusSeconds(5).isBefore(it)) throw unauth("not yet valid") }
         if (!now.isBefore(exp.plusSeconds(expiredGraceS))) throw ApiProblem(ProblemCode.ERR_TOKEN_EXPIRED, "access token expired")
-        return try {
+        val principal = try {
             AronPrincipal(
                 userId = c.subject.toLong(),
                 username = c.getStringClaim("uname"),
@@ -72,6 +72,16 @@ class AccessTokenVerifier(private val keys: JwtKeys, private val clock: AronCloc
         } catch (e: Exception) {
             throw unauth("bad claims")
         }
+        // Every phone token is bound to a device (dvu); a phone flavour without it would skip device binding.
+        if (principal.flavour !in FLAVOURS) throw unauth("unknown flavour")
+        if (principal.isPhone && (principal.deviceUuid == null || !UUID_V4.matches(principal.deviceUuid))) throw unauth("phone token without device")
+        if (!principal.isPhone && principal.deviceUuid != null) throw unauth("web token with a device")
+        return principal
+    }
+
+    private companion object {
+        val FLAVOURS = setOf("sr", "amo", "tso", "web")
+        val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     }
 
     private fun unauth(why: String) = ApiProblem(ProblemCode.ERR_UNAUTHENTICATED, "invalid access token ($why)")

@@ -2,7 +2,7 @@ package com.aktcl.aron.backend.platform
 
 import com.aktcl.aron.contract.ProblemCode
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 
 /** One `errors[]` entry of a problem (contract FieldError). */
 @Serializable
@@ -23,7 +23,7 @@ data class Problem(
     val server_time: String,
     val message_key: String,
     val errors: List<FieldError>? = null,
-    val context: Map<String, JsonElement>? = null,
+    val context: Map<String, JsonPrimitive>? = null,
 )
 
 /**
@@ -35,7 +35,8 @@ class ApiProblem(
     val detail: String? = null,
     val errors: List<FieldError> = emptyList(),
     val retryAfterS: Int? = null,
-    val context: Map<String, JsonElement> = emptyMap(),
+    /** Code-specific scalars (contract: JsonScalar values only). */
+    val context: Map<String, JsonPrimitive> = emptyMap(),
     val headers: Map<String, String> = emptyMap(),
     cause: Throwable? = null,
 ) : RuntimeException(code.wire + (detail?.let { ": $it" } ?: ""), cause) {
@@ -46,10 +47,10 @@ object ProblemTexts {
     private val retryableCodes = setOf(
         ProblemCode.ERR_TOKEN_EXPIRED, ProblemCode.ERR_SCOPE_CHANGED, ProblemCode.ERR_RATE_LIMITED,
         ProblemCode.ERR_INTERNAL, ProblemCode.ERR_SERVICE_UNAVAILABLE, ProblemCode.ERR_READ_ONLY_MODE,
-        ProblemCode.ERR_BUNDLE_NOT_READY, ProblemCode.ERR_SYNC_HOLD, ProblemCode.ERR_AUTH_ACCOUNT_LOCKED,
+        ProblemCode.ERR_BUNDLE_NOT_READY, ProblemCode.ERR_SYNC_HOLD,
     )
 
-    /** Retryable column of docs/24 s3.4 (ACCOUNT_LOCKED only after retry_after_s). */
+    /** Retryable column of docs/24 s3.4. ACCOUNT_LOCKED is `no` (the client may try again only after `retry_after_s`). */
     fun retryable(code: ProblemCode): Boolean = code in retryableCodes
 
     /** Localisation key: `problem.<code without ERR_ in lower case>`; texts live in the app and web catalogues. */

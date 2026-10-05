@@ -10,6 +10,15 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.hooks.ResponseSent
 import io.ktor.server.application.install
+import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.NotFoundException
+import io.ktor.server.plugins.PayloadTooLargeException
+import io.ktor.server.plugins.UnsupportedMediaTypeException
+import io.ktor.serialization.ContentConverter
+import io.ktor.serialization.kotlinx.KotlinxSerializationConverter
+import io.ktor.util.reflect.TypeInfo
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.charsets.Charset
 import io.ktor.server.plugins.compression.Compression
 import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.compression.minimumSize
@@ -87,22 +96,39 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
             requestLog.info(line.toString())
         }
     })
-    install(ContentNegotiation) { json(ResponseJson) }
+    install(ContentNegotiation) {
+        json(ResponseJson)
+        // Answer JSON whatever the Accept header says (a proxy or captive portal may rewrite it); never a bare 406.
+        register(ContentType.Any, AlwaysJson(KotlinxSerializationConverter(ResponseJson)))
+    }
     install(Compression) { gzip { minimumSize(1024) } }
     install(StatusPages) {
         exception<ApiProblem> { call, e -> call.respondProblem(e, ctx.clock) }
+        // Ktor's own client-error exceptions are client errors, never a retryable 500 (phones bisect on 500, s4.7).
+        exception<NotFoundException> { call, _ -> call.respondProblem(ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such resource"), ctx.clock) }
+        exception<UnsupportedMediaTypeException> { call, _ -> call.respondProblem(ApiProblem(ProblemCode.ERR_UNSUPPORTED_MEDIA_TYPE), ctx.clock) }
+        exception<PayloadTooLargeException> { call, _ -> call.respondProblem(ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE), ctx.clock) }
+        exception<BadRequestException> { call, e ->
+            val code = if (e.rootCause() is kotlinx.serialization.SerializationException) ProblemCode.ERR_MALFORMED_JSON else ProblemCode.ERR_VALIDATION
+            call.respondProblem(ApiProblem(code, "the request is invalid"), ctx.clock)
+        }
         exception<Throwable> { call, e ->
             errorLog.error("unhandled error request_id=${call.attributes.getOrNull(RequestIdKey)}", e)
             call.respondProblem(ApiProblem(ProblemCode.ERR_INTERNAL, "unexpected server error"), ctx.clock)
         }
+        // Bare statuses produced by Ktor itself (no route, wrong method, ...) become problems. A problem the code already
+        // sent (ProblemCodeKey set) is never replaced, so its specific code, detail and context survive.
         status(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed) { call, _ ->
-            call.respondProblem(ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such resource"), ctx.clock)
+            if (!call.attributes.contains(ProblemCodeKey)) call.respondProblem(ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such resource"), ctx.clock)
         }
         status(HttpStatusCode.UnsupportedMediaType) { call, _ ->
-            call.respondProblem(ApiProblem(ProblemCode.ERR_UNSUPPORTED_MEDIA_TYPE), ctx.clock)
+            if (!call.attributes.contains(ProblemCodeKey)) call.respondProblem(ApiProblem(ProblemCode.ERR_UNSUPPORTED_MEDIA_TYPE), ctx.clock)
         }
         status(HttpStatusCode.PayloadTooLarge) { call, _ ->
-            call.respondProblem(ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE), ctx.clock)
+            if (!call.attributes.contains(ProblemCodeKey)) call.respondProblem(ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE), ctx.clock)
+        }
+        status(HttpStatusCode.NotAcceptable) { call, _ ->
+            if (!call.attributes.contains(ProblemCodeKey)) call.respondProblem(ApiProblem(ProblemCode.ERR_VALIDATION, "Accept must allow application/json"), ctx.clock)
         }
     }
 }
@@ -118,7 +144,7 @@ suspend fun ApplicationCall.respondProblem(e: ApiProblem, clock: AronClock = Aro
         type = ProblemTexts.type(e.code),
         title = ProblemTexts.title(e.code),
         status = e.status,
-        detail = e.detail,
+        detail = e.detail?.take(2000),
         instance = request.path(),
         code = e.code.wire,
         request_id = attributes.getOrNull(RequestIdKey) ?: UUID.randomUUID().toString(),
@@ -136,3 +162,14 @@ suspend fun ApplicationCall.respondProblem(e: ApiProblem, clock: AronClock = Aro
 /** Problems omit absent optional members (the contract's Problem has no nullable members). */
 private val ProblemJson: Json = Json { encodeDefaults = false; explicitNulls = false }
 
+
+private fun Throwable.rootCause(): Throwable = generateSequence(this) { it.cause }.last()
+
+/** Serialises responses as application/json even when the client's Accept names another type. */
+private class AlwaysJson(private val inner: ContentConverter) : ContentConverter {
+    override suspend fun serialize(contentType: ContentType, charset: Charset, typeInfo: TypeInfo, value: Any?) =
+        inner.serialize(ContentType.Application.Json, charset, typeInfo, value)
+
+    override suspend fun deserialize(charset: Charset, typeInfo: TypeInfo, content: ByteReadChannel): Any? =
+        inner.deserialize(charset, typeInfo, content)
+}
