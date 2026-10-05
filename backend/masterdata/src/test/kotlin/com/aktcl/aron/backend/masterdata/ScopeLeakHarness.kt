@@ -39,7 +39,7 @@ class ScopeWorld(seed: Long) {
                 }
             }
         }
-        var uid = 1L
+        var uid = 1_001L // id 1 is the migration-seeded system user
         val roles = Role.entries
         repeat(60) {
             val role = roles[rnd.nextInt(roles.size)]

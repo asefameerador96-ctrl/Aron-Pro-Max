@@ -15,4 +15,4 @@ Updated 2026-10-05.
 - "GET /health answers from Azure through Front Door" needs the container image and deploy (infra lane).
 
 ## Requests filed
-- none yet
+- `docs/requests/backend-seed-login-accounts.md` (db lane): seed accounts that can log in (hashes from an env var, must_change_password false, SR with Daily/3F/2F routes, TSO, device binding after V0010).

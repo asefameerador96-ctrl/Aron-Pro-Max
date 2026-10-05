@@ -9,6 +9,7 @@ dependencies {
     implementation(libs.argon2.jvm)
 
     testImplementation(project(":db"))
+    testImplementation(testFixtures(project(":backend:platform")))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(kotlin("test"))

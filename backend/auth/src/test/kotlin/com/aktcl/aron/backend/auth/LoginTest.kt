@@ -43,10 +43,21 @@ internal suspend fun HttpClient.login(
     setBody("""{"username":"$username","password":"$password","client":"$client"${device?.let { ",\"device_uuid\":\"$it\"" } ?: ""}}""")
 }
 
-class LoginTest {
+open class LoginTest {
+    private val made = mutableListOf<AuthFixture>()
+
+    /** Builds the fixture; [LoginTestDb] overrides it to run the same tests on PostgreSQL stores. */
+    open fun fixture(overrides: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(), hashConcurrency: Int = 4, hashQueue: Int = 32): AuthFixture =
+        AuthFixture(overrides, hashConcurrency, hashQueue).also { made += it }
+
+    protected fun track(f: AuthFixture) = f.also { made += it }
+
+    @org.junit.jupiter.api.AfterEach
+    fun closeFixtures() { made.forEach { it.close() }; made.clear() }
+
     @Test
     fun seededSrGetsAnEs256AccessTokenWithRoleAndScopeClaimsAndRefreshTokens() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val r = client.login("SR334001", "correct horse 1", f.srDevice)
@@ -82,7 +93,7 @@ class LoginTest {
 
     @Test
     fun wrongPasswordAndUnknownUserGetTheSameUniformError() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val wrong = client.login("sr334001", "nope", f.srDevice)
@@ -98,7 +109,7 @@ class LoginTest {
     @Test
     fun repeatedFailuresLockTheUsernameDevicePairOnly() {
         // lockout_attempts lowered to 5 (bounds 3..50) so the per-username rate limit (10 / 15 min) does not mask the pair lock.
-        val f = AuthFixture(mapOf("cfg.auth.lockout_attempts" to JsonPrimitive(5)))
+        val f = fixture(mapOf("cfg.auth.lockout_attempts" to JsonPrimitive(5)))
         val otherDevice = "7a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c11"
         f.devices.byUuid[otherDevice] = com.aktcl.aron.backend.auth.DeviceRecord(502, otherDevice, "active", "sr", null)
         f.devices.bindings[1001L to 502L] = 1
@@ -121,7 +132,7 @@ class LoginTest {
 
     @Test
     fun lockDoublesOnTheSecondLock() {
-        val f = AuthFixture(mapOf("cfg.auth.lockout_attempts" to JsonPrimitive(3)))
+        val f = fixture(mapOf("cfg.auth.lockout_attempts" to JsonPrimitive(3)))
         testApplication {
             application { f.application(this) }
             repeat(3) { client.login("sr334001", "bad", f.srDevice) }
@@ -135,7 +146,7 @@ class LoginTest {
 
     @Test
     fun rateLimitedPerUsernameAndPerDeviceNeverPerIp() {
-        val f = AuthFixture(mapOf("cfg.auth.lockout_attempts" to JsonPrimitive(50)))
+        val f = fixture(mapOf("cfg.auth.lockout_attempts" to JsonPrimitive(50)))
         testApplication {
             application { f.application(this) }
             // 10 per 15 min per username (from any device and IP)
@@ -156,8 +167,8 @@ class LoginTest {
 
     @Test
     fun underTwoHundredParallelLoginsTheHashLimiterAnswers503WithRetryAfterAndStaysBounded() {
-        val f = AuthFixture(hashConcurrency = 4, hashQueue = 16)
-        repeat(200) { i -> f.users.add(f.user(10_000L + i, "storm$i", Role.SR)) }
+        val f = fixture(hashConcurrency = 4, hashQueue = 16)
+        repeat(200) { i -> f.addUser(f.user(10_000L + i, "storm$i", Role.SR)) }
         val heapBefore = Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() }
         testApplication {
             application { f.application(this) }
@@ -187,7 +198,7 @@ class LoginTest {
 
     @Test
     fun deviceStatesAndEnrolment() {
-        val f = AuthFixture(mapOf("cfg.device.require_enrolled" to JsonPrimitive(true)))
+        val f = fixture(mapOf("cfg.device.require_enrolled" to JsonPrimitive(true)))
         val suspended = "8a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c12"
         f.devices.byUuid[suspended] = DeviceRecord(503, suspended, "suspended", "sr", null)
         testApplication {
@@ -202,7 +213,7 @@ class LoginTest {
 
     @Test
     fun unboundUserGetsABindTokenAndNoRefreshGrant() {
-        val f = AuthFixture()
+        val f = fixture()
         f.devices.bindings.clear()
         testApplication {
             application { f.application(this) }
@@ -217,8 +228,8 @@ class LoginTest {
 
     @Test
     fun disabledUserIsRefusedOnlyAfterTheRightPassword() {
-        val f = AuthFixture()
-        f.users.add(f.user(1001, "sr334001", Role.SR, status = "disabled"))
+        val f = fixture()
+        f.addUser(f.user(1001, "sr334001", Role.SR, status = "disabled"))
         testApplication {
             application { f.application(this) }
             assertEquals("ERR_AUTH_INVALID_CREDENTIALS", json(client.login("sr334001", "bad", f.srDevice).bodyAsText()).code)
@@ -228,7 +239,7 @@ class LoginTest {
 
     @Test
     fun webAdminGetsAnMfaStepAndOldAppVersionsGet426() {
-        val f = AuthFixture(mapOf("cfg.release.min_version_code" to Json.parseToJsonElement("""{"sr":200,"amo":1,"tso":1}""")))
+        val f = fixture(mapOf("cfg.release.min_version_code" to Json.parseToJsonElement("""{"sr":200,"amo":1,"tso":1}""")))
         testApplication {
             application { f.application(this) }
             val web = json(client.login("admin1", "correct horse 1", client = "web").bodyAsText())
@@ -244,7 +255,7 @@ class LoginTest {
 
     @Test
     fun clientSentScopeIdsAreNotAccepted() {
-        val f = AuthFixture()
+        val f = fixture()
         testApplication {
             application { f.application(this) }
             val r = client.post("/v1/auth/login") {

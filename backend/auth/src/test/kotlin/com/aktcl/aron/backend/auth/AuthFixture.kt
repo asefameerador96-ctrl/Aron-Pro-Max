@@ -3,6 +3,7 @@ package com.aktcl.aron.backend.auth
 import com.aktcl.aron.backend.platform.AccessTokenVerifier
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.AuthGuardDeps
+import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.JwtKeys
 import com.aktcl.aron.backend.platform.PlatformContext
 import com.aktcl.aron.backend.platform.Reach
@@ -57,6 +58,8 @@ class AuthFixture(
     overrides: Map<String, JsonElement> = emptyMap(),
     hashConcurrency: Int = 4,
     hashQueue: Int = 32,
+    /** With a database, the JDBI stores of backend:auth are used instead of the in-memory ones. */
+    val fresh: FreshDb? = null,
 ) {
     val clock = MutableClock()
     // Dev-database behaviour (docs/24 s9.4) unless a test overrides it: unenrolled test phones may log in.
@@ -64,10 +67,13 @@ class AuthFixture(
     val keys = throwawayKeys()
     val hasher = PasswordHasher(memoryKiB = 19 * 1024)
     val limiter = HashLimiter(hashConcurrency, hashQueue)
-    val users = FakeUsers()
+    private val fakeUsers = FakeUsers()
+    private val jdbiUsers = fresh?.let { JdbiUserStore(it.db, clock, svCacheMs = 0) }
+    val users: UserStore = jdbiUsers ?: fakeUsers
+    private val scopeVersions: ScopeVersionLookup = jdbiUsers ?: fakeUsers
     val devices = FakeDevices()
-    val lockouts = InMemoryLockoutStore()
-    val refreshStore = InMemoryRefreshStore()
+    val lockouts: LockoutStore = fresh?.let { JdbiLockoutStore(it.db) } ?: InMemoryLockoutStore()
+    val refreshStore: RefreshStore = fresh?.let { JdbiRefreshStore(it.db) } ?: InMemoryRefreshStore()
     val issuer = TokenIssuer(keys, config, clock)
     val refresh = RefreshService(refreshStore, config, keys.derivedSecret("aron-refresh-rotation-v1"), clock)
     val reach = ReachResolver { userId, role, _, date ->
@@ -75,7 +81,7 @@ class AuthFixture(
     }
     val login = LoginService(users, devices, hasher, limiter, lockouts, issuer, refresh, reach, config, clock)
     val verifier = AccessTokenVerifier(keys, clock)
-    val guard = AuthGuardDeps(verifier, users, config, clock)
+    val guard = AuthGuardDeps(verifier, scopeVersions, config, clock)
     val deps = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock)
 
     val passwordHash: String = hasher.hash("correct horse 1")
@@ -83,12 +89,27 @@ class AuthFixture(
     val srDevice = "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10"
 
     init {
-        users.add(user(1001, "sr334001", Role.SR))
-        users.add(user(2001, "tso5012", Role.TSO))
-        users.add(user(9001, "admin1", Role.ADMIN))
+        addUser(user(1001, "sr334001", Role.SR))
+        addUser(user(2001, "tso5012", Role.TSO))
+        addUser(user(9001, "admin1", Role.ADMIN))
         devices.byUuid[srDevice] = DeviceRecord(501, srDevice, "active", "sr", null)
         devices.bindings[1001L to 501L] = 0
     }
+
+    /** Inserts or replaces a user (status and scope_version included) in whichever store is in use. */
+    fun addUser(u: UserRecord) {
+        if (fresh == null) { fakeUsers.add(u); return }
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                """INSERT INTO app.app_user (id, username, full_name, role, status, locale, designation, password_hash, scope_version, must_change_password)
+                   OVERRIDING SYSTEM VALUE VALUES (:id, :u, :n, :r, :s, :l, :d, :p, :sv, :m)
+                   ON CONFLICT (id) DO UPDATE SET status = excluded.status, scope_version = excluded.scope_version, password_hash = excluded.password_hash""",
+            ).bind("id", u.id).bind("u", u.username).bind("n", u.fullName).bind("r", u.role.wire).bind("s", u.status).bind("l", u.locale)
+                .bind("d", u.designation).bind("p", u.passwordHash).bind("sv", u.scopeVersion).bind("m", u.mustChangePassword).execute()
+        }
+    }
+
+    fun close() { limiter.close(); fresh?.close() }
 
     fun user(id: Long, username: String, role: Role, status: String = "active") =
         UserRecord(id, username, "Test $username", role, status, "bn", role.wire, passwordHash, 7, false)

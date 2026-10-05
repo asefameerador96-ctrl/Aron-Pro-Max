@@ -24,6 +24,7 @@ dependencies {
     runtimeOnly(project(":db"))
     implementation(libs.logback.classic)
 
+    testImplementation(testFixtures(project(":backend:platform")))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(kotlin("test"))
