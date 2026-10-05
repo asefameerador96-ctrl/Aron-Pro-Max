@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const WEB_PORT = 3100;
-const MOCK_PORT = 4010;
+// Ports are overridable so two runs (for example a builder and a checker) never collide.
+const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 3100);
+const MOCK_PORT = Number(process.env.E2E_MOCK_PORT ?? 4010);
 
 export default defineConfig({
   testDir: "./e2e",

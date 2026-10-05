@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login, loginOk, resetMock } from "./helpers";
+import { MOCK, login, loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -107,14 +107,14 @@ test("generated CRUD page: list, filter, edit with a mandatory reason, audit row
   await name.fill("Mirpur-10 Central");
   await page.getByRole("button", { name: "সংরক্ষণ" }).click();
   await expect(page.getByTestId("error-reason")).toHaveText("কমপক্ষে ১০ অক্ষর লিখুন।");
-  expect((await (await fetch("http://127.0.0.1:4010/__mock/state")).json()).audit).toHaveLength(0);
+  expect((await (await fetch(`${MOCK}/__mock/state`)).json()).audit).toHaveLength(0);
 
   await page.locator("#reason").fill("Renamed after the market merged");
   await page.getByRole("button", { name: "সংরক্ষণ" }).click();
   await expect(page.getByTestId("form-ok")).toBeVisible();
   await expect(page.getByTestId("audit-reason")).toHaveText("Renamed after the market merged");
 
-  const state = await (await fetch("http://127.0.0.1:4010/__mock/state")).json();
+  const state = await (await fetch(`${MOCK}/__mock/state`)).json();
   expect(state.audit).toHaveLength(1);
   expect(state.audit[0]).toMatchObject({ entity: "cluster", action: "cluster.update", reason: "Renamed after the market merged", actor_username: "admin1" });
 

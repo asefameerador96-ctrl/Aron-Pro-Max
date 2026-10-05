@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
-export const MOCK = "http://127.0.0.1:4010";
+export const MOCK = `http://127.0.0.1:${process.env.E2E_MOCK_PORT ?? 4010}`;
 
 export async function resetMock(): Promise<void> {
   await fetch(`${MOCK}/__mock/reset`, { method: "POST" });
