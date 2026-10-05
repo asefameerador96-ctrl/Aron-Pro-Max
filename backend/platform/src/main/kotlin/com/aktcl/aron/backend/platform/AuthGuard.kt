@@ -11,6 +11,9 @@ import io.ktor.server.routing.RoutingResolveContext
 /** Current scope_version of a user, or null when the user does not exist (docs/24 s8.4). Implemented by auth. */
 fun interface ScopeVersionLookup {
     fun current(userId: Long): Long?
+
+    /** True while the user still holds a temporary password (only change-password is allowed then). */
+    fun mustChangePassword(userId: Long): Boolean = false
 }
 
 /** Dependencies of the bearer guard; one instance per application. */
@@ -31,6 +34,8 @@ class AuthGuardConfig {
     var expiredGraceS: Long = 0
     /** A stale `sv` answers 401 ERR_SCOPE_CHANGED (s8.4); the upload grant is exempt so uploads never stall. */
     var checkScopeVersion: Boolean = true
+    /** Only POST /v1/auth/change-password sets this: a temporary-password user may call nothing else (403). */
+    var allowPasswordChangeRequired: Boolean = false
 }
 
 /**
@@ -58,6 +63,9 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
     if (cfg.checkScopeVersion) {
         val current = cfg.deps.scopeVersions.current(p.userId) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED, "unknown user")
         if (current > p.scopeVersion) throw ApiProblem(ProblemCode.ERR_SCOPE_CHANGED, "scope changed; refresh and fetch a full bundle")
+        if (!cfg.allowPasswordChangeRequired && cfg.deps.scopeVersions.mustChangePassword(p.userId)) {
+            throw ApiProblem(ProblemCode.ERR_AUTH_PASSWORD_CHANGE_REQUIRED, "change the temporary password first")
+        }
     }
     return p
 }

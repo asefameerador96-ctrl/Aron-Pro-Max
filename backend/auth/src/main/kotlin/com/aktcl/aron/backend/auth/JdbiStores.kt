@@ -41,19 +41,24 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
         h.createQuery("SELECT $cols FROM app.app_user WHERE id = :id").bind("id", id).map { rs, _ -> map(rs) }.findOne().orElse(null)
     }
 
-    private data class Sv(val value: Long?, val at: Long)
-    private val svCache = ConcurrentHashMap<Long, Sv>()
+    private data class Gate(val sv: Long?, val mustChange: Boolean, val at: Long)
+    private val gateCache = ConcurrentHashMap<Long, Gate>()
 
-    override fun current(userId: Long): Long? {
+    private fun gate(userId: Long): Gate {
         val now = clock.now().toEpochMilli()
-        svCache[userId]?.let { if (now - it.at < svCacheMs) return it.value }
-        val v = db.jdbi.withHandle<Long?, Exception> { h ->
-            h.createQuery("SELECT scope_version FROM app.app_user WHERE id = :id").bind("id", userId).mapTo(Long::class.java).findOne().orElse(null)
+        gateCache[userId]?.let { if (now - it.at < svCacheMs) return it }
+        val g = db.jdbi.withHandle<Gate, Exception> { h ->
+            h.createQuery("SELECT scope_version, must_change_password FROM app.app_user WHERE id = :id").bind("id", userId)
+                .map { rs, _ -> Gate(rs.getLong(1), rs.getBoolean(2), now) }.findOne().orElse(Gate(null, false, now))
         }
-        if (svCache.size > 100_000) svCache.clear()
-        svCache[userId] = Sv(v, now)
-        return v
+        if (gateCache.size > 100_000) gateCache.clear()
+        gateCache[userId] = g
+        return g
     }
+
+    override fun current(userId: Long): Long? = gate(userId).sv
+
+    override fun mustChangePassword(userId: Long): Boolean = gate(userId).mustChange
 }
 
 /** Refresh families and hashed tokens; rotation is atomic (the unused-token update and the child insert commit together). */
@@ -152,8 +157,9 @@ class JdbiLockoutStore(private val db: Database) : LockoutStore {
             """UPDATE app.auth_lockout SET
                  locked_until = :now + make_interval(secs => least(:base * power(2, least(lock_count, 10)), 86400)),
                  lock_count = lock_count + 1, failures = 0, updated_at = :now
-               WHERE lock_key = :k RETURNING locked_until""",
-        ).bind("k", key).bind("now", now.odt()).bind("base", base.seconds.toDouble()).map { rs, _ -> rs.instant("locked_until")!! }.one()
+               WHERE lock_key = :k AND (locked_until IS NULL OR locked_until <= :now) RETURNING locked_until""",
+        ).bind("k", key).bind("now", now.odt()).bind("base", base.seconds.toDouble()).map { rs, _ -> rs.instant("locked_until")!! }.findOne()
+            .orElseGet { lockedUntil(key, now) ?: now }
     }
 
     override fun reset(key: String) {

@@ -61,6 +61,7 @@ class InMemoryLockoutStore : LockoutStore {
     override fun lock(key: String, now: Instant, base: Duration): Instant {
         val s = states.computeIfAbsent(key) { State() }
         synchronized(s) {
+            s.lockedUntil?.let { if (it.isAfter(now)) return it }  // already locked: a burst never locks twice
             val until = now.plus(minOf(base.multipliedBy(1L shl s.locks.coerceAtMost(10)), Duration.ofHours(24)))
             s.locks++
             s.lockedUntil = until

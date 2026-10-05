@@ -57,11 +57,17 @@ class ProductionWiringTest {
                     val access = b["access_token"]!!.jsonPrimitive.content
                     assertEquals(HttpStatusCode.OK, client.get("/v1/me") { bearerAuth(access) }.status)
                     assertEquals(HttpStatusCode.OK, client.get("/v1/admin/outlets") { bearerAuth(access) }.status)
-                    val rt = b["refresh_token"]!!.jsonPrimitive.content
+                    // Web: the refresh token travels only as the aron_rt cookie, never in the body.
+                    assertEquals(kotlinx.serialization.json.JsonNull, b["refresh_token"])
+                    val cookie = r.headers.getAll("Set-Cookie")!!.single { it.startsWith("aron_rt=") }
+                    for (attr in listOf("HttpOnly", "Secure", "SameSite=Strict", "Path=/v1/auth/refresh")) kotlin.test.assertTrue(attr in cookie, attr)
+                    val rt = cookie.substringAfter("aron_rt=").substringBefore(';')
                     val refreshed = client.post("/v1/auth/refresh") {
-                        contentType(ContentType.Application.Json); setBody("""{"grant":"full","refresh_token":"$rt"}""")
+                        contentType(ContentType.Application.Json); header("Cookie", "aron_rt=$rt"); setBody("""{"grant":"full"}""")
                     }
                     assertEquals(HttpStatusCode.OK, refreshed.status, refreshed.bodyAsText())
+                    assertEquals(kotlinx.serialization.json.JsonNull, Json.parseToJsonElement(refreshed.bodyAsText()).jsonObject["refresh_token"])
+                    kotlin.test.assertTrue(refreshed.headers.getAll("Set-Cookie")!!.any { it.startsWith("aron_rt=") && !it.startsWith("aron_rt=$rt;") })
                     assertEquals(HttpStatusCode.OK, client.get("/v1/health/ready").status)
                     assertEquals("sig-test", Json.parseToJsonElement(client.get("/v1/auth/jwks").bodyAsText()).jsonObject["keys"].toString().let { Regex("\"kid\":\"([^\"]+)\"").find(it)!!.groupValues[1] })
                     // A phone without device_uuid is refused before any hash work.

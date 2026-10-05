@@ -44,6 +44,7 @@ class FakeUsers : UserStore, ScopeVersionLookup {
     override fun findByUsername(username: String) = byId.values.firstOrNull { it.username.equals(username, ignoreCase = true) }
     override fun findById(id: Long) = byId[id]
     override fun current(userId: Long) = byId[userId]?.scopeVersion
+    override fun mustChangePassword(userId: Long) = byId[userId]?.mustChangePassword ?: false
     fun add(u: UserRecord) { byId[u.id] = u }
 }
 
@@ -82,7 +83,7 @@ class AuthFixture(
     val login = LoginService(users, devices, hasher, limiter, lockouts, issuer, refresh, reach, config, clock)
     val verifier = AccessTokenVerifier(keys, clock)
     val guard = AuthGuardDeps(verifier, scopeVersions, config, clock)
-    val deps = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock)
+    val deps = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = "fd-test")
 
     val passwordHash: String = hasher.hash("correct horse 1")
 
@@ -103,7 +104,7 @@ class AuthFixture(
             h.createUpdate(
                 """INSERT INTO app.app_user (id, username, full_name, role, status, locale, designation, password_hash, scope_version, must_change_password)
                    OVERRIDING SYSTEM VALUE VALUES (:id, :u, :n, :r, :s, :l, :d, :p, :sv, :m)
-                   ON CONFLICT (id) DO UPDATE SET status = excluded.status, scope_version = excluded.scope_version, password_hash = excluded.password_hash""",
+                   ON CONFLICT (id) DO UPDATE SET status = excluded.status, scope_version = excluded.scope_version, password_hash = excluded.password_hash, must_change_password = excluded.must_change_password""",
             ).bind("id", u.id).bind("u", u.username).bind("n", u.fullName).bind("r", u.role.wire).bind("s", u.status).bind("l", u.locale)
                 .bind("d", u.designation).bind("p", u.passwordHash).bind("sv", u.scopeVersion).bind("m", u.mustChangePassword).execute()
         }
