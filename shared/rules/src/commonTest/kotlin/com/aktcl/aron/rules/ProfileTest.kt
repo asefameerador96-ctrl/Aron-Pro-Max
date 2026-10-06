@@ -83,7 +83,7 @@ class ProfileTest {
             }
         }
         val cpCmp = Comparator<String> { a, b ->
-            val c = TextRules.nameSortKey(a).compareTo(TextRules.nameSortKey(b)); if (c != 0) c else a.compareTo(b)
+            val c = TextRules.compareKeys(TextRules.nameSortKey(a), TextRules.nameSortKey(b)); if (c != 0) c else a.compareTo(b)
         }
         val byteCmp = Comparator<String> { a, b ->
             val x = TextRules.nameSortKey(a).encodeToByteArray(); val y = TextRules.nameSortKey(b).encodeToByteArray()

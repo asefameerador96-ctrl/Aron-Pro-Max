@@ -24,3 +24,10 @@
 ## Environment note
 - Maven Central answered 429; used the mirror init script of docs/24-build-spec-verification.md s9 in `~/.gradle/init.d` (not committed).
 - Reading `contract/openapi.yaml` for the verdict/action enum names was blocked by the session's permission classifier, so those wire names come from docs/24 only; the next session should diff them against the contract.
+
+## Day 2 (2026-10-06)
+- Done: F-SYS-045 (price snapshot on `MemoLine`), F-SYS-051 (`Formats`), F-SYS-070 (`TextRules`). Checker findings fixed; tests in Day2CheckerTest.
+- Loyalty (`LoyaltyMath`) marked UNUSED per docs/27, not extended.
+- Decisions: taka sign after the amount with a space (row ACCEPT; docs/24 s7.1 shows it before: needs a ruling); dates dd/MM/yyyy and 24-hour times (docs/15 mention ISO and 12-hour: needs a ruling); phones must be 01[3-9]XXXXXXXX; NFC covers Bangla only; `lowercase()` depends on the platform Unicode tables.
+- Requests filed: docs/requests/shared-backlog-coverage-table.md (BacklogCoverageTest red after docs/27; contract lane).
+- Not started: docs/requests/android-core-contract-dtos.md (needs reading contract/openapi.yaml, blocked by the session classifier earlier).

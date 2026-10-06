@@ -16,7 +16,10 @@ object Formats {
         if (locale == UiLocale.EN) s else s.map { if (it in '0'..'9') BN_ZERO + (it - '0') else it }.joinToString("")
 
     /** Integer with `,` thousands grouping (Western, never lakh), e.g. 1234567 -> "1,234,567" / "১,২৩৪,৫৬৭". */
-    fun integer(n: Long, locale: UiLocale): String = digits(Money.formatTaka(n * Money.MTK_PER_TAKA, 0), locale)
+    fun integer(n: Long, locale: UiLocale): String {
+        val d = n.toString().removePrefix("-").reversed().chunked(3).joinToString(",").reversed()
+        return digits(if (n < 0) "-$d" else d, locale)
+    }
 
     /** Money: mtk rendered as `1,234.50 ` + taka sign (2 decimals by default, 3 for unit prices), digits per [locale]. */
     fun money(mtk: Long, locale: UiLocale, decimals: Int = 2): String = digits(Money.formatTaka(mtk, decimals), locale) + " " + TAKA_SIGN
