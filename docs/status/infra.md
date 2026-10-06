@@ -19,11 +19,11 @@ Apps address); Storage LRS, ACR Basic; Log Analytics cap 0.5 GB/day, 30 days; no
 |---|---|
 | PostgreSQL B1ms compute (0.026/h) | 19 |
 | PostgreSQL storage 32 GiB (0.138/GB) and backup (within the free 100 %) | 4.4 |
-| Container Apps: worker 0.25 vCPU / 0.5 GiB always on (mostly idle rate), api and web scale to zero, inside the monthly free grant of 180,000 vCPU-s / 360,000 GiB-s / 2 M requests for most of it | 5 to 15 |
+| Container Apps: worker 0.25 vCPU / 0.5 GiB always on (about 6 at the idle rate, about 20 if the JVM keeps it above 0.01 vCPU and it bills active), api and web scale to zero; monthly free grant 180,000 vCPU-s / 360,000 GiB-s / 2 M requests | 6 to 20 |
 | Container Registry Basic (0.1666/day) | 5 |
 | Log Analytics + Application Insights (pilot volume under the 5 GB/month free; cap 0.5 GB/day) | 0 to 5 |
 | Key Vault, Storage LRS, Event Grid, metric alerts | about 1 |
-| **Total** | **about 35 to 50** |
+| **Total** | **about 35 to 55** |
 
 No environment management fee: it applies only to private endpoints, planned maintenance or dedicated profiles, none
 of which the TEST profile uses (Learn, Container Apps billing).

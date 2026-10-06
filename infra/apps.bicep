@@ -69,8 +69,12 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { na
 resource kv 'Microsoft.KeyVault/vaults@2024-11-01' existing = { name: n.keyVault }
 resource st 'Microsoft.Storage/storageAccounts@2024-01-01' existing = { name: n.storage }
 resource appi 'Microsoft.Insights/components@2020-02-02' existing = { name: n.appInsights }
-resource fd 'Microsoft.Cdn/profiles@2024-09-01' existing = { name: n.frontDoor }
-resource fdEndpoint 'Microsoft.Cdn/profiles/afdEndpoints@2024-09-01' existing = { parent: fd, name: n.frontDoorEndpoint }
+// Conditional: an unconditional `existing` node is read at deployment time and fails when there is no Front Door.
+resource fd 'Microsoft.Cdn/profiles@2024-09-01' existing = if (frontDoorEnabled) { name: n.frontDoor }
+resource fdEndpoint 'Microsoft.Cdn/profiles/afdEndpoints@2024-09-01' existing = if (frontDoorEnabled) {
+  parent: fd
+  name: n.frontDoorEndpoint
+}
 resource idApi 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = { name: n.idApi }
 resource idWorker 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = { name: n.idWorker }
 resource idMigrate 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = { name: n.idMigrate }
@@ -95,7 +99,7 @@ var commonEnv = [
   { name: 'ARON_BLOB_CONTAINER_MEDIA', value: 'media' }
   { name: 'ARON_BLOB_CONTAINER_BUNDLES', value: 'bundles' }
   { name: 'ARON_MEDIA_EVENTS_QUEUE', value: 'media-events' }
-  { name: 'ARON_FRONT_DOOR_ID', value: frontDoorEnabled ? fd.properties.frontDoorId : '' }
+  { name: 'ARON_FRONT_DOOR_ID', value: frontDoorEnabled ? fd!.properties.frontDoorId : '' }
   { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
 ]
 
@@ -295,7 +299,7 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
 var deployWeb = deployServices && !empty(webImage)
 
 // The one public address of the API: Front Door, or the api app itself when there is no Front Door (TEST profile).
-var apiHost = frontDoorEnabled ? fdEndpoint.properties.hostName : (deployServices ? api!.properties.configuration.ingress.fqdn : '')
+var apiHost = frontDoorEnabled ? fdEndpoint!.properties.hostName : (deployServices ? api!.properties.configuration.ingress.fqdn : '')
 
 resource web 'Microsoft.App/containerApps@2025-07-01' = if (deployWeb) {
   name: n.webApp

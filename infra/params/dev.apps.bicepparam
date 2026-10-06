@@ -39,8 +39,9 @@ param webMemory = '0.5Gi'
 param webMinReplicas = 0
 param webMaxReplicas = 1
 
-// Burstable B1ms admits about 35 client connections: api 2 x (4 + 2) + worker (3 + 2) + migrate 2 = 19.
+// Burstable B1ms admits about 35 client connections: api 2 x (4 + 1) + worker (3 + 2) + migrate 2 = 17, and still
+// 32 while a deploy briefly runs the old and new revisions side by side (the read URL is the same server here).
 param apiDbPoolMax = 4
-param apiDbReadPoolMax = 2
+param apiDbReadPoolMax = 1
 param workerDbPoolMax = 3
 param workerDbReadPoolMax = 2

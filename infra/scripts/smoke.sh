@@ -21,5 +21,5 @@ while :; do
     exit 0
   fi
   [ "$(date +%s)" -ge "$deadline" ] && { cat "$hdr" >&2 || true; die "smoke test failed: GET $url -> $code (no X-Aron-Api marker or not 200)"; }
-  echo "waiting for Front Door ($code)..."; sleep 20
+  echo "waiting for the API ($code; a new route or a cold start from zero replicas)..."; sleep 20
 done

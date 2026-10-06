@@ -200,6 +200,12 @@ class StackIsComplete(unittest.TestCase):
                 or re.search(r"secretNames\.%s\b" % key, (ROOT / "infra" / "modules" / "keyvault.bicep").read_text(encoding="utf-8"))
             self.assertTrue(created, f"apps.bicep references Key Vault secret {name}, which nothing creates")
 
+    def test_front_door_references_are_conditional(self):
+        # An unconditional `existing` node is read at deployment time and fails in the TEST profile (no Front Door).
+        res = load("apps.json")["resources"]
+        for name in ("fd", "fdEndpoint"):
+            self.assertEqual(res[name].get("condition"), "[parameters('frontDoorEnabled')]", f"{name} must be conditional")
+
     def test_one_image_three_roles(self):
         text = json.dumps(load("apps.json"))
         for role in ("migrate", "api", "worker"):
