@@ -13,9 +13,10 @@
 #
 # FAIL-CLOSED: every Azure read must succeed, or the script stops without deleting anything; decisions are made from
 # one JSON snapshot. Only resources inside <resource-group> are read or deleted.
-# DRY RUN by default: prints the full inventory (KEEP / DELETE). Deletes only with CONFIRM=<the resource group name>.
+# DRY RUN by default: prints the full inventory (KEEP / DELETE). Deletes only with CONFIRM=<the resource group name>
+# AND OWNER_APPROVED=yes AND a *-lite profile (the owner decides a reset; docs/28).
 # CHECK_ONLY=1: fail (change nothing) when anything would be deleted; deploy.sh runs this before main.bicep.
-# Usage: CONFIRM=rg-aron-dev infra/scripts/reset-to-profile.sh <resource-group> <env>
+# Usage: CONFIRM=rg-aron-dev OWNER_APPROVED=yes infra/scripts/reset-to-profile.sh <resource-group> <profile: dev|dev-lite|prod>
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 rg="${1:?resource group}"; env_name="${2:?dev or prod}"
@@ -142,6 +143,9 @@ mapfile -t doomed < "$snap/plan.txt"
 if [ "${#doomed[@]}" -eq 0 ]; then note "nothing to reset: $rg matches the $env_name profile"; exit 0; fi
 if [ -n "${CHECK_ONLY:-}" ]; then
   die "$rg holds ${#doomed[@]} resource(s) the $env_name profile cannot adopt (listed above; creation-time settings differ). Nothing was changed. Run the 'reset' workflow (GitHub > Actions > reset, type the group name) or infra/scripts/reset-to-profile.sh, then deploy again."
+fi
+if [ "${CONFIRM:-}" = "$rg" ] && { [ "${OWNER_APPROVED:-}" != yes ] || [ "${env_name%-lite}" = "$env_name" ]; }; then
+  die "deleting needs OWNER_APPROVED=yes and a *-lite profile (profile was '$env_name'; docs/28: only an owner-approved reset to the cheap TEST profile deletes); nothing was deleted"
 fi
 if [ "${CONFIRM:-}" != "$rg" ]; then
   note "DRY RUN: ${#doomed[@]} resource(s) marked DELETE would be deleted. Re-run with CONFIRM=$rg to delete them."

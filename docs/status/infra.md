@@ -1,10 +1,44 @@
 # Infra lane status
 
-Updated 2026-10-06 (Day 2, evening).
+Updated 2026-10-06 (Day 2, late evening).
 
-## TEST profile (docs/28, binding) — dev is now pilot-sized
+## Owner decision 2026-10-06: HOLD (docs/28 "Exception approved")
 
-`infra/params/dev*.bicepparam` = TEST profile; `prod*` = FINAL profile; same templates, every size and switch a
+The full-size resources the first deploy created in `rg-aron-dev` are **kept** for up to one week to rehearse the final
+topology; **review date 2026-10-10** (spend report, then keep / shrink / delete). Nothing is deleted; no quota
+requests; no fleet-sized additions.
+
+- **Two profiles, same templates.** `infra/params/dev*.bicepparam` = **rehearsal profile**: exactly what exists
+  (PostgreSQL GeneralPurpose D2ds_v5 zone-redundant HA, SSD v2 128 GiB, geo backup; Front Door Standard + WAF;
+  VNet-injected Container Apps environment; ZRS storage; budget USD 130 with 50/90/100 % and forecast 100 %).
+  `infra/params/dev-lite*.bicepparam` = the cheap **TEST profile** (Burstable B1ms, no VNet, no Front Door, scale to
+  zero; about USD 35 to 55 a month), used only after an owner-ordered reset. `prod*` = FINAL profile.
+- **Adopt, never recreate.** `infra/deploy.sh dev` runs `az deployment group what-if` first;
+  `infra/scripts/whatif-guard.py` stops the deploy (nothing changed) if a PostgreSQL server would be deleted, created
+  next to the existing one, or changed in sku, storage, HA, backup, network, version, zone or admin login. The
+  reset check (`reset-to-profile.sh` in check mode) confirms the group matches the dev profile (nothing to delete).
+- **Reset locked.** The `reset` workflow deletes only when the profile is `dev-lite` AND "confirm" is exactly
+  `owner approved reset`; the script itself also refuses deletion without `OWNER_APPROVED=yes` and a `*-lite`
+  profile. Everything else is a dry run.
+
+### Can the PostgreSQL server be stopped overnight with HA on? Yes (Learn), not done without the lead's word
+
+- Learn, *High availability concepts*: "You perform operations such as stop, start, and restart on both primary and
+  standby database servers at the same time." *Stop compute of a server*: compute billing stops immediately; the
+  server can be briefly restarted for monthly maintenance and starts automatically after 7 days; no other management
+  operation (including a deploy that touches the server) works while it is stopped. Storage keeps billing.
+- Saving: compute is 2 x USD 0.244/h = USD 0.488/h (primary + standby; storage about USD 1.2/day continues).
+  Stopped 20:00 to 08:00 Dhaka (12 h): **about USD 5.9 a day**, the day cost falls from about USD 15.5 to about
+  USD 9.6; also stopping on Fridays (weekly off-day): about USD 11.7 more per Friday. For the rest of the rehearsal
+  week (to 2026-10-10): about USD 25 to 35 saved.
+- Effect: while stopped the api's readiness check fails, so Front Door answers 503; phones keep selling offline and
+  upload when it is back (offline-first); the worker's jobs pause; a start takes a few minutes (5 to 8 when maintenance
+  is pending). If ordered, a scheduled GitHub workflow can stop at 20:00 and start at 07:30 Dhaka using the deploy
+  identity (Contributor on the group); not built yet.
+
+## TEST profile = `dev-lite` (docs/28), used only after an owner-ordered reset
+
+`infra/params/dev-lite*.bicepparam` = TEST profile; `dev*` = rehearsal profile; `prod*` = FINAL profile; same templates, every size and switch a
 parameter (`privateNetworking`, `deployFrontDoor`, `enableLogAlerts`, `postgresSkuTier`, `postgresStorageType`, app
 sizes, connection pools). TEST: PostgreSQL **Burstable B1ms** (B2s is USD 0.104/h = USD 76 a month on its own, so
 B1ms), single zone, no HA, no replica, no geo backup, 32 GiB SSD v1, 7-day backup, public endpoint limited to Azure
@@ -77,7 +111,7 @@ alone). Their creation-time settings cannot be changed to the TEST profile in pl
   (PostgreSQL server, the VNet-injected environment with its apps and jobs, Front Door and WAF, ZRS storage and its
   Event Grid topic, VNet/NSGs/private DNS zone) when the resource group name is typed into "confirm". Key Vault, logs,
   registry, identities, alerts and budget are kept.
-- **Needs the lead's or owner's go-ahead** before the deleting run (it is a destructive action in Azure).
+- **Owner decision: HOLD** (no reset). The reset now needs profile `dev-lite` and the words `owner approved reset`.
 
 ## Move runbook
 

@@ -342,8 +342,38 @@ class SizingParameters(unittest.TestCase):
             self.assertGreater(q["budgetAmount"], 0)
             self.assertTrue(q["alertEmails"], f"{env}: budget contact e-mail")
 
-    def test_test_profile_matches_docs_28(self):
+    def test_rehearsal_profile_matches_what_exists(self):
+        # docs/28 "Exception approved": dev adopts exactly the resources created on 2026-10-06; no fleet additions.
         p = params("dev.parameters.json")
+        expected = {
+            "postgresSkuTier": "GeneralPurpose", "postgresSkuName": "Standard_D2ds_v5", "postgresStorageType": "PremiumV2_LRS",
+            "postgresStorageSizeGb": 128, "postgresStorageIops": 3000, "postgresStorageThroughputMBps": 125,
+            "postgresHaMode": "ZoneRedundant", "postgresGeoRedundantBackup": True, "postgresBackupRetentionDays": 7,
+            "postgresReadReplica": False, "privateNetworking": True, "deployFrontDoor": True,
+            "frontDoorSku": "Standard_AzureFrontDoor", "frontDoorPrivateLink": False, "storageSku": "Standard_ZRS",
+            "registrySku": "Basic", "vnetAddressPrefix": "10.51.0.0/16", "acaSubnetPrefix": "10.51.0.0/24",
+            "postgresSubnetPrefix": "10.51.2.0/28", "budgetAmount": 130,
+        }
+        for k, v in expected.items():
+            self.assertEqual(p[k], v, f"dev must match the existing resources: {k}")
+        a = params("dev.apps.parameters.json")
+        self.assertIs(a["frontDoorEnabled"], True)
+        self.assertLessEqual(a["apiMaxReplicas"], 2, "no fleet-sized additions")
+
+    def test_reset_deletes_only_for_an_owner_approved_lite_profile(self):
+        r = (WORKFLOWS / "reset.yml").read_text(encoding="utf-8")
+        self.assertIn('if [ "${CONFIRM_TEXT}" = "owner approved reset" ] && [ "${PROFILE}" = "dev-lite" ]; then', r)
+        self.assertNotRegex(r, r"(?m)^\s*(push|pull_request|schedule|workflow_call):", "manual dispatch only")
+        script = (ROOT / "infra" / "scripts" / "reset-to-profile.sh").read_text(encoding="utf-8")
+        self.assertIn('[ "${OWNER_APPROVED:-}" != yes ] || [ "${env_name%-lite}" = "$env_name" ]', script)
+
+    def test_deploy_runs_the_what_if_guard_before_main(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertLess(d.index("az deployment group what-if"), d.index("az deployment group create -g \"$RG\" -n aron-infra"))
+        self.assertIn('infra/scripts/whatif-guard.py "$whatif_file" || die', d)
+
+    def test_test_profile_matches_docs_28(self):
+        p = params("dev-lite.parameters.json")
         self.assertEqual(p["postgresSkuTier"], "Burstable")
         self.assertRegex(p["postgresSkuName"], r"^Standard_B(1ms|2s)$")
         self.assertEqual(p["postgresStorageType"], "Premium_LRS", "Burstable cannot use SSD v2")
@@ -359,7 +389,7 @@ class SizingParameters(unittest.TestCase):
         self.assertEqual(p["registrySku"], "Basic")
         self.assertLessEqual(float(p["logDailyQuotaGb"]), 0.5)
         self.assertLessEqual(p["budgetAmount"], 100, "the owner's whole budget is USD 100 a month")
-        a = params("dev.apps.parameters.json")
+        a = params("dev-lite.apps.parameters.json")
         self.assertIs(a["frontDoorEnabled"], False)
         self.assertEqual(a["apiMinReplicas"], 0, "api scales to zero")
         self.assertLessEqual(a["apiMaxReplicas"], 2)

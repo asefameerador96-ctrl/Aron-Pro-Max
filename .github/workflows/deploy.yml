@@ -27,9 +27,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Target (parameter files infra/params/<environment>*.bicepparam)
+        description: Profile (infra/params/<profile>*.bicepparam); dev = rehearsal (existing resources), dev-lite = cheap TEST profile
         type: choice
-        options: [dev, prod]
+        options: [dev, dev-lite, prod]
         default: dev
       run_migrations:
         description: Run the database migrations job before the apps (untick only to redeploy apps without a migration)

@@ -3,21 +3,23 @@
 # VNet, an unused Front Door, a storage account whose replication cannot be converted). Keeps Key Vault, logs, the
 # registry, identities, alerts and the budget. See infra/scripts/reset-to-profile.sh. Owner: infra lane.
 #
-# Manual only, integration branch only, environment azure-dev. A dry run lists what would go; deleting needs the
-# resource group's name typed into "confirm". Actions are pinned by commit SHA (tag in the comment).
+# Manual only, integration branch only, environment azure-dev. A dry run lists what would go. Deleting needs BOTH the
+# profile dev-lite (the cheap TEST profile; the rehearsal profile dev keeps everything, docs/28 exception) AND the
+# exact words "owner approved reset" in "confirm" (the owner decides; the lane never types them on its own).
+# Actions are pinned by commit SHA (tag in the comment).
 
 name: reset
 
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: Profile to reset to (infra/params/<environment>.bicepparam)
+      profile:
+        description: Profile to reset to (infra/params/<profile>.bicepparam); only dev-lite can delete
         type: choice
-        options: [dev]
-        default: dev
+        options: [dev-lite, dev]
+        default: dev-lite
       confirm:
-        description: Type the resource group name to DELETE the listed resources; leave empty for a dry run
+        description: Type exactly "owner approved reset" to DELETE the listed resources; anything else is a dry run
         type: string
         default: ""
 
@@ -30,14 +32,14 @@ env:
 
 jobs:
   reset:
-    name: Reset ${{ inputs.environment }} to its profile
+    name: Reset rg to the ${{ inputs.profile }} profile
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: azure-dev
     env:
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-      ENV_NAME: ${{ inputs.environment }}
-      CONFIRM: ${{ inputs.confirm }}
+      PROFILE: ${{ inputs.profile }}
+      CONFIRM_TEXT: ${{ inputs.confirm }}
     steps:
       - name: Integration branch only
         env:
@@ -60,5 +62,12 @@ jobs:
           az bicep install
       - name: Scope check (rights on the resource group only)
         run: infra/scripts/scope-check.sh "${AZURE_RESOURCE_GROUP}"
-      - name: Reset (dry run unless confirmed)
-        run: infra/scripts/reset-to-profile.sh "${AZURE_RESOURCE_GROUP}" "${ENV_NAME}"
+      - name: Reset (dry run unless the owner approved it for dev-lite)
+        run: |
+          if [ "${CONFIRM_TEXT}" = "owner approved reset" ] && [ "${PROFILE}" = "dev-lite" ]; then
+            echo "Owner-approved reset to ${PROFILE}: deleting the resources the profile cannot adopt."
+            export CONFIRM="${AZURE_RESOURCE_GROUP}" OWNER_APPROVED=yes
+          elif [ -n "${CONFIRM_TEXT}" ]; then
+            echo "::warning::confirm text or profile does not allow deleting (needs profile dev-lite and exactly 'owner approved reset'): dry run only"
+          fi
+          infra/scripts/reset-to-profile.sh "${AZURE_RESOURCE_GROUP}" "${PROFILE}"

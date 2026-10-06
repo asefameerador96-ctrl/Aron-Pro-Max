@@ -17,8 +17,11 @@
 source "$(dirname "$0")/scripts/lib.sh"
 cd "$(dirname "$0")/.." || exit 1
 
-ENV_NAME="${1:-dev}"
-case "$ENV_NAME" in dev|prod) ;; *) die "environment must be dev or prod, was $ENV_NAME" ;; esac
+# PROFILE picks the parameter files (infra/params/<profile>*.bicepparam); ENV_NAME is the environment in resource
+# names. dev-lite is the cheap TEST profile of the same dev environment (docs/28), so both deploy the dev names.
+PROFILE="${1:-dev}"
+case "$PROFILE" in dev|dev-lite|prod) ;; *) die "profile must be dev, dev-lite or prod, was $PROFILE" ;; esac
+ENV_NAME="${PROFILE%-lite}"
 need AZURE_RESOURCE_GROUP "the resource group to deploy into"
 need ARON_ALERT_EMAILS "who receives the budget and platform alerts"
 RG="$AZURE_RESOURCE_GROUP"
@@ -26,6 +29,7 @@ SHA="${GIT_SHA:-$(git rev-parse HEAD)}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 export AZURE_LOCATION="${AZURE_LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_SUFFIX="${ARON_NAME_SUFFIX:-}"
+whatif_file="$(mktemp)"; trap 'rm -f "$whatif_file"' EXIT
 summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMMARY"; echo "$*"; }
 
 # ---------------------------------------------------------------------------------------------------------- lock
@@ -53,14 +57,14 @@ fi
 note "deploying $SHA (currently deployed: ${deployed_sha:-nothing})"
 
 # ------------------------------------------------------------------------------------------------------- infra
-infra_paths=(infra/main.bicep infra/modules infra/lib "infra/params/${ENV_NAME}.bicepparam")
+infra_paths=(infra/main.bicep infra/modules infra/lib "infra/params/${PROFILE}.bicepparam")
 previous="$(az deployment group show -g "$RG" -n aron-infra --query properties.outputs -o json 2>/dev/null || true)"
 # The parameters main.bicep would get now (GitHub variables included), compared with the last successful run, so a
 # changed ARON_ALERT_EMAILS / ARON_BUDGET_AMOUNT / ARON_NAME_SUFFIX / AZURE_LOCATION also re-runs the infra stage.
 params_unchanged() {
   local now last
   now="$(ARON_DB_ADMIN_PASSWORD=compare-only-not-a-secret-0 ARON_BUDGET_START_DATE=2000-01-01 \
-    az bicep build-params --file "infra/params/${ENV_NAME}.bicepparam" --stdout 2>/dev/null)" || return 1
+    az bicep build-params --file "infra/params/${PROFILE}.bicepparam" --stdout 2>/dev/null)" || return 1
   last="$(az deployment group show -g "$RG" -n aron-infra --query properties.parameters -o json 2>/dev/null)" || return 1
   python3 - "$now" "$last" <<'PY'
 import json, sys
@@ -86,7 +90,7 @@ out() { python3 -c 'import json,sys; o=json.loads(sys.argv[1]); v=o[sys.argv[2]]
 # A resource whose creation-time settings differ from the profile (docs/28) would make main.bicep fail half-way;
 # stop before changing anything and point at the reset workflow instead.
 if [ "$skip_infra" != true ]; then
-  CHECK_ONLY=1 infra/scripts/reset-to-profile.sh "$RG" "$ENV_NAME"
+  CHECK_ONLY=1 infra/scripts/reset-to-profile.sh "$RG" "$PROFILE"
 fi
 
 if [ "$skip_infra" = true ]; then
@@ -101,9 +105,17 @@ else
   start="$(az consumption budget show -g "$RG" --budget-name "$budget_name" --query timePeriod.startDate -o tsv 2>/dev/null || true)"
   export ARON_BUDGET_START_DATE="${start:0:10}"
   [ -n "$ARON_BUDGET_START_DATE" ] || ARON_BUDGET_START_DATE="$(date -u +%Y-%m-01)"
+  # What-if first: the infra stage must never recreate or reconfigure a PostgreSQL server (the rehearsal profile
+  # adopts the existing one; tier, storage, HA, backup and network are fixed at creation or must not change by accident).
+  note "what-if of main.bicep"
+  az deployment group what-if -g "$RG" --template-file infra/main.bicep \
+    --parameters "infra/params/${PROFILE}.bicepparam" --no-pretty-print -o json > "$whatif_file" \
+    || die "what-if of main.bicep failed (nothing was changed)"
+  EXISTING_POSTGRES_IDS="$(az postgres flexible-server list -g "$RG" --query "[].id" -o tsv | tr '\n' ' ')" \
+    infra/scripts/whatif-guard.py "$whatif_file" || die "what-if shows a change the guard refuses (nothing was changed)"
   note "main.bicep (budget start $ARON_BUDGET_START_DATE)"
   outputs="$(az deployment group create -g "$RG" -n aron-infra --template-file infra/main.bicep \
-    --parameters "infra/params/${ENV_NAME}.bicepparam" --query properties.outputs -o json)"
+    --parameters "infra/params/${PROFILE}.bicepparam" --query properties.outputs -o json)"
   unset ARON_DB_ADMIN_PASSWORD
 fi
 REGISTRY="$(out "$outputs" registryLoginServer)"
@@ -138,7 +150,7 @@ export ARON_BACKEND_IMAGE="$BACKEND_IMAGE" ARON_WEB_IMAGE="$WEB_IMAGE"
 # ------------------------------------------------------------------------------------------------ migrations
 note "migrate job with $BACKEND_IMAGE"
 ARON_DEPLOY_SERVICES=false az deployment group create -g "$RG" -n aron-apps-migrate --template-file infra/apps.bicep \
-  --parameters "infra/params/${ENV_NAME}.apps.bicepparam" -o none
+  --parameters "infra/params/${PROFILE}.apps.bicepparam" -o none
 if [ "$RUN_MIGRATIONS" = true ]; then
   execution="$(az containerapp job start -g "$RG" -n "$JOB" --query name -o tsv)"
   note "migrations started: $execution"
@@ -160,7 +172,7 @@ fi
 # ------------------------------------------------------------------------------------------------------ apps
 note "apps (and Front Door routes when the profile has Front Door)"
 apps="$(ARON_DEPLOY_SERVICES=true az deployment group create -g "$RG" -n aron-apps --template-file infra/apps.bicep \
-  --parameters "infra/params/${ENV_NAME}.apps.bicepparam" --query properties.outputs -o json)"
+  --parameters "infra/params/${PROFILE}.apps.bicepparam" --query properties.outputs -o json)"
 API_HOST="$(out "$apps" apiHost)"
 WEB_DEPLOYED="$(out "$apps" webDeployed)"
 
@@ -174,7 +186,7 @@ infra/scripts/smoke.sh "$API_HOST"
 amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \
   || die "budget $BUDGET not found in $RG"
 
-summary "### Aron ${ENV_NAME} deployed"
+summary "### Aron ${ENV_NAME} deployed (profile ${PROFILE})"
 summary "| Item | Value |"
 summary "|---|---|"
 summary "| Resource group | ${RG} |"

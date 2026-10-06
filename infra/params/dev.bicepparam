@@ -1,6 +1,8 @@
-// dev = the TEST profile of docs/28 (binding): the temporary test subscription, 5 to 10 pilot users, a USD 100 a month
-// owner budget shared with Google Maps. Target about USD 35 to 50 a month (estimate in docs/status/infra.md).
-// No fleet-sized, zone-redundant, geo-redundant or Premium value may appear here without the sponsor's written yes.
+// dev = the REHEARSAL profile: exactly the resources that exist in rg-aron-dev since 2026-10-06 (docs/28 "Exception
+// approved": kept for up to one week to rehearse the final topology; review 2026-10-10). Every value below matches what
+// was created, so a deploy ADOPTS them; infra/deploy.sh runs a what-if first and refuses any change to the PostgreSQL
+// server. No fleet-sized additions (no read replica, no bigger SKU, no Load Testing). The cheap TEST profile is
+// dev-lite*.bicepparam, used only after an owner-approved reset.
 using '../main.bicep'
 
 // Values from the deploy environment (infra/deploy.sh). An unset OR empty variable takes the default, because GitHub
@@ -15,49 +17,40 @@ param environmentName = 'dev'
 param location = empty(envLocation) ? 'southeastasia' : envLocation
 param nameSuffix = envSuffix
 
-// TEST profile switches: no VNet (no environment load balancer or public IPs to pay for), no Front Door/WAF (clients
-// use the Container Apps address), no log-search alert rules (billed per rule); metric alerts and the budget stay.
-param privateNetworking = false
-param deployFrontDoor = false
-param enableLogAlerts = false
-param containerEnvZoneRedundant = false
+// As created: VNet, private PostgreSQL, Front Door Standard + WAF, log-search alerts.
+param privateNetworking = true
+param deployFrontDoor = true
+param enableLogAlerts = true
+param containerEnvZoneRedundant = true
 
-// Unused without privateNetworking; kept so the file also documents the address plan.
 param vnetAddressPrefix = '10.51.0.0/16'
 param acaSubnetPrefix = '10.51.0.0/24'
 param postgresSubnetPrefix = '10.51.2.0/28'
 
 param logRetentionDays = 30
-// docs/28: 0.5 GB a day. Pilot ingestion is far below the 5 GB a month Log Analytics bills at no charge, so the cap is
-// a guard against a runaway logger, not a cost line.
-param logDailyQuotaGb = '0.5'
+param logDailyQuotaGb = '1'
 param alertEmails = map(split(empty(envEmails) ? 'alerts@aron.invalid' : envEmails, ','), e => trim(e))
-// The Azure share of the owner's USD 100 a month (Maps takes the rest); e-mails at 50, 90 and 100 % and forecast 100 %.
-param budgetAmount = int(empty(envBudget) ? '70' : envBudget)
-// Azure refuses a start date before the current month on create and refuses to move it later, so deploy.sh passes
-// the existing budget's date, or the first day of the current month when the budget does not exist yet.
+// docs/28 exception: about USD 130 for the rehearsal week, e-mails at 50, 90 and 100 % and forecast 100 %.
+param budgetAmount = int(empty(envBudget) ? '130' : envBudget)
 param budgetStartDate = empty(envBudgetStart) ? '2026-10-01' : envBudgetStart
 
 param keyVaultPurgeProtection = false
 param registrySku = 'Basic'
-param storageSku = 'Standard_LRS'
+param storageSku = 'Standard_ZRS'
 
-// Burstable B1ms (1 vCore, 2 GiB; USD 0.026/h in Southeast Asia, about USD 19 a month): single zone, no HA, no replica,
-// no geo-redundant backup, 32 GiB SSD v1 (about USD 4.4), 7-day point-in-time restore. B2s is USD 0.104/h (about USD
-// 76 a month) and would exceed the budget on its own. Burstable has no built-in PgBouncer: the app's pool is the pool.
-param postgresSkuTier = 'Burstable'
-param postgresSkuName = 'Standard_B1ms'
-param postgresStorageType = 'Premium_LRS'
-param postgresStorageSizeGb = 32
-param postgresStorageIops = 120
-param postgresStorageThroughputMBps = 25
-param postgresHaMode = 'Disabled'
+// As created (do not change: tier, storage type and geo backup are fixed at creation; the deploy refuses changes).
+param postgresSkuTier = 'GeneralPurpose'
+param postgresStorageType = 'PremiumV2_LRS'
+param postgresSkuName = 'Standard_D2ds_v5'
+param postgresStorageSizeGb = 128
+param postgresStorageIops = 3000
+param postgresStorageThroughputMBps = 125
+param postgresHaMode = 'ZoneRedundant'
 param postgresBackupRetentionDays = 7
-param postgresGeoRedundantBackup = false
+param postgresGeoRedundantBackup = true
 param postgresReadReplica = false
 param postgresAdminPassword = readEnvironmentVariable('ARON_DB_ADMIN_PASSWORD', '')
 
-// Front Door is not created in the TEST profile; these values only keep the template's parameter set complete.
 param frontDoorSku = 'Standard_AzureFrontDoor'
 param wafMode = 'Prevention'
 param wafManagedRuleSetAction = 'Log'

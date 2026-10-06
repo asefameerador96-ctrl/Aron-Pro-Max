@@ -2,8 +2,11 @@
 
 Owner: infra lane. Binding context: `docs/28-environment-profiles.md`. Keep this file current with every infra change.
 
-The test subscription runs the **TEST profile** (`infra/params/dev*.bicepparam`, 5 to 10 pilot users). The final
-account runs the **FINAL profile** (`infra/params/prod*.bicepparam`, 8,500 SRs). The templates are the same; the move
+The test subscription runs one of two profiles: the **rehearsal profile** `dev` (`infra/params/dev*.bicepparam`: the
+full-size topology kept by the owner's 2026-10-06 exception until the review on 2026-10-10: zone-redundant PostgreSQL
+D2ds_v5 with geo backup, Front Door + WAF, VNet) or the cheap **TEST profile** `dev-lite`
+(`infra/params/dev-lite*.bicepparam`, 5 to 10 pilot users), used after an owner-ordered reset. The final account runs
+the **FINAL profile** (`infra/params/prod*.bicepparam`, 8,500 SRs). The templates are the same; the move
 is: new subscription and identity, quotas, `prod` parameters, restore the data, new Google keys, re-point and re-enrol
 the phones. Plan **two working days** plus the quota lead time (up to a week).
 
@@ -82,10 +85,19 @@ The final database starts empty; the pilot's data comes over with a dump and res
    Sales Submit screen shows "reconciled" when it is safe.
 3. Pilot users sign in again on the new host.
 
+## 5a. What the rehearsal profile already proves (before the move)
+
+While `dev` keeps the final topology (until 2026-10-10 or the owner's decision), rehearse here, at pilot load only:
+a forced PostgreSQL failover (`az postgres flexible-server restart --failover Forced`) with the app reconnecting, a
+point-in-time restore into a new server name and a row count comparison, the WAF in Prevention mode in front of real
+phone traffic, and the private networking path (api to PostgreSQL inside the VNet). Write the timings into
+`docs/status/infra.md`; the 8,500-user load proof still runs only in the final account.
+
 ## 6. After the move
 
 1. Run the Day 6 proofs in the final account (`docs/23` s5): load test at 1.5 times the fleet, burst, failover and
    restore drills.
 2. Keep the TEST account for a week as a fallback, then delete `rg-aron-dev` (the budget alert keeps watching until
-   then).
+   then). If the owner keeps the test account for further pilots, order the reset to `dev-lite` instead (GitHub >
+   Actions > reset, profile `dev-lite`, confirm `owner approved reset`), then deploy with profile `dev-lite`.
 3. Update `docs/status/infra.md` with the final host names, the date of the move and the reconciliation result.
