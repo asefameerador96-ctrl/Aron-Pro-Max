@@ -131,8 +131,15 @@ if ($existing -contains 'github-pull-request') {
   az ad app federated-credential delete --id $appId --federated-credential-id 'github-pull-request' --only-show-errors
   Check 'remove the pull-request credential'
 }
+# GitHub issues the subject in one of two forms, depending on the repository's OIDC settings:
+#   classic:   repo:<owner>/<repo>:environment:<env>
+#   with IDs:  repo:<owner>@<owner-id>/<repo>@<repo-id>:environment:<env>   (seen on this repository, 2026-10-06)
+# Both are trusted; each is an exact match for this one repository and environment, so nothing else gains access.
+$repoInfo = gh api "repos/$Repo" | ConvertFrom-Json; Check 'read repository ids'
+$idSubject = "repo:$($repoInfo.owner.login)@$($repoInfo.owner.id)/$($repoInfo.name)@$($repoInfo.id):environment:$Environment"
 $creds = @(
-  @{ name = 'github-environment-azure-dev'; subject = "repo:${Repo}:environment:$Environment" }
+  @{ name = "github-environment-$Environment"; subject = "repo:${Repo}:environment:$Environment" },
+  @{ name = "github-environment-$Environment-ids"; subject = $idSubject }
 )
 foreach ($c in $creds) {
   if ($existing -notcontains $c.name) {

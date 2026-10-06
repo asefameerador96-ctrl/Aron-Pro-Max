@@ -30,6 +30,10 @@ infra/
    .\infra\bootstrap-azure.ps1 -AlertEmails "you@aktcl.example,ops@aktcl.example"
    ```
 
+   Re-run it after pulling a newer version: it is idempotent. Since 2026-10-06 it trusts both forms of the GitHub
+   sign-in subject (classic `repo:<owner>/<repo>:environment:azure-dev` and the ID-qualified
+   `repo:<owner>@<id>/<repo>@<id>:environment:azure-dev` that this repository presents).
+
    It registers the resource providers (now including `Microsoft.EventGrid`), creates `rg-aron-dev` in
    `southeastasia` and an empty `rg-aron-scope-probe` (the identity gets no rights there; every deploy proves a test
    deployment into it is denied), and the GitHub identity `sp-aron-github-dev` with, **on that group only**, Contributor plus
@@ -38,17 +42,18 @@ infra/
    and that environment accepts deployments only from `claude/wonderful-thompson-k6ejnf` (the Day-0
    pull-request credential is removed). It writes the secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
    `AZURE_SUBSCRIPTION_ID` and the variables `AZURE_RESOURCE_GROUP`, `AZURE_LOCATION`, `ARON_ALERT_EMAILS`.
-2. **Optional GitHub variables and secrets** (the deploy works without them): variable `ARON_BUDGET_AMOUNT` (monthly
+2. **Quotas** (once, early: they take days): follow `docs/setup/azure-quota-request.md`.
+3. **Optional GitHub variables and secrets** (the deploy works without them): variable `ARON_BUDGET_AMOUNT` (monthly
    budget in the subscription's currency; default 800 dev, 7000 prod); variable `ARON_NAME_SUFFIX` (only to rebuild a
    deleted group within 90 days, see below); secret `FCM_SERVICE_ACCOUNT_JSON` (push stays off until it is set);
    secret `MAPS_WEB_KEY` (web maps).
-3. **Deploy.** Every push to `claude/wonderful-thompson-k6ejnf` that changes backend, db, shared, web or infra deploys
+4. **Deploy.** Every push to `claude/wonderful-thompson-k6ejnf` that changes backend, db, shared, web or infra deploys
    automatically once CI is green. By hand: GitHub > Actions > **deploy** > Run workflow (branch
    `claude/wonderful-thompson-k6ejnf`). From a laptop after `az login`:
    `AZURE_RESOURCE_GROUP=rg-aron-dev ARON_ALERT_EMAILS=you@aktcl.example infra/deploy.sh dev`.
    The **first** run takes about 30 to 45 minutes (the zone-redundant PostgreSQL server and its standby). Later runs
    skip `main.bicep` when nothing under `infra/` changed and take about 6 to 8 minutes after CI.
-4. **Check**: the run summary prints `https://<front-door-host>/v1/health`; open it on the phone.
+5. **Check**: the run summary prints `https://<front-door-host>/v1/health`; open it on the phone.
 
 The migrations job always runs before the apps on an automatic deploy; only a manual dispatch can untick it (to
 redeploy apps without a schema change). Changing a GitHub variable (`ARON_ALERT_EMAILS`, `ARON_BUDGET_AMOUNT`,

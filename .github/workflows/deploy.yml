@@ -102,11 +102,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       - name: Sign in to Azure (OIDC, no client secret)
+        id: login
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Explain a failed sign-in
+        if: failure() && steps.login.outcome == 'failure'
+        run: |
+          echo "::error title=Azure sign-in (OIDC) failed::Usually the identity's federated credential does not match the subject GitHub presents (shown above as 'subject claim'). Re-run infra/bootstrap-azure.ps1 on the laptop: it trusts both the classic and the ID-qualified subject of the azure-dev environment. See infra/README.md, 'Sponsor steps'."
+          exit 1
 
       - name: Azure CLI settings
         run: |

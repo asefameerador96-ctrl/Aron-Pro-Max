@@ -336,6 +336,26 @@ class SizingParameters(unittest.TestCase):
             self.assertEqual(a["frontDoorPrivateLink"], p["frontDoorPrivateLink"], f"{env}: infra and apps disagree")
 
 
+class PowerShellScripts(unittest.TestCase):
+    def test_no_jmespath_functions_in_az_queries(self):
+        # az is a .cmd wrapper on Windows: cmd.exe re-parses the arguments and breaks on the parentheses of a JMESPath
+        # function ("-o was unexpected at this time", docs/status/laptop.md). Filter in PowerShell instead.
+        for ps1 in list((ROOT / "infra").glob("*.ps1")) + list((ROOT / "tools").glob("*.ps1")):
+            for n, line in enumerate(ps1.read_text(encoding="utf-8").splitlines(), 1):
+                if line.lstrip().startswith("#"):
+                    continue
+                for q in re.findall(r"--query\s+(\'[^\']*\'|\"[^\"]*\"|\S+)", line):
+                    self.assertNotRegex(q, r"[()]", f"{ps1.name}:{n} uses a JMESPath function in --query: {q}")
+
+
+class Bootstrap(unittest.TestCase):
+    def test_trusts_both_github_subject_forms(self):
+        b = (ROOT / "infra" / "bootstrap-azure.ps1").read_text(encoding="utf-8")
+        self.assertIn('subject = "repo:${Repo}:environment:$Environment"', b)
+        self.assertIn('"repo:$($repoInfo.owner.login)@$($repoInfo.owner.id)/$($repoInfo.name)@$($repoInfo.id):environment:$Environment"', b)
+        self.assertNotIn(":pull_request", b.split("$creds = @(")[1].split(")")[0], "no pull-request credential")
+
+
 class Workflows(unittest.TestCase):
     def text(self, name):
         return (WORKFLOWS / name).read_text(encoding="utf-8")
@@ -366,7 +386,9 @@ class Workflows(unittest.TestCase):
         # A GitHub concurrency group would cancel pending CI runs; deploy.sh serialises instead.
         self.assertNotIn("concurrency:", d)
         self.assertIn("RUN_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_migrations && 'false' || 'true' }}", d)
-        self.assertNotRegex(d, r"(?m)^\s*if:", "no step or job of the deploy may be switched off by a condition")
+        conditions = re.findall(r"(?m)^\s*if:\s*(.*)$", d)
+        self.assertEqual(conditions, ["failure() && steps.login.outcome == 'failure'"],
+                         "only the sign-in explanation may be conditional; no deploy step may be switched off")
         steps = ["Deploy only from the integration branch", "Check the Azure secrets", "azure/login@",
                  "scope-check.sh", "infra/deploy.sh"]
         body = d[d.index("\njobs:"):]

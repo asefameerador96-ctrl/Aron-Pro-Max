@@ -1,6 +1,25 @@
 # Infra lane status
 
-Updated 2026-10-06 (Day 2).
+Updated 2026-10-06 (Day 2, afternoon).
+
+## First real deploy (CI run 35, commit 1991868): failed at the Azure sign-in, nothing reached Azure
+
+- Container images and infra validation passed on GitHub's runner; the deploy job then failed at `azure/login`:
+  `AADSTS700213: No matching federated identity record found for presented assertion subject
+  'repo:asefameerador96-ctrl@252441038/Aron-Pro-Max@1403881436:environment:azure-dev'`.
+- Cause: GitHub presents the **ID-qualified** subject for this repository; the bootstrap trusted only the classic
+  `repo:<owner>/<repo>:environment:azure-dev`. Fixed in `infra/bootstrap-azure.ps1` (trusts both forms, exact match on
+  this repository and environment only). **Owner action: re-run `infra/bootstrap-azure.ps1 -AlertEmails ...` once**
+  (idempotent; it only adds the credential `github-environment-azure-dev-ids`). Then re-run the failed deploy job
+  (GitHub > Actions > the latest ci run > Re-run failed jobs) or push any infra/backend change.
+- The deploy now prints an explanation when the sign-in fails.
+
+## Quotas (urgent owner action): `docs/setup/azure-quota-request.md`
+
+The 10-vCPU snapshot is the VM quota, which Aron does not use. What the design needs: PostgreSQL Flexible Server
+General Purpose Ddsv5 vCores 40 with zonal access, Container Apps consumption cores 100 per environment (after the
+first deploy creates the environment), environment count 2, Azure Load Testing 40 engines. Dev stays pilot-sized
+(PostgreSQL D2ds_v5 + standby = 4 vCores) until the load test.
 
 ## Done
 
@@ -60,7 +79,7 @@ alert e-mails.
 3. **Web standalone and CI job** (`infra-web-standalone.md`, `web-infra-ci-job.md`): done on Day 1 (web job in
    `ci.yml`, web image, session secret from Key Vault); the image now also boots in CI.
 
-### What waits for `infra/bootstrap-azure.ps1` (sponsor, once)
+### What waited for `infra/bootstrap-azure.ps1` (done 2026-10-06; re-run needed, see the top of this file)
 
 Everything that needs a subscription; nothing else does:
 - the first `deploy` run (infra, Key Vault seeding, images to ACR, migrate job in Azure, apps, Front Door smoke test);
