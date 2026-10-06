@@ -45,6 +45,10 @@
 - Bundle apply has no monotonic version or date guard yet (F-SYS-006).
 - Quarantine resolutions are not applied yet (F-SYS-008).
 
+## Lead review (2026-10-06)
+- AC-01 to AC-12 accepted by the lead. Ownership: android-sr takes feature-auth and feature-home from Day 2; android-core keeps core-*, the three app shells and the build wiring.
+- Scope change (docs/27): targets, loyalty/Astha and offer programmes are deferred. Day-1 code already complies: the bundle parsers accept empty `targets` and ignore `offers` (ignoreUnknownKeys, `RouteSnapshot.targets` defaults to empty), no programme UI exists, and the memo keeps its `memo_discount` component (offer discount zero until an engine exists).
+
 ## Decisions taken (android-core). DECISIONS.md is read-only for lanes (docs/26 s2), so they are recorded here.
 - **AC-01:** before enrolment exists, a dev phone mints and keeps a local device_uuid. Enrolment (dpc lane) replaces it with `DeviceIdentity.setEnrolledUuid`. Reason: login needs a device_uuid on Day 1.
 - **AC-02:** the offline verifier and the profile live in an encrypted file per username hash, not in the user's Room database. Reason: the user id is unknown until the username is matched. docs/24 s8.1 says "in the user's encrypted database"; the protection is equivalent (Keystore AES-GCM).
