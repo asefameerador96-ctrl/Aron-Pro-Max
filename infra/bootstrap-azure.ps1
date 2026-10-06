@@ -79,9 +79,10 @@ Write-Host "Client id: $appId"
 #    Contributor or User Access Administrator. An older unconditional assignment is replaced.
 Step "Granting rights on $ResourceGroup only"
 $scope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"
-$has = az role assignment list --assignee $spObjectId --scope $scope --role 'Contributor' --query 'length(@)' -o tsv
+# No JMESPath functions in --query: az is a .cmd wrapper on Windows and cmd.exe breaks on the parentheses.
+$has = @(az role assignment list --assignee $spObjectId --scope $scope --role 'Contributor' -o json | ConvertFrom-Json).Count
 Check 'list Contributor assignments (re-run in a minute if the new identity has not replicated yet)'
-if ($has -eq '0') {
+if ($has -eq 0) {
   az role assignment create --assignee-object-id $spObjectId --assignee-principal-type ServicePrincipal `
     --role 'Contributor' --scope $scope --only-show-errors | Out-Null
   Check 'role Contributor'
@@ -171,8 +172,10 @@ if ($AlertEmails) {
 # 7. A snapshot of regional compute quota, so heavy load tests cannot starve live services.
 Step "Saving a compute-quota snapshot for $Location"
 $q = "quota-$Location.txt"
-az vm list-usage --location $Location --query "[?contains(name.value, 'ores')].{name:name.localizedValue, used:currentValue, limit:limit}" -o table |
-  Out-File -Encoding utf8 $q
+az vm list-usage --location $Location -o json | ConvertFrom-Json |
+  Where-Object { $_.name.value -like '*ores*' } |
+  Select-Object @{n='name'; e={$_.name.localizedValue}}, @{n='used'; e={$_.currentValue}}, limit |
+  Format-Table -AutoSize | Out-File -Encoding utf8 $q
 Write-Host "Saved $q (send me its contents)."
 
 Step 'Done'
