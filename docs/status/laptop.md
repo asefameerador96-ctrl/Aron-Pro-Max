@@ -45,3 +45,23 @@ SHA256: 46:8D:9B:4E:CC:B7:76:E9:F4:0E:20:E2:0A:AF:0F:14:62:7E:23:16:E9:01:D5:3A:
 ```
 
 Owner action: back up `C:\Users\User\AronSigning` somewhere safe, offline.
+
+## 2026-10-06 (follow-up): OIDC subject fix
+
+| Step | Command | Result |
+|---|---|---|
+| 1 | `git pull --no-rebase` | Fast-forward 1991868..0f90002 |
+| 2 | `.\infra\bootstrap-azure.ps1 -AlertEmails <owner's email>` | Succeeded. The owner approved after seeing the one expected change |
+| 3 | `az ad app federated-credential list --id <app id> -o json` (no `--query`) | 2 credentials, listed below |
+
+Federated credentials on `sp-aron-github-dev`. Both have issuer `https://token.actions.githubusercontent.com` and
+audience `api://AzureADTokenExchange`:
+
+| name | subject |
+|---|---|
+| `github-environment-azure-dev` | `repo:asefameerador96-ctrl/Aron-Pro-Max:environment:azure-dev` |
+| `github-environment-azure-dev-ids` | `repo:asefameerador96-ctrl@<owner-id>/Aron-Pro-Max@<repo-id>:environment:azure-dev` |
+
+The IDs are this repository's numeric owner and repo IDs from `gh api repos/asefameerador96-ctrl/Aron-Pro-Max`. There is
+no wildcard, branch, pull-request or other-repo subject. Role assignments are unchanged: Contributor, and the conditional
+RBAC Administrator role, both on `rg-aron-dev` only. CI jobs were not re-run from here.
