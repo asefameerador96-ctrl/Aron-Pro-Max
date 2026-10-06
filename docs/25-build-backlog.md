@@ -1,5 +1,8 @@
 # 25 — Build backlog: seven days, hard cap ten
 
+> **Note 2026-10-06:** rows with `ENV (docs/28)` in their scope note are built as parameters; the test account runs the pilot profile, the full-scale proof runs in the final account. DEFERRED rows: see `docs/27-deferred-programmes.md`.
+
+
 **Status: v1, 2026-10-05.** Written from `docs/15` under the schedule of `docs/23` (binding). The same rows are in `docs/25-build-backlog.csv` (UTF-8, one row per feature, no line breaks inside a cell). The rule of the sponsor: everything the current Aron does plus the sponsor's additions; no feature is lost silently, so every one of the 509 features of `docs/15` has exactly one decision here, BUILD or DROP, and every DROP has a reason in section 2 for the sponsor to review.
 
 ## 0. How the backlog is made

@@ -1,5 +1,8 @@
 # 24 — Build spec (binding for every lane)
 
+> **Environment rule (binding, 2026-10-06):** all Azure and Google settings in this spec describe the FINAL profile unless a value is marked otherwise. The temporary TEST account runs the pilot profile of `docs/28-environment-profiles.md` (5 to 10 users, cheapest tiers, single zone, no Front Door, no quota requests). Never create fleet-sized resources in the test account.
+
+
 **Status: v1, 2026-10-05. Owner: the architect (contract and shared lane).** This is the build-level contract for the seven-day plan of `docs/23`. Every lane builds against it; a reviewer rejects a change that contradicts it. Its machine-readable half is `contract/openapi.yaml` (OpenAPI 3.1, lint clean); where the two disagree on a field name, type or enum value, **the YAML wins** and this page is corrected in the same PR.
 
 **Precedence.** `docs/23` > sponsor statements in `docs/ui-reference/*` > this page, `docs/14`–`22` and `DECISIONS.md` > `docs/01`–`13`. Inside the third tier this page wins on build mechanics (stack, layout, wire format, numbers in s3 to s11), because it is the implementation of `docs/23` (native Kotlin, Ktor, device owner, no Apsis import in this build). `docs/23` overrides the Flutter, Node, "no MDM on shared phones" and migration assumptions of `docs/01`–`13` and `CLAUDE.md`.

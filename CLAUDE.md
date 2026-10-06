@@ -10,6 +10,20 @@ Ship a system that reproduces everything the current Aron does — SR/AMO/TSO An
 
 The Azure subscription and Google project used now are **temporary TEST accounts**: build the full system but run it at **pilot size (5 to 10 users)**, minimal and cheap. A **final** account arrives later and the system is moved there and sized for 8,500 users. Never create fleet-sized resources, request big quotas, or enable zone/geo redundancy, Front Door/WAF or Premium tiers in the test account without the sponsor's written yes. See `docs/28-environment-profiles.md`.
 
+## Sponsor standing rules (decided, do not re-ask, do not drift)
+
+These were stated by the sponsor (one human, the owner) and apply to every session. A later message can change one; until then they hold. The full list with dates is in `DECISIONS.md` and `docs/23`, `docs/27`, `docs/28`.
+
+1. **Test account now, final account later** (`docs/28`). Pilot size, minimal and cheap. No fleet sizing, no quota requests.
+2. **Deferred: target, loyalty (Astha, Diamond League, Superstar, gifts) and every discount/promotion programme** (`docs/27`). Keep hooks only; the memo's offer-discount line stays zero.
+3. **Out of scope: Apsis data migration and cutover.** Phase 2 portals are later; keep the hooks.
+4. **Everything else is in scope, no cuts.** Seven days, ten at most. Native Kotlin apps (SR, AMO, TSO), web dashboard with roles, GUI admin portal for every setting, Ktor backend on Azure with PostgreSQL. Offline-first, anti-spoofing, device owner with scheduled app blocking.
+5. **Units:** cigarettes in sticks, lighters in pieces, matches in dozens. Money in integer milli-taka.
+6. **Be honest about guarantees:** designed, tested, drilled; never "cannot fail". State exactly where a proof runs (test vs final account).
+7. **Do the work yourself where you can.** The owner is the only human: do not hand them manual steps that a lane, the laptop session or a script can do. Use the laptop operator session for laptop-only steps; ask the owner only for what needs their account, their approval or their hands (phones, printer, MFA, billing).
+8. **Never print or store secrets.** Signing key, Maps/Firebase keys and Azure identity live in GitHub secrets only.
+9. **Before you ask the owner something, check these rules and the docs.** If a rule above already answers it, apply it.
+
 ## Non-negotiable constraints
 
 These are hard requirements. Every feature is reviewed against them.
