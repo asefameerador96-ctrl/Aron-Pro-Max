@@ -31,3 +31,8 @@
 - Decisions: taka sign after the amount with a space (row ACCEPT; docs/24 s7.1 shows it before: needs a ruling); dates dd/MM/yyyy and 24-hour times (docs/15 mention ISO and 12-hour: needs a ruling); phones must be 01[3-9]XXXXXXXX; NFC covers Bangla only; `lowercase()` depends on the platform Unicode tables.
 - Requests filed: docs/requests/shared-backlog-coverage-table.md (BacklogCoverageTest red after docs/27; contract lane).
 - Not started: docs/requests/android-core-contract-dtos.md (needs reading contract/openapi.yaml, blocked by the session classifier earlier).
+
+## Lead rulings applied (2026-10-06)
+- BacklogCoverageTest now ignores DEFERRED rows still listed in the coverage table; `:shared:contract:jvmTest` green. (Table itself is in docs/24-build-spec-verification.md, not edited.)
+- Formats: money sign position is a parameter (`SignPosition`, default trailing); dates default `yyyy-MM-dd` (`iso=false` for dd/MM/yyyy); times 24-hour.
+- BLOCKED: android-core DTO request. It needs `contract/openapi.yaml`; the session's permission classifier denied reading it and forbids re-reading it in slices or by script. Needs the user to allow it or a different source.

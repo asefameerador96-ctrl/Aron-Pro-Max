@@ -41,11 +41,19 @@ class BacklogCoverageTest {
         }.map { it[id] }
     }
 
+    /** Rows the sponsor deferred (docs/27); the table may still list them, their contract elements stay (docs/27 item 3). */
+    private val deferredIds: Set<String> by lazy {
+        val records = parseCsv(file("aron.backlog").readText())
+        val header = records.first()
+        val id = header.indexOf("id"); val decision = header.indexOf("decision")
+        records.drop(1).filter { it.size > decision && it[decision] == "DEFERRED" }.map { it[id] }.toSet()
+    }
+
     @Test
     fun everyInScopeBuildRowIsInTheTable() {
         val listed = table.map { it.id }.toSet()
         val missing = inScopeIds.filterNot { it in listed }
-        val extra = listed - inScopeIds.toSet()
+        val extra = listed - inScopeIds.toSet() - deferredIds
         assertTrue(missing.isEmpty() && extra.isEmpty()) { "coverage table out of date: missing $missing, extra $extra" }
         assertTrue(inScopeIds.size >= 400) { "expected the full backlog scope, found ${inScopeIds.size} rows" }
     }
