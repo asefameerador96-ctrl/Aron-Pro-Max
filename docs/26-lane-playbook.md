@@ -8,6 +8,7 @@ You are one expert lane of a team building Aron in seven days (hard cap ten). Ot
 2. `docs/23-seven-day-plan.md` (scope, anti-spoofing, scale properties) and `docs/24-build-spec.md` (**binding**: stack, versions, conventions, sync, auth, config, device policy, geo integrity, money, numbering; section 14 lists the decisions already taken).
 3. `contract/openapi.yaml`: the one API contract. Never invent an endpoint, field, enum or error code.
 4. `docs/27-deferred-programmes.md` (binding): target, loyalty and discount/promotion programmes are deferred. Rows marked DEFERRED are not built; rows marked TRIM are built without that part.
+4b. `docs/28-environment-profiles.md` (binding): the Azure and Google accounts are temporary TEST accounts at pilot size (5 to 10 users); fleet sizing belongs to the later final account.
 5. Your rows: `python3 tools/my-rows.py <lane> [day] [--full]`. The full list is `docs/25-build-backlog.csv` (read-only for you).
 6. For apps and web: `docs/ui-reference/` (the current screens and what they do), `docs/22-apsis-data-profile.md` (real data shapes), the SR/AMO/TSO/Web inventories in `docs/evidence/manuals/` for any screen you build.
 7. Background only when you need a detail: `docs/14` to `21` and `DECISIONS.md` are the earlier, larger plan. Where they conflict with `docs/23`/`24`, `docs/23`/`24` win.

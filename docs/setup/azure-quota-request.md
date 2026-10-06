@@ -1,3 +1,5 @@
+> **WITHDRAWN FOR THE TEST ACCOUNT (2026-10-06).** Do not submit these requests now. They are for the FINAL account only, after the move (docs/28).
+
 # Azure quota requests for Aron (owner action, urgent)
 
 Written by the infra lane, 2026-10-06. Quota requests can take **1 to 5 working days** (PostgreSQL: "24 to 48 hours"

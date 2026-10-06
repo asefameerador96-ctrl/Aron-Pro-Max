@@ -6,6 +6,10 @@ You are building the in-house replacement for **Aron**, AKTCL's field-sales plat
 
 Ship a system that reproduces everything the current Aron does — SR/AMO/TSO Android apps, web dashboards, one API and database — so AKTCL can switch 8,500 reps off the vendor app **with no disruption to a single day of selling**. Match the current behaviour first; improve second, and only where it does not risk the cutover.
 
+## Environment profiles (read every session)
+
+The Azure subscription and Google project used now are **temporary TEST accounts**: build the full system but run it at **pilot size (5 to 10 users)**, minimal and cheap. A **final** account arrives later and the system is moved there and sized for 8,500 users. Never create fleet-sized resources, request big quotas, or enable zone/geo redundancy, Front Door/WAF or Premium tiers in the test account without the sponsor's written yes. See `docs/28-environment-profiles.md`.
+
 ## Non-negotiable constraints
 
 These are hard requirements. Every feature is reviewed against them.
