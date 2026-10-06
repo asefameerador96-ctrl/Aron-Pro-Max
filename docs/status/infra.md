@@ -1,6 +1,6 @@
 # Infra lane status
 
-Updated 2026-10-05 (Day 1).
+Updated 2026-10-06 (Day 2).
 
 ## Done
 
@@ -42,6 +42,34 @@ workflow expressions); 13 docs/24 edits skipped the JVM drift tests. Lower-confi
 skipped when unchanged, password generation only on NotFound, self-repair of the deployer's Key Vault role, replica
 deferred on the first prod deploy, Private Link waits for every origin, preflight inside the environment job, trimmed
 alert e-mails.
+
+## Day 2 (lead re-prioritisation, docs/27 scope change: nothing to provision for deferred programmes)
+
+1. **Backend image and deploy** (`docs/requests/infra-backend-runtime.md`): new CI job **Container images** builds the
+   backend and web images and boots them without Azure (`infra/scripts/image-smoke.sh`): migrate twice against
+   PostgreSQL 16, api `/v1/health` and `/v1/health/ready` with `X-Aron-Api: 1`, worker still running after 15 s, web
+   serving. The deploy now also needs this job. Locally (no Docker daemon here) the same sequence ran on the Gradle
+   distribution against PostgreSQL 16 with a **non-superuser** database owner: 11 migrations then 0 (idempotent,
+   `btree_gist` created), health and readiness 200 with the marker, worker alive, api healthy with the App Insights
+   agent attached and no connection string. `ARON_BUILD` = image tag (commit) is now set for every backend role.
+2. **btree_gist** (`docs/requests/db-azure-btree-gist.md`): already allow-listed since N-012
+   (`azure.extensions = BTREE_GIST,PGCRYPTO,PG_STAT_STATEMENTS,POSTGIS`, asserted by the template checks). Flyway's
+   `public` schema: the migrate job connects as the server admin login, which owns the `aron` database it creates;
+   verified locally that a non-superuser owner can run all migrations. Residual risk until the first Azure run: the
+   ownership of an ARM-created database (if it fails, the migrate job stops the deploy before any app changes).
+3. **Web standalone and CI job** (`infra-web-standalone.md`, `web-infra-ci-job.md`): done on Day 1 (web job in
+   `ci.yml`, web image, session secret from Key Vault); the image now also boots in CI.
+
+### What waits for `infra/bootstrap-azure.ps1` (sponsor, once)
+
+Everything that needs a subscription; nothing else does:
+- the first `deploy` run (infra, Key Vault seeding, images to ACR, migrate job in Azure, apps, Front Door smoke test);
+- what-if of `main.bicep` (run by `validate.sh` only when `az` is signed in);
+- the N-012 acceptance checks that need Azure: scope check against `rg-aron-scope-probe`, budget exists;
+- SKU, zone and quota availability in Southeast Asia, ARM acceptance of every property, RBAC timing, Private Link
+  approval (prod), Event Grid delivery.
+Until then CI is green without Azure except the deploy job, which stops at its preflight with "Azure is not set up for
+this repository" (no Azure call is made).
 
 ## Second review (fresh re-checker on the fixes, 6 confirmed, all fixed)
 

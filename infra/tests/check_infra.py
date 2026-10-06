@@ -396,7 +396,7 @@ class Workflows(unittest.TestCase):
         m = re.search(r"if: >-\n((?:\s{6}.*\n)+)", block)
         self.assertTrue(m, "deploy job has no if:")
         self.assertEqual(" ".join(m.group(1).split()), expected_if)
-        self.assertIn("needs: [changes, contract, jvm, web, android, infra]", block)
+        self.assertIn("needs: [changes, contract, jvm, web, android, images, infra]", block)
         self.assertIn("secrets: inherit", block)
 
     def test_push_runs_are_never_cancelled(self):
