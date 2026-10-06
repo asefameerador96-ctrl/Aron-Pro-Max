@@ -165,6 +165,23 @@ export ARON_BACKEND_IMAGE="$BACKEND_IMAGE" ARON_WEB_IMAGE="$WEB_IMAGE"
 note "migrate job with $BACKEND_IMAGE"
 ARON_DEPLOY_SERVICES=false az deployment group create -g "$RG" -n aron-apps-migrate --template-file infra/apps.bicep \
   --parameters "infra/params/${PROFILE}.apps.bicepparam" -o none
+# Prints the console log of one job execution from Log Analytics (ingestion takes a few minutes, so it retries), so a
+# failed migration shows its cause in the deploy log. Best effort: never fails the caller.
+job_logs() { # execution
+  local ws q out
+  ws="$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv 2>/dev/null)" || return 0
+  [ -n "$ws" ] || return 0
+  q="union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs
+     | extend exec = coalesce(column_ifexists('ContainerGroupName_s', ''), column_ifexists('ContainerGroupName', '')),
+              line = coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', ''))
+     | where exec startswith '$1' | order by TimeGenerated asc | project TimeGenerated, line | take 200"
+  for _ in $(seq 1 12); do
+    out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv 2>/dev/null || true)"
+    if [ -n "$out" ]; then echo "---- console log of $1"; echo "$out"; echo "----"; return 0; fi
+    sleep 30
+  done
+  echo "(no console log of $1 in Log Analytics after 6 minutes)"
+}
 if [ "$RUN_MIGRATIONS" = true ]; then
   execution="$(az containerapp job start -g "$RG" -n "$JOB" --query name -o tsv)"
   note "migrations started: $execution"
@@ -174,6 +191,7 @@ if [ "$RUN_MIGRATIONS" = true ]; then
     case "$status" in
       Succeeded) note "migrations succeeded"; break ;;
       Failed|Stopped|Degraded)
+        job_logs "$execution"
         die "migrations $execution ended $status; the apps were NOT updated. Logs: Log Analytics, ContainerAppConsoleLogs, ContainerJobName_s == '$JOB'" ;;
     esac
     sleep 10
