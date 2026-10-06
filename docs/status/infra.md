@@ -21,6 +21,17 @@ requests; no fleet-sized additions.
   `owner approved reset`; the script itself also refuses deletion without `OWNER_APPROVED=yes` and a `*-lite`
   profile. Everything else is a dry run.
 
+- **Deploy of `dev` (CI run 37474197061, commit 9e5abfa): stopped at the what-if, nothing changed.** The reset check
+  passed (all 28 resources KEEP, "nothing to reset: rg-aron-dev matches the dev profile"). Azure then refused the
+  what-if: `401 - Budget experiences are disabled for subscription users because the cost policy is turned off by your
+  account admin`. **No budget can exist in this subscription until the billing account admin (the owner, or the
+  partner if the subscription is bought through a CSP) allows subscription users to view charges** (Cost Management +
+  Billing > Policies; for a CSP the partner's "Azure usage" customer policy). Fix in the deploy: it reads the budgets
+  first; on exactly that refusal it deploys without the budget and prints a warning (`::warning::No budget`). Any other
+  failure stops the deploy. Once the policy is on, the next deploy creates the USD 130 budget. **Until then, spend
+  e-mails do not exist**; the 2026-10-10 spend report is read from Cost Management by the owner or estimated from the
+  inventory (about USD 15.5/day).
+
 ### Can the PostgreSQL server be stopped overnight with HA on? Yes (Learn), not done without the lead's word
 
 - Learn, *High availability concepts*: "You perform operations such as stop, start, and restart on both primary and

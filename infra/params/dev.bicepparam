@@ -12,6 +12,7 @@ var envSuffix = readEnvironmentVariable('ARON_NAME_SUFFIX', '')
 var envEmails = readEnvironmentVariable('ARON_ALERT_EMAILS', '')
 var envBudget = readEnvironmentVariable('ARON_BUDGET_AMOUNT', '')
 var envBudgetStart = readEnvironmentVariable('ARON_BUDGET_START_DATE', '')
+var envDeployBudget = readEnvironmentVariable('ARON_DEPLOY_BUDGET', '')
 
 param environmentName = 'dev'
 param location = empty(envLocation) ? 'southeastasia' : envLocation
@@ -33,6 +34,9 @@ param alertEmails = map(split(empty(envEmails) ? 'alerts@aron.invalid' : envEmai
 // docs/28 exception: about USD 130 for the rehearsal week, e-mails at 50, 90 and 100 % and forecast 100 %.
 param budgetAmount = int(empty(envBudget) ? '130' : envBudget)
 param budgetStartDate = empty(envBudgetStart) ? '2026-10-01' : envBudgetStart
+// deploy.sh sets ARON_DEPLOY_BUDGET=false only when Azure reports the subscription's cost policy is off (budgets
+// cannot exist then); it warns loudly and the owner turns the policy on (docs/status/infra.md).
+param deployBudget = envDeployBudget != 'false'
 
 param keyVaultPurgeProtection = false
 param registrySku = 'Basic'

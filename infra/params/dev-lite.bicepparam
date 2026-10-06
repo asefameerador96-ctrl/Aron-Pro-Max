@@ -10,6 +10,7 @@ var envSuffix = readEnvironmentVariable('ARON_NAME_SUFFIX', '')
 var envEmails = readEnvironmentVariable('ARON_ALERT_EMAILS', '')
 var envBudget = readEnvironmentVariable('ARON_BUDGET_AMOUNT', '')
 var envBudgetStart = readEnvironmentVariable('ARON_BUDGET_START_DATE', '')
+var envDeployBudget = readEnvironmentVariable('ARON_DEPLOY_BUDGET', '')
 
 param environmentName = 'dev'
 param location = empty(envLocation) ? 'southeastasia' : envLocation
@@ -37,6 +38,9 @@ param budgetAmount = int(empty(envBudget) ? '70' : envBudget)
 // Azure refuses a start date before the current month on create and refuses to move it later, so deploy.sh passes
 // the existing budget's date, or the first day of the current month when the budget does not exist yet.
 param budgetStartDate = empty(envBudgetStart) ? '2026-10-01' : envBudgetStart
+// deploy.sh sets ARON_DEPLOY_BUDGET=false only when Azure reports the subscription's cost policy is off (budgets
+// cannot exist then); it warns loudly and the owner turns the policy on (docs/status/infra.md).
+param deployBudget = envDeployBudget != 'false'
 
 param keyVaultPurgeProtection = false
 param registrySku = 'Basic'

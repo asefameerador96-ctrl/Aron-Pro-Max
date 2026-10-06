@@ -56,6 +56,19 @@ if [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "$deployed_sha" != "$SHA" ]; the
 fi
 note "deploying $SHA (currently deployed: ${deployed_sha:-nothing})"
 
+# Budgets: Azure refuses every budget (even a what-if of one) while the billing account's cost policy is off for
+# subscription users. Only that exact refusal skips the budget, with a loud warning; any other failure stops here.
+sub_id="$(az account show --query id -o tsv)" || die "not signed in to Azure"
+if budget_err="$(az rest --method get -o none \
+     --url "https://management.azure.com/subscriptions/${sub_id}/resourceGroups/${RG}/providers/Microsoft.Consumption/budgets?api-version=2024-08-01" 2>&1)"; then
+  export ARON_DEPLOY_BUDGET=true
+elif grep -qi "cost policy is turned off" <<<"$budget_err"; then
+  export ARON_DEPLOY_BUDGET=false
+  echo "::warning::No budget: Azure says the cost policy is turned off for this subscription's users, so no budget can exist. The billing account admin must allow subscription users to view charges (Cost Management + Billing > Policies, or the partner's 'Azure usage' customer policy); the next deploy then creates the budget."
+else
+  echo "$budget_err" >&2; die "cannot read budgets in $RG"
+fi
+
 # ------------------------------------------------------------------------------------------------------- infra
 infra_paths=(infra/main.bicep infra/modules infra/lib "infra/params/${PROFILE}.bicepparam")
 previous="$(az deployment group show -g "$RG" -n aron-infra --query properties.outputs -o json 2>/dev/null || true)"
@@ -102,7 +115,8 @@ else
   [ -n "${GITHUB_ACTIONS:-}" ] && echo "::add-mask::${ARON_DB_ADMIN_PASSWORD}"
   export ARON_DB_ADMIN_PASSWORD
   budget_name="budget-aron-${ENV_NAME}"
-  start="$(az consumption budget show -g "$RG" --budget-name "$budget_name" --query timePeriod.startDate -o tsv 2>/dev/null || true)"
+  start=""
+  [ "$ARON_DEPLOY_BUDGET" = true ] && start="$(az consumption budget show -g "$RG" --budget-name "$budget_name" --query timePeriod.startDate -o tsv 2>/dev/null || true)"
   export ARON_BUDGET_START_DATE="${start:0:10}"
   [ -n "$ARON_BUDGET_START_DATE" ] || ARON_BUDGET_START_DATE="$(date -u +%Y-%m-01)"
   # What-if first: the infra stage must never recreate or reconfigure a PostgreSQL server (the rehearsal profile
@@ -183,8 +197,13 @@ fi
 
 # ------------------------------------------------------------------------------------------------ checks
 infra/scripts/smoke.sh "$API_HOST"
-amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \
-  || die "budget $BUDGET not found in $RG"
+if [ "$ARON_DEPLOY_BUDGET" = true ]; then
+  amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \
+    || die "budget $BUDGET not found in $RG"
+  budget_line="${BUDGET}: ${amount} a month"
+else
+  budget_line="NOT SET: the subscription's cost policy is off (see the warning above)"
+fi
 
 summary "### Aron ${ENV_NAME} deployed (profile ${PROFILE})"
 summary "| Item | Value |"
@@ -196,4 +215,4 @@ summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"
 summary "| Migrations | ${RUN_MIGRATIONS} |"
-summary "| Budget | ${BUDGET}: ${amount} a month |"
+summary "| Budget | ${budget_line} |"

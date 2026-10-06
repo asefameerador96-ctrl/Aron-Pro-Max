@@ -45,6 +45,8 @@ param logDailyQuotaGb string
 param alertEmails array
 param budgetAmount int
 param budgetStartDate string
+@description('False only when the subscription\'s cost policy is off (Azure then refuses every budget); deploy.sh decides.')
+param deployBudget bool = true
 
 // Platform
 param keyVaultPurgeProtection bool
@@ -253,7 +255,7 @@ module alerts 'modules/alerts.bicep' = {
   }
 }
 
-module budget 'modules/budget.bicep' = {
+module budget 'modules/budget.bicep' = if (deployBudget) {
   name: 'budget'
   params: {
     budgetName: n.budget
@@ -280,4 +282,4 @@ output frontDoorEnabled bool = deployFrontDoor
 output postgresServerName string = n.postgres
 output storageAccountName string = n.storage
 output privateLinkOrigin bool = privateLink
-output budgetName string = n.budget
+output budgetName string = deployBudget ? n.budget : ''

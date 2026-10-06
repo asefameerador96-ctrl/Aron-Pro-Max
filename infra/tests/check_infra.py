@@ -317,6 +317,21 @@ class ReliabilityProperties(unittest.TestCase):
             self.assertIs(n["enabled"], True, f"budget notification {k} disabled")
             self.assertEqual(n["contactEmails"], "[parameters('contactEmails')]")
 
+    def test_budget_is_skipped_only_when_the_cost_policy_is_off(self):
+        main = load("main.json")
+        b = main["resources"]["budget"] if isinstance(main["resources"], dict) else next(
+            r for r in main["resources"] if r.get("name") == "budget")
+        self.assertEqual(b.get("condition"), "[parameters('deployBudget')]")
+        self.assertIs(param_default("main.json", "deployBudget"), True)
+        for env in ("dev", "dev-lite", "prod"):
+            self.assertIs(params(f"{env}.parameters.json")["deployBudget"], True, f"{env}: budget on by default")
+            src = (ROOT / "infra" / "params" / f"{env}.bicepparam").read_text(encoding="utf-8")
+            self.assertIn("param deployBudget = envDeployBudget != 'false'", src)
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('elif grep -qi "cost policy is turned off" <<<"$budget_err"; then', d)
+        self.assertIn('die "cannot read budgets in $RG"', d, "any other budget read failure must stop the deploy")
+        self.assertIn("::warning::No budget", d)
+
     def test_waf_is_attached_and_follows_its_mode(self):
         t, bound = module("main.json", "frontdoor")
         (waf,) = resources_of(t, "Microsoft.Network/FrontDoorWebApplicationFirewallPolicies")

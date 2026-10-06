@@ -6,3 +6,4 @@ LEAD-DAY2-IMAGES,M,2026-10-06T09:35Z,2026-10-06T10:05Z,30,0,"Container images CI
 LEAD-DAY2-FIRST-DEPLOY,M,2026-10-06T12:55Z,2026-10-06T13:40Z,45,0,"first deploy failed at OIDC (ID-qualified subject); bootstrap fix; quota request doc; JMESPath guard for ps1"
 LEAD-DAY2-TEST-PROFILE,L,2026-10-06T13:15Z,2026-10-06T15:00Z,105,0,"docs/28 TEST profile: Burstable B1ms, no VNet/FD, scale to zero; profile switches; reset workflow + deploy guard; move runbook; cost estimate USD 35-50"
 LEAD-DAY2-HOLD-PROFILES,M,2026-10-06T13:45Z,2026-10-06T14:45Z,60,0,"owner HOLD: dev = rehearsal profile (existing resources), dev-lite = TEST; what-if guard on PostgreSQL; reset locked to owner-approved dev-lite; budget 130; stop-overnight answer"
+LEAD-DAY2-BUDGET-POLICY,S,2026-10-06T14:15Z,2026-10-06T14:35Z,20,0,"dev deploy refused at what-if: subscription cost policy off (401 on budgets); budget made conditional on that exact refusal with a warning; test"
