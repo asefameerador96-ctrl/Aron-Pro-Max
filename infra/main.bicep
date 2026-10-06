@@ -126,8 +126,16 @@ module monitoring 'modules/monitoring.bicep' = {
   }
 }
 
+// Network ids built from the names, not read from the network module's outputs: what-if cannot resolve a module
+// output at preview time and would report every adopted server and environment as moving subnet (infra/deploy.sh
+// refuses that). dependsOn keeps the creation order the outputs used to give.
+var vnetId = resourceId('Microsoft.Network/virtualNetworks', n.vnet)
+var pgSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', n.vnet, 'snet-pg')
+var acaSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', n.vnet, 'snet-aca')
+
 module postgres 'modules/postgres.bicep' = {
   name: 'postgres'
+  dependsOn: [network]
   params: {
     location: location
     tags: allTags
@@ -135,8 +143,8 @@ module postgres 'modules/postgres.bicep' = {
     replicaName: n.postgresReplica
     dnsZoneName: n.postgresDnsZone
     privateNetworking: privateNetworking
-    vnetId: privateNetworking ? network!.outputs.vnetId : ''
-    subnetId: privateNetworking ? network!.outputs.postgresSubnetId : ''
+    vnetId: privateNetworking ? vnetId : ''
+    subnetId: privateNetworking ? pgSubnetId : ''
     skuTier: postgresSkuTier
     storageType: postgresStorageType
     pgbouncerEnabled: pgbouncerEnabled
@@ -201,11 +209,12 @@ module storage 'modules/storage.bicep' = {
 
 module containerEnv 'modules/containerenv.bicep' = {
   name: 'containerenv'
+  dependsOn: [network]
   params: {
     location: location
     tags: allTags
     environmentName: n.containerEnv
-    subnetId: privateNetworking ? network!.outputs.acaSubnetId : ''
+    subnetId: privateNetworking ? acaSubnetId : ''
 
     logAnalyticsId: monitoring.outputs.logAnalyticsId
     zoneRedundant: privateNetworking && containerEnvZoneRedundant

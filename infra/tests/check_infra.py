@@ -387,6 +387,38 @@ class SizingParameters(unittest.TestCase):
         self.assertLess(d.index("az deployment group what-if"), d.index("az deployment group create -g \"$RG\" -n aron-infra"))
         self.assertIn('infra/scripts/whatif-guard.py "$whatif_file" || die', d)
 
+    def test_what_if_guard_decisions(self):
+        import subprocess, tempfile
+        srv = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.DBforPostgreSQL/flexibleServers/psql"
+        sub = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/v/subnets/snet-pg"
+
+        def run(change, existing=srv):
+            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+                json.dump({"changes": [change]}, f)
+            r = subprocess.run([sys.executable, str(ROOT / "infra" / "scripts" / "whatif-guard.py"), f.name],
+                               env={**os.environ, "EXISTING_POSTGRES_IDS": existing}, capture_output=True, text=True)
+            os.unlink(f.name)
+            return r.returncode
+
+        def modify(path, before, after):
+            return {"resourceId": srv, "changeType": "Modify", "delta": [
+                {"path": path, "propertyChangeType": "Modify", "before": before, "after": after}]}
+        self.assertEqual(run(modify("properties.network.delegatedSubnetResourceId", sub, sub.upper())), 0,
+                         "a case-only id difference is not a change")
+        self.assertEqual(run(modify("properties.network.delegatedSubnetResourceId", sub, sub + "2")), 1)
+        self.assertEqual(run(modify("sku.tier", "GeneralPurpose", "Burstable")), 1)
+        self.assertEqual(run(modify("properties.administratorLoginPassword", "a", "b")), 0)
+        self.assertEqual(run({"resourceId": srv, "changeType": "Delete"}), 1)
+        self.assertEqual(run({"resourceId": srv + "2", "changeType": "Create"}), 1, "second server next to one")
+        self.assertEqual(run({"resourceId": srv, "changeType": "Create"}, existing=""), 0, "first create")
+
+    def test_network_ids_are_resolvable_by_what_if(self):
+        # Module outputs are unknown at what-if time; an adopted server/environment would show a subnet "change".
+        m = (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")
+        self.assertNotRegex(m, r"network!?\.outputs\.(vnetId|postgresSubnetId|acaSubnetId)")
+        self.assertIn("var pgSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', n.vnet, 'snet-pg')", m)
+        self.assertIn("var acaSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', n.vnet, 'snet-aca')", m)
+
     def test_test_profile_matches_docs_28(self):
         p = params("dev-lite.parameters.json")
         self.assertEqual(p["postgresSkuTier"], "Burstable")

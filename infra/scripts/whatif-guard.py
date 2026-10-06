@@ -25,7 +25,7 @@ def paths(delta, prefix=""):
         if d.get("children"):
             yield from paths(d["children"], p)
         else:
-            yield p, d.get("propertyChangeType")
+            yield p, d.get("propertyChangeType"), d.get("before"), d.get("after")
 
 
 def main(path):
@@ -37,7 +37,7 @@ def main(path):
         rid = c.get("resourceId", "")
         rtype = "/".join(rid.split("/providers/")[-1].split("/")[0:2]).lower() if "/providers/" in rid else ""
         kind = c.get("changeType")
-        changed = [f"{p} ({t})" for p, t in paths(c.get("delta")) if t not in (None, "NoEffect")]
+        changed = [f"{p} ({t})" for p, t, _, _ in paths(c.get("delta")) if t not in (None, "NoEffect")]
         if kind not in ("NoChange", "Ignore"):
             print(f"what-if: {kind:9} {rtype:55} {rid.rsplit('/', 1)[-1]}  {', '.join(changed)[:300]}")
         is_server = rtype == PG and rid.lower().count("/") == rid.lower().split("/providers/")[0].count("/") + 4
@@ -48,12 +48,15 @@ def main(path):
         if kind == "Create" and existing - {rid.lower()}:
             problems.append(f"{rid}: a new server would be created next to {sorted(existing)}")
         if kind == "Modify":
-            for p, t in paths(c.get("delta")):
+            for p, t, before, after in paths(c.get("delta")):
                 pl = p.lower()
                 if t in (None, "NoEffect") or pl.startswith(IGNORED):
                     continue
+                # Resource ids are case-insensitive in ARM; a case-only difference is not a change.
+                if t == "Modify" and isinstance(before, str) and isinstance(after, str) and before.lower() == after.lower():
+                    continue
                 if pl.startswith(PROTECTED):
-                    problems.append(f"{rid}: protected property {p} would change ({t})")
+                    problems.append(f"{rid}: protected property {p} would change ({t}): {before!r} -> {after!r}")
     for p in problems:
         print(f"::error::what-if guard: {p}")
     return 1 if problems else 0

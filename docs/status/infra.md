@@ -32,6 +32,14 @@ requests; no fleet-sized additions.
   e-mails do not exist**; the 2026-10-10 spend report is read from Cost Management by the owner or estimated from the
   inventory (about USD 15.5/day).
 
+- **Second try (CI run 37477074848, commit 54f734b): the what-if guard stopped it, nothing changed.** The budget was
+  skipped with its warning as designed. The guard refused `psql-aron-dev-7i7g53: properties.network.delegatedSubnetResourceId
+  (Modify)`. Cause: the subnet id came from the network module's output, which what-if cannot evaluate, so every
+  adopted server and environment looked as if it moved subnet. Fix: main.bicep builds the VNet and subnet ids from the
+  names (`resourceId(...)`, with `dependsOn: [network]`); the guard now ignores case-only id differences and prints
+  before -> after for anything it refuses. The other what-if lines (role assignment principalId, diagnostic-setting
+  retention, ACR/VNet/storage read-only defaults) are what-if noise on unchanged resources, not PostgreSQL.
+
 ### Can the PostgreSQL server be stopped overnight with HA on? Yes (Learn), not done without the lead's word
 
 - Learn, *High availability concepts*: "You perform operations such as stop, start, and restart on both primary and
