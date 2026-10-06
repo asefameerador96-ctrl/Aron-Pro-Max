@@ -68,6 +68,25 @@ if [ "$private" != true ]; then
   done
 fi
 
+# Full inventory of the group (only this group is ever read or changed), each row marked KEEP or DELETE.
+inventory() {
+  local sub; sub="$(az account show --query id -o tsv)"
+  az rest --method get \
+    --url "https://management.azure.com/subscriptions/${sub}/resourceGroups/${rg}/resources?\$expand=createdTime&api-version=2021-04-01" \
+    --query "value[].[id, type, createdTime]" -o tsv | sort -k3 | while IFS=$'\t' read -r id type created; do
+      action=KEEP
+      for d in "${doomed[@]}"; do
+        if [ "${d,,}" = "${id,,}" ]; then action=DELETE; fi
+      done
+      printf '%-7s %-58s %-26s %s\n' "$action" "$type" "${created:0:19}" "${id##*/}"
+    done
+}
+note "inventory of $rg (KEEP / DELETE, type, created UTC, name)"
+inventory | tee "${INVENTORY_FILE:-/dev/null}"
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  { echo "### Inventory of $rg (profile $env_name)"; echo '```'; inventory; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+fi
+
 if [ "${#doomed[@]}" -eq 0 ]; then note "nothing to reset: $rg matches the $env_name profile"; exit 0; fi
 if [ -n "${CHECK_ONLY:-}" ]; then
   die "$rg holds ${#doomed[@]} resource(s) the $env_name profile cannot adopt (listed above; creation-time settings differ). Nothing was changed. Run the 'reset' workflow (GitHub > Actions > reset, type the group name) or infra/scripts/reset-to-profile.sh, then deploy again."
