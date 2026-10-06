@@ -53,9 +53,9 @@ Write-Host "`n== Versions" -ForegroundColor Cyan
 & $adb version
 git --version
 gh --version | Select-Object -First 1
-az version --query '"azure-cli"' -o tsv
+try { (az version | ConvertFrom-Json).'azure-cli' } catch { Write-Warning 'az not on PATH yet: open a NEW PowerShell window' }
 node --version
-java -version 2>&1 | Select-Object -First 1
+try { & java -version 2>&1 | Select-Object -First 1 } catch { Write-Warning 'java not on PATH yet (just installed): open a NEW PowerShell window and run: java -version' }
 
 Write-Host @"
 
