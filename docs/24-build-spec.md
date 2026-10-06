@@ -1780,3 +1780,14 @@ RESULT: PASS (no drift)
 ```
 
 Not machine-checked: prose rules (for example retry timings) that have no field in the contract; they are binding here and the contract descriptions refer to these sections.
+
+## 14a. Lead rulings after Day 1 (2026-10-06, binding; they answer docs/requests/db-*.md)
+
+| # | Ruling |
+|---|---|
+| R1 | `app.ingest_registry` is hash-partitioned on `client_uuid` with `PRIMARY KEY (client_uuid)`; retention is a worker DELETE by `received_at`. This replaces the "range by received_at" wording of s12.1. |
+| R2 | Seed only the 172 keys of s9.5. The other docs/19 keys are not seeded; add a key by a migration only when a row needs it. |
+| R3 | `scope_id` for `role` is the `app.role_def.ordinal` (SR 1, AMO 2, TSO 3, DMO 4, WM 5, TOP 6, ANALYST 7, SUPPORT 8, ADMIN 9, SUPERADMIN 10); for `geo_class` the `app.geo_class_def.ordinal` (Hill 1, Urban 2, SemiUrban 3, Rural 4); 0 is global. |
+| R4 | SKU codes with a space are stored with `_` in `Sku.code` (`MaxDB-20S_20HL`); `short_name` keeps the printed text; `external_ref` keeps the original. The contract pattern is unchanged. |
+| R5 | `cfg.web.menu_by_role` default is derived from docs/19 s5.3 mapped to the s8.5 roles; `cfg.app.home_tiles` default for SR is the tile order of `docs/ui-reference/sr/` without the Loyalty Point and Photo Capture tiles (docs/27). A `{}` value still means "built-in default" for clients. |
+| R6 | Programmes, targets and discounts are deferred (docs/27). |
