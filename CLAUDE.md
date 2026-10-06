@@ -14,7 +14,7 @@ The Azure subscription and Google project used now are **temporary TEST accounts
 
 These were stated by the sponsor (one human, the owner) and apply to every session. A later message can change one; until then they hold. The full list with dates is in `DECISIONS.md` and `docs/23`, `docs/27`, `docs/28`.
 
-1. **Test account now, final account later** (`docs/28`). Pilot size, minimal and cheap. No fleet sizing, no quota requests.
+1. **Test account now, final account later** (`docs/28`). Pilot size, minimal and cheap. No fleet sizing, no quota requests. One sponsor-approved exception: the zone-redundant dev resources already created in `rg-aron-dev` stay for up to a week (review 2026-10-10); see the exception section of `docs/28`.
 2. **Deferred: target, loyalty (Astha, Diamond League, Superstar, gifts) and every discount/promotion programme** (`docs/27`). Keep hooks only; the memo's offer-discount line stays zero.
 3. **Out of scope: Apsis data migration and cutover.** Phase 2 portals are later; keep the hooks.
 4. **Everything else is in scope, no cuts.** Seven days, ten at most. Native Kotlin apps (SR, AMO, TSO), web dashboard with roles, GUI admin portal for every setting, Ktor backend on Azure with PostgreSQL. Offline-first, anti-spoofing, device owner with scheduled app blocking.

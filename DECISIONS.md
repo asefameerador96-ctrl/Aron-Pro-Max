@@ -1038,3 +1038,6 @@ Target, loyalty (Astha, Diamond League, Superstar, gifts) and all discount/promo
 
 ## 2026-10-06 — Test account vs final account (sponsor, restated)
 Current Azure and Google accounts are temporary and run a 5 to 10 user pilot profile; the final account will be handed over later and sized for 8,500 users. docs/28-environment-profiles.md is binding. The earlier fleet-size quota request and zone/geo-redundant dev settings are withdrawn. The 8,500 load test and failover drills move to the final account.
+
+## 2026-10-06 — Sponsor: keep the full-size dev resources for one week
+The sponsor said "hold it": keep the zone-redundant dev resources (about USD 15.5/day, up to a week, review 2026-10-10) to rehearse the final topology; no quota requests. Details: docs/28 exception. The reset workflow stays available but is NOT approved.

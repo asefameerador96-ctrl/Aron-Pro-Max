@@ -22,3 +22,14 @@ Rules:
 3. The 8,500-user proof (load test, failover and restore drills) can only run in the final account. Until then the system is *designed* for it (stateless api, idempotent sync, pooled connections, partitioned tables) and tested at small scale. The plan must keep time at the end for the move and those drills; the sponsor must hand over the final account early enough.
 4. Google Maps follows the same split: one restricted key with a small daily cap and budget alert now; new keys in the final project later. The apps read keys from build secrets, never from code.
 5. Keep a `docs/setup/move-to-final-account.md` runbook current (infra lane).
+
+## Exception approved by the sponsor, 2026-10-06 ("hold it")
+
+The first deploy created the full-size dev resources by mistake (zone-redundant PostgreSQL D2ds_v5 with geo backup, Front Door + WAF, VNet-injected Container Apps environment, ZRS storage; about USD 15.5 a day). The sponsor decided to **keep them** for up to one week so the real final topology is rehearsed (failover, restore, WAF, private networking) before the move to the final account.
+
+Rules for this exception:
+1. It covers only the resources already in `rg-aron-dev`. Everything else stays at the TEST profile.
+2. **No quota requests and no fleet-sized additions** (no read replica, no bigger SKUs, no Load Testing resource). A quota request costs nothing by itself but is pointless here.
+3. Budget alert raised to about USD 130 for the week. **Review date: 2026-10-10.** On that date, or the day the final account arrives, the infra lane reports the spend and the owner decides: keep, shrink, or delete.
+4. The deploy scripts must support both profiles: `dev` (what exists now, kept) and `dev-lite` (the cheap TEST profile, used if the sponsor orders the reset).
+5. The 8,500-user proof still waits for the final account.
