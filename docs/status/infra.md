@@ -54,6 +54,11 @@ changed by the dry run (it lists only that group). Estimated cost at Southeast A
 | KEEP | Budget (not listed by the resource API; it is a group-scope Consumption resource) | | budget-aron-dev | 0 |
 | **Total now** | | | | **about 15.5 a day (about 465 a month)** |
 
+Confirmed by a second dry run on the fail-closed script (run 37471894786, 13:35 UTC): 13 resources marked DELETE
+(the rows above, including the 3 log-search rules); everything listed as KEEP above is KEEP. Two child rows show as
+KEEP in the raw listing (the DNS zone's `vnet-link` and the Front Door endpoint `fde-aron-dev-7i7g53`); they are
+removed with their parents (the link explicitly before the zone).
+
 After the reset and the TEST-profile deploy: about USD 35 to 55 a month. The three metric alerts point at the
 PostgreSQL server; they are re-pointed at the new server by the next deploy (same names).
 
