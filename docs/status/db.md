@@ -33,13 +33,23 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   (password hash only from `ARON_SEED_PASSWORD`); dev phone bound with ordinal 0; dev config overrides in their own
   version; idempotent. Answers `docs/requests/backend-seed-login-accounts.md`. Checker: two rounds, PASS.
 
-## Next (not started)
+- **R5 follow-up** (`V0012`, 2026-10-06): defaults of `cfg.web.menu_by_role` (docs/19 s5.3 mapped to the s8.5 roles,
+  deferred programme pages left out) and `cfg.app.home_tiles` (SR: the app's tile order without Loyalty Point, Photo
+  Capture and Astha). Test: `ConfigDefaultsTest`.
 
-- Follow-up migrations once the lead answers: docs/19 config keys, `cfg.app.home_tiles` and `cfg.web.menu_by_role`
-  defaults, SKU code spaces.
-- Back-office tables of docs/24 s12.1 that no Day 1 row names (`survey`, `survey_question`, `rubric`, `tutorial`,
+## Lead rulings applied (docs/24 s14a, 2026-10-06)
+
+R1 registry hash partitioning, R2 only the s9.5 keys, R3 scope_id ordinals, R4 `_` in SKU codes: already as built.
+R5: V0012. R6 / docs/27: no programme, target or discount tables or migrations will be added; the ones already shipped
+(programme, programme_enrolment, gift, gift_assignment, astha_target, loyalty_ledger, redemption, redemption_line,
+gift_photo, target_*, offer*) stay as empty hooks and are not edited.
+
+## Next
+
+- Back-office tables of docs/24 s12.1 that no db row names (`survey`, `survey_question`, `rubric`, `tutorial`,
   `print_template`, `supervisor_target`, `web_entry_*`, `qc_summary_entry`, `entry_unlock`, `dues_adjustment`,
-  `price_batch`, `tracking_action`, `report_export_log`, `client_error`): ready to add when their rows come up.
+  `price_batch`, `tracking_action`, `report_export_log`, `client_error`): added only when a docs/25 row of another lane
+  needs one (`python3 tools/my-rows.py db` lists no db row after Day 1).
 
 ## Not verified here
 

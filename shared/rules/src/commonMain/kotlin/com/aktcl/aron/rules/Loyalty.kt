@@ -1,6 +1,9 @@
 package com.aktcl.aron.rules
 
-/** Redemption arithmetic of docs/24 s4.14.2: `points_total = cash points + sum(line points)`, `cash_mtk = cash points x rate`. */
+/**
+ * UNUSED (docs/27, 2026-10-06): loyalty is deferred; kept as a hook, not extended, no programme rules added.
+ * Redemption arithmetic of docs/24 s4.14.2: `points_total = cash points + sum(line points)`, `cash_mtk = cash points x rate`.
+ */
 object LoyaltyMath {
     /** Cash value in mtk of [cashPoints] at [rateMtkPerPoint] (default 2,000 mtk = 2 Tk a point); exact integer maths. */
     fun cashMtk(cashPoints: Long, rateMtkPerPoint: Long = 2_000L): Long {
