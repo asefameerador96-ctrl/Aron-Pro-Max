@@ -21,6 +21,17 @@ requests; no fleet-sized additions.
   `owner approved reset`; the script itself also refuses deletion without `OWNER_APPROVED=yes` and a `*-lite`
   profile. Everything else is a dry run.
 
+- **DEPLOYED on profile `dev` (CI run 37479574147, commit db50ae9), adopting the existing resources; nothing was
+  deleted or recreated, and PostgreSQL was untouched by the what-if guard.** The run did: infra (adopted), Key Vault
+  secrets (JWT key, FCM, web session secret), images, **migrations succeeded**, api + worker + web + Front Door routes.
+  **Front Door address: `https://fde-aron-dev-7i7g53-gpgaa3fpgrhmdgaz.z03.azurefd.net`.** The run's own smoke
+  test gave up after 10 minutes on Front Door's edge 404 (the routes were still propagating), so the CI job is red.
+  Checked from outside at 15:09 UTC (about 23 minutes after the routes were created):
+  `GET /v1/health` -> **200**, `X-Aron-Api: 1`, body `{"status":"ok","api":"/v1",...,"build":"db50ae94..."}`;
+  `HEAD /v1/health` -> 200; `GET /v1/health/ready` -> 200; `GET /` -> 307 to `/login`, and `/login` -> 200 (web);
+  `http://` -> 307 to `https://`. Smoke timeout on Front Door hosts raised to 45 minutes (commit after db50ae9).
+  **No budget** yet (cost policy off, below).
+
 - **Deploy of `dev` (CI run 37474197061, commit 9e5abfa): stopped at the what-if, nothing changed.** The reset check
   passed (all 28 resources KEEP, "nothing to reset: rg-aron-dev matches the dev profile"). Azure then refused the
   what-if: `401 - Budget experiences are disabled for subscription users because the cost policy is turned off by your
