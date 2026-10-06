@@ -144,3 +144,25 @@ class HttpPlatformTest {
         for (c in ProblemCode.entries) assertEquals(c.httpStatus, ApiProblem(c).status, c.wire)
     }
 }
+
+class FrontDoorGateTest {
+    @Test
+    fun onlyOurFrontDoorReachesTheApiButProbesAlwaysDo() = io.ktor.server.testing.testApplication {
+        application {
+            installAronPlatform(PlatformContext(config = RegistryDefaults(), generation = { NIL_GENERATION }, frontDoorId = "fd-1234"))
+            routing {
+                get("/v1/health") { call.respondText("ok") }
+                get("/v1/health/ready") { call.respondText("ok") }
+                get("/v1/ok") { call.respondText("ok") }
+            }
+        }
+        assertEquals(HttpStatusCode.OK, client.get("/v1/ok") { header("X-Azure-FDID", "fd-1234") }.status)
+        val direct = client.get("/v1/ok")
+        assertEquals(HttpStatusCode.Forbidden, direct.status)
+        assertTrue(direct.bodyAsText().contains("ERR_FORBIDDEN"))
+        assertEquals("1", direct.headers["X-Aron-Api"])
+        assertEquals(HttpStatusCode.Forbidden, client.get("/v1/ok") { header("X-Azure-FDID", "someone-else") }.status)
+        assertEquals(HttpStatusCode.OK, client.get("/v1/health").status)
+        assertEquals(HttpStatusCode.OK, client.get("/v1/health/ready").status)
+    }
+}

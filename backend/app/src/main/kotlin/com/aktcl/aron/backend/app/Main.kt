@@ -63,7 +63,7 @@ data class Health(val status: String, val api: String, val server_time: String, 
 
 /** The API: platform plugins, health, then every context's routes under /v1 (docs/24 s3, s6.2). */
 fun Application.aronApi(w: Wiring) {
-    installAronPlatform(PlatformContext(w.clock, w.config, w.generation, w.build))
+    installAronPlatform(PlatformContext(w.clock, w.config, w.generation, w.build, w.frontDoorId))
     routing {
         route(ContractInfo.API_BASE_PATH) {
             healthRoutes(w)

@@ -10,7 +10,7 @@ import java.util.UUID
  * ARON_TEST_PG_URL (the role needs CREATEDB), migrated with the db module's Flyway migrations, dropped on close.
  */
 class FreshDb private constructor(val name: String, val url: String, private val adminUrl: String) : AutoCloseable {
-    val dataSource: HikariDataSource = HikariDataSource(HikariConfig().apply { jdbcUrl = url; maximumPoolSize = 8; connectionInitSql = "SET TIME ZONE 'UTC'" })
+    val dataSource: HikariDataSource = HikariDataSource(HikariConfig().apply { jdbcUrl = url; maximumPoolSize = 8 })
     val db: Database = Database(dataSource)
 
     override fun close() {

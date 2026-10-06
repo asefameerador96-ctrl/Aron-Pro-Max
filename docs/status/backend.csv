@@ -6,3 +6,4 @@ F-SYS-002,S,2026-10-05T12:00Z,2026-10-05T13:00Z,20,"see F-SYS-001","airplane-mod
 F-API-002,S,2026-10-05T12:00Z,2026-10-05T13:00Z,15,"see F-SYS-001","device_uuid on refresh_family requested from db lane"
 F-SYS-005,M,2026-10-05T12:20Z,2026-10-05T13:00Z,40,"5 confirmed (cursor/updated_since 500s, cluster outside reach, stale geo snapshot) + harness gap (HTTP path, refusal oracle); all fixed","harness: 200 queries in memory, over SQL and over HTTP; mutant of the endpoint killed"
 N-017,M,2026-10-05T12:20Z,2026-10-05T13:00Z,30,"2 confirmed (geo snapshot crash, kind/mask from different rows); fixed","planner done; bundle carriage and first-fetch freeze land with F-API-005 (Day 2)"
+DAY1-SEED-ACCEPT,S,2026-10-06T09:36Z,2026-10-06T10:00Z,25,0,"Day 1 acceptance re-run on the db lane's seed; device store wired; infra runtime items 4-5"

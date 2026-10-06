@@ -72,7 +72,8 @@ class AuthFixture(
     private val jdbiUsers = fresh?.let { JdbiUserStore(it.db, clock, svCacheMs = 0) }
     val users: UserStore = jdbiUsers ?: fakeUsers
     private val scopeVersions: ScopeVersionLookup = jdbiUsers ?: fakeUsers
-    val devices = FakeDevices()
+    private val fakeDevices = FakeDevices()
+    val devices: DeviceStore = fresh?.let { JdbiDeviceStore(it.db) } ?: fakeDevices
     val lockouts: LockoutStore = fresh?.let { JdbiLockoutStore(it.db) } ?: InMemoryLockoutStore()
     val refreshStore: RefreshStore = fresh?.let { JdbiRefreshStore(it.db) } ?: InMemoryRefreshStore()
     val issuer = TokenIssuer(keys, config, clock)
@@ -93,8 +94,8 @@ class AuthFixture(
         addUser(user(1001, "sr334001", Role.SR))
         addUser(user(2001, "tso5012", Role.TSO))
         addUser(user(9001, "admin1", Role.ADMIN))
-        devices.byUuid[srDevice] = DeviceRecord(501, srDevice, "active", "sr", null)
-        devices.bindings[1001L to 501L] = 0
+        addDevice(DeviceRecord(501, srDevice, "active", "sr", null))
+        bind(1001, 501, 0)
     }
 
     /** Inserts or replaces a user (status and scope_version included) in whichever store is in use. */
@@ -108,6 +109,33 @@ class AuthFixture(
             ).bind("id", u.id).bind("u", u.username).bind("n", u.fullName).bind("r", u.role.wire).bind("s", u.status).bind("l", u.locale)
                 .bind("d", u.designation).bind("p", u.passwordHash).bind("sv", u.scopeVersion).bind("m", u.mustChangePassword).execute()
         }
+    }
+
+    /** Adds a phone (a real app.device row on PostgreSQL; a null key becomes the seed-style unusable placeholder). */
+    fun addDevice(d: DeviceRecord) {
+        if (fresh == null) { fakeDevices.byUuid[d.uuid] = d; return }
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                """INSERT INTO app.device (id, device_uuid, flavour, app_package, status, device_owner, lockdown_level, public_key_jwk,
+                                         public_key_thumbprint, app_signing_cert_sha256)
+                   OVERRIDING SYSTEM VALUE VALUES (:id, CAST(:u AS uuid), :f, :pkg, :s, false, 'dev', CAST(:jwk AS jsonb), :tp, decode(repeat('00', 32), 'hex'))
+                   ON CONFLICT (id) DO UPDATE SET status = excluded.status, public_key_jwk = excluded.public_key_jwk""",
+            ).bind("id", d.id).bind("u", d.uuid).bind("f", d.flavour ?: "sr").bind("pkg", "com.aktcl.aron." + (d.flavour ?: "sr")).bind("s", d.state)
+                .bind("jwk", d.publicKeyJwk ?: """{"kty":"EC","crv":"P-256","x":"placeholder","y":"placeholder"}""").bind("tp", "test-" + d.id).execute()
+        }
+    }
+
+    fun bind(userId: Long, deviceId: Long, ordinal: Int) {
+        if (fresh == null) { fakeDevices.bindings[userId to deviceId] = ordinal; return }
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_via) VALUES (:d, :u, :o, 'support')")
+                .bind("d", deviceId).bind("u", userId).bind("o", ordinal).execute()
+        }
+    }
+
+    fun unbindAll() {
+        if (fresh == null) { fakeDevices.bindings.clear(); return }
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.device_binding SET status = 'revoked', unbound_at = now() WHERE status = 'active'") }
     }
 
     fun close() { limiter.close(); fresh?.close() }

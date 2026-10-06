@@ -104,9 +104,12 @@ private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps): To
             val proof = call.request.headers["X-Device-Proof"] ?: throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "X-Device-Proof is required")
             val ok = DeviceProof.verifyBucketed(key, proof, d.clock.now().epochSecond) { b -> DeviceProof.refreshString(headerUuid, token, b) }
             if (!ok) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device proof does not verify")
-        } else if (device?.publicKeyJwk != null || (device == null && d.config.bool("cfg.device.require_enrolled"))) {
+        } else if (d.config.bool("cfg.device.require_enrolled")) {
+            // In production every phone has a usable Keystore key; without one there is nothing to prove with.
             throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device key unknown")
         }
+        // Dev database (require_enrolled false): a phone with no usable key (none, or the seed's placeholder) is bound
+        // by device_id and X-Device-Id only (DECISIONS.md).
         if (device != null && grant == Grant.FULL) {
             when (device.state) {
                 "suspended" -> throw ApiProblem(ProblemCode.ERR_DEVICE_SUSPENDED)

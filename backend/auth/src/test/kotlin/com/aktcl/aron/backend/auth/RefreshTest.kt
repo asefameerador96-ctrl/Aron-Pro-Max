@@ -119,7 +119,7 @@ open class RefreshTest {
     fun grantAndDeviceAreBound() {
         val f = fixture()
         val other = "9b0c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4"
-        f.devices.byUuid[other] = DeviceRecord(777, other, "active", "sr", null)
+        f.addDevice(DeviceRecord(777, other, "active", "sr", null))
         testApplication {
             application { f.application(this) }
             val (rt, upload) = client.loginTokens(f)
@@ -138,7 +138,7 @@ open class RefreshTest {
         val f = fixture()
         val kp = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
         val jwk = ECKey.Builder(Curve.P_256, kp.public as ECPublicKey).build().toJSONString()
-        f.devices.byUuid[f.srDevice] = DeviceRecord(501, f.srDevice, "active", "sr", jwk)
+        f.addDevice(DeviceRecord(501, f.srDevice, "active", "sr", jwk))
         fun proof(token: String, at: Instant): String {
             val msg = DeviceProof.refreshString(f.srDevice, token, DeviceProof.bucket(at.epochSecond))
             val sig = Signature.getInstance("SHA256withECDSAinP1363Format").run { initSign(kp.private); update(msg.toByteArray()); sign() }

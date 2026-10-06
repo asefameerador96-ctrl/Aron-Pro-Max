@@ -6,7 +6,7 @@ import com.aktcl.aron.backend.auth.JdbiLockoutStore
 import com.aktcl.aron.backend.auth.JdbiRefreshStore
 import com.aktcl.aron.backend.auth.JdbiUserStore
 import com.aktcl.aron.backend.auth.LoginService
-import com.aktcl.aron.backend.auth.NoDevices
+import com.aktcl.aron.backend.auth.JdbiDeviceStore
 import com.aktcl.aron.backend.auth.PasswordHasher
 import com.aktcl.aron.backend.auth.RefreshService
 import com.aktcl.aron.backend.auth.TokenIssuer
@@ -35,6 +35,7 @@ class Wiring(
     val generation: () -> String,
     val build: String,
     val mount: Route.() -> Unit,
+    val frontDoorId: String? = null,
 ) {
     companion object {
         fun production(s: Settings, clock: AronClock = AronClock.SYSTEM): Wiring {
@@ -47,16 +48,15 @@ class Wiring(
             val reach = SqlReachResolver(db, geo, clock)
             val issuer = TokenIssuer(keys, config, clock)
             val refresh = RefreshService(JdbiRefreshStore(db), config, keys.derivedSecret("aron-refresh-rotation-v1"), clock)
-            // Device tables arrive with N-007 (V0010); until then no phone is known and cfg.device.require_enrolled decides.
-            val devices = NoDevices
+            val devices = JdbiDeviceStore(db)
             val login = LoginService(users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock)
             val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             // The server generation table arrives with the sync schema (N-006); until then the nil generation is sent.
-            return Wiring(clock, config, db, { NIL_GENERATION }, s.build) {
+            return Wiring(clock, config, db, { NIL_GENERATION }, s.build, mount = {
                 authRoutes(auth)
                 outletRoutes(outlets)
-            }
+            }, frontDoorId = s.frontDoorId)
         }
     }
 }

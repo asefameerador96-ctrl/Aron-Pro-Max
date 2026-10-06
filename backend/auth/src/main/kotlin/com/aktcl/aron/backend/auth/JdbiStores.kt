@@ -167,7 +167,21 @@ class JdbiLockoutStore(private val db: Database) : LockoutStore {
     }
 }
 
-/** Until the device tables land (N-007, V0010) no phone is known; `cfg.device.require_enrolled` decides the rest. */
+/** Enrolled phones (`app.device`, V0010) and their active bindings (`app.device_binding`). */
+class JdbiDeviceStore(private val db: Database) : DeviceStore {
+    override fun findByUuid(uuid: String): DeviceRecord? = db.jdbi.withHandle<DeviceRecord?, Exception> { h ->
+        h.createQuery("SELECT id, device_uuid::text, status, flavour, public_key_jwk::text FROM app.device WHERE device_uuid = CAST(:u AS uuid)")
+            .bind("u", uuid).map { rs, _ -> DeviceRecord(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5)) }
+            .findOne().orElse(null)
+    }
+
+    override fun bindOrdinal(userId: Long, deviceId: Long): Int? = db.jdbi.withHandle<Int?, Exception> { h ->
+        h.createQuery("SELECT bind_ordinal FROM app.device_binding WHERE user_id = :u AND device_id = :d AND status = 'active'")
+            .bind("u", userId).bind("d", deviceId).mapTo(Int::class.javaObjectType).findOne().orElse(null)
+    }
+}
+
+/** No phone known (tests and tools without device tables); `cfg.device.require_enrolled` decides the rest. */
 object NoDevices : DeviceStore {
     override fun findByUuid(uuid: String): DeviceRecord? = null
     override fun bindOrdinal(userId: Long, deviceId: Long): Int? = null

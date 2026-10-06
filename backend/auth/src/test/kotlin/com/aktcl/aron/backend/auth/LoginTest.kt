@@ -111,8 +111,8 @@ open class LoginTest {
         // lockout_attempts lowered to 5 (bounds 3..50) so the per-username rate limit (10 / 15 min) does not mask the pair lock.
         val f = fixture(mapOf("cfg.auth.lockout_attempts" to JsonPrimitive(5)))
         val otherDevice = "7a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c11"
-        f.devices.byUuid[otherDevice] = com.aktcl.aron.backend.auth.DeviceRecord(502, otherDevice, "active", "sr", null)
-        f.devices.bindings[1001L to 502L] = 1
+        f.addDevice(DeviceRecord(502, otherDevice, "active", "sr", null))
+        f.bind(1001L, 502L, 1)
         testApplication {
             application { f.application(this) }
             repeat(5) { assertEquals(HttpStatusCode.Unauthorized, client.login("sr334001", "bad", f.srDevice).status) }
@@ -221,7 +221,7 @@ open class LoginTest {
     fun deviceStatesAndEnrolment() {
         val f = fixture(mapOf("cfg.device.require_enrolled" to JsonPrimitive(true)))
         val suspended = "8a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c12"
-        f.devices.byUuid[suspended] = DeviceRecord(503, suspended, "suspended", "sr", null)
+        f.addDevice(DeviceRecord(503, suspended, "suspended", "sr", null))
         testApplication {
             application { f.application(this) }
             assertEquals("ERR_DEVICE_NOT_ENROLLED", json(client.login("sr334001", "correct horse 1", UUID.randomUUID().toString()).bodyAsText()).code)
@@ -235,7 +235,7 @@ open class LoginTest {
     @Test
     fun unboundUserGetsABindTokenAndNoRefreshGrant() {
         val f = fixture()
-        f.devices.bindings.clear()
+        f.unbindAll()
         testApplication {
             application { f.application(this) }
             val b = json(client.login("sr334001", "correct horse 1", f.srDevice).bodyAsText())

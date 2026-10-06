@@ -41,8 +41,8 @@ class Database(val write: DataSource, val read: DataSource = write) : AutoClosea
                     isReadOnly = readOnly
                     connectionTimeout = 5_000
                     validationTimeout = 2_000
-                    // Sessions run in UTC; business dates are always explicit (docs/24 s3.8).
-                    connectionInitSql = "SET TIME ZONE 'UTC'"
+                    // No session state (the api pool goes through PgBouncer transaction pooling): every SQL statement
+                    // binds timestamptz values and names Asia/Dhaka explicitly where a business date is derived.
                     initializationFailTimeout = -1 // the API starts (health answers) even while the database is down
                 },
             )

@@ -41,6 +41,8 @@ class PlatformContext(
     /** Server generation UUID of this database lineage (docs/24 s4.8). */
     val generation: () -> String,
     val build: String = "dev",
+    /** When set, a request whose `X-Azure-FDID` differs is 403: the API is reachable only through our Front Door (WAF). */
+    val frontDoorId: String? = null,
 )
 
 /** JSON for responses: every member present (required-nullable members as `null`), snake_case DTO names. */
@@ -79,6 +81,11 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
             h.append("X-Server-Time", ctx.clock.now().wire())
             h.append("X-Config-Version", runCatching { ctx.config.configVersion() }.getOrDefault(0).toString())
             h.append("X-Server-Generation", runCatching { ctx.generation() }.getOrDefault(NIL_GENERATION))
+            val path = call.request.path()
+            // Container Apps probes reach the replica directly, so health is exempt from the Front Door gate.
+            if (ctx.frontDoorId != null && !path.startsWith("/v1/health") && call.request.headers["X-Azure-FDID"] != ctx.frontDoorId) {
+                throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "requests must come through the Aron Front Door")
+            }
         }
         on(ResponseSent) { call ->
             val ms = (System.nanoTime() - (call.attributes.getOrNull(StartNanosKey) ?: System.nanoTime())) / 1_000_000
