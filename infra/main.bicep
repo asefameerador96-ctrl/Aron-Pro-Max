@@ -24,14 +24,23 @@ param location string = resourceGroup().location
 param nameSuffix string = ''
 param tags object = {}
 
-// Network
+// Profile switches (docs/28: TEST profile in dev*, FINAL profile in prod*; same templates, only parameters differ)
+@description('true: VNet, private PostgreSQL, VNet-injected Container Apps (FINAL). false: no VNet; PostgreSQL public endpoint limited to Azure services by its firewall, TLS required (TEST, saves the environment load balancer and public IPs).')
+param privateNetworking bool = true
+@description('true: Front Door + WAF in front of the apps (FINAL). false: clients use the Container Apps address directly (TEST).')
+param deployFrontDoor bool = true
+@description('Log-search alert rules on App Insights (each is billed monthly); metric alerts and the budget stay on regardless.')
+param enableLogAlerts bool = true
+
+// Network (used only when privateNetworking)
 param vnetAddressPrefix string
 param acaSubnetPrefix string
 param postgresSubnetPrefix string
 
 // Monitoring and cost
 param logRetentionDays int = 30
-param logDailyQuotaGb int
+@description('Log Analytics daily cap in GB, decimal string (docs/28: \'0.5\' in the TEST profile).')
+param logDailyQuotaGb string
 @minLength(1)
 param alertEmails array
 param budgetAmount int
@@ -43,9 +52,15 @@ param keyVaultPurgeProtection bool
 param registrySku string
 @allowed(['Standard_LRS', 'Standard_ZRS', 'Standard_GZRS', 'Standard_RAGZRS'])
 param storageSku string
+@description('Zone redundancy needs a VNet (privateNetworking); it is ignored without one.')
 param containerEnvZoneRedundant bool = true
 
 // PostgreSQL
+@allowed(['Burstable', 'GeneralPurpose', 'MemoryOptimized'])
+param postgresSkuTier string = 'GeneralPurpose'
+@description('PremiumV2_LRS (SSD v2, GeneralPurpose/MemoryOptimized only) or Premium_LRS (SSD v1, any tier, required for Burstable).')
+@allowed(['PremiumV2_LRS', 'Premium_LRS'])
+param postgresStorageType string = 'PremiumV2_LRS'
 param postgresSkuName string
 param postgresStorageSizeGb int
 param postgresStorageIops int
@@ -78,10 +93,12 @@ param deployerObjectId string = deployer().objectId
 var suffix = suffixFor(nameSuffix, resourceGroup().id)
 var n = names(namePrefix, environmentName, suffix)
 var allTags = union({ project: 'aron', environment: environmentName, owner: 'aktcl', 'managed-by': 'bicep' }, tags)
-var privateLink = frontDoorPrivateLink && frontDoorSku == 'Premium_AzureFrontDoor'
+var privateLink = deployFrontDoor && privateNetworking && frontDoorPrivateLink && frontDoorSku == 'Premium_AzureFrontDoor'
+// Built-in PgBouncer does not exist on Burstable (Learn); the pooled URL then points at 5432 like the direct one.
+var pgbouncerEnabled = postgresSkuTier != 'Burstable'
 var databaseName = 'aron'
 
-module network 'modules/network.bicep' = {
+module network 'modules/network.bicep' = if (privateNetworking) {
   name: 'network'
   params: {
     location: location
@@ -115,8 +132,12 @@ module postgres 'modules/postgres.bicep' = {
     serverName: n.postgres
     replicaName: n.postgresReplica
     dnsZoneName: n.postgresDnsZone
-    vnetId: network.outputs.vnetId
-    subnetId: network.outputs.postgresSubnetId
+    privateNetworking: privateNetworking
+    vnetId: privateNetworking ? network!.outputs.vnetId : ''
+    subnetId: privateNetworking ? network!.outputs.postgresSubnetId : ''
+    skuTier: postgresSkuTier
+    storageType: postgresStorageType
+    pgbouncerEnabled: pgbouncerEnabled
     logAnalyticsId: monitoring.outputs.logAnalyticsId
     databaseName: databaseName
     adminLogin: postgresAdminLogin
@@ -144,6 +165,7 @@ module keyVault 'modules/keyvault.bicep' = {
     postgresAdminLogin: postgresAdminLogin
     postgresHost: postgres.outputs.host
     postgresReadHost: postgres.outputs.readHost
+    pooledPort: pgbouncerEnabled ? 6432 : 5432
     databaseName: databaseName
     secretNames: secretNames
   }
@@ -181,9 +203,10 @@ module containerEnv 'modules/containerenv.bicep' = {
     location: location
     tags: allTags
     environmentName: n.containerEnv
-    subnetId: network.outputs.acaSubnetId
+    subnetId: privateNetworking ? network!.outputs.acaSubnetId : ''
+
     logAnalyticsId: monitoring.outputs.logAnalyticsId
-    zoneRedundant: containerEnvZoneRedundant
+    zoneRedundant: privateNetworking && containerEnvZoneRedundant
     publicNetworkAccess: privateLink ? 'Disabled' : 'Enabled'
   }
 }
@@ -202,7 +225,7 @@ module identities 'modules/identities.bicep' = {
   dependsOn: [registry, keyVault, storage]
 }
 
-module frontDoor 'modules/frontdoor.bicep' = {
+module frontDoor 'modules/frontdoor.bicep' = if (deployFrontDoor) {
   name: 'frontdoor'
   params: {
     tags: allTags
@@ -226,6 +249,7 @@ module alerts 'modules/alerts.bicep' = {
     appInsightsId: monitoring.outputs.appInsightsId
     postgresId: postgres.outputs.serverId
     actionGroupId: monitoring.outputs.actionGroupId
+    enableLogAlerts: enableLogAlerts
   }
 }
 
@@ -251,7 +275,8 @@ output apiAppName string = n.apiApp
 output workerAppName string = n.workerApp
 output webAppName string = n.webApp
 output frontDoorProfileName string = n.frontDoor
-output frontDoorEndpointHost string = frontDoor.outputs.endpointHost
+output frontDoorEndpointHost string = deployFrontDoor ? frontDoor!.outputs.endpointHost : ''
+output frontDoorEnabled bool = deployFrontDoor
 output postgresServerName string = n.postgres
 output storageAccountName string = n.storage
 output privateLinkOrigin bool = privateLink

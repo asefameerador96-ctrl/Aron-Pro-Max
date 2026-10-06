@@ -8,6 +8,8 @@ param namePrefix string
 param appInsightsId string
 param postgresId string
 param actionGroupId string
+@description('Log-search rules are billed per rule per month; off in the TEST profile, metric alerts stay.')
+param enableLogAlerts bool = true
 
 var appRequests = {
   batch5xx: {
@@ -45,7 +47,7 @@ requests
   }
 }
 
-resource queryAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for a in items(appRequests): {
+resource queryAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for a in items(appRequests): if (enableLogAlerts) {
   name: '${namePrefix}-${a.key}'
   location: location
   tags: tags

@@ -1,5 +1,5 @@
-// Monthly cost budget on THIS resource group only (no subscription scope needed), with e-mail alerts at 80 % of
-// actual and 100 % of forecast spend (docs/18 s3.3 governance, docs/23 s6).
+// Monthly cost budget on THIS resource group only (no subscription scope needed), with e-mail alerts at 50, 90 and
+// 100 % of actual and 100 % of forecast spend (docs/28; docs/18 s3.3 governance, docs/23 s6).
 
 param budgetName string
 @description('Monthly amount in the billing currency of the subscription.')
@@ -16,10 +16,17 @@ resource budget 'Microsoft.Consumption/budgets@2024-08-01' = {
     timeGrain: 'Monthly'
     timePeriod: { startDate: startDate }
     notifications: {
-      actual80: {
+      actual50: {
         enabled: true
         operator: 'GreaterThanOrEqualTo'
-        threshold: 80
+        threshold: 50
+        thresholdType: 'Actual'
+        contactEmails: contactEmails
+      }
+      actual90: {
+        enabled: true
+        operator: 'GreaterThanOrEqualTo'
+        threshold: 90
         thresholdType: 'Actual'
         contactEmails: contactEmails
       }

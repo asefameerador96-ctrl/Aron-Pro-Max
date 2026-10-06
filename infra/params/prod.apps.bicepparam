@@ -9,6 +9,9 @@ var envReadiness = readEnvironmentVariable('ARON_API_READINESS_PATH', '')
 var envWorkerMin = readEnvironmentVariable('ARON_WORKER_MIN_REPLICAS', '')
 
 param environmentName = 'prod'
+
+param frontDoorEnabled = true
+// D8ds_v5 behind PgBouncer: the app pools stay at their defaults (10 per replica).
 param location = empty(envLocation) ? 'southeastasia' : envLocation
 param nameSuffix = envSuffix
 // The quickstart image only lets the file compile offline; deploy.sh always sets the real image.

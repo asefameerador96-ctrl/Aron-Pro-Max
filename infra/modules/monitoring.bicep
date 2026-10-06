@@ -7,8 +7,8 @@ param appInsightsName string
 param actionGroupName string
 @minValue(30)
 param retentionDays int
-@description('Daily ingestion cap in GB; -1 = no cap. docs/18 s3.3: 0.3 GB a day for the pilot, 5.5 GB for the fleet.')
-param dailyQuotaGb int
+@description('Daily ingestion cap in GB as a decimal string (for example \'0.5\'); \'-1\' = no cap. docs/18 s3.3: 5.5 GB a day for the fleet.')
+param dailyQuotaGb string
 @description('E-mail addresses that receive budget and platform alerts.')
 param alertEmails array
 
@@ -19,7 +19,7 @@ resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   properties: {
     sku: { name: 'PerGB2018' }
     retentionInDays: retentionDays
-    workspaceCapping: { dailyQuotaGb: dailyQuotaGb }
+    workspaceCapping: { dailyQuotaGb: json(dailyQuotaGb) }
     features: { enableLogAccessUsingOnlyResourcePermissions: true }
   }
 }

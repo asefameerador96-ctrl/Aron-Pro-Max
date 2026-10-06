@@ -7,7 +7,8 @@
 # Order (infra/README.md explains why):
 #   lock -> ordering guard -> infra (main.bicep; skipped when infra is unchanged since the deployed commit) ->
 #   Key Vault seeding -> backend image (+ web image when web/ exists) -> migrate job with the new image -> wait for
-#   the migrations -> apps + Front Door routes -> Private Link approval (Premium) -> smoke test -> budget check.
+#   the migrations -> apps (+ Front Door routes when the profile has Front Door) -> Private Link approval (Premium)
+#   -> smoke test on the public API address -> budget check.
 #
 # Environment: AZURE_RESOURCE_GROUP (required), ARON_ALERT_EMAILS (required, comma-separated), AZURE_LOCATION,
 # ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX, FCM_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY (all optional),
@@ -82,6 +83,12 @@ fi
 
 out() { python3 -c 'import json,sys; o=json.loads(sys.argv[1]); v=o[sys.argv[2]]["value"]; print(str(v).lower() if isinstance(v,bool) else v)' "$1" "$2"; }
 
+# A resource whose creation-time settings differ from the profile (docs/28) would make main.bicep fail half-way;
+# stop before changing anything and point at the reset workflow instead.
+if [ "$skip_infra" != true ]; then
+  CHECK_ONLY=1 infra/scripts/reset-to-profile.sh "$RG" "$ENV_NAME"
+fi
+
 if [ "$skip_infra" = true ]; then
   note "infrastructure unchanged since $deployed_sha: main.bicep skipped (FORCE_INFRA=true runs it)"
   outputs="$previous"
@@ -151,10 +158,10 @@ else
 fi
 
 # ------------------------------------------------------------------------------------------------------ apps
-note "apps and Front Door routes"
+note "apps (and Front Door routes when the profile has Front Door)"
 apps="$(ARON_DEPLOY_SERVICES=true az deployment group create -g "$RG" -n aron-apps --template-file infra/apps.bicep \
   --parameters "infra/params/${ENV_NAME}.apps.bicepparam" --query properties.outputs -o json)"
-FD_HOST="$(out "$apps" frontDoorHost)"
+API_HOST="$(out "$apps" apiHost)"
 WEB_DEPLOYED="$(out "$apps" webDeployed)"
 
 if [ "$PRIVATE_LINK" = true ]; then
@@ -163,7 +170,7 @@ if [ "$PRIVATE_LINK" = true ]; then
 fi
 
 # ------------------------------------------------------------------------------------------------ checks
-infra/scripts/smoke.sh "$FD_HOST"
+infra/scripts/smoke.sh "$API_HOST"
 amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \
   || die "budget $BUDGET not found in $RG"
 
@@ -172,7 +179,7 @@ summary "| Item | Value |"
 summary "|---|---|"
 summary "| Resource group | ${RG} |"
 summary "| Commit | ${SHA} |"
-summary "| API through Front Door | https://${FD_HOST}/v1/health |"
+summary "| API | https://${API_HOST}/v1/health |"
 summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"

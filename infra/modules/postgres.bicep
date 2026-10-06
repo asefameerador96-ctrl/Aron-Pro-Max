@@ -7,6 +7,8 @@ param tags object
 param serverName string
 param replicaName string
 param dnsZoneName string
+@description('true: delegated subnet + private DNS zone, no public endpoint (FINAL). false: public endpoint whose firewall admits only Azure services, TLS required (TEST, no VNet).')
+param privateNetworking bool = true
 param vnetId string
 param subnetId string
 param logAnalyticsId string
@@ -15,11 +17,14 @@ param adminLogin string
 @secure()
 param adminPassword string
 
-@description('Compute SKU, General Purpose (HA and PgBouncer need it; Burstable has neither). Example Standard_D2ds_v5.')
+@description('Compute SKU, for example Standard_D2ds_v5 (General Purpose) or Standard_B1ms (Burstable).')
 param skuName string
-@allowed(['GeneralPurpose', 'MemoryOptimized'])
+@description('Burstable has no HA, no built-in PgBouncer, no Query Store and no SSD v2 (Learn).')
+@allowed(['Burstable', 'GeneralPurpose', 'MemoryOptimized'])
 param skuTier string = 'GeneralPurpose'
-@description('Premium SSD v2: IOPS and throughput are set independently of size (no autogrow; grow by hand at 70 %).')
+@description('PremiumV2_LRS: IOPS and throughput set independently of size, no autogrow (grow by hand at 70 %). Premium_LRS: SSD v1 with autogrow.')
+@allowed(['PremiumV2_LRS', 'Premium_LRS'])
+param storageType string = 'PremiumV2_LRS'
 param storageSizeGb int
 param storageIops int
 param storageThroughputMBps int
@@ -36,14 +41,36 @@ param enableReadReplica bool
 param replicaZone string = '3'
 @description('PgBouncer pool size per (user, database) pair; docs/18 s2.6 Little\'s-law check gives 20.')
 param pgbouncerPoolSize int = 20
+@description('Built-in PgBouncer; must be false on Burstable.')
+param pgbouncerEnabled bool = true
 
-resource dnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
+var storage = storageType == 'PremiumV2_LRS' ? {
+  type: 'PremiumV2_LRS'
+  storageSizeGB: storageSizeGb
+  iops: storageIops
+  throughput: storageThroughputMBps
+  autoGrow: 'Disabled'
+} : {
+  type: 'Premium_LRS'
+  storageSizeGB: storageSizeGb
+  autoGrow: 'Enabled'
+}
+
+var network = privateNetworking ? {
+  delegatedSubnetResourceId: subnetId
+  privateDnsZoneArmResourceId: dnsZone.id
+  publicNetworkAccess: 'Disabled'
+} : {
+  publicNetworkAccess: 'Enabled'
+}
+
+resource dnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (privateNetworking) {
   name: dnsZoneName
   location: 'global'
   tags: tags
 }
 
-resource dnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
+resource dnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (privateNetworking) {
   parent: dnsZone
   name: 'vnet-link'
   location: 'global'
@@ -66,13 +93,7 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
     administratorLoginPassword: adminPassword
     authConfig: { activeDirectoryAuth: 'Disabled', passwordAuth: 'Enabled' }
     availabilityZone: primaryZone
-    storage: {
-      type: 'PremiumV2_LRS'
-      storageSizeGB: storageSizeGb
-      iops: storageIops
-      throughput: storageThroughputMBps
-      autoGrow: 'Disabled'
-    }
+    storage: storage
     backup: {
       backupRetentionDays: backupRetentionDays
       geoRedundantBackup: geoRedundantBackup ? 'Enabled' : 'Disabled'
@@ -81,11 +102,7 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
       mode: haMode
       standbyAvailabilityZone: haMode == 'ZoneRedundant' ? standbyZone : primaryZone
     }
-    network: {
-      delegatedSubnetResourceId: subnetId
-      privateDnsZoneArmResourceId: dnsZone.id
-      publicNetworkAccess: 'Disabled'
-    }
+    network: network
     // Friday 01:00 to 02:00 Dhaka (UTC+6) = Thursday 19:00 UTC: the weekly off-day, never a trading day (docs/18 s2.6).
     maintenanceWindow: { customWindow: 'Enabled', dayOfWeek: 4, startHour: 19, startMinute: 0 }
   }
@@ -97,16 +114,20 @@ resource db 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = {
   properties: { charset: 'UTF8', collation: 'en_US.utf8' }
 }
 
-var settings = [
+var pgbouncerSettings = [
   { name: 'pgbouncer.enabled', value: 'true' }
   { name: 'pgbouncer.default_pool_size', value: string(pgbouncerPoolSize) }
   { name: 'pgbouncer.query_wait_timeout', value: '5' }
+]
+var baseSettings = [
   { name: 'azure.extensions', value: 'BTREE_GIST,PGCRYPTO,PG_STAT_STATEMENTS,POSTGIS' }
   { name: 'log_min_duration_statement', value: '500' }
   { name: 'track_io_timing', value: 'on' }
-  { name: 'pg_qs.query_capture_mode', value: 'top' }
   { name: 'idle_in_transaction_session_timeout', value: '30000' }
 ]
+// Query Store is not offered on Burstable.
+var queryStoreSettings = skuTier == 'Burstable' ? [] : [{ name: 'pg_qs.query_capture_mode', value: 'top' }]
+var settings = concat(pgbouncerEnabled ? pgbouncerSettings : [], baseSettings, queryStoreSettings)
 
 // Server parameters must be written one at a time (parallel writes conflict on the server).
 @batchSize(1)
@@ -128,24 +149,14 @@ resource replica 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = if (en
     createMode: 'Replica'
     sourceServerResourceId: server.id
     availabilityZone: replicaZone
-    storage: {
-      type: 'PremiumV2_LRS'
-      storageSizeGB: storageSizeGb
-      iops: storageIops
-      throughput: storageThroughputMBps
-      autoGrow: 'Disabled'
-    }
-    network: {
-      delegatedSubnetResourceId: subnetId
-      privateDnsZoneArmResourceId: dnsZone.id
-      publicNetworkAccess: 'Disabled'
-    }
+    storage: storage
+    network: network
   }
 }
 
 // Server parameters are not replicated: the replica needs its own PgBouncer, or ARON_DB_READ_URL (port 6432) would point
 // at nothing (Learn: read replicas, PgBouncer).
-var replicaSettings = filter(settings, s => startsWith(s.name, 'pgbouncer.'))
+var replicaSettings = pgbouncerEnabled ? pgbouncerSettings : []
 
 @batchSize(1)
 resource replicaConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = [for s in replicaSettings: if (enableReadReplica) {
@@ -153,6 +164,15 @@ resource replicaConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurations
   name: s.name
   properties: { value: s.value, source: 'user-override' }
 }]
+
+// TEST profile only: no VNet, so the firewall admits Azure services (0.0.0.0) and nothing else; TLS is required by
+// default (require_secure_transport) and the admin password is 35 random characters in Key Vault.
+resource allowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-08-01' = if (!privateNetworking) {
+  parent: server
+  name: 'AllowAllAzureServicesAndResourcesWithinAzureIps'
+  properties: { startIpAddress: '0.0.0.0', endIpAddress: '0.0.0.0' }
+  dependsOn: [config]
+}
 
 resource diag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'to-log-analytics'

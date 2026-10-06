@@ -1,6 +1,54 @@
 # Infra lane status
 
-Updated 2026-10-06 (Day 2, afternoon).
+Updated 2026-10-06 (Day 2, evening).
+
+## TEST profile (docs/28, binding) — dev is now pilot-sized
+
+`infra/params/dev*.bicepparam` = TEST profile; `prod*` = FINAL profile; same templates, every size and switch a
+parameter (`privateNetworking`, `deployFrontDoor`, `enableLogAlerts`, `postgresSkuTier`, `postgresStorageType`, app
+sizes, connection pools). TEST: PostgreSQL **Burstable B1ms** (B2s is USD 0.104/h = USD 76 a month on its own, so
+B1ms), single zone, no HA, no replica, no geo backup, 32 GiB SSD v1, 7-day backup, public endpoint limited to Azure
+services by the firewall, TLS; Container Apps without a VNet (no environment load balancer or public IPs), api 0-2
+(scale to zero, 0.5 vCPU), worker 1 x 0.25 vCPU, web 0-1; **no Front Door/WAF** (the deploy smoke-tests the Container
+Apps address); Storage LRS, ACR Basic; Log Analytics cap 0.5 GB/day, 30 days; no log-search alert rules; budget USD
+70 (the Azure share of the owner's USD 100) with e-mails at 50/90/100 % and forecast 100 %. No Load Testing resource.
+
+**Monthly estimate (list prices, Southeast Asia, Azure Retail Prices API 2026-10-06):**
+
+| Line | USD/month |
+|---|---|
+| PostgreSQL B1ms compute (0.026/h) | 19 |
+| PostgreSQL storage 32 GiB (0.138/GB) and backup (within the free 100 %) | 4.4 |
+| Container Apps: worker 0.25 vCPU / 0.5 GiB always on (mostly idle rate), api and web scale to zero, inside the monthly free grant of 180,000 vCPU-s / 360,000 GiB-s / 2 M requests for most of it | 5 to 15 |
+| Container Registry Basic (0.1666/day) | 5 |
+| Log Analytics + Application Insights (pilot volume under the 5 GB/month free; cap 0.5 GB/day) | 0 to 5 |
+| Key Vault, Storage LRS, Event Grid, metric alerts | about 1 |
+| **Total** | **about 35 to 50** |
+
+No environment management fee: it applies only to private endpoints, planned maintenance or dedicated profiles, none
+of which the TEST profile uses (Learn, Container Apps billing).
+
+## URGENT: resources created by the cancelled run 37467503909 (old dev values)
+
+Run 37467503909 (commit 0f90002) passed the OIDC sign-in and the **scope check** (a test deployment into
+`rg-aron-scope-probe` was denied, creating a group was denied: N-012 acceptance proven), then submitted `main.bicep`
+at 13:07 UTC with the **old** dev values (PostgreSQL General Purpose D2ds_v5 zone-redundant HA on SSD v2 with geo
+backup, Front Door Standard, VNet-injected Container Apps environment, ZRS storage). Cancelling the GitHub job does
+**not** cancel the ARM deployment, so these resources were most likely created (about USD 12 a day for PostgreSQL
+alone). Their creation-time settings cannot be changed to the TEST profile in place.
+
+- `infra/deploy.sh` now runs `infra/scripts/reset-to-profile.sh` in check mode before `main.bicep` and **stops without
+  changing anything** when the group holds resources the profile cannot adopt, listing them.
+- New manual workflow **reset** (GitHub > Actions > reset): dry run by default; deletes only the incompatible resources
+  (PostgreSQL server, the VNet-injected environment with its apps and jobs, Front Door and WAF, ZRS storage and its
+  Event Grid topic, VNet/NSGs/private DNS zone) when the resource group name is typed into "confirm". Key Vault, logs,
+  registry, identities, alerts and budget are kept.
+- **Needs the lead's or owner's go-ahead** before the deleting run (it is a destructive action in Azure).
+
+## Move runbook
+
+`docs/setup/move-to-final-account.md` (new subscription, bootstrap, quotas, prod parameters, dump/restore and
+reconciliation, blob copy, new Maps/Firebase keys, re-enrol phones, Day 6 proofs in the final account).
 
 ## First real deploy (CI run 35, commit 1991868): failed at the Azure sign-in, nothing reached Azure
 

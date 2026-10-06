@@ -11,7 +11,7 @@ rg="${1:?resource group}"; kv="${2:-}"
 generate() {
   echo "== $1: generating the database admin password" >&2
   # 32 alphanumerics plus one of each class Azure requires; URL-safe, so it can sit inside a JDBC URL.
-  printf 'Ar9%s' "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+  python3 -c 'import secrets, string; a = string.ascii_letters + string.digits; print("Ar9" + "".join(secrets.choice(a) for _ in range(32)), end="")'
 }
 
 [ -n "$kv" ] || { generate "no Key Vault in $rg yet (first deployment)"; exit 0; }

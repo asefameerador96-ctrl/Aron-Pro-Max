@@ -4,3 +4,4 @@ N-012,L,2026-10-05T00:20Z,2026-10-05T08:00Z,460,19,"Bicep for one RG; checker fo
 N-013,L,2026-10-05T03:30Z,2026-10-05T08:00Z,270,19,"ci.yml web+infra+deploy jobs, deploy.yml + infra/deploy.sh; review findings counted once with N-012"
 LEAD-DAY2-IMAGES,M,2026-10-06T09:35Z,2026-10-06T10:05Z,30,0,"Container images CI job + image-smoke.sh; local run of migrate/api/worker on PG16 non-superuser owner; btree_gist already allow-listed; ARON_BUILD"
 LEAD-DAY2-FIRST-DEPLOY,M,2026-10-06T12:55Z,2026-10-06T13:40Z,45,0,"first deploy failed at OIDC (ID-qualified subject); bootstrap fix; quota request doc; JMESPath guard for ps1"
+LEAD-DAY2-TEST-PROFILE,L,2026-10-06T13:15Z,2026-10-06T15:00Z,105,0,"docs/28 TEST profile: Burstable B1ms, no VNet/FD, scale to zero; profile switches; reset workflow + deploy guard; move runbook; cost estimate USD 35-50"

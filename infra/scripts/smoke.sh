@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Post-deploy smoke test THROUGH Front Door (the path phones use, docs/24 s3.1):
+# Post-deploy smoke test on the public API address phones use (Front Door, or the api app in the TEST profile):
 #   GET  /v1/health  -> 200 and the X-Aron-Api: 1 marker (an edge or WAF page has no marker)
 #   HEAD /v1/health  -> 200
 # A new Front Door route can take several minutes to propagate, so it retries for up to SMOKE_TIMEOUT_S (600 s).

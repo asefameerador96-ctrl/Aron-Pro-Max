@@ -12,6 +12,14 @@ var envBudgetStart = readEnvironmentVariable('ARON_BUDGET_START_DATE', '')
 var envReplica = readEnvironmentVariable('ARON_PG_READ_REPLICA', '')
 
 param environmentName = 'prod'
+
+// FINAL profile switches (docs/28): private networking, Front Door Premium + WAF, log-search alerts.
+param privateNetworking = true
+param deployFrontDoor = true
+param enableLogAlerts = true
+param containerEnvZoneRedundant = true
+param postgresSkuTier = 'GeneralPurpose'
+param postgresStorageType = 'PremiumV2_LRS'
 param location = empty(envLocation) ? 'southeastasia' : envLocation
 param nameSuffix = envSuffix
 
@@ -20,7 +28,7 @@ param acaSubnetPrefix = '10.40.0.0/23'
 param postgresSubnetPrefix = '10.40.2.0/28'
 
 param logRetentionDays = 90
-param logDailyQuotaGb = 8
+param logDailyQuotaGb = '8'
 param alertEmails = map(split(empty(envEmails) ? 'alerts@aron.invalid' : envEmails, ','), e => trim(e))
 param budgetAmount = int(empty(envBudget) ? '7000' : envBudget)
 // Azure refuses a start date before the current month on create and refuses to move it later, so deploy.sh passes

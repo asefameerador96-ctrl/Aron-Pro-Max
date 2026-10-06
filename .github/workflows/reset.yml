@@ -1,0 +1,64 @@
+# Reset a resource group to its profile (docs/28): deletes ONLY the resources whose creation-time settings differ from
+# infra/params/<environment>.bicepparam (PostgreSQL tier/storage/geo backup/network, the Container Apps environment's
+# VNet, an unused Front Door, a storage account whose replication cannot be converted). Keeps Key Vault, logs, the
+# registry, identities, alerts and the budget. See infra/scripts/reset-to-profile.sh. Owner: infra lane.
+#
+# Manual only, integration branch only, environment azure-dev. A dry run lists what would go; deleting needs the
+# resource group's name typed into "confirm". Actions are pinned by commit SHA (tag in the comment).
+
+name: reset
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Profile to reset to (infra/params/<environment>.bicepparam)
+        type: choice
+        options: [dev]
+        default: dev
+      confirm:
+        description: Type the resource group name to DELETE the listed resources; leave empty for a dry run
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  INTEGRATION_BRANCH: claude/wonderful-thompson-k6ejnf
+
+jobs:
+  reset:
+    name: Reset ${{ inputs.environment }} to its profile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: azure-dev
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      ENV_NAME: ${{ inputs.environment }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - name: Integration branch only
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then
+            echo "::error::Reset runs only from ${INTEGRATION_BRANCH}; this run is on ${REF}."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Sign in to Azure (OIDC, no client secret)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Azure CLI settings
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt core.only_show_errors=true
+          az bicep install
+      - name: Scope check (rights on the resource group only)
+        run: infra/scripts/scope-check.sh "${AZURE_RESOURCE_GROUP}"
+      - name: Reset (dry run unless confirmed)
+        run: infra/scripts/reset-to-profile.sh "${AZURE_RESOURCE_GROUP}" "${ENV_NAME}"

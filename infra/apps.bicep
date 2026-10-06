@@ -25,6 +25,15 @@ param webImage string = ''
 param deployServices bool = true
 @description('Must match the infra deployment: Front Door reaches the apps over Private Link.')
 param frontDoorPrivateLink bool
+@description('Must match the infra deployment (deployFrontDoor). false (TEST profile): clients use the api Container Apps address.')
+param frontDoorEnabled bool = true
+
+// Connection pools per replica (ARON_DB_POOL_MAX / ARON_DB_READ_POOL_MAX). A Burstable server allows about 35 client
+// connections, so the TEST profile keeps them small; replicas x (pool + read pool) must stay below the server limit.
+param apiDbPoolMax int = 10
+param apiDbReadPoolMax int = 10
+param workerDbPoolMax int = 10
+param workerDbReadPoolMax int = 10
 
 // api sizing (docs/18 s2.5 and s3.4)
 param apiCpu string = '1.0'
@@ -86,7 +95,7 @@ var commonEnv = [
   { name: 'ARON_BLOB_CONTAINER_MEDIA', value: 'media' }
   { name: 'ARON_BLOB_CONTAINER_BUNDLES', value: 'bundles' }
   { name: 'ARON_MEDIA_EVENTS_QUEUE', value: 'media-events' }
-  { name: 'ARON_FRONT_DOOR_ID', value: fd.properties.frontDoorId }
+  { name: 'ARON_FRONT_DOOR_ID', value: frontDoorEnabled ? fd.properties.frontDoorId : '' }
   { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
 ]
 
@@ -191,6 +200,8 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
             { name: 'ARON_ROLE', value: 'api' }
             { name: 'PORT', value: '8080' }
             { name: 'ARON_DB_URL', secretRef: 'db-url' }
+            { name: 'ARON_DB_POOL_MAX', value: string(apiDbPoolMax) }
+            { name: 'ARON_DB_READ_POOL_MAX', value: string(apiDbReadPoolMax) }
             { name: 'APPLICATIONINSIGHTS_ROLE_NAME', value: 'aron-api' }
             { name: 'AZURE_CLIENT_ID', value: idApi.properties.clientId }
           ])
@@ -264,6 +275,8 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
             { name: 'ARON_ROLE', value: 'worker' }
             // Run-once jobs take PostgreSQL advisory locks; session locks need a direct connection, not PgBouncer.
             { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
+            { name: 'ARON_DB_POOL_MAX', value: string(workerDbPoolMax) }
+            { name: 'ARON_DB_READ_POOL_MAX', value: string(workerDbReadPoolMax) }
             { name: 'APPLICATIONINSIGHTS_ROLE_NAME', value: 'aron-worker' }
             { name: 'AZURE_CLIENT_ID', value: idWorker.properties.clientId }
           ])
@@ -280,6 +293,9 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
 
 // ------------------------------------------------------------------------------------------------------------ web
 var deployWeb = deployServices && !empty(webImage)
+
+// The one public address of the API: Front Door, or the api app itself when there is no Front Door (TEST profile).
+var apiHost = frontDoorEnabled ? fdEndpoint.properties.hostName : (deployServices ? api!.properties.configuration.ingress.fqdn : '')
 
 resource web 'Microsoft.App/containerApps@2025-07-01' = if (deployWeb) {
   name: n.webApp
@@ -313,8 +329,8 @@ resource web 'Microsoft.App/containerApps@2025-07-01' = if (deployWeb) {
             { name: 'PORT', value: '3000' }
             { name: 'HOSTNAME', value: '0.0.0.0' }
             { name: 'ARON_ENV', value: environmentName }
-            // The BFF calls the API through Front Door, the same path (and WAF) as every other client.
-            { name: 'ARON_API_BASE_URL', value: 'https://${fdEndpoint.properties.hostName}' }
+            // The BFF calls the API on the same public address as every other client (Front Door when there is one).
+            { name: 'ARON_API_BASE_URL', value: 'https://${apiHost}' }
             // Seals the BFF session cookies; the web server refuses to start in production without it.
             { name: 'ARON_SESSION_SECRET', secretRef: 'session-secret' }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
@@ -349,7 +365,7 @@ func origin(host string, privateLink bool, envId string, location string) object
   }
 } : {})
 
-resource ogApi 'Microsoft.Cdn/profiles/originGroups@2024-09-01' = if (deployServices) {
+resource ogApi 'Microsoft.Cdn/profiles/originGroups@2024-09-01' = if (deployServices && frontDoorEnabled) {
   parent: fd
   name: 'og-api'
   properties: {
@@ -359,13 +375,13 @@ resource ogApi 'Microsoft.Cdn/profiles/originGroups@2024-09-01' = if (deployServ
   }
 }
 
-resource originApi 'Microsoft.Cdn/profiles/originGroups/origins@2024-09-01' = if (deployServices) {
+resource originApi 'Microsoft.Cdn/profiles/originGroups/origins@2024-09-01' = if (deployServices && frontDoorEnabled) {
   parent: ogApi
   name: 'api'
   properties: origin(api!.properties.configuration.ingress.fqdn, privateLink, env.id, location)
 }
 
-resource routeApi 'Microsoft.Cdn/profiles/afdEndpoints/routes@2024-09-01' = if (deployServices) {
+resource routeApi 'Microsoft.Cdn/profiles/afdEndpoints/routes@2024-09-01' = if (deployServices && frontDoorEnabled) {
   parent: fdEndpoint
   name: 'rt-api'
   dependsOn: [originApi]
@@ -381,7 +397,7 @@ resource routeApi 'Microsoft.Cdn/profiles/afdEndpoints/routes@2024-09-01' = if (
   }
 }
 
-resource ogWeb 'Microsoft.Cdn/profiles/originGroups@2024-09-01' = if (deployWeb) {
+resource ogWeb 'Microsoft.Cdn/profiles/originGroups@2024-09-01' = if (deployWeb && frontDoorEnabled) {
   parent: fd
   name: 'og-web'
   properties: {
@@ -391,13 +407,13 @@ resource ogWeb 'Microsoft.Cdn/profiles/originGroups@2024-09-01' = if (deployWeb)
   }
 }
 
-resource originWeb 'Microsoft.Cdn/profiles/originGroups/origins@2024-09-01' = if (deployWeb) {
+resource originWeb 'Microsoft.Cdn/profiles/originGroups/origins@2024-09-01' = if (deployWeb && frontDoorEnabled) {
   parent: ogWeb
   name: 'web'
   properties: origin(web!.properties.configuration.ingress.fqdn, privateLink, env.id, location)
 }
 
-resource routeWeb 'Microsoft.Cdn/profiles/afdEndpoints/routes@2024-09-01' = if (deployWeb) {
+resource routeWeb 'Microsoft.Cdn/profiles/afdEndpoints/routes@2024-09-01' = if (deployWeb && frontDoorEnabled) {
   parent: fdEndpoint
   name: 'rt-web'
   dependsOn: [originWeb, routeApi]
@@ -415,4 +431,4 @@ resource routeWeb 'Microsoft.Cdn/profiles/afdEndpoints/routes@2024-09-01' = if (
 output migrateJobName string = migrate.name
 output apiFqdn string = deployServices ? api!.properties.configuration.ingress.fqdn : ''
 output webDeployed bool = deployWeb
-output frontDoorHost string = fdEndpoint.properties.hostName
+output apiHost string = apiHost

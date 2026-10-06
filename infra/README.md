@@ -112,23 +112,23 @@ The three debug APKs are uploaded by `ci.yml` on every successful Android run (a
 `<suffix>` is six characters derived from the resource group id, so a second group (the move rehearsal) gets new
 globally unique names with no edit.
 
-## Sizing: dev (pilot) and prod (full fleet)
+## Sizing: dev = TEST profile, prod = FINAL profile (docs/28, binding)
 
-| | dev (`rg-aron-dev`, pilot about 30 users) | prod (8,500 SRs, about 9,850 app users, 130 web) | Reason |
-|---|---|---|---|
-| PostgreSQL | D2ds_v5, HA, SSD v2 128 GiB / 3,000 IOPS / 125 MB/s, PITR 7 d | D8ds_v5, HA, SSD v2 1,024 GiB / 12,000 IOPS / 300 MB/s, PITR 35 d, read replica | docs/18 s3.1 and s3.5: the D8 IOPS cap (12,800) matches the 12,000 IOPS disk; worst-case 3,333 rows/s at the fleet |
-| api | 1..3 replicas | 3..30, pre-scaled to 8 at 06:15 and 16:45 Dhaka | docs/18 s3.4: one replica per zone minimum; 131 req/s peak needs 5 |
-| worker | 1..2 | 1..10 | docs/18 s3.1 |
-| web | 1..2 | 2..6 | docs/18 s3.1 |
-| Front Door | Standard | Premium (managed rules, Private Link) | Managed rules and Private Link are Premium only (Learn) |
-| Registry / Storage | Basic / ZRS | Premium / RA-GZRS | Photos must stay readable in a region outage (docs/18 s2.8) |
-| Logs | 1 GB/day cap | 8 GB/day cap, 90 days | docs/18 s3.3: 5.5 GB/day estimated for the fleet |
-| Approx. list cost a month | about USD 600 to 800 | about USD 5,500 to 6,500 | docs/18 s3.3 (prices 2026-10-04); PostgreSQL HA is the largest line |
+| | dev (TEST account, 5 to 10 pilot users) | prod (FINAL account, 8,500 SRs) |
+|---|---|---|
+| PostgreSQL | Burstable B1ms, single zone, no HA, no replica, no geo backup, 32 GiB SSD v1, PITR 7 d, public endpoint limited to Azure services (TLS) | D8ds_v5, zone-redundant HA, read replica, SSD v2 1,024 GiB / 12,000 IOPS, geo backup, PITR 35 d, private |
+| Network | no VNet (no environment load balancer or public IPs) | VNet, private PostgreSQL, zone-redundant Container Apps environment |
+| Edge | no Front Door/WAF; clients use the api Container Apps address | Front Door Premium + WAF (managed rules) + Private Link |
+| api / worker / web | 0-2 (0.5 vCPU) / 1 (0.25 vCPU) / 0-1 | 3-30 (8 pre-scaled at 06:15 and 16:45 Dhaka) / 1-10 / 2-6 |
+| Connection pools per replica | api 4 + 2 read, worker 3 + 2 (B1ms admits about 35) | 10 + 10 behind PgBouncer |
+| Registry / Storage | Basic / LRS | Premium / RA-GZRS |
+| Logs / alerts | cap 0.5 GB/day, 30 d; metric alerts only | cap 8 GB/day, 90 d; log-search alerts too |
+| Budget | USD 70 (Azure share of the owner's USD 100), e-mails at 50/90/100 % | set for the final account |
+| Approx. list cost a month | about USD 35 to 50 (`docs/status/infra.md`) | about USD 5,500 to 6,500 (docs/18 s3.3) |
 
-The Day 6 load and failover tests can run in `rg-aron-dev` with `params/prod*.bicepparam` and
-`environmentName='dev'` overridden, because every creation-time choice (zone redundancy, geo backup, SSD v2) is
-already the same in both files; compute scales online. SSD v2 storage only grows, so scale it back down by restoring
-into a new server, not by editing the size.
+The move to the final account is `docs/setup/move-to-final-account.md`. A group created with other creation-time
+settings (for example an earlier profile) is brought back in line with the **reset** workflow
+(`infra/scripts/reset-to-profile.sh`): dry run by default, deletes only what the profile cannot adopt.
 
 ## Validation
 

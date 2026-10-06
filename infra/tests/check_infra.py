@@ -229,11 +229,21 @@ class SecurityDefaults(unittest.TestCase):
         (acr,) = self.resources("Microsoft.ContainerRegistry/registries")
         self.assertIs(acr["properties"]["adminUserEnabled"], False)
 
-    def test_postgres_is_private(self):
+    def test_postgres_network(self):
         servers = self.resources("Microsoft.DBforPostgreSQL/flexibleServers")
         self.assertEqual(len(servers), 2, "primary and the optional replica")
-        for s in servers:
-            self.assertEqual(s["properties"]["network"]["publicNetworkAccess"], "Disabled")
+        for srv in servers:
+            self.assertEqual(srv["properties"]["network"], "[variables('network')]")
+        t, _ = module("main.json", "postgres")
+        self.assertEqual(t["variables"]["network"],
+                         "[if(parameters('privateNetworking'), createObject('delegatedSubnetResourceId', parameters('subnetId'), "
+                         "'privateDnsZoneArmResourceId', resourceId('Microsoft.Network/privateDnsZones', parameters('dnsZoneName')), "
+                         "'publicNetworkAccess', 'Disabled'), createObject('publicNetworkAccess', 'Enabled'))]")
+        (fw,) = resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules")
+        self.assertEqual(fw["condition"], "[not(parameters('privateNetworking'))]")
+        self.assertEqual(fw["properties"], {"startIpAddress": "0.0.0.0", "endIpAddress": "0.0.0.0"},
+                         "without a VNet only Azure services may connect, never the internet")
+        self.assertIs(params("prod.parameters.json")["privateNetworking"], True, "FINAL profile is private")
 
     def test_no_secret_in_outputs(self):
         for name in ("main.json", "apps.json"):
@@ -263,10 +273,18 @@ class ReliabilityProperties(unittest.TestCase):
         self.assertEqual(bound["geoRedundantBackup"]["value"], "[parameters('postgresGeoRedundantBackup')]")
         self.assertEqual(param_default("main.json", "postgresHaMode"), "ZoneRedundant")
         self.assertIs(param_default("main.json", "postgresGeoRedundantBackup"), True)
-        settings = {x["name"]: x["value"] for x in t["variables"]["settings"]}
-        self.assertEqual(settings.get("pgbouncer.enabled"), "true", "built-in PgBouncer must be on")
+        pgb = {x["name"]: x["value"] for x in t["variables"]["pgbouncerSettings"]}
+        self.assertEqual(pgb.get("pgbouncer.enabled"), "true", "built-in PgBouncer must be on where the tier has it")
+        self.assertEqual(t["variables"]["settings"],
+                         "[concat(if(parameters('pgbouncerEnabled'), variables('pgbouncerSettings'), createArray()), "
+                         "variables('baseSettings'), variables('queryStoreSettings'))]")
+        self.assertEqual(bound["pgbouncerEnabled"]["value"], "[variables('pgbouncerEnabled')]")
+        self.assertEqual(load("main.json")["variables"]["pgbouncerEnabled"], "[not(equals(parameters('postgresSkuTier'), 'Burstable'))]",
+                         "PgBouncer must be on for every tier that has it (all but Burstable)")
+        base = {x["name"]: x["value"] for x in t["variables"]["baseSettings"]}
+        self.assertIn("BTREE_GIST", base["azure.extensions"], "docs/requests/db-azure-btree-gist.md")
         self.assertEqual(t["variables"]["replicaSettings"],
-                         "[filter(variables('settings'), lambda('s', startsWith(lambdaVariables('s').name, 'pgbouncer.')))]",
+                         "[if(parameters('pgbouncerEnabled'), variables('pgbouncerSettings'), createArray())]",
                          "the replica must get the PgBouncer settings of the primary")
         loops = {r["copy"]["name"]: r for r in resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers/configurations")}
         self.assertEqual(loops["config"]["copy"]["count"], "[length(variables('settings'))]")
@@ -277,10 +295,12 @@ class ReliabilityProperties(unittest.TestCase):
         t, bound = module("main.json", "containerenv")
         (env,) = resources_of(t, "Microsoft.App/managedEnvironments")
         self.assertEqual(env["properties"]["zoneRedundant"], "[parameters('zoneRedundant')]")
-        self.assertEqual(bound["zoneRedundant"]["value"], "[parameters('containerEnvZoneRedundant')]")
+        self.assertEqual(bound["zoneRedundant"]["value"],
+                         "[and(parameters('privateNetworking'), parameters('containerEnvZoneRedundant'))]")
         self.assertIs(param_default("main.json", "containerEnvZoneRedundant"), True)
-        for env_name in ("dev", "prod"):
-            self.assertNotIn("containerEnvZoneRedundant", params(f"{env_name}.parameters.json"))
+        prod = params("prod.parameters.json")
+        self.assertIs(prod["containerEnvZoneRedundant"], True)
+        self.assertIs(prod["privateNetworking"], True, "zone redundancy needs the VNet")
 
     def test_budget_notifications_are_on(self):
         t, _ = module("main.json", "budget")
@@ -304,16 +324,47 @@ class ReliabilityProperties(unittest.TestCase):
 
 
 class SizingParameters(unittest.TestCase):
-    def test_both_environments_are_zone_redundant_with_geo_backup(self):
+    def test_final_profile_is_zone_redundant_with_geo_backup(self):
+        p = params("prod.parameters.json")
+        self.assertEqual(p["postgresHaMode"], "ZoneRedundant")
+        self.assertIs(p["postgresGeoRedundantBackup"], True, "geo backup can only be set at creation")
+        self.assertEqual(p["postgresSkuTier"], "GeneralPurpose")
+        self.assertIs(p["deployFrontDoor"], True)
         for env in ("dev", "prod"):
-            p = params(f"{env}.parameters.json")
-            self.assertEqual(p["postgresHaMode"], "ZoneRedundant", env)
-            self.assertIs(p["postgresGeoRedundantBackup"], True, f"{env}: geo backup can only be set at creation")
-            self.assertGreaterEqual(p["postgresBackupRetentionDays"], 7, env)
-            self.assertNotIn("containerEnvZoneRedundant", {k for k, v in p.items() if v is False}, env)
-            self.assertRegex(p["budgetStartDate"], r"^\d{4}-\d{2}-01$", f"{env}: budget must start on the 1st")
-            self.assertGreater(p["budgetAmount"], 0)
-            self.assertTrue(p["alertEmails"], f"{env}: budget contact e-mail")
+            q = params(f"{env}.parameters.json")
+            self.assertRegex(q["budgetStartDate"], r"^\d{4}-\d{2}-01$", f"{env}: budget must start on the 1st")
+            self.assertGreater(q["budgetAmount"], 0)
+            self.assertTrue(q["alertEmails"], f"{env}: budget contact e-mail")
+
+    def test_test_profile_matches_docs_28(self):
+        p = params("dev.parameters.json")
+        self.assertEqual(p["postgresSkuTier"], "Burstable")
+        self.assertRegex(p["postgresSkuName"], r"^Standard_B(1ms|2s)$")
+        self.assertEqual(p["postgresStorageType"], "Premium_LRS", "Burstable cannot use SSD v2")
+        self.assertLessEqual(p["postgresStorageSizeGb"], 32)
+        self.assertEqual(p["postgresHaMode"], "Disabled")
+        self.assertIs(p["postgresGeoRedundantBackup"], False)
+        self.assertIs(p["postgresReadReplica"], False)
+        self.assertEqual(p["postgresBackupRetentionDays"], 7)
+        self.assertIs(p["deployFrontDoor"], False, "no Front Door/WAF in the TEST profile")
+        self.assertIs(p["privateNetworking"], False)
+        self.assertIs(p["enableLogAlerts"], False)
+        self.assertEqual(p["storageSku"], "Standard_LRS")
+        self.assertEqual(p["registrySku"], "Basic")
+        self.assertLessEqual(float(p["logDailyQuotaGb"]), 0.5)
+        self.assertLessEqual(p["budgetAmount"], 100, "the owner's whole budget is USD 100 a month")
+        a = params("dev.apps.parameters.json")
+        self.assertIs(a["frontDoorEnabled"], False)
+        self.assertEqual(a["apiMinReplicas"], 0, "api scales to zero")
+        self.assertLessEqual(a["apiMaxReplicas"], 2)
+        self.assertEqual((a["workerMinReplicas"], a["workerMaxReplicas"]), (1, 1))
+        self.assertEqual(a["webMinReplicas"], 0)
+        self.assertLessEqual(a["webMaxReplicas"], 1)
+        self.assertEqual((a["workerCpu"], a["workerMemory"]), ("0.25", "0.5Gi"), "worker at the minimum size")
+        # B1ms admits about 35 client connections (50 minus reserved).
+        conns = a["apiMaxReplicas"] * (a["apiDbPoolMax"] + a["apiDbReadPoolMax"]) \
+            + a["workerMaxReplicas"] * (a["workerDbPoolMax"] + a["workerDbReadPoolMax"]) + 2
+        self.assertLessEqual(conns, 35, f"{conns} connections exceed what a Burstable B1ms admits")
 
     def test_prod_is_sized_for_the_fleet(self):
         p = params("prod.parameters.json")

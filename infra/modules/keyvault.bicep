@@ -14,6 +14,8 @@ param postgresAdminPassword string
 param postgresAdminLogin string
 param postgresHost string
 param postgresReadHost string
+@description('6432 with the built-in PgBouncer; 5432 where there is none (Burstable).')
+param pooledPort int = 6432
 param databaseName string
 param secretNames object
 
@@ -36,6 +38,7 @@ resource kv 'Microsoft.KeyVault/vaults@2024-11-01' = {
 }
 
 // Pooled connections go through the built-in PgBouncer (6432, transaction mode): no server-side prepared statements.
+// Without PgBouncer (Burstable, TEST profile) the same URL points at 5432 and the app's own pool is the only pool.
 var pooledParams = 'sslmode=require&prepareThreshold=0&user=${postgresAdminLogin}&password=${postgresAdminPassword}'
 // Direct connections (5432) for Flyway (session advisory lock) and the worker (advisory locks for run-once jobs).
 var directParams = 'sslmode=require&user=${postgresAdminLogin}&password=${postgresAdminPassword}'
@@ -49,7 +52,7 @@ resource secretDbPassword 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = {
 resource secretDbUrl 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = {
   parent: kv
   name: secretNames.dbUrl
-  properties: { value: 'jdbc:postgresql://${postgresHost}:6432/${databaseName}?${pooledParams}', contentType: 'jdbc-url' }
+  properties: { value: 'jdbc:postgresql://${postgresHost}:${pooledPort}/${databaseName}?${pooledParams}', contentType: 'jdbc-url' }
 }
 
 resource secretDbDirectUrl 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = {
@@ -61,7 +64,7 @@ resource secretDbDirectUrl 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = {
 resource secretDbReadUrl 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = {
   parent: kv
   name: secretNames.dbReadUrl
-  properties: { value: 'jdbc:postgresql://${postgresReadHost}:6432/${databaseName}?${pooledParams}', contentType: 'jdbc-url' }
+  properties: { value: 'jdbc:postgresql://${postgresReadHost}:${pooledPort}/${databaseName}?${pooledParams}', contentType: 'jdbc-url' }
 }
 
 resource diag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
