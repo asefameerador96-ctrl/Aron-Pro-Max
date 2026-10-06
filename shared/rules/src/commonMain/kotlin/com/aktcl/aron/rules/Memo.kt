@@ -23,17 +23,37 @@ object Quantity {
 /** Discount kinds of `memo_discount` (docs/24 s7.4): offer and free_goods are offer discounts, drp is the slide/DRP deduction. */
 enum class DiscountKind(val wire: String) { OFFER("offer"), DRP("drp"), FREE_GOODS("free_goods") }
 
-/** One memo line: [qtyBase] in the SKU base unit and the unrounded [grossMtk] of docs/24 s7.3. */
-data class MemoLine(val skuId: Long, val qtyBase: Long, val grossMtk: Long) {
+/** Selling price type of the outlet (docs/24 s7.3); stored on every memo line with the price used (F-SYS-045). */
+enum class PriceType(val wire: String) { OUTLET("outlet"), CC("cc"), DISTRIBUTOR("distributor") }
+
+/**
+ * One memo line: [qtyBase] in the SKU base unit and the unrounded [grossMtk] of docs/24 s7.3.
+ * The price snapshot ([unitPriceMtk] per [pricePerQty] base units, [priceType]) is copied at capture and never re-read
+ * from the price table, so a later price change leaves old memos unchanged (F-SYS-045); null on lines with no price (free lines
+ * are priced like sale lines, so they carry one too).
+ */
+data class MemoLine(
+    val skuId: Long,
+    val qtyBase: Long,
+    val grossMtk: Long,
+    val unitPriceMtk: Long? = null,
+    val pricePerQty: Long = 1L,
+    val priceType: PriceType? = null,
+) {
     init {
         require(qtyBase >= 0) { "qtyBase must be >= 0" }
         require(grossMtk >= 0) { "grossMtk must be >= 0" }
+        require(pricePerQty >= 1) { "pricePerQty must be >= 1" }
+        require(unitPriceMtk == null || unitPriceMtk >= 0) { "unitPriceMtk must be >= 0" }
     }
 
+    /** True when the stored gross equals `divHalfUp(qtyBase x unitPriceMtk, pricePerQty)`; lines without a snapshot are not checkable (true). */
+    fun priceSnapshotConsistent(): Boolean = unitPriceMtk == null || grossMtk == Money.lineGrossMtk(qtyBase, unitPriceMtk, pricePerQty)
+
     companion object {
-        /** Prices a line: `divHalfUp(qtyBase x basePriceMtk, pricePerQty)` (docs/24 s7.3). */
-        fun priced(skuId: Long, qtyBase: Long, basePriceMtk: Long, pricePerQty: Long = 1L): MemoLine =
-            MemoLine(skuId, qtyBase, Money.lineGrossMtk(qtyBase, basePriceMtk, pricePerQty))
+        /** Prices a line and keeps the snapshot: `divHalfUp(qtyBase x unitPriceMtk, pricePerQty)` (docs/24 s7.3). */
+        fun priced(skuId: Long, qtyBase: Long, basePriceMtk: Long, pricePerQty: Long = 1L, priceType: PriceType? = null): MemoLine =
+            MemoLine(skuId, qtyBase, Money.lineGrossMtk(qtyBase, basePriceMtk, pricePerQty), basePriceMtk, pricePerQty, priceType)
     }
 }
 
@@ -120,6 +140,7 @@ object MemoMath {
         val c = totals(lines, discounts, qcLines)
         val out = ArrayList<MemoMismatch>()
         fun check(field: String, s: Long, computed: Long) { if (s != computed) out += MemoMismatch(field, s, computed) }
+        lines.forEachIndexed { i, l -> if (!l.priceSnapshotConsistent()) out += MemoMismatch("line_price_snapshot[$i]", l.grossMtk, Money.lineGrossMtk(l.qtyBase, l.unitPriceMtk!!, l.pricePerQty)) }
         check("gross_mtk", stated.grossMtk, c.grossMtk)
         check("offer_discount_mtk", stated.offerDiscountMtk, c.offerDiscountMtk)
         check("drp_discount_mtk", stated.drpDiscountMtk, c.drpDiscountMtk)

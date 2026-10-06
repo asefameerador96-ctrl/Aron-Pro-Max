@@ -12,3 +12,7 @@
 
 ## Requests filed
 - web-admin-create-reason, web-admin-get-by-id.
+
+## Scope note (lead, 2026-10-06)
+- Read the deferred-programmes scope change (docs/27): target, loyalty/Astha and discount/promotion programmes are deferred. Nothing of them exists in `web/` (menu, entities, report keys); the admin CRUD generator stays generic so a programme module is one entity file later.
+- Blocking nothing. Pending requests (routed by the lead): web-admin-create-reason, web-admin-get-by-id, web-password-change-flow, web-refresh-cookie-handoff, web-infra-ci-job.
