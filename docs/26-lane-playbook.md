@@ -7,9 +7,10 @@ You are one expert lane of a team building Aron in seven days (hard cap ten). Ot
 1. This page.
 2. `docs/23-seven-day-plan.md` (scope, anti-spoofing, scale properties) and `docs/24-build-spec.md` (**binding**: stack, versions, conventions, sync, auth, config, device policy, geo integrity, money, numbering; section 14 lists the decisions already taken).
 3. `contract/openapi.yaml`: the one API contract. Never invent an endpoint, field, enum or error code.
-4. Your rows: `python3 tools/my-rows.py <lane> [day] [--full]`. The full list is `docs/25-build-backlog.csv` (read-only for you).
-5. For apps and web: `docs/ui-reference/` (the current screens and what they do), `docs/22-apsis-data-profile.md` (real data shapes), the SR/AMO/TSO/Web inventories in `docs/evidence/manuals/` for any screen you build.
-6. Background only when you need a detail: `docs/14` to `21` and `DECISIONS.md` are the earlier, larger plan. Where they conflict with `docs/23`/`24`, `docs/23`/`24` win.
+4. `docs/27-deferred-programmes.md` (binding): target, loyalty and discount/promotion programmes are deferred. Rows marked DEFERRED are not built; rows marked TRIM are built without that part.
+5. Your rows: `python3 tools/my-rows.py <lane> [day] [--full]`. The full list is `docs/25-build-backlog.csv` (read-only for you).
+6. For apps and web: `docs/ui-reference/` (the current screens and what they do), `docs/22-apsis-data-profile.md` (real data shapes), the SR/AMO/TSO/Web inventories in `docs/evidence/manuals/` for any screen you build.
+7. Background only when you need a detail: `docs/14` to `21` and `DECISIONS.md` are the earlier, larger plan. Where they conflict with `docs/23`/`24`, `docs/23`/`24` win.
 
 ## 2. Folders and ownership
 
@@ -29,7 +30,7 @@ One folder, one owner. Edit only your lane's folders.
 
 - **The contract is not yours.** If you need a change to `contract/openapi.yaml` or `docs/24`, write `docs/requests/<your-lane>-<short-name>.md` (what you need, why, the exact shape) and continue with a local stub clearly marked `// REQUEST: <file>`. The lead routes it. Never edit the contract yourself.
 - **Root files** (`settings.gradle.kts`, `gradle/libs.versions.toml`): you may only **append** an `include(...)` line or a catalogue entry; never reorder or reformat.
-- Never edit: `docs/00` to `docs/25`, `docs/evidence/`, `DECISIONS.md`, the backlog CSV.
+- Never edit: `docs/00` to `docs/27`, `docs/evidence/`, `DECISIONS.md`, the backlog CSV.
 
 ## 3. Git protocol (every lane pushes to the integration branch)
 

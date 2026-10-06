@@ -1,5 +1,8 @@
 # 23 — Build plan: 7 days, hard cap 10
 
+> **Scope update 2026-10-06 (binding):** target, loyalty/Astha and discount/promotion programmes are deferred; see `docs/27-deferred-programmes.md`. Where this page lists them, docs/27 wins.
+
+
 **Status: v2, 2026-10-05. Sponsor decisions applied.** This replaces the schedule of `docs/14` (34 to 38 weeks, 8 to 10 engineers). `docs/14` to `22` stay as reference for rules, schema and risks; where they conflict with this page, this page wins.
 
 ## 1. Targets and rules
