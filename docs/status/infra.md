@@ -28,6 +28,35 @@ Apps address); Storage LRS, ACR Basic; Log Analytics cap 0.5 GB/day, 30 days; no
 No environment management fee: it applies only to private endpoints, planned maintenance or dedicated profiles, none
 of which the TEST profile uses (Learn, Container Apps billing).
 
+## Inventory of rg-aron-dev (reset dry run, 2026-10-06 13:27 UTC, run 37470818234)
+
+The ARM deployment of the cancelled run **completed** after the cancel. Nothing outside `rg-aron-dev` was read or
+changed by the dry run (it lists only that group). Estimated cost at Southeast Asia list prices:
+
+| Action | Type | Created (UTC) | Name | Est. USD/day |
+|---|---|---|---|---|
+| DELETE | PostgreSQL flexible server (GeneralPurpose D2ds_v5, zone-redundant HA standby, SSD v2 128 GiB, geo backup) | 13:09:48 | psql-aron-dev-7i7g53 | **12.9** (2 x 0.244/h compute + 2 x 128 GiB x 0.138/month) |
+| DELETE | Container Apps environment (VNet-injected; its platform load balancer and 2 public IPs) | 13:08:11 | cae-aron-dev | about 0.8 |
+| DELETE | Front Door Standard profile (+ endpoint fde-aron-dev-7i7g53, deleted with it) | 13:08:09 | afd-aron-dev | about 1.2 |
+| DELETE | Front Door WAF policy | 13:08:09 | wafarondev | about 0.2 |
+| DELETE | Storage account Standard_ZRS (empty) | 13:08:08 | starondev7i7g53 | about 0 |
+| DELETE | Event Grid system topic | 13:08:30 | evgt-aron-dev-storage | 0 |
+| DELETE | Virtual network | 13:07:43 | vnet-aron-dev | 0 |
+| DELETE | NSG x 2 | 13:07:41 | vnet-aron-dev-snet-aca-nsg, vnet-aron-dev-snet-pg-nsg | 0 |
+| DELETE | Private DNS zone (+ its VNet link) | 13:08:08 | aron-dev-7i7g53.private.postgres.database.azure.com | about 0.02 |
+| DELETE (fixed script) | Log-search alert rules x 3 (billed per rule; off in the TEST profile) | 13:21:01 | aron-dev-batch5xx, aron-dev-batchP95, aron-dev-dashboardsP95 | about 0.15 |
+| KEEP | Key Vault | 13:21:02 | kv-aron-dev-7i7g53 | about 0 |
+| KEEP | Log Analytics workspace | 13:07:39 | log-aron-dev | about 0 (free 5 GB/month) |
+| KEEP | Application Insights (+ its automatic "Failure Anomalies" rule) | 13:08:01 | appi-aron-dev | 0 |
+| KEEP | Container Registry Basic | 13:08:08 | crarondev7i7g53 | 0.17 |
+| KEEP | Managed identities x 4 | 13:21:31 | id-aron-dev-api/-worker/-migrate/-web | 0 |
+| KEEP | Metric alerts x 3, action group | 13:21:01 | aron-dev-pg-cpu, -pg-storage, -pg-connections-failed; ag-aron-dev | about 0.01 |
+| KEEP | Budget (not listed by the resource API; it is a group-scope Consumption resource) | | budget-aron-dev | 0 |
+| **Total now** | | | | **about 15.5 a day (about 465 a month)** |
+
+After the reset and the TEST-profile deploy: about USD 35 to 55 a month. The three metric alerts point at the
+PostgreSQL server; they are re-pointed at the new server by the next deploy (same names).
+
 ## URGENT: resources created by the cancelled run 37467503909 (old dev values)
 
 Run 37467503909 (commit 0f90002) passed the OIDC sign-in and the **scope check** (a test deployment into
