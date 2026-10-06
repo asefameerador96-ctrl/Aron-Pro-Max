@@ -78,5 +78,5 @@ Write-Host @"
 
 Done.
   keystore + passwords backed up in: $Dir   (copy this folder somewhere safe)
-  GitHub secrets set in $Repo: ANDROID_SIGNING_KEYSTORE_BASE64, _PASSWORD, _KEY_ALIAS, _KEY_PASSWORD
+  GitHub secrets set in ${Repo}: ANDROID_SIGNING_KEYSTORE_BASE64, _PASSWORD, _KEY_ALIAS, _KEY_PASSWORD
 "@
