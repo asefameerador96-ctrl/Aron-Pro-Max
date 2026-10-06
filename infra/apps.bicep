@@ -76,8 +76,12 @@ func kvSecret(name string, secret string, baseUrl string, identityId string) obj
 }
 
 // Environment shared by every backend role (docs/24 s6.4). Role-specific variables are appended per container.
+// The image tag is the commit (deploy.sh); the API reports it in /v1/health as `build`.
+var buildId = last(split(backendImage, ':'))
+
 var commonEnv = [
   { name: 'ARON_ENV', value: environmentName }
+  { name: 'ARON_BUILD', value: buildId }
   { name: 'ARON_BLOB_ACCOUNT', value: st.name }
   { name: 'ARON_BLOB_CONTAINER_MEDIA', value: 'media' }
   { name: 'ARON_BLOB_CONTAINER_BUNDLES', value: 'bundles' }
@@ -119,6 +123,7 @@ resource migrate 'Microsoft.App/jobs@2025-07-01' = {
           env: [
             { name: 'ARON_ROLE', value: 'migrate' }
             { name: 'ARON_ENV', value: environmentName }
+            { name: 'ARON_BUILD', value: buildId }
             // Flyway takes a session-level advisory lock, so it connects directly (5432), not through PgBouncer.
             { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
