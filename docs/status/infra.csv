@@ -9,3 +9,4 @@ LEAD-DAY2-HOLD-PROFILES,M,2026-10-06T13:45Z,2026-10-06T14:45Z,60,0,"owner HOLD: 
 LEAD-DAY2-BUDGET-POLICY,S,2026-10-06T14:15Z,2026-10-06T14:35Z,20,0,"dev deploy refused at what-if: subscription cost policy off (401 on budgets); budget made conditional on that exact refusal with a warning; test"
 LEAD-DAY2-WHATIF-SUBNET,S,2026-10-06T14:30Z,2026-10-06T14:50Z,20,0,"guard refused PG subnet Modify (unresolved module output in what-if); resourceId-based network ids; guard prints before/after, ignores case; 2 tests"
 LEAD-DAY2-DEV-DEPLOYED,S,2026-10-06T14:50Z,2026-10-06T15:15Z,25,0,"dev deployed via Front Door; /v1/health 200 with X-Aron-Api; web /login 200; smoke timeout 45 min for Front Door"
+LEAD-DAY2-DEV-GREEN,S,2026-10-06T15:15Z,2026-10-06T15:55Z,40,0,"migrate job failed once (cause not captured); job log fetch added; run 37489113157 green with smoke through Front Door; nightly PG stop/start blocked pending owner"

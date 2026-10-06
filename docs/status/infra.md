@@ -21,6 +21,14 @@ requests; no fleet-sized additions.
   `owner approved reset`; the script itself also refuses deletion without `OWNER_APPROVED=yes` and a `*-lite`
   profile. Everything else is a dry run.
 
+- **CI GREEN on `dev`: run 37489113157 (commit aac06e0), 2026-10-06 15:45 UTC.** Migrations succeeded; apps updated;
+  the deploy's own smoke test passed through Front Door (`GET /v1/health` -> 200 with `X-Aron-Api: 1`, build aac06e0;
+  `HEAD` -> 200). One earlier run (37484856611, commit dd3fb58, same code) had its migrate job execution end `Failed`;
+  the cause was not captured (the log was only in Log Analytics). The next run migrated fine; deploy.sh now prints a
+  failed execution's console log, so a repeat will show its cause. Not called a flake: open until it repeats or not.
+- **Nightly PostgreSQL stop/start (lead approved 2026-10-06): NOT built yet.** The lane's tool permissions blocked
+  writing the stop logic in this session; it waits for the owner's direct confirmation. The server runs 24 h.
+
 - **DEPLOYED on profile `dev` (CI run 37479574147, commit db50ae9), adopting the existing resources; nothing was
   deleted or recreated, and PostgreSQL was untouched by the what-if guard.** The run did: infra (adopted), Key Vault
   secrets (JWT key, FCM, web session secret), images, **migrations succeeded**, api + worker + web + Front Door routes.
