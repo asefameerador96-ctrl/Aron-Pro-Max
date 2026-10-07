@@ -29,9 +29,9 @@
   --radius-card: 20px;
   --radius-sheet: 28px;
   --elev-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.05);
-  /* Chart series colours: colour-blind safe (one blue hue plus a lightness step; values are always printed, never colour-only). */
-  --chart-1: #1d5fd1;
-  --chart-2: #e69f00;
+  /* Chart series colours: colour-blind safe (blue plus a dark orange that differs in lightness too; at least 3:1 on the surface; values are always printed, never colour-only). */
+  --chart-1: #123f94;
+  --chart-2: #c2620a;
   --motion-fast: 150ms;
   --motion-base: 220ms;
   --surface: var(--surface-solid);
@@ -46,17 +46,39 @@
     --text-primary: #f1f5f9;
     --text-secondary: #b6c2d4;
     --accent: #6ea8ff;
-    --chart-1: #6ea8ff;
-    --chart-2: #f0b429;
+    --chart-1: #5b9bff;
+    --chart-2: #ffd166;
     --success: #4ade80;
     --warning: #fbbf24;
-    --danger: #f87171;
+    --danger: #fb8a8a;
     --elev-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);
+  }
+}
+/* High contrast (docs/32 s2a): solid surfaces, no blur, secondary text as dark as primary text, stronger lines. Figures stay at least 7:1. */
+@media (prefers-contrast: more) {
+  :root {
+    --surface-glass: #ffffff;
+    --text-secondary: #1e293b;
+    --accent: #123f94;
+    --border-line: rgb(15 23 42 / 0.55);
+    --chart-1: #0b2a66;
+    --chart-2: #b34700;
+    --glass-blur: none;
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --surface-glass: #16213a;
+    --text-secondary: #e2e8f0;
+    --accent: #a9ccff;
+    --border-line: rgb(255 255 255 / 0.6);
+    --chart-1: #7fb0ff;
+    --chart-2: #ffe08a;
   }
 }
 /* Tier C (solid) is the default; tier A glass is for desktop browsers that support it and have not asked for less transparency. */
 :root { --surface: var(--surface-solid); }
-@media (hover: hover) and (pointer: fine) and (prefers-reduced-transparency: no-preference) {
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-transparency: no-preference) and (prefers-contrast: no-preference) {
   @supports (backdrop-filter: blur(1px)) {
     :root { --surface: var(--surface-glass); --glass-blur: blur(16px) saturate(1.4); }
   }
