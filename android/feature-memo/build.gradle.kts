@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":android:core-printing"))
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
