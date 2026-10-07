@@ -84,7 +84,7 @@ describe("take action (17:00 Dhaka rule)", () => {
   it("rejects a route outside the scope, an empty note and a malformed body", async () => {
     const s = await session("tso334", "tso-pass-1");
     await setNow("2026-10-07T12:00:00Z");
-    expect((await post(s.cookie, { action_uuid: uuid(), route_id: 10351, business_date: "2026-10-07", note: "x" })).status).toBe(403);
+    expect((await post(s.cookie, { action_uuid: uuid(), route_id: 10351, business_date: "2026-10-07", note: "xyz note" })).status).toBe(403);
     expect((await post(s.cookie, { action_uuid: uuid(), route_id: 10233, business_date: "2026-10-07", note: "   " })).status).toBe(400);
     expect((await post(s.cookie, { route_id: "x" })).status).toBe(400);
   });

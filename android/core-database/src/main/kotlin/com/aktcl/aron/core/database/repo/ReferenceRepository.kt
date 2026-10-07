@@ -2,11 +2,18 @@ package com.aktcl.aron.core.database.repo
 
 import androidx.room.withTransaction
 import com.aktcl.aron.core.database.AronDatabase
+import com.aktcl.aron.core.database.entity.BundleSectionEntity
+import com.aktcl.aron.core.database.entity.ConfigValueEntity
 import com.aktcl.aron.core.database.entity.OutletEntity
+import com.aktcl.aron.core.database.entity.PriceEntity
 import com.aktcl.aron.core.database.entity.RouteEntity
 import com.aktcl.aron.core.database.entity.SkuEntity
 import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.reference.BundleReference
+import com.aktcl.aron.core.database.reference.ResolvedValue
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -14,14 +21,29 @@ import kotlinx.serialization.json.Json
 /** The route of the day as the SR app reads it offline. */
 data class RouteDay(val route: RouteEntity, val outlets: List<OutletEntity>)
 
+/** What [ReferenceRepository.apply] did with a bundle. */
+enum class ApplyResult {
+    /** Written (also when the stored bundle has the same version: re-applying a snapshot is a no-op in effect). */
+    APPLIED,
+
+    /** Older than the stored bundle (an earlier date, or a lower snapshot of the same date): ignored, never rolled back. */
+    OLDER_IGNORED,
+}
+
 /**
- * Reference data of the day bundle (docs/24 s4.10). [apply] replaces routes, outlets and SKUs in one transaction, so a
- * kill mid-apply leaves the previous day intact; captures and the outbox are never touched by it.
+ * Reference data of the day bundle (docs/24 s4.10). [apply] replaces routes, outlets, SKUs, prices, config and the raw
+ * sections in one transaction, so a kill mid-apply leaves the previous bundle intact; captures and the outbox are never
+ * touched by it. Versions only move forward (`<date>:<snapshot_seq>`).
  */
 class ReferenceRepository(private val db: AronDatabase) {
     private val dao = db.referenceDao()
 
-    suspend fun apply(bundle: BundleReference) {
+    /**
+     * Applies [bundle]. [raw] is the whole bundle JSON (with paged sections merged in): every top-level section without a
+     * table of its own, and each route's open memos, plan, targets and day state, are stored as raw JSON. [etag] is kept
+     * for the next `If-None-Match`.
+     */
+    suspend fun apply(bundle: BundleReference, raw: JsonObject? = null, etag: String? = null): ApplyResult {
         val date = bundle.meta.validForBusinessDate
         val version = bundle.meta.bundleVersion
         val routes = bundle.routes.map { s ->
@@ -52,17 +74,37 @@ class ReferenceRepository(private val db: AronDatabase) {
                 reportUnit = k.reportUnit, reportFactor = k.reportFactor, sort = k.sort, status = k.status, version = k.version,
             )
         }
-        db.withTransaction {
+        val prices = bundle.prices.map { PriceEntity(it.id, it.skuId, it.priceType, it.amountMtk, it.perBaseQty, it.validFrom, it.validTo) }
+        val config = bundle.config?.let { c ->
+            c.values.map { configRow(it, scheduled = false) } + c.scheduled.map { configRow(it, scheduled = true) }
+        }.orEmpty()
+        val sections = raw?.let(::rawSections).orEmpty()
+        return db.withTransaction {
+            if (compare(version, dao.meta(KEY_BUNDLE_VERSION)) < 0) return@withTransaction ApplyResult.OLDER_IGNORED
             dao.clearOutlets()
             dao.clearRoutes()
             dao.clearSkus()
+            dao.clearPrices()
+            dao.clearConfig()
+            dao.clearSections()
             dao.insertRoutes(routes)
             dao.insertOutlets(outlets)
             dao.insertSkus(skus)
+            dao.insertPrices(prices)
+            dao.insertConfig(config)
+            dao.insertSections(sections)
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_DATE, date))
+            putOrDelete(KEY_BUNDLE_ETAG, etag)
+            putOrDelete(KEY_BUNDLE_CURSOR, bundle.meta.cursor)
+            putOrDelete(KEY_BUNDLE_SERVER_TIME, bundle.meta.serverTime)
+            (bundle.config?.configVersion ?: bundle.meta.configVersion)?.let { dao.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, it.toString())) }
+            ApplyResult.APPLIED
         }
     }
+
+    private suspend fun putOrDelete(key: String, value: String?) =
+        if (value != null) dao.putMeta(SyncMetaEntity(key, value)) else dao.deleteMeta(key)
 
     /** The routes of [businessDate] with their outlets in visit order; planned routes first. */
     suspend fun routesOfDay(businessDate: String): List<RouteDay> = db.withTransaction {
@@ -73,8 +115,80 @@ class ReferenceRepository(private val db: AronDatabase) {
 
     suspend fun bundleVersion(): String? = dao.meta(KEY_BUNDLE_VERSION)
 
+    /** The business date the stored bundle is valid for. */
+    suspend fun businessDate(): String? = dao.meta(KEY_BUNDLE_DATE)
+
+    suspend fun etag(): String? = dao.meta(KEY_BUNDLE_ETAG)
+
+    /** The price of [skuId] at [priceType] on [businessDate] (a price change applies to the dates it covers only). */
+    suspend fun priceOn(skuId: Long, priceType: String, businessDate: String): PriceEntity? = dao.priceOn(skuId, priceType, businessDate)
+
+    /**
+     * The value of config [key] (JSON text) in force at [nowIso] (trusted time, RFC 3339 UTC with milliseconds): the latest
+     * scheduled value whose window contains [nowIso], else the resolved value; null when the bundle does not carry the key.
+     */
+    suspend fun config(key: String, nowIso: String): String? {
+        val rows = dao.configRows(key)
+        val scheduled = rows.filter { it.scheduled && it.effectiveFrom != null && it.effectiveFrom <= nowIso && (it.effectiveTo == null || nowIso < it.effectiveTo) }
+            .maxByOrNull { it.effectiveFrom!! }
+        return (scheduled ?: rows.firstOrNull { !it.scheduled })?.valueJson
+    }
+
+    /** A raw bundle section (see [apply]), or `route.<id>` for a route's extras. */
+    suspend fun section(name: String): String? = dao.section(name)
+
     companion object {
         const val KEY_BUNDLE_VERSION = "bundle_version"
         const val KEY_BUNDLE_DATE = "bundle_business_date"
+        const val KEY_BUNDLE_ETAG = "bundle.etag"
+        const val KEY_BUNDLE_CURSOR = "bundle.cursor"
+        const val KEY_BUNDLE_SERVER_TIME = "bundle.server_time"
+
+        /** The config version the phone holds (`X-Config-Version`); the sync engine also moves it from batch responses. */
+        const val KEY_CONFIG_VERSION = "sync.config_version"
+
+        /** Sections with tables of their own; everything else at the top level is kept raw. */
+        private val TYPED = setOf("meta", "routes", "prices", "config")
+
+        /** RouteSnapshot members stored in tables; the rest of each snapshot is kept raw as `route.<id>`. */
+        private val ROUTE_TYPED = setOf("route", "outlets")
+
+        /**
+         * Orders bundle versions `<date>:<snapshot_seq>`: 1 when [candidate] is newer than [current] (or nothing is stored,
+         * or the stored value cannot be read), 0 when equal, -1 when older.
+         */
+        fun compare(candidate: String, current: String?): Int {
+            val c = parse(candidate) ?: return 1
+            val s = current?.let(::parse) ?: return 1
+            return compareValuesBy(c, s, { it.first }, { it.second }).coerceIn(-1, 1)
+        }
+
+        private fun parse(v: String): Pair<String, Long>? {
+            val i = v.lastIndexOf(':')
+            if (i <= 0) return null
+            val seq = v.substring(i + 1).toLongOrNull() ?: return null
+            return v.substring(0, i) to seq
+        }
+
+        private fun configRow(v: ResolvedValue, scheduled: Boolean) = ConfigValueEntity(
+            key = v.key, valueJson = v.value.toString(), scopeType = v.scopeType, scopeId = v.scopeId, effectiveFrom = v.effectiveFrom,
+            effectiveTo = v.effectiveTo, configVersion = v.configVersion, requiresAck = v.requiresAck, scheduled = scheduled,
+        )
+
+        private fun rawSections(raw: JsonObject): List<BundleSectionEntity> {
+            val top = raw.filterKeys { it !in TYPED }.map { (k, v) ->
+                if (k == "products") {
+                    BundleSectionEntity("products", JsonObject((v as? JsonObject)?.filterKeys { it != "skus" }.orEmpty()).toString())
+                } else {
+                    BundleSectionEntity(k, v.toString())
+                }
+            }
+            val perRoute = (raw["routes"] as? JsonArray).orEmpty().mapNotNull { r ->
+                val o = r as? JsonObject ?: return@mapNotNull null
+                val id = (o["route_id"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                BundleSectionEntity("route.$id", JsonObject(o.filterKeys { it !in ROUTE_TYPED }).toString())
+            }
+            return top + perRoute
+        }
     }
 }

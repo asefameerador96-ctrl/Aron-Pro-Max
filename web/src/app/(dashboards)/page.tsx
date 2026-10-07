@@ -4,10 +4,10 @@ import { MapPanel, type MapPin } from "@/components/map-panel";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { getGeoValidation, getLoginSubmit, getSummary, getTeamLocations, listOutlets } from "@/lib/dash/server";
+import { isCalendarDate } from "@/lib/dates";
 import { businessDate, formatBusinessDate, problemMessage, t, type Locale } from "@/lib/i18n";
 import type { StaleReason } from "@/components/reports/tile-meta";
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function Err({ locale, code }: { locale: Locale; code: string | undefined }) {
   return (
@@ -23,7 +23,7 @@ function Err({ locale, code }: { locale: Locale; code: string | undefined }) {
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const [sp, locale, session] = await Promise.all([searchParams, getLocale(), requireSession()]);
   const today = businessDate();
-  const date = sp.date && DATE.test(sp.date) ? sp.date : today;
+  const date = isCalendarDate(sp.date) ? sp.date : today;
   const token = session.at;
   const [summary, loginSubmit, geo, team] = await Promise.all([getSummary(token, { from: date, to: date }), getLoginSubmit(token, date), getGeoValidation(token, { from: date, to: date }), getTeamLocations(token, date)]);
 
