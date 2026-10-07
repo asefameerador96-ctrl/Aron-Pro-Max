@@ -17,7 +17,7 @@
 # ordering guard is bypassed on purpose.
 #
 # Environment: AZURE_RESOURCE_GROUP (required), ARON_ALERT_EMAILS (required, comma-separated), AZURE_LOCATION,
-# ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX, FCM_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY (all optional),
+# ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX, FCM_SERVICE_ACCOUNT_JSON, PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY (all optional),
 # RUN_MIGRATIONS (true | false; default true), FORCE_INFRA (true = always run main.bicep), ROLLBACK_SHA (see above),
 # ARON_DEPLOY_FREEZE_DHAKA ("HH:MM-HH:MM" Asia/Dhaka; refuses a deploy inside that window, rollbacks excepted; unset
 # until real users exist).

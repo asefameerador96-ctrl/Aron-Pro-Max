@@ -137,6 +137,11 @@ var jwtSecretRefs = [
   { name: 'ARON_JWT_SIGNING_KEY', secretRef: 'jwt-signing-key' }
   { name: 'ARON_JWT_KID', secretRef: 'jwt-kid' }
 ]
+// API only (N-027, docs/requests/backend-core-play-integrity-secret.md): Play Integrity decode account. The seeded
+// placeholder is one space, which the API reads as absent and then decodes with the FCM account (same Google project).
+var apiOnlySecretRefs = [
+  { name: 'ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON', secretRef: 'play-integrity-service-account' }
+]
 var appSecretRefs = [
   { name: 'ARON_FCM_SERVICE_ACCOUNT_JSON', secretRef: 'fcm-service-account' }
   { name: 'ARON_DB_READ_URL', secretRef: 'db-read-url' }
@@ -277,6 +282,7 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
         kvSecret('jwt-signing-key', secretNames.jwtSigningKey, kvSecretUrl, idApi.id)
         kvSecret('jwt-kid', secretNames.jwtKid, kvSecretUrl, idApi.id)
         kvSecret('fcm-service-account', secretNames.fcmServiceAccount, kvSecretUrl, idApi.id)
+        kvSecret('play-integrity-service-account', secretNames.playIntegrityServiceAccount, kvSecretUrl, idApi.id)
       ]
     }
     template: {
@@ -285,7 +291,7 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
           name: 'api'
           image: backendImage
           resources: { cpu: json(apiCpu), memory: apiMemory }
-          env: concat(commonEnv, jwtSecretRefs, appSecretRefs, [
+          env: concat(commonEnv, jwtSecretRefs, appSecretRefs, apiOnlySecretRefs, [
             { name: 'ARON_ROLE', value: 'api' }
             { name: 'PORT', value: '8080' }
             { name: 'ARON_PUBLIC_API_URL', value: publicApiUrl }

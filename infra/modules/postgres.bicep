@@ -120,7 +120,7 @@ var pgbouncerSettings = [
   { name: 'pgbouncer.query_wait_timeout', value: '5' }
 ]
 var baseSettings = [
-  { name: 'azure.extensions', value: 'BTREE_GIST,PGCRYPTO,PG_STAT_STATEMENTS,POSTGIS' }
+  { name: 'azure.extensions', value: 'BTREE_GIST,PGCRYPTO,PG_STAT_STATEMENTS,PG_TRGM,POSTGIS' }
   { name: 'log_min_duration_statement', value: '500' }
   { name: 'track_io_timing', value: 'on' }
   { name: 'idle_in_transaction_session_timeout', value: '30000' }
