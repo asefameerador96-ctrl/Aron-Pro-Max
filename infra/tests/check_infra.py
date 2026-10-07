@@ -557,8 +557,13 @@ class Workflows(unittest.TestCase):
         self.assertIn("title=Azure is not set up for this repository", d, "clear failure when secrets are absent")
         self.assertNotRegex(d, r"(?m)^\s*(push|pull_request|pull_request_target):", "deploy is called or dispatched only")
         # A GitHub concurrency group would cancel pending CI runs; deploy.sh serialises instead.
-        self.assertIn("group: deploy-${{ inputs.environment || 'dev' }}${{ (github.event_name == 'workflow_dispatch' && inputs.rollback_sha != '') && '-rollback' || '' }}\n  cancel-in-progress: false", d,
+        self.assertIn("    concurrency:\n      group: deploy-${{ inputs.environment || 'dev' }}${{ (github.event_name == 'workflow_dispatch' && inputs.rollback_sha != '') && '-rollback' || '' }}\n      cancel-in-progress: false", d,
                       "a deploy is never cancelled; a rollback has its own group, so a push never cancels a pending rollback")
+        # CI audit s5 item 5: the group is on the job, after its `if`, so a skipped run (red ci) never takes the slot of
+        # a waiting green deploy. A workflow-level group would be entered by every run, skipped or not.
+        self.assertNotRegex(d, r"(?m)^concurrency:", "no workflow-level concurrency in deploy.yml")
+        job = d[d.index("\n  deploy:"):]
+        self.assertLess(job.index("    if: github.event_name != 'workflow_run'"), job.index("    concurrency:"))
         self.assertIn("RUN_MIGRATIONS: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_migrations == false) && 'false' || 'true' }}", d)
         call = d[d.index("workflow_call:"):d.index("workflow_dispatch:")]
         self.assertIn("run_migrations:", call, "a called deploy (promote-prod) must see run_migrations = true, not null")
