@@ -126,6 +126,9 @@
 - INT merged again (backend-core BC-55 and BC-56, WireDtos `BundleUser.consents`).
 - **F-SYS-075 follow-up (BC-55) done**: `ConsentRepository.acceptedOnServer` reads the bundle's `user.consents` (the raw `user` section, per-user database). `LocationNotice.state` counts it, so a wipe or reinstall does not ask again, while a new policy version still does. A missing or unreadable section fails closed. Opus check: PASS.
   - Info: a server void reaches the phone only with the next full bundle. Extra local accepts are acked as duplicates.
+- **F-SYS-079 follow-up done**: `DayConfig` reads `cfg.day.checkout_earliest_time` (HH:MM, 12:00..22:00; the server validator sends HH:MM only) and `cfg.sync.checkout_jitter_s` (0..600; the scheduler caps it at 120). The scheduler jitter, the gate and the SR check-out button all read them, with defaults of 17:00 and 90 s. A throwing read falls back to the defaults (tested). Opus check: PASS.
+  - Info for backend-core (via the lead): the server never enforces `checkout_too_early`; `DayStates` accepts any check-out time.
+  - Low: right after a cold start, until DayConfig refreshes (asynchronously), the button uses 17:00.
 - Trap 40: a check run without the Android SDK fails at configuration ("SDK location not found"). Grep the log for `BUILD FAILED`, not only the wrapper's exit code.
 
 ## Handover (READY TO RECYCLE, 2026-10-07 ~17:30Z by the server clock, seventh session)

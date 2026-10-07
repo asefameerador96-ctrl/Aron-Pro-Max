@@ -155,6 +155,12 @@ class SyncWorkTest {
         }
         assertTrue(capped.all { it in 0L..120_000L })
         assertTrue(capped.any { it > 90_000L })
+        // A config read that throws never breaks a tap: the default 90 s holds, and a throwing gate time means 17:00.
+        scheduler = WorkManagerSyncScheduler({ wm }, Random(1), sdkInt = 36, checkoutJitterS = { error("db") }, checkoutGate = { true })
+        scheduler.requestSync(600, SyncTrigger.CHECKOUT)
+        assertTrue(spec(live(WorkManagerSyncScheduler.gateName(600)).single()).initialDelay in 0L..90_000L)
+        val at1703 = 1_791_198_180_000L // 2026-10-05T11:03Z = 17:03 Dhaka
+        assertTrue(CheckoutGate.dhaka({ at1703 }, gateMinutes = { error("db") }).justOpened())
     }
 
     @Test fun atTheGateCheckOutAndSubmitAreJitteredAndManualIsNot() {
