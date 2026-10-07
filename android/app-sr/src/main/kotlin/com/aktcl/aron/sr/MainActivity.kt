@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime
     @Inject lateinit var resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck
     @Inject lateinit var mediaShell: MediaShell
+    @Inject lateinit var contentShell: com.aktcl.aron.core.sync.ContentShell
     @Inject lateinit var systemShell: SystemShell
     @Inject lateinit var shellLogout: com.aktcl.aron.core.sync.shell.ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
@@ -148,6 +149,7 @@ class MainActivity : ComponentActivity() {
                                         d.launchDayConfigRefresh()
                                         // F-SYS-030/010: the camera and this user's photo queue (opened before the day is shown).
                                         d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate))
+                                        d.contentFile = { item -> contentShell.assets.file(item) }
                                     }
                                 }
                             }
