@@ -48,6 +48,9 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var shellLogout: ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
+    @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
+    @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
+    private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
     override fun onResume() {
@@ -103,6 +106,14 @@ class MainActivity : ComponentActivity() {
                             val vm = viewModel(key = "home-" + s.user.userId) {
                                 HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
                             }
+                            // F-SYS-075: the location notice first.
+                            com.aktcl.aron.feature.auth.LocationNoticeGate(
+                                key = s.user.userId,
+                                load = { locationNotice.state(s.user.userId).let { com.aktcl.aron.feature.auth.NoticeNeed(it.needed, it.required) } },
+                                accept = { shownAt -> locationNotice.accept(s.user.userId, language.tag, shownAt) },
+                                nowMs = components.trustedClock::nowMs,
+                                onLogout = { logoutTap() },
+                            ) {
                             UpdateHost(updateShell, dayOpen = { false }, serverSaidTooOld = s.updateRequired, onLogout = { logoutTap() }) { HomePlaceholderScreen(
                                 viewModel = vm,
                                 user = HomeUser(
@@ -116,6 +127,7 @@ class MainActivity : ComponentActivity() {
                                 onLogout = { logoutTap() },
                                 onLanguageSelect = onLanguageSelect,
                             ) }
+                            }
                         }
                     }
                 }

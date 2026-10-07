@@ -237,6 +237,22 @@ object RecordMapping {
         },
     )
 
+    /**
+     * `consent_accept` (F-SYS-075): acceptance of the employee-location notice. Its own family, rank 0, no route; once per
+     * user and policy version ([com.aktcl.aron.core.database.repo.ConsentRepository]).
+     */
+    fun consentAccept(clientUuid: String, meta: CaptureMeta, policyKey: String, policyVersion: Int, locale: String, shownAt: String) = outbox(
+        RecordType.CONSENT_ACCEPT, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null), meta.capturedAt,
+        JsonObject.serializer(),
+        buildJsonObject {
+            put("policy_key", JsonPrimitive(policyKey))
+            put("policy_version", JsonPrimitive(policyVersion))
+            put("accepted", JsonPrimitive(true))
+            put("locale", JsonPrimitive(locale))
+            put("shown_at", JsonPrimitive(shownAt))
+        },
+    )
+
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */
     fun printEvent(e: PrintEventEntity, familyUuid: String, rank: Int, payload: JsonObject, createdAt: String) = outbox(
         RecordType.PRINT_EVENT, e.clientUuid, familyUuid, rank, e.meta, createdAt, JsonObject.serializer(), payload,

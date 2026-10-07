@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var shellLogout: com.aktcl.aron.core.sync.shell.ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
+    private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
     private var dayHolder: SrDayHolder? = null
     /** N-038: counts taps on a task notification; SrApp opens the task list on each new value. */
     private val openTasks = kotlinx.coroutines.flow.MutableStateFlow(0)
@@ -131,7 +132,14 @@ class MainActivity : ComponentActivity() {
                             val sunlightPref = remember(s.user.userId) { com.aktcl.aron.core.ui.SunlightPreference(applicationContext, s.user.userId.toString()) }
                             LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
                             // F-SYS-020: an open day (checked in, not submitted) is never interrupted by a required update.
-                            day?.let { d -> UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
+                            // F-SYS-075: the location notice before anything else of the day (no sale before acceptance when required).
+                            day?.let { d -> com.aktcl.aron.feature.auth.LocationNoticeGate(
+                                key = s.user.userId,
+                                load = { locationNotice.state(s.user.userId).let { com.aktcl.aron.feature.auth.NoticeNeed(it.needed, it.required) } },
+                                accept = { shownAt -> locationNotice.accept(s.user.userId, language.tag, shownAt) },
+                                nowMs = components.trustedClock::nowMs,
+                                onLogout = { srLogout(s.user.userId) },
+                            ) { UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
                                 SrApp(
                                     day = d,
                                     user = HomeUser(
@@ -149,7 +157,7 @@ class MainActivity : ComponentActivity() {
                                     openTasks = openTasks,
                                     shell = systemShell,
                                 )
-                            } }
+                            } } }
                             // Drawn after the screens so the camera covers them while a capture is open (F-SYS-030).
                             day?.media?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
                         }
