@@ -2,7 +2,7 @@
 # they include) and JavaScript/TypeScript (web/). Results go to GitHub > Security > Code scanning. Owner: infra lane.
 #
 # Separate from ci.yml so the 15-minute CI budget and the dev deploy never wait on it; pull requests to main and
-# weekly (new queries find old code). gitleaks and the other ci.yml gates stay the primary checks (lead, 2026-10-07).
+# nightly (new queries find old code). gitleaks and the other ci.yml gates stay the primary checks (lead, 2026-10-07).
 # Kotlin needs a real compile while CodeQL watches: no Gradle build cache, no daemon, the Kotlin compiler in-process.
 # Push runs are never cancelled (same rule as ci.yml); a pull request cancels its own older run.
 # Actions are pinned by commit SHA (release tag in the comment), resolved with `git ls-remote` on 2026-10-07.
@@ -10,11 +10,11 @@
 name: codeql
 
 on:
-  # Lead decision 2026-10-07: only pull requests to main and a weekly scan, never every integration push.
+  # Lead decision 2026-10-07: pull requests to main (the daily gate PR) and nightly, never on a push.
   pull_request:
     branches: [main]
   schedule:
-    - cron: "17 21 * * 0" # Sunday 21:17 UTC = Monday 03:17 Asia/Dhaka
+    - cron: "17 21 * * *" # 21:17 UTC = 03:17 Asia/Dhaka, nightly
   workflow_dispatch:
 
 permissions:
