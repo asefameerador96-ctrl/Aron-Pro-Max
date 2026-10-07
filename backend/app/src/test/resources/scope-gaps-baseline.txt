@@ -63,6 +63,5 @@ POST /v1/admin/tutorials
 POST /v1/admin/users
 POST /v1/admin/users/{id}/credentials
 POST /v1/support/pda-upload
-POST /v1/tasks/{task_uuid}/cancel
 POST /v1/visit-plans
 PUT /v1/admin/users/{id}/scope

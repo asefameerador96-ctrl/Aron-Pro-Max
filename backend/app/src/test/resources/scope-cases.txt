@@ -123,7 +123,7 @@ POST /v1/reports/{report_key}/query -> case ReportApiTest#scopeComesFromTheToken
 POST /v1/support/pda-upload -> gap: backend-admin
 POST /v1/sync/batch -> case BatchCheckerTest#checkerVisitCloseCannotCloseAnotherUsersVisitOutsideReach
 POST /v1/tasks -> case TasksCheckerTest#outletOutsideReach
-POST /v1/tasks/{task_uuid}/cancel -> gap: backend-core
+POST /v1/tasks/{task_uuid}/cancel -> case TasksTest#aTsoOfAnotherZoneCannotCancelATaskOutsideItsReach
 POST /v1/visit-plans -> gap: backend-admin
 PUT /v1/admin/code-lists/{list_key} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 PUT /v1/admin/permissions/roles/{role} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
