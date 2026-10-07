@@ -112,6 +112,9 @@ abstract class OutboxDao {
     )
     abstract suspend fun resendAckedSince(since: String): Int
 
+    @Query("SELECT MIN(business_date) FROM outbox")
+    abstract suspend fun earliestBusinessDate(): String?
+
     /**
      * F-SYS-080: the acked rows of business dates [from]..[to] (`YYYY-MM-DD`), the phone side of the sync digest. A row the
      * server answered `accepted` or `duplicate`, or a quarantine a reviewer released, is acked; the server counts the same

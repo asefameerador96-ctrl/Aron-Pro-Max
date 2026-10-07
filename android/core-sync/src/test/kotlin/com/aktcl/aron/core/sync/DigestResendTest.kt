@@ -283,6 +283,30 @@ class DigestResendTest {
         assertEquals(total(), fake.registry.size)
     }
 
+    @Test
+    fun aRowStillUnsentHoldsTheDigestBack() = runBlocking {
+        synced()
+        repeat(2) { sale() }
+        // One family the server keeps answering retryably: the run drains around it, the row stays pending.
+        val held = rows().first { it.second == "visit" }.first
+        fake.rejectRetryable[held] = 100
+        engine().run(SyncTrigger.DAY_SUBMIT)
+        assertTrue(countState(OutboxState.PENDING) > 0)
+        assertEquals("no digest while a row is unsent", 0, fake.digests.size)
+        fake.rejectRetryable.clear()
+        engine().run(SyncTrigger.DAY_SUBMIT)
+        assertEquals(1, fake.digests.size)
+    }
+
+    @Test
+    fun aWipedDatabaseFirstRunDaysLaterStillSkipsItsFirstCaptureDate() = runBlocking {
+        repeat(2) { sale() } // captured on 2026-10-05 into a fresh database, offline since
+        Clock.now += 2 * 24 * 3_600_000L
+        engine().run(SyncTrigger.DAY_SUBMIT)
+        assertEquals("2026-10-05", db.referenceDao().meta(SyncEngine.KEY_DIGEST_FROM))
+        assertEquals(0, fake.digests.size)
+    }
+
     companion object {
         const val USER = 334003L
         const val DEVICE = "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f"

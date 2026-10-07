@@ -210,7 +210,8 @@ class SyncEngine(
             handleGeneration()
             val first = upload()
             // F-SYS-080: a drained run may send the digest; rows it puts back go in this same run (trigger digest_resend).
-            if (first.stop != SyncStop.DRAINED || !digestDue()) return first
+            // Only with nothing unsent: a pending row the server holds would differ from the acked rows (checker).
+            if (first.stop != SyncStop.DRAINED || outbox.unsentCount() > 0 || !digestDue()) return first
             return if (digest() > 0) upload() else first
         }
 
@@ -682,7 +683,9 @@ class SyncEngine(
         suspend fun noteDigestFrom() {
             if (meta.meta(KEY_DIGEST_FROM) != null) return
             val used = meta.meta(KEY_LAST_SUCCESS) != null || outbox.countInState(OutboxState.ACKED) > 0
-            val first = if (used) "" else BusinessDate.of(clock.nowMs()).toString()
+            // A database that first runs days after its first capture (offline since the wipe): its earliest date (checker).
+            val today = BusinessDate.of(clock.nowMs()).toString()
+            val first = if (used) "" else listOfNotNull(today, outbox.earliestBusinessDate()).min()
             meta.putMeta(SyncMetaEntity(KEY_DIGEST_FROM, first))
         }
 
@@ -715,9 +718,12 @@ class SyncEngine(
                 val now = clock.nowMs()
                 val today = java.time.LocalDate.parse(BusinessDate.of(now).toString())
                 val days = configInt(KEY_MAX_BACKDATE_DAYS)?.coerceIn(1, 30) ?: DEFAULT_MAX_BACKDATE_DAYS
+                // Before the first purge records its cutoff (an upgrade day), the purge's own reach from config.
+                val history = configInt(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS)?.coerceIn(1, 30) ?: com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS
                 // Dates the local purge may have touched are partial: never digested (they would be re-sent every time).
                 val from = listOfNotNull(
                     today.minusDays(days.toLong()).toString(),
+                    today.minusDays(history.toLong()).toString(),
                     meta.meta(KEY_PURGE_CUTOFF)?.takeIf { it.isNotEmpty() },
                     meta.meta(KEY_DIGEST_FROM)?.takeIf { it.isNotEmpty() }?.let { java.time.LocalDate.parse(it).plusDays(1).toString() },
                 ).max()
@@ -754,7 +760,7 @@ class SyncEngine(
                         else -> meta.putMeta(SyncMetaEntity(KEY_DIGEST_DUE, DIGEST_DUE_CONFIRM))
                     }
                     n
-                }.also { if (it > 0) batchTrigger = SyncTrigger.DIGEST_RESEND }
+                } // the put-back rows go as digest_resend by triggerOf; fresh rows keep the run's own trigger
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
