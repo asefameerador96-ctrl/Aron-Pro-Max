@@ -72,6 +72,14 @@ export function seedTables(): Record<string, Row[]> {
       row(4, { code: "DHK-335-004", name: "Wrongly Closed Tea Stall", name_bn: null, owner_name: "Salam Mia", contact_number: null, address: null, zone_id: 15, route_id: 4, cluster_id: 3, channel: "GT", sub_channel_id: 11, geo_class: "SemiUrban", lat: null, lng: null, location_confirmed: false, outlet_kind: "retail", price_type: "regular", status: "closed", visit_sequence: null, external_ref: null }),
       row(5, { code: "DHK-335-005", name: "Uttara Pan Shop", name_bn: null, owner_name: "Kamal Hossain", contact_number: null, address: null, zone_id: 15, route_id: null, cluster_id: 4, channel: "GT", sub_channel_id: null, geo_class: null, lat: null, lng: null, location_confirmed: false, outlet_kind: "retail", price_type: "regular", status: "active", visit_sequence: null, external_ref: null }),
     ],
+    tutorials: [
+      { tutorial_id: 1, kind: "video", title_en: "Taking a first order", title_bn: "প্রথম অর্ডার নেওয়া", url: "https://blob.example/tutorials/first-order.mp4", bytes: 5_000_000, duration_s: 120, sort: 1, roles: ["SR"], status: "active", version: 1 },
+      { tutorial_id: 2, kind: "manual", title_en: "SR manual", title_bn: null, url: "https://blob.example/tutorials/sr-manual.pdf", bytes: 800_000, duration_s: null, sort: 2, roles: ["SR", "AMO"], status: "active", version: 1 },
+    ] as unknown as Row[],
+    feedback: [
+      { feedback_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", user_id: 1003, category_code: "app", title: "Memo print is slow", description: "The memo takes long to print on the RPP02N.", photo_uuid: null, created_at: "2026-10-05T04:00:00.000Z", status: "new" },
+      { feedback_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", user_id: 1003, category_code: "route", title: "Route list missing an outlet", description: "Outlet is not on the Saturday route.", photo_uuid: null, created_at: "2026-10-06T04:00:00.000Z", status: "in_progress" },
+    ] as unknown as Row[],
     outletRequests: [
       { request_uuid: "11111111-1111-4111-8111-111111111111", request_type: "new", status: "pending", outlet_id: null, outlet_name: "New Corner Mart", route_id: 1, cluster_id: 1, requested_by_user_id: 1001, requested_at: "2026-10-05T04:00:00.000Z", rejection_reason: null, proposed: { name: "New Corner Mart", owner_name: "Rubel Ahmed" }, photos: [], events: [], version: 1 },
       { request_uuid: "22222222-2222-4222-8222-222222222222", request_type: "new", status: "verified", outlet_id: null, outlet_name: "Verified Fresh Store", route_id: 1, cluster_id: 2, requested_by_user_id: 1001, verified_by_user_id: 1003, requested_at: "2026-10-04T04:00:00.000Z", rejection_reason: null, proposed: { name: "Verified Fresh Store", owner_name: "Sumon Das", cluster_id: 2 }, photos: [], events: [], version: 1 },

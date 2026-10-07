@@ -28,3 +28,9 @@ Known not mine: e2e/pages.spec.ts daily-tracking date-dependent failure (dashboa
 ## Update (checker round for 005/006/008/071)
 Sonnet checker found 7 issues; fixed: unknown user on scope write is 404, duplicate scope nodes refused, scope node_id safe-integer bound, assignment end not after start, price publish refuses today (contract says future date). Not changed: zero price allowed (contract MtkNonNegative; product call), unknown SKU / overlapping effective ranges / second overlapping primary are API-side rules (mock gaps). Open: transfer form creates the new primary then ends the old one (two calls, not atomic): error is shown, retry is safe; needs an API transfer endpoint (not requested yet). Acting scope end date still requested.
 F-ADM-076 built (`/admin/sr-lifecycle`); checker pending.
+
+## Update (feedback, lifecycle, tutorials)
+Done: F-ADM-076 and F-ADM-028 (checker findings fixed). F-ADM-026 built, checker pending.
+Requests added: web-admin-feedback-filters, web-admin-tutorial-asset-id, web-admin-asset-upload-csp (infra sets ARON_BLOB_ORIGIN and the storage CORS rule).
+Next: F-ADM-065 (SKU image upload, reuses the asset ticket flow), F-ADM-020 (surveys, rubrics, content), F-TSO-023/025, web/QC entry rows.
+Trap: the admin segment streams behind loading.tsx, so notFound() in a page answers 200; the proxy rewrites known 404s instead.

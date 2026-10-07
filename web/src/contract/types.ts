@@ -58,4 +58,6 @@ export type OutletKindBulkWrite = Schemas["OutletKindBulkWrite"];
 export type OutletRequestSummary = Schemas["OutletRequestSummary"];
 export type OutletRequestVerifyRequest = Schemas["OutletRequestVerifyRequest"];
 export type OutletRequestApproveRequest = Schemas["OutletRequestApproveRequest"];
+export type Feedback = Schemas["Feedback"];
+export type FeedbackStatusWrite = Schemas["FeedbackStatusWrite"];
 export type ReasonRequest = Schemas["ReasonRequest"];

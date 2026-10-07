@@ -8,10 +8,10 @@ import com.aktcl.aron.core.geo.TakenFix
  * The real [LocationFixSource]: one on-demand balanced-power fix from android-geo-dpc's [FixManager] (N-021), mapped
  * field by field. [cycle] enables fix reuse inside one outlet-list cycle; a refresh (count above 0) never reuses.
  */
-class FixManagerSource(private val manager: FixManager, private val cycle: () -> String? = { null }) : LocationFixSource {
+class FixManagerSource(private val manager: FixManager, private val cycle: (purpose: String) -> String? = { null }) : LocationFixSource {
     override suspend fun readFix(purpose: String, refreshCount: Int): FixReading {
-        val p = FixPurpose.entries.firstOrNull { it.wire == purpose } ?: FixPurpose.VISIT_OPEN
-        return manager.take(p, cycle(), refreshCount).toReading()
+        val p = FixPurpose.entries.firstOrNull { it.wire == purpose } ?: error("unknown fix purpose $purpose")
+        return manager.take(p, cycle(purpose), refreshCount).toReading()
     }
 }
 

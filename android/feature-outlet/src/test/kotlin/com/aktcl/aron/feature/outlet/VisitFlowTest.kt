@@ -259,6 +259,19 @@ class VisitFlowTest {
         assertTrue(runCatching { f.open(outlet.copy(outletId = 2)) }.exceptionOrNull() is IllegalStateException)
     }
 
+    @Test fun aSecondTapOnTheSameOutletReturnsTheOpenVisitWithoutAnotherRead() = runTest {
+        val (f, rec, src) = flow(listOf(fix(), fix()))
+        val a = async { f.open(outlet) }; val b = async { f.open(outlet) }
+        a.await(); val second = b.await()
+        assertTrue(second is VisitUiState.Open); assertEquals(1, rec.visits.size); assertEquals(1, src.reads)
+    }
+
+    @Test fun aRestoredVisitIsTheCallInProgress() = runTest {
+        val session = VisitSession()
+        val open = OpenVisit("00000000-0000-4000-8000-000000000001", 1, 2, "in_range", "sale_allowed", true, false, null, "x")
+        session.restore(open); assertEquals(open, session.current.value)
+    }
+
     private class MemStore : OpenVisitStore {
         val rows = mutableMapOf<String, OpenVisitRow>()
         override suspend fun begin(visitUuid: String, outletId: Long, routeId: Long, startedAtIso: String) { rows[visitUuid] = OpenVisitRow(visitUuid, outletId, routeId, startedAtIso) }

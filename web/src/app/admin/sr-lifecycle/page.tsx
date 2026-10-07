@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Forbidden } from "@/components/forbidden";
-import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
+import { hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -16,7 +16,7 @@ const STEPS: readonly { id: string; title: MessageKey; hint: MessageKey; href: s
 
 export default async function SrLifecyclePage() {
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
-  if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
+  if (!hasRole(session.user.role, ["ADMIN", "SUPERADMIN"])) return <Forbidden locale={locale} />;
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{t(locale, "menu.admin.sr_lifecycle")}</h1>
