@@ -36,14 +36,15 @@ export const AUDIT_EXPORT_MAX_ROWS = 10_000;
 export async function fetchAuditForExport(token: string, f: AuditFilter): Promise<ApiOutcome<{ rows: AuditEntry[]; truncated: boolean }>> {
   const rows: AuditEntry[] = [];
   let cursor: string | undefined;
-  for (;;) {
+  for (let page = 0; page <= AUDIT_EXPORT_MAX_ROWS / 500; page++) {
     const r = await fetchAudit(token, f, cursor, 500);
     if (!r.ok) return r;
     rows.push(...r.data.items);
-    if (!r.data.next_cursor) return { ok: true, status: 200, data: { rows, truncated: false }, response: r.response };
+    if (!r.data.next_cursor || r.data.items.length === 0) return { ok: true, status: 200, data: { rows, truncated: false }, response: r.response };
     if (rows.length >= AUDIT_EXPORT_MAX_ROWS) return { ok: true, status: 200, data: { rows: rows.slice(0, AUDIT_EXPORT_MAX_ROWS), truncated: true }, response: r.response };
     cursor = r.data.next_cursor;
   }
+  return { ok: true, status: 200, data: { rows: rows.slice(0, AUDIT_EXPORT_MAX_ROWS), truncated: true }, response: new Response(null) };
 }
 
 export const AUDIT_CSV_HEADER = ["id", "at", "actor_user_id", "actor_username", "actor_role", "via", "entity", "entity_id", "action", "reason", "before", "after", "request_id", "row_hash"] as const;
