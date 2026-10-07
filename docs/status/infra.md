@@ -1,6 +1,58 @@
 # Infra lane status
 
-Updated 2026-10-07 20:35 UTC (fifth infra session).
+Updated 2026-10-07 20:55 UTC (fifth infra session, handover).
+
+## HANDOVER (fifth infra session -> sixth), 2026-10-07 20:55 UTC: read this first
+
+Session recycled at about 580k tokens (lead). lane/infra head is this commit; every infra/validate.sh run green.
+Lead: session_01MbUQSxrP7AB9tbyANjUTPS. Integrator: session_01UhJZDVYst45zbrskHBMkDd (recycled once today).
+db lane: session_011K2gmzr1feSNNQxnqWkRt5. Nothing of this session is scheduled (all check-ins deleted).
+
+**Proven on dev (test account), with run ids:**
+- 37673797109 (INT b85d81fd): **dblogins succeeded** (root cause was Kubernetes turning `$$` into `$` in env values; the
+  SQL is now a mounted secret file, b8a83d87), **"main.bicep skipped"** (infra-stage skip works since 5f37940 moved the
+  parameter comparison off argv), release marker written, health gate build = INT sha.
+- 37676392733 (zw, 6b42accc): **dev seed succeeded** (image aron-devseed built, db/seed without 04 + SMOKE-SR-001,
+  aron-dev-seed-password created); **slice smoke steps 1 login, 2 bundle (outlet 61 = SMOKE-SR-001, route 1), 3
+  baseline PASSED**; step 4 upload **401 ERR_DEVICE_PROOF_INVALID "device key unknown"** (keyless seed device while
+  cfg.device.require_enrolled is on; the lead keeps it on). No sale was created.
+
+**Waiting for promotion (none of these is on INT at 20:50 UTC):**
+1. **ff7579c4, smoke device key.** Key Vault `aron-dev-smoke-device-key` (P-256 PEM, made by seed-secrets.sh); deploy.sh
+   derives the public JWK + RFC 7638 thumbprint (`slice-smoke.py --print-jwk`) and the seed job sets them on device
+   00000000-0000-4000-8000-000000000001 only over the placeholder; the smoke signs X-Device-Proof. No cfg relaxed.
+   **Read its first run:** deploy log, grep `slice:` (PASS/FAIL per step), summary rows `Dev seed`, `SR slice smoke`,
+   `Worker`, `Database logins`. Step 8 memo read is reported SKIPPED (GET /v1/memos and /v1/sync/totals are in the
+   contract but NOT served; lead was told, backend-core request). The tile (step 9) depends on the aggregation worker.
+   On the first full PASS send the lead the run id (asked for explicitly).
+2. **7051367a, per-app db logins ON in dev** (`dbPerAppLogins = true`; db closed docs/requests/db-runtime-roles-gaps.md,
+   V0029; db confirmed app_jobs covers worker_rw). Check: health gate passes (api as app_api), `Worker` row says
+   "running, 0 restarts after 90 s" (worker as app_jobs). If the api breaks: set it back to false in
+   infra/params/dev.apps.bicepparam, push, and send db the exact error.
+3. **00a4d907, worker check** (`infra/scripts/worker-check.sh`, non-blocking, summary row `Worker`): latest revision runs
+   this build's image, a replica Running with 0 restarts, still so after 90 s. Make it blocking after one green run.
+4. **6fc77f28, CI timeout** "Shared, db and backend" 30 -> 45 min (one-line priority candidate; integrator may cherry-pick).
+5. **11cd544b, CI split** (lead GO): `:backend:app:test` (14.5 of 26 min in CI run 37669413915) runs in the new parallel
+   job "Backend app tests"; the old job keeps its name and runs the rest with `-x :backend:app:test`. Candidate CI run
+   **37682155791** on lane/infra was still QUEUED at 20:50 (no jobs yet). Lead wants both jobs green and the wall time
+   (expected about 17 min) BEFORE it goes onto INT: list its jobs, report started/completed of both, then tell the
+   integrator. NOT doing maxParallelForks (lead: no, until after the wall-clock gate).
+
+**People and gates:**
+- Governance: `tools/github-governance.ps1` now requires "Repository gates (secrets, migrations, contract)" and the new
+  "Backend app tests"; main's live protection still lists "Contract lint". The laptop session (owner's admin rights)
+  re-runs the protection step once, before the first gate pull request, which applies both.
+- Restore drill: only after the lead relays the owner's exact words "owner approved restore drill".
+- Wall-clock gate (2026-10-09, `--blocking`): no infra or workflow script depends on it (checked; offenders are backend).
+
+**Traps (new today):** never pass text with `$` through a Container Apps env value (Kubernetes `$(VAR)`/`$$`
+expansion); never pass >128 KiB through argv (params_unchanged); a deploy run's listed head_sha can differ from the commit
+it deployed (read `== deploying <sha>` in the log); `return` inside `finally` swallows a failure (slice-smoke); the
+lane container has no Docker daemon and no az (image builds and az flags are first proven in the deploy); app/home and
+the batch answers are what the backend serves, the contract has more (check routes before testing an endpoint).
+
+**Rows:** done this session N-062 (seeded proof on dev still to run), N-057 (parameters; load test is final account),
+bookkeeping of the Day 3 rows; left N-064 (Day 7, plan below). Usage is tight: lean context, no fan-out.
 
 ## Fifth infra session, 2026-10-07 17:40 UTC: read this first (the fourth session's handover below still applies)
 
