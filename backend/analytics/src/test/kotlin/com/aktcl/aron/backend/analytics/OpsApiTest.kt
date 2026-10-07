@@ -58,13 +58,14 @@ class OpsApiTest : ReportFixture() {
     fun syncHealthFiguresEqualTheHandComputedValues() = app {
         val o = get(10, Role.ANALYST, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()
         val sum = o["summary"]!!.jsonObject
-        assertEquals(3, sum.i("devices")); assertEquals(2, sum.i("devices_with_pending")); assertEquals(1, sum.i("held_rows_alerts"))   // sr001 holds 5 rows, silent since 03:00Z (> 4 h before 12:00Z)
+        assertEquals(3, sum.i("devices")); assertEquals(2, sum.i("devices_with_pending")); assertEquals(2, sum.i("held_rows_alerts"))   // sr001 holds 5 rows, silent since 03:00Z (> 4 h before 12:00Z); sr003 still holds 2 rows past 17:30 Dhaka (F-SYS-084)
         assertEquals(2, sum.i("rejected")); assertEquals(2, sum.i("quarantined")); assertEquals(1, sum.i("mismatched_route_days"))        // the stored resend and the other users do not count
         val items = o["items"]!!.jsonArray.map { it.jsonObject }
         val sr1 = items.first { it.s("username") == "sr001" }
         assertEquals(5, sr1.i("pending_rows_reported")); assertEquals(2, sr1.i("rejected_count")); assertEquals(2, sr1.i("quarantined_count"))
         assertEquals("true", sr1.s("held_rows_alert")); assertEquals("Itel A", sr1.s("device_model")); assertEquals(3600.0, sr1["sync_p95_s"]!!.jsonPrimitive.content.toDouble())  // received one hour after commit
-        assertEquals("false", items.first { it.s("username") == "sr003" }.s("held_rows_alert"))
+        assertEquals("true", items.first { it.s("username") == "sr003" }.s("held_rows_alert"), "pending rows past 17:30 Dhaka")
+        assertEquals("false", items.first { it.s("username") == "sr002" }.s("held_rows_alert"), "no pending rows")
         assertEquals("true", items.first { it.s("username") == "sr003" }.s("submit_count_mismatch"))
         assertEquals(setOf("sr001", "sr003"), get(10, Role.ANALYST, "/v1/dashboards/sync-health?business_date=2026-10-04&only_problems=true").obj()["items"]!!.jsonArray.map { it.jsonObject.s("username") }.toSet())
         // Paging, scope and role gating.
@@ -177,7 +178,7 @@ class OpsApiTest : ReportFixture() {
     fun checker_summaryCountsASharedDeviceOnce() = app {
         sql("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, status) SELECT dv.id, u.id, 1, 'active' FROM app.device dv, app.app_user u WHERE dv.public_key_thumbprint = 'thumb-1' AND u.username = 'sr002'")
         val sum = get(10, Role.ANALYST, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()["summary"]!!.jsonObject
-        assertEquals(3, sum.i("devices")); assertEquals(2, sum.i("devices_with_pending")); assertEquals(1, sum.i("held_rows_alerts"))
+        assertEquals(3, sum.i("devices")); assertEquals(2, sum.i("devices_with_pending")); assertEquals(2, sum.i("held_rows_alerts"))   // sr001's phone once, sr003 past 17:30
     }
 
     /** A user with two active bindings (ordinals 0..3 are allowed) gets one row per device; summing the per-user rejected/quarantined counts doubles them. */
