@@ -32,9 +32,8 @@ class SecurityEvent(
 
 /**
  * AUD-SEC-03: the security-event port. Recording is best effort and never fails the request that triggered it.
- * Until db lands `app.security_event` (docs/requests/backend-core-security-event-table.md) the sink is one structured
- * `aron.security` log line per event, which Application Insights alerts can match (refresh_reuse > 0, login_failure
- * spikes). User and device ids are hashed like every other log line (D-136).
+ * Production writes one structured `aron.security` log line per event, which Application Insights alerts can match
+ * (refresh_reuse > 0, login_failure spikes), and then queues the row for `app.security_event` ([JdbiSecurityEvents]). User and device ids are hashed like every other log line (D-136).
  */
 fun interface SecurityEvents {
     fun record(e: SecurityEvent)
@@ -57,10 +56,14 @@ fun SecurityEvents.safely(e: SecurityEvent) {
 }
 
 /**
- * Writes `aron.security` JSON lines. `login_failure` is deduplicated per dedupe key (username hash and device) per
- * minute, as the table will be (docs/21 s8.1): a password-spraying burst is one line per account and device per minute.
+ * Writes `aron.security` JSON lines, then hands the event to [then]. `login_failure` is deduplicated per dedupe key
+ * (username hash and device) per minute, for the line and the table alike (docs/21 s8.1): a password-spraying burst is one line per account and device per minute.
  */
-class LogSecurityEvents(private val sink: (String) -> Unit = { LoggerFactory.getLogger("aron.security").info(it) }) : SecurityEvents {
+class LogSecurityEvents(
+    /** Where every event the dedupe keeps goes next (the `app.security_event` writer in production); null for the log only. */
+    private val then: SecurityEvents? = null,
+    private val sink: (String) -> Unit = { LoggerFactory.getLogger("aron.security").info(it) },
+) : SecurityEvents {
     private val lastMinute = ConcurrentHashMap<String, Long>()
 
     override fun record(e: SecurityEvent) {
@@ -79,6 +82,7 @@ class LogSecurityEvents(private val sink: (String) -> Unit = { LoggerFactory.get
             e.detail.toSortedMap().forEach { (k, v) -> put(k, v.take(200)) }
         }
         sink(line.toString())
+        then?.safely(e)
     }
 
     private companion object {

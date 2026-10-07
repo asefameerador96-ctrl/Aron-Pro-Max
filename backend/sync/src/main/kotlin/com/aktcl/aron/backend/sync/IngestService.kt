@@ -757,6 +757,16 @@ class IngestService(
     // ---------------------------------------------------------------------------------------------------------------
     // Response sections
 
+    /**
+     * GET /v1/sync/totals (F-SYS-005 reconciliation): the same totals and day states a batch response carries, for the
+     * caller's own records on [date] only (user from the token; no scope ids from the client). Read-only, so a repeated
+     * batch, which stores nothing new, leaves it unchanged. On the primary: a lagging replica would show a short count
+     * and keep the phone retrying "Sync data".
+     */
+    fun totals(userId: Long, date: LocalDate): SyncTotalsResponse = db.jdbi.withHandle<SyncTotalsResponse, Exception> { h ->
+        SyncTotalsResponse(serverTotals(h, userId, date, clock.now()), dayStates(h, userId, listOf(date)), supervisorDayState(h, userId, date))
+    }
+
     /** Per type accepted/rejected/quarantined of the user's date from the registry, and the money of the date (s4.12). */
     private fun serverTotals(h: Handle, userId: Long, date: LocalDate, now: Instant): ServerTotals {
         val byType = h.createQuery(

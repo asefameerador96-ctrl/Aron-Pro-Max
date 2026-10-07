@@ -5,6 +5,7 @@ import com.aktcl.aron.backend.platform.AuthGuardDeps
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.authenticated
 import com.aktcl.aron.backend.platform.principal
+import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.contract.ProblemCode
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -51,6 +52,26 @@ fun Route.syncRoutes(d: SyncDeps) {
     authenticated(d.guard) {
         get("/sync/bundle") { getBundle(call, d) }
         if (d.db != null) get("/sync/generation") { getGeneration(call, d.db) }
+        if (d.db != null) {
+            val digest = SyncDigestService(d.db, d.clock) {
+                d.config?.let { c -> runCatching { c.int("cfg.sync.max_backdate_days").toLong() }.getOrNull() }?.coerceIn(1, 31) ?: SyncDigestService.DEFAULT_WINDOW_DAYS
+            }
+            post("/sync/digest") {
+                val req = call.receiveStrict(SyncDigestRequest.serializer())
+                call.respond(withContext(Dispatchers.IO) { digest.compare(call.principal, req) })
+            }
+        }
+        d.ingest?.let { ingest ->
+            get("/sync/totals") {
+                val raw = call.request.queryParameters["business_date"]
+                val date = raw?.takeIf { Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(it) }?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+                    ?: throw com.aktcl.aron.backend.platform.ApiProblem(
+                        com.aktcl.aron.contract.ProblemCode.ERR_VALIDATION, "business_date must be YYYY-MM-DD",
+                        errors = listOf(com.aktcl.aron.backend.platform.FieldError("query.business_date", if (raw == null) "required" else "invalid_value")),
+                    )
+                call.respond(withContext(Dispatchers.IO) { ingest.totals(call.principal.userId, date) })
+            }
+        }
     }
     if (d.ingest != null) {
         // The upload grant may call the batch, an access token expired by at most 60 s is accepted, and a stale scope
@@ -65,6 +86,10 @@ fun Route.syncRoutes(d: SyncDeps) {
 @kotlinx.serialization.Serializable
 data class ServerGenerationDto(
     val generation: String, val kind: String, val restore_point_utc: String?, val lost_after_utc: String?, val minted_at: String,
+    /** The generation this one replaced (F-SYS-047: two restores before the phone called). */
+    val previous_generation: String? = null,
+    /** With `?since=`: the earliest loss among the generations minted after it; the phone re-sends from there. */
+    val earliest_lost_after_utc: String? = null,
 )
 
 /**
@@ -73,15 +98,27 @@ data class ServerGenerationDto(
  * `lost_after_utc`). Database kinds map to the wire: created -> initial, failover, pitr_restore -> pitr.
  */
 private suspend fun getGeneration(call: ApplicationCall, db: Database) {
+    val since = call.request.queryParameters["since"]?.let { raw ->
+        runCatching { java.util.UUID.fromString(raw) }.getOrNull()?.takeIf { it.toString() == raw.lowercase() }
+            ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "since must be a generation uuid", errors = listOf(com.aktcl.aron.backend.platform.FieldError("query.since", "invalid_value")))
+    }
     val g = withContext(Dispatchers.IO) {
         db.jdbi.withHandle<ServerGenerationDto?, Exception> { h ->
-            h.createQuery("SELECT generation::text, kind, restore_point_utc, lost_after_utc, started_at FROM app.server_generation WHERE is_current")
+            h.createQuery(
+                """
+                SELECT g.generation::text, g.kind, g.restore_point_utc, g.lost_after_utc, g.started_at,
+                       (SELECT p.generation::text FROM app.server_generation p WHERE p.started_at < g.started_at ORDER BY p.started_at DESC LIMIT 1) AS previous,
+                       (SELECT min(a.lost_after_utc) FROM app.server_generation a, app.server_generation s
+                         WHERE s.generation = CAST(:since AS uuid) AND s.generation <> g.generation AND a.started_at > s.started_at) AS earliest
+                FROM app.server_generation g WHERE g.is_current
+                """.trimIndent(),
+            ).bind("since", since?.toString())
                 .map { rs, _ ->
                     fun ts(c: String) = rs.getObject(c, java.time.OffsetDateTime::class.java)?.toInstant()?.wire()
                     ServerGenerationDto(
                         rs.getString("generation"),
                         when (val k = rs.getString("kind")) { "created" -> "initial"; "pitr_restore" -> "pitr"; else -> k },
-                        ts("restore_point_utc"), ts("lost_after_utc"), ts("started_at")!!,
+                        ts("restore_point_utc"), ts("lost_after_utc"), ts("started_at")!!, rs.getString("previous"), ts("earliest"),
                     )
                 }.findOne().orElse(null)
         }

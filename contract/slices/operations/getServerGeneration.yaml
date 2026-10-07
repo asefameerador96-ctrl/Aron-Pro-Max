@@ -5,6 +5,13 @@ operation:
   - sync
   operationId: getServerGeneration
   summary: Statement of the current server generation after a failover or point-in-time restore.
+  parameters:
+  - name: since
+    in: query
+    required: false
+    description: The last generation the phone handled; the answer then carries `earliest_lost_after_utc`.
+    schema:
+      $ref: '#/components/schemas/Uuid'
   responses:
     '200':
       description: Generation record.
@@ -12,5 +19,7 @@ operation:
         application/json:
           schema:
             $ref: '#/components/schemas/ServerGeneration'
+    '400':
+      $ref: '#/components/responses/BadRequest'
     '401':
       $ref: '#/components/responses/Unauthorized'
