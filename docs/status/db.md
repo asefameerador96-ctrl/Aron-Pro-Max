@@ -87,14 +87,20 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
 
 ## Now (session 2, 2026-10-07)
 
-Done this session: role race (on INT), V0023-V0028 (see Done). Next, in order:
-1. `V0029` `app.bundle_snapshot` (`backend-bundle-snapshot-table.md`; drafted). Note for backend-core: on the deploy
-   day a phone holding a digest-based seq (9 digits) sees the new small seq as older; the next business date resets it.
-2. `V0030` AUD-DA-01: `domain_event.tx_id xid8` + `(tx_id, id)` index, `event_consumer.last_tx_id`,
-   `app.outbox_horizon()` / `_lag()`, dirty_key attempts / last_error / not_before / dead_at + `app.v_dirty_key_dead`,
-   deprecated versions refused, TRUNCATE guard on `domain_event_type` (drafted with a concurrent-writer test).
-3. `entry_unlock` when backend-admin files it; `backend-reports-db-indexes-and-events.md` (indexes, catalogue rows).
-4. AUD-DA-02, DA-05..08, PERF-03/07/08; hot-path EXPLAINs at docs/22 volume (candidates below).
+On lane/db (green locally on db and every backend suite; Opus checker PASS per batch):
+- `V0023`-`V0029` (see Done);
+- `V0030`: export log, PII read budget, `cfg.pii.*` budget keys (lead ruling, TSO 5000 role value);
+- `V0031`: dw device/activity/consent facts (M-123 to M-125);
+- `V0032`: `bundle_snapshot`;
+- `V0033`: AUD-DA-01 (outbox `tx_id` + horizon, dirty-key dead letter, deprecated versions refused, TRUNCATE guard);
+- `V0034`: `cfg.support.public_key_spki`;
+- `V0035`: SECURITY DEFINER functions search `pg_temp` last (`ensure_partitions` could be hijacked by a `jobs_rw` temp view).
+
+Next:
+1. `entry_unlock` (when backend-admin files it).
+2. `backend-reports-db-indexes-and-events.md`: indexes (due_collection, stock_movement, day_exception, dw facts by zone),
+   `dw.agg_daily_route_segment`, catalogue rows `due.collected`, `day_exception.decided`, `risk_signal.changed`.
+3. AUD-DA-02, DA-05..08, PERF-03/07/08; hot-path EXPLAINs at docs/22 volume.
 
 Query-plan candidates (from the previous session):
 - `IngestService.dayStates` filters `(assigned_user_id = :u OR acting_user_id = :u)`; only assigned has an index.
