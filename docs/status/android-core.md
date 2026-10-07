@@ -78,6 +78,31 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Handover (READY TO RECYCLE, 2026-10-07 ~13:50Z, fifth session)
+- **Done this session** (each with a fresh Opus checker; every confirmed defect fixed with a test; head 2afc9270, INT merged):
+  - N-038 push on the phone (done; device check D-N38).
+  - F-SYS-052 offline unlock / shared phone (done; open plausible: `cfg.auth.offline_unlock_*` not read, working-day unit D-584).
+  - F-SYS-072 record signatures, phone side (Room v4 `outbox.sig`; open on backend-core: record mode + registry hash).
+  - F-SYS-053 config propagation, phone side (config_ack, 304 handling; open on backend-core: `outlet_radius_changes` in the config delta).
+- **In progress:** nothing.
+- **Next, in this order:**
+  1. AUD-PERF-05: SQLCipher raw key (`x'<64 hex>'`, no KDF) and Keystore decrypts off the main thread at cold start (needs a migration path for existing databases keyed with the passphrase: rekey on first open).
+  2. When backend-core answers: close F-SYS-072 (shared signed test vector) and F-SYS-053 (end-to-end test against the real config delta).
+  3. F-SYS-072 plausibles: hold signed-type rows when the enrolled key fails (needs `DeviceProofSigner` to say "enrolled"); re-sign unsent rows after a key rotation.
+  4. N-023 (UI kit) is listed under android-core by my-rows but core-ui is android-core-ui's: confirm with the lead before touching it. AUD-TP-4 is infra's.
+  5. Support tile (waits on `cfg.support.public_key_spki`).
+- **Open requests / owed to others:**
+  - backend-core: docs/requests/android-core-backend-record-signature-mode.md (enrolled phones' header records are quarantined without sig today), docs/requests/android-core-backend-config-delta-radius.md.
+  - android-sr-a: docs/requests/android-core-sr-notification-permission.md (POST_NOTIFICATIONS in first-run permissions on non-enrolled phones); the OTP screen wiring from the fourth session still stands.
+  - infra: SR APK baseline (docs/requests/android-core-apk-baseline.md).
+- **Traps found this session:**
+  25. A KDoc containing `devices/me/*` opens a nested comment (`/*`) and breaks the whole file: never write `/*` inside a KDoc.
+  26. `TrustedClockSource` has a constructor property `bootCount: () -> Int`; a member `fun bootCount()` shadows it and `bootCount()` recurses: call `this.bootCount.invoke()`.
+  27. Room creates a database file only on the first query: assert file existence after a query.
+  28. The server's batch fingerprint and registry hash include `sig` (ES256 is randomized): sign once, store, never re-sign a row that was sent.
+  29. Robolectric tests run on the JDK's `Double.toString`, not Android's: JCS number parity on a device is not proven by unit tests.
+  30. The backend config delta answers 304 for a phone whose chain did not change although the global version moved: always move the held version on 304.
+
 ## Fifth session (2026-10-07, from ~12:55Z)
 - **N-038 push on the phone** (core-sync `push/`, `shell/PushShell` in SR/AMO/TSO):
   - FCM data keys read: `kind` = `sync_nudge` (+ `reason`; `task_assigned` shows the notice), `announcement` (title/body en+bn), `config_pull`, `bundle_pull`; `pull_after_s` clamped to 0..120 (0..20 urgent); docs/19 `{type: cfg}` read as a config pull; anything else ignored.
