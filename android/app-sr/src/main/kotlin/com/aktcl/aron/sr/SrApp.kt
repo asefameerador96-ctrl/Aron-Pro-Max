@@ -174,7 +174,10 @@ fun SrApp(
             } else {
                 VisitCheckContent(
                     st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { screen = SrScreen.FORCE },
-                    onRetry = { scope.launch { day.visitFlow.retryCommit() } }, onMap = null,
+                    onRetry = { scope.launch { day.visitFlow.retryCommit() } },
+                    onMap = (st as? VisitUiState.NeedsDecision)?.takeIf { it.outlet.lat != null && it.outlet.lng != null }?.let { d ->
+                        { context.startActivity(OutletMapActivity.intent(context, d.outlet.name, d.outlet.lat!!, d.outlet.lng!!, d.outlet.radiusM, d.phoneLat, d.phoneLng)) }
+                    },
                 )
             }
         }

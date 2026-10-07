@@ -28,6 +28,9 @@ sealed interface VisitUiState {
         val refreshMax: Int,
         val forceSaleAvailable: Boolean,
         val mockWarning: Boolean,
+        /** The phone's position of the last fix, for the on-demand map (N-041); null without a fix. */
+        val phoneLat: Double? = null,
+        val phoneLng: Double? = null,
     ) : VisitUiState
 
     /** The visit row is committed; the sale may continue. */
@@ -174,6 +177,7 @@ class VisitFlow(
                     refreshLeft = refreshCount < policy.refreshMax, refreshMax = policy.refreshMax,
                     forceSaleAvailable = result.action == GeoAction.FORCE_SALE,
                     mockWarning = result.warnRep,
+                    phoneLat = fix.lat.takeIf { fix.isOk }, phoneLng = fix.lng.takeIf { fix.isOk },
                 )
                 ui.value = st
                 st

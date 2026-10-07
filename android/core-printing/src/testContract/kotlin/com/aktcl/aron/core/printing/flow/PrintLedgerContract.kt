@@ -26,8 +26,13 @@ abstract class PrintLedgerContract {
     /** A committed memo; returns its client uuid. */
     protected abstract suspend fun newMemo(): String
 
-    /** A saved stock movement (the stock slip's document); returns its client uuid. */
-    protected abstract suspend fun newStock(): String
+    /**
+     * One stock Save of [skus] SKUs (one `stock_movement` per SKU, saved together, each Save at its own time); returns
+     * the rows' client uuids. The slip names the first one.
+     */
+    protected abstract suspend fun newStockSave(skus: Int): List<String>
+
+    private suspend fun newStock(): String = newStockSave(1).first()
 
     /** `memo.printed_at` (or the first printed time the reference keeps) as epoch ms; null when not printed. */
     protected abstract suspend fun memoPrintedAtMs(memo: String): Long?
@@ -164,6 +169,55 @@ abstract class PrintLedgerContract {
         ledger.record(e)
         assertTrue(!slipPrinted(rejected))
         assertEquals(1, ledger.history(rejected).size)
+    }
+
+    @Test fun aSlipFlagsEveryRowOfItsSaveAndNoOtherSave() = runTest {
+        val saveA = newStockSave(3)
+        val saveB = newStockSave(2)
+        ledger.record(slipEvent(saveA.first(), PrintEvent.PRINTED))
+        saveA.forEach { assertTrue("row of the printed Save", slipPrinted(it)) }
+        saveB.forEach { assertTrue("another Save is untouched", !slipPrinted(it)) }
+        val rejected = slipEvent(saveB.first(), PrintEvent.FAILED_USER, at = 2_000)
+        ledger.savePending(out(rejected))
+        saveB.forEach { assertTrue(slipPrinted(it)) }
+        ledger.record(rejected)
+        saveB.forEach { assertTrue("a rejected only copy clears its whole Save", !slipPrinted(it)) }
+        saveA.forEach { assertTrue("and never another Save", slipPrinted(it)) }
+    }
+
+    @Test fun aVoidSlipOrDueReceiptIsNeverACopyOfTheMemo() = runTest {
+        val memo = newMemo()
+        for (kind in ReprintPolicy.NOT_COPIES) {
+            val e = memoEvent(memo, PrintEvent.PRINTED).copy(documentKind = kind)
+            ledger.savePending(out(e))
+            ledger.record(e)
+        }
+        assertNull(memoPrintedAtMs(memo))
+        assertEquals(0, memoPrintCount(memo))
+        assertEquals(0, ReprintPolicy.nextReprintNo(ledger.history(memo)))
+        // A rejected memo copy is not saved by a void slip that counts for nothing.
+        ledger.record(memoEvent(memo, PrintEvent.PRINTED, at = 3_000))
+        ledger.record(memoEvent(memo, PrintEvent.PRINTED, at = 4_000).copy(documentKind = "void_slip"))
+        assertEquals(1, memoPrintCount(memo))
+    }
+
+    @Test fun historyIsInRecordedOrderWhenTheClockGoesBack() = runTest {
+        val memo = newMemo()
+        val later = memoEvent(memo, PrintEvent.PRINTED, at = 5_000)
+        val earlier = memoEvent(memo, PrintEvent.FAILED_USER, count = 2, at = 3_000)
+        ledger.record(later)
+        ledger.record(earlier)
+        assertEquals(listOf(later.clientUuid, earlier.clientUuid), ledger.history(memo).map { it.clientUuid })
+    }
+
+    @Test fun paperOutIsNeverTakenBack() = runTest {
+        val memo = newMemo()
+        val e = memoEvent(memo, PrintEvent.PRINTED, at = 1_000)
+        ledger.savePending(out(e))
+        ledger.savePending(PendingPrint(e, paperOut = false)) // a stale writer
+        assertTrue(ledger.pending().single().paperOut)
+        ledger.record(e.copy(outcome = PrintEvent.FAILED, userConfirmed = null))
+        assertEquals("the paper came out", 1_000L, memoPrintedAtMs(memo))
     }
 
     @Test fun recoverAfterAKillFinishesEveryPendingJobOnce() = runTest {
