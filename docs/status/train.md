@@ -10,6 +10,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 | 2026-10-07 09:50 | d0afa69 | infra f9429de (green run 37602080027) merged with INT 319b24e | MISTAKE: INT carried 37 non-docs backend files the head lacked, so the merge was untested; pushed anyway as fast-forward. Verification run 37603167252 pending. Lead informed. |
 | 2026-10-07 10:19 | 12a823e | candidate lane/train-20261007T1000, ALL JOBS GREEN (run 37604459973): backend-admin 3c40e33, android-core 3ce1913, android-sys 2830441, android-core-ui 5d80533, web-config 10e6857, infra 5308ee7, lead-contract-v1-3 e0feeb3 | fast-forward INT c3db837 -> 12a823e. INT is green. Earlier verification run of d0afa69 (infra merge): only the old Web and Android reds, union fine. |
 | 2026-10-07 10:39 | 903e092 | candidate lane/train-20261007T1020, ALL JOBS GREEN (run 37606702856): backend-core 2637ef2 | INT 107d3a5 had docs-only differences (checked: 0 non-docs files), merged INT in, fast-forward. |
+| 2026-10-07 11:09 | 18b91d4 | candidate lane/train-20261007T1054, ALL JOBS GREEN (run 37610534410): backend-core 81d1501, backend-reports 32fb6ad, android-core 8536548, android-print aedd979 | INT was an ancestor-check pass (fast-forward). android-geo-dpc b2e5231 dropped from the earlier 1044 candidate (ManifestPermissionAuditTest, ACCESS_BACKGROUND_LOCATION in core-geo); lane pushed 01bf859 (ruling D-GEO-BG-01), run pending. infra 58b3068 green, in candidate 1100-i (run 37611157445). |
 
 ## Open reds
 
