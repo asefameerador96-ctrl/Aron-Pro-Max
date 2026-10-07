@@ -18,6 +18,7 @@ import com.aktcl.aron.contract.VisitPayload
 import com.aktcl.aron.contract.RecordType
 import com.aktcl.aron.core.database.entity.AttendanceEventEntity
 import com.aktcl.aron.core.database.entity.CaptureMeta
+import com.aktcl.aron.core.database.repo.MediaMetaCapture
 import com.aktcl.aron.core.database.entity.DaySubmitEntity
 import com.aktcl.aron.core.database.entity.DueCollectionEntity
 import com.aktcl.aron.core.database.entity.OutletChangeRequestEntity
@@ -210,6 +211,16 @@ object RecordMapping {
     fun deviceStatus(clientUuid: String, meta: CaptureMeta, report: DeviceStatusReport, createdAt: String) = outbox(
         RecordType.DEVICE_STATUS, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null), createdAt,
         DeviceStatusReportWire, report,
+    )
+
+    /** A photo's metadata (s4.11 step 2): its own family, rank 0; the record's client_uuid IS the media uuid. */
+    fun mediaMeta(m: MediaMetaCapture, fix: GeoFixEntity?, createdAt: String) = outbox(
+        RecordType.MEDIA_META, m.mediaUuid, m.mediaUuid, 0, m.meta.copy(routeId = null, actingForUserId = null), createdAt,
+        MediaMetaPayload.serializer(),
+        MediaMetaPayload(
+            m.purpose, m.refType, m.refClientUuid, m.sha256, m.phash, m.bytes, m.width, m.height, "image/jpeg", m.blobPath, m.takenAt,
+            fix?.let(::fix),
+        ),
     )
 
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */

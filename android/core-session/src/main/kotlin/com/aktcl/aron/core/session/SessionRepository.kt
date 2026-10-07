@@ -266,6 +266,18 @@ class SessionRepository(
         }
     }
 
+    /**
+     * After a TSO wipe (F-SYS-022, android-sys LogoutFlow): drops [userId]'s tokens (upload grant included), profile and
+     * offline verifier, so the phone keeps nothing that could sign that user in or upload as them. Local only; the
+     * session was already ended by [logout].
+     */
+    suspend fun forgetUser(userId: Long) {
+        loginMutex.withLock {
+            withContext(dispatchers.io) { store.forget(userId) }
+            if ((_state.value as? SessionState.Active)?.user?.userId == userId) _state.value = SessionState.LoggedOut
+        }
+    }
+
     // ---- AccessTokenSource: used by every authenticated call of core-network ----
 
     override fun currentAccessToken(grant: Grant): String? {
