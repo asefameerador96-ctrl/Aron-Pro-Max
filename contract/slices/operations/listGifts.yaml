@@ -1,0 +1,26 @@
+path: /v1/admin/gifts
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: listGifts
+  summary: Gift catalogue (points cost for Diamond League, tier for Astha, cash-back line).
+  parameters:
+  - name: programme_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+    description: One programme.
+  - $ref: '#/components/parameters/StatusQuery'
+  responses:
+    '200':
+      description: Gifts.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GiftList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

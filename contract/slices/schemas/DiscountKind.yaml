@@ -1,0 +1,8 @@
+DiscountKind:
+  type: string
+  enum:
+  - offer
+  - drp
+  - free_goods
+  description: offer = auto-applied promotion discount; drp = slide (empty-pack) deduction; free_goods = value of
+    a free line.

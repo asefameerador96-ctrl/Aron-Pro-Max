@@ -1,0 +1,16 @@
+PlayIntegrityEvidence:
+  type: object
+  required:
+  - token
+  - nonce
+  additionalProperties: false
+  properties:
+    token:
+      type: string
+      maxLength: 20000
+      description: Encrypted Play Integrity token; decoded on the server only.
+    nonce:
+      type: string
+      minLength: 43
+      maxLength: 64
+      pattern: ^[A-Za-z0-9_-]+$

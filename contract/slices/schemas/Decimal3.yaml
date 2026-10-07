@@ -1,0 +1,6 @@
+Decimal3:
+  type: string
+  pattern: ^-?\d{1,13}(\.\d{1,3})?$
+  description: Exact decimal with up to 3 fraction digits, as a string (targets, report factors).
+  examples:
+  - '88235.294'

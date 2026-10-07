@@ -1,0 +1,26 @@
+path: /v1/health
+method: get
+operation:
+  tags:
+  - health
+  operationId: getHealth
+  summary: Liveness and phone connectivity validation.
+  description: Unauthenticated, cheap, never touches PostgreSQL. The phone uses HEAD with a 3 s timeout to validate
+    connectivity (docs/24 s4.7 T3).
+  security: []
+  responses:
+    '200':
+      description: The API process is alive.
+      headers:
+        X-Aron-Api:
+          $ref: '#/components/headers/XAronApi'
+        X-Server-Time:
+          $ref: '#/components/headers/XServerTime'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Health'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

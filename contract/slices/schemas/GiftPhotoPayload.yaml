@@ -1,0 +1,44 @@
+GiftPhotoPayload:
+  type: object
+  description: 'Hand-over photo of a gift: an Astha gift assignment (one photo per assignment, cfg.astha.one_photo_per_outlet)
+
+    or one redeemed campaign gift (Gift Verify). The first accepted photo locks the Astha choice.
+
+    '
+  required:
+  - programme_kind
+  - outlet_id
+  - gift_id
+  - photo_uuid
+  - fix
+  additionalProperties: false
+  properties:
+    programme_kind:
+      $ref: '#/components/schemas/ProgrammeKind'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    gift_id:
+      $ref: '#/components/schemas/Id'
+    gift_assignment_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Set for Astha.
+    redemption_client_uuid:
+      description: Set for a campaign Gift Verify photo.
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    unit_no:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 50
+      description: Which unit of a redeemed line (one slot per redeemed gift).
+    photo_uuid:
+      $ref: '#/components/schemas/Uuid'
+    fix:
+      $ref: '#/components/schemas/GeoFix'

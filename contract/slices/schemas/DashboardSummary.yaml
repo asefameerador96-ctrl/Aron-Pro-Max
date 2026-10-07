@@ -1,0 +1,58 @@
+DashboardSummary:
+  type: object
+  required:
+  - as_of
+  - from
+  - to
+  - node
+  - kpis
+  - by_category
+  - children
+  description: Dashboard of a node; `by_channel`, `by_segment` and `by_brand` feed the TSO cards (By Channel STD,
+    By Segment Value Contribution, By Brand Call/Memo Ratio).
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    from:
+      $ref: '#/components/schemas/BusinessDate'
+    to:
+      $ref: '#/components/schemas/BusinessDate'
+    node:
+      $ref: '#/components/schemas/NodeRef'
+    kpis:
+      $ref: '#/components/schemas/DashboardKpis'
+    by_category:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/CategoryVolume'
+    by_channel:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/ChannelVolume'
+    by_segment:
+      type: array
+      maxItems: 50
+      items:
+        $ref: '#/components/schemas/ChannelVolume'
+    by_brand:
+      type: array
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/ChannelVolume'
+    children:
+      type: array
+      maxItems: 2000
+      items:
+        type: object
+        required:
+        - node
+        - kpis
+        additionalProperties: false
+        properties:
+          node:
+            $ref: '#/components/schemas/NodeRef'
+          kpis:
+            $ref: '#/components/schemas/DashboardKpis'

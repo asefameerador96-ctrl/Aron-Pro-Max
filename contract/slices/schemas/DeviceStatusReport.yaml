@@ -1,0 +1,162 @@
+DeviceStatusReport:
+  type: object
+  description: Phone status (docs/24 s10.3). Sent by POST /v1/devices/me/status and as the `device_status` record
+    payload.
+  required:
+  - reported_at
+  - app_version
+  - device_info
+  - device_owner
+  - lockdown_level_applied
+  - policy_version_applied
+  - blocking_active
+  - location_enabled
+  - dev_options_enabled
+  - adb_enabled
+  - auto_time_enabled
+  - mock_location_apps
+  - pending_rows
+  - battery_pct
+  additionalProperties: false
+  properties:
+    reported_at:
+      $ref: '#/components/schemas/Timestamp'
+    trigger:
+      type: string
+      enum:
+      - enrolment
+      - policy_applied
+      - check_in
+      - check_out
+      - boot
+      - integrity_change
+      - app_update
+      - periodic
+      - directive
+    app_version:
+      $ref: '#/components/schemas/AppVersionString'
+    device_info:
+      $ref: '#/components/schemas/DeviceInfo'
+    device_owner:
+      type: boolean
+    lockdown_level_applied:
+      $ref: '#/components/schemas/LockdownLevel'
+    policy_version_applied:
+      oneOf:
+      - $ref: '#/components/schemas/ConfigVersionNumber'
+      - type: 'null'
+    policy_apply_errors:
+      type: array
+      maxItems: 30
+      items:
+        type: object
+        required:
+        - item
+        - error
+        additionalProperties: false
+        properties:
+          item:
+            type: string
+            maxLength: 80
+          error:
+            type: string
+            maxLength: 200
+    restrictions_applied:
+      type: object
+      additionalProperties:
+        type: boolean
+    blocking_active:
+      type: boolean
+    blocking_since:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    suspended_packages:
+      type: array
+      maxItems: 300
+      items:
+        $ref: '#/components/schemas/PackageName'
+    permissions:
+      type: object
+      description: Permission name to state.
+      additionalProperties:
+        type: string
+        enum:
+        - granted
+        - denied
+        - granted_pinned
+        - denied_pinned
+    battery_optimisation_ignored:
+      type:
+      - boolean
+      - 'null'
+    user_control_disabled:
+      type:
+      - boolean
+      - 'null'
+    location_enabled:
+      type: boolean
+    location_mode:
+      type: string
+      enum:
+      - high_accuracy
+      - battery_saving
+      - device_only
+      - 'off'
+      - unknown
+    dev_options_enabled:
+      type: boolean
+    adb_enabled:
+      type: boolean
+    auto_time_enabled:
+      type: boolean
+    time_zone:
+      type: string
+      maxLength: 40
+      examples:
+      - Asia/Dhaka
+    mock_location_apps:
+      type: array
+      maxItems: 50
+      description: Installed packages that request ACCESS_MOCK_LOCATION or are selected as the mock-location app.
+      items:
+        $ref: '#/components/schemas/PackageName'
+    play_services_version:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    play_integrity:
+      oneOf:
+      - $ref: '#/components/schemas/PlayIntegrityEvidence'
+      - type: 'null'
+    pending_rows:
+      type: integer
+      minimum: 0
+    pending_media:
+      type: integer
+      minimum: 0
+    last_sync_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    battery_pct:
+      type: integer
+      minimum: 0
+      maximum: 100
+    charging:
+      type: boolean
+    free_storage_mb:
+      type: integer
+      minimum: 0
+    printer:
+      type:
+      - object
+      - 'null'
+      additionalProperties: false
+      properties:
+        bonded_name:
+          type: string
+          maxLength: 60
+        mac_sha256:
+          $ref: '#/components/schemas/Sha256Hex'

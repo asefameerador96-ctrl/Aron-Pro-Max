@@ -1,0 +1,31 @@
+path: /v1/dashboards/targets
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getTargetAchievement
+  summary: Monthly target and achievement (till-date basis per surface) for a node.
+  parameters:
+  - name: month
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Month'
+  - $ref: '#/components/parameters/GeoLevelQuery'
+  - $ref: '#/components/parameters/NodeIdQuery'
+  - name: product_level
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/ProductLevel'
+  responses:
+    '200':
+      description: Target rows.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetAchievement'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

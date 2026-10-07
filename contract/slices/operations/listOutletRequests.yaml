@@ -1,0 +1,35 @@
+path: /v1/outlet-requests
+method: get
+operation:
+  tags:
+  - outlet-requests
+  operationId: listOutletRequests
+  summary: Outlet change requests in the caller's reach (web Outlet Approval Panel, AMO verification list).
+  parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/OutletRequestStatus'
+  - name: request_type
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/OutletRequestType'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/TerritoryIdQuery'
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of requests.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OutletRequestPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

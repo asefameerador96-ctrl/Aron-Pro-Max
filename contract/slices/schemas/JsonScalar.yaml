@@ -1,0 +1,8 @@
+JsonScalar:
+  description: A JSON scalar (strings at most 2000 characters).
+  type:
+  - string
+  - number
+  - boolean
+  - 'null'
+  maxLength: 2000

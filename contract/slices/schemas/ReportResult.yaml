@@ -1,0 +1,42 @@
+ReportResult:
+  type: object
+  required:
+  - report_key
+  - as_of
+  - columns
+  - rows
+  - page
+  - page_size
+  - total_rows
+  additionalProperties: false
+  properties:
+    report_key:
+      $ref: '#/components/schemas/ReportKey'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    columns:
+      type: array
+      items:
+        $ref: '#/components/schemas/ReportColumn'
+    rows:
+      type: array
+      maxItems: 500
+      items:
+        type: object
+        additionalProperties:
+          $ref: '#/components/schemas/JsonScalar'
+    totals:
+      type:
+      - object
+      - 'null'
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    page:
+      type: integer
+      minimum: 1
+    page_size:
+      type: integer
+      minimum: 1
+    total_rows:
+      type: integer
+      minimum: 0

@@ -1,0 +1,11 @@
+SupervisorTargetList:
+  type: object
+  required:
+  - items
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      maxItems: 5000
+      items:
+        $ref: '#/components/schemas/SupervisorTarget'

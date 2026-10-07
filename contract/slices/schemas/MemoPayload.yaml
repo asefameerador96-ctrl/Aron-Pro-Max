@@ -1,0 +1,115 @@
+MemoPayload:
+  type: object
+  description: 'Memo header committed with its lines, discount lines and QC lines in one phone transaction. Server-checked
+
+    arithmetic (reject `arithmetic_mismatch`): gross = sum(line.gross_mtk); offer_discount = sum(discount where
+    kind
+
+    in offer, free_goods); drp_discount = sum(discount where kind = drp); qc_deduction = sum(qc_line.settlement_mtk
+
+    where applied_to_memo); net = gross - offer - drp - qc + round_adj; net is a whole paisa (net % 10 = 0) and
+
+    |round_adj| <= 5; paid + due = net; is_credit = due > 0 (docs/24 s7.4).
+
+    '
+  required:
+  - visit_client_uuid
+  - outlet_id
+  - memo_no
+  - memo_kind
+  - committed_at
+  - price_list_date
+  - price_type
+  - gross_mtk
+  - offer_discount_mtk
+  - drp_discount_mtk
+  - qc_deduction_mtk
+  - round_adj_mtk
+  - net_mtk
+  - paid_mtk
+  - due_mtk
+  - is_credit
+  - line_count
+  - discount_line_count
+  - qc_line_count
+  - rounding_mode
+  additionalProperties: false
+  properties:
+    visit_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    memo_no:
+      $ref: '#/components/schemas/MemoNo'
+    memo_kind:
+      type: string
+      enum:
+      - sale
+      - zero_sale
+    committed_at:
+      $ref: '#/components/schemas/Timestamp'
+    price_list_date:
+      $ref: '#/components/schemas/BusinessDate'
+    price_type:
+      $ref: '#/components/schemas/SellingPriceType'
+    gross_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    offer_discount_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    drp_discount_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    qc_deduction_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    round_adj_mtk:
+      type: integer
+      minimum: -5
+      maximum: 5
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'
+    paid_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    due_mtk:
+      $ref: '#/components/schemas/Mtk'
+    is_credit:
+      type: boolean
+    outstanding_before_mtk:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      description: Outlet balance printed on the memo (from the bundle plus local collections).
+    line_count:
+      type: integer
+      minimum: 0
+      maximum: 60
+    discount_line_count:
+      type: integer
+      minimum: 0
+      maximum: 120
+    qc_line_count:
+      type: integer
+      minimum: 0
+      maximum: 60
+    supersedes_client_uuid:
+      description: Set on an edited memo (new number; the old memo becomes superseded on the server).
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    edit_reason_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    edit_fix:
+      oneOf:
+      - $ref: '#/components/schemas/GeoFix'
+      - type: 'null'
+    offer_version_ids:
+      type: array
+      maxItems: 30
+      items:
+        $ref: '#/components/schemas/Id'
+    rounding_mode:
+      type: string
+      enum:
+      - half_up_paisa

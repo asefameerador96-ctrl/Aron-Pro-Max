@@ -1,0 +1,67 @@
+path: /v1/reports/{report_key}/query
+method: post
+operation:
+  tags:
+  - reports
+  operationId: runReport
+  summary: Run a report with one ReportQuery object; json inline, xlsx inline up to the row limit or as an export
+    job.
+  description: '`output.format = json` returns 200 `ReportResult`; `print` returns 200 `text/html` (server-rendered
+    print view,
+
+    logged as an export); `pdf` always returns 202 with an `ExportJob`. `xlsx` returns 200 with the workbook when
+    the row count
+
+    is at most `cfg.ops.report_sync_max_rows` (10,000), else 202 with an `ExportJob`. Above
+
+    `cfg.ops.report_export_max_rows` the query is refused (413 `ERR_REPORT_TOO_LARGE`). Every export is logged
+
+    with a watermark; formula-leading cells are sanitised.
+
+    '
+  parameters:
+  - name: report_key
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/ReportKey'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ReportQuery'
+  responses:
+    '200':
+      description: Result rows (json) or the workbook (xlsx).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReportResult'
+        application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+          schema:
+            type: string
+            contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        text/html:
+          schema:
+            type: string
+            contentMediaType: text/html
+            description: Print view (output.format = print).
+    '202':
+      description: Export job queued.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExportJob'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '413':
+      $ref: '#/components/responses/PayloadTooLarge'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

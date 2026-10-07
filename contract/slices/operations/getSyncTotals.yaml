@@ -1,0 +1,20 @@
+path: /v1/sync/totals
+method: get
+operation:
+  tags:
+  - sync
+  operationId: getSyncTotals
+  summary: Server totals for the caller and a business date (the Server column of Sales Submit).
+  parameters:
+  - $ref: '#/components/parameters/BusinessDateQueryRequired'
+  responses:
+    '200':
+      description: Per-type counts, money totals and route-day states.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SyncTotalsResponse'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

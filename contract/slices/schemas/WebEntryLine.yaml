@@ -1,0 +1,38 @@
+WebEntryLine:
+  type: object
+  required:
+  - sku_id
+  - issue_qty_base
+  - return_qty_base
+  - memo_count
+  additionalProperties: false
+  properties:
+    sku_id:
+      $ref: '#/components/schemas/Id'
+    issue_qty_base:
+      type: integer
+      minimum: 0
+      maximum: 10000000
+    return_qty_base:
+      type: integer
+      minimum: 0
+      maximum: 10000000
+    memo_count:
+      type: integer
+      minimum: 0
+      maximum: 100000
+    sale_qty_base:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: 'Read-only: issue minus return (server-computed).'
+    class_qty_base:
+      type: object
+      description: Sale split by web-entry class (cfg.web.entry_classes), sub-channel id to quantity.
+      propertyNames:
+        type: string
+        pattern: ^[1-9][0-9]{0,17}$
+      additionalProperties:
+        type: integer
+        minimum: 0

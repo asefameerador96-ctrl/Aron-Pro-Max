@@ -1,0 +1,6 @@
+DeltaCursor:
+  type: string
+  minLength: 8
+  maxLength: 256
+  pattern: ^[A-Za-z0-9_-]+$
+  description: Opaque delta cursor (encodes the business date, the snapshot and the max updated_at per section).

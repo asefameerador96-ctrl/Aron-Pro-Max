@@ -1,0 +1,25 @@
+Cluster:
+  allOf:
+  - $ref: '#/components/schemas/MasterAudit'
+  - type: object
+    required:
+    - id
+    - zone_id
+    - name
+    - status
+    properties:
+      id:
+        $ref: '#/components/schemas/Id'
+      zone_id:
+        $ref: '#/components/schemas/Id'
+      name:
+        type: string
+        maxLength: 120
+      cluster_type:
+        type:
+        - string
+        - 'null'
+        maxLength: 60
+      status:
+        $ref: '#/components/schemas/ActiveStatus'
+  unevaluatedProperties: false

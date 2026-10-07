@@ -1,0 +1,136 @@
+OutletRequest:
+  type: object
+  required:
+  - request_uuid
+  - request_type
+  - status
+  - proposed
+  - requested_by_user_id
+  - requested_at
+  - photos
+  - events
+  additionalProperties: false
+  properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
+    request_type:
+      $ref: '#/components/schemas/OutletRequestType'
+    status:
+      $ref: '#/components/schemas/OutletRequestStatus'
+    outlet_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    proposed:
+      $ref: '#/components/schemas/OutletProposal'
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    cluster_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    requested_by_user_id:
+      $ref: '#/components/schemas/Id'
+    requested_at:
+      $ref: '#/components/schemas/Timestamp'
+    request_fix:
+      oneOf:
+      - $ref: '#/components/schemas/GeoFix'
+      - type: 'null'
+    moved_m:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+    requires_tso:
+      type: boolean
+    flags:
+      type: array
+      items:
+        type: string
+        enum:
+        - remote_verification
+        - moved_to_home
+        - low_accuracy
+        - mocked_fix
+    photos:
+      type: array
+      maxItems: 6
+      items:
+        $ref: '#/components/schemas/Uuid'
+    verified_by_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    verified_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    verified_via:
+      type:
+      - string
+      - 'null'
+      enum:
+      - app
+      - web
+      - null
+    approved_by_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    approved_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    rejection_reason:
+      type:
+      - string
+      - 'null'
+      maxLength: 500
+    resulting_outlet_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    events:
+      type: array
+      maxItems: 50
+      items:
+        type: object
+        required:
+        - event
+        - actor_user_id
+        - at
+        additionalProperties: false
+        properties:
+          event:
+            type: string
+            enum:
+            - requested
+            - verified
+            - discarded
+            - rejected
+            - approved
+            - lapsed
+          actor_user_id:
+            $ref: '#/components/schemas/Id'
+          at:
+            $ref: '#/components/schemas/Timestamp'
+          note:
+            type:
+            - string
+            - 'null'
+            maxLength: 500

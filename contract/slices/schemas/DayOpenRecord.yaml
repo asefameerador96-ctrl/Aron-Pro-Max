@@ -1,0 +1,13 @@
+DayOpenRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: day_open
+      payload:
+        $ref: '#/components/schemas/DayOpenPayload'
+  unevaluatedProperties: false

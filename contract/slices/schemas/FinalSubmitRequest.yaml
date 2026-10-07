@@ -1,0 +1,14 @@
+FinalSubmitRequest:
+  type: object
+  required:
+  - client_uuid
+  - zone_id
+  - business_date
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'

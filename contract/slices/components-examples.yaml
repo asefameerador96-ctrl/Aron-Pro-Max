@@ -1,0 +1,862 @@
+examples:
+  SyncBatchRequestExample:
+    summary: One visit family (visit, memo, two lines, one discount line, visit close) sent after an offline sale
+    value:
+      batch_uuid: 0b5c1d2e-3f40-4a51-8b62-7c83d94ea5f6
+      device_uuid: 7d1e2f30-4152-4637-9849-5a6b7c8d9e0f
+      schema_version: 1
+      app_version: 1.0.3+103
+      trigger: write_debounce
+      sent_at_device: '2026-10-05T04:43:15.300Z'
+      pending_rows: 0
+      time_anchors:
+      - boot_count: 412
+        server_time: '2026-10-05T02:12:44.120Z'
+        elapsed_ms: 9340211
+      device_counts:
+        '2026-10-05':
+          attendance_event: 1
+          stock_movement: 4
+          visit: 7
+          visit_close: 7
+          memo: 6
+          memo_line: 11
+          memo_discount: 2
+      telemetry: null
+      records:
+      - type: visit
+        client_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+        family_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+        rank: 0
+        schema_version: 1
+        business_date: '2026-10-05'
+        captured_at: '2026-10-05T04:41:00.120Z'
+        captured_elapsed_ms: 18330000
+        boot_count: 412
+        clock_offset_ms: -1840
+        captured_offline: true
+        route_id: 10231
+        acting_for_user_id: null
+        bundle_version: 2026-10-05:3
+        bundle_stale: false
+        config_version: 318
+        sig: a6PgGZQxdux0JD0394RST1Bn-7rn8W9rNGnjBUPNoIJ3hUfaMuAGb6h0PiiFO2BZSNc7t_U4GC6LQ6gjF9rD5g
+        payload:
+          visit_kind: sr_call
+          outlet_id: 4417
+          opened_at: '2026-10-05T04:41:00.120Z'
+          sequence_no: 7
+          planned: true
+          assessed_user_id: null
+          fix:
+            purpose: visit_open
+            fix_status: ok
+            lat: 23.792512
+            lng: 90.407834
+            accuracy_m: 12.0
+            altitude_m: 21.5
+            vertical_accuracy_m: 6.0
+            speed_mps: 0.0
+            bearing_deg: null
+            provider: fused
+            fix_time: '2026-10-05T04:40:58.000Z'
+            fix_elapsed_realtime_ms: 18329000
+            fix_age_ms: 1000
+            time_to_fix_ms: 4200
+            request_priority: high_accuracy
+            is_mock: false
+            reused: false
+            refresh_count: 0
+            gnss:
+              window_ms: 4200
+              satellites_visible: 22
+              satellites_used: 14
+              constellations_used:
+              - GPS
+              - GALILEO
+              - BEIDOU
+              cn0_used_mean_dbhz: 31.4
+              cn0_used_max_dbhz: 41.0
+              cn0_used_stddev_dbhz: 5.2
+              cn0_all_mean_dbhz: 27.9
+              ephemeris_share: 0.93
+              raw_supported: true
+              raw_measurement_count: null
+              agc_db_mean: null
+            radio: null
+            device:
+              device_owner: true
+              dev_options_enabled: false
+              adb_enabled: false
+              auto_time_enabled: true
+              mock_app_present: false
+              integrity_ref: a0b1c2d3-e4f5-4a06-9b17-c28d39e4a5b6
+          geo:
+            verdict: in_range
+            distance_m: 38.4
+            radius_m_used: 100
+            max_accuracy_m_used: 100
+            location_basis: master
+            outlet_lat: 23.792221
+            outlet_lng: 90.407715
+            action: sale_allowed
+            force_reason_code: null
+            force_photo_uuid: null
+      - type: memo
+        client_uuid: 2b3c4d5e-6f70-4b12-9c23-4d5e6f7a8b91
+        family_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+        rank: 1
+        schema_version: 1
+        business_date: '2026-10-05'
+        captured_at: '2026-10-05T04:41:00.120Z'
+        captured_elapsed_ms: 18450000
+        boot_count: 412
+        clock_offset_ms: -1840
+        captured_offline: true
+        route_id: 10231
+        acting_for_user_id: null
+        bundle_version: 2026-10-05:3
+        bundle_stale: false
+        config_version: 318
+        sig: NNY04RCe9r9xGUpCGt0HSu3IJcAgC1ZGE3bJP3k9xYfF4GKMSrDXXMENiV2BSSxYKNAqy4faakKsPezI2l0VGA
+        payload:
+          visit_client_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+          outlet_id: 4417
+          memo_no: sr334001-261005-007
+          memo_kind: sale
+          committed_at: '2026-10-05T04:43:00.120Z'
+          price_list_date: '2026-10-05'
+          price_type: outlet
+          gross_mtk: 368500
+          offer_discount_mtk: 25000
+          drp_discount_mtk: 0
+          qc_deduction_mtk: 0
+          round_adj_mtk: 0
+          net_mtk: 343500
+          paid_mtk: 343500
+          due_mtk: 0
+          is_credit: false
+          outstanding_before_mtk: 0
+          line_count: 2
+          discount_line_count: 1
+          qc_line_count: 0
+          supersedes_client_uuid: null
+          edit_reason_code: null
+          edit_fix: null
+          offer_version_ids:
+          - 41
+          rounding_mode: half_up_paisa
+      - type: memo_line
+        client_uuid: 3c4d5e6f-7081-4c23-ad34-5e6f7a8b9ca2
+        family_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+        rank: 2
+        schema_version: 1
+        business_date: '2026-10-05'
+        captured_at: '2026-10-05T04:41:01.120Z'
+        captured_elapsed_ms: 18451000
+        boot_count: 412
+        clock_offset_ms: -1840
+        captured_offline: true
+        route_id: 10231
+        acting_for_user_id: null
+        bundle_version: 2026-10-05:3
+        bundle_stale: false
+        config_version: 318
+        sig: null
+        payload:
+          memo_client_uuid: 2b3c4d5e-6f70-4b12-9c23-4d5e6f7a8b91
+          line_no: 1
+          sku_id: 41
+          line_kind: sale
+          qty_entered: 25
+          unit_entered: piece
+          pack_factor: 1
+          qty_base: 25
+          price_type: outlet
+          price_valid_from: '2026-09-01'
+          base_price_mtk: 12500
+          price_per_qty: 1
+          gross_mtk: 312500
+          offer_id: 12
+      - type: memo_line
+        client_uuid: 4d5e6f70-8192-4d34-be45-6f7a8b9cadb3
+        family_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+        rank: 2
+        schema_version: 1
+        business_date: '2026-10-05'
+        captured_at: '2026-10-05T04:41:02.120Z'
+        captured_elapsed_ms: 18452000
+        boot_count: 412
+        clock_offset_ms: -1840
+        captured_offline: true
+        route_id: 10231
+        acting_for_user_id: null
+        bundle_version: 2026-10-05:3
+        bundle_stale: false
+        config_version: 318
+        sig: null
+        payload:
+          memo_client_uuid: 2b3c4d5e-6f70-4b12-9c23-4d5e6f7a8b91
+          line_no: 2
+          sku_id: 43
+          line_kind: sale
+          qty_entered: 2
+          unit_entered: dozen
+          pack_factor: 1
+          qty_base: 2
+          price_type: outlet
+          price_valid_from: '2026-09-01'
+          base_price_mtk: 28000
+          price_per_qty: 1
+          gross_mtk: 56000
+          offer_id: null
+      - type: memo_discount
+        client_uuid: 5e6f7081-92a3-4e45-8f56-7a8b9cadbec4
+        family_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+        rank: 2
+        schema_version: 1
+        business_date: '2026-10-05'
+        captured_at: '2026-10-05T04:41:03.120Z'
+        captured_elapsed_ms: 18453000
+        boot_count: 412
+        clock_offset_ms: -1840
+        captured_offline: true
+        route_id: 10231
+        acting_for_user_id: null
+        bundle_version: 2026-10-05:3
+        bundle_stale: false
+        config_version: 318
+        sig: null
+        payload:
+          memo_client_uuid: 2b3c4d5e-6f70-4b12-9c23-4d5e6f7a8b91
+          kind: offer
+          sku_id: 41
+          qty_base: 2
+          value_mtk: 25000
+          offer_id: 12
+          offer_version_id: 41
+          basis_qty_base: null
+          line_no: 1
+      - type: visit_close
+        client_uuid: 6f708192-a3b4-4f56-9067-8b9cadbecfd5
+        family_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+        rank: 1
+        schema_version: 1
+        business_date: '2026-10-05'
+        captured_at: '2026-10-05T04:41:04.120Z'
+        captured_elapsed_ms: 18454000
+        boot_count: 412
+        clock_offset_ms: -1840
+        captured_offline: true
+        route_id: 10231
+        acting_for_user_id: null
+        bundle_version: 2026-10-05:3
+        bundle_stale: false
+        config_version: 318
+        sig: null
+        payload:
+          visit_client_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+          outcome_code: sold
+          call_started_at: '2026-10-05T04:41:05.000Z'
+          call_declined: false
+          ended_at: '2026-10-05T04:43:10.000Z'
+          is_zero_sale: false
+  SyncBatchResponseExample:
+    summary: Every record acknowledged; the visit had already arrived alone (valve release)
+    value:
+      batch_uuid: 0b5c1d2e-3f40-4a51-8b62-7c83d94ea5f6
+      replayed: false
+      received_at: '2026-10-05T04:43:16.020Z'
+      acks:
+      - client_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+        type: visit
+        status: duplicate
+        code: null
+        retryable: null
+        message_key: null
+        server_id: 900000
+      - client_uuid: 2b3c4d5e-6f70-4b12-9c23-4d5e6f7a8b91
+        type: memo
+        status: accepted
+        code: null
+        retryable: null
+        message_key: null
+        server_id: 900001
+      - client_uuid: 3c4d5e6f-7081-4c23-ad34-5e6f7a8b9ca2
+        type: memo_line
+        status: accepted
+        code: null
+        retryable: null
+        message_key: null
+        server_id: 900002
+      - client_uuid: 4d5e6f70-8192-4d34-be45-6f7a8b9cadb3
+        type: memo_line
+        status: accepted
+        code: null
+        retryable: null
+        message_key: null
+        server_id: 900003
+      - client_uuid: 5e6f7081-92a3-4e45-8f56-7a8b9cadbec4
+        type: memo_discount
+        status: accepted
+        code: null
+        retryable: null
+        message_key: null
+        server_id: 900004
+      - client_uuid: 6f708192-a3b4-4f56-9067-8b9cadbecfd5
+        type: visit_close
+        status: accepted
+        code: null
+        retryable: null
+        message_key: null
+        server_id: 900005
+      summary:
+        accepted: 5
+        duplicate: 1
+        rejected: 0
+        quarantined: 0
+      server_totals:
+      - business_date: '2026-10-05'
+        as_of: '2026-10-05T04:43:16.020Z'
+        by_type:
+          attendance_event:
+            accepted: 1
+            rejected: 0
+            quarantined: 0
+          stock_movement:
+            accepted: 4
+            rejected: 0
+            quarantined: 0
+          visit:
+            accepted: 7
+            rejected: 0
+            quarantined: 0
+          visit_close:
+            accepted: 7
+            rejected: 0
+            quarantined: 0
+          memo:
+            accepted: 6
+            rejected: 0
+            quarantined: 0
+          memo_line:
+            accepted: 11
+            rejected: 0
+            quarantined: 0
+          memo_discount:
+            accepted: 2
+            rejected: 0
+            quarantined: 0
+        money:
+          active_memo_count: 6
+          gross_mtk: 1268500
+          offer_discount_mtk: 50000
+          drp_discount_mtk: 0
+          qc_deduction_mtk: 0
+          net_mtk: 1218500
+          paid_mtk: 1218500
+          due_mtk: 0
+          due_collected_mtk: 0
+          net_by_category_mtk:
+            lighter: 1040000
+            match: 178500
+          issued_qty_base_by_sku:
+            '41': 400
+            '43': 200
+          sold_qty_base_by_sku:
+            '41': 80
+            '43': 6
+      day_states:
+      - &id002
+        route_id: 10231
+        business_date: '2026-10-05'
+        state: synced
+        planned: true
+        submit_cycle: 1
+        submit_voided: false
+        submit_count_mismatch: null
+        logged_in_at: '2026-10-05T02:12:44.120Z'
+        sales_submitted_at: null
+        final_submitted_at: null
+        rows_awaited: null
+        route_code: R-334-01
+        route_name: Banani RouteDaily
+        assigned_user_id: 1001
+        acting_user_id: null
+      supervisor_day: null
+      resolutions: []
+      hold_s: 0
+      config_version: 318
+      bundle_version_current: 2026-10-05:3
+      generation: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8091a2b3
+      directives: []
+  SyncBatchResponseRejectExample:
+    summary: A rejected line (unknown SKU) and a quarantined close (business date out of window)
+    value:
+      acks:
+      - client_uuid: 1a2b3c4d-5e6f-4a01-8b12-3c4d5e6f7a80
+        code: null
+        message_key: null
+        retryable: null
+        server_id: 900000
+        status: duplicate
+        type: visit
+      - client_uuid: 2b3c4d5e-6f70-4b12-9c23-4d5e6f7a8b91
+        code: null
+        message_key: null
+        retryable: null
+        server_id: 900001
+        status: accepted
+        type: memo
+      - client_uuid: 3c4d5e6f-7081-4c23-ad34-5e6f7a8b9ca2
+        type: memo_line
+        status: rejected
+        code: unknown_sku
+        retryable: false
+        message_key: sync.reject.unknown_sku
+        server_id: null
+      - client_uuid: 4d5e6f70-8192-4d34-be45-6f7a8b9cadb3
+        code: null
+        message_key: null
+        retryable: null
+        server_id: 900003
+        status: accepted
+        type: memo_line
+      - client_uuid: 5e6f7081-92a3-4e45-8f56-7a8b9cadbec4
+        code: null
+        message_key: null
+        retryable: null
+        server_id: 900004
+        status: accepted
+        type: memo_discount
+      - client_uuid: 6f708192-a3b4-4f56-9067-8b9cadbecfd5
+        type: visit_close
+        status: quarantined
+        code: business_date_out_of_window
+        retryable: null
+        message_key: sync.quarantine.business_date_out_of_window
+        server_id: null
+      batch_uuid: 0b5c1d2e-3f40-4a51-8b62-7c83d94ea5f6
+      bundle_version_current: 2026-10-05:3
+      config_version: 318
+      day_states:
+      - acting_user_id: null
+        assigned_user_id: 1001
+        business_date: '2026-10-05'
+        final_submitted_at: null
+        logged_in_at: '2026-10-05T02:12:44.120Z'
+        planned: true
+        route_code: R-334-01
+        route_id: 10231
+        route_name: Banani RouteDaily
+        rows_awaited: null
+        sales_submitted_at: null
+        state: synced
+        submit_count_mismatch: null
+        submit_cycle: 1
+        submit_voided: false
+      directives: []
+      generation: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8091a2b3
+      hold_s: 0
+      received_at: '2026-10-05T04:43:16.020Z'
+      replayed: false
+      resolutions: []
+      server_totals:
+      - as_of: '2026-10-05T04:43:16.020Z'
+        business_date: '2026-10-05'
+        by_type:
+          attendance_event:
+            accepted: 1
+            quarantined: 0
+            rejected: 0
+          memo:
+            accepted: 6
+            quarantined: 0
+            rejected: 0
+          memo_discount:
+            accepted: 2
+            quarantined: 0
+            rejected: 0
+          memo_line:
+            accepted: 11
+            quarantined: 0
+            rejected: 0
+          stock_movement:
+            accepted: 4
+            quarantined: 0
+            rejected: 0
+          visit:
+            accepted: 7
+            quarantined: 0
+            rejected: 0
+          visit_close:
+            accepted: 7
+            quarantined: 0
+            rejected: 0
+        money:
+          active_memo_count: 6
+          drp_discount_mtk: 0
+          due_collected_mtk: 0
+          due_mtk: 0
+          gross_mtk: 1268500
+          issued_qty_base_by_sku:
+            '41': 400
+            '43': 200
+          net_by_category_mtk:
+            lighter: 1040000
+            match: 178500
+          net_mtk: 1218500
+          offer_discount_mtk: 50000
+          paid_mtk: 1218500
+          qc_deduction_mtk: 0
+          sold_qty_base_by_sku:
+            '41': 80
+            '43': 6
+      summary:
+        accepted: 3
+        duplicate: 1
+        rejected: 1
+        quarantined: 1
+      supervisor_day: null
+  BundleSr:
+    summary: SR bundle, one daily route, one outlet shown
+    value:
+      meta:
+        bundle_version: 2026-10-05:3
+        valid_for_business_date: '2026-10-05'
+        generated_at: '2026-10-04T16:00:00.000Z'
+        server_time: '2026-10-05T02:12:44.120Z'
+        user_id: 1001
+        role: SR
+        config_version: 318
+        schema_version: 1
+        cursor: ZDoyMDI2LTEwLTA1O3M6MztvOjE3MjgxMDAwMDA
+        is_prefetch: false
+        paged_sections: []
+      user:
+        user_id: 1001
+        username: sr334001
+        full_name: Testing Banani
+        role: SR
+        designation: SR
+        locale: bn
+        bind_ordinal: 0
+        memo_seq_block_size: 500
+        zone_id: 5012
+        territory_id: 77
+      config:
+        config_version: 318
+        values:
+        - key: cfg.geo.radius_m
+          value: 100
+          scope_type: territory
+          scope_id: 77
+          effective_from: '2026-09-30T08:00:00.000Z'
+          effective_to: null
+          config_version: 300
+          requires_ack: true
+          bounds:
+            min: 20
+            max: 2000
+            enum: []
+            max_items: null
+            dynamic_min: null
+            dynamic_max: null
+        - key: cfg.day.checkout_earliest_time
+          value: '17:00'
+          scope_type: default
+          scope_id: null
+          effective_from: null
+          effective_to: null
+          config_version: null
+          requires_ack: true
+          bounds: null
+        scheduled: []
+      code_lists:
+      - list_key: force_reason
+        items:
+        - code: internet_problem
+          label_bn: ইন্টারনেট সমস্যা
+          label_en: Internet problem
+          sort: 1
+          attrs: {}
+          valid_from: '2025-01-01'
+          valid_to: null
+      products:
+        nodes:
+        - id: 4
+          level: category
+          parent_id: null
+          code: lighter
+          name: Lighter
+          name_bn: লাইটার
+          sort: 3
+        skus:
+        - id: 41
+          code: Aster
+          variant_id: 341
+          category_code: lighter
+          name: Aster
+          short_name: Aster
+          name_bn: null
+          base_unit: piece
+          base_per_pack: 1
+          entry_unit_default: piece
+          report_unit: null
+          report_factor: '1'
+          sort: 41
+          status: active
+          thumbnail_media_uuid: null
+          updated_at: '2026-09-01T00:00:00.000Z'
+          version: 1
+        - id: 43
+          code: FB
+          variant_id: 343
+          category_code: match
+          name: FB
+          short_name: FB
+          name_bn: null
+          base_unit: dozen
+          base_per_pack: 1
+          entry_unit_default: dozen
+          report_unit: null
+          report_factor: '1'
+          sort: 43
+          status: active
+          thumbnail_media_uuid: null
+          updated_at: '2026-09-01T00:00:00.000Z'
+          version: 1
+      prices:
+      - id: 5001
+        sku_id: 41
+        price_type: outlet
+        amount_mtk: 12500
+        per_base_qty: 1
+        valid_from: '2026-09-01'
+        valid_to: null
+      - id: 5002
+        sku_id: 43
+        price_type: outlet
+        amount_mtk: 28000
+        per_base_qty: 1
+        valid_from: '2026-09-01'
+        valid_to: null
+      offers: []
+      calendar:
+        weekend_days:
+        - 5
+        entries: []
+      templates: []
+      routes:
+      - route_id: 10231
+        route_snapshot_version: 9
+        route:
+          created_at: '2025-12-19T00:00:00.000Z'
+          updated_at: '2026-09-30T08:00:00.000Z'
+          version: 3
+          id: 10231
+          code: R-334-01
+          name: Banani
+          display_label: Daily
+          zone_id: 5012
+          kind: sr
+          visit_kind: daily
+          visit_days_mask: 127
+          sequence_no: 1
+          status: active
+        assignment_kind: primary
+        acting_for_user_id: null
+        planned_today: true
+        target_outlets: 60
+        outlets:
+        - outlet_id: 4417
+          route_id: 10231
+          code: '2689479'
+          name: Rifat Store
+          name_bn: রিফাত স্টোর
+          name_sort_key: rifat store
+          owner_name: Md. Rifat
+          contact_number: 01712345678
+          lat: 23.792221
+          lng: 90.407715
+          location_confirmed: true
+          provisional_lat: null
+          provisional_lng: null
+          cluster_id: 88
+          cluster_name: Banani Cluster
+          channel: GT
+          sub_channel_id: 1
+          geo_class: Urban
+          status: active
+          price_type: outlet
+          outlet_kind: retail
+          radius_m: 100
+          max_accuracy_m: 100
+          visit_sequence: 7
+          open_due_mtk: 0
+          open_due_as_of: '2026-10-04T16:00:00.000Z'
+          programme_flags: &id001
+          - promo_1
+          - astha
+          pending_request: false
+        open_memos: []
+        sales_plan_sku_ids:
+        - 41
+        - 43
+        targets: []
+        achievement_mtd: []
+        day_state:
+          route_id: 10231
+          business_date: '2026-10-05'
+          state: logged_in
+          planned: true
+          submit_cycle: 1
+          submit_voided: false
+          submit_count_mismatch: null
+          logged_in_at: '2026-10-05T02:12:44.120Z'
+          sales_submitted_at: null
+          final_submitted_at: null
+          rows_awaited: null
+          route_code: R-334-01
+          route_name: Banani RouteDaily
+          assigned_user_id: 1001
+          acting_user_id: null
+      tasks: []
+      surveys: []
+      rubrics: []
+      supervisor: null
+      reason_texts:
+        unknown_sku:
+          bn: এই পণ্যটি তালিকায় নেই; সুপারভাইজারকে জানান।
+          en: This product is not in the list; tell your supervisor.
+      device_policy_version: 318
+  DeltaExample:
+    summary: An outlet pin moved after an approved location request; one outlet closed
+    value:
+      meta:
+        bundle_version: 2026-10-05:4
+        base_cursor: ZDoyMDI2LTEwLTA1O3M6MztvOjE3MjgxMDAwMDA
+        cursor: ZDoyMDI2LTEwLTA1O3M6NDtvOjE3MjgxMDM2MDA
+        valid_for_business_date: '2026-10-05'
+        config_version: 319
+        server_time: '2026-10-05T06:00:00.000Z'
+      sections:
+        outlets:
+          upsert:
+          - outlet_id: 4417
+            route_id: 10231
+            code: '2689479'
+            name: Rifat Store
+            name_bn: রিফাত স্টোর
+            name_sort_key: rifat store
+            owner_name: Md. Rifat
+            contact_number: 01712345678
+            lat: 23.792301
+            lng: 90.407802
+            location_confirmed: true
+            provisional_lat: null
+            provisional_lng: null
+            cluster_id: 88
+            cluster_name: Banani Cluster
+            channel: GT
+            sub_channel_id: 1
+            geo_class: Urban
+            status: active
+            price_type: outlet
+            outlet_kind: retail
+            radius_m: 100
+            max_accuracy_m: 100
+            visit_sequence: 7
+            open_due_mtk: 0
+            open_due_as_of: '2026-10-04T16:00:00.000Z'
+            programme_flags: *id001
+            pending_request: false
+          delete:
+          - 4420
+      code_lists: []
+      templates: []
+      routes_added: []
+      routes_removed: []
+      day_states:
+      - *id002
+      resolutions: []
+  EnrolmentQrExample:
+    summary: SR production enrolment token with its QR payload
+    value:
+      token:
+        token_id: 77
+        token_prefix: q8Zt3k
+        flavour: sr
+        lockdown_level: prod
+        max_uses: 50
+        used_count: 0
+        zone_id: 5012
+        expires_at: '2026-10-06T12:00:00.000Z'
+        created_by: 2
+        created_at: '2026-10-05T06:00:00.000Z'
+        revoked_at: null
+        note: Banani pre-bind day
+      enrolment_token: q8Zt3kLw0pVb7Nn2Xc5Rr9Tt1Yy4Uu6Ii8Oo0Pp3Aa5S
+      qr_payload:
+        android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME: com.aktcl.aron.sr/com.aktcl.aron.dpc.AronDeviceAdminReceiver
+        android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION: https://downloads.aron-dev.invalid/apk/aron_sr_app_05_10_2026_v1.0.3.apk
+        android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM: zUIOs1dcQKaHAhqRSmdXlvIh7jwoSL95yL_cq44tKFc
+        android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED: true
+        android.app.extra.PROVISIONING_SKIP_ENCRYPTION: false
+        android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE:
+          aron.enrolment_token: q8Zt3kLw0pVb7Nn2Xc5Rr9Tt1Yy4Uu6Ii8Oo0Pp3Aa5S
+          aron.api_base_url: https://api.aron-dev.invalid
+          aron.env: dev
+          aron.flavour: sr
+          aron.lockdown_level: prod
+          aron.zone_code: Z-5012
+      qr_text: '{"android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME":"com.aktcl.aron.sr/com.aktcl.aron.dpc.AronDeviceAdminReceiver","android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION":"https://downloads.aron-dev.invalid/apk/aron_sr_app_05_10_2026_v1.0.3.apk","android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM":"zUIOs1dcQKaHAhqRSmdXlvIh7jwoSL95yL_cq44tKFc","android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED":true,"android.app.extra.PROVISIONING_SKIP_ENCRYPTION":false,"android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE":{"aron.enrolment_token":"q8Zt3kLw0pVb7Nn2Xc5Rr9Tt1Yy4Uu6Ii8Oo0Pp3Aa5S","aron.api_base_url":"https://api.aron-dev.invalid","aron.env":"dev","aron.flavour":"sr","aron.lockdown_level":"prod","aron.zone_code":"Z-5012"}}'
+  ProblemValidation:
+    summary: Validation error
+    value:
+      type: urn:aron:problem:err_validation
+      title: Request body is invalid
+      status: 400
+      code: ERR_VALIDATION
+      request_id: 9b0c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+      instance: /v1/sync/batch
+      detail: records[3].payload.qty_base is above the maximum
+      retryable: false
+      errors:
+      - pointer: /records/3/payload/qty_base
+        code: out_of_range
+        message: must be at most 10000000
+  ProblemScopeChanged:
+    summary: 'Scope version changed: refresh and retry once'
+    value:
+      type: urn:aron:problem:err_scope_changed
+      title: Scope changed
+      status: 401
+      code: ERR_SCOPE_CHANGED
+      request_id: 9b0c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+      instance: /v1/sync/bundle
+      retryable: true
+      server_time: '2026-10-05T02:12:44.120Z'
+      message_key: auth.session.scope_changed
+  ProblemBatchReuse:
+    summary: Same batch_uuid with a different record set
+    value:
+      type: urn:aron:problem:err_sync_batch_uuid_reused
+      title: batch_uuid reused with a different record set
+      status: 409
+      code: ERR_SYNC_BATCH_UUID_REUSED
+      request_id: 9b0c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+      instance: /v1/sync/batch
+      retryable: false
+      detail: Send the new record set under a new batch_uuid.
+  ProblemRateLimited:
+    summary: Rate limited
+    value:
+      type: urn:aron:problem:err_rate_limited
+      title: Too many requests
+      status: 429
+      code: ERR_RATE_LIMITED
+      request_id: 9b0c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+      instance: /v1/sync/batch
+      retryable: true
+      retry_after_s: 30

@@ -1,0 +1,9 @@
+OutletRequestType:
+  type: string
+  enum:
+  - new
+  - close
+  - info
+  - cluster
+  - location
+  - route_add

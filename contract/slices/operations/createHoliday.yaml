@@ -1,0 +1,28 @@
+path: /v1/admin/calendar/holidays
+method: post
+operation:
+  tags:
+  - admin-calendar
+  operationId: createHoliday
+  summary: Declare a holiday, make-up day or emergency off-day (an emergency declaration is effective now).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/HolidayWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Holiday'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

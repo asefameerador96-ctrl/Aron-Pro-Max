@@ -1,0 +1,22 @@
+path: /v1/admin/content
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: listContentItems
+  summary: AV and KV marketing content with per-outlet assignment and validity.
+  parameters:
+  - $ref: '#/components/parameters/StatusQuery'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of content items.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ContentAdminPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

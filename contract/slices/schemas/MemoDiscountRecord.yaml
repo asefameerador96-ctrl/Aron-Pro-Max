@@ -1,0 +1,13 @@
+MemoDiscountRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: memo_discount
+      payload:
+        $ref: '#/components/schemas/MemoDiscountPayload'
+  unevaluatedProperties: false

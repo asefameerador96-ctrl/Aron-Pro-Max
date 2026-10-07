@@ -1,0 +1,16 @@
+path: /v1/reports
+method: get
+operation:
+  tags:
+  - reports
+  operationId: listReports
+  summary: Reports the caller may run, with parameters, columns and formats.
+  responses:
+    '200':
+      description: Report registry entries visible to the caller's role.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReportDefinitionList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'

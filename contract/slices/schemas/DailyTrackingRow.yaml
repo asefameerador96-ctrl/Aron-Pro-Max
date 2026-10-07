@@ -1,0 +1,68 @@
+DailyTrackingRow:
+  type: object
+  required:
+  - route_id
+  - route_name
+  - zone_id
+  - state
+  - target_outlets
+  - visited_outlets
+  - successful_calls
+  - active_memo_count
+  - net_mtk
+  - bucket
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    route_name:
+      type: string
+      maxLength: 120
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    user_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    state:
+      $ref: '#/components/schemas/DayState'
+    target_outlets:
+      type: integer
+      minimum: 0
+    visited_outlets:
+      type: integer
+      minimum: 0
+    successful_calls:
+      type: integer
+      minimum: 0
+    active_memo_count:
+      type: integer
+      minimum: 0
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'
+    by_category:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/CategoryVolume'
+    tilldate_target_achievement_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+    bucket:
+      type: string
+      enum:
+      - ge_100
+      - from_90
+      - from_80
+      - below_80
+      - exception
+      - not_logged_in

@@ -1,0 +1,85 @@
+path: /v1/sync/batch
+method: post
+operation:
+  tags:
+  - sync
+  operationId: postSyncBatch
+  summary: Idempotent upload of outbox records; one acknowledgement per record.
+  description: 'Body MUST be gzip (`Content-Encoding: gzip`), at most 1 MiB compressed, 8 MiB decompressed (20:1
+    ratio
+
+    guard), at most 500 records. Records are processed in array order. Idempotency: per record by
+
+    `client_uuid` + payload hash, per batch by (`device_uuid`, `batch_uuid`): a repeat returns the stored
+
+    response with `replayed: true`; the same `batch_uuid` with a different record set is 409. The upload grant
+
+    (`aud = aron-upload`) may call this operation. Access tokens expired by at most 60 s are accepted here.
+
+    Never blocked by the app-version gate (docs/24 s4).
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  - $ref: '#/components/parameters/XDeviceProof'
+  - $ref: '#/components/parameters/XAppVersion'
+  - $ref: '#/components/parameters/XConfigVersionRequest'
+  - $ref: '#/components/parameters/XBatchAttempt'
+  - $ref: '#/components/parameters/XPendingRows'
+  - $ref: '#/components/parameters/XLastSyncError'
+  - $ref: '#/components/parameters/XDeviceTime'
+  - name: Content-Encoding
+    in: header
+    required: true
+    schema:
+      type: string
+      enum:
+      - gzip
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SyncBatchRequest'
+        examples:
+          saleFamily:
+            $ref: '#/components/examples/SyncBatchRequestExample'
+  responses:
+    '200':
+      description: The batch transaction committed; every record has exactly one acknowledgement.
+      headers:
+        X-Config-Version:
+          $ref: '#/components/headers/XConfigVersion'
+        X-Server-Generation:
+          $ref: '#/components/headers/XServerGeneration'
+        X-Server-Time:
+          $ref: '#/components/headers/XServerTime'
+        X-Bundle-Version-Current:
+          $ref: '#/components/headers/XBundleVersionCurrent'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SyncBatchResponse'
+          examples:
+            mixed:
+              $ref: '#/components/examples/SyncBatchResponseExample'
+            rejected:
+              $ref: '#/components/examples/SyncBatchResponseRejectExample'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'
+    '413':
+      $ref: '#/components/responses/PayloadTooLarge'
+    '415':
+      $ref: '#/components/responses/UnsupportedMediaType'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '500':
+      $ref: '#/components/responses/InternalError'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

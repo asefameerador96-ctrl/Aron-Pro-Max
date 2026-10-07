@@ -1,0 +1,22 @@
+CalendarSection:
+  type: object
+  required:
+  - weekend_days
+  - entries
+  additionalProperties: false
+  properties:
+    weekend_days:
+      type: array
+      maxItems: 7
+      description: ISO weekday numbers (1 Monday .. 7 Sunday) that are not selling days; default [5] (Friday).
+      items:
+        type: integer
+        minimum: 1
+        maximum: 7
+    entries:
+      type: array
+      maxItems: 60
+      description: Holidays, make-up days and emergency off-days from yesterday to 14 days ahead for the user's
+        zones.
+      items:
+        $ref: '#/components/schemas/Holiday'

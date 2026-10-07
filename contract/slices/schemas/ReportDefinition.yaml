@@ -1,0 +1,71 @@
+ReportDefinition:
+  type: object
+  required:
+  - report_key
+  - title_en
+  - area
+  - grain
+  - formats
+  - columns
+  - filters
+  additionalProperties: false
+  properties:
+    report_key:
+      $ref: '#/components/schemas/ReportKey'
+    title_en:
+      type: string
+      maxLength: 120
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    area:
+      type: string
+      enum:
+      - sales
+      - field_force
+      - outlet
+      - day_control
+      - geo
+      - finance
+      - ops
+    grain:
+      type: string
+      maxLength: 80
+    formats:
+      type: array
+      items:
+        type: string
+        enum:
+        - json
+        - xlsx
+        - pdf
+        - print
+    columns:
+      type: array
+      maxItems: 120
+      items:
+        $ref: '#/components/schemas/ReportColumn'
+    filters:
+      type: array
+      description: ReportQuery members this report honours.
+      items:
+        type: string
+        enum:
+        - period
+        - date_grouping
+        - location
+        - geo
+        - category
+        - product_type
+        - products
+        - active_status
+        - sub_channels
+        - field_force_type
+        - std_criteria
+        - memo_criteria
+        - outlet_code
+    columns_known:
+      type: boolean
+      description: False until a real sample workbook fixed the column set.

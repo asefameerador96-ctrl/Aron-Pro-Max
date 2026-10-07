@@ -1,0 +1,9 @@
+OutletRequestStatus:
+  type: string
+  enum:
+  - pending
+  - verified
+  - approved
+  - rejected
+  - lapsed
+  - discarded

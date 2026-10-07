@@ -1,0 +1,8 @@
+GeoBreadcrumbPayload:
+  type: object
+  required:
+  - fix
+  additionalProperties: false
+  properties:
+    fix:
+      $ref: '#/components/schemas/GeoFix'

@@ -1,0 +1,6 @@
+MemoNo:
+  type: string
+  pattern: ^[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}$
+  description: '`<username>-<yyMMdd>-<seq>` composed on the phone (docs/24 s7.5).'
+  examples:
+  - sr334001-261005-017

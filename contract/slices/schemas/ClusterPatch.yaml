@@ -1,0 +1,22 @@
+ClusterPatch:
+  type: object
+  minProperties: 1
+  additionalProperties: false
+  properties:
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    cluster_type:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    change_reason:
+      oneOf:
+      - $ref: '#/components/schemas/ChangeReason'
+      - type: 'null'

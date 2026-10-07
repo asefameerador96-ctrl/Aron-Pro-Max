@@ -1,0 +1,4 @@
+Mtk:
+  type: integer
+  format: int64
+  description: Money in milli-taka (1 Tk = 1000 mtk, 1 paisa = 10 mtk). May be negative only where stated.

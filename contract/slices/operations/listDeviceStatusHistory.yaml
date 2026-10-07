@@ -1,0 +1,24 @@
+path: /v1/admin/devices/{device_id}/status-history
+method: get
+operation:
+  tags:
+  - admin-devices
+  operationId: listDeviceStatusHistory
+  summary: Status reports received from the device (newest first).
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of reports.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeviceStatusPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

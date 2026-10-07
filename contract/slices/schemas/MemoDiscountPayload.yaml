@@ -1,0 +1,53 @@
+MemoDiscountPayload:
+  type: object
+  description: One discount component as (sku, qty, value, kind) so every reading of the memo's Discount table fits
+    (Q-UI-01).
+  required:
+  - memo_client_uuid
+  - kind
+  - value_mtk
+  additionalProperties: false
+  properties:
+    memo_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    kind:
+      $ref: '#/components/schemas/DiscountKind'
+    sku_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    qty_base:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      maximum: 10000000
+    value_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    offer_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    offer_version_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    basis_qty_base:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: For drp, the empties collected in base units.
+    line_no:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 60
+      description: The memo line this component belongs to, if any.

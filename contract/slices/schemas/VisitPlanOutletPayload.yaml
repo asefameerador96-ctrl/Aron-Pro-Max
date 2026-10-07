@@ -1,0 +1,11 @@
+VisitPlanOutletPayload:
+  type: object
+  required:
+  - plan_client_uuid
+  - outlet_id
+  additionalProperties: false
+  properties:
+    plan_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    outlet_id:
+      $ref: '#/components/schemas/Id'

@@ -1,0 +1,28 @@
+path: /v1/admin/device-otps
+method: post
+operation:
+  tags:
+  - admin-devices
+  operationId: issueDeviceOtp
+  summary: Re-issue a device OTP for a user (support and ops roles; the TSO for own zones).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DeviceOtpIssueRequest'
+  responses:
+    '201':
+      description: Issued.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeviceOtp'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

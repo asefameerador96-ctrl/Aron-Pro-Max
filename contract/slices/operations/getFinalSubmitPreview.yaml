@@ -1,0 +1,21 @@
+path: /v1/day/final-submit/preview
+method: get
+operation:
+  tags:
+  - day
+  operationId: getFinalSubmitPreview
+  summary: Read before Final Submit (the "already submitted" alert fires here, at Get Sales Data).
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQueryRequired'
+  - $ref: '#/components/parameters/BusinessDateQueryRequired'
+  responses:
+    '200':
+      description: Zone-day preview.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FinalSubmitPreview'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

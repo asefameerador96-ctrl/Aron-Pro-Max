@@ -1,0 +1,29 @@
+PriceComplianceCheckPayload:
+  type: object
+  description: Observed shelf price of one SKU at an AMO control call; counted in the AMO reconciliation row.
+  required:
+  - visit_client_uuid
+  - sku_id
+  - price_type
+  - reference_price_mtk
+  - observed_price_mtk
+  - compliant
+  additionalProperties: false
+  properties:
+    visit_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    sku_id:
+      $ref: '#/components/schemas/Id'
+    price_type:
+      $ref: '#/components/schemas/SellingPriceType'
+    reference_price_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    observed_price_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    compliant:
+      type: boolean
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 300

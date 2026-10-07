@@ -1,0 +1,64 @@
+Task:
+  type: object
+  required:
+  - task_uuid
+  - task_type_code
+  - title
+  - assignee_user_id
+  - assigned_by_user_id
+  - status
+  - created_at
+  - source
+  additionalProperties: false
+  properties:
+    task_uuid:
+      $ref: '#/components/schemas/Uuid'
+    task_type_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    title:
+      type: string
+      maxLength: 120
+    description:
+      type:
+      - string
+      - 'null'
+      maxLength: 1000
+    assignee_user_id:
+      $ref: '#/components/schemas/Id'
+    assigned_by_user_id:
+      $ref: '#/components/schemas/Id'
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    outlet_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    due_date:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    status:
+      $ref: '#/components/schemas/TaskStatus'
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    resolved_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    resolution_note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500
+    source:
+      type: string
+      enum:
+      - app
+      - web

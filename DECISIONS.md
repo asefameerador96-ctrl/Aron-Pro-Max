@@ -1041,3 +1041,8 @@ Current Azure and Google accounts are temporary and run a 5 to 10 user pilot pro
 
 ## 2026-10-06 — Sponsor: keep the full-size dev resources for one week
 The sponsor said "hold it": keep the zone-redundant dev resources (about USD 15.5/day, up to a week, review 2026-10-10) to rehearse the final topology; no quota requests. Details: docs/28 exception. The reset workflow stays available but is NOT approved.
+
+## 2026-10-07 — Owner decisions: Maven mirror, git governance, repository visibility
+- **Maven mirror allowed** (owner, in the lead chat): `settings.gradle.kts` tries Google's official Maven Central mirror first, except on GitHub Actions (CI always resolves from real Central, the independent check) or when `ARON_NO_MIRROR` is set. Reason: lane containers share one IP that Central rate-limits with HTTP 429. Later hardening: Gradle dependency verification (checksums generated on CI from real Central), Day 6.
+- **Git governance approved** (owner): `tools/github-governance.ps1` run by the laptop operator: `main` created and protected, baseline tag, `staging` and `prod` environments; the lead opens a daily gate pull request INT to `main` (docs/30 s2 and s3).
+- **Repository stays public until the product is complete** (owner): the owner makes it private afterwards. Before that, set a GitHub Actions spending limit (private repositories meter CI minutes). CodeQL and secret scanning are usable while it is public; CI gates must not depend on them (gitleaks, OSV-scanner, Semgrep).

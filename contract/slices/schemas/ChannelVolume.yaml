@@ -1,0 +1,39 @@
+ChannelVolume:
+  type: object
+  required:
+  - code
+  - net_mtk
+  - memo_count
+  - successful_calls
+  additionalProperties: false
+  properties:
+    code:
+      type: string
+      maxLength: 40
+      description: Channel, segment or brand code.
+    name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'
+    qty_base:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    memo_count:
+      type: integer
+      minimum: 0
+    successful_calls:
+      type: integer
+      minimum: 0
+    memo_ratio_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+      description: BSR for brands (memos containing the brand / active memos).

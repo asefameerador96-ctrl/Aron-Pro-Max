@@ -1,0 +1,26 @@
+UserScopeNode:
+  type: object
+  required:
+  - node_type
+  - node_id
+  - valid_from
+  additionalProperties: false
+  properties:
+    node_type:
+      type: string
+      enum:
+      - national
+      - wing
+      - division
+      - territory
+      - zone
+    node_id:
+      type: integer
+      format: int64
+      minimum: 0
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'

@@ -1,0 +1,46 @@
+RubricWrite:
+  type: object
+  required:
+  - kind
+  - criteria
+  - change_reason
+  additionalProperties: false
+  properties:
+    kind:
+      type: string
+      enum:
+      - joint_call
+      - retailer_questionnaire
+    criteria:
+      type: array
+      minItems: 1
+      maxItems: 50
+      items:
+        type: object
+        required:
+        - key
+        - label_en
+        - answer_type
+        additionalProperties: false
+        properties:
+          key:
+            type: string
+            pattern: ^[a-z][a-z0-9_]{1,40}$
+          label_en:
+            type: string
+            maxLength: 300
+          label_bn:
+            type:
+            - string
+            - 'null'
+            maxLength: 300
+          answer_type:
+            type: string
+            enum:
+            - stars_1_5
+            - bool
+            - text
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

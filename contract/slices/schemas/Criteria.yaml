@@ -1,0 +1,17 @@
+Criteria:
+  type: object
+  required:
+  - op
+  - value
+  additionalProperties: false
+  properties:
+    op:
+      type: string
+      enum:
+      - '>'
+      - '>='
+      - '='
+      - <=
+      - <
+    value:
+      type: number

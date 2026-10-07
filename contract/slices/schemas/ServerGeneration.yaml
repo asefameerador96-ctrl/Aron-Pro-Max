@@ -1,0 +1,26 @@
+ServerGeneration:
+  type: object
+  required:
+  - generation
+  - kind
+  - minted_at
+  additionalProperties: false
+  properties:
+    generation:
+      $ref: '#/components/schemas/Uuid'
+    kind:
+      type: string
+      enum:
+      - initial
+      - failover
+      - pitr
+    restore_point_utc:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    lost_after_utc:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    minted_at:
+      $ref: '#/components/schemas/Timestamp'

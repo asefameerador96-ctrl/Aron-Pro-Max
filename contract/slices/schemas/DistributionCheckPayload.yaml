@@ -1,0 +1,17 @@
+DistributionCheckPayload:
+  type: object
+  required:
+  - visit_client_uuid
+  additionalProperties: false
+  properties:
+    visit_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    posm_present:
+      type:
+      - boolean
+      - 'null'
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

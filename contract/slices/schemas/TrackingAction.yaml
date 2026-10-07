@@ -1,0 +1,30 @@
+TrackingAction:
+  type: object
+  required:
+  - action_uuid
+  - route_id
+  - business_date
+  - note
+  - created_by_user_id
+  - created_at
+  - notified_user_ids
+  additionalProperties: false
+  properties:
+    action_uuid:
+      $ref: '#/components/schemas/Uuid'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    note:
+      type: string
+      maxLength: 500
+    created_by_user_id:
+      $ref: '#/components/schemas/Id'
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    notified_user_ids:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/Id'

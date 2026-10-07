@@ -1,0 +1,61 @@
+CalibrationReport:
+  type: object
+  required:
+  - as_of
+  - rows
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    rows:
+      type: array
+      maxItems: 5000
+      items:
+        type: object
+        required:
+        - territory_id
+        - geo_class
+        - visits
+        - histogram
+        - force_sale_pct
+        additionalProperties: false
+        properties:
+          territory_id:
+            $ref: '#/components/schemas/Id'
+          geo_class:
+            type:
+            - string
+            - 'null'
+            maxLength: 20
+          visits:
+            type: integer
+            minimum: 0
+          histogram:
+            type: array
+            maxItems: 40
+            items:
+              type: object
+              required:
+              - upper_m
+              - visits
+              additionalProperties: false
+              properties:
+                upper_m:
+                  type: integer
+                  minimum: 0
+                visits:
+                  type: integer
+                  minimum: 0
+          force_sale_pct:
+            type:
+            - number
+            - 'null'
+            minimum: 0
+            maximum: 100
+          suggested_radius_m:
+            type:
+            - integer
+            - 'null'
+            minimum: 10
+            maximum: 5000
+            description: Shown only with at least cfg.geo.calibration_min_visits visits.

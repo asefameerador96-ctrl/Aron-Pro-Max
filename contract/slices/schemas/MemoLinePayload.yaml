@@ -1,0 +1,61 @@
+MemoLinePayload:
+  type: object
+  description: gross_mtk = div_half_up(qty_base x base_price_mtk, price_per_qty) (reject arithmetic_mismatch otherwise).
+  required:
+  - memo_client_uuid
+  - line_no
+  - sku_id
+  - line_kind
+  - qty_entered
+  - unit_entered
+  - pack_factor
+  - qty_base
+  - price_type
+  - price_valid_from
+  - base_price_mtk
+  - price_per_qty
+  - gross_mtk
+  additionalProperties: false
+  properties:
+    memo_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    line_no:
+      type: integer
+      minimum: 1
+      maximum: 60
+    sku_id:
+      $ref: '#/components/schemas/Id'
+    line_kind:
+      $ref: '#/components/schemas/LineKind'
+    qty_entered:
+      type: integer
+      minimum: 1
+      maximum: 10000000
+    unit_entered:
+      $ref: '#/components/schemas/QtyUnit'
+    pack_factor:
+      type: integer
+      minimum: 1
+      maximum: 1000
+    qty_base:
+      type: integer
+      minimum: 1
+      maximum: 10000000
+    price_type:
+      $ref: '#/components/schemas/SellingPriceType'
+    price_valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    base_price_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    price_per_qty:
+      type: integer
+      minimum: 1
+      maximum: 1000
+    gross_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    offer_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1

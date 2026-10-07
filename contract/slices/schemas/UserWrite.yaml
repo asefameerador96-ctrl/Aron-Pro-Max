@@ -1,0 +1,51 @@
+UserWrite:
+  type: object
+  required:
+  - username
+  - full_name
+  - role
+  - locale
+  additionalProperties: false
+  properties:
+    username:
+      $ref: '#/components/schemas/Username'
+    full_name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    role:
+      $ref: '#/components/schemas/Role'
+    designation:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    employee_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    phone:
+      oneOf:
+      - $ref: '#/components/schemas/PhoneBd'
+      - type: 'null'
+    email:
+      type:
+      - string
+      - 'null'
+      format: email
+      maxLength: 120
+    locale:
+      type: string
+      enum:
+      - bn
+      - en
+    home_zone_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    pilot:
+      type: boolean
+      default: false

@@ -1,0 +1,8 @@
+TypeCounts:
+  type: object
+  description: Count of committed rows per record type (missing type = 0).
+  propertyNames:
+    $ref: '#/components/schemas/RecordType'
+  additionalProperties:
+    type: integer
+    minimum: 0

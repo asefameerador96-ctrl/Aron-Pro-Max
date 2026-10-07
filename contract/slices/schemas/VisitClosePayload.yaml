@@ -1,0 +1,25 @@
+VisitClosePayload:
+  type: object
+  required:
+  - visit_client_uuid
+  - outcome_code
+  - call_declined
+  - ended_at
+  - is_zero_sale
+  additionalProperties: false
+  properties:
+    visit_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    outcome_code:
+      $ref: '#/components/schemas/VisitOutcome'
+    call_started_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    call_declined:
+      type: boolean
+      description: '"না" at the start-call prompt; not counted as visited.'
+    ended_at:
+      $ref: '#/components/schemas/Timestamp'
+    is_zero_sale:
+      type: boolean

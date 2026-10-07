@@ -1,0 +1,29 @@
+path: /v1/day/route-days
+method: get
+operation:
+  tags:
+  - day
+  operationId: listRouteDays
+  summary: Route-day states in the caller's reach for a business date.
+  parameters:
+  - $ref: '#/components/parameters/BusinessDateQueryRequired'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/TerritoryIdQuery'
+  - name: state
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/DayState'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of route-days.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteDayPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

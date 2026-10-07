@@ -1,0 +1,29 @@
+path: /v1/programmes/astha/targets
+method: put
+operation:
+  tags:
+  - programmes
+  operationId: putAsthaTargets
+  summary: Upsert Astha targets for a quarter (roles in cfg.astha.target_entry_roles; targets never negative).
+  description: Idempotent by `batch_uuid`; all-or-nothing. A negative target is `400 ERR_VALIDATION`.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/AsthaTargetWrite'
+  responses:
+    '200':
+      description: Stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetBatchResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

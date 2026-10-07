@@ -1,0 +1,13 @@
+SurveyResponseRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: survey_response
+      payload:
+        $ref: '#/components/schemas/SurveyResponsePayload'
+  unevaluatedProperties: false

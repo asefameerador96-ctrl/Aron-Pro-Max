@@ -1,0 +1,56 @@
+DeviceGeoVerdict:
+  type: object
+  description: The phone's geofence decision (docs/24 s11.2); the server re-checks and stores its own verdict beside
+    it.
+  required:
+  - verdict
+  - radius_m_used
+  - max_accuracy_m_used
+  - location_basis
+  - action
+  additionalProperties: false
+  properties:
+    verdict:
+      $ref: '#/components/schemas/GeoVerdict'
+    distance_m:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+    radius_m_used:
+      type: integer
+      minimum: 10
+      maximum: 5000
+    max_accuracy_m_used:
+      type: integer
+      minimum: 10
+      maximum: 1000
+    location_basis:
+      $ref: '#/components/schemas/LocationBasis'
+    outlet_lat:
+      type:
+      - number
+      - 'null'
+      minimum: -90
+      maximum: 90
+    outlet_lng:
+      type:
+      - number
+      - 'null'
+      minimum: -180
+      maximum: 180
+    action:
+      type: string
+      enum:
+      - sale_allowed
+      - force_sale
+      - blocked
+    force_reason_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    force_photo_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'

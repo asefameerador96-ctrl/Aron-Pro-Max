@@ -1,0 +1,31 @@
+SurveyAdmin:
+  allOf:
+  - $ref: '#/components/schemas/SurveyDef'
+  - type: object
+    required:
+    - kind
+    - status
+    - valid_from
+    properties:
+      kind:
+        type: string
+        enum:
+        - posm
+        - amo_survey
+        - tso_visit_query
+      status:
+        $ref: '#/components/schemas/ActiveStatus'
+      valid_from:
+        $ref: '#/components/schemas/BusinessDate'
+      valid_to:
+        oneOf:
+        - $ref: '#/components/schemas/BusinessDate'
+        - type: 'null'
+      points_per_photo:
+        type:
+        - integer
+        - 'null'
+        minimum: 0
+        maximum: 100000
+        description: Loyalty points earned once per response (POSM 50; never for the AMO survey).
+  unevaluatedProperties: false

@@ -1,0 +1,28 @@
+path: /v1/day/cover
+method: post
+operation:
+  tags:
+  - day
+  operationId: postCoverAssignment
+  summary: Same-day cover of a route by another user of the zone (up to 7 days); bumps scope_version.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/CoverRequest'
+  responses:
+    '200':
+      description: Assignment created (idempotent by client_uuid).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteAssignment'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

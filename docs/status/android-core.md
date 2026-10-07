@@ -45,6 +45,85 @@
 - Bundle apply has no monotonic version or date guard yet (F-SYS-006).
 - Quarantine resolutions are not applied yet (F-SYS-008).
 
+## Interfaces for feature lanes (stable, 2026-10-07)
+
+Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s5.1). Local wire DTOs are marked
+`REQUEST:` and move to `shared:contract` when the shared lane lands them, with the same names.
+
+**core-database** (`com.aktcl.aron.core.database`): one Room database per user, `AronDatabase.open(context, userId, openHelperFactory)`; the factory is `SqlCipher.factory(passphrase)` in production, `null` in Robolectric tests.
+- `CaptureRepository(db)`: commits a capture plus its outbox records in ONE transaction. A duplicate client UUID throws `SQLiteConstraintException`. A malformed capture throws `IllegalArgumentException` or `IllegalStateException` before any write. Methods: `recordAttendance(event, fix)`, `recordStock(movements)`, `recordVisitOpen(visit, fix)`, `recordSale(SaleCapture(memo, lines, discounts, qcLines, editFix))`, `recordVisitClose(close)`.
+  ```kotlin
+  val visitUuid = ClientIds.newUuid()
+  val fix = GeoFixEntity(clientUuid = ClientIds.newUuid(), ownerClientUuid = visitUuid, purpose = "visit_open", /* fix fields */)
+  captureRepository.recordVisitOpen(VisitEntity(clientUuid = visitUuid, meta = captureMeta, fixClientUuid = fix.clientUuid, /* ... */), fix)
+  syncScheduler.requestSync(userId)               // then ask for an upload; never wait for it
+  ```
+- Capture rules enforced:
+  - every `*Entity.clientUuid` is a lower-case UUID v4 (`ClientIds.newUuid()`);
+  - every visit-family row has `meta.routeId`;
+  - QC lines saved with a memo carry that memo's uuid and `appliedToMemo = true`;
+  - an edited memo carries `supersedesClientUuid`, `editReasonCode` and `editFix` together;
+  - a memo's outlet is its visit's outlet.
+- `ReferenceRepository(db)`: `apply(BundleReference)` replaces routes, outlets and SKUs in one transaction. Reads: `routesOfDay(businessDate): List<RouteDay(route, outlets)>` (planned route first, outlets in visit order), `skus()`, `bundleVersion()`.
+- DAOs for reads: `db.captureDao()` (`visitsOn`, `memosOn`, `linesOf`, `attendanceOn`, `stockOn`, `stockBalanceOn`, `memo`, `visit`, `fix`), `db.referenceDao()`, `db.outboxDao()`.
+- Outbox API (sync engine only):
+  - `nextPending(limit)`, `markInFlight(batchUuid, seqs)`, `inFlight(batchUuid)`, `inFlightBatches()`
+  - `applyAck(clientUuid, state, code, serverId, at)`: the state is one of `OutboxState.ACKED`, `REJECTED`, `QUARANTINED` or `PENDING`; anything else throws.
+  - `returnToPending(batchUuid, lastCode)`, `committedCounts(businessDate)`, `purgeAckedBefore(iso)`
+- Adding a record type later (redemption, gift_photo, ...) means a new entity, a `RecordMapping` function and a Room migration plus migration test. The outbox is generic over `record_type`.
+
+**core-sync** (`com.aktcl.aron.core.sync`):
+- `SyncScheduler.requestSync(userId, trigger = SyncTrigger.WRITE_DEBOUNCE)`. Call it after every commit; it only schedules.
+- Use `SyncTrigger.DAY_SUBMIT` for Sales Submit, `CHECKOUT` after check-out and `MANUAL` for the Sync button.
+- `SyncScheduler.None` is for previews and tests. Batch build and ack handling stay inside core-sync (F-SYS-008); feature code never calls them.
+
+**core-network** (`com.aktcl.aron.core.network`):
+- `AronApiClient.call(path, CallAuth.Grant(Grant.FULL), build = { get() }, decode = { body, meta -> ... }): ApiResult<T>`.
+- `ApiResult` is one of `Success(value, meta)`, `NotModified`, `Failure(httpStatus, problem)` or `Transport(OFFLINE|TIMEOUT|EDGE_RESPONSE|MALFORMED)`. Branch on `problem.problemCode` only.
+- An expired token is refreshed once automatically.
+- Existing APIs: `AuthApi` (login, refresh, logout) and `SyncApi` (`bundle(forDate, ifNoneMatch)`, `healthy()`).
+- A feature lane adding an endpoint writes a small `XxxApi(client)` the same way, in its own module.
+  ```kotlin
+  when (val r = syncApi.bundle()) { is ApiResult.Success -> r.value.head; is ApiResult.Transport -> offline(); else -> Unit }
+  ```
+
+**core-session** (`com.aktcl.aron.core.session`):
+- Injected `SessionComponents` gives `session`, `syncApi` and `apiClient`.
+- `session.state: StateFlow<SessionState>` is either `LoggedOut` or `Active(user, mode, reauthRequired, updateRequired)`.
+- `session.login(username, password): LoginOutcome` and `session.logout()`.
+- Selling needs only `Active`, never a live token.
+
+**core-common**:
+- `ClientIds.newUuid()`
+- `LocaleDigits.localize(text, language)` and `formatInteger(n, language)`
+- `AppLanguage`
+- `WallClock`: replaced by the trusted clock in F-SYS-049.
+- Business date: `com.aktcl.aron.rules.BusinessDate.of(epochMs)` from shared:rules.
+- Money formatting per the lead's ruling, `1,234.50 ৳`: use the shared `Formats` when the shared lane publishes it.
+
+**core-ui** (`com.aktcl.aron.core.ui`):
+- `AronTheme(language) { ... }`: bundled Bengali/Latin fonts.
+- `LocalAppLanguage`, `localizedDigits(text)` (dates and numbers only, never identifiers), `localizedNumber(n)`.
+- `LanguageToggle(current, onSelect)`, `AppLocale.wrap/set/current`.
+- Every string goes in `res/values` + `res/values-bn` of your module. The build fails otherwise: `HardcodedStringScanTest`. Opt a line out only with `// i18n-ignore: <reason>`.
+- The component kit (tiles, stepper, press-and-hold, dialogs, empty/error/offline states) is N-023, my next UI row.
+
+## Handover (READY TO RECYCLE, 2026-10-07)
+- **Done:** N-001, F-SYS-033, F-SYS-044 (device part pending), F-SYS-018, N-016. All checker findings are fixed, and a second re-check is fixed too. The interfaces above are published, and the `SyncScheduler` interface is in core-sync.
+- **In progress:** nothing.
+- **Next three rows** (`python3 tools/my-rows.py android-core --todo`):
+  1. F-SYS-008, idempotent batch upload (T1, L). Build on `OutboxDao`: persisted `batch_uuid`, gzip, `X-Device-Proof` batch string (`ProofStrings.batch`), ack mapping `accepted`/`duplicate` to `OutboxState.ACKED`, retryable reject to `PENDING`, bisect on 500.
+  2. F-SYS-006, bundle download into Room (T1, M). Extend `BundleReference`; add monotonic version and date guards; wire `AronDatabase.open` with a Keystore-wrapped SQLCipher passphrase in the app shells.
+  3. F-SYS-049, trusted clock (T1, S). Use `TrustedClock` from shared:rules plus `ApiResponseListener`, and replace `WallClock.System` in `SessionComponents`.
+  Then F-SYS-011, F-SYS-046, N-023, F-SYS-023, F-SYS-027.
+- **Traps found:**
+  1. The configuration cache is on with `problems=fail`. Never capture script values in task actions; copy them to a local first.
+  2. Maven Central answers 429. Use the mirror init script from docs/24-build-spec-verification.md s9 (machine-local).
+  3. The record payload encoder must keep `encodeDefaults=false, explicitNulls=true`. DTO members without a default are required and are written as null; optional members need a default.
+  4. Never let a checker's worktree under `.claude/worktrees/` be committed (`git add -A` will pick it up). Remove it with `git worktree remove --force`.
+  5. Robolectric Compose tests: text below the fold needs `assertExists`, not `assertIsDisplayed`.
+  6. `HardcodedStringScanner` judges a literal by its enclosing call. A new developer-only call needs adding to `devCalls`, never a blanket exemption.
+
 ## Lead review (2026-10-06)
 - AC-01 to AC-12 accepted by the lead. Ownership: android-sr takes feature-auth and feature-home from Day 2; android-core keeps core-*, the three app shells and the build wiring.
 - Scope change (docs/27): targets, loyalty/Astha and offer programmes are deferred. Day-1 code already complies: the bundle parsers accept empty `targets` and ignore `offers` (ignoreUnknownKeys, `RouteSnapshot.targets` defaults to empty), no programme UI exists, and the memo keeps its `memo_discount` component (offer discount zero until an engine exists).

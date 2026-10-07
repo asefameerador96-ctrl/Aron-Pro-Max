@@ -1,0 +1,13 @@
+MfaVerifyRequest:
+  type: object
+  required:
+  - mfa_token
+  - code
+  additionalProperties: false
+  properties:
+    mfa_token:
+      type: string
+      maxLength: 4096
+    code:
+      type: string
+      pattern: ^([0-9]{6}|[A-Z0-9]{4}-[A-Z0-9]{4})$
