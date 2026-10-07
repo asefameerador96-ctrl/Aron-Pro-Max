@@ -44,7 +44,7 @@ fun Route.deviceReplaceRoutes(d: DeviceOtpDeps) {
             if (req.mode != "upload_first" && req.mode != "revoke_now") throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad mode", errors = listOf(FieldError("body.mode", "invalid_value")))
             if (req.reason.length > 500 || req.reason.trim().length < 10) throw ApiProblem(ProblemCode.ERR_VALIDATION, "a reason of 10 to 500 characters is required", errors = listOf(FieldError("body.reason", "length")))
             if (req.new_device_user_id != null && req.new_device_user_id < 1) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad new_device_user_id", errors = listOf(FieldError("body.new_device_user_id", "invalid_value")))
-            call.respond(d.db.jdbi.inTransaction<DeviceReplaceOut, Exception> { h ->
+            call.respond(d.db.jdbi.inTransaction<Pair<DeviceReplaceOut, Long>, Exception> { h ->
                 val dev = h.createQuery("SELECT status, COALESCE(pending_rows_reported, 0) FROM app.device WHERE id = :d FOR UPDATE").bind("d", id).map { rs, _ -> rs.getString(1) to rs.getInt(2) }.findOne().orElse(null)
                     ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "device $id")
                 if (dev.first == "revoked" || dev.first == "replaced") throw ApiProblem(ProblemCode.ERR_CONFLICT, "the device is already ${dev.first}")
@@ -56,8 +56,11 @@ fun Route.deviceReplaceRoutes(d: DeviceOtpDeps) {
                     h.createUpdate("UPDATE app.device_binding SET status = 'revoked', unbound_at = :now, unbound_by = :by WHERE device_id = :d AND status = 'active'").bind("now", now).bind("by", p.userId).bind("d", id).execute()
                 }
                 AuditWriter.write(h, p, "device", id.toString(), "replace_" + req.mode, null, buildJsonObject { put("pending_rows", dev.second); put("otp_for_user", userId) }, req.reason, call.requestId)
-                val otp = issueOtp(h, d, p, DeviceOtpIssueIn(userId, req.reason), true, emptySet(), call.requestId)
-                DeviceReplaceOut(id, if (req.mode == "revoke_now") "revoked" else dev.first, dev.second, otp)
+                DeviceReplaceOut(id, if (req.mode == "revoke_now") "revoked" else dev.first, dev.second, null) to userId
+            }.let { (out, userId) ->
+                // The OTP is a second step: a refusal there (10 per hour, a bound user that is no SR or AMO) must never undo a revoke of a stolen phone.
+                val otp = try { d.db.jdbi.inTransaction<DeviceOtpDto, Exception> { h -> issueOtp(h, d, p, DeviceOtpIssueIn(userId, req.reason), true, emptySet(), call.requestId) } } catch (e: ApiProblem) { null }
+                out.copy(otp = otp)
             })
         }
     }
