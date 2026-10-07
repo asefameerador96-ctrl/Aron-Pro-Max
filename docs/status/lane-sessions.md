@@ -2,7 +2,7 @@
 
 | Sub-lane | Session id | Model | Started | Notes |
 |---|---|---|---|---|
-| db | session_017dmQw2byPhYrFKrGJrEMRj | Opus | 2026-10-07 | recycled 05:35; previous session_01KAjUS8Gz437Nx93fsiVFYX is retired (READY TO RECYCLE 05:33) |
+| db | session_013NHxcKi11ivBpd2B2v3g7D | Opus | 2026-10-07 | recycled 10:51 (third session); previous session_017dmQw2byPhYrFKrGJrEMRj is retired (READY TO RECYCLE 10:50, lane/db 501e466f, V0023 to V0038); earlier session_01KAjUS8Gz437Nx93fsiVFYX retired |
 | shared (first session) | session_01SD55WuhWKuEfeuC6T4A8e2 | Sonnet | 2026-10-05 | finished; blocked by its own permission settings on the contract; do not nudge |
 | shared-2 | session_01QRBncHfaoTvSqTLur5L3ZH | Sonnet | 2026-10-07 | N-002, DTO hosting, web drift |
 | backend-core | session_01465rpZSgSrMTU8CACwuEYx | Opus | 2026-10-07 | recycled 10:25 (fourth session); previous session_01FfFvStuQXyZNg6QM9rndaD is retired (READY TO RECYCLE 10:25, head c59a703d); earlier sessions retired (01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
