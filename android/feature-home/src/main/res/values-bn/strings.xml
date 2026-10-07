@@ -45,6 +45,10 @@
     <string name="set_logout_message">আপনার সংরক্ষিত কাজ এই ফোনে থাকবে এবং আপলোড হবে।</string>
     <string name="set_logout_confirm">লগআউট</string>
     <string name="set_cancel">বাতিল</string>
+    <string name="set_update">অ্যাপ আপডেট</string>
+    <string name="set_update_available">অ্যাপ আপডেট (নতুন সংস্করণ প্রস্তুত)</string>
+    <string name="set_photos_wifi_only">শুধু ওয়াই-ফাইতে ছবি পাঠান</string>
+    <string name="set_support">PDA টু সাপোর্ট</string>
     <string name="set_open">সেটিংস</string>
     <string name="perm_title">ARON-এর যা দরকার তার অনুমতি দিন</string>
     <string name="perm_location_why">সুনির্দিষ্ট অবস্থান: ভিজিট খোলার সময় আপনি দোকানে আছেন কিনা দেখতে। শুধু তখনই অবস্থান নেওয়া হয়, ব্যাকগ্রাউন্ডে কখনো নয়।</string>

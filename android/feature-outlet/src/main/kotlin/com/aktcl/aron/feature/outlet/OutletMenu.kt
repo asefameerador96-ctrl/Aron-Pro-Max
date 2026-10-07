@@ -15,11 +15,11 @@ import com.aktcl.aron.core.ui.AronTile
 import com.aktcl.aron.core.ui.AronTileGrid
 import com.aktcl.aron.core.ui.AronTokens
 
-object OutletMenuTags { fun kind(k: OutletRequestKind) = "menu_${k.wire}" }
+object OutletMenuTags { fun kind(k: OutletRequestKind) = "menu_${k.wire}"; const val OWN = "menu_own" }
 
 /** The Outlet menu (N-040): four tiles in the screenshot order, then the 'add to my route' request (F-SR-076). */
 @Composable
-fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = Modifier) {
+fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = Modifier, onOwnRequests: (() -> Unit)? = null) {
     val tiles = listOf(OutletRequestKind.NEW, OutletRequestKind.CLOSE, OutletRequestKind.INFO, OutletRequestKind.CLUSTER)
     Column(modifier.fillMaxSize().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         Text(stringResource(R.string.out_menu_title), style = MaterialTheme.typography.headlineSmall)
@@ -30,5 +30,6 @@ fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = 
             )
         }
         AronSecondaryButton(stringResource(R.string.out_req_route_add), { onKind(OutletRequestKind.ROUTE_ADD) }, Modifier.testTag(OutletMenuTags.kind(OutletRequestKind.ROUTE_ADD)))
+        onOwnRequests?.let { AronSecondaryButton(stringResource(R.string.out_own_open), it, Modifier.testTag(OutletMenuTags.OWN)) }
     }
 }

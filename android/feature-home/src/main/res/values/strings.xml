@@ -46,6 +46,10 @@
     <string name="set_logout_message">Your saved work stays on this phone and will still upload.</string>
     <string name="set_logout_confirm">Log out</string>
     <string name="set_cancel">Cancel</string>
+    <string name="set_update">App update</string>
+    <string name="set_update_available">App update (new version ready)</string>
+    <string name="set_photos_wifi_only">Send photos on Wi-Fi only</string>
+    <string name="set_support">PDA to Support</string>
     <string name="set_open">Settings</string>
     <string name="perm_title">Allow what ARON needs</string>
     <string name="perm_location_why">Precise location: to check you are at the shop when you open a visit. It is read only at that moment, never in the background.</string>

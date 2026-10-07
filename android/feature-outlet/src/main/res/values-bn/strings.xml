@@ -63,6 +63,19 @@
     <string name="out_req_err_geo">দোকানের অবস্থান নিন।</string>
     <string name="out_req_err_photo">দোকানের ছবি তুলুন।</string>
     <string name="out_req_err_dues">এই দোকানে বকেয়া আছে, তাই বন্ধ করা যাবে না।</string>
+    <string name="out_own_open">আমার অনুরোধ</string>
+    <string name="out_own_title">আমার অনুরোধ</string>
+    <string name="out_own_empty">গত ৩০ দিনে আপনি কোনো আউটলেট অনুরোধ পাঠাননি।</string>
+    <string name="out_own_waiting">এই ফোনে সংরক্ষিত, পাঠানোর অপেক্ষায়</string>
+    <string name="out_own_pending">অপেক্ষমাণ</string>
+    <string name="out_own_verified">যাচাই হয়েছে</string>
+    <string name="out_own_approved">অনুমোদিত</string>
+    <string name="out_own_rejected">প্রত্যাখ্যাত</string>
+    <string name="out_own_lapsed">মেয়াদ শেষ</string>
+    <string name="out_own_discarded">প্রত্যাহার করা হয়েছে</string>
+    <string name="out_own_reason">কারণ: %1$s</string>
+    <string name="out_own_type_location">অবস্থান পরিবর্তন</string>
+    <string name="out_own_type_other">আউটলেট অনুরোধ</string>
     <string name="out_menu_title">আউটলেট</string>
     <string name="out_pick_outlet">আউটলেট বেছে নিন</string>
 </resources>

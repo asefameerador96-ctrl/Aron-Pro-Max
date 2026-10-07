@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime
     @Inject lateinit var resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck
     @Inject lateinit var mediaShell: MediaShell
+    @Inject lateinit var systemShell: SystemShell
     @Inject lateinit var shellLogout: com.aktcl.aron.core.sync.shell.ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
@@ -145,6 +146,7 @@ class MainActivity : ComponentActivity() {
                                     onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                     startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
                                     openTasks = openTasks,
+                                    shell = systemShell,
                                 )
                             } }
                             // Drawn after the screens so the camera covers them while a capture is open (F-SYS-030).
