@@ -9,3 +9,5 @@ no Zone name column (`// REQUEST: web-config-device-otp-columns`).
 
 Needed shape: add to `DeviceOtp`: `employee_code` (string, nullable) and `zone_name` (string, nullable; `zone_code` optional).
 No other change; the web adds the two columns when they exist.
+
+**RESOLVED 2026-10-07:** contract v1.2 added the fields; web-config adopted them (see docs/status/web-config.md).

@@ -1052,3 +1052,6 @@ The sponsor said "hold it": keep the zone-redundant dev resources (about USD 15.
 - D-REP-02 Outbox reading is gap-safe: ids not seen are re-read until they commit or 60 s pass (rolled back). Reason: identity ids commit out of order (checker finding).
 - D-REP-03 geo_valid uses the server verdict, falling back to the phone's verdict while the server re-check has not run. A user-day is suspicious when its open/confirmed risk-signal scores sum to at least cfg.geo.suspicious_score_threshold (default 50, s11.4).
 - D-REP-04 `agg_daily_outlet` is one row per (date, outlet) across all routes; `route_id` is the outlet's own route.
+
+## android-geo-dpc lane (2026-10-07)
+- GD-11 `android/dpc` and `android/core-geo` may depend on `:shared:contract` (wire DTOs are the single truth); amends the docs/24 s2.1 module table (lead ruling 2026-10-07). Local mirrors of `EnrolDeviceResponse` and `DevicePolicy` are deleted once shared announces them.

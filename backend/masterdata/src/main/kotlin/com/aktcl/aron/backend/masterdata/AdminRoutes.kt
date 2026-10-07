@@ -217,7 +217,7 @@ private suspend fun endAssignment(call: ApplicationCall, d: AdminMasterDeps) {
 /** `GET/POST /v1/admin/routes`, `GET/PATCH /v1/admin/routes/{id}`, `GET/POST /v1/admin/route-assignments`, `POST .../{id}/end` (tag admin-routes). */
 fun Route.adminRoutesRoutes(d: AdminMasterDeps) {
     authenticated(d.guard) {
-        get("/admin/routes") { val p = call.admPrincipal(MASTER_READERS, "routes"); call.admRespond(HttpStatusCode.OK, adminList(call, d, p, ROUTE)) }
+        get("/admin/routes") { val p = call.admPrincipal(MASTER_READERS, "routes"); call.admRespond(HttpStatusCode.OK, withAssignees(call, d, adminList(call, d, p, ROUTE))) }
         post("/admin/routes") { val p = call.admPrincipal(MASTER_WRITERS, "route changes"); adminCreate(call, d, p, ROUTE) }
         get("/admin/routes/{id}") { val p = call.admPrincipal(MASTER_READERS, "routes"); adminGet(call, d, p, ROUTE, call.admId()) }
         patch("/admin/routes/{id}") { val p = call.admPrincipal(MASTER_WRITERS, "route changes"); adminPatch(call, d, p, ROUTE, call.admId()) }
@@ -225,4 +225,30 @@ fun Route.adminRoutesRoutes(d: AdminMasterDeps) {
         post("/admin/route-assignments") { createAssignment(call, d) }
         post("/admin/route-assignments/{id}/end") { endAssignment(call, d) }
     }
+}
+
+
+/**
+ * `include=assignees` (contract v1.2): adds `assignees` [{user_id, full_name, role, username}] to every item of the page with ONE query
+ * over the page's route ids (assignments valid today, primary and cover). Anything else for `include` is a 400.
+ */
+private fun withAssignees(call: ApplicationCall, d: AdminMasterDeps, page: JsonObject): JsonObject {
+    val inc = call.request.queryParameters["include"] ?: return page
+    if (inc != "assignees") admBad("query.include", "invalid_value")
+    val items = (page["items"] as? JsonArray) ?: return page
+    val ids = items.mapNotNull { ((it as? JsonObject)?.get("id") as? JsonPrimitive)?.content?.toLongOrNull() }
+    val today = java.time.LocalDate.ofInstant(d.clock.now(), java.time.ZoneId.of("Asia/Dhaka"))
+    val byRoute = if (ids.isEmpty()) emptyMap() else d.db.jdbi.withHandle<Map<Long, List<JsonObject>>, Exception> { h ->
+        h.createQuery(
+            "SELECT a.route_id, u.id, u.full_name, u.role, u.username FROM app.route_assignment a JOIN app.app_user u ON u.id = a.user_id " +
+                "WHERE a.route_id IN (<ids>) AND a.ended_at IS NULL AND a.valid_from <= :today AND (a.valid_to IS NULL OR a.valid_to > :today) ORDER BY a.route_id, a.kind, u.id",
+        ).bindList("ids", ids).bind("today", today).map { rs, _ ->
+            rs.getLong(1) to JsonObject(mapOf("user_id" to JsonPrimitive(rs.getLong(2)), "full_name" to JsonPrimitive(rs.getString(3)), "role" to JsonPrimitive(rs.getString(4)), "username" to JsonPrimitive(rs.getString(5))))
+        }.list().groupBy({ it.first }, { it.second })
+    }
+    return JsonObject(page + ("items" to JsonArray(items.map { it2 ->
+        val o = it2 as JsonObject
+        val id = (o["id"] as? JsonPrimitive)?.content?.toLongOrNull()
+        JsonObject(o + ("assignees" to JsonArray(byRoute[id].orEmpty())))
+    })))
 }
