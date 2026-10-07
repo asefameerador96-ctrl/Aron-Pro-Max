@@ -208,6 +208,39 @@ class SchemaV1bTest {
         assertTrue(otherDate.message!!.contains("client_uuid"), "the client_uuid key fired: ${otherDate.message}")
     }
 
+    /** V0042 (AUD-DA-02): capture rows freeze zone, cluster, channel and geo class; a later route move never rewrites them. */
+    @Test
+    fun captureRowsFreezeTheirContextAndARouteMoveDoesNotRewriteThem() = tx { c ->
+        val zone = fk["route"]!!.let { c.scalar("SELECT zone_id FROM app.route WHERE id = $it")!! }
+        val cluster = c.scalar("SELECT cluster_id FROM app.outlet")!!
+        val tables = listOf("visit", "memo", "due_collection", "stock_movement")
+        // The generic builder fills required columns only; capture rows carry their route (nullable in the schema).
+        fun withRoute(sql: String) = if (Regex("\\(route_id[,)]|, route_id[,)]").containsMatchIn(sql.substringBefore(" VALUES"))) sql
+            else sql.replaceFirst(" (", " (route_id, ").replaceFirst("VALUES (", "VALUES (${fk["route"]}, ")
+        for (t in tables) c.exec(withRoute(insertSql(c, t, UUID.randomUUID())))
+        assertEquals(
+            listOf("visit|$zone|$cluster|GT|", "memo|$zone|$cluster|GT|", "due_collection|$zone|$cluster", "stock_movement|$zone|"),
+            tables.map { t ->
+                val extra = if (t in setOf("visit", "memo")) ", outlet_channel, coalesce(outlet_geo_class, '')" else ""
+                c.scalar("SELECT concat_ws('|', '$t', zone_id, coalesce(cluster_id::text, '')$extra) FROM app.$t")!!
+            },
+        )
+        // Move the route to another zone: history keeps the old zone for earlier dates and the captured rows keep theirs.
+        c.exec("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z9', 'Zone 9', territory_id FROM app.zone WHERE id = $zone")
+        c.exec("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z9') WHERE id = ${fk["route"]}")
+        assertEquals(zone, c.scalar("SELECT app.route_zone_on(${fk["route"]}, '2026-10-05')"))
+        assertEquals("4", c.scalar("SELECT (SELECT count(*) FROM app.visit WHERE zone_id = $zone) + (SELECT count(*) FROM app.memo WHERE zone_id = $zone) + (SELECT count(*) FROM app.due_collection WHERE zone_id = $zone) + (SELECT count(*) FROM app.stock_movement WHERE zone_id = $zone)"))
+        for (t in tables) {
+            c.exec("SAVEPOINT s")
+            val e = assertFailsWith<SQLException>(t) { c.exec("UPDATE app.$t SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z9')") }
+            assertEquals("42501", e.sqlState, t)
+            c.exec("ROLLBACK TO SAVEPOINT s")
+        }
+        // A row captured on a date before the move, synced after it, is stamped with the zone of its business date.
+        c.exec(withRoute(insertSql(c, "visit", UUID.randomUUID(), "2026-10-04")))
+        assertEquals(zone, c.scalar("SELECT zone_id FROM app.visit WHERE business_date = '2026-10-04'"))
+    }
+
     @Test
     fun theCrossDateUuidCheckIsOneStatementLevelTriggerPerPartitionedTable() = db.connect().use { c ->
         // V0021 (AUD-PERF-01): AFTER INSERT FOR EACH STATEMENT with a transition table, never a per-row dynamic query.
