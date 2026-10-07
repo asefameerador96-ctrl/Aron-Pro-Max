@@ -43,12 +43,13 @@ import com.aktcl.aron.core.database.entity.VisitEntity
  * a Migration with a test, and destructive migration is never enabled.
  */
 @Database(
-    version = 4,
+    version = 5,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // v2 (F-SYS-006): price, config_value, bundle_section
         AutoMigration(from = 2, to = 3), // v3: due_collection, visit_skip, day_submit, outlet_change_request, task_event, task, memo_counter, print_event, print_job, memo.printed_at/print_count
         AutoMigration(from = 3, to = 4), // v4 (F-SYS-072): outbox.sig, the record signature made once per row
+        AutoMigration(from = 4, to = 5), // v5 (F-SR-020/021): content_item, outlet_content_assignment, survey, survey_question, content_view, survey_response
     ],
     entities = [
         RouteEntity::class, OutletEntity::class, SkuEntity::class,
@@ -59,6 +60,9 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         PriceEntity::class, ConfigValueEntity::class, BundleSectionEntity::class,
         DueCollectionEntity::class, VisitSkipEntity::class, DaySubmitEntity::class, OutletChangeRequestEntity::class,
         TaskEventEntity::class, TaskEntity::class, MemoCounterEntity::class, PrintEventEntity::class, PrintJobEntity::class,
+        com.aktcl.aron.core.database.entity.ContentItemEntity::class, com.aktcl.aron.core.database.entity.OutletContentAssignmentEntity::class,
+        com.aktcl.aron.core.database.entity.SurveyEntity::class, com.aktcl.aron.core.database.entity.SurveyQuestionEntity::class,
+        com.aktcl.aron.core.database.entity.ContentViewEntity::class, com.aktcl.aron.core.database.entity.SurveyResponseEntity::class,
     ],
 )
 abstract class AronDatabase : RoomDatabase() {
@@ -72,6 +76,7 @@ abstract class AronDatabase : RoomDatabase() {
         val DEVICE_TABLES: List<String> = listOf(
             "geo_fix", "attendance_event", "stock_movement", "visit", "visit_close", "memo", "memo_line", "memo_discount", "qc_line",
             "due_collection", "visit_skip", "day_submit", "outlet_change_request", "task_event", "print_event",
+            "content_view", "survey_response",
         )
 
         fun fileName(userId: Long): String {

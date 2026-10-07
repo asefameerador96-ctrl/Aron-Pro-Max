@@ -386,11 +386,14 @@ class AronWorkerFactory(
     private val runner: () -> SyncRunner,
     private val scheduler: () -> WorkManagerSyncScheduler,
     private val pushPull: (() -> com.aktcl.aron.core.sync.push.PushPull)? = null,
+    /** F-SR-020: the AV/KV asset download ([ContentShell.prefetch]); null in the AMO and TSO shells. */
+    private val contentPrefetch: (suspend (userId: Long) -> Unit)? = null,
 ) : WorkerFactory() {
     override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? = when (workerClassName) {
         SyncWorker::class.java.name -> SyncWorker(appContext, workerParameters, runner(), scheduler())
         com.aktcl.aron.core.sync.push.PushPullWorker::class.java.name ->
             com.aktcl.aron.core.sync.push.PushPullWorker(appContext, workerParameters, pushPull?.invoke() ?: com.aktcl.aron.core.sync.push.PushPull { false })
+        ContentPrefetchWorker::class.java.name -> ContentPrefetchWorker(appContext, workerParameters, contentPrefetch ?: { _ -> })
         else -> null
     }
 }

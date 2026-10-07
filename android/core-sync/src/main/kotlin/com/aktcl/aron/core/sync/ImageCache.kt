@@ -50,13 +50,14 @@ class ImageCache(
 
     /**
      * Makes [url] available on disk: the cached file, else a download when the network kind allows ([Kind.AV] only on an
-     * unmetered network). Null when it may not or cannot be fetched now. Never throws.
+     * unmetered network unless [allowMetered]). With [sha256] (lowercase hex) a download whose bytes differ is dropped (a
+     * truncated or replaced file is never shown). Null when it may not or cannot be fetched now. Never throws.
      */
-    suspend fun fetch(url: String, kind: Kind): File? = lock.withLock {
+    suspend fun fetch(url: String, kind: Kind, sha256: String? = null, allowMetered: Boolean = false): File? = lock.withLock {
         withContext(Dispatchers.IO) {
             try {
                 fileFor(url).takeIf { it.isFile }?.let { return@withContext it }
-                if (kind == Kind.AV && !runCatching(unmetered).getOrDefault(false)) return@withContext null
+                if (kind == Kind.AV && !allowMetered && !runCatching(unmetered).getOrDefault(false)) return@withContext null
                 if (keyOf(url) in failed) return@withContext null
                 http.newCall(Request.Builder().url(url).get().build()).execute().use { r ->
                     val type = r.header("Content-Type").orEmpty().lowercase()
@@ -68,6 +69,7 @@ class ImageCache(
                     dir.mkdirs()
                     val tmp = File(dir, fileFor(url).name + ".part")
                     var written = 0L
+                    val digest = MessageDigest.getInstance("SHA-256")
                     tmp.outputStream().use { out ->
                         body.byteStream().use { input ->
                             val buf = ByteArray(16 * 1024)
@@ -77,8 +79,12 @@ class ImageCache(
                                 written += n
                                 if (written > limit) { out.close(); tmp.delete(); failed += keyOf(url); return@withContext null }
                                 out.write(buf, 0, n)
+                                digest.update(buf, 0, n)
                             }
                         }
+                    }
+                    if (sha256 != null && digest.digest().joinToString("") { "%02x".format(it) } != sha256.lowercase()) {
+                        tmp.delete(); failed += keyOf(url); return@withContext null
                     }
                     val target = fileFor(url)
                     if (!tmp.renameTo(target)) { tmp.delete(); return@withContext null }

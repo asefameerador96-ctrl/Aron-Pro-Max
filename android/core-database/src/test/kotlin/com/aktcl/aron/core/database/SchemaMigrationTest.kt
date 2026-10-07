@@ -124,6 +124,38 @@ class SchemaMigrationTest {
         }
     }
 
+    /** v5 (F-SR-020/021): the content and survey tables are added empty; every outbox row and capture is kept. */
+    @Test
+    fun version4To5AddsTheContentAndSurveyTablesAndKeepsEveryRow() {
+        helper.createDatabase("migration-45", 4).use { db ->
+            db.execSQL(
+                """INSERT INTO outbox (client_uuid, record_type, family_uuid, rank, business_date, payload_json, payload_sha256, state,
+                   batch_uuid, attempts, created_at, sig) VALUES ('6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f', 'visit', 'f', 0, '2026-10-05', '{}', 'h',
+                   'in_flight', 'b1', 1, 't', 's1')""",
+            )
+        }
+        helper.runMigrationsAndValidate("migration-45", 5, true).use { db ->
+            db.query("SELECT state, batch_uuid, sig FROM outbox").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("in_flight", c.getString(0))
+                assertEquals("b1", c.getString(1))
+                assertEquals("s1", c.getString(2))
+            }
+            for (t in listOf("content_item", "outlet_content_assignment", "survey", "survey_question", "content_view", "survey_response")) {
+                db.query("SELECT COUNT(*) FROM `$t`").use { c -> assertTrue(c.moveToFirst()); assertEquals(t, 0, c.getInt(0)) }
+            }
+            for (t in listOf("content_view", "survey_response")) {
+                var pk: String? = null
+                db.query("PRAGMA table_info(`$t`)").use { c ->
+                    while (c.moveToNext()) if (c.getInt(c.getColumnIndexOrThrow("pk")) == 1) pk = c.getString(c.getColumnIndexOrThrow("name"))
+                }
+                assertEquals("$t is keyed by client_uuid", "client_uuid", pk)
+            }
+            assertTrue("one view per item per visit", uniqueIndexColumns(db, "content_view").contains(listOf("visit_client_uuid", "content_id")))
+            assertTrue("one answer per question per visit", uniqueIndexColumns(db, "survey_response").contains(listOf("visit_client_uuid", "survey_id", "question_id")))
+        }
+    }
+
     @Test
     fun theExportedSchemaMatchesTheCompiledEntities() {
         // The file is created from the exported JSON; opening it with the compiled Room database runs Room's identity-hash

@@ -291,6 +291,23 @@ object RecordMapping {
         },
     )
 
+    /** In the visit family at rank 1, as the visit close (its visit is the parent; F-SR-020). */
+    fun contentView(e: com.aktcl.aron.core.database.entity.ContentViewEntity, createdAt: String) = outbox(
+        RecordType.CONTENT_VIEW, e.clientUuid, e.visitClientUuid, 1, e.meta, createdAt,
+        ContentViewPayload.serializer(),
+        ContentViewPayload(e.visitClientUuid, e.contentId, e.contentVersion, e.kind, e.outcome, e.sequenceNo, e.startedAt, e.durationMs),
+    )
+
+    /** In the visit family at rank 1 (F-SR-021). */
+    fun surveyResponse(e: com.aktcl.aron.core.database.entity.SurveyResponseEntity, createdAt: String) = outbox(
+        RecordType.SURVEY_RESPONSE, e.clientUuid, e.visitClientUuid, 1, e.meta, createdAt,
+        SurveyResponsePayload.serializer(),
+        SurveyResponsePayload(
+            e.visitClientUuid, e.surveyId, e.surveyVersion, e.questionId, e.answerType, e.answerBool, e.answerNum, e.answerOptionCode,
+            e.answerText, e.photoUuid,
+        ),
+    )
+
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */
     fun printEvent(e: PrintEventEntity, familyUuid: String, rank: Int, payload: JsonObject, createdAt: String) = outbox(
         RecordType.PRINT_EVENT, e.clientUuid, familyUuid, rank, e.meta, createdAt, JsonObject.serializer(), payload,

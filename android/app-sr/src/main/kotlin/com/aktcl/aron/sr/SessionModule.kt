@@ -100,11 +100,26 @@ object SessionModule {
         media: MediaShell,
         resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
         activityLog: com.aktcl.aron.core.sync.ActivityLog,
+        content: com.aktcl.aron.core.sync.ContentShell,
     ): AronWorkerFactory = AronWorkerFactory(
-        { SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, afterRun = { _, report -> media.afterSync(report) }, config = resumeConfigCheck, activityLog = activityLog, telemetry = telemetry) }, { scheduler },
+        {
+            SessionSyncRunner(
+                databases, components, runtime::beforeBatch, bundles,
+                afterRun = { userId, report -> media.afterSync(report); content.afterSync(userId) },
+                config = resumeConfigCheck, activityLog = activityLog, telemetry = telemetry,
+            )
+        },
+        { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
         { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
+        contentPrefetch = content::prefetch, // F-SR-020: AV/KV assets ahead of the call, Wi-Fi by policy
     )
+
+    /** F-SR-020/F-SYS-029: AV/KV assets in their own bounded cache; the screens read [com.aktcl.aron.core.sync.ContentAssets.file]. */
+    @Provides
+    @Singleton
+    fun contentShell(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.ContentShell =
+        com.aktcl.aron.core.sync.ContentShell(context, components, databases)
 
     /** Photos (android-sys F-SYS-010/030/037): the media worker's wiring, the per-user camera and the Wi-Fi-only switch. */
     @Provides
