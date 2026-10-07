@@ -78,6 +78,22 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Ninth session (2026-10-07, from ~17:55Z by the container clock)
+- INT merged (infra only, no conflicts). Checks run: shared:contract jvmTest, the three app compiles, core-sync (209), core-database (150), app-sr (12), core-map (20); lint on core-map and app-sr.
+- **N-053 (lead ruling: assigned to android-core because F-SYS-074 needs it) and F-SYS-074: done** (T1; Opus checker FAIL with one medium privacy finding, fixed with tests; re-check FAIL only on a bn copy of a translatable=false string, removed as it prescribed; lint green). New module `android/core-map` (interface in "Interfaces for feature lanes"):
+  - `LiteMapScreen`: Google lite mode (2D, one static image) only when online, with a key and provider google; the list with "last seen HH:MM (n min ago)" and source, greyed after 120 min, in every mode; offline the last rendered image from `MapTileCache` (LRU, cap `cfg.map.tile_cache_mb`, 5..100, default 20). MapLibre is not bundled: that setting shows the list. No map class loads outside the composable (source-scan test).
+  - `DayConfig` reads `cfg.map.provider` and `cfg.map.tile_cache_mb`; `MapSettings.of` validates them. Honest limit: the hosts that build `MapSettings` from DayConfig are the AMO/TSO screens (F-AMO-016, F-TSO-011/012, F-AMO-028), not built yet.
+  - Attendance address: `AddressResolver` (platform Geocoder, no key, online only, 5 s timeout, after the commit, display only); offline the coordinates, plus the last resolved address when within 300 m (per-user prefs `aron-map-last-address-<id>`, deleted by the logout wipe). Wired in `SrDay`.
+  - `NoAlwaysOnMapTest` (app-sr): only the on-tap N-041 OutletMapActivity references the Maps SDK, started only from a click handler, not exported.
+  - Live lite render, pins and snapshot write: device check D-MAP-074 (address part ready now; map part when the AMO/TSO hosts land).
+  - For android-core-ui (via the lead): add `core-map` to `HardcodedStringScanner`'s module set (core-ui test). Its strings are already in resources (bn + en).
+- **Location notice re-check (handover item) done**: after "Later", each resume re-reads the need; when a config delta has made the notice required (and it is not accepted) it is drawn OVER the day (no teardown: a visit in progress keeps its state; Back is swallowed; only Accept or Logout). A read error keeps "Later". Opus check PASS; its medium (mid-sale teardown) and lows fixed with the test (state survives, error keeps Later, shown_at = reappearance time). Limit: the flip shows at the resume after the delta is applied.
+- **BC-56 follow-up done**: `cfg.sec.record_signature_mode` (db V0053) is read by `SyncEngine`; under enforce the integrity-quarantined rows are held without spending a release round, and record/off releases them (one round per business date as before). Opus check PASS; its scheduled-row test gap added. Accepted low: a phone stuck on a stale enforce holds the rows until the next delta or bundle (no on-screen sign).
+- **F-SYS-028 follow-up (incremental_vacuum) done**: new user files are `auto_vacuum = INCREMENTAL`, so `LocalPurge`'s `PRAGMA incremental_vacuum` gives pages back. SQLCipher (production): a `postKey` hook in `SqlCipher.factory` (after the key, before SQLCipher's WAL switch); framework (tests): `IncrementalVacuumFactory` in `onConfigure`. No file is ever rewritten (no VACUUM): existing NONE files (pilot/dev only) stay until the logout wipe or a reinstall. Opus check FAIL (the onConfigure pragma is ignored under SQLCipher because WAL comes first; reproduced with stock SQLite), fixed by the hook; the production proof is device check D-DB-VAC (`SqlCipherDeviceTest` asserts mode 2). Accepted low: a failed pragma is swallowed (the open never fails for it).
+- Request filed: docs/requests/android-core-sys-media-mobile-bytes.md (android-sys: a sent-bytes callback so `b_mob_media` is counted).
+- Lead note (18:21Z): backend-core built F-API-070, BC-62 (urgent flag) and BC-63 on lane/backend-core 15dba8dd; F-SYS-047/080 start when it is on INT.
+  - Accepted lows: before API 33 a timed-out geocode keeps its IO thread until the platform call returns; the offline image shows no capture time.
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~18:05Z by the server clock, eighth session)
 - **Done this session.** Every row had a fresh Opus checker, and every FAIL had a re-check. Details are in "Eighth session" below.
   - Closed: F-SYS-081 phone half (round-4 re-check PASS), F-SYS-073, AUD-PERF-06 and AUD-PERF-04 (in code; the A06 numbers are D-PERF-04).
@@ -92,11 +108,9 @@
   1. F-SYS-047 and F-SYS-080, once backend F-API-070 (`GET /sync/generation`) is on INT. It was not on INT at 17:40Z.
   2. F-SYS-074, once N-053 (the AMO map) is on INT.
   3. Small items:
-     - `incremental_vacuum` needs `auto_vacuum=INCREMENTAL` at file creation: a one-time VACUUM path (T1 migration, careful).
      - LocationNotice re-check when the setting turns required mid-session.
      - The media lane should call `DeviceTelemetry.noteMobileMediaBytes`.
      - Replace the seed `baseline-prof.txt` with the generated profiles once D-PERF-04 runs.
-     - BC-56: read `cfg.sec.record_signature_mode` from config once db registers it with delivery both.
      - `cfg.app.image_cache_mb`, `local_history_days` and `outbox_keep_days` wait for db rows; the defaults hold.
 - **Open requests (new):** docs/requests/android-core-backend-urgent-push-flag.md, to backend-core (send `urgent` in the config_pull data).
 - **Notes for the lead:** the server never enforces `checkout_too_early` (backend-core, info). Lane decision: `URGENT_RESERVE` = 4 config requests over the daily cap of 24 for urgent pushes.
@@ -408,6 +422,12 @@
 
 Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s5.1). Local wire DTOs are marked
 `REQUEST:` and move to `shared:contract` when the shared lane lands them, with the same names.
+
+**core-map** (`com.aktcl.aron.core.map`, N-053, for android-amo and android-tso; add `implementation(project(":android:core-map"))`):
+- `LiteMapScreen(points, settings, online, keyPresent, nowMs, cache, cacheKey)`: the body of a map screen. Host it in an Activity or destination opened ONLY from its tile. Live: Google lite mode (2D, one static image, no gestures), at most `MAX_MARKERS` = 100 pins, the image saved to the bounded cache. Offline / no key / MapLibre: no Maps class loads; the image as last seen (if cached) and the list with "last seen HH:MM (n min ago)" and source, greyed after `staleAfterMin` (pass `cfg.tso.team_location_max_age_min`, default 120). The list always shows.
+- `MapSettings.of(dayConfig.mapProvider, dayConfig.mapTileCacheMb)` (`cfg.map.provider`, `cfg.map.tile_cache_mb` 5..100, default 20); `MapsKey.present(context)` (presence only, never the value); `MapTileCache(File(context.cacheDir, "map"), { settings.tileCacheBytes })`; `cacheKey` = screen plus scope (for example `team-zone-<id>`), so one zone's image never shows for another.
+- `MapPoint(id, label, lat, lng, fixAtMs, source)`: feed it the last synced list (Room or the last API answer) so the screen works offline.
+- `AddressResolver(online, AndroidGeocodeBackend(context), language, PrefsLastAddressStore(context, userId))`: online-only reverse geocode, 5 s timeout, display only; `displayText(context, lat, lng)` is what `AttendanceFlow.addressResolver` takes (the AMO attendance can reuse it).
 
 **core-database** (`com.aktcl.aron.core.database`): one Room database per user. In app code inject `UserDatabases` (Hilt, app module) and call `userDatabases.of(userId)` (suspend; opens once, encrypted). In Robolectric tests use `AronDatabase.open(context, userId, null)` or an in-memory builder.
 - `CaptureRepository(db)`: commits a capture plus its outbox records in ONE transaction. A duplicate client UUID throws `SQLiteConstraintException`. A malformed capture throws `IllegalArgumentException` or `IllegalStateException` before any write. Methods: `recordAttendance(event, fix)`, `recordStock(movements)`, `recordVisitOpen(visit, fix)`, `recordSale(SaleCapture(memo, lines, discounts, qcLines, editFix))`, `recordVisitClose(close)`.
