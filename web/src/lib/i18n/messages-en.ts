@@ -445,6 +445,23 @@ export const en = {
   "feedback.status.in_progress": "In progress",
   "feedback.status.resolved": "Resolved",
   "feedback.status.closed": "Closed",
+  "menu.admin.tutorials": "Tutorials",
+  "tut.add": "Add a tutorial",
+  "tut.kind": "Type",
+  "tut.kind.video": "Video",
+  "tut.kind.manual": "Manual (PDF)",
+  "tut.title_en": "Title (English)",
+  "tut.title_bn": "Title (Bangla)",
+  "tut.roles": "Roles that see it",
+  "tut.file": "File",
+  "tut.file_hint": "A video (MP4) or a PDF, up to 100 MB.",
+  "tut.replace_note": "Choose a file to replace the current one.",
+  "tut.file_required": "Choose a file.",
+  "tut.file_type": "The file type does not match.",
+  "tut.file_big": "The file is larger than 100 MB.",
+  "tut.uploading": "Uploading…",
+  "tut.upload_failed": "The upload failed. Try again.",
+  "tut.saved": "Saved.",
 } as const;
 
 export type MessageKey = keyof typeof en;

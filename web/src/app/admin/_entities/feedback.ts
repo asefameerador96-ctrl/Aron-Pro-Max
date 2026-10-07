@@ -20,7 +20,7 @@ export const feedback = defineEntity<Feedback, Record<never, never>, Record<neve
   fields: [
     { name: "category_code", labelKey: "entity.field.category", kind: "text", mode: "readonly", column: true },
     { name: "title", labelKey: "entity.field.title", kind: "text", mode: "readonly", column: true },
-    { name: "description", labelKey: "entity.field.description", kind: "text", mode: "readonly" },
+    { name: "description", labelKey: "entity.field.description", kind: "text", mode: "readonly", column: true },
     { name: "status", labelKey: "entity.field.status", kind: "enum", mode: "readonly", ...STATUS, column: true },
     { name: "user_id", labelKey: "entity.field.user", kind: "int", mode: "readonly", column: true },
     { name: "created_at", labelKey: "entity.field.created_at", kind: "timestamp", mode: "readonly", column: true },
