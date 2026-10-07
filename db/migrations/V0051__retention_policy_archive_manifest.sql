@@ -58,8 +58,9 @@ CREATE TABLE app.archive_manifest (
 );
 CREATE TRIGGER archive_manifest_flow BEFORE UPDATE OF status ON app.archive_manifest
   FOR EACH ROW EXECUTE FUNCTION app.guard_transition('status', 'planned>exported', 'exported>verified', 'verified>dropped', 'dropped>restored');
--- What was exported is a fact once written: after 'planned', the export columns never change (a re-export is a new
--- partition_name row only after a restore, which the job plans by hand); the identity columns never change at all.
+-- What was exported is a fact once written: after 'planned', the export columns never change; the identity columns
+-- never change at all. A restored partition stays in the primary (one manifest row per partition_name; archiving it
+-- again needs a later migration).
 CREATE FUNCTION app.archive_manifest_freeze() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp
@@ -96,12 +97,13 @@ AS $$
     JOIN pg_namespace n ON n.oid = c.relnamespace
    WHERE c.relname ~ '_y\d{4}m\d{2}$'
      AND to_date(substring(c.relname FROM 'y(\d{4}m\d{2})$'), 'YYYY"m"MM') < (date_trunc('month', p_today) - make_interval(months => rp.hot_months))::date
-     AND NOT EXISTS (SELECT 1 FROM app.archive_manifest m WHERE m.partition_name = n.nspname || '.' || c.relname AND m.status IN ('dropped', 'restored'))   -- a restored partition stays until someone plans it by hand
+     AND NOT EXISTS (SELECT 1 FROM app.archive_manifest m WHERE m.partition_name = n.nspname || '.' || c.relname AND m.status IN ('dropped', 'restored'))   -- a restored partition stays in the primary
    ORDER BY 3, 1
 $$;
 
 -- Rows in a default partition mean a month partition was missing at insert time (ensure_partitions re-routes them on
--- its next run); the worker alerts when this returns any row after its partition run. SECURITY DEFINER: no runtime
+-- its next run); the worker alerts when this returns any row after its partition run. Only worker and jobs logins
+-- (and a superuser) may call it: on Azure the admin login is no superuser, so ops run it as a worker or jobs login. SECURITY DEFINER: no runtime
 -- role has rights on single partitions; the function only counts.
 CREATE FUNCTION app.default_partition_rows() RETURNS TABLE (parent text, row_count bigint)
 LANGUAGE plpgsql STABLE
