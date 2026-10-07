@@ -65,6 +65,10 @@ fun LoginScreen(
     onLanguageSelect: (AppLanguage) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    if (state.bindToken != null) {
+        OtpContent(state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify)
+        return
+    }
     LoginContent(
         state = state,
         appTitle = appTitle,
@@ -162,6 +166,7 @@ private fun messageText(message: LoginMessage): String = when (message) {
     LoginMessage.EmptyFields -> stringResource(R.string.auth_error_empty)
     LoginMessage.InvalidCredentials -> stringResource(R.string.auth_error_invalid_credentials)
     LoginMessage.BindRequired -> stringResource(R.string.auth_error_bind_required)
+    LoginMessage.SignInAgain -> stringResource(R.string.otp_sign_in_again)
     LoginMessage.PasswordChangeRequired -> stringResource(R.string.auth_error_password_change_required)
     is LoginMessage.Locked -> message.retryAfterMinutes?.let {
         pluralStringResource(R.plurals.auth_error_locked_minutes, it.toInt(), localizedNumber(it))
