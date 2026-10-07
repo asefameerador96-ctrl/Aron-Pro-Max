@@ -43,7 +43,7 @@ class FakeGateway(
 }
 
 fun policyFixture(): DevicePolicy =
-    DevicePolicy.parse(FakeGateway::class.java.getResource("/policy-prod.json")!!.readText())
+    DevicePolicies.parse(FakeGateway::class.java.getResource("/policy-prod.json")!!.readText())
 
 /** The dev variant of docs/24 s10.2's table. */
 fun DevicePolicy.asDev(): DevicePolicy = copy(

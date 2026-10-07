@@ -84,7 +84,7 @@ $intProtection = @{
   allow_deletions = $false
 } | ConvertTo-Json -Depth 4
 Api PUT "repos/$Repo/branches/$Int/protection" $intProtection | Out-Null
-Write-Host "$Int: force-push and deletion blocked"
+Write-Host "${Int}: force-push and deletion blocked"
 
 Step 'Environments for the final account: azure-stage (from main) and azure-prod (owner approves, release tags server-v* only). azure-dev is left alone.'
 # Names match deploy.yml, promote-prod.yml and the OIDC federated subjects (infra lane). A job that the changes filter skips
