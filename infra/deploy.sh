@@ -240,21 +240,29 @@ fi
 previous="$(az deployment group show -g "$RG" -n aron-infra --query properties.outputs -o json 2>/dev/null || true)"
 # The parameters main.bicep would get now (GitHub variables included), compared with the last successful run, so a
 # changed ARON_ALERT_EMAILS / ARON_BUDGET_AMOUNT / ARON_NAME_SUFFIX / AZURE_LOCATION also re-runs the infra stage.
+# The two documents go through files, never argv: with the attestation roots they exceed Linux's 128 KiB limit for
+# one argument ("python3: Argument list too long", deploy run 144), which made every deploy re-apply main.bicep.
 params_unchanged() {
-  local now last
-  now="$(ARON_DB_ADMIN_PASSWORD=compare-only-not-a-secret-0 ARON_BUDGET_START_DATE=2000-01-01 \
-    az bicep build-params --file "infra/params/${PROFILE}.bicepparam" --stdout 2>/dev/null)" || return 1
-  last="$(az deployment group show -g "$RG" -n aron-infra --query properties.parameters -o json 2>/dev/null)" || return 1
-  python3 - "$now" "$last" <<'PY'
+  local now last rc
+  now="$(mktemp)"; last="$(mktemp)"
+  if ! ARON_DB_ADMIN_PASSWORD=compare-only-not-a-secret-0 ARON_BUDGET_START_DATE=2000-01-01 \
+       az bicep build-params --file "infra/params/${PROFILE}.bicepparam" --stdout > "$now" 2>/dev/null \
+     || ! az deployment group show -g "$RG" -n aron-infra --query properties.parameters -o json > "$last" 2>/dev/null; then
+    rm -f "$now" "$last"; return 1
+  fi
+  rc=0
+  python3 - "$now" "$last" <<'PY' || rc=1
 import json, sys
-now = json.loads(json.loads(sys.argv[1])["parametersJson"])["parameters"]
-last = json.loads(sys.argv[2])
+now = json.loads(json.load(open(sys.argv[1]))["parametersJson"])["parameters"]
+last = json.load(open(sys.argv[2]))
 ignore = {"postgresAdminPassword", "budgetStartDate", "deployerObjectId"}
 diff = [k for k, v in now.items() if k not in ignore and last.get(k, {}).get("value") != v.get("value")]
 if diff:
     print("infra parameters changed: " + ", ".join(sorted(diff)), file=sys.stderr)
 sys.exit(1 if diff else 0)
 PY
+  rm -f "$now" "$last"
+  return "$rc"
 }
 # The commit main.bicep was last applied from (resource-group tag aron-infra-sha, written after a successful apply;
 # `az deployment group create` has no --tags: deploy run 37639072495). The infra stage is skipped when
@@ -573,6 +581,10 @@ if [ "$api_mode_now" = Multiple ]; then
       || echo "::warning::could not deactivate the old revision $r"
   done
 fi
+# Release marker on the App Insights charts (N-062); never fails the deploy.
+infra/scripts/release-marker.sh "$rg_id" "$ENV_NAME" "$SHA" \
+  "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-local}" \
+  "$([ -n "$ROLLBACK_SHA" ] && echo rollback || echo deploy)" || echo "::warning::release marker step failed"
 if [ "$ARON_DEPLOY_BUDGET" = true ]; then
   amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \
     || die "budget $BUDGET not found in $RG"
