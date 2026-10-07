@@ -15,6 +15,7 @@ import com.aktcl.aron.core.sync.device.DayConfig
 import com.aktcl.aron.core.sync.device.DeviceFactsSnapshot
 import com.aktcl.aron.core.sync.device.DeviceStatusReporter
 import com.aktcl.aron.core.sync.device.IntegrityState
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -111,17 +112,64 @@ class DeviceStatusReporterTest {
     @Test
     fun loginOrCheckInAsksForEvidenceEvenWhenTheTokenIsFresh() = runBlocking {
         reporter.beforeBatch(db)
-        reporter.wantEvidence()
+        reporter.wantEvidence("check_in")
+        assertNull("Sales Submit never waits for Play", reporter.beforeBatch(db, allowEvidence = false))
+        assertEquals(1, evidenceCalls)
         assertNotNull(reporter.beforeBatch(db))
         assertEquals(2, evidenceCalls)
-        assertFalse(state.evidenceWanted)
+        assertEquals("check_in", payload()["trigger"]!!.jsonPrimitive.content)
+        assertNull(state.evidenceWanted)
     }
 
     @Test
-    fun unreadableSignalsAreUnknownNotClean() = runBlocking {
+    fun unreadableSignalsSendNothingRatherThanCleanGuesses() = runBlocking {
         signalsFail = true
-        reporter.beforeBatch(db)
-        assertTrue("R18: missing means unknown, not an empty list", "root_hints" !in payload())
+        reporter.wantEvidence()
+        assertNull(reporter.beforeBatch(db))
+        assertEquals(0, evidenceCalls)
+        assertEquals("periodic", state.evidenceWanted) // still asked for: the next readable run collects it
+    }
+
+    @Test
+    fun aBuildWithoutPlayIntegritySendsNotConfiguredWithoutAnyCall() = runBlocking {
+        val r = DeviceStatusReporter({ facts }, { signals }, tracker, { evidenceCalls++; evidence }, state, clock, "1", evidenceConfigured = false)
+        assertNotNull(r.beforeBatch(db))
+        assertEquals(0, evidenceCalls)
+        assertEquals("not_configured", payload()["play_integrity_unavailable"]!!.jsonObject["reason"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aSlowPlayIntegrityIsCutAtTheDeadline() = runBlocking {
+        val r = DeviceStatusReporter({ facts }, { signals }, tracker, { kotlinx.coroutines.delay(60_000); evidence }, state, clock, "1", evidenceDeadlineMs = 200)
+        assertNotNull(r.beforeBatch(db))
+        assertEquals("timeout", payload()["play_integrity_unavailable"]!!.jsonObject["reason"]!!.jsonPrimitive.content)
+    }
+
+    /** Checker (wiring round 1, defect 2): two workers of one user at once asked Play twice and queued two reports. */
+    @Test
+    fun twoConcurrentRunsAskPlayIntegrityOnce() = runBlocking {
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        state.evidenceWanted = "periodic"
+        val r = DeviceStatusReporter({ facts }, { signals }, tracker, { calls.incrementAndGet(); kotlinx.coroutines.delay(200); evidence }, state, clock, "1")
+        listOf(
+            async(kotlinx.coroutines.Dispatchers.Default) { r.beforeBatch(db) },
+            async(kotlinx.coroutines.Dispatchers.Default) { r.beforeBatch(db) },
+        ).map { it.await() }
+        assertEquals(1, calls.get())
+        assertEquals(1, records().size)
+    }
+
+    /** Checker (wiring round 1, defect 1): an emergency off-day arrives only in a config delta's calendar_changes. */
+    @Test
+    fun anEmergencyOffDayFromAConfigDeltaMakesTheDayNonWorking() = runBlocking {
+        db.referenceDao().insertSections(listOf(
+            com.aktcl.aron.core.database.entity.BundleSectionEntity("calendar", """{"weekend_days":[5],"entries":[]}"""),
+            com.aktcl.aron.core.database.entity.BundleSectionEntity("calendar_changes", """[{"id":9,"date":"2026-10-06","scope_type":"zone","scope_id":3,"kind":"emergency_off","selling_day":false,"name_en":"Hartal"}]"""),
+        ))
+        val cfg = DayConfig()
+        cfg.refresh(db, "2026-10-06T03:00:00.000Z")
+        assertEquals(false, cfg.isWorkingDay("2026-10-06"))
+        assertEquals(true, cfg.isWorkingDay("2026-10-07"))
     }
 
     @Test
@@ -156,6 +204,13 @@ class DeviceStatusReporterTest {
         assertEquals(false, c.isWorkingDay("2026-10-08")) // holiday
         assertEquals(true, c.isWorkingDay("2026-10-09")) // Friday, but a make-up day
         assertEquals(false, c.isWorkingDay("2026-10-10")) // emergency off
+        // As the server's app.is_working_day: a selling entry wins over an off entry on the same date.
+        val both = DayConfig.Calendar.parse("""{"weekend_days":[5],"entries":[
+              {"id":4,"date":"2026-10-12","scope_type":"global","scope_id":0,"kind":"holiday","selling_day":false,"name_en":"h"},
+              {"id":5,"date":"2026-10-12","scope_type":"zone","scope_id":1,"kind":"makeup_day","selling_day":true,"name_en":"m"}]}""",
+            // A later change of holiday 5 cancels the make-up day.
+            """[{"id":5,"date":"2026-10-12","scope_type":"zone","scope_id":1,"kind":"makeup_day","selling_day":false,"name_en":"m"}]""")
+        assertEquals(false, both.isWorkingDay("2026-10-12"))
         assertEquals(false, c.isWorkingDay("2026-10-16")) // plain Friday
         assertNull(c.isWorkingDay("not-a-date"))
         assertNull(DayConfig().isWorkingDay("2026-10-07")) // no bundle yet: unknown

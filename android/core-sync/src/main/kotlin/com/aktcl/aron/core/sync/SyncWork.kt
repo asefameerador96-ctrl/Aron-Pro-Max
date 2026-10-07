@@ -56,11 +56,11 @@ class SessionSyncRunner(
     private val databases: UserDatabases,
     private val components: SessionComponents,
     /** Runs before the batch is built (device status and integrity, `DeviceRuntime.beforeBatch`); must never throw. */
-    private val beforeBatch: suspend (userId: Long, db: com.aktcl.aron.core.database.AronDatabase) -> Unit = { _, _ -> },
+    private val beforeBatch: suspend (userId: Long, db: com.aktcl.aron.core.database.AronDatabase, trigger: SyncTrigger) -> Unit = { _, _, _ -> },
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
         val db = databases.of(userId)
-        try { beforeBatch(userId, db) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         return engine(userId, db).run(trigger)
     }
 

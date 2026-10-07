@@ -81,7 +81,11 @@ class SrDay(
         val check = resumeConfigCheck ?: return
         background.launch {
             val r = runCatching { check.checkOnResume(userId) }.getOrNull()
-            if (r == com.aktcl.aron.core.sync.ConfigCheckResult.APPLIED) { deviceRuntime?.refreshDayConfig(userId, db); runCatching { reload() } }
+            if (r == com.aktcl.aron.core.sync.ConfigCheckResult.APPLIED) {
+                deviceRuntime?.refreshDayConfig(userId, db)
+                // reload() writes the day's plain fields; it runs where the screens run it, on the main thread.
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { runCatching { reload() } }
+            }
         }
     }
 
@@ -211,7 +215,7 @@ class SrDay(
                 if (e.kind == "check_in") policy.onCheckInCommitted() else policy.onCheckOutCommitted()
             }
             // Play Integrity evidence at check-in (docs/24 s8.7): collected by the next sync run, never awaited here.
-            if (e.kind == "check_in") runCatching { deviceRuntime?.wantEvidence() }
+            if (e.kind == "check_in") runCatching { deviceRuntime?.wantEvidenceAtCheckIn() }
             runCatching { scheduler.requestSync(userId, if (e.kind == "check_in") SyncTrigger.WRITE_DEBOUNCE else SyncTrigger.CHECKOUT) }
         },
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,

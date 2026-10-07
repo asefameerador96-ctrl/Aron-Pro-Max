@@ -95,7 +95,7 @@ class PrefsIntegrityState(context: Context) : IntegrityState {
     override var lastTokenAtMs: Long? get() = long("token_at"); set(v) = put("token_at", v)
     override var lastAttemptAtMs: Long? get() = long("attempt_at"); set(v) = put("attempt_at", v)
     override var integrityRef: String? get() = prefs.getString("ref", null); set(v) = prefs.edit().putString("ref", v).apply()
-    override var evidenceWanted: Boolean get() = prefs.getBoolean("wanted", false); set(v) = prefs.edit().putBoolean("wanted", v).apply()
+    override var evidenceWanted: String? get() = prefs.getString("wanted_for", null); set(v) = prefs.edit().putString("wanted_for", v).apply()
 }
 
 /** Contract `DeviceNonce`; not generated in shared:contract yet. */

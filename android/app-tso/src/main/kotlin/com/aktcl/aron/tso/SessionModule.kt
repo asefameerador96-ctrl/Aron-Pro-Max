@@ -43,8 +43,8 @@ object SessionModule {
     /** Geo, integrity and device-owner wiring owed to android-geo-dpc (docs/requests/android-geo-dpc-wiring.md). */
     @Provides
     @Singleton
-    fun deviceRuntime(@ApplicationContext context: Context, components: SessionComponents): DeviceRuntime =
-        DeviceRuntime(context, components, BuildConfig.PLAY_INTEGRITY_PROJECT_NUMBER)
+    fun deviceRuntime(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): DeviceRuntime =
+        DeviceRuntime(context, components, databases, BuildConfig.PLAY_INTEGRITY_PROJECT_NUMBER)
 
     /** The on-demand fix manager (N-021): `cfg.geo.*` from the bundle and `integrity_ref` from the last token report. */
     @Provides

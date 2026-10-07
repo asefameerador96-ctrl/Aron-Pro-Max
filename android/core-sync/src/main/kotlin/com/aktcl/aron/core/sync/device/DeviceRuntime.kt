@@ -20,7 +20,10 @@ import com.aktcl.aron.core.sync.SyncEngine
 import com.aktcl.aron.dpc.DeviceOwnerPolicy
 import com.aktcl.aron.contract.SyncTrigger
 import com.aktcl.aron.core.sync.SyncScheduler
+import com.aktcl.aron.core.database.UserDatabases
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
@@ -37,8 +40,12 @@ import java.io.File
 class DeviceRuntime(
     context: Context,
     private val components: SessionComponents,
-    playIntegrityProjectNumber: Long,
+    private val databases: UserDatabases,
+    private val playIntegrityProjectNumber: Long,
 ) {
+    /** Completed once the DPC has been configured and has re-applied its policy (a report waits for it, briefly). */
+    private val started = CompletableDeferred<Unit>()
+
     private val app = context.applicationContext
     val state: IntegrityState = PrefsIntegrityState(app)
     val dayConfig = DayConfig()
@@ -65,17 +72,26 @@ class DeviceRuntime(
             state = state,
             clock = components.trustedClock,
             appVersion = components.appVersion,
+            evidenceConfigured = playIntegrityProjectNumber > 0,
         )
     }
 
-    /** Application.onCreate: the DPC gets the trusted clock and the calendar, then re-applies the stored policy (no network). */
-    fun onAppCreate() {
-        runCatching {
-            val p = policy()
-            p.configure(components.trustedClock::nowMs, dayConfig::isWorkingDay)
-            p.reapply()
+    /**
+     * Application.onCreate (off the main thread): the DPC gets the trusted clock and the calendar, the active user's calendar
+     * is loaded from Room (so a cold start on a Friday or a holiday never re-blocks apps), then the stored policy is
+     * re-applied. No network.
+     */
+    suspend fun onAppCreate() {
+        try {
+            runCatching { policy().configure(components.trustedClock::nowMs, dayConfig::isWorkingDay) }
+            activeUserId()?.let { id -> runCatching { refreshDayConfig(id, databases.of(id), reevaluate = false) } }
+            runCatching { policy().reapply() }
+        } finally {
+            started.complete(Unit)
         }
     }
+
+    private fun activeUserId(): Long? = (components.session.state.value as? SessionState.Active)?.user?.userId
 
     /**
      * Application.onCreate: [onAppCreate], then every completed online login asks for fresh evidence and one upload (the
@@ -91,29 +107,41 @@ class DeviceRuntime(
         }
     }
 
-    /** Login and check-in: the next sync run collects Play Integrity evidence (never awaited by the caller). */
-    fun wantEvidence() = reporter.wantEvidence()
+    /** Login: the next sync run collects Play Integrity evidence (never awaited by the caller). */
+    fun wantEvidence() = reporter.wantEvidence("periodic")
 
-    /** Reloads the settings device code reads synchronously; for the active user only (their bundle is the one in force). */
-    suspend fun refreshDayConfig(userId: Long, db: AronDatabase) {
-        val active = (components.session.state.value as? SessionState.Active)?.user?.userId
-        if (active != null && active != userId) return
+    /** Check-in (docs/24 s8.7): evidence reported with the `check_in` trigger by the next sync run. */
+    fun wantEvidenceAtCheckIn() = reporter.wantEvidence("check_in")
+
+    /**
+     * Reloads the settings device code reads synchronously, for the active user only (their bundle is the one in force;
+     * nothing when logged out), then lets the DPC re-decide blocking with the new calendar.
+     */
+    suspend fun refreshDayConfig(userId: Long, db: AronDatabase, reevaluate: Boolean = true) {
+        if (activeUserId() != userId) return
         try {
             dayConfig.refresh(db, SyncEngine.iso(components.trustedClock.nowMs()))
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            // keep the previous settings
+            return // keep the previous settings
         }
+        if (reevaluate) runCatching { policy().reevaluateBlocking() }
     }
 
-    /** The sync worker's hook before a batch: never throws, never fails the upload. */
-    suspend fun beforeBatch(userId: Long, db: AronDatabase) {
+    /**
+     * The sync worker's hook before a batch: never throws, never fails the upload. Uploads somebody waits for (Sales Submit,
+     * the Sync button, check-out) never wait for Play Integrity; background runs collect it within a hard deadline.
+     */
+    suspend fun beforeBatch(userId: Long, db: AronDatabase, trigger: SyncTrigger) {
+        withTimeoutOrNull(5_000) { started.await() } // a report built before the DPC re-applied would say "no policy"
         refreshDayConfig(userId, db)
-        reporter.beforeBatch(db)
+        reporter.beforeBatch(db, allowEvidence = trigger !in WAITED_FOR)
     }
 
     companion object {
+        private val WAITED_FOR = setOf(SyncTrigger.DAY_SUBMIT, SyncTrigger.MANUAL, SyncTrigger.CHECKOUT)
+
         /** `X-Device-Proof` over the enrolled Keystore key; null signatures until enrolment (a dev phone). */
         fun proofSigner(context: Context): DeviceProofSigner =
             KeystoreProofSigner(AndroidDeviceKeyStore(context.applicationContext), KeystoreProofSigner.enrolledAlias(context))

@@ -18,6 +18,10 @@ import com.aktcl.aron.core.session.TrustedClockSource
 import com.aktcl.aron.core.sync.SyncEngine
 import com.aktcl.aron.rules.BusinessDate
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
@@ -53,14 +57,17 @@ interface IntegrityState {
     var lastAttemptAtMs: Long?
     /** `client_uuid` of the latest `device_status` that carried a Play Integrity token: `GeoFix.device.integrity_ref`. */
     var integrityRef: String?
-    /** Set at login and check-in: the next sync run asks for evidence even when the refresh interval has not passed. */
-    var evidenceWanted: Boolean
+    /**
+     * Set at login (`periodic`) and check-in (`check_in`): the report trigger of the evidence the next sync run collects even
+     * when the refresh interval has not passed; null when nothing is asked for.
+     */
+    var evidenceWanted: String?
 
     class Memory : IntegrityState {
         override var lastTokenAtMs: Long? = null
         override var lastAttemptAtMs: Long? = null
         override var integrityRef: String? = null
-        override var evidenceWanted: Boolean = false
+        override var evidenceWanted: String? = null
     }
 }
 
@@ -83,37 +90,57 @@ class DeviceStatusReporter(
     private val state: IntegrityState,
     private val clock: TrustedClockSource,
     private val appVersion: String,
+    /** False when the build has no Play Integrity project: the marker `not_configured` is sent without any network call. */
+    private val evidenceConfigured: Boolean = true,
     /** A failed attempt (offline, Play error) is retried at most this often, so a flaky phone does not spend data. */
     private val retryAfterFailureMs: Long = 60 * 60_000L,
+    /** Hard deadline of one evidence attempt (nonce + Play Integrity); a slow link never holds the upload longer. */
+    private val evidenceDeadlineMs: Long = 25_000L,
 ) {
-    /** Login and check-in ask for fresh evidence; the next sync run collects it (never awaited here). */
-    fun wantEvidence() { state.evidenceWanted = true }
+    private val lock = Mutex()
 
-    /** Returns the `client_uuid` of the queued report, or null when nothing was due. */
-    suspend fun beforeBatch(db: AronDatabase): String? = try {
-        report(db)
+    /** Login (`periodic`) and check-in (`check_in`) ask for fresh evidence; the next sync run collects it (never awaited). */
+    fun wantEvidence(trigger: String = "periodic") { state.evidenceWanted = trigger }
+
+    /**
+     * Returns the `client_uuid` of the queued report, or null when nothing was due. With [allowEvidence] false (Sales
+     * Submit, the Sync button, check-out: uploads somebody waits for) only a local signals report is made; evidence waits
+     * for the next background run. One run at a time per phone, so two workers never ask Play twice.
+     */
+    suspend fun beforeBatch(db: AronDatabase, allowEvidence: Boolean = true): String? = try {
+        lock.withLock { report(db, allowEvidence) }
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
         null // evidence only: a failure here must never stop the upload of the day's records
     }
 
-    private suspend fun report(db: AronDatabase): String? {
+    private suspend fun report(db: AronDatabase, allowEvidence: Boolean): String? {
         val now = clock.nowMs()
         val reference = ReferenceRepository(db)
-        val current = runCatching(signals).getOrNull()
-        val changed = current != null && tracker.changed(current)
+        // Without readable signals the report's required booleans would be guesses: nothing is sent and nothing is asked.
+        val current = runCatching(signals).getOrNull() ?: return null
+        val changed = tracker.changed(current)
         val refreshH = reference.config("cfg.device.integrity_refresh_h", SyncEngine.iso(now))?.trim()?.toIntOrNull() ?: 24
         val lastAttempt = state.lastAttemptAtMs
         val cooled = lastAttempt == null || now < lastAttempt || now - lastAttempt >= retryAfterFailureMs
-        val wantEvidence = state.evidenceWanted || (IntegrityEvidenceService.due(state.lastTokenAtMs, now, refreshH) && cooled)
+        val asked = state.evidenceWanted
+        val wantEvidence = allowEvidence && (asked != null || (IntegrityEvidenceService.due(state.lastTokenAtMs, now, refreshH) && cooled))
         if (!changed && !wantEvidence) return null
 
         val result = if (wantEvidence) {
             state.lastAttemptAtMs = now
             // Tried means exactly one of play_integrity and play_integrity_unavailable (R12).
-            try { evidence() } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                IntegrityResult.Unavailable(IntegrityUnavailable.API_ERROR, e.javaClass.simpleName)
+            if (!evidenceConfigured) {
+                IntegrityResult.Unavailable(IntegrityUnavailable.NOT_CONFIGURED)
+            } else {
+                try {
+                    withTimeoutOrNull(evidenceDeadlineMs) { evidence() } ?: IntegrityResult.Unavailable(IntegrityUnavailable.TIMEOUT)
+                } catch (e: CancellationException) {
+                    if (e is TimeoutCancellationException) IntegrityResult.Unavailable(IntegrityUnavailable.TIMEOUT) else throw e
+                } catch (e: Exception) {
+                    IntegrityResult.Unavailable(IntegrityUnavailable.API_ERROR, e.javaClass.simpleName)
+                }
             }
         } else {
             null
@@ -123,10 +150,10 @@ class DeviceStatusReporter(
         val pending = db.outboxDao().unsentCount()
         val report = DeviceStatusReport(
             reportedAt = SyncEngine.iso(now),
-            trigger = if (changed) "integrity_change" else "periodic",
+            trigger = if (changed) "integrity_change" else asked ?: "periodic",
             appVersion = appVersion,
             deviceInfo = f.deviceInfo,
-            deviceOwner = s?.deviceOwner ?: f.deviceOwner,
+            deviceOwner = s.deviceOwner,
             lockdownLevelApplied = f.lockdownLevelApplied,
             policyVersionApplied = f.policyVersionApplied,
             policyApplyErrors = f.policyApplyErrors.take(30).map { DeviceStatusReportPolicyApplyErrors(it.take(80), "failed") }.ifEmpty { null },
@@ -137,18 +164,18 @@ class DeviceStatusReporter(
             batteryOptimisationIgnored = f.batteryOptimisationIgnored,
             locationEnabled = f.locationEnabled,
             locationMode = f.locationMode,
-            devOptionsEnabled = s?.devOptionsEnabled ?: false,
-            adbEnabled = s?.adbEnabled ?: false,
-            autoTimeEnabled = s?.autoTimeEnabled ?: true,
+            devOptionsEnabled = s.devOptionsEnabled,
+            adbEnabled = s.adbEnabled,
+            autoTimeEnabled = s.autoTimeEnabled,
             timeZone = f.timeZone?.take(40),
-            mockLocationApps = s?.mockLocationApps.orEmpty().distinct().take(50),
+            mockLocationApps = s.mockLocationApps.distinct().take(50),
             playServicesVersion = f.playServicesVersion,
             playIntegrity = (result as? IntegrityResult.Evidence)?.let {
                 buildJsonObject { put("token", JsonPrimitive(it.token)); put("nonce", JsonPrimitive(it.nonce)) }
             },
             playIntegrityUnavailable = (result as? IntegrityResult.Unavailable)?.let { PlayIntegrityUnavailable(it.reason.wire, it.wireDetail) },
-            // Unknown signals stay null (R18: missing means unknown); a clean phone sends an empty list (R13).
-            rootHints = s?.rootHints?.distinct()?.take(16),
+            // A clean phone sends an empty list (R13); the member is never left out once signals were read (R18).
+            rootHints = s.rootHints.distinct().take(16),
             pendingRows = pending,
             batteryPct = f.batteryPct.coerceIn(0, 100),
             charging = f.charging,
@@ -157,8 +184,8 @@ class DeviceStatusReporter(
         val uuid = ClientIds.newUuid()
         CaptureRepository(db) { SyncEngine.iso(clock.nowMs()) }.recordDeviceStatus(uuid, meta(reference, now), report)
         // Only once the report is safely in the outbox: a kill before this point reports again.
-        if (current != null && changed) tracker.recordSent(current)
-        if (wantEvidence) state.evidenceWanted = false
+        if (changed) tracker.recordSent(current)
+        if (wantEvidence) state.evidenceWanted = null
         if (result is IntegrityResult.Evidence) {
             state.lastTokenAtMs = now
             state.integrityRef = uuid
