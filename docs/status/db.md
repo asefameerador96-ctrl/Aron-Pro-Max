@@ -97,6 +97,24 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     uuid-once. Answers `backend-core-breadcrumb-partitioning.md`.
   - Tests: `WebEntryPasswordBreadcrumbTest` (6); DbRolesTest, SchemaV1a/b adapted.
 
+  - `V0042`/`V0043` AUD-DA-02:
+    - Capture rows (visit, memo, due_collection, stock_movement) freeze zone and cluster, and visit and memo also the
+      outlet channel and geo class. They are always stamped on insert; a device can never choose its own context.
+      They are write-once.
+    - `app.route_zone_history`, with `app.route_zone_on(route, date)`.
+    - SCD2 `dw.dim_*_version` tables beside the type-1 dims, kept by the trigger `dw.scd2_track`. `dw.dim_user`.
+      `*_key_on` lookups. Key columns on fact_visit and fact_memo.
+    - Projector part asked of backend-reports: `docs/requests/db-backend-reports-scd2-keys.md`.
+    - Checker round 1: 1 blocker (forged context through the sync writer) and 2 should-fix, all fixed.
+  - `V0044`/`V0045` outlet_location_history bases `none`/`placeholder` without coordinates. Answers
+    `backend-core-location-history-basis.md` (answer in `db-location-history-basis-answer.md`).
+  - `OutboxCommitOrderTest` drains with bounded polls (integrator's flake report, CI run 37613735145).
+  - **Salvage branch `claude/db-s3-salvage`** (an earlier session 3) has V0039-V0045 that collide with these numbers. Its
+    DA-02 (`capture_context_route_zone_history`) is superseded by V0042/V0043 here. Still to port as V0046+ if still
+    needed after review: drop of prefix-duplicate indexes (PERF-08), outlet PII envelope columns + validate (DA-05),
+    `dw` dim_date build (PERF-07?), retention policy + archive manifest + validate (DA-06). Read each one, do not
+    cherry-pick blindly.
+
 ## Handoff (session 2 recycled, 2026-10-07 ~11:00 UTC)
 
 **On lane/db (V0023-V0038), green locally on db (190) and every backend suite; Opus checker PASS per batch:**
