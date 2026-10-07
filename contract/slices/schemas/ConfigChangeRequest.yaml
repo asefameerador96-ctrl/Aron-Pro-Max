@@ -1,0 +1,19 @@
+ConfigChangeRequest:
+  type: object
+  required:
+  - reason
+  - changes
+  additionalProperties: false
+  properties:
+    reason:
+      $ref: '#/components/schemas/ChangeReason'
+    break_glass:
+      type: boolean
+      default: false
+      description: Break-glass apply (cfg.sys.break_glass_mode, at most cfg.sys.break_glass_max_h); reviewed afterwards.
+    changes:
+      type: array
+      minItems: 1
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/ConfigChangeItem'

@@ -1,0 +1,57 @@
+BundleMeta:
+  type: object
+  required:
+  - bundle_version
+  - valid_for_business_date
+  - generated_at
+  - server_time
+  - user_id
+  - role
+  - config_version
+  - schema_version
+  - cursor
+  - paged_sections
+  additionalProperties: false
+  properties:
+    bundle_version:
+      $ref: '#/components/schemas/BundleVersion'
+    valid_for_business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    generated_at:
+      $ref: '#/components/schemas/Timestamp'
+    server_time:
+      $ref: '#/components/schemas/Timestamp'
+    user_id:
+      $ref: '#/components/schemas/Id'
+    role:
+      $ref: '#/components/schemas/Role'
+    config_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    schema_version:
+      type: integer
+      minimum: 1
+    cursor:
+      $ref: '#/components/schemas/DeltaCursor'
+    is_prefetch:
+      type: boolean
+      description: True when `for` is a later date than today (never counts as a login).
+    paged_sections:
+      type: array
+      maxItems: 7
+      items:
+        type: object
+        required:
+        - section
+        - pages
+        - rows
+        additionalProperties: false
+        properties:
+          section:
+            $ref: '#/components/schemas/BundleSectionName'
+          pages:
+            type: integer
+            minimum: 1
+            maximum: 1000
+          rows:
+            type: integer
+            minimum: 0

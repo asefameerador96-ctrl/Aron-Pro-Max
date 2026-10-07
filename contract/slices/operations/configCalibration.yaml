@@ -1,0 +1,23 @@
+path: /v1/admin/config/calibration
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: configCalibration
+  summary: Geofence calibration (distance histogram per geo class and territory, force-sale share, suggested radius).
+  parameters:
+  - $ref: '#/components/parameters/ScopeTypeQuery'
+  - $ref: '#/components/parameters/ScopeIdQuery'
+  responses:
+    '200':
+      description: Calibration report.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CalibrationReport'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

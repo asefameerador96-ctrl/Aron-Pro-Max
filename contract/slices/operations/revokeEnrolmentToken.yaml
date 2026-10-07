@@ -1,0 +1,26 @@
+path: /v1/admin/enrolment-tokens/{token_id}/revoke
+method: post
+operation:
+  tags:
+  - admin-devices
+  operationId: revokeEnrolmentToken
+  summary: Revoke an unused or partly used enrolment token.
+  parameters:
+  - name: token_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  responses:
+    '200':
+      description: Revoked.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnrolmentToken'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

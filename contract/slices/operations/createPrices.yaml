@@ -1,0 +1,32 @@
+path: /v1/admin/prices
+method: post
+operation:
+  tags:
+  - admin-products
+  operationId: createPrices
+  summary: Publish new prices from a future Dhaka date (closes the open row of each SKU and type at that date).
+  description: Back-dating needs `finance.backdate` and is refused otherwise (400 `ERR_MASTER_EFFECTIVE_DATE_PAST`).
+    A publish bumps `cfg.price.list_version`. A batch that moves any price by more than `cfg.price.max_change_pct`
+    is stored `pending_approval` until a second person decides (`POST /v1/admin/prices/batches/{batch_uuid}/decision`);
+    preview first with `POST /v1/admin/prices/preview`.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/PricePublishRequest'
+  responses:
+    '201':
+      description: Prices created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SkuPriceList'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

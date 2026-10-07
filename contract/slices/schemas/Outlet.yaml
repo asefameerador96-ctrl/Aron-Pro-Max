@@ -1,0 +1,114 @@
+Outlet:
+  allOf:
+  - $ref: '#/components/schemas/MasterAudit'
+  - type: object
+    required:
+    - id
+    - code
+    - name
+    - owner_name
+    - zone_id
+    - cluster_id
+    - channel
+    - location_confirmed
+    - outlet_kind
+    - price_type
+    - status
+    properties:
+      id:
+        $ref: '#/components/schemas/Id'
+      code:
+        type: string
+        pattern: ^[0-9A-Za-z][0-9A-Za-z._/-]{0,31}$
+        description: Text, never a number (both DHK-344-011 and 2689479 occur).
+      name:
+        type: string
+        maxLength: 120
+      name_bn:
+        type:
+        - string
+        - 'null'
+        maxLength: 120
+      owner_name:
+        type: string
+        maxLength: 120
+      contact_number:
+        description: PII; null unless the caller has the pii claim.
+        oneOf:
+        - $ref: '#/components/schemas/PhoneBd'
+        - type: 'null'
+      address:
+        type:
+        - string
+        - 'null'
+        maxLength: 300
+      zone_id:
+        $ref: '#/components/schemas/Id'
+      route_id:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        minimum: 1
+      cluster_id:
+        $ref: '#/components/schemas/Id'
+      channel:
+        type: string
+        enum:
+        - GT
+        - DCC
+        - Astha
+        - RCC
+        - MT
+        - HoReCa
+      sub_channel_id:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        minimum: 1
+      geo_class:
+        type:
+        - string
+        - 'null'
+        enum:
+        - Hill
+        - Urban
+        - SemiUrban
+        - Rural
+        - null
+      lat:
+        type:
+        - number
+        - 'null'
+        minimum: -90
+        maximum: 90
+      lng:
+        type:
+        - number
+        - 'null'
+        minimum: -180
+        maximum: 180
+      location_confirmed:
+        type: boolean
+      outlet_kind:
+        type: string
+        enum:
+        - retail
+        - wholesale
+      price_type:
+        $ref: '#/components/schemas/SellingPriceType'
+      status:
+        $ref: '#/components/schemas/OutletStatus'
+      visit_sequence:
+        type:
+        - integer
+        - 'null'
+        minimum: 1
+      external_ref:
+        type:
+        - string
+        - 'null'
+        maxLength: 64
+        description: Stable reference for Phase 2 integrations (docs/24 s12.5).
+  unevaluatedProperties: false

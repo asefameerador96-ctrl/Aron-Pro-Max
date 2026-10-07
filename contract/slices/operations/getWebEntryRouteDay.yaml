@@ -1,0 +1,28 @@
+path: /v1/web-entry/route-day
+method: get
+operation:
+  tags:
+  - web-entry
+  operationId: getWebEntryRouteDay
+  summary: The web route-day aggregate entry of a route and date (with the app's sale quantities read-only).
+  parameters:
+  - name: route_id
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+    description: Route.
+  - $ref: '#/components/parameters/BusinessDateQueryRequired'
+  responses:
+    '200':
+      description: Current entry (empty lines when none).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WebEntryRouteDay'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

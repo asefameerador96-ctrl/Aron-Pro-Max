@@ -19,7 +19,7 @@ const one = (v: string | string[] | undefined, max = 80): string | undefined => 
 const CURSOR_MAX = 512; // PageCursor maxLength in the contract
 
 /** 401 from the API: rotate the cookies once through the refresh route; a second 401 means sign in again. */
-async function onApiFailure(status: number, problem: Problem, locale: Locale): Promise<ReactNode> {
+export async function onApiFailure(status: number, problem: Problem, locale: Locale): Promise<ReactNode> {
   if (status === 401) {
     const path = await currentPath();
     redirect(path.includes("r=1") ? `/login?next=${encodeURIComponent(path)}` : `/api/bff/session/refresh?next=${encodeURIComponent(path + (path.includes("?") ? "&" : "?") + "r=1")}`);

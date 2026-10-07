@@ -1,0 +1,33 @@
+path: /v1/dashboards/daily-tracking/actions
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: createTrackingAction
+  summary: Daily Tracking "take action" note on a route-day; notifies the route's TSO and AMO, never reassigns.
+  description: 'Allowed after `cfg.day.take_action_after` (17:00 Dhaka) of the business date (`409 ERR_REQUEST_STATE`
+
+    before it). Idempotent by `action_uuid`. The notification is an FCM nudge to the TSO and AMO of the route.
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/TrackingActionRequest'
+  responses:
+    '201':
+      description: Stored (or the stored action on replay).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TrackingAction'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

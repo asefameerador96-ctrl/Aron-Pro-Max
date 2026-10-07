@@ -1,0 +1,30 @@
+path: /v1/admin/programmes/{id}/enrolments
+method: put
+operation:
+  tags:
+  - admin-content
+  operationId: putProgrammeEnrolments
+  summary: Upsert enrolments (idempotent by batch_uuid, all-or-nothing).
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ProgrammeEnrolmentWrite'
+  responses:
+    '200':
+      description: Stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetBatchResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

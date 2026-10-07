@@ -1,0 +1,111 @@
+Device:
+  type: object
+  required:
+  - device_id
+  - device_uuid
+  - flavour
+  - status
+  - device_owner
+  - lockdown_level
+  - trust_level
+  - enrolled_at
+  - bound_users
+  additionalProperties: false
+  properties:
+    device_id:
+      $ref: '#/components/schemas/Id'
+    device_uuid:
+      $ref: '#/components/schemas/Uuid'
+    flavour:
+      $ref: '#/components/schemas/AppFlavour'
+    status:
+      $ref: '#/components/schemas/DeviceState'
+    device_owner:
+      type: boolean
+    lockdown_level:
+      $ref: '#/components/schemas/LockdownLevel'
+    trust_level:
+      $ref: '#/components/schemas/TrustLevel'
+    hardware_backed_key:
+      type: boolean
+    integrity_verdict:
+      type: string
+      enum:
+      - pass
+      - fail
+      - unevaluated
+      - stale
+    integrity_checked_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    enrolled_at:
+      $ref: '#/components/schemas/Timestamp'
+    enrolment_token_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    device_info:
+      oneOf:
+      - $ref: '#/components/schemas/DeviceInfo'
+      - type: 'null'
+    app_version:
+      oneOf:
+      - $ref: '#/components/schemas/AppVersionString'
+      - type: 'null'
+    policy_version_applied:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    config_version_applied:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    last_contact_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    pending_rows_reported:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    bound_users:
+      type: array
+      maxItems: 10
+      items:
+        type: object
+        required:
+        - user_id
+        - username
+        - bind_ordinal
+        - bound_at
+        - status
+        additionalProperties: false
+        properties:
+          user_id:
+            $ref: '#/components/schemas/Id'
+          username:
+            $ref: '#/components/schemas/Username'
+          bind_ordinal:
+            type: integer
+            minimum: 0
+            maximum: 3
+          bound_at:
+            $ref: '#/components/schemas/Timestamp'
+          status:
+            type: string
+            enum:
+            - active
+            - unbound_by_policy
+            - revoked
+    last_status:
+      oneOf:
+      - $ref: '#/components/schemas/DeviceStatusReport'
+      - type: 'null'

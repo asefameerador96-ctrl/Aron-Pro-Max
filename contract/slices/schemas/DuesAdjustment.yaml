@@ -1,0 +1,46 @@
+DuesAdjustment:
+  type: object
+  required:
+  - adjustment_id
+  - outlet_id
+  - kind
+  - amount_mtk
+  - reason
+  - status
+  - created_by_user_id
+  - created_at
+  additionalProperties: false
+  properties:
+    adjustment_id:
+      $ref: '#/components/schemas/Id'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    memo_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    kind:
+      type: string
+      enum:
+      - correction
+      - write_off
+    amount_mtk:
+      $ref: '#/components/schemas/Mtk'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'
+    status:
+      $ref: '#/components/schemas/DecisionStatus'
+    created_by_user_id:
+      $ref: '#/components/schemas/Id'
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    decided_by_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    decided_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

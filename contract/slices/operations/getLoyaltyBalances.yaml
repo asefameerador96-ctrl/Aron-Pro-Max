@@ -1,0 +1,38 @@
+path: /v1/programmes/loyalty/balances
+method: get
+operation:
+  tags:
+  - programmes
+  operationId: getLoyaltyBalances
+  summary: Live loyalty balance of outlets in reach (online refresh of the bundle's previous-day balance).
+  parameters:
+  - name: outlet_id
+    in: query
+    required: false
+    schema:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/Id'
+    style: form
+    explode: true
+    description: Outlets to read; omitted = the outlets of the caller's routes today.
+  - name: programme_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+    description: One programme.
+  responses:
+    '200':
+      description: Balances.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoyaltyBalanceList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

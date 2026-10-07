@@ -1,0 +1,67 @@
+SyncHealthRow:
+  type: object
+  required:
+  - user_id
+  - device_id
+  - app_version
+  - pending_rows_reported
+  - rejected_count
+  - quarantined_count
+  - held_rows_alert
+  additionalProperties: false
+  properties:
+    user_id:
+      $ref: '#/components/schemas/Id'
+    username:
+      type: string
+      maxLength: 40
+    route_ids:
+      type: array
+      items:
+        $ref: '#/components/schemas/Id'
+    device_id:
+      $ref: '#/components/schemas/Id'
+    device_model:
+      type:
+      - string
+      - 'null'
+      maxLength: 80
+    app_version:
+      $ref: '#/components/schemas/AppVersionString'
+    last_contact_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    last_batch_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    pending_rows_reported:
+      type: integer
+      minimum: 0
+    last_sync_error:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    rejected_count:
+      type: integer
+      minimum: 0
+    quarantined_count:
+      type: integer
+      minimum: 0
+    submit_count_mismatch:
+      type:
+      - boolean
+      - 'null'
+    held_rows_alert:
+      type: boolean
+      description: Pending rows reported and no contact for more than cfg.sla.pending_rows_alert_h.
+    trust_level:
+      $ref: '#/components/schemas/TrustLevel'
+    sync_p95_s:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: Capture-to-ack latency p95 today.

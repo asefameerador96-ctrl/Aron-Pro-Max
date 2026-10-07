@@ -1,0 +1,7 @@
+QuarantineStatus:
+  type: string
+  enum:
+  - open
+  - accepted
+  - accepted_with_fix
+  - discarded

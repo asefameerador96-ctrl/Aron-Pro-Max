@@ -1,0 +1,41 @@
+RadiusWhatIf:
+  type: object
+  required:
+  - scope_type
+  - value
+  - days
+  - visits_evaluated
+  - to_valid
+  - to_invalid
+  - unchanged
+  additionalProperties: false
+  properties:
+    scope_type:
+      $ref: '#/components/schemas/ConfigScopeType'
+    scope_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    value:
+      type: integer
+      minimum: 10
+      maximum: 5000
+    days:
+      type: integer
+      minimum: 1
+      maximum: 90
+    visits_evaluated:
+      type: integer
+      minimum: 0
+    to_valid:
+      type: integer
+      minimum: 0
+      description: Visits invalid today that the candidate radius would make valid.
+    to_invalid:
+      type: integer
+      minimum: 0
+    unchanged:
+      type: integer
+      minimum: 0

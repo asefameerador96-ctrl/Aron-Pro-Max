@@ -1,0 +1,37 @@
+path: /v1/admin/route-assignments
+method: get
+operation:
+  tags:
+  - admin-routes
+  operationId: listRouteAssignments
+  summary: Route assignments (primary, cover) valid on a date or in a range.
+  parameters:
+  - name: route_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: user_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - name: valid_on
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of assignments.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteAssignmentPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

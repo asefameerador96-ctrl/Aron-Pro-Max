@@ -1,0 +1,34 @@
+GiftChoiceResult:
+  type: object
+  required:
+  - results
+  additionalProperties: false
+  properties:
+    results:
+      type: array
+      items:
+        type: object
+        required:
+        - client_uuid
+        - outlet_id
+        - status
+        additionalProperties: false
+        properties:
+          client_uuid:
+            $ref: '#/components/schemas/Uuid'
+          outlet_id:
+            $ref: '#/components/schemas/Id'
+          status:
+            type: string
+            enum:
+            - saved
+            - unchanged
+            - locked
+          code:
+            oneOf:
+            - $ref: '#/components/schemas/ProblemCode'
+            - type: 'null'
+          assignment:
+            oneOf:
+            - $ref: '#/components/schemas/GiftAssignment'
+            - type: 'null'

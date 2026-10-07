@@ -1,0 +1,99 @@
+MemoView:
+  type: object
+  required:
+  - memo_client_uuid
+  - memo_no
+  - business_date
+  - outlet_id
+  - outlet_name
+  - route_id
+  - user_id
+  - status
+  - totals
+  - lines
+  - discounts
+  - print_count
+  - entry_source
+  additionalProperties: false
+  properties:
+    memo_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    memo_no:
+      type: string
+      maxLength: 40
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    outlet_name:
+      type: string
+      maxLength: 120
+    route_id:
+      $ref: '#/components/schemas/Id'
+    user_id:
+      $ref: '#/components/schemas/Id'
+    status:
+      type: string
+      enum:
+      - active
+      - superseded
+      - void
+    supersedes_memo_no:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    totals:
+      type: object
+      required:
+      - gross_mtk
+      - offer_discount_mtk
+      - drp_discount_mtk
+      - qc_deduction_mtk
+      - round_adj_mtk
+      - net_mtk
+      - paid_mtk
+      - due_mtk
+      additionalProperties: false
+      properties:
+        gross_mtk:
+          $ref: '#/components/schemas/MtkNonNegative'
+        offer_discount_mtk:
+          $ref: '#/components/schemas/MtkNonNegative'
+        drp_discount_mtk:
+          $ref: '#/components/schemas/MtkNonNegative'
+        qc_deduction_mtk:
+          $ref: '#/components/schemas/MtkNonNegative'
+        round_adj_mtk:
+          type: integer
+          minimum: -5
+          maximum: 5
+        net_mtk:
+          $ref: '#/components/schemas/Mtk'
+        paid_mtk:
+          $ref: '#/components/schemas/MtkNonNegative'
+        due_mtk:
+          $ref: '#/components/schemas/Mtk'
+    lines:
+      type: array
+      maxItems: 60
+      items:
+        $ref: '#/components/schemas/MemoLinePayload'
+    discounts:
+      type: array
+      maxItems: 120
+      items:
+        $ref: '#/components/schemas/MemoDiscountPayload'
+    printed_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    print_count:
+      type: integer
+      minimum: 0
+    entry_source:
+      type: string
+      enum:
+      - app
+      - manual
+      - migration

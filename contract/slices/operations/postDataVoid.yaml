@@ -1,0 +1,31 @@
+path: /v1/admin/data-void
+method: post
+operation:
+  tags:
+  - day
+  operationId: postDataVoid
+  summary: Audited void of a route-day's data (replaces "Delete Section Data"); tombstones and a route-day barrier.
+  description: Allowed only before Final Submit. Voided client UUIDs stay in the ingest registry as tombstones and
+    a late upload captured before the void is rejected `voided_by_admin`; rows captured after the void are accepted
+    (docs/24 s4.10).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DataVoidRequest'
+  responses:
+    '200':
+      description: Void applied.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DataVoidResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

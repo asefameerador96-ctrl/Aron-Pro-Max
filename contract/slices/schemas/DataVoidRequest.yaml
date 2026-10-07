@@ -1,0 +1,24 @@
+DataVoidRequest:
+  type: object
+  required:
+  - client_uuid
+  - route_id
+  - business_date
+  - scope
+  - reason
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    scope:
+      type: string
+      enum:
+      - web_entry
+      - app_memos
+      - all
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

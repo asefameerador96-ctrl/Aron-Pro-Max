@@ -1,0 +1,22 @@
+RiskReviewPayload:
+  type: object
+  description: Offline review of a risk signal from the AMO Exceptions screen; the same event as POST /v1/risk-signals/{signal_id}/review
+    with review_uuid = client_uuid.
+  required:
+  - signal_id
+  - action
+  additionalProperties: false
+  properties:
+    signal_id:
+      $ref: '#/components/schemas/Id'
+    action:
+      type: string
+      enum:
+      - reviewed
+      - dismissed
+      - confirmed
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

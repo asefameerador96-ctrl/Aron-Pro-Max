@@ -1,0 +1,281 @@
+parameters:
+  XDeviceId:
+    name: X-Device-Id
+    in: header
+    required: false
+    description: The phone's device UUID (set at enrolment). Required on every phone request; absent on the web.
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  XDeviceIdRequired:
+    name: X-Device-Id
+    in: header
+    required: true
+    description: The phone's device UUID (set at enrolment).
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  XDeviceProof:
+    name: X-Device-Proof
+    in: header
+    required: false
+    description: 'base64url ES256 signature by the device key (Android Keystore) over the proof string of docs/24
+      s8.3
+
+      (refresh and bind: sha256(token or otp) + nonce bucket + device_uuid; batch: sha256(body) + batch_uuid +
+
+      X-Batch-Attempt). Required on phone calls to refresh, bind-device, batch, devices/me/*.
+
+      '
+    schema:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{86}$
+  XAppVersion:
+    name: X-App-Version
+    in: header
+    required: false
+    description: '`<versionName>+<versionCode>` of the installed app, for example `1.0.3+103`. Required on phone
+      calls.'
+    schema:
+      $ref: '#/components/schemas/AppVersionString'
+  XConfigVersionRequest:
+    name: X-Config-Version
+    in: header
+    required: false
+    description: Config version applied on the phone.
+    schema:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+  XBatchAttempt:
+    name: X-Batch-Attempt
+    in: header
+    required: true
+    description: Attempt number of this batch_uuid (1 for the first send).
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 10000
+  XPendingRows:
+    name: X-Pending-Rows
+    in: header
+    required: true
+    description: Outbox rows still pending on the phone including this batch (feeds the held-rows list).
+    schema:
+      type: integer
+      minimum: 0
+      maximum: 1000000
+  XLastSyncError:
+    name: X-Last-Sync-Error
+    in: header
+    required: false
+    description: Stable code of the last failed attempt (problem code, HTTP status as `HTTP_<n>`, or `NETWORK`).
+    schema:
+      type: string
+      pattern: ^[A-Z0-9_]{2,60}$
+  XDeviceTime:
+    name: X-Device-Time
+    in: header
+    required: false
+    description: Device wall clock at send (RFC 3339 UTC) for skew measurement; never trusted for business dates.
+    schema:
+      $ref: '#/components/schemas/Timestamp'
+  IfNoneMatch:
+    name: If-None-Match
+    in: header
+    required: false
+    description: Strong ETag of the locally held version (bundle_version, policy_version).
+    schema:
+      type: string
+      maxLength: 120
+  IfMatch:
+    name: If-Match
+    in: header
+    required: true
+    description: ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412.
+    schema:
+      type: string
+      pattern: ^"[0-9]{1,10}"$
+  Limit:
+    name: limit
+    in: query
+    required: false
+    description: Page size.
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 500
+      default: 100
+  Cursor:
+    name: cursor
+    in: query
+    required: false
+    description: Opaque cursor from `next_cursor` of the previous page.
+    schema:
+      $ref: '#/components/schemas/PageCursor'
+  UpdatedSince:
+    name: updated_since
+    in: query
+    required: false
+    description: Only rows with `updated_at` strictly after this instant (deactivated rows included, status shows
+      it).
+    schema:
+      $ref: '#/components/schemas/Timestamp'
+  Search:
+    name: q
+    in: query
+    required: false
+    description: Case-insensitive search on code and name (trigram for outlets).
+    schema:
+      type: string
+      minLength: 2
+      maxLength: 80
+  StatusQuery:
+    name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/ActiveStatus'
+  FromDate:
+    name: from
+    in: query
+    required: false
+    description: First business date, inclusive.
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  ToDate:
+    name: to
+    in: query
+    required: false
+    description: Last business date, inclusive (at most 92 days after `from`).
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  BusinessDateQuery:
+    name: business_date
+    in: query
+    required: false
+    description: Business date (Asia/Dhaka); default today.
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  BusinessDateQueryRequired:
+    name: business_date
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  ZoneIdQuery:
+    name: zone_id
+    in: query
+    required: false
+    description: Narrowing selector; must be inside the caller's reach.
+    schema:
+      $ref: '#/components/schemas/Id'
+  ZoneIdQueryRequired:
+    name: zone_id
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  TerritoryIdQuery:
+    name: territory_id
+    in: query
+    required: false
+    description: Narrowing selector; must be inside the caller's reach.
+    schema:
+      $ref: '#/components/schemas/Id'
+  GeoLevelQuery:
+    name: level
+    in: query
+    required: false
+    description: Level of the node the figures are for; default the caller's top level.
+    schema:
+      $ref: '#/components/schemas/ReachLevel'
+  NodeIdQuery:
+    name: node_id
+    in: query
+    required: false
+    description: Id of the node at `level` (omit for national).
+    schema:
+      $ref: '#/components/schemas/Id'
+  FlavourQuery:
+    name: flavour
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/AppFlavour'
+  FlavourQueryOptional:
+    name: flavour
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/AppFlavour'
+  ConfigKeyQueryRequired:
+    name: key
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/ConfigKeyName'
+  ScopeTypeQuery:
+    name: scope_type
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/ConfigScopeType'
+  ScopeIdQuery:
+    name: scope_id
+    in: query
+    required: false
+    schema:
+      type: integer
+      format: int64
+      minimum: 0
+  IdPath:
+    name: id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  ZoneIdPath:
+    name: zone_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  DeviceIdPath:
+    name: device_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  ChangeIdPath:
+    name: change_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  ConfigVersionPath:
+    name: version
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+  MediaUuidPath:
+    name: media_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  RequestUuidPath:
+    name: request_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  GeoLevelPath:
+    name: level
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/GeoLevel'
+  ProductLevelPath:
+    name: level
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/ProductTreeLevel'

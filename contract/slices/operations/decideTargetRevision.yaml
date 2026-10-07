@@ -1,0 +1,39 @@
+path: /v1/admin/target-revisions/{revision_id}/decision
+method: post
+operation:
+  tags:
+  - admin-targets
+  operationId: decideTargetRevision
+  summary: Approve or reject a target revision at the caller's level of cfg.target.approval_levels.
+  description: The approver is never the maker (`409 ERR_SEPARATION_OF_DUTIES`). The last approval makes the revision
+    live; nothing is overwritten (older revisions become superseded).
+  parameters:
+  - name: revision_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+    description: Revision id.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DecisionRequest'
+  responses:
+    '200':
+      description: Decided.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetRevision'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

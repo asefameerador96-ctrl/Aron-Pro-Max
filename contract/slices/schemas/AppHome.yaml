@@ -1,0 +1,26 @@
+AppHome:
+  type: object
+  required:
+  - as_of
+  - business_date
+  - node
+  - kpis
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    node:
+      $ref: '#/components/schemas/NodeRef'
+    kpis:
+      $ref: '#/components/schemas/DashboardKpis'
+    team:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/TeamDayRow'
+    targets:
+      oneOf:
+      - $ref: '#/components/schemas/TargetAchievement'
+      - type: 'null'

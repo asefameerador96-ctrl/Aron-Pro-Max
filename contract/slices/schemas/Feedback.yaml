@@ -1,0 +1,32 @@
+Feedback:
+  type: object
+  required:
+  - feedback_uuid
+  - user_id
+  - category_code
+  - title
+  - description
+  - created_at
+  additionalProperties: false
+  properties:
+    feedback_uuid:
+      $ref: '#/components/schemas/Uuid'
+    user_id:
+      $ref: '#/components/schemas/Id'
+    category_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    title:
+      type: string
+      maxLength: 120
+    description:
+      type: string
+      maxLength: 2000
+    photo_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    status:
+      $ref: '#/components/schemas/FeedbackStatus'

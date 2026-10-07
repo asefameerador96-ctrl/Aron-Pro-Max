@@ -1,0 +1,21 @@
+PermissionGrant:
+  type: object
+  required:
+  - permission
+  - state
+  - min_api
+  additionalProperties: false
+  properties:
+    permission:
+      type: string
+      pattern: ^android\.permission\.[A-Z_]+$
+    state:
+      type: string
+      enum:
+      - granted
+      - denied
+      - default
+    min_api:
+      type: integer
+      minimum: 26
+      maximum: 99

@@ -1,0 +1,13 @@
+QcLineRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: qc_line
+      payload:
+        $ref: '#/components/schemas/QcLinePayload'
+  unevaluatedProperties: false

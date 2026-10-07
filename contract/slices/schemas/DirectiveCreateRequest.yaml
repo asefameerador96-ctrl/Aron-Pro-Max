@@ -1,0 +1,24 @@
+DirectiveCreateRequest:
+  type: object
+  required:
+  - type
+  additionalProperties: false
+  properties:
+    type:
+      type: string
+      enum:
+      - send_status
+      - redownload_bundle
+      - upload_support_bundle
+      - resend_from
+    resend_from:
+      description: For resend_from, the business date from which acked rows are re-sent (registry dedupe absorbs
+        repeats).
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    ttl_h:
+      type: integer
+      minimum: 1
+      maximum: 72
+      default: 24

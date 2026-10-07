@@ -1,0 +1,83 @@
+RecordEnvelope:
+  type: object
+  description: Fields common to every sync record (docs/24 s4.3). Identity never comes from the body; it comes from
+    the token.
+  required:
+  - type
+  - client_uuid
+  - family_uuid
+  - rank
+  - schema_version
+  - business_date
+  - captured_at
+  - captured_elapsed_ms
+  - boot_count
+  - captured_offline
+  - config_version
+  properties:
+    type:
+      $ref: '#/components/schemas/RecordType'
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    family_uuid:
+      $ref: '#/components/schemas/Uuid'
+    rank:
+      type: integer
+      minimum: 0
+      maximum: 3
+      description: Position in the family; parents have a lower rank and are processed first.
+    schema_version:
+      type: integer
+      minimum: 1
+      maximum: 1000
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    captured_at:
+      $ref: '#/components/schemas/Timestamp'
+    captured_elapsed_ms:
+      type: integer
+      format: int64
+      minimum: 0
+      description: SystemClock.elapsedRealtime() at capture.
+    boot_count:
+      type: integer
+      minimum: 0
+      description: Settings.Global.BOOT_COUNT at capture.
+    clock_offset_ms:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      description: Server time minus device wall clock known at capture; null if never synced.
+    captured_offline:
+      type: boolean
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Route being worked (from the bundle assignment). Required on visit families and route-day records.
+    acting_for_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: The route's assignee when the capturing user is a substitute.
+    bundle_version:
+      oneOf:
+      - $ref: '#/components/schemas/BundleVersion'
+      - type: 'null'
+    bundle_stale:
+      type: boolean
+      default: false
+    config_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    sig:
+      type:
+      - string
+      - 'null'
+      pattern: ^[A-Za-z0-9_-]{86}$
+      description: ES256 family signature on header records (visit, memo, attendance_event, stock_movement, due_collection,
+        memo_void, outlet_change_request, redemption, gift_photo); docs/24 s8.3.

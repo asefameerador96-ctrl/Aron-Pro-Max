@@ -1,0 +1,53 @@
+UserPatch:
+  type: object
+  minProperties: 1
+  additionalProperties: false
+  properties:
+    full_name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    role:
+      $ref: '#/components/schemas/Role'
+    designation:
+      type:
+      - string
+      - 'null'
+      maxLength: 60
+    employee_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    phone:
+      oneOf:
+      - $ref: '#/components/schemas/PhoneBd'
+      - type: 'null'
+    email:
+      type:
+      - string
+      - 'null'
+      format: email
+      maxLength: 120
+    locale:
+      type: string
+      enum:
+      - bn
+      - en
+    home_zone_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    status:
+      type: string
+      enum:
+      - active
+      - disabled
+    pilot:
+      type: boolean
+    change_reason:
+      oneOf:
+      - $ref: '#/components/schemas/ChangeReason'
+      - type: 'null'

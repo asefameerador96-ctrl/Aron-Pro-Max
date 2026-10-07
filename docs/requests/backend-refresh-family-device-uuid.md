@@ -18,3 +18,14 @@ ALTER TABLE app.refresh_family ADD CONSTRAINT refresh_family_phone_bound
 
 With it, the backend stores `device_uuid` at issue and requires `X-Device-Id = device_uuid` on every refresh, so dev
 phones keep the refresh and upload grants while staying bound to one phone.
+
+## Answer from the db lane (2026-10-07): done, `V0013__refresh_family_device_uuid.sql`
+
+- `app.refresh_family.device_uuid uuid` (nullable) and `refresh_family_phone_bound`:
+  `CHECK (client = 'web' OR device_id IS NOT NULL OR device_uuid IS NOT NULL OR revoked_at IS NOT NULL)`, validated.
+- One difference from the requested shape, from the checker: PostgreSQL re-checks a `NOT VALID` CHECK on every later
+  UPDATE of an old row, so a pre-existing unbound phone family could not even be revoked. The migration therefore
+  revokes such families first (`revoke_reason = 'device_revoked'`; those phones log in again), and the check lets a
+  revoked family stay unbound so it remains updatable.
+- Partial index `refresh_family_device_uuid (device_uuid) WHERE device_uuid IS NOT NULL AND revoked_at IS NULL` for
+  revocation by phone; refresh lookups stay on the unique `refresh_token.token_sha256`.

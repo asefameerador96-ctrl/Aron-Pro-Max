@@ -1,0 +1,89 @@
+OutletPatch:
+  type: object
+  minProperties: 1
+  additionalProperties: false
+  properties:
+    name:
+      type: string
+      minLength: 2
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    owner_name:
+      type: string
+      minLength: 2
+      maxLength: 120
+    contact_number:
+      oneOf:
+      - $ref: '#/components/schemas/PhoneBd'
+      - type: 'null'
+    address:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    cluster_id:
+      $ref: '#/components/schemas/Id'
+    channel:
+      type: string
+      enum:
+      - GT
+      - DCC
+      - Astha
+      - RCC
+      - MT
+      - HoReCa
+    sub_channel_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    geo_class:
+      type:
+      - string
+      - 'null'
+      enum:
+      - Hill
+      - Urban
+      - SemiUrban
+      - Rural
+      - null
+    lat:
+      type: number
+      minimum: -90
+      maximum: 90
+    lng:
+      type: number
+      minimum: -180
+      maximum: 180
+    outlet_kind:
+      type: string
+      enum:
+      - retail
+      - wholesale
+    status:
+      $ref: '#/components/schemas/OutletStatus'
+    visit_sequence:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    external_ref:
+      type:
+      - string
+      - 'null'
+      maxLength: 64
+    change_reason:
+      oneOf:
+      - $ref: '#/components/schemas/ChangeReason'
+      - type: 'null'

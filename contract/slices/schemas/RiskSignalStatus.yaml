@@ -1,0 +1,7 @@
+RiskSignalStatus:
+  type: string
+  enum:
+  - open
+  - reviewed
+  - dismissed
+  - confirmed

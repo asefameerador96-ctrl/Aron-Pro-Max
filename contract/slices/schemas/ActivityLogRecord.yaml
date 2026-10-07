@@ -1,0 +1,13 @@
+ActivityLogRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: activity_log
+      payload:
+        $ref: '#/components/schemas/ActivityLogPayload'
+  unevaluatedProperties: false

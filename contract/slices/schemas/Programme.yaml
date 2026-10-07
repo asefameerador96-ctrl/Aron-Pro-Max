@@ -1,0 +1,54 @@
+Programme:
+  type: object
+  required:
+  - programme_id
+  - kind
+  - code
+  - name_en
+  - active_from
+  - active_to
+  - status
+  - version
+  additionalProperties: false
+  properties:
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    kind:
+      $ref: '#/components/schemas/ProgrammeKind'
+    code:
+      type: string
+      pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$
+    name_en:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    period_label:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+      description: For example `2026-10` (Diamond League month) or `2026-Q4` (Astha quarter).
+    active_from:
+      $ref: '#/components/schemas/BusinessDate'
+    active_to:
+      $ref: '#/components/schemas/BusinessDate'
+    points_expire_on:
+      description: Diamond League points of this period expire after this date (period end + cfg.loyalty.expiry_days).
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    rules:
+      type: object
+      description: Kind-specific rules as data (Superstar slabs and criteria, campaign gift list); validated against
+        the kind's schema.
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    version:
+      type: integer
+      minimum: 1

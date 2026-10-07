@@ -1,0 +1,13 @@
+AttendanceEventRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: attendance_event
+      payload:
+        $ref: '#/components/schemas/AttendanceEventPayload'
+  unevaluatedProperties: false

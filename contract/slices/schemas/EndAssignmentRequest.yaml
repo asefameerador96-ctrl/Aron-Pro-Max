@@ -1,0 +1,11 @@
+EndAssignmentRequest:
+  type: object
+  required:
+  - valid_to
+  - reason
+  additionalProperties: false
+  properties:
+    valid_to:
+      $ref: '#/components/schemas/BusinessDate'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

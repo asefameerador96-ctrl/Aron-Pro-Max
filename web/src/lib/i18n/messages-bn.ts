@@ -1,6 +1,7 @@
 // Bangla catalogue (the default locale). Same keys as messages-en.ts; tests/i18n.test.ts enforces parity and that
 // no Bangla value is empty or equal to its English text.
 import { dashBn } from "./messages-dash-bn";
+import { cfgBn } from "./messages-config";
 import type { MessageKey } from "./messages-en";
 
 export const bn: Record<MessageKey, string> = {
@@ -141,4 +142,5 @@ export const bn: Record<MessageKey, string> = {
   "error.ERR_SERVICE_UNAVAILABLE": "সার্ভিস এখন ব্যস্ত। কিছুক্ষণ পর আবার চেষ্টা করুন।",
   "error.ERR_READ_ONLY_MODE": "সিস্টেম এখন শুধু পড়ার অবস্থায় আছে। পরে চেষ্টা করুন।",
   ...dashBn,
+  ...cfgBn,
 };

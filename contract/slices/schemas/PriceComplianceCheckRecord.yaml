@@ -1,0 +1,13 @@
+PriceComplianceCheckRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: price_compliance_check
+      payload:
+        $ref: '#/components/schemas/PriceComplianceCheckPayload'
+  unevaluatedProperties: false

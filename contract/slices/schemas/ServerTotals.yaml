@@ -1,0 +1,22 @@
+ServerTotals:
+  type: object
+  description: The server's view of one user and business date.
+  required:
+  - business_date
+  - as_of
+  - by_type
+  - money
+  additionalProperties: false
+  properties:
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    by_type:
+      type: object
+      propertyNames:
+        $ref: '#/components/schemas/RecordType'
+      additionalProperties:
+        $ref: '#/components/schemas/TypeOutcomeCounts'
+    money:
+      $ref: '#/components/schemas/MoneyTotals'

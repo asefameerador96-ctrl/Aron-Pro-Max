@@ -1,0 +1,32 @@
+path: /v1/outlet-requests/{request_uuid}/reject
+method: post
+operation:
+  tags:
+  - outlet-requests
+  operationId: rejectOutletRequest
+  summary: Reject a pending or verified request with a reason (shown to the requester).
+  parameters:
+  - $ref: '#/components/parameters/RequestUuidPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ReasonRequest'
+  responses:
+    '200':
+      description: Rejected.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OutletRequest'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

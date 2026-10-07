@@ -1,0 +1,11 @@
+GnssConstellation:
+  type: string
+  enum:
+  - GPS
+  - GLONASS
+  - GALILEO
+  - BEIDOU
+  - QZSS
+  - IRNSS
+  - SBAS
+  - UNKNOWN

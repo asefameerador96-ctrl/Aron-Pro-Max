@@ -1,0 +1,35 @@
+path: /v1/feedback/{feedback_uuid}
+method: patch
+operation:
+  tags:
+  - people
+  operationId: updateFeedbackStatus
+  summary: Set the status of a feedback item in the inbox (audited with a reason).
+  parameters:
+  - name: feedback_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+    description: Feedback id.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/FeedbackStatusWrite'
+  responses:
+    '200':
+      description: Updated.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Feedback'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

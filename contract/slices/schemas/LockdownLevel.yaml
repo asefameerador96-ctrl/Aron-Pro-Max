@@ -1,0 +1,5 @@
+LockdownLevel:
+  type: string
+  enum:
+  - dev
+  - prod

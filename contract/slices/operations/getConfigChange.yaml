@@ -1,0 +1,22 @@
+path: /v1/admin/config/changes/{change_id}
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: getConfigChange
+  summary: One change with its blast radius and approval trail.
+  parameters:
+  - $ref: '#/components/parameters/ChangeIdPath'
+  responses:
+    '200':
+      description: Change.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigChange'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

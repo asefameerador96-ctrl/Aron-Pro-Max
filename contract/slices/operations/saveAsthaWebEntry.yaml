@@ -1,0 +1,30 @@
+path: /v1/web-entry/outlet-sku
+method: post
+operation:
+  tags:
+  - web-entry
+  operationId: saveAsthaWebEntry
+  summary: Save the Astha outlet-by-SKU entry explicitly; overlap with app memos is flagged, never added.
+  description: Idempotent by `client_uuid` (the same uuid sent twice stores one entry). Only Astha-channel outlets
+    (`400 ERR_VALIDATION` otherwise); window rules as for the route-day entry.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/AsthaWebEntryWrite'
+  responses:
+    '200':
+      description: Stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AsthaWebEntry'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

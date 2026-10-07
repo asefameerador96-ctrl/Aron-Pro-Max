@@ -1,0 +1,8 @@
+DeviceState:
+  type: string
+  enum:
+  - enrolled
+  - active
+  - suspended
+  - revoked
+  - replaced

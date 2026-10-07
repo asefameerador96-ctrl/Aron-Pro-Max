@@ -1,0 +1,9 @@
+GeoVerdict:
+  type: string
+  enum:
+  - in_range
+  - out_of_range
+  - accuracy_too_low
+  - no_fix
+  - mocked
+  - no_outlet_location

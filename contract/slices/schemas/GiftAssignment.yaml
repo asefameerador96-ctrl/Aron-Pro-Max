@@ -1,0 +1,47 @@
+GiftAssignment:
+  type: object
+  required:
+  - gift_assignment_id
+  - quarter
+  - outlet_id
+  - route_id
+  - gift_id
+  - photo_captured
+  - locked
+  additionalProperties: false
+  properties:
+    gift_assignment_id:
+      $ref: '#/components/schemas/Id'
+    quarter:
+      type: string
+      pattern: ^\d{4}-Q[1-4]$
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    gift_id:
+      $ref: '#/components/schemas/Id'
+    tier_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    photo_captured:
+      type: boolean
+    photo_media_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    locked:
+      type: boolean
+      description: True once the SR's photo exists (cfg.astha.gift_choice_lock = on_sr_photo).
+    chosen_by_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    chosen_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

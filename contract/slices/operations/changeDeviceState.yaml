@@ -1,0 +1,32 @@
+path: /v1/admin/devices/{device_id}/state
+method: post
+operation:
+  tags:
+  - admin-devices
+  operationId: changeDeviceState
+  summary: Suspend, revoke or reactivate a device (revoked devices keep the upload grant for the grace window).
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DeviceStateChangeRequest'
+  responses:
+    '200':
+      description: Device after the change.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Device'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

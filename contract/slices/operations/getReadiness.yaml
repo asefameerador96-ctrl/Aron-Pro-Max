@@ -1,0 +1,19 @@
+path: /v1/health/ready
+method: get
+operation:
+  tags:
+  - health
+  operationId: getReadiness
+  summary: Readiness probe for Azure Container Apps (checks the database pool).
+  security: []
+  responses:
+    '200':
+      description: Ready to serve.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Health'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

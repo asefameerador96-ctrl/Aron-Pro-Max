@@ -1,0 +1,22 @@
+NearbyOutlets:
+  type: object
+  required:
+  - as_of
+  - radius_m
+  - truncated
+  - items
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    radius_m:
+      type: integer
+      minimum: 10
+      maximum: 5000
+    truncated:
+      type: boolean
+    items:
+      type: array
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/NearbyOutlet'

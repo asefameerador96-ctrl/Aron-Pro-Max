@@ -1,0 +1,34 @@
+path: /v1/risk-signals/{signal_id}/review
+method: post
+operation:
+  tags:
+  - risk
+  operationId: reviewRiskSignal
+  summary: Review, dismiss or confirm a signal with a note (append-only event).
+  parameters:
+  - name: signal_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/RiskReviewRequest'
+  responses:
+    '200':
+      description: Signal with the new status.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RiskSignal'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

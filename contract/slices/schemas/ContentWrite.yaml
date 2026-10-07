@@ -1,0 +1,57 @@
+ContentWrite:
+  type: object
+  required:
+  - kind
+  - title_en
+  - asset_id
+  - valid_from
+  - valid_to
+  - sequence
+  - change_reason
+  additionalProperties: false
+  properties:
+    kind:
+      $ref: '#/components/schemas/ContentKind'
+    title_en:
+      type: string
+      maxLength: 120
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    asset_id:
+      $ref: '#/components/schemas/Uuid'
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      $ref: '#/components/schemas/BusinessDate'
+    sequence:
+      type: integer
+      minimum: 1
+      maximum: 20
+    assigned_scope:
+      type: array
+      maxItems: 200
+      items:
+        type: object
+        required:
+        - node_type
+        - node_id
+        additionalProperties: false
+        properties:
+          node_type:
+            type: string
+            enum:
+            - wing
+            - division
+            - territory
+            - zone
+            - route
+            - outlet
+          node_id:
+            $ref: '#/components/schemas/Id'
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

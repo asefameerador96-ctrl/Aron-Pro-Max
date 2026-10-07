@@ -1,0 +1,64 @@
+MoneyTotals:
+  type: object
+  description: Money and quantity totals of one business date for exact reconciliation (never unit-less sums).
+  required:
+  - active_memo_count
+  - gross_mtk
+  - offer_discount_mtk
+  - drp_discount_mtk
+  - qc_deduction_mtk
+  - net_mtk
+  - paid_mtk
+  - due_mtk
+  - due_collected_mtk
+  - net_by_category_mtk
+  - issued_qty_base_by_sku
+  - sold_qty_base_by_sku
+  additionalProperties: false
+  properties:
+    active_memo_count:
+      type: integer
+      minimum: 0
+      description: Memos with status active and line_count > 0.
+    gross_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    offer_discount_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    drp_discount_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    qc_deduction_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'
+    paid_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    due_mtk:
+      $ref: '#/components/schemas/Mtk'
+    due_collected_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    net_by_category_mtk:
+      type: object
+      description: Product category code to net mtk.
+      propertyNames:
+        type: string
+        pattern: ^[a-z][a-z0-9_]{1,30}$
+      additionalProperties:
+        type: integer
+        format: int64
+    issued_qty_base_by_sku:
+      type: object
+      description: SKU id (as a string) to issued quantity in base units (each SKU in its own unit).
+      propertyNames:
+        type: string
+        pattern: ^[1-9][0-9]{0,17}$
+      additionalProperties:
+        type: integer
+        minimum: -10000000
+    sold_qty_base_by_sku:
+      type: object
+      propertyNames:
+        type: string
+        pattern: ^[1-9][0-9]{0,17}$
+      additionalProperties:
+        type: integer
+        minimum: 0

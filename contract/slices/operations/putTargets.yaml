@@ -1,0 +1,31 @@
+path: /v1/admin/targets
+method: put
+operation:
+  tags:
+  - admin-targets
+  operationId: putTargets
+  summary: Upsert a month's targets for a set of scopes (all-or-nothing; targets are never negative).
+  description: Creates a target revision `pending_approval` that goes live after the approvals of cfg.target.approval_levels
+    (docs/24 s12.6); idempotent by `batch_uuid`. After the month starts (cfg.target.lock_after_month_start) every
+    change is a revision.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/TargetBatchWrite'
+  responses:
+    '200':
+      description: Stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetBatchResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

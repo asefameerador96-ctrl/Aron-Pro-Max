@@ -1,0 +1,23 @@
+EnrolmentTokenCreated:
+  type: object
+  required:
+  - token
+  - enrolment_token
+  - qr_payload
+  - qr_text
+  additionalProperties: false
+  properties:
+    token:
+      $ref: '#/components/schemas/EnrolmentToken'
+    enrolment_token:
+      type: string
+      minLength: 43
+      maxLength: 64
+      pattern: ^[A-Za-z0-9_-]+$
+      description: The secret; shown once (also inside the QR).
+    qr_payload:
+      $ref: '#/components/schemas/ProvisioningQrPayload'
+    qr_text:
+      type: string
+      maxLength: 4000
+      description: Compact JSON of qr_payload, the exact text to encode in the QR code.

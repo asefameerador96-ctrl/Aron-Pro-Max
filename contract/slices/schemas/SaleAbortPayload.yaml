@@ -1,0 +1,27 @@
+SaleAbortPayload:
+  type: object
+  description: A memo number that was consumed without a committed memo; explains the gap in the memo-number-gaps
+    report.
+  required:
+  - memo_no
+  - reason
+  additionalProperties: false
+  properties:
+    memo_no:
+      $ref: '#/components/schemas/MemoNo'
+    reason:
+      type: string
+      enum:
+      - user_cancelled
+      - app_killed
+      - commit_failed
+    visit_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    outlet_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1

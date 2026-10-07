@@ -1,0 +1,33 @@
+AchievementRow:
+  type: object
+  description: Month-to-date achievement known to the server; the phone adds its own unsynced sales on top.
+  required:
+  - scope_type
+  - scope_id
+  - month
+  - product_level
+  - product_id
+  - achieved_qty_base
+  - memo_count
+  - as_of
+  additionalProperties: false
+  properties:
+    scope_type:
+      $ref: '#/components/schemas/TargetScopeType'
+    scope_id:
+      $ref: '#/components/schemas/Id'
+    month:
+      $ref: '#/components/schemas/Month'
+    product_level:
+      $ref: '#/components/schemas/ProductLevel'
+    product_id:
+      $ref: '#/components/schemas/Id'
+    achieved_qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+    memo_count:
+      type: integer
+      minimum: 0
+    as_of:
+      $ref: '#/components/schemas/Timestamp'

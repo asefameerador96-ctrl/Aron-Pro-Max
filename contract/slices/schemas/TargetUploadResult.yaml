@@ -1,0 +1,49 @@
+TargetUploadResult:
+  type: object
+  required:
+  - batch_uuid
+  - status
+  - rows
+  - errors
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    status:
+      type: string
+      enum:
+      - accepted
+      - rejected
+    rows:
+      type: integer
+      minimum: 0
+    revision:
+      oneOf:
+      - $ref: '#/components/schemas/TargetRevision'
+      - type: 'null'
+    error_sheet_url:
+      type:
+      - string
+      - 'null'
+      format: uri
+      maxLength: 2000
+    errors:
+      type: array
+      maxItems: 1000
+      items:
+        type: object
+        required:
+        - row
+        - column
+        - message
+        additionalProperties: false
+        properties:
+          row:
+            type: integer
+            minimum: 1
+          column:
+            type: string
+            maxLength: 40
+          message:
+            type: string
+            maxLength: 300

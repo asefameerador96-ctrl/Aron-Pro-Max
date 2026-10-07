@@ -1,0 +1,13 @@
+SuggestedQty:
+  type: object
+  required:
+  - sku_id
+  - qty_base
+  additionalProperties: false
+  properties:
+    sku_id:
+      $ref: '#/components/schemas/Id'
+    qty_base:
+      type: integer
+      minimum: 0
+      maximum: 10000000

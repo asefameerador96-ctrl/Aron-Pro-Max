@@ -1,0 +1,13 @@
+DistributionCheckRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: distribution_check
+      payload:
+        $ref: '#/components/schemas/DistributionCheckPayload'
+  unevaluatedProperties: false
