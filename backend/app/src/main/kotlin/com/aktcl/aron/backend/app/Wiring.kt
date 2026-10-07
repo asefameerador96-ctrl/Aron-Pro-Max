@@ -98,6 +98,7 @@ import com.aktcl.aron.backend.sync.ServerGeneration
 import com.aktcl.aron.backend.sync.SyncDeps
 import com.aktcl.aron.backend.sync.syncRoutes
 import com.aktcl.aron.backend.sync.taskRoutes
+import com.aktcl.aron.backend.notify.notificationRoutes
 import com.aktcl.aron.backend.notify.pushRoutes
 
 /** The object graph of the API process; tests build their own with throwaway keys and in-memory stores. */
@@ -111,6 +112,8 @@ class Wiring(
     val frontDoorId: String? = null,
     /** Admission control and backpressure (N-056); null in tests that do not exercise it. */
     val admission: com.aktcl.aron.backend.analytics.AdmissionControl? = null,
+    /** [generation] without I/O, for the health probes (AUD-REL-01). */
+    val cachedGeneration: () -> String = generation,
 ) {
     companion object {
         /**
@@ -122,6 +125,7 @@ class Wiring(
             com.aktcl.aron.backend.config.ConfigAckHandler(),
             com.aktcl.aron.backend.masterdata.DomainEventProducer(),
             com.aktcl.aron.backend.masterdata.DataVoidBarrierHandler(com.aktcl.aron.backend.sync.TypeRules.BY_TYPE.keys),
+            com.aktcl.aron.backend.sync.GeoRecheckHandler(),
         )
 
         /** [extraRecordHandlers] and [pushSender] are for tests only; production handlers are listed in [recordHandlers]. */
@@ -246,7 +250,8 @@ class Wiring(
                 syncRoutes(sync)
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
-            }, frontDoorId = s.frontDoorId, admission = admission)
+                notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
+            }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached)
         }
     }
 }

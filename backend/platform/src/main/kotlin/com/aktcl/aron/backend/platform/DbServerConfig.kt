@@ -19,11 +19,30 @@ class DbServerConfig(
     private data class Snapshot(val at: Long, val values: Map<String, JsonElement>, val version: Long)
 
     private val cache = AtomicReference<Snapshot?>(null)
+    private val loading = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var retryAt = 0L
+    @Volatile private var failures = 0
 
+    /**
+     * The cached snapshot, refreshed on the request path once it is older than [ttlMs] (AUD-REL-01): one request at a
+     * time refreshes (the others serve the stale snapshot, or [fallback] on a cold replica), and a failed refresh backs
+     * off (2 s doubling to 30 s) so an unreachable database blocks at most one request per back-off for the pool's
+     * connection timeout, never every request.
+     */
     private fun snapshot(): Snapshot? {
         val now = clock.now().toEpochMilli()
-        cache.get()?.let { if (now - it.at < ttlMs) return it }
-        return runCatching { load(now) }.getOrNull()?.also(cache::set) ?: cache.get()
+        val c = cache.get()
+        if (c != null && now - c.at < ttlMs) return c
+        if (System.nanoTime() < retryAt || !loading.compareAndSet(false, true)) return c
+        try {
+            return load(now).also { cache.set(it); failures = 0 }
+        } catch (e: Exception) {
+            failures = (failures + 1).coerceAtMost(5)
+            retryAt = System.nanoTime() + minOf(30_000L, 1_000L shl failures) * 1_000_000L
+            return c
+        } finally {
+            loading.set(false)
+        }
     }
 
     private fun load(now: Long): Snapshot = db.jdbi.withHandle<Snapshot, Exception> { h ->
@@ -44,4 +63,7 @@ class DbServerConfig(
     override fun value(key: String): JsonElement = snapshot()?.values?.get(key) ?: fallback.value(key)
 
     override fun configVersion(): Long = snapshot()?.version ?: fallback.configVersion()
+
+    /** The cached version without touching the database (health probes, AUD-REL-01). */
+    override fun cachedConfigVersion(): Long = cache.get()?.version ?: fallback.configVersion()
 }

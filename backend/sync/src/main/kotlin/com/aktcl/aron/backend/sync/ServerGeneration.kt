@@ -11,16 +11,35 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class ServerGeneration(private val db: Database, private val ttlMs: Long = 30_000) {
     private val cache = AtomicReference<Pair<Long, String>?>(null)
+    private val loading = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var retryAt = 0L
+    @Volatile private var failures = 0
 
+    /**
+     * Refreshed on the request path once older than [ttlMs]; one request at a time refreshes and a failure backs off
+     * (2 s doubling to 30 s), so an unreachable database never blocks every request (AUD-REL-01).
+     */
     fun current(): String {
         val now = System.currentTimeMillis()
-        cache.get()?.let { if (now - it.first < ttlMs) return it.second }
-        val g = runCatching {
-            db.jdbi.withHandle<String?, Exception> { h ->
+        val c = cache.get()
+        if (c != null && now - c.first < ttlMs) return c.second
+        if (System.nanoTime() < retryAt || !loading.compareAndSet(false, true)) return c?.second ?: NIL_GENERATION
+        try {
+            val g = db.jdbi.withHandle<String?, Exception> { h ->
                 h.createQuery("SELECT generation::text FROM app.server_generation WHERE is_current").mapTo(String::class.java).findOne().orElse(null)
             }
-        }.getOrNull()
-        if (g != null) cache.set(now to g)
-        return g ?: cache.get()?.second ?: NIL_GENERATION
+            failures = 0
+            if (g != null) cache.set(now to g)
+            return g ?: c?.second ?: NIL_GENERATION
+        } catch (e: Exception) {
+            failures = (failures + 1).coerceAtMost(5)
+            retryAt = System.nanoTime() + minOf(30_000L, 1_000L shl failures) * 1_000_000L
+            return c?.second ?: NIL_GENERATION
+        } finally {
+            loading.set(false)
+        }
     }
+
+    /** The cached value without any I/O (health probes). */
+    fun cached(): String = cache.get()?.second ?: NIL_GENERATION
 }

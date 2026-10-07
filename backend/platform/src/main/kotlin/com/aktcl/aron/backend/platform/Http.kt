@@ -43,6 +43,8 @@ class PlatformContext(
     val build: String = "dev",
     /** When set, a request whose `X-Azure-FDID` differs is 403: the API is reachable only through our Front Door (WAF). */
     val frontDoorId: String? = null,
+    /** [generation] without I/O, for the health probes (AUD-REL-01). */
+    val cachedGeneration: () -> String = generation,
 )
 
 /** JSON for responses: every member present (required-nullable members as `null`), snake_case DTO names. */
@@ -79,9 +81,11 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
             h.append("X-Aron-Api", "1")
             h.append("X-Request-Id", id)
             h.append("X-Server-Time", ctx.clock.now().wire())
-            h.append("X-Config-Version", runCatching { ctx.config.configVersion() }.getOrDefault(0).toString())
-            h.append("X-Server-Generation", runCatching { ctx.generation() }.getOrDefault(NIL_GENERATION))
             val path = call.request.path()
+            // Liveness and readiness never wait on PostgreSQL for a header (AUD-REL-01): cached values only.
+            val probe = path.startsWith("/v1/health")
+            h.append("X-Config-Version", runCatching { if (probe) ctx.config.cachedConfigVersion() else ctx.config.configVersion() }.getOrDefault(0).toString())
+            h.append("X-Server-Generation", runCatching { if (probe) ctx.cachedGeneration() else ctx.generation() }.getOrDefault(NIL_GENERATION))
             // Container Apps probes reach the replica directly, so health is exempt from the Front Door gate.
             if (ctx.frontDoorId != null && !path.startsWith("/v1/health") && call.request.headers["X-Azure-FDID"] != ctx.frontDoorId) {
                 throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "requests must come through the Aron Front Door")
@@ -131,6 +135,16 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
                     ctx.clock,
                 )
             }
+            // The database or the pool is unavailable for a while (outage, failover, pool exhausted, lock or statement
+            // timeout, serialization conflict): 503 with a jittered Retry-After, never a 500 the phone bisects on (AUD-REL-02).
+            if (isTransientDbFailure(e)) {
+                val wait = java.util.concurrent.ThreadLocalRandom.current().nextInt(5, 31)
+                errorLog.warn("database unavailable request_id=${call.attributes.getOrNull(RequestIdKey)} sqlstate=$state cause=${e.javaClass.simpleName}")
+                return@exception call.respondProblem(
+                    ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "the service is briefly unavailable; retry later", retryAfterS = wait, headers = mapOf("Retry-After" to wait.toString())),
+                    ctx.clock,
+                )
+            }
             errorLog.error("unhandled error request_id=${call.attributes.getOrNull(RequestIdKey)}", e)
             call.respondProblem(ApiProblem(ProblemCode.ERR_INTERNAL, "unexpected server error"), ctx.clock)
         }
@@ -149,6 +163,16 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
             if (!call.attributes.contains(ProblemCodeKey)) call.respondProblem(ApiProblem(ProblemCode.ERR_VALIDATION, "Accept must allow application/json"), ctx.clock)
         }
     }
+}
+
+/** SQLSTATEs that mean "try again shortly", not a defect: connection (08), shutdown (57P01..03), too many connections,
+ * serialization failure, deadlock, lock not available, statement cancelled by timeout (docs/18 s4.3). */
+private val TRANSIENT_SQLSTATES = setOf("57P01", "57P02", "57P03", "53300", "53400", "40001", "40P01", "55P03", "57014")
+
+/** True when [e] (or a cause) is a pool timeout, a lost or refused connection, or a transient SQLSTATE (AUD-REL-02). */
+fun isTransientDbFailure(e: Throwable): Boolean = generateSequence(e) { it.cause }.take(16).any { c ->
+    c is java.sql.SQLTransientException || c is java.sql.SQLRecoverableException || c is java.net.ConnectException ||
+        (c is java.sql.SQLException && c.sqlState?.let { it.startsWith("08") || it in TRANSIENT_SQLSTATES } == true)
 }
 
 const val NIL_GENERATION = "00000000-0000-4000-8000-000000000000"
