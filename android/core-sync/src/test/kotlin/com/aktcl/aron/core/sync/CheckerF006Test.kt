@@ -65,6 +65,7 @@ class CheckerF006Test {
     @Before fun setUp() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
+                requests += request
                 val forDate = request.url.queryParameter("for") ?: "2026-10-05"
                 val version = if (forDate == "2026-10-06") "2026-10-06:1" else "2026-10-05:3"
                 if (request.headers["If-None-Match"] == "\"$version\"") return MockResponse.Builder().code(304).addHeader("X-Aron-Api", "1").build()
@@ -83,13 +84,20 @@ class CheckerF006Test {
         runCatching { server.close() }
     }
 
-    private fun downloader(): BundleDownloader {
+    private val requests = ArrayList<RecordedRequest>()
+
+    private class MovingClock(var ms: Long) : WallClock {
+        override fun nowMs(): Long = ms
+        override fun elapsedRealtimeMs(): Long = 1_000L
+    }
+
+    private fun downloader(clock: WallClock = Clock): BundleDownloader {
         val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
         val client = AronApiClient(
             ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true), ok,
             ClientIdentity("1.0.3+10003") { "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f" },
         )
-        return BundleDownloader(db, SyncApi(client), staging, Clock)
+        return BundleDownloader(db, SyncApi(client), staging, clock)
     }
 
     /** A prefetch never counts as a login (s4.9); a 304 to a repeated prefetch must not mark tomorrow logged in either. */
@@ -115,6 +123,23 @@ class CheckerF006Test {
         val merged = BundleDownloader.merge(raw, mapOf("team" to listOf(Json.parseToJsonElement("""{"user_id": 2}"""))))
         assertEquals(2, merged["supervisor"]!!.jsonObject["team"]!!.jsonArray.size)
         assertFalse(merged.containsKey("team"))
+    }
+
+    /**
+     * Fix check (data budget, docs/04): the D+1 snapshot was already fetched the evening before. On the morning of D+1 the
+     * day request must be conditional on it (If-None-Match = the prefetch ETag, or promote first and send its ETag), so an
+     * unchanged snapshot answers 304 (still the login, s4.9) instead of a second full 2 MiB download.
+     */
+    @Test fun theMorningRequestIsConditionalOnTheStoredPrefetch() = runBlocking {
+        val clock = MovingClock(Clock.nowMs())
+        val d = downloader(clock)
+        assertEquals(BundleOutcome.APPLIED, d.download().outcome)
+        assertEquals(BundleOutcome.PREFETCH_STORED, d.download("2026-10-06").outcome)
+        clock.ms += 24L * 3600 * 1000 // 08:00 Dhaka on 2026-10-06
+        d.download()
+        assertEquals("2026-10-06", requests.last().url.queryParameter("for"))
+        assertEquals("\"2026-10-06:1\"", requests.last().headers["If-None-Match"])
+        assertEquals(2, com.aktcl.aron.core.database.repo.ReferenceRepository(db).routesOfDay("2026-10-06").size)
     }
 
     private companion object {

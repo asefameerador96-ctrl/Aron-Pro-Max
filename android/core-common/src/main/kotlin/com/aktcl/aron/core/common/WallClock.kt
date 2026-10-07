@@ -8,6 +8,12 @@ interface WallClock {
     /** Milliseconds since the Unix epoch (trusted when an anchor exists). */
     fun nowMs(): Long
 
+    /**
+     * The phone's own wall clock, uncorrected. Rules about clock tampering (the offline-unlock rollback guard, AC-04) compare
+     * wall time with wall time, so a trusted clock that falls back to the wall clock after a reboot cannot trip them.
+     */
+    fun wallClockMs(): Long = nowMs()
+
     /** SystemClock.elapsedRealtime(): monotonic since boot, used for cool-downs that must survive clock changes. */
     fun elapsedRealtimeMs(): Long
 
