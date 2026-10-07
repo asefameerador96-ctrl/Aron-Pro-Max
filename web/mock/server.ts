@@ -331,6 +331,40 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     },
   })) return;
 
+  if (path === "/v1/admin/config/changes" && method === "POST" && user.master && user.summary.role === "TSO") {
+    // A TSO proposes; cfg.geo.tso_radius_mode = propose, so the change always waits for an editor (D24-59). Own territory only.
+    const b = (await readJson(req)) as { reason?: string; changes?: { key: string; scope_type: string; scope_id: number; value: number }[] } | null;
+    const c = b?.changes?.[0];
+    if (!b || !c || b.changes!.length !== 1 || c.key !== "cfg.geo.radius_m" || typeof c.value !== "number" || Array.from(b.reason ?? "").length < 10) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    if (c.scope_type !== "territory" || c.scope_id !== 6) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    audit(state, user, "config_change", state.nextId, "config.propose", {}, { value: c.value }, b.reason ?? null);
+    return send(res, 201, { change_id: state.nextId++, status: "pending_approval", risk_class: c.value > 150 ? 3 : 2, changes: [c], reason: b.reason, requested_by: user.summary.user_id, requested_at: new Date().toISOString(), blast_radius: {} });
+  }
+
+  const tsoUsers = /^\/v1\/admin\/users(?:\/(\d+)(\/credentials)?)?$/.exec(path);
+  if (tsoUsers && user.master && user.summary.role === "TSO") {
+    // A TSO reaches SR and AMO users of its own zones only (docs/24 s8.5); anything else is not found, never "forbidden but exists".
+    const reach = (r: Row) => (r.role === "SR" || r.role === "AMO") && r.home_zone_id === 14;
+    const rows = state.tables.users!;
+    if (method === "GET" && !tsoUsers[1]) {
+      const role = url.searchParams.get("role");
+      return send(res, 200, { items: rows.filter((r) => reach(r) && (!role || r.role === role)), next_cursor: null });
+    }
+    const target = tsoUsers[1] ? rows.find((r) => r.id === Number(tsoUsers[1]) && reach(r)) : undefined;
+    if (!target) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+    if (method === "GET" && !tsoUsers[2]) return send(res, 200, target);
+    if (method === "POST" && tsoUsers[2]) {
+      const b = (await readJson(req)) as Record<string, unknown> | null;
+      if (!b || (b.action !== "reset_password" && b.action !== "unlock")) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+      const reason = typeof b.reason === "string" ? b.reason : "";
+      if (Array.from(reason).length < 10) return send(res, 400, problem(400, "ERR_VALIDATION"));
+      audit(state, user, "user", target.id, `user.${b.action}`, {}, {}, reason);
+      const pw = b.action === "reset_password";
+      return send(res, 200, { action: b.action, done_at: new Date().toISOString(), temporary_password: pw ? `Tmp-${target.id}-Reset!99` : null, temporary_password_expires_at: pw ? new Date(Date.now() + 86_400_000).toISOString() : null });
+    }
+    return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+  }
+
   if (path.startsWith("/v1/admin/")) {
     const write = method !== "GET";
     if (!(write ? (path.endsWith("/credentials") ? [...ADMIN_WRITE, "SUPPORT" as Role] : ADMIN_WRITE) : ADMIN_READ).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
@@ -413,6 +447,39 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     if (req.headers["if-match"] !== `"${row.version}"`) return send(res, 412, problem(412, "ERR_PRECONDITION_FAILED"));
     Object.assign(row, fields, { version: (row.version as number) + 1 });
     audit(state, user, "tutorial", String(row.tutorial_id), "tutorial.update", {}, { title_en: String(b.title_en) }, reason);
+    return send(res, 200, row);
+  }
+
+  const def = /^\/v1\/admin\/(surveys|rubrics|content)(?:\/(\d+))?$/.exec(path);
+  if (def && user.master) {
+    if (!(method === "GET" ? ADMIN_READ : ADMIN_WRITE).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const kind = def[1]!;
+    const idKey = kind === "surveys" ? "survey_id" : kind === "rubrics" ? "rubric_id" : "content_id";
+    const rows = state.tables[kind]!;
+    if (method === "GET") return send(res, 200, { items: rows, next_cursor: null });
+    const b = (await readJson(req)) as Record<string, unknown> | null;
+    const reason = typeof b?.change_reason === "string" ? b.change_reason : "";
+    if (!b || Array.from(reason).length < 10) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    const { change_reason: _r, questions, criteria, ...rest } = b;
+    void _r;
+    const shaped: Record<string, unknown> = { ...rest };
+    if (questions) shaped.questions = (questions as Record<string, unknown>[]).map((q, i) => ({ question_id: i + 1, answer_type: q.answer_type, label_en: q.label_en, label_bn: q.label_bn ?? null, option_codes: [], requires_photo: q.photo === true, key: q.key }));
+    if (criteria) shaped.criteria = (criteria as Record<string, unknown>[]).map((c, i) => ({ criterion_id: i + 1, label_en: c.label_en, label_bn: c.label_bn ?? null, answer_type: c.answer_type, enabled: true, key: c.key }));
+    if (kind === "content") {
+      if (!state.blobs.has(String(b.asset_id))) return send(res, 400, problem(400, "ERR_VALIDATION"));
+      Object.assign(shaped, { asset_url: `https://blob.example/content/${b.asset_id}`, sha256: "b".repeat(64), bytes: state.blobs.get(String(b.asset_id)), duration_s: null, outlet_ids: [], updated_at: new Date().toISOString() });
+    }
+    if (method === "POST") {
+      const row = { [idKey]: state.nextId++, version: 1, status: "active", ...shaped } as unknown as Row;
+      rows.push(row);
+      audit(state, user, kind, String(row[idKey]), `${kind}.create`, {}, {}, reason);
+      return send(res, 201, row);
+    }
+    const row = rows.find((r) => r[idKey] === Number(def[2]));
+    if (!row) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+    if (req.headers["if-match"] !== `"${row.version}"`) return send(res, 412, problem(412, "ERR_PRECONDITION_FAILED"));
+    Object.assign(row, shaped, { version: (row.version as number) + 1 });
+    audit(state, user, kind, String(row[idKey]), `${kind}.update`, {}, {}, reason);
     return send(res, 200, row);
   }
 

@@ -100,9 +100,15 @@ fun SrApp(
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load() }
     }
-    // Once a minute: the 17:00 check-out gate, the business date, the bundle age and new tasks follow the trusted clock.
-    LaunchedEffect(Unit) {
-        while (true) { delay(30_000); day.attendance.tick(); day.reload(); day.taskBoard.load() }
+    // No polling: the day state refreshes on resume and at the real boundaries (17:00 check-out gate, Dhaka midnight).
+    var boundary by remember { mutableStateOf(0) }
+    LaunchedEffect(boundary) {
+        delay(day.millisToNextBoundary())
+        day.attendance.tick(); day.reload(); day.taskBoard.load()
+        boundary++
+    }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        scope.launch { day.attendance.tick(); day.reload(); day.taskBoard.load() }
     }
     // Several routes planned today: the SR picks one before anything else (F-SR-065).
     val planned = data.routes.map { PlannedRoute(it.routeId, it.name, it.plannedToday, it.sequenceNo) }

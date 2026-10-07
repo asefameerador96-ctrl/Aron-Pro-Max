@@ -4,6 +4,7 @@ import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.VisitEntity
 import com.aktcl.aron.rules.MockPolicy
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -300,7 +301,7 @@ class VisitFlowTest {
         val far = fix(lat = farLat())
         val src = FakeFixes(ArrayDeque(listOf(far, far)))
         val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
-        val f = VisitFlow(src, meta, Recorder(), VisitSession(), { GeoSettings.DEFAULT }, { UUID.randomUUID().toString() }, { "x" }, { 1 }, configCheck = { calls++; error("offline") })
+        val f = VisitFlow(src, meta, Recorder(), VisitSession(), { GeoSettings.DEFAULT }, { UUID.randomUUID().toString() }, { "x" }, { 1 }, configCheck = { calls++; error("offline") }, background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined))
         f.open(outlet); assertTrue(f.refresh() is VisitUiState.NeedsDecision)
         assertEquals(1, calls)
     }
@@ -315,5 +316,16 @@ class VisitFlowTest {
         val (f, _, _) = flow(listOf(fix(status = "timeout", acc = null)))
         val st = f.open(outlet) as VisitUiState.NeedsDecision
         assertNull(st.phoneLat); assertNull(st.phoneLng)
+    }
+
+    @Test fun aSlowConfigCheckNeverDelaysTheRefresh() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val far = fix(lat = farLat())
+        val src = FakeFixes(ArrayDeque(listOf(far, far)))
+        val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
+        val f = VisitFlow(src, meta, Recorder(), VisitSession(), { GeoSettings.DEFAULT }, { UUID.randomUUID().toString() }, { "x" }, { 1 }, configCheck = { gate.await() }, background = kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined))
+        f.open(outlet)
+        assertTrue(f.refresh() is VisitUiState.NeedsDecision) // returns although the check is still waiting
+        gate.complete(Unit)
     }
 }

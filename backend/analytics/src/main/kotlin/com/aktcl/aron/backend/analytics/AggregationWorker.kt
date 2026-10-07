@@ -103,13 +103,14 @@ class AggregationWorker(
     /** Processes up to [limit] claimed keys of one pass. Returns the number rebuilt. */
     fun drain(limit: Int = 200): Int {
         var done = 0
-        for (kind in listOf("route_day_agg", "zone_day_agg")) {
+        for (kind in listOf("route_day_agg", "device_day_agg", "zone_day_agg")) {
             val claimed = claim(kind, limit)
             for (k in claimed) {
                 try {
                     db.jdbi.useTransaction<Exception> { h ->
                         when (kind) {
                             "route_day_agg" -> Aggregator.rebuildRouteDay(h, k.subject, k.date, threshold()).forEach { z -> h.execute("SELECT app.mark_dirty('zone_day_agg', ?, ?, 'route_day_rebuilt')", z, k.date) }
+                            "device_day_agg" -> Aggregator.rebuildDeviceDay(h, k.subject, k.date)
                             else -> Aggregator.rebuildZoneDay(h, k.subject, k.date, threshold())
                         }
                         beforeRelease(kind, k.subject, k.date)
@@ -163,6 +164,10 @@ class AggregationWorker(
             UNION SELECT route_id FROM app.due_collection WHERE business_date = :d AND route_id IS NOT NULL
             """,
         ).bind("d", date).mapTo(Long::class.java).list().onEach { h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'rebuild')", it, date) }.size
+            .also {
+                h.createQuery("SELECT DISTINCT device_id FROM app.sync_batch WHERE (received_at AT TIME ZONE 'Asia/Dhaka')::date = :d").bind("d", date).mapTo(Long::class.java).list()
+                    .forEach { dev -> h.execute("SELECT app.mark_dirty('device_day_agg', ?, ?, 'rebuild')", dev, date) }
+            }
     }
 
     /** Background loop for the `worker` role: poll every [interval] (default 5 s keeps the 60 s freshness goal with room). */

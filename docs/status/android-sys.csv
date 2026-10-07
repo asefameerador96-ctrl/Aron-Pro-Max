@@ -1,0 +1,2 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+F-SYS-023,M,2026-10-07T05:05Z,2026-10-07T05:55Z,50,2,Opus checker: Settings steps text named Location for camera and Bluetooth denials; manifest audit regex-only (single quotes, merged manifests, tools:node remove) - both fixed with tests; minors taken: no-Activity fallback closed not open, coarse-only message, SecurityException on Settings launch
