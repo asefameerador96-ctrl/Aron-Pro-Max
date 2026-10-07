@@ -78,6 +78,25 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Handover (READY TO RECYCLE, 2026-10-07 ~20:45Z by the container clock, ninth session)
+- **Done this session** (details in "Ninth session" below; every row had a fresh checker, every FAIL a re-check):
+  - N-053 + F-SYS-074: `android/core-map` (lite map, bounded cache, offline list) and the online-only attendance address (Opus FAIL fixed, re-check fixed).
+  - F-SYS-047: server-generation re-sync (Opus FAIL 1 high + 3 medium fixed; re-check PASS; its lows fixed).
+  - Follow-ups: location notice re-check after Later (drawn over the day), BC-56 enforce hold, F-SYS-028 incremental vacuum (SQLCipher postKey hook), Settings slots bound in SrApp, app cfg keys aligned to db V0055.
+- **In progress:** nothing. Head pushed, INT merged (zw), tree clean.
+- **Next, in this order:**
+  1. F-SYS-080 (digest and targeted re-send) once backend-core lands `POST /v1/sync/digest` (docs/requests/android-core-backend-sync-digest.md; confirm the hash byte order first; also asks `previous_generation` for the two-restore gap of F-SYS-047).
+  2. android-sr-a's docs/requests/android-sr-a-av-kv-survey-data.md: Room tables `outlet_content_assignment`, `survey_question`, record types `content_view`, `survey_response`, the Wi-Fi-only AV/KV cache (F-SYS-029); waits for backend-core's contract and bundle sections (backend-core messages when on its head). Room migration + exported schema + migration test. No points ledger (docs/27).
+  3. Small: android-sys's answer to docs/requests/android-core-sys-media-mobile-bytes.md, then wire `noteMobileMediaBytes` in the shells; replace seed `baseline-prof.txt` after D-PERF-04; a "you're up to date" message on the App update row (low).
+- **Open requests (new):** android-core-backend-sync-digest.md (backend-core), android-core-sys-media-mobile-bytes.md (android-sys). For android-core-ui via the lead: add `core-map` to `HardcodedStringScanner`'s module set.
+- **Device checks new:** D-MAP-074 (address now; lite map when AMO/TSO hosts land), D-DB-VAC (`SqlCipherDeviceTest` asserts auto_vacuum 2).
+- **Traps found this session:**
+  43. `pkill -f GradleWrapperMain` also kills your own shell (its command line matches): kill by PID or let the run finish.
+  44. A Gradle run started before you edit sources compiles your half-done edit: start check runs after edits, not during.
+  45. A new library module needs `consumer-rules.pro` (the root build adds it to every library).
+  46. Android's and Robolectric's SQLite default `auto_vacuum` is FULL, SQLCipher's is NONE, and SQLCipher switches to WAL before `onConfigure`: set file-creation pragmas in its `postKey` hook.
+  47. A `values-bn` copy of a `translatable="false"` string is lint ExtraTranslation.
+
 ## Ninth session (2026-10-07, from ~17:55Z by the container clock)
 - INT merged (infra only, no conflicts). Checks run: shared:contract jvmTest, the three app compiles, core-sync (209), core-database (150), app-sr (12), core-map (20); lint on core-map and app-sr.
 - **N-053 (lead ruling: assigned to android-core because F-SYS-074 needs it) and F-SYS-074: done** (T1; Opus checker FAIL with one medium privacy finding, fixed with tests; re-check FAIL only on a bn copy of a translatable=false string, removed as it prescribed; lint green). New module `android/core-map` (interface in "Interfaces for feature lanes"):
