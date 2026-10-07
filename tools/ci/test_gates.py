@@ -328,12 +328,13 @@ class PlaywrightChromium(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             bin_ = Path(t) / "bin"; bin_.mkdir()
             (bin_ / "npx").write_text("#!/bin/sh\n" + npx_body + "\n"); (bin_ / "npx").chmod(0o755)
-            if chrome:
-                (bin_ / "google-chrome").write_text("#!/bin/sh\n"); (bin_ / "google-chrome").chmod(0o755)
+            if chrome:  # a fake Chrome under a name the runner does not have (its real google-chrome stays on PATH)
+                (bin_ / "aron-fake-chrome").write_text("#!/bin/sh\n"); (bin_ / "aron-fake-chrome").chmod(0o755)
             env_file = Path(t) / "env"; env_file.write_text("")
-            path = str(bin_) + ":" + ":".join(p for p in os.environ["PATH"].split(":") if not (Path(p) / "google-chrome").exists())
-            r = subprocess.run(["bash", str(HERE / "playwright-chromium.sh")], capture_output=True, text=True, timeout=60,
-                               env=dict(os.environ, PATH=path, GITHUB_ENV=str(env_file), PW_STEP_TIMEOUT_S="1",
+            r = subprocess.run([shutil.which("bash") or "/bin/bash", str(HERE / "playwright-chromium.sh")],
+                               capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, PATH=str(bin_) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                                        GITHUB_ENV=str(env_file), PW_STEP_TIMEOUT_S="1", PW_CHROME_NAMES="aron-fake-chrome",
                                         PLAYWRIGHT_BROWSERS_PATH=str(Path(t) / "cache")))
             return r.returncode, r.stdout + r.stderr, env_file.read_text()
 
@@ -347,7 +348,7 @@ class PlaywrightChromium(unittest.TestCase):
         rc, out, env = self.run_step("sleep 30")
         self.assertEqual(rc, 0, out)
         self.assertEqual(out.count("timed out after 1 s"), 2, "two capped attempts")
-        self.assertRegex(env, r"^PW_CHROMIUM_PATH=.*/google-chrome$")
+        self.assertRegex(env, r"^PW_CHROMIUM_PATH=.*/aron-fake-chrome$")
 
     def test_no_browser_and_no_chrome_fails(self):
         rc, out, env = self.run_step("exit 1", chrome=False)

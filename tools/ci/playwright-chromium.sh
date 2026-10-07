@@ -12,8 +12,10 @@ STEP_TIMEOUT_S="${PW_STEP_TIMEOUT_S:-300}"
 CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
 
 use_chrome() {
-  local chrome
-  chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+  local chrome="" name
+  for name in ${PW_CHROME_NAMES:-google-chrome google-chrome-stable}; do  # override only for tests
+    chrome="$(command -v "$name" || true)"; [ -z "$chrome" ] || break
+  done
   [ -n "$chrome" ] || { echo "::error::no Playwright Chromium ($1) and no preinstalled Google Chrome"; exit 1; }
   echo "::warning::e2e uses the runner's preinstalled Chrome (${chrome}): $1"
   echo "PW_CHROMIUM_PATH=${chrome}" >> "${GITHUB_ENV:-/dev/null}"
