@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
+import android.os.UserManager
 import android.provider.Settings
 import com.aktcl.aron.dpc.AronDeviceAdminReceiver
 
@@ -24,7 +25,11 @@ class AndroidDpmGateway(context: Context) : DpmGateway {
         if (on) dpm.addUserRestriction(admin, androidKey) else dpm.clearUserRestriction(admin, androidKey)
     }
 
-    override fun restrictions(): Set<String> = dpm.getUserRestrictions(admin).let { b -> b.keySet().filter { b.getBoolean(it) }.toSet() }
+    /** The effective restrictions of the policy's keys (whoever set them), as UserManager reports them. */
+    override fun restrictions(): Set<String> {
+        val um = app.getSystemService(UserManager::class.java) ?: return emptySet()
+        return KNOWN.filter { um.hasUserRestriction(it) }.toSet()
+    }
 
     override fun setGlobalSetting(name: String, value: String) = dpm.setGlobalSetting(admin, name, value)
 
@@ -62,4 +67,11 @@ class AndroidDpmGateway(context: Context) : DpmGateway {
         dpm.setPermissionGrantState(admin, app.packageName, permission, state)
 
     override fun permissionGrantState(permission: String): Int = dpm.getPermissionGrantState(admin, app.packageName, permission)
+
+    private companion object {
+        val KNOWN = listOf(
+            "no_debugging_features", "no_install_unknown_sources", "no_install_unknown_sources_globally", "no_install_apps",
+            "no_factory_reset", "no_safe_boot", "no_add_user", "no_config_date_time", "no_usb_file_transfer", "no_config_location",
+        )
+    }
 }

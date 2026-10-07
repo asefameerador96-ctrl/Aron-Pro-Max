@@ -14,8 +14,8 @@ class FakeGateway(
     val globals = mutableMapOf<String, String>()
     var autoTime = false
     var locationOn = false
-    var uninstallBlocked = false
-    var userControlDisabled = false
+    var uninstallBlockedNow = false
+    var userControlOff = false
     var batteryExempt = true
     val grants = mutableMapOf<String, Int>()
     val calls = mutableListOf<String>()
@@ -29,9 +29,9 @@ class FakeGateway(
     override fun setGlobalSetting(name: String, value: String) { call("g:$name"); globals[name] = value }
     override fun setAutoTimeRequired(required: Boolean) { call("autotime"); autoTime = required }
     override fun setLocationEnabled(enabled: Boolean) { call("location"); locationOn = enabled }
-    override fun setUninstallBlocked(blocked: Boolean) { call("uninstall"); uninstallBlocked = blocked }
-    override fun isUninstallBlocked() = uninstallBlocked
-    override fun setUserControlDisabled(disabled: Boolean) { call("usercontrol"); userControlDisabled = disabled }
+    override fun setUninstallBlocked(blocked: Boolean) { call("uninstall"); uninstallBlockedNow = blocked }
+    override fun isUninstallBlocked() = uninstallBlockedNow
+    override fun setUserControlDisabled(disabled: Boolean) { call("usercontrol"); userControlOff = disabled }
     override fun isIgnoringBatteryOptimizations() = batteryExempt
     override fun requestsPermission(permission: String) = permission in declared
     override fun setPermissionGrantState(permission: String, state: Int): Boolean {

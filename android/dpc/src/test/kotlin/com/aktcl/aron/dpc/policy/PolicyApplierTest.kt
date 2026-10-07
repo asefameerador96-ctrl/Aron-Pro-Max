@@ -26,7 +26,7 @@ class PolicyApplierTest {
         assertEquals("0", gw.globals["adb_enabled"])
         assertTrue(gw.autoTime); assertTrue(gw.locationOn)
         // Aron cannot be uninstalled, force-stopped or cleared.
-        assertTrue(gw.uninstallBlocked); assertTrue(gw.userControlDisabled); assertTrue(r.uninstallBlocked)
+        assertTrue(gw.uninstallBlockedNow); assertTrue(gw.userControlOff); assertTrue(r.uninstallBlocked)
         // Location permission granted and pinned (a pinned grant cannot be revoked by the user).
         assertEquals(GRANT_GRANTED, gw.grants["android.permission.ACCESS_FINE_LOCATION"])
         assertEquals(GRANT_GRANTED, gw.grants["android.permission.ACCESS_COARSE_LOCATION"])
@@ -41,7 +41,7 @@ class PolicyApplierTest {
         assertEquals("1", gw.globals["adb_enabled"]) // never touched in dev
         assertFalse("no_debugging_features" in gw.restrictionSet)
         assertFalse("no_factory_reset" in gw.restrictionSet)
-        assertFalse(gw.uninstallBlocked)
+        assertFalse(gw.uninstallBlockedNow)
         assertTrue(gw.calls.indexOf("p:android.permission.ACCESS_FINE_LOCATION:$GRANT_GRANTED") <
             gw.calls.indexOf("p:android.permission.ACCESS_FINE_LOCATION:$GRANT_DEFAULT"))
         assertEquals(GRANT_DEFAULT, gw.grants["android.permission.ACCESS_FINE_LOCATION"])
@@ -123,10 +123,11 @@ class PolicyApplierTest {
         gw.sdkInt = 29
         applier.apply(prod)
         assertFalse("usercontrol" in gw.calls)
-        assertFalse("no_install_unknown_sources_globally" in gw.restrictionSet)
-        gw.sdkInt = 28
-        applier.apply(prod)
-        assertNull(gw.grants[PolicyApplier.BACKGROUND_LOCATION])
+        assertTrue("no_install_unknown_sources_globally" in gw.restrictionSet) // API 29 has the global key
+        val older = FakeGateway(sdkInt = 28)
+        PolicyApplier(older).apply(prod)
+        assertFalse("no_install_unknown_sources_globally" in older.restrictionSet)
+        assertNull(older.grants[PolicyApplier.BACKGROUND_LOCATION])
     }
 
     @Test fun theStoreKeepsTheNewestPolicyAndSurvivesARestart() {

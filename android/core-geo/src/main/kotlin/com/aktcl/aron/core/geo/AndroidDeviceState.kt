@@ -85,12 +85,15 @@ class PrefsFixLedger(context: Context) : FixLedger {
 
     @Synchronized
     override fun recordProviderRequest(businessDate: String, busyMs: Long) {
-        val keep = setOf(businessDate, prefs.getString(KEY_LAST, null))
+        val last = prefs.getString(KEY_LAST, null)
+        val previous = if (last != null && last != businessDate) last else prefs.getString(KEY_PREV, null)
+        val keep = setOfNotNull(businessDate, previous)
         val edit = prefs.edit()
-        prefs.all.keys.filter { k -> k != KEY_LAST && keep.none { d -> d != null && k.endsWith(":$d") } }.forEach { edit.remove(it) }
+        prefs.all.keys.filter { k -> k != KEY_LAST && k != KEY_PREV && keep.none { d -> k.endsWith(":$d") } }.forEach { edit.remove(it) }
         edit.putInt("n:$businessDate", fixes(businessDate) + 1)
             .putLong("ms:$businessDate", busyMs(businessDate) + busyMs.coerceAtLeast(0))
             .putString(KEY_LAST, businessDate)
+            .apply { if (previous != null) putString(KEY_PREV, previous) else remove(KEY_PREV) }
             .apply()
     }
 
@@ -99,5 +102,6 @@ class PrefsFixLedger(context: Context) : FixLedger {
 
     private companion object {
         const val KEY_LAST = "last"
+        const val KEY_PREV = "prev"
     }
 }
