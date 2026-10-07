@@ -69,7 +69,8 @@ object SessionModule {
         ConnectivityFlush(
             scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
             healthy = { components.syncApi.healthy() },
-            usersWithPendingRows = { databases.knownUserIds().filter { databases.of(it).outboxDao().unsentCount() > 0 } },
+            // One unreadable database must not hide the others' rows.
+            usersWithPendingRows = { databases.knownUserIds().filter { id -> runCatching { databases.of(id).outboxDao().unsentCount() > 0 }.getOrDefault(false) } },
             scheduler = scheduler,
         )
 }

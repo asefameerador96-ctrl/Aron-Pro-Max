@@ -44,7 +44,7 @@ class ResumeConfigCheckTest {
     private lateinit var clock: TrustedClockSource
     private lateinit var check: ResumeConfigCheck
 
-    @Before fun setUp() = runBlocking {
+    @Before fun setUp(): Unit = runBlocking {
         server.start()
         clock = TrustedClockSource(tmp.newFile("anchors"), { 41 }, { elapsed }, { wall + (elapsed - 10_000_000L) })
         val ok = OkHttpClient.Builder().callTimeout(3, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
@@ -56,6 +56,7 @@ class ResumeConfigCheckTest {
             """{"config_version":318,"values":[{"key":"geo.radius_m","value":100,"scope_type":"global","requires_ack":false}],"scheduled":[]}""",
         )))
         ReferenceRepository(db).apply(BundleReference.json.decodeFromJsonElement(BundleReference.serializer(), raw), raw)
+        Unit
     }
 
     @After fun tearDown() { db.close(); runCatching { server.close() } }
