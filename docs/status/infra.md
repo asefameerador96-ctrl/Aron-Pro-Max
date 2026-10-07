@@ -2,6 +2,41 @@
 
 Updated 2026-10-07 (Day 3, afternoon Dhaka; replacement infra session).
 
+## Day 3 late (06:45 UTC): failover drill measured, process change, handoff
+
+**Forced failover drill, dev, 2026-10-07 06:27 UTC (lead approved; run 37581596131):** primary zone 1 -> 2. The Azure
+`restart --failover Forced` call took 429 s to return. Independent probe through Front Door every 5 to 8 s:
+06:27:49 ready 200; 06:27:57 ready 503 (liveness 200); 06:28:06 both timed out; from 06:28:27 both 200 again. So the
+**user-visible outage was about 30 s** and the api reconnected on its own (no revision restart). Caveat: drill.sh
+polls readiness only after the Azure call returns, so its "430 s" line overstates the outage: next session, poll in the
+background during the call (small fix in infra/scripts/drill.sh). RB-02 gets the measured figure.
+Restore drill: waits for the owner's yes, relayed by the lead as "owner approved restore drill".
+
+**Process change (lead, 06:30 UTC, docs/26 s3):** push only to `lane/infra`; the integrator promotes green lane heads
+via `lane/train-*` to INT. First lane/infra push: deploy concurrency moved to the job (CI audit s5 item 5).
+
+**Next session, in order (lead's CI-audit list, then rows):**
+1. Done: deploy concurrency on the job (lane/infra). Verify after promotion that a red ci run no longer replaces a
+   waiting green deploy.
+2. `tools/ci/last-green-int.sh` (last green INT run and its age, for the evening report) plus a summary line on every
+   ci run; alert idea: INT without a green run for 30 min.
+3. ci.yml: `lane/train-*` candidate runs never replaced by lane pushes (one group per ref does it; verify) and a
+   cancelled pending candidate can be re-dispatched (workflow_dispatch exists; verify inputs).
+4. Fold the three tiny gate jobs into one (keep the required-check names in tools/github-governance.ps1 in step; tell
+   the lead if a name changes).
+5. Dependabot: ignore major bumps of eslint and of any package failing CI today.
+6. Android local compile: confirm the committed Maven mirror covers Google Maven, AndroidX/AGP and Robolectric
+   android-all, or document what still 429s; update the stale lines in core-ui and sr-b status (via the lead).
+7. Pending checker report on the storage CORS rule and the Semgrep lane base (agent was running at handoff): if it
+   reports that the web upload sends more headers than `x-ms-blob-type` and `content-type`, add them.
+8. Switch `dbPerAppLogins` to true when db says the DELETE-grant migration is on INT; watch the first deploy.
+9. Flip the wall-clock scan to `--blocking` on 2026-10-09 (lead routes the 14 offenders).
+10. Rows: N-062 observability, N-057 (prod-only parameters), N-064 release candidate (Day 7); seeded-failure proof of
+    the REL-04 alerts; drill.sh background polling.
+**Not yet proven on Azure** (INT deploys were skipped while INT was red): deploy by digest, the dblogins job and psql
+import, the health gate with build check, the new alerts, storage CORS. The first green INT deploy proves them; read
+its summary.
+
 ## Day 3 afternoon (replacement session): deploy safety, supply-chain gates, per-app database logins
 
 Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pending findings; all fixed or noted):
