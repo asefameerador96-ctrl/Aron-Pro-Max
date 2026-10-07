@@ -145,14 +145,14 @@ class SchemaV1aTest {
     fun configValuesNeverOverlapAndAreClosedNotEdited() {
         val insert = """
             INSERT INTO app.cfg_version (config_version, kind, committed_by, summary)
-              SELECT 2, 'change', id, 't' FROM app.app_user WHERE username = 'aron.system';
+              SELECT 1000, 'change', id, 't' FROM app.app_user WHERE username = 'aron.system';   -- a free version above the migrations' own
             INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason)
-              VALUES ('cfg.geo.radius_m', 'zone', 7, '120', '2026-10-01T00:00Z', 2, 'test');
+              VALUES ('cfg.geo.radius_m', 'zone', 7, '120', '2026-10-01T00:00Z', 1000, 'test');
         """.trimIndent()
         assertRejected(
             "23P01",
             insert + "\nINSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
-                "VALUES ('cfg.geo.radius_m', 'zone', 7, '150', '2026-10-05T00:00Z', 2, 'test');",
+                "VALUES ('cfg.geo.radius_m', 'zone', 7, '150', '2026-10-05T00:00Z', 1000, 'test');",
         )
         assertRejected("42501", "$insert\nUPDATE app.cfg_value SET value = '130';")
         assertRejected("42501", "$insert\nDELETE FROM app.cfg_value;")
@@ -276,7 +276,10 @@ class SchemaV1aTest {
         val specKeys = spec.subList(start, end).mapNotNull { Regex("^\\| `(cfg\\.[^`]+)`").find(it)?.groupValues?.get(1) }.toSet()
         val dbKeys = db.connect().use { it.column("SELECT key FROM app.cfg_key") }.filterNotNull().toSet()
         assertTrue(specKeys.size >= 226, "s9.5 of contract v1.1 names 226 keys, parsed ${specKeys.size}")
-        assertEquals(specKeys, dbKeys)
+        // Keys the lead added by ruling after s9.5 was written (docs/requests/android-print-integration.md, 2026-10-07; V0024).
+        val ruled = setOf("cfg.print.confirm_after_print", "cfg.memo.reprint_watermark", "cfg.sale.require_printer_before_sale", "cfg.support.public_key_spki",
+            "cfg.pii.list_rows_per_hour", "cfg.pii.export_rows_per_day")
+        assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))
             assertEquals("\"block_sale\"", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.mock_policy'"))

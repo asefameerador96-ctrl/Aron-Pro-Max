@@ -16,6 +16,14 @@ class ManifestPermissionAuditTest {
     private val root = File(System.getProperty("aron.androidRoot") ?: error("aron.androidRoot not set"))
     private val forbidden = setOf("android.permission.RECORD_AUDIO", "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.CAPTURE_AUDIO_OUTPUT")
 
+    // D-GEO-BG-01 (lead ruling 2026-10-07): background location is allowed for the optional breadcrumbs (N-035) in
+    // exactly these two app manifests (source and merged), and nowhere else. The microphone rule has no exception.
+    private val background = "android.permission.ACCESS_BACKGROUND_LOCATION"
+    private val backgroundApps = setOf("app-sr", "app-amo")
+    private val backgroundSourceManifests = setOf("app-sr/src/main/AndroidManifest.xml", "app-amo/src/main/AndroidManifest.xml")
+    private fun forbiddenFor(app: String) = if (app in backgroundApps) forbidden - background else forbidden
+    private fun forbiddenForSource(relPath: String) = if (relPath.replace('\\', '/') in backgroundSourceManifests) forbidden - background else forbidden
+
     private fun sourceManifests() = root.walkTopDown()
         .onEnter { it.name != "build" && it.name != "test" && it.name != "androidTest" && !it.name.startsWith(".") }
         .filter { it.name == "AndroidManifest.xml" }.toList()
@@ -29,7 +37,7 @@ class ManifestPermissionAuditTest {
             assertTrue("no merged manifest for $app: run :android:$app:processDebugMainManifest", merged.isNotEmpty())
             for (f in merged) {
                 val requested = ManifestAudit.requestedPermissions(f.readText())
-                assertTrue("$app requests ${requested intersect forbidden}", (requested intersect forbidden).isEmpty())
+                assertTrue("$app requests ${requested intersect forbiddenFor(app)}", (requested intersect forbiddenFor(app)).isEmpty())
             }
         }
     }
@@ -42,8 +50,22 @@ class ManifestPermissionAuditTest {
     @Test fun noSourceManifestRequestsTheMicrophoneOrBackgroundLocation() {
         val manifests = sourceManifests()
         assertTrue("expected the app manifests under $root", manifests.any { it.path.contains("app-sr") })
-        val hits = manifests.flatMap { f -> (ManifestAudit.requestedPermissions(f.readText()) intersect forbidden).map { "${f.relativeTo(root)}: $it" } }
+        val hits = manifests.flatMap { f ->
+            val rel = f.relativeTo(root).path
+            (ManifestAudit.requestedPermissions(f.readText()) intersect forbiddenForSource(rel)).map { "$rel: $it" }
+        }
         assertTrue(hits.joinToString("\n"), hits.isEmpty())
+    }
+
+    @Test fun backgroundLocationIsOnlyInTheSrAndAmoAppManifests() {
+        val withBackground = sourceManifests().filter { background in ManifestAudit.requestedPermissions(it.readText()) }
+            .map { it.relativeTo(root).path.replace('\\', '/') }.toSet()
+        assertTrue("background location declared outside SR/AMO: ${withBackground - backgroundSourceManifests}", (withBackground - backgroundSourceManifests).isEmpty())
+        val tsoMerged = mergedManifests("app-tso").flatMap { ManifestAudit.requestedPermissions(it.readText()) }.toSet()
+        assertTrue("the TSO app must never get background location", background !in tsoMerged)
+        // The exception is exactly one permission: the microphone stays forbidden in the SR and AMO apps too.
+        assertTrue("android.permission.RECORD_AUDIO" in forbiddenFor("app-sr") && "android.permission.RECORD_AUDIO" in forbiddenForSource("app-sr/src/main/AndroidManifest.xml"))
+        assertTrue(background in forbiddenFor("app-tso") && background in forbiddenForSource("core-geo/src/main/AndroidManifest.xml"))
     }
 
     @Test fun theParserSeesEveryQuotingStyleAndIgnoresRemovals() {

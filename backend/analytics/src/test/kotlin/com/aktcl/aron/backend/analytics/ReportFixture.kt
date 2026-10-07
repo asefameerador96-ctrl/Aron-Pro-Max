@@ -52,9 +52,12 @@ abstract class ReportFixture {
     /** Extra route groups mounted under /v1 next to the report routes. */
     protected open fun mount(r: io.ktor.server.routing.Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {}
 
+    /** Config values a test overrides on top of the registry defaults. */
+    protected open val configOverrides: Map<String, JsonElement> = emptyMap()
+
     private val config = object : ServerConfig {
         private val d = RegistryDefaults()
-        override fun value(key: String): JsonElement = if (key == "cfg.api.rl.user_per_min") JsonPrimitive(5000) else d.value(key)
+        override fun value(key: String): JsonElement = configOverrides[key] ?: if (key == "cfg.api.rl.user_per_min") JsonPrimitive(5000) else d.value(key)
         override fun configVersion() = 1L
     }
 

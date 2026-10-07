@@ -6,3 +6,5 @@ F-SYS-031,S,2026-10-07T04:15Z,2026-10-07T04:45Z,,3,"parts done; batch hook pendi
 N-029,L,2026-10-07T04:10Z,2026-10-07T04:45Z,,3,"DEVICE-PENDING prod-policy checks"
 N-032,L,2026-10-07T04:30Z,2026-10-07T04:45Z,,6,"DPC side; DEVICE-PENDING; check-in call from F-SR-011"
 N-030,L,2026-10-07T04:50Z,2026-10-07T04:54Z,,7,"client only; server N-031, replay request, activity allowlist request, app wiring pending"
+N-035,M,2026-10-07T06:45Z,2026-10-07T08:50Z,,5,"built and checked; battery on A06 DEVICE-PENDING; wiring requested"
+N-034,M,2026-10-07T06:55Z,2026-10-07T08:50Z,,8,"built and checked; device check pending; worker wiring requested"

@@ -17,6 +17,7 @@ dependencies {
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
     implementation(project(":android:core-database"))
+    implementation(project(":android:core-printing"))
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)

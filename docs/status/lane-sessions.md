@@ -40,3 +40,22 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
 
 **Throttle (2026-10-07 08:38 UTC, usage constraint):** woken automatically: integrator, backend-core, db, android-core, android-sr-a, android-sr-b, android-core-ui, android-geo-dpc, android-print, infra. ON HOLD until the lead releases them: web-config (released 2026-10-07 09:41 UTC for ONE job only: de-flake web/e2e/config-journeys.spec.ts, then back on hold), web-admin, web-dashboard, backend-reports, backend-admin, android-sys, shared-2.
+
+## Update 2026-10-07 ~16:30 UTC (lead): the pre-stall cloud team woke up
+
+After the restart above, the pre-stall cloud sessions resumed on their own when the usage window lifted
+(their environments carry a skewed clock, so their commits are stamped ~10:50-11:20 UTC but were made after
+~15:50 UTC real time). The old integrator is conducting the train again (promotions 1054 and 1100-i,
+ruling D-GEO-BG-01 on geo-dpc's ACCESS_BACKGROUND_LOCATION) and some old lanes are pushing.
+
+Lead resolution, to avoid two sessions per lane:
+- **Train:** the pre-stall integrator owns it. The lead's restarted integrator stood down after verifying
+  access and diagnosing the 1044 red (same conclusion as D-GEO-BG-01); its green candidate
+  lane/train-20261007T1105 remains on the remote, unpromoted, harmless.
+- **Lanes:** every restarted lane now runs a dedupe rule — before each row and each push it fetches and
+  checks its lane branch for commits it did not make; if a foreign (pre-stall) session is demonstrably
+  active on the branch, the restarted session pushes its finished work, reports, and stops. If the branch
+  only moves when it pushes, the restarted session owns the lane.
+- android-core-ui: restarted session finished the lane's rows (tokens-v2 already ported); re-recording the
+  3 Home goldens after android-sr-a's tile-columns change (edddf441) is the one open step.
+- Branch protection (no force push, non-ff rejected) makes a race lose a push, never work.
