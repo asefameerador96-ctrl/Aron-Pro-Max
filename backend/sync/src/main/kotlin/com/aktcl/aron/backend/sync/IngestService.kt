@@ -73,6 +73,8 @@ class IngestService(
     private val handlers: RecordHandlers = RecordHandlers.NONE,
 ) {
     private val log = LoggerFactory.getLogger("aron.sync.ingest")
+    /** Creates a route-day ingest receives records for before the planning job or a bundle did (F-SYS-056). */
+    private val routeDays = RouteDayPlanningJob(db, config, clock)
 
     /** Outcome of one record before the ack is built. */
     private data class Outcome(val status: String, val code: RecordOutcomeCode? = null, val serverId: Long? = null) {
@@ -96,6 +98,8 @@ class IngestService(
 
     /** Per-batch caches. */
     private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant) {
+        /** Route-days this batch touched (F-SYS-016), settled at its end. */
+        val touched = DayStates.Touched()
         val today: LocalDate = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
         private val reaches = HashMap<LocalDate, Reach>()
         fun reachOn(d: LocalDate): Reach = reaches.getOrPut(d) { reach.reach(up.userId, up.role, up.scopeVersion, d) }
@@ -134,6 +138,11 @@ class IngestService(
             }
             i = j + 1
         }
+
+        // Day states move forward from what this batch brought (F-SYS-016, s4.9); a failure here never fails the batch.
+        DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
+        runCatching { db.jdbi.useTransaction<Exception> { h -> DayStates.afterBatch(h, up.userId, ctx.touched, now) } }
+            .onFailure { log.error("day states failed batch_uuid=${req.batch_uuid}", it) }
 
         val acks = recs.map { r ->
             val o = outcomes[r.index]!!
@@ -396,6 +405,7 @@ class IngestService(
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
+                DayStates.afterStored(h, r.type, env, payload, ctx.up, ctx.now, routeDays, ctx.touched)
                 hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)
