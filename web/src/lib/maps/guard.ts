@@ -24,6 +24,7 @@ export class MapsGuard {
 }
 
 export function capFromEnv(env: Record<string, string | undefined> = process.env): number {
+  if (!env.MAPS_DAILY_CAP?.trim()) return DEFAULT_DAILY_CAP;
   const n = Number(env.MAPS_DAILY_CAP);
   return Number.isInteger(n) && n >= 0 ? n : DEFAULT_DAILY_CAP;
 }

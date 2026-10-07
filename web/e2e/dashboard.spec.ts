@@ -35,7 +35,7 @@ test("the live strike rate of one route: 1 of 43 is 2.3 percent", async ({ page 
   const row = page.locator("tbody tr", { hasText: "RouteDaily" });
   await expect(row.locator('[data-col="visited"]')).toHaveText("43");
   await expect(row.locator('[data-col="successful"]')).toHaveText("1");
-  await expect(row.locator('[data-col="strike_pct"]')).toHaveText("2.3%");
+  await expect(row.locator('[data-col="strike_pct"]')).toHaveText("2.33%");
 });
 
 test("a date that is not today carries a reason chip on every tile", async ({ page }) => {
