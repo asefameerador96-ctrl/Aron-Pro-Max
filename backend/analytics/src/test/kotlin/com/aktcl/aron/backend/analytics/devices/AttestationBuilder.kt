@@ -28,10 +28,13 @@ import javax.security.auth.x500.X500Principal
 object AttestationBuilder {
     class Built(val chainBase64: List<String>, val rootSha256: String, val rootKey: KeyPair)
 
+    /** Fixed issue date (2026-10-01 UTC), so certificate validity does not depend on the real clock; tests run on injected clocks in October 2026. */
+    private const val BASE_MS = 1_790_812_800_000L
+
     fun keyPair(): KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
 
     private fun cert(subject: String, subjectKey: PublicKey, issuer: String, issuerKey: KeyPair, serial: Long, ext: Pair<String, ByteArray>? = null, notAfterDays: Int = 3650, ca: Boolean = false): X509Certificate {
-        val b = JcaX509v3CertificateBuilder(X500Principal(issuer), BigInteger.valueOf(serial), Date(System.currentTimeMillis() - 5L * 365 * 86_400_000L), Date(System.currentTimeMillis() + notAfterDays * 86_400_000L), X500Principal(subject), subjectKey)
+        val b = JcaX509v3CertificateBuilder(X500Principal(issuer), BigInteger.valueOf(serial), Date(BASE_MS - 5L * 365 * 86_400_000L), Date(BASE_MS + notAfterDays * 86_400_000L), X500Principal(subject), subjectKey)
         if (ca) b.addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints, true, org.bouncycastle.asn1.x509.BasicConstraints(true))
         ext?.let { (oid, der) -> b.addExtension(ASN1ObjectIdentifier(oid), false, org.bouncycastle.asn1.ASN1Primitive.fromByteArray(der)) }
         return JcaX509CertificateConverter().getCertificate(b.build(JcaContentSignerBuilder("SHA256withECDSA").build(issuerKey.private)))
