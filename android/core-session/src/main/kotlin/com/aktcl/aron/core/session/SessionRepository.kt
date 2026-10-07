@@ -49,6 +49,12 @@ enum class OfflineRefusal {
     CLOCK_INCONSISTENT,
 }
 
+/** What the OTP screen shows after Verify (F-SYS-003). [Failed.code] is the contract problem code; null = no answer. */
+sealed interface BindOutcome {
+    data class Bound(val login: LoginOutcome.LoggedIn) : BindOutcome
+    data class Failed(val code: String?, val offline: Boolean = false, val retryAfterS: Int? = null) : BindOutcome
+}
+
 /** What the login screen shows after a tap. */
 sealed interface LoginOutcome {
     data class LoggedIn(val user: UserProfile, val mode: UnlockMode, val updateRequired: Boolean = false) : LoginOutcome
@@ -126,6 +132,27 @@ class SessionRepository(
                     } else it
                 }
                 else -> LoginOutcome.Refused(r.problem.code, r.problem.retryAfterS ?: r.meta.retryAfterS)
+            }
+        }
+    }
+
+    /**
+     * Binds this phone to the user with the OTP from the TSO (docs/24 s7.5, F-SYS-003) after a `bind_required` login;
+     * [password] is the one just typed (the offline verifier is built from it, as at login). Bengali digits are
+     * normalised. Never falls back to offline unlock: binding needs the server once. A refusal keeps nothing; the OTP
+     * stays valid on the server unless the code says otherwise (`ERR_DEVICE_LIMIT_REACHED` is refused before the OTP is
+     * spent, so the rep can retry once the TSO frees a phone).
+     */
+    suspend fun bindDevice(bindToken: String, otp: String, password: String): BindOutcome = loginMutex.withLock {
+        withContext(dispatchers.io) {
+            val digits = otp.map { if (it in '\u09E6'..'\u09EF') '0' + (it - '\u09E6') else it }.joinToString("")
+            when (val r = authApi.bindDevice(bindToken, digits)) {
+                is ApiResult.Success -> when (val o = onLoginAnswer(r.value, password)) {
+                    is LoginOutcome.LoggedIn -> BindOutcome.Bound(o)
+                    else -> BindOutcome.Failed(null)
+                }
+                is ApiResult.Transport, is ApiResult.NotModified -> BindOutcome.Failed(null, offline = true)
+                is ApiResult.Failure -> BindOutcome.Failed(r.problem.code ?: "http_${r.httpStatus}", retryAfterS = r.problem.retryAfterS ?: r.meta.retryAfterS)
             }
         }
     }

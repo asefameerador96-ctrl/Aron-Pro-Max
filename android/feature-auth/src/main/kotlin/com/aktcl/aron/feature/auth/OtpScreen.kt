@@ -45,6 +45,7 @@ fun OtpContent(state: OtpState, onDigits: (String) -> Unit, onVerify: () -> Unit
                     OtpError.LOCKED -> R.string.otp_locked
                     OtpError.OFFLINE -> R.string.otp_offline
                     OtpError.OTHER -> R.string.otp_other
+                    OtpError.DEVICE_LIMIT -> R.string.otp_device_limit
                 }),
                 Modifier.testTag(OtpTags.MESSAGE), BannerKind.Error,
             )

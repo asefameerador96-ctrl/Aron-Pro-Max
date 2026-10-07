@@ -1,7 +1,12 @@
 package com.aktcl.aron.feature.auth
 
 /** Four OTP boxes and Verify (F-SR-002). Error text is chosen by the screen from [OtpError], in Bangla or English. */
-enum class OtpError { INVALID, EXPIRED, ATTEMPTS_EXCEEDED, LOCKED, OFFLINE, OTHER }
+enum class OtpError {
+    INVALID, EXPIRED, ATTEMPTS_EXCEEDED, LOCKED, OFFLINE, OTHER,
+
+    /** 409: the account is already bound to its maximum of phones. The OTP stays valid: Verify again once one is freed. */
+    DEVICE_LIMIT,
+}
 
 data class OtpState(val digits: String = "", val error: OtpError? = null, val busy: Boolean = false, val bound: Boolean = false) {
     val canVerify: Boolean get() = digits.length == LENGTH && !busy && !bound && error != OtpError.ATTEMPTS_EXCEEDED && error != OtpError.LOCKED
@@ -23,6 +28,7 @@ object OtpModel {
         problemCode == "ERR_AUTH_OTP_EXPIRED" -> OtpError.EXPIRED
         problemCode == "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" -> OtpError.ATTEMPTS_EXCEEDED
         problemCode == "ERR_AUTH_BIND_LOCKED" -> OtpError.LOCKED
+        problemCode == "ERR_DEVICE_LIMIT_REACHED" -> OtpError.DEVICE_LIMIT
         else -> OtpError.OTHER
     }
 

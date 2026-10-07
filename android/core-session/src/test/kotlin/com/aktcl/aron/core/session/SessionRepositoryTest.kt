@@ -323,4 +323,31 @@ class SessionRepositoryTest {
         assertEquals(3_600_000, p.cooldownAfter(40))
         assertEquals(3_600_000, p.cooldownAfter(Int.MAX_VALUE))
     }
+
+    /** F-SYS-003 (lead #4): a fifth phone is refused with 409 ERR_DEVICE_LIMIT_REACHED; nothing is stored, no session opens. */
+    @Test
+    fun aBindRefusedForTheDeviceLimitKeepsNothingAndNamesTheCode() = runTest {
+        val phone = Phone()
+        server.enqueue(api(409, problem(409, "ERR_DEVICE_LIMIT_REACHED")))
+        assertEquals(BindOutcome.Failed("ERR_DEVICE_LIMIT_REACHED"), phone.session.bindDevice("bind.jwt", "১২৩৪", "x"))
+        val request = server.takeRequest()
+        assertEquals("/v1/auth/bind-device", request.url.encodedPath)
+        assertEquals("Bearer bind.jwt", request.headers["Authorization"])
+        val body = Json.parseToJsonElement(request.body!!.utf8()).jsonObject
+        assertEquals("1234", body["otp"]!!.jsonPrimitive.content) // Bengali digits normalised
+        assertEquals(phone.identity.deviceUuid, body["device_uuid"]!!.jsonPrimitive.content)
+        assertEquals(SessionState.LoggedOut, phone.session.state.value)
+        assertEquals(null, phone.session.currentAccessToken(Grant.FULL))
+    }
+
+    @Test
+    fun aBoundPhoneLogsInAndAnUnreachableServerSaysOffline() = runTest {
+        val phone = Phone()
+        server.enqueue(api(200, loginOk))
+        val bound = phone.session.bindDevice("bind.jwt", "1234", "x")
+        assertTrue(bound is BindOutcome.Bound)
+        assertTrue(phone.session.state.value is SessionState.Active)
+        server.close()
+        assertEquals(BindOutcome.Failed(null, offline = true), Phone().session.bindDevice("bind.jwt", "1234", "x"))
+    }
 }

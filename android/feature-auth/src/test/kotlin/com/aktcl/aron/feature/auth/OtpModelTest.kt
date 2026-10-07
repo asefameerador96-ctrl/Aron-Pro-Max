@@ -34,4 +34,14 @@ class OtpModelTest {
         val s = OtpModel.succeeded(OtpState("1234"))
         assertTrue(s.bound); assertEquals("1234", OtpModel.enter(s, "9999").digits); assertFalse(s.canVerify)
     }
+
+    /** F-SYS-003 (lead #4): the device limit keeps the typed OTP and lets the rep verify again once a phone is freed. */
+    @org.junit.Test
+    fun theDeviceLimitKeepsTheCodeAndAllowsAnotherTry() {
+        val s = OtpModel.enter(OtpState(), "1234")
+        val failed = OtpModel.failed(s, "ERR_DEVICE_LIMIT_REACHED", false)
+        assertEquals(OtpError.DEVICE_LIMIT, failed.error)
+        assertEquals("1234", failed.digits)
+        assertTrue(failed.canVerify)
+    }
 }

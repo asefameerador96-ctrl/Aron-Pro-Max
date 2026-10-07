@@ -46,6 +46,25 @@ class AuthApi(
     }
 
     /**
+     * `POST /v1/auth/bind-device` (docs/24 s7.5, s8.3): the bind token from login as Bearer, the OTP the TSO reads on the
+     * web, and `X-Device-Proof` over the bind string when the device key exists. 200 is a login answer with tokens.
+     */
+    suspend fun bindDevice(bindToken: String, otp: String): ApiResult<LoginResponse> {
+        val deviceUuid = checkNotNull(client.deviceUuid) { "bind needs the device uuid" }
+        val proof = proofSigner?.sign(ProofStrings.bind(deviceUuid, otp, trustedNowMs()))
+        return client.call(
+            path = "/v1/auth/bind-device",
+            auth = CallAuth.Bearer(bindToken),
+            callTimeoutS = LOGIN_CALL_TIMEOUT_S,
+            build = {
+                if (proof != null) header("X-Device-Proof", proof)
+                post(jsonBody(BindDeviceRequestDto.serializer(), BindDeviceRequestDto(deviceUuid, otp)))
+            },
+            decode = { body, _ -> WireJson.responses.decodeFromString(LoginResponse.serializer(), body) },
+        )
+    }
+
+    /**
      * Ends the full-grant session on the server; the upload grant survives unless [scope] says otherwise (D24-57).
      * Takes the access token explicitly because the phone clears its tokens before this best-effort call.
      */
@@ -66,3 +85,10 @@ class AuthApi(
         const val LOGOUT_CALL_TIMEOUT_S: Long = 5
     }
 }
+
+/** Contract `BindDeviceRequest` (not generated into shared:contract yet; `additionalProperties: false`). */
+@kotlinx.serialization.Serializable
+internal data class BindDeviceRequestDto(
+    @kotlinx.serialization.SerialName("device_uuid") val deviceUuid: String,
+    val otp: String,
+)
