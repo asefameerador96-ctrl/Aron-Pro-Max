@@ -13,6 +13,7 @@
     <string name="sr_survey_photo_retake">Retake photo</string>
     <string name="sr_survey_photo_taken">Photo saved</string>
     <string name="sr_survey_submit">Submit</string>
+    <string name="sr_survey_skip">Continue without the survey</string>
     <string name="sr_survey_confirm">Are you sure you want to submit the survey?</string>
     <string name="sr_no">No</string>
     <string name="sr_ok">OK</string>

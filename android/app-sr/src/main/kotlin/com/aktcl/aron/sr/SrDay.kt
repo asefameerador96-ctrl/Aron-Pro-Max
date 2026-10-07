@@ -1,5 +1,6 @@
 package com.aktcl.aron.sr
 
+import androidx.room.withTransaction
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -361,6 +362,7 @@ class SrDay(
     suspend fun pendingContent(visitUuid: String, outletId: Long): List<com.aktcl.aron.core.database.entity.ContentItemEntity> {
         val logged = db.captureDao().contentViewsOf(visitUuid).map { it.contentId }.toSet()
         return db.referenceDao().contentForOutlet(outletId, businessDate()).filter { it.contentId !in logged }
+            .sortedWith(compareBy({ if (it.kind == "av") 0 else 1 }, { it.sequence }, { it.contentId })) // AV before KV, whatever the DAO order
     }
 
     /** One event per item per visit; a repeat returns false and is ignored. Logged after the item ends. */
@@ -391,7 +393,8 @@ class SrDay(
         visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity,
         rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>,
     ) {
-        for (r in rows) {
+        // All or nothing: a kill mid-way must not leave Q1 saved and Q1.1 lost (pendingSurvey treats any stored answer as answered).
+        db.withTransaction { for (r in rows) {
             val a = r.answer
             capture.recordSurveyResponse(
                 com.aktcl.aron.core.database.entity.SurveyResponseEntity(
@@ -399,8 +402,8 @@ class SrDay(
                     r.question.answerType.name.lowercase(), a.bool, a.num, a.optionCode, a.text, a.photoUuid,
                 ),
             )
-            a.photoUuid?.let { runCatching { claimPhoto(it, "survey", "survey_response", r.clientUuid, null) } }
-        }
+        } }
+        for (r in rows) r.answer.photoUuid?.let { runCatching { claimPhoto(it, "survey", "survey_response", r.clientUuid, null) } }
     }
 
     /** Today's stock rows not yet on a printed slip, read from Room (survives a kill and relaunch). */

@@ -50,15 +50,15 @@ fun CallContentHost(day: SrDay, visitUuid: String, outletId: Long, sunlightKey: 
     var index by remember(visitUuid) { mutableStateOf(0) }
     var survey by remember(visitUuid) { mutableStateOf<Pair<SurveyEntity, List<SurveyQuestionEntity>>?>(null) }
     var surveyChecked by remember(visitUuid) { mutableStateOf(false) }
-    LaunchedEffect(visitUuid) { items = day.pendingContent(visitUuid, outletId) }
+    LaunchedEffect(visitUuid) { items = runCatching { day.pendingContent(visitUuid, outletId) }.getOrDefault(emptyList()) }
     val list = items ?: return
     if (index < list.size) {
         val item = list[index]
-        ContentItemStep(day, visitUuid, item, index + 1, onEnded = { index++ })
+        ContentItemStep(day, visitUuid, item, item.sequence, onEnded = { index++ })
         return
     }
     LaunchedEffect(visitUuid, surveyChecked) {
-        if (!surveyChecked) { survey = day.pendingSurvey(visitUuid); surveyChecked = true }
+        if (!surveyChecked) { survey = runCatching { day.pendingSurvey(visitUuid) }.getOrNull(); surveyChecked = true }
     }
     if (!surveyChecked) return
     val s = survey
@@ -82,7 +82,10 @@ private fun ContentItemStep(day: SrDay, visitUuid: String, item: ContentItemEnti
     }
     val f = file
     if (!loaded || f == null) return
+    var ended by remember(item.contentId) { mutableStateOf(false) }
     fun finish(outcome: ContentOutcome) {
+        if (ended) return // completion, error and a double tap can all arrive: one log, one step forward
+        ended = true
         scope.launch {
             day.logContentView(visitUuid, item, outcome, startedAt, (day.currentMs() - startedAt).coerceAtLeast(0), sequenceNo)
             onEnded()
@@ -122,12 +125,17 @@ private fun ContentItemStep(day: SrDay, visitUuid: String, item: ContentItemEnti
 private fun SurveyStep(day: SrDay, visitUuid: String, survey: SurveyEntity, rows: List<SurveyQuestionEntity>, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     val bn = androidx.compose.ui.platform.LocalContext.current.resources.configuration.locales[0].language == "bn"
+    // This screen answers yes/no and photo questions. A required question of another type could never be answered and would
+    // block the sale, so it is not shown and counts as optional.
+    val supported = setOf(AnswerType.BOOL, AnswerType.PHOTO_ONLY)
     val questions = remember(rows) {
         rows.sortedBy { it.ordinal }.map {
-            SurveyQuestion(
-                it.questionId, runCatching { AnswerType.valueOf(it.answerType.uppercase()) }.getOrDefault(AnswerType.TEXT),
-                it.questionKey ?: ("q" + it.questionId), it.required ?: true, it.requiresPhoto || it.answerType == "photo_only", it.showIfKey, it.showIfBool,
-            ) to (if (bn) it.labelBn ?: it.labelEn else it.labelEn)
+            val type = runCatching { AnswerType.valueOf(it.answerType.uppercase()) }.getOrDefault(AnswerType.TEXT)
+            val q = SurveyQuestion(
+                it.questionId, type, it.questionKey ?: ("q" + it.questionId), (it.required ?: true) && type in supported,
+                it.requiresPhoto || type == AnswerType.PHOTO_ONLY, it.showIfKey, it.showIfBool,
+            )
+            q to (if (bn) it.labelBn ?: it.labelEn else it.labelEn)
         }
     }
     val defs = questions.map { it.first }
@@ -135,34 +143,35 @@ private fun SurveyStep(day: SrDay, visitUuid: String, survey: SurveyEntity, rows
     var confirm by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     val visible = PosmSurvey.visible(defs, answers).map { it.key }.toSet()
+    fun takePhoto(key: String) {
+        val uuid = com.aktcl.aron.core.common.ClientIds.newUuid()
+        scope.launch {
+            val shot = runCatching { day.photoPipeline.captureAndCompress(uuid) }.getOrNull() ?: return@launch
+            answers = answers + (key to (answers[key] ?: SurveyAnswer()).copy(photoUuid = shot.photoUuid))
+        }
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         Text(stringResource(R.string.sr_survey_title), style = MaterialTheme.typography.headlineSmall)
-        questions.filter { it.first.key in visible }.forEach { (q, label) ->
+        questions.filter { it.first.key in visible && it.first.answerType in supported }.forEach { (q, label) ->
             Text(label, style = MaterialTheme.typography.titleMedium)
-            when (q.answerType) {
-                AnswerType.BOOL -> androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                    val cur = answers[q.key]?.bool
-                    val yes = { answers = answers + (q.key to SurveyAnswer(bool = true)) }
-                    val no = { answers = answers + (q.key to SurveyAnswer(bool = false)) }
-                    if (cur == true) AronPrimaryButton(stringResource(R.string.sr_yes), yes, Modifier.weight(1f)) else AronSecondaryButton(stringResource(R.string.sr_yes), yes, Modifier.weight(1f))
-                    if (cur == false) AronPrimaryButton(stringResource(R.string.sr_no), no, Modifier.weight(1f)) else AronSecondaryButton(stringResource(R.string.sr_no), no, Modifier.weight(1f))
+            val cur = answers[q.key]
+            if (q.answerType == AnswerType.BOOL) {
+                androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                    val yes = { answers = answers + (q.key to (cur ?: SurveyAnswer()).copy(bool = true)) }
+                    val no = { answers = answers + (q.key to (cur ?: SurveyAnswer()).copy(bool = false)) }
+                    if (cur?.bool == true) AronPrimaryButton(stringResource(R.string.sr_yes), yes, Modifier.weight(1f)) else AronSecondaryButton(stringResource(R.string.sr_yes), yes, Modifier.weight(1f))
+                    if (cur?.bool == false) AronPrimaryButton(stringResource(R.string.sr_no), no, Modifier.weight(1f)) else AronSecondaryButton(stringResource(R.string.sr_no), no, Modifier.weight(1f))
                 }
-                AnswerType.PHOTO_ONLY -> {
-                    val taken = answers[q.key]?.photoUuid != null
-                    AronSecondaryButton(
-                        stringResource(if (taken) R.string.sr_survey_photo_retake else R.string.sr_survey_photo),
-                        {
-                            val uuid = com.aktcl.aron.core.common.ClientIds.newUuid()
-                            scope.launch { day.photoPipeline.captureAndCompress(uuid)?.let { answers = answers + (q.key to SurveyAnswer(photoUuid = uuid)) } }
-                        },
-                        Modifier.fillMaxWidth(),
-                    )
-                    if (taken) Text(stringResource(R.string.sr_survey_photo_taken), style = MaterialTheme.typography.labelLarge)
-                }
-                else -> Unit
+            }
+            if (q.requiresPhoto) {
+                val taken = cur?.photoUuid != null
+                AronSecondaryButton(stringResource(if (taken) R.string.sr_survey_photo_retake else R.string.sr_survey_photo), { takePhoto(q.key) }, Modifier.fillMaxWidth())
+                if (taken) Text(stringResource(R.string.sr_survey_photo_taken), style = MaterialTheme.typography.labelLarge)
             }
         }
         AronPrimaryButton(stringResource(R.string.sr_survey_submit), { confirm = true }, Modifier.fillMaxWidth(), enabled = !saving && PosmSurvey.canSubmit(defs, answers))
+        // The sale is never blocked: if the survey cannot be completed (no camera, no light) the SR can go on to the sale without saving it.
+        AronSecondaryButton(stringResource(R.string.sr_survey_skip), { if (!saving) onDone() }, Modifier.fillMaxWidth())
     }
     if (confirm) {
         AronConfirmDialog(
