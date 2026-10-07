@@ -30,6 +30,7 @@ import com.aktcl.aron.backend.config.configDeltaRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
 import com.aktcl.aron.backend.masterdata.OtpCipher
+import com.aktcl.aron.backend.masterdata.deviceReplaceRoutes
 import com.aktcl.aron.backend.masterdata.deviceOtpRoutes
 import com.aktcl.aron.backend.masterdata.OutletsDeps
 import com.aktcl.aron.backend.masterdata.SqlReachResolver
@@ -86,6 +87,7 @@ class Wiring(
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
+                deviceReplaceRoutes(otpDeps)
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)
