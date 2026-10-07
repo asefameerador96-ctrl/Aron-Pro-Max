@@ -496,6 +496,13 @@ export const en = {
   "def.node_type": "Level",
   "def.node_id": "Id",
   "def.add_scope": "Add a place",
+  "menu.admin.team": "Team passwords",
+  "team.reset_password": "Reset password",
+  "team.unlock": "Unlock",
+  "team.reset_note": "A temporary password valid for 24 hours is shown once; the person must change it at the next sign-in.",
+  "team.reset_password.ok": "Password reset",
+  "team.unlock.ok": "Unlocked",
+  "team.expires": "Valid until {at}.",
 } as const;
 
 export type MessageKey = keyof typeof en;

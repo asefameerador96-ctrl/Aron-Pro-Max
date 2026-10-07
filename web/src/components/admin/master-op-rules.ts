@@ -97,6 +97,19 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
       if (typeof body.valid_from === "string" && typeof body.valid_to === "string" && body.valid_to <= body.valid_from) out.push({ pointer: "/body/valid_to", code: "before_start" });
       break;
     }
+    case "credential.manage": {
+      strict(["action", "reason"]);
+      // Only the two actions of the row; force logout and MFA reset stay with SUPPORT and the administrators.
+      const allowed = actor === "TSO" ? ["reset_password", "unlock"] : ["reset_password", "unlock", "force_logout", "reset_mfa"];
+      if (typeof body.action !== "string" || !allowed.includes(body.action)) out.push({ pointer: "/body/action", code: "invalid" });
+      if (actor === "TSO") {
+        // The target must be an SR or AMO (the API also checks the zone); a TSO never touches another TSO or an administrator.
+        const u = await rawRequest<{ role?: Role }>({ method: "GET", path: `/v1/admin/users/${encodeURIComponent(String(params.id))}`, token });
+        if (!u.ok) out.push({ pointer: "/params/id", code: u.status === 404 ? "not_found" : "invalid" });
+        else if (u.data.role !== "SR" && u.data.role !== "AMO") out.push({ pointer: "/params/id", code: "forbidden_target" });
+      }
+      break;
+    }
     case "assignment.end": {
       strict(["valid_to", "reason"]);
       futureDate(body.valid_to, "/body/valid_to", out);

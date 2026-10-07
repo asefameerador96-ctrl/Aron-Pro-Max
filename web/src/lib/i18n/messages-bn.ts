@@ -499,4 +499,11 @@ export const bn: Record<MessageKey, string> = {
   "def.node_type": "স্তর",
   "def.node_id": "আইডি",
   "def.add_scope": "স্থান যোগ করুন",
+  "menu.admin.team": "দলের পাসওয়ার্ড",
+  "team.reset_password": "পাসওয়ার্ড রিসেট",
+  "team.unlock": "আনলক",
+  "team.reset_note": "২৪ ঘণ্টার জন্য বৈধ একটি অস্থায়ী পাসওয়ার্ড একবার দেখানো হবে; পরের সাইন-ইনে ব্যক্তিকে এটি বদলাতে হবে।",
+  "team.reset_password.ok": "পাসওয়ার্ড রিসেট হয়েছে",
+  "team.unlock.ok": "আনলক হয়েছে",
+  "team.expires": "{at} পর্যন্ত বৈধ।",
 };

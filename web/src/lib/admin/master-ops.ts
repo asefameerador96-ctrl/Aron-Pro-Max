@@ -22,6 +22,8 @@ export const MASTER_OPS = {
   "price.preview": { method: "POST", path: "/v1/admin/prices/preview", roles: ADMINS, reason: "change_reason" },
   "price.publish": { method: "POST", path: "/v1/admin/prices", roles: ADMINS, reason: "change_reason" },
   "assignment.create": { method: "POST", path: "/v1/admin/route-assignments", roles: ADMINS, reason: "reason", reasonMax: 300 },
+  // A TSO resets a password or unlocks an SR or AMO of its own zones (docs/24 s8.5); the server enforces the reach.
+  "credential.manage": { method: "POST", path: "/v1/admin/users/{id}/credentials", roles: ["TSO", "SUPPORT", "ADMIN", "SUPERADMIN"], reason: "reason" },
   "assignment.end": { method: "POST", path: "/v1/admin/route-assignments/{id}/end", roles: ADMINS, reason: "reason", reasonMax: 300 },
 } as const satisfies Record<string, MasterOpDef>;
 

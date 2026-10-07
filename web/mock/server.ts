@@ -320,6 +320,30 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     },
   })) return;
 
+  const tsoUsers = /^\/v1\/admin\/users(?:\/(\d+)(\/credentials)?)?$/.exec(path);
+  if (tsoUsers && user.master && user.summary.role === "TSO") {
+    // A TSO reaches SR and AMO users of its own zones only (docs/24 s8.5); anything else is not found, never "forbidden but exists".
+    const reach = (r: Row) => (r.role === "SR" || r.role === "AMO") && r.home_zone_id === 14;
+    const rows = state.tables.users!;
+    if (method === "GET" && !tsoUsers[1]) {
+      const role = url.searchParams.get("role");
+      return send(res, 200, { items: rows.filter((r) => reach(r) && (!role || r.role === role)), next_cursor: null });
+    }
+    const target = tsoUsers[1] ? rows.find((r) => r.id === Number(tsoUsers[1]) && reach(r)) : undefined;
+    if (!target) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+    if (method === "GET" && !tsoUsers[2]) return send(res, 200, target);
+    if (method === "POST" && tsoUsers[2]) {
+      const b = (await readJson(req)) as Record<string, unknown> | null;
+      if (!b || (b.action !== "reset_password" && b.action !== "unlock")) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+      const reason = typeof b.reason === "string" ? b.reason : "";
+      if (Array.from(reason).length < 10) return send(res, 400, problem(400, "ERR_VALIDATION"));
+      audit(state, user, "user", target.id, `user.${b.action}`, {}, {}, reason);
+      const pw = b.action === "reset_password";
+      return send(res, 200, { action: b.action, done_at: new Date().toISOString(), temporary_password: pw ? `Tmp-${target.id}-Reset!99` : null, temporary_password_expires_at: pw ? new Date(Date.now() + 86_400_000).toISOString() : null });
+    }
+    return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+  }
+
   if (path.startsWith("/v1/admin/")) {
     const write = method !== "GET";
     if (!(write ? (path.endsWith("/credentials") ? [...ADMIN_WRITE, "SUPPORT" as Role] : ADMIN_WRITE) : ADMIN_READ).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
