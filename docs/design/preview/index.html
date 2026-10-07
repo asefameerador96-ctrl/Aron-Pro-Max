@@ -1,4 +1,7 @@
 <!doctype html>
+<!-- Aron Calm Glass preview. One self-contained file: inline CSS and JS, no external requests, works offline.
+     Controls (top bar): theme Light / Dark / Sunlight, glass tier A / B / C, offline chip, text size 100 / 130 / 200 %, language.
+     Deep links: ?theme=dark&tier=A&fs=130&lang=en&offline=1 . Values come from docs/design/tokens.md v1; screens from docs/design/screens-sr.md and screens-web.md. -->
 <html lang="bn" data-theme="light" data-tier="B" data-lang="bn" data-fs="100">
 <head>
 <meta charset="utf-8">
@@ -191,7 +194,7 @@ h1,h2,h3,h4,p{margin:0}
 .btn[aria-disabled="true"]:active{transform:none}
 :root[data-tier="C"] .btn.pri{background:var(--accent);box-shadow:none}
 :root[data-tier="C"] .btn.sec{background:var(--surface-solid);box-shadow:none;border:1.5px solid var(--accent)}
-:root[data-tier="C"] .btn[aria-disabled="true"]{border:0}
+:root[data-tier="C"] .btn[aria-disabled="true"],:root[data-tier="C"] .btn.pri[aria-disabled="true"],:root[data-tier="C"] .btn.sec[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);border:0;box-shadow:none}
 .ib{display:grid;place-items:center;width:48px;height:48px;border:0;border-radius:50%;background:none;color:var(--text-primary);flex:none}
 .ib:active{background:var(--state-pressed)}
 .ib.warnic{color:var(--warning-on-container)}
@@ -350,7 +353,7 @@ html[data-fs="200"] .stepline{flex-direction:column;align-items:flex-start}
 .ov.open .scrim{opacity:1}
 .sheet{position:absolute;left:0;right:0;bottom:0;max-height:85%;overflow:auto;scrollbar-width:none;border-radius:28px 28px 0 0;padding:8px 16px 28px;
   background:linear-gradient(var(--vib),var(--vib)),var(--fill-strong);-webkit-backdrop-filter:var(--bf-sheet);backdrop-filter:var(--bf-sheet);
-  box-shadow:var(--elev-sheet);transform:translateY(106%);transition:transform var(--motion-sheet) var(--ease-spring);display:flex;flex-direction:column;gap:12px}
+  box-shadow:var(--elev-sheet);transform:translateY(106%);transition:transform var(--motion-sheet) var(--ease-out);transition:transform var(--motion-sheet) var(--ease-spring);display:flex;flex-direction:column;gap:12px}
 :root[data-tier="C"] .sheet{border:var(--card-bw) solid var(--border-solid);border-bottom:0}
 .ov.open .sheet{transform:none}
 .sheet .handle{align-self:center;width:36px;height:4px;border-radius:2px;background:var(--text-secondary);opacity:.7;margin:4px 0 4px}
@@ -391,7 +394,8 @@ html[data-lang="bn"] .intro h1{line-height:1.4}
 .sechead{display:flex;align-items:baseline;gap:14px;margin:44px 0 18px;flex-wrap:wrap}
 .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,380px));gap:44px 36px;justify-content:center}
 figure{margin:0}
-figcaption{margin-top:14px;max-width:380px;display:flex;flex-direction:column;gap:2px}
+figcaption{margin:14px auto 0;width:var(--fw,380px);max-width:100%;display:flex;flex-direction:column;gap:2px}
+#desk figure>.fit{margin:0 auto}
 .fx.in{animation:rise var(--motion-base) var(--ease-out) both}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .eff{display:inline-flex;align-items:center;gap:6px}
@@ -439,6 +443,7 @@ html[data-fs="200"] .web .s3{grid-column:span 6}html[data-fs="200"] .web .s4,htm
 .wbtn.pri{color:var(--text-on-accent);background:linear-gradient(180deg,var(--accent-hi),var(--accent));box-shadow:0 4px 10px color-mix(in srgb,var(--accent) 28%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
 .wbtn.pri:hover{background:linear-gradient(180deg,var(--accent),var(--accent-pressed))}
 :root[data-tier="C"] .wbtn.pri{background:var(--accent);box-shadow:none;border:0}
+:root[data-tier="C"] .wbtn[aria-disabled="true"],:root[data-tier="C"] .wbtn.pri[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);border:0}
 .wbtn[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);box-shadow:none;cursor:not-allowed;border:0}
 .spark{margin-inline-start:auto;flex:none}
 .rk{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;align-items:center}
@@ -493,10 +498,12 @@ html[dir="rtl"] .sel{background-position:left 12px center}
 }
 @media (max-width:760px){
   .wrap{padding:0 12px}
-  .ctl .wrap{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-  .ctl .cg,.ctl .brand{flex:none}
+  .ctl{position:static}
+  .ctl .wrap{gap:8px 14px}
+  .brand{flex:1 1 100%}
   .gallery{grid-template-columns:minmax(0,1fr)}
 }
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root[data-tier="A"]{--strong-a:.92;--scrim-k:1;--bf-bar:none;--bf-sheet:none}}
 @media print{.ctl{display:none}}
 </style>
 </head>
@@ -569,7 +576,8 @@ const st={theme:'light',tier:'B',fs:'100',lang:'bn',off:false};
 const BND='০১২৩৪৫৬৭৮৯';
 const isBn=()=>st.lang==='bn';
 const dg=s=>String(s).replace(/\d/g,c=>BND[c]);
-const t=(b,e)=>isBn()?dg(b):e;            /* bilingual string; Bangla written with ASCII digits, shown as Bengali digits */
+const dgs=s=>String(s).replace(/[A-Za-z]\d+|\d/g,m=>/^\d$/.test(m)?BND[m]:m);   /* a digit run glued to a Latin letter (C1, sr334001) stays ASCII: identifiers */
+const t=(b,e)=>isBn()?dgs(b):e;           /* bilingual string; Bangla written with ASCII digits, shown as Bengali digits */
 const n=v=>isBn()?dg(v):String(v);        /* localise a number or string */
 const fmt=v=>n(v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
 const mo=(v,c='')=>`<span class="m num ${c}">${fmt(v)}<i class="tk">৳</i></span>`;
@@ -653,7 +661,7 @@ const FR=[];                       /* filled by the screen files: {id,kind,t:[bn
 const S={ov:{}};                   /* per-frame overlay state and interactive state */
 function statusBar(){
   const bars='<svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true"><g fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1" '+(st.off?'opacity=".3"':'')+'/><rect x="4.3" y="5.5" width="3" height="6.5" rx="1" '+(st.off?'opacity=".3"':'')+'/><rect x="8.6" y="3" width="3" height="9" rx="1" '+(st.off?'opacity=".3"':'')+'/><rect x="12.9" y="0" width="3" height="12" rx="1" '+(st.off?'opacity=".3"':'')+'/></g></svg>';
-  return `<span>10:42</span><span class="r">${st.off?'<span style="font-size:11px">'+(isBn()?'×':'×')+'</span>':'<span style="font-size:11px">4G</span>'}${bars}<span class="batt" style="--lv:62"><b></b></span></span>`;
+  return `<span>10:42</span><span class="r">${st.off?'<span style="font-size:11px" aria-label="no signal">\u00D7</span>':'<span style="font-size:11px">4G</span>'}${bars}<span class="batt" style="--lv:62"><b></b></span></span>`;
 }
 function phoneShell(f){
   return `<figure class="fx in" id="fx-${f.id}" data-fid="${f.id}" style="min-width:0">
@@ -742,7 +750,8 @@ function footer(){
   <div class="card"><h3 class="t-heading">${L('যা সত্যি, যা আনুমানিক','What is real, what is approximate')}</h3>
    <ul class="t-cap sec"><li>${L('রং, ব্যাসার্ধ, ছায়া, টাইপ স্কেল, গতি: tokens.md থেকে হুবহু','Colours, radii, shadows, type scale, motion: exact from tokens.md')}</li>
    <li>${L('ফন্ট: এই ব্রাউজারের সিস্টেম ফন্ট (অ্যাপে Noto Sans Bengali বান্ডেল করা)','Fonts: this browser’s system faces (the app bundles Noto Sans Bengali)')}</li>
-   <li>${L('পণ্যের ছবি, মানচিত্র ও সংখ্যা নমুনা। ডেস্কটপ ব্রাউজারে ফ্রেম-টাইম বিচার করা যায় না; A06 গেট android-glass s10-এ','Product thumbnails, maps and figures are samples. Frame time cannot be judged in a desktop browser; the A06 gates are in android-glass s10')}</li></ul></div>
+   <li>${L('পণ্যের ছবি, মানচিত্র ও সংখ্যা নমুনা। ডেস্কটপ ব্রাউজারে ফ্রেম-টাইম বিচার করা যায় না; A06 গেট android-glass s10-এ','Product thumbnails, maps and figures are samples. Frame time cannot be judged in a desktop browser; the A06 gates are in android-glass s10')}</li>
+   <li>${L('রেফারেন্সে নেই এমন বাংলা লেখা খসড়া; স্ট্রিং ফ্রিজের আগে নেটিভ রিভিউয়ারের সই লাগবে (docs/20 NB)','Bangla text not in the reference is draft; the native reviewer signs it before string freeze (docs/20 NB)')}</li></ul></div>
   <div class="card"><h3 class="t-heading">${L('এখানে নেই (docs/27, স্থগিত)','Not shown (docs/27, deferred)')}</h3>
    <ul class="t-cap sec"><li>${L('টার্গেট, লয়্যালটি (আস্থা, ডায়মন্ড লিগ, সুপারস্টার, গিফট), ডিসকাউন্ট/প্রমোশন প্রোগ্রাম','Target, loyalty (Astha, Diamond League, Superstar, gifts), discount and promotion programmes')}</li>
    <li>${L('সারির শুরুতে ফাঁকা স্লট রাখা আছে, তাই পরে যোগ করলে লেআউট নড়বে না','Rows keep an empty leading slot, so adding them later moves nothing')}</li></ul></div>`;
@@ -767,9 +776,9 @@ function setState(k,v){
 /* scale each frame to the width of its column */
 function fitAll(){
   $$('.fit').forEach(f=>{
-    const inn=f.firstElementChild,w=parseFloat(f.dataset.w||inn.firstElementChild.offsetWidth),h=parseFloat(f.dataset.h||inn.firstElementChild.offsetHeight);
+    const inn=f.firstElementChild,w=inn.firstElementChild.offsetWidth,h=inn.firstElementChild.offsetHeight;
     const avail=f.parentElement.clientWidth||w,k=Math.min(1,avail/w);
-    inn.style.transform=k<1?`scale(${k})`:'';f.style.width=(w*k)+'px';f.style.height=(h*k)+'px';
+    inn.style.transform=k<1?`scale(${k})`:'';f.style.width=(w*k)+'px';f.style.height=(h*k)+'px';f.parentElement.style.setProperty('--fw',(w*k)+'px');
   });
 }
 document.addEventListener('click',e=>{
@@ -1060,9 +1069,8 @@ document.addEventListener('input',e=>{
   const i=e.target.closest('[data-bind="collected"]');if(!i)return;
   const tot=saleTotal(),v=parseFloat(asc(i.value).replace(/[^\d.]/g,''))||0;
   $('#due-live').innerHTML=mo(Math.max(0,tot-v));$('#due-err').style.display=v>=tot?'block':'none';
-  const ok=$('#credit-ok');ok.setAttribute('aria-disabled',String(v>=tot));S.rev._tmp=v;
+  $('#credit-ok').setAttribute('aria-disabled',String(v>=tot));
 });
-const _cok=ACT.creditOk;
 ACT.creditOk=function(a,fid){const tot=saleTotal(),inp=$('#coll'),v=parseFloat(asc(inp?inp.value:'').replace(/[^\d.]/g,''));if(!(v>=0)||v>=tot)return;S.rev.collected=v;closeOv('review');redraw('review');};
 
 /* ===================== Web frames ===================== */
@@ -1292,7 +1300,8 @@ function build(){
   $('#desk').innerHTML=FR.filter(f=>f.kind==='web').map(webShell).join('');
 }
 (function init(){
-  try{const q=new URLSearchParams(location.search),p=JSON.parse(store.get('aron.prev')||'null');
+  try{const mq=m=>matchMedia(m).matches;if(mq('(prefers-contrast: more)'))st.theme='sunlight';else if(mq('(prefers-color-scheme: dark)'))st.theme='dark';if(mq('(prefers-reduced-transparency: reduce)'))st.tier='C';
+    const q=new URLSearchParams(location.search),p=JSON.parse(store.get('aron.prev')||'null');
     if(p)Object.assign(st,{theme:p.theme||st.theme,tier:p.tier||st.tier,fs:p.fs||st.fs,lang:p.lang||st.lang,off:!!p.off});
     ['theme','tier','fs','lang'].forEach(k=>{if(q.has(k))st[k]=q.get(k);});if(q.has('offline'))st.off=q.get('offline')==='1';
     if(!['light','dark','sunlight'].includes(st.theme))st.theme='light';if(!['A','B','C'].includes(st.tier))st.tier='B';

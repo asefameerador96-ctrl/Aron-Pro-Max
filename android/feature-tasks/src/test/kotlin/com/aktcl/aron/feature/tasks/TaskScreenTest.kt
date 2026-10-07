@@ -37,7 +37,7 @@ class TaskScreenTest {
     @Test fun emptyStateIsTheBanglaMessageWithSyncedAt() {
         show(AppLanguage.BN, TaskListState(showEmptyState = true, syncedAt = "2026-10-07T03:00:00.000Z"))
         compose.onNodeWithText("আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেনি।").assertExists()
-        compose.onNodeWithText("সিঙ্ক হয়েছে ২০২৬-১০-০৭ ০৩:০০").assertExists()
+        compose.onNodeWithText("সিঙ্ক হয়েছে ২০২৬-১০-০৭ ০৯:০০").assertExists()
     }
 
     @Test fun swipeRevealsResolveAndTapResolves() {

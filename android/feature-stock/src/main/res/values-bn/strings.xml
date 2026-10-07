@@ -18,4 +18,5 @@
     <string name="stk_nothing">আগে ইস্যুর পরিমাণ দিন।</string>
     <string name="stk_high">পরিমাণটি অনেক বড়। সংরক্ষণের আগে দেখে নিন।</string>
     <string name="stk_slip_not_printed">স্টক স্লিপ এখনো প্রিন্ট হয়নি। বিক্রয় জমার আগে প্রিন্ট করুন।</string>
+    <string name="stk_save_failed">সংরক্ষণ করা যায়নি। কিছু বদলায়নি। আবার চেষ্টা করুন।</string>
 </resources>
