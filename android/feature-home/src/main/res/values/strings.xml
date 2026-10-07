@@ -30,6 +30,12 @@
     <string name="hm_banner_offline">You are offline. Your work is saved on this phone.</string>
     <string name="hm_banner_stale">Using an older route bundle (%1$s day(s) old). Sales are flagged and sync later.</string>
     <string name="hm_banner_expired">The route bundle is %1$s days old. Memos and dues are read-only until it refreshes.</string>
+    <string name="fb_title">Getting your day ready</string>
+    <string name="fb_downloading">Downloading your route and outlets. Keep the app open. If the connection drops, it continues from where it stopped.</string>
+    <string name="fb_offline">No connection. Connect once to download your route. What was downloaded is kept.</string>
+    <string name="fb_failed">The download did not finish. Try again; it continues from where it stopped.</string>
+    <string name="fb_retry">Try again</string>
+    <string name="fb_skip">Continue without the route (check-in still works)</string>
     <string name="hm_banner_missing">No route bundle on this phone yet. Connect once to download it.</string>
     <string name="hm_health_battery">Battery %1$s%%</string>
     <string name="hm_health_storage">Free %1$s MB</string>

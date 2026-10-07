@@ -174,12 +174,22 @@ class SrDay(
         visitSession.close(); runCatching { requestSync() }
     }
 
+    private val _bundleOutcome = MutableStateFlow<BundleOutcome?>(null)
+
+    /** How the last day-start download ended (null while one runs or none ran); the first-bundle screen reads it. */
+    val bundleOutcome: StateFlow<BundleOutcome?> = _bundleOutcome.asStateFlow()
+
     /** Day start: the first bundle download (resumable, F-SYS-006) in the background; the day never waits for it. */
     suspend fun downloadBundle(downloaders: BundleDownloaders) {
         data.value = data.value.copy(downloading = true)
+        _bundleOutcome.value = null
         try {
             runCatching { downloaders.of(userId).download(businessDate()) }
-                .onSuccess { if (it.outcome == BundleOutcome.APPLIED || it.outcome == BundleOutcome.UNCHANGED) { reload(); deviceRuntime?.refreshDayConfig(userId, db) } }
+                .onSuccess {
+                    _bundleOutcome.value = it.outcome
+                    if (it.outcome == BundleOutcome.APPLIED || it.outcome == BundleOutcome.UNCHANGED) { reload(); deviceRuntime?.refreshDayConfig(userId, db) }
+                }
+                .onFailure { _bundleOutcome.value = BundleOutcome.FAILED }
         } finally {
             data.value = data.value.copy(downloading = false)
         }

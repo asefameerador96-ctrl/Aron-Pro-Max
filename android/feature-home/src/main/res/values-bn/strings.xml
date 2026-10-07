@@ -29,6 +29,12 @@
     <string name="hm_banner_offline">আপনি অফলাইনে আছেন। আপনার কাজ এই ফোনে সংরক্ষিত আছে।</string>
     <string name="hm_banner_stale">পুরনো রুট বান্ডেল ব্যবহার হচ্ছে (%1$s দিনের পুরনো)। বিক্রয় চিহ্নিত থাকবে এবং পরে সিঙ্ক হবে।</string>
     <string name="hm_banner_expired">রুট বান্ডেল %1$s দিনের পুরনো। নতুন বান্ডেল না আসা পর্যন্ত মেমো ও বকেয়া শুধু দেখা যাবে।</string>
+    <string name="fb_title">আপনার দিন প্রস্তুত হচ্ছে</string>
+    <string name="fb_downloading">আপনার রুট ও আউটলেট ডাউনলোড হচ্ছে। অ্যাপ খোলা রাখুন। সংযোগ কেটে গেলে যেখানে থেমেছিল সেখান থেকে আবার চলবে।</string>
+    <string name="fb_offline">ইন্টারনেট নেই। রুট ডাউনলোড করতে একবার ইন্টারনেটে যুক্ত হোন। যা নামানো হয়েছে তা রাখা আছে।</string>
+    <string name="fb_failed">ডাউনলোড শেষ হয়নি। আবার চেষ্টা করুন; যেখানে থেমেছিল সেখান থেকে চলবে।</string>
+    <string name="fb_retry">আবার চেষ্টা করুন</string>
+    <string name="fb_skip">রুট ছাড়াই চালিয়ে যান (চেক-ইন কাজ করবে)</string>
     <string name="hm_banner_missing">এই ফোনে এখনো রুট বান্ডেল নেই। একবার ইন্টারনেটে যুক্ত হয়ে ডাউনলোড করুন।</string>
     <string name="hm_health_battery">ব্যাটারি %1$s%%</string>
     <string name="hm_health_storage">খালি %1$s এমবি</string>

@@ -7,6 +7,7 @@
     <string name="auth_password_show">Show</string>
     <string name="auth_password_hide">Hide</string>
     <string name="auth_login_button">Log in</string>
+    <string name="auth_logging_in">Logging in...</string>
     <string name="auth_version">Version %1$s</string>
     <string name="auth_error_empty">Enter your username and password.</string>
     <string name="auth_error_invalid_credentials">Wrong username or password.</string>
