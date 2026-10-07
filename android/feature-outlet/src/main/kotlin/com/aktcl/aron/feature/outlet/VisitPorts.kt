@@ -16,7 +16,7 @@ import com.aktcl.aron.rules.NoLocationPolicy
 /** One on-demand, balanced-power fix (docs/24 s11.1). Never a cached last-known location; never blocks on the network. */
 interface LocationFixSource {
     /** Reads exactly one fix; a failure is a [FixReading] with a non-ok status, never an exception. */
-    suspend fun readFix(purpose: String): FixReading
+    suspend fun readFix(purpose: String, refreshCount: Int = 0): FixReading
 }
 
 /** The fix and the device-integrity facts read with it; mirrors `GeoFix` and `FixDeviceState` of the contract. */
