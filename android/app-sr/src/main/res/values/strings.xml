@@ -7,6 +7,13 @@
     <string name="sr_bundle_downloading">Downloading today\'s route in the background. You can keep working.</string>
     <string name="sr_print_confirm_title">Print</string>
     <string name="sr_yes">Yes</string>
+    <string name="sr_content_close">Close</string>
+    <string name="sr_survey_title">Survey</string>
+    <string name="sr_survey_photo">Take photo</string>
+    <string name="sr_survey_photo_retake">Retake photo</string>
+    <string name="sr_survey_photo_taken">Photo saved</string>
+    <string name="sr_survey_submit">Submit</string>
+    <string name="sr_survey_confirm">Are you sure you want to submit the survey?</string>
     <string name="sr_no">No</string>
     <string name="sr_ok">OK</string>
     <string name="sr_map_title">Shop location</string>
