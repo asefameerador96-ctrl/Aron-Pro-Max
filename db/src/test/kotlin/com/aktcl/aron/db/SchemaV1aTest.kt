@@ -284,7 +284,9 @@ class SchemaV1aTest {
             // docs/19 s9 (V0053, docs/requests/backend-core-record-signature-mode-key.md).
             "cfg.sec.record_signature_mode",
             // docs/19 s9 field-app keys (V0055, docs/requests/backend-core-app-cfg-keys.md).
-            "cfg.app.local_history_days", "cfg.app.outbox_keep_days", "cfg.app.image_cache_mb")
+            "cfg.app.local_history_days", "cfg.app.outbox_keep_days", "cfg.app.image_cache_mb",
+            // docs/19 s9 working-day window keys (V0058, docs/requests/backend-core-working-day-window-keys.md).
+            "cfg.calendar.window_unit", "cfg.bundle.stale_max_cal_days_ceiling", "cfg.calendar.break_overrides", "cfg.calendar.prefetch_next_working_day")
         assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))

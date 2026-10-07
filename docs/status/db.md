@@ -132,6 +132,11 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   - `V0056`/`V0057` `app.ingest_registry.flags text[]` (`resync_late`, F-SYS-089; catalogue-only add, CHECK NOT VALID
     then validated). Answers `backend-core-resync-late-flag.md`; merge-not-assign note for the conflict path in
     `docs/requests/db-resync-late-flag-answer.md`. Opus checker PASS (round 4).
+  - `V0058` working-day window keys (`cfg.calendar.window_unit` calendar|working_days default calendar,
+    `cfg.bundle.stale_max_cal_days_ceiling`, `cfg.calendar.break_overrides` list, `cfg.calendar.prefetch_next_working_day`)
+    and `V0059`/`V0060` flags `config_stamp_regress`, `checkout_too_early` (each known flag at most once) + partial index
+    for the regress count. Answer `docs/requests/db-working-day-keys-and-flags-answer.md`; break-override item checks asked
+    of backend-admin (`db-break-overrides-validation.md`). Opus checker PASS (round 5; should-fix applied).
 
 ## Handoff (session 4, 2026-10-07 ~19:40 UTC)
 
