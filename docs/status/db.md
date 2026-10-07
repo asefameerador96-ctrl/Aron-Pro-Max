@@ -122,6 +122,9 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     `partition_policy.retention_class`, `app.archive_manifest` (status flow, export facts written once, jobs_rw only),
     `app.archive_candidates(today)`, `app.default_partition_rows()` (worker/jobs logins only). Capture-table
     partitioning stays deferred (D-DB-PART-01).
+  - `V0053` `cfg.sec.record_signature_mode` (docs/19 s9, enum_order, global) and `V0054` `app.security_event`
+    (append-only, api_rw/auth_rw insert, worker reads). Answers backend-core's two requests on lane/backend-core; answer
+    in `docs/requests/db-security-event-and-signature-mode-answer.md`. Opus checker PASS (round 3).
 
 ## Handoff (session 3 recycled, 2026-10-07 ~13:10 UTC)
 
