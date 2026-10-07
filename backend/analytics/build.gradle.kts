@@ -8,6 +8,7 @@ dependencies {
     implementation(project(":backend:platform"))
     implementation(libs.logback.classic)
     implementation(libs.fastexcel)
+    implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(project(":db"))
     testImplementation(testFixtures(project(":backend:platform")))

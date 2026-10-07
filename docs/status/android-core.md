@@ -45,8 +45,20 @@
 
 - **F-SYS-046** Connectivity trigger (Opus checker; `CheckerF046Test`). `ConnectivityFlush`: default-network callback, 5 s of quiet, `HEAD /v1/health`, then one request per user on the phone with rows waiting. It runs under its own WorkManager name so a backoff cannot delay it. No polling.
 
-## In progress
-- **F-SYS-092** Resume config check (ruling R9). `ResumeConfigCheck.checkOnResume(userId)`: one conditional `GET /v1/config/delta` when the last API contact is more than 5 min old, at most 24 per business date (AC-17). A delta is applied in one transaction (values, scheduled, removed keys, outlet radius, calendar changes, policy flag); 410 flags a bundle refresh. Built and tested; checker next. android-sr-a binds its `ConfigCheck` port to it in the app module: `ConfigCheck { resumeConfigCheck.checkOnResume(activeUserId) }`.
+- **F-SYS-092** Resume config check (ruling R9; Opus checker, `CheckerF092Test`). `ResumeConfigCheck.checkOnResume(userId)` is one conditional `GET /v1/config/delta` when the last contact of this boot is more than 5 min old.
+  - At most 24 answered requests per business date (AC-17); offline costs nothing. One check at a time per user.
+  - A delta is applied in one transaction only when it continues the held version; a gap or a 410 flags `bundle.refresh_needed`.
+  - A later bundle never rolls config back. The batch ack's server version is kept apart (`sync.config_version_server`).
+  - android-sr-a: bind `ConfigCheck { resumeConfigCheck.checkOnResume(activeUserId) }` and LAUNCH it from onResume without waiting. Today `VisitFlow.kt:138` awaits it inside the visit lock during a geo refresh, which R9 forbids.
+- **RoomPrintLedger** follow-ups for android-print (wiring gap 15 and ledger findings 1 to 5) are done:
+  - a slip flags every movement of its Save;
+  - a void slip or due receipt is not a copy;
+  - `printed_at` has milliseconds;
+  - history is in insertion order;
+  - paper-out is never downgraded.
+
+## Open issue for another lane
+- `NoPollingLintTest` (F-SYS-011 acceptance: no timer under 60 s) fails on INT because of `app-sr/.../SrApp.kt:104`, `while (true) { delay(30_000) ... }` (android-sr). The lint allows a loop with a literal wait of 60 s or more. Better: wait until the next real boundary (the 17:00 gate, midnight) or refresh on resume.
 
 ## Room v3 (on INT 2026-10-07): for android-sr-a, android-sr-b and android-print
 - `CaptureRepository.recordNumberedSale(sale, MemoNumbering(username, bindOrdinal, blockSize))` returns the memo number. It is reserved in its own committed step (a failed save burns it; never reused). The format is `<username>-<yyMMdd>-<seq3>`: device block, then overflow, then `MemoSeqExhausted`.
@@ -66,7 +78,29 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
-## Next (lead's order): the F-SYS-092 checker, then delete the local DTO stubs for shared:contract, F-SYS-009, F-SYS-007, the AUD rows (PERF-05 session half, TP-4, PERF-06, PERF-04, TP-5) and AUD-DG-03 signing config.
+## Handover (READY TO RECYCLE, 2026-10-07 ~06:55Z, second session)
+- **Done this session:**
+  - F-SYS-008, F-SYS-006, F-SYS-049, F-SYS-011, F-SYS-046, F-SYS-027, F-SYS-092.
+  - Room v3 for android-sr-a (tasks, outlet requests), android-sr-b (core records) and android-print (RoomPrintLedger plus follow-ups).
+  - AUD-PERF-05, key half.
+  - Each row had an independent Opus checker (two or three rounds for most). Every confirmed defect is a test in a `Checker*Test`.
+- **In progress:** nothing.
+- **Next three** (lead's order):
+  1. Delete the local DTO stubs and use `com.aktcl.aron.contract.*` (shared-2 asked; see docs/status/shared.md for differences). Stubs to delete:
+     - core-network `AuthDtos.kt`;
+     - core-network `BundleDtos.kt`, except `BundleHead`;
+     - core-database `record/RecordPayloads.kt` (records: keep the explicit-null encoding rules, see trap 3);
+     - core-database `reference/BundleReference.kt`.
+     A drift test guards the shared file; never edit it by hand.
+  2. F-SYS-009 device-versus-server reconciliation. `server_totals` are already stored per date in `sync.server_totals.<date>`; `device_money` is not yet sent with `day_submit`.
+  3. F-SYS-007 bundle delta refresh (`GET /v1/sync/delta`). `BundleDownloader` already handles the full bundle and pages.
+  - After those: the AUD rows (PERF-05 session restore off the main thread, TP-4 real process-kill test, PERF-06, PERF-04, TP-5) and AUD-DG-03 (release signingConfig from `ANDROID_SIGNING_*`, coordinate with infra through docs/requests). Then `--todo` in day order.
+- **Traps found this session:**
+  10. Checker subagents and your own Gradle runs collide on the same module's `test-results`. Give each checker other modules, or a git worktree outside the repo (`/tmp/...`, never `.claude/worktrees`).
+  11. shared:contract DTO changes break `core-*` without warning. After every INT merge, compile the apps and run `:shared:contract:jvmTest` before pushing.
+  12. Robolectric tests that need another SDK jar (core-ui uses sdk 34) fail locally with 429; the lead says CI is the judge.
+  13. Kotlin nests block comments: a `/*` inside a KDoc opens one.
+  14. A JUnit `@Before fun x() = runBlocking { ... }` that returns a value breaks the runner; declare `: Unit`.
 
 ## Second re-check (independent agent, on the pushed fixes)
 - Found a release-build regression: the https guard broke the configuration cache. Fixed; `assembleRelease` now builds (10.7 MB unsigned with R8) and an http base URL fails. **Ask to infra:** add `:android:app-sr:assembleRelease` to CI so this cannot regress silently.
@@ -164,7 +198,7 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
 8. `markInFlight` no longer increments `attempts`; use `countFailure` for a definitive failure.
 9. N-023 (UI kit) moved to the android-core-ui sublane.
 
-## Handover (READY TO RECYCLE, 2026-10-07, previous session)
+## Handover of the first session (2026-10-07, kept for its traps 1-6)
 - **Done:** N-001, F-SYS-033, F-SYS-044 (device part pending), F-SYS-018, N-016. All checker findings are fixed, and a second re-check is fixed too. The interfaces above are published, and the `SyncScheduler` interface is in core-sync.
 - **In progress:** nothing.
 - **Next three rows** (`python3 tools/my-rows.py android-core --todo`):
