@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="out_picker_title">Sale</string>
+    <string name="out_picker_select">Select retailer</string>
+    <string name="out_picker_empty">Select a retailer to continue the sale</string>
+    <string name="out_picker_none">No outlets on today\'s route</string>
+    <string name="out_chip_all">All</string>
+    <string name="out_distance_m">%1$s m away</string>
+    <string name="out_reading_fix">Checking your location…</string>
+    <string name="out_out_of_range">You are outside the shop\'s allowed distance. Move closer, refresh your location, or use Force Sale.</string>
+    <string name="out_distance_info">You are %1$s m from the shop (allowed %2$s m).</string>
+    <string name="out_no_fix">Your location could not be read. Refresh and try again.</string>
+    <string name="out_accuracy_low">Your location is not accurate enough. Refresh and try again.</string>
+    <string name="out_no_outlet_location">This shop has no saved location.</string>
+    <string name="out_mocked">A mock location was detected. A sale at this shop is not allowed from a mock location.</string>
+    <string name="out_mocked_warn">A mock location was detected. This is recorded.</string>
+    <string name="out_blocked_mock">Mock location detected. This visit is closed.</string>
+    <string name="out_location_denied">Precise location is not allowed. Allow location for ARON to continue.</string>
+    <string name="out_location_off">Location is switched off. Switch it on to continue.</string>
+    <string name="out_refresh">Refresh GPS</string>
+    <string name="out_refresh_left">%1$s refresh(es) left</string>
+    <string name="out_force_sale">Force Sale</string>
+    <string name="out_commit_failed">The visit could not be saved. Try again.</string>
+    <string name="out_retry">Try again</string>
+    <string name="out_map">Map</string>
+    <string name="out_open_visit_resumed">Continuing your visit at %1$s</string>
+</resources>

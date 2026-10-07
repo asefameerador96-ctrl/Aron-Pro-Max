@@ -25,6 +25,7 @@ sealed interface VisitUiState {
         val result: GeoVerdictResult,
         val refreshCount: Int,
         val refreshLeft: Boolean,
+        val refreshMax: Int,
         val forceSaleAvailable: Boolean,
         val mockWarning: Boolean,
     ) : VisitUiState
@@ -163,7 +164,7 @@ class VisitFlow(
             GeoAction.REFRESH_OFFERED, GeoAction.FORCE_SALE -> {
                 val st = VisitUiState.NeedsDecision(
                     outlet = o, result = result, refreshCount = refreshCount,
-                    refreshLeft = refreshCount < policy.refreshMax,
+                    refreshLeft = refreshCount < policy.refreshMax, refreshMax = policy.refreshMax,
                     forceSaleAvailable = result.action == GeoAction.FORCE_SALE,
                     mockWarning = result.warnRep,
                 )

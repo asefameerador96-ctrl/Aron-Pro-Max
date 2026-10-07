@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="out_picker_title">বিক্রয়</string>
+    <string name="out_picker_select">রিটেইলার নির্বাচন করুন</string>
+    <string name="out_picker_empty">বিক্রয় চালিয়ে যেতে একজন খুচরা বিক্রেতা নির্বাচন করুন</string>
+    <string name="out_picker_none">আজকের রুটে কোনো আউটলেট নেই</string>
+    <string name="out_chip_all">সব</string>
+    <string name="out_distance_m">%1$s মিটার দূরে</string>
+    <string name="out_reading_fix">আপনার অবস্থান দেখা হচ্ছে…</string>
+    <string name="out_out_of_range">আপনি দোকানের অনুমোদিত দূরত্বের বাইরে আছেন। কাছে যান, অবস্থান রিফ্রেশ করুন, অথবা ফোর্স সেল ব্যবহার করুন।</string>
+    <string name="out_distance_info">আপনি দোকান থেকে %1$s মিটার দূরে আছেন (অনুমোদিত %2$s মিটার)।</string>
+    <string name="out_no_fix">আপনার অবস্থান পাওয়া যায়নি। রিফ্রেশ করে আবার চেষ্টা করুন।</string>
+    <string name="out_accuracy_low">আপনার অবস্থান যথেষ্ট নির্ভুল নয়। রিফ্রেশ করে আবার চেষ্টা করুন।</string>
+    <string name="out_no_outlet_location">এই দোকানের কোনো অবস্থান সংরক্ষিত নেই।</string>
+    <string name="out_mocked">নকল লোকেশন ধরা পড়েছে। নকল লোকেশন থেকে এই দোকানে বিক্রয় করা যাবে না।</string>
+    <string name="out_mocked_warn">নকল লোকেশন ধরা পড়েছে। এটি রেকর্ড করা হয়েছে।</string>
+    <string name="out_blocked_mock">নকল লোকেশন ধরা পড়েছে। এই ভিজিট বন্ধ করা হয়েছে।</string>
+    <string name="out_location_denied">সুনির্দিষ্ট অবস্থানের অনুমতি নেই। চালিয়ে যেতে ARON-কে লোকেশনের অনুমতি দিন।</string>
+    <string name="out_location_off">লোকেশন বন্ধ আছে। চালিয়ে যেতে চালু করুন।</string>
+    <string name="out_refresh">জিপিএস রিফ্রেশ</string>
+    <string name="out_refresh_left">আরও %1$s বার রিফ্রেশ করা যাবে</string>
+    <string name="out_force_sale">ফোর্স সেল</string>
+    <string name="out_commit_failed">ভিজিট সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
+    <string name="out_retry">আবার চেষ্টা করুন</string>
+    <string name="out_map">মানচিত্র</string>
+    <string name="out_open_visit_resumed">%1$s-এ আপনার ভিজিট চলছে</string>
+</resources>
