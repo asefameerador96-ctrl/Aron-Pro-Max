@@ -44,3 +44,10 @@ Scope change (lead, 2026-10-07): F-SYS-023, 030, 010, 037, 019, 022, 020, 021 mo
 - Light `text.disabled` #8793A6 -> **#77839A** (3.5:1 on `surface.solid.raised`; v1 gave 2.85).
 - Type: Bangla body and caption use Noto Sans Bengali Medium (500) in every theme and tier (lead 2026-10-07); `type.heading` (18 sp bold) is the primary button label.
 - Glare exception: only the primary action label (>= 18 sp bold on a filled accent) may hold 3:1 under the 35 percent glare proxy; encoded in `TokenContrastTest` and `PrimaryLabelRuleTest`.
+
+## Screenshot tests
+Module `android:ui-screenshots` (test scope only, Roborazzi 1.76.0 on Robolectric native graphics, no APK cost). `ScreenshotTests` captures Home, Sale entry (stock warning), Review and Memo detail at 360 x 640 dp, tier B light Bangla, light English and sunlight Bangla, plus Sale entry in Bangla at font scale 1.3. Goldens: `android/ui-screenshots/src/test/screenshots/*.png`.
+- Normal CI run = VERIFY against the goldens (changed-pixel tolerance 1 percent). Any visual change to those four screens, the theme or the fonts fails the test until the goldens are re-recorded.
+- Local record (when Gradle works): `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true` writes straight into `src/test/screenshots`.
+- Re-record through CI (CI cannot commit): set `val bootstrapRecord = true` in `android/ui-screenshots/build.gradle.kts` (or pass `-Paron.screenshots.recordTo=<dir>`), push to `lane/android-core-ui`. The run records into `android/ui-screenshots/build/test-results/screenshots-recorded/` and the test `recordingRunNeverPasses` fails on purpose so the existing "android-test-reports" artifact (uploaded on failure only) carries the PNGs. Download it, copy the PNGs into `src/test/screenshots/`, set `bootstrapRecord = false`, commit and push; the run must be green.
+- Record only after merging the latest theme and typography changes, and review the PNGs by eye before committing them.
