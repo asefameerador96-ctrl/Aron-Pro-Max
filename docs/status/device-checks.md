@@ -42,6 +42,19 @@ On an enrolled Galaxy A06 with the **prod** policy applied (last check: see the 
 4. Settings > General management > Reset > Factory data reset: refused ("blocked by your IT admin").
 5. Reboot: after boot, `dumpsys device_policy` (from a dev phone, or the status report in the portal) shows the same restrictions.
 
+## android-sr-b details (sale, memo, dues, Sales Submit) — wired in the SR app shell, DEVICE-PENDING
+Host proof: `SaleReviewTest`, `SaleCommitterTest`, `SaleFlowTest`, `CheckerTest` (feature-sale), `DaySummaryTest`, `MemoDomainTest`, `HomeKpiTest` (feature-memo), `SalesSubmitTest` (feature-dayclose), and the Compose screen tests.
+On the Galaxy A06 (SR app, airplane mode on, seeded day):
+1. **Offline sale (F-SR-023/025):** enter 20 sticks of a cigarette SKU and 3 pieces of a lighter; the pack badge, unit and running total show; Review shows category subtotals and the net. Save. Pass: the memo number is shown, nothing waits for the network.
+2. **Kill mid-sale (F-SR-025):** enter quantities, force-stop the app from Recents, reopen: the same outlet and the same quantities come back. Then tap Save and force-stop immediately: after relaunch there is exactly one memo for that visit (Memo menu), never two.
+3. **Credit (F-SR-026):** at Review tick Credit, type a paid amount below the total with two decimals: the due shows to the paisa; the amount equal to the total is refused.
+4. **Zero sale (F-SR-029):** open an outlet, proceed with no SKU, confirm: a memo with no lines exists and the visit counts as visited and no-sale.
+5. **Slide (F-SR-022) and QC (F-SR-027):** with an offered SKU, 10 empty packets give one reward pack shown as a deduction; QC deduction is defect sticks times price; after QC is done the sale cannot be edited.
+6. **Edit (F-SR-033):** at the shop edit a memo (reason list shows three); away from the shop the edit is refused with the geofence message.
+7. **Dues (F-SR-032):** Memo menu shows the due in red; Mark paid asks first, settles the whole due once; a second tap does nothing.
+8. **Sales Submit (F-SR-034/035), then online:** Sync data retries until device and server counts match; Submit is enabled; with a retailer owing, a warning shows but Submit still works; turned offline it queues and the success text only shows after the server settles.
+9. **Bangla, font 1.3:** all of the above in Bangla with the system font scale at 1.3: no truncation, 48 dp targets, Bengali digits.
+
 ### D-UI-01 outdoor legibility (android-core-ui, owner)
 Host proof: `TokenContrastTest` (key figures 7:1, body 7:1 in tier B, secondary 4.5:1, 35 percent glare proxy), Roborazzi goldens.
 Owner, on the Galaxy A06, outdoors in direct sun, screen brightness at 100 percent, SR debug APK:

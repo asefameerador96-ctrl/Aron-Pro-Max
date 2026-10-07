@@ -8,6 +8,7 @@ import com.aktcl.aron.core.database.entity.MemoEntity
 import com.aktcl.aron.core.database.entity.MemoLineEntity
 import com.aktcl.aron.core.database.entity.QcLineEntity
 import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.MemoNumbering
 import com.aktcl.aron.core.database.repo.SaleCapture
 
 /**
@@ -43,6 +44,11 @@ class SaleCommitter(
     private val findMemo: suspend (String) -> MemoEntity? = { null },
     /** `cfg.memo.edit_reasons`; null accepts any well-formed code. */
     private val editReasons: Set<String>? = null,
+    /**
+     * Production numbering (F-SYS-027): the repository reserves the number in its own committed step and saves the memo
+     * with it (`recordNumberedSale`); a failed save burns the number, which is never reused. When null, [numbers] is used.
+     */
+    private val numbering: MemoNumbering? = null,
 ) {
     /** The result of an already committed memo of this draft, or null. */
     suspend fun existing(memoUuid: String): CommittedSale? =
@@ -59,7 +65,7 @@ class SaleCommitter(
         // Everything that can fail is checked BEFORE a memo number is taken.
         draft.edit?.let { checkEdit(draft, it, editFix) } ?: require(editFix == null) { "a fix is only for an edit" }
         val meta = metaSource.meta(draft.businessDate, draft.routeId)
-        val memoNo = numbers.next(draft.businessDate, draft.memoUuid)
+        val memoNo = if (numbering == null) numbers.next(draft.businessDate, draft.memoUuid) else ""
         val t = review.totals
         val s = review.settlement
         val lines = review.lines.mapIndexed { i, l ->
@@ -93,8 +99,9 @@ class SaleCommitter(
             supersedesClientUuid = edit?.supersedesMemoUuid, editReasonCode = edit?.reasonCode,
             editFixClientUuid = editFix?.clientUuid,
         )
-        repo.recordSale(SaleCapture(memo, lines, discounts, qcLines, editFix))
-        return CommittedSale(draft.memoUuid, memoNo, t.netMtk, s.dueMtk)
+        val capture = SaleCapture(memo, lines, discounts, qcLines, editFix)
+        val finalNo = if (numbering != null) repo.recordNumberedSale(capture, numbering) else { repo.recordSale(capture); memoNo }
+        return CommittedSale(draft.memoUuid, finalNo, t.netMtk, s.dueMtk)
     }
 
     /** Edit rules checkable on the phone (F-SR-033): no QC done, a listed reason, a fix, and a real earlier memo of this outlet and day. */
