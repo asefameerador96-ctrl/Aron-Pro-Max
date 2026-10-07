@@ -46,7 +46,7 @@ class EnrolmentTest {
         override fun create(alias: String, challenge: ByteArray): Pair<JwkEcPublic, List<String>> {
             if (fail) throw IllegalStateException("keystore")
             created++; present += alias; this.challenge = challenge
-            return JwkEcPublic(x = "x".repeat(43), y = "y".repeat(43)) to listOf("Y2VydA==")
+            return ecJwk(x = "x".repeat(43), y = "y".repeat(43)) to listOf("Y2VydA==")
         }
         override fun deleteAllExcept(keep: String) { present.retainAll(setOf(keep)) }
         override fun delete(alias: String) { present -= alias }
@@ -153,7 +153,7 @@ class EnrolmentTest {
         fun props(n: String) = ((schemas[n] as Map<String, Any?>)["properties"] as Map<String, Any?>).keys
         val j = Json { encodeDefaults = true }
         assertEquals(props("DeviceInfo"), Json.parseToJsonElement(j.encodeToString(DeviceInfoDto.serializer(), facts.deviceInfo())).jsonObject.keys)
-        assertEquals(props("JwkEcPublicDevice"), Json.parseToJsonElement(j.encodeToString(JwkEcPublic.serializer(), JwkEcPublic(x = "a", y = "b"))).jsonObject.keys)
+        assertEquals(props("JwkEcPublicDevice"), Json.parseToJsonElement(j.encodeToString(JwkEcPublic.serializer(), ecJwk(x = "a", y = "b"))).jsonObject.keys)
         assertEquals(props("EnrolDeviceResponse"), Json.parseToJsonElement(j.encodeToString(EnrolDeviceResponse.serializer(), response("u"))).jsonObject.keys)
     }
 
@@ -223,7 +223,7 @@ class EnrolmentTest {
     @Test fun aWrappedChainIsStoredCanonicallySoRetriesAreIdentical() = runTest {
         val dir = Files.createTempDirectory("enr").toFile()
         val keys = object : EnrolmentKeys by Keys() {
-            override fun create(alias: String, challenge: ByteArray) = JwkEcPublic(x = "x".repeat(43), y = "y".repeat(43)) to listOf("Y2Vy\r\ndA==")
+            override fun create(alias: String, challenge: ByteArray) = ecJwk(x = "x".repeat(43), y = "y".repeat(43)) to listOf("Y2Vy\r\ndA==")
             override fun exists(alias: String) = true
         }
         val sent = mutableListOf<EnrolDeviceRequest>()
@@ -231,7 +231,7 @@ class EnrolmentTest {
         c.accept(parse(good).first!!)
         c.run(); c.run()
         assertEquals(listOf("Y2VydA=="), sent[0].keyAttestationChain)
-        assertEquals("x".repeat(43), sent[0].publicKey.jsonObject["x"].toString().trim('"'))
+        assertEquals("x".repeat(43), sent[0].publicKey.x)
         assertEquals(sent[0], sent[1])
     }
 
@@ -261,7 +261,7 @@ class EnrolmentTest {
         val keys = object : EnrolmentKeys by Keys() {
             override fun create(alias: String, challenge: ByteArray): Pair<JwkEcPublic, List<String>> {
                 store.acceptPending(parse(good + (EnrolmentExtras.KEY_TOKEN to newToken)).first!!) { "u-2" } // a second QR lands now
-                return JwkEcPublic(x = "x".repeat(43), y = "y".repeat(43)) to listOf("Y2VydA==")
+                return ecJwk(x = "x".repeat(43), y = "y".repeat(43)) to listOf("Y2VydA==")
             }
         }
         c = EnrolmentCoordinator(store, keys, { _, _ -> error("must not send the old token") }, facts, { "u-1" }) { _, _ -> }

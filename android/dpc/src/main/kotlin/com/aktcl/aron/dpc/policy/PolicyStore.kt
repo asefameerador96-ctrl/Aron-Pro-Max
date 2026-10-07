@@ -12,7 +12,7 @@ class PolicyStore(private val dir: File) {
     private val file get() = File(dir, "device-policy.json")
 
     @Synchronized
-    fun load(): DevicePolicy? = file.takeIf { it.isFile }?.let { runCatching { DevicePolicy.parse(it.readText()) }.getOrNull() }
+    fun load(): DevicePolicy? = file.takeIf { it.isFile }?.let { runCatching { DevicePolicies.parse(it.readText()) }.getOrNull() }
 
     /** Stores [policy] unless a newer version is already stored; returns the policy now in force. */
     @Synchronized
