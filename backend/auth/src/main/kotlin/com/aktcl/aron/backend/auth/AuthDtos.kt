@@ -75,4 +75,4 @@ data class JwkEcPublic(val kty: String, val crv: String, val x: String, val y: S
 data class Jwks(val keys: List<JwkEcPublic>)
 
 @Serializable
-data class Me(val user: UserSummary, val permissions: List<String>, val scope: ScopeSummary, val pii: Boolean, val mfa_enabled: Boolean)
+data class Me(val user: UserSummary, val permissions: List<String>, val scope: ScopeSummary, val pii: Boolean, val mfa_enabled: Boolean, val menus: List<kotlinx.serialization.json.JsonElement>? = null)

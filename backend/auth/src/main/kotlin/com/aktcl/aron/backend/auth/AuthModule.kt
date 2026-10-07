@@ -39,6 +39,8 @@ class AuthDeps(
     val clock: AronClock = AronClock.SYSTEM,
     /** Front Door profile id (`X-Azure-FDID`); only then is `X-Azure-ClientIP` trusted for the lockout IP class. */
     val trustedFrontDoorId: String? = null,
+    /** The caller's role row of `cfg.web.menu_by_role` (contract v1.2 `Me.menus`, R10); wired to ConfigPermissions.menusForRole. */
+    val menusForRole: (String) -> List<kotlinx.serialization.json.JsonElement>? = { null },
 )
 
 /** Mounts the auth endpoints of this build under /v1 (contract tag `auth`). */
@@ -79,6 +81,7 @@ private fun me(call: ApplicationCall, d: AuthDeps): Me {
                 scope = ScopeSummary(user.scopeVersion, reach.topNodes.take(16).map { NodeRef(it.type, it.id, it.code, it.name) }),
                 pii = p.pii,
                 mfa_enabled = false,
+                menus = d.menusForRole(user.role.wire)?.take(200),
             )
 }
 

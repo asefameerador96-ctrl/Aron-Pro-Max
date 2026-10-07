@@ -126,7 +126,6 @@ class Wiring(
             val refresh = RefreshService(JdbiRefreshStore(db), config, keys.derivedSecret("aron-refresh-rotation-v1"), clock)
             val devices = JdbiDeviceStore(db)
             val login = LoginService(users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock)
-            val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
@@ -139,7 +138,12 @@ class Wiring(
             val configService = ConfigService(db, configResolver, clock, toolsReach)
             val configDeps = ConfigDeps(configService, guard, clock)
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
-            val permDeps = ConfigPermissionsDeps(ConfigPermissions(db, configService, clock), guard)
+            val permissions = ConfigPermissions(db, configService, clock)
+            val permDeps = ConfigPermissionsDeps(permissions, guard)
+            val auth = AuthDeps(
+                login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId,
+                menusForRole = { role -> permissions.menusForRole(role).map { kotlinx.serialization.json.Json.encodeToJsonElement(com.aktcl.aron.backend.config.MenuPermissionDto.serializer(), it) } },
+            )
             val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
             // REQUEST: the Azure Blob implementation of BlobSasIssuer belongs to the infra lane; until then SAS issue answers 503 (docs/requests/backend-admin-blob-sas.md).
             val blob = com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
