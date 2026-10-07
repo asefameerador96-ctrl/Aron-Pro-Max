@@ -22,7 +22,7 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
 | [`memo.created`](#memocreated-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current | not yet |
 | [`memo.voided`](#memovoided-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current | not yet |
 | [`outlet.changed`](#outletchanged-v1) | 1 | `outlet` | `outlet.id` | backend:masterdata | current | not yet |
-| [`risk_signal.changed`](#risk_signalchanged-v1) | 1 | `risk_signal` | `risk_signal.id` | backend:masterdata | current | not yet |
+| [`risk_signal.changed`](#risk_signalchanged-v1) | 1 | `risk_signal` | `risk_signal.id` | backend:masterdata, backend:sync | current | not yet |
 | [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | current | not yet |
 | [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | current | not yet |
 | [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | current | not yet |
@@ -49,7 +49,7 @@ A due collection was accepted; the route-day and outlet dues are recomputed. Int
 | `amount_mtk` | integer | yes | collected amount, integer milli-taka |
 | `business_date` | string (date) | yes |  |
 | `outlet_id` | integer | yes |  |
-| `route_id` | integer | yes |  |
+| `route_id` | integer or null | no | null when the collection has no route; consumers fall back to source_client_uuid |
 
 ## memo.created v1
 
@@ -96,14 +96,17 @@ An outlet was created, edited, moved, merged or closed. Names, phones and coordi
 
 ## risk_signal.changed v1
 
-A risk signal was raised or reviewed; the user's day figures and integrity views are recomputed. Introduced in V0036; current.
+A risk signal was raised (masterdata risk rules) or reviewed (sync risk_review records); the subject's day figures and integrity views are recomputed. Introduced in V0036; current.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
 | `business_date` | string (date) | yes |  |
-| `signal_code` | string | yes |  |
-| `user_id` | integer | yes |  |
-| `review_state` | string or null | no |  |
+| `code` | string | yes | risk_signal.code |
+| `subject_id` | integer | yes |  |
+| `subject_type` | string | yes |  |
+| `route_id` | integer or null | no |  |
+| `status` | string or null | no | risk_signal.status after the change |
+| `user_id` | integer or null | no |  |
 
 ## route_day.state_changed v1
 

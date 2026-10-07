@@ -100,17 +100,17 @@ class ReportsAndBundleTablesTest {
     @Test
     fun theRebuildQueriesHaveTheirIndexesAndTheNewEventsAreCatalogued() = db.connect().use { c ->
         assertEquals(
-            listOf("agg_daily_route_segment_segment", "day_exception_approved_dates", "day_exception_route_ids", "due_collection_route_date",
+            listOf("agg_daily_route_segment_segment", "day_exception_approved_dates", "due_collection_route_date",
                 "fact_memo_zone_date", "fact_visit_zone_date", "stock_movement_route_date"),
             c.column("SELECT relname FROM pg_class WHERE relname IN ('due_collection_route_date', 'stock_movement_route_date', 'day_exception_approved_dates', " +
-                "'day_exception_route_ids', 'fact_visit_zone_date', 'fact_memo_zone_date', 'agg_daily_route_segment_segment') ORDER BY 1"),
+                "'fact_visit_zone_date', 'fact_memo_zone_date', 'agg_daily_route_segment_segment') ORDER BY 1"),
         )
         c.tx {
             exec("INSERT INTO dw.agg_daily_route_segment (business_date, route_id, segment_id, memo_count, sold_qty_base, gross_mtk) VALUES ('2026-10-07', 1, 2, 3, 400, 50000)")
             for ((type, payload) in listOf(
-                "due.collected" to """{"route_id": 1, "business_date": "2026-10-07", "outlet_id": 9, "amount_mtk": 1500000}""",
+                "due.collected" to """{"route_id": null, "business_date": "2026-10-07", "outlet_id": 9, "amount_mtk": 1500000}""",
                 "day_exception.decided" to """{"route_id": 1, "from_date": "2026-10-07", "to_date": "2026-10-08", "status": "approved"}""",
-                "risk_signal.changed" to """{"user_id": 1, "business_date": "2026-10-07", "signal_code": "GEO_MOCK"}""",
+                "risk_signal.changed" to """{"business_date": "2026-10-07", "code": "GEO_MOCK", "subject_type": "user", "subject_id": 1, "user_id": null}""",
             )) {
                 exec("INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, payload) VALUES ('$type', '${type.substringBefore('.')}', 'x', '2026-10-07', '$payload')")
             }

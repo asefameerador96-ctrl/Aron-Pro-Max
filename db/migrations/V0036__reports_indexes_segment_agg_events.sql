@@ -1,6 +1,7 @@
 -- V0036 backend-reports asks (docs/requests/backend-reports-db-indexes-and-events.md, F-SYS-015 checker):
 -- (1) route-day rebuild reads due_collection and stock_movement by route and date;
--- (2) "is this route excused on this date": approved day exceptions by date range, and by route_ids;
+-- (2) "is this route excused on this date": approved day exceptions by date range (the code filters route_ids with
+--     = ANY, which a GIN index cannot serve, so none is added);
 -- (3) dw.agg_hourly_zone rebuilds read fact_visit / fact_memo by zone and date;
 -- (4) dw.agg_daily_route_segment: memos counted once per product segment (contract by_segment; not derivable from the
 --     brand or SKU aggregates);
@@ -17,8 +18,6 @@ CREATE INDEX due_collection_route_date ON app.due_collection (route_id, business
 CREATE INDEX stock_movement_route_date ON app.stock_movement (route_id, business_date);
 -- squawk-ignore require-concurrent-index-creation
 CREATE INDEX day_exception_approved_dates ON app.day_exception (from_date, to_date) WHERE status = 'approved';
--- squawk-ignore require-concurrent-index-creation
-CREATE INDEX day_exception_route_ids ON app.day_exception USING gin (route_ids) WHERE status = 'approved';
 -- squawk-ignore require-concurrent-index-creation
 CREATE INDEX fact_visit_zone_date ON dw.fact_visit (zone_id, business_date);
 -- squawk-ignore require-concurrent-index-creation
@@ -52,18 +51,21 @@ INSERT INTO app.domain_event_type
   (event_type, payload_version, aggregate_type, aggregate_id_is, producer, description, payload_schema, introduced_in) VALUES
 ('due.collected', 1, 'due_collection', 'due_collection.client_uuid', 'backend:sync',
  'A due collection was accepted; the route-day and outlet dues are recomputed.',
- '{"type":"object","required":["route_id","business_date","outlet_id","amount_mtk"],"properties":{
-   "route_id":{"type":"integer"},"business_date":{"type":"string","format":"date"},"outlet_id":{"type":"integer"},
+ '{"type":"object","required":["business_date","outlet_id","amount_mtk"],"properties":{
+   "route_id":{"type":["integer","null"],"description":"null when the collection has no route; consumers fall back to source_client_uuid"},
+   "business_date":{"type":"string","format":"date"},"outlet_id":{"type":"integer"},
    "amount_mtk":{"type":"integer","description":"collected amount, integer milli-taka"}}}', 'V0036'),
 ('day_exception.decided', 1, 'day_exception', 'day_exception.client_uuid', 'backend:masterdata',
  'A day exception was approved or rejected; one event per affected route.',
  '{"type":"object","required":["route_id","from_date","to_date","status"],"properties":{
    "route_id":{"type":"integer"},"from_date":{"type":"string","format":"date"},"to_date":{"type":"string","format":"date"},
    "status":{"type":"string","enum":["approved","rejected"]}}}', 'V0036'),
-('risk_signal.changed', 1, 'risk_signal', 'risk_signal.id', 'backend:masterdata',
- 'A risk signal was raised or reviewed; the user''s day figures and integrity views are recomputed.',
- '{"type":"object","required":["user_id","business_date","signal_code"],"properties":{
-   "user_id":{"type":"integer"},"business_date":{"type":"string","format":"date"},"signal_code":{"type":"string"},
-   "review_state":{"type":["string","null"]}}}', 'V0036');
+('risk_signal.changed', 1, 'risk_signal', 'risk_signal.id', 'backend:masterdata, backend:sync',
+ 'A risk signal was raised (masterdata risk rules) or reviewed (sync risk_review records); the subject''s day figures and integrity views are recomputed.',
+ '{"type":"object","required":["business_date","code","subject_type","subject_id"],"properties":{
+   "business_date":{"type":"string","format":"date"},"code":{"type":"string","description":"risk_signal.code"},
+   "subject_type":{"type":"string"},"subject_id":{"type":"integer"},
+   "user_id":{"type":["integer","null"]},"route_id":{"type":["integer","null"]},
+   "status":{"type":["string","null"],"description":"risk_signal.status after the change"}}}', 'V0036');
 
 SELECT app.apply_db_role_grants();
