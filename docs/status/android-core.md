@@ -78,6 +78,17 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Ninth session (2026-10-07, from ~17:55Z by the container clock)
+- INT merged (infra only, no conflicts). Checks run: shared:contract jvmTest, the three app compiles, core-sync (209), core-database (150), app-sr (12), core-map (20); lint on core-map and app-sr.
+- **N-053 (lead ruling: assigned to android-core because F-SYS-074 needs it) and F-SYS-074: done** (T1; Opus checker FAIL with one medium privacy finding, fixed; re-check below). New module `android/core-map` (interface in "Interfaces for feature lanes"):
+  - `LiteMapScreen`: Google lite mode (2D, one static image) only when online, with a key and provider google; the list with "last seen HH:MM (n min ago)" and source, greyed after 120 min, in every mode; offline the last rendered image from `MapTileCache` (LRU, cap `cfg.map.tile_cache_mb`, 5..100, default 20). MapLibre is not bundled: that setting shows the list. No map class loads outside the composable (source-scan test).
+  - `DayConfig` reads `cfg.map.provider` and `cfg.map.tile_cache_mb`; `MapSettings.of` validates them. Honest limit: the hosts that build `MapSettings` from DayConfig are the AMO/TSO screens (F-AMO-016, F-TSO-011/012, F-AMO-028), not built yet.
+  - Attendance address: `AddressResolver` (platform Geocoder, no key, online only, 5 s timeout, after the commit, display only); offline the coordinates, plus the last resolved address when within 300 m (per-user prefs `aron-map-last-address-<id>`, deleted by the logout wipe). Wired in `SrDay`.
+  - `NoAlwaysOnMapTest` (app-sr): only the on-tap N-041 OutletMapActivity references the Maps SDK, started only from a click handler, not exported.
+  - Live lite render, pins and snapshot write: device check D-MAP-074 (address part ready now; map part when the AMO/TSO hosts land).
+  - For android-core-ui (via the lead): add `core-map` to `HardcodedStringScanner`'s module set (core-ui test). Its strings are already in resources (bn + en).
+  - Accepted lows: before API 33 a timed-out geocode keeps its IO thread until the platform call returns; the offline image shows no capture time.
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~18:05Z by the server clock, eighth session)
 - **Done this session.** Every row had a fresh Opus checker, and every FAIL had a re-check. Details are in "Eighth session" below.
   - Closed: F-SYS-081 phone half (round-4 re-check PASS), F-SYS-073, AUD-PERF-06 and AUD-PERF-04 (in code; the A06 numbers are D-PERF-04).
