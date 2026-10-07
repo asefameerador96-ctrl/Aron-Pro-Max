@@ -29,6 +29,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -49,6 +50,7 @@ class BundleDownloaderTest {
     private var paged = false
     private var dropPage2 = 0
     private var bundleBody: () -> String = { fullBundle() }
+    private var deltaAnswer: (RecordedRequest) -> MockResponse = { MockResponse.Builder().code(304).addHeader("X-Aron-Api", "1").build() }
 
     private object Clock : WallClock {
         override fun nowMs(): Long = 1_791_165_600_000L // 2026-10-05T02:00:00Z = 08:00 in Dhaka
@@ -97,6 +99,7 @@ class BundleDownloaderTest {
                     "/v1/sync/bundle" ->
                         if (request.headers["If-None-Match"] == "\"2026-10-05:3\"") MockResponse.Builder().code(304).addHeader("X-Aron-Api", "1").build()
                         else api(bundleBody())
+                    "/v1/sync/delta" -> deltaAnswer(request)
                     "/v1/sync/bundle/page" -> {
                         val n = request.url.queryParameter("page")!!.toInt()
                         if (n == 2 && dropPage2-- > 0) MockResponse.Builder().onRequestStart(SocketEffect.ShutdownConnection).build() else api(page(n))
@@ -215,5 +218,72 @@ class BundleDownloaderTest {
 
     private companion object {
         const val USER = 1001L
+    }
+
+    // ---- F-SYS-007: bundle delta refresh
+
+    private fun problem(status: Int, code: String) = MockResponse.Builder().code(status).addHeader("X-Aron-Api", "1")
+        .addHeader("Content-Type", "application/problem+json")
+        .body("""{"type":"about:blank","title":"t","status":$status,"code":"$code","request_id":"r1"}""").build()
+
+    private fun deltaBody(base: String = "c1") = """{"meta": {"bundle_version": "2026-10-05:4", "base_cursor": "$base", "cursor": "c2",
+        "valid_for_business_date": "2026-10-05", "config_version": 318, "server_time": "2026-10-05T03:00:00.000Z"},
+        "sections": {"prices": {"upsert": [{"id": 1, "sku_id": 100, "price_type": "outlet", "amount_mtk": 9500, "per_base_qty": 1, "valid_from": "2026-09-01"}], "delete": []}},
+        "routes_added": [], "routes_removed": [], "day_states": [],
+        "resolutions": [{"client_uuid": "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f", "type": "memo", "resolution": "accepted", "resolved_at": "2026-10-05T02:59:00.000Z"}]}"""
+
+    @Test
+    fun aDeltaAppliesOnlyChangedRowsAndIsNeverTheDaysLogin() = runBlocking {
+        assertEquals(BundleOutcome.APPLIED, downloader().download().outcome)
+        db.referenceDao().deleteMeta(BundleDownloader.KEY_LOGGED_IN + "2026-10-05") // as if the login were not recorded yet
+        requests.clear()
+        deltaAnswer = { r ->
+            assertEquals("c1", r.url.queryParameter("since")); assertEquals("2026-10-05", r.url.queryParameter("for"))
+            api(deltaBody())
+        }
+        val r = downloader().refreshDelta()
+        assertEquals(BundleOutcome.APPLIED, r.outcome)
+        assertEquals("2026-10-05:4", r.bundleVersion)
+        assertEquals(listOf("/v1/sync/delta"), requests.map { it.url.encodedPath }) // no bundle request: no login event
+        assertFalse(downloader().loggedIn("2026-10-05"))
+        assertEquals(9500L, ReferenceRepository(db).priceOn(100, "outlet", "2026-10-05")!!.amountMtk)
+        assertEquals(200, db.referenceDao().outletCount())
+        assertEquals("accepted", db.referenceDao().meta(SyncEngine.RESOLUTION_PREFIX + "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f"))
+        deltaAnswer = { MockResponse.Builder().code(304).addHeader("X-Aron-Api", "1").build() }
+        assertEquals(BundleOutcome.UNCHANGED, downloader().refreshDelta().outcome)
+    }
+
+    @Test
+    fun aNewDateIsLeftToTheDayStartAndAnExpiredCursorFetchesTheSameDay() = runBlocking {
+        downloader().download()
+        requests.clear()
+        deltaAnswer = { problem(409, "ERR_BUNDLE_NEW_BUSINESS_DATE") }
+        assertEquals(BundleOutcome.NEW_DATE, downloader().refreshDelta().outcome)
+        assertEquals(listOf("/v1/sync/delta"), requests.map { it.url.encodedPath })
+        requests.clear()
+        deltaAnswer = { problem(410, "ERR_BUNDLE_CURSOR_EXPIRED") }
+        downloader().refreshDelta()
+        assertEquals(listOf("/v1/sync/delta", "/v1/sync/bundle"), requests.map { it.url.encodedPath })
+        assertEquals("2026-10-05", requests.last().url.queryParameter("for"))
+        // A delta that does not continue the held cursor brings the full bundle of the same day.
+        requests.clear()
+        deltaAnswer = { api(deltaBody(base = "other")) }
+        downloader().refreshDelta()
+        assertEquals(listOf("/v1/sync/delta", "/v1/sync/bundle"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun theForegroundRefreshAsksAtMostEveryThirtyMinutesAndOnlyANewerServerBundleTriggersOneAfterSync() = runBlocking {
+        downloader().download()
+        requests.clear()
+        assertNotNull(downloader().refreshOnForeground())
+        assertNull(downloader().refreshOnForeground()) // within 30 min of an answered request
+        assertEquals(1, requests.size)
+        assertNull(downloader().refreshIfServerNewer()) // the server reported nothing newer
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(SyncEngine.KEY_BUNDLE_CURRENT, "2026-10-05:3"))
+        assertNull(downloader().refreshIfServerNewer())
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(SyncEngine.KEY_BUNDLE_CURRENT, "2026-10-05:7"))
+        assertNotNull(downloader().refreshIfServerNewer())
+        assertEquals(2, requests.size)
     }
 }

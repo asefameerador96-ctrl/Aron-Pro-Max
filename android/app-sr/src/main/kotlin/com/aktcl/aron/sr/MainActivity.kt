@@ -53,10 +53,10 @@ class MainActivity : ComponentActivity() {
         super.attachBaseContext(AppLocale.wrap(newBase))
     }
 
-    /** R9 (F-SYS-092): one conditional config check when the app comes to the front; launched, never awaited. */
+    /** In front: the R9 config check (F-SYS-092) and the bundle delta (F-SYS-007); both launched, never awaited. */
     override fun onResume() {
         super.onResume()
-        dayHolder?.day?.value?.launchConfigCheck()
+        dayHolder?.day?.value?.let { it.launchConfigCheck(); it.launchDeltaRefresh(bundleDownloaders) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

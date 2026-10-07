@@ -79,8 +79,9 @@ object SessionModule {
 
     @Provides
     @Singleton
-    fun workerFactory(databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime): AronWorkerFactory =
-        AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch) }, { scheduler })
+    fun workerFactory(
+        databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
+    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles) }, { scheduler })
 
     /** Connectivity trigger (F-SYS-046): uploads for every user on the phone with rows waiting, after a 5 s quiet period. */
     @Provides

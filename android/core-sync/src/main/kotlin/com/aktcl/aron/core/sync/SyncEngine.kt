@@ -463,7 +463,7 @@ class SyncEngine(
         const val KEY_DAY_STATES = "sync.day_states"
         const val KEY_LAST_SUCCESS = "sync.last_success_at"
         private const val ATTEMPT_PREFIX = "sync.batch_attempt."
-        private const val RESOLUTION_PREFIX = "sync.resolution."
+        internal const val RESOLUTION_PREFIX = "sync.resolution."
 
         private val RECORD_POINTER = Regex("^/records/(\\d+)(?:/|$)")
 

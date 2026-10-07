@@ -57,11 +57,17 @@ class SessionSyncRunner(
     private val components: SessionComponents,
     /** Runs before the batch is built (device status and integrity, `DeviceRuntime.beforeBatch`); must never throw. */
     private val beforeBatch: suspend (userId: Long, db: com.aktcl.aron.core.database.AronDatabase, trigger: SyncTrigger) -> Unit = { _, _, _ -> },
+    /** Bundle deltas after a run when the server's current bundle is newer (F-SYS-007); null in tests. */
+    private val bundles: BundleDownloaders? = null,
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
         val db = databases.of(userId)
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
-        return engine(userId, db).run(trigger)
+        val report = engine(userId, db).run(trigger)
+        if (report.stop != SyncStop.OFFLINE) {
+            try { bundles?.of(userId)?.refreshIfServerNewer() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        }
+        return report
     }
 
     private fun engine(userId: Long, db: com.aktcl.aron.core.database.AronDatabase) = SyncEngine(

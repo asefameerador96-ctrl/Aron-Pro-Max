@@ -89,6 +89,14 @@ class SrDay(
         }
     }
 
+    /** F-SYS-007: on foreground, a bundle delta at most every 30 min; the day reloads only when rows changed. Never awaited. */
+    fun launchDeltaRefresh(downloaders: BundleDownloaders) {
+        background.launch {
+            val r = runCatching { downloaders.of(userId).refreshOnForeground() }.getOrNull()
+            if (r?.outcome == BundleOutcome.APPLIED) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { runCatching { reload() } }
+        }
+    }
+
     /** Reloads what device code reads synchronously (cfg.geo.* for fixes, the DPC calendar) from this user's bundle. */
     fun launchDayConfigRefresh() { deviceRuntime?.let { rt -> background.launch { rt.refreshDayConfig(userId, db) } } }
 
