@@ -15,6 +15,7 @@ param nameSuffix = envSuffix
 // The quickstart image only lets the file compile offline; deploy.sh always sets the real image.
 param backendImage = empty(envBackendImage) ? 'mcr.microsoft.com/k8se/quickstart:latest' : envBackendImage
 param webImage = readEnvironmentVariable('ARON_WEB_IMAGE', '')
+param buildId = readEnvironmentVariable('ARON_BUILD_ID', '')
 param deployServices = empty(envServices) ? true : bool(envServices)
 param frontDoorPrivateLink = false
 param frontDoorEnabled = false

@@ -51,6 +51,10 @@ on:
         description: Run main.bicep even when infra/ is unchanged since the deployed commit
         type: boolean
         default: false
+      rollback_sha:
+        description: ROLLBACK - full commit id of an earlier integration-branch commit whose image is redeployed (no build, no migrations; docs/runbooks/rollback-bad-deploy.md). Empty = normal deploy.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -84,6 +88,10 @@ jobs:
       # null, and null == false is TRUE in GitHub expressions, so the event is tested first.
       RUN_MIGRATIONS: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_migrations == false) && 'false' || 'true' }}
       FORCE_INFRA: ${{ inputs.force_infra && 'true' || 'false' }}
+      # Only a manual dispatch can roll back (under workflow_run and workflow_call the input is null or absent).
+      ROLLBACK_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.rollback_sha || '' }}
+      # "HH:MM-HH:MM" Asia/Dhaka: no deploy while reps sell; unset until real users exist (rollbacks always allowed).
+      ARON_DEPLOY_FREEZE_DHAKA: ${{ vars.ARON_DEPLOY_FREEZE_DHAKA }}
     steps:
       - name: Deploy only from the integration branch (prod only from a server-v* release tag)
         env:

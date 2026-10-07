@@ -19,11 +19,16 @@ param location string = resourceGroup().location
 param nameSuffix string = ''
 param tags object = {}
 
-@description('Backend image, for example crarondevabc123.azurecr.io/aron-backend:<git sha>.')
+@description('Backend image. deploy.sh passes the pushed digest (crarondevabc123.azurecr.io/aron-backend@sha256:...), so a re-pushed tag can never change what runs.')
 param backendImage string
+@description('The commit the image was built from (reported as `build` by /v1/health); empty = the image tag.')
+param buildId string = ''
 @description('Web image; empty = no web app yet (web/ does not exist).')
 param webImage string = ''
 param deployServices bool = true
+@description('api revisions: Single (dev: the new revision takes all traffic once ready) or Multiple (stage and prod, docs/30 s3: the previous revision stays active at 0 % so deploy.sh can put traffic back on it when the health gate fails).')
+@allowed(['Single', 'Multiple'])
+param apiRevisionsMode string = 'Single'
 @description('Must match the infra deployment: Front Door reaches the apps over Private Link.')
 param frontDoorPrivateLink bool
 @description('Must match the infra deployment (deployFrontDoor). false (TEST profile): clients use the api Container Apps address.')
@@ -90,12 +95,13 @@ func kvSecret(name string, secret string, baseUrl string, identityId string) obj
 }
 
 // Environment shared by every backend role (docs/24 s6.4). Role-specific variables are appended per container.
-// The image tag is the commit (deploy.sh); the API reports it in /v1/health as `build`.
-var buildId = last(split(backendImage, ':'))
+// The commit (deploy.sh passes it with the digest); the API reports it in /v1/health as `build`. deploy.sh reads it
+// back from ARON_BUILD for its ordering guard.
+var build = empty(buildId) ? last(split(backendImage, ':')) : buildId
 
 var commonEnv = [
   { name: 'ARON_ENV', value: environmentName }
-  { name: 'ARON_BUILD', value: buildId }
+  { name: 'ARON_BUILD', value: build }
   { name: 'ARON_BLOB_ACCOUNT', value: st.name }
   { name: 'ARON_BLOB_CONTAINER_MEDIA', value: 'media' }
   { name: 'ARON_BLOB_CONTAINER_BUNDLES', value: 'bundles' }
@@ -137,7 +143,7 @@ resource migrate 'Microsoft.App/jobs@2025-07-01' = {
           env: [
             { name: 'ARON_ROLE', value: 'migrate' }
             { name: 'ARON_ENV', value: environmentName }
-            { name: 'ARON_BUILD', value: buildId }
+            { name: 'ARON_BUILD', value: build }
             // Flyway takes a session-level advisory lock, so it connects directly (5432), not through PgBouncer.
             { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
@@ -177,7 +183,7 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
     environmentId: env.id
     workloadProfileName: 'Consumption'
     configuration: {
-      activeRevisionsMode: 'Single'
+      activeRevisionsMode: apiRevisionsMode
       maxInactiveRevisions: 5
       ingress: {
         external: true
@@ -437,3 +443,5 @@ output migrateJobName string = migrate.name
 output apiFqdn string = deployServices ? api!.properties.configuration.ingress.fqdn : ''
 output webDeployed bool = deployWeb
 output apiHost string = apiHost
+@description('Where the web app answers: the Front Door endpoint (route /*), or its own address without Front Door.')
+output webHost string = deployWeb ? (frontDoorEnabled ? apiHost : web!.properties.configuration.ingress.fqdn) : ''

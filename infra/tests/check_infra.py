@@ -712,6 +712,158 @@ class Workflows(unittest.TestCase):
         self.assertIn("if-no-files-found: error", block)
 
 
+class DeploySafety(unittest.TestCase):
+    """AUD-DG-07, AUD-DG-06, AUD-REL-06, AUD-DG-04: ordering re-checked, deploy by digest, health gate, rollback."""
+
+    def deploy(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        return d[d.index("# ---"):]
+
+    def test_ordering_guard_runs_again_before_migrations_and_apps(self):
+        d = self.deploy()
+        order = ['guard_newer_live "start"', "publish aron-backend build_backend", 'guard_newer_live "before the migrations"',
+                 "containerapp job start", 'guard_newer_live "before the apps"', "ARON_DEPLOY_SERVICES=true"]
+        pos = [d.index(x) for x in order]
+        self.assertEqual(pos, sorted(pos), "the ordering guard must re-read the live commit right before each stage")
+        g = d[d.index("guard_newer_live() {"):d.index("deployed_sha=\"$(live_sha)\"")]
+        self.assertIn('git merge-base --is-ancestor "$SHA" "$live"', g)
+        self.assertIn("exit 0", g, "a newer live commit skips, it does not fail")
+        self.assertIn("env[?name=='ARON_BUILD'].value", d, "the live commit is read from ARON_BUILD (digest deploys)")
+
+    def test_images_are_deployed_by_digest_and_tags_locked(self):
+        d = self.deploy()
+        self.assertIn('IMAGE_REF="${REGISTRY}/${repo}@${d}"', d)
+        self.assertIn('[[ "$d" =~ ^sha256:[0-9a-f]{64}$ ]] || die', d)
+        self.assertIn("--write-enabled false --delete-enabled true", d)
+        self.assertIn('ARON_BACKEND_IMAGE="$BACKEND_IMAGE" ARON_WEB_IMAGE="$WEB_IMAGE" ARON_BUILD_ID="$SHA"', d)
+        self.assertNotRegex(d, r'BACKEND_IMAGE="\$\{REGISTRY\}/aron-backend:', "never deploy by tag")
+        for f in ("dev", "dev-lite", "stage", "prod"):
+            src = (ROOT / "infra" / "params" / f"{f}.apps.bicepparam").read_text(encoding="utf-8")
+            self.assertIn("param buildId = readEnvironmentVariable('ARON_BUILD_ID', '')", src, f)
+        text = json.dumps(load("apps.json"))
+        self.assertIn("parameters('buildId')", text, "ARON_BUILD must come from the commit, not the digest")
+
+    def test_revision_mode_multiple_only_in_the_final_profiles(self):
+        res = load("apps.json")["resources"]
+        modes = {k: res[k]["properties"]["configuration"]["activeRevisionsMode"] for k in ("api", "worker", "web")}
+        self.assertEqual(modes, {"api": "[parameters('apiRevisionsMode')]", "worker": "Single", "web": "Single"})
+        self.assertEqual(param_default("apps.json", "apiRevisionsMode"), "Single")
+        for f in ("dev", "dev-lite"):
+            self.assertNotIn("apiRevisionsMode", params(f"{f}.apps.parameters.json"), f"{f} must stay Single (docs/28)")
+        for f in ("stage", "prod"):
+            self.assertEqual(params(f"{f}.apps.parameters.json")["apiRevisionsMode"], "Multiple", f)
+        d = self.deploy()
+        self.assertIn('--revision-weight "${prev_revision}=100"', d, "a failed gate puts traffic back in Multiple mode")
+        self.assertIn('if ! infra/scripts/smoke.sh "$API_HOST" "$SHA" "$WEB_HOST"; then', d)
+
+    def test_rollback_redeploys_an_existing_image_without_migrations(self):
+        full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        rb = full[full.index('if [ -n "$ROLLBACK_SHA" ]; then'):full.index("# Dhaka selling window")]
+        self.assertIn('git merge-base --is-ancestor "$ROLLBACK_SHA" "$SHA"', rb, "only an earlier commit of the branch")
+        self.assertIn("RUN_MIGRATIONS=false", rb)
+        d = self.deploy()
+        self.assertIn('[ -z "$ROLLBACK_SHA" ] || die "rollback: $repo:$SHA is no longer in the registry', d, "a rollback never builds")
+        self.assertIn('[ -n "$ROLLBACK_SHA" ] && return 0', d, "a rollback bypasses the ordering guard")
+        i = d.index('if [ -n "$ROLLBACK_SHA" ]; then\n  # A rollback changes images only')
+        self.assertIn("skip_infra=true", d[i:i + 300])
+        w = (WORKFLOWS / "deploy.yml").read_text(encoding="utf-8")
+        self.assertIn("ROLLBACK_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.rollback_sha || '' }}", w)
+
+    def test_pitr_point_and_freeze_window(self):
+        d = self.deploy()
+        self.assertLess(d.index("PITR restore point (before the migrations)"), d.index("containerapp job start"))
+        full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('if [ -n "${ARON_DEPLOY_FREEZE_DHAKA:-}" ] && [ -z "$ROLLBACK_SHA" ]; then', full)
+        self.assertIn("TZ=Asia/Dhaka", full)
+
+    def run_smoke(self, build="b" * 40, ready=200, login=200, want="b" * 40, web="web.example"):
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as t:
+            stub = Path(t) / "curl"
+            stub.write_text(f"""#!/usr/bin/env python3
+import sys
+a = sys.argv[1:]
+url = a[-1]
+out = a[a.index('-o') + 1] if '-o' in a else None
+hdr = a[a.index('-D') + 1] if '-D' in a else None
+if url.endswith('/v1/health'):
+    code, body = 200, '{{"status":"ok","build":"{build}"}}'
+    if hdr: open(hdr, 'w').write('HTTP/2 200\\r\\nx-aron-api: 1\\r\\n')
+elif url.endswith('/v1/health/ready'):
+    code, body = {ready}, 'database: down' if {ready} != 200 else 'ok'
+elif url.endswith('/login'):
+    code, body = {login}, '<html>login</html>'
+else:
+    code, body = 404, ''
+if out and out != '/dev/null': open(out, 'w').write(body)
+sys.stdout.write(str(code))
+""")
+            stub.chmod(0o755)
+            (Path(t) / "sleep").write_text("#!/bin/sh\nexit 0\n")
+            (Path(t) / "sleep").chmod(0o755)
+            env = {**os.environ, "PATH": f"{t}:{os.environ['PATH']}", "SMOKE_TIMEOUT_S": "0"}
+            r = subprocess.run(["bash", str(ROOT / "infra" / "scripts" / "smoke.sh"), "api.example", want, web],
+                               env=env, capture_output=True, text=True, timeout=60)
+            return r.returncode, r.stdout + r.stderr
+
+    def test_health_gate_behaviour(self):
+        self.assertEqual(self.run_smoke()[0], 0)
+        rc, out = self.run_smoke(build="a" * 40)
+        self.assertNotEqual(rc, 0, "an old build answering must fail the gate")
+        self.assertIn("expected", out)
+        rc, out = self.run_smoke(ready=503)
+        self.assertNotEqual(rc, 0, "readiness 503 must fail the gate")
+        self.assertIn("database: down", out, "the readiness response is shown")
+        self.assertNotEqual(self.run_smoke(login=502)[0], 0, "a broken web login page must fail the gate")
+        self.assertEqual(self.run_smoke(login=502, web="")[0], 0, "no web host, no web check")
+
+    def run_purge(self, manifests, in_use, keep="10", dry=False):
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as t:
+            log = Path(t) / "deleted"
+            rows = "\n".join("\t".join(m) for m in manifests)
+            stub = Path(t) / "az"
+            stub.write_text(f"""#!/usr/bin/env python3
+import sys
+a = ' '.join(sys.argv[1:])
+if a.startswith('acr list'): print('craronx')
+elif a.startswith('acr show'): print('craronx.azurecr.io')
+elif a.startswith('containerapp list'): print({in_use!r})
+elif a.startswith('containerapp job list'): print('')
+elif a.startswith('acr repository show'):
+    sys.exit(0 if 'aron-backend' in a else 3)
+elif a.startswith('acr manifest list-metadata'): print({rows!r})
+elif a.startswith('acr repository delete'):
+    open({str(log)!r}, 'a').write(sys.argv[sys.argv.index('--image') + 1] + '\\n')
+else: sys.exit('unexpected az ' + a)
+""")
+            stub.chmod(0o755)
+            env = {**os.environ, "PATH": f"{t}:{os.environ['PATH']}", "DRY_RUN": "true" if dry else "false"}
+            r = subprocess.run(["bash", str(ROOT / "infra" / "scripts" / "acr-purge.sh"), "rg", keep],
+                               env=env, capture_output=True, text=True, timeout=60)
+            deleted = log.read_text().split() if log.exists() else []
+            return r.returncode, deleted, r.stdout + r.stderr
+
+    def test_registry_purge_keeps_newest_young_and_in_use(self):
+        old = "2020-01-01T00:00:00Z"
+        ms = [(f"sha256:{i:064x}", f"c{i}", old) for i in range(14)]          # newest first
+        ms[13] = (ms[13][0], ms[13][1], "2999-01-01T00:00:00Z")  # young: kept although old by rank
+        in_use = "craronx.azurecr.io/aron-backend@sha256:%064x" % 12 + "\n" + "craronx.azurecr.io/aron-backend:c11"
+        rc, deleted, out = self.run_purge(ms, in_use)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(deleted, ["aron-backend@sha256:%064x" % 10],
+                         "keeps the 10 newest, the young one and the in-use images (by digest and by tag)")
+        rc, deleted, out = self.run_purge(ms, in_use, dry=True)
+        self.assertEqual((rc, deleted), (0, []), "a dry run deletes nothing")
+        self.assertNotEqual(self.run_purge(ms, in_use, keep="3")[0], 0, "keep below 10 is refused")
+
+    def test_purge_workflow(self):
+        w = (WORKFLOWS / "acr-purge.yml").read_text(encoding="utf-8")
+        self.assertIn("DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run != false) && 'true' || 'false' }}", w)
+        self.assertIn("environment: azure-dev", w)
+        self.assertNotRegex(w, r"(?m)^\s*(push|pull_request|pull_request_target):")
+
+
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():
         sys.exit(f"compiled templates not found in {COMPILED}; run infra/validate.sh")
