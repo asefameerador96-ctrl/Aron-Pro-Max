@@ -53,6 +53,13 @@ interface RecordHandler {
     fun check(h: Handle, rec: IngestRecord): RecordRefusal? = null
 
     fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {}
+
+    /**
+     * After the record's family transaction committed with the record stored (never for a rolled-back or refused
+     * record, a duplicate or a replay): the place for side effects outside the database (a push nudge). It runs on the
+     * request thread, must not block and must not throw (a throw is logged and ignored).
+     */
+    fun afterCommit(rec: IngestRecord) {}
 }
 
 /** Registered handlers, called in registration order. Built once at wiring time; immutable afterwards. */
@@ -64,5 +71,17 @@ class RecordHandlers(handlers: List<RecordHandler>) {
 
     companion object {
         val NONE = RecordHandlers(emptyList())
+    }
+}
+
+/**
+ * A data-only push nudge to a user's phones (N-037, D24-23): it tells the phone to sync now and carries no business
+ * data (the task itself arrives with the next sync). Best effort and asynchronous; implemented by backend:notify.
+ */
+fun interface Nudger {
+    fun nudge(userId: Long, reason: String)
+
+    companion object {
+        val NONE = Nudger { _, _ -> }
     }
 }
