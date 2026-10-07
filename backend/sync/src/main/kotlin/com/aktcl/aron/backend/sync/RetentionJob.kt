@@ -21,7 +21,9 @@ import java.util.concurrent.TimeUnit
  *    (only after a verified upload) are the archive job of a later release (before month 12). Photo tiering is Blob
  *    lifecycle policy (infra).
  *
- * Runs as `jobs_rw` (the worker container's login, infra/sql/runtime-logins.sql); each step in its own transaction.
+ * Needs `jobs_rw` (EXECUTE on ensure_partitions, the manifest INSERT): the worker's `app_jobs` login when infra turns on
+ * per-app logins (`dbPerAppLogins`, infra/sql/runtime-logins.sql); until then the worker runs as the admin login, which
+ * holds those rights too. Each step in its own short transaction (`RetentionJobTest` runs it as `jobs_rw`).
  */
 class RetentionJob(
     private val db: Database,
@@ -30,25 +32,50 @@ class RetentionJob(
 ) {
     private val log = LoggerFactory.getLogger("aron.retention")
 
-    data class Report(val partitionsCreated: Int, val defaultRows: Map<String, Long>, val manifestsPlanned: Int)
+    data class Report(val partitionsCreated: Int, val failedParents: Map<String, String>, val defaultRows: Map<String, Long>, val manifestsPlanned: Int)
 
+    /** Each step on its own: a failure in one is logged and never skips the others. */
     fun tick(): Report {
         val today: LocalDate = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
-        val created = db.jdbi.withHandle<Int, Exception> { h -> h.createQuery("SELECT app.ensure_partitions()").mapTo(Int::class.java).one() }
-        val defaults = db.jdbi.withHandle<Map<String, Long>, Exception> { h ->
-            h.createQuery("SELECT parent, row_count FROM app.default_partition_rows()").map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
+        val created = step("ensure partitions", 0) {
+            db.jdbi.inTransaction<Int, Exception> { h ->
+                // CREATE ... PARTITION OF takes an ACCESS EXCLUSIVE lock on the parent: never queue behind a long read
+                // (and make every ingest insert queue behind us). The function's per-parent handler records a timeout in
+                // partition_policy.last_error; the next run retries, with three months of slack.
+                h.execute("SET LOCAL lock_timeout = '2s'")
+                h.createQuery("SELECT app.ensure_partitions()").mapTo(Int::class.java).one()
+            }
+        }
+        // ensure_partitions turns a parent's failure into last_error and a WARNING only: surface it as the alert.
+        val failed = step("partition errors", emptyMap()) {
+            db.jdbi.withHandle<Map<String, String>, Exception> { h ->
+                h.createQuery("SELECT parent, last_error FROM app.partition_policy WHERE last_error IS NOT NULL").map { rs, _ -> rs.getString(1) to rs.getString(2) }.list().toMap()
+            }
+        }
+        failed.forEach { (parent, err) -> log.error("retention: partitions of {} not created: {}", parent, err) }
+        val defaults = step("default partition rows", emptyMap()) {
+            db.jdbi.withHandle<Map<String, Long>, Exception> { h ->
+                h.createQuery("SELECT parent, row_count FROM app.default_partition_rows()").map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
+            }
         }
         defaults.forEach { (parent, n) -> log.error("retention: {} row(s) in {}_default (a monthly partition was missing when they were written)", n, parent) }
-        val planned = db.jdbi.inTransaction<Int, Exception> { h ->
-            h.createUpdate(
-                """
-                INSERT INTO app.archive_manifest (parent, partition_name, month)
-                SELECT c.parent, c.partition_name, c.month FROM app.archive_candidates(:today) c
-                ON CONFLICT (partition_name) DO NOTHING
-                """.trimIndent(),
-            ).bind("today", today).execute()
+        val planned = step("archive manifests", 0) {
+            db.jdbi.inTransaction<Int, Exception> { h ->
+                h.createUpdate(
+                    """
+                    INSERT INTO app.archive_manifest (parent, partition_name, month)
+                    SELECT c.parent, c.partition_name, c.month FROM app.archive_candidates(:today) c
+                    ON CONFLICT (partition_name) DO NOTHING
+                    """.trimIndent(),
+                ).bind("today", today).execute()
+            }
         }
-        return Report(created, defaults, planned)
+        return Report(created, failed, defaults, planned)
+    }
+
+    private fun <T> step(name: String, fallback: T, body: () -> T): T = runCatching(body).getOrElse { e ->
+        log.error("retention step '{}' failed", name, e)
+        fallback
     }
 
     fun start() {

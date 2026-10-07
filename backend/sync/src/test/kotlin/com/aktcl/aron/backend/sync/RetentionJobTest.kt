@@ -1,7 +1,9 @@
 package com.aktcl.aron.backend.sync
 
 import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FreshDb
+import com.aktcl.aron.backend.platform.Secret
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.MethodOrderer
@@ -68,5 +70,29 @@ class RetentionJobTest {
             )
         }
         assertEquals(1L, job.tick().defaultRows["app.geo_breadcrumb"])
+    }
+
+    /** The worker's grants, not a superuser's: every step works for a login that is only `jobs_rw`. */
+    @Test
+    @Order(4)
+    fun everyStepWorksAsJobsRw() {
+        val login = "rt_jobs_" + fresh.name.takeLast(12).replace(Regex("[^a-z0-9_]"), "_")
+        val pw = "pw-" + System.nanoTime()
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("CREATE ROLE $login LOGIN PASSWORD '$pw' IN ROLE jobs_rw")
+            h.execute("GRANT CONNECT ON DATABASE ${fresh.name} TO $login")
+        }
+        try {
+            fresh.db.jdbi.useHandle<Exception> { h -> h.createQuery("SELECT app.ensure_partitions(DATE '2025-02-01', DATE '2025-02-01')").mapTo(Int::class.java).one() }
+            val url = fresh.url.replace(Regex("([?&])user=[^&]*"), "$1user=$login").replace(Regex("([?&])password=[^&]*"), "$1password=$pw")
+            Database.pool(url, login, Secret(pw), 2, "rt-jobs").use { ds ->
+                val r = RetentionJob(Database(ds), AronClock { Instant.parse("2026-10-07T06:00:00Z") }).tick()
+                assertEquals(emptyMap(), r.failedParents)
+                assertTrue(r.manifestsPlanned >= 1, "planned ${r.manifestsPlanned} as jobs_rw")
+                assertEquals(1L, r.defaultRows["app.geo_breadcrumb"])
+            }
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DROP OWNED BY $login"); h.execute("DROP ROLE $login") }
+        }
     }
 }
