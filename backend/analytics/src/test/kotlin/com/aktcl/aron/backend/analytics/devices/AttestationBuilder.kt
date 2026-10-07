@@ -45,6 +45,15 @@ object AttestationBuilder {
         return seq(ASN1Integer(4), ASN1Enumerated(securityLevel), ASN1Integer(100), ASN1Enumerated(securityLevel), DEROctetString(challenge), DEROctetString(ByteArray(0)), seq(), tee).encoded
     }
 
+    /**
+     * The chain-extension attack: [attested] is a genuine chain of an attested (non-CA) Keystore key [attestedKey]; the attacker uses that key to sign a
+     * forged leaf for [forgedKey] carrying [forgedDesc], and prepends it. Every link verifies and the root is unchanged.
+     */
+    fun extendChain(attested: Built, attestedKey: KeyPair, forgedKey: PublicKey, forgedDesc: ByteArray): Built {
+        val fake = cert("CN=Forged Leaf", forgedKey, "CN=Test Leaf", attestedKey, 99, "1.3.6.1.4.1.11129.2.1.17" to forgedDesc)
+        return Built(listOf(Base64.getEncoder().encodeToString(fake.encoded)) + attested.chainBase64, attested.rootSha256, attested.rootKey)
+    }
+
     /** A leaf for [deviceKey] under an intermediate under a root; [keyDesc] is what the extension carries. */
     fun chain(deviceKey: PublicKey, keyDesc: ByteArray): Built {
         val root = keyPair(); val mid = keyPair()

@@ -268,4 +268,88 @@ class DeviceEnrolmentTest : ReportFixture() {
         assertEquals(HttpStatusCode.Forbidden, client.get("/v1/admin/devices") { bearerAuth(TestTokens.web(12, Role.AMO)) }.status)
         assertNotEquals(0, count("SELECT count(*) FROM app.device_policy"))
     }
+
+    // ---- T1 checker (N-031): each test below failed against 5eaf33ce ----
+
+    @Test
+    fun checkerAChainExtendedByAnAttestedNonCaKeyIsRefused() = app {
+        // An attacker with any genuine phone creates an attested Keystore key K1 (non-CA leaf), then uses K1 to sign a forged leaf for a software key
+        // with whatever challenge, package, signer and boot state it likes. All links verify and the root is Google's; the server must still refuse.
+        val t = mintToken(lockdown = "prod", maxUses = 5); val secret = t.s("enrolment_token")
+        val attacker = AttestationBuilder.keyPair()
+        val genuine = AttestationBuilder.chain(attacker.public, AttestationBuilder.keyDescription(sha("unrelated".toByteArray()), "com.example.any", ByteArray(32) { 3 }))
+        trustedRoots += genuine.rootSha256
+        val phone = Phone()
+        val forged = AttestationBuilder.extendChain(genuine, attacker, phone.key.public, AttestationBuilder.keyDescription(sha(secret.toByteArray()), "com.aktcl.aron.sr", certDigest))
+        val r = enrol(enrolBody(secret, phone, forged))
+        assertEquals(HttpStatusCode.Forbidden, r.status, r.bodyAsText()); assertTrue(r.bodyAsText().contains("ERR_ENROLMENT_ATTESTATION_FAILED"))
+        assertEquals(0, count("SELECT count(*) FROM app.device"))
+    }
+
+    @Test
+    fun checkerAMalformedDeviceIdIsTheSame401NotA500() = app {
+        val r = client.get("/v1/devices/me/policy") { header("X-Device-Id", "not-a-uuid"); header("X-Device-Proof", "A".repeat(86)) }
+        assertEquals(HttpStatusCode.Unauthorized, r.status, r.bodyAsText())
+    }
+
+    @Test
+    fun checkerAnAppVersionOutsideTheContractPatternIs400NotA500() = app {
+        // app_version must be <versionName>+<versionCode> (contract AppVersionString; the device table CHECK enforces it).
+        val t = mintToken(); val secret = t.s("enrolment_token"); val p = Phone()
+        val r = enrol(enrolBody(secret, p, goodChain(p, secret)).replace("\"app_version\":\"1.0.0+1\"", "\"app_version\":\"1.0.0\""))
+        assertEquals(HttpStatusCode.BadRequest, r.status, r.bodyAsText())
+    }
+
+    @Test
+    fun checkerAnAttestationChainAboveTheContractsSixCertificatesIs400() = app {
+        val t = mintToken(); val secret = t.s("enrolment_token"); val p = Phone(); val c = goodChain(p, secret)
+        val long = AttestationBuilder.Built(c.chainBase64 + List(5) { c.chainBase64.last() }, c.rootSha256, c.rootKey)
+        val r = enrol(enrolBody(secret, p, long))
+        assertEquals(HttpStatusCode.BadRequest, r.status, r.bodyAsText())
+    }
+
+    @Test
+    fun checkerAStatusReportOutsideTheEnumsIs400NotA500() = app {
+        val t = mintToken(); val secret = t.s("enrolment_token"); val ok = Phone()
+        assertEquals(HttpStatusCode.Created, enrol(enrolBody(secret, ok, goodChain(ok, secret))).status)
+        val badTrigger = devicePost(ok, "/v1/devices/me/status", status().replace("\"periodic\"", "\"whenever\""))
+        assertEquals(HttpStatusCode.BadRequest, badTrigger.status, badTrigger.bodyAsText())
+        val badLevel = devicePost(ok, "/v1/devices/me/status", status().replace("\"lockdown_level_applied\":\"prod\"", "\"lockdown_level_applied\":\"kiosk\""))
+        assertEquals(HttpStatusCode.BadRequest, badLevel.status, badLevel.bodyAsText())
+    }
+
+    @Test
+    fun checkerTheSameKeyUnderASecondDeviceUuidIsAConflictNotA500() = app {
+        val t = mintToken(maxUses = 5); val secret = t.s("enrolment_token")
+        val phone = Phone(); val chain = goodChain(phone, secret)
+        assertEquals(HttpStatusCode.Created, enrol(enrolBody(secret, phone, chain)).status)
+        val clone = Phone(key = phone.key)
+        val r = enrol(enrolBody(secret, clone, chain))
+        assertEquals(HttpStatusCode.Conflict, r.status, r.bodyAsText())
+    }
+
+    @Test
+    fun checkerAGzipBodyIsAcceptedAsDocs24Section3AllowsForBodiesAbove4KiB() = app {
+        val t = mintToken(); val secret = t.s("enrolment_token"); val phone = Phone()
+        val body = enrolBody(secret, phone, goodChain(phone, secret), withStatus = true).toByteArray()
+        val gz = java.io.ByteArrayOutputStream().also { o -> java.util.zip.GZIPOutputStream(o).use { it.write(body) } }.toByteArray()
+        val r = client.post("/v1/devices/enrol") { contentType(ContentType.Application.Json); header("Content-Encoding", "gzip"); setBody(gz) }
+        assertEquals(HttpStatusCode.Created, r.status, r.bodyAsText())
+    }
+
+    @Test
+    fun checkerTopAndAnalystHaveNoDeviceAccessPerTheDocs24PermissionMatrix() = app {
+        // docs/24 s8.5: "Devices, enrolment tokens, device OTPs" is — for TOP and ANALYST.
+        assertEquals(HttpStatusCode.Forbidden, client.get("/v1/admin/devices") { bearerAuth(TestTokens.web(10, Role.ANALYST)) }.status)
+        assertEquals(HttpStatusCode.Forbidden, client.get("/v1/admin/devices") { bearerAuth(TestTokens.web(10, Role.TOP)) }.status)
+    }
+    @Test
+    fun checkerARevokedPhoneRepeatingItsEnrolmentIsNotToldItIsEnrolled() = app {
+        val t = mintToken(maxUses = 5); val secret = t.s("enrolment_token"); val phone = Phone(); val chain = goodChain(phone, secret)
+        assertEquals(HttpStatusCode.Created, enrol(enrolBody(secret, phone, chain)).status)
+        val id = deviceId(phone)
+        assertEquals(HttpStatusCode.OK, client.post("/v1/admin/devices/$id/state") { bearerAuth(TestTokens.web(13, Role.ADMIN)); contentType(ContentType.Application.Json); setBody("""{"action":"revoke","reason":"lost phone, reported by the SR"}""") }.status)
+        val again = enrol(enrolBody(secret, phone, chain))
+        assertNotEquals(HttpStatusCode.Created, again.status, again.bodyAsText())
+    }
 }
