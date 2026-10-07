@@ -5,6 +5,7 @@ import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.reference.ConfigDeltaWire
 import com.aktcl.aron.core.database.repo.DeltaResult
 import com.aktcl.aron.core.database.repo.ReferenceRepository
+import com.aktcl.aron.core.database.repo.ConfigAckStamp
 import kotlinx.coroutines.sync.Mutex
 import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.SyncApi
@@ -29,22 +30,30 @@ class ResumeConfigCheck(
     private val gapMs: Long = 5 * 60_000L,
     private val dailyCap: Int = 24,
 ) {
-    suspend fun checkOnResume(userId: Long): ConfigCheckResult {
+    suspend fun checkOnResume(userId: Long): ConfigCheckResult = locked(userId) { check(userId, afterPush = false) }
+
+    /**
+     * An FCM `config_pull` (N-038, docs/19 s4.1 stage 7): the same request without the recent-contact gap, since the server
+     * said something changed. It still counts against the daily cap, so a burst of pushes cannot spend the data budget.
+     */
+    suspend fun pullAfterPush(userId: Long): ConfigCheckResult = locked(userId) { check(userId, afterPush = true) }
+
+    private suspend fun locked(userId: Long, body: suspend () -> ConfigCheckResult): ConfigCheckResult {
         val lock = locks.getOrPut(userId) { Mutex() }
         if (!lock.tryLock()) return ConfigCheckResult.NOT_DUE // a check is already running: one request at a time
         try {
-            return check(userId)
+            return body()
         } finally {
             lock.unlock()
         }
     }
 
-    private suspend fun check(userId: Long): ConfigCheckResult {
+    private suspend fun check(userId: Long, afterPush: Boolean): ConfigCheckResult {
         val elapsed = clock.elapsedRealtimeMs()
         val boot = clock.bootCountNow()
         val lastContact = clock.recentAnchors().lastOrNull()
             ?.takeIf { (boot <= 0 || it.bootCount == boot) && it.elapsedMs <= elapsed }?.elapsedMs
-        if (lastContact != null && elapsed - lastContact < gapMs) return ConfigCheckResult.NOT_DUE
+        if (!afterPush && lastContact != null && elapsed - lastContact < gapMs) return ConfigCheckResult.NOT_DUE
         val database = db(userId)
         val meta = database.referenceDao()
         val countKey = KEY_COUNT + clock.businessDate()
@@ -55,7 +64,14 @@ class ResumeConfigCheck(
         // Only answered requests use the cap: offline does nothing (R9).
         if (r !is ApiResult.Transport) meta.putMeta(SyncMetaEntity(countKey, (count + 1).toString()))
         return when (r) {
-            is ApiResult.NotModified -> ConfigCheckResult.UNCHANGED
+            is ApiResult.NotModified -> {
+                // 304 at the server's version V: nothing for this phone's chain changed up to V, so the phone holds V's config.
+                // Without this, a newer X-Config-Version from an unrelated change made every sync ask again until the daily
+                // cap, which then blocked a real change (F-SYS-053 checker).
+                val v = r.meta.configVersion
+                if (v != null && v > since) meta.putMeta(SyncMetaEntity(ReferenceRepository.KEY_CONFIG_VERSION, v.toString()))
+                ConfigCheckResult.UNCHANGED
+            }
             is ApiResult.Transport -> if (r.failure == TransportFailure.MALFORMED) ConfigCheckResult.FAILED else ConfigCheckResult.OFFLINE
             is ApiResult.Failure -> if (r.httpStatus == 410) {
                 meta.putMeta(SyncMetaEntity(ReferenceRepository.KEY_BUNDLE_REFRESH, "true"))
@@ -71,13 +87,31 @@ class ResumeConfigCheck(
                 } catch (e: IllegalArgumentException) {
                     return ConfigCheckResult.FAILED
                 }
-                when (ReferenceRepository(database).applyConfigDelta(delta)) {
+                val repo = ReferenceRepository(database)
+                when (repo.applyConfigDelta(delta, ackStamp(repo))) {
                     DeltaResult.APPLIED -> ConfigCheckResult.APPLIED
                     DeltaResult.STALE -> ConfigCheckResult.UNCHANGED
                     DeltaResult.GAP -> ConfigCheckResult.NEEDS_BUNDLE
                 }
             }
         }
+    }
+
+    /** Trusted time and a fresh uuid for the `config_ack` a delta with `requires_ack` keys queues (F-SYS-053). */
+    private suspend fun ackStamp(repo: ReferenceRepository): ConfigAckStamp {
+        val now = clock.nowMs()
+        val meta = com.aktcl.aron.core.database.entity.CaptureMeta(
+            businessDate = clock.businessDate().toString(),
+            capturedAt = SyncEngine.iso(now),
+            capturedElapsedMs = clock.elapsedRealtimeMs(),
+            bootCount = clock.bootCountNow(),
+            clockOffsetMs = clock.clockOffsetMs(),
+            capturedOffline = false,
+            routeId = null,
+            bundleVersion = repo.bundleVersion(),
+            configVersion = repo.configVersionHeld(),
+        )
+        return ConfigAckStamp(com.aktcl.aron.core.common.ClientIds.newUuid(), meta, SyncEngine.iso(now))
     }
 
     private val locks = java.util.concurrent.ConcurrentHashMap<Long, Mutex>()

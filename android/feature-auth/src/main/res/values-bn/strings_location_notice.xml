@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="location_notice_accept">আমি পড়েছি এবং সম্মত</string>
+    <string name="location_notice_later">পরে</string>
+    <string name="location_notice_required_hint">এই নোটিশে সম্মতি দেওয়ার পর বিক্রি শুরু করতে পারবেন।</string>
+    <string name="location_notice_failed">সংরক্ষণ করা যায়নি। আবার সম্মতি দিন চাপুন।</string>
+    <string name="location_notice_logout">লগ আউট</string>
+</resources>

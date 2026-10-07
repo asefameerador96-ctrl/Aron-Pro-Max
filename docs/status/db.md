@@ -97,44 +97,59 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     uuid-once. Answers `backend-core-breadcrumb-partitioning.md`.
   - Tests: `WebEntryPasswordBreadcrumbTest` (6); DbRolesTest, SchemaV1a/b adapted.
 
-## Handoff (session 2 recycled, 2026-10-07 ~11:00 UTC)
+  - `V0042`/`V0043` AUD-DA-02:
+    - Capture rows (visit, memo, due_collection, stock_movement) freeze zone and cluster, and visit and memo also the
+      outlet channel and geo class. They are always stamped on insert; a device can never choose its own context.
+      They are write-once.
+    - `app.route_zone_history`, with `app.route_zone_on(route, date)`.
+    - SCD2 `dw.dim_*_version` tables beside the type-1 dims, kept by the trigger `dw.scd2_track`. `dw.dim_user`.
+      `*_key_on` lookups. Key columns on fact_visit and fact_memo.
+    - Projector part asked of backend-reports: `docs/requests/db-backend-reports-scd2-keys.md`.
+    - Checker round 1: 1 blocker (forged context through the sync writer) and 2 should-fix, all fixed.
+  - `V0044`/`V0045` outlet_location_history bases `none`/`placeholder` without coordinates. Answers
+    `backend-core-location-history-basis.md` (answer in `db-location-history-basis-answer.md`).
+  - `OutboxCommitOrderTest` drains with bounded polls (integrator's flake report, CI run 37613735145).
+  - **Salvage branch `claude/db-s3-salvage`**: ported in session 4 as V0047-V0052 (below); its DA-02 is superseded.
 
-**On lane/db (V0023-V0038), green locally on db (190) and every backend suite; Opus checker PASS per batch:**
-- `V0023`: back-office tables, price_batch (status flow + freeze), the V0007 leave fix.
-- `V0024`: R17 reshape of `cfg.sync.reconcile_types` (default, stored, pending); `outlet_fields` server-only;
-  3 print keys.
-- `V0025`/`V0026`: v1.2 device columns (NULL = unknown).
-- `V0027`: system code lists, with backend-admin's fixture clause landed in the same push.
-- `V0028`: restrictive_dir.
-- `V0029`: api_rw grants (DELETE route_planned/user_scope/mfa_secret; void UPDATE on geo_fix and stock_movement).
-- `V0030`: export log, PII budget, `cfg.pii.list_rows_per_hour` / `cfg.pii.export_rows_per_day` (TSO 5000 by role).
-- `V0031`: dw device/activity/consent facts.
-- `V0032`: bundle_snapshot.
-- `V0033`: AUD-DA-01 (outbox tx_id + horizon, dirty-key dead letter, deprecated versions refused).
-- `V0034`: `cfg.support.public_key_spki`.
-- `V0035`: SECURITY DEFINER functions search pg_temp last.
-- `V0036`: rebuild indexes, `dw.agg_daily_route_segment`, 3 catalogue events.
-- `V0037`/`V0038`: `task.route_id`, `task.cancel_reason`. Tell backend-core's session (session_01465rpZSgSrMTU8CACwuEYx)
-  if not yet done.
+- **Session 4 (2026-10-07; Opus checker, round 1: 1 blocker (stale dictionary) + 3 should-fix, fixed):**
+  - `V0047` AUD-PERF-08: four prefix-duplicate indexes dropped; `IndexHygieneTest` fails on any new one.
+  - `V0048` AUD-DA-07 part: `dw.build_dim_date(from, to)` extends the calendar past 2030 (worker only).
+  - `V0049`/`V0050` AUD-DA-05: outlet `nid`, `tin`, `trade_license` (empty, unread) replaced by `*_enc` bytea +
+    `pii_key_id`; `app.pii_key` (wrapped DEKs, never deleted, one active key) for api_rw only. Audit-writer redaction
+    asked of backend-admin/core: `docs/requests/db-audit-pii-redaction.md`. Trigram search held:
+    `db/held/outlet_search_trgm.sql`, `docs/requests/db-azure-pg-trgm.md` (infra).
+  - `V0051`/`V0052` AUD-DA-06 (no-ruling part): `app.retention_policy` (docs/16 s13.1 windows; API cannot see it),
+    `partition_policy.retention_class`, `app.archive_manifest` (status flow, export facts written once, jobs_rw only),
+    `app.archive_candidates(today)`, `app.default_partition_rows()` (worker/jobs logins only). Capture-table
+    partitioning stays deferred (D-DB-PART-01).
 
-The integrator promotes lane/db to INT; if CI on lane/db goes red on db or backend, it is ours.
+## Handoff (session 3 recycled, 2026-10-07 ~13:10 UTC)
+
+**On lane/db (V0039-V0046), green locally on db (200) and every backend suite; Opus checker PASS per batch.**
+INT has V0001-V0038; the integrator promotes the rest.
+- `V0039` web entry tables (backend-admin). `V0040` password_history + 3 keys (backend-core).
+- `V0041` partitioned geo_breadcrumb (backend-core).
+- `V0042`/`V0043` AUD-DA-02 (capture context, route-zone history, SCD2 dimension versions).
+- `V0044`/`V0045` location-history bases none/placeholder (backend-core).
+- `V0046` route_day acting-user index: dayStates plan becomes a BitmapOr, 0.03 ms vs 0.40 ms at 120k route-days.
+  Checker nit: in the final account, build it CONCURRENTLY if route_day already holds history.
 
 **Open asks to other lanes:**
-- `db-backend-core-config-and-device-v12.md`: ScopedConfig shape, device columns, AUD-DA-01 consumer contract.
-- `db-role-ddl-lock.md`: backend FreshDb takes the role-DDL lock.
-- `db-event-tracking-action-note.md`: tracking_action v2.
+- `db-backend-reports-scd2-keys.md` (backend-reports): zone from the capture row, fact keys, dim_user, the rebuild test.
+  This closes AUD-DA-02 point 5.
+- `db-backend-core-config-and-device-v12.md`, `db-role-ddl-lock.md`, `db-event-tracking-action-note.md`, as before.
+- backend-admin: history rows on every basis change (`db-location-history-basis-answer.md`). API notes on web entry
+  (`backend-admin-web-entry-tables.md`).
 
 **Next rows (lead's order):**
-1. The db part of infra's per-app logins, if infra asks (V0029 is the grant base).
-2. `entry_unlock` when backend-admin files it.
-3. AUD-DA-02, DA-05..08, PERF-03/07/08 (`python3 tools/my-rows.py db --todo`); hot-path EXPLAINs at docs/22 volume.
-
-Query-plan candidates:
-- `IngestService.dayStates` ORs `assigned_user_id` and `acting_user_id`; only assigned has an index.
-- `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
-- Check the `outlet_change_request` and `task (assignee_user_id, status)` indexes.
-- Add due_ledger rows to `db/perf/generate.sql`.
-- Plausible, unfixed: `task.route_id` has no index; `cancel_reason` is not tied to `status = 'cancelled'`.
+1. Infra's per-app logins: answered by V0029 (`db-runtime-roles-gaps.md`); nothing open for db.
+2. Salvage port done (V0047-V0052). Next: DA-07 (record the deferred M-61..M-99 objects in this file) and PERF-03
+   (timeouts are in V0020 `apply_login_limits`; check what is left).
+3. Query-plan candidates still open:
+   - `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
+   - The `outlet_change_request` and `task (assignee_user_id, status)` indexes.
+   - due_ledger rows in `db/perf/generate.sql`.
+   - `task.route_id` has no index.
 
 **Traps:**
 - Push only to `lane/db` (not `claude/db-wip-v0023`, not INT). A pushed migration is shipped: fix forward only.

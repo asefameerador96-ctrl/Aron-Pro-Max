@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="push_channel_tasks">Tasks</string>
+    <string name="push_channel_notices">Announcements</string>
+    <string name="push_task_title">New task</string>
+    <string name="push_task_body">You have a new task. Tap to open your task list.</string>
+</resources>

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.core.common.LocaleDigits
+import com.aktcl.aron.core.session.BindOutcome
 import com.aktcl.aron.core.session.LoginOutcome
 import com.aktcl.aron.core.session.OfflineRefusal
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,9 @@ sealed interface LoginMessage {
     data object EmptyFields : LoginMessage
     data object InvalidCredentials : LoginMessage
     data object BindRequired : LoginMessage
+
+    /** The 10-minute bind token ran out during the OTP step (F-SR-002): the SR logs in again, the OTP stays valid. */
+    data object SignInAgain : LoginMessage
     data object PasswordChangeRequired : LoginMessage
     data class Locked(val retryAfterMinutes: Long?) : LoginMessage
     data object UserDisabled : LoginMessage
@@ -38,6 +42,9 @@ data class LoginUiState(
     val passwordVisible: Boolean = false,
     val busy: Boolean = false,
     val message: LoginMessage? = null,
+    /** Set after a [LoginOutcome.BindRequired]: the OTP step is showing. The bind token never leaves this process. */
+    val bindToken: String? = null,
+    val otp: OtpState = OtpState(),
 )
 
 /**
@@ -47,6 +54,8 @@ data class LoginUiState(
 class LoginViewModel(
     private val login: suspend (username: String, password: String) -> LoginOutcome,
 ) : ViewModel() {
+    /** F-SYS-003 device bind (token, OTP, password); null where the app has no bind step (then BindRequired is only a message). */
+    var bind: (suspend (bindToken: String, otp: String, password: String) -> BindOutcome)? = null
 
     private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state.asStateFlow()
@@ -70,11 +79,41 @@ class LoginViewModel(
         viewModelScope.launch {
             val outcome = runCatching { login(username, s.password) }.getOrElse { LoginOutcome.Refused(null, null) }
             _state.update {
-                if (outcome is LoginOutcome.LoggedIn) it.copy(busy = false, password = "", message = null)
-                else it.copy(busy = false, message = messageFor(outcome))
+                when {
+                    outcome is LoginOutcome.LoggedIn -> it.copy(busy = false, password = "", message = null)
+                    outcome is LoginOutcome.BindRequired && outcome.bindToken != null && bind != null ->
+                        it.copy(busy = false, message = null, bindToken = outcome.bindToken, otp = OtpState())
+                    else -> it.copy(busy = false, message = messageFor(outcome))
+                }
             }
         }
     }
+
+    fun onOtpDigits(raw: String) = _state.update { it.copy(otp = OtpModel.enter(it.otp, raw)) }
+
+    fun onOtpVerify() {
+        val s = _state.value
+        val token = s.bindToken ?: return
+        val bindCall = bind ?: return
+        if (!s.otp.canVerify) return
+        _state.update { it.copy(otp = it.otp.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            val outcome = runCatching { bindCall(token, s.otp.digits, s.password) }.getOrElse { BindOutcome.Failed(null) }
+            _state.update {
+                when {
+                    outcome is BindOutcome.Bound -> it.copy(password = "", bindToken = null, otp = OtpModel.succeeded(it.otp))
+                    outcome is BindOutcome.PasswordChangeRequired -> it.copy(password = "", bindToken = null, otp = OtpState(), message = LoginMessage.PasswordChangeRequired)
+                    outcome is BindOutcome.Failed && OtpModel.errorOf(outcome.code, outcome.offline) == OtpError.SIGN_IN_AGAIN ->
+                        it.copy(bindToken = null, otp = OtpState(), message = LoginMessage.SignInAgain)
+                    outcome is BindOutcome.Failed -> it.copy(otp = OtpModel.failed(it.otp, outcome.code, outcome.offline))
+                    else -> it
+                }
+            }
+        }
+    }
+
+    /** Leaves the OTP step for the login form (the password stays typed). */
+    fun onOtpBack() = _state.update { it.copy(bindToken = null, otp = OtpState()) }
 
     companion object {
         fun messageFor(outcome: LoginOutcome): LoginMessage? = when (outcome) {

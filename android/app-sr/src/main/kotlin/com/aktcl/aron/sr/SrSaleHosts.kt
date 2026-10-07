@@ -152,26 +152,24 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
 @Composable
 fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
     val kit = day.sale
-    val scope = rememberCoroutineScope()
     var bundle by remember { mutableStateOf<SummaryBundle?>(null) }
     var attempt by remember { mutableStateOf<PrintAttempt?>(null) }
     LaunchedEffect(Unit) { bundle = kit.summary() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         SrChrome(day, sunlight, onSunlight)
-        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { scope.launch { attempt = kit.printSummary(b) } }) }
+        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printRunner.run({ kit.printSummary(b) }) { attempt = it } }) }
     }
     PrintAttemptDialogs(day, attempt) { attempt = null }
 }
 
 @Composable
 fun PrintAttemptDialogs(day: SrDay, attempt: PrintAttempt?, onClear: () -> Unit) {
-    val scope = rememberCoroutineScope()
     when (val a = attempt) {
         // A tap outside the dialog or Back never records "not readable": only the two buttons answer (a wrong "no" would unlock a second original).
         is PrintAttempt.AwaitingConfirmation -> androidx.compose.material3.AlertDialog(
             onDismissRequest = {}, text = { androidx.compose.material3.Text(stringResource(com.aktcl.aron.core.printing.R.string.ui_print_readable_question)) },
-            confirmButton = { androidx.compose.material3.TextButton({ scope.launch { day.printing.confirm(a, true); onClear() } }) { androidx.compose.material3.Text(stringResource(R.string.sr_yes)) } },
-            dismissButton = { androidx.compose.material3.TextButton({ scope.launch { day.printing.confirm(a, false); onClear() } }) { androidx.compose.material3.Text(stringResource(R.string.sr_no)) } },
+            confirmButton = { androidx.compose.material3.TextButton({ day.printRunner.run({ day.printing.confirm(a, true) }) { onClear() } }) { androidx.compose.material3.Text(stringResource(R.string.sr_yes)) } },
+            dismissButton = { androidx.compose.material3.TextButton({ day.printRunner.run({ day.printing.confirm(a, false) }) { onClear() } }) { androidx.compose.material3.Text(stringResource(R.string.sr_no)) } },
         )
         PrintAttempt.LimitReached -> AronInfoDialog(stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_limit_reached), stringResource(R.string.sr_ok), onClear)
         is PrintAttempt.Failed, PrintAttempt.TooLong -> AronInfoDialog(stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_failed), stringResource(R.string.sr_ok), onClear)

@@ -11,6 +11,7 @@ import com.aktcl.aron.core.database.entity.SkuEntity
 import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.entity.TaskEntity
 import com.aktcl.aron.core.database.reference.BundleReference
+import com.aktcl.aron.core.database.record.RecordMapping
 import com.aktcl.aron.core.database.reference.ConfigDeltaWire
 import com.aktcl.aron.contract.BundleOutlet
 import com.aktcl.aron.contract.ResolvedConfigValue
@@ -141,7 +142,11 @@ class ReferenceRepository(private val db: AronDatabase) {
      * moves to `to_version`. A delta not newer than the stored version is ignored (STALE); one that starts after it is refused
      * and flags a bundle refresh (GAP).
      */
-    suspend fun applyConfigDelta(delta: ConfigDeltaWire): DeltaResult = db.withTransaction {
+    /**
+     * [ack]: when given and the delta changes keys marked `requires_ack`, a `config_ack` record is queued in the same
+     * transaction (F-SYS-053), so the ack exists exactly when the values do and rides the next sync.
+     */
+    suspend fun applyConfigDelta(delta: ConfigDeltaWire, ack: ConfigAckStamp? = null): DeltaResult = db.withTransaction {
         val current = dao.meta(KEY_CONFIG_VERSION)?.toLongOrNull()
         if (current != null && delta.toVersion <= current) return@withTransaction DeltaResult.STALE
         // A delta must start at (or before) what the phone holds; a gap means changes in between are missing.
@@ -165,6 +170,14 @@ class ReferenceRepository(private val db: AronDatabase) {
         }
         if (delta.policyChanged) dao.putMeta(SyncMetaEntity(KEY_POLICY_REFRESH, "true"))
         dao.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, delta.toVersion.toString()))
+        // The visit's radius comes from the outlet row, not the config table: a radius key is acknowledged only when the
+        // delta also re-resolved the outlets (outlet_radius_changes); otherwise the phone would ack a radius it does not
+        // use and its visits would carry the new config_version with the old radius (F-SYS-053 checker, D-431).
+        val ackKeys = delta.values.filter { it.requiresAck }.map { it.key }
+            .filter { it !in OUTLET_RESOLVED_KEYS || delta.outletRadiusChanges.isNotEmpty() }
+        if (ack != null && ackKeys.isNotEmpty()) {
+            db.outboxDao().insert(listOf(RecordMapping.configAck(ack.clientUuid, ack.meta, delta.toVersion, ack.appliedAt, ackKeys, ack.appliedAt)))
+        }
         DeltaResult.APPLIED
     }
 
@@ -445,6 +458,9 @@ class ReferenceRepository(private val db: AronDatabase) {
         private const val KEY_PREFETCH_DATE = "prefetch.date"
         private const val KEY_PREFETCH_ETAG = "prefetch.etag"
 
+        /** Config keys the bundle resolves per outlet into `outlet.radius_m` / `max_accuracy_m`. */
+        val OUTLET_RESOLVED_KEYS = setOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m")
+
         /** The config version the phone holds (`X-Config-Version`); the sync engine also moves it from batch responses. */
         const val KEY_CONFIG_VERSION = "sync.config_version"
 
@@ -555,3 +571,6 @@ class ReferenceRepository(private val db: AronDatabase) {
         }
     }
 }
+
+/** What a `config_ack` needs from the caller (trusted time and a fresh client uuid); see [ReferenceRepository.applyConfigDelta]. */
+data class ConfigAckStamp(val clientUuid: String, val meta: com.aktcl.aron.core.database.entity.CaptureMeta, val appliedAt: String)

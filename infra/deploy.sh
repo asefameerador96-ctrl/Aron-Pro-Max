@@ -256,10 +256,11 @@ if diff:
 sys.exit(1 if diff else 0)
 PY
 }
-# The commit main.bicep was last applied from (tag on the aron-infra deployment). The infra stage is skipped when
+# The commit main.bicep was last applied from (resource-group tag aron-infra-sha, written after a successful apply;
+# `az deployment group create` has no --tags: deploy run 37639072495). The infra stage is skipped when
 # nothing in infra_paths changed since THAT commit; the live api commit is only the fallback, because it does not
 # advance while a later stage fails (2026-10-07: every INT push re-applied main.bicep while dblogins failed).
-infra_sha="$(az deployment group show -g "$RG" -n aron-infra --query 'tags."aron-sha"' -o tsv 2>/dev/null || true)"
+infra_sha="$(az group show -n "$RG" --query 'tags."aron-infra-sha"' -o tsv 2>/dev/null || true)"
 [[ "$infra_sha" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "${infra_sha}^{commit}" 2>/dev/null || infra_sha="$deployed_sha"
 skip_infra=false
 if [ -n "$ROLLBACK_SHA" ]; then
@@ -305,7 +306,9 @@ else
     infra/scripts/whatif-guard.py "$whatif_file" || die "what-if shows a change the guard refuses (nothing was changed)"
   note "main.bicep (budget start $ARON_BUDGET_START_DATE)"
   outputs="$(az deployment group create -g "$RG" -n aron-infra --template-file infra/main.bicep \
-    --parameters "infra/params/${PROFILE}.bicepparam" --tags "aron-sha=${SHA}" --query properties.outputs -o json)"
+    --parameters "infra/params/${PROFILE}.bicepparam" --query properties.outputs -o json)"
+  az tag update --resource-id "$rg_id" --operation Merge --tags "aron-infra-sha=${SHA}" -o none \
+    || echo "::warning::could not record aron-infra-sha on $RG; the next deploy re-applies main.bicep"
   unset ARON_DB_ADMIN_PASSWORD
 fi
 REGISTRY="$(out "$outputs" registryLoginServer)"

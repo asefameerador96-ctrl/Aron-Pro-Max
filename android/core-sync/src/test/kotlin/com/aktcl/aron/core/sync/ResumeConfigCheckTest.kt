@@ -77,21 +77,68 @@ class ResumeConfigCheckTest {
         assertEquals(2, server.requestCount)
     }
 
+    /** N-038: a `config_pull` push asks right after a contact (the server said something changed), but within the daily cap. */
+    @Test fun aConfigPullPushSkipsTheGapButNotTheCap() = runBlocking {
+        val capped = ResumeConfigCheck({ db }, SyncApi(AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true),
+            OkHttpClient(), ClientIdentity("1") { null }) { clock.onApiResponse(it) }), clock, dailyCap = 2)
+        repeat(3) { server.enqueue(api(304)) }
+        assertEquals(ConfigCheckResult.UNCHANGED, capped.checkOnResume(1))
+        assertEquals(ConfigCheckResult.NOT_DUE, capped.checkOnResume(1)) // resume: the contact was just now
+        assertEquals(ConfigCheckResult.UNCHANGED, capped.pullAfterPush(1)) // push: asks anyway
+        assertEquals(ConfigCheckResult.CAPPED, capped.pullAfterPush(1))
+        assertEquals(2, server.requestCount)
+    }
+
     @Test fun aDeltaIsAppliedInOneGo() = runBlocking {
         val outlet = ReferenceRepository(db).routesOfDay("2026-10-05").first().outlets.first().outletId
         server.enqueue(api(200, """{"from_version":318,"to_version":320,
-            "values":[{"key":"geo.radius_m","value":80,"scope_type":"zone","scope_id":7,"effective_from":null,"requires_ack":true}],
+            "values":[{"key":"cfg.geo.radius_m","value":80,"scope_type":"zone","scope_id":7,"effective_from":null,"requires_ack":true}],
             "scheduled":[{"key":"sale.max_lines","value":50,"scope_type":"global","effective_from":"2026-10-06T00:00:00.000Z","requires_ack":false}],
             "removed_keys":["old.key"],"calendar_changes":[{"date":"2026-10-10","kind":"holiday"}],
             "outlet_radius_changes":[{"outlet_id":$outlet,"radius_m":150,"max_accuracy_m":60}],"policy_changed":true}"""))
         assertEquals(ConfigCheckResult.APPLIED, check.checkOnResume(1))
         val repo = ReferenceRepository(db)
-        assertEquals("80", repo.config("geo.radius_m", "2026-10-05T03:00:00.000Z"))
+        assertEquals("80", repo.config("cfg.geo.radius_m", "2026-10-05T03:00:00.000Z"))
         assertEquals("50", repo.config("sale.max_lines", "2026-10-06T00:00:00.000Z"))
         assertEquals("320", db.referenceDao().meta(ReferenceRepository.KEY_CONFIG_VERSION))
         assertEquals(150, db.referenceDao().outlet(outlet)!!.radiusM)
         assertEquals("true", db.referenceDao().meta(ReferenceRepository.KEY_POLICY_REFRESH))
         assertTrue(repo.section("calendar_changes")!!.contains("2026-10-10"))
+        // F-SYS-053: geo.radius_m requires an ack: one config_ack row, own family, for version 320, in the same transaction.
+        val acks = db.outboxDao().nextSendable(100, 99, emptyList()).filter { it.recordType == "config_ack" }
+        assertEquals(1, acks.size)
+        val ack = kotlinx.serialization.json.Json.parseToJsonElement(acks.single().payloadJson).jsonObject
+        val payload = ack["payload"]!!.jsonObject
+        assertEquals("320", payload["config_version"]!!.toString())
+        assertEquals("""["cfg.geo.radius_m"]""", payload["keys"]!!.toString())
+        assertEquals(acks.single().clientUuid, acks.single().familyUuid)
+        assertEquals(acks.single().clientUuid, ack["client_uuid"]!!.toString().trim('"'))
+    }
+
+    /** Checker: a radius change the outlets did not receive (no outlet_radius_changes) is not acknowledged. */
+    @Test fun aRadiusChangeWithoutOutletRowsIsNotAcknowledged() = runBlocking {
+        server.enqueue(api(200, """{"from_version":318,"to_version":321,
+            "values":[{"key":"cfg.geo.radius_m","value":90,"scope_type":"zone","scope_id":7,"effective_from":null,"requires_ack":true},
+                      {"key":"cfg.sync.hold_s","value":0,"scope_type":"global","effective_from":null,"requires_ack":true}]}"""))
+        assertEquals(ConfigCheckResult.APPLIED, check.checkOnResume(1))
+        val ack = db.outboxDao().nextSendable(100, 99, emptyList()).single { it.recordType == "config_ack" }
+        val keys = kotlinx.serialization.json.Json.parseToJsonElement(ack.payloadJson).jsonObject["payload"]!!.jsonObject["keys"]!!.toString()
+        assertEquals("""["cfg.sync.hold_s"]""", keys)
+    }
+
+    /** Checker: a 304 at a newer server version means nothing changed for this phone: the held version moves, no loop. */
+    @Test fun aNotModifiedAnswerMovesTheHeldVersionToTheServers() = runBlocking {
+        server.enqueue(api(304).newBuilder().addHeader("X-Config-Version", "330").build())
+        assertEquals(ConfigCheckResult.UNCHANGED, check.pullAfterPush(1))
+        assertEquals("330", db.referenceDao().meta(ReferenceRepository.KEY_CONFIG_VERSION))
+        assertTrue(!SessionSyncRunner.pullsConfig(330, 330))
+    }
+
+    @Test fun aDeltaWithoutAckKeysQueuesNoAck() = runBlocking {
+        server.enqueue(api(200, """{"from_version":318,"to_version":319,
+            "values":[{"key":"sale.max_lines","value":60,"scope_type":"global","effective_from":null,"requires_ack":false}]}"""))
+        assertEquals(ConfigCheckResult.APPLIED, check.checkOnResume(1))
+        assertTrue(db.outboxDao().nextSendable(100, 99, emptyList()).none { it.recordType == "config_ack" })
     }
 
     @Test fun anOldDeltaNeverMovesConfigBackwards() = runBlocking {
