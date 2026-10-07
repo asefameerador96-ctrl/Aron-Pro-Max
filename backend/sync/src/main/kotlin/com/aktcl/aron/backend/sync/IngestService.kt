@@ -280,10 +280,16 @@ class IngestService(
             .bind("c", r.clientUuid).map { rs, _ -> Prior(rs.getString(1), rs.getString(2), rs.getBytes(3), rs.getObject(4) as Long?) }.findOne().orElse(null)
         if (prior != null) {
             if (!prior.hash.contentEquals(r.hash) && !prior.hash.contentEquals(r.fullHash)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.PAYLOAD_CONFLICT, "same client_uuid, different payload", register = false)
+            // Registered before the hash left `sig` out: re-key it, so the parked upsert and the stored_at mark match (BC-53).
+            if (!prior.hash.contentEquals(r.hash)) rekey(h, r)
             when (prior.status) {
                 "accepted", "voided" -> { touch(h, r); return Outcome.duplicate(prior.serverId) }
                 "rejected" -> { touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.SCHEMA_INVALID) }
-                "quarantined" -> { touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT) }
+                // A signature quarantine is released once the mode is no longer enforce: the resend is processed like a
+                // parked row, so a sale held under enforce (or before modes existed) reaches the server (BC-53).
+                "quarantined" -> if (prior.code != RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire || ctx.signatureMode == SignatureMode.ENFORCE) {
+                    touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT)
+                }
                 // parked: process again (the parent may have arrived)
             }
         }
@@ -464,9 +470,23 @@ class IngestService(
         return sha256(("cfp1|" + r.type + "|" + Jcs.canonicalize(strip(r.json))).toByteArray())
     }
 
-    /** GEO_OUT_OF_BOUNDS (s11.4): a fix outside the Bangladesh box raises a signal; the record itself is stored. */
-    /** Record mode: the sale is stored and the phone is flagged, one DEVICE_INTEGRITY_FAIL per phone and business date. */
+    /**
+     * Record mode: the sale is stored and the phone is flagged, one DEVICE_INTEGRITY_FAIL per phone and business date.
+     * In its own savepoint: the flag never decides the sale's outcome (a failure is logged and the record goes on).
+     */
     private fun flagSignature(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
+        val sp = "sigflag_${r.index}"
+        h.savepoint(sp)
+        try {
+            insertSignatureFlag(h, ctx, r, bd, routeId, reason)
+            h.release(sp)
+        } catch (e: Exception) {
+            h.rollbackToSavepoint(sp)
+            log.error("signature flag failed client_uuid=${r.clientUuid}", e)
+        }
+    }
+
+    private fun insertSignatureFlag(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
         h.createUpdate(
             """
             INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
@@ -480,6 +500,7 @@ class IngestService(
             }.toString()).bind("cv", config.configVersion()).execute()
     }
 
+    /** GEO_OUT_OF_BOUNDS (s11.4): a fix outside the Bangladesh box raises a signal; the record itself is stored. */
     private fun outOfBounds(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
         for (slot in listOf("fix", "edit_fix")) (payload[slot] as? JsonObject)?.let { outOfBoundsFix(h, ctx, r, rule, it, bd, routeId) }
     }
@@ -550,7 +571,8 @@ class IngestService(
             VALUES (CAST(:c AS uuid), :t, :h, :fp, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now)
             ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id, content_fp = EXCLUDED.content_fp,
                 last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1
-            WHERE app.ingest_registry.status = 'parked' AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
+            WHERE (app.ingest_registry.status = 'parked' OR (app.ingest_registry.status = 'quarantined' AND app.ingest_registry.outcome_code = 'device_integrity_failed'))
+              AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("fp", contentFp).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
             .bind("s", status).bind("code", code?.wire).bind("sid", serverId).bind("bd", bd).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
@@ -558,7 +580,18 @@ class IngestService(
         if (status == "accepted") {
             h.createUpdate("UPDATE app.sync_rejected SET stored_at = :now WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :h AND stored_at IS NULL")
                 .bind("now", ts(ctx.now)).bind("c", r.clientUuid).bind("h", r.hash).execute()
+            // A released signature quarantine leaves the review queue once the sale is stored.
+            h.createUpdate("UPDATE app.sync_quarantine SET status = 'accepted', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open'")
+                .bind("now", ts(ctx.now)).bind("c", r.clientUuid).execute()
         }
+    }
+
+    /** Moves a registry row (and its open rejected/quarantine copies) from the full-envelope hash to the sig-less one. */
+    private fun rekey(h: Handle, r: Rec) {
+        h.createUpdate("UPDATE app.ingest_registry SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old")
+            .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
+        h.createUpdate("UPDATE app.sync_rejected SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old AND stored_at IS NULL")
+            .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
     }
 
     private fun rejectedRow(h: Handle, ctx: Ctx, r: Rec, code: RecordOutcomeCode, detail: String?, retryable: Boolean) {

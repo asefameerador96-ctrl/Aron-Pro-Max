@@ -238,4 +238,42 @@ class RecordSignatureModeTest {
         assertEquals(listOf("duplicate:-"), client.send(listOf(signed(v))).outcomes())
         assertEquals(1, count("SELECT count(*) FROM app.visit WHERE client_uuid = '${v["client_uuid"]!!.jsonPrimitive.content}'"))
     }
+
+    @Test
+    @Order(6)
+    fun aSaleQuarantinedUnderEnforceIsStoredOnceTheModeIsBackToRecord() = testApplication {
+        application { aronApi(wiring) }
+        mode("enforce")
+        val v = visit()
+        assertEquals(listOf("quarantined:device_integrity_failed"), client.send(listOf(v)).outcomes())
+        assertEquals(listOf("quarantined:device_integrity_failed"), client.send(listOf(v)).outcomes(), "still enforce: terminal")
+        mode("record")
+        assertEquals(listOf("accepted:-"), client.send(listOf(v)).outcomes())
+        val cu = v["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(1, count("SELECT count(*) FROM app.visit WHERE client_uuid = '$cu'"))
+        assertEquals(0, count("SELECT count(*) FROM app.sync_quarantine WHERE client_uuid = '$cu' AND status = 'open'"))
+        assertEquals(listOf("duplicate:-"), client.send(listOf(v)).outcomes())
+    }
+
+    @Test
+    @Order(7)
+    fun aRowParkedUnderTheOldFullHashIsStoredAndMarkedAcceptedOnResend() = testApplication {
+        application { aronApi(wiring) }
+        mode("record")
+        val v = signed(visit())
+        val cu = v["client_uuid"]!!.jsonPrimitive.content
+        // As the registry held it before BC-53: parked, keyed by the hash of the whole envelope (sig included).
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                """
+                INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, family_uuid, status, outcome_code, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at)
+                SELECT CAST(:c AS uuid), 'visit', :h, CAST(:c AS uuid), 'parked', 'server_error', DATE '$day', u.id, d.id, gen_random_uuid(), now(), now()
+                FROM app.app_user u, app.device d WHERE u.username = 'sr1001' AND d.device_uuid = CAST('$devPhone' AS uuid)
+                """.trimIndent(),
+            ).bind("c", cu).bind("h", Jcs.sha256(v)).execute()
+        }
+        assertEquals(listOf("accepted:-"), client.send(listOf(v)).outcomes())
+        assertEquals("accepted", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT status FROM app.ingest_registry WHERE client_uuid = CAST('$cu' AS uuid)").mapTo(String::class.java).one() })
+        assertEquals(listOf("duplicate:-"), client.send(listOf(v)).outcomes(), "a third send is a duplicate, never a second insert")
+    }
 }
