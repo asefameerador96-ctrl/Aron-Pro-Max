@@ -230,14 +230,32 @@ class SessionRepositoryTest {
         val other = Phone()
         other.loginOnline("secret-1")
         val id2 = (other.session.state.value as SessionState.Active).user.userId
-        other.session.noteOfflineUnlockConfig(id2, maxDays = 99, maxAttempts = 1) // outside 1..14 and 3..20: defaults hold
         other.session.noteOfflineUnlockConfig(id2, maxDays = 3, maxAttempts = null)
+        // A later online login keeps the configured limit until the config is read again.
+        other.logoutOnline()
+        other.loginOnline("secret-1")
         other.logoutOnline()
         clock.now += 3 * 86_400_000L
         assertTrue(other.session.login("sr334001", "secret-1") is LoginOutcome.LoggedIn)
         other.session.logout()
         clock.now += 1
         assertEquals(OfflineRefusal.EXPIRED, (other.session.login("sr334001", "secret-1") as LoginOutcome.OfflineUnavailable).refusal)
+    }
+
+    @Test
+    fun outOfBoundsOfflineLimitsAreIgnored() = runTest {
+        val phone = Phone()
+        phone.loginOnline("secret-1")
+        val id = (phone.session.state.value as SessionState.Active).user.userId
+        phone.session.noteOfflineUnlockConfig(id, maxDays = 99, maxAttempts = 1) // outside 1..14 and 3..20: 7 and 10 hold
+        phone.logoutOnline()
+        server.close()
+        repeat(9) { assertEquals(OfflineRefusal.WRONG_PASSWORD, (phone.session.login("sr334001", "wrong") as LoginOutcome.OfflineUnavailable).refusal) }
+        clock.now += 7 * 86_400_000L
+        assertTrue(phone.session.login("sr334001", "secret-1") is LoginOutcome.LoggedIn)
+        phone.session.logout()
+        clock.now += 1
+        assertEquals(OfflineRefusal.EXPIRED, (phone.session.login("sr334001", "secret-1") as LoginOutcome.OfflineUnavailable).refusal)
     }
 
     /**

@@ -129,6 +129,7 @@
 - **F-SYS-079 follow-up done**: `DayConfig` reads `cfg.day.checkout_earliest_time` (HH:MM, 12:00..22:00; the server validator sends HH:MM only) and `cfg.sync.checkout_jitter_s` (0..600; the scheduler caps it at 120). The scheduler jitter, the gate and the SR check-out button all read them, with defaults of 17:00 and 90 s. A throwing read falls back to the defaults (tested). Opus check: PASS.
   - Info for backend-core (via the lead): the server never enforces `checkout_too_early`; `DayStates` accepts any check-out time.
   - Low: right after a cold start, until DayConfig refreshes (asynchronously), the button uses 17:00.
+- **F-SYS-052 follow-up done**: `cfg.auth.offline_unlock_max_days` (1..14) and `_max_attempts` (3..20) are now read by `DayConfig`. `DeviceRuntime.refreshDayConfig` stores them in the user's session profile (written only while that user is active), because the unlock runs before any database is open. `OfflineUnlockPolicy.forProfile` applies them, falling back to 7 and 10 outside the bounds. An online login keeps the values until the next read. Opus check: PASS. Its medium finding (an online login dropped the values) and three low findings are fixed with tests.
 - Trap 40: a check run without the Android SDK fails at configuration ("SDK location not found"). Grep the log for `BUILD FAILED`, not only the wrapper's exit code.
 
 ## Handover (READY TO RECYCLE, 2026-10-07 ~17:30Z by the server clock, seventh session)

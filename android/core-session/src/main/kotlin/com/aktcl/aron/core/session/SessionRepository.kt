@@ -248,6 +248,9 @@ class SessionRepository(
                     memoSeqBlockSize = answer.device?.memoSeqBlockSize ?: previous?.memoSeqBlockSize,
                     configVersion = answer.configVersion,
                     scopeVersion = answer.scope?.scopeVersion?.toLong(),
+                    // Kept until the user's config is read again: a configured limit is safer than the default meanwhile.
+                    offlineMaxDays = previous?.offlineMaxDays,
+                    offlineMaxAttempts = previous?.offlineMaxAttempts,
                 )
                 // Tokens first, then the profile, then the active pointer: a kill between steps leaves either the old
                 // session or a complete new one, never a pointer to a user without tokens.

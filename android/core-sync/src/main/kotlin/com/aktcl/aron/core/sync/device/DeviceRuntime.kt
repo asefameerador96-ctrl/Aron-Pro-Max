@@ -127,8 +127,18 @@ class DeviceRuntime(
         } catch (_: Exception) {
             return // keep the previous settings
         }
-        // F-SYS-052: the offline-unlock limits live in the session profile (read before any database is open).
-        runCatching { components.session.noteOfflineUnlockConfig(userId, dayConfig.offlineMaxDays, dayConfig.offlineMaxAttempts) }
+        // F-SYS-052: the offline-unlock limits live in the session profile (read before any database is open). Copied at
+        // once and written only while this user is still the active one, so a switch mid-refresh never lands B's on A.
+        val days = dayConfig.offlineMaxDays
+        val attempts = dayConfig.offlineMaxAttempts
+        if (activeUserId() == userId) {
+            try {
+                components.session.noteOfflineUnlockConfig(userId, days, attempts)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
         if (reevaluate) runCatching { policy().reevaluateBlocking() }
     }
 
