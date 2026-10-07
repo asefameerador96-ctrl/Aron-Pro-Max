@@ -20,7 +20,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | db | session_011K2gmzr1feSNNQxnqWkRt5 | Opus | 2026-10-07 | recycled 12:58 (fourth session); previous session_013NHxcKi11ivBpd2B2v3g7D is retired (READY TO RECYCLE 12:57, lane/db V0039-V0046); earlier sessions retired (017dmQw2byPhYrFKrGJrEMRj, 01KAjUS8Gz437Nx93fsiVFYX) |
 | shared (first session) | session_01SD55WuhWKuEfeuC6T4A8e2 | Sonnet | 2026-10-05 | finished; blocked by its own permission settings on the contract; do not nudge |
 | shared-2 | session_01QRBncHfaoTvSqTLur5L3ZH | Sonnet | 2026-10-07 | N-002, DTO hosting, web drift |
-| backend-core | session_01CnjB3beqLff7QFRhoTxN3r | Opus | 2026-10-07 | recycled 12:28 (fifth session); previous session_01465rpZSgSrMTU8CACwuEYx is retired (READY TO RECYCLE 12:27, lane/backend-core e8df8227); earlier sessions retired (01FfFvStuQXyZNg6QM9rndaD, 01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
+| backend-core | session_01WruAjDgzLe2omU4FjfTdki | Opus | 2026-10-07 | recycled 16:48 (sixth session); previous session_01CnjB3beqLff7QFRhoTxN3r is retired (READY TO RECYCLE 16:48, lane/backend-core 7ffbc10d); earlier sessions retired (01465rpZSgSrMTU8CACwuEYx, 01FfFvStuQXyZNg6QM9rndaD, 01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
 | backend-reports | session_019WhVDAstm1xPBBrp6FPKM9 | Sonnet | 2026-10-07 | |
 | backend-admin | session_01TogQKB1R6sgWVTafC9DMYG | Sonnet | 2026-10-07 | recycled 05:02; previous session_01JK4kErf8frNpx25mmoyPAc is retired (READY TO RECYCLE 05:01) |
 | android-core | session_0151EwtEosnRTmXJejCALwjh | Opus | 2026-10-07 | recycled 16:46 (eighth session); previous session_01CWXeY8AFFirF65WP2Tde88 is retired (READY TO RECYCLE 16:45, lane/android-core 0a0add38; owes one fresh Opus re-check of F-SYS-081 phone half); earlier sessions retired (01FM6jypmkuGy6Hv1kVjnzLN, 01AgFbNVonyMCWNtJqhyXREy, 01Xx4ADUeVGTHNrVSqXU3tjh) |
@@ -33,7 +33,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | web-admin | session_018iHvNJSMqCk8eLitCk9wzU | Sonnet | 2026-10-05 | |
 | web-config | session_0146veK2iXvmHGwiPBpbBJ2k | Sonnet | 2026-10-07 | |
 | web-dashboard | session_01RM4v6DRfjmfAbfrDi17Jzo | Sonnet | 2026-10-07 | recycled 05:01; previous session_01Sk9wwEshZ57sQafoEyccP7 is retired (READY TO RECYCLE 04:51) |
-| infra | session_01Th2LZgi7Jg7dxUX3gmwFQ2 | Opus | 2026-10-07 | recycled 06:41 (third session); session_01CDohyiiiYjHVdhw5DSeqPc retired (READY TO RECYCLE 06:41); session_011BobrrmxjEerwAMUs6AzN2 retired earlier |
+| infra | session_0173b4rWqnKxPjz1wxkSx1R3 | Opus | 2026-10-07 | recycled 16:49 (fourth session, source lane/infra); previous session_01Th2LZgi7Jg7dxUX3gmwFQ2 is retired (READY TO RECYCLE 16:48, lane/infra 205d1e0); earlier sessions retired (01CDohyiiiYjHVdhw5DSeqPc, 011BobrrmxjEerwAMUs6AzN2) |
 | integrator | session_01Srsa2mi1afseu6PLVGfwzR | Sonnet | 2026-10-07 | recycled 14:49 (third session; recycle at ~300k); session_017ASTyJnQ6z71B1uoc447YL retired and archived (READY TO RECYCLE 14:48 at 555k); session_01HMc2Bcq7MRYf8xgj423pKU retired earlier |
 | laptop operator | session_01UbRHnSorx4s1XARa6aN1Tg | Opus | 2026-10-06 | never nudged; runs only owner-approved laptop tasks |
 
