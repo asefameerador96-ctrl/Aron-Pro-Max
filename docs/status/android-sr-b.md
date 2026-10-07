@@ -83,3 +83,7 @@ Checker findings (Opus T1: 7, Sonnet T2: 4) fixed; tests kept in each module's `
 - `recordNumberedSale` burns a number on a failed save (core ruling); `isFullSettlement` means the whole outlet outstanding (Mark paid on one memo is partial).
 - Do not commit `.claude/worktrees/` (excluded locally in `.git/info/exclude`).
 - Open sponsor question Q-UI-08: rejected and quarantined rows do not block Sales Submit (lead accepted as default).
+
+### Added to the handoff (from android-print, 2026-10-07 08:42; see docs/requests/android-print-wiring-gaps.md "Status 2026-10-07 08:50", lane/android-print b6d07b54)
+1. Replace my `ReprintDialogs` with core-printing's `PrintAttemptDialogs` for the memo reprint result. A tap outside the dialog or Back must never record "not readable" (that would let an unmarked second original print): my current `ReprintDialogs` already ignores outside taps (`onDismissRequest = {}`) but confirm it after the swap.
+2. Wire `SummaryScreen.onPrint` to `printing.printDaySummary(daySummaryUuid, DaySummaryPrint)`; `daySummaryUuid` is a UUID v4 stored once per user and business date; map with `PrintMapping.daySummary` from stored mtk values.
