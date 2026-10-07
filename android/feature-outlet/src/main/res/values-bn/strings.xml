@@ -63,4 +63,6 @@
     <string name="out_req_err_geo">দোকানের অবস্থান নিন।</string>
     <string name="out_req_err_photo">দোকানের ছবি তুলুন।</string>
     <string name="out_req_err_dues">এই দোকানে বকেয়া আছে, তাই বন্ধ করা যাবে না।</string>
+    <string name="out_menu_title">আউটলেট</string>
+    <string name="out_pick_outlet">আউটলেট বেছে নিন</string>
 </resources>
