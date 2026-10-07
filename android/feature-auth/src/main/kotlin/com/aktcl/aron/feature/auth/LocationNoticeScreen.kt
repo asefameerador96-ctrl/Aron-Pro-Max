@@ -34,6 +34,7 @@ object LocationNoticeTags {
     const val LOGOUT = "location_notice_logout"
     const val FAILED = "location_notice_failed"
     const val LOADING = "location_notice_loading"
+    const val OVERLAY = "location_notice_overlay"
 }
 
 /**
@@ -75,8 +76,8 @@ data class NoticeNeed(val needed: Boolean, val required: Boolean)
 
 /**
  * Shows [LocationNoticeContent] before [content] while the notice is not accepted (F-SYS-075). With [NoticeNeed.required]
- * nothing behind it opens (so no sale starts); otherwise "Later" opens [content] for this screen session and the notice
- * returns at the next start. A [load] that fails twice shows the required notice (fail closed: accepting needs only the
+ * nothing behind it opens (so no sale starts); otherwise "Later" opens [content] and the notice returns at the next start,
+ * or at the next resume once a config change makes it required (then drawn over [content], which stays composed). A [load] that fails twice shows the required notice (fail closed: accepting needs only the
  * same local database a sale needs); a failed [accept] says so and keeps Accept for another tap. [nowMs] is trusted
  * time; [key] is the signed-in user; [onLogout] lets a rep who signed in by mistake leave without accepting.
  */
@@ -91,6 +92,7 @@ fun LocationNoticeGate(
 ) {
     var need by remember(key) { mutableStateOf<NoticeNeed?>(null) }
     var later by remember(key) { mutableStateOf(false) }
+    var reshow by remember(key) { mutableStateOf(false) }
     var busy by remember(key) { mutableStateOf(false) }
     var failed by remember(key) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -100,7 +102,25 @@ fun LocationNoticeGate(
     // "Later" holds only while the setting allows it: a config delta that turns the notice required mid-session (applied
     // by the resume config check) brings it back at the next resume. One local read per resume, only after "Later".
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        if (later) scope.launch { recheckAfterLater(load)?.let { need = it; later = false } }
+        if (later && !reshow) scope.launch { recheckAfterLater(load)?.let { need = it; reshow = true } }
+    }
+    fun onAccept(shownAt: Long, current: NoticeNeed) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                accept(shownAt)
+                failed = false
+                need = current.copy(needed = false)
+                reshow = false
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failed = true
+            } finally {
+                busy = false
+            }
+        }
     }
     val n = need
     if (n == null) {
@@ -108,7 +128,21 @@ fun LocationNoticeGate(
         return
     }
     if (!n.needed || later) {
-        content()
+        // One stable slot for the day: a notice that returns after "Later" is drawn OVER it, so a visit in progress
+        // (cart, back stack, saved state) survives the notice and continues after Accept (checker: no mid-sale teardown).
+        Box(Modifier.fillMaxSize()) {
+            content()
+            if (reshow && n.needed) {
+                androidx.compose.material3.Surface(Modifier.fillMaxSize().testTag(LocationNoticeTags.OVERLAY)) {
+                    androidx.activity.compose.BackHandler(enabled = true) { } // Back never reaches the day behind it
+                    val shownAt = remember { nowMs() }
+                    LocationNoticeContent(
+                        required = true, acceptFailed = failed, busy = busy, onLogout = onLogout,
+                        onAccept = { onAccept(shownAt, n) }, onLater = { },
+                    )
+                }
+            }
+        }
         return
     }
     val shownAt = remember(key) { nowMs() }
@@ -117,31 +151,22 @@ fun LocationNoticeGate(
         acceptFailed = failed,
         busy = busy,
         onLogout = onLogout,
-        onAccept = {
-            if (!busy) {
-                busy = true
-                scope.launch {
-                    try {
-                        accept(shownAt)
-                        failed = false
-                        need = n.copy(needed = false)
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        failed = true
-                    } finally {
-                        busy = false
-                    }
-                }
-            }
-        },
+        onAccept = { onAccept(shownAt, n) },
         onLater = { later = true },
     )
 }
 
-/** After "Later": the fresh need when the notice is now required and still not accepted, else null (keep "Later"). */
-internal suspend fun recheckAfterLater(load: suspend () -> NoticeNeed): NoticeNeed? =
-    loadOrRequired(load).takeIf { it.needed && it.required }
+/**
+ * After "Later": the fresh need when the notice is now required and still not accepted, else null (keep "Later"). A read
+ * error keeps "Later": the setting already allowed selling and an error carries no new information (checker).
+ */
+internal suspend fun recheckAfterLater(load: suspend () -> NoticeNeed): NoticeNeed? = try {
+    load().takeIf { it.needed && it.required }
+} catch (e: kotlinx.coroutines.CancellationException) {
+    throw e
+} catch (_: Exception) {
+    null
+}
 
 /** One retry, then the required notice: a read error never lets a sale start without acceptance (checker). */
 internal suspend fun loadOrRequired(load: suspend () -> NoticeNeed): NoticeNeed {
