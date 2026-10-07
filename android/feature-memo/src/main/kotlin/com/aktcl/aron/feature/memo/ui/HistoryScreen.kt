@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronEmptyState
+import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
@@ -31,15 +32,19 @@ fun SaleHistoryScreen(h: SaleHistory, offlineBanner: Boolean, modifier: Modifier
         LazyColumn(Modifier.weight(1f, fill = false)) {
             h.days.forEach { day ->
                 item(key = "d-" + day.businessDate) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(localizedDigits(day.businessDate), style = MaterialTheme.typography.titleMedium); Text(money(day.subtotalMtk), style = MaterialTheme.typography.titleMedium)
+                    AronCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(localizedDigits(day.businessDate), style = MaterialTheme.typography.titleMedium); Text(money(day.subtotalMtk), style = MaterialTheme.typography.titleMedium)
+                        }
                     }
                 }
                 items(day.memos, key = { it.memoUuid }) { r -> AronListRow(localizedDigits(r.memoNo), trailing = money(r.totalMtk)) }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(stringResource(R.string.history_footer), style = MaterialTheme.typography.titleMedium); Text(money(h.footerMtk), style = MaterialTheme.typography.titleMedium)
+        AronCard(Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.history_footer), style = MaterialTheme.typography.titleMedium); Text(money(h.footerMtk), style = MaterialTheme.typography.titleMedium)
+            }
         }
     }
 }

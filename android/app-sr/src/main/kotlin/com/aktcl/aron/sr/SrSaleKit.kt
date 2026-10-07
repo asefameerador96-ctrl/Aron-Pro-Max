@@ -157,6 +157,14 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         flow.withEdit(EditContext(memoUuid, reason.wire))
     }
 
+    /** Marks an outlet of the list as not reached: one `visit_skip` with its outbox record, no fix and no geo gate (F-SR-057). */
+    suspend fun skipOutlet(outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode) {
+        day.capture.recordVisitSkip(
+            com.aktcl.aron.core.database.entity.VisitSkipEntity(ClientIds.newUuid(), day.metaProvider.meta(outlet.routeId), outlet.outletId, reason.wire),
+        )
+        runCatching { day.requestSync() }
+    }
+
     fun newMemoViewModel() = MemoViewModel(
         store,
         RoomDueCollectionWriter(day.capture, { day.metaProvider.meta(0L) }, visitUuidOf = { o -> dao.visitsOn(day.businessDate()).lastOrNull { it.outletId == o }?.clientUuid }),

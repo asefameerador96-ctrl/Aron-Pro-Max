@@ -38,4 +38,6 @@
     <string name="sr_unit_piece">pieces</string>
     <string name="sr_unit_dozen">dozen</string>
     <string name="sr_edit_checking">Checking that you are at the shop…</string>
+    <string name="sr_skip_outlet">Skip a shop</string>
+    <string name="sr_skip_cancel">Cancel skip</string>
 </resources>

@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronListRow
@@ -68,17 +69,19 @@ fun MemoDetailView(
     modifier: Modifier = Modifier,
 ) {
     var confirm by remember { mutableStateOf(false) }
-    Column(modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        detail.items.forEach { i -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("${skuName(i.skuId)}  ${localizedNumber(i.qtyBase)}"); Text(money(i.grossMtk)) } }
-        detail.discountTable.forEach { d -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("${d.skuId?.let(skuName).orEmpty()}  ${localizedNumber(d.qtyBase)}"); Text(money(d.valueMtk)) } }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.memo_total_discount)); Text("− " + money(detail.totalDiscountMtk)) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.memo_total_qc)); Text("− " + money(detail.totalQcMtk)) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.memo_grand_total), style = MaterialTheme.typography.titleMedium); Text(money(detail.grandTotalMtk), style = MaterialTheme.typography.titleMedium) }
-        if (dueMtk > 0) AronBanner(stringResource(R.string.memo_due, money(dueMtk)), kind = com.aktcl.aron.core.ui.BannerKind.Error)
-        if (detail.reprintIsDuplicate) AronBanner(stringResource(R.string.memo_duplicate))
-        AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.fillMaxWidth())
-        AronSecondaryButton(stringResource(R.string.memo_edit), onEdit, Modifier.fillMaxWidth())
-        if (canMarkPaid) AronSecondaryButton(stringResource(R.string.memo_mark_paid), { confirm = true }, Modifier.fillMaxWidth())
+    AronCard(modifier.fillMaxWidth().padding(16.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            detail.items.forEach { i -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("${skuName(i.skuId)}  ${localizedNumber(i.qtyBase)}"); Text(money(i.grossMtk)) } }
+            detail.discountTable.forEach { d -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("${d.skuId?.let(skuName).orEmpty()}  ${localizedNumber(d.qtyBase)}"); Text(money(d.valueMtk)) } }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.memo_total_discount)); Text("− " + money(detail.totalDiscountMtk)) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.memo_total_qc)); Text("− " + money(detail.totalQcMtk)) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.memo_grand_total), style = MaterialTheme.typography.titleMedium); Text(money(detail.grandTotalMtk), style = MaterialTheme.typography.titleMedium) }
+            if (dueMtk > 0) AronBanner(stringResource(R.string.memo_due, money(dueMtk)), kind = com.aktcl.aron.core.ui.BannerKind.Error)
+            if (detail.reprintIsDuplicate) AronBanner(stringResource(R.string.memo_duplicate))
+            AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.fillMaxWidth())
+            AronSecondaryButton(stringResource(R.string.memo_edit), onEdit, Modifier.fillMaxWidth())
+            if (canMarkPaid) AronSecondaryButton(stringResource(R.string.memo_mark_paid), { confirm = true }, Modifier.fillMaxWidth())
+        }
     }
     if (confirm) {
         AronConfirmDialog(
@@ -91,16 +94,18 @@ fun MemoDetailView(
 /** Sales summary: per SKU, per category, the "discount and others" line and the grand total (F-SR-036). */
 @Composable
 fun SummaryScreen(summary: DaySummary, skuName: (Long) -> String, onPrint: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.summary_title), style = MaterialTheme.typography.titleLarge)
-        summary.skus.forEach { r ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("${skuName(r.skuId)}  ${localizedNumber(r.memoCount.toLong())}  ${localizedNumber(r.qtyBase)}")
-                Text("${money(r.valueMtk)}  ${money(r.discountMtk)}  ${money(r.discountedValueMtk)}  ${localizedNumber(r.returnQtyBase)}")
+    AronCard(modifier.fillMaxWidth().padding(16.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.summary_title), style = MaterialTheme.typography.titleLarge)
+            summary.skus.forEach { r ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("${skuName(r.skuId)}  ${localizedNumber(r.memoCount.toLong())}  ${localizedNumber(r.qtyBase)}")
+                    Text("${money(r.valueMtk)}  ${money(r.discountMtk)}  ${money(r.discountedValueMtk)}  ${localizedNumber(r.returnQtyBase)}")
+                }
             }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.summary_discount_and_others)); Text("− " + money(summary.discountAndOthersMtk)) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.summary_grand_total), style = MaterialTheme.typography.titleMedium); Text(money(summary.grandTotalMtk), style = MaterialTheme.typography.titleMedium) }
+            AronPrimaryButton(stringResource(R.string.summary_print), onPrint, Modifier.fillMaxWidth())
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.summary_discount_and_others)); Text("− " + money(summary.discountAndOthersMtk)) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.summary_grand_total), style = MaterialTheme.typography.titleMedium); Text(money(summary.grandTotalMtk), style = MaterialTheme.typography.titleMedium) }
-        AronPrimaryButton(stringResource(R.string.summary_print), onPrint, Modifier.fillMaxWidth())
     }
 }

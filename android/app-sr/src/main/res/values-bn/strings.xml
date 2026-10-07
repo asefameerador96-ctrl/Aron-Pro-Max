@@ -36,4 +36,6 @@
     <string name="sr_unit_piece">পিস</string>
     <string name="sr_unit_dozen">ডজন</string>
     <string name="sr_edit_checking">আপনি দোকানে আছেন কিনা দেখা হচ্ছে…</string>
+    <string name="sr_skip_outlet">দোকান বাদ দিন</string>
+    <string name="sr_skip_cancel">বাদ দেওয়া বাতিল</string>
 </resources>

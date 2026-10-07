@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.aktcl.aron.core.ui.AronCard
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -29,13 +30,15 @@ fun percentText(hundredths: Int?): String =
 /** Home KPI strip: visited x/y, strike rate, non-visit, no-sale, and issue and current stock per category with units (F-SR-010). */
 @Composable
 fun KpiStripView(strip: KpiStrip, categoryLabel: (String) -> String, unitLabel: (String) -> String, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(localizedDigits(stringResource(R.string.kpi_visited, strip.visitedOutlets.toString(), strip.plannedOutlets.toString())), style = MaterialTheme.typography.titleMedium)
-        strip.strikeRateHundredths?.let { Text(localizedDigits(stringResource(R.string.kpi_strike, percentText(it)))) }
-        Text(stringResource(R.string.kpi_non_visit, localizedNumber(strip.nonVisitOutlets.toLong())))
-        Text(stringResource(R.string.kpi_no_sale, localizedNumber(strip.noSaleOutlets.toLong())))
-        strip.categories.forEach { c ->
-            Text(stringResource(R.string.kpi_stock_line, categoryLabel(c.categoryCode), localizedNumber(c.issueBase), localizedNumber(c.currentStockBase), unitLabel(c.unit)))
+    AronCard(modifier.fillMaxWidth().padding(16.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(localizedDigits(stringResource(R.string.kpi_visited, strip.visitedOutlets.toString(), strip.plannedOutlets.toString())), style = MaterialTheme.typography.titleMedium)
+            strip.strikeRateHundredths?.let { Text(localizedDigits(stringResource(R.string.kpi_strike, percentText(it)))) }
+            Text(stringResource(R.string.kpi_non_visit, localizedNumber(strip.nonVisitOutlets.toLong())))
+            Text(stringResource(R.string.kpi_no_sale, localizedNumber(strip.noSaleOutlets.toLong())))
+            strip.categories.forEach { c ->
+                Text(stringResource(R.string.kpi_stock_line, categoryLabel(c.categoryCode), localizedNumber(c.issueBase), localizedNumber(c.currentStockBase), unitLabel(c.unit)))
+            }
         }
     }
 }
@@ -43,16 +46,18 @@ fun KpiStripView(strip: KpiStrip, categoryLabel: (String) -> String, unitLabel: 
 /** The two Home money cards (F-SR-069): per-category value and net, then discount, slide, QC and the grand total. */
 @Composable
 fun MoneyCardsView(m: HomeMoney, categoryLabel: (String) -> String, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        m.categories.forEach { c ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(categoryLabel(c.categoryCode)); Text(money(c.netMtk)) }
-        }
-        Line(R.string.money_gross, m.grossMtk)
-        Line(R.string.money_discount, -m.totalDiscountMtk)
-        if (m.drpDiscountMtk != 0L) Line(R.string.money_drp, -m.drpDiscountMtk)
-        Line(R.string.money_qc, -m.totalQcMtk)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(stringResource(R.string.money_grand), style = MaterialTheme.typography.titleMedium); Text(money(m.grandTotalMtk), style = MaterialTheme.typography.titleMedium)
+    AronCard(modifier.fillMaxWidth().padding(16.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            m.categories.forEach { c ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(categoryLabel(c.categoryCode)); Text(money(c.netMtk)) }
+            }
+            Line(R.string.money_gross, m.grossMtk)
+            Line(R.string.money_discount, -m.totalDiscountMtk)
+            if (m.drpDiscountMtk != 0L) Line(R.string.money_drp, -m.drpDiscountMtk)
+            Line(R.string.money_qc, -m.totalQcMtk)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.money_grand), style = MaterialTheme.typography.titleMedium); Text(money(m.grandTotalMtk), style = MaterialTheme.typography.titleMedium)
+            }
         }
     }
 }
@@ -65,10 +70,12 @@ private fun Line(label: Int, mtk: Long) = Row(Modifier.fillMaxWidth(), horizonta
 fun JourneyScreen(j: Journey, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth()) {
         Text(stringResource(R.string.journey_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
-        Text(
-            stringResource(R.string.journey_counts, localizedNumber(j.planned.toLong()), localizedNumber(j.visited.toLong()), localizedNumber(j.sold.toLong()), localizedNumber(j.notVisited.toLong())),
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
+        AronCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Text(
+                stringResource(R.string.journey_counts, localizedNumber(j.planned.toLong()), localizedNumber(j.visited.toLong()), localizedNumber(j.sold.toLong()), localizedNumber(j.notVisited.toLong())),
+                modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.titleMedium,
+            )
+        }
         LazyColumn {
             items(j.rows, key = { it.outlet.outletId }) { r ->
                 AronListRow(

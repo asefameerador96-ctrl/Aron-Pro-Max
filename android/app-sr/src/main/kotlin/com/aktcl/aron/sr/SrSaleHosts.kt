@@ -26,7 +26,6 @@ import com.aktcl.aron.core.printing.flow.PrintAttempt
 import com.aktcl.aron.core.printing.ui.HoldPrinter
 import com.aktcl.aron.core.printing.ui.PrinterBanner
 import com.aktcl.aron.core.printing.ui.PrinterIcon
-import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronInfoDialog
 import com.aktcl.aron.core.ui.AronListRow
@@ -98,15 +97,26 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
 @Composable
 fun NoSaleHost(day: SrDay, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val rows = listOf(
-        VisitOutcomeCode.CLOSED to R.string.sr_outcome_closed, VisitOutcomeCode.OWNER_ABSENT to R.string.sr_outcome_owner_absent,
-        VisitOutcomeCode.REFUSED to R.string.sr_outcome_refused, VisitOutcomeCode.COMPETITOR_EXCLUSIVE to R.string.sr_outcome_competitor,
-        VisitOutcomeCode.NOT_REACHED to R.string.sr_outcome_not_reached,
-    )
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        rows.forEach { (code, label) -> AronListRow(stringResource(label), onClick = { scope.launch { day.sale.closeVisit(code); onDone() } }) }
+        outcomeRows.forEach { (code, label) -> AronListRow(stringResource(label), onClick = { scope.launch { day.sale.closeVisit(code); onDone() } }) }
     }
 }
+
+/** The reason for skipping [outlet] from the list (`visit_skip`, F-SR-057): the same outcome list, no fix, not a visit. */
+@Composable
+fun SkipHost(day: SrDay, outlet: com.aktcl.aron.core.database.entity.OutletEntity, onDone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        androidx.compose.material3.Text(outlet.name, style = androidx.compose.material3.MaterialTheme.typography.titleLarge, modifier = Modifier.padding(AronTokens.Space.L))
+        outcomeRows.forEach { (code, label) -> AronListRow(stringResource(label), onClick = { scope.launch { day.sale.skipOutlet(outlet, code); onDone() } }) }
+    }
+}
+
+private val outcomeRows = listOf(
+    VisitOutcomeCode.CLOSED to R.string.sr_outcome_closed, VisitOutcomeCode.OWNER_ABSENT to R.string.sr_outcome_owner_absent,
+    VisitOutcomeCode.REFUSED to R.string.sr_outcome_refused, VisitOutcomeCode.COMPETITOR_EXCLUSIVE to R.string.sr_outcome_competitor,
+    VisitOutcomeCode.NOT_REACHED to R.string.sr_outcome_not_reached,
+)
 
 /** Memo menu, detail with Print, Edit and Mark paid, and the outlet's sale history (F-SR-030/031/032/054). */
 @Composable
@@ -157,10 +167,11 @@ fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
 fun PrintAttemptDialogs(day: SrDay, attempt: PrintAttempt?, onClear: () -> Unit) {
     val scope = rememberCoroutineScope()
     when (val a = attempt) {
-        is PrintAttempt.AwaitingConfirmation -> AronConfirmDialog(
-            stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_readable_question),
-            stringResource(R.string.sr_yes), stringResource(R.string.sr_no),
-            onConfirm = { scope.launch { day.printing.confirm(a, true); onClear() } }, onDismiss = { scope.launch { day.printing.confirm(a, false); onClear() } },
+        // A tap outside the dialog or Back never records "not readable": only the two buttons answer (a wrong "no" would unlock a second original).
+        is PrintAttempt.AwaitingConfirmation -> androidx.compose.material3.AlertDialog(
+            onDismissRequest = {}, text = { androidx.compose.material3.Text(stringResource(com.aktcl.aron.core.printing.R.string.ui_print_readable_question)) },
+            confirmButton = { androidx.compose.material3.TextButton({ scope.launch { day.printing.confirm(a, true); onClear() } }) { androidx.compose.material3.Text(stringResource(R.string.sr_yes)) } },
+            dismissButton = { androidx.compose.material3.TextButton({ scope.launch { day.printing.confirm(a, false); onClear() } }) { androidx.compose.material3.Text(stringResource(R.string.sr_no)) } },
         )
         PrintAttempt.LimitReached -> AronInfoDialog(stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_limit_reached), stringResource(R.string.sr_ok), onClear)
         is PrintAttempt.Failed, PrintAttempt.TooLong -> AronInfoDialog(stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_failed), stringResource(R.string.sr_ok), onClear)
