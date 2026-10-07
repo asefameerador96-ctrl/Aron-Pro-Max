@@ -72,3 +72,6 @@ data class ConfigVersionDto(
 
 @Serializable
 data class ConfigVersionPage(val items: List<ConfigVersionDto>, val next_cursor: String?)
+
+@Serializable
+data class ConfigRollbackIn(val mode: String, val reason: String)

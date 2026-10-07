@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 120 | 2287 |
+| `app` | 120 | 2288 |
 | `dw` | 22 | 361 |
 
 ## Index
@@ -1237,7 +1237,7 @@ Append-only outbox of events written with each change; the projector and later c
 | `payload` | jsonb | not null |  | Event payload (JSON object) in the shape of its catalogued version; ids, codes and amounts only, no personal data. |
 | `source_client_uuid` | uuid | null |  | Client UUID of the device record that caused the event, if any. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
-| `payload_version` | smallint | null |  | Version of the payload shape, a row of app.domain_event_type with event_type; null only on rows written before V0017. |
+| `payload_version` | smallint | null |  | Version of the payload shape, a row of app.domain_event_type with event_type; defaults to 1; null only on rows written before V0017. |
 
 Keys: `PRIMARY KEY (id, business_date)`
 
@@ -1255,9 +1255,10 @@ Catalogue of domain-event types and payload versions; every outbox row must name
 | `aggregate_id_is` | text | not null |  | Which column aggregate_id holds, for example memo.client_uuid. |
 | `producer` | text | not null |  | Backend module that writes the event. |
 | `description` | text | not null |  | What happened and what consumers do with it. |
-| `payload_schema` | jsonb | not null |  | JSON Schema of the payload; its required keys are enforced on insert. |
+| `payload_schema` | jsonb | not null |  | JSON Schema of the payload (the target shape); its required keys are enforced on insert when enforce_required. |
 | `introduced_in` | text | not null |  | Migration that added this version. |
 | `deprecated_at` | timestamp with time zone | null |  | UTC instant producers stopped writing this version; null while current. |
+| `enforce_required` | boolean | not null |  | True once the producer sends the required keys; the insert trigger then refuses a payload without them. |
 
 Keys: `PRIMARY KEY (event_type, payload_version)`
 
