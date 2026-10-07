@@ -1,6 +1,6 @@
 // Menu entries of the configuration and operations pages (web-config lane). One line per page.
 import type { MenuItem } from "@/lib/menu/menu";
-import { ADMIN_PORTAL_ROLES } from "@/lib/auth/roles";
+import { ADMIN_ONLY_ROLES, ADMIN_PORTAL_ROLES } from "@/lib/auth/roles";
 
 export const CONFIG_MENU: readonly MenuItem[] = [
   { id: "cfg-home", labelKey: "menu.config.home", href: "/admin/config", roles: ADMIN_PORTAL_ROLES, group: "config" },
@@ -18,11 +18,21 @@ export const CONFIG_MENU: readonly MenuItem[] = [
   { id: "cfg-enrolment", labelKey: "menu.config.enrolment", href: "/admin/enrolment", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-app-block", labelKey: "menu.config.app_block", href: "/admin/config/app-block", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-day", labelKey: "menu.config.day", href: "/admin/config/day", roles: ADMIN_PORTAL_ROLES, group: "config" },
-  { id: "cfg-code-lists", labelKey: "menu.config.code_lists", href: "/admin/code-lists", roles: ADMIN_PORTAL_ROLES, group: "config" },
-  { id: "cfg-qc-faults", labelKey: "menu.config.qc_faults", href: "/admin/qc-faults", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-qc-faults", labelKey: "menu.config.qc_faults", href: "/admin/code-lists/qc_fault_type", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-flags", labelKey: "menu.config.flags", href: "/admin/config/flags", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-permissions", labelKey: "menu.config.permissions", href: "/admin/permissions", roles: ADMIN_ONLY_ROLES, group: "config" },
+  { id: "cfg-entry-unlocks", labelKey: "menu.config.entry_unlocks", href: "/admin/entry-unlocks", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-print-templates", labelKey: "menu.config.print_templates", href: "/admin/print-templates", roles: ADMIN_ONLY_ROLES, group: "config" },
+  { id: "cfg-supervisor-targets", labelKey: "menu.config.supervisor_targets", href: "/admin/supervisor-targets", roles: ADMIN_ONLY_ROLES, group: "config" },
+  { id: "cfg-dues", labelKey: "menu.config.dues", href: "/admin/dues", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-export-log", labelKey: "menu.config.export_log", href: "/admin/export-log", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-data-entry", labelKey: "menu.config.data_entry", href: "/admin/data-entry", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-calendar", labelKey: "menu.config.calendar", href: "/admin/calendar", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-device-otps", labelKey: "menu.config.device_otp", href: "/admin/device-otps", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-audit", labelKey: "cfgp.audit.title", href: "/admin/config/audit", roles: ADMIN_PORTAL_ROLES, group: "config" },
-  { id: "tso-final-submit", labelKey: "menu.main.final_submit", href: "/final-submit/submit", roles: ["TSO", "DMO", "ADMIN", "SUPERADMIN"], group: "main" },
-  { id: "tso-device-otp", labelKey: "menu.main.device_otp", href: "/device-otp", roles: ["TSO"], group: "main" },
+  { id: "tso-final-submit", menuId: "final_submit", labelKey: "menu.main.final_submit", href: "/final-submit/submit", roles: ["TSO", "DMO", "ADMIN", "SUPERADMIN"], group: "main" },
+  { id: "tso-web-entry", menuId: "web_entry", labelKey: "menu.main.web_entry", href: "/entry/web", roles: ["TSO", "ADMIN", "SUPERADMIN"], group: "main" },
+  { id: "tso-qc-entry", menuId: "qc_entry", labelKey: "menu.main.qc_entry", href: "/entry/qc", roles: ["TSO", "ADMIN", "SUPERADMIN"], group: "main" },
+  { id: "tso-wh-qc", menuId: "warehouse_qc", labelKey: "menu.main.wh_qc", href: "/entry/warehouse-qc", roles: ["TSO", "ADMIN", "SUPERADMIN"], group: "main" },
+  { id: "tso-device-otp", menuId: "device_otp", labelKey: "menu.main.device_otp", href: "/device-otp", roles: ["TSO"], group: "main" },
 ];

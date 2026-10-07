@@ -66,6 +66,7 @@ dependencies {
     implementation(project(":android:core-network"))
     implementation(project(":android:core-session"))
     implementation(project(":android:core-sync"))
+    implementation(libs.androidx.work.runtime.ktx) // Configuration.Provider for the sync worker factory
     implementation(project(":android:core-geo"))
     implementation(project(":android:core-printing"))
     implementation(project(":android:dpc"))

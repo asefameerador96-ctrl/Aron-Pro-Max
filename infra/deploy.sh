@@ -29,12 +29,82 @@ SHA="${GIT_SHA:-$(git rev-parse HEAD)}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 export AZURE_LOCATION="${AZURE_LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_SUFFIX="${ARON_NAME_SUFFIX:-}"
-whatif_file="$(mktemp)"; trap 'rm -f "$whatif_file"' EXIT
+whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
+lock_tag="aron-deploy-lock"; lock_held=false; hb_pid=""
+lock_me="${GITHUB_RUN_ID:-local}.${GITHUB_RUN_ATTEMPT:-1}.$$"
+lock_ttl=900   # seconds without a heartbeat after which a lock is stale (the holder refreshes it every 60 s)
+# Prints the lock value ("" = no lock) and returns 0; returns 1 when the tag could NOT be read (a failed read must
+# never look like a free lock).
+read_lock() {
+  local v
+  v="$(az group show -n "$RG" --query "tags.\"$lock_tag\"" -o tsv 2>/dev/null)" || return 1
+  [ "$v" = None ] && v=""
+  printf '%s' "$v"
+}
+lock_owner() { printf '%s' "${1%% *}"; }
+lock_age() { # seconds since the value's epoch; a malformed value counts as stale
+  local ts="${1##* }"
+  [[ "$ts" =~ ^[0-9]{9,11}$ ]] || { echo 999999; return; }
+  echo $(( $(date +%s) - ts ))
+}
+release_lock() {
+  [ -n "$hb_pid" ] && kill "$hb_pid" 2>/dev/null; hb_pid=""
+  [ "$lock_held" = true ] || return 0
+  lock_held=false
+  local cur; cur="$(read_lock)" || { echo "::warning::could not read the deploy lock to release it; it goes stale ${lock_ttl} s after the last heartbeat"; return 0; }
+  if [ "$(lock_owner "$cur")" = "$lock_me" ]; then
+    az tag update --resource-id "$rg_id" --operation Delete --tags "$lock_tag=$cur" -o none 2>/dev/null \
+      && echo "== deploy lock released" || echo "::warning::could not release the deploy lock; it goes stale ${lock_ttl} s after the last heartbeat"
+  fi
+}
+trap 'rm -f "$whatif_file" "$migrate_log"; release_lock' EXIT
+# A cancelled or timed-out job gets SIGINT/SIGTERM before SIGKILL: exit at once so the EXIT trap releases the lock.
+trap 'exit 130' INT TERM
 summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMMARY"; echo "$*"; }
 
 # ---------------------------------------------------------------------------------------------------------- lock
-# One deploy at a time per group. A GitHub concurrency group would CANCEL pending CI runs; waiting here never does.
-note "waiting until no other deployment runs in $RG"
+# One deploy at a time per group, held for the WHOLE deploy (infra, images, migrations, apps), because a deploy has
+# quiet minutes (image builds) in which no ARM deployment runs. A GitHub concurrency group would CANCEL pending CI
+# runs; waiting here never does. The lock is a tag on the resource group, "aron-deploy-lock = <owner> <epoch>":
+# write it, wait 20 s for any concurrent writer, re-read; only the owner whose value survived proceeds (ARM applies
+# tag writes in order, the last writer wins). The holder refreshes the epoch every 60 s; a lock whose epoch is older
+# than 15 minutes (a SIGKILLed holder) is stale. A failed read counts as held.
+rg_id="$(az group show -n "$RG" --query id -o tsv)" || die "cannot read resource group $RG"
+note "taking the deploy lock on $RG (owner $lock_me)"
+lock_deadline=$(( $(date +%s) + 80 * 60 ))
+waits=0
+while :; do
+  [ "$(date +%s)" -lt "$lock_deadline" ] || die "the deploy lock on $RG is still held after 80 minutes"
+  if ! cur="$(read_lock)"; then
+    note "cannot read the deploy lock; treating it as held"; sleep 30; continue
+  fi
+  if [ -n "$cur" ] && [ "$(lock_owner "$cur")" != "$lock_me" ] && [ "$(lock_age "$cur")" -lt "$lock_ttl" ]; then
+    [ $(( waits % 4 )) -eq 0 ] && note "deploy lock held by $(lock_owner "$cur") (heartbeat $(lock_age "$cur") s ago); waiting"
+    waits=$(( waits + 1 )); sleep 30; continue
+  fi
+  if ! tag_err="$(az tag update --resource-id "$rg_id" --operation Merge --tags "$lock_tag=$lock_me $(date +%s)" -o none 2>&1)"; then
+    # A missing right never heals by waiting: stop at once instead of holding the queue for 80 minutes.
+    grep -q "AuthorizationFailed" <<<"$tag_err" && die "the deploy identity may not write tags on $RG (needed for the deploy lock): $tag_err"
+    note "cannot write the deploy lock tag; retrying"; sleep 30; continue
+  fi
+  lock_held=true  # from the write on, the exit trap may release it (only while the value is still ours)
+  sleep 20
+  if got="$(read_lock)" && [ "$(lock_owner "$got")" = "$lock_me" ]; then break; fi
+  lock_held=false
+  note "another deploy took the lock at the same moment; waiting"
+done
+# Heartbeat: refresh the epoch while this deploy runs; it stops itself when the lock is no longer ours.
+(
+  set +e
+  while sleep 60; do
+    v="$(read_lock)" || continue
+    [ "$(lock_owner "$v")" = "$lock_me" ] || exit 0
+    az tag update --resource-id "$rg_id" --operation Merge --tags "$lock_tag=$lock_me $(date +%s)" -o none 2>/dev/null
+  done
+) &
+hb_pid=$!
+note "deploy lock held"
+# Also wait for ARM deployments that a deploy without this lock (an older deploy.sh, a person) may still be running.
 for i in $(seq 1 90); do
   running="$(az deployment group list -g "$RG" --query "[?starts_with(name, 'aron-') && properties.provisioningState=='Running'] | length(@)" -o tsv)"
   [ "${running:-0}" -eq 0 ] && break
@@ -53,6 +123,14 @@ if [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "$deployed_sha" != "$SHA" ]; the
     summary "Skipped: $SHA is an ancestor of the deployed commit $deployed_sha (a newer commit is already live)."
     exit 0
   fi
+fi
+# Nothing that reaches Azure changed since the live commit (docs, Android, tests only): nothing to deploy.
+deploy_paths=(shared db backend web infra build.gradle.kts settings.gradle.kts gradle.properties gradle .github/workflows/deploy.yml)
+if [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "${FORCE_INFRA:-false}" != true ] \
+   && git merge-base --is-ancestor "$deployed_sha" "$SHA" 2>/dev/null \
+   && git diff --quiet "$deployed_sha" "$SHA" -- "${deploy_paths[@]}" 2>/dev/null; then
+  summary "Skipped: nothing deployable changed between the live commit $deployed_sha and $SHA."
+  exit 0
 fi
 note "deploying $SHA (currently deployed: ${deployed_sha:-nothing})"
 
@@ -183,20 +261,34 @@ job_logs() { # execution
   echo "(no console log of $1 in Log Analytics after 6 minutes)"
 }
 if [ "$RUN_MIGRATIONS" = true ]; then
-  execution="$(az containerapp job start -g "$RG" -n "$JOB" --query name -o tsv)"
-  note "migrations started: $execution"
-  status=""
-  for _ in $(seq 1 120); do
-    status="$(az containerapp job execution show -g "$RG" -n "$JOB" --job-execution-name "$execution" --query properties.status -o tsv)"
-    case "$status" in
-      Succeeded) note "migrations succeeded"; break ;;
-      Failed|Stopped|Degraded)
-        job_logs "$execution"
-        die "migrations $execution ended $status; the apps were NOT updated. Logs: Log Analytics, ContainerAppConsoleLogs, ContainerJobName_s == '$JOB'" ;;
+  # One more execution ONLY when the first could not open its first database connection (seen twice on 2026-10-06/07:
+  # Hikari "Connection is not available ... total=0" within 5 s on a fresh job replica). Migrations are idempotent
+  # (Flyway). The root fix, Flyway connectRetries in the migrate role, is requested from backend-core
+  # (docs/requests/backend-migrate-connect-retries.md). Any other failure stops at once.
+  for attempt in 1 2; do
+    execution="$(az containerapp job start -g "$RG" -n "$JOB" --query name -o tsv)"
+    note "migrations started: $execution (attempt $attempt)"
+    status=""
+    for _ in $(seq 1 120); do
+      status="$(az containerapp job execution show -g "$RG" -n "$JOB" --job-execution-name "$execution" --query properties.status -o tsv 2>/dev/null || echo unknown)"
+      case "$status" in Succeeded|Failed|Stopped|Degraded) break ;; esac
+      sleep 10
+    done
+    [ "$status" = Succeeded ] && { note "migrations succeeded"; break; }
+    case "$status" in Failed|Stopped|Degraded) ;; *)
+      # Still running after 20 minutes: stop it, so no second migrate execution can start beside it after the lock.
+      az containerapp job stop -g "$RG" -n "$JOB" --job-execution-name "$execution" -o none 2>/dev/null \
+        || echo "::warning::could not stop $execution"
+      status="still running after 20 minutes, stopped"
     esac
-    sleep 10
+    job_logs "$execution" | tee "$migrate_log"
+    if [ "$attempt" -eq 1 ] && [ "$status" = Failed ] \
+       && grep -qE 'FlywaySqlUnableToConnectToDbException|Connection is not available, request timed out' "$migrate_log"; then
+      echo "::warning::migrations $execution could not connect to the database at start; running the job once more"
+      continue
+    fi
+    die "migrations $execution ended ${status}; the apps were NOT updated. Logs: Log Analytics, ContainerAppConsoleLogs, ContainerJobName_s == '$JOB'"
   done
-  [ "$status" = Succeeded ] || die "migrations did not finish in 20 minutes ($execution)"
 else
   note "migrations not run (RUN_MIGRATIONS=$RUN_MIGRATIONS)"
 fi

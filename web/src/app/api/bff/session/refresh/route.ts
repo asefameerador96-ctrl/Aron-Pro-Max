@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
   const toLogin = () => NextResponse.redirect(publicUrl(req, `/login?next=${encodeURIComponent(next)}`));
   const rt = req.cookies.get(RT_COOKIE)?.value;
   if (!rt) return toLogin();
-  const r = await refreshSession(rt, readSession(req.cookies.get(SESSION_COOKIE)?.value)?.rem === true);
+  const old = readSession(req.cookies.get(SESSION_COOKIE)?.value);
+  const r = await refreshSession(rt, old?.rem === true, old?.user.role, old?.sat);
   if (!r.ok && r.status !== 401 && r.status !== 403) {
     // Transport or server error: do not destroy the session; the user can reload.
     return new NextResponse(null, { status: 503, headers: { "Retry-After": "5" } });

@@ -1,7 +1,15 @@
 package com.aktcl.aron.amo
 
 import android.content.Context
+import com.aktcl.aron.core.database.UserDatabases
 import com.aktcl.aron.core.network.ApiOrigin
+import androidx.work.WorkManager
+import com.aktcl.aron.core.sync.AronWorkerFactory
+import com.aktcl.aron.core.sync.BundleDownloaders
+import com.aktcl.aron.core.sync.SessionSyncRunner
+import com.aktcl.aron.core.sync.SyncScheduler
+import com.aktcl.aron.core.sync.WorkManagerSyncScheduler
+import java.io.File
 import com.aktcl.aron.core.session.SessionComponents
 import dagger.Module
 import dagger.Provides
@@ -26,4 +34,30 @@ object SessionModule {
         appVersion = BuildConfig.VERSION_NAME + "+" + BuildConfig.VERSION_CODE,
         client = CLIENT,
     )
+
+    /** Each user's encrypted Room database (docs/24 s5.2), keyed by a Keystore-wrapped passphrase. */
+    @Provides
+    @Singleton
+    fun userDatabases(@ApplicationContext context: Context, components: SessionComponents): UserDatabases =
+        UserDatabases(context) { userId -> components.databaseKeys.passphrase(userId) }
+
+    /** Day-bundle download per user (F-SYS-006); login and the day start call `of(userId).download()`. */
+    @Provides
+    @Singleton
+    fun bundleDownloaders(@ApplicationContext context: Context, databases: UserDatabases, components: SessionComponents): BundleDownloaders =
+        BundleDownloaders(File(context.noBackupFilesDir, "aron/bundle-staging"), databases, components.syncApi, components.clock)
+
+    /** Upload scheduling (F-SYS-011): feature code calls `requestSync(userId, trigger)` after every commit. */
+    @Provides
+    @Singleton
+    fun workManagerSyncScheduler(@ApplicationContext context: Context): WorkManagerSyncScheduler =
+        WorkManagerSyncScheduler({ WorkManager.getInstance(context) })
+
+    @Provides
+    fun syncScheduler(scheduler: WorkManagerSyncScheduler): SyncScheduler = scheduler
+
+    @Provides
+    @Singleton
+    fun workerFactory(databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler): AronWorkerFactory =
+        AronWorkerFactory({ SessionSyncRunner(databases, components) }, { scheduler })
 }

@@ -1,6 +1,112 @@
 # Infra lane status
 
-Updated 2026-10-06 (Day 2, late evening).
+Updated 2026-10-07 (Day 3, morning, Dhaka midday).
+
+## Day 3 (2026-10-07): CI gates of docs/31 s2, stage profile, promotion workflows, cost reading
+
+Lead decisions applied: the nightly PostgreSQL stop/start is **not** approved and not built; the GitHub governance
+script is not run and no branch settings changed.
+
+**CI gates (all green on the real runner, run of c22aa48; full run: checks 3 to 5 min, deploy 5 to 10 min):**
+
+| Gate | Where | Fails on |
+|---|---|---|
+| gitleaks 8.30.1 (pinned SHA-256) | ci.yml `gates`, every push and PR | any secret in the pushed commits (whole history when the base is unknown); 10 reviewed false positives pinned by fingerprint (`tools/ci/gitleaksignore`), generated `contract/slices/` skipped (its source is scanned) |
+| Migrations | ci.yml `gates` when db/migrations changes | an edited, renamed or deleted shipped migration; duplicate or out-of-order versions; squawk 2.67.0 findings on NEW migrations (`tools/ci/squawk.toml`: lock_timeout, CONCURRENTLY, NOT VALID, no drop/rename) |
+| Contract | ci.yml `gates` when contract/ changes | an oasdiff 1.33.0 breaking change, unless the same push bumps `info.version` AND adds `docs/requests/contract-*.md` |
+| SR release + APK size (F-SYS-036) | ci.yml `android-release` | `assembleRelease` breaking (android-core ask); 30 MB per ABI, 70 MB installed (estimate), +15 % over `tools/ci/apk-size-baseline.json` (warn +5 %). SR release today: **10.2 MB universal, 4.3 MB arm64-v8a, 3.2 MB armeabi-v7a** |
+| SBOM | ci.yml `images` | SPDX for aron-backend and aron-web (syft 1.54.1 pinned), artifact `sbom-<sha>`, 90 days |
+| CodeQL | codeql.yml (separate, never blocks the deploy) | java-kotlin (shared, backend, the three apps; real compile) and javascript-typescript, `security-extended`; push, PR, weekly. First run: 3.3 min and 1.2 min |
+
+Each gate is proven to fail on a deliberate violation: `tools/ci/test_gates.py` (15 tests, run in the gates job with
+the real binaries and in `infra/validate.sh`). Two fresh checkers: 5 + 3 confirmed defects, all fixed.
+
+**Concurrency, verified:** every push-triggered workflow groups by ref and commit and never cancels (test over all
+workflows); only pull requests cancel their own older run. The deploy is serialised in Azure, not by GitHub: since
+today a **lock held for the whole deploy** (tag `aron-deploy-lock` on the group), after two runs interleaved
+(`DeploymentActive` on `aron-apps`, run of 4385442). An older commit waiting for the lock skips once a newer one is live.
+
+**Migrate failure followed up:** the repeat on e2bcabc showed its cause (the console log is now in the deploy log):
+the job's first database connection timed out after 5 s on a fresh replica (`total=0`), not a migration problem. The
+deploy runs the job once more on exactly that error; the root fix is requested from backend-core
+(`docs/requests/backend-migrate-connect-retries.md`).
+
+**Stage and promotion (docs/30 s1, s2):** `infra/params/stage*.bicepparam`, prod-shaped, own VNet 10.41/16, a parameter
+file only. `promote-prod.yml` (a server-v* tag on main, CI green, a successful staging deploy soaked, then deploy.yml
+prod) and `release-app.yml` (app-v* tag: three release APKs against the final origin, signed with apksigner from the
+four `ANDROID_SIGNING_*` secrets, size gate, GitHub Release with SHA256SUMS) are **inert** until
+`ARON_FINAL_ACCOUNT=true`. deploy.yml refuses prod outside promote-prod, outside the final account and off a server-v*
+tag. Open for the lead: `tools/github-governance.ps1` creates environments `staging` and `prod`, but the workflows
+and the OIDC subjects use `azure-dev` / `azure-prod`; `azure-prod` needs the owner as reviewer and a tag policy
+`server-v*` before the first promotion.
+
+**Cost reading (g):** `cost-report.yml` (daily 08:05 Dhaka, read-only) asked Azure for the month-to-date cost.
+Answer: `SubscriptionCostDisabled: Cost views are disabled for subscription users because the cost policy is turned
+off by your account admin` (run 37570748133). **No Azure cost figure is readable** by the deploy identity until the
+owner turns that billing policy on (the same switch as the budget); the owner can read it in the portal.
+Estimate from list prices (Southeast Asia retail API, 2026-10-07), with the apps now running:
+
+| Item | USD/day |
+|---|---|
+| PostgreSQL D2ds_v5 zone-redundant HA (2 x 0.244/h) + SSD v2 128 GiB x 2 | 12.9 |
+| Container Apps: api (0.5 vCPU, 1 GiB), worker (0.25, 0.5), web (0.25, 0.5) always on; active 0.000034/vCPU-s, idle 0.000004, memory 0.000004/GiB-s, minus the monthly free grant | 1.0 to 3.6 |
+| Front Door Standard + WAF policy | 1.4 |
+| Log Analytics ingestion after the free 5 GB a month (cap 1 GB/day at 2.99/GB) | 0 to 3.0 |
+| Container Apps environment network, registry, DNS, alerts, storage, Key Vault | about 1.2 |
+| **Total** | **about 16.5 to 22 a day (central about 18; about 560 a month)** |
+
+This is about USD 2.5 a day above the 15.5 reported before the apps went live. For 2026-10-10: about 4 days since
+2026-10-06 13:09 UTC, so roughly USD 65 to 85 spent on this group. These are estimates, not readings.
+
+### Day 3 later: lead's throughput, deploy-safety and audit items
+
+- **Dev health (lead question, 04:40 UTC):** `GET /v1/health` and `/v1/health/ready` through Front Door: 200,
+  `X-Aron-Api: 1`, build e2bbf8e. The failed deploy of e2bcabc was the migrate connect timeout (fixed, see above).
+- **AUD-DG-03 done in CI:** dev origin and increasing versionCode in every APK; three release APKs signed with the
+  release key on integration pushes (`aron-release-signed-dev-<run>`). Per-ABI splits requested from android-core
+  (`docs/requests/android-core-abi-splits.md`).
+- **CI throughput:**
+  - Docs-only pushes start no run.
+  - One ci run per ref, and a newer push cancels the older one. Comparisons use the last green head, and gitleaks
+    scans the whole history.
+  - The deploy is its own workflow (`workflow_run`), never cancelled, and only the newest pending deploy waits.
+  - CodeQL runs only on pull requests to main and weekly.
+- **Runner minutes per full run (measured job times):**
+
+  | Job | Minutes |
+  |---|---|
+  | gates | 0.3 |
+  | contract | 0.2 |
+  | JVM | 2.5 |
+  | Android debug | 4.5 |
+  | release APKs (3 apps) | about 3 |
+  | web | 1.6 |
+  | images | 2.6 |
+  | infra | 1.2 |
+  | **ci total** | **about 16** |
+  | deploy, when something deployable changed | 6 to 10 |
+  | CodeQL (PR or weekly only) | about 5 |
+
+  Wall time is about 5 minutes of checks plus the deploy. The repository is public, so these minutes cost nothing
+  today. Before it goes private, the owner sets an Actions spending limit.
+- **Governance check (lead question):** the six required checks in `tools/github-governance.ps1` match the ci.yml
+  job names exactly. Two required checks should be added there: `Repository gates (secrets, migrations, contract)`
+  and `Release APKs and APK size gate`. On pull requests the workflow-level path filter does not apply. A job skipped
+  by the changes filter reports success, so no required check stays pending.
+- **Next three rows (handoff):**
+  1. AUD-DG-07, REL-06, DG-06 deploy safety: Container Apps revision traffic split with a health gate, and deploy
+     the tested image by digest. The whole-deploy lock is done.
+  2. Scanning gates that also work for a private repo: OSV-scanner for dependencies, Semgrep OSS with Kotlin and
+     TypeScript rules, and `npm audit --omit=dev` as a warning.
+  3. `docs/requests/db-runtime-roles.md`: per-app database logins (`app_api`, `app_worker`, `app_jobs`) as members
+     of the V0014 roles, through a small job inside the VNet with passwords in Key Vault. The PostgreSQL server
+     settings stay untouched (HOLD). Then AUD-DG-04, -08, REL-04, -05, SEC-05, TP-6 by day; Gradle dependency
+     verification on Day 5 or 6.
+- **Traps found:**
+  - A called or `workflow_run` workflow sees null inputs, and `null == false` is true in Actions expressions. Always
+    test `github.event_name` first.
+  - `tools/slice-contract.py` has no `--help`: any argument other than `--check` regenerates every slice.
+  - The deploy identity can write resource-group tags (needed for the lock). If it cannot, the deploy now stops at once.
 
 ## Owner decision 2026-10-06: HOLD (docs/28 "Exception approved")
 
@@ -258,7 +364,8 @@ of guarded properties fail validation.
 
 ## In progress
 
-- Nothing. Next (Day 2+ per backlog): observability workbooks, load-test infrastructure (Day 6).
+- Next: N-062 observability (workbooks, sync-health and error alerts), the data-dictionary CI check when
+  `docs/requests/db-data-dictionary-ci.md` arrives, N-057 as parameters for prod only, N-064 release candidate.
 
 ## Blocked / waiting
 

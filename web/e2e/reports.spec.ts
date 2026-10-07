@@ -53,7 +53,7 @@ test("geofence calibration: a distance histogram", async ({ page }) => {
   await start(page);
   await page.goto("/reports/geofence-calibration");
   await expect(page.getByTestId("report-chart").locator("li")).toHaveCount(4);
-  await expect(page.locator('td[data-col="force_sale_share"]').last()).toHaveText("100.0%");
+  await expect(page.locator('td[data-col="force_sale_share"]').last()).toHaveText("100.00%");
 });
 
 test("DS-RRS has Get Data, Get Excel and a Print view", async ({ page }) => {

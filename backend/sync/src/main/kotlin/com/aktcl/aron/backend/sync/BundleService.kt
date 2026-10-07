@@ -89,7 +89,7 @@ class BundleService(
             if (date.isAfter(next)) throw badFor("for must be at most the next working day ($next)")
         }
         val prefetch = date.isAfter(today)
-        val plans = planner.routesFor(user.id, date)
+        val plans = db.jdbi.withHandle<List<RouteDayPlan>, Exception> { h -> withScopedWeekend(h, planner.routesFor(user.id, date), date, cfg, roleOrdinal, user.id) }
 
         val dayStates = db.jdbi.inTransaction<Map<Long, DayRow>, Exception> { h ->
             versionGate(h, p, plans, date, appVersion)
@@ -126,7 +126,7 @@ class BundleService(
                 tutorials = emptyList(),
             )
         }
-        val seq = contentSeq(bundle)
+        val seq = snapshotSeq(user.id, date, bundle)
         val version = "$date:$seq"
         val meta = BundleMeta(
             bundle_version = version, valid_for_business_date = date.toString(), generated_at = now.wire(), server_time = clock.now().wire(),
@@ -134,6 +134,54 @@ class BundleService(
             cursor = cursor(date, seq, now), is_prefetch = prefetch, paged_sections = emptyList(),
         )
         return Result(bundle.copy(meta = meta), version)
+    }
+
+    /**
+     * `cfg.calendar.weekend_days` is scoped (global, wing, division): `planned_today` and the target follow the weekend
+     * resolved for each route's zone, the same value the bundle's calendar carries.
+     */
+    private fun withScopedWeekend(h: Handle, plans: List<RouteDayPlan>, date: LocalDate, cfg: ScopedConfig, roleOrdinal: Long?, userId: Long): List<RouteDayPlan> {
+        if (plans.isEmpty()) return plans
+        val chains = chains(h, plans.map { it.zoneId }.distinct())
+        val calendar = h.createQuery("SELECT date, scope_type, scope_id, kind, selling_day FROM app.calendar_holiday WHERE date = :d AND revoked_at IS NULL")
+            .bind("d", date).map { rs, _ ->
+                DayPlan.CalendarEntry(rs.getObject(1, LocalDate::class.java), DayPlan.CalendarScope.valueOf(rs.getString(2).uppercase()), rs.getLong(3), rs.getString(4), rs.getBoolean(5))
+            }.list()
+        val active = h.createQuery("SELECT id FROM app.route WHERE id = ANY(:r) AND status = 'active'").bindArray("r", Long::class.javaObjectType, plans.map { it.routeId })
+            .mapTo(Long::class.java).set()
+        return plans.map { r ->
+            val g = chains[r.zoneId] ?: return@map r
+            val chain = ScopedConfig.Chain.of(ConfigScopeType.ROLE to roleOrdinal, ConfigScopeType.WING to g.wingId, ConfigScopeType.DIVISION to g.divisionId,
+                ConfigScopeType.TERRITORY to g.territoryId, ConfigScopeType.ZONE to g.zoneId, ConfigScopeType.USER to userId)
+            val weekend = weekendOf(cfg, chain)
+            val planned = DayPlan.isPlanned(DayPlan.PlanRoute(r.routeId, r.visitDaysMask, g.dayPlan(), r.routeId in active), date, calendar, weekend)
+            r.copy(plannedToday = planned, targetOutlets = if (planned) r.activeOutlets else 0)
+        }
+    }
+
+    private fun weekendOf(cfg: ScopedConfig, chain: ScopedConfig.Chain): Set<Int> =
+        cfg.value("cfg.calendar.weekend_days", chain)?.let { v -> runCatching { v.jsonArray.mapNotNull { it.jsonPrimitive.intOrNull }.filter { it in 1..7 } }.getOrNull() }
+            ?.toSet() ?: DayPlan.DEFAULT_WEEKEND
+
+    /**
+     * `snapshot_seq`: with `app.bundle_snapshot` (docs/requests/backend-bundle-snapshot-table.md) a number that grows with
+     * every new content of the user's date (equal content keeps its number); until the table exists, the content
+     * digest. Either way equal content gives an equal version (ETag) on every replica.
+     */
+    private fun snapshotSeq(userId: Long, date: LocalDate, b: Bundle): Long {
+        val digest = contentDigest(b)
+        return db.jdbi.inTransaction<Long, Exception> { h ->
+            val hasTable = h.createQuery("SELECT to_regclass('app.bundle_snapshot') IS NOT NULL").mapTo(Boolean::class.java).one()
+            if (!hasTable) return@inTransaction contentSeq(b)
+            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 1))", "bundle:$userId:$date")
+            val latest = h.createQuery("SELECT snapshot_seq, content_sha256 FROM app.bundle_snapshot WHERE user_id = :u AND business_date = :d ORDER BY snapshot_seq DESC LIMIT 1")
+                .bind("u", userId).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getBytes(2) }.findOne().orElse(null)
+            if (latest != null && latest.second.contentEquals(digest)) return@inTransaction latest.first
+            val next = (latest?.first ?: 0L) + 1
+            h.createUpdate("INSERT INTO app.bundle_snapshot (user_id, business_date, snapshot_seq, content_sha256) VALUES (:u, :d, :s, :h)")
+                .bind("u", userId).bind("d", date).bind("s", next).bind("h", digest).execute()
+            next
+        }
     }
 
     private fun badFor(why: String) = ApiProblem(ProblemCode.ERR_VALIDATION, why, errors = listOf(FieldError("query.for", "out_of_range")))
@@ -182,9 +230,9 @@ class BundleService(
 
     /**
      * Creates the route-day of every route the user holds on [date] if the planning job has not (F-SYS-056), freezes
-     * `target_outlets` once (the first bundle of the day, pre-fetch included, so the phone's offline view and the
-     * server agree) and, unless this is a pre-fetch, stamps `logged_in_at` and moves `not_started` to `logged_in`
-     * (states never move backwards, s4.9).
+     * `target_outlets` once at the first bundle of the day (a pre-fetch shows the computed value but never freezes it)
+     * and, unless this is a pre-fetch, stamps `logged_in_at` and moves `not_started` to `logged_in` (states never move
+     * backwards, s4.9). The primary or cover holder is recorded whichever fetched first.
      */
     private fun recordFirstBundle(h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, prefetch: Boolean, now: Instant) {
         val at = OffsetDateTime.ofInstant(now, ZoneOffset.UTC)
@@ -192,16 +240,22 @@ class BundleService(
             val cover = r.assignmentKind == "cover"
             h.createUpdate(
                 """
-                INSERT INTO app.route_day (route_id, business_date, planned, planned_source, assigned_user_id, acting_user_id, target_outlets, target_frozen_at)
-                VALUES (:r, :d, :planned, :src, :assigned, :acting, :target, :at)
-                ON CONFLICT (route_id, business_date) DO UPDATE SET target_outlets = EXCLUDED.target_outlets, target_frozen_at = EXCLUDED.target_frozen_at,
-                    acting_user_id = COALESCE(app.route_day.acting_user_id, EXCLUDED.acting_user_id),
-                    assigned_user_id = COALESCE(app.route_day.assigned_user_id, EXCLUDED.assigned_user_id)
-                WHERE app.route_day.target_outlets IS NULL
+                INSERT INTO app.route_day (route_id, business_date, planned, planned_source, assigned_user_id, acting_user_id)
+                VALUES (:r, :d, :planned, :src, :assigned, :acting)
+                ON CONFLICT (route_id, business_date) DO NOTHING
                 """.trimIndent(),
             ).bind("r", r.routeId).bind("d", date).bind("planned", r.plannedToday).bind("src", if (cover) "cover" else "schedule")
-                .bind("assigned", if (cover) null else userId).bind("acting", if (cover) userId else null)
-                .bind("target", r.targetOutlets).bind("at", at).execute()
+                .bind("assigned", if (cover) null else userId).bind("acting", if (cover) userId else null).execute()
+            // Who holds the route-day is recorded whoever fetched first (primary or cover).
+            h.createUpdate(
+                if (cover) "UPDATE app.route_day SET acting_user_id = :u WHERE route_id = :r AND business_date = :d AND acting_user_id IS NULL"
+                else "UPDATE app.route_day SET assigned_user_id = :u WHERE route_id = :r AND business_date = :d AND assigned_user_id IS NULL",
+            ).bind("u", userId).bind("r", r.routeId).bind("d", date).execute()
+            // s12.4: the target is frozen by the first bundle OF THE DAY; a pre-fetch never counts (s4.9).
+            if (!prefetch) {
+                h.createUpdate("UPDATE app.route_day SET target_outlets = :t, target_frozen_at = :at, planned = :planned WHERE route_id = :r AND business_date = :d AND target_outlets IS NULL")
+                    .bind("t", r.targetOutlets).bind("at", at).bind("planned", r.plannedToday).bind("r", r.routeId).bind("d", date).execute()
+            }
         }
         if (!prefetch && plans.isNotEmpty()) {
             h.createUpdate(
@@ -276,8 +330,8 @@ class BundleService(
     /** Active outlets of the routes with radius and accuracy resolved per outlet (outlet > route > zone > geo_class > territory > division > wing > role > global). */
     private fun outlets(h: Handle, routeIds: List<Long>, cfg: ScopedConfig, roleOrdinal: Long?): Map<Long, List<BundleOutlet>> {
         val global = ScopedConfig.Chain.of()
-        val minR = cfg.int("cfg.geo.radius_min_m", global, 20).coerceAtLeast(10)
-        val maxR = cfg.int("cfg.geo.radius_max_m", global, 2000).coerceAtMost(5000)
+        val minR = cfg.int("cfg.geo.radius_min_m", global, 20).coerceIn(10, 5000)
+        val maxR = cfg.int("cfg.geo.radius_max_m", global, 2000).coerceIn(minR, 5000)
         val dues = HashMap<Long, Pair<Long, String?>>()
         h.createQuery(
             """
@@ -418,12 +472,12 @@ class BundleService(
         /** Case-folded name for sorting on the phone (Bangla text sorts by code point). */
         fun sortKey(name: String): String = name.trim().lowercase().replace(Regex("\\s+"), " ").take(200)
 
-        /** Digest of the bundle without its meta: 9 decimal digits, equal for equal content. */
-        fun contentSeq(b: Bundle): Long {
-            val text = ResponseJson.encodeToString(Bundle.serializer(), b.copy(meta = PLACEHOLDER_META))
-            val d = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
-            return (ByteBuffer.wrap(d).long and Long.MAX_VALUE) % 1_000_000_000L
-        }
+        /** SHA-256 of the bundle without its meta. */
+        fun contentDigest(b: Bundle): ByteArray =
+            MessageDigest.getInstance("SHA-256").digest(ResponseJson.encodeToString(Bundle.serializer(), b.copy(meta = PLACEHOLDER_META)).toByteArray(Charsets.UTF_8))
+
+        /** The digest as 9 decimal digits, equal for equal content (the fallback snapshot_seq). */
+        fun contentSeq(b: Bundle): Long = (ByteBuffer.wrap(contentDigest(b)).long and Long.MAX_VALUE) % 1_000_000_000L
 
         /** Opaque delta cursor: version, business date, snapshot digest and the generation instant (DeltaCursor pattern). */
         fun cursor(date: LocalDate, seq: Long, at: Instant): String =

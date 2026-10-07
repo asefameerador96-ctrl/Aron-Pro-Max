@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
 import type { OpKey, TeamOpKey } from "@/lib/admin/ops";
+import { latinDigits, scaledInt } from "@/lib/admin/taka";
 import type { MessageKey } from "@/lib/i18n";
 import { Field, inputClass } from "./field";
 import { ReasonField, REASON_MIN_LENGTH } from "./reason-field";
@@ -26,6 +27,14 @@ export interface OpFieldDef {
   scale?: number;
   /** Smallest allowed value after scaling. */
   min?: number;
+  /** A date field: the earliest allowed date (YYYY-MM-DD). */
+  minDate?: string;
+  /** An `*_id` field that may be 0 (the global scope). */
+  allowZero?: boolean;
+  /** An enum whose option values are numbers (sent as numbers). */
+  asNumber?: boolean;
+  /** A text field whose content must be valid JSON but is sent as the text itself (a template definition string). */
+  jsonString?: boolean;
   /** Lower-case the text before checking and sending (a pasted fingerprint). */
   lowercase?: boolean;
   /** Largest allowed value after scaling (a size gate, for example). */
@@ -58,6 +67,8 @@ interface Props {
   resultField?: string;
   /** Clear the form after a success. */
   resetOnSuccess?: boolean;
+  /** Ask this question (a browser confirm) before posting an irreversible action. */
+  confirmText?: string;
   testId?: string;
 }
 
@@ -69,7 +80,17 @@ function fieldMessage(t: ReturnType<typeof useI18n>["t"], code: string): string 
 function toValue(f: OpFieldDef, raw: string): unknown {
   if (f.kind === "checkbox") return raw === "true";
   if (raw.trim() === "") return f.nullable ? null : undefined;
-  if (f.kind === "int") return f.scale || /^-?\d+$/.test(raw.trim()) ? Math.round(Number(raw) * (f.scale ?? 1)) : Symbol.for("invalid-int");
+  if (f.kind === "int") {
+    const text = latinDigits(raw.trim());
+    if (f.scale) {
+      const v = scaledInt(text, f.scale);
+      return v === null || v === 0 ? Symbol.for("invalid-int") : v; // a zero amount changes nothing
+    }
+    const n = /^\d{1,15}$/.test(text) ? Number(text) : NaN;
+    if (!Number.isSafeInteger(n)) return Symbol.for("invalid-int");
+    if (f.name.endsWith("_id") && n < 1 && !f.allowZero) return Symbol.for("invalid-int"); // ids start at 1
+    return n;
+  }
   if (f.kind === "number") return Number(raw);
   if (f.kind === "json") {
     try {
@@ -78,10 +99,11 @@ function toValue(f: OpFieldDef, raw: string): unknown {
       return Symbol.for("invalid-json");
     }
   }
+  if (f.kind === "enum" && f.asNumber) return Number(raw);
   return f.lowercase ? raw.trim().toLowerCase() : raw.trim();
 }
 
-export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, version, submitLabel, noReason, successKey, resultField, resetOnSuccess = true, testId = "op-form" }: Props) {
+export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, version, submitLabel, noReason, successKey, resultField, resetOnSuccess = true, confirmText, testId = "op-form" }: Props) {
   const { t, problem } = useI18n();
   const router = useRouter();
   const initial = Object.fromEntries(fields.map((f) => [f.name, f.initial ?? (f.kind === "checkbox" ? "false" : f.kind === "enum" && f.required ? (f.options?.[0]?.value ?? "") : "")]));
@@ -102,12 +124,21 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
     for (const f of fields) {
       const raw = values[f.name] ?? "";
       if (f.required && f.kind !== "checkbox" && raw.trim() === "") local[f.name] = t("error.field.required");
-      if ((f.kind === "int" || f.kind === "number") && raw.trim() !== "" && !Number.isFinite(Number(raw))) local[f.name] = t("error.field.invalid");
+      if (f.kind === "number" && raw.trim() !== "" && !Number.isFinite(Number(raw))) local[f.name] = t("error.field.invalid");
       const v = toValue(f, raw);
       if (v === Symbol.for("invalid-int")) local[f.name] = t("error.field.invalid");
+      if (f.kind === "int" && raw.trim() !== "" && !f.scale && /^-/.test(raw.trim())) local[f.name] = t("error.field.invalid");
       if (typeof v === "number" && f.min !== undefined && v < f.min) local[f.name] = t("cfgc.error.too_small");
       if (v === Symbol.for("invalid-json")) local[f.name] = t("error.field.invalid");
       if (typeof v === "number" && f.max !== undefined && v > f.max) local[f.name] = t("cfgc.error.too_big");
+      if (f.minDate && raw !== "" && raw < f.minDate) local[f.name] = t("error.field.invalid");
+      if (f.jsonString && raw.trim() !== "") {
+        try {
+          JSON.parse(raw);
+        } catch {
+          local[f.name] = t("error.field.invalid");
+        }
+      }
       if (f.pattern && raw.trim() !== "" && !new RegExp(f.pattern).test(f.lowercase ? raw.trim().toLowerCase() : raw.trim())) local[f.name] = t("error.field.invalid");
       if (v !== undefined && typeof v !== "symbol") body[f.name] = v;
     }
@@ -116,6 +147,7 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
       setErrors(local);
       return;
     }
+    if (confirmText && !window.confirm(confirmText)) return;
     setBusy(true);
     try {
       const res = await fetch(endpoint ?? "/api/bff/admin-op", {
@@ -174,6 +206,7 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
               id={`f-${f.name}`}
               name={f.name}
               type={f.kind === "date" ? "date" : "text"}
+              min={f.kind === "date" ? f.minDate : undefined}
               value={values[f.name] ?? ""}
               onChange={(e) => set(f.name, e.target.value)}
               inputMode={f.kind === "int" ? "numeric" : f.kind === "number" ? "decimal" : undefined}
@@ -186,11 +219,11 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
       ))}
       {noReason ? null : <ReasonField value={reason} onChange={setReason} error={errors.reason} />}
       {banner ? (
-        <p role={banner.kind === "error" ? "alert" : "status"} data-testid={banner.kind === "ok" ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.kind === "ok" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
+        <p role={banner.kind === "error" ? "alert" : "status"} data-testid={banner.kind === "ok" ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.kind === "ok" ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>
           {banner.text}
         </p>
       ) : null}
-      <button type="submit" disabled={busy} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+      <button type="submit" disabled={busy} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
         {submitLabel}
       </button>
     </form>

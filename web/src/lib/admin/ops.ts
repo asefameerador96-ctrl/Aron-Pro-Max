@@ -18,6 +18,8 @@ export interface OpDef {
   /** The operation takes no request body (sent empty). */
   noBody?: boolean;
   /** Body members whose listed values need a stronger role than `roles` (the proxy answers 403). */
+  /** The reason is stored when given (10..500 code points) but not required. */
+  reasonOptional?: boolean;
   forbid?: { member: string; values: readonly string[] };
 }
 
@@ -53,8 +55,20 @@ export const OPS = {
   "enrolment.revoke": { method: "POST", path: "/v1/admin/enrolment-tokens/{token_id}/revoke", roles: SUPPORT_UP, reason: null, noBody: true },
   // F-ADM-029 / F-ADM-052 reopen a final-submitted zone-day (cfg.day.reopen_roles: admin)
   "day.reopen": { method: "POST", path: "/v1/day/reopen", roles: ADMINS, reason: "reason" },
-  // F-ADM-023 / F-ADM-060 code lists (QC fault types, reasons): items replaced with a change reason; codes are never deleted
-  "code-list.put": { method: "PUT", path: "/v1/admin/code-lists/{list_key}", roles: ADMINS, reason: "change_reason" },
+  // F-ADM-057 entry unlock grants replace "call support" for back-dated web entry
+  "entry-unlock.create": { method: "POST", path: "/v1/admin/entry-unlocks", roles: SUPPORT_UP, reason: "reason" },
+  "entry-unlock.expire": { method: "POST", path: "/v1/admin/entry-unlocks/{unlock_id}/expire", roles: SUPPORT_UP, reason: null, noBody: true },
+  // F-ADM-067 print templates: a new version, future-dated; phones print it after their next sync
+  "print-template.create": { method: "POST", path: "/v1/admin/print-templates", roles: ADMINS, reason: "change_reason" },
+  // F-ADM-025 supervisory targets (AMO call targets by month)
+  "supervisor-targets.put": { method: "PUT", path: "/v1/admin/supervisor-targets", roles: ADMINS, reason: "change_reason" },
+  // F-ADM-036 dues adjustment: maker proposes, a different checker (SUPERADMIN, docs/24 s8.5) decides
+  "dues.create": { method: "POST", path: "/v1/admin/dues-adjustments", roles: ADMINS, reason: "reason" },
+  "dues.decide": { method: "POST", path: "/v1/admin/dues-adjustments/{adjustment_id}/decision", roles: SUPERS, reason: "note" },
+  // F-ADM-064 role x menu x action matrix: a C3 change request, second SUPERADMIN approves
+  "permissions.put": { method: "PUT", path: "/v1/admin/permissions/roles/{role}", roles: SUPERS, reason: "reason" },
+  // F-ADM-024 paper backfill: a dead-phone day keyed by printed memo number, source manual
+  "paper-backfill.create": { method: "POST", path: "/v1/admin/data-entry", roles: SUPPORT_UP, reason: "reason" },
 } as const satisfies Record<string, OpDef>;
 
 /** Web-role operations (the TSO's own pages live outside /admin): served by /api/bff/team-op, gated by the web roles. */
@@ -62,7 +76,11 @@ export const TEAM_OPS = {
   // F-WEB-051 web Final Submit (same server rule as the app: online only, once per zone and day)
   "day.final-submit": { method: "POST", path: "/v1/day/final-submit", roles: ["TSO", "DMO", "ADMIN", "SUPERADMIN"], reason: null },
   // F-WEB-051 Delete Section Data: an audited void with a reason, only before Final Submit
-  "day.data-void": { method: "POST", path: "/v1/admin/data-void", roles: ["TSO", "ADMIN", "SUPERADMIN"], reason: "reason" },
+  "day.data-void": { method: "POST", path: "/v1/admin/data-void", roles: ["TSO", "ADMIN", "SUPERADMIN"], reason: "reason", forbid: { member: "scope", values: ["all", "app_memos"] } },
+  // F-WEB-050 Web Entry (route-day aggregate): a re-save replaces the entry and needs a reason (change_reason)
+  "web-entry.save": { method: "POST", path: "/v1/web-entry/route-day", roles: ["TSO", "ADMIN", "SUPERADMIN"], reason: "change_reason", reasonOptional: true },
+  // F-WEB-052 / F-WEB-060 market and warehouse QC entry (warehouse needs a reason and the warehouse QC permission)
+  "qc-entry.save": { method: "POST", path: "/v1/web-entry/qc", roles: ["TSO", "ADMIN", "SUPERADMIN"], reason: "reason", reasonOptional: true },
 } as const satisfies Record<string, OpDef>;
 
 export type TeamOpKey = keyof typeof TEAM_OPS;

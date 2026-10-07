@@ -2,12 +2,15 @@ package com.aktcl.aron.core.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -34,44 +37,48 @@ object AronFonts {
 /** The app language inside Compose; screens use it for digits ([localizedDigits]). */
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.DEFAULT }
 
-private val AronDarkColors = darkColorScheme(
-    primary = Color(0xFF7BD6A4),
-    onPrimary = Color(0xFF00391F),
-    secondary = Color(0xFFFFB4AB),
-    onSecondary = Color(0xFF690005),
-    background = Color(0xFF111412),
-    surface = Color(0xFF1A1D1B),
-    error = Color(0xFFFFB4AB),
-)
-
-private val AronColors = lightColorScheme(
-    primary = Color(0xFF0B5D3B),
-    onPrimary = Color.White,
-    secondary = Color(0xFF8C1D18),
-    onSecondary = Color.White,
-    background = Color(0xFFF7F8F6),
-    surface = Color.White,
-    error = Color(0xFFB3261E),
-)
+private fun AronColorRoles.toMaterial(): ColorScheme {
+    val base = if (dark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = accent, onPrimary = onAccent, secondary = accent, onSecondary = onAccent,
+        background = bgGradientBottom, onBackground = textPrimary, surface = surfaceSolid, onSurface = textPrimary,
+        surfaceVariant = surfaceSolid, onSurfaceVariant = textSecondary, error = danger,
+        errorContainer = danger.copy(alpha = AronTokens.Alpha.Container), onErrorContainer = textPrimary,
+        secondaryContainer = accent.copy(alpha = AronTokens.Alpha.Container), onSecondaryContainer = textPrimary,
+        tertiaryContainer = warning.copy(alpha = AronTokens.Alpha.ContainerWarm), onTertiaryContainer = textPrimary,
+    )
+}
 
 /** Every Material text style in the bundled family of [language]. */
 fun aronTypography(language: AppLanguage): Typography {
     val family = AronFonts.forLanguage(language)
     val base = Typography()
-    fun TextStyle.f() = copy(fontFamily = family)
+    val bn = language == AppLanguage.BN
+    // docs/32 s3: Bangla needs taller lines (body 16/26, title 22/30, caption 13/18, display 34/40)
+    fun TextStyle.f(lineHeight: Int) = if (bn) copy(fontFamily = family, lineHeight = lineHeight.sp) else copy(fontFamily = family)
     return Typography(
-        displayLarge = base.displayLarge.f(), displayMedium = base.displayMedium.f(), displaySmall = base.displaySmall.f(),
-        headlineLarge = base.headlineLarge.f(), headlineMedium = base.headlineMedium.f(), headlineSmall = base.headlineSmall.f(),
-        titleLarge = base.titleLarge.f(), titleMedium = base.titleMedium.f(), titleSmall = base.titleSmall.f(),
-        bodyLarge = base.bodyLarge.f(), bodyMedium = base.bodyMedium.f(), bodySmall = base.bodySmall.f(),
-        labelLarge = base.labelLarge.f(), labelMedium = base.labelMedium.f(), labelSmall = base.labelSmall.f(),
+        displayLarge = base.displayLarge.f(44), displayMedium = base.displayMedium.f(40), displaySmall = base.displaySmall.f(40),
+        headlineLarge = base.headlineLarge.f(40), headlineMedium = base.headlineMedium.f(36), headlineSmall = base.headlineSmall.f(32),
+        titleLarge = base.titleLarge.f(30), titleMedium = base.titleMedium.f(26), titleSmall = base.titleSmall.f(24),
+        bodyLarge = base.bodyLarge.f(26), bodyMedium = base.bodyMedium.f(22), bodySmall = base.bodySmall.f(18),
+        labelLarge = base.labelLarge.f(22), labelMedium = base.labelMedium.f(18), labelSmall = base.labelSmall.f(18),
     )
 }
 
 @Composable
-fun AronTheme(language: AppLanguage, dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalAppLanguage provides language) {
-        MaterialTheme(colorScheme = if (dark) AronDarkColors else AronColors, typography = aronTypography(language), content = content)
+fun AronTheme(
+    language: AppLanguage,
+    dark: Boolean = isSystemInDarkTheme(),
+    tier: GlassTier = LocalGlassTier.current,
+    content: @Composable () -> Unit,
+) {
+    val roles = if (dark) AronTokens.Dark else AronTokens.Light
+    CompositionLocalProvider(LocalAppLanguage provides language, LocalAronColors provides roles, LocalGlassTier provides tier) {
+        MaterialTheme(
+            colorScheme = remember(dark) { roles.toMaterial() },
+            typography = remember(language) { aronTypography(language) },
+            content = content,
+        )
     }
 }
 

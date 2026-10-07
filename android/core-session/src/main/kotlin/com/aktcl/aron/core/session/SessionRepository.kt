@@ -133,9 +133,9 @@ class SessionRepository(
                     designation = answer.user.designation,
                     locale = answer.user.locale,
                     verifier = verifier.create(password),
-                    lastOnlineLoginMs = clock.nowMs(),
+                    lastOnlineLoginMs = clock.wallClockMs(),
                     lastOnlineLoginElapsedMs = clock.elapsedRealtimeMs(),
-                    highWaterMs = clock.nowMs(),
+                    highWaterMs = clock.wallClockMs(),
                     deviceId = answer.device?.deviceId ?: previous?.deviceId,
                     bindOrdinal = answer.device?.bindOrdinal ?: previous?.bindOrdinal,
                     memoSeqBlockSize = answer.device?.memoSeqBlockSize ?: previous?.memoSeqBlockSize,
@@ -172,7 +172,7 @@ class SessionRepository(
     private fun offlineUnlock(username: String, password: String, serverAnswer: Int?, updateRequired: Boolean): LoginOutcome {
         val stored = store.profileByUsername(username)
             ?: return LoginOutcome.OfflineUnavailable(OfflineRefusal.NEVER_ONLINE_ON_THIS_PHONE, serverAnswer = serverAnswer)
-        val wall = clock.nowMs()
+        val wall = clock.wallClockMs()
         val elapsed = clock.elapsedRealtimeMs()
         if (wall < stored.lastOnlineLoginMs - CLOCK_TOLERANCE_MS) {
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.CLOCK_INCONSISTENT, serverAnswer = serverAnswer)
@@ -259,6 +259,13 @@ class SessionRepository(
         val tokens = store.tokens(active.user.userId)
         return if (grant == Grant.FULL) tokens.accessToken else tokens.uploadAccessToken
     }
+
+    /**
+     * The stored upload-grant access token of [userId], whether or not that user is the active one (the sync engine
+     * uploads a logged-out or switched-away user's rows under that user's own grant, D24-57). Null when none is held;
+     * the engine then calls [refresh] with [Grant.UPLOAD].
+     */
+    suspend fun uploadAccessToken(userId: Long): String? = withContext(dispatchers.io) { store.tokens(userId).uploadAccessToken }
 
     override suspend fun refreshAfterUnauthorized(grant: Grant, rejectedToken: String?, code: ProblemCode?): Boolean {
         val active = _state.value as? SessionState.Active ?: return false

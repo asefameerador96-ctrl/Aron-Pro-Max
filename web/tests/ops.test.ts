@@ -26,7 +26,7 @@ describe("zone roll-up", () => {
     // Zone 3341: R1 final, R2 sales_submitted -> 2 routes, 2 logged in, 2 submitted, not done. Zone 3342: R3 in_field, R4 not started.
     expect(zs[0]).toMatchObject({ routes: 2, logged_in: 2, submitted: 2, final_submitted: 1, login_pct: 100, submit_pct: 100, done: false });
     expect(zs[1]).toMatchObject({ routes: 2, logged_in: 1, submitted: 0, login_pct: 50, submit_pct: 0, done: false });
-    expect(totalsOf(zs)).toEqual({ login_pct: 75, submit_pct: 66.7, zones_done: 0, zones: 2 });
+    expect(totalsOf(zs)).toEqual({ login_pct: 75, submit_pct: 66.67, zones_done: 0, zones: 2 });
     expect(zs.reduce((a, z) => a + z.routes, 0)).toBe(ROUTES.filter((x) => x.territory_id === 334).length);
   });
   it("no routes gives null percentages, not NaN", () => {

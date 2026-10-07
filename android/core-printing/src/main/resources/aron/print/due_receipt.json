@@ -1,0 +1,17 @@
+{ "schema": 1, "size": 22, "digits": "latin", "blocks": [
+  { "type": "text", "value": "{@print_company}", "align": "center", "bold": true, "size": 28 },
+  { "type": "text", "value": "{@print_due_receipt}", "align": "center", "bold": true },
+  { "type": "if", "when": "duplicate", "blocks": [
+    { "type": "text", "value": "*** {@print_duplicate} ***", "align": "center", "bold": true } ] },
+  { "type": "rule", "style": "dashed" },
+  { "type": "pair", "left": "{@print_memo_no}:", "right": "{memo_no}" },
+  { "type": "pair", "left": "{@print_date}: {date}", "right": "{@print_time}: {time}" },
+  { "type": "text", "value": "{@print_outlet}: {outlet}" },
+  { "type": "text", "value": "{@print_sr}: {sr}" },
+  { "type": "rule" },
+  { "type": "pair", "left": "{@print_due_before}", "right": "{due_before}" },
+  { "type": "pair", "left": "{@print_collected}", "right": "{collected}", "bold": true },
+  { "type": "pair", "left": "{@print_due_after}", "right": "{due_after}" },
+  { "type": "space", "dots": 40 },
+  { "type": "pair", "left": "{@print_signature}", "right": "{@print_signature}" }
+] }

@@ -1,12 +1,9 @@
-// F-ADM-029 / F-ADM-052 day control, F-ADM-023 / F-ADM-060 code lists, the team-op proxy.
+// F-ADM-029 / F-ADM-052 day control and the team-op proxy. (The code-list editor is the web-admin one: docs/requests/web-config-web-admin-dedupe.md.)
 import { describe, expect, it, vi } from "vitest";
 import { POST as teamPost } from "@/app/api/bff/team-op/route";
-import { CodeListEditor } from "@/components/admin/config/code-list-editor";
-import { CodeListsView } from "@/components/admin/config/code-lists-view";
 import { DayControlView } from "@/components/admin/config/day-control-view";
-import { validateItems } from "@/lib/admin/code-lists";
 import { lateRows, missingCheckoutRows } from "@/lib/admin/reports";
-import type { CodeItem, ReportResult } from "@/lib/admin/types";
+import type { ReportResult } from "@/lib/admin/types";
 import { admin, op, req, setupMock, support, tso } from "./helpers/harness";
 import { html, text } from "./helpers/render";
 
@@ -47,45 +44,6 @@ describe("day control lists", () => {
   });
 });
 
-const item = (code: string, over: Partial<CodeItem> = {}): CodeItem => ({ code, label_en: code, label_bn: null, sort: 10, valid_from: "2026-01-01", valid_to: null, attrs: { group: "MFC", applies_to: "app" }, ...over });
-const attrs = [{ name: "group", options: ["MFC", "MKT"] }, { name: "applies_to", options: ["app", "web"] }];
-
-describe("code lists", () => {
-  it("validates codes, duplicates, labels and the qc attributes", () => {
-    expect(validateItems([item("burst_pack")], attrs)).toEqual([]);
-    expect(validateItems([item("Bad Code")], attrs)[0]).toMatchObject({ field: "code", code: "invalid" });
-    expect(validateItems([item("a_b"), item("a_b")], attrs).some((e) => e.code === "duplicate")).toBe(true);
-    expect(validateItems([item("a_b", { label_en: " " })], attrs)[0]).toMatchObject({ field: "label_en" });
-    expect(validateItems([item("a_b", { attrs: { group: "X", applies_to: "app" } })], attrs)[0]).toMatchObject({ field: "group" });
-  });
-  it("QC fault page: eleven codes with group and applies_to selectors, retire instead of delete", () => {
-    const eleven = Array.from({ length: 11 }, (_, i) => item(`fault_${i + 1}`, { attrs: { group: i < 5 ? "MFC" : "MKT", applies_to: i % 2 ? "web" : "app" } }));
-    const m = html(<CodeListsView locale="en" lists={[{ list_key: "qc_fault_type", items: eleven }]} selected="qc_fault_type" choices={null} basePath="/admin/qc-faults" today="2026-10-07" canWrite titleKey="qc.title" />);
-    expect((m.match(/data-testid="row-fault_/g) ?? []).length).toBe(11);
-    expect(m).toContain("Manufacturing (MFC)");
-    expect(m).toContain("Marketing (MKT)");
-    expect(m).not.toMatch(/Delete|Remove/);
-    expect(text(m)).toContain("Retire");
-    expect(m).toContain('name="reason"');
-  });
-  it("a read-only role cannot edit labels", () => {
-    const m = html(<CodeListEditor listKey="force_reason" initial={[item("far_outlet", { attrs: undefined })]} attrs={[]} today="2026-10-07" canWrite={false} />);
-    expect(m).toContain("disabled");
-    expect(m).not.toContain('name="reason"');
-  });
-  it("the reason tables page offers every reason list and shows Bangla labels in bn", () => {
-    const m = text(html(<CodeListsView locale="bn" lists={[{ list_key: "force_reason", items: [item("far_outlet", { label_bn: "দূরের আউটলেট", attrs: undefined })] }]} selected="force_reason" choices={["force_reason", "edit_reason"]} basePath="/admin/code-lists" today="2026-10-07" canWrite titleKey="cl.title" />));
-    expect(m).toContain("জোর করে বিক্রির কারণ");
-  });
-  it("save is one PUT of the list with the reason as change_reason; SUPPORT cannot", async () => {
-    h.stub({ method: "PUT", path: "/v1/admin/code-lists/qc_fault_type", fn: () => ({ status: 200, body: { list_key: "qc_fault_type", items: [] } }) });
-    const body = { items: [{ code: "burst_pack", label_en: "Burst pack", sort: 10, valid_from: "2026-10-07", valid_to: null }] };
-    expect((await op(await admin(), { op: "code-list.put", params: { list_key: "qc_fault_type" }, body, reason: "New fault seen in the market" })).status).toBe(200);
-    expect(h.calls()[0]?.body).toEqual({ ...body, change_reason: "New fault seen in the market" });
-    expect((await op(await support(), { op: "code-list.put", params: { list_key: "qc_fault_type" }, body, reason: "New fault seen in the market" })).status).toBe(403);
-  });
-});
-
 describe("team-op proxy", () => {
   const post = async (cookies: Record<string, string>, body: unknown) => teamPost(req("/api/bff/team-op", "POST", body, cookies));
   it("a TSO can final-submit (client uuid forwarded) but cannot use the admin ops", async () => {
@@ -98,7 +56,7 @@ describe("team-op proxy", () => {
   });
   it("delete section data needs a reason and is refused for roles outside the list", async () => {
     h.stub({ method: "POST", path: "/v1/admin/data-void", fn: () => ({ status: 200, body: {} }) });
-    const body = { client_uuid: "55555555-5555-4555-8555-555555555555", route_id: 9, business_date: "2026-10-06", scope: "all" };
+    const body = { client_uuid: "55555555-5555-4555-8555-555555555555", route_id: 9, business_date: "2026-10-06", scope: "web_entry" };
     expect((await post(await tso(), { op: "day.data-void", body })).status).toBe(400);
     expect((await post(await tso(), { op: "day.data-void", body, reason: "Wrong route entered by mistake" })).status).toBe(200);
     expect(h.calls()[0]?.body).toEqual({ ...body, reason: "Wrong route entered by mistake" });

@@ -22,7 +22,7 @@ export function DeviceReplaceView({ locale, device }: { locale: Locale; device: 
     return (
       <div className="space-y-4">
         <PageHeading title={t(locale, "dev.replace.title")} />
-        <p role="alert" className="rounded bg-amber-50 p-3 text-sm text-amber-900" data-testid="replace-not-allowed">{t(locale, "dev.replace.not_allowed")}</p>
+        <p role="alert" className="rounded bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] p-3 text-sm text-[var(--warning)]" data-testid="replace-not-allowed">{t(locale, "dev.replace.not_allowed")}</p>
       </div>
     );
   }

@@ -20,7 +20,8 @@ export function problemResponse(status: number, code: ProblemCode, extra?: Parti
 
 /** CSRF defence in depth on top of SameSite=Strict: a browser POST from another site is refused. */
 export function sameOrigin(req: NextRequest): boolean {
-  if (req.headers.get("sec-fetch-site") === "cross-site") return false;
+  const site = req.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") return false; // cross-site and same-site (a sibling subdomain) are refused
   const origin = req.headers.get("origin");
   if (!origin) return true; // non-browser caller; the cookie is SameSite=Strict, so a browser cannot attach it cross-site anyway
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
@@ -46,7 +47,7 @@ export async function authenticate(req: NextRequest, pathname: string): Promise<
   const rt = req.cookies.get(RT_COOKIE)?.value;
   if (needsRefresh(session)) {
     if (!rt) return problemResponse(401, "ERR_TOKEN_EXPIRED");
-    refreshed = await refreshSession(rt, session.rem === true);
+    refreshed = await refreshSession(rt, session.rem === true, session.user.role, session.sat);
     if (!refreshed.ok && refreshed.status !== 401 && refreshed.status !== 403) {
       // API outage or edge error: keep the cookies so the user is not logged out by a blip; the caller may retry.
       return problemResponse(503, "ERR_SERVICE_UNAVAILABLE", { retryable: true });

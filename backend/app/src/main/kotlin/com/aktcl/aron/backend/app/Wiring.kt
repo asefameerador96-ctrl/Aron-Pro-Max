@@ -26,6 +26,12 @@ import com.aktcl.aron.backend.auth.TokenIssuer
 import com.aktcl.aron.backend.auth.authRoutes
 import com.aktcl.aron.backend.config.ConfigDeps
 import com.aktcl.aron.backend.config.ConfigResolver
+import com.aktcl.aron.backend.config.ConfigPermissions
+import com.aktcl.aron.backend.config.ConfigPermissionsDeps
+import com.aktcl.aron.backend.config.ConfigPublic
+import com.aktcl.aron.backend.config.ConfigPublicDeps
+import com.aktcl.aron.backend.config.configPermissionRoutes
+import com.aktcl.aron.backend.config.configPublicRoutes
 import com.aktcl.aron.backend.config.ConfigService
 import com.aktcl.aron.backend.config.ConfigTools
 import com.aktcl.aron.backend.config.ConfigToolsDeps
@@ -36,7 +42,29 @@ import com.aktcl.aron.backend.config.configAdminRoutes
 import com.aktcl.aron.backend.config.configDeltaRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
+import com.aktcl.aron.backend.masterdata.AdminPricesDeps
+import com.aktcl.aron.backend.masterdata.AdminProductsDeps
 import com.aktcl.aron.backend.masterdata.OtpCipher
+import com.aktcl.aron.backend.masterdata.AdminMasterDeps
+import com.aktcl.aron.backend.masterdata.adminMasterRoutes
+import com.aktcl.aron.backend.masterdata.VisitPlanDeps
+import com.aktcl.aron.backend.masterdata.visitPlanRoutes
+import com.aktcl.aron.backend.masterdata.RouteAssignmentsDeps
+import com.aktcl.aron.backend.masterdata.routeAssignmentRoutes
+import com.aktcl.aron.backend.masterdata.LeaveDeps
+import com.aktcl.aron.backend.masterdata.leaveRoutes
+import com.aktcl.aron.backend.masterdata.TutorialsDeps
+import com.aktcl.aron.backend.masterdata.tutorialRoutes
+import com.aktcl.aron.backend.masterdata.SupportUploadDeps
+import com.aktcl.aron.backend.masterdata.supportUploadRoutes
+import com.aktcl.aron.backend.masterdata.FeedbackDeps
+import com.aktcl.aron.backend.masterdata.feedbackRoutes
+import com.aktcl.aron.backend.masterdata.AdminContentDeps
+import com.aktcl.aron.backend.masterdata.adminContentRoutes
+import com.aktcl.aron.backend.masterdata.BlobSasIssuer
+import com.aktcl.aron.backend.masterdata.adminPricesRoutes
+import com.aktcl.aron.backend.masterdata.adminProductsRoutes
+import com.aktcl.aron.backend.masterdata.deviceReplaceRoutes
 import com.aktcl.aron.backend.masterdata.deviceOtpRoutes
 import com.aktcl.aron.backend.masterdata.OutletsDeps
 import com.aktcl.aron.backend.masterdata.SqlReachResolver
@@ -57,6 +85,8 @@ import com.aktcl.aron.backend.sync.IngestService
 import com.aktcl.aron.backend.sync.ServerGeneration
 import com.aktcl.aron.backend.sync.SyncDeps
 import com.aktcl.aron.backend.sync.syncRoutes
+import com.aktcl.aron.backend.sync.TeamDeps
+import com.aktcl.aron.backend.sync.teamRoutes
 
 /** The object graph of the API process; tests build their own with throwaway keys and in-memory stores. */
 class Wiring(
@@ -89,9 +119,14 @@ class Wiring(
             val team = TeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
             val reports = ReportDeps(db, ReportEngine(db, config, clock, ReportHandlers.all), reach, guard, clock)
             val configResolver = ConfigResolver(db, clock)
-            val configService = ConfigService(db, configResolver, clock)
+            val toolsReach = com.aktcl.aron.backend.config.NodeReach { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
+            val configService = ConfigService(db, configResolver, clock, toolsReach)
             val configDeps = ConfigDeps(configService, guard, clock)
-            val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock), guard)
+            val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
+            val permDeps = ConfigPermissionsDeps(ConfigPermissions(db, configService, clock), guard)
+            val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
+            // REQUEST: the Azure Blob implementation of BlobSasIssuer belongs to the infra lane; until then SAS issue answers 503 (docs/requests/backend-admin-blob-sas.md).
+            val blob = com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
@@ -106,8 +141,22 @@ class Wiring(
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
+                deviceReplaceRoutes(otpDeps)
+                visitPlanRoutes(VisitPlanDeps(db, reach, config, guard, clock))
+                routeAssignmentRoutes(RouteAssignmentsDeps(db, reach, guard, clock))
+                leaveRoutes(LeaveDeps(db, reach, config, guard, clock))
+                tutorialRoutes(TutorialsDeps(db, blob, guard))
+                supportUploadRoutes(SupportUploadDeps(db, blob, config, guard, clock))
+                feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
+                adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
+                adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock))
+                adminProductsRoutes(AdminProductsDeps(db, guard, clock))
+                adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)
+                configPermissionRoutes(permDeps)
+                configPublicRoutes(publicDeps)
                 syncRoutes(sync)
+                teamRoutes(TeamDeps(db, reach, guard, clock))
             }, frontDoorId = s.frontDoorId)
         }
     }
