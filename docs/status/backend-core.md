@@ -47,6 +47,8 @@ Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backen
 - Opus checkers: PERF-02/REL-07 (6 findings; 5 fixed, the nested-borrow deadlock disproved: JDBI reuses the thread's handle, pool-of-one test), SEC-08/TP-3 (7, fixed), SEC-01/03/07 (combined: 3 fixed, 4 logged in BC-52).
 - Touched another lane's test once: `DataVoidCheckerTest` ingest hold 30 s -> 15 s (inside the 25 s request budget; the void waits on that ingest's lock by design).
 
+- **Lead requests after the handoff (all on lane/backend-core 33fd70db, Opus-checked):** F-SYS-072 signature mode (BC-53), config delta `outlet_radius_changes` (BC-54), consent dedupe + `user.consents` (BC-55, `RecordHandler.sameAs`), integrity-release edges (BC-56). Requests filed: `backend-core-record-signature-mode-key.md`, `backend-core-app-cfg-keys.md` (db). When the app keys land on INT, add a bundle test that they arrive in `config.values`.
+
 ## Decisions taken (session 3)
 - Change-password revokes every full-grant family of the user except the calling phone's own (the contract says "other"; a web caller has no family id in the token, so all web families go and the BFF logs in again).
 - A phone with a temporary password keeps the 10-minute API token for change-password (R15 covers `client: web` only).
