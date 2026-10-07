@@ -8,6 +8,10 @@ import kotlinx.serialization.json.JsonElement
 // Contract `EnrolDeviceRequest` / `EnrolDeviceResponse` (docs/24 s10.4). REQUEST: docs/requests/android-core-contract-dtos.md
 // (DTOs in shared:contract); EnrolmentContractTest checks every member against contract/openapi.yaml until then.
 
+/** Contract `PlayIntegrityUnavailable` (v1.2). */
+@Serializable
+data class PlayIntegrityUnavailableDto(val reason: String, val detail: String? = null)
+
 @Serializable
 data class JwkEcPublic(val kty: String = "EC", val crv: String = "P-256", val x: String, val y: String)
 
@@ -36,6 +40,8 @@ data class EnrolDeviceRequest(
     @SerialName("device_info") val deviceInfo: DeviceInfoDto,
     /** `DeviceStatusReport` built by the app, or null (the first status follows after login). */
     val status: JsonElement? = null,
+    /** Why there is no Play Integrity token in [status], when the phone tried and could not get one. */
+    @SerialName("play_integrity_unavailable") val playIntegrityUnavailable: PlayIntegrityUnavailableDto? = null,
 ) {
     override fun toString() = "EnrolDeviceRequest(device_uuid=$deviceUuid, app=$appPackage $appVersion, token=<redacted>)"
 }
