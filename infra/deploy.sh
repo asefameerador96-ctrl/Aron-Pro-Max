@@ -291,6 +291,7 @@ else
   [ -n "$ARON_BUDGET_START_DATE" ] || ARON_BUDGET_START_DATE="$(date -u +%Y-%m-01)"
   # What-if first: the infra stage must never recreate or reconfigure a PostgreSQL server (the rehearsal profile
   # adopts the existing one; tier, storage, HA, backup and network are fixed at creation or must not change by accident).
+  # The live PostgreSQL zones were exported above (pg-live-zones), before params_unchanged.
   note "what-if of main.bicep"
   az deployment group what-if -g "$RG" --template-file infra/main.bicep \
     --parameters "infra/params/${PROFILE}.bicepparam" --no-pretty-print -o json > "$whatif_file" \

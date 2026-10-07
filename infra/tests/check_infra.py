@@ -285,6 +285,8 @@ class ReliabilityProperties(unittest.TestCase):
         self.assertLess(end, d.index("params_unchanged() {"))
         self.assertLess(end, d.index("az deployment group what-if"))
         block = d[start:end]
+        g = (ROOT / "infra" / "scripts" / "whatif-guard.py").read_text(encoding="utf-8")
+        self.assertIn('"properties.highavailability"', g, "the guard itself stays strict")
         # The fake az below ignores --query, so the null guards that keep the tsv fields in place are checked here.
         self.assertIn("[].[name, availabilityZone || '-', highAvailability.mode || '-', "
                       "highAvailability.standbyAvailabilityZone || '-']", block)
