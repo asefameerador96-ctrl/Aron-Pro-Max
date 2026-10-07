@@ -17,9 +17,13 @@ data class BreadcrumbSettings(
     val intervalMs: Long get() = intervalMin.coerceIn(5, 120) * 60_000L
 }
 
-/** The gate's persisted state for the current working day (elapsed-realtime based; a reboot starts a new window). */
+/**
+ * The gate's persisted state for the current working day. Times are elapsed realtime; [wallMinusElapsedMs] detects a
+ * reboot (elapsed realtime restarts), after which the window is re-anchored instead of stopping for the day.
+ */
 data class BreadcrumbState(
     val dayStartElapsedMs: Long? = null,
+    val wallMinusElapsedMs: Long? = null,
     val lastKeptElapsedMs: Long? = null,
     val lastLat: Double? = null,
     val lastLng: Double? = null,
@@ -76,12 +80,14 @@ class BreadcrumbController(
     private val clock: com.aktcl.aron.core.common.WallClock,
     private val settings: () -> BreadcrumbSettings,
 ) {
-    private var running = false
+    /** The interval and distance the running request was started with (null: not running). */
+    private var runningWith: Pair<Long, Double>? = null
 
     @Synchronized
-    fun onCheckIn() {
-        store.save(BreadcrumbState(dayStartElapsedMs = clock.elapsedRealtimeMs()))
-        reconcile(batteryPct = null, charging = false)
+    fun onCheckIn(batteryPct: Int? = null, charging: Boolean = false) {
+        val now = clock.elapsedRealtimeMs()
+        store.save(BreadcrumbState(dayStartElapsedMs = now, wallMinusElapsedMs = clock.nowMs() - now))
+        reconcile(batteryPct, charging)
     }
 
     @Synchronized
@@ -90,31 +96,51 @@ class BreadcrumbController(
         reconcile(batteryPct = null, charging = false)
     }
 
-    /** Call on policy change, app start, boot and battery-low/okay broadcasts. */
+    /** Call on policy change, app start, boot and battery-low/okay broadcasts. Restarts the request when its settings changed. */
     @Synchronized
     fun reconcile(batteryPct: Int?, charging: Boolean) {
         val s = settings()
-        val st = store.load()
-        val want = s.enabled && st.dayStartElapsedMs != null && st.dayStartElapsedMs <= clock.elapsedRealtimeMs() &&
-            !(batteryPct != null && batteryPct < s.batteryFloorPct && !charging)
-        if (want && !running) { runCatching { client.start(s.intervalMs, s.minDisplacementM) }.onSuccess { running = true } }
-        if (!want) { runCatching { client.stop() }; running = false }
+        val st = reanchored(store.load())
+        val want = s.enabled && st.dayStartElapsedMs != null && !(batteryPct != null && batteryPct < s.batteryFloorPct && !charging)
+        val target = s.intervalMs to s.minDisplacementM
+        if (want && runningWith != target) {
+            if (runningWith != null) runCatching { client.stop() }
+            runningWith = if (runCatching { client.start(target.first, target.second) }.isSuccess) target else null
+        }
+        if (!want) { runCatching { client.stop() }; runningWith = null }
+    }
+
+    /** After a reboot elapsed realtime restarts: re-anchor the window at "now" (spacing from here, last place kept). */
+    private fun reanchored(st: BreadcrumbState): BreadcrumbState {
+        val start = st.dayStartElapsedMs ?: return st
+        val now = clock.elapsedRealtimeMs()
+        val offset = clock.nowMs() - now
+        val rebooted = now < start || (st.lastKeptElapsedMs != null && now < st.lastKeptElapsedMs) ||
+            (st.wallMinusElapsedMs != null && kotlin.math.abs(offset - st.wallMinusElapsedMs) > REBOOT_OFFSET_MS)
+        if (!rebooted) return st
+        return st.copy(dayStartElapsedMs = now, wallMinusElapsedMs = offset, lastKeptElapsedMs = null).also { store.save(it) }
     }
 
     /** A batch of locations from the platform; returns how many were kept. Never throws. */
     @Synchronized
     fun onLocations(locations: List<RawLocation>, batteryPct: Int?, charging: Boolean): Int = runCatching {
         val s = settings()
-        var st = store.load()
+        var st = reanchored(store.load())
         var kept = 0
         for (loc in locations.sortedBy { it.elapsedRealtimeNanos }) {
             val now = clock.elapsedRealtimeMs()
-            if (BreadcrumbGate.decide(s, st, loc, now, batteryPct, charging) != BreadcrumbDecision.KEEP) continue
-            sink.store(toFix(loc, now))
-            st = BreadcrumbGate.kept(st, loc, now)
-            kept++
+            when (BreadcrumbGate.decide(s, st, loc, now, batteryPct, charging)) {
+                BreadcrumbDecision.KEEP -> {
+                    sink.store(toFix(loc, now))
+                    st = BreadcrumbGate.kept(st, loc, now)
+                    store.save(st) // after each point: a failing write later in the batch cannot undo the spacing
+                    kept++
+                }
+                // A delivery while off or checked out means a request outlived its reason: remove it now.
+                BreadcrumbDecision.OFF, BreadcrumbDecision.NOT_CHECKED_IN -> { reconcile(batteryPct, charging); return@runCatching kept }
+                else -> Unit
+            }
         }
-        store.save(st)
         if (batteryPct != null && batteryPct < s.batteryFloorPct && !charging) reconcile(batteryPct, charging)
         kept
     }.getOrDefault(0)
@@ -134,6 +160,8 @@ class BreadcrumbController(
         )
     }
 }
+
+private const val REBOOT_OFFSET_MS = 5 * 60_000L
 
 /** Persists [BreadcrumbState]. */
 interface BreadcrumbStateStore {

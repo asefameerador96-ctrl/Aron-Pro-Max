@@ -46,11 +46,23 @@ class AndroidBreadcrumbClient(context: Context) : BreadcrumbClient {
 class BreadcrumbReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val result = LocationResult.extractResult(intent) ?: return
-        val controller = Breadcrumbs.controller ?: return // app not wired yet: drop, nothing stored
-        val bm = context.getSystemService(BatteryManager::class.java)
-        val pct = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }
-        val charging = bm?.isCharging == true
-        controller.onLocations(result.locations.map { it.toRaw() }, pct, charging)
+        val pending = goAsync() // the sink writes to the database: off the main thread, within the broadcast's time
+        Thread {
+            try {
+                val controller = Breadcrumbs.controller
+                if (controller == null) {
+                    // Nobody to keep the points (process restarted before the app wired breadcrumbs): stop the request
+                    // rather than keep taking fixes; the app's next reconcile restarts it if breadcrumbs are on.
+                    runCatching { AndroidBreadcrumbClient(context).stop() }
+                } else {
+                    val bm = context.getSystemService(BatteryManager::class.java)
+                    val pct = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }
+                    controller.onLocations(result.locations.map { it.toRaw() }, pct, bm?.isCharging == true)
+                }
+            } finally {
+                pending.finish()
+            }
+        }.start()
     }
 }
 
