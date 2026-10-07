@@ -279,13 +279,40 @@ class ReliabilityProperties(unittest.TestCase):
             p = params(f"{prof}.parameters.json")
             self.assertEqual((p["postgresPrimaryZone"], p["postgresStandbyZone"]), ("1", "2"),
                              f"{prof}: without a live server the creation defaults apply")
-        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        live = d.index('export ARON_PG_PRIMARY_ZONE="$pg_zone"')
-        self.assertIn('export ARON_PG_STANDBY_ZONE="$pg_standby"', d)
-        self.assertIn("unset ARON_PG_PRIMARY_ZONE ARON_PG_STANDBY_ZONE", d)
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8").replace("\r\n", "\n")
+        start, end = d.index("# >>> pg-live-zones"), d.index("# <<< pg-live-zones")
         # Exported before the parameter comparison (a swap re-runs the infra stage) and before the what-if.
-        self.assertLess(live, d.index("params_unchanged() {"))
-        self.assertLess(live, d.index("az deployment group what-if"))
+        self.assertLess(end, d.index("params_unchanged() {"))
+        self.assertLess(end, d.index("az deployment group what-if"))
+        block = d[start:end]
+        import subprocess
+        harness = ("set -euo pipefail\n"
+                   "die() { echo \"DIE: $*\"; exit 1; }\nnote() { :; }\n"
+                   "az() { [ \"$FAKE_FAIL\" = 1 ] && return 1; printf '%b' \"$FAKE_OUT\"; }\n"
+                   "RG=rg; ENV_NAME=dev\n" + block +
+                   "echo \"P=${ARON_PG_PRIMARY_ZONE:-unset} S=${ARON_PG_STANDBY_ZONE:-unset}\"\n")
+        srv = "psql-aron-dev-7i7g53"
+        cases = [
+            # (name, az tsv output, rollback, az fails, expected)
+            ("after a failover swap (CRLF)", f"{srv}\\t2\\tZoneRedundant\\t1\\r\\n", "", "0", "P=2 S=1"),
+            ("fresh server", f"{srv}\\t1\\tZoneRedundant\\t2\\n", "", "0", "P=1 S=2"),
+            ("no server", "", "", "0", "P=unset S=unset"),
+            ("HA disabled (dev-lite)", f"{srv}\\t1\\tDisabled\\t-\\n", "", "0", "P=1 S=unset"),
+            ("SameZone", f"{srv}\\t2\\tSameZone\\t2\\n", "", "0", "P=2 S=unset"),
+            ("no zone reported", f"{srv}\\t-\\tZoneRedundant\\t1\\n", "", "0", "P=unset S=unset"),
+            ("standby zone missing: never equal to the primary", f"{srv}\\t2\\tZoneRedundant\\t-\\n", "", "0", "P=2 S=1"),
+            ("PITR drill restore and replica are ignored",
+             f"{srv}\\t2\\tZoneRedundant\\t1\\n{srv}-drill-10071200\\t1\\tDisabled\\t-\\n{srv}-r1\\t3\\tDisabled\\t-\\n",
+             "", "0", "P=2 S=1"),
+            ("rollback skips the lookup", f"{srv}\\t2\\tZoneRedundant\\t1\\n", "a" * 40, "1", "P=unset S=unset"),
+            ("az failure stops the deploy", "", "", "1", "DIE: cannot list"),
+            ("two servers of the profile stop the deploy",
+             f"{srv}\\t2\\tZoneRedundant\\t1\\npsql-aron-dev-other\\t1\\tDisabled\\t-\\n", "", "0", "DIE: more than one"),
+        ]
+        for name, out, rollback, fail, want in cases:
+            env = dict(os.environ, FAKE_OUT=out, FAKE_FAIL=fail, ROLLBACK_SHA=rollback)
+            r = subprocess.run(["bash", "-c", harness], env=env, capture_output=True, text=True, cwd=ROOT)
+            self.assertIn(want, r.stdout, f"{name}: {r.stdout!r} {r.stderr!r}")
 
     def test_postgres_ha_backup_and_pooling_follow_the_parameters(self):
         t, bound = module("main.json", "postgres")

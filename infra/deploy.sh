@@ -197,22 +197,40 @@ infra_paths=(infra/main.bicep infra/modules infra/lib "infra/params/${PROFILE}.b
 # PostgreSQL zones are chosen at creation; a forced failover (drill.sh, or Azure itself) swaps primary and standby.
 # Pass the live zones of the existing primary server so main.bicep matches it and never tries to move it back (the
 # what-if guard refuses that, run 37608044223). Set before params_unchanged, so a swap also re-runs the infra stage.
+# >>> pg-live-zones (run in isolation by infra/tests/check_infra.py)
+# Only the server main.bicep names (psql-aron-<env>-<suffix>, no further '-'): a PITR drill restore
+# (<server>-drill-<time>) or the replica (<server>-r1, standalone once promoted) must never be read or block a deploy.
+# A rollback skips the infra stage, so it skips this lookup too.
 unset ARON_PG_PRIMARY_ZONE ARON_PG_STANDBY_ZONE
-pg_live="$(az postgres flexible-server list -g "$RG" \
-  --query "[?starts_with(name, 'psql-aron-${ENV_NAME}-') && replicationRole != 'AsyncReplica' && replicationRole != 'GeoAsyncReplica'].[availabilityZone, highAvailability.mode, highAvailability.standbyAvailabilityZone]" \
-  -o tsv | tr -d '\r')" || die "cannot list the PostgreSQL servers of $RG"
+pg_live=""
+if [ -z "$ROLLBACK_SHA" ]; then
+  # "|| '-'" keeps every tsv field non-empty, so a null zone cannot shift the fields read below.
+  pg_all="$(az postgres flexible-server list -g "$RG" \
+    --query "[].[name, availabilityZone || '-', highAvailability.mode || '-', highAvailability.standbyAvailabilityZone || '-']" \
+    -o tsv)" || die "cannot list the PostgreSQL servers of $RG"
+  pg_live="$(printf '%s\n' "$pg_all" | tr -d '\r' | grep -E "^psql-aron-${ENV_NAME}-[a-z0-9]+[[:space:]]" || true)"
+fi
 if [ "$(printf '%s\n' "$pg_live" | grep -c .)" -gt 1 ]; then
-  die "more than one primary PostgreSQL server matches psql-aron-${ENV_NAME}-* in $RG; resolve that first"
+  die "more than one PostgreSQL server is named psql-aron-${ENV_NAME}-<suffix> in $RG; resolve that first"
 fi
 if [ -n "$pg_live" ]; then
-  read -r pg_zone pg_ha pg_standby <<< "$pg_live"
+  read -r _ pg_zone pg_ha pg_standby <<< "$pg_live"
   if [[ "$pg_zone" =~ ^[123]$ ]]; then
     export ARON_PG_PRIMARY_ZONE="$pg_zone"
     # SameZone puts the standby in the primary's zone (the template does that itself); only ZoneRedundant has its own.
-    if [ "$pg_ha" = ZoneRedundant ] && [[ "$pg_standby" =~ ^[123]$ ]]; then export ARON_PG_STANDBY_ZONE="$pg_standby"; fi
-    note "PostgreSQL live zones: primary ${pg_zone}, HA ${pg_ha:-none}, standby ${ARON_PG_STANDBY_ZONE:-n/a}"
+    if [ "$pg_ha" = ZoneRedundant ]; then
+      if [[ "$pg_standby" =~ ^[123]$ ]] && [ "$pg_standby" != "$pg_zone" ]; then
+        export ARON_PG_STANDBY_ZONE="$pg_standby"
+      else
+        # No standby zone reported (for example while Azure rebuilds the standby): never ask for primary == standby;
+        # if this differs from the live standby, the what-if guard refuses and nothing changes.
+        for z in 1 2 3; do [ "$z" = "$pg_zone" ] || { export ARON_PG_STANDBY_ZONE="$z"; break; }; done
+      fi
+    fi
+    note "PostgreSQL live zones: primary ${pg_zone}, HA ${pg_ha}, standby ${ARON_PG_STANDBY_ZONE:-n/a}"
   fi
 fi
+# <<< pg-live-zones
 previous="$(az deployment group show -g "$RG" -n aron-infra --query properties.outputs -o json 2>/dev/null || true)"
 # The parameters main.bicep would get now (GitHub variables included), compared with the last successful run, so a
 # changed ARON_ALERT_EMAILS / ARON_BUDGET_AMOUNT / ARON_NAME_SUFFIX / AZURE_LOCATION also re-runs the infra stage.
