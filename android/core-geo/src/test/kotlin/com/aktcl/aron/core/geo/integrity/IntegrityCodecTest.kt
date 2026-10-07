@@ -58,4 +58,18 @@ class IntegrityCodecTest {
         // sha256("abc") with nonce "ab" and device "c"
         assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", IntegrityCodec.requestHash("ab", "c"))
     }
+
+    @Test fun orphanedKeysAreDeletedExceptTheOneInUse() {
+        val present = mutableListOf("aron-device-key-a", "aron-device-key-b", "aron-device-key-c")
+        val ks = object : DeviceKeyStore {
+            override fun create(alias: String, challenge: ByteArray) = error("unused")
+            override fun exists(alias: String) = alias in present
+            override fun sign(alias: String, data: ByteArray): String? = null
+            override fun delete(alias: String) { present -= alias }
+            override fun aliases() = present.toList()
+        }
+        ks.deleteAllExcept("aron-device-key-b")
+        assertEquals(listOf("aron-device-key-b"), present)
+        assertTrue(DeviceKeySpecs.newAlias().startsWith(DeviceKeySpecs.ALIAS_PREFIX))
+    }
 }

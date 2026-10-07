@@ -42,8 +42,10 @@ class FixManager(
 
     private val mutex = Mutex()
     private val candidates = HashMap<String, Candidate>()
-    private var wastedWarmUps = 0
-    private var wastedDay: String? = null
+    /** Warm-up provider requests of [warmUpDay] and how many of them a later take reused. */
+    private var warmUpsIssued = 0
+    private var warmUpsUsed = 0
+    private var warmUpDay: String? = null
 
     /**
      * The fix for [purpose]. [cycle] enables reuse inside one purpose cycle (null: always a fresh request). [refreshCount]
@@ -58,7 +60,11 @@ class FixManager(
             LocationAccessState.LOCATION_OFF -> { cycle?.let { drop(it) }; return@withLock failed(purpose, FixStatus.LOCATION_OFF, s, refreshCount) }
             LocationAccessState.OK -> Unit
         }
-        if (cycle != null && refreshCount == 0) reusable(cycle, s)?.let { it.used = true; return@withLock reuse(purpose, it, refreshCount) }
+        if (cycle != null && refreshCount == 0) reusable(cycle, s)?.let {
+            if (it.fromWarmUp && !it.used) { warmUpBook(); warmUpsUsed++ }
+            it.used = true
+            return@withLock reuse(purpose, it, refreshCount)
+        }
         val fix = request(purpose, s, refreshCount)
         if (cycle != null) {
             drop(cycle)
@@ -80,6 +86,9 @@ class FixManager(
             // budget (docs/24 s5.7: at most 80 fixes) is protected by not warming up again until the next business date.
             if (wastedToday() >= MAX_WASTED_WARMUPS_PER_DAY) return@withLock
             if (access.state(s.requirePrecise) != LocationAccessState.OK) return@withLock
+            // Counted as wasted from the moment it is issued (a timeout or a mock answer costs as much as a good fix);
+            // a later reuse takes it off the count.
+            warmUpBook(); warmUpsIssued++
             val fix = request(FixPurpose.REFRESH, s, 0)
             fix.second?.let { candidates[cycle] = Candidate(it.location, it.timeToFixMs, it.gnssJson, it.priority, fromWarmUp = true) }
         }
@@ -92,14 +101,20 @@ class FixManager(
     suspend fun wastedWarmUps(): Int = mutex.withLock { wastedToday() }
 
     private fun drop(cycle: String) {
-        val c = candidates.remove(cycle) ?: return
-        if (c.fromWarmUp && !c.used) { wastedToday(); wastedWarmUps++ }
+        candidates.remove(cycle)
+        // Expired candidates of other cycles can never be reused: forget them so the map does not grow all day.
+        val now = clock.elapsedRealtimeMs()
+        candidates.entries.removeAll { (_, c) -> now - c.location.elapsedRealtimeNanos / NANOS_PER_MS !in 0..MAX_CANDIDATE_AGE_MS }
+    }
+
+    private fun warmUpBook() {
+        val today = BusinessDate.of(clock.nowMs()).toString()
+        if (warmUpDay != today) { warmUpDay = today; warmUpsIssued = 0; warmUpsUsed = 0 }
     }
 
     private fun wastedToday(): Int {
-        val today = BusinessDate.of(clock.nowMs()).toString()
-        if (wastedDay != today) { wastedDay = today; wastedWarmUps = 0 }
-        return wastedWarmUps
+        warmUpBook()
+        return warmUpsIssued - warmUpsUsed
     }
 
     private fun reusable(cycle: String, s: FixSettings): Candidate? {
@@ -204,6 +219,8 @@ class FixManager(
     companion object {
         /** Unused warm-up fixes allowed per business date before warm-ups stop (keeps the day within 80 fixes). */
         const val MAX_WASTED_WARMUPS_PER_DAY: Int = 8
+        /** Longest possible reuse age (`cfg.geo.fix_reuse_max_age_s` upper bound). */
+        private const val MAX_CANDIDATE_AGE_MS = 300_000L
         /** D-74: a reused fix must be at least this accurate (metres). */
         const val REUSE_MAX_ACCURACY_M: Double = 30.0
         /** Extra time past the provider's own duration before the request is cut off. */

@@ -241,4 +241,30 @@ class FixManagerTest {
         source.hang = false
         assertEquals(FixStatus.OK, manager.take(FixPurpose.VISIT_OPEN).fixStatus) // the mutex was released
     }
+
+    @Test fun failedWarmUpsCountTowardTheCapSoAnIndoorDayStaysWithin80() = runTest {
+        source.next = { SourceResult.TimedOut }
+        manager.take(FixPurpose.ATTENDANCE_IN)
+        repeat(60) {
+            clock.advance(4 * 60_000); manager.warmUp("outlet-list"); clock.advance(90_000)
+            manager.take(FixPurpose.VISIT_OPEN, cycle = "outlet-list")
+        }
+        manager.take(FixPurpose.ATTENDANCE_OUT)
+        assertTrue("provider requests: ${source.requests}", source.requests <= 80)
+        assertEquals(FixManager.MAX_WASTED_WARMUPS_PER_DAY, manager.wastedWarmUps())
+    }
+
+    @Test fun warmUpsOnDistinctCyclesAreCounted() = runTest {
+        repeat(30) { i -> clock.advance(60_000); manager.warmUp("outlet-$i") }
+        assertEquals(FixManager.MAX_WASTED_WARMUPS_PER_DAY, source.requests)
+    }
+
+    @Test fun aReusedWarmUpIsNotWasted() = runTest {
+        manager.warmUp("list")
+        assertEquals(1, manager.wastedWarmUps())
+        assertTrue(manager.take(FixPurpose.VISIT_OPEN, cycle = "list").reused)
+        assertEquals(0, manager.wastedWarmUps())
+        assertTrue(manager.take(FixPurpose.VISIT_OPEN, cycle = "list").reused)
+        assertEquals(0, manager.wastedWarmUps())
+    }
 }

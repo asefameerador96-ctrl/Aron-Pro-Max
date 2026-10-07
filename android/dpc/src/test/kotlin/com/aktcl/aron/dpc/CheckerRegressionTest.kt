@@ -113,4 +113,15 @@ class CheckerRegressionTest {
     @Test fun aBlockWithoutHardEndIsReleasedAtTheNextBusinessDay() {
         assertEquals(Instant.parse("2026-10-07T18:00:00Z").toEpochMilli(), BlockingEngine.nextBusinessDayStartMs(now))
     }
+
+    @Test fun aFailedSecondCheckInReportsTheStoredBlockSoTheAlarmStaysArmed() {
+        val dir = Files.createTempDirectory("blk").toFile()
+        val phone = Phone()
+        val e = BlockingEngine(phone, BlockingStore(dir), { policyFixture() }, { now }, { true })
+        assertTrue(e.onCheckIn().active)
+        File(dir, "blocking-state.tmp").mkdirs() // saves fail from now on
+        val again = e.onCheckIn()
+        assertEquals(phone.suspended.isNotEmpty(), again.active)
+        assertEquals(phone.suspended.toList(), again.suspended)
+    }
 }

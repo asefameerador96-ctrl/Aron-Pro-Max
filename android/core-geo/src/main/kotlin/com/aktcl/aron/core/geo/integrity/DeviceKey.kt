@@ -32,13 +32,20 @@ interface DeviceKeyStore {
     /** ES256 over [data], returned as raw r‖s base64url (86 chars), or null when the key is missing or unusable. */
     fun sign(alias: String, data: ByteArray): String?
     fun delete(alias: String)
+    /** Device-key aliases present (prefix [DeviceKeySpecs.ALIAS_PREFIX]). */
+    fun aliases(): List<String>
+    /** Deletes every device key except [keep]: after the server accepted [keep], or at start to clear keys orphaned by a crash. */
+    fun deleteAllExcept(keep: String) = aliases().filter { it != keep }.forEach(::delete)
 }
 
 object DeviceKeySpecs {
 
     /** The key spec: P-256, SIGN with SHA-256, attestation [challenge], StrongBox when asked; never exportable. */
     /** A fresh alias for a new device key (re-enrolment never overwrites the key in use). */
-    fun newAlias(): String = "aron-device-key-" + java.util.UUID.randomUUID().toString()
+    fun newAlias(): String = ALIAS_PREFIX + java.util.UUID.randomUUID().toString()
+
+    const val ALIAS_PREFIX = "aron-device-key-"
+
 
     fun spec(alias: String, challenge: ByteArray?, strongBox: Boolean): KeyGenParameterSpec =
         KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
@@ -115,6 +122,9 @@ class AndroidDeviceKeyStore(context: Context) : DeviceKeyStore {
     }.getOrNull()
 
     override fun delete(alias: String) { runCatching { keyStore().deleteEntry(alias) } }
+
+    override fun aliases(): List<String> =
+        runCatching { keyStore().aliases().toList().filter { it.startsWith(DeviceKeySpecs.ALIAS_PREFIX) } }.getOrDefault(emptyList())
 
     private companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"

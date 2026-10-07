@@ -74,7 +74,7 @@ class BlockingEngine(
     private val isWorkingDay: (String) -> Boolean? = { null },
 ) {
     @Synchronized
-    fun onCheckIn(): BlockingOutcome = try { checkIn() } catch (e: Exception) { failure(BlockingState()) }
+    fun onCheckIn(): BlockingOutcome = try { checkIn() } catch (e: Exception) { failure(stored()) }
 
     private fun checkIn(): BlockingOutcome {
         val now = trustedNowMs()
@@ -94,7 +94,7 @@ class BlockingEngine(
         runCatching { store.save(out) }
         evaluate(out)
     } catch (e: Exception) {
-        failure(BlockingState())
+        failure(stored())
     }
 
     /**
@@ -106,6 +106,9 @@ class BlockingEngine(
         val s = try { store.load() } catch (e: Exception) { return failure(BlockingState()) }
         return try { evaluate(s) } catch (e: Exception) { failure(s) }
     }
+
+    /** The stored state, so a failure reports what is really suspended (and the hard-end alarm stays armed). */
+    private fun stored(): BlockingState = runCatching { store.load() }.getOrDefault(BlockingState())
 
     private fun failure(s: BlockingState) = BlockingOutcome(s.activeSince != null, s.activeSince, s.suspended, listOf(EVALUATE_FAILED), false)
 
