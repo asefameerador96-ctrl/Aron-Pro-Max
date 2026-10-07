@@ -131,16 +131,19 @@ DeviceStatusReport:
       - $ref: '#/components/schemas/PlayIntegrityEvidence'
       - type: 'null'
     play_integrity_unavailable:
-      description: Why `play_integrity` is null. When the phone tried Play Integrity exactly one of `play_integrity`
-        and `play_integrity_unavailable` is non-null.
+      description: 'Why `play_integrity` is null. When the phone tried Play Integrity exactly one of `play_integrity`
+        and `play_integrity_unavailable` is non-null. A missing marker with a null `play_integrity` (an older app)
+        means unknown: never a failure and never a clean phone (docs/24 s14a R18). On enrolment the top-level `EnrolDeviceRequest.play_integrity_unavailable`
+        wins over this nested copy.'
       oneOf:
       - $ref: '#/components/schemas/PlayIntegrityUnavailable'
       - type: 'null'
     root_hints:
       type: array
       maxItems: 16
-      description: Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence;
-        they never block a sale alone (docs/05).
+      description: 'Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence;
+        they never block a sale alone (docs/05). Missing (an older app) means unknown, not clean and not a failure:
+        the server stores NULL (never an empty array) and scoring treats it as no evidence (docs/24 s14a R18).'
       items:
         type: string
         enum:
