@@ -56,6 +56,12 @@ class MediaShell(context: Context, private val components: SessionComponents, pr
         MediaWorkScheduler(WorkManager.getInstance(app), wifiOnly::wifiOnly, components.clock::nowMs) { config }
     }
 
+    /** Settings switch: stored off the main thread, then the upload job is rescheduled with the new network rule. */
+    suspend fun setWifiOnly(on: Boolean) = withContext(Dispatchers.IO) {
+        wifiOnly.set(on)
+        runCatching { scheduler.requestUpload() }
+    }
+
     /** Application.onCreate: the media worker finds its users and uploaders; photos left by an earlier process go out. */
     fun install() {
         MediaRuntime.wiring = MediaRuntime.Wiring(users = { databases.knownUserIds() }, uploader = ::uploader, scheduler = { scheduler })

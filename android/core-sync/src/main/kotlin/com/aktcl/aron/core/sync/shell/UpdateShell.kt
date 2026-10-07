@@ -80,6 +80,9 @@ class UpdateShell(
 
     fun later(release: ReleaseInfo) { _laterFor.value = release.versionCode }
 
+    /** Settings > App update: undoes "Later" so the host shows the update page again when a release is available. */
+    fun openPage() { _laterFor.value = null }
+
     fun dayGate(dayOpen: Boolean, serverSaidTooOld: Boolean): DayGate = manager.dayGate(dayOpen, serverSaidTooOld)
 
     fun network(): NetworkStatus {
