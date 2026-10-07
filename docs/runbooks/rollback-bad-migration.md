@@ -30,8 +30,10 @@ az postgres flexible-server restore -g <rg> --name <server>-r<yyyymmddhhmm> \
   --source-server <server> --restore-time <yyyy-mm-ddThh:mm:ssZ>
 ```
 
-The restored server comes up in the source server's network (private access) with the same admin login; check the
-network settings in the portal before use (to be confirmed in the drill).
+The restored server comes up in the source server's network (private access) with the same admin login. The
+**drill** workflow (`mode: pitr`, `confirm: owner approved restore drill`) runs exactly this, compares the row counts
+of every app table on both servers from inside the VNet, and deletes the copy in the same run; its summary gives the
+restore duration and the cost estimate.
 
 Then either:
 - **Repair** (usual): compare the damaged tables between the live and the restored server and copy the lost rows

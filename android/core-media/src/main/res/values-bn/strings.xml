@@ -10,5 +10,10 @@
     <string name="media_ok">ঠিক আছে</string>
     <!-- F-SYS-037 -->
     <string name="media_wifi_only_title">শুধু ওয়াই-ফাইতে ছবি পাঠান</string>
-    <string name="media_wifi_only_hint">আপনার ডেটা প্যাক বাঁচায়। বিক্রি ও মেমো সব নেটওয়ার্কেই যায়। ফোর্স সেল ও অনুরোধের দোকানের ছবি ৬ ঘণ্টা পর মোবাইল ডেটায় যাবে।</string>
+    <string name="media_wifi_only_hint">আপনার ডেটা প্যাক বাঁচায়। বিক্রি ও মেমো সব নেটওয়ার্কেই যায়।</string>
+    <plurals name="media_wifi_only_evidence_after">
+        <item quantity="one">প্রমাণের ছবি (ফোর্স সেল, দোকানের ছবি ও যাচাই) %1$s ঘণ্টা পর মোবাইল ডেটায় যাবে।</item>
+        <item quantity="other">প্রমাণের ছবি (ফোর্স সেল, দোকানের ছবি ও যাচাই) %1$s ঘণ্টা পর মোবাইল ডেটায় যাবে।</item>
+    </plurals>
+    <string name="media_wifi_only_evidence_never">প্রমাণের ছবিও ওয়াই-ফাইয়ের জন্য অপেক্ষা করবে।</string>
 </resources>

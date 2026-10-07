@@ -28,6 +28,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -43,10 +44,22 @@ data class SyncHealthRow(
 )
 
 @Serializable
-data class SyncHealthSummary(val devices: Int, val devices_with_pending: Int, val held_rows_alerts: Int, val rejected: Int, val quarantined: Int, val mismatched_route_days: Int)
+data class PendingPhotos(val count: Int, val oldest_age_s: Long?)
 
 @Serializable
-data class SyncHealthPage(val as_of: String, val summary: SyncHealthSummary, val items: List<SyncHealthRow>, val next_cursor: String? = null)
+data class SyncHealthSummary(
+    val devices: Int, val devices_with_pending: Int, val held_rows_alerts: Int, val rejected: Int, val quarantined: Int, val mismatched_route_days: Int,
+    val config_ack_pct: Double? = null, val pending_photos: PendingPhotos? = null, val quarantine_backlog: Int? = null,
+)
+
+@Serializable
+data class SyncHealthZone(
+    val zone_id: Long, val login_pct: Double?, val submit_pct: Double?, val final_submitted: Boolean, val trickle_p95_s: Double?, val quarantined: Int,
+    val pending_photos: Int, val config_ack_pct: Double?,
+)
+
+@Serializable
+data class SyncHealthPage(val as_of: String, val summary: SyncHealthSummary, val items: List<SyncHealthRow>, val next_cursor: String? = null, val by_zone: List<SyncHealthZone> = emptyList())
 
 @Serializable
 data class RouteDayStateDto(
@@ -58,8 +71,11 @@ data class RouteDayStateDto(
 @Serializable
 data class LoginSubmitStatus(
     val as_of: String, val business_date: String, val kpis: DashboardKpis, val not_logged_in: List<RouteDayStateDto>, val logged_in_not_submitted: List<RouteDayStateDto>,
-    val submitted: List<RouteDayStateDto>, val exceptions: List<RouteDayStateDto>,
+    val submitted: List<RouteDayStateDto>, val exceptions: List<RouteDayStateDto>, val zones: List<ZoneFinalDto> = emptyList(),
 )
+
+@Serializable
+data class ZoneFinalDto(val zone_id: Long, val final_submitted: Boolean)
 
 @Serializable
 data class QuarantineItemDto(
@@ -126,13 +142,51 @@ class OpsService(
             }.list()
             val page = rows.take(limit)
             val next = if (rows.size > limit) page.last().let { Base64.getUrlEncoder().withoutPadding().encodeToString("${it.user_id}|${it.device_id}".toByteArray()) } else null
-            SyncHealthPage(clock.now().wire(), s, page, next)
+            val extras = healthExtras(h, node, reach, level, date)
+            SyncHealthPage(clock.now().wire(), s.copy(config_ack_pct = extras.first.configAckPct, pending_photos = extras.first.pendingPhotos, quarantine_backlog = extras.first.backlog), page, next, extras.second)
         }
     }
 
+    private class HealthSummaryExtras(val configAckPct: Double?, val pendingPhotos: PendingPhotos, val backlog: Int)
+
+    /**
+     * v1.2 additions (F-WEB-045): config ack share, pending photos (media rows still `pending_blob`, attributed to the zone of their user's route that
+     * day), unresolved quarantine backlog, and the per-zone breakdown. Zone figures come from dw.agg_daily_zone; percentages as DashboardKpis.
+     */
+    private fun healthExtras(h: org.jdbi.v3.core.Handle, node: ScopedNode, reach: Reach, level: String?, date: LocalDate): Pair<HealthSummaryExtras, List<SyncHealthZone>> {
+        val now = OffsetDateTime.ofInstant(clock.now(), java.time.ZoneOffset.UTC)
+        val zones = node.bind(h.createQuery("SELECT DISTINCT g.zone_id FROM dw.dim_geo g WHERE ${node.clause("g.zone_id")} ORDER BY 1")).mapTo(Long::class.java).list()
+        val version = h.createQuery("SELECT max(config_version) FROM app.cfg_version").mapTo(Long::class.java).findOne().orElse(null) ?: 0L
+        val photoSql = """
+            FROM app.media m JOIN app.route_day rd ON coalesce(rd.acting_user_id, rd.assigned_user_id) = m.user_id AND rd.business_date = m.business_date
+            JOIN dw.dim_geo g ON g.route_id = rd.route_id WHERE m.status = 'pending_blob' AND m.business_date = :d AND ${node.clause("g.zone_id")}
+        """
+        val photos = node.bind(h.createQuery("SELECT count(DISTINCT m.id)::int, min(m.received_at) $photoSql").bind("d", date)).map { rs, _ ->
+            PendingPhotos(rs.getInt(1), rs.getObject(2, OffsetDateTime::class.java)?.let { Math.max(0, Duration.between(it, now).seconds) })
+        }.one()
+        val photosByZone = node.bind(h.createQuery("SELECT g.zone_id, count(DISTINCT m.id)::int $photoSql GROUP BY 1").bind("d", date)).map { rs, _ -> rs.getLong(1) to rs.getInt(2) }.list().toMap()
+        val openQ = "FROM app.sync_quarantine q JOIN dw.dim_geo g ON g.route_id = q.route_id WHERE q.status = 'open' AND ${node.clause("g.zone_id")}"
+        val routeless = if (reach.national && level == null) h.createQuery("SELECT count(*)::int FROM app.sync_quarantine WHERE status = 'open' AND route_id IS NULL").mapTo(Int::class.java).one() else 0
+        val backlog = node.bind(h.createQuery("SELECT count(*)::int $openQ")).mapTo(Int::class.java).one() + routeless
+        val qByZone = node.bind(h.createQuery("SELECT g.zone_id, count(*)::int $openQ AND q.business_date = :d GROUP BY 1").bind("d", date)).map { rs, _ -> rs.getLong(1) to rs.getInt(2) }.list().toMap()
+        val zrows = node.bind(h.createQuery("SELECT zone_id, target_routes, logged_in_routes, sales_submitted_routes, final_submitted FROM dw.agg_daily_zone a WHERE business_date = :d AND ${node.clause("a.zone_id")}").bind("d", date))
+            .map { rs, _ -> rs.getLong(1) to listOf(rs.getInt(2), rs.getInt(3), rs.getInt(4), if (rs.getBoolean(5)) 1 else 0) }.list().toMap()
+        val p95 = node.bind(h.createQuery("SELECT zone_id, percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM received_at - committed_at))::float8 FROM dw.fact_memo m WHERE business_date = :d AND ${node.clause("m.zone_id")} GROUP BY 1").bind("d", date))
+            .map { rs, _ -> rs.getLong(1) to rs.getDouble(2) }.list().toMap()
+        fun pct(n: Int, d: Int): Double? = if (d > 0) BigDecimal(n).multiply(BigDecimal(100)).divide(BigDecimal(d), 2, java.math.RoundingMode.HALF_UP).toDouble() else null
+        val byZone = zones.map { z ->
+            val a = zrows[z]
+            SyncHealthZone(z, a?.let { pct(it[1], it[0]) }, a?.let { pct(it[2], it[1]) }, a?.get(3) == 1, p95[z]?.let { Math.round(it * 100) / 100.0 }, qByZone[z] ?: 0, photosByZone[z] ?: 0, ackPct(h, version, date, listOf(z)))
+        }
+        return HealthSummaryExtras(ackPct(h, version, date, zones), photos, backlog) to byZone
+    }
+
     /** Percentage of selling phones (those with a contact that day) whose latest applied config version is at least [version]; null when none sold. */
-    fun configAckPct(version: Long, date: LocalDate, zones: List<Long>? = null): Double? = db.readJdbi.withHandle<Double?, Exception> { h ->
-        h.createQuery(
+    fun configAckPct(version: Long, date: LocalDate, zones: List<Long>? = null): Double? = db.readJdbi.withHandle<Double?, Exception> { h -> ackPct(h, version, date, zones) }
+
+    private fun ackPct(h: org.jdbi.v3.core.Handle, version: Long, date: LocalDate, zones: List<Long>?): Double? {
+        if (zones != null && zones.isEmpty()) return null
+        return h.createQuery(
             """
             WITH sellers AS (SELECT DISTINCT b.device_id FROM app.device_binding b JOIN app.route_day rd ON coalesce(rd.acting_user_id, rd.assigned_user_id) = b.user_id AND rd.business_date = :d AND rd.planned
                               JOIN dw.dim_geo g ON g.route_id = rd.route_id WHERE b.status = 'active' AND (CAST(:all AS boolean) OR g.zone_id = ANY(:zones)))
@@ -167,10 +221,15 @@ class OpsService(
             }.list()
         }
         val live = days.filter { !it.second }
+        val zones = db.readJdbi.withHandle<List<ZoneFinalDto>, Exception> { h ->
+            val node = resolveScopedNode(h, reach, level, nodeId)
+            node.bind(h.createQuery("SELECT zone_id, final_submitted FROM dw.agg_daily_zone a WHERE business_date = :d AND target_routes > 0 AND ${node.clause("a.zone_id")} ORDER BY zone_id").bind("d", date))
+                .map { rs, _ -> ZoneFinalDto(rs.getLong(1), rs.getBoolean(2)) }.list()
+        }
         return LoginSubmitStatus(
             summary.as_of, date.toString(), summary.kpis,
             live.filter { it.first.state == "not_started" }.map { it.first }, live.filter { it.first.state != "not_started" && !it.third }.map { it.first },
-            live.filter { it.third }.map { it.first }, days.filter { it.second }.map { it.first },
+            live.filter { it.third }.map { it.first }, days.filter { it.second }.map { it.first }, zones,
         )
     }
 

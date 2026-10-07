@@ -18,4 +18,36 @@
     <string name="perm_gate_open_settings">Open Settings</string>
     <string name="perm_gate_turn_on_location">Turn on location</string>
     <string name="perm_gate_back">Back</string>
+    <!-- F-SYS-022 logout -->
+    <string name="logout_unsent_title">Not everything is sent</string>
+    <plurals name="logout_unsent_message">
+        <item quantity="one">%1$s item not yet sent. Connect to the internet and tap Sync now; log out when the count is zero.</item>
+        <item quantity="other">%1$s items not yet sent. Connect to the internet and tap Sync now; log out when the count is zero.</item>
+    </plurals>
+    <string name="logout_sync_now">Sync now</string>
+    <string name="logout_cancel">Cancel</string>
+    <string name="logout_wipe_incomplete">Logged out, but some files on this phone could not be removed. Log in and out again to finish.</string>
+    <!-- F-SYS-020 updater -->
+    <string name="update_title">A new version of ARON is ready</string>
+    <string name="update_title_required">Update ARON to start a new day</string>
+    <string name="update_version_size">Version %1$s · about %2$s MB</string>
+    <string name="update_network_wifi">Network: Wi-Fi</string>
+    <string name="update_network_mobile">Network: mobile data</string>
+    <string name="update_network_offline">Network: offline. The download starts when you are online.</string>
+    <string name="update_download">Download</string>
+    <string name="update_progress">Downloading %1$d%%</string>
+    <string name="update_do_not_close">Do not close the app while it downloads. If it stops, it continues from where it was.</string>
+    <string name="update_install">Install</string>
+    <string name="update_needs_wifi">This update downloads on Wi-Fi only. Connect to Wi-Fi.</string>
+    <string name="update_no_space">Not enough space on the phone for the update. Delete other files and try again.</string>
+    <string name="update_failed">The download did not complete. Try again; it continues from where it stopped.</string>
+    <string name="update_retry">Try again</string>
+    <string name="update_sync_busy">Sales are being sent right now. Install in a moment.</string>
+    <string name="update_unknown_sources_why">The phone must allow ARON to install its own update.</string>
+    <string name="update_unknown_sources_steps">Tap Open settings, switch on \"Allow from this source\", then press Back and tap Install.</string>
+    <string name="update_open_settings">Open settings</string>
+    <string name="update_later">Later</string>
+    <string name="update_finish_day_first">A required update is waiting. Finish and submit today\'s day; update before tomorrow.</string>
+    <string name="update_day_blocked">This version of ARON is too old to start a new day. Update now. Unsent sales still go out.</string>
+    <string name="update_now">Update now</string>
 </resources>
