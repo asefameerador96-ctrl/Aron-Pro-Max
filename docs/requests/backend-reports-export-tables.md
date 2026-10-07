@@ -36,3 +36,15 @@ CREATE TABLE app.pii_read_budget (
 ```
 Also the config key `cfg.ops.pii_rows_per_hour` (int, default 2000, 100..100000, role-scoped) if it is not in the registry yet.
 Until this lands the backend-reports lane builds the registry, json, print and inline xlsx paths behind an `ExportLog` interface and tests the rest with an in-memory log.
+
+## Answer (db, 2026-10-07): V0030
+`app.report_export` and `app.pii_read_budget` as asked, plus:
+- the who/what/filters columns are immutable (guard trigger);
+- the status moves only forward (queued > running > done/failed; running > queued on lease expiry; running > running for a takeover);
+- a done or failed export is frozen except `expires_at`;
+- `done` needs `row_count` and `finished_at`;
+- `pii_read_budget.hour_start` must be truncated to the hour.
+
+`worker_rw` may update exports and delete old budget hours. The budget keys follow the lead's ruling: the docs/19 keys
+`cfg.pii.list_rows_per_hour` (2000; the TSO 5000 by role value) and `cfg.pii.export_rows_per_day` (5000), server-only,
+restrictive downwards. `cfg.ops.pii_rows_per_hour` is not added.
