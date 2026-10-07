@@ -32,8 +32,11 @@
   - Property test: 40 seeds of lost answers, kills before and after the server, 500/503, retryable rejects, tiny batches and replays of old batches by a second path: exactly one memo and one set of lines per sale, every row acked with the server's id.
   - Not in this row: `device_money` (F-SYS-009 reconciliation), time anchors (F-SYS-049 supplies them through `SyncEngine(timeAnchors=)`), scheduling (F-SYS-011).
 
-## In progress
-- **F-SYS-006** bundle into Room: built and tested (Room v2 with `price`, `config_value`, `bundle_section`, auto-migration 1->2 with a test; forward-only apply; `BundleDownloader` with staged pages that resume after a kill). Checker pending; app-shell wiring of `AronDatabase.open` with a Keystore-wrapped SQLCipher passphrase still to do in this row.
+## In progress (built, tested, on INT; checker re-check running)
+- **F-SYS-006** bundle into Room: Room v2 (`price`, `config_value`, `bundle_section`; auto-migration 1->2 with a test); one-transaction apply that only moves forward per business date; a prefetch of a later day is kept aside and promoted offline when that day starts; `BundleDownloader` stages pages and resumes after a kill; the day's first request is the login (a prefetch never is). Checker round 1: 5 defects (prefetch wiped today, prefetch blocked today's refresh, `valid_to` is exclusive, 304 prefetch marked login, supervisor paged sections) fixed with its tests.
+  - App shells: `UserDatabases` (per-user file, 32-byte Keystore-wrapped key used as a raw SQLCipher key, opened off the main thread) and `BundleDownloaders` in the three SessionModules.
+- **F-SYS-049** trusted clock: `TrustedClockSource` (anchors from every API response's `X-Server-Time`, persisted, per boot); it is `SessionComponents.clock`. Checker running.
+- **AUD-PERF-05** key half done (raw key, cached Keystore key); session restore off the main thread is still open.
 
 ## Second re-check (independent agent, on the pushed fixes)
 - Found a release-build regression: the https guard broke the configuration cache. Fixed; `assembleRelease` now builds (10.7 MB unsigned with R8) and an http base URL fails. **Ask to infra:** add `:android:app-sr:assembleRelease` to CI so this cannot regress silently.
@@ -62,7 +65,7 @@
 Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s5.1). Local wire DTOs are marked
 `REQUEST:` and move to `shared:contract` when the shared lane lands them, with the same names.
 
-**core-database** (`com.aktcl.aron.core.database`): one Room database per user, `AronDatabase.open(context, userId, openHelperFactory)`; the factory is `SqlCipher.factory(passphrase)` in production, `null` in Robolectric tests.
+**core-database** (`com.aktcl.aron.core.database`): one Room database per user. In app code inject `UserDatabases` (Hilt, app module) and call `userDatabases.of(userId)` (suspend; opens once, encrypted). In Robolectric tests use `AronDatabase.open(context, userId, null)` or an in-memory builder.
 - `CaptureRepository(db)`: commits a capture plus its outbox records in ONE transaction. A duplicate client UUID throws `SQLiteConstraintException`. A malformed capture throws `IllegalArgumentException` or `IllegalStateException` before any write. Methods: `recordAttendance(event, fix)`, `recordStock(movements)`, `recordVisitOpen(visit, fix)`, `recordSale(SaleCapture(memo, lines, discounts, qcLines, editFix))`, `recordVisitClose(close)`.
   ```kotlin
   val visitUuid = ClientIds.newUuid()
@@ -101,6 +104,10 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
   when (val r = syncApi.bundle()) { is ApiResult.Success -> r.value.head; is ApiResult.Transport -> offline(); else -> Unit }
   ```
 
+**Day bundle** (core-sync): inject `BundleDownloaders`; at login and at day start call `bundleDownloaders.of(userId).download()` (`APPLIED`, `UNCHANGED`, `PREFETCH_PROMOTED` mean the day is ready offline; `OFFLINE` keeps the previous bundle). Evening prefetch: `download("<tomorrow>")`. Read everything through `ReferenceRepository(db)`.
+
+**Trusted time** (core-session): `SessionComponents.clock` (a `WallClock`) and `SessionComponents.trustedClock` (`businessDate()`, `isAtOrAfterDhaka(LocalTime.of(17, 0))`, `clockOffsetMs()` for `clock_offset_ms`, `bootCountNow()`, `recentAnchors()`). Never use `System.currentTimeMillis()` for a business date or a gate.
+
 **core-session** (`com.aktcl.aron.core.session`):
 - Injected `SessionComponents` gives `session`, `syncApi` and `apiClient`.
 - `session.state: StateFlow<SessionState>` is either `LoggedOut` or `Active(user, mode, reauthRequired, updateRequired)`.
@@ -111,7 +118,7 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
 - `ClientIds.newUuid()`
 - `LocaleDigits.localize(text, language)` and `formatInteger(n, language)`
 - `AppLanguage`
-- `WallClock`: replaced by the trusted clock in F-SYS-049.
+- `WallClock`: implemented by the trusted clock (F-SYS-049); inject `SessionComponents.clock`.
 - Business date: `com.aktcl.aron.rules.BusinessDate.of(epochMs)` from shared:rules.
 - Money formatting per the lead's ruling, `1,234.50 ৳`: use the shared `Formats` when the shared lane publishes it.
 
