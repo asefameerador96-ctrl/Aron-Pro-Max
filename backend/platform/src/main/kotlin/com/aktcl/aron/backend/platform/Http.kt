@@ -47,6 +47,8 @@ class PlatformContext(
     val frontDoorId: String? = null,
     /** [generation] without I/O, for the health probes (AUD-REL-01). */
     val cachedGeneration: () -> String = generation,
+    /** Where device-proof, device-state and scope-change refusals are recorded (AUD-SEC-03). */
+    val securityEvents: SecurityEvents = SecurityEvents.LOG,
 )
 
 /** JSON for responses: every member present (required-nullable members as `null`), snake_case DTO names. */
@@ -127,7 +129,18 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
     // decompressed size and, for the batch, verify X-Device-Proof over the gzip bytes as sent (docs/24 s3.1, s8.3).
     install(Compression) { mode = io.ktor.server.plugins.compression.CompressionConfig.Mode.CompressResponse; gzip { minimumSize(1024) } }
     install(StatusPages) {
-        exception<ApiProblem> { call, e -> call.respondProblem(e, ctx.clock) }
+        exception<ApiProblem> { call, e ->
+            securityKindOf(e.code)?.let { kind ->
+                val p = call.attributes.getOrNull(PrincipalKey)
+                ctx.securityEvents.safely(
+                    SecurityEvent(
+                        kind, ctx.clock.now(), p?.userId, p?.deviceUuid ?: call.request.headers["X-Device-Id"]?.lowercase()?.take(36),
+                        call.attributes.getOrNull(RequestIdKey), mapOf("route" to call.request.path().take(120), "code" to e.code.wire),
+                    ),
+                )
+            }
+            call.respondProblem(e, ctx.clock)
+        }
         // Ktor's own client-error exceptions are client errors, never a retryable 500 (phones bisect on 500, s4.7).
         exception<NotFoundException> { call, _ -> call.respondProblem(ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such resource"), ctx.clock) }
         exception<UnsupportedMediaTypeException> { call, _ -> call.respondProblem(ApiProblem(ProblemCode.ERR_UNSUPPORTED_MEDIA_TYPE), ctx.clock) }

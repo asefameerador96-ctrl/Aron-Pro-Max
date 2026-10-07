@@ -79,11 +79,14 @@ class AuthFixture(
     val lockouts: LockoutStore = fresh?.let { JdbiLockoutStore(it.db) } ?: InMemoryLockoutStore()
     val refreshStore: RefreshStore = fresh?.let { JdbiRefreshStore(it.db) } ?: InMemoryRefreshStore()
     val issuer = TokenIssuer(keys, config, clock)
-    val refresh = RefreshService(refreshStore, config, keys.derivedSecret("aron-refresh-rotation-v1"), clock)
+    /** Every `aron.security` line written while the fixture runs (AUD-SEC-03). */
+    val securityLog: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+    val securityEvents = com.aktcl.aron.backend.platform.LogSecurityEvents { securityLog += it }
+    val refresh = RefreshService(refreshStore, config, keys.derivedSecret("aron-refresh-rotation-v1"), clock, securityEvents = securityEvents)
     val reach = ReachResolver { userId, role, _, date ->
         Reach(userId, role, date, false, setOf(5012L), setOf(10231L), role == Role.SR, listOf(ReachNode("route", 10231, "R-334-01", "Banani Daily")))
     }
-    val login = LoginService(users, devices, hasher, limiter, lockouts, issuer, refresh, reach, config, clock, webLimiter = webLimiter)
+    val login = LoginService(users, devices, hasher, limiter, lockouts, issuer, refresh, reach, config, clock, webLimiter = webLimiter, securityEvents = securityEvents)
     val verifier = AccessTokenVerifier(keys, clock)
     val guard = AuthGuardDeps(verifier, scopeVersions, config, clock)
     val deps = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = "fd-test")
@@ -146,7 +149,7 @@ class AuthFixture(
         UserRecord(id, username, "Test $username", role, status, "bn", role.wire, passwordHash, 7, false)
 
     fun application(app: Application) {
-        app.installAronPlatform(PlatformContext(clock, config, { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }))
+        app.installAronPlatform(PlatformContext(clock, config, { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }, securityEvents = securityEvents))
         app.routing { route("/v1") { authRoutes(deps) } }
     }
 

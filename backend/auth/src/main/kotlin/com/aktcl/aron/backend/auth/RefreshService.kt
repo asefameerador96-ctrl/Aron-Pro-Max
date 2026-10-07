@@ -1,5 +1,9 @@
 package com.aktcl.aron.backend.auth
 
+import com.aktcl.aron.backend.platform.SecurityEvent
+import com.aktcl.aron.backend.platform.SecurityEventKind
+import com.aktcl.aron.backend.platform.SecurityEvents
+import com.aktcl.aron.backend.platform.safely
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.ServerConfig
@@ -31,6 +35,7 @@ class RefreshService(
     rotationKey: ByteArray,
     private val clock: AronClock = AronClock.SYSTEM,
     private val random: SecureRandom = SecureRandom(),
+    private val securityEvents: SecurityEvents = SecurityEvents.LOG,
 ) {
     private val keySpec = SecretKeySpec(rotationKey, "HmacSHA256")
 
@@ -83,6 +88,8 @@ class RefreshService(
             return Rotated(child, row.family, childRow.expiresAt, replay = true)
         }
         store.revokeFamily(row.family.id, now, REASON_REUSE)
+        // Exactly once per reuse: later presentations meet a revoked family and are refused before this point.
+        securityEvents.safely(SecurityEvent(SecurityEventKind.REFRESH_REUSE, now, row.family.userId, detail = mapOf("family" to row.family.id.toString(), "grant" to row.family.grant.name.lowercase())))
         throw ApiProblem(ProblemCode.ERR_AUTH_REFRESH_REUSED, "refresh token reused; grant revoked")
     }
 
