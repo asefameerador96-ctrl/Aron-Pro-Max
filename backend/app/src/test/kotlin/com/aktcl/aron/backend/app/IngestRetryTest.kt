@@ -245,10 +245,10 @@ class IngestRetryTest {
         val late = oldVisit(o, "2026-12-26")
         client.send(listOf(late), want = "accepted", trigger = "resync")
         assertEquals(1L, visits(uuidOf(late)))
-        // V0056: the accepted row carries the flag; a duplicate re-send keeps it (merge, never assign).
-        assertEquals("{resync_late}", flags(uuidOf(late)))
+        // V0056: the accepted row carries the flag; a duplicate re-send (touch(), no registry write) leaves it.
+        assertEquals("{resync_late}", flagsText(uuidOf(late)))
         client.send(listOf(late), want = "duplicate", trigger = "resync")
-        assertEquals("{resync_late}", flags(uuidOf(late)))
+        assertEquals("{resync_late}", flagsText(uuidOf(late)))
         client.send(listOf(oldVisit(o, "2026-12-26")), want = "accepted", trigger = "digest_resend")
         client.send(listOf(oldVisit(o, "2026-12-25")), want = "quarantined", trigger = "resync") // beyond what a lineage accepted
         // An old generation (restored days ago): the allowance has expired.
@@ -256,7 +256,7 @@ class IngestRetryTest {
         client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined", trigger = "resync")
     }
 
-    private fun flags(clientUuid: String): String = fresh.db.jdbi.withHandle<String, Exception> { h ->
+    private fun flagsText(clientUuid: String): String = fresh.db.jdbi.withHandle<String, Exception> { h ->
         h.createQuery("SELECT flags::text FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid)").bind("c", clientUuid).mapTo(String::class.java).one()
     }
 
@@ -286,7 +286,7 @@ class IngestRetryTest {
         application { aronApi(wiring) }
         val early = checkOut("2027-01-03T05:30:00.000Z") // 11:30 Dhaka
         client.send(listOf(early))
-        assertEquals("{}", flags(uuidOf(early)), "no flag storage for checkout_too_early yet (V0056 allows resync_late only)")
+        assertEquals("{}", flagsText(uuidOf(early)), "no flag storage for checkout_too_early yet (V0056 allows resync_late only)")
         assertEquals(1L, fresh.db.jdbi.withHandle<Long, Exception> { h ->
             h.createQuery("SELECT count(*) FROM app.attendance_event WHERE client_uuid = CAST(:c AS uuid)").bind("c", uuidOf(early)).mapTo(Long::class.java).one()
         })
