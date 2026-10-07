@@ -15,6 +15,8 @@ class MediaComponents(
     businessDate: () -> String,
     config: () -> MediaConfig = { MediaConfig() },
     val camera: CameraCaptureHost = CameraCaptureHost(),
+    /** The media job scheduler (F-SYS-010); null in previews and tests. */
+    private val scheduler: MediaWorkScheduler? = null,
 ) {
     val store: MediaStore = MediaStore.forUser(context.applicationContext.filesDir, userId)
     val capturer: PhotoCapturer<Bitmap> = PhotoCapturer(camera, AndroidImageCodec, store, clock, businessDate, config = config)
@@ -28,7 +30,13 @@ class MediaComponents(
     }
 
     /** Claim the photo for its record (with the shutter fix) BEFORE committing that record. */
-    suspend fun attach(mediaUuid: String, ref: MediaRef, stamp: PhotoStamp?) = capturer.attach(mediaUuid, ref, stamp)
+    suspend fun attach(mediaUuid: String, ref: MediaRef, stamp: PhotoStamp?): MediaItem =
+        capturer.attach(mediaUuid, ref, stamp).also { scheduler?.photoQueued(it) }
+
+    /** At app start: re-arm the upload and every evidence fallback (WorkManager keeps them, this only fills gaps). */
+    suspend fun resume() {
+        store.all().filter { it.state == MediaState.ATTACHED || it.state == MediaState.UPLOADED }.forEach { scheduler?.photoQueued(it) }
+    }
 
     suspend fun discard(mediaUuid: String) = capturer.discard(mediaUuid)
 }

@@ -18,7 +18,8 @@
 | web-admin | session_018iHvNJSMqCk8eLitCk9wzU | Sonnet | 2026-10-05 | |
 | web-config | session_0146veK2iXvmHGwiPBpbBJ2k | Sonnet | 2026-10-07 | |
 | web-dashboard | session_01RM4v6DRfjmfAbfrDi17Jzo | Sonnet | 2026-10-07 | recycled 05:01; previous session_01Sk9wwEshZ57sQafoEyccP7 is retired (READY TO RECYCLE 04:51) |
-| infra | session_01CDohyiiiYjHVdhw5DSeqPc | Opus | 2026-10-07 | recycled 04:59; previous session_011BobrrmxjEerwAMUs6AzN2 is retired (READY TO RECYCLE 04:57) |
+| infra | session_01Th2LZgi7Jg7dxUX3gmwFQ2 | Opus | 2026-10-07 | recycled 06:41 (third session); session_01CDohyiiiYjHVdhw5DSeqPc retired (READY TO RECYCLE 06:41); session_011BobrrmxjEerwAMUs6AzN2 retired earlier |
+| integrator | session_01HMc2Bcq7MRYf8xgj423pKU | Sonnet | 2026-10-07 | integration train conductor (docs/lanes/integrator.md): promotes green lane heads to INT; the only mover of INT besides lead docs-only commits; state in docs/status/train.md |
 | laptop operator | session_01UbRHnSorx4s1XARa6aN1Tg | Opus | 2026-10-06 | never nudged; runs only owner-approved laptop tasks |
 
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.

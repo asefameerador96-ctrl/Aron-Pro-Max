@@ -25,8 +25,11 @@ dependencies {
     implementation(libs.logback.classic)
     // Azure Blob user-delegation SAS through the api's managed identity (docs/requests/backend-admin-blob-sas.md; infra).
     implementation(platform(libs.azure.sdk.bom))
-    implementation(libs.azure.storage.blob)
-    implementation(libs.azure.identity)
+    // The JDK HTTP client instead of azure-core-http-netty: the backend already runs Netty 4.2 (Ktor), the Azure Netty
+    // transport is built for 4.1, and mixing them is untested on TLS/DNS/proxy paths.
+    implementation(libs.azure.storage.blob) { exclude(group = "com.azure", module = "azure-core-http-netty") }
+    implementation(libs.azure.identity) { exclude(group = "com.azure", module = "azure-core-http-netty") }
+    implementation(libs.azure.core.http.jdk.httpclient)
 
     testImplementation(testFixtures(project(":backend:platform")))
     testImplementation(platform(libs.junit.bom))

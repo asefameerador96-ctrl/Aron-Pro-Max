@@ -51,7 +51,12 @@ class AdminMasterDeps(
     val hashPassword: (String) -> String,
     val clock: AronClock = AronClock.SYSTEM,
     val requireReason: Boolean = false,
+    /** Server config (`cfg.auth.temp_password_ttl_h`); null in tests that do not need it (default 24 h). */
+    val config: com.aktcl.aron.backend.platform.ServerConfig? = null,
 )
+
+/** Hours a temporary password stays valid: `cfg.auth.temp_password_ttl_h`, default 24 (docs/19, docs/21) when the key is not registered yet. */
+internal fun AdminMasterDeps.tempPasswordTtlH(): Long = runCatching { config?.int("cfg.auth.temp_password_ttl_h")?.toLong() }.getOrNull()?.takeIf { it in 1..720 } ?: 24L
 
 /** Roles that read master data on the web (docs/24 s8.5). */
 internal val MASTER_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)

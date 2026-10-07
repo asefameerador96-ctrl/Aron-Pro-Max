@@ -43,7 +43,13 @@ data class DailyTrackingRow(
 )
 
 @Serializable
-data class DailyTrackingPage(val as_of: String, val business_date: String, val items: List<DailyTrackingRow>, val next_cursor: String? = null)
+data class TrackingBuckets(val ge_100: Int, val from_90: Int, val from_80: Int, val below_80: Int, val exception: Int, val not_logged_in: Int)
+
+@Serializable
+data class TrackingComparator(val business_date: String, val as_of_time: String, val buckets: TrackingBuckets)
+
+@Serializable
+data class DailyTrackingPage(val as_of: String, val business_date: String, val items: List<DailyTrackingRow>, val next_cursor: String? = null, val comparator: TrackingComparator? = null)
 
 @Serializable
 data class TrackingActionRequest(val action_uuid: String, val route_id: Long, val business_date: String, val note: String)
@@ -60,6 +66,8 @@ data class TrackingAction(val action_uuid: String, val route_id: Long, val busin
 class DailyTrackingService(private val db: Database, private val config: ServerConfig, private val clock: AronClock = AronClock.SYSTEM) {
 
     fun page(reach: com.aktcl.aron.backend.platform.Reach, date: LocalDate, level: String?, nodeId: Long?, limit: Int, afterRoute: Long?): DailyTrackingPage {
+        val nowDhaka = clock.now().atZone(ZoneId.of("Asia/Dhaka"))
+        var comparator: TrackingComparator? = null
         val (items, next) = db.readJdbi.withHandle<Pair<List<DailyTrackingRow>, Long?>, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId)
             val rows = node.bind(
@@ -83,6 +91,8 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                     bucket = bucket(rs.getBoolean("exception_approved"), state, achievement),
                 )
             }.list()
+            // Same-time-yesterday (F-WEB-038): only for the live Dhaka day; the previous day with route rows in reach, rebuilt from login time and memo commit times.
+            if (date == nowDhaka.toLocalDate()) comparator = comparator(h, node, date, nowDhaka.toLocalTime().withSecond(0).withNano(0))
             val page = rows.take(limit)
             val cats = if (page.isEmpty()) emptyMap() else h.createQuery(
                 """
@@ -94,7 +104,38 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                 .map { rs, _ -> rs.getLong(1) to CategoryVolume(rs.getString(2), rs.getString(3), rs.getLong(4), rs.getLong(5)) }.list().groupBy({ it.first }, { it.second })
             page.map { it.copy(by_category = cats[it.route_id].orEmpty()) } to (if (rows.size > limit) page.last().route_id else null)
         }
-        return DailyTrackingPage(clock.now().wire(), date.toString(), items, next?.let { Base64.getUrlEncoder().withoutPadding().encodeToString("r|$it".toByteArray()) })
+        return DailyTrackingPage(clock.now().wire(), date.toString(), items, next?.let { Base64.getUrlEncoder().withoutPadding().encodeToString("r|$it".toByteArray()) }, comparator)
+    }
+
+    /**
+     * Buckets of the previous business day (the latest earlier date with planned routes in scope, within 7 days) as they stood at [time] Dhaka:
+     * a route counts as logged in when `logged_in_at` is at or before that instant, and its successful calls are the distinct outlets with an
+     * active memo committed by then (the same definition as the daily aggregate). Both inputs are immutable timestamps, so the figure is exact
+     * apart from a memo voided after that moment, which the facts no longer show as active. Null when there is no earlier day.
+     */
+    private fun comparator(h: org.jdbi.v3.core.Handle, node: ScopedNode, date: LocalDate, time: LocalTime): TrackingComparator? {
+        val prev = node.bind(h.createQuery("SELECT max(business_date) FROM dw.agg_daily_route a WHERE business_date < :d AND business_date >= :d - 7 AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id")}").bind("d", date))
+            .mapTo(LocalDate::class.java).findOne().orElse(null) ?: return null
+        val cutoff = prev.atTime(time).atZone(ZoneId.of("Asia/Dhaka")).toInstant()
+        val counts = node.bind(
+            h.createQuery(
+                """
+                WITH r AS (
+                  SELECT a.route_id, a.exception_approved AS ex, a.target_outlets,
+                         (a.logged_in_at IS NOT NULL AND a.logged_in_at <= :cut) AS logged,
+                         (SELECT count(DISTINCT m.outlet_id) FROM dw.fact_memo m WHERE m.business_date = a.business_date AND m.route_id = a.route_id AND m.status = 'active' AND m.line_count > 0 AND m.committed_at <= :cut) AS calls
+                    FROM dw.agg_daily_route a WHERE a.business_date = :p AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id")}),
+                b AS (SELECT CASE WHEN ex THEN 'exception' WHEN NOT logged THEN 'not_logged_in' WHEN target_outlets <= 0 THEN 'below_80'
+                                  WHEN calls * 100 >= target_outlets * 100 THEN 'ge_100' WHEN calls * 100 >= target_outlets * 90 THEN 'from_90'
+                                  WHEN calls * 100 >= target_outlets * 80 THEN 'from_80' ELSE 'below_80' END AS bucket FROM r)
+                SELECT bucket, count(*)::int FROM b GROUP BY 1
+                """,
+            ).bind("p", prev).bind("cut", OffsetDateTime.ofInstant(cutoff, java.time.ZoneOffset.UTC)),
+        ).map { rs, _ -> rs.getString(1) to rs.getInt(2) }.list().toMap()
+        return TrackingComparator(
+            prev.toString(), "%02d:%02d".format(time.hour, time.minute),
+            TrackingBuckets(counts["ge_100"] ?: 0, counts["from_90"] ?: 0, counts["from_80"] ?: 0, counts["below_80"] ?: 0, counts["exception"] ?: 0, counts["not_logged_in"] ?: 0),
+        )
     }
 
     private fun bucket(exception: Boolean, state: String, pct: BigDecimal?): String = when {

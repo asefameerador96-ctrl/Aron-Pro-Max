@@ -36,7 +36,10 @@ class SeededDayLoadTest {
         val skus = repo.skus()
         val elapsedMs = (System.nanoTime() - started) / 1_000_000
 
-        assertTrue("seeded day took $elapsedMs ms", elapsedMs < 1_000)
+        // AUD-TP-6: a loose structural bound on shared CI runners (host about 0.2 s); the real 1 s budget is the device
+        // check (docs/04). The figure is printed so a slow trend is visible without a flaky failure.
+        println("SeededDayLoadTest: seeded day loaded in $elapsedMs ms")
+        assertTrue("seeded day took $elapsedMs ms", elapsedMs < 5_000)
         assertEquals(listOf(10231L, 10232L), day.map { it.route.routeId })
         assertTrue(day.first().route.plannedToday)
         assertEquals(120, day.first().outlets.size)
