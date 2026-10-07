@@ -26,6 +26,8 @@ class SimPrinter(
     var paperRows: Int = Int.MAX_VALUE
     var overflowed = false
     var connects = 0
+    /** Connect attempts, successful or not. */
+    var attempts = 0
     var totalBytes = 0L
 
     /** Rows printed, one list per connection session. */
@@ -58,6 +60,7 @@ class SimPrinter(
         }
 
         override suspend fun connect() {
+            attempts++
             if (!on) throw IOException("printer off")
             connects++
             open = true

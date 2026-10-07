@@ -1,6 +1,7 @@
 package com.aktcl.aron.core.printing.ui
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
@@ -47,6 +48,7 @@ import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.bt.PrinterState
 import com.aktcl.aron.core.printing.bt.SavedPrinter
 import com.aktcl.aron.core.printing.flow.SaveAndPrint
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -155,7 +157,13 @@ fun PrinterPickerDialog(manager: PrinterManager, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) {
+            TextButton(onClick = {
+                try {
+                    context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: ActivityNotFoundException) {
+                    // Settings blocked (device-owner lock task): pairing is then done by the admin.
+                }
+            }) {
                 Text(stringResource(R.string.printer_open_bluetooth))
             }
         },
@@ -169,15 +177,17 @@ fun PrinterPickerDialog(manager: PrinterManager, onDismiss: () -> Unit) {
 }
 
 /**
- * The sale screen's dialogs over a [SaveAndPrint] flow (F-SR-028, F-SR-073). [onFinished] runs after the
- * saved message, with whether paper was confirmed.
+ * The sale screen's dialogs over a [SaveAndPrint] flow (F-SR-028, F-SR-073). [scope] must outlive the screen's
+ * composition (the ViewModel's scope), so a rotation never cancels a save or a print half way. [onFinished] runs
+ * once after the saved message, with whether paper was confirmed.
  */
 @Composable
-fun SaveAndPrintDialogs(flow: SaveAndPrint, onFinished: (printed: Boolean) -> Unit) {
+fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (printed: Boolean) -> Unit) {
     val step by flow.step.collectAsState()
-    val scope = rememberCoroutineScope()
+    var finished by remember(flow) { mutableStateOf(false) }
     when (val s = step) {
         SaveAndPrint.Step.Idle -> Unit
+        SaveAndPrint.Step.SaveFailed -> Info(R.string.ui_sale_save_failed) { flow.onDismissSaveFailed() }
         SaveAndPrint.Step.AskSave -> YesNo(R.string.sale_confirm_title, R.string.sale_confirm_text, { scope.launch { flow.onSaveAnswer(it) } })
         SaveAndPrint.Step.Saving -> Busy(R.string.ui_print_saving)
         SaveAndPrint.Step.AskPrint -> YesNo(null, R.string.sale_print_question, { scope.launch { flow.onPrintAnswer(it) } })
@@ -191,7 +201,9 @@ fun SaveAndPrintDialogs(flow: SaveAndPrint, onFinished: (printed: Boolean) -> Un
         SaveAndPrint.Step.LimitReached -> Info(R.string.ui_print_limit_reached) { flow.onLater() }
         SaveAndPrint.Step.TooLong -> Info(R.string.ui_print_too_long) { flow.onLater() }
         SaveAndPrint.Step.AskReadable -> YesNo(null, R.string.ui_print_readable_question, { scope.launch { flow.onReadableAnswer(it) } })
-        is SaveAndPrint.Step.Done -> Info(R.string.sale_saved) { onFinished(s.printed) }
+        is SaveAndPrint.Step.Done -> Info(R.string.sale_saved) {
+            if (!finished) { finished = true; onFinished(s.printed) }
+        }
     }
 }
 

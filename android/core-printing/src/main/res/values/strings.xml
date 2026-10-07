@@ -70,5 +70,6 @@
     <string name="ui_print_later">Print later</string>
     <string name="ui_print_limit_reached">No more reprints allowed (limit reached)</string>
     <string name="ui_print_too_long">This document is too long to print</string>
+    <string name="ui_sale_save_failed">The sale could not be saved. Please try again.</string>
     <string name="ui_print_saving">Saving…</string>
 </resources>

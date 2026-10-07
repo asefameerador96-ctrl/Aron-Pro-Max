@@ -26,13 +26,29 @@ class PrintFlowTest {
     /** In-memory ledger; the Room one (android-core) must behave the same. */
     class MemLedger : PrintLedger {
         val events = ArrayList<PrintEvent>()
+        private val jobs = LinkedHashMap<String, PendingPrint>()
+        private val printedAt = HashMap<String, Long>()
         override suspend fun history(documentClientUuid: String) =
             events.filter { it.memoClientUuid == documentClientUuid || it.refClientUuid == documentClientUuid }
-        override suspend fun record(event: PrintEvent) {
-            require(events.none { it.clientUuid == event.clientUuid }) { "duplicate print_event ${event.clientUuid}" }
-            events.add(event)
+        override suspend fun pending() = jobs.values.toList()
+        override suspend fun savePending(job: PendingPrint) {
+            if (events.any { it.clientUuid == job.event.clientUuid }) return
+            jobs[job.event.clientUuid] = job
+            if (job.paperOut) (job.event.memoClientUuid ?: job.event.refClientUuid)?.let { printedAt.putIfAbsent(it, job.event.atEpochMs) }
         }
-        fun printedAt(memo: String) = events.firstOrNull { it.memoClientUuid == memo && it.outcome == PrintEvent.PRINTED }?.atEpochMs
+        override suspend fun record(event: PrintEvent) {
+            if (events.any { it.clientUuid == event.clientUuid }) return // idempotent by client uuid
+            events.add(event)
+            jobs.remove(event.clientUuid)
+            val doc = event.memoClientUuid ?: event.refClientUuid ?: return
+            if (event.outcome == PrintEvent.PRINTED) printedAt.putIfAbsent(doc, event.atEpochMs)
+            // A paper the seller rejected is not a printed memo: clear the flag unless another copy counts.
+            if (event.outcome == PrintEvent.FAILED_USER &&
+                events.none { (it.memoClientUuid ?: it.refClientUuid) == doc && it.outcome == PrintEvent.PRINTED } &&
+                jobs.values.none { (it.event.memoClientUuid ?: it.event.refClientUuid) == doc && it.paperOut }
+            ) printedAt.remove(doc)
+        }
+        fun printedAt(doc: String) = printedAt[doc]
     }
 
     private class Env(val sim: SimPrinter, val ledger: MemLedger, val printing: MemoPrinting)

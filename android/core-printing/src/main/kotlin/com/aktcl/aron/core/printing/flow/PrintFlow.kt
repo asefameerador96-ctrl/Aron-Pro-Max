@@ -52,14 +52,29 @@ data class PrintEvent(
 }
 
 /**
- * Where print events live. The android-core lane implements it on Room: [record] writes the `print_event` row
- * and its outbox record in one transaction and, when [PrintEvent.outcome] is `printed`, sets the document's
- * printed flag (`memo.printed_at` if null, `memo.print_count`; `stock_movement.slip_printed`) in the same
- * transaction. REQUEST: docs/requests/android-print-integration.md
+ * A print job not yet final (docs/17 s9.4): saved before the printer is called, marked [paperOut] as soon as the
+ * printer took the whole job. Local only; it becomes one immutable [PrintEvent] when the outcome is final.
+ */
+data class PendingPrint(val event: PrintEvent, val paperOut: Boolean)
+
+/**
+ * Where print jobs and events live. The android-core lane implements it on Room
+ * (REQUEST: docs/requests/android-print-integration.md); `PrintFlowTest.MemLedger` is the reference behaviour.
+ * - [savePending] upserts the local job by event uuid; with `paperOut` true it also sets the document's printed
+ *   flag in the same transaction (`memo.printed_at` if null; `stock_movement.slip_printed`), so a printed paper is
+ *   never forgotten, even if the app dies before the seller answers.
+ * - [record] writes the final `print_event` row and its outbox record and deletes the pending job, in one
+ *   transaction; a second record of the same uuid is ignored. A `failed_user` record clears the printed flag
+ *   again when no other copy of the document counts (no `printed` event, no other job with paper out).
  */
 interface PrintLedger {
-    /** Every print event of one document, oldest first. */
+    /** Final print events of one document, oldest first. */
     suspend fun history(documentClientUuid: String): List<PrintEvent>
+
+    /** Jobs not yet final, all documents. */
+    suspend fun pending(): List<PendingPrint>
+
+    suspend fun savePending(job: PendingPrint)
 
     suspend fun record(event: PrintEvent)
 }
@@ -89,6 +104,10 @@ sealed interface PrintAttempt {
 object ReprintPolicy {
     fun counted(history: List<PrintEvent>): Int = history.count { it.outcome == PrintEvent.PRINTED }
 
+    /** Final events plus paper already out but not yet confirmed, which counts as printed until a "না". */
+    internal fun effective(history: List<PrintEvent>, pending: List<PendingPrint>): List<PrintEvent> =
+        history + pending.filter { it.paperOut }.map { it.event.copy(outcome = PrintEvent.PRINTED) }
+
     /** Reprint ordinal of the next print: 0 = original. */
     fun nextReprintNo(history: List<PrintEvent>): Int = counted(history).let { if (it == 0) 0 else it }
 
@@ -114,7 +133,7 @@ class MemoPrinting(
 ) {
     /** Prints [memo] (the stored memo, [memoClientUuid]) as the original or as the next reprint. */
     suspend fun printMemo(memoClientUuid: String, memo: MemoPrint): PrintAttempt {
-        val history = ledger.history(memoClientUuid)
+        val history = historyOf(memoClientUuid)
         if (!ReprintPolicy.allowed(history, reprintMax())) return PrintAttempt.LimitReached
         val reprintNo = ReprintPolicy.nextReprintNo(history)
         val kind = if (reprintNo == 0) "memo" else "memo_reprint"
@@ -123,10 +142,25 @@ class MemoPrinting(
 
     /** Prints the stock slip of the stock family [stockClientUuid] (F-SR-015). */
     suspend fun printStockSlip(stockClientUuid: String, slip: StockSlipPrint): PrintAttempt {
-        val history = ledger.history(stockClientUuid)
+        val history = historyOf(stockClientUuid)
         if (!ReprintPolicy.allowed(history, reprintMax())) return PrintAttempt.LimitReached
         val reprintNo = ReprintPolicy.nextReprintNo(history)
         return print(stockClientUuid, "stock_slip", null, stockClientUuid, history) { it.stockSlip(slip.copy(reprintNo = reprintNo)) }
+    }
+
+    private suspend fun historyOf(uuid: String): List<PrintEvent> = ReprintPolicy.effective(
+        ledger.history(uuid),
+        ledger.pending().filter { it.event.memoClientUuid == uuid || it.event.refClientUuid == uuid },
+    )
+
+    /**
+     * At app start: finishes jobs a killed process left behind. Paper that came out is recorded `printed` with
+     * no confirmation; a job that never finished printing is `failed` (docs/17 s9.4).
+     */
+    suspend fun recover() {
+        for (p in ledger.pending()) {
+            ledger.record(if (p.paperOut) p.event.copy(userConfirmed = null) else p.event.copy(outcome = PrintEvent.FAILED))
+        }
     }
 
     private suspend fun print(
@@ -141,16 +175,20 @@ class MemoPrinting(
         val eventUuid = newUuid()
         val base = PrintEvent(
             clientUuid = eventUuid, documentKind = kind, memoClientUuid = memoUuid, refClientUuid = refUuid,
-            printCount = (history.size + 1).coerceIn(1, 100), outcome = PrintEvent.PRINTED, userConfirmed = null,
+            // The copy this attempt would be: copies on paper so far + 1 (failed attempts printed nothing).
+            printCount = (ReprintPolicy.counted(history) + 1).coerceIn(1, 100), outcome = PrintEvent.PRINTED, userConfirmed = null,
             templateVersion = paper.templateVersion, printerModel = printer.savedPrinter?.name, atEpochMs = nowMs(),
         )
-        // Each attempt is its own job id: a retry after a failure is a fresh, whole print.
+        // The job is saved before the printer is called; each attempt is its own job id, so a retry after a
+        // failure is a fresh, whole print.
+        ledger.savePending(PendingPrint(base, paperOut = false))
         return when (val r = printer.print(PrintJob(eventUuid, paper.bitmap))) {
             is PrintOutcome.Failed -> {
                 ledger.record(base.copy(outcome = PrintEvent.FAILED))
                 PrintAttempt.Failed(r.reason)
             }
             PrintOutcome.Printed, PrintOutcome.AlreadyPrinted -> {
+                ledger.savePending(PendingPrint(base, paperOut = true))
                 if (confirmAfterPrint()) {
                     PrintAttempt.AwaitingConfirmation(base)
                 } else {
@@ -167,9 +205,14 @@ class MemoPrinting(
      */
     suspend fun confirm(attempt: PrintAttempt.AwaitingConfirmation, readable: Boolean) {
         if (!attempt.answered.compareAndSet(false, true)) return // a double tap records once
-        ledger.record(
-            if (readable) attempt.pending.copy(userConfirmed = true)
-            else attempt.pending.copy(outcome = PrintEvent.FAILED_USER, userConfirmed = false),
-        )
+        try {
+            ledger.record(
+                if (readable) attempt.pending.copy(userConfirmed = true)
+                else attempt.pending.copy(outcome = PrintEvent.FAILED_USER, userConfirmed = false),
+            )
+        } catch (e: Exception) {
+            attempt.answered.set(false) // not stored: the seller can answer again
+            throw e
+        }
     }
 }

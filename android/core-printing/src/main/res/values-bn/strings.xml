@@ -9,7 +9,7 @@
     <string name="print_zero_memo">শূন্য মেমো</string>
     <string name="print_edited_memo">সংশোধিত মেমো</string>
     <string name="print_duplicate">অনুলিপি (ডুপ্লিকেট)</string>
-    <string name="print_reprint">পুনঃমুদ্রণ</string>
+    <string name="print_reprint">পুনর্মুদ্রণ</string>
     <string name="print_supersedes">প্রতিস্থাপিত মেমো</string>
     <string name="print_memo_no">মেমো নং</string>
     <string name="print_date">তারিখ</string>
@@ -70,5 +70,6 @@
     <string name="ui_print_later">পরে প্রিন্ট</string>
     <string name="ui_print_limit_reached">আর পুনঃমুদ্রণ করা যাবে না (সীমা শেষ)</string>
     <string name="ui_print_too_long">এই কাগজটি প্রিন্টের জন্য অনেক লম্বা</string>
+    <string name="ui_sale_save_failed">বিক্রয় জমা করা যায়নি। আবার চেষ্টা করুন।</string>
     <string name="ui_print_saving">জমা হচ্ছে…</string>
 </resources>
