@@ -11,6 +11,8 @@ import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.authenticated
 import com.aktcl.aron.backend.platform.principal
+import com.aktcl.aron.backend.platform.RateLimiter
+import com.aktcl.aron.backend.platform.toProblem
 import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
@@ -45,6 +47,10 @@ class AuthDeps(
 
 /** Mounts the auth endpoints of this build under /v1 (contract tag `auth`). */
 fun Route.authRoutes(d: AuthDeps) {
+    // docs/21 s6.1 (AUD-SEC-02): refresh is anonymous until the token is found; at most 20 per hour per phone, and a
+    // global bound for calls without a device (the web BFF) so a flood of junk tokens cannot keep the pool busy.
+    val refreshPerDevice = RateLimiter(20, 3_600, d.clock)
+    val refreshAnonymous = RateLimiter(600, 60, d.clock)
     route("/auth") {
         post("/login") {
             val req = call.receiveStrict(LoginRequest.serializer())
@@ -53,6 +59,9 @@ fun Route.authRoutes(d: AuthDeps) {
         }
         post("/refresh") {
             val req = call.receiveStrict(RefreshRequest.serializer())
+            val device = call.request.headers["X-Device-Id"]?.lowercase()?.takeIf { UUID_V4.matches(it) }
+            val decision = if (device != null) refreshPerDevice.tryAcquire("d:$device") else refreshAnonymous.tryAcquire("web")
+            if (!decision.allowed) throw decision.toProblem("too many refreshes; retry later")
             val pair = withContext(Dispatchers.IO) { refresh(call, req, d) }
             val web = req.refresh_token == null
             call.respond(if (web) call.webCookie(pair.refresh_token, pair.refresh_expires_at).let { pair.copy(refresh_token = null) } else pair)

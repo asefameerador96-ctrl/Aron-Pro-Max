@@ -193,6 +193,8 @@ class Wiring(
             val otpDeps = DeviceOtpDeps(db, reach, otpCipher, config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
+            // Warm both caches off the request path, so the first requests of a new replica do not wait (AUD-REL-01).
+            Thread({ runCatching { config.configVersion() }; runCatching { generation.current() } }, "aron-warm").apply { isDaemon = true }.start()
             // N-037: FCM nudges; off without the service account (dev, tests), and switched by cfg.ops/cfg.notify.
             val push = com.aktcl.aron.backend.notify.PushNotifier(db, config, pushSender ?: s.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) }, clock) { userId, key ->
                 // The switch as it applies to the user: zone, territory, division, wing, then global (s9.5 scopes G W D T Z).

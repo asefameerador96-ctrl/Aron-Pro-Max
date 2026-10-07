@@ -148,11 +148,14 @@ private fun zonesOf(h: Handle, type: String, id: Long): List<Long> {
 private fun targetUsers(h: Handle, reach: Reach, type: String, id: Long, today: LocalDate): List<Long> {
     val zones: List<Long>? = when (type) {
         "global" -> if (reach.national) null else throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a global notification needs a national scope")
-        "user", "device" -> {
-            val userId = if (type == "user") id else h.createQuery("SELECT user_id FROM app.device_binding WHERE device_id = :d AND status = 'active'")
-                .bind("d", id).mapTo(Long::class.java).list().singleOrNull() ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device")
-            if (!reach.national && !userInReach(h, reach, userId, today)) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such $type")
-            return listOf(userId)
+        "user" -> {
+            if (!reach.national && !userInReach(h, reach, id, today)) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such user")
+            return listOf(id)
+        }
+        "device" -> {
+            // A shared phone has several active bindings: every bound user inside the caller's reach.
+            val bound = h.createQuery("SELECT user_id FROM app.device_binding WHERE device_id = :d AND status = 'active'").bind("d", id).mapTo(Long::class.java).list()
+            return bound.filter { reach.national || userInReach(h, reach, it, today) }.ifEmpty { throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device") }
         }
         else -> zonesOf(h, type, id).also { z ->
             if (z.isEmpty()) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such $type")

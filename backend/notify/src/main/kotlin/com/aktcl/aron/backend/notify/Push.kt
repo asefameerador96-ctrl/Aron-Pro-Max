@@ -85,6 +85,14 @@ class PushNotifier(
         4, 4, 30, TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue(2_000),
         { r -> Thread(r, "push").apply { isDaemon = true } }, java.util.concurrent.ThreadPoolExecutor.DiscardPolicy(),
     )
+    /**
+     * Admin notifications run on their own small pool (checker finding): a national send of thousands of tokens never
+     * delays a task nudge on [pool]. The queue is bounded and refuses visibly (AbortPolicy).
+     */
+    private val broadcastPool = java.util.concurrent.ThreadPoolExecutor(
+        2, 2, 30, TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue(200),
+        { r -> Thread(r, "push-broadcast").apply { isDaemon = true } }, java.util.concurrent.ThreadPoolExecutor.AbortPolicy(),
+    )
     private val pending = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
     @Volatile private var warned = false
 
@@ -137,10 +145,13 @@ class PushNotifier(
         if (sender == null || tokens.isEmpty()) return false
         return try {
             tokens.chunked(200).forEach { chunk ->
-                pool.execute { runCatching { sendAll(chunk, dataFor) }.onFailure { log.warn("broadcast failed: ${it.javaClass.simpleName}") } }
+                broadcastPool.execute { runCatching { sendAll(chunk, dataFor) }.onFailure { log.warn("broadcast failed: ${it.javaClass.simpleName}") } }
             }
             true
-        } catch (e: java.util.concurrent.RejectedExecutionException) { false }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            log.warn("broadcast queue full: ${tokens.size} tokens not all queued")
+            false
+        }
     }
 
     private fun sendAll(tokens: List<Pair<Long, String>>, dataFor: (Long) -> Map<String, String>): Int {
@@ -162,7 +173,7 @@ class PushNotifier(
     /** Waits for queued nudges (tests). */
     fun drain(timeoutMs: Long = 5_000) {
         val until = System.currentTimeMillis() + timeoutMs
-        while ((pool.activeCount > 0 || pool.queue.isNotEmpty()) && System.currentTimeMillis() < until) Thread.sleep(10)
+        while ((pool.activeCount > 0 || pool.queue.isNotEmpty() || broadcastPool.activeCount > 0 || broadcastPool.queue.isNotEmpty()) && System.currentTimeMillis() < until) Thread.sleep(10)
     }
 }
 

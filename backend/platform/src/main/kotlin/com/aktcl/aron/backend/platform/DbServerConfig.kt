@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicReference
  * Server-side `cfg.*` reads from PostgreSQL (docs/24 s9.3): the global `cfg_value` row valid now, else the registry
  * default of `cfg_key`, cached per replica for at most [ttlMs] (30 s). Scoped (role, zone, ...) resolution is
  * backend:config's; the keys the platform and auth read on Day 1 are global. [fallback] answers keys the registry
- * does not have yet and anything while the database is unreachable.
+ * does not have yet and, on a cold replica whose database is unreachable, the keys it knows (others: 503).
  */
 class DbServerConfig(
     private val db: Database,
@@ -24,25 +24,34 @@ class DbServerConfig(
     @Volatile private var failures = 0
 
     /**
-     * The cached snapshot, refreshed on the request path once it is older than [ttlMs] (AUD-REL-01): one request at a
-     * time refreshes (the others serve the stale snapshot, or [fallback] on a cold replica), and a failed refresh backs
-     * off (2 s doubling to 30 s) so an unreachable database blocks at most one request per back-off for the pool's
-     * connection timeout, never every request.
+     * The cached snapshot, refreshed on the request path once it is older than [ttlMs] (AUD-REL-01). Warm: one request
+     * at a time refreshes and the others serve the stale snapshot. Cold (nothing loaded yet): callers wait for the one
+     * load in flight, never fall back to the registry defaults while the database answers. A failed load backs off
+     * (2 s doubling to 30 s), so an unreachable database blocks at most one request per back-off; a cold read during
+     * the back-off gets the registry default for a key it knows, else a transient failure (503), never a 500.
      */
     private fun snapshot(): Snapshot? {
         val now = clock.now().toEpochMilli()
         val c = cache.get()
         if (c != null && now - c.at < ttlMs) return c
-        if (System.nanoTime() < retryAt || !loading.compareAndSet(false, true)) return c
-        try {
-            return load(now).also { cache.set(it); failures = 0 }
-        } catch (e: Exception) {
-            failures = (failures + 1).coerceAtMost(5)
-            retryAt = System.nanoTime() + minOf(30_000L, 1_000L shl failures) * 1_000_000L
-            return c
-        } finally {
-            loading.set(false)
+        if (c != null) {
+            if (System.nanoTime() < retryAt || !loading.compareAndSet(false, true)) return c
+            try { return tryLoad(now) ?: c } finally { loading.set(false) }
         }
+        synchronized(coldLock) {
+            cache.get()?.let { return it }
+            return if (System.nanoTime() >= retryAt) tryLoad(now) else null
+        }
+    }
+
+    private val coldLock = Any()
+
+    private fun tryLoad(now: Long): Snapshot? = try {
+        load(now).also { cache.set(it); failures = 0 }
+    } catch (e: Exception) {
+        failures = (failures + 1).coerceAtMost(5)
+        retryAt = System.nanoTime() + minOf(30_000L, 1_000L shl failures) * 1_000_000L
+        null
     }
 
     private fun load(now: Long): Snapshot = db.jdbi.withHandle<Snapshot, Exception> { h ->
@@ -60,7 +69,14 @@ class DbServerConfig(
         Snapshot(now, values, version)
     }
 
-    override fun value(key: String): JsonElement = snapshot()?.values?.get(key) ?: fallback.value(key)
+    override fun value(key: String): JsonElement {
+        val snap = snapshot()
+        snap?.values?.get(key)?.let { return it }
+        if (snap != null) return fallback.value(key)
+        // Cold and the database unreachable: the registry defaults answer the keys they know (a replica starts while
+        // the database is down); any other key is a transient failure (503), never a 500.
+        return runCatching { fallback.value(key) }.getOrElse { throw java.sql.SQLTransientConnectionException("server config not loaded: database unavailable") }
+    }
 
     override fun configVersion(): Long = snapshot()?.version ?: fallback.configVersion()
 

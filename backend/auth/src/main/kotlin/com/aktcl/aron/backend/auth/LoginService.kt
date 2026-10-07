@@ -49,9 +49,16 @@ class LoginService(
     /** Device binding by OTP (F-SYS-003); null where a test wires no database. */
     private val binds: BindStore? = null,
     private val otpSealer: OtpSealer? = null,
+    /**
+     * Argon2 capacity for web logins, apart from [limiter] (AUD-SEC-02): a web login needs no enrolled device, so an
+     * anonymous flood of web logins must never take the hash slots the 07:00 phone wave needs.
+     */
+    private val webLimiter: HashLimiter = HashLimiter(concurrency = 1, queueMax = 8),
 ) {
     private val perUsername = RateLimiter(10, 15 * 60, clock)
     private val perDevice = RateLimiter(30, 15 * 60, clock)
+    /** All web logins of the replica, before any hashing (AUD-SEC-02; the WAF per-IP limit is a final-account item). */
+    private val webGlobal = RateLimiter(120, 60, clock)
 
     suspend fun login(req: LoginRequest, ctx: LoginContext): LoginResponse {
         val now = clock.now()
@@ -77,10 +84,12 @@ class LoginService(
         perUsername.tryAcquire("u:$username").let { if (!it.allowed) throw it.toProblem("too many logins for this username") }
         req.device_uuid?.let { d -> perDevice.tryAcquire("d:$d").let { if (!it.allowed) throw it.toProblem("too many logins from this device") } }
 
+        if (!phone) webGlobal.tryAcquire("web").let { if (!it.allowed) throw it.toProblem("too many web logins; retry later") }
+
         val device = if (phone) checkDevice(req.device_uuid!!) else null
 
         val user = users.findByUsername(username)
-        val ok = limiter.run { hasher.verify(user?.passwordHash ?: hasher.dummyHash, req.password) } && user?.passwordHash != null
+        val ok = (if (phone) limiter else webLimiter).run { hasher.verify(user?.passwordHash ?: hasher.dummyHash, req.password) } && user?.passwordHash != null
         if (!ok || user == null) {
             val n = lockouts.recordFailure(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_window_min").toLong()))
             if (n >= config.int("cfg.auth.lockout_attempts")) {

@@ -227,11 +227,8 @@ class GeoRecheckTest {
         val v = uuid()
         val rec = visitRecord(v, outlets[4], "2026-12-30T10:00:00Z", north(130.0))
         val sent = client.send(client.token(), listOf(rec))
-        // A visit captured four days ago may be refused or re-dated by the capture-time rules; only check a stored one.
-        if (statuses(sent) == listOf("accepted")) {
-            val s = server(v)
-            assertEquals(200, s.radius, "the 2026-12-31 change is older than 48 h at upload")
-        }
+        assertEquals(listOf("accepted"), statuses(sent), sent.toString())
+        assertEquals(200, server(v).radius, "the 2026-12-31 change is older than 48 h at upload")
     }
 
     /** A resend is a duplicate: the stored re-check is not recomputed (even after the radius changes again). */

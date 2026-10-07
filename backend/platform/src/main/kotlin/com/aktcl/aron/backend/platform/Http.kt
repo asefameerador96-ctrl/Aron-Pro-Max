@@ -166,8 +166,9 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
 }
 
 /** SQLSTATEs that mean "try again shortly", not a defect: connection (08), shutdown (57P01..03), too many connections,
- * serialization failure, deadlock, lock not available, statement cancelled by timeout (docs/18 s4.3). */
-private val TRANSIENT_SQLSTATES = setOf("57P01", "57P02", "57P03", "53300", "53400", "40001", "40P01", "55P03", "57014")
+ * serialization failure, deadlock, lock not available, read-only after a failover (docs/18 s4.3). A statement timeout
+ * (57014) stays a 500: it is as often a slow query to fix as an overload, and must stay visible. */
+private val TRANSIENT_SQLSTATES = setOf("57P01", "57P02", "57P03", "53300", "40001", "40P01", "55P03", "25006")
 
 /** True when [e] (or a cause) is a pool timeout, a lost or refused connection, or a transient SQLSTATE (AUD-REL-02). */
 fun isTransientDbFailure(e: Throwable): Boolean = generateSequence(e) { it.cause }.take(16).any { c ->

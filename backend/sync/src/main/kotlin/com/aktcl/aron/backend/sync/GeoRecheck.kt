@@ -43,7 +43,19 @@ class GeoRecheckHandler : RecordHandler {
                 rs.getObject("fix_is_mock") as Boolean?, rs.getString("role"),
             )
         }.findOne().orElse(null) ?: return
-        val r = recheck(h, v, rec.receivedAt)
+        // The re-check is enrichment: it never refuses or parks the visit. On any failure its own savepoint is rolled
+        // back and server_verdict stays null (a later job can re-check it).
+        h.savepoint(SAVEPOINT)
+        try {
+            store(h, rec, recheck(h, v, rec.receivedAt))
+            h.release(SAVEPOINT)
+        } catch (e: Exception) {
+            h.rollbackToSavepoint(SAVEPOINT)
+            log.warn("geo re-check skipped visit=${rec.clientUuid}: ${e.javaClass.simpleName}")
+        }
+    }
+
+    private fun store(h: Handle, rec: IngestRecord, r: Result) {
         h.createUpdate(
             """
             UPDATE app.visit SET server_verdict = :sv, server_distance_m = :sd, server_radius_m = :sr, server_max_accuracy_m = :sa, server_checked_at = :at
@@ -92,21 +104,20 @@ class GeoRecheckHandler : RecordHandler {
         val maxR = cfg.int("cfg.geo.radius_max_m", global, 2000).coerceIn(minR, 5000)
         val radius = cfg.int("cfg.geo.radius_m", chain, 100).coerceIn(minR, maxR).coerceIn(10, 5000)
         val maxAcc = cfg.int("cfg.geo.max_accuracy_m", chain, 100).coerceIn(10, 1000)
-        val mock = cfg.value("cfg.geo.mock_policy", chain)?.let { e -> MockPolicy.entries.firstOrNull { it.wire == e.jsonPrimitive.content } } ?: MockPolicy.BLOCK_SALE
-        val noLoc = cfg.value("cfg.geo.no_location_policy", chain)?.let { e -> NoLocationPolicy.entries.firstOrNull { it.wire == e.jsonPrimitive.content } }
-            ?: NoLocationPolicy.FORCE_SALE_REQUIRED
+        fun word(key: String, c: ScopedConfig.Chain) = cfg.value(key, c)?.let { runCatching { it.jsonPrimitive.content }.getOrNull() }
+        val mock = word("cfg.geo.mock_policy", chain)?.let { w -> MockPolicy.entries.firstOrNull { it.wire == w } } ?: MockPolicy.BLOCK_SALE
+        val noLoc = word("cfg.geo.no_location_policy", chain)?.let { w -> NoLocationPolicy.entries.firstOrNull { it.wire == w } } ?: NoLocationPolicy.FORCE_SALE_REQUIRED
         val tolerant = cfg.value("cfg.geo.accuracy_tolerant", global)?.let { runCatching { it.jsonPrimitive.booleanOrNull }.getOrNull() } ?: false
-        // The outlet location at capture: the latest history row by then; with none, the outlet row (seed or import).
-        val (oLat, oLng, usable) = when {
-            dbl("h_lat") != null -> Triple(dbl("h_lat")!!, dbl("h_lng")!!, true)
-            o["location_basis"] == "master" && dbl("lat") != null && dbl("lng") != null -> Triple(dbl("lat")!!, dbl("lng")!!, true)
-            o["location_basis"] == "provisional" -> {
-                val lat = dbl("provisional_lat") ?: dbl("lat")
-                val lng = dbl("provisional_lng") ?: dbl("lng")
-                if (lat != null && lng != null) Triple(lat, lng, true) else Triple(0.0, 0.0, false)
-            }
-            else -> Triple(0.0, 0.0, false)
-        }
+        // The outlet location at capture: the latest history row valid by then (seed, import and every pin set write
+        // one). None by then means the outlet had no location yet. A history row cannot record a cleared pin or a
+        // placeholder basis today, so an outlet whose basis is now none or placeholder counts as having no location
+        // (the phone saw the same basis; docs/requests/backend-core-location-history-basis.md).
+        val usableNow = o["location_basis"] == "master" || o["location_basis"] == "provisional"
+        val hLat = dbl("h_lat")
+        val hLng = dbl("h_lng")
+        val usable = usableNow && hLat != null && hLng != null && (o["h_basis"] == "master" || o["h_basis"] == "provisional")
+        val oLat = hLat ?: 0.0
+        val oLng = hLng ?: 0.0
         val fix = FixInput(v.fixStatus == "ok" && v.lat != null && v.lng != null, v.lat ?: 0.0, v.lng ?: 0.0, v.accuracyM, v.isMock == true)
         // Refreshes are spent by the time a visit is stored; the action is the phone's and is not re-judged.
         val res = GeoVerdicts.verdict(fix, OutletGeo(usable, oLat, oLng), radius, maxAcc, GeoPolicy(mock, noLoc, tolerant, 0, 0))
@@ -114,6 +125,8 @@ class GeoRecheckHandler : RecordHandler {
     }
 
     companion object {
+        private const val SAVEPOINT = "geo_recheck"
+        private val log = org.slf4j.LoggerFactory.getLogger("aron.geo")
         private const val WINDOW_KEY = "cfg.sys.config_accept_window_h"
         private val KEYS = setOf(
             "cfg.geo.radius_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m", "cfg.geo.max_accuracy_m",
