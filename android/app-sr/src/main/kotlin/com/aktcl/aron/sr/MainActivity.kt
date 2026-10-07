@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
                     val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
                         SessionState.LoggedOut -> {
-                            val vm = viewModel { LoginViewModel(components.session::login) }
+                            val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect)
                         }
                         is SessionState.Active -> {
