@@ -1,0 +1,32 @@
+DataVoidResult:
+  type: object
+  required:
+  - route_id
+  - business_date
+  - scope
+  - voided_at
+  - tombstoned_records
+  - pending_rows_reported
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    scope:
+      type: string
+      enum:
+      - web_entry
+      - app_memos
+      - all
+    voided_at:
+      $ref: '#/components/schemas/Timestamp'
+    tombstoned_records:
+      type: integer
+      minimum: 0
+    pending_rows_reported:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: Last X-Pending-Rows of the route's device, shown in the confirmation.

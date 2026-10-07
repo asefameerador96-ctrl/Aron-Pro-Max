@@ -15,6 +15,10 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
+    api(project(":android:core-database"))
+    api(project(":android:feature-outlet"))
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

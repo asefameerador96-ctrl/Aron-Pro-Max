@@ -1,0 +1,22 @@
+path: /v1/admin/devices/{device_id}
+method: get
+operation:
+  tags:
+  - admin-devices
+  operationId: getDevice
+  summary: One device with bound users and its latest status report.
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  responses:
+    '200':
+      description: Device.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Device'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

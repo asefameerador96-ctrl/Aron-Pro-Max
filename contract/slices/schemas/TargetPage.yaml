@@ -1,0 +1,15 @@
+TargetPage:
+  type: object
+  required:
+  - items
+  - next_cursor
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/Target'
+    next_cursor:
+      oneOf:
+      - $ref: '#/components/schemas/PageCursor'
+      - type: 'null'

@@ -1,0 +1,20 @@
+RiskReviewRequest:
+  type: object
+  required:
+  - review_uuid
+  - action
+  additionalProperties: false
+  properties:
+    review_uuid:
+      $ref: '#/components/schemas/Uuid'
+    action:
+      type: string
+      enum:
+      - reviewed
+      - dismissed
+      - confirmed
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

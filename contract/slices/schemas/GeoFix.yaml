@@ -1,0 +1,116 @@
+GeoFix:
+  type: object
+  description: One on-demand location fix with the integrity evidence captured with it (docs/24 s11.1).
+  required:
+  - purpose
+  - fix_status
+  - lat
+  - lng
+  - accuracy_m
+  - provider
+  - is_mock
+  - reused
+  - device
+  additionalProperties: false
+  properties:
+    purpose:
+      $ref: '#/components/schemas/FixPurpose'
+    fix_status:
+      type: string
+      enum:
+      - ok
+      - timeout
+      - permission_denied
+      - location_off
+      - provider_unavailable
+    lat:
+      type:
+      - number
+      - 'null'
+      minimum: -90
+      maximum: 90
+    lng:
+      type:
+      - number
+      - 'null'
+      minimum: -180
+      maximum: 180
+    accuracy_m:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100000
+    altitude_m:
+      type:
+      - number
+      - 'null'
+    vertical_accuracy_m:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+    speed_mps:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+    bearing_deg:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 360
+    provider:
+      $ref: '#/components/schemas/LocationProvider'
+    fix_time:
+      description: Location.getTime() as an instant (GNSS-derived when provider is gps).
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    fix_elapsed_realtime_ms:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+      description: Location.getElapsedRealtimeNanos() / 1e6.
+    fix_age_ms:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: Capture elapsedRealtime minus fix elapsedRealtime.
+    time_to_fix_ms:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      maximum: 120000
+    request_priority:
+      type: string
+      enum:
+      - high_accuracy
+      - balanced
+    is_mock:
+      type: boolean
+      description: Location.isMock() (API 31+) or isFromMockProvider(). A mocked fix is never geo-valid.
+    reused:
+      type: boolean
+      description: True when a fix of the same purpose cycle was reused within cfg.geo.fix_reuse_max_age_s and 30
+        m.
+    refresh_count:
+      type: integer
+      minimum: 0
+      maximum: 10
+      description: Manual refreshes before this fix (at most cfg.geo.refresh_max).
+    gnss:
+      oneOf:
+      - $ref: '#/components/schemas/GnssSummary'
+      - type: 'null'
+    radio:
+      oneOf:
+      - $ref: '#/components/schemas/RadioEnvironment'
+      - type: 'null'
+    device:
+      $ref: '#/components/schemas/FixDeviceState'

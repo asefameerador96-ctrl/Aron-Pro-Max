@@ -1,0 +1,34 @@
+path: /v1/admin/geo/{level}/{id}
+method: patch
+operation:
+  tags:
+  - admin-geography
+  operationId: updateGeoNode
+  summary: Update a geography node (name, parent, contact fields, status). Optimistic concurrency by If-Match.
+  parameters:
+  - $ref: '#/components/parameters/GeoLevelPath'
+  - $ref: '#/components/parameters/IdPath'
+  - $ref: '#/components/parameters/IfMatch'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/GeoNodePatch'
+  responses:
+    '200':
+      description: Updated.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GeoNode'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '412':
+      $ref: '#/components/responses/PreconditionFailed'

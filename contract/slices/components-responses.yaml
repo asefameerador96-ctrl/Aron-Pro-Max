@@ -1,0 +1,148 @@
+responses:
+  NotModified:
+    description: Not modified (the ETag or version matches); empty body.
+  BadRequest:
+    description: Invalid request (validation errors in `errors`).
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+      X-Request-Id:
+        $ref: '#/components/headers/XRequestId'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+        examples:
+          validation:
+            $ref: '#/components/examples/ProblemValidation'
+  Unauthorized:
+    description: Missing, invalid or expired credentials, or a stale scope (refresh and retry once).
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+      X-Server-Time:
+        $ref: '#/components/headers/XServerTime'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+        examples:
+          scopeChanged:
+            $ref: '#/components/examples/ProblemScopeChanged'
+  Forbidden:
+    description: Authenticated but not allowed (permission, reach, device state, integrity).
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+  NotFound:
+    description: Not found or not in reach (the two are indistinguishable on purpose).
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+  Conflict:
+    description: State conflict (duplicate code, wrong state transition, batch_uuid reuse, already submitted).
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+        examples:
+          batchReuse:
+            $ref: '#/components/examples/ProblemBatchReuse'
+  Gone:
+    description: The cursor, page or version is too old; fetch the full resource.
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+  PreconditionFailed:
+    description: If-Match does not match the current version.
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+  PayloadTooLarge:
+    description: Body, row count or decompressed size above the limit (the phone halves its batch and resends).
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+  UnsupportedMediaType:
+    description: Wrong Content-Type or a missing gzip Content-Encoding on the batch.
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+  UpgradeRequired:
+    description: The app version is below the minimum for starting a new business day (capture and upload of an
+      open day are never blocked).
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+  TooManyRequests:
+    description: Rate limited or held; honour Retry-After (never counted against a record's attempts).
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+      Retry-After:
+        $ref: '#/components/headers/RetryAfter'
+      RateLimit-Limit:
+        $ref: '#/components/headers/RateLimitLimit'
+      RateLimit-Remaining:
+        $ref: '#/components/headers/RateLimitRemaining'
+      RateLimit-Reset:
+        $ref: '#/components/headers/RateLimitReset'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+        examples:
+          rateLimited:
+            $ref: '#/components/examples/ProblemRateLimited'
+  InternalError:
+    description: Unexpected server error after the request was understood; the phone bisects the batch (docs/24
+      s4.7).
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'
+  ServiceUnavailable:
+    description: Overloaded (admission control), read-only maintenance or a dependency outage; honour Retry-After.
+    headers:
+      X-Aron-Api:
+        $ref: '#/components/headers/XAronApi'
+      Retry-After:
+        $ref: '#/components/headers/RetryAfter'
+    content:
+      application/problem+json:
+        schema:
+          $ref: '#/components/schemas/Problem'

@@ -33,12 +33,14 @@ describe("route groups and role gate", () => {
 describe("menu is driven from data", () => {
   it("shows the admin group only to the portal roles", () => {
     // TSO and ANALYST see exactly one admin entry: the outlet approval panel they may read (docs/24 s8.5).
+    for (const r of ["TSO", "ANALYST"] as const) {
+      expect(menuFor(r).map((s) => s.group), r).toEqual(["main", "reports", "products", "admin"]);
+    }
     for (const r of ["TSO", "ANALYST", "DMO", "WM", "TOP"] as const) {
-      const admin = menuFor(r).find((s) => s.group === "admin");
-      expect(admin?.items.map((i) => i.href), r).toEqual(["/admin/outlet-requests"]);
+      expect(menuFor(r).find((s) => s.group === "admin")?.items.map((i) => i.href), r).toEqual(["/admin/outlet-requests"]);
     }
     expect(menuFor("SUPPORT").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/audit"]);
-    expect(menuFor("ADMIN").map((s) => s.group)).toEqual(["main", "admin"]);
+    expect(menuFor("ADMIN").map((s) => s.group)).toEqual(["main", "reports", "products", "admin", "config"]);
   });
   it("keeps the admin menu short: master-data tables hang off one hub, not one menu entry each", () => {
     const admin = menuFor("ADMIN").find((s) => s.group === "admin");

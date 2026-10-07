@@ -1,0 +1,7 @@
+LineKind:
+  type: string
+  enum:
+  - sale
+  - drp_reward
+  - promo_free
+  - free_sample

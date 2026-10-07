@@ -1,0 +1,64 @@
+ContentItem:
+  type: object
+  description: An AV or KV item delivered to phones; assets download on Wi-Fi (cfg.content.download_network_policy)
+    into a bounded cache.
+  required:
+  - content_id
+  - version
+  - kind
+  - title_en
+  - asset_url
+  - sha256
+  - bytes
+  - valid_from
+  - valid_to
+  - sequence
+  - outlet_ids
+  additionalProperties: false
+  properties:
+    content_id:
+      $ref: '#/components/schemas/Id'
+    version:
+      type: integer
+      minimum: 1
+    kind:
+      $ref: '#/components/schemas/ContentKind'
+    title_en:
+      type: string
+      maxLength: 120
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    asset_url:
+      type: string
+      format: uri
+      maxLength: 1000
+    sha256:
+      $ref: '#/components/schemas/Sha256Hex'
+    bytes:
+      type: integer
+      minimum: 1
+      maximum: 20971520
+    duration_s:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 600
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      $ref: '#/components/schemas/BusinessDate'
+    sequence:
+      type: integer
+      minimum: 1
+      maximum: 20
+      description: Play order in the call (AV before KV).
+    outlet_ids:
+      type: array
+      maxItems: 5000
+      items:
+        $ref: '#/components/schemas/Id'
+      description: Empty = every outlet of the user's routes.

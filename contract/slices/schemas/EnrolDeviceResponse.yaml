@@ -1,0 +1,26 @@
+EnrolDeviceResponse:
+  type: object
+  required:
+  - device_id
+  - device_uuid
+  - enrolled_at
+  - lockdown_level
+  - trust_level
+  - policy
+  - server_time
+  additionalProperties: false
+  properties:
+    device_id:
+      $ref: '#/components/schemas/Id'
+    device_uuid:
+      $ref: '#/components/schemas/Uuid'
+    enrolled_at:
+      $ref: '#/components/schemas/Timestamp'
+    lockdown_level:
+      $ref: '#/components/schemas/LockdownLevel'
+    trust_level:
+      $ref: '#/components/schemas/TrustLevel'
+    policy:
+      $ref: '#/components/schemas/DevicePolicy'
+    server_time:
+      $ref: '#/components/schemas/Timestamp'

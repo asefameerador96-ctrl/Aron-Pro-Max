@@ -1,0 +1,61 @@
+ConfigDelta:
+  type: object
+  required:
+  - from_version
+  - to_version
+  - values
+  - scheduled
+  - removed_keys
+  - calendar_changes
+  additionalProperties: false
+  properties:
+    from_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    to_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    values:
+      type: array
+      maxItems: 300
+      description: Full resolved values of every key whose resolved value changed for the caller's chain.
+      items:
+        $ref: '#/components/schemas/ResolvedConfigValue'
+    scheduled:
+      type: array
+      maxItems: 300
+      items:
+        $ref: '#/components/schemas/ResolvedConfigValue'
+    removed_keys:
+      type: array
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/ConfigKeyName'
+    calendar_changes:
+      type: array
+      maxItems: 60
+      items:
+        $ref: '#/components/schemas/Holiday'
+    outlet_radius_changes:
+      type: array
+      maxItems: 5000
+      description: Outlets of the caller's routes whose resolved radius_m or max_accuracy_m changed.
+      items:
+        type: object
+        required:
+        - outlet_id
+        - radius_m
+        - max_accuracy_m
+        additionalProperties: false
+        properties:
+          outlet_id:
+            $ref: '#/components/schemas/Id'
+          radius_m:
+            type: integer
+            minimum: 10
+            maximum: 5000
+          max_accuracy_m:
+            type: integer
+            minimum: 10
+            maximum: 1000
+    policy_changed:
+      type: boolean
+      description: True when the device policy version changed (fetch GET /v1/devices/me/policy).

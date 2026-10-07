@@ -1,0 +1,13 @@
+ContentViewRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: content_view
+      payload:
+        $ref: '#/components/schemas/ContentViewPayload'
+  unevaluatedProperties: false

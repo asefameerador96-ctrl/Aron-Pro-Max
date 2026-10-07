@@ -7,7 +7,7 @@ test.beforeEach(async () => {
 const stateOf = async () => (await fetch(`${MOCK}/__mock/state`)).json();
 
 test("product tree: brand under a segment shows the parent label; SKU create with units and Bengali digits", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/brands");
   await expect(page.getByTestId("data-table")).toContainText("Max Royal");
   await expect(page.getByTestId("data-table")).toContainText("Premium"); // parent segment label
@@ -32,25 +32,8 @@ test("product tree: brand under a segment shows the parent label; SKU create wit
   await expect(page.locator("#f-base_per_pack")).toHaveCount(0);
 });
 
-test("calendar: declare an emergency off-day with a reason; no edit or delete", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
-  await page.goto("/admin/holidays");
-  await expect(page.getByTestId("data-table")).toContainText("Victory Day");
-  await expect(page.getByRole("link", { name: "সম্পাদনা" })).toHaveCount(0);
-  await page.getByTestId("create-link").click();
-  await page.locator("#f-date").fill("2026-11-01");
-  await page.locator("#f-kind").selectOption("emergency_off");
-  await page.locator("#f-name_en").fill("Cyclone warning");
-  await page.locator("#f-scope_type").selectOption("global");
-  await page.locator("#f-scope_id").fill("0");
-  await page.locator("#reason").fill("Cyclone warning for the coast");
-  await page.getByRole("button", { name: "তৈরি করুন" }).click();
-  await expect(page.getByTestId("data-table")).toContainText("Cyclone warning");
-  expect((await stateOf()).audit.at(-1)).toMatchObject({ entity: "calendar_holiday", reason: "Cyclone warning for the coast" });
-});
-
 test("QC fault types: group and applies_to attributes, locked codes, add and retire, audited with the reason", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/master-data");
   await page.getByTestId("codelist-qc_fault_type").click();
   await expect(page.getByTestId("codelist-row")).toHaveCount(11);
@@ -77,7 +60,7 @@ test("QC fault types: group and applies_to attributes, locked codes, add and ret
 });
 
 test("code list: a bad code is flagged on its row and nothing is saved", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/code-lists/channel");
   await page.getByTestId("codelist-add").click();
   const row = page.getByTestId("codelist-row").nth(2);
@@ -90,7 +73,7 @@ test("code list: a bad code is flagged on its row and nothing is saved", async (
 });
 
 test("support sees the code lists read-only", async ({ page }) => {
-  await loginOk(page, "support1", "support-pass-1", "123456");
+  await loginOk(page, "msupport1", "support-pass-1", "123456");
   await page.goto("/admin/code-lists/channel");
   await expect(page.getByTestId("codelist-save")).toHaveCount(0);
   await expect(page.getByText("আপনি এই তালিকা দেখতে পারবেন, বদলাতে পারবেন না।")).toBeVisible();

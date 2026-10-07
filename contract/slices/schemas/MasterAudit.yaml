@@ -1,0 +1,15 @@
+MasterAudit:
+  type: object
+  required:
+  - created_at
+  - updated_at
+  - version
+  properties:
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    updated_at:
+      $ref: '#/components/schemas/Timestamp'
+    version:
+      type: integer
+      minimum: 1
+      description: Optimistic-concurrency version (ETag is the quoted version).

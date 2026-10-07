@@ -1,0 +1,32 @@
+path: /v1/admin/config/values
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: listConfigValues
+  summary: Stored scoped values of a key (open and, with history, closed rows).
+  parameters:
+  - $ref: '#/components/parameters/ConfigKeyQueryRequired'
+  - $ref: '#/components/parameters/ScopeTypeQuery'
+  - $ref: '#/components/parameters/ScopeIdQuery'
+  - name: include_history
+    in: query
+    required: false
+    schema:
+      type: boolean
+      default: false
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of values.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigValuePage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

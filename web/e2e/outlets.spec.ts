@@ -7,7 +7,7 @@ test.beforeEach(async () => {
 const stateOf = async () => (await fetch(`${MOCK}/__mock/state`)).json();
 
 test("retailer detail: four sections, an audited edit, reopen a wrongly closed outlet", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/outlets");
   await expect(page.getByTestId("data-table")).toContainText("Banani Store");
   await page.getByRole("row", { name: /Banani Store/ }).getByRole("link", { name: "সম্পাদনা" }).click();
@@ -69,7 +69,7 @@ test("outlet approval panel: a DMO sees only the panel, verifies then approves a
 });
 
 test("TSO reads the approval panel but has no actions", async ({ page }) => {
-  await loginOk(page, "tso334", "tso-pass-1");
+  await loginOk(page, "mtso1", "tso-pass-1");
   await page.goto("/admin/outlet-requests");
   await expect(page.getByTestId("data-table")).toContainText("New Corner Mart");
   await expect(page.getByTestId("action-approve")).toHaveCount(0);
@@ -77,7 +77,7 @@ test("TSO reads the approval panel but has no actions", async ({ page }) => {
 });
 
 test("wholesale marking: basket with a live count, confirm step, one audit row per outlet, idempotent retry", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/wholesale-marking");
   await expect(page.getByTestId("basket-count")).toContainText("০"); // Bengali digits
   await page.getByRole("checkbox", { name: /DHK-334-001/ }).check();
@@ -99,7 +99,7 @@ test("wholesale marking: basket with a live count, confirm step, one audit row p
 });
 
 test("support cannot reach wholesale marking", async ({ page }) => {
-  await loginOk(page, "support1", "support-pass-1", "123456");
+  await loginOk(page, "msupport1", "support-pass-1", "123456");
   await page.goto("/admin/wholesale-marking");
   await expect(page.getByTestId("forbidden")).toBeVisible();
 });

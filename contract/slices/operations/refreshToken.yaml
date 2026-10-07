@@ -1,0 +1,48 @@
+path: /v1/auth/refresh
+method: post
+operation:
+  tags:
+  - auth
+  operationId: refreshToken
+  summary: Rotate a refresh token (full or upload grant).
+  description: 'Rotation with reuse detection: a replaced token presented within `cfg.auth.refresh_grace_s` (60
+    s)
+
+    gets the stored replacement; after that the whole family is revoked (401 `ERR_AUTH_REFRESH_REUSED`).
+
+    Phones send `X-Device-Proof`; the web sends the `aron_rt` HttpOnly cookie instead of a body token.
+
+    '
+  security: []
+  parameters:
+  - $ref: '#/components/parameters/XDeviceId'
+  - $ref: '#/components/parameters/XDeviceProof'
+  - in: cookie
+    name: aron_rt
+    required: false
+    description: Web refresh token cookie (HttpOnly, Secure, SameSite=Strict, Path=/v1/auth/refresh).
+    schema:
+      type: string
+      minLength: 43
+      maxLength: 64
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/RefreshRequest'
+  responses:
+    '200':
+      description: New token pair.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TokenPair'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

@@ -6,7 +6,7 @@ test.beforeEach(async () => {
 });
 
 test("geography: list levels, create a division under a wing with a reason, edit a zone, deactivate", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.getByRole("link", { name: "মাস্টার ডেটা" }).click();
   await expect(page.getByTestId("group-geography")).toBeVisible();
   await page.getByTestId("group-geography").getByRole("link", { name: "বিভাগ", exact: true }).click();
@@ -52,7 +52,7 @@ test("geography: list levels, create a division under a wing with a reason, edit
 });
 
 test("geography is read-only for support", async ({ page }) => {
-  await loginOk(page, "support1", "support-pass-1", "123456");
+  await loginOk(page, "msupport1", "support-pass-1", "123456");
   const res = await page.goto("/admin/zones/new");
   expect(res?.status()).toBe(403);
 });

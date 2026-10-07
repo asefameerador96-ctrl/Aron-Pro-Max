@@ -1,0 +1,26 @@
+CallAssessmentAnswerPayload:
+  type: object
+  required:
+  - assessment_client_uuid
+  - criterion_id
+  additionalProperties: false
+  properties:
+    assessment_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    criterion_id:
+      $ref: '#/components/schemas/Id'
+    score:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 5
+    answer_text:
+      type:
+      - string
+      - 'null'
+      maxLength: 1000
+    answer_bool:
+      type:
+      - boolean
+      - 'null'

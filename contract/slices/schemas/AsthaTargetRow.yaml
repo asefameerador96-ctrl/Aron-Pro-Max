@@ -1,0 +1,38 @@
+AsthaTargetRow:
+  type: object
+  description: One Astha target line; `outlet_id` null = the route row, `brand_id` null = the All Brand memo row.
+  required:
+  - route_id
+  - month
+  - std_target
+  - std_achieved
+  - memo_target
+  - memo_achieved
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    outlet_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    brand_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    month:
+      $ref: '#/components/schemas/Month'
+    std_target:
+      $ref: '#/components/schemas/Decimal3'
+    std_achieved:
+      $ref: '#/components/schemas/Decimal3'
+    memo_target:
+      type: integer
+      minimum: 0
+    memo_achieved:
+      type: integer
+      minimum: 0

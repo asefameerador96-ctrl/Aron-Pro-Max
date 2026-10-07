@@ -1,0 +1,38 @@
+AsthaWebEntry:
+  type: object
+  required:
+  - route_id
+  - business_date
+  - rows
+  additionalProperties: false
+  properties:
+    client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    rows:
+      type: array
+      maxItems: 20000
+      items:
+        type: object
+        required:
+        - outlet_id
+        - sku_id
+        - qty_base
+        - app_overlap
+        additionalProperties: false
+        properties:
+          outlet_id:
+            $ref: '#/components/schemas/Id'
+          sku_id:
+            $ref: '#/components/schemas/Id'
+          qty_base:
+            type: integer
+            minimum: 0
+          app_overlap:
+            type: boolean
+            description: An app memo exists for this outlet and SKU on the date (flagged, never added).

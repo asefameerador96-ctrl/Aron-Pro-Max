@@ -1,0 +1,31 @@
+TargetBatchResult:
+  type: object
+  required:
+  - batch_uuid
+  - inserted
+  - updated
+  - unchanged
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    inserted:
+      type: integer
+      minimum: 0
+    updated:
+      type: integer
+      minimum: 0
+    unchanged:
+      type: integer
+      minimum: 0
+    revision_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Monthly targets - the pending revision created (live after approval).
+    revision_status:
+      oneOf:
+      - $ref: '#/components/schemas/TargetRevisionStatus'
+      - type: 'null'

@@ -1,0 +1,9 @@
+PrintDocumentKind:
+  type: string
+  enum:
+  - memo
+  - memo_reprint
+  - stock_slip
+  - day_summary
+  - void_slip
+  - due_receipt

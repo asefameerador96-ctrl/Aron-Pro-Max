@@ -1,0 +1,16 @@
+DecisionRequest:
+  type: object
+  required:
+  - decision
+  additionalProperties: false
+  properties:
+    decision:
+      type: string
+      enum:
+      - approve
+      - reject
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

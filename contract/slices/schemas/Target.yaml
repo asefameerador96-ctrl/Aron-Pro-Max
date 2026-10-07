@@ -1,0 +1,19 @@
+Target:
+  allOf:
+  - $ref: '#/components/schemas/TargetRow'
+  - type: object
+    required:
+    - id
+    - updated_at
+    properties:
+      id:
+        $ref: '#/components/schemas/Id'
+      updated_at:
+        $ref: '#/components/schemas/Timestamp'
+      source:
+        type: string
+        enum:
+        - admin
+        - excel
+        - migration
+  unevaluatedProperties: false

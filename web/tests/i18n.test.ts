@@ -35,7 +35,7 @@ describe("catalogues", () => {
     expect(formatDateTime("en", "2026-10-05T18:30:00.000Z")).toMatch(/6 Oct 2026, 00:30/);
   });
   it("maps problem codes to messages and falls back to the generic text", () => {
-    expect(problemMessage("en", "ERR_AUTH_INVALID_CREDENTIALS")).toBe("Wrong username or password.");
+    expect(problemMessage("en", "ERR_AUTH_INVALID_CREDENTIALS")).toBe("Wrong User ID or password.");
     expect(problemMessage("bn", "ERR_SOMETHING_NEW")).toBe(bn["error.generic"]);
     expect(problemMessage("en", undefined)).toBe(en["error.generic"]);
   });

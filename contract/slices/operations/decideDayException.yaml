@@ -1,0 +1,36 @@
+path: /v1/day/exceptions/{exception_uuid}/decision
+method: post
+operation:
+  tags:
+  - day
+  operationId: decideDayException
+  summary: Approve or reject a day exception (TSO of the zone).
+  parameters:
+  - name: exception_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DecisionRequest'
+  responses:
+    '200':
+      description: Decided.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DayException'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

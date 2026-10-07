@@ -1,5 +1,7 @@
 # Backend lane status
 
+> The lane is now **backend-core** (docs/lanes/backend-core.md); the live handoff is `docs/status/backend-core.md`.
+
 Updated 2026-10-06 (Day 1 rows closed on the seed).
 
 ## Done (built, checker findings fixed, pushed)

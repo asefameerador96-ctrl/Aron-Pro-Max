@@ -1,0 +1,35 @@
+path: /v1/admin/data-entry
+method: post
+operation:
+  tags:
+  - web-entry
+  operationId: createPaperBackfill
+  summary: Key a dead-phone day from a printed memo (source manual) through the same ingest path.
+  description: 'Allowed within `cfg.entry.paper_backfill_window_days` (7) of the business date. Idempotent by `client_uuid`;
+
+    a memo number already stored (from the phone or an earlier backfill) is stored once and answered with
+
+    `status: duplicate_memo_no`. The memo is flagged `source = manual` in every report (Online/Offline).
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/PaperBackfillRequest'
+  responses:
+    '200':
+      description: Result.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PaperBackfillResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

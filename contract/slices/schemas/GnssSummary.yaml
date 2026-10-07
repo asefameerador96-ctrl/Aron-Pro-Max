@@ -1,0 +1,69 @@
+GnssSummary:
+  type: object
+  description: GnssStatus (and optional GnssMeasurement) statistics collected only while the fix request was open.
+  required:
+  - window_ms
+  - satellites_visible
+  - satellites_used
+  - constellations_used
+  additionalProperties: false
+  properties:
+    window_ms:
+      type: integer
+      minimum: 0
+      maximum: 60000
+    satellites_visible:
+      type: integer
+      minimum: 0
+      maximum: 200
+    satellites_used:
+      type: integer
+      minimum: 0
+      maximum: 200
+    constellations_used:
+      type: array
+      maxItems: 8
+      items:
+        $ref: '#/components/schemas/GnssConstellation'
+    cn0_used_mean_dbhz:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 70
+    cn0_used_max_dbhz:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 70
+    cn0_used_stddev_dbhz:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 40
+    cn0_all_mean_dbhz:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 70
+    ephemeris_share:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 1
+    raw_supported:
+      type: boolean
+    raw_measurement_count:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    agc_db_mean:
+      type:
+      - number
+      - 'null'
+      description: Mean automatic gain control level when available (simulators often show abnormal AGC).

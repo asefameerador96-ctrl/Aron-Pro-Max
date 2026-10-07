@@ -1,0 +1,16 @@
+DeviceStateChangeRequest:
+  type: object
+  required:
+  - action
+  - reason
+  additionalProperties: false
+  properties:
+    action:
+      type: string
+      enum:
+      - suspend
+      - revoke
+      - reactivate
+      - mark_replaced
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

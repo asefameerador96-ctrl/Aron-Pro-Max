@@ -1,0 +1,19 @@
+TrackingActionRequest:
+  type: object
+  required:
+  - action_uuid
+  - route_id
+  - business_date
+  - note
+  additionalProperties: false
+  properties:
+    action_uuid:
+      $ref: '#/components/schemas/Uuid'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    note:
+      type: string
+      minLength: 3
+      maxLength: 500

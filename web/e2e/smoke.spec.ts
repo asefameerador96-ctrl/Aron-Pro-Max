@@ -19,7 +19,7 @@ test("TSO logs in and sees an empty dashboard scoped by the server, in Bangla th
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "ড্যাশবোর্ড", level: 1 })).toBeVisible();
   await expect(page.getByTestId("scope-node")).toContainText("Banani");
-  await expect(page.getByTestId("dashboard-empty")).toBeVisible();
+  await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
   // Bengali digits in the business date (Dhaka).
   await expect(page.getByTestId("business-date")).toHaveText(/[০-৯]/);
   // The TSO has no admin menu.
@@ -32,7 +32,7 @@ test("TSO logs in and sees an empty dashboard scoped by the server, in Bangla th
 
 test("wrong password shows a localised error and no session", async ({ page }) => {
   await login(page, "tso334", "wrong");
-  await expect(page.getByTestId("login-error")).toHaveText("ইউজারনেম বা পাসওয়ার্ড ভুল।");
+  await expect(page.getByTestId("login-error")).toHaveText("ইউজার আইডি বা পাসওয়ার্ড ভুল।");
   await page.goto("/");
   await expect(page).toHaveURL(/\/login/);
 });
@@ -81,7 +81,7 @@ test("SR has no web access", async ({ page }) => {
 });
 
 test("admin needs the TOTP step; a wrong code is refused", async ({ page }) => {
-  await login(page, "admin1", "admin-pass-1", "000000");
+  await login(page, "madmin1", "admin-pass-1", "000000");
   await expect(page.getByTestId("login-error")).toHaveText("কোডটি সঠিক নয়। কোড দেখে আবার চেষ্টা করুন।");
   await page.getByTestId("mfa-form").locator('input[name="code"]').fill("123456");
   await page.getByTestId("mfa-form").locator('button[type="submit"]').click();
@@ -90,7 +90,7 @@ test("admin needs the TOTP step; a wrong code is refused", async ({ page }) => {
 });
 
 test("generated CRUD page: list, filter, edit with a mandatory reason, audit row with the reason", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/clusters");
   await expect(page.getByTestId("data-table")).toContainText("Banani Market");
 
@@ -116,7 +116,7 @@ test("generated CRUD page: list, filter, edit with a mandatory reason, audit row
 
   const state = await (await fetch(`${MOCK}/__mock/state`)).json();
   expect(state.audit).toHaveLength(1);
-  expect(state.audit[0]).toMatchObject({ entity: "cluster", action: "cluster.update", reason: "Renamed after the market merged", actor_username: "admin1" });
+  expect(state.audit[0]).toMatchObject({ entity: "cluster", action: "cluster.update", reason: "Renamed after the market merged", actor_username: "madmin1" });
 
   // the audit page lists it
   await page.getByRole("link", { name: "অডিট লগ" }).click();
@@ -124,7 +124,7 @@ test("generated CRUD page: list, filter, edit with a mandatory reason, audit row
 });
 
 test("create needs a reason too; the BFF refuses a write without one", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/clusters/new");
   await page.locator("#f-name").fill("New Haat");
   await page.locator("#f-zone_id").selectOption({ label: "Z-335-1 · Mirpur Zone 1" });
@@ -143,7 +143,7 @@ test("create needs a reason too; the BFF refuses a write without one", async ({ 
 });
 
 test("support can read but not change master data", async ({ page }) => {
-  await loginOk(page, "support1", "support-pass-1", "123456");
+  await loginOk(page, "msupport1", "support-pass-1", "123456");
   await page.goto("/admin/clusters");
   await expect(page.getByTestId("data-table")).toBeVisible();
   await expect(page.getByTestId("create-link")).toHaveCount(0);

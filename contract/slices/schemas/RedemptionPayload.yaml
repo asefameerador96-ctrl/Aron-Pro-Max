@@ -1,0 +1,59 @@
+RedemptionPayload:
+  type: object
+  description: 'A loyalty redemption basket confirmed on the phone (Diamond League). Points are deducted once per
+
+    `client_uuid` (docs/24 s4.14). points_total = cash_points + sum(redemption_line.points_total);
+
+    cash_mtk = cash_points x cash_rate_mtk_per_point (otherwise quarantined `arithmetic_mismatch`).
+
+    '
+  required:
+  - outlet_id
+  - programme_id
+  - balance_before_points
+  - points_total
+  - cash_points
+  - cash_mtk
+  - cash_rate_mtk_per_point
+  - line_count
+  - confirmed_at
+  additionalProperties: false
+  properties:
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    visit_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    balance_before_points:
+      type: integer
+      minimum: 0
+      description: Balance the phone showed (bundle balance minus local unsynced redemptions).
+    points_total:
+      type: integer
+      minimum: 1
+      maximum: 100000
+    cash_points:
+      type: integer
+      minimum: 0
+      maximum: 100000
+      description: Cash-back points (at most cfg.loyalty.cash_max_points).
+    cash_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    cash_rate_mtk_per_point:
+      type: integer
+      minimum: 0
+      maximum: 100000
+      description: Rate used (cfg.loyalty.cash_rate_mtk_per_point at capture).
+    line_count:
+      type: integer
+      minimum: 0
+      maximum: 20
+    confirmed_at:
+      $ref: '#/components/schemas/Timestamp'
+    fix:
+      oneOf:
+      - $ref: '#/components/schemas/GeoFix'
+      - type: 'null'

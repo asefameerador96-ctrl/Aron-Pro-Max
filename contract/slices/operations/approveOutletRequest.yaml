@@ -1,0 +1,35 @@
+path: /v1/outlet-requests/{request_uuid}/approve
+method: post
+operation:
+  tags:
+  - outlet-requests
+  operationId: approveOutletRequest
+  summary: Approve a verified request on the web (new outlet gets a code; close sets status closed; location moves
+    the pin).
+  description: The approver must differ from the requester and the verifier (409 `ERR_SEPARATION_OF_DUTIES`). A
+    location move above `cfg.sec.fraud.location_move_alert_m` on a confirmed outlet needs the TSO.
+  parameters:
+  - $ref: '#/components/parameters/RequestUuidPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/OutletRequestApproveRequest'
+  responses:
+    '200':
+      description: Approved and applied to the outlet master.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OutletRequest'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

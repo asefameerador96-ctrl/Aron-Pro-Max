@@ -1,0 +1,33 @@
+LoginSubmitStatus:
+  type: object
+  required:
+  - as_of
+  - business_date
+  - kpis
+  - not_logged_in
+  - logged_in_not_submitted
+  - submitted
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    kpis:
+      $ref: '#/components/schemas/DashboardKpis'
+    not_logged_in:
+      type: array
+      items:
+        $ref: '#/components/schemas/RouteDayState'
+    logged_in_not_submitted:
+      type: array
+      items:
+        $ref: '#/components/schemas/RouteDayState'
+    submitted:
+      type: array
+      items:
+        $ref: '#/components/schemas/RouteDayState'
+    exceptions:
+      type: array
+      items:
+        $ref: '#/components/schemas/RouteDayState'

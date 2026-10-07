@@ -1,0 +1,40 @@
+SalesSubmitRequest:
+  type: object
+  required:
+  - client_uuid
+  - scope
+  - business_date
+  - submit_cycle
+  - device_counts
+  - device_money
+  - submitted_with_dues
+  - dues_outstanding_mtk
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    scope:
+      type: string
+      enum:
+      - route_day
+      - supervisor_day
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    submit_cycle:
+      type: integer
+      minimum: 1
+      maximum: 50
+    device_counts:
+      $ref: '#/components/schemas/TypeCounts'
+    device_money:
+      $ref: '#/components/schemas/MoneyTotals'
+    submitted_with_dues:
+      type: boolean
+    dues_outstanding_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'

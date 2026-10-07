@@ -5,7 +5,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { handleTable, type Ctx, type Row } from "./tables";
-import { seedCodeLists, seedTables, tableDefs } from "./seed";
+import { seedCodeLists, seedTables, tableDefs } from "./master-seed";
+import { freshDashStore, handleDash, hasPii, type DashStore } from "./dash";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 interface MockUser {
@@ -14,6 +15,8 @@ interface MockUser {
   scope: ScopeSummary;
   mfa: boolean;
   state?: "locked" | "password_change";
+  /** Master-data fixture user: skips the dashboard mock (mock/dash.ts) so the admin portal sees the master-data tables of mock/master-seed.ts. */
+  master?: boolean;
 }
 
 const nationalScope: ScopeSummary = { scope_version: 3, nodes: [{ type: "national", id: 0, code: null, name: null }] };
@@ -28,9 +31,14 @@ function users(): Record<string, MockUser> {
   });
   return {
     tso334: u(2001, "tso334", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 334, code: "T-334", name: "Banani" }] }),
-    dmo1: u(2004, "dmo1", "Hasan Mahmud", "DMO", "dmo-pass-1", { scope_version: 2, nodes: [{ type: "division", id: 3, code: "D-1", name: "Dhaka North" }] }),
+    tso335: u(2005, "tso335", "Salma Begum", "TSO", "tso-pass-2", { scope_version: 7, nodes: [{ type: "territory", id: 335, code: "T-335", name: "Gulshan" }] }),
+    tso999: u(2006, "tso999", "Outside Scope", "TSO", "tso-pass-3", { scope_version: 7, nodes: [{ type: "territory", id: 999, code: "T-999", name: "Elsewhere" }] }),
+    dmo1: u(2004, "dmo1", "Habib Rahman", "DMO", "dmo-pass-1", { scope_version: 4, nodes: [{ type: "division", id: 10, code: "D-10", name: "Dhaka North" }] }),
     wm1: u(2002, "wm1", "Karim Hossain", "WM", "wm-pass-1", { scope_version: 2, nodes: [{ type: "wing", id: 1, code: "W-1", name: "Dhaka Wing" }] }),
     analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
+    madmin1: { ...u(3101, "madmin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true), master: true },
+    msupport1: { ...u(3102, "msupport1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true), master: true },
+    mtso1: { ...u(3103, "mtso1", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 6, code: "T-334", name: "Banani" }] }), master: true },
     admin1: u(3001, "admin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true),
     support1: u(3002, "support1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true),
     sr334001: u(1001, "sr334001", "Testing Banani", "SR", "sr-pass-1", { scope_version: 7, nodes: [{ type: "route", id: 10231, code: "R-334-01", name: "RouteDaily" }] }),
@@ -39,7 +47,14 @@ function users(): Record<string, MockUser> {
   };
 }
 
+/** A test-registered endpoint (tests/helpers): answers before the built-in handlers, records every call. */
+export interface StubCall { method: string; path: string; query: Record<string, string>; body: unknown; headers: IncomingMessage["headers"]; role: Role }
+export interface StubResult { status: number; body?: unknown; headers?: Record<string, string> }
+export interface Stub { method: string; path: string | RegExp; fn: (call: StubCall, match: RegExpMatchArray | null) => StubResult | Promise<StubResult> }
+
 interface State {
+  stubs: Stub[];
+  calls: StubCall[];
   users: Record<string, MockUser>;
   tables: Record<string, Row[]>;
   codeLists: Record<string, unknown[]>;
@@ -53,6 +68,7 @@ interface State {
   refreshCount: number;
   nextId: number;
   accessTtlS: number;
+  dash: DashStore;
 }
 
 export interface MockOptions {
@@ -73,7 +89,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { users: users(), tables, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
+  return { stubs: [], calls: [], users: users(), tables, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -175,7 +191,15 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     reset();
     return send(res, 204, undefined);
   }
-  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, tables: state.tables });
+  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, tables: state.tables, exports: state.dash.exports, actions: state.dash.actions, leave: state.dash.leave });
+  if (path === "/__mock/now" && method === "POST") {
+    state.dash.now = ((await readJson(req)) as { now?: string | null } | undefined)?.now ?? null;
+    return send(res, 204, undefined);
+  }
+  if (path === "/__mock/tutorial" && method === "POST") {
+    state.dash.tutorialExtra.push((await readJson(req)) as DashStore["tutorialExtra"][number]);
+    return send(res, 204, undefined);
+  }
 
   if (path === "/v1/health") return send(res, 200, { status: "ok", api: "/v1", server_time: new Date().toISOString(), generation: "00000000-0000-4000-8000-000000000001", build: "mock" });
 
@@ -228,9 +252,30 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   const user = a.user;
 
   if (path === "/v1/me") {
-    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: false, mfa_enabled: user.mfa };
+    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: hasPii(user.summary.role), mfa_enabled: user.mfa };
     return send(res, 200, me);
   }
+
+  for (const stub of state.stubs) {
+    const match = typeof stub.path === "string" ? (stub.path === path ? [] : null) : path.match(stub.path);
+    if (stub.method !== method || !match) continue;
+    const body = method === "GET" ? undefined : await readJson(req);
+    const call: StubCall = { method, path, query: Object.fromEntries(url.searchParams), body, headers: req.headers, role: user.summary.role };
+    state.calls.push(call);
+    const r = await stub.fn(call, match as RegExpMatchArray);
+    return send(res, r.status, r.body, r.headers);
+  }
+
+  if (!user.master && await handleDash({
+    user: { role: user.summary.role, scope: user.scope, id: user.summary.user_id, name: user.summary.full_name, password: state.dash.passwords[user.summary.user_id] ?? user.password },
+    method, path, url, store: state.dash, problem,
+    body: () => readJson(req),
+    send: (status, body, headers) => send(res, status, body, headers),
+    raw: (status, contentType, body, headers) => {
+      res.writeHead(status, { "Content-Type": contentType, "X-Aron-Api": "1", "X-Request-Id": randomUUID(), ...headers });
+      res.end(status === 204 ? undefined : body);
+    },
+  })) return;
 
   if (path.startsWith("/v1/admin/")) {
     const write = method !== "GET";

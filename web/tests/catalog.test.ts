@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { PUT as codeListPut } from "@/app/api/bff/admin/code-lists/[key]/route";
-import { holidays } from "@/app/admin/_entities/calendar";
 import { productNodeEntities, skus } from "@/app/admin/_entities/products";
 import { CODE_LISTS } from "@/app/admin/_codelists/registry";
 import { valuesSchema } from "@/components/admin/crud/validation";
@@ -19,7 +18,7 @@ describe("product hierarchy", () => {
     expect(names("variants")).toContain("parent_id");
   });
   it("creates a segment under a category, sets status, sort and Bangla name", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const res = await create("segments", { values: { parent_id: "2", name: "Mass", sort: "3", name_bn: "সাধারণ" }, reason: REASON }, c);
     expect(res.status).toBe(201);
     expect((await res.json()).row).toMatchObject({ level: "segment", parent_id: 2, sort: 3, status: "active" });
@@ -28,7 +27,7 @@ describe("product hierarchy", () => {
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "product_node", action: "product_node.update", after: { status: "inactive", sort: 9 } });
   });
   it("a node of another level is not reachable through the wrong path", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     expect((await update("brands", "1", { values: { sort: "2" }, reason: REASON, version: 1 }, c)).status).toBe(404); // id 1 is a category
   });
 });
@@ -54,34 +53,11 @@ describe("SKUs", () => {
     expect(u.safeParse({ short_name: "MaxR", sort: "4", status: "inactive" }).success).toBe(true);
   });
   it("creates and edits with the reason; duplicate codes are 409", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     expect((await create("skus", { values: ok, reason: REASON }, c)).status).toBe(201);
     expect((await create("skus", { values: ok, reason: REASON }, c)).status).toBe(409);
     expect((await update("skus", "1", { values: { short_name: "MaxR10" }, reason: REASON, version: 1 }, c)).status).toBe(200);
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "sku", reason: REASON });
-  });
-});
-
-describe("working-day calendar", () => {
-  it("has no edit; create sends the required reason as `reason`", async () => {
-    expect(holidays.api.item).toBeUndefined();
-    const c = await signIn("admin1");
-    const res = await create("holidays", { values: { date: "2026-11-01", kind: "emergency_off", name_en: "Cyclone warning", scope_type: "territory", scope_id: "6" }, reason: "Cyclone warning for the coast" }, c);
-    expect(res.status).toBe(201);
-    expect((await res.json()).row).toMatchObject({ kind: "emergency_off", selling_day: false, scope_id: 6 });
-    expect(mock.state.audit.at(-1)).toMatchObject({ entity: "calendar_holiday", reason: "Cyclone warning for the coast" });
-    expect(mock.state.tables.holidays!.at(-1)).not.toHaveProperty("reason");
-    const make = await create("holidays", { values: { date: "2026-11-07", kind: "makeup_day", name_en: "Make-up Saturday", scope_type: "global", scope_id: "0" }, reason: "Make-up day for the strike" }, c);
-    expect((await make.json()).row).toMatchObject({ selling_day: true });
-    expect((await create("holidays", { values: { date: "2026-11-07", kind: "makeup_day", name_en: "Dup", scope_type: "global", scope_id: "0" }, reason: REASON }, c)).status).toBe(409);
-  });
-  it("validates dates, kind and scope", () => {
-    const s = valuesSchema(holidays, "create");
-    const ok = { date: "2026-11-01", kind: "holiday", name_en: "Holiday", scope_type: "global", scope_id: "0" };
-    expect(s.safeParse(ok).success).toBe(true);
-    expect(s.safeParse({ ...ok, date: "1/11/2026" }).success).toBe(false);
-    expect(s.safeParse({ ...ok, kind: "party" }).success).toBe(false);
-    expect(s.safeParse({ ...ok, scope_type: "route" }).success).toBe(false);
   });
 });
 
@@ -92,7 +68,7 @@ describe("code lists", () => {
   });
   const list = async (c: Record<string, string>, key: string) => (await (await fetch(`${process.env.ARON_API_BASE_URL}/v1/admin/code-lists`, { headers: { Authorization: `Bearer ${[...mock.state.access.keys()].pop()}` } })).json()).lists.find((l: { list_key: string }) => l.list_key === key).items as Record<string, unknown>[];
   it("adds an item, edits a label, retires with valid_to; the reason is audited", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const items = await list(c, "qc_fault_type");
     expect(items).toHaveLength(11);
     const next = [...items.map((i) => (i.code === "wet" ? { ...i, label_bn: "ভেজা মাল", valid_to: "2026-12-31" } : i)), { code: "mould", label_en: "Mould", label_bn: "ছাতা", sort: 12, attrs: { group: "MKT", applies_to: "app" } }];
@@ -102,7 +78,7 @@ describe("code lists", () => {
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "code_list", reason: REASON });
   });
   it("refuses removing or renaming a saved code, duplicate codes, bad codes, missing labels and a short reason", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const items = await list(c, "channel");
     const removed = await putList("channel", { items: items.slice(1), reason: REASON }, c);
     expect(removed.status).toBe(400);
@@ -118,10 +94,10 @@ describe("code lists", () => {
     expect(await list(c, "channel")).toHaveLength(2);
   });
   it("support and TSO cannot write", async () => {
-    const support = await signIn("support1");
+    const support = await signIn("msupport1");
     const items = await list(support, "channel");
     expect((await putList("channel", { items, reason: REASON }, support)).status).toBe(403);
-    const tso = await signIn("tso334");
+    const tso = await signIn("mtso1");
     expect((await putList("channel", { items, reason: REASON }, tso)).status).toBe(403);
   });
 });

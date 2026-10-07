@@ -1,0 +1,36 @@
+path: /v1/leave/{leave_uuid}/decision
+method: post
+operation:
+  tags:
+  - people
+  operationId: decideLeave
+  summary: Approve or reject a TSO leave application (DMO by default).
+  parameters:
+  - name: leave_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DecisionRequest'
+  responses:
+    '200':
+      description: Decided.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LeaveApplication'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

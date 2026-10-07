@@ -1,0 +1,6 @@
+AppFlavour:
+  type: string
+  enum:
+  - sr
+  - amo
+  - tso

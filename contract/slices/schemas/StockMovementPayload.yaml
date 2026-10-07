@@ -1,0 +1,43 @@
+StockMovementPayload:
+  type: object
+  description: One event per SKU per Save (an increment, never an overwrite). qty_entered is negative only for kind
+    adjustment.
+  required:
+  - kind
+  - sku_id
+  - qty_entered
+  - unit_entered
+  - pack_factor
+  - qty_base
+  - slip_printed
+  additionalProperties: false
+  properties:
+    kind:
+      $ref: '#/components/schemas/StockMovementKind'
+    sku_id:
+      $ref: '#/components/schemas/Id'
+    qty_entered:
+      type: integer
+      minimum: -10000000
+      maximum: 10000000
+      not:
+        const: 0
+    unit_entered:
+      $ref: '#/components/schemas/QtyUnit'
+    pack_factor:
+      type: integer
+      minimum: 1
+      maximum: 1000
+    qty_base:
+      type: integer
+      minimum: -10000000
+      maximum: 10000000
+      description: qty_entered x pack_factor.
+    reason_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: Required for adjustment, damaged and short (code list stock_variance_reason).
+    slip_printed:
+      type: boolean

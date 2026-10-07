@@ -1,0 +1,88 @@
+FinalSubmitPreview:
+  type: object
+  required:
+  - zone_id
+  - business_date
+  - already_submitted
+  - routes
+  additionalProperties: false
+  properties:
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    already_submitted:
+      type: boolean
+    submitted_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    submitted_by:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    routes:
+      type: array
+      maxItems: 200
+      items:
+        type: object
+        required:
+        - route_id
+        - route_code
+        - route_name
+        - kind
+        - state
+        - had_data
+        - memo_count
+        - net_mtk
+        additionalProperties: false
+        properties:
+          route_id:
+            $ref: '#/components/schemas/Id'
+          route_code:
+            type: string
+            maxLength: 40
+          route_name:
+            type: string
+            maxLength: 120
+          kind:
+            type: string
+            enum:
+            - sr
+            - amo
+          ff_user_id:
+            type:
+            - integer
+            - 'null'
+            format: int64
+            minimum: 1
+            description: Null means "SR Not Set" (normal for an AMO route).
+          ff_user_name:
+            type:
+            - string
+            - 'null'
+            maxLength: 120
+          state:
+            $ref: '#/components/schemas/DayState'
+          had_data:
+            type: boolean
+          memo_count:
+            type: integer
+            minimum: 0
+          net_mtk:
+            $ref: '#/components/schemas/Mtk'
+          pending_rows_reported:
+            type:
+            - integer
+            - 'null'
+            minimum: 0
+    warnings:
+      type: array
+      maxItems: 20
+      items:
+        type: string
+        enum:
+        - routes_not_sales_submitted
+        - routes_with_pending_rows
+        - routes_not_logged_in

@@ -1,0 +1,13 @@
+ConfigAckRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: config_ack
+      payload:
+        $ref: '#/components/schemas/ConfigAckPayload'
+  unevaluatedProperties: false

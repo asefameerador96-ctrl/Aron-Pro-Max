@@ -1,0 +1,21 @@
+DeviceReplaceRequest:
+  type: object
+  required:
+  - mode
+  - reason
+  additionalProperties: false
+  properties:
+    mode:
+      type: string
+      enum:
+      - upload_first
+      - revoke_now
+    new_device_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: User to issue the new-phone OTP for; defaults to the old device's bound user.
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

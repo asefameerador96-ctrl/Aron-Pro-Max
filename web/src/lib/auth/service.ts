@@ -42,13 +42,14 @@ export interface AuthCookies {
   refreshExpiresAt: string | null;
 }
 
-export function sessionFromLogin(body: LoginResponse): SessionData | null {
+export function sessionFromLogin(body: LoginResponse, rem = false): SessionData | null {
   if (!body.access_token) return null;
   return {
     at: body.access_token,
     atExp: body.access_expires_at ? Date.parse(body.access_expires_at) : Date.now() + FALLBACK_ACCESS_MS,
     user: body.user,
     scope: body.scope ?? null,
+    ...(rem ? { rem: true } : {}),
   };
 }
 
@@ -60,8 +61,9 @@ function ttlSeconds(refreshExpiresAt: string | null): number {
 /** Write the session cookies on a response. */
 export function setAuthCookies(res: NextResponse, a: AuthCookies): void {
   const ttl = ttlSeconds(a.refreshExpiresAt);
-  res.cookies.set(SESSION_COOKIE, seal(a.session, SESSION_PURPOSE, ttl), cookieOptions(ttl));
-  if (a.refreshToken) res.cookies.set(RT_COOKIE, a.refreshToken, cookieOptions(ttl));
+  const persistent = a.session.rem === true;
+  res.cookies.set(SESSION_COOKIE, seal(a.session, SESSION_PURPOSE, ttl), cookieOptions(ttl, persistent));
+  if (a.refreshToken) res.cookies.set(RT_COOKIE, a.refreshToken, cookieOptions(ttl, persistent));
   res.cookies.delete(MFA_COOKIE);
 }
 
@@ -78,7 +80,7 @@ export function clearAuthCookies(res: NextResponse): void {
 }
 
 /** Rotate the refresh cookie and mint a new access token, then re-read the principal (role and scope may have changed). */
-export async function refreshSession(rt: string): Promise<ApiOutcome<AuthCookies>> {
+export async function refreshSession(rt: string, rem = false): Promise<ApiOutcome<AuthCookies>> {
   const client = apiClient(undefined, { Cookie: `aron_rt=${rt}` });
   const r = await outcome(client.POST("/v1/auth/refresh", { body: { grant: "full", refresh_token: null } }));
   if (!r.ok) return r;
@@ -91,7 +93,7 @@ export async function refreshSession(rt: string): Promise<ApiOutcome<AuthCookies
     status: 200,
     response: r.response,
     data: {
-      session: { at: pair.access_token, atExp: Date.parse(pair.access_expires_at), user: me.data.user, scope: me.data.scope },
+      session: { at: pair.access_token, atExp: Date.parse(pair.access_expires_at), user: me.data.user, scope: me.data.scope, ...(rem ? { rem: true } : {}) },
       refreshToken: newRt,
       refreshExpiresAt: pair.refresh_expires_at,
     },

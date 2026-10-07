@@ -7,7 +7,7 @@ test.beforeEach(async () => {
 });
 
 test("CE1: SUPPORT gets HTTP 403 on write pages even when the id or slug is percent-encoded", async ({ page }) => {
-  await loginOk(page, "support1", "support-pass-1", "123456");
+  await loginOk(page, "msupport1", "support-pass-1", "123456");
   // /admin/clusters/1 is 403 (N011-C3); the proxy matches the raw path with [0-9]+, so %31 skips its write-page gate.
   const encodedId = await page.goto("/admin/clusters/%31");
   expect(encodedId?.status()).toBe(403);
@@ -16,7 +16,7 @@ test("CE1: SUPPORT gets HTTP 403 on write pages even when the id or slug is perc
 });
 
 test("CE2: the one-time panel shows localised labels and a localised expiry, not raw member names and an ISO string", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/users/new");
   await page.locator("#f-username").fill("chk001");
   await page.locator("#f-full_name").fill("Checker Rep");
@@ -30,7 +30,7 @@ test("CE2: the one-time panel shows localised labels and a localised expiry, not
 });
 
 test("CE4: a required field is exposed to assistive technology as required, not only with a visual asterisk", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/routes/new");
   const name = page.locator("#f-name");
   const required = (await name.getAttribute("required")) !== null || (await name.getAttribute("aria-required")) === "true";
@@ -38,7 +38,7 @@ test("CE4: a required field is exposed to assistive technology as required, not 
 });
 
 test("CE5: an entity with no edit (route assignments) answers 404 on its edit URL, not a 'forbidden' page", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   const res = await page.goto("/admin/route-assignments/1");
   expect(res?.status()).toBe(404);
 });

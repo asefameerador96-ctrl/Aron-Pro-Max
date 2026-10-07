@@ -1,0 +1,43 @@
+OfferPatch:
+  type: object
+  minProperties: 2
+  required:
+  - change_reason
+  additionalProperties: false
+  properties:
+    title_en:
+      type: string
+      maxLength: 200
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 200
+    valid_to:
+      $ref: '#/components/schemas/BusinessDate'
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    discount_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 10000
+    discount_mtk_per_unit:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    threshold_qty_base:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    reward_qty_base:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

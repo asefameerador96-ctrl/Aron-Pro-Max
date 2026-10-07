@@ -1,0 +1,22 @@
+path: /v1/admin/config/versions/{version}
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: getConfigVersion
+  summary: One committed config version with its values (compare and history views).
+  parameters:
+  - $ref: '#/components/parameters/ConfigVersionPath'
+  responses:
+    '200':
+      description: The version.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigVersionDetail'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

@@ -1,0 +1,22 @@
+path: /v1/dashboards/login-submit
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getLoginSubmitStatus
+  summary: Login and Sales Submit status with the lists behind each count (Bikroy Joma status).
+  parameters:
+  - $ref: '#/components/parameters/BusinessDateQueryRequired'
+  - $ref: '#/components/parameters/GeoLevelQuery'
+  - $ref: '#/components/parameters/NodeIdQuery'
+  responses:
+    '200':
+      description: Counts, percentages with their basis, and lists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginSubmitStatus'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

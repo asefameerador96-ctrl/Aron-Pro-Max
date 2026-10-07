@@ -1,0 +1,13 @@
+TeamLocationList:
+  type: object
+  required:
+  - as_of
+  - items
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/TeamLocation'

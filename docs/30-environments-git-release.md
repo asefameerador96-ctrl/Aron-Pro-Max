@@ -46,6 +46,10 @@ This page applies the full design of `docs/20` s5 (written for the long plan) to
 | Migrations | forward-only, checksum-checked, expand/contract (`docs/20` s5.6). A shipped migration is never edited. |
 | Contract | `oasdiff` breaking-change check in CI; a breaking change needs a `schema_version` bump and a lead-approved request file. |
 
+### 3a. Repository visibility (found 2026-10-07; owner decision: stays public until the product is complete)
+
+The repository `asefameerador96-ctrl/Aron-Pro-Max` has been **public** since it was created on 2026-10-04 (GitHub reports `visibility: public`). It holds AKTCL's whole rebuild: code, infra, specs, price catalogue seed, UI reference images, sales-data aggregates, the Azure subscription and tenant ids in `infra/bootstrap-azure.ps1` and `docs/23`. No secret is committed (secrets live in GitHub secrets and Key Vault; forked PRs get none), but the content is company IP and should be private. Consequences of going private: GitHub Actions minutes become metered (free plan 2,000 a month; the owner sets a spending limit under Billing so CI never stops); CodeQL and secret scanning need GitHub Advanced Security, so CI uses gitleaks, OSV-scanner and Semgrep, which work either way. `tools/github-governance.ps1 -MakePrivate` does the change after the owner approves.
+
 ## 4. Rollback and recovery
 
 | What | How | Proof |

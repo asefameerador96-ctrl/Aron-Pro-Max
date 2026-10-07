@@ -1,0 +1,11 @@
+VisitOutcome:
+  type: string
+  enum:
+  - sold
+  - zero_sale_stock_ok
+  - closed
+  - owner_absent
+  - refused
+  - competitor_exclusive
+  - not_reached
+  - abandoned

@@ -1,0 +1,32 @@
+path: /v1/admin/config/changes/{change_id}/decision
+method: post
+operation:
+  tags:
+  - admin-config
+  operationId: decideConfigChange
+  summary: Approve, reject or cancel a pending change (the approver is never the requester).
+  parameters:
+  - $ref: '#/components/parameters/ChangeIdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ConfigDecisionRequest'
+  responses:
+    '200':
+      description: Change after the decision.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigChange'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

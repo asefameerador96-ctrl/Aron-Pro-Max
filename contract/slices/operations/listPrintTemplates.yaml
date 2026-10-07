@@ -1,0 +1,18 @@
+path: /v1/admin/print-templates
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: listPrintTemplates
+  summary: Versioned print templates (memo kinds, stock slip, day summary, void slip, due receipt).
+  responses:
+    '200':
+      description: Current and earlier versions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PrintTemplateList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

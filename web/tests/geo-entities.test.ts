@@ -29,7 +29,7 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((r) => mock.server.close(() => r())));
 beforeEach(async () => {
   mock.reset();
-  const c1 = jar(await loginPost(req("/api/bff/login", "POST", { username: "admin1", password: "admin-pass-1" })));
+  const c1 = jar(await loginPost(req("/api/bff/login", "POST", { username: "madmin1", password: "admin-pass-1" })));
   const c2 = jar(await mfaPost(req("/api/bff/mfa/verify", "POST", { code: "123456" }, { [MFA_COOKIE]: c1[MFA_COOKIE]! })));
   cookies = { [SESSION_COOKIE]: c2[SESSION_COOKIE]!, [RT_COOKIE]: c2[RT_COOKIE]! };
   token = [...mock.state.access.keys()].pop()!;

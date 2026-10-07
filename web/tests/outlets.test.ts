@@ -33,14 +33,14 @@ describe("outlets (retailer detail)", () => {
     expect(u.safeParse({ code: "X1" }).success).toBe(false);
   });
   it("edits with the reason and If-Match; closing needs the status field and a reason", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const ok = await update("outlets", "1", { values: { owner_name: "Md. Rahim Uddin", lat: "23.8", status: "closed" }, reason: REASON, version: 1 }, c);
     expect(ok.status).toBe(200);
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "outlet", reason: REASON, after: { status: "closed", lat: 23.8 } });
     expect((await update("outlets", "1", { values: { owner_name: "X Y" }, reason: REASON, version: 1 }, c)).status).toBe(412); // stale
   });
   it("creates with the reason sent as change_reason; the code is generated when empty", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const res = await create("outlets", { values: { name: "Fresh Store", owner_name: "Owner One", zone_id: "14", cluster_id: "1", channel: "GT", outlet_kind: "retail" }, reason: REASON }, c);
     expect(res.status).toBe(201);
     expect((await res.json()).row.code).toMatch(/^OUT-/);
@@ -50,7 +50,7 @@ describe("outlets (retailer detail)", () => {
     const reopen = outlets.actions!.find((a) => a.key === "reopen")!;
     expect(reopen.when!({ status: "closed" })).toBe(true);
     expect(reopen.when!({ status: "active" })).toBe(false);
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const noVersion = await act("outlets", "4", "reopen", { values: {}, reason: REASON }, c);
     expect(noVersion.status).toBe(400);
     const ok = await act("outlets", "4", "reopen", { values: {}, reason: REASON, version: 1 }, c);
@@ -58,7 +58,7 @@ describe("outlets (retailer detail)", () => {
     expect(mock.state.tables.outlets!.find((o) => o.id === 4)).toMatchObject({ status: "active", version: 2 });
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "outlet", reason: REASON, before: { status: "closed" }, after: { status: "active" } });
     expect((await act("outlets", "4", "reopen", { values: {}, reason: REASON, version: 1 }, c)).status).toBe(412); // stale
-    const support = await signIn("support1");
+    const support = await signIn("msupport1");
     expect((await act("outlets", "4", "reopen", { values: {}, reason: REASON, version: 2 }, support)).status).toBe(403);
   });
 });
@@ -115,7 +115,7 @@ describe("outlet approval panel", () => {
     expect((await res.json()).code).toBe("ERR_SEPARATION_OF_DUTIES");
   });
   it("TSO and TOP read but cannot act; ids must be UUIDs", async () => {
-    const tso = await signIn("tso334");
+    const tso = await signIn("mtso1");
     expect((await act("outlet-requests", U4, "reject", { values: {}, reason: REASON }, tso)).status).toBe(403);
     const dmo = await signIn("dmo1");
     expect((await act("outlet-requests", "not-a-uuid", "reject", { values: {}, reason: REASON }, dmo)).status).toBe(404);
@@ -126,7 +126,7 @@ describe("outlet approval panel", () => {
 describe("wholesale bulk marking", () => {
   const BATCH = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   it("marks outlets once per batch_uuid; a retry replays; an unchanged outlet is counted, not rewritten", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const body = { batch_uuid: BATCH, outlet_kind: "wholesale", outlet_ids: [1, 3, 5], reason: "Quarterly wholesale review" };
     const r1 = await (await bulk(body, c)).json();
     expect(r1).toMatchObject({ updated: 2, unchanged: 1, replayed: false });
@@ -137,12 +137,12 @@ describe("wholesale bulk marking", () => {
     expect(mock.state.audit.length).toBe(audits);
   });
   it("validates: reason, uuid, ids (1..5000, unique, integers), kind; only ADMIN roles", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const ok = { batch_uuid: BATCH, outlet_kind: "wholesale", outlet_ids: [1], reason: REASON };
     for (const bad of [{ ...ok, reason: "short" }, { ...ok, batch_uuid: "nope" }, { ...ok, outlet_ids: [] }, { ...ok, outlet_ids: [1, 1] }, { ...ok, outlet_ids: [1.5] }, { ...ok, outlet_ids: Array.from({ length: 5001 }, (_, i) => i + 1) }, { ...ok, outlet_kind: "x" }, { ...ok, extra: 1 }]) {
       expect((await bulk(bad, c)).status).toBe(400);
     }
-    const support = await signIn("support1");
+    const support = await signIn("msupport1");
     expect((await bulk(ok, support)).status).toBe(403);
     expect(mock.state.audit).toHaveLength(0);
   });

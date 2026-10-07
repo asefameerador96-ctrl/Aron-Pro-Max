@@ -1,0 +1,36 @@
+RouteAssignment:
+  type: object
+  required:
+  - id
+  - route_id
+  - user_id
+  - kind
+  - valid_from
+  - created_at
+  additionalProperties: false
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    user_id:
+      $ref: '#/components/schemas/Id'
+    kind:
+      type: string
+      enum:
+      - primary
+      - cover
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      description: Exclusive end date; null = open.
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    reason:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+    created_at:
+      $ref: '#/components/schemas/Timestamp'

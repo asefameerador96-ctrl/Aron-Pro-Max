@@ -1,0 +1,28 @@
+BlockingSchedule:
+  type: object
+  description: App blocking tied to attendance (evaluated on the phone on trusted time, offline).
+  required:
+  - enabled
+  - starts_on
+  - ends_on
+  - hard_end_time
+  - working_days_only
+  additionalProperties: false
+  properties:
+    enabled:
+      type: boolean
+    starts_on:
+      type: string
+      enum:
+      - check_in
+    ends_on:
+      type: string
+      enum:
+      - check_out
+    hard_end_time:
+      description: Release at this Dhaka time even without a check-out (default 20:00); null = only check-out releases.
+      oneOf:
+      - $ref: '#/components/schemas/TimeOfDay'
+      - type: 'null'
+    working_days_only:
+      type: boolean

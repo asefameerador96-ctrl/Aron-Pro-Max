@@ -1,5 +1,7 @@
 // Bangla catalogue (the default locale). Same keys as messages-en.ts; tests/i18n.test.ts enforces parity and that
 // no Bangla value is empty or equal to its English text.
+import { dashBn } from "./messages-dash-bn";
+import { cfgBn } from "./messages-config";
 import type { MessageKey } from "./messages-en";
 
 export const bn: Record<MessageKey, string> = {
@@ -28,7 +30,7 @@ export const bn: Record<MessageKey, string> = {
   "common.language.en": "English",
 
   "auth.title": "সাইন ইন",
-  "auth.username": "ইউজারনেম",
+  "auth.username": "ইউজার আইডি",
   "auth.password": "পাসওয়ার্ড",
   "auth.submit": "সাইন ইন",
   "auth.logout": "সাইন আউট",
@@ -347,7 +349,7 @@ export const bn: Record<MessageKey, string> = {
 
   "error.generic": "কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।",
   "error.network": "সার্ভারে পৌঁছানো যাচ্ছে না। কিছুক্ষণ পর আবার চেষ্টা করুন।",
-  "error.ERR_AUTH_INVALID_CREDENTIALS": "ইউজারনেম বা পাসওয়ার্ড ভুল।",
+  "error.ERR_AUTH_INVALID_CREDENTIALS": "ইউজার আইডি বা পাসওয়ার্ড ভুল।",
   "error.ERR_AUTH_ACCOUNT_LOCKED": "অ্যাকাউন্টটি কিছুক্ষণের জন্য লক করা আছে। পরে চেষ্টা করুন।",
   "error.ERR_AUTH_USER_DISABLED": "অ্যাকাউন্টটি বন্ধ আছে। সাপোর্টের সাথে যোগাযোগ করুন।",
   "error.ERR_AUTH_MFA_INVALID": "কোডটি সঠিক নয়। কোড দেখে আবার চেষ্টা করুন।",
@@ -363,4 +365,6 @@ export const bn: Record<MessageKey, string> = {
   "error.ERR_APP_VERSION_UNSUPPORTED": "এই সংস্করণ আর চলবে না। পাতাটি রিলোড করুন।",
   "error.ERR_SERVICE_UNAVAILABLE": "সার্ভিস এখন ব্যস্ত। কিছুক্ষণ পর আবার চেষ্টা করুন।",
   "error.ERR_READ_ONLY_MODE": "সিস্টেম এখন শুধু পড়ার অবস্থায় আছে। পরে চেষ্টা করুন।",
+  ...dashBn,
+  ...cfgBn,
 };

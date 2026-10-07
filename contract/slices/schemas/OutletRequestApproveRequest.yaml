@@ -1,0 +1,21 @@
+OutletRequestApproveRequest:
+  type: object
+  required:
+  - change_reason
+  additionalProperties: false
+  properties:
+    outlet_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[0-9A-Za-z][0-9A-Za-z._/-]{0,31}$
+      description: For new outlets; generated when null.
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Required for AMO-created new outlets.
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

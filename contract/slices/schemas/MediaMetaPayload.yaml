@@ -1,0 +1,53 @@
+MediaMetaPayload:
+  type: object
+  description: The record's client_uuid IS the media UUID; sent after the blob upload succeeded.
+  required:
+  - purpose
+  - ref_type
+  - ref_client_uuid
+  - sha256
+  - bytes
+  - width
+  - height
+  - mime
+  - blob_path
+  - taken_at
+  additionalProperties: false
+  properties:
+    purpose:
+      $ref: '#/components/schemas/MediaPurpose'
+    ref_type:
+      $ref: '#/components/schemas/RecordType'
+    ref_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    sha256:
+      $ref: '#/components/schemas/Sha256Hex'
+    phash:
+      type:
+      - string
+      - 'null'
+      pattern: ^[0-9a-f]{16}$
+    bytes:
+      type: integer
+      minimum: 1
+      maximum: 307200
+    width:
+      type: integer
+      minimum: 1
+      maximum: 4096
+    height:
+      type: integer
+      minimum: 1
+      maximum: 4096
+    mime:
+      type: string
+      const: image/jpeg
+    blob_path:
+      type: string
+      pattern: ^photos/\d{4}-\d{2}-\d{2}/[0-9a-f-]{36}/[0-9a-f-]{36}\.jpg$
+    taken_at:
+      $ref: '#/components/schemas/Timestamp'
+    fix:
+      oneOf:
+      - $ref: '#/components/schemas/GeoFix'
+      - type: 'null'

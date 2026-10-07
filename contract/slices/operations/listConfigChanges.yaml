@@ -1,0 +1,33 @@
+path: /v1/admin/config/changes
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: listConfigChanges
+  summary: Change requests and applied changes (history).
+  parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/ConfigChangeStatus'
+  - name: key
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/ConfigKeyName'
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of changes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigChangePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

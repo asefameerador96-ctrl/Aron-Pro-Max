@@ -8,7 +8,7 @@ test.beforeEach(async () => {
 const stateOf = async () => (await fetch(`${MOCK}/__mock/state`)).json();
 
 test("routes: day mask checkboxes, label kept apart from the name, future effective date, audited", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/routes");
   await expect(page.getByTestId("data-table")).toContainText("Banani 3F");
   await expect(page.getByTestId("data-table")).toContainText("শনি সোম বুধ"); // mask 21 = Sat, Mon, Wed
@@ -28,7 +28,7 @@ test("routes: day mask checkboxes, label kept apart from the name, future effect
 });
 
 test("assignments: overlap is refused, a cover is accepted, an open one can be ended; no edit link", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/route-assignments");
   await expect(page.getByTestId("data-table")).toContainText("R-334-01 · Banani Daily");
   await expect(page.getByTestId("data-table")).toContainText("sr334001 · Testing Banani");
@@ -61,7 +61,7 @@ test("assignments: overlap is refused, a cover is accepted, an open one can be e
 });
 
 test("users: create shows the temporary password once; reset by support; disable keeps the row", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/users/new");
   await page.locator("#f-username").fill("sr999001");
   await page.locator("#f-full_name").fill("New Field Rep");
@@ -85,7 +85,7 @@ test("users: create shows the temporary password once; reset by support; disable
 });
 
 test("support resets a password but cannot edit or create users", async ({ page }) => {
-  await loginOk(page, "support1", "support-pass-1", "123456");
+  await loginOk(page, "msupport1", "support-pass-1", "123456");
   await page.goto("/admin/users");
   await expect(page.getByTestId("create-link")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "সম্পাদনা" })).toHaveCount(0);
@@ -101,7 +101,7 @@ test("support resets a password but cannot edit or create users", async ({ page 
 });
 
 test("create forms say when the contract cannot store the reason; edit forms do not", async ({ page }) => {
-  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/clusters/new");
   await expect(page.getByTestId("reason-not-stored")).toBeVisible();
   await page.goto("/admin/zones/new"); // GeoNodeWrite has change_reason

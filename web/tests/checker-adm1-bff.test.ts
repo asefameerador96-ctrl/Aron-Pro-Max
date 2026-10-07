@@ -16,12 +16,12 @@ const zone = geoEntities.find((e) => e.slug === "zones")!;
 
 describe("docs/24 s8.5: only SUPERADMIN writes ADMIN roles", () => {
   it("CB4: an ADMIN cannot create a SUPERADMIN (or ADMIN) user through the portal BFF", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const res = await create("users", { values: { username: "boss001", full_name: "Boss", role: "SUPERADMIN", locale: "bn" }, reason: REASON }, c);
     expect(res.status).toBe(403);
   });
   it("CB5: an ADMIN cannot promote an existing user to SUPERADMIN", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const res = await update("users", "1001", { values: { role: "SUPERADMIN" }, reason: REASON, version: 1 }, c);
     expect(res.status).toBe(403);
   });
@@ -46,12 +46,12 @@ describe("Bengali digits and dates are normalised/validated before the request l
 describe("F-ADM-003: re-attributes nothing historic", () => {
   const daysAgo = (n: number) => businessDate(new Date(Date.now() - n * 86_400_000));
   it("CB9: ending an assignment on a date before today (Dhaka) is refused, because it would pull past days off the SR", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const res = await act("route-assignments", "1", "end", { values: { valid_to: daysAgo(3) }, reason: REASON }, c);
     expect(res.status).toBe(400);
   });
   it("CB10: creating an assignment that starts before today (Dhaka) is refused, because it would re-attribute past days", async () => {
-    const c = await signIn("admin1");
+    const c = await signIn("madmin1");
     const res = await create("route-assignments", { values: { route_id: "4", user_id: "1002", kind: "cover", valid_from: daysAgo(30) }, reason: REASON }, c);
     expect(res.status).toBe(400);
   });

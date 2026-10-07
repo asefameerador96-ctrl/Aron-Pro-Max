@@ -1,0 +1,4 @@
+TimeOfDay:
+  type: string
+  pattern: ^([01]\d|2[0-3]):[0-5]\d$
+  description: Wall-clock time `HH:MM` in Asia/Dhaka.

@@ -1,0 +1,13 @@
+FeedbackRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: feedback
+      payload:
+        $ref: '#/components/schemas/FeedbackPayload'
+  unevaluatedProperties: false

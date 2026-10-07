@@ -1,0 +1,48 @@
+RubricDef:
+  type: object
+  required:
+  - rubric_id
+  - version
+  - kind
+  - criteria
+  additionalProperties: false
+  properties:
+    rubric_id:
+      $ref: '#/components/schemas/Id'
+    version:
+      type: integer
+      minimum: 1
+    kind:
+      type: string
+      enum:
+      - joint_call
+      - retailer_questionnaire
+    criteria:
+      type: array
+      maxItems: 50
+      items:
+        type: object
+        required:
+        - criterion_id
+        - label_en
+        - answer_type
+        additionalProperties: false
+        properties:
+          criterion_id:
+            $ref: '#/components/schemas/Id'
+          label_bn:
+            type:
+            - string
+            - 'null'
+            maxLength: 300
+          label_en:
+            type: string
+            maxLength: 300
+          answer_type:
+            type: string
+            enum:
+            - score_1_5
+            - text
+            - bool
+          enabled:
+            type: boolean

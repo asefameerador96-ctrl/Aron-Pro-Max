@@ -1,0 +1,29 @@
+EntryUnlockWrite:
+  type: object
+  description: '`to` is at most cfg.web.entry_unlock_max_days after `from`.'
+  required:
+  - scope_type
+  - scope_id
+  - from
+  - to
+  - reason
+  additionalProperties: false
+  properties:
+    scope_type:
+      type: string
+      enum:
+      - zone
+      - route
+    scope_id:
+      $ref: '#/components/schemas/Id'
+    from:
+      $ref: '#/components/schemas/BusinessDate'
+    to:
+      $ref: '#/components/schemas/BusinessDate'
+    ttl_h:
+      type: integer
+      minimum: 1
+      maximum: 168
+      description: Defaults to cfg.web.entry_unlock_ttl_h.
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

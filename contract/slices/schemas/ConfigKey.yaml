@@ -1,0 +1,93 @@
+ConfigKey:
+  type: object
+  required:
+  - key
+  - area
+  - kind
+  - value_type
+  - default_value
+  - bounds
+  - scope_levels
+  - risk_class
+  - effect
+  - delivery
+  - requires_ack
+  - future_dated_only
+  - editor_permission
+  - description_en
+  additionalProperties: false
+  properties:
+    key:
+      $ref: '#/components/schemas/ConfigKeyName'
+    area:
+      type: string
+      pattern: ^[a-z]+$
+    kind:
+      type: string
+      enum:
+      - S
+      - T
+      - O
+      description: S setting, T time-shaped, O operational switch (auto-expires).
+    value_type:
+      type: string
+      enum:
+      - int
+      - number
+      - bool
+      - time
+      - text
+      - url
+      - pct
+      - money_mtk
+      - enum
+      - list
+      - json
+    default_value:
+      $ref: '#/components/schemas/ConfigValueJson'
+    bounds:
+      $ref: '#/components/schemas/ConfigBounds'
+    scope_levels:
+      type: array
+      minItems: 1
+      items:
+        $ref: '#/components/schemas/ConfigScopeType'
+    risk_class:
+      type: integer
+      minimum: 0
+      maximum: 3
+    effect:
+      type: string
+      enum:
+      - B
+      - S
+      - R
+      description: B next request or bundle; S next session or business day; R next release.
+    delivery:
+      type: string
+      enum:
+      - server
+      - device
+      - both
+    requires_ack:
+      type: boolean
+    future_dated_only:
+      type: boolean
+    restrictive_dir:
+      type: string
+      enum:
+      - up
+      - down
+      - enum_order
+      - none
+    editor_permission:
+      type: string
+      pattern: ^cfg\.edit\.[a-z]+$
+    description_en:
+      type: string
+      maxLength: 500
+    description_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

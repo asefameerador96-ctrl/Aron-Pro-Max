@@ -1,0 +1,33 @@
+SectionDelta:
+  type: object
+  required:
+  - upsert
+  - delete
+  additionalProperties: false
+  properties:
+    upsert:
+      type: array
+      maxItems: 5000
+      items:
+        oneOf:
+        - $ref: '#/components/schemas/BundleOutlet'
+        - $ref: '#/components/schemas/OpenMemo'
+        - $ref: '#/components/schemas/SkuPrice'
+        - $ref: '#/components/schemas/Offer'
+        - $ref: '#/components/schemas/Task'
+        - $ref: '#/components/schemas/TeamMember'
+        - $ref: '#/components/schemas/OutletRequestSummary'
+        - $ref: '#/components/schemas/Sku'
+        - $ref: '#/components/schemas/TargetRow'
+        - $ref: '#/components/schemas/AchievementRow'
+    delete:
+      type: array
+      maxItems: 5000
+      description: Keys of removed rows (outlet_id, memo client_uuid, price id, offer id, task_uuid, user_id, request_uuid,
+        sku id).
+      items:
+        oneOf:
+        - type: integer
+          format: int64
+          minimum: 1
+        - $ref: '#/components/schemas/Uuid'

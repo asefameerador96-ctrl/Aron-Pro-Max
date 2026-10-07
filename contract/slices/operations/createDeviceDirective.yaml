@@ -1,0 +1,32 @@
+path: /v1/admin/devices/{device_id}/directives
+method: post
+operation:
+  tags:
+  - admin-devices
+  operationId: createDeviceDirective
+  summary: Ask a device for a status report, a bundle re-download, a support bundle or a re-send from a date.
+  description: Delivered in the next response the device receives; acted on at the next foreground contact; never
+    changes data or grants rights.
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DirectiveCreateRequest'
+  responses:
+    '201':
+      description: Directive created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Directive'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

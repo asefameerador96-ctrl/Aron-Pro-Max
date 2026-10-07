@@ -1,0 +1,23 @@
+path: /v1/admin/config/reach/{version}
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: getConfigReach
+  summary: How many targeted devices applied and acknowledged a version.
+  parameters:
+  - $ref: '#/components/parameters/ConfigVersionPath'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  responses:
+    '200':
+      description: Reach.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigReach'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

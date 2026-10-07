@@ -15,6 +15,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
