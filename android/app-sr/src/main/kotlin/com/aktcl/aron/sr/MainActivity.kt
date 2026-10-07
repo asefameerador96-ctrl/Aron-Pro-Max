@@ -130,7 +130,7 @@ class MainActivity : ComponentActivity() {
                     when (val s = state) {
                         SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore
                         SessionState.LoggedOut -> {
-                            val vm = viewModel { LoginViewModel(components.session::login) }
+                            val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect)
                         }
                         is SessionState.Active -> {
