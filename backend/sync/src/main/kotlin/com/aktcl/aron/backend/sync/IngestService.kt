@@ -331,7 +331,7 @@ class IngestService(
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, "business_date $bd, today ${ctx.today}")
         }
         if (resyncLate) {
-            // Until db stores the flag (docs/requests/backend-core-resync-late-flag.md) it is a structured log line.
+            // Stored in app.ingest_registry.flags on the accepted row (V0056, db-resync-late-flag-answer.md); the log line stays.
             log.warn("resync_late client_uuid=${r.clientUuid} type=${r.type} business_date=$bd user=${ctx.up.userId} batch_uuid=${ctx.batchUuid}")
         }
 
@@ -476,7 +476,7 @@ class IngestService(
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
-                register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
+                register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp, if (resyncLate) listOf("resync_late") else emptyList())
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
                 // Day states follow the record but never decide its outcome: a failure here is logged, the record stays stored.
@@ -664,19 +664,27 @@ class IngestService(
         h.createUpdate("UPDATE app.ingest_registry SET last_seen_at = now(), seen_count = seen_count + 1 WHERE client_uuid = CAST(:c AS uuid)").bind("c", r.clientUuid).execute()
     }
 
-    private fun register(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?, contentFp: ByteArray? = null) {
+    /**
+     * [flags] (V0056 `ingest_registry.flags`, e.g. `resync_late`) are merged on the conflict path, never assigned: a later
+     * acceptance of a parked or released row never wipes a flag (db-resync-late-flag-answer.md).
+     */
+    private fun register(
+        h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?, contentFp: ByteArray? = null,
+        flags: List<String> = emptyList(),
+    ) {
         h.createUpdate(
             """
-            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, content_fp, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at)
-            VALUES (CAST(:c AS uuid), :t, :h, :fp, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now)
+            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, content_fp, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at, flags)
+            VALUES (CAST(:c AS uuid), :t, :h, :fp, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now, :fl)
             ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id, content_fp = EXCLUDED.content_fp,
-                last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1
+                last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1,
+                flags = ARRAY(SELECT DISTINCT f FROM unnest(app.ingest_registry.flags || EXCLUDED.flags) AS f ORDER BY f)
             WHERE (app.ingest_registry.status = 'parked' OR (app.ingest_registry.status = 'quarantined' AND app.ingest_registry.outcome_code = 'device_integrity_failed'))
               AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("fp", contentFp).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
             .bind("s", status).bind("code", code?.wire).bind("sid", serverId).bind("bd", bd).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
-            .bind("b", ctx.batchUuid).bind("now", ts(ctx.now)).execute()
+            .bind("b", ctx.batchUuid).bind("now", ts(ctx.now)).bindArray("fl", String::class.java, flags).execute()
         if (status == "accepted") {
             h.createUpdate("UPDATE app.sync_rejected SET stored_at = :now WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :h AND stored_at IS NULL")
                 .bind("now", ts(ctx.now)).bind("c", r.clientUuid).bind("h", r.hash).execute()
