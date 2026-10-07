@@ -22,6 +22,7 @@
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --accent: #1d5fd1;
+  --on-accent: #ffffff;
   --success: #15803d;
   --warning: #b45309;
   --danger: #b91c1c;
@@ -29,9 +30,9 @@
   --radius-card: 20px;
   --radius-sheet: 28px;
   --elev-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.05);
-  /* Chart series colours: colour-blind safe (one blue hue plus a lightness step; values are always printed, never colour-only). */
-  --chart-1: #1d5fd1;
-  --chart-2: #e69f00;
+  /* Chart series colours: colour-blind safe (blue plus a dark orange that differs in lightness too; at least 3:1 on the surface; values are always printed, never colour-only). */
+  --chart-1: #123f94;
+  --chart-2: #c2620a;
   --motion-fast: 150ms;
   --motion-base: 220ms;
   --surface: var(--surface-solid);
@@ -46,22 +47,48 @@
     --text-primary: #f1f5f9;
     --text-secondary: #b6c2d4;
     --accent: #6ea8ff;
-    --chart-1: #6ea8ff;
-    --chart-2: #f0b429;
+    --on-accent: #0b1220;
+    --chart-1: #5b9bff;
+    --chart-2: #ffd166;
     --success: #4ade80;
     --warning: #fbbf24;
-    --danger: #f87171;
+    --danger: #fca5a5;
     --elev-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);
+  }
+}
+/* High contrast (docs/32 s2a): solid surfaces, no blur, secondary text as dark as primary text, stronger lines. Figures stay at least 7:1. */
+@media (prefers-contrast: more) {
+  :root {
+    --surface-glass: #ffffff;
+    --text-secondary: #1e293b;
+    --accent: #123f94;
+    --border-line: rgb(15 23 42 / 0.55);
+    --chart-1: #0b2a66;
+    --chart-2: #b34700;
+    --glass-blur: none;
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --surface-glass: #16213a;
+    --text-secondary: #e2e8f0;
+    --accent: #a9ccff;
+    --border-line: rgb(255 255 255 / 0.6);
+    --chart-1: #7fb0ff;
+    --chart-2: #ffe08a;
   }
 }
 /* Tier C (solid) is the default; tier A glass is for desktop browsers that support it and have not asked for less transparency. */
 :root { --surface: var(--surface-solid); }
-@media (hover: hover) and (pointer: fine) and (prefers-reduced-transparency: no-preference) {
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-transparency: no-preference) and (prefers-contrast: no-preference) {
   @supports (backdrop-filter: blur(1px)) {
     :root { --surface: var(--surface-glass); --glass-blur: blur(16px) saturate(1.4); }
   }
 }
-@media (prefers-reduced-transparency: reduce) { :root { --surface: var(--surface-solid); --glass-blur: none; } }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { :root { --surface: var(--surface-solid); --glass-blur: none; } }
+/* Tier B (glass-lite, docs/design/web-glass.md s3): the glass fills stay, the blur goes; tier C ("off") is solid. The tier is stamped on <html data-glass>. */
+:root[data-glass="lite"] { --surface: var(--surface-glass); --glass-blur: none; }
+:root[data-glass="off"] { --surface: var(--surface-solid); --glass-blur: none; }
 
 body {
   background: var(--bg-gradient) fixed;
@@ -71,6 +98,9 @@ body {
 /* The shared kit's existing utility classes now resolve through the tokens, so every page (dashboards, admin, config) shares one look. */
 .bg-white, .bg-slate-50 { background-color: var(--surface); -webkit-backdrop-filter: var(--glass-blur, none); backdrop-filter: var(--glass-blur, none); }
 .min-h-screen.bg-slate-50 { background-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* Hover fills resolve through the tokens too: the light slate hover turned dark-theme rows near-white under light text. */
+.hover\:bg-brand-700:hover { background-color: color-mix(in srgb, var(--accent) 88%, #000); }
+.hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, .hover\:bg-slate-200:hover { background-color: color-mix(in srgb, var(--accent) 14%, var(--surface-solid)); }
 .bg-slate-100 { background-color: color-mix(in srgb, var(--surface) 70%, transparent); }
 .border-slate-200, .border-slate-300, .divide-slate-200 > * + *, .divide-slate-100 > * + * { border-color: var(--border-line); }
 .rounded-lg { border-radius: var(--radius-card); }
@@ -80,6 +110,8 @@ body {
 .text-slate-700, .text-slate-800, .text-slate-900 { color: var(--text-primary); }
 .text-brand-700 { color: var(--accent); }
 .bg-brand-700, .bg-brand-600 { background-color: var(--accent); }
+/* Text on the accent fill keeps AA contrast in both themes (white on the light-blue dark accent was 2.4:1). */
+.bg-brand-600.text-white, .bg-brand-700.text-white { color: var(--on-accent); }
 a, button, summary, select, input { transition: background-color var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out, box-shadow var(--motion-base) ease-out; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 

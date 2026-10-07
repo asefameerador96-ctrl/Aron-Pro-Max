@@ -3,4 +3,8 @@
     <string name="sr_visit_open">আপনার ভিজিট চালু আছে। বিক্রয়ের স্ক্রিন এখান থেকে চলবে।</string>
     <string name="sr_visit_close">ভিজিট বন্ধ করুন</string>
     <string name="sr_bundle_downloading">আজকের রুট ব্যাকগ্রাউন্ডে ডাউনলোড হচ্ছে। আপনি কাজ চালিয়ে যেতে পারেন।</string>
+    <string name="sr_print_confirm_title">প্রিন্ট</string>
+    <string name="sr_yes">হ্যাঁ</string>
+    <string name="sr_no">না</string>
+    <string name="sr_ok">ঠিক আছে</string>
 </resources>
