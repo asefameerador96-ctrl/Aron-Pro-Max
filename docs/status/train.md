@@ -12,6 +12,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 | 2026-10-07 10:39 | 903e092 | candidate lane/train-20261007T1020, ALL JOBS GREEN (run 37606702856): backend-core 2637ef2 | INT 107d3a5 had docs-only differences (checked: 0 non-docs files), merged INT in, fast-forward. |
 | 2026-10-07 11:09 | 18b91d4 | candidate lane/train-20261007T1054, ALL JOBS GREEN (run 37610534410): backend-core 81d1501, backend-reports 32fb6ad, android-core 8536548, android-print aedd979 | INT was an ancestor-check pass (fast-forward). android-geo-dpc b2e5231 dropped from the earlier 1044 candidate (ManifestPermissionAuditTest, ACCESS_BACKGROUND_LOCATION in core-geo); lane pushed 01bf859 (ruling D-GEO-BG-01), run pending. infra 58b3068 green, in candidate 1100-i (run 37611157445). |
 | 2026-10-07 11:17 | cc52580 | candidate lane/train-20261007T1100-i, ALL JOBS GREEN (run 37611157445): infra 58b3068 (on top of 1054) | docs-only check passed (0 non-docs files in INT 502db81 not in candidate), INT merged in, pushed. Dev deploy fix is now on INT. Next: candidate 1108-s (android-sr-b d4dc7e4, run 37612051988), candidate 1116-d (db 501e466 + android-geo-dpc 01bf859, both own-run green). |
+| 2026-10-07 11:31 | see git log | candidate lane/train-20261007T1116-d, ALL JOBS GREEN (run 37612954219): db 501e466, android-geo-dpc 01bf859 (D-GEO-BG-01) | docs-only gate passed (INT merged in if needed). Next: candidate 1123-e (= -d + android-sr-b d4dc7e4, run 37613735145). 1108-s (sr-b alone, green) not promoted: it lacked infra non-docs files. |
 
 ## Open reds
 
