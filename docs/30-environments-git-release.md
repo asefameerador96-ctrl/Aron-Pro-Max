@@ -21,7 +21,7 @@ This page applies the full design of `docs/20` s5 (written for the long plan) to
 
 ## 2. Promotion flow
 
-1. Lane commits on the **integration branch** (`claude/wonderful-thompson-k6ejnf`, "INT"); CI runs on every push.
+1. Lanes push to their own branches `lane/<sublane>` and CI runs on every push; the **integrator** merges ready (green) lane heads into a candidate `lane/train-<time>`, CI runs on the candidate, and only a green candidate fast-forwards the **integration branch** (`claude/wonderful-thompson-k6ejnf`, "INT"). INT is therefore green by construction (docs/26 s3, docs/audit/2026-10-07-ci-audit.md).
 2. CI green on INT automatically deploys **dev** and builds the three debug APKs.
 3. At the end of each day the lead cuts a **daily gate**: all CI green on the INT head, the day's 10-minute check done by the owner, sampled audit done. The head is tagged `gate-dayN-YYYYMMDD` and promoted to `main` by a pull request (merge commit, CI green on the merge).
 4. In the final account: `main` deploys **staging**; a manual `promote-prod` with the release tag and a required approver deploys **prod**; blue/green by traffic weights; rollback by shifting weights back; the database is forward-only (`docs/20` s5.6 expand/contract).
