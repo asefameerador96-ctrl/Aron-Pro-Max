@@ -86,3 +86,10 @@ private suspend fun create(call: ApplicationCall, d: SupportUploadDeps): Support
     val expires = now.plusSeconds(SAS_TTL_S)
     return SupportUploadOut(id.toString(), d.blob.writeSas(stored.first, req.bytes, expires), stored.first, expires.wire())
 }
+
+/** Placeholder until the infra lane supplies the Azure Blob issuer: every SAS request is 503 (retryable), nothing is faked. */
+object UnconfiguredBlobSasIssuer : BlobSasIssuer {
+    private fun unavailable(): Nothing = throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_SERVICE_UNAVAILABLE, "blob storage is not configured in this environment")
+    override fun writeSas(blobPath: String, maxBytes: Long, expiresAt: Instant): String = unavailable()
+    override fun readUrl(blobPath: String): String = unavailable()
+}

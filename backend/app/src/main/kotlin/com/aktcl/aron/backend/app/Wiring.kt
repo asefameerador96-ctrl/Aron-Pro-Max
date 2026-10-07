@@ -35,6 +35,21 @@ import com.aktcl.aron.backend.masterdata.GeoRepository
 import com.aktcl.aron.backend.masterdata.AdminPricesDeps
 import com.aktcl.aron.backend.masterdata.AdminProductsDeps
 import com.aktcl.aron.backend.masterdata.OtpCipher
+import com.aktcl.aron.backend.masterdata.VisitPlanDeps
+import com.aktcl.aron.backend.masterdata.visitPlanRoutes
+import com.aktcl.aron.backend.masterdata.RouteAssignmentsDeps
+import com.aktcl.aron.backend.masterdata.routeAssignmentRoutes
+import com.aktcl.aron.backend.masterdata.LeaveDeps
+import com.aktcl.aron.backend.masterdata.leaveRoutes
+import com.aktcl.aron.backend.masterdata.TutorialsDeps
+import com.aktcl.aron.backend.masterdata.tutorialRoutes
+import com.aktcl.aron.backend.masterdata.SupportUploadDeps
+import com.aktcl.aron.backend.masterdata.supportUploadRoutes
+import com.aktcl.aron.backend.masterdata.FeedbackDeps
+import com.aktcl.aron.backend.masterdata.feedbackRoutes
+import com.aktcl.aron.backend.masterdata.AdminContentDeps
+import com.aktcl.aron.backend.masterdata.adminContentRoutes
+import com.aktcl.aron.backend.masterdata.BlobSasIssuer
 import com.aktcl.aron.backend.masterdata.adminPricesRoutes
 import com.aktcl.aron.backend.masterdata.adminProductsRoutes
 import com.aktcl.aron.backend.masterdata.deviceReplaceRoutes
@@ -92,6 +107,8 @@ class Wiring(
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
             val permDeps = ConfigPermissionsDeps(ConfigPermissions(db, configService, clock), guard)
             val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
+            // REQUEST: the Azure Blob implementation of BlobSasIssuer belongs to the infra lane; until then SAS issue answers 503 (docs/requests/backend-admin-blob-sas.md).
+            val blob = com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
@@ -104,6 +121,13 @@ class Wiring(
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
                 deviceReplaceRoutes(otpDeps)
+                visitPlanRoutes(VisitPlanDeps(db, reach, config, guard, clock))
+                routeAssignmentRoutes(RouteAssignmentsDeps(db, reach, guard, clock))
+                leaveRoutes(LeaveDeps(db, reach, config, guard, clock))
+                tutorialRoutes(TutorialsDeps(db, blob, guard, clock))
+                supportUploadRoutes(SupportUploadDeps(db, blob, config, guard, clock))
+                feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
+                adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
                 adminProductsRoutes(AdminProductsDeps(db, guard, clock))
                 adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)
