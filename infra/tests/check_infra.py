@@ -1177,6 +1177,19 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertEqual(rc, 0, "a call longer than the wait limit is not a false failure: " + out)
 
 
+class WorkerWithoutSigningKey(unittest.TestCase):
+    """AUD-SEC-07 (docs/requests/infra-worker-no-signing-key.md): the token signing key reaches api replicas only."""
+
+    def test_signing_key_only_in_the_api(self):
+        src = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        worker = src[src.index("resource worker "):src.index("resource web ") if "resource web " in src else len(src)]
+        api = src[src.index("resource api "):src.index("resource worker ")]
+        for needle in ("jwt-signing-key", "jwtSecretRefs", "jwt-kid"):
+            self.assertNotIn(needle, worker, needle)
+        self.assertIn("kvSecret('jwt-signing-key'", api)
+        self.assertIn("concat(commonEnv, jwtSecretRefs, appSecretRefs", api)
+
+
 class DbLoginsGate(unittest.TestCase):
     """dblogins failed three deploys with no log anywhere while nothing used its logins (dbPerAppLogins off): it blocks
     the apps only when they use those logins, and a failure prints the platform's own execution record and log."""
@@ -1190,6 +1203,10 @@ class DbLoginsGate(unittest.TestCase):
         self.assertIn("az containerapp job logs show", block)
         self.assertIn("az containerapp job execution show", block)
         self.assertIn('summary "| Database logins |', d)
+        self.assertIn("infra/scripts/dblogins-probe.sh", block)
+        p = (ROOT / "infra" / "scripts" / "dblogins-probe.sh").read_text(encoding="utf-8")
+        self.assertIn("--yaml", p, "per-execution override; the job's own template is unchanged")
+        self.assertNotIn('echo "$x"', p, "never prints a secret value")
 
 
 class InfraStageSkip(unittest.TestCase):

@@ -129,9 +129,13 @@ var commonEnv = [
 // api's own address in the Container Apps environment (no self-reference: built from the environment's default domain).
 var publicApiUrl = frontDoorEnabled ? 'https://${fdEndpoint!.properties.hostName}' : 'https://${n.apiApp}.${env.properties.defaultDomain}'
 
-var appSecretRefs = [
+// Token signing key: api replicas only (AUD-SEC-07, docs/requests/infra-worker-no-signing-key.md); the worker never
+// signs or verifies tokens and starts without it.
+var jwtSecretRefs = [
   { name: 'ARON_JWT_SIGNING_KEY', secretRef: 'jwt-signing-key' }
   { name: 'ARON_JWT_KID', secretRef: 'jwt-kid' }
+]
+var appSecretRefs = [
   { name: 'ARON_FCM_SERVICE_ACCOUNT_JSON', secretRef: 'fcm-service-account' }
   { name: 'ARON_DB_READ_URL', secretRef: 'db-read-url' }
 ]
@@ -271,7 +275,7 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
           name: 'api'
           image: backendImage
           resources: { cpu: json(apiCpu), memory: apiMemory }
-          env: concat(commonEnv, appSecretRefs, [
+          env: concat(commonEnv, jwtSecretRefs, appSecretRefs, [
             { name: 'ARON_ROLE', value: 'api' }
             { name: 'PORT', value: '8080' }
             { name: 'ARON_PUBLIC_API_URL', value: publicApiUrl }
@@ -337,8 +341,6 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
       secrets: [
         kvSecret('db-direct-url', workerDbUrlSecret, kvSecretUrl, idWorker.id)
         kvSecret('db-read-url', workerDbReadUrlSecret, kvSecretUrl, idWorker.id)
-        kvSecret('jwt-signing-key', secretNames.jwtSigningKey, kvSecretUrl, idWorker.id)
-        kvSecret('jwt-kid', secretNames.jwtKid, kvSecretUrl, idWorker.id)
         kvSecret('fcm-service-account', secretNames.fcmServiceAccount, kvSecretUrl, idWorker.id)
       ]
     }
