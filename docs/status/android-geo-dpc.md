@@ -11,10 +11,20 @@ The build works again (owner-approved Maven mirror in settings.gradle.kts). All 
 | F-SYS-031 integrity signals | parts done, wiring pending | batch hook in core-sync; `root_hints` member: `android-geo-dpc-root-hints.md` |
 | N-029 policy core | built, checked; DEVICE-PENDING | prod-policy checks on an enrolled A06 |
 | N-032 app blocking | built, checked (DPC side); DEVICE-PENDING | check-in/out call from F-SR-011; airplane-mode and reboot check on a phone |
+| N-035 breadcrumbs | built, checked (5 checker findings fixed); background location declared in SR and AMO only (D-GEO-BG-01); DEVICE-PENDING | battery on the A06; wiring (controller install, geo_breadcrumb sink, check-in/out calls) in the wiring request |
+| N-034 managed update | built, checked (3 confirmed + 5 plausible checker findings fixed); DEVICE-PENDING | update worker wiring (prompt UI for `AwaitingUser`, unique work) in the wiring request; device check on an enrolled phone |
 | N-030 enrolment by QR | client built, checked; server and wiring pending | needs N-031 (server) and `android-geo-dpc-enrol-replay.md`; Android 12+ activities wait for `android-geo-dpc-provisioning-activities.md`; app start wiring in the wiring request; device check D-04 |
 
-## Not started (dependencies in other lanes)
-- N-035 breadcrumbs (needs F-SYS-011), N-034 managed update (needs F-API-029).
+## Handoff (2026-10-07, READY TO RECYCLE)
+- **Git:** lanes push only to `lane/android-geo-dpc` (docs/26 s3); the integrator promotes green heads. Merge INT before every push.
+- **In progress:** nothing; every row of the lane is built and checked.
+- **Next three:**
+  1. Watch `docs/status/train.md`: if the integrator reports this lane's head breaking a candidate, fix it.
+  2. When android-core lands the wiring call sites, re-run the module tests and flip N-026, F-SYS-031 and N-030 to done.
+  3. When android-core answers "allowlisted" (docs/requests/android-geo-dpc-provisioning-activities.md), add the two provisioning activities to android/dpc/src/main/AndroidManifest.xml (exact XML in that request).
+- **Waiting on others:** N-031 enrolment replay (backend, `android-geo-dpc-enrol-replay.md`).
+- **Local build:** `/tmp/claude-0/g.sh`-style quiet Gradle runs; Robolectric SDK 34 jars cannot download here (429), CI is the check for them.
+- **Checker pattern that worked:** a fresh Opus agent per row with the row text, acceptance, files and "write a Recheck*.kt failing test"; keep its tests as regression tests.
 
 ## What software cannot stop (honest limits)
 - RF-level GNSS simulators and modified hardware give clean fixes with no mock flag; the server's statistical rules (teleport, zero jitter, same point, GNSS C/N0 spread) flag them over a day, not per fix.
@@ -74,6 +84,8 @@ BatteryExemption.requestIfNeeded(activity, policy.selfProtection.batteryOptimisa
 - **GD-10:** warm-up fixes (D-74) are capped at 8 unused per business date so a day with slow walks still stays within the 80-fix budget.
 
 ## Traps found
+- Never `git clean` in this shared tree: parallel checkers' untracked test files get deleted.
+- Breadcrumb state is elapsed-realtime based; a reboot is detected by the wall-minus-elapsed offset and re-anchors the window.
 - Robolectric's DevicePolicyManager shadow records restrictions in UserManager; read restrictions back with `UserManager.hasUserRestriction` (also the effective state on a phone).
 - The state files live in credential-encrypted storage: do not handle `LOCKED_BOOT_COMPLETED`.
 - An updated system app keeps `FLAG_SYSTEM`; testing `FLAG_UPDATED_SYSTEM_APP` would make allowlist mode suspend the Play Store.
