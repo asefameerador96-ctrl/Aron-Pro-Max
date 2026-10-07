@@ -4,12 +4,15 @@ import { OpInline } from "@/components/admin/kit/op-inline";
 import { Card, PageHeading } from "@/components/admin/kit/page";
 import type { Device, EnrolmentToken } from "@/lib/admin/types";
 import { formatDateTime, formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
+import { AutoRefresh } from "@/components/admin/kit/auto-refresh";
 import { EnrolmentForm } from "./enrolment-form";
 
 /** A phone is compliant when it is the device owner and runs the current policy; otherwise say what is missing. */
 export function complianceOf(d: Device, currentPolicy: number | null): "ok" | "not_owner" | "policy_behind" {
   if (!d.device_owner) return "not_owner";
-  if (currentPolicy !== null && (d.policy_version_applied ?? -1) < currentPolicy) return "policy_behind";
+  // The policy travels with the config: a phone that applied the latest config version holds the current policy, even when the
+  // policy version itself did not move with it (docs/24 s10.2).
+  if (currentPolicy !== null && (d.config_version_applied ?? -1) < currentPolicy && (d.policy_version_applied ?? -1) < currentPolicy) return "policy_behind";
   return "ok";
 }
 
@@ -37,6 +40,7 @@ export function EnrolmentView({ locale, tokens, devices, currentPolicy, canWrite
       <Card title={t(locale, "enr.tokens")}>
         <DataTable columns={tokenCols} rows={tokens} rowKey={(k) => String(k.token_id)} empty={t(locale, "common.empty")} caption={t(locale, "enr.tokens")} />
       </Card>
+      <AutoRefresh seconds={30} />
       <Card title={t(locale, "enr.devices")}>
         <DataTable columns={devCols} rows={devices} rowKey={(d) => String(d.device_id)} empty={t(locale, "common.empty")} caption={t(locale, "enr.devices")} />
       </Card>

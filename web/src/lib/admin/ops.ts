@@ -51,14 +51,30 @@ export const OPS = {
   // N-045 enrolment QR: tokens carry a note, not a reason; the secret is shown once
   "enrolment.create": { method: "POST", path: "/v1/admin/enrolment-tokens", roles: SUPPORT_UP, reason: null },
   "enrolment.revoke": { method: "POST", path: "/v1/admin/enrolment-tokens/{token_id}/revoke", roles: SUPPORT_UP, reason: null, noBody: true },
+  // F-ADM-029 / F-ADM-052 reopen a final-submitted zone-day (cfg.day.reopen_roles: admin)
+  "day.reopen": { method: "POST", path: "/v1/day/reopen", roles: ADMINS, reason: "reason" },
+  // F-ADM-023 / F-ADM-060 code lists (QC fault types, reasons): items replaced with a change reason; codes are never deleted
+  "code-list.put": { method: "PUT", path: "/v1/admin/code-lists/{list_key}", roles: ADMINS, reason: "change_reason" },
 } as const satisfies Record<string, OpDef>;
 
+/** Web-role operations (the TSO's own pages live outside /admin): served by /api/bff/team-op, gated by the web roles. */
+export const TEAM_OPS = {
+  // F-WEB-051 web Final Submit (same server rule as the app: online only, once per zone and day)
+  "day.final-submit": { method: "POST", path: "/v1/day/final-submit", roles: ["TSO", "DMO", "ADMIN", "SUPERADMIN"], reason: null },
+  // F-WEB-051 Delete Section Data: an audited void with a reason, only before Final Submit
+  "day.data-void": { method: "POST", path: "/v1/admin/data-void", roles: ["TSO", "ADMIN", "SUPERADMIN"], reason: "reason" },
+} as const satisfies Record<string, OpDef>;
+
+export type TeamOpKey = keyof typeof TEAM_OPS;
 export type OpKey = keyof typeof OPS;
 
 export const PARAM_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 export function isOpKey(k: unknown): k is OpKey {
   return typeof k === "string" && Object.prototype.hasOwnProperty.call(OPS, k);
+}
+export function isTeamOpKey(k: unknown): k is TeamOpKey {
+  return typeof k === "string" && Object.prototype.hasOwnProperty.call(TEAM_OPS, k);
 }
 
 /** Fill `{name}` placeholders; null when a value is missing or has a forbidden character. */

@@ -17,6 +17,8 @@ export function RadiusMap({ radiusM }: { radiusM: number }) {
   const key = process.env.NEXT_PUBLIC_MAPS_WEB_KEY;
   const host = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
+  const radiusRef = useRef(radiusM);
+  radiusRef.current = radiusM;
   const circle = useRef<{ setCenter: (c: object) => void; setRadius: (r: number) => void } | null>(null);
 
   useEffect(() => {
@@ -28,17 +30,21 @@ export function RadiusMap({ radiusM }: { radiusM: number }) {
       if (!g || cancelled) return;
       const center = { lat: 23.78, lng: 90.41 };
       const map = new g.maps.Map(el, { center, zoom: 15, mapTypeControl: false, streetViewControl: false });
-      circle.current = new g.maps.Circle({ map, center, radius: radiusM, strokeColor: "#1d4ed8", fillColor: "#3b82f6", fillOpacity: 0.2 });
+      circle.current = new g.maps.Circle({ map, center, radius: radiusRef.current, strokeColor: "#1d4ed8", fillColor: "#3b82f6", fillOpacity: 0.2 });
       map.addListener("click", (ev) => circle.current?.setCenter({ lat: ev.latLng.lat(), lng: ev.latLng.lng() }));
     };
     if ((window as unknown as { google?: GMaps }).google) start();
     else {
-      const s = document.createElement("script");
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async`;
-      s.async = true;
-      s.onload = start;
-      s.onerror = () => setFailed(true);
-      document.head.appendChild(s);
+      const w = window as unknown as { __aronMapsReady?: () => void };
+      w.__aronMapsReady = start;
+      if (!document.getElementById("aron-maps-js")) {
+        const s = document.createElement("script");
+        s.id = "aron-maps-js";
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__aronMapsReady`;
+        s.async = true;
+        s.onerror = () => setFailed(true);
+        document.head.appendChild(s);
+      }
     }
     return () => {
       cancelled = true;

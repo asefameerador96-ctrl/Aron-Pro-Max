@@ -17,8 +17,12 @@ export const CONFIG_MENU: readonly MenuItem[] = [
   { id: "cfg-geofence", labelKey: "menu.config.geofence", href: "/admin/config/geofence", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-enrolment", labelKey: "menu.config.enrolment", href: "/admin/enrolment", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-app-block", labelKey: "menu.config.app_block", href: "/admin/config/app-block", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-day", labelKey: "menu.config.day", href: "/admin/config/day", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-code-lists", labelKey: "menu.config.code_lists", href: "/admin/code-lists", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-qc-faults", labelKey: "menu.config.qc_faults", href: "/admin/qc-faults", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-calendar", labelKey: "menu.config.calendar", href: "/admin/calendar", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-device-otps", labelKey: "menu.config.device_otp", href: "/admin/device-otps", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-audit", labelKey: "cfgp.audit.title", href: "/admin/config/audit", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "tso-final-submit", labelKey: "menu.main.final_submit", href: "/final-submit", roles: ["TSO", "DMO", "ADMIN", "SUPERADMIN"], group: "main" },
   { id: "tso-device-otp", labelKey: "menu.main.device_otp", href: "/device-otp", roles: ["TSO"], group: "main" },
 ];

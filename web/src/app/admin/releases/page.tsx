@@ -4,7 +4,7 @@ import { apiGet } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
 import { canOp } from "@/lib/admin/access";
 import { adoptionByVersion } from "@/lib/admin/adoption";
-import { latestVersion, listKeys, versionDetail } from "@/lib/admin/config-load";
+import { globalValues, latestVersion, listKeys, versionDetail } from "@/lib/admin/config-load";
 import type { AppReleasePage, Device, DevicePage, ReleasePolicyList, ResolvedConfigValue } from "@/lib/admin/types";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
