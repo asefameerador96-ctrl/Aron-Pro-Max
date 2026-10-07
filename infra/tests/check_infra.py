@@ -375,6 +375,7 @@ class ReliabilityProperties(unittest.TestCase):
                          "PgBouncer must be on for every tier that has it (all but Burstable)")
         base = {x["name"]: x["value"] for x in t["variables"]["baseSettings"]}
         self.assertIn("BTREE_GIST", base["azure.extensions"], "docs/requests/db-azure-btree-gist.md")
+        self.assertIn("PG_TRGM", base["azure.extensions"].split(","), "db AUD-PERF-07: pg_trgm allow-listed for the migration")
         self.assertEqual(t["variables"]["replicaSettings"],
                          "[if(parameters('pgbouncerEnabled'), variables('pgbouncerSettings'), createArray())]",
                          "the replica must get the PgBouncer settings of the primary")
