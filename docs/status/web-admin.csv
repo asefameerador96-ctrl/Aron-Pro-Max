@@ -19,3 +19,4 @@ F-ADM-005,M,2026-10-07T10:30Z,2026-10-07T12:00Z,90,0,"Prices (5 types, effective
 F-ADM-006,M,2026-10-07T10:30Z,2026-10-07T12:00Z,0,0,"Sales plan and user scope editor; checker pending; acting scope gap requested"
 F-ADM-008,S,2026-10-07T10:30Z,2026-10-07T12:00Z,0,0,"User scope role-node rules; checker pending"
 F-ADM-071,S,2026-10-07T10:30Z,2026-10-07T12:00Z,0,0,"SR transfer; checker pending"
+F-ADM-076,M,2026-10-07T12:00Z,2026-10-07T12:40Z,40,0,"SR lifecycle page (create, bind, reassign, disable) over existing pages; checker pending (T2)"
