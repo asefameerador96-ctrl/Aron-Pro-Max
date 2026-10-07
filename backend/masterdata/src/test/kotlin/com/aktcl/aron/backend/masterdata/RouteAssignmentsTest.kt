@@ -22,32 +22,32 @@ class RouteAssignmentsTest {
 
     @Test
     fun anSrRouteNamesItsSrAndAnAmoRouteShowsSrNotSetAsNormal() = env.app {
-        val sr = send(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("MIR-SR-D")}/assignments", env.tok("tso1001")).obj()
-        assertEquals("sr", sr.str("route_kind")); assertEquals("false", sr.getValue("sr_not_set").jsonPrimitive.content)
-        val a = sr.items().single()
-        assertEquals("sr1001", a.str("username")); assertEquals("primary", a.str("kind")); assertEquals("SR", a.str("user_role")); assertEquals("2026-01-01", a.str("valid_from"))
+        val sr = sendA3(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("MIR-SR-D")}/assignments", env.tok("tso1001")).objA3()
+        assertEquals("sr", sr.strA3("route_kind")); assertEquals("false", sr.getValue("sr_not_set").jsonPrimitive.content)
+        val a = sr.itemsA3().single()
+        assertEquals("sr1001", a.strA3("username")); assertEquals("primary", a.strA3("kind")); assertEquals("SR", a.strA3("user_role")); assertEquals("2026-01-01", a.strA3("valid_from"))
 
-        val amo = send(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("MIR-AMO-1")}/assignments", env.tok("dmo1001")).obj()
-        assertEquals("amo", amo.str("route_kind")); assertEquals("true", amo.getValue("sr_not_set").jsonPrimitive.content)
-        assertEquals(listOf("amo1001"), amo.items().map { it.str("username") })
+        val amo = sendA3(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("MIR-AMO-1")}/assignments", env.tok("dmo1001")).objA3()
+        assertEquals("amo", amo.strA3("route_kind")); assertEquals("true", amo.getValue("sr_not_set").jsonPrimitive.content)
+        assertEquals(listOf("amo1001"), amo.itemsA3().map { it.strA3("username") })
 
         // Before the assignment started nothing is assigned; a repeat call is identical (a read).
-        val early = send(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("MIR-SR-D")}/assignments?valid_on=2025-06-01", env.tok("admin1001")).obj()
-        assertEquals(emptyList(), early.items()); assertEquals("true", early.getValue("sr_not_set").jsonPrimitive.content)
-        assertEquals(sr.toString(), send(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("MIR-SR-D")}/assignments", env.tok("tso1001")).obj().toString())
+        val early = sendA3(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("MIR-SR-D")}/assignments?valid_on=2025-06-01", env.tok("admin1001")).objA3()
+        assertEquals(emptyList(), early.itemsA3()); assertEquals("true", early.getValue("sr_not_set").jsonPrimitive.content)
+        assertEquals(sr.toString(), sendA3(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("MIR-SR-D")}/assignments", env.tok("tso1001")).objA3().toString())
     }
 
     @Test
     fun validationAndRolesAreEnforced() = env.app {
         val route = env.routeIds.getValue("MIR-SR-D")
-        for (u in listOf("sr1001", "amo1001")) assertEquals(HttpStatusCode.Forbidden, send(HttpMethod.Get, "/v1/routes/$route/assignments", env.tok(u)).status, u)
-        assertEquals(HttpStatusCode.Unauthorized, send(HttpMethod.Get, "/v1/routes/$route/assignments", null).status)
-        assertEquals(HttpStatusCode.BadRequest, send(HttpMethod.Get, "/v1/routes/abc/assignments", env.tok("admin1001")).status)
-        assertEquals(HttpStatusCode.BadRequest, send(HttpMethod.Get, "/v1/routes/$route/assignments?valid_on=2026-02-30", env.tok("admin1001")).status)
-        val denied = send(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("OTH-SR-1")}/assignments", env.tok("tso1001"))
+        for (u in listOf("sr1001", "amo1001")) assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Get, "/v1/routes/$route/assignments", env.tok(u)).status, u)
+        assertEquals(HttpStatusCode.Unauthorized, sendA3(HttpMethod.Get, "/v1/routes/$route/assignments", null).status)
+        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Get, "/v1/routes/abc/assignments", env.tok("admin1001")).status)
+        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Get, "/v1/routes/$route/assignments?valid_on=2026-02-30", env.tok("admin1001")).status)
+        val denied = sendA3(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue("OTH-SR-1")}/assignments", env.tok("tso1001"))
         assertEquals(HttpStatusCode.Forbidden, denied.status); assertTrue(denied.bodyAsText().contains("ERR_OUT_OF_SCOPE"))
         // An unknown route answers exactly like one outside the reach (no existence leak).
-        assertEquals(HttpStatusCode.Forbidden, send(HttpMethod.Get, "/v1/routes/987654/assignments", env.tok("tso1001")).status)
+        assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Get, "/v1/routes/987654/assignments", env.tok("tso1001")).status)
     }
 
     @Test
@@ -61,11 +61,11 @@ class RouteAssignmentsTest {
         var refused = 0
         repeat(150) {
             val caller = reach.keys.random(rnd); val route = zoneOfRoute.keys.random(rnd)
-            val r = send(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue(route)}/assignments?zone_ids=1,2,3&scope_ids=1", env.tok(caller))
+            val r = sendA3(HttpMethod.Get, "/v1/routes/${env.routeIds.getValue(route)}/assignments?zone_ids=1,2,3&scope_ids=1", env.tok(caller))
             if (zoneOfRoute.getValue(route) in reach.getValue(caller)) {
                 assertEquals(HttpStatusCode.OK, r.status, "$caller $route")
-                val j = r.obj()
-                assertTrue(j.items().all { it.str("route_id") == env.routeIds.getValue(route).toString() })
+                val j = r.objA3()
+                assertTrue(j.itemsA3().all { it.strA3("route_id") == env.routeIds.getValue(route).toString() })
             } else {
                 refused++
                 assertEquals(HttpStatusCode.Forbidden, r.status, "$caller must not see $route")

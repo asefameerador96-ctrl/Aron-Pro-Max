@@ -68,8 +68,6 @@ data class SkuPageOut(val items: List<SkuOut>, val next_cursor: String?)
 class AdminProductsDeps(val db: Database, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
 /** Master data is read by every web role of docs/24 s8.5 and written by ADMIN and SUPERADMIN only. */
-internal val MASTER_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
-internal val MASTER_WRITERS = setOf(Role.ADMIN, Role.SUPERADMIN)
 
 internal fun adminBad(pointer: String, code: String = "invalid_value"): Nothing =
     throw ApiProblem(ProblemCode.ERR_VALIDATION, "invalid $pointer", errors = listOf(FieldError(pointer, code)))

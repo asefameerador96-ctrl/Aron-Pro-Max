@@ -139,7 +139,7 @@ class BackendAdminEnv : AutoCloseable {
     override fun close() = seeded.close()
 }
 
-suspend fun ApplicationTestBuilder.send(method: HttpMethod, path: String, token: String?, body: String? = null, headers: Map<String, String> = emptyMap()): HttpResponse =
+suspend fun ApplicationTestBuilder.sendA3(method: HttpMethod, path: String, token: String?, body: String? = null, headers: Map<String, String> = emptyMap()): HttpResponse =
     client.request(path) {
         this.method = method
         token?.let { bearerAuth(it) }
@@ -147,6 +147,6 @@ suspend fun ApplicationTestBuilder.send(method: HttpMethod, path: String, token:
         if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
     }
 
-suspend fun HttpResponse.obj(): JsonObject = Json.parseToJsonElement(bodyAsText()).jsonObject
-fun JsonElement.str(key: String): String = jsonObject.getValue(key).jsonPrimitive.content
-fun JsonObject.items() = getValue("items").jsonArray.map { it.jsonObject }
+suspend fun HttpResponse.objA3(): JsonObject = Json.parseToJsonElement(bodyAsText()).jsonObject
+fun JsonElement.strA3(key: String): String = jsonObject.getValue(key).jsonPrimitive.content
+fun JsonObject.itemsA3() = getValue("items").jsonArray.map { it.jsonObject }

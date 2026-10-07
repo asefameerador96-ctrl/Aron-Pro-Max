@@ -59,7 +59,7 @@ class AdminEnv : AutoCloseable {
     override fun close() = db.close()
 }
 
-suspend fun ApplicationTestBuilder.send(
+suspend fun ApplicationTestBuilder.sendA1(
     method: HttpMethod, path: String, token: String, body: String? = null, ifMatch: Any? = null,
 ): HttpResponse = client.request("/v1$path") {
     this.method = method
@@ -70,12 +70,12 @@ suspend fun ApplicationTestBuilder.send(
 
 fun json(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
 
-suspend fun HttpResponse.obj(): JsonObject = json(bodyAsText())
+suspend fun HttpResponse.objA1(): JsonObject = json(bodyAsText())
 
-fun JsonObject.str(k: String): String? = this[k]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content
+fun JsonObject.strA1(k: String): String? = this[k]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content
 fun JsonObject.lng(k: String): Long = this.getValue(k).jsonPrimitive.content.toLong()
-fun JsonObject.items(): List<JsonObject> = getValue("items").jsonArray.map { it.jsonObject }
+fun JsonObject.itemsA1(): List<JsonObject> = getValue("items").jsonArray.map { it.jsonObject }
 fun JsonObject.arr(k: String): JsonArray = getValue(k).jsonArray
 
 /** Problem code of an `application/problem+json` answer. */
-suspend fun HttpResponse.code(): String = obj().str("code")!!
+suspend fun HttpResponse.code(): String = objA1().strA1("code")!!

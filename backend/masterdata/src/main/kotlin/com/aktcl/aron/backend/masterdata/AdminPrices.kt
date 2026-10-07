@@ -362,6 +362,8 @@ private suspend fun publish(call: ApplicationCall, d: AdminPricesDeps) {
     val reason = req.change_reason.trim()
     val result = mapDb {
         d.db.jdbi.inTransaction<Pair<SkuPriceListOut, String>, Exception> { h ->
+            // One publish per batch uuid at a time (also when no batch row exists yet), so identical concurrent requests replay instead of colliding.
+            h.createQuery("SELECT pg_advisory_xact_lock(hashtext(:k))").bind("k", "price_batch:" + uuid).mapTo(String::class.java).findOne()
             val existing = loadBatch(h, uuid, lock = true)
             if (existing != null && existing.status != "previewed") {
                 if (existing.fingerprint != fp) throw ApiProblem(ProblemCode.ERR_CONFLICT, "batch_uuid already used with a different set of prices")
