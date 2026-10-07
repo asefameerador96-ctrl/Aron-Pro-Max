@@ -78,6 +78,33 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Handover (READY TO RECYCLE, 2026-10-07 ~17:30Z by the server clock, seventh session)
+- **Done this session** (head on lane/android-core; INT merged at the start). Each row had a fresh Opus checker and a re-check after every FAIL, and every confirmed finding was fixed with a test:
+  - F-SYS-072 residual (a); (b) and (c) routed to backend-core; the row stays open.
+  - F-SYS-071 done (device-only proof).
+  - F-SYS-079 done.
+  - F-SYS-081 phone half: two FAILs fixed, third check result is below.
+- **In progress:** nothing.
+- **Next, in this order:**
+  1. F-SYS-073 urgent config push (S, needs N-038, done).
+  2. AUD-PERF-06 (bundle decode from `body.source()`, a page loop, delta upserts in chunks of 500, an AMO-shape test with 6,000 outlets).
+  3. AUD-PERF-04 (`:android:benchmark` module, a baseline profile, a cold-start macrobenchmark).
+  4. F-SYS-047 and F-SYS-080 once backend F-API-070 (`GET /sync/generation`) is on INT.
+  5. F-SYS-074 once N-053 (the AMO map) is on INT.
+  6. Follow-ups:
+     - LocationNotice reads the bundle's `user.consents` (BC-55) once backend-core 33fd70db is on INT.
+     - Read `cfg.day.checkout_earliest_time` and `cfg.sync.checkout_jitter_s` into the CheckoutGate and the scheduler.
+     - The media lane should call `DeviceTelemetry.noteMobileMediaBytes`.
+     - Earlier small items from the sixth handover (F-SYS-052 `cfg.auth.offline_unlock_*`, the pre-Hilt crash, the `auto_vacuum` creation flag).
+- **Open requests (new this session), all for backend-core:**
+  - android-core-backend-record-sig-vector.md: the shared vector and key rotation.
+  - android-core-backend-telemetry-day.md: fact_device_day ingest, upserted by device and date, parsed leniently.
+- **Device checks:** F-SYS-071 SqlCipherDeviceTest on an emulator or the A06 (CI once infra's AUD-TP-4 lands).
+- **Traps found this session:**
+  37. `date -u` is the real clock. Earlier handover times in this file run about 2.5 h ahead of it; use the server clock in the csv.
+  38. A checker told to review `git diff HEAD` sees nothing once you commit: commit after the checker, or give it the commit id.
+  39. `tools/my-rows.py --todo` lists rows whose dependencies are not built (F-SYS-047/080 need F-API-070, F-SYS-074 needs N-053): check the status csvs first.
+
 ## Seventh session (2026-10-07, from ~15:38Z by the server clock; earlier handover times in this file run ahead of it)
 - INT merged (docs only) and pushed.
 - **F-SYS-072 residuals** (T1; Opus checker FAIL, re-check FAIL, both fixed with tests; RecordSignatureTest 20, RecordSignatureVectorTest 2):
