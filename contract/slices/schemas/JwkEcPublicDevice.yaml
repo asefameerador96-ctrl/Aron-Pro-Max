@@ -1,0 +1,22 @@
+JwkEcPublicDevice:
+  type: object
+  description: Device public key (Android Keystore, EC P-256).
+  required:
+  - kty
+  - crv
+  - x
+  - y
+  additionalProperties: false
+  properties:
+    kty:
+      type: string
+      const: EC
+    crv:
+      type: string
+      const: P-256
+    x:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{43}$
+    y:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{43}$

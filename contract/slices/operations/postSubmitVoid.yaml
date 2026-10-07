@@ -1,0 +1,28 @@
+path: /v1/day/submit-void
+method: post
+operation:
+  tags:
+  - day
+  operationId: postSubmitVoid
+  summary: Void the effective Sales Submit of one route-day (capture unlocks on the phone, submit_seq + 1).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SubmitVoidRequest'
+  responses:
+    '200':
+      description: New route-day state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteDayState'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

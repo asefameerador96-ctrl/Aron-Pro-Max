@@ -1,0 +1,19 @@
+BulkResult:
+  type: object
+  required:
+  - batch_uuid
+  - updated
+  - unchanged
+  - replayed
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    updated:
+      type: integer
+      minimum: 0
+    unchanged:
+      type: integer
+      minimum: 0
+    replayed:
+      type: boolean

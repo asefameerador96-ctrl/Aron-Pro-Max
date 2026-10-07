@@ -1,0 +1,13 @@
+DueCollectionRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: due_collection
+      payload:
+        $ref: '#/components/schemas/DueCollectionPayload'
+  unevaluatedProperties: false

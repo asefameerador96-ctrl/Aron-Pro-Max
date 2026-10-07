@@ -1,0 +1,23 @@
+FeedbackPayload:
+  type: object
+  required:
+  - category_code
+  - title
+  - description
+  additionalProperties: false
+  properties:
+    category_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    title:
+      type: string
+      minLength: 1
+      maxLength: 120
+    description:
+      type: string
+      minLength: 1
+      maxLength: 2000
+    photo_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'

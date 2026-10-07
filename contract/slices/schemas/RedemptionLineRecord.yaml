@@ -1,0 +1,13 @@
+RedemptionLineRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: redemption_line
+      payload:
+        $ref: '#/components/schemas/RedemptionLinePayload'
+  unevaluatedProperties: false

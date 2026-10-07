@@ -1,0 +1,22 @@
+AsthaTargetPage:
+  type: object
+  required:
+  - quarter
+  - as_of
+  - items
+  - next_cursor
+  additionalProperties: false
+  properties:
+    quarter:
+      type: string
+      pattern: ^\d{4}-Q[1-4]$
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/AsthaTargetRow'
+    next_cursor:
+      oneOf:
+      - $ref: '#/components/schemas/PageCursor'
+      - type: 'null'

@@ -1,0 +1,18 @@
+path: /v1/admin/permissions
+method: get
+operation:
+  tags:
+  - admin-users
+  operationId: getPermissionMatrix
+  summary: Role by menu by action matrix (data, cfg.web.menu_by_role) and the admin roster.
+  responses:
+    '200':
+      description: The matrix.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PermissionMatrix'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

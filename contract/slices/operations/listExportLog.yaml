@@ -1,0 +1,35 @@
+path: /v1/report-exports
+method: get
+operation:
+  tags:
+  - reports
+  operationId: listExportLog
+  summary: Export log viewer (who exported which report with which filters, rows and PII flag).
+  parameters:
+  - name: user_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+    description: Exports of one user.
+  - name: report_key
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/ReportKey'
+    description: Exports of one report.
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of export log entries, newest first.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExportLogPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

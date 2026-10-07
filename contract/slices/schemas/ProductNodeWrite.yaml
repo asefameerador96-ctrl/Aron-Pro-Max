@@ -1,0 +1,29 @@
+ProductNodeWrite:
+  type: object
+  required:
+  - name
+  - sort
+  additionalProperties: false
+  properties:
+    parent_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    sort:
+      type: integer

@@ -1,0 +1,8 @@
+PriceType:
+  type: string
+  enum:
+  - outlet
+  - cc
+  - distributor
+  - reporting
+  - nto

@@ -1,0 +1,50 @@
+GeoNodeWrite:
+  type: object
+  required:
+  - code
+  - name
+  additionalProperties: false
+  properties:
+    code:
+      type: string
+      pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    parent_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    dep_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    email:
+      type:
+      - string
+      - 'null'
+      format: email
+      maxLength: 120
+    address:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+    pda_contact_no:
+      type:
+      - string
+      - 'null'
+      pattern: ^\+?[0-9]{5,15}$
+    change_reason:
+      oneOf:
+      - $ref: '#/components/schemas/ChangeReason'
+      - type: 'null'

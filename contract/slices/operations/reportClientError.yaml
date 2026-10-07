@@ -1,0 +1,22 @@
+path: /v1/client-errors
+method: post
+operation:
+  tags:
+  - support
+  operationId: reportClientError
+  summary: Privacy-scrubbed error report from the web app (phones send `app_error` records in the batch).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ClientErrorReport'
+  responses:
+    '202':
+      description: Accepted (deduplicated by error_uuid).
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

@@ -1,0 +1,22 @@
+QuarantineResolveRequest:
+  type: object
+  required:
+  - action
+  - reason
+  additionalProperties: false
+  properties:
+    action:
+      type: string
+      enum:
+      - accept
+      - accept_with_fix
+      - discard
+      - return_to_device
+      description: return_to_device asks the phone to re-send the row after a bundle refresh (it becomes retryable).
+    fixed_record:
+      description: Required for accept_with_fix; same client_uuid and type as the quarantined record.
+      oneOf:
+      - $ref: '#/components/schemas/SyncRecord'
+      - type: 'null'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

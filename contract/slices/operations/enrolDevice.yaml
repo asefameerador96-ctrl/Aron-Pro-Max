@@ -1,0 +1,39 @@
+path: /v1/devices/enrol
+method: post
+operation:
+  tags:
+  - devices
+  operationId: enrolDevice
+  summary: Register a factory-reset, device-owner phone with an enrolment token from the QR.
+  description: 'Called once by the field app right after QR provisioning (or after the dev-mode adb enrolment with
+    a
+
+    typed token). Unauthenticated: the enrolment token is the credential. Verifies the Keystore attestation
+
+    chain (package, signing certificate, verified boot) and stores the device public key used by
+
+    `X-Device-Proof` (docs/24 s8.3, s10.4).
+
+    '
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/EnrolDeviceRequest'
+  responses:
+    '201':
+      description: Device enrolled.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnrolDeviceResponse'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

@@ -1,0 +1,16 @@
+ConfigScopeType:
+  type: string
+  enum:
+  - global
+  - role
+  - wing
+  - division
+  - territory
+  - geo_class
+  - zone
+  - route
+  - outlet
+  - user
+  - device
+  description: Precedence (most specific wins) device 120 > user 110 > outlet 100 > route 90 > zone 80 > geo_class
+    70 > territory 50 > division 40 > wing 30 > role 10 > global 0.

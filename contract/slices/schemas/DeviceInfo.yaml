@@ -1,0 +1,40 @@
+DeviceInfo:
+  type: object
+  required:
+  - manufacturer
+  - model
+  - os_api_level
+  - os_version
+  - abi
+  - ram_mb
+  additionalProperties: false
+  properties:
+    manufacturer:
+      type: string
+      maxLength: 60
+    model:
+      type: string
+      maxLength: 80
+    os_api_level:
+      type: integer
+      minimum: 26
+      maximum: 99
+    os_version:
+      type: string
+      maxLength: 20
+    security_patch:
+      type:
+      - string
+      - 'null'
+      format: date
+    abi:
+      $ref: '#/components/schemas/Abi'
+    ram_mb:
+      type: integer
+      minimum: 256
+      maximum: 65536
+    storage_total_mb:
+      type:
+      - integer
+      - 'null'
+      minimum: 0

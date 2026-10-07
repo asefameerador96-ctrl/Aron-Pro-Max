@@ -1,0 +1,5 @@
+AttendanceKind:
+  type: string
+  enum:
+  - check_in
+  - check_out

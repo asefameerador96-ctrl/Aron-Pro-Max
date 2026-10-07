@@ -1,0 +1,26 @@
+path: /v1/admin/config/keys
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: listConfigKeys
+  summary: The config key registry (type, default, bounds, scope levels, risk class, effect).
+  parameters:
+  - name: area
+    in: query
+    required: false
+    schema:
+      type: string
+      pattern: ^[a-z]+$
+      maxLength: 32
+  responses:
+    '200':
+      description: Registry.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigKeyList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

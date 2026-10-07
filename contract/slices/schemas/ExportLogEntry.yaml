@@ -1,0 +1,40 @@
+ExportLogEntry:
+  type: object
+  required:
+  - export_id
+  - report_key
+  - user_id
+  - format
+  - rows
+  - pii_included
+  - created_at
+  additionalProperties: false
+  properties:
+    export_id:
+      $ref: '#/components/schemas/Uuid'
+    report_key:
+      $ref: '#/components/schemas/ReportKey'
+    user_id:
+      $ref: '#/components/schemas/Id'
+    username:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    format:
+      type: string
+      enum:
+      - xlsx
+      - pdf
+      - print
+    filters:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    rows:
+      type: integer
+      minimum: 0
+    pii_included:
+      type: boolean
+    created_at:
+      $ref: '#/components/schemas/Timestamp'

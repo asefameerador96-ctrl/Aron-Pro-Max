@@ -1,0 +1,48 @@
+ConfigValue:
+  type: object
+  required:
+  - id
+  - key
+  - scope_type
+  - scope_id
+  - value
+  - effective_from
+  - config_version
+  - set_by
+  - set_at
+  - reason
+  additionalProperties: false
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    key:
+      $ref: '#/components/schemas/ConfigKeyName'
+    scope_type:
+      $ref: '#/components/schemas/ConfigScopeType'
+    scope_id:
+      type: integer
+      format: int64
+      minimum: 0
+    value:
+      $ref: '#/components/schemas/ConfigValueJson'
+    effective_from:
+      $ref: '#/components/schemas/Timestamp'
+    effective_to:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    config_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    superseded_in_version:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    set_by:
+      $ref: '#/components/schemas/Id'
+    set_at:
+      $ref: '#/components/schemas/Timestamp'
+    reason:
+      type: string
+      maxLength: 500

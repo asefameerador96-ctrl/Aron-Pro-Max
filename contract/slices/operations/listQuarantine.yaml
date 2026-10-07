@@ -1,0 +1,34 @@
+path: /v1/admin/quarantine
+method: get
+operation:
+  tags:
+  - sync
+  operationId: listQuarantine
+  summary: Rejected and quarantined records (nothing is ever dropped) for review.
+  parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/QuarantineStatus'
+  - name: code
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/RecordOutcomeCode'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of quarantined records.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuarantinePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

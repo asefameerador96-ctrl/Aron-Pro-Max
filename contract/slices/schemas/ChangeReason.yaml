@@ -1,0 +1,5 @@
+ChangeReason:
+  type: string
+  minLength: 10
+  maxLength: 500
+  description: Free-text reason stored in the audit log (at least 10 characters).

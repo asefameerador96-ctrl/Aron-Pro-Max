@@ -1,0 +1,7 @@
+Username:
+  type: string
+  description: Case-insensitive login name. Memo-producing roles (SR, AMO) match `^[a-z][a-z0-9]{3,31}$` (no hyphen,
+    docs/24 s7.5).
+  pattern: ^[A-Za-z][A-Za-z0-9._-]{2,39}$
+  examples:
+  - sr334001

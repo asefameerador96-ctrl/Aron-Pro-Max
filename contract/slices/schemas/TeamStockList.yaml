@@ -1,0 +1,56 @@
+TeamStockList:
+  type: object
+  required:
+  - as_of
+  - business_date
+  - items
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    items:
+      type: array
+      items:
+        type: object
+        required:
+        - user_id
+        - full_name
+        - by_sku
+        additionalProperties: false
+        properties:
+          user_id:
+            $ref: '#/components/schemas/Id'
+          full_name:
+            type: string
+            maxLength: 120
+          by_sku:
+            type: array
+            items:
+              type: object
+              required:
+              - sku_id
+              - base_unit
+              - issued_qty_base
+              - sold_qty_base
+              - returned_qty_base
+              - current_qty_base
+              additionalProperties: false
+              properties:
+                sku_id:
+                  $ref: '#/components/schemas/Id'
+                base_unit:
+                  type: string
+                  enum:
+                  - stick
+                  - piece
+                  - dozen
+                issued_qty_base:
+                  type: integer
+                sold_qty_base:
+                  $ref: '#/components/schemas/QtyBase'
+                returned_qty_base:
+                  $ref: '#/components/schemas/QtyBase'
+                current_qty_base:
+                  type: integer

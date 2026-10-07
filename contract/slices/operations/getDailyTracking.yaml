@@ -1,0 +1,27 @@
+path: /v1/dashboards/daily-tracking
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getDailyTracking
+  summary: Daily Tracking by route with achievement buckets (100, 90-100, 80-90, below 80, exception, not logged
+    in).
+  parameters:
+  - $ref: '#/components/parameters/BusinessDateQueryRequired'
+  - $ref: '#/components/parameters/GeoLevelQuery'
+  - $ref: '#/components/parameters/NodeIdQuery'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Rows by route.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DailyTrackingPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

@@ -1,0 +1,17 @@
+SyncTotalsResponse:
+  type: object
+  required:
+  - totals
+  - day_states
+  additionalProperties: false
+  properties:
+    totals:
+      $ref: '#/components/schemas/ServerTotals'
+    day_states:
+      type: array
+      items:
+        $ref: '#/components/schemas/RouteDayState'
+    supervisor_day:
+      oneOf:
+      - $ref: '#/components/schemas/SupervisorDayState'
+      - type: 'null'

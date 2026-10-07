@@ -1,0 +1,26 @@
+path: /v1/admin/geo/{level}/{id}
+method: get
+operation:
+  tags:
+  - admin-geography
+  operationId: getGeoNode
+  summary: One geography node.
+  parameters:
+  - $ref: '#/components/parameters/GeoLevelPath'
+  - $ref: '#/components/parameters/IdPath'
+  responses:
+    '200':
+      description: Node.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GeoNode'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

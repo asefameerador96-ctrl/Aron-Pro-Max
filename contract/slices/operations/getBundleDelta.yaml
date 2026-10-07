@@ -1,0 +1,49 @@
+path: /v1/sync/delta
+method: get
+operation:
+  tags:
+  - sync
+  operationId: getBundleDelta
+  summary: Changes since a delta cursor for the same business date.
+  description: '304 when nothing changed. 409 `ERR_BUNDLE_NEW_BUSINESS_DATE` when the cursor belongs to an older
+    business
+
+    date (fetch the full bundle for today; keep yesterday''s cache for an unsubmitted day). 410
+
+    `ERR_BUNDLE_CURSOR_EXPIRED` when the cursor is older than `cfg.bundle.delta_max_age_h` (fetch full).
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  - $ref: '#/components/parameters/XConfigVersionRequest'
+  - name: since
+    in: query
+    required: true
+    description: The `cursor` of the bundle or delta last applied.
+    schema:
+      $ref: '#/components/schemas/DeltaCursor'
+  - name: for
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  responses:
+    '200':
+      description: Delta to apply in one local transaction.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BundleDelta'
+          examples:
+            outletMoved:
+              $ref: '#/components/examples/DeltaExample'
+    '304':
+      $ref: '#/components/responses/NotModified'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '409':
+      $ref: '#/components/responses/Conflict'
+    '410':
+      $ref: '#/components/responses/Gone'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

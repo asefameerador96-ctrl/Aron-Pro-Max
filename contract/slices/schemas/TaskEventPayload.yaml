@@ -1,0 +1,19 @@
+TaskEventPayload:
+  type: object
+  required:
+  - task_uuid
+  - event
+  additionalProperties: false
+  properties:
+    task_uuid:
+      $ref: '#/components/schemas/Uuid'
+    event:
+      type: string
+      enum:
+      - resolved
+      - reopened
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

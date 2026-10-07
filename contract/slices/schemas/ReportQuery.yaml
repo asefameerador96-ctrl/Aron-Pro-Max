@@ -1,0 +1,152 @@
+ReportQuery:
+  type: object
+  description: One parameter object for every report (docs/24 s12.3). Geo selectors only narrow; omitted = the whole
+    reach.
+  required:
+  - period
+  - output
+  additionalProperties: false
+  properties:
+    period:
+      type: object
+      additionalProperties: false
+      properties:
+        from:
+          $ref: '#/components/schemas/BusinessDate'
+        to:
+          $ref: '#/components/schemas/BusinessDate'
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        month:
+          $ref: '#/components/schemas/Month'
+    date_grouping:
+      type: string
+      enum:
+      - total
+      - day
+      - week
+      - month
+      default: total
+    location:
+      type: string
+      enum:
+      - wing
+      - division
+      - territory
+      - zone
+      - route
+      - outlet
+      - user
+    geo:
+      type: object
+      additionalProperties: false
+      properties:
+        wing:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Id'
+        division:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Id'
+        territory:
+          type: array
+          maxItems: 300
+          items:
+            $ref: '#/components/schemas/Id'
+        zone:
+          type: array
+          maxItems: 1100
+          items:
+            $ref: '#/components/schemas/Id'
+        route:
+          type: array
+          maxItems: 2000
+          items:
+            $ref: '#/components/schemas/Id'
+    category:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/Id'
+    product_type:
+      $ref: '#/components/schemas/ProductLevel'
+    products:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/Id'
+    active_status:
+      type: string
+      enum:
+      - all
+      - active
+      - inactive
+      default: all
+    sub_channels:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/Id'
+    field_force_type:
+      type: string
+      enum:
+      - sr
+      - amo
+      - all
+      default: all
+    std_criteria:
+      $ref: '#/components/schemas/Criteria'
+    memo_criteria:
+      $ref: '#/components/schemas/Criteria'
+    outlet_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 32
+    output:
+      type: object
+      required:
+      - format
+      additionalProperties: false
+      properties:
+        format:
+          type: string
+          enum:
+          - json
+          - xlsx
+          - pdf
+          - print
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        page_size:
+          type: integer
+          enum:
+          - 10
+          - 25
+          - 50
+          - 100
+          - 500
+          default: 50
+        sort:
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            required:
+            - col
+            - dir
+            additionalProperties: false
+            properties:
+              col:
+                type: string
+                pattern: ^[a-z][a-z0-9_]{0,60}$
+              dir:
+                type: string
+                enum:
+                - asc
+                - desc

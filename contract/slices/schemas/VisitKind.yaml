@@ -1,0 +1,8 @@
+VisitKind:
+  type: string
+  enum:
+  - sr_call
+  - amo_control_call
+  - amo_joint_call
+  - tso_visit
+  - web_entry

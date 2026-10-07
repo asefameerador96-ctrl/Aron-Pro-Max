@@ -1,0 +1,19 @@
+ConfigDecisionRequest:
+  type: object
+  required:
+  - decision
+  additionalProperties: false
+  properties:
+    decision:
+      type: string
+      enum:
+      - approve
+      - reject
+      - cancel
+      - adopt
+      description: adopt turns a TSO radius proposal into a change request of the adopting editor.
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

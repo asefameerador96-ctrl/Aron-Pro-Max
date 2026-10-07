@@ -1,0 +1,28 @@
+ConsentAcceptPayload:
+  type: object
+  description: Acceptance of the employee-location notice (cfg.app.location_notice_required), uploaded once per
+    user and policy version.
+  required:
+  - policy_key
+  - policy_version
+  - accepted
+  - locale
+  - shown_at
+  additionalProperties: false
+  properties:
+    policy_key:
+      type: string
+      enum:
+      - location_notice
+    policy_version:
+      type: integer
+      minimum: 1
+    accepted:
+      type: boolean
+    locale:
+      type: string
+      enum:
+      - bn
+      - en
+    shown_at:
+      $ref: '#/components/schemas/Timestamp'

@@ -1,0 +1,40 @@
+RecordOutcomeCode:
+  type: string
+  description: Stable code on a rejected or quarantined record (docs/24 s4.5 lists retryability and the phone action).
+  enum:
+  - scope_stale
+  - config_version_unknown
+  - parent_missing
+  - outlet_pending_approval
+  - price_list_unknown
+  - schema_invalid
+  - unknown_record_type
+  - unknown_sku
+  - unknown_outlet
+  - unknown_route
+  - arithmetic_mismatch
+  - memo_no_invalid
+  - memo_no_duplicate
+  - edit_not_allowed
+  - chain_too_deep
+  - voided_by_admin
+  - content_duplicate
+  - lines_exceed_max
+  - qty_invalid
+  - attendance_duplicate
+  - checkout_too_early
+  - server_error
+  - payload_conflict
+  - business_date_out_of_window
+  - scope_out_of_reach
+  - no_assignment_on_date
+  - device_integrity_failed
+  - device_not_enrolled
+  - user_disabled
+  - device_revoked
+  - app_version_blocked
+  - after_month_close
+  - unknown_gift
+  - insufficient_points
+  - gift_photo_exists
+  - programme_inactive

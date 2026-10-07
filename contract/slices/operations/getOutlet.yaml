@@ -1,0 +1,25 @@
+path: /v1/admin/outlets/{id}
+method: get
+operation:
+  tags:
+  - admin-outlets
+  operationId: getOutlet
+  summary: One outlet with placement and location history.
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  responses:
+    '200':
+      description: Outlet.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OutletDetail'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

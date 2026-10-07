@@ -1,0 +1,32 @@
+CodeItem:
+  type: object
+  required:
+  - code
+  - label_en
+  - sort
+  additionalProperties: false
+  properties:
+    code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    label_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    label_en:
+      type: string
+      maxLength: 120
+    sort:
+      type: integer
+    attrs:
+      type: object
+      description: List-specific attributes (for example `group` MFC or MKT on qc_fault_type).
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'

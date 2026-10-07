@@ -1,0 +1,35 @@
+PrintTemplateWrite:
+  type: object
+  required:
+  - kind
+  - font_columns
+  - template_json
+  - effective_from
+  - change_reason
+  additionalProperties: false
+  properties:
+    kind:
+      type: string
+      enum:
+      - cash_memo
+      - credit_memo
+      - offer_memo
+      - drp_memo
+      - zero_memo
+      - edited_memo
+      - stock_slip
+      - day_summary
+      - due_receipt
+      - void_slip
+    font_columns:
+      type: integer
+      enum:
+      - 32
+      - 42
+    template_json:
+      type: string
+      maxLength: 20000
+    effective_from:
+      $ref: '#/components/schemas/BusinessDate'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

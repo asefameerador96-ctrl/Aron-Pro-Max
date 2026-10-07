@@ -1,0 +1,10 @@
+ConfigChangeStatus:
+  type: string
+  enum:
+  - pending_approval
+  - scheduled
+  - applied
+  - rejected
+  - cancelled
+  - expired
+  - reverted

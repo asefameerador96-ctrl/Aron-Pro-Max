@@ -1,0 +1,21 @@
+DailyTrackingPage:
+  type: object
+  required:
+  - as_of
+  - business_date
+  - items
+  - next_cursor
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/DailyTrackingRow'
+    next_cursor:
+      oneOf:
+      - $ref: '#/components/schemas/PageCursor'
+      - type: 'null'

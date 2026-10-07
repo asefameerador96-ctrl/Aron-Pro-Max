@@ -1,0 +1,10 @@
+HolidayList:
+  type: object
+  required:
+  - items
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/Holiday'

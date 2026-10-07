@@ -1,0 +1,26 @@
+SupportUploadRequest:
+  type: object
+  required:
+  - upload_uuid
+  - bytes
+  - sha256
+  - app_version
+  additionalProperties: false
+  properties:
+    upload_uuid:
+      $ref: '#/components/schemas/Uuid'
+    bytes:
+      type: integer
+      minimum: 1
+      maximum: 104857600
+    sha256:
+      $ref: '#/components/schemas/Sha256Hex'
+    app_version:
+      $ref: '#/components/schemas/AppVersionString'
+    last_sync_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    pending_rows:
+      type: integer
+      minimum: 0

@@ -1,0 +1,28 @@
+path: /v1/leave
+method: get
+operation:
+  tags:
+  - people
+  operationId: listLeave
+  summary: Leave applications in the caller's reach.
+  parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/DecisionStatus'
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of leave applications.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LeavePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

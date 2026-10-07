@@ -1,0 +1,29 @@
+path: /v1/day/final-submit
+method: post
+operation:
+  tags:
+  - day
+  operationId: postFinalSubmit
+  summary: Close a zone-day (TSO app or web). Online-only, once per zone and day.
+  description: The same `client_uuid` replays the first success; a different one gets 409 `ERR_DAY_ALREADY_FINAL_SUBMITTED`.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/FinalSubmitRequest'
+  responses:
+    '200':
+      description: Zone-day final-submitted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FinalSubmitResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

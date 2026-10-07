@@ -1,0 +1,36 @@
+TaskPayload:
+  type: object
+  required:
+  - task_type_code
+  - assignee_user_id
+  - title
+  additionalProperties: false
+  properties:
+    task_type_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    assignee_user_id:
+      $ref: '#/components/schemas/Id'
+    outlet_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    title:
+      type: string
+      minLength: 1
+      maxLength: 120
+    description:
+      type:
+      - string
+      - 'null'
+      maxLength: 1000
+    due_date:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    source_visit_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'

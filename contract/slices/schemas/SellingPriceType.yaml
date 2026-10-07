@@ -1,0 +1,6 @@
+SellingPriceType:
+  type: string
+  enum:
+  - outlet
+  - cc
+  - distributor

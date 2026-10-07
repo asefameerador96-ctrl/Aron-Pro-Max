@@ -1,0 +1,11 @@
+FeedbackStatusWrite:
+  type: object
+  required:
+  - status
+  - reason
+  additionalProperties: false
+  properties:
+    status:
+      $ref: '#/components/schemas/FeedbackStatus'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

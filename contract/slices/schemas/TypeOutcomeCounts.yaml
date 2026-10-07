@@ -1,0 +1,18 @@
+TypeOutcomeCounts:
+  type: object
+  required:
+  - accepted
+  - rejected
+  - quarantined
+  additionalProperties: false
+  properties:
+    accepted:
+      type: integer
+      minimum: 0
+      description: Stored rows (accepted now or earlier, duplicates counted once).
+    rejected:
+      type: integer
+      minimum: 0
+    quarantined:
+      type: integer
+      minimum: 0

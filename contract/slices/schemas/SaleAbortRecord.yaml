@@ -1,0 +1,13 @@
+SaleAbortRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: sale_abort
+      payload:
+        $ref: '#/components/schemas/SaleAbortPayload'
+  unevaluatedProperties: false

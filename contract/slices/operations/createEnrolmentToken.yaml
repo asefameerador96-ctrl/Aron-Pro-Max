@@ -1,0 +1,29 @@
+path: /v1/admin/enrolment-tokens
+method: post
+operation:
+  tags:
+  - admin-devices
+  operationId: createEnrolmentToken
+  summary: Create an enrolment token and its Android provisioning QR payload (shown once).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/EnrolmentTokenCreateRequest'
+  responses:
+    '201':
+      description: Token with the QR payload.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnrolmentTokenCreated'
+          examples:
+            srProd:
+              $ref: '#/components/examples/EnrolmentQrExample'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

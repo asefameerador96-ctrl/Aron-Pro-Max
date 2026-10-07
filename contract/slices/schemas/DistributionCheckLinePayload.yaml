@@ -1,0 +1,18 @@
+DistributionCheckLinePayload:
+  type: object
+  description: OOS implies present (reject schema_invalid otherwise).
+  required:
+  - check_client_uuid
+  - brand_id
+  - present
+  - oos
+  additionalProperties: false
+  properties:
+    check_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    brand_id:
+      $ref: '#/components/schemas/Id'
+    present:
+      type: boolean
+    oos:
+      type: boolean

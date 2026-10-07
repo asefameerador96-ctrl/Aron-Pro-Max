@@ -1,0 +1,117 @@
+OfferWrite:
+  type: object
+  required:
+  - code
+  - group_code
+  - offer_type
+  - level
+  - title_en
+  - valid_from
+  - valid_to
+  - qualifying
+  - scope
+  - stacking
+  - change_reason
+  additionalProperties: false
+  properties:
+    code:
+      type: string
+      pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$
+    group_code:
+      type: string
+      maxLength: 40
+    offer_type:
+      type: string
+      enum:
+      - pct_discount
+      - amount_per_unit
+      - free_qty
+      - drp_slide
+    level:
+      type: string
+      enum:
+      - line
+      - memo
+    title_en:
+      type: string
+      maxLength: 200
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 200
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      $ref: '#/components/schemas/BusinessDate'
+    threshold_qty_base:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    discount_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 10000
+    discount_mtk_per_unit:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    reward_sku_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    reward_qty_base:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    qualifying:
+      type: array
+      maxItems: 100
+      items:
+        type: object
+        required:
+        - product_level
+        - product_id
+        additionalProperties: false
+        properties:
+          product_level:
+            $ref: '#/components/schemas/ProductLevel'
+          product_id:
+            $ref: '#/components/schemas/Id'
+    scope:
+      type: array
+      maxItems: 200
+      items:
+        type: object
+        required:
+        - node_type
+        - node_id
+        additionalProperties: false
+        properties:
+          node_type:
+            type: string
+            enum:
+            - wing
+            - division
+            - territory
+            - zone
+            - route
+            - channel
+            - sub_channel
+          node_id:
+            $ref: '#/components/schemas/Id'
+    stacking:
+      type: string
+      enum:
+      - exclusive
+      - stackable
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

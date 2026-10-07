@@ -1,0 +1,28 @@
+path: /v1/admin/outlets
+method: post
+operation:
+  tags:
+  - admin-outlets
+  operationId: createOutlet
+  summary: Create an outlet directly (admin); field-created outlets go through outlet requests.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/OutletWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Outlet'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

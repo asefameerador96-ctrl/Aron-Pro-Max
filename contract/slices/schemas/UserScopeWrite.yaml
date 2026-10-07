@@ -1,0 +1,34 @@
+UserScopeWrite:
+  type: object
+  required:
+  - valid_from
+  - nodes
+  - change_reason
+  additionalProperties: false
+  properties:
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    nodes:
+      type: array
+      maxItems: 100
+      items:
+        type: object
+        required:
+        - node_type
+        - node_id
+        additionalProperties: false
+        properties:
+          node_type:
+            type: string
+            enum:
+            - national
+            - wing
+            - division
+            - territory
+            - zone
+          node_id:
+            type: integer
+            format: int64
+            minimum: 0
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'
