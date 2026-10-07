@@ -305,6 +305,32 @@ class SessionRepositoryTest {
         assertTrue(phone.session.login("sr334001", "secret-1") is LoginOutcome.LoggedIn)
     }
 
+    /**
+     * F-SYS-052: with user B signed in on the shared phone, A's rows still upload under A's own grant: the upload refresh
+     * for A sends A's upload refresh token, stores A's new upload token under A only, and leaves B's session untouched.
+     */
+    @Test
+    fun whileBIsSignedInAsRowsGetAnUploadTokenOfAOnly() = runTest {
+        val phone = Phone()
+        phone.loginOnline("secret-1")
+        val uploadRefreshOfA = Json.parseToJsonElement(loginOk).jsonObject["upload_refresh_token"]!!.jsonPrimitive.content
+        val second = loginOk.replace("\"user_id\":1001", "\"user_id\":1002").replace("sr334001", "sr334002")
+            .replace(contractAccessToken, "access-of-1002").replace(uploadRefreshOfA, "u".repeat(43))
+        server.enqueue(api(200, second))
+        assertTrue(phone.session.login("sr334002", "secret-2") is LoginOutcome.LoggedIn)
+        server.enqueue(api(200, tokenPair("upload-of-1001", "v".repeat(43))))
+        assertTrue(phone.session.refresh(1001, Grant.UPLOAD))
+        var refresh = server.takeRequest()
+        while (refresh.url.encodedPath != "/v1/auth/refresh") refresh = server.takeRequest() // the two logins first
+        val body = Json.parseToJsonElement(refresh.body!!.utf8()).jsonObject
+        assertEquals("upload", body["grant"]!!.jsonPrimitive.content)
+        assertEquals(uploadRefreshOfA, body["refresh_token"]!!.jsonPrimitive.content)
+        assertEquals("upload-of-1001", phone.session.uploadAccessToken(1001))
+        assertEquals(null, phone.session.uploadAccessToken(1002))
+        assertEquals("access-of-1002", phone.session.currentAccessToken(Grant.FULL))
+        assertEquals(1002L, (phone.session.state.value as SessionState.Active).user.userId)
+    }
+
     @Test
     fun theDeviceUuidIsStableAndReplacedByEnrolment() {
         val id = DeviceIdentity(tmp.root)
