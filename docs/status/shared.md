@@ -47,3 +47,7 @@
 - Decisions: enums, Uuid, Timestamp, BusinessDate are `String` on the wire types (an unknown enum value from a newer server must not crash an old phone; the enum mirrors stay in ContractEnums for typed use). Schemas outside the requested list (TargetRow, AchievementRow, RouteDayState, SuggestedQty, TimeAnchor, TypeCounts, MoneyTotals, DeviceDayTelemetry, ServerTotals, SupervisorDayState, Resolution, Directive) are `JsonElement`; `RadioEnvironment` and each `SyncRecord` are `JsonObject` (the phone composes envelope + payload). Optional members: nullable, default null, except schema defaults (`bundle_stale=false`).
 - `shared/contract/tools/check-web-contract-drift.sh`: regenerates `web/openapi.d.ts` to a temp file and diffs it (exit 1 on drift, 2 if `npm ci` not run). Mutation-checked. Infra wires it into CI (docs/requests/shared-ci-web-contract-drift.md).
 - android-core: delete its local DTO stubs and use `com.aktcl.aron.contract.*` (note `BundleHead` is not a contract schema and stays local).
+## Handover (2026-10-07)
+- Lane closed by the lead. N-002, docs/requests/android-core-contract-dtos.md and the web drift check are reassigned to session shared-2.
+- Everything else in Days 1 and 2 is done and checked (N-003, N-004, F-SYS-017, F-SYS-045, F-SYS-051, F-SYS-070). Time log note: start times and minutes were not recorded in this session, so the minutes column is blank.
+- Open from this session: verdict/action wire names (GeoVerdict, GeoAction) were never diffed against the contract; shared-2 should do that.
