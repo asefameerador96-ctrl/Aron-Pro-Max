@@ -1,4 +1,7 @@
 <!doctype html>
+<!-- Aron Calm Glass preview. One self-contained file: inline CSS and JS, no external requests, works offline.
+     Controls (top bar): theme Light / Dark / Sunlight, glass tier A / B / C, offline chip, text size 100 / 130 / 200 %, language.
+     Deep links: ?theme=dark&tier=A&fs=130&lang=en&offline=1 . Values come from docs/design/tokens.md v1; screens from docs/design/screens-sr.md and screens-web.md. -->
 <html lang="bn" data-theme="light" data-tier="B" data-lang="bn" data-fs="100">
 <head>
 <meta charset="utf-8">
@@ -350,7 +353,7 @@ html[data-fs="200"] .stepline{flex-direction:column;align-items:flex-start}
 .ov.open .scrim{opacity:1}
 .sheet{position:absolute;left:0;right:0;bottom:0;max-height:85%;overflow:auto;scrollbar-width:none;border-radius:28px 28px 0 0;padding:8px 16px 28px;
   background:linear-gradient(var(--vib),var(--vib)),var(--fill-strong);-webkit-backdrop-filter:var(--bf-sheet);backdrop-filter:var(--bf-sheet);
-  box-shadow:var(--elev-sheet);transform:translateY(106%);transition:transform var(--motion-sheet) var(--ease-spring);display:flex;flex-direction:column;gap:12px}
+  box-shadow:var(--elev-sheet);transform:translateY(106%);transition:transform var(--motion-sheet) var(--ease-out);transition:transform var(--motion-sheet) var(--ease-spring);display:flex;flex-direction:column;gap:12px}
 :root[data-tier="C"] .sheet{border:var(--card-bw) solid var(--border-solid);border-bottom:0}
 .ov.open .sheet{transform:none}
 .sheet .handle{align-self:center;width:36px;height:4px;border-radius:2px;background:var(--text-secondary);opacity:.7;margin:4px 0 4px}
@@ -573,7 +576,7 @@ const st={theme:'light',tier:'B',fs:'100',lang:'bn',off:false};
 const BND='০১২৩৪৫৬৭৮৯';
 const isBn=()=>st.lang==='bn';
 const dg=s=>String(s).replace(/\d/g,c=>BND[c]);
-const dgs=s=>String(s).replace(/(?<![A-Za-z]\d*)\d/g,c=>BND[c]);   /* digits after a Latin letter (C1, sr3340) stay ASCII: identifiers */
+const dgs=s=>String(s).replace(/[A-Za-z]\d+|\d/g,m=>/^\d$/.test(m)?BND[m]:m);   /* a digit run glued to a Latin letter (C1, sr334001) stays ASCII: identifiers */
 const t=(b,e)=>isBn()?dgs(b):e;           /* bilingual string; Bangla written with ASCII digits, shown as Bengali digits */
 const n=v=>isBn()?dg(v):String(v);        /* localise a number or string */
 const fmt=v=>n(v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
