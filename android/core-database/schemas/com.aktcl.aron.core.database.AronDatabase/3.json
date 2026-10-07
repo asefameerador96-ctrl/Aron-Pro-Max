@@ -1,0 +1,3047 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "9c64c4474dcb33c1410d9013cc1c0d75",
+    "entities": [
+      {
+        "tableName": "route",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`route_id` INTEGER NOT NULL, `code` TEXT NOT NULL, `name` TEXT NOT NULL, `display_label` TEXT, `zone_id` INTEGER NOT NULL, `kind` TEXT NOT NULL, `visit_kind` TEXT, `visit_days_mask` INTEGER NOT NULL, `sequence_no` INTEGER, `status` TEXT NOT NULL, `assignment_kind` TEXT NOT NULL, `acting_for_user_id` INTEGER, `planned_today` INTEGER NOT NULL, `target_outlets` INTEGER NOT NULL, `route_snapshot_version` INTEGER NOT NULL, `business_date` TEXT NOT NULL, `bundle_version` TEXT NOT NULL, PRIMARY KEY(`route_id`))",
+        "fields": [
+          {
+            "fieldPath": "routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "code",
+            "columnName": "code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayLabel",
+            "columnName": "display_label",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "zoneId",
+            "columnName": "zone_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visitKind",
+            "columnName": "visit_kind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "visitDaysMask",
+            "columnName": "visit_days_mask",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequenceNo",
+            "columnName": "sequence_no",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assignmentKind",
+            "columnName": "assignment_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "plannedToday",
+            "columnName": "planned_today",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetOutlets",
+            "columnName": "target_outlets",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeSnapshotVersion",
+            "columnName": "route_snapshot_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "route_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_route_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_route_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "outlet",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`outlet_id` INTEGER NOT NULL, `route_id` INTEGER NOT NULL, `code` TEXT NOT NULL, `name` TEXT NOT NULL, `name_bn` TEXT, `name_sort_key` TEXT NOT NULL, `owner_name` TEXT NOT NULL, `contact_number` TEXT, `lat` REAL, `lng` REAL, `location_confirmed` INTEGER NOT NULL, `provisional_lat` REAL, `provisional_lng` REAL, `cluster_id` INTEGER NOT NULL, `cluster_name` TEXT NOT NULL, `channel` TEXT NOT NULL, `sub_channel_id` INTEGER, `geo_class` TEXT, `status` TEXT NOT NULL, `price_type` TEXT NOT NULL, `outlet_kind` TEXT NOT NULL, `radius_m` INTEGER NOT NULL, `max_accuracy_m` INTEGER NOT NULL, `visit_sequence` INTEGER, `open_due_mtk` INTEGER NOT NULL, `open_due_as_of` TEXT, `programme_flags_json` TEXT NOT NULL, `pending_request` INTEGER NOT NULL, PRIMARY KEY(`outlet_id`))",
+        "fields": [
+          {
+            "fieldPath": "outletId",
+            "columnName": "outlet_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "code",
+            "columnName": "code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameBn",
+            "columnName": "name_bn",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "nameSortKey",
+            "columnName": "name_sort_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerName",
+            "columnName": "owner_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contactNumber",
+            "columnName": "contact_number",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "lng",
+            "columnName": "lng",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "locationConfirmed",
+            "columnName": "location_confirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "provisionalLat",
+            "columnName": "provisional_lat",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "provisionalLng",
+            "columnName": "provisional_lng",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "clusterId",
+            "columnName": "cluster_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clusterName",
+            "columnName": "cluster_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "channel",
+            "columnName": "channel",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subChannelId",
+            "columnName": "sub_channel_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "geoClass",
+            "columnName": "geo_class",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priceType",
+            "columnName": "price_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outletKind",
+            "columnName": "outlet_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "radiusM",
+            "columnName": "radius_m",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxAccuracyM",
+            "columnName": "max_accuracy_m",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visitSequence",
+            "columnName": "visit_sequence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "openDueMtk",
+            "columnName": "open_due_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "openDueAsOf",
+            "columnName": "open_due_as_of",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "programmeFlagsJson",
+            "columnName": "programme_flags_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pendingRequest",
+            "columnName": "pending_request",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "outlet_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_outlet_route_id",
+            "unique": false,
+            "columnNames": [
+              "route_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outlet_route_id` ON `${TABLE_NAME}` (`route_id`)"
+          },
+          {
+            "name": "index_outlet_code",
+            "unique": false,
+            "columnNames": [
+              "code"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outlet_code` ON `${TABLE_NAME}` (`code`)"
+          }
+        ]
+      },
+      {
+        "tableName": "sku",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sku_id` INTEGER NOT NULL, `code` TEXT NOT NULL, `variant_id` INTEGER NOT NULL, `category_code` TEXT NOT NULL, `name` TEXT NOT NULL, `short_name` TEXT NOT NULL, `name_bn` TEXT, `base_unit` TEXT NOT NULL, `base_per_pack` INTEGER NOT NULL, `entry_unit_default` TEXT NOT NULL, `report_unit` TEXT, `report_factor` TEXT NOT NULL, `sort` INTEGER NOT NULL, `status` TEXT NOT NULL, `version` INTEGER, PRIMARY KEY(`sku_id`))",
+        "fields": [
+          {
+            "fieldPath": "skuId",
+            "columnName": "sku_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "code",
+            "columnName": "code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "variantId",
+            "columnName": "variant_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryCode",
+            "columnName": "category_code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shortName",
+            "columnName": "short_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameBn",
+            "columnName": "name_bn",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "baseUnit",
+            "columnName": "base_unit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "basePerPack",
+            "columnName": "base_per_pack",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entryUnitDefault",
+            "columnName": "entry_unit_default",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reportUnit",
+            "columnName": "report_unit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "reportFactor",
+            "columnName": "report_factor",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sort",
+            "columnName": "sort",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sku_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sku_code",
+            "unique": true,
+            "columnNames": [
+              "code"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_sku_code` ON `${TABLE_NAME}` (`code`)"
+          }
+        ]
+      },
+      {
+        "tableName": "geo_fix",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `owner_client_uuid` TEXT NOT NULL, `purpose` TEXT NOT NULL, `fix_status` TEXT NOT NULL, `lat` REAL, `lng` REAL, `accuracy_m` REAL, `altitude_m` REAL, `vertical_accuracy_m` REAL, `speed_mps` REAL, `bearing_deg` REAL, `provider` TEXT NOT NULL, `fix_time` TEXT, `fix_elapsed_realtime_ms` INTEGER, `fix_age_ms` INTEGER, `time_to_fix_ms` INTEGER, `request_priority` TEXT, `is_mock` INTEGER NOT NULL, `reused` INTEGER NOT NULL, `refresh_count` INTEGER, `gnss_json` TEXT, `radio_json` TEXT, `device_owner` INTEGER NOT NULL, `dev_options_enabled` INTEGER NOT NULL, `adb_enabled` INTEGER NOT NULL, `auto_time_enabled` INTEGER NOT NULL, `mock_app_present` INTEGER NOT NULL, `integrity_ref` TEXT, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerClientUuid",
+            "columnName": "owner_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purpose",
+            "columnName": "purpose",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fixStatus",
+            "columnName": "fix_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "lng",
+            "columnName": "lng",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "accuracyM",
+            "columnName": "accuracy_m",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "altitudeM",
+            "columnName": "altitude_m",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "verticalAccuracyM",
+            "columnName": "vertical_accuracy_m",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "speedMps",
+            "columnName": "speed_mps",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "bearingDeg",
+            "columnName": "bearing_deg",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fixTime",
+            "columnName": "fix_time",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fixElapsedRealtimeMs",
+            "columnName": "fix_elapsed_realtime_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fixAgeMs",
+            "columnName": "fix_age_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "timeToFixMs",
+            "columnName": "time_to_fix_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "requestPriority",
+            "columnName": "request_priority",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isMock",
+            "columnName": "is_mock",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reused",
+            "columnName": "reused",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "refreshCount",
+            "columnName": "refresh_count",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "gnssJson",
+            "columnName": "gnss_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "radioJson",
+            "columnName": "radio_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deviceOwner",
+            "columnName": "device_owner",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "devOptionsEnabled",
+            "columnName": "dev_options_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "adbEnabled",
+            "columnName": "adb_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoTimeEnabled",
+            "columnName": "auto_time_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mockAppPresent",
+            "columnName": "mock_app_present",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "integrityRef",
+            "columnName": "integrity_ref",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_geo_fix_owner_client_uuid_purpose",
+            "unique": true,
+            "columnNames": [
+              "owner_client_uuid",
+              "purpose"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_geo_fix_owner_client_uuid_purpose` ON `${TABLE_NAME}` (`owner_client_uuid`, `purpose`)"
+          }
+        ]
+      },
+      {
+        "tableName": "attendance_event",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `kind` TEXT NOT NULL, `fix_client_uuid` TEXT NOT NULL, `address_display` TEXT, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fixClientUuid",
+            "columnName": "fix_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addressDisplay",
+            "columnName": "address_display",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_attendance_event_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_attendance_event_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "stock_movement",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `kind` TEXT NOT NULL, `sku_id` INTEGER NOT NULL, `qty_entered` INTEGER NOT NULL, `unit_entered` TEXT NOT NULL, `pack_factor` INTEGER NOT NULL, `qty_base` INTEGER NOT NULL, `reason_code` TEXT, `slip_printed` INTEGER NOT NULL, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skuId",
+            "columnName": "sku_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qtyEntered",
+            "columnName": "qty_entered",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitEntered",
+            "columnName": "unit_entered",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packFactor",
+            "columnName": "pack_factor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qtyBase",
+            "columnName": "qty_base",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reasonCode",
+            "columnName": "reason_code",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "slipPrinted",
+            "columnName": "slip_printed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_stock_movement_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_stock_movement_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          },
+          {
+            "name": "index_stock_movement_sku_id",
+            "unique": false,
+            "columnNames": [
+              "sku_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_stock_movement_sku_id` ON `${TABLE_NAME}` (`sku_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "visit",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `visit_kind` TEXT NOT NULL, `outlet_id` INTEGER NOT NULL, `opened_at` TEXT NOT NULL, `sequence_no` INTEGER NOT NULL, `planned` INTEGER NOT NULL, `assessed_user_id` INTEGER, `fix_client_uuid` TEXT NOT NULL, `geo_verdict` TEXT NOT NULL, `geo_distance_m` REAL, `geo_radius_m_used` INTEGER NOT NULL, `geo_max_accuracy_m_used` INTEGER NOT NULL, `geo_location_basis` TEXT NOT NULL, `geo_outlet_lat` REAL, `geo_outlet_lng` REAL, `geo_action` TEXT NOT NULL, `geo_force_reason_code` TEXT, `geo_force_photo_uuid` TEXT, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visitKind",
+            "columnName": "visit_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outletId",
+            "columnName": "outlet_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "openedAt",
+            "columnName": "opened_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequenceNo",
+            "columnName": "sequence_no",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "planned",
+            "columnName": "planned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assessedUserId",
+            "columnName": "assessed_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fixClientUuid",
+            "columnName": "fix_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "geoVerdict",
+            "columnName": "geo_verdict",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "geoDistanceM",
+            "columnName": "geo_distance_m",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "geoRadiusMUsed",
+            "columnName": "geo_radius_m_used",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "geoMaxAccuracyMUsed",
+            "columnName": "geo_max_accuracy_m_used",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "geoLocationBasis",
+            "columnName": "geo_location_basis",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "geoOutletLat",
+            "columnName": "geo_outlet_lat",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "geoOutletLng",
+            "columnName": "geo_outlet_lng",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "geoAction",
+            "columnName": "geo_action",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "geoForceReasonCode",
+            "columnName": "geo_force_reason_code",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "geoForcePhotoUuid",
+            "columnName": "geo_force_photo_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_visit_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_visit_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          },
+          {
+            "name": "index_visit_outlet_id",
+            "unique": false,
+            "columnNames": [
+              "outlet_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_visit_outlet_id` ON `${TABLE_NAME}` (`outlet_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "visit_close",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `visit_client_uuid` TEXT NOT NULL, `outcome_code` TEXT NOT NULL, `call_started_at` TEXT, `call_declined` INTEGER NOT NULL, `ended_at` TEXT NOT NULL, `is_zero_sale` INTEGER NOT NULL, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visitClientUuid",
+            "columnName": "visit_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcomeCode",
+            "columnName": "outcome_code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "callStartedAt",
+            "columnName": "call_started_at",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "callDeclined",
+            "columnName": "call_declined",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAt",
+            "columnName": "ended_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isZeroSale",
+            "columnName": "is_zero_sale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_visit_close_visit_client_uuid",
+            "unique": true,
+            "columnNames": [
+              "visit_client_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_visit_close_visit_client_uuid` ON `${TABLE_NAME}` (`visit_client_uuid`)"
+          },
+          {
+            "name": "index_visit_close_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_visit_close_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "memo",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `visit_client_uuid` TEXT NOT NULL, `outlet_id` INTEGER NOT NULL, `memo_no` TEXT NOT NULL, `memo_kind` TEXT NOT NULL, `committed_at` TEXT NOT NULL, `price_list_date` TEXT NOT NULL, `price_type` TEXT NOT NULL, `gross_mtk` INTEGER NOT NULL, `offer_discount_mtk` INTEGER NOT NULL, `drp_discount_mtk` INTEGER NOT NULL, `qc_deduction_mtk` INTEGER NOT NULL, `round_adj_mtk` INTEGER NOT NULL, `net_mtk` INTEGER NOT NULL, `paid_mtk` INTEGER NOT NULL, `due_mtk` INTEGER NOT NULL, `is_credit` INTEGER NOT NULL, `outstanding_before_mtk` INTEGER, `line_count` INTEGER NOT NULL, `discount_line_count` INTEGER NOT NULL, `qc_line_count` INTEGER NOT NULL, `supersedes_client_uuid` TEXT, `edit_reason_code` TEXT, `edit_fix_client_uuid` TEXT, `offer_version_ids_json` TEXT NOT NULL, `rounding_mode` TEXT NOT NULL, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visitClientUuid",
+            "columnName": "visit_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outletId",
+            "columnName": "outlet_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoNo",
+            "columnName": "memo_no",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoKind",
+            "columnName": "memo_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "committedAt",
+            "columnName": "committed_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priceListDate",
+            "columnName": "price_list_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priceType",
+            "columnName": "price_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "grossMtk",
+            "columnName": "gross_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "offerDiscountMtk",
+            "columnName": "offer_discount_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "drpDiscountMtk",
+            "columnName": "drp_discount_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qcDeductionMtk",
+            "columnName": "qc_deduction_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "roundAdjMtk",
+            "columnName": "round_adj_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "netMtk",
+            "columnName": "net_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paidMtk",
+            "columnName": "paid_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dueMtk",
+            "columnName": "due_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isCredit",
+            "columnName": "is_credit",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outstandingBeforeMtk",
+            "columnName": "outstanding_before_mtk",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lineCount",
+            "columnName": "line_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discountLineCount",
+            "columnName": "discount_line_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qcLineCount",
+            "columnName": "qc_line_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supersedesClientUuid",
+            "columnName": "supersedes_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "editReasonCode",
+            "columnName": "edit_reason_code",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "editFixClientUuid",
+            "columnName": "edit_fix_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "offerVersionIdsJson",
+            "columnName": "offer_version_ids_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "roundingMode",
+            "columnName": "rounding_mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_memo_memo_no",
+            "unique": true,
+            "columnNames": [
+              "memo_no"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_memo_memo_no` ON `${TABLE_NAME}` (`memo_no`)"
+          },
+          {
+            "name": "index_memo_visit_client_uuid",
+            "unique": false,
+            "columnNames": [
+              "visit_client_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memo_visit_client_uuid` ON `${TABLE_NAME}` (`visit_client_uuid`)"
+          },
+          {
+            "name": "index_memo_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memo_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          },
+          {
+            "name": "index_memo_outlet_id",
+            "unique": false,
+            "columnNames": [
+              "outlet_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memo_outlet_id` ON `${TABLE_NAME}` (`outlet_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "memo_line",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `memo_client_uuid` TEXT NOT NULL, `line_no` INTEGER NOT NULL, `sku_id` INTEGER NOT NULL, `line_kind` TEXT NOT NULL, `qty_entered` INTEGER NOT NULL, `unit_entered` TEXT NOT NULL, `pack_factor` INTEGER NOT NULL, `qty_base` INTEGER NOT NULL, `price_type` TEXT NOT NULL, `price_valid_from` TEXT NOT NULL, `base_price_mtk` INTEGER NOT NULL, `price_per_qty` INTEGER NOT NULL, `gross_mtk` INTEGER NOT NULL, `offer_id` INTEGER, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoClientUuid",
+            "columnName": "memo_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineNo",
+            "columnName": "line_no",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skuId",
+            "columnName": "sku_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineKind",
+            "columnName": "line_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qtyEntered",
+            "columnName": "qty_entered",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitEntered",
+            "columnName": "unit_entered",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packFactor",
+            "columnName": "pack_factor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qtyBase",
+            "columnName": "qty_base",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priceType",
+            "columnName": "price_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priceValidFrom",
+            "columnName": "price_valid_from",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "basePriceMtk",
+            "columnName": "base_price_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pricePerQty",
+            "columnName": "price_per_qty",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "grossMtk",
+            "columnName": "gross_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "offerId",
+            "columnName": "offer_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_memo_line_memo_client_uuid_line_no",
+            "unique": true,
+            "columnNames": [
+              "memo_client_uuid",
+              "line_no"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_memo_line_memo_client_uuid_line_no` ON `${TABLE_NAME}` (`memo_client_uuid`, `line_no`)"
+          },
+          {
+            "name": "index_memo_line_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memo_line_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "memo_discount",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `memo_client_uuid` TEXT NOT NULL, `kind` TEXT NOT NULL, `sku_id` INTEGER, `qty_base` INTEGER, `value_mtk` INTEGER NOT NULL, `offer_id` INTEGER, `offer_version_id` INTEGER, `basis_qty_base` INTEGER, `line_no` INTEGER, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoClientUuid",
+            "columnName": "memo_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skuId",
+            "columnName": "sku_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "qtyBase",
+            "columnName": "qty_base",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "valueMtk",
+            "columnName": "value_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "offerId",
+            "columnName": "offer_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "offerVersionId",
+            "columnName": "offer_version_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "basisQtyBase",
+            "columnName": "basis_qty_base",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lineNo",
+            "columnName": "line_no",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_memo_discount_memo_client_uuid",
+            "unique": false,
+            "columnNames": [
+              "memo_client_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memo_discount_memo_client_uuid` ON `${TABLE_NAME}` (`memo_client_uuid`)"
+          },
+          {
+            "name": "index_memo_discount_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memo_discount_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "qc_line",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `visit_client_uuid` TEXT NOT NULL, `memo_client_uuid` TEXT, `applied_to_memo` INTEGER NOT NULL, `sku_id` INTEGER NOT NULL, `fault_type_code` TEXT NOT NULL, `fault_group` TEXT NOT NULL, `qty_base` INTEGER NOT NULL, `unit_price_mtk` INTEGER NOT NULL, `settlement_mtk` INTEGER NOT NULL, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visitClientUuid",
+            "columnName": "visit_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoClientUuid",
+            "columnName": "memo_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "appliedToMemo",
+            "columnName": "applied_to_memo",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skuId",
+            "columnName": "sku_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "faultTypeCode",
+            "columnName": "fault_type_code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "faultGroup",
+            "columnName": "fault_group",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qtyBase",
+            "columnName": "qty_base",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitPriceMtk",
+            "columnName": "unit_price_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "settlementMtk",
+            "columnName": "settlement_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_qc_line_visit_client_uuid",
+            "unique": false,
+            "columnNames": [
+              "visit_client_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_qc_line_visit_client_uuid` ON `${TABLE_NAME}` (`visit_client_uuid`)"
+          },
+          {
+            "name": "index_qc_line_memo_client_uuid",
+            "unique": false,
+            "columnNames": [
+              "memo_client_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_qc_line_memo_client_uuid` ON `${TABLE_NAME}` (`memo_client_uuid`)"
+          },
+          {
+            "name": "index_qc_line_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_qc_line_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "outbox",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`seq` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `client_uuid` TEXT NOT NULL, `record_type` TEXT NOT NULL, `family_uuid` TEXT NOT NULL, `rank` INTEGER NOT NULL, `business_date` TEXT NOT NULL, `payload_json` TEXT NOT NULL, `payload_sha256` TEXT NOT NULL, `state` TEXT NOT NULL, `batch_uuid` TEXT, `attempts` INTEGER NOT NULL, `last_code` TEXT, `created_at` TEXT NOT NULL, `acked_at` TEXT, `server_id` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "seq",
+            "columnName": "seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordType",
+            "columnName": "record_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "familyUuid",
+            "columnName": "family_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rank",
+            "columnName": "rank",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payload_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadSha256",
+            "columnName": "payload_sha256",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batchUuid",
+            "columnName": "batch_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastCode",
+            "columnName": "last_code",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ackedAt",
+            "columnName": "acked_at",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "serverId",
+            "columnName": "server_id",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "seq"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_outbox_client_uuid",
+            "unique": true,
+            "columnNames": [
+              "client_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_outbox_client_uuid` ON `${TABLE_NAME}` (`client_uuid`)"
+          },
+          {
+            "name": "index_outbox_state_seq",
+            "unique": false,
+            "columnNames": [
+              "state",
+              "seq"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outbox_state_seq` ON `${TABLE_NAME}` (`state`, `seq`)"
+          },
+          {
+            "name": "index_outbox_batch_uuid",
+            "unique": false,
+            "columnNames": [
+              "batch_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outbox_batch_uuid` ON `${TABLE_NAME}` (`batch_uuid`)"
+          },
+          {
+            "name": "index_outbox_business_date_record_type",
+            "unique": false,
+            "columnNames": [
+              "business_date",
+              "record_type"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outbox_business_date_record_type` ON `${TABLE_NAME}` (`business_date`, `record_type`)"
+          }
+        ]
+      },
+      {
+        "tableName": "sync_meta",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      },
+      {
+        "tableName": "price",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`price_id` INTEGER NOT NULL, `sku_id` INTEGER NOT NULL, `price_type` TEXT NOT NULL, `amount_mtk` INTEGER NOT NULL, `per_base_qty` INTEGER NOT NULL, `valid_from` TEXT NOT NULL, `valid_to` TEXT, PRIMARY KEY(`price_id`))",
+        "fields": [
+          {
+            "fieldPath": "priceId",
+            "columnName": "price_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skuId",
+            "columnName": "sku_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priceType",
+            "columnName": "price_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMtk",
+            "columnName": "amount_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "perBaseQty",
+            "columnName": "per_base_qty",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "validFrom",
+            "columnName": "valid_from",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "validTo",
+            "columnName": "valid_to",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "price_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_price_sku_id_price_type_valid_from",
+            "unique": false,
+            "columnNames": [
+              "sku_id",
+              "price_type",
+              "valid_from"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_price_sku_id_price_type_valid_from` ON `${TABLE_NAME}` (`sku_id`, `price_type`, `valid_from`)"
+          }
+        ]
+      },
+      {
+        "tableName": "config_value",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `key` TEXT NOT NULL, `value_json` TEXT NOT NULL, `scope_type` TEXT NOT NULL, `scope_id` INTEGER, `effective_from` TEXT, `effective_to` TEXT, `config_version` INTEGER, `requires_ack` INTEGER NOT NULL, `scheduled` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "valueJson",
+            "columnName": "value_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scopeType",
+            "columnName": "scope_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scopeId",
+            "columnName": "scope_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "effectiveFrom",
+            "columnName": "effective_from",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "effectiveTo",
+            "columnName": "effective_to",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "requiresAck",
+            "columnName": "requires_ack",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scheduled",
+            "columnName": "scheduled",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_config_value_key",
+            "unique": false,
+            "columnNames": [
+              "key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_config_value_key` ON `${TABLE_NAME}` (`key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "bundle_section",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `json` TEXT NOT NULL, PRIMARY KEY(`name`))",
+        "fields": [
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "json",
+            "columnName": "json",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "name"
+          ]
+        }
+      },
+      {
+        "tableName": "due_collection",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `outlet_id` INTEGER NOT NULL, `against_memo_client_uuid` TEXT NOT NULL, `against_memo_no` TEXT NOT NULL, `against_memo_business_date` TEXT NOT NULL, `amount_mtk` INTEGER NOT NULL, `is_full_settlement` INTEGER NOT NULL, `outstanding_before_mtk` INTEGER NOT NULL, `payment_mode` TEXT NOT NULL, `visit_client_uuid` TEXT, `fix_client_uuid` TEXT, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outletId",
+            "columnName": "outlet_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "againstMemoClientUuid",
+            "columnName": "against_memo_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "againstMemoNo",
+            "columnName": "against_memo_no",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "againstMemoBusinessDate",
+            "columnName": "against_memo_business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMtk",
+            "columnName": "amount_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isFullSettlement",
+            "columnName": "is_full_settlement",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outstandingBeforeMtk",
+            "columnName": "outstanding_before_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paymentMode",
+            "columnName": "payment_mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visitClientUuid",
+            "columnName": "visit_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fixClientUuid",
+            "columnName": "fix_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_due_collection_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_due_collection_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          },
+          {
+            "name": "index_due_collection_against_memo_client_uuid",
+            "unique": false,
+            "columnNames": [
+              "against_memo_client_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_due_collection_against_memo_client_uuid` ON `${TABLE_NAME}` (`against_memo_client_uuid`)"
+          }
+        ]
+      },
+      {
+        "tableName": "visit_skip",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `outlet_id` INTEGER NOT NULL, `reason_code` TEXT NOT NULL, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outletId",
+            "columnName": "outlet_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reasonCode",
+            "columnName": "reason_code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_visit_skip_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_visit_skip_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "day_submit",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `scope` TEXT NOT NULL, `submit_cycle` INTEGER NOT NULL, `device_counts_json` TEXT NOT NULL, `device_money_json` TEXT NOT NULL, `rejected_count` INTEGER NOT NULL, `quarantined_count` INTEGER NOT NULL, `pending_count` INTEGER NOT NULL, `submitted_with_dues` INTEGER NOT NULL, `dues_outstanding_mtk` INTEGER NOT NULL, `retailers_with_dues` INTEGER NOT NULL, `stock_slip_printed` INTEGER NOT NULL, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "submitCycle",
+            "columnName": "submit_cycle",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceCountsJson",
+            "columnName": "device_counts_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceMoneyJson",
+            "columnName": "device_money_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rejectedCount",
+            "columnName": "rejected_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quarantinedCount",
+            "columnName": "quarantined_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pendingCount",
+            "columnName": "pending_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "submittedWithDues",
+            "columnName": "submitted_with_dues",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "duesOutstandingMtk",
+            "columnName": "dues_outstanding_mtk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retailersWithDues",
+            "columnName": "retailers_with_dues",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stockSlipPrinted",
+            "columnName": "stock_slip_printed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_day_submit_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_day_submit_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "outlet_change_request",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `request_type` TEXT NOT NULL, `outlet_id` INTEGER, `proposed_json` TEXT NOT NULL, `fix_client_uuid` TEXT NOT NULL, `photo_uuids_json` TEXT NOT NULL, `origin_visit_client_uuid` TEXT, `note` TEXT, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestType",
+            "columnName": "request_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outletId",
+            "columnName": "outlet_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "proposedJson",
+            "columnName": "proposed_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fixClientUuid",
+            "columnName": "fix_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "photoUuidsJson",
+            "columnName": "photo_uuids_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originVisitClientUuid",
+            "columnName": "origin_visit_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_outlet_change_request_business_date",
+            "unique": false,
+            "columnNames": [
+              "business_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outlet_change_request_business_date` ON `${TABLE_NAME}` (`business_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "task_event",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `task_uuid` TEXT NOT NULL, `event` TEXT NOT NULL, `note` TEXT, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "taskUuid",
+            "columnName": "task_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "event",
+            "columnName": "event",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_task_event_task_uuid",
+            "unique": false,
+            "columnNames": [
+              "task_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_task_event_task_uuid` ON `${TABLE_NAME}` (`task_uuid`)"
+          }
+        ]
+      },
+      {
+        "tableName": "task",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`task_uuid` TEXT NOT NULL, `task_type_code` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT, `outlet_id` INTEGER, `due_date` TEXT, `status` TEXT NOT NULL, `resolved_at` TEXT, `json` TEXT NOT NULL, PRIMARY KEY(`task_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "taskUuid",
+            "columnName": "task_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "taskTypeCode",
+            "columnName": "task_type_code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "outletId",
+            "columnName": "outlet_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "dueDate",
+            "columnName": "due_date",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resolvedAt",
+            "columnName": "resolved_at",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "json",
+            "columnName": "json",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "task_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_task_outlet_id",
+            "unique": false,
+            "columnNames": [
+              "outlet_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_task_outlet_id` ON `${TABLE_NAME}` (`outlet_id`)"
+          },
+          {
+            "name": "index_task_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_task_status` ON `${TABLE_NAME}` (`status`)"
+          }
+        ]
+      },
+      {
+        "tableName": "memo_counter",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`business_date` TEXT NOT NULL, `last_n` INTEGER NOT NULL, PRIMARY KEY(`business_date`))",
+        "fields": [
+          {
+            "fieldPath": "businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastN",
+            "columnName": "last_n",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "business_date"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '9c64c4474dcb33c1410d9013cc1c0d75')"
+    ]
+  }
+}

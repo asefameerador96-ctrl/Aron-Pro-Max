@@ -9,6 +9,7 @@ import com.aktcl.aron.core.database.entity.PriceEntity
 import com.aktcl.aron.core.database.entity.RouteEntity
 import com.aktcl.aron.core.database.entity.SkuEntity
 import com.aktcl.aron.core.database.entity.SyncMetaEntity
+import com.aktcl.aron.core.database.entity.TaskEntity
 import com.aktcl.aron.core.database.reference.BundleReference
 import com.aktcl.aron.core.database.reference.ResolvedValue
 import kotlinx.serialization.json.JsonArray
@@ -85,6 +86,7 @@ class ReferenceRepository(private val db: AronDatabase) {
         val config = bundle.config?.let { c ->
             c.values.map { configRow(it, scheduled = false) } + c.scheduled.map { configRow(it, scheduled = true) }
         }.orEmpty()
+        val tasks = (raw?.get("tasks") as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::taskRow) }
         val sections = raw?.let(::rawSections).orEmpty().flatMap { sec ->
             chunks(sec.json).mapIndexed { i, part -> BundleSectionEntity(chunkName(sec.name, i), part) }
         }
@@ -102,6 +104,9 @@ class ReferenceRepository(private val db: AronDatabase) {
             dao.insertPrices(prices)
             dao.insertConfig(config)
             dao.insertSections(sections)
+            dao.clearTasks()
+            dao.insertTasks(tasks)
+            dao.reapplyLocalResolutions()
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_DATE, date))
             dao.meta(KEY_PREFETCH_DATE)?.let { if (it <= date) clearPrefetch() } // a prefetch of this day or earlier is spent
@@ -199,6 +204,8 @@ class ReferenceRepository(private val db: AronDatabase) {
         return (scheduled ?: rows.firstOrNull { !it.scheduled })?.valueJson
     }
 
+    suspend fun tasks(): List<TaskEntity> = dao.tasks()
+
     /** A raw bundle section (see [apply]), or `route.<id>` for a route's extras. */
     suspend fun section(name: String): String? {
         val first = dao.section(name) ?: return null
@@ -243,7 +250,7 @@ class ReferenceRepository(private val db: AronDatabase) {
         }
 
         /** Sections with tables of their own; everything else at the top level is kept raw. */
-        private val TYPED = setOf("meta", "routes", "prices", "config")
+        private val TYPED = setOf("meta", "routes", "prices", "config", "tasks")
 
         /** RouteSnapshot members stored in tables; the rest of each snapshot is kept raw as `route.<id>`. */
         private val ROUTE_TYPED = setOf("route", "outlets")
@@ -263,6 +270,16 @@ class ReferenceRepository(private val db: AronDatabase) {
             if (i <= 0) return null
             val seq = v.substring(i + 1).toLongOrNull() ?: return null
             return v.substring(0, i) to seq
+        }
+
+        private fun taskRow(o: JsonObject): TaskEntity? {
+            fun str(k: String) = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            val uuid = str("task_uuid") ?: return null
+            return TaskEntity(
+                taskUuid = uuid, taskTypeCode = str("task_type_code") ?: "", title = str("title") ?: "", description = str("description"),
+                outletId = (o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull(), dueDate = str("due_date"),
+                status = str("status") ?: "open", resolvedAt = str("resolved_at"), json = o.toString(),
+            )
         }
 
         private fun configRow(v: ResolvedValue, scheduled: Boolean) = ConfigValueEntity(

@@ -4,6 +4,11 @@ import androidx.room.withTransaction
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.CaptureMeta
+import com.aktcl.aron.core.database.entity.DaySubmitEntity
+import com.aktcl.aron.core.database.entity.DueCollectionEntity
+import com.aktcl.aron.core.database.entity.OutletChangeRequestEntity
+import com.aktcl.aron.core.database.entity.TaskEventEntity
+import com.aktcl.aron.core.database.entity.VisitSkipEntity
 import com.aktcl.aron.core.database.entity.AttendanceEventEntity
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.MemoDiscountEntity
@@ -121,6 +126,67 @@ class CaptureRepository(
         checkNotNull(capture.visit(close.visitClientUuid)) { "visit_close without its visit" }
         capture.insertVisitClose(close)
         outbox.insert(listOf(RecordMapping.visitClose(close, nowIso())))
+    }
+
+    /**
+     * A sale numbered on this phone (F-SYS-027): the number is reserved in its own committed step, then the sale is written
+     * with it in one transaction. Returns the memo number. If the save fails the number is burned, never reused.
+     */
+    suspend fun recordNumberedSale(sale: SaleCapture, numbering: MemoNumbering): String {
+        val memoNo = MemoNumbers(db).reserve(sale.memo.meta.businessDate, numbering)
+        recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)))
+        return memoNo
+    }
+
+    /** A due collected against an earlier memo; in its visit's family when collected during a visit. */
+    suspend fun recordDueCollection(due: DueCollectionEntity, fix: GeoFixEntity? = null) {
+        requireUuids(due.clientUuid, due.againstMemoClientUuid)
+        due.visitClientUuid?.let { requireUuids(it); requireRoute(due.meta) }
+        require(due.amountMtk >= 10) { "amount_mtk is at least 10" }
+        require(due.amountMtk <= due.outstandingBeforeMtk) { "a collection cannot exceed what is outstanding" }
+        require(due.isFullSettlement == (due.amountMtk == due.outstandingBeforeMtk)) { "full settlement means the whole outstanding" }
+        require((fix == null) == (due.fixClientUuid == null)) { "the record references its fix, and only then" }
+        db.withTransaction {
+            due.visitClientUuid?.let { checkNotNull(capture.visit(it)) { "due collection for a visit not on this phone" } }
+            fix?.let { requireFixOf(it, due.clientUuid, due.fixClientUuid); capture.insertFix(it) }
+            capture.insertDueCollection(due)
+            outbox.insert(listOf(RecordMapping.dueCollection(due, fix, nowIso())))
+        }
+    }
+
+    /** An outlet skipped without a visit: no fix (F-SR-057). */
+    suspend fun recordVisitSkip(skip: VisitSkipEntity) = db.withTransaction {
+        requireUuids(skip.clientUuid)
+        requireRoute(skip.meta)
+        capture.insertVisitSkip(skip)
+        outbox.insert(listOf(RecordMapping.visitSkip(skip, nowIso())))
+    }
+
+    /** Sales Submit: the route-day's last record (rank 3); nothing of that route-day may be committed after it. */
+    suspend fun recordDaySubmit(submit: DaySubmitEntity) = db.withTransaction {
+        requireUuids(submit.clientUuid)
+        requireRoute(submit.meta)
+        capture.insertDaySubmit(submit)
+        outbox.insert(listOf(RecordMapping.daySubmit(submit, nowIso())))
+    }
+
+    /** A new-outlet, edit, relocation or closure request with the fix taken for it. */
+    suspend fun recordOutletRequest(request: OutletChangeRequestEntity, fix: GeoFixEntity) = db.withTransaction {
+        requireUuids(request.clientUuid, fix.clientUuid)
+        request.originVisitClientUuid?.let { requireUuids(it) }
+        requireFixOf(fix, request.clientUuid, request.fixClientUuid)
+        capture.insertFix(fix)
+        capture.insertOutletRequest(request)
+        outbox.insert(listOf(RecordMapping.outletRequest(request, fix, nowIso())))
+    }
+
+    /** Resolves a task: the local task turns `completed` and its `task_event` is queued, in one transaction. */
+    suspend fun resolveTask(event: TaskEventEntity, resolvedAt: String) = db.withTransaction {
+        requireUuids(event.clientUuid, event.taskUuid)
+        require(event.event == "resolved") { "resolveTask writes a resolved event" }
+        capture.insertTaskEvent(event)
+        db.referenceDao().completeTask(event.taskUuid, resolvedAt)
+        outbox.insert(listOf(RecordMapping.taskEvent(event, nowIso())))
     }
 
     /** Device ids are lower-case UUID v4 (contract `Uuid`); anything else would be rejected on upload as schema_invalid. */

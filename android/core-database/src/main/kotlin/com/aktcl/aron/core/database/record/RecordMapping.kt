@@ -4,6 +4,11 @@ import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.RecordType
 import com.aktcl.aron.core.database.entity.AttendanceEventEntity
 import com.aktcl.aron.core.database.entity.CaptureMeta
+import com.aktcl.aron.core.database.entity.DaySubmitEntity
+import com.aktcl.aron.core.database.entity.DueCollectionEntity
+import com.aktcl.aron.core.database.entity.OutletChangeRequestEntity
+import com.aktcl.aron.core.database.entity.TaskEventEntity
+import com.aktcl.aron.core.database.entity.VisitSkipEntity
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.MemoDiscountEntity
 import com.aktcl.aron.core.database.entity.MemoEntity
@@ -129,6 +134,47 @@ object RecordMapping {
         RecordType.QC_LINE, e.clientUuid, e.visitClientUuid, 2, e.meta, createdAt,
         QcLinePayload.serializer(),
         QcLinePayload(e.visitClientUuid, e.memoClientUuid, e.appliedToMemo, e.skuId, e.faultTypeCode, e.faultGroup, e.qtyBase, e.unitPriceMtk, e.settlementMtk),
+    )
+
+    /** A due collection belongs to its visit's family when collected during a visit, else it is its own family. */
+    fun dueCollection(e: DueCollectionEntity, fix: GeoFixEntity?, createdAt: String) = outbox(
+        RecordType.DUE_COLLECTION, e.clientUuid, e.visitClientUuid ?: e.clientUuid, if (e.visitClientUuid != null) 1 else 0, e.meta, createdAt,
+        DueCollectionPayload.serializer(),
+        DueCollectionPayload(
+            e.outletId, e.againstMemoClientUuid, e.againstMemoNo, e.againstMemoBusinessDate, e.amountMtk, e.isFullSettlement,
+            e.outstandingBeforeMtk, e.paymentMode, e.visitClientUuid, fix?.let(::fix),
+        ),
+    )
+
+    fun visitSkip(e: VisitSkipEntity, createdAt: String) = outbox(
+        RecordType.VISIT_SKIP, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
+        VisitSkipPayload.serializer(), VisitSkipPayload(e.outletId, e.reasonCode),
+    )
+
+    /** Rank 3: above every family record, so the server orders it last within its route-day (s4.2 rule 2). */
+    fun daySubmit(e: DaySubmitEntity, createdAt: String) = outbox(
+        RecordType.DAY_SUBMIT, e.clientUuid, e.clientUuid, 3, e.meta, createdAt,
+        DaySubmitPayload.serializer(),
+        DaySubmitPayload(
+            e.scope, e.submitCycle, Json.parseToJsonElement(e.deviceCountsJson), Json.parseToJsonElement(e.deviceMoneyJson),
+            e.rejectedCount, e.quarantinedCount, e.pendingCount, e.submittedWithDues, e.duesOutstandingMtk, e.retailersWithDues,
+            e.stockSlipPrinted,
+        ),
+    )
+
+    fun outletRequest(e: OutletChangeRequestEntity, fix: GeoFixEntity, createdAt: String) = outbox(
+        RecordType.OUTLET_CHANGE_REQUEST, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
+        OutletChangeRequestPayload.serializer(),
+        OutletChangeRequestPayload(
+            e.requestType, e.outletId, Json.parseToJsonElement(e.proposedJson), fix(fix),
+            Json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()), e.photoUuidsJson),
+            e.originVisitClientUuid, e.note,
+        ),
+    )
+
+    fun taskEvent(e: TaskEventEntity, createdAt: String) = outbox(
+        RecordType.TASK_EVENT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
+        TaskEventPayload.serializer(), TaskEventPayload(e.taskUuid, e.event, e.note),
     )
 
     /** The record object of docs/24 s4.3: envelope members, then `payload`. `sig` is added by the signing row (Day 3). */

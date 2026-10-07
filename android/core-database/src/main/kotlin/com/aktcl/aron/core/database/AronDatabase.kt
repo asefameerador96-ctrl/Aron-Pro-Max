@@ -10,6 +10,13 @@ import com.aktcl.aron.core.database.dao.CaptureDao
 import com.aktcl.aron.core.database.dao.OutboxDao
 import com.aktcl.aron.core.database.dao.ReferenceDao
 import com.aktcl.aron.core.database.entity.AttendanceEventEntity
+import com.aktcl.aron.core.database.entity.DaySubmitEntity
+import com.aktcl.aron.core.database.entity.DueCollectionEntity
+import com.aktcl.aron.core.database.entity.MemoCounterEntity
+import com.aktcl.aron.core.database.entity.OutletChangeRequestEntity
+import com.aktcl.aron.core.database.entity.TaskEntity
+import com.aktcl.aron.core.database.entity.TaskEventEntity
+import com.aktcl.aron.core.database.entity.VisitSkipEntity
 import com.aktcl.aron.core.database.entity.BundleSectionEntity
 import com.aktcl.aron.core.database.entity.ConfigValueEntity
 import com.aktcl.aron.core.database.entity.PriceEntity
@@ -33,9 +40,12 @@ import com.aktcl.aron.core.database.entity.VisitEntity
  * a Migration with a test, and destructive migration is never enabled.
  */
 @Database(
-    version = 2,
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)], // v2 (F-SYS-006): price, config_value, bundle_section
+    autoMigrations = [
+        AutoMigration(from = 1, to = 2), // v2 (F-SYS-006): price, config_value, bundle_section
+        AutoMigration(from = 2, to = 3), // v3: due_collection, visit_skip, day_submit, outlet_change_request, task_event, task, memo_counter
+    ],
     entities = [
         RouteEntity::class, OutletEntity::class, SkuEntity::class,
         GeoFixEntity::class, AttendanceEventEntity::class, StockMovementEntity::class,
@@ -43,6 +53,8 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         MemoDiscountEntity::class, QcLineEntity::class,
         OutboxEntity::class, SyncMetaEntity::class,
         PriceEntity::class, ConfigValueEntity::class, BundleSectionEntity::class,
+        DueCollectionEntity::class, VisitSkipEntity::class, DaySubmitEntity::class, OutletChangeRequestEntity::class,
+        TaskEventEntity::class, TaskEntity::class, MemoCounterEntity::class,
     ],
 )
 abstract class AronDatabase : RoomDatabase() {
@@ -54,6 +66,7 @@ abstract class AronDatabase : RoomDatabase() {
         /** Device-originated tables: each is keyed by a client UUID and must reject a second insert of it. */
         val DEVICE_TABLES: List<String> = listOf(
             "geo_fix", "attendance_event", "stock_movement", "visit", "visit_close", "memo", "memo_line", "memo_discount", "qc_line",
+            "due_collection", "visit_skip", "day_submit", "outlet_change_request", "task_event",
         )
 
         fun fileName(userId: Long): String {
