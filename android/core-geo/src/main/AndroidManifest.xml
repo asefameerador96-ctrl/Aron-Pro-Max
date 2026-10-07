@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- android:core-geo: on-demand location fixes (docs/24 s5.5, s11.1), plus optional batched breadcrumbs (N-035).
-     ACCESS_BACKGROUND_LOCATION is NOT declared: F-SYS-023 keeps location in-use only (ManifestPermissionAuditTest).
-     Breadcrumbs therefore collect only while the app is in use, until the lead rules on
-     docs/requests/android-geo-dpc-breadcrumb-background.md. -->
+     ACCESS_BACKGROUND_LOCATION is declared by the SR and AMO apps only (D-GEO-BG-01), never by this library. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

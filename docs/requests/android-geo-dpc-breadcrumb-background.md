@@ -1,5 +1,7 @@
 # Request (android-geo-dpc → lead): breadcrumbs vs "location in-use only" (F-SYS-023)
 
+**ANSWERED 2026-10-07: option 2 (D-GEO-BG-01 in DECISIONS.md).** Implemented: declared in app-sr and app-amo only; audit allowlist of exactly those two manifests.
+
 Two binding texts disagree:
 - docs/24 s10.2 and N-035: "`ACCESS_BACKGROUND_LOCATION` is granted only while `cfg.geo.breadcrumbs_enabled` is true"; breadcrumbs are batched fixes taken while the rep walks the route, so mostly with the screen off. That needs the permission declared in the manifest (the DPC then grants it only while breadcrumbs are on and denies it otherwise).
 - F-SYS-023 (core-system `ManifestPermissionAuditTest`): no source or merged manifest may request `ACCESS_BACKGROUND_LOCATION`.
