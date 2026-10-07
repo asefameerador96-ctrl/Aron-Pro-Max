@@ -39,7 +39,7 @@ fun main() {
     }
     when (settings.role) {
         ServerRole.MIGRATE -> {
-            val code = Database.pool(settings.dbUrl, settings.dbUser, settings.dbPassword, 2, "aron-migrate").use { ds ->
+            val code = Database.pool(settings.dbUrl, settings.dbUser, settings.dbPassword, 2, "aron-migrate", connectionTimeoutMs = Migrator.MIGRATE_CONNECTION_TIMEOUT_MS).use { ds ->
                 runCatching { Migrator.migrate(ds) }
                     .onSuccess { log.info("migrate: {} migration(s) applied", it) }
                     .onFailure { log.error("migrate failed", it) }
