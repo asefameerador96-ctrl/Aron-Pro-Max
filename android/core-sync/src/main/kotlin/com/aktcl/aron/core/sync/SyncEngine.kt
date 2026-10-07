@@ -588,7 +588,9 @@ class SyncEngine(
         suspend fun handleGeneration() {
             try {
                 val stored = meta.meta(KEY_GENERATION)?.lowercase() // older builds stored it as received
-                val dismissed = meta.meta(KEY_GENERATION_DISMISSED)
+                // A dismissal holds for an hour (a replica's stale header); after that the same value is asked about again.
+                val dismissed = meta.meta(KEY_GENERATION_DISMISSED)?.split('|')
+                    ?.takeIf { (it.getOrNull(1)?.toLongOrNull() ?: 0L) > clock.nowMs() - DISMISS_TTL_MS }?.first()
                 val hint = generationHint()?.lowercase()?.takeIf { it != NIL_GENERATION && it != dismissed }
                 if (stored == null) {
                     hint?.let { meta.putMeta(SyncMetaEntity(KEY_GENERATION, it)) }
@@ -614,14 +616,17 @@ class SyncEngine(
                 if (current == stored) {
                     // False alarm (a replica's cached header): forget the note and ignore that hint until a fresh one.
                     meta.deleteMeta(KEY_GENERATION_SEEN)
-                    hint?.let { meta.putMeta(SyncMetaEntity(KEY_GENERATION_DISMISSED, it)) }
+                    hint?.let { meta.putMeta(SyncMetaEntity(KEY_GENERATION_DISMISSED, "$it|$now")) }
                     return
                 }
                 val windowH = configInt(KEY_RESYNC_WINDOW_H)?.coerceIn(1, 168) ?: DEFAULT_RESYNC_WINDOW_H
                 // The window runs back from when the new generation started, as the server's allowance does (checker): a phone
                 // that first syncs days after the restore still re-sends what the restore lost.
                 val minted = runCatching { java.time.Instant.parse(g.mintedAt).toEpochMilli() }.getOrNull()
-                val windowStart = (minted ?: now) - windowH * 3_600_000L
+                // Once the server's own allowance for this generation is long over (minted days ago), only the last window.
+                val windowMs = windowH * 3_600_000L
+                val from = minted?.takeIf { now - it <= windowMs + STALE_GENERATION_MS } ?: now
+                val windowStart = from - windowMs
                 val lostAfter = (g.lostAfterUtc ?: g.restorePointUtc)?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
                 val since = maxOf(lostAfter ?: windowStart, windowStart) - RESYNC_CLOCK_MARGIN_MS
                 val put = db.withTransaction {
@@ -721,6 +726,9 @@ class SyncEngine(
         const val KEY_GENERATION_DISMISSED = "sync.server_generation_dismissed"
         /** `last_code` of a row put back after a restore (OutboxDao.resendAckedSince). */
         const val RESYNC_CODE = "resync"
+        const val DISMISS_TTL_MS = 3_600_000L
+        /** Beyond the jitter and a day of margin the server no longer takes a generation's re-sends as such. */
+        const val STALE_GENERATION_MS = 2 * 24 * 3_600_000L
         const val KEY_RESYNC_WINDOW_H = "cfg.sync.resync_window_h"
         const val KEY_RESYNC_JITTER_S = "cfg.sync.resync_jitter_s"
         const val DEFAULT_RESYNC_WINDOW_H = 24

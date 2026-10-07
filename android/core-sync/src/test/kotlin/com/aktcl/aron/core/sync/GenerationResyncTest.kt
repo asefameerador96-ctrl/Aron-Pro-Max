@@ -227,6 +227,10 @@ class GenerationResyncTest {
         assertEquals(fake.generation, db.referenceDao().meta(SyncEngine.KEY_GENERATION))
         // Checker: the dismissed hint (a replica's cached header) no longer asks for runs.
         assertFalse(engine().run(SyncTrigger.FOREGROUND).resyncRequested)
+        // After an hour the dismissal lapses: the same value is noted again.
+        Clock.now += 3_600_001L
+        assertTrue(engine().run(SyncTrigger.FOREGROUND).resyncRequested)
+        db.referenceDao().deleteMeta(SyncEngine.KEY_GENERATION_SEEN)
         // The nil generation is never a reason.
         hint = SyncEngine.NIL_GENERATION
         assertFalse(engine().run(SyncTrigger.FOREGROUND).resyncRequested)
