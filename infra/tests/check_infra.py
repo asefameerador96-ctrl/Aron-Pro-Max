@@ -1088,9 +1088,11 @@ class PlatformAlerts(unittest.TestCase):
         text = json.dumps(t)
         for needle in ("is_db_alive", "pg-not-alive", "ResourceHealth", "Unavailable", "Degraded", "ServiceHealth"):
             self.assertIn(needle, text)
-        (rh, sh) = sorted(resources_of(t, "Microsoft.Insights/activityLogAlerts"), key=lambda r: r["name"])
-        self.assertEqual(rh["properties"]["scopes"], ["[resourceGroup().id]"])
-        self.assertIn("Owner:", rh["properties"]["description"])
+        (rh, rec, sh) = sorted(resources_of(t, "Microsoft.Insights/activityLogAlerts"), key=lambda r: r["name"])
+        for a in (rh, rec):
+            self.assertEqual(a["properties"]["scopes"], ["[resourceGroup().id]"])
+            self.assertIn("Owner:", a["properties"]["description"])
+        self.assertIn("recovered", rec["name"])
         self.assertEqual(sh.get("condition"), "[parameters('enableServiceHealthAlert')]", "off until subscription Reader exists")
 
     def test_app_alerts(self):
@@ -1173,6 +1175,24 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertIn("NOT ready", out)
         rc, out = self.run_failover([200, 503, 200], call_s=3, max_s="1")
         self.assertEqual(rc, 0, "a call longer than the wait limit is not a false failure: " + out)
+
+
+class InfraStageSkip(unittest.TestCase):
+    """2026-10-07: while dblogins failed, the live api commit never advanced, so every INT push re-applied main.bicep
+    (and re-PUT Front Door). The skip now diffs against the commit main.bicep was last applied from."""
+
+    def test_skip_base_is_the_last_applied_infra_commit(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('--tags "aron-sha=${SHA}"', d, "main.bicep apply records its commit")
+        self.assertIn('tags."aron-sha"', d)
+        self.assertIn('git diff --quiet "$infra_sha" "$SHA"', d)
+        self.assertLess(d.index('infra_sha="$(az deployment group show'), d.index('git diff --quiet "$infra_sha"'))
+        self.assertIn('infra_sha="$deployed_sha"', d, "falls back to the live commit when untagged")
+
+    def test_recovered_alert_closes_resource_health(self):
+        a = (ROOT / "infra" / "modules" / "alerts.bicep").read_text(encoding="utf-8")
+        self.assertIn("-resource-health-recovered'", a)
+        self.assertIn("'properties.previousHealthStatus', equals: 'Unavailable'", a)
 
 
 class AgentDownload(unittest.TestCase):

@@ -256,13 +256,18 @@ if diff:
 sys.exit(1 if diff else 0)
 PY
 }
+# The commit main.bicep was last applied from (tag on the aron-infra deployment). The infra stage is skipped when
+# nothing in infra_paths changed since THAT commit; the live api commit is only the fallback, because it does not
+# advance while a later stage fails (2026-10-07: every INT push re-applied main.bicep while dblogins failed).
+infra_sha="$(az deployment group show -g "$RG" -n aron-infra --query 'tags."aron-sha"' -o tsv 2>/dev/null || true)"
+[[ "$infra_sha" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "${infra_sha}^{commit}" 2>/dev/null || infra_sha="$deployed_sha"
 skip_infra=false
 if [ -n "$ROLLBACK_SHA" ]; then
   # A rollback changes images only; the infrastructure stays as the newest commit left it.
   [ -n "$previous" ] || die "rollback needs a previous successful infra deployment (aron-infra) in $RG"
   skip_infra=true
-elif [ "${FORCE_INFRA:-false}" != "true" ] && [ -n "$previous" ] && [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] \
-   && git diff --quiet "$deployed_sha" "$SHA" -- "${infra_paths[@]}" 2>/dev/null \
+elif [ "${FORCE_INFRA:-false}" != "true" ] && [ -n "$previous" ] && [[ "$infra_sha" =~ ^[0-9a-f]{40}$ ]] \
+   && git diff --quiet "$infra_sha" "$SHA" -- "${infra_paths[@]}" 2>/dev/null \
    && [ "$(az deployment group show -g "$RG" -n aron-infra --query properties.provisioningState -o tsv)" = "Succeeded" ] \
    && params_unchanged; then
   skip_infra=true
@@ -277,7 +282,7 @@ if [ "$skip_infra" != true ]; then
 fi
 
 if [ "$skip_infra" = true ]; then
-  note "infrastructure unchanged since $deployed_sha: main.bicep skipped (FORCE_INFRA=true runs it)"
+  note "infrastructure unchanged since ${infra_sha:-$deployed_sha}: main.bicep skipped (FORCE_INFRA=true runs it)"
   outputs="$previous"
 else
   kv="$(az keyvault list -g "$RG" --query "[?starts_with(name, 'kv-aron-${ENV_NAME}-')].name | [0]" -o tsv)"
@@ -300,7 +305,7 @@ else
     infra/scripts/whatif-guard.py "$whatif_file" || die "what-if shows a change the guard refuses (nothing was changed)"
   note "main.bicep (budget start $ARON_BUDGET_START_DATE)"
   outputs="$(az deployment group create -g "$RG" -n aron-infra --template-file infra/main.bicep \
-    --parameters "infra/params/${PROFILE}.bicepparam" --query properties.outputs -o json)"
+    --parameters "infra/params/${PROFILE}.bicepparam" --tags "aron-sha=${SHA}" --query properties.outputs -o json)"
   unset ARON_DB_ADMIN_PASSWORD
 fi
 REGISTRY="$(out "$outputs" registryLoginServer)"
