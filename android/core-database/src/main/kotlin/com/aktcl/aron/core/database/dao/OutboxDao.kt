@@ -91,6 +91,22 @@ abstract class OutboxDao {
     )
     protected abstract suspend fun applyAckUnchecked(clientUuid: String, state: String, code: String?, serverId: Long?, at: String): Int
 
+    /**
+     * F-SYS-072 release (BC-53; bounded rounds in SyncEngine): rows the server quarantined with [code] (`device_integrity_failed`, from the time
+     * it quarantined every unsigned or badly signed header) go back to pending with the same client_uuid, payload and sig,
+     * so the server's registry answers them by uuid (released, or duplicate) and nothing is stored twice. `last_code` is
+     * kept, so the signer never signs a row that already went out. Returns the rows released.
+     */
+    @Query("UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0 WHERE state = 'quarantined' AND last_code = :code")
+    abstract suspend fun releaseQuarantined(code: String): Int
+
+    @Query("SELECT COUNT(*) FROM outbox WHERE state = 'quarantined' AND last_code = :code")
+    abstract suspend fun countQuarantined(code: String): Int
+
+    /** Rows carrying [code] in any state that is not final-acked: quarantined, or released and pending / in flight. */
+    @Query("SELECT COUNT(*) FROM outbox WHERE state IN ('quarantined', 'pending', 'in_flight') AND last_code = :code")
+    abstract suspend fun countWithCode(code: String): Int
+
     /** Committed rows per record type for a business date: the device side of reconciliation (s4.12). */
     @Query("SELECT record_type AS recordType, COUNT(*) AS count FROM outbox WHERE business_date = :businessDate GROUP BY record_type ORDER BY record_type")
     abstract suspend fun committedCounts(businessDate: String): List<TypeCount>

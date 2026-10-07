@@ -52,8 +52,9 @@ class RecordSignatureTest {
         override suspend fun refresh(userId: Long, rejected: String?): Boolean = false
     }
 
-    private object Clock : WallClock {
-        override fun nowMs(): Long = 1_791_194_400_000L
+    private var now = 1_791_194_400_000L
+    private val clock = object : WallClock {
+        override fun nowMs(): Long = now
         override fun elapsedRealtimeMs(): Long = 1_000_000L
     }
 
@@ -69,7 +70,7 @@ class RecordSignatureTest {
     private fun engine(signer: DeviceProofSigner?): SyncEngine {
         val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
         val client = AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { DEVICE })
-        return SyncEngine(USER, db, SyncBatchApi(client, null), auth, { DEVICE }, "1.0.3+10003", Clock, SyncPolicy(), random = Random(7), recordSigner = signer)
+        return SyncEngine(USER, db, SyncBatchApi(client, null), auth, { DEVICE }, "1.0.3+10003", clock, SyncPolicy(), random = Random(7), recordSigner = signer)
     }
 
     private suspend fun visitWithClose(): Pair<String, String> {
@@ -125,6 +126,119 @@ class RecordSignatureTest {
         assertEquals(SyncStop.DRAINED, engine(DeviceProofSigner { null }).run(SyncTrigger.MANUAL).stop)
         val visit = sentRecords().single { it["client_uuid"]!!.jsonPrimitive.content == visitUuid }
         assertTrue(visit["sig"] == null || visit["sig"] is kotlinx.serialization.json.JsonNull)
+    }
+
+    /**
+     * The state after an older server quarantined [uuids] as device_integrity_failed: the server's registry holds them
+     * (released on resend unless enforce), the phone holds them as terminal.
+     */
+    private suspend fun quarantinedBefore(vararg uuids: String, code: String = "device_integrity_failed") {
+        val rows = db.outboxDao().nextSendable(10, 99, emptyList()).filter { it.clientUuid in uuids }
+        db.outboxDao().markInFlight("b-old", rows.map { it.seq })
+        uuids.forEach { db.outboxDao().applyAck(it, "quarantined", code, null, "2026-10-05T05:00:00.000Z") }
+        if (code == "device_integrity_failed") fake.integrityHeld += uuids
+    }
+
+    private fun sentCount(uuid: String) = sentRecords().count { it["client_uuid"]!!.jsonPrimitive.content == uuid }
+    private suspend fun state(uuid: String) = db.outboxDao().byClientUuid(uuid)!!.state
+    private fun nextDay() { now += 24 * 3_600_000L }
+
+    /** Lead ask (BC-53): the server releases the held rows on resend; stored once, never re-signed, then done. */
+    @Test fun integrityQuarantinedRowsAreReleasedByUuidAndStoredOnce() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        quarantinedBefore(visitUuid, closeUuid)
+        assertEquals(0, db.outboxDao().unsentCount())
+        assertEquals(SyncStop.DRAINED, engine(signer).run(SyncTrigger.MANUAL).stop)
+        assertEquals(1, sentCount(visitUuid))
+        assertEquals(1, fake.storedOf("visit").size)
+        assertEquals("acked", state(visitUuid))
+        assertEquals("acked", state(closeUuid))
+        assertTrue("a row that already went out is never signed", signed.isEmpty())
+        nextDay()
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals("the episode ended", null, db.referenceDao().meta(SyncEngine.KEY_INTEGRITY_RELEASE))
+        assertEquals(1, sentCount(visitUuid))
+    }
+
+    /** Re-checker: a run that stops between the release and the answer never ends the episode. */
+    @Test fun aRunStoppedAfterTheReleaseKeepsTheEpisode() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        quarantinedBefore(visitUuid, closeUuid)
+        fake.enforce = true
+        fake.failBefore += 503
+        assertEquals(SyncStop.RETRY_LATER, engine(signer).run(SyncTrigger.MANUAL).stop) // released, then no answer
+        engine(signer).run(SyncTrigger.MANUAL) // the resend reaches the older server: quarantined again
+        assertEquals("quarantined", state(visitUuid))
+        assertTrue(db.referenceDao().meta(SyncEngine.KEY_INTEGRITY_RELEASE)!!.startsWith("1:"))
+        nextDay()
+        fake.enforce = false
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals("acked", state(visitUuid))
+        assertEquals(1, fake.storedOf("visit").size)
+    }
+
+    /** Rows quarantined after an episode ended start a new one. */
+    @Test fun rowsQuarantinedLaterStartANewEpisode() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        quarantinedBefore(visitUuid, closeUuid)
+        fake.enforce = true
+        repeat(SyncEngine.INTEGRITY_RELEASE_ROUNDS + 1) { engine(signer).run(SyncTrigger.MANUAL); nextDay() }
+        fake.enforce = false
+        fake.integrityHeld.clear()
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET state = 'rejected' WHERE client_uuid IN (?, ?)", arrayOf(visitUuid, closeUuid)) // a reviewer's resolution
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals(null, db.referenceDao().meta(SyncEngine.KEY_INTEGRITY_RELEASE))
+        val (v2, c2) = visitWithClose()
+        quarantinedBefore(v2, c2)
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals("acked", state(v2))
+    }
+
+    /** Checker: the build reaches the phone before the server has BC-53 (or enforce): next day's round catches the upgrade. */
+    @Test fun anOlderServerFirstThenTheUpgradedServerReleasesOnALaterDay() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        quarantinedBefore(visitUuid, closeUuid)
+        fake.enforce = true
+        engine(signer).run(SyncTrigger.MANUAL)
+        engine(signer).run(SyncTrigger.MANUAL) // same business date: no second round
+        assertEquals(1, sentCount(visitUuid))
+        assertEquals("quarantined", state(visitUuid))
+        nextDay()
+        fake.enforce = false // the server got BC-53 overnight
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals(2, sentCount(visitUuid))
+        assertEquals("acked", state(visitUuid))
+        assertEquals(1, fake.storedOf("visit").size)
+    }
+
+    /** Under enforce for good: one round per day up to the cap, then the rows stay quarantined (bounded data cost). */
+    @Test fun underEnforceTheReleaseIsBoundedPerEpisode() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        quarantinedBefore(visitUuid, closeUuid)
+        fake.enforce = true
+        repeat(SyncEngine.INTEGRITY_RELEASE_ROUNDS + 2) { engine(signer).run(SyncTrigger.MANUAL); nextDay() }
+        assertEquals(SyncEngine.INTEGRITY_RELEASE_ROUNDS, sentCount(visitUuid))
+        assertEquals("quarantined", state(visitUuid))
+        assertTrue(fake.storedOf("visit").isEmpty())
+    }
+
+    /** The server already holds the row (accepted, ack lost): the resend is a duplicate, never a second sale. */
+    @Test fun aReleasedRowTheServerAlreadyHoldsIsADuplicate() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        assertEquals(SyncStop.DRAINED, engine(DeviceProofSigner { null }).run(SyncTrigger.MANUAL).stop)
+        db.openHelper.writableDatabase.execSQL("UPDATE outbox SET state = 'quarantined', last_code = 'device_integrity_failed' WHERE client_uuid IN (?, ?)", arrayOf(visitUuid, closeUuid))
+        db.openHelper.writableDatabase.execSQL("DELETE FROM sync_meta WHERE `key` = ?", arrayOf(SyncEngine.KEY_INTEGRITY_RELEASE))
+        assertEquals(SyncStop.DRAINED, engine(DeviceProofSigner { null }).run(SyncTrigger.MANUAL).stop)
+        assertEquals(1, fake.storedOf("visit").size)
+        assertEquals("acked", state(visitUuid))
+    }
+
+    @Test fun aQuarantineForAnotherReasonIsNeverReleased() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        quarantinedBefore(visitUuid, closeUuid, code = "arithmetic_mismatch")
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals(0, sentCount(visitUuid))
+        assertEquals("quarantined", state(visitUuid))
     }
 
     private companion object {

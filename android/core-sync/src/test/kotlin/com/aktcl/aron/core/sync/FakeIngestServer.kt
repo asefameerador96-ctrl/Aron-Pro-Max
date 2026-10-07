@@ -52,6 +52,13 @@ class FakeIngestServer : Dispatcher() {
 
     /** client_uuids quarantined (`arithmetic_mismatch`); resolutions to deliver with the next response. */
     val quarantine = mutableSetOf<String>()
+
+    /**
+     * F-SYS-072: uuids the registry holds as quarantined `device_integrity_failed` (BC-53 step 2). A resend is quarantined
+     * again while [enforce] (or an older server) holds, else released: processed like a new record.
+     */
+    val integrityHeld = mutableSetOf<String>()
+    var enforce = false
     val pendingResolutions = ArrayList<Pair<String, String>>()
     var holdS = 0
 
@@ -106,6 +113,7 @@ class FakeIngestServer : Dispatcher() {
                             ack(uuid, type, "rejected", code = "parent_missing", retryable = true)
                         }
                         uuid in rejectFinal -> ack(uuid, type, "rejected", code = "schema_invalid", retryable = false)
+                        uuid in integrityHeld && enforce -> ack(uuid, type, "quarantined", code = "device_integrity_failed")
                         uuid in quarantine -> ack(uuid, type, "quarantined", code = "arithmetic_mismatch")
                         else -> {
                             val id = nextId++

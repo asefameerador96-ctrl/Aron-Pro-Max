@@ -133,6 +133,33 @@ class SyncEngine(
 
     suspend fun run(trigger: SyncTrigger): SyncReport = lockOf(userId).withLock { Run(trigger).execute() }
 
+    /**
+     * F-SYS-072 (BC-53): the server used to quarantine every header without a valid sig as `device_integrity_failed`; it
+     * now accepts them unless `cfg.sec.record_signature_mode` is enforce, and releases a resend of such a registry row.
+     * The phone treats a quarantine as terminal, so those rows are resent by uuid in rounds: at most one per business date
+     * and [INTEGRITY_RELEASE_ROUNDS] per episode, because the phone cannot see the server's mode (an older server or
+     * enforce answers them quarantined again; a later day's round catches a server upgraded meanwhile). The episode ends
+     * only when no row carries the code in any state (released rows keep `last_code` while pending or in flight), so a
+     * run that stops before the answer never ends it; rows quarantined later start a new episode. Meta: `<rounds>:<date>`.
+     */
+    private suspend fun releaseIntegrityQuarantine() {
+        val code = com.aktcl.aron.contract.RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire
+        val today = BusinessDate.of(clock.nowMs()).toString()
+        db.withTransaction {
+            val state = meta.meta(KEY_INTEGRITY_RELEASE)
+            val rounds = state?.substringBefore(':')?.toIntOrNull() ?: 0
+            when {
+                outbox.countWithCode(code) == 0 -> if (state != null) meta.deleteMeta(KEY_INTEGRITY_RELEASE)
+                outbox.countQuarantined(code) == 0 -> Unit // released rows still on their way
+                rounds >= INTEGRITY_RELEASE_ROUNDS || state?.substringAfter(':') == today -> Unit
+                else -> {
+                    outbox.releaseQuarantined(code)
+                    meta.putMeta(SyncMetaEntity(KEY_INTEGRITY_RELEASE, "${rounds + 1}:$today"))
+                }
+            }
+        }
+    }
+
     private inner class Run(val trigger: SyncTrigger) {
         var token: String? = null
         var device: String = ""
@@ -147,6 +174,7 @@ class SyncEngine(
 
         suspend fun execute(): SyncReport {
             device = deviceUuid() ?: return report(SyncStop.NO_DEVICE)
+            releaseIntegrityQuarantine()
             if (outbox.unsentCount() == 0) return report(SyncStop.DRAINED)
             token = auth.token(userId) ?: if (auth.refresh(userId, null)) auth.token(userId) else null
             if (token == null) return report(SyncStop.AUTH_REQUIRED)
@@ -489,6 +517,9 @@ class SyncEngine(
             "attendance_event", "stock_movement", "visit", "memo", "memo_void", "due_collection", "outlet_change_request", "redemption", "gift_photo",
         )
         const val KEY_LAST_ERROR = "sync.last_error"
+        /** F-SYS-072: rounds of device_integrity_failed releases in this episode (`<rounds>:<business date>`). */
+        const val KEY_INTEGRITY_RELEASE = "sync.integrity_release.v1"
+        const val INTEGRITY_RELEASE_ROUNDS = 7
         const val KEY_CONFIG_VERSION = ReferenceRepository.KEY_CONFIG_VERSION
         const val KEY_CONFIG_VERSION_SERVER = "sync.config_version_server"
         const val KEY_GENERATION = "sync.server_generation"
