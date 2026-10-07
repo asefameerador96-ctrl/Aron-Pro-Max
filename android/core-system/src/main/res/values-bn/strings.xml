@@ -27,4 +27,43 @@
     <string name="logout_sync_now">এখনই সিঙ্ক</string>
     <string name="logout_cancel">বাতিল</string>
     <string name="logout_wipe_incomplete">লগআউট হয়েছে, কিন্তু ফোনের কিছু ফাইল মোছা যায়নি। শেষ করতে আবার লগইন ও লগআউট করুন।</string>
+    <!-- F-SYS-020 updater -->
+    <string name="update_title">ARON-এর নতুন সংস্করণ প্রস্তুত</string>
+    <string name="update_title_required">নতুন দিন শুরু করতে ARON আপডেট করুন</string>
+    <string name="update_version_size">সংস্করণ %1$s · প্রায় %2$s এমবি</string>
+    <string name="update_network_wifi">নেটওয়ার্ক: ওয়াই-ফাই</string>
+    <string name="update_network_mobile">নেটওয়ার্ক: মোবাইল ডেটা</string>
+    <string name="update_network_offline">নেটওয়ার্ক: অফলাইন। অনলাইন হলে ডাউনলোড শুরু হবে।</string>
+    <string name="update_download">ডাউনলোড</string>
+    <string name="update_progress">ডাউনলোড হচ্ছে %1$d%%</string>
+    <string name="update_do_not_close">ডাউনলোডের সময় অ্যাপটি বন্ধ করবেন না। থেমে গেলে যেখানে থেমেছিল সেখান থেকে চলবে।</string>
+    <string name="update_install">ইনস্টল</string>
+    <string name="update_needs_wifi">এই আপডেট শুধু ওয়াই-ফাইতে ডাউনলোড হয়। ওয়াই-ফাইতে যুক্ত হন।</string>
+    <string name="update_no_space">আপডেটের জন্য ফোনে যথেষ্ট জায়গা নেই। অন্য ফাইল মুছে আবার চেষ্টা করুন।</string>
+    <string name="update_failed">ডাউনলোড শেষ হয়নি। আবার চেষ্টা করুন; যেখানে থেমেছিল সেখান থেকে চলবে।</string>
+    <string name="update_retry">আবার চেষ্টা করুন</string>
+    <string name="update_sync_busy">এখন বিক্রি পাঠানো হচ্ছে। একটু পরে ইনস্টল করুন।</string>
+    <string name="update_unknown_sources_why">ARON-কে নিজের আপডেট ইনস্টল করার অনুমতি দিতে হবে।</string>
+    <string name="update_unknown_sources_steps">সেটিংস খুলুন চাপুন, \"এই উৎস থেকে অনুমতি দিন\" চালু করুন, তারপর ফিরে এসে ইনস্টল চাপুন।</string>
+    <string name="update_open_settings">সেটিংস খুলুন</string>
+    <string name="update_later">পরে</string>
+    <string name="update_finish_day_first">একটি জরুরি আপডেট অপেক্ষায় আছে। আজকের দিন শেষ করে জমা দিন; কালকের আগে আপডেট করুন।</string>
+    <string name="update_day_blocked">ARON-এর এই সংস্করণ দিয়ে নতুন দিন শুরু করা যাবে না। এখনই আপডেট করুন। না-পাঠানো বিক্রি তবুও যাবে।</string>
+    <string name="update_now">এখনই আপডেট</string>
+    <!-- F-SYS-021 PDA to Support -->
+    <string name="support_title">পিডিএ টু সাপোর্ট</string>
+    <string name="support_what">আপনার ডাটা ফাইল AKTCL সাপোর্টে পাঠায়: না-পাঠানো বিক্রি ও রেকর্ড, সাম্প্রতিক সিঙ্কের তথ্য এবং অ্যাপের তথ্য। ফাইলটি এনক্রিপ্ট করা; শুধু সাপোর্ট খুলতে পারে।</string>
+    <string name="support_version">অ্যাপ সংস্করণ: %1$s</string>
+    <string name="support_last_sync">শেষ সিঙ্ক: %1$s</string>
+    <string name="support_never_synced">শেষ সিঙ্ক: কখনো হয়নি</string>
+    <string name="support_send">ডাটা ফাইল পাঠান</string>
+    <string name="support_preparing">ডাটা ফাইল তৈরি হচ্ছে…</string>
+    <string name="support_queued_offline">সেভ হয়েছে। ফোন অনলাইন হলে পাঠানো হবে।</string>
+    <string name="support_queued_wifi">সেভ হয়েছে। ওয়াই-ফাইতে পাঠানো হবে।</string>
+    <string name="support_sending">পাঠানো হচ্ছে…</string>
+    <string name="support_sent">%1$s-এ সাপোর্টে পাঠানো হয়েছে।</string>
+    <string name="support_failed">সাপোর্ট ফাইলটি পায়নি। আবার চেষ্টা করতে ডাটা ফাইল পাঠান চাপুন।</string>
+    <string name="support_failed_too_large">ডাটা ফাইলটি পাঠানোর জন্য খুব বড়। আপনার সুপারভাইজারকে ফোন করুন।</string>
+    <string name="support_failed_no_key">এই ফোনে এখনো সাপোর্টে পাঠানো চালু হয়নি। আপনার সুপারভাইজারকে ফোন করুন।</string>
+    <string name="support_failed_retrying">সাপোর্টে পাঠানো কয়েকবার ব্যর্থ হয়েছে। ফোন চেষ্টা চালিয়ে যাচ্ছে; ইন্টারনেট দেখুন বা আবার ডাটা ফাইল পাঠান চাপুন।</string>
 </resources>

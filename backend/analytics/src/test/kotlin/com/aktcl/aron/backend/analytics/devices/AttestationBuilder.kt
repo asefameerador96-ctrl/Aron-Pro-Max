@@ -30,8 +30,9 @@ object AttestationBuilder {
 
     fun keyPair(): KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
 
-    private fun cert(subject: String, subjectKey: PublicKey, issuer: String, issuerKey: KeyPair, serial: Long, ext: Pair<String, ByteArray>? = null, notAfterDays: Int = 3650): X509Certificate {
+    private fun cert(subject: String, subjectKey: PublicKey, issuer: String, issuerKey: KeyPair, serial: Long, ext: Pair<String, ByteArray>? = null, notAfterDays: Int = 3650, ca: Boolean = false): X509Certificate {
         val b = JcaX509v3CertificateBuilder(X500Principal(issuer), BigInteger.valueOf(serial), Date(System.currentTimeMillis() - 5L * 365 * 86_400_000L), Date(System.currentTimeMillis() + notAfterDays * 86_400_000L), X500Principal(subject), subjectKey)
+        if (ca) b.addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints, true, org.bouncycastle.asn1.x509.BasicConstraints(true))
         ext?.let { (oid, der) -> b.addExtension(ASN1ObjectIdentifier(oid), false, org.bouncycastle.asn1.ASN1Primitive.fromByteArray(der)) }
         return JcaX509CertificateConverter().getCertificate(b.build(JcaContentSignerBuilder("SHA256withECDSA").build(issuerKey.private)))
     }
@@ -45,11 +46,20 @@ object AttestationBuilder {
         return seq(ASN1Integer(4), ASN1Enumerated(securityLevel), ASN1Integer(100), ASN1Enumerated(securityLevel), DEROctetString(challenge), DEROctetString(ByteArray(0)), seq(), tee).encoded
     }
 
+    /**
+     * The chain-extension attack: [attested] is a genuine chain of an attested (non-CA) Keystore key [attestedKey]; the attacker uses that key to sign a
+     * forged leaf for [forgedKey] carrying [forgedDesc], and prepends it. Every link verifies and the root is unchanged.
+     */
+    fun extendChain(attested: Built, attestedKey: KeyPair, forgedKey: PublicKey, forgedDesc: ByteArray): Built {
+        val fake = cert("CN=Forged Leaf", forgedKey, "CN=Test Leaf", attestedKey, 99, "1.3.6.1.4.1.11129.2.1.17" to forgedDesc)
+        return Built(listOf(Base64.getEncoder().encodeToString(fake.encoded)) + attested.chainBase64, attested.rootSha256, attested.rootKey)
+    }
+
     /** A leaf for [deviceKey] under an intermediate under a root; [keyDesc] is what the extension carries. */
     fun chain(deviceKey: PublicKey, keyDesc: ByteArray): Built {
         val root = keyPair(); val mid = keyPair()
-        val rootCert = cert("CN=Test Root", root.public, "CN=Test Root", root, 1)
-        val midCert = cert("CN=Test Intermediate", mid.public, "CN=Test Root", root, 2)
+        val rootCert = cert("CN=Test Root", root.public, "CN=Test Root", root, 1, ca = true)
+        val midCert = cert("CN=Test Intermediate", mid.public, "CN=Test Root", root, 2, ca = true)
         val leaf = cert("CN=Test Leaf", deviceKey, "CN=Test Intermediate", mid, 3, "1.3.6.1.4.1.11129.2.1.17" to keyDesc)
         val enc = Base64.getEncoder()
         return Built(listOf(enc.encodeToString(leaf.encoded), enc.encodeToString(midCert.encoded), enc.encodeToString(rootCert.encoded)), MessageDigest.getInstance("SHA-256").digest(rootCert.encoded).joinToString("") { "%02x".format(it) }, root)

@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- core-system declares no permission of its own: location, camera and Bluetooth come from core-geo, core-media and
-     core-printing. The microphone is never requested by any Aron app (F-SYS-023). -->
-<manifest />
+<!-- core-system: location, camera and Bluetooth come from core-geo, core-media and core-printing. The microphone is never
+     requested by any Aron app (F-SYS-023). The updater (F-SYS-020) installs this app's own signed APK on non-enrolled phones. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <application>
+        <receiver android:name="com.aktcl.aron.core.system.update.InstallStatusReceiver" android:exported="false" />
+    </application>
+</manifest>

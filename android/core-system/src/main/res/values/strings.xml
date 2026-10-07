@@ -27,4 +27,43 @@
     <string name="logout_sync_now">Sync now</string>
     <string name="logout_cancel">Cancel</string>
     <string name="logout_wipe_incomplete">Logged out, but some files on this phone could not be removed. Log in and out again to finish.</string>
+    <!-- F-SYS-020 updater -->
+    <string name="update_title">A new version of ARON is ready</string>
+    <string name="update_title_required">Update ARON to start a new day</string>
+    <string name="update_version_size">Version %1$s · about %2$s MB</string>
+    <string name="update_network_wifi">Network: Wi-Fi</string>
+    <string name="update_network_mobile">Network: mobile data</string>
+    <string name="update_network_offline">Network: offline. The download starts when you are online.</string>
+    <string name="update_download">Download</string>
+    <string name="update_progress">Downloading %1$d%%</string>
+    <string name="update_do_not_close">Do not close the app while it downloads. If it stops, it continues from where it was.</string>
+    <string name="update_install">Install</string>
+    <string name="update_needs_wifi">This update downloads on Wi-Fi only. Connect to Wi-Fi.</string>
+    <string name="update_no_space">Not enough space on the phone for the update. Delete other files and try again.</string>
+    <string name="update_failed">The download did not complete. Try again; it continues from where it stopped.</string>
+    <string name="update_retry">Try again</string>
+    <string name="update_sync_busy">Sales are being sent right now. Install in a moment.</string>
+    <string name="update_unknown_sources_why">The phone must allow ARON to install its own update.</string>
+    <string name="update_unknown_sources_steps">Tap Open settings, switch on \"Allow from this source\", then press Back and tap Install.</string>
+    <string name="update_open_settings">Open settings</string>
+    <string name="update_later">Later</string>
+    <string name="update_finish_day_first">A required update is waiting. Finish and submit today\'s day; update before tomorrow.</string>
+    <string name="update_day_blocked">This version of ARON is too old to start a new day. Update now. Unsent sales still go out.</string>
+    <string name="update_now">Update now</string>
+    <!-- F-SYS-021 PDA to Support -->
+    <string name="support_title">PDA to Support</string>
+    <string name="support_what">Sends your data file to AKTCL support: sales and records not yet sent, recent sync history and app information. It is encrypted; only support can open it.</string>
+    <string name="support_version">App version: %1$s</string>
+    <string name="support_last_sync">Last sync: %1$s</string>
+    <string name="support_never_synced">Last sync: never</string>
+    <string name="support_send">Send data file</string>
+    <string name="support_preparing">Preparing the data file…</string>
+    <string name="support_queued_offline">Saved. It will be sent when the phone is online.</string>
+    <string name="support_queued_wifi">Saved. It will be sent on Wi-Fi.</string>
+    <string name="support_sending">Sending…</string>
+    <string name="support_sent">Sent to support at %1$s.</string>
+    <string name="support_failed">Support could not receive the file. Tap Send data file to try again.</string>
+    <string name="support_failed_too_large">The data file is too large to send. Call your supervisor.</string>
+    <string name="support_failed_no_key">Sending to support is not set up on this phone yet. Call your supervisor.</string>
+    <string name="support_failed_retrying">Sending to support failed several times. The phone keeps trying; check the internet or tap Send data file again.</string>
 </resources>
