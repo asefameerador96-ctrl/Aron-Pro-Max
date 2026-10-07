@@ -23,7 +23,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | backend-core | session_01WruAjDgzLe2omU4FjfTdki | Opus | 2026-10-07 | recycled 16:48 (sixth session); previous session_01CnjB3beqLff7QFRhoTxN3r is retired (READY TO RECYCLE 16:48, lane/backend-core 7ffbc10d); earlier sessions retired (01465rpZSgSrMTU8CACwuEYx, 01FfFvStuQXyZNg6QM9rndaD, 01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
 | backend-reports | session_019WhVDAstm1xPBBrp6FPKM9 | Sonnet | 2026-10-07 | |
 | backend-admin | session_01TogQKB1R6sgWVTafC9DMYG | Sonnet | 2026-10-07 | recycled 05:02; previous session_01JK4kErf8frNpx25mmoyPAc is retired (READY TO RECYCLE 05:01) |
-| android-core | session_0151EwtEosnRTmXJejCALwjh | Opus | 2026-10-07 | recycled 16:46 (eighth session); previous session_01CWXeY8AFFirF65WP2Tde88 is retired (READY TO RECYCLE 16:45, lane/android-core 0a0add38; owes one fresh Opus re-check of F-SYS-081 phone half); earlier sessions retired (01FM6jypmkuGy6Hv1kVjnzLN, 01AgFbNVonyMCWNtJqhyXREy, 01Xx4ADUeVGTHNrVSqXU3tjh) |
+| android-core | session_019Wkf6V91ynYvVswgbogVG2 | Opus | 2026-10-07 | recycled 18:05 (ninth session); previous session_0151EwtEosnRTmXJejCALwjh is retired (READY TO RECYCLE 18:04, lane/android-core 1493b0f7); earlier sessions retired (01CWXeY8AFFirF65WP2Tde88, 01FM6jypmkuGy6Hv1kVjnzLN, 01AgFbNVonyMCWNtJqhyXREy, 01Xx4ADUeVGTHNrVSqXU3tjh) |
 | android-core-ui | session_01F7k2exq6bgrBGdZAmvG9Ey | Sonnet | 2026-10-07 | recycled 08:40; session_01PompFHeojjtrnV78dsjmsB retired (READY TO RECYCLE 08:39) |
 | android-sr-a | session_01TyF3Y1MGEyGN2Ke8EHwZUG | Sonnet | 2026-10-07 | recycled 08:46; session_01Gyh9KAacFpMFb35wUDq21c retired (READY TO RECYCLE 08:46) |
 | android-sr-b | session_019i1dfbm7pSrMDPXskSLY3v | Sonnet | 2026-10-07 | recycled 08:39; session_01DCSzXKooAFuYYEGy9UAMSN retired (READY TO RECYCLE 08:38) |
@@ -75,3 +75,9 @@ reports; hand any pending lead items to this file as a plain list and confine yo
 Rulings D-DB-PART-01 and the dedupe resolutions above stand. If the owner intends the other session to
 lead instead, the owner says so in that session and this one stands down the same way — one lead, either
 way.
+
+## Lead rulings (2026-10-07 18:05 UTC)
+
+- N-053 (map component and geocoding, backlog sublane android-amo) is assigned to android-core now: F-SYS-074 (SR attendance address) needs it and android-amo (wave 2) has not started. Built as a shared module the AMO app reuses later. Map loads only when its screen opens; provider and tile-cache cap come from config; coordinates are the offline fallback; no always-on map; no key is printed or stored.
+- backend-core order: F-API-070 first (blocks android-core F-SYS-047 and F-SYS-080), then the `urgent` flag in config_pull (docs/requests/android-core-backend-urgent-push-flag.md), then the server-side `checkout_too_early` check or a logged decision.
+- Docs from the lead reach INT through the integrator's next code candidate (branch lane/lead-docs), so a docs push never starts a dev deploy of its own.

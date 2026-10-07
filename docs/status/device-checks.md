@@ -96,3 +96,12 @@ After the Maps key restriction includes the SR package: out of range at an outle
 
 ### D-SRA-5 My requests (F-SR-040; android-sr-a)
 Host proof: `OwnRequestsTest` (merge, statuses, reason, Bangla, empty). On the A06: Outlet, send one new-outlet request offline. Pass: My requests shows it as "Saved on this phone, waiting to be sent". Go online, sync, refresh the bundle (open the app next morning or pull a delta). Pass: it shows Pending, then Verified/Approved/Rejected as the office decides; a rejected one shows "Reason: ...". Kill and relaunch: the list is unchanged. Repeat in Bangla.
+
+### D-PERF-04 phone speed gates (android-core AUD-PERF-04, laptop session or lab device)
+Host proof: the :android:benchmark module and benchmark build types build in CI. The numbers need a real phone.
+On the Galaxy A06 (or the lab device), release-like build, laptop session with USB debugging:
+1. Run the macrobenchmark cold-start test for the SR app. Record the median of 10 runs. Gate: cold start 2.5 s.
+2. Record sale save time on the Review screen (gate 300 ms) and scroll smoothness on the outlet list (no frame above 32 ms in 95 percent of frames).
+3. Record the release APK size against the 30 MB budget and the INT baseline (+5 percent warn, +15 percent fail).
+4. Write the numbers and the device model in docs/status/android-core.md; a miss is a row for android-core.
+
