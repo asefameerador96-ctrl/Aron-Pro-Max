@@ -4,7 +4,8 @@
 # per-execution template override (the job's own template is unchanged), then prints which one ran:
 #   A  same image, `psql --version`, no environment           -> image and registry pull
 #   B  A plus the four Key Vault secret references             -> secret resolution
-# If both succeed, what is left is the job's real command and its ARON_SQL value. Never prints a secret value.
+# If both succeed, what is left is the job's real command and its SQL (an env value until run 37659152959 showed it;
+# now a mounted file). Never prints a secret value.
 # Usage: infra/scripts/dblogins-probe.sh <resource-group> <job-name>
 set -euo pipefail
 RG="${1:?resource group}"; JOB="${2:?job name}"
