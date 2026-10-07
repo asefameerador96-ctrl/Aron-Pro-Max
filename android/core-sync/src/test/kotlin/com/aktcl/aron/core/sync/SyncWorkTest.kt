@@ -193,6 +193,20 @@ class SyncWorkTest {
         assertEquals(0L, spec(live(WorkManagerSyncScheduler.nowName(700)).single()).initialDelay)
     }
 
+    /** Re-check: a failed gate run follows up on the retry name, never on itself; a later Submit replaces a held gate check-out. */
+    @Test fun aGateRunFollowsUpOnTheRetryNameAndSubmitReplacesAHeldCheckOut() {
+        val hold = SyncHold.Memory()
+        scheduler = WorkManagerSyncScheduler({ wm }, Random(1), sdkInt = 36, hold = hold, elapsedMs = { 1_000L }, checkoutGate = { true })
+        scheduler.afterRun(800, report(SyncStop.OFFLINE, 2), WorkManagerSyncScheduler.gateName(800))
+        assertEquals(1, live(WorkManagerSyncScheduler.retryName(800)).size)
+        assertTrue(live(WorkManagerSyncScheduler.gateName(800)).isEmpty())
+        hold.set(801, 1_000L + 600_000L)
+        scheduler.requestSync(801, SyncTrigger.CHECKOUT)
+        assertEquals(600_000L, spec(live(WorkManagerSyncScheduler.gateName(801)).single()).initialDelay)
+        scheduler.requestSync(801, SyncTrigger.DAY_SUBMIT)
+        assertTrue(spec(live(WorkManagerSyncScheduler.gateName(801)).single()).initialDelay <= 90_000L)
+    }
+
     @Test fun aGateThatThrowsMeansNoJitter() {
         scheduler = WorkManagerSyncScheduler({ wm }, Random(1), sdkInt = 36, checkoutGate = { error("clock") })
         scheduler.requestSync(500, SyncTrigger.DAY_SUBMIT)
