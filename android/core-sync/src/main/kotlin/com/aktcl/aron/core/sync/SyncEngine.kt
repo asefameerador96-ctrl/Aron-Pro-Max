@@ -1,15 +1,15 @@
 package com.aktcl.aron.core.sync
 
+import androidx.room.withTransaction
+import com.aktcl.aron.contract.ContractInfo
+import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.RecordAck
 import com.aktcl.aron.contract.Resolution
 import com.aktcl.aron.contract.RouteDayState
 import com.aktcl.aron.contract.ServerTotals
 import com.aktcl.aron.contract.SyncBatchResponse
-import kotlinx.serialization.builtins.ListSerializer
-import androidx.room.withTransaction
-import com.aktcl.aron.contract.ContractInfo
-import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.SyncTrigger
+import com.aktcl.aron.contract.TimeAnchor
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.common.WallClock
 import com.aktcl.aron.core.database.AronDatabase
@@ -23,8 +23,16 @@ import com.aktcl.aron.core.network.TransportFailure
 import com.aktcl.aron.core.network.WireJson
 import com.aktcl.aron.core.session.SessionRepository
 import com.aktcl.aron.rules.BusinessDate
+import java.io.ByteArrayOutputStream
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
+import java.util.zip.GZIPOutputStream
+import kotlin.random.Random
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -33,13 +41,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.io.ByteArrayOutputStream
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.concurrent.ConcurrentHashMap
-import java.util.zip.GZIPOutputStream
-import kotlin.random.Random
 
 /** The upload grant of one user (docs/24 s3.2, D24-57). */
 interface UploadAuth {
@@ -122,7 +123,7 @@ class SyncEngine(
     private val clock: WallClock,
     private val policy: SyncPolicy = SyncPolicy(),
     /** Trusted-time anchors (F-SYS-049 supplies them); at most 3 are sent. */
-    private val timeAnchors: () -> List<TimeAnchorDto> = { emptyList() },
+    private val timeAnchors: () -> List<TimeAnchor> = { emptyList() },
     private val random: Random = Random.Default,
 ) {
     private val outbox = db.outboxDao()
@@ -467,7 +468,7 @@ class SyncEngine(
 
         fun attemptKey(batchUuid: String) = ATTEMPT_PREFIX + batchUuid
 
-        private val ANCHORS = kotlinx.serialization.builtins.ListSerializer(TimeAnchorDto.serializer())
+        private val ANCHORS = kotlinx.serialization.builtins.ListSerializer(TimeAnchor.serializer())
         private val RECORD_JSON = Json
         private val ISO = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
         fun iso(epochMs: Long): String = ISO.format(Instant.ofEpochMilli(epochMs))
