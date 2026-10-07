@@ -5,7 +5,8 @@
 --   and the new dw.dim_user + dw.dim_user_version (user_key).
 -- A change to any attribute (updated_at ignored) closes the current version on the Asia/Dhaka business date of the change
 -- and opens a new one; a second change on the same date rewrites that date's version; a delete closes it. The first
--- version of a natural id has valid_from NULL (since ever). dw.<dim>_key_on(id, date) returns the key valid on a date;
+-- version of a natural id has valid_from NULL (since ever). The date is the one on which the projector writes the change
+-- (it refreshes the dimensions every few minutes), so near midnight it can be a day after the app-side change date. dw.<dim>_key_on(id, date) returns the key valid on a date;
 -- fact_visit and fact_memo gain nullable geo_key, outlet_key and user_key so the projector can store it.
 -- dim_user carries no names or contact data (pii: none); the projector fills it like the other dimensions.
 
@@ -87,12 +88,16 @@ BEGIN
   IF TG_OP = 'UPDATE' AND n = to_jsonb(OLD) - 'updated_at' THEN
     RETURN NULL;                                                   -- only updated_at moved: no new version
   END IF;
+  -- Columns both tables share, so a column added later to the dimension alone never breaks the projector's upsert.
   SELECT string_agg(quote_ident(a.attname), ', ' ORDER BY a.attnum) INTO cols
-    FROM pg_attribute a WHERE a.attrelid = TG_RELID AND a.attnum > 0 AND NOT a.attisdropped;
+    FROM pg_attribute a
+   WHERE a.attrelid = TG_RELID AND a.attnum > 0 AND NOT a.attisdropped
+     AND EXISTS (SELECT 1 FROM pg_attribute b WHERE b.attrelid = ('dw.' || v)::regclass AND b.attname = a.attname
+                   AND b.attnum > 0 AND NOT b.attisdropped AND b.attgenerated = '');
   EXECUTE format('SELECT true, valid_from FROM dw.%I WHERE %I = $1 AND valid_to IS NULL', v, k) INTO has_cur, cur_from USING id_;
   EXECUTE format('SELECT EXISTS (SELECT 1 FROM dw.%I WHERE %I = $1)', v, k) INTO had_any USING id_;
-  IF has_cur AND cur_from IS NOT DISTINCT FROM d THEN
-    -- A second change on the same business date rewrites that date's version.
+  IF has_cur AND cur_from >= d THEN
+    -- A second change on the same business date rewrites that date's version (also when the clock stepped back).
     EXECUTE format('UPDATE dw.%1$I SET (%2$s) = (SELECT %2$s FROM jsonb_populate_record(NULL::dw.%3$I, $1)) WHERE %4$I = $2 AND valid_to IS NULL',
                    v, cols, TG_TABLE_NAME, k) USING to_jsonb(NEW), id_;
   ELSE

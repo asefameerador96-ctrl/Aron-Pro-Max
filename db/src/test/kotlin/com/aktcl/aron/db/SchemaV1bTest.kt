@@ -236,6 +236,11 @@ class SchemaV1bTest {
             assertEquals("42501", e.sqlState, t)
             c.exec("ROLLBACK TO SAVEPOINT s")
         }
+        // A device cannot choose its own context: values sent with the row are overwritten (the sync writer copies payload keys).
+        val forged = withRoute(insertSql(c, "visit", UUID.randomUUID(), "2026-10-03"))
+            .replaceFirst(" (", " (zone_id, cluster_id, outlet_channel, outlet_geo_class, ").replaceFirst("VALUES (", "VALUES (999, 999, 'FAKE', 'FAKE', ")
+        c.exec(forged)
+        assertEquals("$zone|$cluster|GT|", c.scalar("SELECT concat_ws('|', zone_id, cluster_id, outlet_channel, coalesce(outlet_geo_class, '')) FROM app.visit WHERE business_date = '2026-10-03'"))
         // A row captured on a date before the move, synced after it, is stamped with the zone of its business date.
         c.exec(withRoute(insertSql(c, "visit", UUID.randomUUID(), "2026-10-04")))
         assertEquals(zone, c.scalar("SELECT zone_id FROM app.visit WHERE business_date = '2026-10-04'"))

@@ -2,11 +2,14 @@
 -- "a re-parented outlet never rewrites history").
 --
 -- (1) visit and memo gain zone_id, cluster_id, outlet_channel, outlet_geo_class; due_collection and stock_movement gain
---     zone_id and cluster_id. A BEFORE INSERT trigger stamps every value the writer left NULL: zone from the route's
+--     zone_id and cluster_id. A BEFORE INSERT trigger always sets them, overwriting whatever the writer sent (the sync
+--     writer copies payload keys into columns, so a device must never choose its own context): zone from the route's
 --     zone on the row's business_date (app.route_zone_history), cluster from the outlet's placement on that date
 --     (app.outlet_placement_history, else the outlet's current cluster), channel and geo_class from the outlet as it is
---     at ingest (the outlet master keeps no history of those). Ingest needs no change; a writer may pass its own values.
---     The columns are write-once (guard_synced_row '='), so a later route move or outlet edit never rewrites them.
+--     at ingest (the outlet master keeps no history of those). Ingest needs no change.
+--     The columns are write-once (guard_synced_row '='): a later route move or outlet edit never rewrites them; a
+--     server backfill may fill a NULL by UPDATE (rows captured before this migration keep NULL until then; route moves
+--     before this migration are not known, every route starts with its current zone "since ever").
 --     No foreign keys: partitioned parents cannot take NOT VALID keys (squawk gate), and the values are history.
 -- (2) app.route_zone_history keeps every zone a route belonged to, with the btree_gist exclusion of route_planned;
 --     it is written by triggers on app.route (insert, and update of zone_id). A zone move takes effect on the Asia/Dhaka
@@ -77,29 +80,27 @@ DECLARE
   n         jsonb := to_jsonb(NEW);
   oid_      bigint;
 BEGIN
-  IF NEW.zone_id IS NULL AND NEW.route_id IS NOT NULL THEN
+  NEW.zone_id := NULL;
+  NEW.cluster_id := NULL;
+  IF NEW.route_id IS NOT NULL THEN
     NEW.zone_id := coalesce(app.route_zone_on(NEW.route_id, NEW.business_date), (SELECT zone_id FROM app.route WHERE id = NEW.route_id));
   END IF;
   IF TG_ARGV[0] IN ('outlet', 'outlet_cluster') THEN
     oid_ := (n ->> 'outlet_id')::bigint;
     IF oid_ IS NOT NULL THEN
       SELECT o.cluster_id, o.channel, o.geo_class INTO o_cluster, o_channel, o_geo FROM app.outlet o WHERE o.id = oid_;
-      IF NEW.cluster_id IS NULL THEN
-        NEW.cluster_id := coalesce(
-          (SELECT h.cluster_id FROM app.outlet_placement_history h
-            WHERE h.outlet_id = oid_ AND h.valid_from <= NEW.business_date AND (h.valid_to IS NULL OR h.valid_to > NEW.business_date)),
-          o_cluster);
-      END IF;
-      IF TG_ARGV[0] = 'outlet' THEN
-        NEW := jsonb_populate_record(NEW, jsonb_build_object(
-          'outlet_channel', coalesce(n ->> 'outlet_channel', o_channel),
-          'outlet_geo_class', coalesce(n ->> 'outlet_geo_class', o_geo)));
-      END IF;
+      NEW.cluster_id := coalesce(
+        (SELECT h.cluster_id FROM app.outlet_placement_history h
+          WHERE h.outlet_id = oid_ AND h.valid_from <= NEW.business_date AND (h.valid_to IS NULL OR h.valid_to > NEW.business_date)),
+        o_cluster);
     END IF;
+  END IF;
+  IF TG_ARGV[0] = 'outlet' THEN
+    NEW := jsonb_populate_record(NEW, jsonb_build_object('outlet_channel', o_channel, 'outlet_geo_class', o_geo));
   END IF;
   RETURN NEW;
 END $$;
-COMMENT ON FUNCTION app.stamp_capture_context() IS 'BEFORE INSERT: stamps zone_id (route zone on the business date), cluster_id (outlet placement on that date) and, for visit and memo, the outlet channel and geo class, where the writer left them NULL.';
+COMMENT ON FUNCTION app.stamp_capture_context() IS 'BEFORE INSERT: sets zone_id (route zone on the business date), cluster_id (outlet placement on that date) and, for visit and memo, the outlet channel and geo class, overwriting any value the writer sent.';
 
 CREATE TRIGGER visit_stamp_context BEFORE INSERT ON app.visit FOR EACH ROW EXECUTE FUNCTION app.stamp_capture_context('outlet');
 CREATE TRIGGER memo_stamp_context BEFORE INSERT ON app.memo FOR EACH ROW EXECUTE FUNCTION app.stamp_capture_context('outlet');
