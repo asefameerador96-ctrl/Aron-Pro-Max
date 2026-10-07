@@ -4,14 +4,14 @@ import { apiGet, one, type SearchParams } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
 import { canOp } from "@/lib/admin/access";
 import type { SupervisorTarget } from "@/lib/admin/types";
-import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
+import { ADMIN_ONLY_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { businessDate } from "@/lib/i18n";
 
 export default async function SupervisorTargetsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
-  if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
+  if (!hasRole(session.user.role, ADMIN_ONLY_ROLES)) return <Forbidden locale={locale} />;
   const m = one(sp.month, 7);
   const month = m && /^\d{4}-(0[1-9]|1[0-2])$/.test(m) ? m : businessDate().slice(0, 7);
   const z = one(sp.zone_id, 15);

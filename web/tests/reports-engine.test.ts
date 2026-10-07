@@ -106,7 +106,7 @@ describe("formatting", () => {
     const col = { key: "x", label_en: "x", type: "mtk" as const };
     expect(formatCell("bn", col, 7935, { yes: "", no: "" })).toBe("৭.৯৩৫");
     expect(formatCell("en", col, 7935, { yes: "", no: "" })).toBe("7.935");
-    expect(formatCell("en", { key: "p", label_en: "p", type: "pct" }, 2.33, { yes: "", no: "" })).toBe("2.3%");
+    expect(formatCell("en", { key: "p", label_en: "p", type: "pct" }, 2.33, { yes: "", no: "" })).toBe("2.33%");
     expect(formatTaka("en", 543_435_000)).toBe("543,435.000");
     expect(formatTaka("bn", 12_345_678_900)).toBe("১,২৩,৪৫,৬৭৮.৯০০");
     expect(formatTaka("en", -5)).toBe("-0.005");
