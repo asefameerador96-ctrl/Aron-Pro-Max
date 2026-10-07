@@ -78,6 +78,16 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Fifth session (2026-10-07, from ~12:55Z)
+- **N-038 push on the phone** (core-sync `push/`, `shell/PushShell` in SR/AMO/TSO):
+  - FCM data keys read: `kind` = `sync_nudge` (+ `reason`; `task_assigned` shows the notice), `announcement` (title/body en+bn), `config_pull`, `bundle_pull`; `pull_after_s` clamped to 0..120 (0..20 urgent); docs/19 `{type: cfg}` read as a config pull; anything else ignored.
+  - A push only shows a notice and schedules a pull (`PushPullWorker`, one CONNECTED job per kind; KEEP while one waits, one more appended while one runs; no retry loop). The pull job never gets the `SyncRunner`: **no upload from a push** (docs/24 s4.7). Config pull = `ResumeConfigCheck.pullAfterPush` (no 5-min gap, daily cap kept).
+  - Token: `PUT /v1/devices/me/push-token` with the `device` proof (`ProofStrings.device`), sent only when the user|token pair changed (shared phone), after start, online login, resume and token rotation; a refusal backs off 12 h unless an online login/bind happens.
+  - Notices: channels `aron_tasks` (high) and `aron_notices`, bn/en strings in core-sync res; tap opens the launcher activity with `com.aktcl.aron.open=tasks`; SR `MainActivity` turns it into `SrApp(openTasks)` (consumed once, only from list screens, never out of a visit/sale/memo) and pulls at once; `PushRuntime.pulled` reloads the task board.
+  - `AronMessagingService` is not exported (AppCoexistenceTest unchanged). Without `google-services.json` push is off (CI writes it from the secret).
+  - Opus checker: 2 confirmed + 4 plausible fixed or routed (docs/requests/android-core-sr-notification-permission.md to android-sr-a). Device check D-N38. Note: Android delivers nothing to an app force-stopped in Settings until it is opened again: the acceptance wording "force-stopped" can only mean swiped away / killed by the system.
+- **F-SYS-052** (offline unlock and shared phone): unlock, 7-day expiry and the doubling cool-down were already built and tested (SessionRepositoryTest). Added: `whileBIsSignedInAsRowsGetAnUploadTokenOfAOnly` (core-session) and `SharedPhoneSyncTest` (core-sync: B's own file and empty outbox; A's rows upload under A's token only). Opus checker pending.
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~12:50Z, fourth session)
 - **Done this session** (details in "Fourth session" below; every row had a fresh Opus checker and every confirmed defect is a test):
   - android-sys shell wiring: photos (app-sr `MediaShell`: upload worker, `media_meta` sink, camera, photo claim before commit), logout (core-sync `shell/ShellLogout` in SR/AMO/TSO), updater (core-sync `shell/UpdateShell` + `UpdateHost` in each app).
