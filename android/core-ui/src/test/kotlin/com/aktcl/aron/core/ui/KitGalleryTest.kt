@@ -24,9 +24,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /** N-023 acceptance: the gallery renders every component, Bangla and English, at font scale 1.3 on 360 x 640 dp. */
 @RunWith(RobolectricTestRunner::class)
+// NATIVE graphics: the legacy Robolectric mode measures text at 1 px per character, which makes every overflow check meaningless.
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w360dp-h640dp")
 class KitGalleryTest {
     @get:Rule val rule = createComposeRule()
