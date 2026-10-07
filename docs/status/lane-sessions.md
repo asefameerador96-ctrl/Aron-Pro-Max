@@ -20,7 +20,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | db | session_013NHxcKi11ivBpd2B2v3g7D | Opus | 2026-10-07 | recycled 10:51 (third session); previous session_017dmQw2byPhYrFKrGJrEMRj is retired (READY TO RECYCLE 10:50, lane/db 501e466f, V0023 to V0038); earlier session_01KAjUS8Gz437Nx93fsiVFYX retired |
 | shared (first session) | session_01SD55WuhWKuEfeuC6T4A8e2 | Sonnet | 2026-10-05 | finished; blocked by its own permission settings on the contract; do not nudge |
 | shared-2 | session_01QRBncHfaoTvSqTLur5L3ZH | Sonnet | 2026-10-07 | N-002, DTO hosting, web drift |
-| backend-core | session_01465rpZSgSrMTU8CACwuEYx | Opus | 2026-10-07 | recycled 10:25 (fourth session); previous session_01FfFvStuQXyZNg6QM9rndaD is retired (READY TO RECYCLE 10:25, head c59a703d); earlier sessions retired (01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
+| backend-core | session_01CnjB3beqLff7QFRhoTxN3r | Opus | 2026-10-07 | recycled 12:28 (fifth session); previous session_01465rpZSgSrMTU8CACwuEYx is retired (READY TO RECYCLE 12:27, lane/backend-core e8df8227); earlier sessions retired (01FfFvStuQXyZNg6QM9rndaD, 01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
 | backend-reports | session_019WhVDAstm1xPBBrp6FPKM9 | Sonnet | 2026-10-07 | |
 | backend-admin | session_01TogQKB1R6sgWVTafC9DMYG | Sonnet | 2026-10-07 | recycled 05:02; previous session_01JK4kErf8frNpx25mmoyPAc is retired (READY TO RECYCLE 05:01) |
 | android-core | session_01Xx4ADUeVGTHNrVSqXU3tjh | Opus | 2026-10-07 | recycled 08:39 (fourth session); session_01EcjRGi19bkvqTfp5RQnJU2 retired (READY TO RECYCLE 08:39) |
