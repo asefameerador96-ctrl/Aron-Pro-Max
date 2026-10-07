@@ -52,8 +52,11 @@ EnrolDeviceRequest:
       - $ref: '#/components/schemas/DeviceStatusReport'
       - type: 'null'
     play_integrity_unavailable:
-      description: Why the enrolment carries no Play Integrity token. When the phone tried Play Integrity exactly
-        one of `play_integrity` (in `status`) and `play_integrity_unavailable` is non-null.
+      description: 'Why the enrolment carries no Play Integrity token. When the phone tried Play Integrity exactly
+        one of `play_integrity` (in `status`) and `play_integrity_unavailable` is non-null. Precedence: this top-level
+        marker is the one that counts for the enrolment attestation; when it is present the copy in the nested `status`
+        (the same state) is ignored on enrolment. A missing marker (an older app) means unknown: never a failure
+        and never a clean phone (docs/24 s14a R18).'
       oneOf:
       - $ref: '#/components/schemas/PlayIntegrityUnavailable'
       - type: 'null'

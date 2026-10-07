@@ -62,6 +62,7 @@ internal class AdminHarness : AutoCloseable {
     fun id(user: String) = ids.getValue(user)
 
     fun tok(user: String, role: Role, vararg perms: String): String {
+        // wall-clock-ok: token validity window against the app guard, which verifies with the system clock
         val now = Instant.now()
         val c = JWTClaimsSet.Builder().issuer("aron").audience("aron-api").subject(id(user).toString()).claim("uname", user)
             .claim("role", role.wire).claim("sv", 1L).claim("flv", "web").claim("perm", perms.toList()).claim("pii", false)
@@ -92,6 +93,7 @@ internal class AdminHarness : AutoCloseable {
     fun scalar(sql: String): String = env.scalar(sql) ?: error("no row for: $sql")
     fun count(sql: String): Int = scalar(sql).toInt()
     fun exec(sql: String) = env.fresh.db.jdbi.useHandle<Exception> { it.execute(sql) }
+    // wall-clock-ok: the app under test runs on AronClock.SYSTEM, so its Dhaka "today" is the real one
     val today: LocalDate get() = BusinessDate.of(System.currentTimeMillis()).toJavaLocalDate()
 
     /** A fresh SKU under the seeded variant with one open row per price type from 2026-01-01; returns its id. */

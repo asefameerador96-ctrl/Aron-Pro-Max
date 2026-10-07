@@ -41,7 +41,7 @@ On an enrolled Galaxy A06 with the **prod** policy applied (last check: see the 
 4. Settings > General management > Reset > Factory data reset: refused ("blocked by your IT admin").
 5. Reboot: after boot, `dumpsys device_policy` (from a dev phone, or the status report in the portal) shows the same restrictions.
 
-## android-sr-b details (sale, memo, dues, Sales Submit) — DEVICE-PENDING until the SR app shell wires them
+## android-sr-b details (sale, memo, dues, Sales Submit) — wired in the SR app shell, DEVICE-PENDING
 Host proof: `SaleReviewTest`, `SaleCommitterTest`, `SaleFlowTest`, `CheckerTest` (feature-sale), `DaySummaryTest`, `MemoDomainTest`, `HomeKpiTest` (feature-memo), `SalesSubmitTest` (feature-dayclose), and the Compose screen tests.
 On the Galaxy A06 (SR app, airplane mode on, seeded day):
 1. **Offline sale (F-SR-023/025):** enter 20 sticks of a cigarette SKU and 3 pieces of a lighter; the pack badge, unit and running total show; Review shows category subtotals and the net. Save. Pass: the memo number is shown, nothing waits for the network.
@@ -53,3 +53,22 @@ On the Galaxy A06 (SR app, airplane mode on, seeded day):
 7. **Dues (F-SR-032):** Memo menu shows the due in red; Mark paid asks first, settles the whole due once; a second tap does nothing.
 8. **Sales Submit (F-SR-034/035), then online:** Sync data retries until device and server counts match; Submit is enabled; with a retailer owing, a warning shows but Submit still works; turned offline it queues and the success text only shows after the server settles.
 9. **Bangla, font 1.3:** all of the above in Bangla with the system font scale at 1.3: no truncation, 48 dp targets, Bengali digits.
+
+### D-UI-01 outdoor legibility (android-core-ui, owner)
+Host proof: `TokenContrastTest` (key figures 7:1, body 7:1 in tier B, secondary 4.5:1, 35 percent glare proxy), Roborazzi goldens.
+Owner, on the Galaxy A06, outdoors in direct sun, screen brightness at 100 percent, SR debug APK:
+1. Light mode (default). Open Home: read aloud the three tile labels, the sync chip and today's sales figure. Pass: every one readable at arm's length without shading the screen with a hand.
+2. Open Sale entry: read the quantity, the line total and the "Next" button text. Pass: all three readable.
+3. Open Review: read the grand total, the due amount and the Confirm button. Pass: readable.
+4. Open the Memo preview: read the memo number, total and the Print button. Pass: readable.
+5. Repeat steps 1 to 4 after tapping the Sunlight (sun icon) switch in the top bar. Pass: at least as readable as light mode, and the screens are fully solid (no translucent panels).
+6. Say which of the 4 screens, if any, you had to shade; note the time of day and weather. Fail on any number or primary action you could not read: send a photo to the lead.
+
+### D-UI-02 press-and-hold 1.2 s (android-core-ui)
+Host proof: the accessibility long-click path is unit-tested; the timed hold cannot run on the host.
+On the A06, on a screen using `AronHoldToConfirm` (for example submit Review):
+1. Press and hold the button for about 0.5 s, then release. Pass: nothing is confirmed, the progress ring resets.
+2. Press and hold for 1.0 s, release. Pass: not confirmed.
+3. Press and hold for 1.5 s without lifting. Pass: confirms once (one vibration tick), never twice.
+4. Press, hold 1.0 s, slide the finger off the button and release. Pass: cancelled.
+5. Turn TalkBack on, double-tap and hold (or use the Confirm custom action). Pass: confirms.

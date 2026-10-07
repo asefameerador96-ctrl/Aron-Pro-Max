@@ -17,6 +17,9 @@ dependencies {
     // Device status and integrity wiring (docs/requests/android-geo-dpc-wiring.md): the sync worker queues device_status.
     implementation(project(":android:core-geo"))
     implementation(project(":android:dpc"))
+    // Logout glue for android-sys (F-SYS-022). Never the photo module: the record sync must not know photos exist
+    // (MediaUploaderTest.theRecordSyncNeverWaitsForPhotos); the SR shell wires photos (app-sr MediaShell).
+    implementation(project(":android:core-system"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(platform(libs.firebase.bom))

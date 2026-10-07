@@ -27,14 +27,14 @@ class SunlightRulesTest {
         assertEquals(26f, normalBn.lineHeight.value, 0f)
         assertEquals(18f, sunBn.fontSize.value, 0f); assertEquals(28f, sunBn.lineHeight.value, 0f)
         assertEquals(FontWeight.Medium, sunBn.fontWeight)   // docs/32 s2a: Bangla body at least 500 in sunlight
-        assertEquals(FontWeight.Normal, normBnWeight)
+        assertEquals(FontWeight.Medium, normBnWeight)   // all Bangla body is 500 in every theme
     }
 
     @Test fun neverAWeightThatIsNotBundled() {
         for (lang in AppLanguage.values()) for (sun in listOf(false, true)) {
             val t = aronTypography(lang, sun)
             listOf(t.displayLarge, t.titleLarge, t.bodyMedium, t.bodySmall, t.labelMedium).forEach {
-                val medium = it.fontWeight == FontWeight.Medium && lang == AppLanguage.BN && sun   // Bangla sunlight body only
+                val medium = it.fontWeight == FontWeight.Medium && lang == AppLanguage.BN   // Bangla body and caption only
                 assertTrue(it.fontWeight == FontWeight.Normal || it.fontWeight == FontWeight.Bold || medium)
             }
         }
@@ -43,5 +43,15 @@ class SunlightRulesTest {
     @Test fun sunlightForcesTheSolidTier() {
         assertEquals(AronMode.Sunlight, AronTokens.forMode(AronMode.Sunlight).mode)
         assertTrue(AronTokens.Sunlight.surfaceGlass.alpha == 1f && AronTokens.Sunlight.surfaceGlassStrong.alpha == 1f)
+    }
+}
+
+class PrimaryLabelRuleTest {
+    @Test fun primaryLabelIsLargeBold() {
+        for (lang in AppLanguage.values()) for (sun in listOf(false, true)) {
+            val style = aronTypography(lang, sun).titleMedium   // what AronPrimaryButton and the hold button use
+            assertTrue(style.fontSize.value >= AronTokens.PrimaryLabelMinSp)
+            assertEquals(FontWeight.Bold, style.fontWeight)
+        }
     }
 }

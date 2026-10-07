@@ -240,7 +240,10 @@ class SrDay(
 
     val visitFlow: VisitFlow = VisitFlow(
         fixes = fixSource, metaProvider = metaProvider,
-        committer = { v, f -> capture.recordVisitOpen(v, f); runCatching { requestSync() } },
+        committer = { v, f ->
+            v.geoForcePhotoUuid?.let { claimPhoto(it, "force_sale", "visit", v.clientUuid, f) }
+            capture.recordVisitOpen(v, f); runCatching { requestSync() }
+        },
         session = visitSession, settings = { GeoSettings.DEFAULT }, nowIso = { iso(clock.nowMs()) },
         nextSequenceNo = { nextSequence++ },
         configCheck = com.aktcl.aron.feature.outlet.ConfigCheck { launchConfigCheck() },
@@ -305,17 +308,57 @@ class SrDay(
     )
 
     // ---- outlet requests (F-SR-037/038/039/076, N-040): one Room commit with the request's own fix
+    private val requestFixUuids = java.util.concurrent.ConcurrentHashMap<String, String>()
     val outletRequests = OutletRequests(
         committer = { draft ->
             val fix = draft.fix ?: fixSource.readFix("outlet_capture")
-            val (entity, fixEntity) = draft.toEntities(metaProvider.meta(0L), fix)
+            // One fix uuid per request across commit retries: the photo's stamp names the fix row that is finally stored.
+            val fixUuid = requestFixUuids.getOrPut(draft.requestUuid) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+            val (entity, fixEntity) = draft.toEntities(metaProvider.meta(0L), fix, fixUuid)
+            draft.photoUuids.forEach { claimPhoto(it, "outlet_capture", "outlet_change_request", entity.clientUuid, fixEntity) }
             capture.recordOutletRequest(entity, fixEntity)
             runCatching { requestSync() }
         },
     )
 
-    /** The camera pipeline of F-SYS-030 plugs in here; until it lands there is no camera and photo steps cannot complete. */
+    /** The camera pipeline of F-SYS-030; [attachMedia] replaces the placeholder once the user's media queue is open. */
     @Volatile var photoPipeline: PhotoPipeline = NoCameraPipeline
+
+    /** This user's camera and photo queue (core-media); null in previews and tests (no camera, nothing to claim). */
+    @Volatile var media: com.aktcl.aron.core.media.MediaComponents? = null
+        private set
+
+    /** Shell wiring (MainActivity): the camera, then photos a killed process left are re-armed for upload. */
+    suspend fun attachMedia(m: com.aktcl.aron.core.media.MediaComponents) {
+        media = m
+        photoPipeline = MediaPhotoPipeline(m)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { m.resume() } // file I/O, never on the main thread
+    }
+
+    /**
+     * Claims a photo for the record about to be committed (F-SYS-030: before the commit, so the media worker uploads it
+     * after the record's ack). Idempotent for the same record. A photo that already belongs to another record (the Force
+     * Sale shot reused by its location request) stays with the first record; the request still names it. The stamp is the
+     * owning record's stored fix (the contract's `media_meta.fix` is a stored geo_fix row); for Force Sale that is the
+     * visit's fix, and the shutter fix travels in the location request's own fix row.
+     */
+    private suspend fun claimPhoto(photoUuid: String, purpose: String, refType: String, refUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) {
+        val m = media ?: return
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { claimPhotoIo(m, photoUuid, purpose, refType, refUuid, fix) }
+    }
+
+    private suspend fun claimPhotoIo(
+        m: com.aktcl.aron.core.media.MediaComponents, photoUuid: String, purpose: String, refType: String, refUuid: String,
+        fix: com.aktcl.aron.core.database.entity.GeoFixEntity?,
+    ) {
+        val item = m.store.get(photoUuid) ?: return
+        val owner = item.ref
+        if (owner != null && owner.refClientUuid != refUuid) return
+        m.attach(
+            photoUuid, com.aktcl.aron.core.media.MediaRef(purpose, refType, refUuid),
+            fix?.let { com.aktcl.aron.core.media.PhotoStamp(it.lat, it.lng, it.accuracyM, it.isMock, it.clientUuid) },
+        )
+    }
 
     fun newCapture(purpose: String) = GeoPhotoCapture(fixSource, object : PhotoPipeline {
         override suspend fun captureAndCompress(photoUuid: String) = photoPipeline.captureAndCompress(photoUuid)
@@ -324,6 +367,13 @@ class SrDay(
 
     fun forceSaleController(capture: GeoPhotoCapture, locationGranted: () -> Boolean) =
         ForceSaleController(visitFlow, capture, outletRequests, locationGranted)
+}
+
+/** F-SYS-030 camera, compression and queue behind the outlet lane's [PhotoPipeline]; null when cancelled or no space. */
+class MediaPhotoPipeline(private val media: com.aktcl.aron.core.media.MediaComponents) : PhotoPipeline {
+    override suspend fun captureAndCompress(photoUuid: String): CapturedPhoto? =
+        media.capture(photoUuid)?.let { CapturedPhoto(photoUuid, it.thumbnailPath, it.item.bytes.toLong()) }
+    override suspend fun discard(photoUuid: String) { media.discard(photoUuid) }
 }
 
 /** Placeholder until F-SYS-030 (photo capture and compression) is on INT: no photo, so photo-gated steps stay incomplete. */

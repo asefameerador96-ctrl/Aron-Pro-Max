@@ -249,7 +249,7 @@ object HardcodedStringScanner {
 
     /** The modules whose code can show text to a field user. */
     fun isScannedModule(name: String): Boolean =
-        name.startsWith("app-") || name.startsWith("feature-") || name in setOf("core-ui", "core-printing", "core-sync", "dpc")
+        name.startsWith("app-") || name.startsWith("feature-") || name in setOf("core-ui", "core-printing", "core-sync", "core-system", "core-media", "dpc")
 
     /** Scans every module of [androidRoot] whose name matches [modules]. */
     fun scanTree(androidRoot: File, modules: (String) -> Boolean = ::isScannedModule): List<Violation> {

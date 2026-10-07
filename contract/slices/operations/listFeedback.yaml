@@ -5,9 +5,24 @@ operation:
   - people
   operationId: listFeedback
   summary: Feedback submitted from the TSO app.
+  description: Newest first (`created_at` descending). The optional `category_code` and `status` filters narrow
+    the page (docs/24 s14a R20).
   parameters:
   - $ref: '#/components/parameters/FromDate'
   - $ref: '#/components/parameters/ToDate'
+  - name: category_code
+    in: query
+    required: false
+    description: Only feedback of this category (`feedback_category` code list; the pattern of `FeedbackPayload.category_code`).
+    schema:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+  - name: status
+    in: query
+    required: false
+    description: Only feedback in this status.
+    schema:
+      $ref: '#/components/schemas/FeedbackStatus'
   - $ref: '#/components/parameters/Limit'
   - $ref: '#/components/parameters/Cursor'
   responses:

@@ -28,7 +28,8 @@ class SessionComponents(
     storageDir: File,
     cipher: SecretCipher,
     verifier: PasswordVerifier,
-    okHttp: OkHttpClient = AronApiClient.defaultOkHttp(),
+    /** The base client; core-media and the updater derive their bare blob clients from it (one connection pool). */
+    val okHttp: OkHttpClient = AronApiClient.defaultOkHttp(),
     /** Signs `X-Device-Proof` once the device key exists (enrolment); null before. */
     val proofSigner: DeviceProofSigner? = null,
     listener: ApiResponseListener? = null,
