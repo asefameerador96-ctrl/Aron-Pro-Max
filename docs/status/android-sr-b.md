@@ -1,6 +1,6 @@
 # Status: lane android-sr-b (2026-10-07)
 
-## Done
+## Status of rows (2026-10-07)
 Nothing is marked done yet (no row has its screen or independent checker). Written, pushed to `lane/android-sr-b`, CI verifying:
 `feature-sale/domain`: `SaleDraft` + `SaleDraftOps` (quantity entry in stick/piece/dozen/pack, slide empty packets, QC, credit paid, zero sale, QC lock), `SaleReviewCalculator` (lines, pack badge, stock warning, category subtotals, DRP reward, QC deduction, net via `shared:rules` `MemoMath`; offer line zero), `SaleCommitter` (memo, lines, discounts, QC and outbox in one Room transaction via `CaptureRepository.recordSale`; zero sale; edit with supersedes), `FileDraftStore` (atomic draft, survives kill).
 Tests: `SaleReviewTest`, `SaleCommitterTest` (Robolectric Room: atomic rollback, replay writes nothing, draft kill and relaunch).
@@ -35,3 +35,6 @@ T1 checker (Opus) on F-SR-023/025/026/027/029/033: 7 confirmed defects, all fixe
 5/6. An edit needs a well-formed reason (a listed one when `editReasons` is passed), its fix, an existing earlier memo of the same outlet and day, and cannot supersede itself.
 7. `SaleFlow.edit` runs the review before saving, so a failure is never persisted.
 Not turned into tests (noted): no soft ceiling on `cfg.sale.max_line_qty_base`; QC cap is per SKU (basis MQ-03/04 unknown); `PaidNegative` unused.
+
+## Plan for printing (from lead): docs/requests/android-print-integration.md s2
+Review Print drives SaveAndPrint (commit then print), never disabled by the printer unless `cfg.sale.require_printer_before_sale`; Memo menu reprint via `MemoPrinting.printMemo` with the confirm dialog; map Room rows to `MemoPrint` from stored mtk columns; PrinterIcon/PrinterBanner on Review, Memo and Summary. To do after wiring.
