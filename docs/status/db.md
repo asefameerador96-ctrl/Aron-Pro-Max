@@ -122,6 +122,9 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     `partition_policy.retention_class`, `app.archive_manifest` (status flow, export facts written once, jobs_rw only),
     `app.archive_candidates(today)`, `app.default_partition_rows()` (worker/jobs logins only). Capture-table
     partitioning stays deferred (D-DB-PART-01).
+  - `V0053` `cfg.sec.record_signature_mode` (docs/19 s9, enum_order, global) and `V0054` `app.security_event`
+    (append-only, api_rw/auth_rw insert, worker reads). Answers backend-core's two requests on lane/backend-core; answer
+    in `docs/requests/db-security-event-and-signature-mode-answer.md`. Opus checker PASS (round 3).
 
 ## Handoff (session 3 recycled, 2026-10-07 ~13:10 UTC)
 
@@ -143,13 +146,18 @@ INT has V0001-V0038; the integrator promotes the rest.
 
 **Next rows (lead's order):**
 1. Infra's per-app logins: answered by V0029 (`db-runtime-roles-gaps.md`); nothing open for db.
-2. Salvage port done (V0047-V0052). Next: DA-07 (record the deferred M-61..M-99 objects in this file) and PERF-03
-   (timeouts are in V0020 `apply_login_limits`; check what is left).
-3. Query-plan candidates still open:
-   - `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
-   - The `outlet_change_request` and `task (assignee_user_id, status)` indexes.
-   - due_ledger rows in `db/perf/generate.sql`.
-   - `task.route_id` has no index.
+2. Salvage port done (V0047-V0052); DA-07 recorded above. PERF-03, db side done: V0020 `app.db_role_limit` +
+   `apply_login_limits()` set the docs/18 timeouts (api 15 s/lock 3 s, auth 5 s, worker 10 min, jobs 30 min, web 60 s)
+   on each login; V0029 closed the grant gaps. Left to infra: `dbPerAppLogins = true` (`db-runtime-roles-gaps.md`).
+3. Query-plan candidates (session 4 review):
+   - `BundleService.openMemos` joins `app.memo` on client_uuid only (due_ledger has no memo business_date), so each open
+     memo costs one probe of the (client_uuid, business_date) unique index per month partition: ~13 probes per memo in
+     the hot window, about 1 ms per 50 open memos. No migration now; if bundle p95 shows it, add
+     `due_ledger.memo_business_date` (backend-core writes it) so the join prunes. Needs due_ledger rows in
+     `db/perf/generate.sql` to measure (still open).
+   - `task.route_id`: no index needed, no query filters on it (Tasks.kt only reads it).
+   - `outlet_change_request (status, business_date)` and `(outlet_id)` and `task (assignee_user_id, status)` exist (V0007);
+     BundleService's `ongoing` task list and the pending-request EXISTS use them.
 
 **Traps:**
 - Push only to `lane/db` (not `claude/db-wip-v0023`, not INT). A pushed migration is shipped: fix forward only.
@@ -172,6 +180,29 @@ INT has V0001-V0038; the integrator promotes the rest.
 - A new table or column needs `COMMENT ON` with the metadata line, then `tools/data-dictionary/render.sh` (or
   `-Paron.writeDictionary=true`).
 - A migration that creates a table calls `SELECT app.apply_db_role_grants();`.
+
+## AUD-DA-07: dw objects of docs/16 M-61..M-99, built or deliberately deferred (2026-10-07, session 4)
+
+Built (V0011, V0015, V0042/V0043, V0048 and backend-reports' DDL): `dim_date` (+ `dw.build_dim_date`), `dim_geo`,
+`dim_outlet`, `dim_product`, `dim_user` and their SCD2 `*_version` tables (M-61 except `dim_outlet_pii` and
+`dim_supervisor_assignment`); `fact_visit`, `fact_memo` (M-62/M-70 part); `agg_daily_route`, `_route_sku`,
+`_route_brand`, `_route_segment`, `_zone`, `_outlet`, `agg_hourly_zone` (M-63 part); `fact_device_day` (M-69),
+`fact_geo_fix` (M-80), `fact_attendance`, `fact_activity`, `fact_consent`, `fact_device_integrity`,
+`agg_daily_screen_use`; stable views `v_daily_*`, `v_collections`, `v_attendance`, `v_geo_integrity`,
+`v_outlet_masked` (M-66/M-68 part).
+
+Deferred, each built only when a BUILD row or a dashboard needs it (no consumer today):
+- Programme, target and offer objects (M-64 programme part, M-65, M-67 target KPIs, M-71, M-76, `dim_gift`,
+  `dim_program_period`, redemption and gift facts): deferred with the programmes themselves (sponsor rule 2, docs/27).
+- `fact_memo_line` and `dim_sku_price`/`fact_price_change` (M-62 part, M-74): when the BOD line-grain dashboard or a
+  price-compliance report lands; the daily route-SKU aggregate serves today's tiles.
+- Dues: `fact_due_ledger`, `fact_due_allocation`, `agg_memo_due_open`, `agg_outlet_due_ageing_daily` (M-62 part, M-73):
+  with the dues-ageing report (phase 2b); `v_collections` covers today's collection tile.
+- Month aggregates and balances (M-64 non-programme), `agg_daily_user`, `agg_daily_user_sku` (M-72), `fact_dq_flag`
+  (M-75), the s8.9 capture facts other than geo_fix (M-77..M-93: QC, survey, media, tasks, assessments, distribution),
+  `fact_web_entry_line`, `fact_config_change`, `dim_app_version`, `dim_reason`, `dim_device`, `bridge_*`,
+  `agg_outlet_visit_streak`, `agg_month_outlet_category`, `dim_outlet_pii` (D-107: PII stays in app behind grants),
+  `dim_supervisor_assignment`: land with their capture tables or first report, as docs/16 schedules (2a..5a).
 
 ## Lead rulings applied (docs/24 s14a, 2026-10-06)
 

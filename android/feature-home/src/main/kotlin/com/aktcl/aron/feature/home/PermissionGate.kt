@@ -5,6 +5,9 @@ enum class AppPermission(val manifestName: String) {
     PRECISE_LOCATION("android.permission.ACCESS_FINE_LOCATION"),
     CAMERA("android.permission.CAMERA"),
     BLUETOOTH("android.permission.BLUETOOTH_CONNECT"),
+
+    /** Optional (never a gate): lets a task push show on a phone that is not device-owner enrolled (N-038). Android 13+ only. */
+    NOTIFICATIONS("android.permission.POST_NOTIFICATIONS"),
 }
 
 enum class PermissionStatus { GRANTED, DENIED, DENIED_PERMANENTLY, NOT_ASKED }
