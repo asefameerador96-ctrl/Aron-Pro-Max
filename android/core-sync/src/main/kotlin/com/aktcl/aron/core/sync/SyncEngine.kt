@@ -138,10 +138,10 @@ class SyncEngine(
 
     /**
      * F-SYS-072 (BC-53): the server quarantines every header without a valid sig as `device_integrity_failed`; BC-53 asks
-     * it to accept them unless `cfg.sec.record_signature_mode` is enforce and to release a resend of such a registry row
-     * (not on INT on 2026-10-07: docs/requests/android-core-backend-record-signature-mode.md; until then rounds re-quarantine).
+     * it to accept them unless `cfg.sec.record_signature_mode` is enforce and to release a resend of such a registry row.
      * The phone treats a quarantine as terminal, so those rows are resent by uuid in rounds: at most one per business date
-     * and [INTEGRITY_RELEASE_ROUNDS] per episode, because the phone cannot see the server's mode (an older server or
+     * and [INTEGRITY_RELEASE_ROUNDS] per episode. The phone now reads the mode from config (db V0053) and holds the rows
+     * while it is enforce; the round limit stays because a delta can lag the server (an older server or
      * enforce answers them quarantined again; a later day's round catches a server upgraded meanwhile). The episode ends
      * only when no row carries the code in any state (released rows keep `last_code` while pending or in flight), so a
      * run that stops before the answer never ends it; rows quarantined later start a new episode. Meta: `<rounds>:<date>`.
@@ -156,12 +156,25 @@ class SyncEngine(
                 outbox.countWithCode(code) == 0 -> if (state != null) meta.deleteMeta(KEY_INTEGRITY_RELEASE)
                 outbox.countQuarantined(code) == 0 -> Unit // released rows still on their way
                 rounds >= INTEGRITY_RELEASE_ROUNDS || state?.substringAfter(':') == today -> Unit
+                // BC-56 (db V0053, delivery both): under enforce a resend is only quarantined again, so hold the rows
+                // without spending a round; a later switch to record or off releases them on the next run.
+                signatureModeEnforced() -> Unit
                 else -> {
                     outbox.releaseQuarantined(code)
                     meta.putMeta(SyncMetaEntity(KEY_INTEGRITY_RELEASE, "${rounds + 1}:$today"))
                 }
             }
         }
+    }
+
+    /** `cfg.sec.record_signature_mode` as the phone's config holds it (default record); an unreadable value is not enforce. */
+    private suspend fun signatureModeEnforced(): Boolean = try {
+        com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(KEY_SIGNATURE_MODE, iso(clock.nowMs()))
+            ?.let { (kotlinx.serialization.json.Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonPrimitive)?.content } == "enforce"
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
     }
 
     private inner class Run(val trigger: SyncTrigger) {
@@ -597,6 +610,7 @@ class SyncEngine(
         const val CODE_KEY_UNAVAILABLE = "device_key_unavailable"
         /** F-SYS-072: rounds of device_integrity_failed releases in this episode (`<rounds>:<business date>`). */
         const val KEY_INTEGRITY_RELEASE = "sync.integrity_release.v1"
+        const val KEY_SIGNATURE_MODE = "cfg.sec.record_signature_mode"
         const val INTEGRITY_RELEASE_ROUNDS = 7
         const val KEY_CONFIG_VERSION = ReferenceRepository.KEY_CONFIG_VERSION
         const val KEY_CONFIG_VERSION_SERVER = "sync.config_version_server"
