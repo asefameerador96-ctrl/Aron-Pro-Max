@@ -17,6 +17,12 @@ the registry default; integrity off; lockdown as seeded), and an unknown phone i
   certificate, so an admin can mint an enrolment token (`lockdown_level` dev, flavour sr). The same seed lets the
   device-owner path (D-04) mint tokens.
 
+**Laptop-session check after the next dev deploy (enrolment tokens can be minted):** log in to the dev API as
+`admin1001` (web client), then `POST /v1/admin/enrolment-tokens` with
+`{"flavour":"sr","lockdown_level":"dev","max_uses":2,"expires_in_h":24}`. Expected: **201** with a token and QR text.
+The token is shown once: never paste it into chat, a file or a commit. Before the release seed this answered 404
+"no published release of this flavour to provision".
+
 **Checks that need NO login, run these first on the A06:** D-P1 (on-phone print goldens), D-PERF-04 (lab
 benchmark), D-DB-VAC (SQLCipher device test), D-UI-01 if it runs on the seeded day without a server login.
 
