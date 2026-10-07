@@ -6,6 +6,7 @@ import com.aktcl.aron.core.printing.bt.PrintFailure
 import com.aktcl.aron.core.printing.bt.PrintJob
 import com.aktcl.aron.core.printing.bt.PrintOutcome
 import com.aktcl.aron.core.printing.bt.PrinterManager
+import com.aktcl.aron.core.printing.doc.DaySummaryPrint
 import com.aktcl.aron.core.printing.doc.MemoPrint
 import com.aktcl.aron.core.printing.doc.StockSlipPrint
 import com.aktcl.aron.core.printing.render.PaperTooLongException
@@ -147,6 +148,14 @@ class MemoPrinting(
         val reprintNo = ReprintPolicy.nextReprintNo(history)
         return print(stockClientUuid, "stock_slip", null, stockClientUuid, history) { it.stockSlip(slip.copy(reprintNo = reprintNo)) }
     }
+
+    /**
+     * Prints the day summary (F-SR-036) as it stands now. A summary is a report of the moment it was printed, not a
+     * bill, so it has no reprint limit and no duplicate marker (AP-09). [daySummaryUuid] is the caller's stable
+     * UUID v4 for that user's business date, so every print of one day is one document on the server.
+     */
+    suspend fun printDaySummary(daySummaryUuid: String, summary: DaySummaryPrint): PrintAttempt =
+        print(daySummaryUuid, "day_summary", null, daySummaryUuid, historyOf(daySummaryUuid)) { it.daySummary(summary) }
 
     private suspend fun historyOf(uuid: String): List<PrintEvent> = ReprintPolicy.effective(
         ledger.history(uuid),

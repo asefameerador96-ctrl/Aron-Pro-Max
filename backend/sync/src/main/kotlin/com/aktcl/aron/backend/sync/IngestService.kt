@@ -3,8 +3,10 @@ package com.aktcl.aron.backend.sync
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
+import com.aktcl.aron.backend.platform.IngestRecord
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ReachResolver
+import com.aktcl.aron.backend.platform.RecordHandlers
 import com.aktcl.aron.backend.platform.ResponseJson
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.wire
@@ -67,6 +69,8 @@ class IngestService(
     private val reach: ReachResolver,
     private val clock: AronClock = AronClock.SYSTEM,
     private val generation: () -> String = { com.aktcl.aron.backend.platform.NIL_GENERATION },
+    /** Type-specific rules and side effects registered by other modules (the ingest extension point). */
+    private val handlers: RecordHandlers = RecordHandlers.NONE,
 ) {
     private val log = LoggerFactory.getLogger("aron.sync.ingest")
 
@@ -362,23 +366,35 @@ class IngestService(
             }
         }
 
-        // 10. Store.
+        // 10. Registered handlers' own checks, then store.
+        val hs = handlers.forType(r.type)
+        val ingestRec = if (hs.isEmpty()) null else IngestRecord(
+            r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now,
+        )
+        for (hd in hs) {
+            val refusal = hd.check(h, ingestRec!!) ?: continue
+            return refuse(h, ctx, r, bd, refusal.code, refusal.detail)
+        }
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
+                hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)
             }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
-            is RecordWriter.Result.Refused -> {
-                if (stored.code.status.wire == "quarantined") quarantine(h, ctx, r, bd, stored.code, stored.detail)
-                else if (stored.code.retryable == true) park(h, ctx, r, stored.code, stored.detail)
-                else finalReject(h, ctx, r, stored.code, stored.detail)
-            }
+            is RecordWriter.Result.Refused -> refuse(h, ctx, r, bd, stored.code, stored.detail)
         }
+    }
+
+    /** A refusal by the writer or a handler: the outcome code's status decides quarantine, park or final reject. */
+    private fun refuse(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String): Outcome = when {
+        code.status.wire == "quarantined" -> quarantine(h, ctx, r, bd, code, detail)
+        code.retryable == true -> park(h, ctx, r, code, detail)
+        else -> finalReject(h, ctx, r, code, detail)
     }
 
     /**
