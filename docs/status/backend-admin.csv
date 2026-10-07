@@ -1,3 +1,6 @@
 row_id,size,started_utc,finished_utc,minutes,review_findings,notes
 F-API-037,L,2026-10-07T03:20Z,2026-10-07T04:40Z,80,9,"Opus checker; all fixed"
 F-API-040,S,2026-10-07T04:00Z,2026-10-07T04:10Z,15,0,""
+F-API-036,S,2026-10-07T04:20Z,2026-10-07T05:10Z,50,5,"Opus checker; fixed"
+F-API-058/059/060/061/062/063/064/042/086,M,2026-10-07T05:00Z,2026-10-07T07:00Z,120,6,"Sonnet checker; fixed"
+F-API-035c/080/F-ADM-081,L,2026-10-07T05:30Z,2026-10-07T08:00Z,150,5,"builder subagent + Opus checker; fixed"

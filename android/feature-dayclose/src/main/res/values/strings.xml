@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="submit_title">Sales submit</string>
+    <string name="submit_status_online">Online</string>
+    <string name="submit_status_offline">Offline</string>
+    <string name="submit_col_device">Device</string>
+    <string name="submit_col_server">Server</string>
+    <string name="submit_server_blank">—</string>
+    <string name="submit_sync">Sync data</string>
+    <string name="submit_button">Submit sales</string>
+    <string name="submit_blocked_unsynced">%1$s records are not synced yet.</string>
+    <string name="submit_blocked_mismatch">%1$s: device %2$s, server %3$s.</string>
+    <string name="submit_blocked_done">Today\'s sales are already submitted.</string>
+    <string name="submit_note_rejected">%1$s records were rejected by the server.</string>
+    <string name="submit_note_quarantined">%1$s records are held for review.</string>
+    <string name="submit_dues_warning">%1$s retailers still owe %2$s. You can still submit.</string>
+    <string name="submit_queued">Submit is saved and will be sent when you are online.</string>
+    <string name="submit_success">Your sales for today are submitted.</string>
+</resources>

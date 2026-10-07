@@ -52,6 +52,20 @@ object AronTokens {
     object Radius { val Chip: Dp = 12.dp; val Card: Dp = 20.dp; val Sheet: Dp = 28.dp }
     val Hairline: Dp = 1.dp
 
+    /** Buttons are fully round (a percent-50 corner). */
+    val ButtonShape = androidx.compose.foundation.shape.RoundedCornerShape(50)
+
+    /** Elevation levels: page, card, sheet, dialog (soft, low-opacity shadows only). */
+    object Elevation { val Page: Dp = 0.dp; val Card: Dp = 2.dp; val Sheet: Dp = 6.dp; val Dialog: Dp = 12.dp }
+
+    /** Glass and state alphas, so no component carries a literal. */
+    object Alpha {
+        const val SheenLight = 0.22f; const val SheenDark = 0.06f
+        const val Shadow = 0.10f; const val SolidBorder = 0.35f; const val TierABoost = 0.08f
+        const val Container = 0.14f; const val ContainerWarm = 0.16f
+        const val HoldTrack = 0.25f; const val HoldFill = 0.5f
+    }
+
     /** Spacing on a 4 dp grid. */
     object Space { val Xs: Dp = 4.dp; val S: Dp = 8.dp; val M: Dp = 12.dp; val L: Dp = 16.dp; val Xl: Dp = 24.dp; val Screen: Dp = 16.dp }
 
@@ -59,7 +73,7 @@ object AronTokens {
     object Touch { val Min: Dp = 48.dp; val Primary: Dp = 56.dp }
 
     /** Motion in milliseconds. */
-    object Motion { const val Fast = 150; const val Base = 220; const val Sheet = 320 }
+    object Motion { const val Fast = 150; const val Base = 220; const val Sheet = 320; const val Hold = 1200 }
 }
 
 val LocalAronColors = staticCompositionLocalOf { AronTokens.Light }

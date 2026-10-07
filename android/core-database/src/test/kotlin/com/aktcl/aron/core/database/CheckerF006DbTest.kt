@@ -70,4 +70,26 @@ class CheckerF006DbTest {
         apply(bundle("2026-10-06:1", "2026-10-06", prefetch = true))
         assertEquals(ApplyResult.APPLIED, apply(bundle("2026-10-05:4", "2026-10-05")))
     }
+
+    /**
+     * Fix check: the prefetch is kept as ONE sync_meta row. A real bundle is up to 2 MiB gzip (10+ MB of JSON); Android's
+     * CursorWindow (2 MB) cannot read a row that large back, so promotePrefetch fails on the morning it is needed.
+     */
+    @Test fun aLargePrefetchCanBePromoted() = runTest {
+        apply(bundle("2026-10-05:3", "2026-10-05"))
+        val big = JsonObject(bundle("2026-10-06:1", "2026-10-06", prefetch = true) + ("tutorials" to JsonPrimitive("ক".repeat(1_500_000))))
+        assertEquals(ApplyResult.PREFETCH_STORED, apply(big))
+        assertEquals(ApplyResult.APPLIED, repo.promotePrefetch("2026-10-06"))
+        assertEquals(2, repo.routesOfDay("2026-10-06").size)
+    }
+
+    /** Fix check: a raw section over the CursorWindow limit (Bangla and a surrogate pair at a chunk edge) reads back whole. */
+    @Test fun aLargeRawSectionReadsBackIntact() = runTest {
+        val text = "ক".repeat(399_999) + "\uD83D\uDE00" + "খ".repeat(1_000_000)
+        val raw = JsonObject(bundle("2026-10-05:3", "2026-10-05") + ("tutorials" to JsonPrimitive(text)))
+        assertEquals(ApplyResult.APPLIED, apply(raw))
+        assertEquals(JsonPrimitive(text).toString(), repo.section("tutorials"))
+        assertEquals(ApplyResult.APPLIED, apply(bundle("2026-10-05:4", "2026-10-05")))
+        assertEquals(null, db.referenceDao().section("tutorials#1"))
+    }
 }

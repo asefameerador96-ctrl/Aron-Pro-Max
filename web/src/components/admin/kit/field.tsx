@@ -20,4 +20,4 @@ export function Field({ label, htmlFor, required, hint, error, children }: { lab
 }
 
 export const inputClass =
-  "w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-slate-100";
+  "w-full min-h-11 rounded-[var(--radius-chip)] border border-slate-300 bg-white px-3.5 py-2.5 text-sm transition-[border-color,box-shadow] duration-[var(--motion-fast)] focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:bg-slate-100";
