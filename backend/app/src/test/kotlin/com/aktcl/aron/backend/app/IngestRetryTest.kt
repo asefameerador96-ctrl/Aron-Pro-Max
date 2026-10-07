@@ -223,7 +223,15 @@ class IngestRetryTest {
         return JsonObject(v + ("business_date" to kotlinx.serialization.json.JsonPrimitive(date)))
     }
 
-    /** F-SYS-089: after a failover a re-sent row older than the window is accepted (flag resync_late), never quarantined. */
+    private fun restore(startedSql: String, lostAfterSql: String) = fresh.db.jdbi.useTransaction<Exception> { h ->
+        h.execute("UPDATE app.server_generation SET is_current = false WHERE is_current")
+        h.execute("INSERT INTO app.server_generation (generation, kind, started_at, lost_after_utc) VALUES (gen_random_uuid(), 'pitr_restore', $startedSql, $lostAfterSql)")
+    }
+
+    /**
+     * F-SYS-089: after a restore a re-sent row older than the window is accepted (flag resync_late), never quarantined;
+     * bounded by what the lost lineage could have accepted, for a young generation only, on `resync` and `digest_resend`.
+     */
     @Test
     fun aResyncRowOlderThanTheWindowIsAcceptedOnlyAfterARestore() = testApplication {
         application { aronApi(wiring) }
@@ -231,14 +239,16 @@ class IngestRetryTest {
         // 2026-12-26 is 8 days before 2027-01-03: outside cfg.sync.max_backdate_days (7).
         client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined")
         client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined", trigger = "resync") // no restore yet
-        fresh.db.jdbi.useTransaction<Exception> { h ->
-            h.execute("UPDATE app.server_generation SET is_current = false WHERE is_current")
-            h.execute("INSERT INTO app.server_generation (generation, kind, started_at, lost_after_utc) VALUES (gen_random_uuid(), 'pitr_restore', TIMESTAMPTZ '2027-01-03 04:00:00+00', TIMESTAMPTZ '2027-01-03 03:00:00+00')")
-        }
+        // Restored at 04:00Z; acks after 2027-01-01 23:00Z (Dhaka 2027-01-02) were lost: rows back to 2026-12-26 were acceptable.
+        restore("TIMESTAMPTZ '2027-01-03 04:00:00+00'", "TIMESTAMPTZ '2027-01-01 23:00:00+00'")
         client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined") // not a re-send
         val late = oldVisit(o, "2026-12-26")
         client.send(listOf(late), want = "accepted", trigger = "resync")
         assertEquals(1L, visits(uuidOf(late)))
-        client.send(listOf(oldVisit(o, "2026-12-24")), want = "quarantined", trigger = "resync") // beyond what a lineage accepted
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "accepted", trigger = "digest_resend")
+        client.send(listOf(oldVisit(o, "2026-12-25")), want = "quarantined", trigger = "resync") // beyond what a lineage accepted
+        // An old generation (restored days ago): the allowance has expired.
+        restore("TIMESTAMPTZ '2027-01-01 04:00:00+00'", "TIMESTAMPTZ '2026-12-31 23:00:00+00'")
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined", trigger = "resync")
     }
 }

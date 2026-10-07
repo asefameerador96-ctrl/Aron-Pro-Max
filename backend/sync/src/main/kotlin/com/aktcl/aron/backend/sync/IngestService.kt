@@ -105,17 +105,7 @@ class IngestService(
     }
 
     /** Per-batch caches. */
-    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val trigger: String = "manual") {
-        /**
-         * F-SYS-089: (started_at) of the current generation when it is a failover or restore, else null; read once per
-         * batch and only for a `resync` batch.
-         */
-        val restoredAt: Instant? by lazy {
-            if (trigger != "resync") null else db.jdbi.withHandle<Instant?, Exception> { h ->
-                h.createQuery("SELECT started_at FROM app.server_generation WHERE is_current AND kind <> 'created'")
-                    .mapTo(OffsetDateTime::class.java).findOne().orElse(null)?.toInstant()
-            }
-        }
+    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null) {
         /** Handlers' after-commit calls of the current family, by record index (dropped when the record rolls back). */
         val afterCommit = ArrayList<Triple<Int, com.aktcl.aron.backend.platform.RecordHandler, IngestRecord>>()
         /** Route-days this batch touched (F-SYS-016), settled at its end. */
@@ -143,7 +133,7 @@ class IngestService(
 
         replayOrClaim(up, req, recs.size, fingerprint, now)?.let { return it }
 
-        val ctx = Ctx(up, req.batch_uuid, now, req.trigger)
+        val ctx = Ctx(up, req.batch_uuid, now, resyncWindow(req.trigger, now))
         val outcomes = arrayOfNulls<Outcome>(recs.size)
         var i = 0
         while (i < recs.size) {
@@ -336,11 +326,7 @@ class IngestService(
         // F-SYS-089: after a failover or restore the phone re-sends rows the lost lineage had acknowledged (trigger
         // `resync`, docs/24 s4.8). One captured before the new lineage started may be older than the window: it is
         // accepted and flagged `resync_late`, never quarantined (idempotency by client_uuid keeps the re-send safe).
-        // Bounded: the lost lineage accepted it, so its business date was inside the window when it was acked, at most
-        // a day before the new lineage started (the phone re-sends what was acked in the last cfg.sync.resync_window_h).
-        val resyncLate = tooOld && ctx.restoredAt?.let { at ->
-            !captured.isAfter(at) && !bd.isBefore(BusinessDate.of(at.toEpochMilli()).toJavaLocalDate().minusDays(ctx.backdateDays + 1))
-        } == true
+        val resyncLate = tooOld && ctx.resync?.let { w -> !captured.isAfter(w.startedAt) && !bd.isBefore(w.oldestDate) } == true
         if ((tooOld && !resyncLate) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, "business_date $bd, today ${ctx.today}")
         }
@@ -832,6 +818,33 @@ class IngestService(
     ).bind("u", userId).bind("since", ts(now.minusSeconds(7 * 86_400))).map { rs, _ ->
         Resolution(rs.getString(1), rs.getString(2), rs.getString(3), rs.getObject(4, OffsetDateTime::class.java).toInstant().wire())
     }.list()
+
+    /**
+     * F-SYS-089: the re-send allowance after a failover or restore, for a `resync` or `digest_resend` batch (the digest
+     * re-send can come first, s4.8) while the new generation is young: until `cfg.sync.resync_window_h` +
+     * `cfg.sync.resync_jitter_s` + a day after it started. A row may be as old as the lost lineage could have accepted:
+     * acked at the earliest at max(lost_after_utc, started_at - resync window), then inside `cfg.sync.max_backdate_days`.
+     * Read once per batch, before any family transaction (no second connection inside one).
+     */
+    private fun resyncWindow(trigger: String, now: Instant): ResyncWindow? {
+        if (trigger != "resync" && trigger != "digest_resend") return null
+        val windowH = runCatching { config.int("cfg.sync.resync_window_h") }.getOrDefault(24).coerceIn(1, 72).toLong()
+        val jitterS = runCatching { config.int("cfg.sync.resync_jitter_s") }.getOrDefault(900).coerceIn(0, 3600).toLong()
+        val backdate = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
+        val gen = runCatching {
+            db.jdbi.withHandle<Pair<Instant, Instant?>?, Exception> { h ->
+                h.createQuery("SELECT started_at, lost_after_utc FROM app.server_generation WHERE is_current AND kind <> 'created'")
+                    .map { rs, _ -> rs.getObject(1, OffsetDateTime::class.java).toInstant() to rs.getObject(2, OffsetDateTime::class.java)?.toInstant() }
+                    .findOne().orElse(null)
+            }
+        }.getOrNull() ?: return null
+        val (startedAt, lostAfter) = gen
+        if (now.isAfter(startedAt.plusSeconds(windowH * 3600 + jitterS + 86_400))) return null
+        val earliestAck = maxOf(lostAfter ?: Instant.MIN, startedAt.minusSeconds(windowH * 3600))
+        return ResyncWindow(startedAt, BusinessDate.of(earliestAck.toEpochMilli()).toJavaLocalDate().minusDays(backdate))
+    }
+
+    private data class ResyncWindow(val startedAt: Instant, val oldestDate: LocalDate)
 
     companion object {
         private const val FAMILY_TRIES = 3
