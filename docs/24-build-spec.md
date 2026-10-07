@@ -251,7 +251,7 @@ google-services = { id = "com.google.gms.google-services", version.ref = "google
 
 | Header | Who sends it | Rule |
 |---|---|---|
-| `Authorization: Bearer <JWT>` | every authenticated call | ES256 access token (s8.2). `aud` `aron-api` (full grant) or `aron-upload` (upload grant: only `POST /v1/sync/batch`, `POST /v1/media/sas`, `POST /v1/auth/refresh` with `grant=upload`, `POST /v1/auth/logout`). `bind_token` (`aron-bind`) and `mfa_token` (`aron-mfa`) are Bearer tokens accepted only by bind-device and mfa/verify. |
+| `Authorization: Bearer <JWT>` | every authenticated call | ES256 access token (s8.2). `aud` `aron-api` (full grant) or `aron-upload` (upload grant: only `POST /v1/sync/batch`, `POST /v1/media/sas`, `POST /v1/auth/refresh` with `grant=upload`, `POST /v1/auth/logout`). `bind_token` (`aron-bind`) and `mfa_token` (`aron-mfa`) are Bearer tokens accepted only by bind-device and mfa/verify. | The password-change token of a web login with `password_change_required` has `aud` `aron-pwchange` (10 minutes, accepted only by `POST /v1/auth/change-password`; R18).
 | `X-Device-Id` | phones, every authenticated call | The device's `device_uuid` (UUID v4 minted at enrolment, s10.4). MUST equal the token's `dvu` claim, else `401 ERR_DEVICE_PROOF_INVALID`. |
 | `X-Device-Proof` | phones on `auth/refresh`, `auth/bind-device`, `sync/batch`, `devices/me/*` | ES256 signature (86-char base64url, raw r‖s) by the device's Keystore key over the proof string of s8.3. |
 | `X-App-Version` | phones, every call | `<versionName>+<versionCode>`, for example `1.0.3+10003`. Drives the version gate (s3.7). |
@@ -734,7 +734,7 @@ Format **`<username>-<yyMMdd>-<seq>`** (`cfg.memo.number_format`), for example `
 | Claim | Value |
 |---|---|
 | `iss` | `aron` |
-| `aud` | `aron-api`, `aron-upload`, `aron-bind` or `aron-mfa` |
+| `aud` | `aron-api`, `aron-upload`, `aron-bind`, `aron-mfa` or `aron-pwchange` |
 | `sub` | user id (decimal string) |
 | `uname` | username |
 | `role` | one `Role` |
@@ -973,7 +973,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.sync.resync_window_h` | int | 24 | 1..72 | G | O | B | both | C2 |
 | `cfg.sync.resync_jitter_s` | int | 900 | 0..3600 | G | O | B | dev | C1 |
 | `cfg.sync.config_check_min_gap_min` | int | 5 | 1..60 | G | O | B | dev | C1 |
-| `cfg.sync.reconcile_types` | json (role → row → record types) | SR: outlet, sale, stock, QC, promotion (s4.12) | subset of `RecordType` | G ROLE | O | B | dev | C1 |
+| `cfg.sync.reconcile_types` | json (flat: `ROLE.row` → array of record types, e.g. `SR.sale`; R17) | SR: outlet, sale, stock, QC, promotion (s4.12) | subset of `RecordType` | G ROLE | O | B | dev | C1 |
 | **Bundle** |||||||||
 | `cfg.bundle.stale_max_days` | int | 2 | 1..3 | G W | O | B | dev | C2 |
 | `cfg.bundle.delta_max_age_h` | int | 72 | 24..168 | G | O | B | srv | C1 |
@@ -984,7 +984,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.bundle.d1_generation_time` | time | 22:00 | 20:00..23:30 | G | O | B | srv | C1 |
 | `cfg.bundle.refresh_time` | time | 03:30 | 02:30..05:00 | G | O | B | srv | C1 |
 | `cfg.bundle.coverage_check_time` | time | 04:30 | 03:30..06:00 | G | O | B | srv | C1 |
-| `cfg.bundle.outlet_fields` | json (role → outlet columns) | SR: no NID, TIN or licence | subset of outlet columns | ROLE | S | S | both | C3 |
+| `cfg.bundle.outlet_fields` | json (role → outlet columns; server-side masking, never sent to the phone; R17) | SR: no NID, TIN or licence | subset of outlet columns | ROLE | S | S | srv | C3 |
 | **Auth** |||||||||
 | `cfg.auth.access_ttl_min` | int | 60 (15 for web-only roles) | 15..1440 | G ROLE | S | S | srv | C2 |
 | `cfg.auth.access_ttl_jitter_min` | int | 10 | 0..30 | G | S | S | srv | C1 |
@@ -1805,3 +1805,4 @@ Not machine-checked: prose rules (for example retry timings) that have no field 
 | R15 | **Web password change and refresh cookie (2026-10-07, `docs/requests/web-password-change-flow.md`, `web-refresh-cookie-handoff.md`).** For `client: web` a `password_change_required` login returns `access_token: null` and the new optional `LoginResponse.password_change_token` (10 min), accepted only by `POST /v1/auth/change-password` as Bearer; that call then answers 200 with a `LoginResponse` that continues the login as a normal one (`ok`, or `mfa_required` when the role needs TOTP: TOTP comes after the password change). With an ordinary access token change-password still answers 204. The cookie hand-off is confirmed as intended: the web BFF (a server) receives the refresh token only from the `Set-Cookie: aron_rt` header, never in a body, re-issues its own `aron_rt` cookie and replays it on `POST /v1/auth/refresh`; no schema change. |
 | R16 | **Closed as covered (2026-10-07).** F-API-083 (`GET /config/check`) is covered by `getConfigDelta`; F-API-037 and F-API-065 are covered by the existing config paths; `config_ack` is a sync record. No contract change. |
 | R17 | **Config value shape (2026-10-07, `docs/requests/backend-config-value-shape.md`).** `ConfigValueJson` is NOT widened. The db lane reshapes `cfg.sync.reconcile_types` to a flat object whose keys are `ROLE.row` (for example `SR.outlet`) and whose values are arrays of record-type strings, and sets the delivery of `cfg.bundle.outlet_fields` to `server` (it masks columns on the server and never reaches the phone). This overrides the type and delivery columns of those two rows in s9.5. |
+| R18 | **Contract v1.2 follow-ups from the independent check (2026-10-07).** (1) **Deploy order:** the server is deployed before any app that sends the v1.2 members (`play_integrity_unavailable`, `root_hints`, `password_change_token` flow); requests are validated strictly, so a v1.2 phone against a v1.1 server would be rejected with 400. Dev deploys the server first by construction; for the final account the promotion runs server first and releases the app to a ring only after the server is on the new contract (docs/30 s2). (2) **Enrolment marker:** `EnrolDeviceRequest.play_integrity_unavailable` is the one that counts for the enrolment attestation; the copy inside the nested `status` (a `DeviceStatusReport`) is the same state and is ignored on enrolment when the top-level one is present. (3) **Older phones:** a missing marker and missing `root_hints` mean *unknown*, never failure and never a clean phone: the server stores NULL (not an empty array), scoring treats unknown as no evidence, and the device record shows "integrity unknown" (an app older than the minimum version is blocked by `min_version_codes` anyway). (4) **`password_change_token` audience:** `aron-pwchange` (the `aud` lists in s8.2 are updated); a successful change-password with it answers 200 `LoginResponse` and, for `client` web, the refresh token travels only in `Set-Cookie: aron_rt` (the BFF re-issues it). The contract descriptions for (2) and (4) are patched in the next contract batch (1.2.1, description only). (5) The shapes of `cfg.sync.reconcile_types` and `cfg.bundle.outlet_fields` in s9.5 now follow R17. |

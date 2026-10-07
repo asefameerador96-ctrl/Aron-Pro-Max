@@ -64,17 +64,25 @@ class DbRolesTest {
             Triple("worker_rw", "app.memo", "UPDATE") to false, Triple("worker_rw", "app.route_day", "UPDATE") to true,
             Triple("worker_rw", "app.ingest_registry", "DELETE") to true, Triple("worker_rw", "app.audit_log", "INSERT") to false,
             Triple("worker_rw", "dw.agg_daily_route", "INSERT") to true, Triple("worker_rw", "dw.fact_memo", "DELETE") to true,
-            Triple("web_ro", "dw.v_daily_route", "SELECT") to true, Triple("web_ro", "dw.agg_daily_zone", "SELECT") to true,
+            Triple("web_ro", "dw.v_daily_route", "SELECT") to true, Triple("web_ro", "dw.agg_daily_zone", "SELECT") to false,
             Triple("web_ro", "app.code_list_item", "SELECT") to true, Triple("web_ro", "app.memo", "SELECT") to false,
             Triple("web_ro", "app.app_user", "SELECT") to false, Triple("web_ro", "dw.agg_daily_route", "INSERT") to false,
-            Triple("bi_reader", "dw.v_daily_sr", "SELECT") to true, Triple("bi_reader", "dw.fact_memo", "SELECT") to true,
+            Triple("bi_reader", "dw.v_daily_sr", "SELECT") to true, Triple("bi_reader", "dw.fact_memo", "SELECT") to false,
             Triple("bi_reader", "app.code_list_item", "SELECT") to false, Triple("bi_reader", "app.outlet", "SELECT") to false,
             Triple("bi_reader", "dw.agg_daily_route", "UPDATE") to false,
+            Triple("bi_reader", "dw.v_outlet_masked", "SELECT") to true, Triple("web_ro", "dw.v_outlet_masked", "SELECT") to true,
+            // V0020: auth path, PII columns and L1 support.
+            Triple("auth_rw", "app.refresh_token", "INSERT") to true, Triple("auth_rw", "app.auth_lockout", "DELETE") to true,
+            Triple("auth_rw", "app.app_user", "UPDATE") to true, Triple("auth_rw", "app.app_user", "INSERT") to false,
+            Triple("auth_rw", "app.memo", "SELECT") to false, Triple("auth_rw", "app.visit", "INSERT") to false,
+            Triple("auth_rw", "app.audit_log", "INSERT") to true, Triple("auth_rw", "app.audit_log", "UPDATE") to false,
+            Triple("pii_reader", "app.memo", "SELECT") to false, Triple("support_ro", "app.device", "SELECT") to true,
+            Triple("support_ro", "app.device", "UPDATE") to false, Triple("support_ro", "app.outlet", "SELECT") to false,
         )
         val wrong = expected.filter { (k, allowed) -> can(c, k.first, k.second, k.third) != allowed }.keys
         assertEquals(emptySet(), wrong, "privileges that differ from the map")
         // No role touches a single partition directly, and every app and dw table is covered by the map.
-        assertEquals("0", c.scalar("SELECT count(*) FROM information_schema.role_table_grants g JOIN pg_class k ON k.relname = g.table_name AND k.relispartition WHERE g.grantee IN ('api_rw','worker_rw','web_ro','bi_reader','jobs_rw')"))
+        assertEquals("0", c.scalar("SELECT count(*) FROM information_schema.role_table_grants g JOIN pg_class k ON k.relname = g.table_name AND k.relispartition WHERE g.grantee IN ('api_rw','worker_rw','web_ro','bi_reader','jobs_rw','auth_rw','pii_reader','support_ro')"))
         assertEquals(
             emptyList(),
             c.column("SELECT n.nspname || '.' || k.relname FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace WHERE n.nspname IN ('app','dw') AND k.relkind IN ('r','p','v') AND NOT k.relispartition AND k.relname <> 'db_role_grant' AND NOT has_table_privilege('worker_rw', k.oid, 'SELECT') AND NOT (n.nspname = 'app' AND k.relname IN ('partition_policy', 'app_user', 'mfa_secret', 'device_otp', 'refresh_token', 'enrolment_token'))"),
@@ -87,6 +95,41 @@ class DbRolesTest {
             c.column("SELECT has_table_privilege('worker_rw', t, 'SELECT') FROM unnest(ARRAY['app.mfa_secret','app.device_otp','app.refresh_token','app.enrolment_token']) t"),
         )
         assertEquals("t", c.scalar("SELECT has_column_privilege('api_rw', 'app.app_user', 'password_hash', 'SELECT')"))
+        // pii_reader: outlet contact columns only, never the national ids; support_ro: the sync log without payloads.
+        assertEquals("t", c.scalar("SELECT has_column_privilege('pii_reader', 'app.outlet', 'contact_number', 'SELECT')"))
+        assertEquals("f", c.scalar("SELECT has_column_privilege('pii_reader', 'app.outlet', 'nid', 'SELECT')"))
+        assertEquals("t", c.scalar("SELECT has_column_privilege('support_ro', 'app.sync_batch', 'record_count', 'SELECT')"))
+        assertEquals("f", c.scalar("SELECT has_column_privilege('support_ro', 'app.sync_batch', 'response_gz', 'SELECT')"))
+        // web_ro and bi_reader read only the stable views: no dw table at all.
+        assertEquals(
+            emptyList(),
+            c.column("SELECT r || ' ' || k.relname FROM pg_class k, unnest(ARRAY['web_ro','bi_reader']) r WHERE k.relnamespace = 'dw'::regnamespace AND k.relkind IN ('r','p') AND has_table_privilege(r, k.oid, 'SELECT')"),
+        )
+    }
+
+    @Test
+    fun loginIdentitiesGetTheSessionLimitsOfTheirRoleAndCannotDropAnything() {
+        val login = "zz_api_" + java.util.UUID.randomUUID().toString().take(8)
+        val password = java.util.UUID.randomUUID().toString()
+        db.connect().use { c ->
+            c.exec("CREATE ROLE $login LOGIN PASSWORD '$password'")
+            c.exec("GRANT api_rw TO $login WITH INHERIT TRUE")
+            assertTrue(c.scalar("SELECT app.apply_login_limits()")!!.toInt() >= 1)
+        }
+        try {
+            val url = db.url.replace(Regex("[?&](user|password)=[^&]*"), "").let { u -> if ('?' !in u && '&' in u) u.replaceFirst('&', '?') else u }
+            java.sql.DriverManager.getConnection(url, login, password).use { c ->
+                assertEquals("15s", c.scalar("SHOW statement_timeout"))
+                assertEquals("3s", c.scalar("SHOW lock_timeout"))
+                assertEquals("30s", c.scalar("SHOW idle_in_transaction_session_timeout"))
+                assertEquals("42501", assertFailsWith<SQLException> { c.exec("DROP TABLE app.memo") }.sqlState)
+                assertEquals("42501", assertFailsWith<SQLException> { c.exec("ALTER TABLE app.audit_log DISABLE TRIGGER USER") }.sqlState)
+                c.exec("SET statement_timeout = '50ms'")   // the cancel path of a limit, without waiting 15 s
+                assertEquals("57014", assertFailsWith<SQLException> { c.exec("SELECT pg_sleep(1)") }.sqlState)
+            }
+        } finally {
+            db.connect().use { it.exec("DROP ROLE $login") }
+        }
     }
 
     @Test
