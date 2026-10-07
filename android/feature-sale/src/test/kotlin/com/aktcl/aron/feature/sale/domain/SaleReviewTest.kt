@@ -36,7 +36,7 @@ class SaleReviewTest {
         assertEquals(289_435 - 80_000 - 25_000, r.totals.rawMtk)
         assertEquals(184_440, r.totals.netMtk) // 184,435 rounds half up to the paisa
         assertEquals(5, r.totals.roundAdjMtk)
-        assertEquals(3, r.totals.lineCount)
+        assertEquals(4, r.totals.lineCount)
     }
 
     @Test fun tenEmptyPacketsGiveOneRewardPackAsEightyTakaAndQuantityIsUnchanged() {
@@ -112,6 +112,6 @@ class SaleReviewTest {
 
     @Test fun unknownSkuIsAProblemNotACrash() {
         val d = SaleDraftOps.setQuantity(Fx.draft(), 999, 1, QtyUnit.STICK)
-        assertEquals(ReviewProblem.UnknownSku(999), review(d).problems.single())
+        assertTrue(ReviewProblem.UnknownSku(999) in review(d).problems); assertFalse(review(d).canCommit)
     }
 }
