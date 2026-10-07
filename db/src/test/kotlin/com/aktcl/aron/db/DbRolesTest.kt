@@ -90,14 +90,14 @@ class DbRolesTest {
         assertEquals("0", c.scalar("SELECT count(*) FROM information_schema.role_table_grants g JOIN pg_class k ON k.relname = g.table_name AND k.relispartition WHERE g.grantee IN ('api_rw','worker_rw','web_ro','bi_reader','jobs_rw','auth_rw','pii_reader','support_ro')"))
         assertEquals(
             emptyList(),
-            c.column("SELECT n.nspname || '.' || k.relname FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace WHERE n.nspname IN ('app','dw') AND k.relkind IN ('r','p','v') AND NOT k.relispartition AND k.relname <> 'db_role_grant' AND NOT has_table_privilege('worker_rw', k.oid, 'SELECT') AND NOT (n.nspname = 'app' AND k.relname IN ('partition_policy', 'app_user', 'mfa_secret', 'device_otp', 'refresh_token', 'enrolment_token'))"),
+            c.column("SELECT n.nspname || '.' || k.relname FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace WHERE n.nspname IN ('app','dw') AND k.relkind IN ('r','p','v') AND NOT k.relispartition AND k.relname <> 'db_role_grant' AND NOT has_table_privilege('worker_rw', k.oid, 'SELECT') AND NOT (n.nspname = 'app' AND k.relname IN ('partition_policy', 'app_user', 'mfa_secret', 'device_otp', 'refresh_token', 'enrolment_token', 'password_history'))"),
         )
         // The worker reads users without their password hash and never reads credentials or one-time secrets.
         assertEquals("t", c.scalar("SELECT has_column_privilege('worker_rw', 'app.app_user', 'username', 'SELECT')"))
         assertEquals("f", c.scalar("SELECT has_column_privilege('worker_rw', 'app.app_user', 'password_hash', 'SELECT')"))
         assertEquals(
-            listOf("f", "f", "f", "f"),
-            c.column("SELECT has_table_privilege('worker_rw', t, 'SELECT') FROM unnest(ARRAY['app.mfa_secret','app.device_otp','app.refresh_token','app.enrolment_token']) t"),
+            listOf("f", "f", "f", "f", "f"),
+            c.column("SELECT has_table_privilege('worker_rw', t, 'SELECT') FROM unnest(ARRAY['app.mfa_secret','app.device_otp','app.refresh_token','app.enrolment_token','app.password_history']) t"),
         )
         assertEquals("t", c.scalar("SELECT has_column_privilege('api_rw', 'app.app_user', 'password_hash', 'SELECT')"))
         // pii_reader: outlet contact columns only, never the national ids; support_ro: the sync log without payloads.

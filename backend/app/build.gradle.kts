@@ -41,5 +41,8 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
+    // AUD-TP-1: the sync convergence harness reads its seed and run count (SyncConvergenceFuzzTest).
+    System.getenv("ARON_FUZZ_SEED")?.let { environment("ARON_FUZZ_SEED", it) }
+    System.getenv("ARON_FUZZ_RUNS")?.let { environment("ARON_FUZZ_RUNS", it) }
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
 }

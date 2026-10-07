@@ -125,7 +125,8 @@ class TaskService(
                 // A replay of the same create returns the first one; another create under the same uuid is a conflict.
                 val same = existing.assigned_by_user_id == p.userId && existing.assignee_user_id == req.assignee_user_id &&
                     existing.title == req.title && existing.task_type_code == req.task_type_code &&
-                    existing.description == req.description && existing.due_date == req.due_date && existing.outlet_id == req.outlet_id
+                    existing.description == req.description && existing.due_date == req.due_date && existing.outlet_id == req.outlet_id &&
+                    (req.route_id == null || existing.route_id == req.route_id)
                 if (!same) throw ApiProblem(ProblemCode.ERR_CONFLICT, "task_uuid already used for another task")
                 return@inTransaction existing
             }
@@ -135,14 +136,23 @@ class TaskService(
                     .bind("o", o).bind("nat", r.national).bindArray("z", Long::class.javaObjectType, r.zoneIds.toList()).mapTo(Long::class.java).one() > 0
                 if (!ok) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "outlet outside your reach")
             }
+            // The task's route (V0037, fixed at creation): the one named, else the outlet's. A named route must be in reach and,
+            // with an outlet, be that outlet's route.
+            val outletRoute = req.outlet_id?.let { o -> h.createQuery("SELECT route_id FROM app.outlet WHERE id = :o").bind("o", o).mapTo(Long::class.javaObjectType).findOne().orElse(null) }
+            req.route_id?.let { rid ->
+                val zone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", rid).mapTo(Long::class.java).findOne().orElse(null)
+                    ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "no such route", errors = listOf(FieldError("/route_id", "invalid_value")))
+                if (!r.coversRoute(rid, zone)) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "route outside your reach")
+                if (req.outlet_id != null && outletRoute != rid) throw ApiProblem(ProblemCode.ERR_VALIDATION, "the outlet is not on that route", errors = listOf(FieldError("/route_id", "invalid_value")))
+            }
             h.createUpdate(
                 """
                 INSERT INTO app.task (client_uuid, family_uuid, business_date, user_id, captured_at, captured_offline, schema_version, config_version,
-                                      received_at, task_type_code, assignee_user_id, outlet_id, title, description, due_date, source)
-                VALUES (CAST(:u AS uuid), CAST(:u AS uuid), :bd, :by, :now, false, 1, 0, :now, :type, :assignee, :outlet, :title, :desc, CAST(:due AS date), 'online')
+                                      received_at, task_type_code, assignee_user_id, outlet_id, route_id, title, description, due_date, source)
+                VALUES (CAST(:u AS uuid), CAST(:u AS uuid), :bd, :by, :now, false, 1, 0, :now, :type, :assignee, :outlet, :route, :title, :desc, CAST(:due AS date), 'online')
                 """.trimIndent(),
             ).bind("u", uuid).bind("bd", BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()).bind("by", p.userId).bind("now", OffsetDateTime.ofInstant(now, ZoneOffset.UTC))
-                .bind("type", req.task_type_code).bind("assignee", req.assignee_user_id).bind("outlet", req.outlet_id).bind("title", req.title)
+                .bind("type", req.task_type_code).bind("assignee", req.assignee_user_id).bind("outlet", req.outlet_id).bind("route", req.route_id ?: outletRoute).bind("title", req.title)
                 .bind("desc", req.description).bind("due", req.due_date).execute()
             created = true
             byUuid(h, uuid)!!.also { t ->
@@ -168,9 +178,8 @@ class TaskService(
                 "cancelled" -> Unit // idempotent
                 "ongoing" -> {
                     val before = byUuid(h, uuid)!!
-                    h.createUpdate("UPDATE app.task SET status = 'cancelled', status_changed_at = :now, cancelled_by = :by WHERE client_uuid = CAST(:u AS uuid)")
-                        .bind("now", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)).bind("by", p.userId).bind("u", uuid).execute()
-                    // The reason lives in the audit row until app.task has a column (docs/requests/backend-core-task-columns.md).
+                    h.createUpdate("UPDATE app.task SET status = 'cancelled', status_changed_at = :now, cancelled_by = :by, cancel_reason = :reason WHERE client_uuid = CAST(:u AS uuid)")
+                        .bind("now", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)).bind("by", p.userId).bind("reason", reason).bind("u", uuid).execute()
                     com.aktcl.aron.backend.platform.AuditLog.write(h, p, "task", uuid, "cancel", ResponseJsonTask.encode(before), ResponseJsonTask.encode(byUuid(h, uuid)!!), reason, null, if (p.isPhone) "api" else "web")
                 }
                 else -> throw ApiProblem(ProblemCode.ERR_CONFLICT, "a completed task cannot be cancelled")
@@ -200,7 +209,7 @@ class TaskService(
 
         private const val SELECT = """
             SELECT t.id, t.client_uuid::text AS uuid, t.task_type_code, t.title, t.description, t.assignee_user_id, t.user_id, t.outlet_id,
-                   (SELECT o.route_id FROM app.outlet o WHERE o.id = t.outlet_id) AS route_id, t.due_date, t.status, t.created_at, t.source,
+                   COALESCE(t.route_id, (SELECT o.route_id FROM app.outlet o WHERE o.id = t.outlet_id)) AS route_id, t.due_date, t.status, t.created_at, t.source,
                    e.at AS resolved_at, e.note AS resolution_note
             FROM app.task t
             LEFT JOIN LATERAL (SELECT ev.captured_at AS at, ev.note FROM app.task_event ev WHERE ev.task_uuid = t.client_uuid AND ev.event = 'resolved' AND ev.voided_at IS NULL

@@ -30,3 +30,13 @@ The code uses these defaults until the keys exist. `password_denylist_enabled` i
 ## Ask 3 (optional, reference data)
 The top-10,000 common-password list for the field-role deny-list (docs/21 s4) as reference data. Until it lands, a
 short built-in list is used.
+
+## Answer (db, 2026-10-07): V0040 (on lane/db; the integrator promotes it to INT)
+- Ask 1: `app.password_history` as proposed (`password_hash` 1..255, index `(user_id, changed_at DESC)`). UPDATE is
+  refused. DELETE is allowed so that you can prune beyond the depth in the change-password transaction. Grants:
+  `auth_rw` SELECT, INSERT, DELETE; `api_rw` has its usual SELECT/INSERT plus DELETE. `worker_rw` cannot read it
+  (credential table). Data dictionary: pii secret.
+- Ask 2: the three keys as specified (global, plus role for `password_denylist_enabled`; server only; risk 2; editor
+  `cfg.edit.security`). Un-skip `ChangePasswordTest.noneOfTheLastTenPasswords` once INT has V0040.
+- Ask 3 (top-10,000 list) is not added. The list has licence and provenance questions and needs a source the owner
+  approves. Keep the built-in short list for now.

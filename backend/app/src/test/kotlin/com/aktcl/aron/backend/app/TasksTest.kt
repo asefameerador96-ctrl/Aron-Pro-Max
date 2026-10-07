@@ -190,10 +190,49 @@ class TasksTest {
         }
         assertEquals(listOf("create:amo1001:-:ongoing:-", "cancel:tso1001:ongoing:cancelled:the outlet closed for good"), audit)
         assertEquals(null, fresh.db.jdbi.withHandle<Long?, Exception> { h -> com.aktcl.aron.backend.platform.AuditLog.verify(h) })
+        // V0037: the reason is stored on the task, once (an idempotent repeat does not overwrite it).
+        assertEquals("the outlet closed for good", fresh.db.jdbi.withHandle<String?, Exception> { h ->
+            h.createQuery("SELECT cancel_reason FROM app.task WHERE client_uuid = CAST(:u AS uuid)").bind("u", t).mapTo(String::class.java).one()
+        })
         // A late resolve from the phone is stored but the task stays cancelled.
         assertEquals(listOf("accepted"), client.send(srToken, listOf(event(t, "resolved"))))
         assertEquals("cancelled", client.list(tso).single { it["task_uuid"]!!.jsonPrimitive.content == t }["status"]!!.jsonPrimitive.content)
         assertEquals(HttpStatusCode.NotFound, client.post("/v1/tasks/${uuid()}/cancel") { bearerAuth(tso); contentType(ContentType.Application.Json); setBody("""{"reason":"the outlet closed for good"}""") }.status)
+    }
+
+    /** V0037: a task may name a route without an outlet; it must be in reach and is stored as named. */
+    @Test
+    fun aTaskNamesARouteInReachAndKeepsIt() = testApplication {
+        application { aronApi(wiring) }
+        val amo = client.token("amo1001")
+        val (route, foreign) = fresh.db.jdbi.withHandle<Pair<Long, Long>, Exception> { h ->
+            val r = h.createQuery("SELECT id FROM app.route WHERE code = 'MIR-SR-D'").mapTo(Long::class.java).one()
+            h.execute("INSERT INTO app.territory (code, name, name_bn, division_id) SELECT 'T-TSK-X', 'Elsewhere', 'অন্যত্র', id FROM app.division WHERE code = 'D-DHK'")
+            h.execute("INSERT INTO app.zone (code, name, name_bn, territory_id, dep_name) SELECT 'Z-TSK-X', 'Elsewhere', 'অন্যত্র', id, 'Elsewhere DEP' FROM app.territory WHERE code = 'T-TSK-X'")
+            val other = h.createQuery(
+                "INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no) " +
+                    "SELECT 'TSK-X-D', 'Elsewhere', 'Daily', z.id, 'sr', 'daily', 127, 9 FROM app.zone z WHERE z.code = 'Z-TSK-X' RETURNING id",
+            ).mapTo(Long::class.java).one()
+            r to other
+        }
+        val t = uuid()
+        val r = client.post("/v1/tasks") {
+            bearerAuth(amo); contentType(ContentType.Application.Json)
+            setBody("""{"task_uuid":"$t","task_type_code":"display_check","assignee_user_id":$sr,"title":"Check the route","route_id":$route}""")
+        }
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        assertEquals(route, json(r.bodyAsText())["route_id"]!!.jsonPrimitive.content.toLong())
+        assertEquals(route, fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT route_id FROM app.task WHERE client_uuid = CAST(:u AS uuid)").bind("u", t).mapTo(Long::class.java).one() })
+        val missing = client.post("/v1/tasks") {
+            bearerAuth(amo); contentType(ContentType.Application.Json)
+            setBody("""{"task_uuid":"${uuid()}","task_type_code":"display_check","assignee_user_id":$sr,"title":"Check the route","route_id":999999}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, missing.status)
+        val out = client.post("/v1/tasks") {
+            bearerAuth(amo); contentType(ContentType.Application.Json)
+            setBody("""{"task_uuid":"${uuid()}","task_type_code":"display_check","assignee_user_id":$sr,"title":"Check the route","route_id":$foreign}""")
+        }
+        assertEquals(HttpStatusCode.Forbidden, out.status, "a route outside the AMO's zone")
     }
 
     @Test

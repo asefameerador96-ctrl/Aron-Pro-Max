@@ -24,3 +24,5 @@ AUD-DA-01,M,2026-10-07T09:00Z,2026-10-07T10:30Z,45,"see above","V0033 outbox tx_
 V0035-secdef-search-path,S,2026-10-07T10:00Z,2026-10-07T10:30Z,10,"found by checker; round 2 PASS","ensure_partitions pg_temp last"
 backend-reports-indexes,S,2026-10-07T10:00Z,2026-10-07T10:30Z,25,"2 confirmed (useless GIN, event schemas), fixed","V0036"
 backend-core-task-columns,S,2026-10-07T10:30Z,2026-10-07T10:55Z,20,"PASS; 1 test gap fixed","V0037/V0038"
+web-entry-password-breadcrumb,M,2026-10-07T11:00Z,2026-10-07T12:30Z,60,"FAIL (dictionary, names) then fixed","V0039 V0040 V0041"
+outbox-test-drain,S,2026-10-07T11:50Z,2026-10-07T12:20Z,10,"integrator report (CI run 37613735145)","bounded drain in OutboxCommitOrderTest"
