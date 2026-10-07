@@ -66,7 +66,7 @@ class Wiring(
             val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val configResolver = ConfigResolver(db, clock)
-            val configService = ConfigService(db, configResolver, clock)
+            val configService = ConfigService(db, configResolver, clock) { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
             val configDeps = ConfigDeps(configService, guard, clock)
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock), guard)
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
