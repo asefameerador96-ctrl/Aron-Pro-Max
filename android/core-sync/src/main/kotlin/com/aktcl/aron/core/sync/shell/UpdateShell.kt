@@ -22,7 +22,11 @@ import com.aktcl.aron.core.system.update.UpdateApi
 import com.aktcl.aron.core.system.update.UpdateManager
 import com.aktcl.aron.core.system.update.UpdatePolicy
 import com.aktcl.aron.core.system.update.UpdateState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,9 +72,9 @@ class UpdateShell(
         _state.value = withContext(Dispatchers.IO) { runCatching { manager.check(atLogin) }.getOrElse { manager.state() } }
     }
 
-    /** What the shell shows now; see [updateScreen]. */
-    fun screen(state: UpdateState, laterFor: Int?, dayOpen: Boolean, serverSaidTooOld: Boolean): UpdateScreen =
-        updateScreen(state, laterFor, manager.dayGate(dayOpen, serverSaidTooOld))
+    /** What the shell shows now; see [updateScreen]. Reads the stored minimum: call off the main thread. */
+    suspend fun screen(state: UpdateState, laterFor: Int?, dayOpen: Boolean, serverSaidTooOld: Boolean): UpdateScreen =
+        withContext(Dispatchers.IO) { updateScreen(state, laterFor, manager.dayGate(dayOpen, serverSaidTooOld)) }
 
     val laterFor: StateFlow<Int?> = _laterFor.asStateFlow()
 
@@ -85,25 +89,49 @@ class UpdateShell(
         return if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) NetworkStatus.WIFI else NetworkStatus.MOBILE
     }
 
-    /** Downloads [release] (resumable, SHA-256 checked); refuses mobile data for a Wi-Fi-only release. */
-    suspend fun download(release: ReleaseInfo) = lock.withLock {
+    /** Download and install run here, not in a screen's scope: leaving the screen never leaves a stuck "Downloading". */
+    private val work = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Starts the download of [release] (resumable, SHA-256 checked); refuses mobile data for a Wi-Fi-only release. */
+    fun startDownload(release: ReleaseInfo) { work.launch { download(release) } }
+
+    /** "Update now" on the day block: a fresh check (the throttle is skipped). */
+    fun startCheck() { work.launch { check(atLogin = true) } }
+
+    /** Starts the install of the downloaded [release] once no sync batch is running. */
+    fun startInstall(release: ReleaseInfo) { work.launch { install(release) } }
+
+    internal suspend fun download(release: ReleaseInfo) = lock.withLock {
         val wifiOnly = when (val s = _state.value) { is UpdateState.Available -> s.wifiOnly; is UpdateState.Required -> s.wifiOnly; else -> true }
         if (!UpdatePolicy.mayDownload(wifiOnly, network() == NetworkStatus.WIFI)) { _download.value = DownloadUi.NeedsWifi; return@withLock }
         _download.value = DownloadUi.Downloading(0)
-        _download.value = when (val r = downloader.download(release) { _download.value = DownloadUi.Downloading(it) }) {
-            is DownloadResult.Done -> DownloadUi.Ready
-            is DownloadResult.NoSpace -> DownloadUi.NoSpace
-            is DownloadResult.Retry, is DownloadResult.Corrupt -> DownloadUi.Failed
+        _download.value = try {
+            when (downloader.download(release) { _download.value = DownloadUi.Downloading(it) }) {
+                is DownloadResult.Done -> DownloadUi.Ready
+                is DownloadResult.NoSpace -> DownloadUi.NoSpace
+                is DownloadResult.Retry, is DownloadResult.Corrupt -> DownloadUi.Failed
+            }
+        } catch (e: CancellationException) {
+            _download.value = DownloadUi.Idle
+            throw e
+        } catch (_: Exception) {
+            DownloadUi.Failed // never a crash; the part file stays for a resume
         }
     }
 
-    /** Hands the verified APK to the OS installer once no sync batch is running. */
-    suspend fun install(release: ReleaseInfo) = lock.withLock {
-        _download.value = when (updater.install(downloader.apkFile(release), release, syncIdle())) {
-            InstallStart.Started -> DownloadUi.Ready
-            InstallStart.NeedsUnknownSources -> DownloadUi.NeedsUnknownSources
-            InstallStart.SyncBusy -> DownloadUi.SyncBusy
-            is InstallStart.Refused -> DownloadUi.Failed
+    internal suspend fun install(release: ReleaseInfo) = lock.withLock {
+        _download.value = try {
+            // SHA-256 of the APK and the package checks are file work: off the main thread (the work scope is IO).
+            when (updater.install(downloader.apkFile(release), release, syncIdle())) {
+                InstallStart.Started -> DownloadUi.Ready
+                InstallStart.NeedsUnknownSources -> DownloadUi.NeedsUnknownSources
+                InstallStart.SyncBusy -> DownloadUi.SyncBusy
+                is InstallStart.Refused -> DownloadUi.Failed
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            DownloadUi.Failed
         }
     }
 

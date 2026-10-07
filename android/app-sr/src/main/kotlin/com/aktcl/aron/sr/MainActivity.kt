@@ -63,6 +63,19 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { updateShell.check(atLogin = false) } // F-SYS-020, throttled to 12 h inside
     }
 
+    /** F-SYS-022: SR keeps its data (it keeps uploading); a failure never crashes the app. */
+    private fun srLogout(userId: Long) {
+        lifecycleScope.launch {
+            try {
+                shellLogout.flow(com.aktcl.aron.core.system.logout.AppRole.SR, userId).logout()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                android.widget.Toast.makeText(this@MainActivity, com.aktcl.aron.core.system.R.string.logout_failed, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val language = AppLocale.current(this)
@@ -93,9 +106,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             // F-SYS-020: an open day (checked in, not submitted) is never interrupted by a required update.
-                            var dayOpen by remember { mutableStateOf(true) }
-                            LaunchedEffect(day) { dayOpen = day?.dayOpen() ?: true }
-                            day?.let { d -> UpdateHost(updateShell, dayOpen, s.updateRequired) {
+                            day?.let { d -> UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
                                 SrApp(
                                     day = d,
                                     user = HomeUser(
@@ -105,17 +116,7 @@ class MainActivity : ComponentActivity() {
                                     health = null, versionText = versionName,
                                     onLanguageSelect = onLanguageSelect,
                                     // F-SYS-022: SR keeps its data (it keeps uploading); the flow schedules the upload.
-                                    onLogout = {
-                                        lifecycleScope.launch {
-                                            try {
-                                                shellLogout.flow(com.aktcl.aron.core.system.logout.AppRole.SR, s.user.userId).logout()
-                                            } catch (e: kotlinx.coroutines.CancellationException) {
-                                                throw e
-                                            } catch (_: Exception) {
-                                                android.widget.Toast.makeText(this@MainActivity, com.aktcl.aron.core.system.R.string.logout_failed, android.widget.Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    },
+                                    onLogout = { srLogout(s.user.userId) },
                                     onOtherTile = { },
                                     startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
                                 )

@@ -77,20 +77,7 @@ class MainActivity : ComponentActivity() {
                             val logoutFlow = remember(s.user.userId) { shellLogout.flow(AppRole.AMO, s.user.userId) }
                             var unsent by remember { mutableStateOf<Int?>(null) }
                             unsent?.let { n -> UnsentItemsDialog(n, onSyncNow = { logoutFlow.syncNow(); unsent = null }, onCancel = { unsent = null }) }
-                            val vm = viewModel(key = "home-" + s.user.userId) {
-                                HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
-                            }
-                            UpdateHost(updateShell, dayOpen = false, serverSaidTooOld = s.updateRequired) { HomePlaceholderScreen(
-                                viewModel = vm,
-                                user = HomeUser(
-                                    fullName = s.user.fullName,
-                                    username = s.user.username,
-                                    role = s.user.role,
-                                    offline = s.mode == UnlockMode.OFFLINE,
-                                    reauthRequired = s.reauthRequired,
-                                    updateRequired = s.updateRequired,
-                                ),
-                                onLogout = {
+                            val logoutTap: () -> Unit = {
                                     lifecycleScope.launch {
                                         // A failed count or a logout already running throws: refuse this tap, never crash.
                                         try {
@@ -108,7 +95,21 @@ class MainActivity : ComponentActivity() {
                                             Toast.makeText(this@MainActivity, SystemR.string.logout_failed, Toast.LENGTH_LONG).show()
                                         }
                                     }
-                                },
+                            }
+                            val vm = viewModel(key = "home-" + s.user.userId) {
+                                HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
+                            }
+                            UpdateHost(updateShell, dayOpen = { false }, serverSaidTooOld = s.updateRequired, onLogout = { logoutTap() }) { HomePlaceholderScreen(
+                                viewModel = vm,
+                                user = HomeUser(
+                                    fullName = s.user.fullName,
+                                    username = s.user.username,
+                                    role = s.user.role,
+                                    offline = s.mode == UnlockMode.OFFLINE,
+                                    reauthRequired = s.reauthRequired,
+                                    updateRequired = s.updateRequired,
+                                ),
+                                onLogout = { logoutTap() },
                                 onLanguageSelect = onLanguageSelect,
                             ) }
                         }
