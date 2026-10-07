@@ -65,3 +65,24 @@ audience `api://AzureADTokenExchange`:
 The IDs are this repository's numeric owner and repo IDs from `gh api repos/asefameerador96-ctrl/Aron-Pro-Max`. There is
 no wildcard, branch, pull-request or other-repo subject. Role assignments are unchanged: Contributor, and the conditional
 RBAC Administrator role, both on `rg-aron-dev` only. CI jobs were not re-run from here.
+
+## 2026-10-07: GitHub governance
+
+| Step | Command | Result |
+|---|---|---|
+| 1 | `git pull --no-rebase` | Pulled to 8a2d293 (governance script with 8 checks and azure-stage/azure-prod) |
+| 2 | `.\tools\github-governance.ps1` (no `-MakePrivate`) | The owner approved the 8a2d293 version, including the new force-push/deletion protection on the integration branch. The first run failed to parse at line 87 (`"$Int:"` is not a valid variable reference), so nothing ran. Fixed to `${Int}:` and rerun: all steps succeeded |
+| 3 | `adb devices` | See below |
+
+Verified afterwards with read-only `gh api` calls (the script discards API errors, so its own messages prove nothing):
+
+- `main` created at `c433001` (the integration head at run time). Tag `baseline-2026-10-06` points to `aac06e0`.
+- `main` protection: changes only via PR, 0 required approvals, branch must be up to date with `main` before merging
+  (`strict`), review conversations must be resolved, no force push, no deletion, admins not enforced. Required checks
+  (8): Repository gates (secrets, migrations, contract); Contract lint; Shared, db and backend (build and tests);
+  Android debug APKs, unit tests and lint; Release APKs and APK size gate; Web (lint, types, tests, build, e2e);
+  Container images (build and runtime smoke); Infra validation (Bicep, workflows).
+- Integration branch protection: force push and deletion blocked; no required checks, no PR requirement.
+- Environments: `azure-dev` unchanged (branch `claude/wonderful-thompson-k6ejnf`); `azure-stage` (branch `main` only);
+  `azure-prod` (tags `server-v*` only, required reviewer: the owner).
+- Repository still public; default branch unchanged; secret scanning and push protection enabled (both were already on).
