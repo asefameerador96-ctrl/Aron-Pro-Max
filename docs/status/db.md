@@ -146,8 +146,9 @@ INT has V0001-V0038; the integrator promotes the rest.
 
 **Next rows (lead's order):**
 1. Infra's per-app logins: answered by V0029 (`db-runtime-roles-gaps.md`); nothing open for db.
-2. Salvage port done (V0047-V0052); DA-07 recorded above. Next: PERF-03 (timeouts are in V0020
-   `apply_login_limits`; check what is left).
+2. Salvage port done (V0047-V0052); DA-07 recorded above. PERF-03, db side done: V0020 `app.db_role_limit` +
+   `apply_login_limits()` set the docs/18 timeouts (api 15 s/lock 3 s, auth 5 s, worker 10 min, jobs 30 min, web 60 s)
+   on each login; V0029 closed the grant gaps. Left to infra: `dbPerAppLogins = true` (`db-runtime-roles-gaps.md`).
 3. Query-plan candidates still open:
    - `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
    - The `outlet_change_request` and `task (assignee_user_id, status)` indexes.
