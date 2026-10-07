@@ -2,6 +2,12 @@ import type { Kpis, Summary } from "@/lib/dash/server";
 import { t, type Locale } from "@/lib/i18n";
 import { n, pctText } from "./tiles";
 
+/** A zone is Done only when every target zone-route is FINAL-submitted (not merely sales-submitted: day_completion_pct is sales-based). */
+export function isFinal(k: Kpis): boolean {
+  if ((k.zones_with_target_routes ?? 0) > 0) return k.zones_final_submitted === k.zones_with_target_routes;
+  return k.final_submit_pct === 100;
+}
+
 /** Final-submit status (F-WEB-047): zones submitted versus remaining today, Submit % and Day-completion %, and a Done / Pending
  *  badge per zone. The badge for a child comes from its day-completion figure (100 = every route of the zone final-submitted). */
 export function FinalSubmitPanel({ locale, kpis, zones }: { locale: Locale; kpis: Kpis; zones: Summary["children"] }) {
@@ -28,7 +34,7 @@ export function FinalSubmitPanel({ locale, kpis, zones }: { locale: Locale; kpis
       </dl>
       <ul className="mt-2 flex flex-wrap gap-2 text-xs" data-testid="zone-badges">
         {zones.map((c) => {
-          const finished = c.kpis.day_completion_pct === 100;
+          const finished = isFinal(c.kpis);
           return (
             <li key={`${c.node.type}-${c.node.id}`} data-zone={c.node.id} data-state={finished ? "done" : "pending"} className={`rounded-full px-2 py-0.5 ${finished ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>
               {c.node.name ?? c.node.code ?? c.node.id} · {t(locale, finished ? "finalsubmit.done" : "finalsubmit.pending")}
@@ -49,9 +55,9 @@ export function FinalSubmitPicker({ locale, zones, selected }: { locale: Locale;
         <select name="node" defaultValue={selected ?? ""} className="rounded border border-slate-300 bg-white px-2 py-1">
           <option value="">{t(locale, "common.all")}</option>
           {zones.map((c) => (
-            <option key={`${c.node.type}-${c.node.id}`} value={c.node.id} data-state={c.kpis.day_completion_pct === 100 ? "done" : "pending"}>
-              {c.kpis.day_completion_pct === 100 ? "✓ " : "○ "}
-              {c.node.name ?? c.node.id} — {t(locale, c.kpis.day_completion_pct === 100 ? "finalsubmit.done" : "finalsubmit.pending")}
+            <option key={`${c.node.type}-${c.node.id}`} value={c.node.id} data-state={isFinal(c.kpis) ? "done" : "pending"}>
+              {isFinal(c.kpis) ? "✓ " : "○ "}
+              {c.node.name ?? c.node.id} — {t(locale, isFinal(c.kpis) ? "finalsubmit.done" : "finalsubmit.pending")}
             </option>
           ))}
         </select>

@@ -81,7 +81,7 @@ test("daily tracking: buckets with the exception bucket distinct, yesterday comp
   await page.goto("/daily-tracking?date=2026-10-06"); // an earlier business date: take action is open
   await expect(page.getByTestId("bucket-count-exception")).toHaveText("1");
   await expect(page.getByTestId("bucket-count-not_logged_in")).toHaveText("0");
-  await expect(page.getByTestId("bucket-compare-exception")).toContainText("Yesterday: 1");
+  await expect(page.getByTestId("bucket-compare-exception")).toContainText("Day before");
   await expect(page.getByTestId("comparator-note")).toContainText("not the same time of day");
   await expect(page.getByTestId("take-action-state")).toContainText("Take action is open");
   const row = page.locator('tr[data-route="10352"]');
