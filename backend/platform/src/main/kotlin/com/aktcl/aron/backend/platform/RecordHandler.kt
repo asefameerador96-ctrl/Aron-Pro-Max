@@ -53,6 +53,13 @@ interface RecordHandler {
     fun check(h: Handle, rec: IngestRecord): RecordRefusal? = null
 
     fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {}
+
+    /**
+     * After the record's family transaction committed with the record stored (never for a rolled-back or refused
+     * record, a duplicate or a replay): the place for side effects outside the database (a push nudge). It runs on the
+     * request thread, must not block and must not throw (a throw is logged and ignored).
+     */
+    fun afterCommit(rec: IngestRecord) {}
 }
 
 /** Registered handlers, called in registration order. Built once at wiring time; immutable afterwards. */

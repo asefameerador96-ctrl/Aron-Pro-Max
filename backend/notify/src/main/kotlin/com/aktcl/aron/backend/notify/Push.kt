@@ -25,7 +25,6 @@ import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /** One data-only message to one FCM token; returns false when the token is no longer valid (unregistered). */
@@ -38,12 +37,15 @@ fun interface PushSender {
  * notifier logs once and sends nothing (tests and the dev database run without the secret).
  */
 class FcmPushSender(serviceAccountJson: Secret) : PushSender {
-    private val app: com.google.firebase.FirebaseApp = com.google.firebase.FirebaseApp.initializeApp(
-        com.google.firebase.FirebaseOptions.builder()
-            .setCredentials(com.google.auth.oauth2.GoogleCredentials.fromStream(serviceAccountJson.reveal().byteInputStream()))
-            .build(),
-        "aron-fcm",
-    )
+    private val app: com.google.firebase.FirebaseApp =
+        com.google.firebase.FirebaseApp.getApps().firstOrNull { it.name == APP } ?: com.google.firebase.FirebaseApp.initializeApp(
+            com.google.firebase.FirebaseOptions.builder()
+                .setCredentials(com.google.auth.oauth2.GoogleCredentials.fromStream(serviceAccountJson.reveal().byteInputStream()))
+                // A slow FCM call must not hold the queue past the 30-second bound.
+                .setConnectTimeout(5_000).setReadTimeout(5_000)
+                .build(),
+            APP,
+        )
 
     override fun send(token: String, data: Map<String, String>): Boolean = try {
         val msg = com.google.firebase.messaging.Message.builder().setToken(token).putAllData(data)
@@ -53,49 +55,77 @@ class FcmPushSender(serviceAccountJson: Secret) : PushSender {
         com.google.firebase.messaging.FirebaseMessaging.getInstance(app).send(msg)
         true
     } catch (e: com.google.firebase.messaging.FirebaseMessagingException) {
-        val code = e.messagingErrorCode
-        if (code == com.google.firebase.messaging.MessagingErrorCode.UNREGISTERED || code == com.google.firebase.messaging.MessagingErrorCode.INVALID_ARGUMENT) false else throw e
+        // Only UNREGISTERED proves the token dead; INVALID_ARGUMENT may be the message, so the token is kept.
+        if (e.messagingErrorCode == com.google.firebase.messaging.MessagingErrorCode.UNREGISTERED) false else throw e
     }
+
+    private companion object { const val APP = "aron-fcm" }
 }
 
 /**
- * Push nudges (N-037): `cfg.ops.push_enabled` and, for task pushes, `cfg.notify.task_push_enabled` switch them; each
- * nudge goes asynchronously (well inside 30 seconds) to every live token of the user, carries only `kind` and `reason`
- * (no business data), and a token FCM reports as unregistered is revoked. Best effort: a lost nudge only delays the
- * phone's next sync, which the regular triggers make anyway.
+ * Push nudges (N-037). `cfg.ops.push_enabled` and, for task pushes, `cfg.notify.task_push_enabled` resolved in the
+ * assignee's scope ([enabledFor]; an unreadable switch means off) decide whether a nudge goes at all. It goes
+ * asynchronously to every live token of the user whose phone is active, still bound to the user, and holds a live full
+ * grant (a logged-out user, a revoked or replaced phone and a disabled user get nothing). It carries only `kind` and
+ * `reason`, no business data, and a token FCM reports unregistered is revoked. Delivery is best effort: a small pool,
+ * one pending nudge per user (bursts coalesce), a bounded queue, and FCM timeouts keep every nudge well inside 30
+ * seconds. A lost nudge only delays the phone's next sync, which its own triggers make anyway.
  */
 class PushNotifier(
     private val db: Database,
     private val config: ServerConfig,
     private val sender: PushSender?,
     private val clock: AronClock = AronClock.SYSTEM,
+    /** Whether a switch is on for the user (scope-resolved by the wiring); default: the global value. */
+    private val enabledFor: (userId: Long, key: String) -> Boolean = { _, key -> runCatching { config.bool(key) }.getOrDefault(false) },
 ) : Nudger {
     private val log = LoggerFactory.getLogger("aron.push")
-    private val pool = Executors.newSingleThreadExecutor { r -> Thread(r, "push").apply { isDaemon = true } }
+    private val pool = java.util.concurrent.ThreadPoolExecutor(
+        4, 4, 30, TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue(2_000),
+        { r -> Thread(r, "push").apply { isDaemon = true } }, java.util.concurrent.ThreadPoolExecutor.DiscardPolicy(),
+    )
+    private val pending = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
     @Volatile private var warned = false
 
-    private fun enabled(key: String) = runCatching { config.bool(key) }.getOrDefault(true)
-
     override fun nudge(userId: Long, reason: String) {
-        if (!enabled("cfg.ops.push_enabled")) return
-        if (reason == "task_assigned" && !enabled("cfg.notify.task_push_enabled")) return
+        if (!enabledFor(userId, "cfg.ops.push_enabled")) return
+        if (reason == "task_assigned" && !enabledFor(userId, "cfg.notify.task_push_enabled")) return
         if (sender == null) {
             if (!warned) { warned = true; log.info("push is off: no FCM service account configured") }
             return
         }
-        pool.execute { runCatching { deliver(userId, reason) }.onFailure { log.warn("push failed user_id=$userId reason=$reason: ${it.javaClass.simpleName}") } }
+        if (!pending.add(userId)) return // a nudge for this user is already queued: one is enough
+        try {
+            pool.execute {
+                pending.remove(userId)
+                runCatching { deliver(userId, reason) }.onFailure { log.warn("push failed user_id=$userId reason=$reason: ${it.javaClass.simpleName}") }
+            }
+        } catch (e: java.util.concurrent.RejectedExecutionException) { pending.remove(userId) }
     }
 
     /** Sends now (the executor's body; public for tests). Returns the number of tokens reached. */
     fun deliver(userId: Long, reason: String): Int {
         val s = sender ?: return 0
         val tokens = db.jdbi.withHandle<List<Pair<Long, String>>, Exception> { h ->
-            h.createQuery("SELECT id, token FROM app.push_token WHERE user_id = :u AND revoked_at IS NULL").bind("u", userId)
+            h.createQuery(
+                """
+                SELECT t.id, t.token FROM app.push_token t
+                JOIN app.app_user u ON u.id = t.user_id AND u.status = 'active'
+                JOIN app.device d ON d.id = t.device_id AND d.status = 'active'
+                WHERE t.user_id = :u AND t.revoked_at IS NULL
+                  AND EXISTS (SELECT 1 FROM app.device_binding b WHERE b.user_id = t.user_id AND b.device_id = t.device_id AND b.status = 'active')
+                  AND EXISTS (SELECT 1 FROM app.refresh_family f WHERE f.user_id = t.user_id AND f.device_id = t.device_id AND f.grant_kind = 'full'
+                              AND f.revoked_at IS NULL AND f.sliding_expires_at > :now AND f.absolute_expires_at > :now)
+                """.trimIndent(),
+            ).bind("u", userId).bind("now", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC))
                 .map { rs, _ -> rs.getLong(1) to rs.getString(2) }.list()
         }
         var sent = 0
         for ((id, token) in tokens) {
-            if (s.send(token, mapOf("kind" to "sync_nudge", "reason" to reason))) sent++
+            // One token's failure never skips the user's other phones.
+            val ok = runCatching { s.send(token, mapOf("kind" to "sync_nudge", "reason" to reason)) }
+                .onFailure { log.warn("push send failed push_token_id=$id: ${it.javaClass.simpleName}") }.getOrNull() ?: continue
+            if (ok) sent++
             else db.jdbi.useHandle<Exception> { h ->
                 h.createUpdate("UPDATE app.push_token SET revoked_at = :now, revoke_reason = 'unregistered' WHERE id = :id AND revoked_at IS NULL")
                     .bind("now", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)).bind("id", id).execute()
@@ -105,7 +135,10 @@ class PushNotifier(
     }
 
     /** Waits for queued nudges (tests). */
-    fun drain(timeoutMs: Long = 5_000) { pool.submit {}.get(timeoutMs, TimeUnit.MILLISECONDS) }
+    fun drain(timeoutMs: Long = 5_000) {
+        val until = System.currentTimeMillis() + timeoutMs
+        while ((pool.activeCount > 0 || pool.queue.isNotEmpty()) && System.currentTimeMillis() < until) Thread.sleep(10)
+    }
 }
 
 @Serializable
@@ -134,6 +167,10 @@ fun Route.pushRoutes(d: PushDeps) {
             if (raw.size > 8 * 1024) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "body above 8 KiB")
             val req = com.aktcl.aron.backend.platform.decodeStrict(PushTokenRegistration.serializer(), raw.decodeToString())
             if (!p.isPhone || p.deviceId == null || p.deviceUuid == null) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only an enrolled phone registers a push token")
+            val status = withContext(Dispatchers.IO) {
+                d.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery("SELECT status FROM app.device WHERE id = :d").bind("d", p.deviceId).mapTo(String::class.java).findOne().orElse(null) }
+            }
+            if (status != "active") throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "this phone is not active")
             if (req.app_flavour != p.flavour) throw ApiProblem(ProblemCode.ERR_VALIDATION, "app_flavour differs from the token's app")
             withContext(Dispatchers.IO) {
                 val key = d.db.jdbi.withHandle<String?, Exception> { h ->

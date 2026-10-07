@@ -190,7 +190,26 @@ class Wiring(
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
             // N-037: FCM nudges; off without the service account (dev, tests), and switched by cfg.ops/cfg.notify.
-            val push = com.aktcl.aron.backend.notify.PushNotifier(db, config, pushSender ?: s.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) }, clock)
+            val push = com.aktcl.aron.backend.notify.PushNotifier(db, config, pushSender ?: s.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) }, clock) { userId, key ->
+                // The switch as it applies to the user: zone, territory, division, wing, then global (s9.5 scopes G W D T Z).
+                runCatching {
+                    val chain = db.jdbi.withHandle<List<com.aktcl.aron.backend.config.ScopeNode>, Exception> { h ->
+                        h.createQuery(
+                            """
+                            SELECT z.id, t.id, dv.id, dv.wing_id FROM app.app_user u
+                            JOIN app.zone z ON z.id = COALESCE(u.home_zone_id, (SELECT r.zone_id FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id
+                                WHERE a.user_id = u.id AND a.kind = 'primary' AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to > current_date) ORDER BY a.valid_from DESC LIMIT 1))
+                            JOIN app.territory t ON t.id = z.territory_id JOIN app.division dv ON dv.id = t.division_id
+                            WHERE u.id = :u
+                            """.trimIndent(),
+                        ).bind("u", userId).map { rs, _ ->
+                            listOf(com.aktcl.aron.backend.config.ScopeNode("zone", rs.getLong(1)), com.aktcl.aron.backend.config.ScopeNode("territory", rs.getLong(2)),
+                                com.aktcl.aron.backend.config.ScopeNode("division", rs.getLong(3)), com.aktcl.aron.backend.config.ScopeNode("wing", rs.getLong(4)))
+                        }.findOne().orElse(emptyList())
+                    } + com.aktcl.aron.backend.config.ScopeNode("global", 0)
+                    (configResolver.resolve(key, chain, clock.now()).value as kotlinx.serialization.json.JsonPrimitive).content == "true"
+                }.getOrDefault(false)
+            }
             val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + extraRecordHandlers)), db, config, clock)
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(

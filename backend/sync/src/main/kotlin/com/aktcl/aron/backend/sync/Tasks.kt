@@ -232,6 +232,11 @@ class TaskRecords(
 ) : RecordHandler {
     override val types = setOf("task", "task_event")
 
+    /** A phone-created task (an AMO's control call) nudges the assignee once it is committed and visible. */
+    override fun afterCommit(rec: IngestRecord) {
+        if (rec.type == "task") rec.payload.long("assignee_user_id")?.takeIf { it != rec.userId }?.let { nudger.nudge(it, "task_assigned") }
+    }
+
     override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
         if (rec.type != "task") return null
         val assignee = rec.payload.long("assignee_user_id") ?: return null
@@ -241,12 +246,6 @@ class TaskRecords(
     }
 
     override fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {
-        if (rec.type == "task") {
-            // A phone-created task (an AMO's control call) nudges the assignee; a rolled-back family at worst sends one
-            // spurious nudge, which only makes the phone sync.
-            rec.payload.long("assignee_user_id")?.takeIf { it != rec.userId }?.let { nudger.nudge(it, "task_assigned") }
-            return
-        }
         if (rec.type != "task_event") return
         val task = rec.payload.str("task_uuid") ?: return
         h.createQuery("SELECT id FROM app.task WHERE client_uuid = CAST(:t AS uuid) FOR UPDATE").bind("t", task).mapTo(Long::class.java).findOne()
