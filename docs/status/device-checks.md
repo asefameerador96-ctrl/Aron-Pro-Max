@@ -51,7 +51,7 @@ benchmark), D-DB-VAC (SQLCipher device test), D-UI-01 if it runs on the seeded d
 | D-01 | Install the SR debug APK from the CI artifact on the Galaxy A06, log in (dev API through Front Door), see Home | A06 + USB debugging, `adb install -r` | waits for android-sr-a first run |
 | D-02 | Airplane mode: check in, open a visit, sell, review, save; network on; the sale appears once on the server | A06 | waits for SR slice |
 | D-03 | Print a memo and a stock slip on the MP-58N from the SR app; compare with the photos of the current printout | A06 + MP-58N, photos of a real printout (owner to supply) | waits for android-print |
-| D-04 | Factory-reset test phone: enrol as device owner (adb command from docs/setup), install SR, check in suspends the chosen apps, check out releases them | a reset phone (A07 or Honor X5c Plus) | waits for android-geo-dpc |
+| D-04 | Factory-reset test phone: enrol as device owner with the portal QR (steps in D-ENR below), log in, check in suspends the chosen apps, check out releases them | a reset phone (A07 or Honor X5c Plus) | waits for android-geo-dpc |
 | D-05 | Five mock-location apps and one cloning tool refused or flagged | same phone | waits for android-geo-dpc |
 | D-06 | 8-hour scripted battery and data run | A06 | Day 6 |
 | D-P1 | DEVICE-PENDING (android-print, N-018): on the Galaxy A06 run the on-phone golden test: `./gradlew :android:core-printing:connectedDebugAndroidTest` with the phone on USB (about 3 min). Pass = `GoldenOnDeviceTest` 2/2 green (the phone renders the memo, stock slip, day summary, void slip and due receipt bit for bit like the JVM goldens) | A06 + USB debugging; can run from the laptop session | ready |
@@ -67,6 +67,21 @@ benchmark), D-DB-VAC (SQLCipher device test), D-UI-01 if it runs on the seeded d
 | D-MAP-074 | DEVICE-PENDING (android-core, F-SYS-074 + N-053): SR debug APK from a CI run whose `MAPS_ANDROID_KEY` secret is set, Galaxy A06, Bangla. (1) Online: Check In; the coordinates show at once, then within about 5 s the street address replaces them (pass: an address, in Bangla where Google has one). (2) Airplane mode, walk under 300 m, Check Out: the coordinates show with "(কাছাকাছি: <the check-in address>, সর্বশেষ জানা)"; no spinner, no wait. (3) Airplane mode far from there (or a new day elsewhere): coordinates only. (4) The SR home, route and sale screens show no map at any time; the out-of-range Map button still opens the N-041 map. The lite map screen itself is checked by android-amo/android-tso when Team Location / My Team land (map renders as one static image, list below; airplane mode shows the image as last seen and the list with ages) | Galaxy A06 + SIM/Wi-Fi | ready now (address part) |
 | D-DB-VAC | DEVICE-PENDING (android-core, F-SYS-028 follow-up; laptop session can run it): lab A06 (or any phone/emulator) on USB: `./gradlew :android:core-database:connectedDebugAndroidTest --tests '*SqlCipherDeviceTest'` (about 2 min). Pass: all tests green, including the new assertion that a new encrypted user file reports `PRAGMA auto_vacuum` = 2 (INCREMENTAL), so the nightly purge returns disk space. Also covered by the CI emulator job once infra lands AUD-TP-4 | lab phone + USB debugging + laptop | ready now |
 | D-ERR | DEVICE-PENDING (android-core, F-SYS-032): on the SR, AMO and TSO debug APKs (test account, logged in online): force a crash with `adb shell am crash com.aktcl.aron.sr` (then `.amo`, `.tso`), reopen the app and let it sync; force an ANR with `adb shell am hang` is not available on all builds, so instead skip ANR unless the lab has a debug ANR button. In the dev database: `SELECT kind, exception_class, device_id, left(stack, 200) FROM app.app_error ORDER BY id DESC LIMIT 5`: one row per app with device_id set and a stack trace; no phone number, outlet name or username in message or stack | A06 (+ the AMO/TSO test phones) + dev DB read access | ready with the next debug builds from CI |
+
+### D-ENR phone enrolment, needed before any login on dev with the enrolment gate on (android-core, 2026-10-07)
+
+Use the **release-signed** APK from CI (the server checks the app's signing certificate against the published app_release; a debug-signed APK is refused with "could not verify this phone or app").
+
+Normally installed phone (D-01 and the other checks):
+1. Laptop: admin portal `/admin/enrolment`, create a token: app SR (or AMO, TSO), lockdown **dev**, 1 use. The QR shows once; keep the page open.
+2. Phone: install the APK and open it. The app shows "Enrol this phone". Tap **Scan QR** and scan the laptop screen (Google's scanner opens; no camera permission is asked). Without the scanner, paste the token text instead.
+3. "Enrolling…", then the login screen. Log in with the user of that app. The app asks for a 4-digit code: open `/device-otp` on the laptop, read the code (valid 120 minutes), enter it. Home opens.
+4. If it says the token expired or was used, create a new one (step 1). "No connection": the token is kept; tap **Try again** when online.
+
+Device-owner phone (D-04):
+1. Factory-reset the phone. Laptop: create a token for SR with lockdown **prod** (or **dev** to keep USB debugging).
+2. On the phone's first welcome screen tap six times, connect to Wi-Fi, scan the QR. The phone downloads the SR app and makes it device owner; when set-up ends, open ARON SR.
+3. The app shows "Enrolling…" and finishes by itself (tap **Try again** if it was offline). Then log in and enter the code from `/device-otp` as above. Continue with D-04 (check-in suspends the chosen apps, check-out releases them).
 
 ## android-geo-dpc details (steps for D-04, D-05 and the rows below)
 

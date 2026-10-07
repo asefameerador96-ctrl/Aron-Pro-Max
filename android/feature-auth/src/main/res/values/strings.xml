@@ -46,4 +46,23 @@
     <string name="otp_device_limit">This account is already on the most phones allowed. Ask your TSO to remove one, then tap Verify again: your code stays valid.</string>
     <string name="otp_sign_in_again">This step timed out. Log in again; the code from your TSO stays valid.</string>
     <string name="otp_bound">This phone is now bound to your account.</string>
+    <!-- Device enrolment before the first login (docs/24 s10.4) -->
+    <string name="enrol_title">Enrol this phone</string>
+    <string name="enrol_explain">Before the first login this phone must be enrolled with ARON. Scan the enrolment QR shown in the admin portal, or paste the enrolment token.</string>
+    <string name="enrol_scan">Scan QR</string>
+    <string name="enrol_token_label">Enrolment token</string>
+    <string name="enrol_submit">Enrol</string>
+    <string name="enrol_busy">Enrolling…</string>
+    <string name="enrol_retry">Try again</string>
+    <string name="enrol_skip">Log in without enrolling</string>
+    <string name="enrol_waiting_offline">No connection. The token is saved: connect to the internet and try again.</string>
+    <string name="enrol_waiting_server">The server could not enrol the phone just now. The token is saved: try again in a few minutes.</string>
+    <string name="enrol_error_empty">Scan the QR or enter the token.</string>
+    <string name="enrol_error_unreadable">This is not an enrolment token for this app. Check it and try again.</string>
+    <string name="enrol_error_expired">This token has expired. Create a new one in the admin portal.</string>
+    <string name="enrol_error_used">This token has already been used. Create a new one in the admin portal.</string>
+    <string name="enrol_error_invalid">The server does not know this token, or it was revoked. Create a new one in the admin portal.</string>
+    <string name="enrol_error_attestation">The server could not verify this phone or app. A managed-phone token needs the QR set-up of a reset phone. Contact support.</string>
+    <string name="enrol_error_refused">Enrolment was refused (%1$s). Contact support.</string>
+    <string name="enrol_scan_unavailable">The QR scanner is not available on this phone. Paste the token instead.</string>
 </resources>

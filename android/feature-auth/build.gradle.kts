@@ -17,6 +17,7 @@ dependencies {
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
     implementation(project(":android:core-session"))
+    implementation(libs.play.services.code.scanner) // enrolment QR (Play services UI, no camera permission)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)

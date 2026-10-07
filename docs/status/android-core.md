@@ -78,6 +78,24 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Eleventh session (2026-10-07/08, urgent job: device enrolment in SR, AMO and TSO)
+
+- INT f4945a81 merged (fast-forward). Checks before each push: enrolment, feature-auth, core-sync, core-session, dpc and core-ui unit tests; lint on core-sync, dpc, feature-auth and the three apps; the three app compiles; the sr-release build: green.
+- **(a) 59631840: enrolment installed (T1; Opus checker FAIL on 5 findings, all fixed with tests; re-check PASS with 3 lows, fixed in (b)).**
+  - `core-sync/device/DeviceEnrolment` wires the dpc `EnrolmentCoordinator` (not rebuilt) to the API client, the Keystore key and the signing digest. Each Application calls `install`.
+  - The device-owner QR enrols in the same process: new `Enrolment.install(coordinator, accepted)` hook in dpc, called by `acceptProvisioningExtras`.
+  - The phone keeps its `X-Device-Id` UUID; it gets a fresh one only after `ERR_DEVICE_REVOKED` or `ERR_CONFLICT`. The server's UUID is recorded and repaired at start after a kill.
+  - `ERR_ENROLMENT_*`, `ERR_DEVICE_REVOKED`, `ERR_CONFLICT` and `ERR_VALIDATION` drop the token. Nothing is sent without a signing digest. A typed or scanned QR naming another server is refused.
+- **(b) f357e344: enrolment screen (T1; Opus checker run at push).**
+  - `feature-auth` `EnrolmentGate` is the logged-out entry of all three apps. Scan QR (Google code scanner, no camera permission) or paste the token or QR text. A stored token is retried on open.
+  - "Log in without enrolling" keeps offline unlock reachable; the login screen offers "Enrol this phone" with `ERR_DEVICE_NOT_ENROLLED`.
+  - AMO and TSO now wire the bind (OTP) step, like SR.
+  - The scanner adds about 70 KB. sr-release was already +5.6 to 7.1 % per ABI against the baseline before it (INT drift): the size gate warns.
+- No migration and no contract change. Owner steps: `docs/status/device-checks.md` D-ENR (release-signed APK required: the server checks the signing certificate).
+- Known limits:
+  - The device-owner path does not compare the QR's `api_base_url` with the build's origin; the token goes only to the build's own origin, which is safe.
+  - A failed first try is retried by the screen (open or "Try again") and at the next cold start; there is no background retry job.
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~21:10Z by the container clock, tenth session)
 - **Done this session:** F-SYS-080 phone half + F-SYS-047 `?since=` (Opus PASS, mediums fixed); Room v5 content and surveys for android-sr-a (Opus PASS, mediums fixed; android-sr-a told). Head 67b85f1e, tree clean, INT bde7719c merged.
 - **In progress:** nothing. `python3 tools/my-rows.py android-core --todo` lists only N-023, AUD-TP-5 (android-core-ui) and AUD-TP-4 (infra).

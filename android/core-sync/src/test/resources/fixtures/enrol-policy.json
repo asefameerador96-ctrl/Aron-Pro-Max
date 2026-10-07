@@ -1,0 +1,36 @@
+{
+  "policy_version": 4812,
+  "lockdown_level": "prod",
+  "generated_at": "2026-10-05T02:10:00.000Z",
+  "user_restrictions": {
+    "no_debugging_features": true, "no_install_unknown_sources": true, "no_install_apps": true,
+    "no_factory_reset": true, "no_safe_boot": true, "no_add_user": true,
+    "no_config_date_time": true, "no_usb_file_transfer": true, "no_config_location": true
+  },
+  "global_settings": { "auto_time_required": true, "adb_enabled": false, "location_mode_high_accuracy": true },
+  "self_protection": { "uninstall_blocked": true, "user_control_disabled": true, "battery_optimisation_exempt": true },
+  "permission_grants": [
+    { "permission": "android.permission.ACCESS_FINE_LOCATION", "state": "granted", "min_api": 26 },
+    { "permission": "android.permission.ACCESS_COARSE_LOCATION", "state": "granted", "min_api": 26 },
+    { "permission": "android.permission.CAMERA", "state": "granted", "min_api": 26 },
+    { "permission": "android.permission.BLUETOOTH_CONNECT", "state": "granted", "min_api": 31 },
+    { "permission": "android.permission.BLUETOOTH_SCAN", "state": "granted", "min_api": 31 },
+    { "permission": "android.permission.POST_NOTIFICATIONS", "state": "granted", "min_api": 33 },
+    { "permission": "android.permission.RECORD_AUDIO", "state": "denied", "min_api": 26 }
+  ],
+  "app_control": {
+    "mode": "blocklist",
+    "blocked_packages": ["com.facebook.katana", "com.facebook.lite", "com.instagram.android", "com.zhiliaoapp.musically",
+                          "com.ss.android.ugc.trill", "com.google.android.youtube", "com.snapchat.android",
+                          "com.dts.freefireth", "com.tencent.ig"],
+    "allowed_packages": [],
+    "always_allowed_packages": ["com.whatsapp", "com.facebook.orca", "com.google.android.dialer", "com.samsung.android.dialer",
+                                "com.google.android.apps.messaging", "com.samsung.android.messaging",
+                                "com.google.android.apps.maps", "com.android.settings", "com.sec.android.app.camera",
+                                "com.google.android.inputmethod.latin", "com.sec.android.app.launcher"]
+  },
+  "schedule": { "enabled": true, "starts_on": "check_in", "ends_on": "check_out", "hard_end_time": "20:00", "working_days_only": true },
+  "location": { "require_precise": true, "require_location_on": true, "breadcrumbs_enabled": false, "breadcrumb_interval_min": 30 },
+  "status_report": { "on_events": ["enrolment", "policy_applied", "check_in", "check_out", "boot", "integrity_change", "app_update"], "min_interval_min": 60 },
+  "integrity": { "play_integrity_required": true, "refresh_h": 24, "key_attestation_required": true }
+}

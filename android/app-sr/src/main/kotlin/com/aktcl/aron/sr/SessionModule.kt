@@ -41,6 +41,12 @@ object SessionModule {
         proofSigner = DeviceRuntime.proofSigner(context),
     )
 
+    /** Device enrolment (docs/24 s10.4): the QR path and the token screen share one coordinator. */
+    @Provides
+    @Singleton
+    fun deviceEnrolment(@ApplicationContext context: Context, components: SessionComponents): com.aktcl.aron.core.sync.device.DeviceEnrolment =
+        com.aktcl.aron.core.sync.device.DeviceEnrolment.create(context, components)
+
     /** Geo, integrity and device-owner wiring owed to android-geo-dpc (docs/requests/android-geo-dpc-wiring.md). */
     @Provides
     @Singleton
