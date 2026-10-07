@@ -63,3 +63,10 @@ Day 7 holds if: (1) no lane idles more than 2 hours (the lane check runs every 2
 - Backend is the long pole: 60 of 135 backend rows remain (backend-core, backend-admin, backend-reports; the last two are on hold). Decision needed by 2026-10-08 evening: release backend-reports and backend-admin (acceptor for quarantined check-outs, audit writes) so Day 7 holds.
 - Recycles this window: android-core 8 and 9, backend-core 6 and 7, infra 4. Integrator asked to recycle (534k).
 - Risks: usage `allowed_warning` until 2026-10-13 18:00 UTC; wall-clock test gate blocks CI 2026-10-09; device checks all on 2026-10-08.
+
+## Update 2026-10-07 20:50 UTC (Day 3, lead lane check)
+- Rows built: **333 of 490 BUILD rows (68.0%)**, all 333 on INT (was 326 / 322 at 18:50). INT bde7719c at 20:20; the train moves about every 45 minutes; reds this window were all lane-owned and fixed by their lanes (core-ui module lint, CI job timeout).
+- Dev: deploys 143, 145, 146, 147, 148, 149 green (144 failed on Maven 429, fixed). dblogins fixed; per-app db logins ON in the next infra head. First slice smoke (deploy 149): login, bundle, outlet and baseline tile pass; upload failed on device-key proof (enrolment ON, as ruled); infra gave the smoke device a real key (ff7579c4). Memo read and totals were server gaps, now served (BC-66); the smoke can make them hard checks.
+- Server side: bundle content and surveys, sync totals, memos, digest, media SAS are on INT. 68 contract operations still have no route (backend-core handover): phone-facing ones first (sync/delta, sync/bundle/page).
+- Wave 2 still waits for the slice smoke's first full green run and for usage `allowed`. Owner reply on the weekly usage % is still needed to release backend-admin and backend-reports.
+- Open reds: none attributable. CI "Shared, db and backend" job: timeout raised to 45 and a split into two jobs is in a candidate (infra 11cd544b).
