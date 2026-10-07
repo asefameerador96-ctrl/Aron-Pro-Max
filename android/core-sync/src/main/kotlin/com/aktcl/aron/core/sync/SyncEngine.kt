@@ -128,6 +128,8 @@ class SyncEngine(
     private val random: Random = Random.Default,
     /** The enrolled Keystore key (F-SYS-072); null or a null answer before enrolment: records go without `sig`. */
     private val recordSigner: com.aktcl.aron.core.network.DeviceProofSigner? = null,
+    /** F-SYS-081: the daily telemetry object of a closed date rides the batch body; null in most tests. */
+    private val telemetry: BatchTelemetry? = null,
 ) {
     private val outbox = db.outboxDao()
     private val meta = db.referenceDao()
@@ -166,6 +168,8 @@ class SyncEngine(
         var token: String? = null
         var device: String = ""
         var batches = 0
+        /** The telemetry date the request being sent carries, if any. */
+        var telemetryDate: String? = null
         var acked = 0
         var rejected = 0
         var quarantined = 0
@@ -245,7 +249,13 @@ class SyncEngine(
                 batches++
                 val result = api.send(token!!, device, batchUuid, body, headers)
                 when (result) {
-                    is ApiResult.Success -> return applyResponse(batchUuid, rows, result.value)
+                    is ApiResult.Success -> {
+                        val step = applyResponse(batchUuid, rows, result.value)
+                        // Answered: the day's telemetry is never sent again (the server upserts by device and date).
+                        telemetryDate?.let { d -> try { telemetry?.sent(d) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { } }
+                        telemetryDate = null
+                        return step
+                    }
                     is ApiResult.NotModified -> return stopKeeping(SyncStop.FAILED, "not_modified")
                     is ApiResult.Transport -> return transport(batchUuid, rows, result.failure)
                     is ApiResult.Failure -> {
@@ -425,6 +435,9 @@ class SyncEngine(
                 put("time_anchors", WireJson.requests.encodeToJsonElement(ANCHORS, timeAnchors().takeLast(3)))
                 put("device_counts", counts)
                 put("device_money", money)
+                telemetryDate = null
+                val day = try { telemetry?.pending() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+                if (day != null) { put("telemetry", day.second); telemetryDate = day.first }
                 put("records", JsonArray(rows.map { recordJson(it) }))
             }
             return body.toString()

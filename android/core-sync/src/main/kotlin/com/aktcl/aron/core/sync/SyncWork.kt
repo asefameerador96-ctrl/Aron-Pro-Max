@@ -65,6 +65,8 @@ class SessionSyncRunner(
     private val config: ResumeConfigCheck? = null,
     /** F-SYS-024: buffered events become one outbox row before the batch is built (they ride this upload). */
     private val activityLog: ActivityLog? = null,
+    /** F-SYS-081: platform reads for the daily telemetry; null in tests that do not cover it. */
+    private val telemetryProbe: TelemetryProbe? = null,
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
         // A queued run of a user wiped since (TSO logout) must not create an empty database and bring the user back.
@@ -72,7 +74,14 @@ class SessionSyncRunner(
         val db = databases.of(userId)
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         activityLog?.flush(userId)
-        val report = engine(userId, db).run(trigger)
+        val telemetry = telemetryProbe?.let { DeviceTelemetry(db, it, components.clock) }
+        try { telemetry?.sample() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        val started = components.clock.elapsedRealtimeMs()
+        val report = engine(userId, db, telemetry).run(trigger)
+        try {
+            telemetry?.noteWake(components.clock.elapsedRealtimeMs() - started) // the job's wake lock (WorkManager's)
+            telemetry?.sample()
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         // Only after a run the server answered in full: never straight after a hold, 429, 503 or a refusal (s4.10, s4.7).
         // The delta goes out under the FULL grant of the signed-in user: a run for another user on a shared phone (A's rows
         // uploading while B is signed in) must never pull B's day into A's database (F-SYS-052 checker).
@@ -120,7 +129,7 @@ class SessionSyncRunner(
         }
     }
 
-    private fun engine(userId: Long, db: com.aktcl.aron.core.database.AronDatabase) = SyncEngine(
+    private fun engine(userId: Long, db: com.aktcl.aron.core.database.AronDatabase, telemetry: DeviceTelemetry? = null) = SyncEngine(
         userId = userId,
         db = db,
         api = SyncBatchApi(components.apiClient, components.proofSigner),
@@ -130,6 +139,7 @@ class SessionSyncRunner(
         clock = components.clock,
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
         recordSigner = components.proofSigner, // F-SYS-072: the same enrolled key as X-Device-Proof
+        telemetry = telemetry?.forBatch { key -> com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(key, SyncEngine.iso(components.clock.nowMs())) },
     )
 
     companion object {

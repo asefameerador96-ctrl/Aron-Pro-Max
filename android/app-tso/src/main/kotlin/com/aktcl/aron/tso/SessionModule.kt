@@ -85,10 +85,11 @@ object SessionModule {
     @Provides
     @Singleton
     fun workerFactory(
+        @ApplicationContext context: Context,
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
         resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
         activityLog: com.aktcl.aron.core.sync.ActivityLog,
-    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, config = resumeConfigCheck, activityLog = activityLog) }, { scheduler },
+    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, config = resumeConfigCheck, activityLog = activityLog, telemetryProbe = com.aktcl.aron.core.sync.TelemetryProbe.Android(context)) }, { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
         { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
     )

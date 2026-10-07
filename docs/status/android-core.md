@@ -100,6 +100,15 @@
   - Opus checker FAIL (REPLACE on the main name delayed earlier rows; check-out behind a backoff; key names): fixed with tests. Re-check PASS (SyncWorkTest 14, including its missing-test asks).
   - Lane decisions to fold into DECISIONS.md (lead): (1) doc 17 T7 names `cfg.sync.checkout_upload_jitter_max_s` (0..120), the registry has `cfg.sync.checkout_jitter_s` (0..600): the phone uses the registry key with T7's 120 cap; (2) every check-out and Submit inside the 10-minute window counts as "only because the gate opened" (the phone cannot tell the reason apart); (3) a Submit in the window replaces a pending or running gate check-out job (idempotent, one extra POST at worst).
 
+- **F-SYS-081** (T1, phone half) daily field telemetry: `DeviceTelemetry` (core-sync) keeps one object per business date in the user's `sync_meta`.
+  - Samples are taken only around sync runs: before the batch and after it. Nothing polls. Uid bytes are split by metered or unmetered network, and a reboot is seen when the counter drops. CPU time is summed across processes, and each new process counts as one start. Wake time is the sync job's run time. Battery is the first sample in the half hour after 08:00, 12:00 and 17:00 Dhaka, plus a plugged flag.
+  - The object is built for a closed date: `gps` counts the fixes taken that day (reused ones excluded), and photo bytes on mobile reported by the media uploader become `b_mob_media`. It is capped at `cfg.telemetry.device_max_bytes_per_day`, and `cfg.telemetry.enabled` false drops it.
+  - It rides the batch body's `telemetry` member and is dropped once a batch carrying it is answered.
+  - Wired through `SessionSyncRunner(telemetryProbe=)` in the SR, AMO and TSO shells. Tests: DeviceTelemetryTest (6).
+  - Backend ingest into fact_device_day: docs/requests/android-core-backend-telemetry-day.md.
+  - Opus checker: **pending at this commit**.
+- Lead notice (16:23Z): backend-core answered the consent, integrity-release and cfg-key requests (lane/backend-core 33fd70db). Follow-up once it is on INT: `LocationNotice` reads the bundle's `user.consents` so a wipe or reinstall does not ask again.
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~18:15Z, sixth session)
 - **Done this session** (each with a fresh Opus checker, re-checked where it failed; every confirmed defect fixed with a test; head 2838c5aa, INT merged at d4d33ac3): AUD-PERF-05 (session restore off the main thread; device check D-PERF-05), F-SYS-075 (location notice and consent), F-SYS-053 **closed** (backend BC-54), F-SYS-072 BC-53 release of `device_integrity_failed` rows (row stays open), F-SYS-028 (local purge), F-SYS-024 (activity log), F-SYS-032 phone half (error reporting; device check D-ERR), F-SYS-029 core part (bounded image cache).
 - **In progress:** nothing.
