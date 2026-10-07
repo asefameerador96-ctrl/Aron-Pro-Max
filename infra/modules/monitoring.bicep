@@ -52,7 +52,8 @@ func kql(title string, query string, viz string) object => {
     queryType: 0
     resourceType: 'microsoft.insights/components'
     visualization: viz
-    chartSettings: { showAnnotations: true }
+    // Advanced Settings flags sit at the root of content (Learn workbook samples: showAnalytics, showExportToExcel).
+    showAnnotations: true
   }
 }
 

@@ -63,7 +63,7 @@ union traces, exceptions
 '''
   }
   aggregationStuck: {
-    description: 'Sync health: a queued aggregation key failed 3 or more times in 15 minutes ("key stays queued": the dashboards stop moving for that subject and day). Owner: backend (analytics). Runbook: RB-01.'
+    description: 'Sync health: the aggregation worker logged 3 or more errors in 15 minutes (a key that "stays queued" retries every 5 s, or a failed pass: the dashboards stop moving). Owner: backend (analytics). Runbook: RB-01.'
     severity: 2
     window: 'PT15M'
     frequency: 'PT1M'

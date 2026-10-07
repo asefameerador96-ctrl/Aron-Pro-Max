@@ -1122,6 +1122,8 @@ class Drills(unittest.TestCase):
         self.assertLess(d.index("trap cleanup EXIT"), d.index("az postgres flexible-server restore"))
         self.assertIn("--failover Forced", d)
         self.assertIn('die "a deploy holds the lock', d, "never during a deploy")
+        self.assertNotIn("starts_with(name", d, "the profile server by exact name, never a drill restore or replica")
+        self.assertIn("-n aron-infra --query properties.outputs.postgresServerName.value", d)
 
     def run_failover(self, codes, call_s=6, max_s="30"):
         """Stub az (the failover call takes call_s seconds) and curl (answers the codes in order, then the last one)."""
@@ -1130,7 +1132,8 @@ class Drills(unittest.TestCase):
             (Path(t) / "az").write_text(f"""#!/usr/bin/env python3
 import sys, time
 a = ' '.join(sys.argv[1:])
-if 'deployment group show' in a: print('api.example')
+if 'postgresServerName' in a: print('psql-aron-dev-x')
+elif 'deployment group show' in a: print('api.example')
 elif 'group show' in a: print('')
 elif 'flexible-server list' in a: print('psql-aron-dev-x')
 elif 'highAvailability.mode' in a: print('ZoneRedundant')
@@ -1161,6 +1164,7 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertEqual(rc, 0, out)
         self.assertIn("primary zone: 1 -> 2", out)
         self.assertIn("via api.example", out)
+        self.assertIn("psql-aron-dev-x", out, "the server named by the aron-infra output")
         self.assertIn("this is NOT the outage", out)
         m = re.search(r"user-visible outage: about (\d+) s", out)
         self.assertTrue(m, out)
@@ -1225,6 +1229,38 @@ class InfraStageSkip(unittest.TestCase):
         self.assertLess(d.index('infra_sha="$(az group show'), d.index('git diff --quiet "$infra_sha"'))
         self.assertIn('infra_sha="$deployed_sha"', d, "falls back to the live commit when untagged")
 
+    def run_params_unchanged(self, now_params, last_params):
+        """Runs deploy.sh's params_unchanged with a fake az; returns (exit code, stderr)."""
+        import subprocess, tempfile
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        fn = d[d.index("params_unchanged() {"):]
+        fn = fn[:fn.index("\n}\n") + 3]
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            (t / "now.json").write_text(json.dumps({"parametersJson": json.dumps({"parameters": now_params})}))
+            (t / "last.json").write_text(json.dumps(last_params))
+            (t / "az").write_text(f"""#!/usr/bin/env bash
+case "$*" in *build-params*) cat "{t}/now.json" ;; *"deployment group show"*) cat "{t}/last.json" ;; *) exit 9 ;; esac
+""")
+            (t / "az").chmod(0o755)
+            env = dict(os.environ, PATH=f"{t}:{os.environ['PATH']}", PROFILE="dev", RG="rg-x")
+            r = subprocess.run(["bash", "-c", fn + "\nparams_unchanged"], env=env, capture_output=True, text=True,
+                               cwd=ROOT, timeout=60)
+            return r.returncode, r.stderr
+
+    def test_parameter_comparison_survives_large_parameters(self):
+        """Deploy run 144: 'python3: Argument list too long' (attestation roots > 128 KiB in one argv string) made every
+        deploy re-apply main.bicep. The comparison reads files now."""
+        big = {"attestationRoots": {"value": "x" * 300_000}, "budgetAmount": {"value": 130}}
+        rc, err = self.run_params_unchanged(big, big)
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("Argument list too long", err)
+        rc, err = self.run_params_unchanged(big, {**big, "budgetAmount": {"value": 140}})
+        self.assertEqual(rc, 1)
+        self.assertIn("infra parameters changed: budgetAmount", err)
+        rc, _ = self.run_params_unchanged(big, {**big, "postgresAdminPassword": {"value": "other"}})
+        self.assertEqual(rc, 0, "the admin password is never compared")
+
     def test_recovered_alert_closes_resource_health(self):
         a = (ROOT / "infra" / "modules" / "alerts.bicep").read_text(encoding="utf-8")
         self.assertIn("-resource-health-recovered'", a)
@@ -1249,6 +1285,38 @@ class AgentDownload(unittest.TestCase):
             self.assertIn('--build-context "agent=', t, script)
             self.assertLess(t.index("fetch-ai-agent.sh"), t.index("-f infra/docker/backend.Dockerfile"), script)
 
+
+    def test_second_source_when_maven_central_refuses(self):
+        """Deploy run 144: Maven Central answered 429 on every attempt. The GitHub release is tried next, same checksum."""
+        import hashlib, subprocess, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "infra" / "scripts").mkdir(parents=True)
+            (d / "infra" / "docker").mkdir(parents=True)
+            (d / "bin").mkdir()
+            jar = b"agent bytes"
+            (d / "infra" / "docker" / "backend.Dockerfile").write_text(
+                f"ARG AI_AGENT_VERSION=3.7.10\nARG AI_AGENT_SHA256={hashlib.sha256(jar).hexdigest()}\n")
+            script = d / "infra" / "scripts" / "fetch-ai-agent.sh"
+            script.write_text((ROOT / "infra" / "scripts" / "fetch-ai-agent.sh").read_text(encoding="utf-8"))
+            (d / "bin" / "curl").write_text("""#!/usr/bin/env python3
+import sys
+a = sys.argv[1:]
+open(sys.argv[0] + '.log', 'a').write(a[-1] + '\\n')
+if 'repo1.maven.org' in a[-1]:
+    sys.exit(22)
+open(a[a.index('-o') + 1], 'wb').write(b'agent bytes')
+""")
+            (d / "bin" / "curl").chmod(0o755)
+            env = dict(os.environ, PATH=f"{d / 'bin'}:{os.environ['PATH']}")
+            r = subprocess.run(["bash", str(script), str(d / "out")], env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual((d / "out" / "agent" / "applicationinsights-agent.jar").read_bytes(), jar)
+            self.assertIn("sha256 ok from github.com (attempt 1)", r.stdout)
+            calls = (d / "bin" / "curl.log").read_text().split()
+            self.assertEqual(calls, [
+                "https://repo1.maven.org/maven2/com/microsoft/azure/applicationinsights-agent/3.7.10/applicationinsights-agent-3.7.10.jar",
+                "https://github.com/microsoft/ApplicationInsights-Java/releases/download/3.7.10/applicationinsights-agent-3.7.10.jar"])
 
 class DeviceEnrolment(unittest.TestCase):
     """N-031 (lead #3): the api gets its public base URL and the Android key-attestation roots on every deploy."""
@@ -1295,6 +1363,7 @@ class Observability(unittest.TestCase):
             self.assertEqual(a["frequency"], "PT1M", "evaluated every minute: alert within about 5 minutes")
             self.assertIn("union traces, exceptions", a["query"], "errors logged with a throwable land in exceptions")
             self.assertIn(logger, a["query"])
+            self.assertIn('(itemType == "exception" or severityLevel >= 3)', a["query"], "errors only, never warnings")
             self.assertIn("Owner:", a["description"])
             self.assertIn("Runbook: RB-", a["description"])
         self.assertIn("frequency", json.dumps(resources_of(t, "Microsoft.Insights/scheduledQueryRules")))
@@ -1304,10 +1373,15 @@ class Observability(unittest.TestCase):
         (wb,) = resources_of(t, "Microsoft.Insights/workbooks")
         self.assertEqual(wb["kind"], "shared")
         text = json.dumps(t)
-        for needle in ("Notebook/1.0", "showAnnotations", "/v1/sync/batch", "aron.analytics.worker"):
+        for needle in ("Notebook/1.0", "/v1/sync/batch", "aron.analytics.worker"):
             self.assertIn(needle, text)
+        src = (ROOT / "infra" / "modules" / "monitoring.bicep").read_text(encoding="utf-8")
+        fn = src[src.index("func kql("):src.index("var workbookItems")]
+        content = fn[fn.index("content: {"):]
+        self.assertRegex(content, r"(?m)^    showAnnotations: true$", "a root flag of content, not inside chartSettings")
+        self.assertNotIn("chartSettings", fn)
 
-    def _marker(self, az_exit):
+    def _marker(self, az_exit, kind=None):
         import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as d:
@@ -1316,7 +1390,7 @@ class Observability(unittest.TestCase):
             (Path(d) / "az").chmod(0o755)
             env = dict(os.environ, PATH=f"{d}:{os.environ['PATH']}")
             r = subprocess.run(["bash", "infra/scripts/release-marker.sh", "/subscriptions/s/resourceGroups/rg-aron-dev",
-                                "dev", "c992c9cf8f6f1c1ce3983606e54b091593896bd0", "https://x/runs/1"],
+                                "dev", "c992c9cf8f6f1c1ce3983606e54b091593896bd0", "https://x/runs/1", *([kind] if kind else [])],
                                env=env, capture_output=True, text=True, cwd=ROOT)
             return r, log.read_text().splitlines()
 
@@ -1331,6 +1405,8 @@ class Observability(unittest.TestCase):
         self.assertEqual(body["AnnotationName"], "deploy c992c9c")
         self.assertRegex(body["EventTime"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
         self.assertEqual(json.loads(body["Properties"])["Commit"], "c992c9cf8f6f1c1ce3983606e54b091593896bd0")
+        _, args = self._marker(0, "rollback")
+        self.assertEqual(json.loads(args[args.index("--body") + 1])["AnnotationName"], "rollback c992c9c")
 
     def test_release_marker_never_fails_the_deploy(self):
         r, _ = self._marker(1)
