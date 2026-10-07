@@ -892,7 +892,7 @@ export interface paths {
         put?: never;
         /**
          * Send an FCM data nudge (announcement or config pull) to devices in a scope.
-         * @description Payload carries `pull_after_s` jitter; FCM never triggers an upload (docs/24 s4.7). Refused with 409 `ERR_PUSH_DISABLED` while `cfg.ops.push_enabled` is false.
+         * @description Payload carries `pull_after_s` jitter, and `urgent` = "true" on an urgent `config_pull` (the phone's urgent pull, F-SYS-073); FCM never triggers an upload (docs/24 s4.7). Refused with 409 `ERR_PUSH_DISABLED` while `cfg.ops.push_enabled` is false.
          */
         post: operations["sendNotification"];
         delete?: never;

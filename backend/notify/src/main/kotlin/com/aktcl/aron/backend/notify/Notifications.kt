@@ -64,7 +64,7 @@ private val SCOPES = setOf("global", "wing", "division", "territory", "zone", "u
  * only the target): `global` needs a national reach, a wing, division or territory every one of its zones, a zone that
  * zone, a user or device a user in reach. The phones are those [PushNotifier.liveTokens] allows (active user, active
  * bound phone, live full grant). Refused 409 `ERR_PUSH_DISABLED` while `cfg.ops.push_enabled` is false. Every send is
- * audited. The message is data only: `kind`, `notification_id`, `pull_after_s` (jitter U(0, 20) when urgent, else
+ * audited. The message is data only: `kind`, `notification_id`, `pull_after_s`, `urgent` = "true" on an urgent config pull (jitter U(0, 20) when urgent, else
  * U(0, `cfg.ops.push_jitter_s`)), and for an announcement its title and body; never business or personal data.
  */
 fun Route.notificationRoutes(d: NotificationDeps) {
@@ -101,6 +101,8 @@ fun Route.notificationRoutes(d: NotificationDeps) {
                 val jitter = d.random.nextInt(0, (if (req.urgent) urgentMax else normalMax) + 1)
                 buildMap {
                     put("kind", req.kind); put("notification_id", id); put("pull_after_s", jitter.toString())
+                    // F-SYS-073: the phone runs an urgent config pull outside its ordinary daily cap (string: FCM data).
+                    if (req.urgent && req.kind == "config_pull") put("urgent", "true")
                     if (req.kind == "announcement") {
                         put("title_en", req.title_en); put("body_en", req.body_en)
                         req.title_bn?.let { put("title_bn", it) }; req.body_bn?.let { put("body_bn", it) }

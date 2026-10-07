@@ -59,3 +59,6 @@ F-SYS-012-FOLLOWUP,M,2026-10-07T16:55Z,2026-10-07T17:20Z,25,"Opus: 6 (4 fixed, 2
 AUD-REL-02-RETRY,S,2026-10-07T17:05Z,2026-10-07T17:20Z,15,"Opus: 3 (2 fixed, 1 logged BC-58)","family retry on transient DB failure"
 F-API-070,S,2026-10-07T17:10Z,2026-10-07T17:15Z,5,"","GET /sync/generation"
 F-API-008/009/039,M,2026-10-07T17:12Z,2026-10-07T17:26Z,14,"Opus: 7 (6 fixed, 1 logged BC-60)","day sales/final submit, preview"
+F-SYS-089,S,2026-10-07T17:50Z,2026-10-07T18:05Z,15,"Opus: 4+2 (4 fixed, 2 logged BC-61)","resync late window"
+F-SYS-073-SRV,S,2026-10-07T18:06Z,2026-10-07T18:10Z,4,"","urgent push flag; contract regen"
+CHECKOUT-TOO-EARLY,S,2026-10-07T18:10Z,2026-10-07T18:15Z,5,"","s4.5 quarantine"

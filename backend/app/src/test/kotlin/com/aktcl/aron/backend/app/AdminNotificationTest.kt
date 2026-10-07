@@ -155,7 +155,8 @@ class AdminNotificationTest {
         assertEquals(HttpStatusCode.Accepted, r.status, r.bodyAsText())
         awaitSent(1)
         val data = sent.single().second
-        assertEquals(setOf("kind", "notification_id", "pull_after_s"), data.keys)
+        assertEquals(setOf("kind", "notification_id", "pull_after_s", "urgent"), data.keys)
+        assertEquals("true", data["urgent"], "F-SYS-073: the phone runs an urgent pull")
         assertTrue(data["pull_after_s"]!!.toInt() in 0..20)
     }
 

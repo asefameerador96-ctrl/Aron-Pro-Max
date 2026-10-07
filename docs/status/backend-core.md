@@ -44,6 +44,7 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - db answered (lane/db 0a04b6fc, not yet on INT): V0053 `cfg.sec.record_signature_mode`, V0054 `app.security_event` (auth_rw INSERT only, no RETURNING; detail <= 2000 bytes; `db-security-event-and-signature-mode-answer.md`). When on INT: JDBI sink beside the log sink (bounded queue, off the request path).
 - db answered cfg.app keys: V0055 on lane/db 6f9b6dcf (docs/19 values 7/3/40, global; `db-app-cfg-keys-answer.md`). When on INT: bundle test that they arrive in `config.values`.
 - Pushed: lane/backend-core c417270a (sync+app green; full suite green on the merge). Salvage branch delete was refused by the remote (still at 96ec5eae): lead to remove.
+- Later in session 6: **F-SYS-089** re-sync late window (BC-61; `resync`/`digest_resend` after a young failover/restore, bounded by what the lost lineage accepted; flag request `backend-core-resync-late-flag.md`), **F-SYS-073** urgent flag on urgent config_pull push (BC-62, contract description regenerated), **checkout_too_early** quarantined per s4.5 (BC-63). Lead told (18:15Z). Head 15dba8dd, sync+app green.
 - Open: D5 late rows only for the uploader's routes; risk job window (today/yesterday) misses late-swept mismatches (backend-admin); partial index for unchecked visits (db, fleet); cfg.app keys still not in db; android-core re-queue of device_integrity_failed rows (lead).
 
 ## Session 5 (2026-10-07)

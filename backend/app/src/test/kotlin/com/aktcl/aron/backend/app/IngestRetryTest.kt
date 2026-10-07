@@ -147,10 +147,10 @@ class IngestRetryTest {
 
     private fun uuidOf(rec: JsonObject) = rec["client_uuid"]!!.jsonPrimitive.content
 
-    private suspend fun HttpClient.send(records: List<JsonObject>, want: String = "accepted"): JsonObject {
+    private suspend fun HttpClient.send(records: List<JsonObject>, want: String = "accepted", trigger: String = "manual"): JsonObject {
         val body = buildJsonObject {
             put("batch_uuid", uuid()); put("device_uuid", devPhone); put("schema_version", 1); put("app_version", "1.0.9+9")
-            put("trigger", "manual"); put("sent_at_device", "2027-01-03T04:00:00.000Z"); put("pending_rows", 0)
+            put("trigger", trigger); put("sent_at_device", "2027-01-03T04:00:00.000Z"); put("pending_rows", 0)
             put("time_anchors", JsonArray(emptyList())); put("device_counts", buildJsonObject {}); put("records", JsonArray(records))
         }.toString()
         val gz = ByteArrayOutputStream().also { o -> GZIPOutputStream(o).use { it.write(body.toByteArray()) } }.toByteArray()
@@ -215,5 +215,66 @@ class IngestRetryTest {
         client.send(listOf(v))
         client.send(listOf(v), want = "duplicate")
         assertEquals(1L, visits(cu))
+    }
+
+    /** The visit dated [date], captured at 05:00Z that day. */
+    private fun oldVisit(outlet: Long, date: String): JsonObject {
+        val v = visit(outlet, 10.0, capturedAt = "${date}T05:00:00.000Z")
+        return JsonObject(v + ("business_date" to kotlinx.serialization.json.JsonPrimitive(date)))
+    }
+
+    private fun restore(startedSql: String, lostAfterSql: String) = fresh.db.jdbi.useTransaction<Exception> { h ->
+        h.execute("UPDATE app.server_generation SET is_current = false WHERE is_current")
+        h.execute("INSERT INTO app.server_generation (generation, kind, started_at, lost_after_utc) VALUES (gen_random_uuid(), 'pitr_restore', $startedSql, $lostAfterSql)")
+    }
+
+    /**
+     * F-SYS-089: after a restore a re-sent row older than the window is accepted (flag resync_late), never quarantined;
+     * bounded by what the lost lineage could have accepted, for a young generation only, on `resync` and `digest_resend`.
+     */
+    @Test
+    fun aResyncRowOlderThanTheWindowIsAcceptedOnlyAfterARestore() = testApplication {
+        application { aronApi(wiring) }
+        val o = newOutlet("RTY-RSY-1")
+        // 2026-12-26 is 8 days before 2027-01-03: outside cfg.sync.max_backdate_days (7).
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined")
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined", trigger = "resync") // no restore yet
+        // Restored at 04:00Z; acks after 2027-01-01 23:00Z (Dhaka 2027-01-02) were lost: rows back to 2026-12-26 were acceptable.
+        restore("TIMESTAMPTZ '2027-01-03 04:00:00+00'", "TIMESTAMPTZ '2027-01-01 23:00:00+00'")
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined") // not a re-send
+        val late = oldVisit(o, "2026-12-26")
+        client.send(listOf(late), want = "accepted", trigger = "resync")
+        assertEquals(1L, visits(uuidOf(late)))
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "accepted", trigger = "digest_resend")
+        client.send(listOf(oldVisit(o, "2026-12-25")), want = "quarantined", trigger = "resync") // beyond what a lineage accepted
+        // An old generation (restored days ago): the allowance has expired.
+        restore("TIMESTAMPTZ '2027-01-01 04:00:00+00'", "TIMESTAMPTZ '2026-12-31 23:00:00+00'")
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined", trigger = "resync")
+    }
+
+    /** An attendance check-out captured at [capturedAt] on [day]. */
+    private fun checkOut(capturedAt: String): JsonObject {
+        val cu = uuid()
+        val n = seq.incrementAndGet()
+        return buildJsonObject {
+            put("type", "attendance_event"); put("client_uuid", cu); put("family_uuid", cu); put("rank", 0); put("schema_version", 1)
+            put("business_date", day); put("captured_at", capturedAt); put("captured_elapsed_ms", 18330000 + n); put("boot_count", 412)
+            put("clock_offset_ms", 0); put("captured_offline", true); put("config_version", 1)
+            put("payload", json(
+                """
+                {"kind":"check_out","fix":{"purpose":"attendance_out","fix_status":"ok","lat":$pinLat,"lng":$pinLng,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                 "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}
+                """.trimIndent(),
+            ))
+        }
+    }
+
+    /** s4.5 `checkout_too_early`: a check-out before cfg.day.checkout_earliest_time (17:00 Dhaka, inclusive) is held for review. */
+    @Test
+    fun aCheckOutBeforeTheEarliestTimeIsQuarantined() = testApplication {
+        application { aronApi(wiring) }
+        val early = client.send(listOf(checkOut("2027-01-03T05:30:00.000Z")), want = "quarantined") // 11:30 Dhaka
+        assertEquals("checkout_too_early", early["acks"]!!.jsonArray.single().jsonObject["code"]!!.jsonPrimitive.content)
+        client.send(listOf(checkOut("2027-01-03T11:00:00.000Z").let { JsonObject(it + ("captured_at" to kotlinx.serialization.json.JsonPrimitive("2027-01-02T11:00:00.000Z")) + ("business_date" to kotlinx.serialization.json.JsonPrimitive("2027-01-02"))) }))
     }
 }
