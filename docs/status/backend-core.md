@@ -18,6 +18,19 @@ Updated 2026-10-07 (session 2 of the lane). Earlier history: `docs/status/backen
 - Target outlets are frozen by the first non-pre-fetch bundle (checker reading of s12.4/s4.9).
 - Parents must belong to the uploader, except dues against a memo in reach, an assigned task, an outlet request in reach.
 
+## Lead items queued for the next session (2026-10-07, in this order)
+- Maven: the owner approved the Google Central mirror, now in `settings.gradle.kts` on INT (pull); no init scripts. The retry loop in this session was before it landed.
+- Audit (docs/audit/2026-10-07-enterprise-bar-audit.md, `my-rows.py --todo`): **AUD-TP-1** idempotent-sync fuzz/property harness on POST /v1/sync/batch (duplicate, reordered, partial, concurrent batches; the checker tests BatchCheckerTest/IngestRulesCheckerTest are a start); **AUD-REL-01/02** DB outage must not fail liveness, DB errors map to retryable 503 not 500 (note: IngestService maps a non-data DB error per record to `server_error` retryable already; the request-level path still gives 500). Then AUD-SEC-02, PERF-02, SEC-01/03/07/08, REL-07/08, TP-3 by day.
+- `docs/requests/backend-admin-nul-in-text.md`: reject U+0000 at the platform layer (400). The sync batch already makes it a per-record schema_invalid.
+- `GET /v1/me` `menus` via `ConfigPermissions.menusForRole(role)` (contract v1.2).
+- Web password change: `password_change_token` (aud `aron-pwchange`, 10 min, only POST /v1/auth/change-password, which answers 200 LoginResponse, refresh via Set-Cookie `aron_rt`) — docs/24 s14a R15, R18.
+- Device record: store `root_hints` and `play_integrity_unavailable` once db adds the columns (request file to db needed); missing = NULL = integrity unknown, never clean or failed; root_hints only weighted evidence for DEVICE_INTEGRITY_FAIL.
+- requestHash: lower-case hex SHA-256 of nonce || device_uuid. OTP bind compares `OtpCipher.mac(otp, user_id)`.
+- `docs/requests/backend-migrate-connect-retries.md`: Flyway connectRetries and a longer timeout for the migrate pool only.
+- `cfg.sync.reconcile_types` is being reshaped by db (flat object `ROLE.row` -> record types) and `cfg.bundle.outlet_fields` becomes server delivery: when it lands, re-check `ScopedConfig.fitsContract` keeps both (the request backend-config-value-shape is answered: contract not widened).
+- **Record handler registry exists** (`backend/sync/TypeRules.kt` + `RecordWriter.kt`, generic jsonb_populate_record writer): `config_ack` is already ingested generically into `app.cfg_ack`; backend-admin can add type-specific side effects in `RecordWriter.write` or as a hook like `DuesLedger.afterStored`. Tell backend-admin (lead asked).
+- When F-SYS-059 lands, replace backend-admin's AuditWriter with the platform audit writer.
+
 ## Requests filed
 `backend-jcs-canonicaliser.md` (shared), `backend-config-value-shape.md` (lead), `backend-bundle-snapshot-table.md` (db), `backend-core-assignment-ended-at.md` (backend-admin).
 
