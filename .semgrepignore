@@ -1,0 +1,9 @@
+# Paths Semgrep skips (tools/ci/semgrep.sh). Generated, vendored or third-party code only.
+node_modules/
+build/
+.gradle/
+.next/
+contract/slices/
+web/src/contract/openapi.d.ts
+.claude/
+infra/.compiled/

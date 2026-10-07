@@ -43,6 +43,11 @@
 - **F-SYS-011** Constrained background sync (Opus checker; `CheckerF011Test`). `WorkManagerSyncScheduler` + `SyncWorker` + `AronWorkerFactory` (app `Configuration.Provider`, default WorkManager initializer removed). Every job needs a network; one expedited job after a failure, then backoff; holds and Retry-After pause automatic triggers; the 15-minute periodic job exists only while rows wait. `NoPollingLintTest` scans every module for foreground services, alarms, timers, delayed posts, polling loops and sub-15-minute periodic work.
 - **F-SYS-027** Memo numbering and the **Room v3 records** routed by android-sr-a, android-sr-b and android-print (two Opus checker rounds; `CheckerV3Test`). See "Room v3" below.
 
+- **F-SYS-046** Connectivity trigger (Opus checker; `CheckerF046Test`). `ConnectivityFlush`: default-network callback, 5 s of quiet, `HEAD /v1/health`, then one request per user on the phone with rows waiting. It runs under its own WorkManager name so a backoff cannot delay it. No polling.
+
+## In progress
+- **F-SYS-092** Resume config check (ruling R9). `ResumeConfigCheck.checkOnResume(userId)`: one conditional `GET /v1/config/delta` when the last API contact is more than 5 min old, at most 24 per business date (AC-17). A delta is applied in one transaction (values, scheduled, removed keys, outlet radius, calendar changes, policy flag); 410 flags a bundle refresh. Built and tested; checker next. android-sr-a binds its `ConfigCheck` port to it in the app module: `ConfigCheck { resumeConfigCheck.checkOnResume(activeUserId) }`.
+
 ## Room v3 (on INT 2026-10-07): for android-sr-a, android-sr-b and android-print
 - `CaptureRepository.recordNumberedSale(sale, MemoNumbering(username, bindOrdinal, blockSize))` returns the memo number. It is reserved in its own committed step (a failed save burns it; never reused). The format is `<username>-<yyMMdd>-<seq3>`: device block, then overflow, then `MemoSeqExhausted`.
 - `recordDueCollection(entity, fix?)`: own family, rank 0; `visit_client_uuid` is a parent reference. `amount_mtk` must be at least 10 and at most the outstanding; `cash` only.
@@ -61,7 +66,7 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
-## Next (lead's order): F-SYS-046 (connectivity trigger), ConfigCheck for F-SYS-092 (ruling R9), then delete the local DTO stubs for shared:contract, F-SYS-009, F-SYS-007, the AUD rows (PERF-05 session half, TP-4, PERF-06, PERF-04, TP-5) and AUD-DG-03 signing config.
+## Next (lead's order): the F-SYS-092 checker, then delete the local DTO stubs for shared:contract, F-SYS-009, F-SYS-007, the AUD rows (PERF-05 session half, TP-4, PERF-06, PERF-04, TP-5) and AUD-DG-03 signing config.
 
 ## Second re-check (independent agent, on the pushed fixes)
 - Found a release-build regression: the https guard broke the configuration cache. Fixed; `assembleRelease` now builds (10.7 MB unsigned with R8) and an http base URL fails. **Ask to infra:** add `:android:app-sr:assembleRelease` to CI so this cannot regress silently.
@@ -194,6 +199,7 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
 - **AC-13:** below Android 12 (minSdk 26) an expedited job would run as a foreground service, which docs/24 s5.4 forbids outside printing; there the after-failure and Sales Submit jobs are plain network-constrained jobs. The Galaxy A06 (Android 14) gets expedited jobs.
 - **AC-15:** due_collection and day_submit follow the docs/24 s4.2 table (own family, rank 0), not the routed request's "visit family"; day_submit stays the route-day's last record because the route-day refuses captures after it.
 - **AC-16:** a memo number is reserved in its own transaction before the sale is written (the row's "a failed save burns a number"), where docs/24 s7.5 says "the same transaction"; a number is therefore never handed out twice even if a failed save was printed.
+- **AC-17:** the resume config check is capped at 24 requests per business date; docs/24 names a daily cap but the s9.5 registry has no key for it.
 - **AC-14:** the save debounce is "5 s after the first save of a burst" (`ExistingWorkPolicy.KEEP`), not "5 s of quiet": REPLACE would cancel a running upload on every save.
 - **AC-12:** ownership. Per the lead's Day-1 notes, android-core owns the three app shells' build wiring. The Day-1 login screen in feature-auth and the home placeholder in feature-home were built here because N-001 needs them and android-sr had no Day-1 rows. android-sr takes them over from Day 2 (F-SR-001, F-SR-008).
 

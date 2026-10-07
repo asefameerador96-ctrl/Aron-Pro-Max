@@ -1,5 +1,6 @@
 package com.aktcl.aron.core.ui
 
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -17,7 +18,7 @@ fun LanguageToggle(current: AppLanguage, onSelect: (AppLanguage) -> Unit, modifi
     val target = if (current == AppLanguage.BN) AppLanguage.EN else AppLanguage.BN
     val label = stringResource(if (target == AppLanguage.EN) R.string.core_ui_language_english else R.string.core_ui_language_bangla)
     val family: FontFamily = AronFonts.forLanguage(target)
-    TextButton(onClick = { onSelect(target) }, modifier = modifier) {
+    TextButton(onClick = { onSelect(target) }, modifier = modifier.sizeIn(minWidth = AronTokens.Touch.Min, minHeight = AronTokens.Touch.Min)) {
         Text(text = label, fontFamily = family)
     }
 }

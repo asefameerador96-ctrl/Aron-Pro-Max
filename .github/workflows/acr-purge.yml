@@ -1,0 +1,50 @@
+# Registry retention of the dev resource group (AUD-DG-06): infra/scripts/acr-purge.sh keeps the newest 30 images per
+# repository, every image younger than 3 days and every image a container app or job runs now; it deletes the rest.
+# Weekly on Friday 03:17 Asia/Dhaka (Thursday 21:17 UTC, outside selling hours), or manually (dry run by default).
+# Owner: infra lane. Actions are pinned by commit SHA (release tag in the comment).
+
+name: acr-purge
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List what would be deleted without deleting
+        type: boolean
+        default: true
+      keep:
+        description: Newest images to keep per repository (at least 10)
+        type: string
+        default: "30"
+  schedule:
+    - cron: "17 21 * * 4"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: acr-purge
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    name: Purge old images from the dev registry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: azure-dev
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      # The schedule always deletes; a manual run deletes only when dry_run is unticked (null-safe: test the event).
+      DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run != false) && 'true' || 'false' }}
+      KEEP: ${{ github.event_name == 'workflow_dispatch' && inputs.keep || '30' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Sign in to Azure (OIDC, no client secret)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Purge (infra/scripts/acr-purge.sh)
+        run: infra/scripts/acr-purge.sh "${AZURE_RESOURCE_GROUP}" "${KEEP}"
