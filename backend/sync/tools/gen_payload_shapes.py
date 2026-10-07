@@ -27,7 +27,8 @@ for typ in sorted(rec):
                 if '$ref' in alt: ref = alt['$ref'].split('/')[-1]
         if ref:
             sd = load(ref)
-            if sd.get('type') == 'object' or 'properties' in sd or 'allOf' in sd:
+            # A map (propertyNames/additionalProperties, no properties: TypeCounts) has no fixed member list.
+            if 'properties' in sd or 'allOf' in sd:
                 np_, nr = merged(sd); nested[k] = (sorted(np_), sorted(set(nr)))
     def kl(xs): return 'setOf(' + ', '.join(f'"{x}"' for x in xs) + ')'
     nest = ', '.join(f'"{k}" to Shape({kl(a)}, {kl(b)})' for k, (a, b) in sorted(nested.items()))
