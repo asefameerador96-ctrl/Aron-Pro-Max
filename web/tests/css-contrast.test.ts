@@ -66,6 +66,6 @@ describe("glass fallbacks", () => {
   it("glass is only switched on under @supports backdrop-filter, with no reduced transparency and no more-contrast request", () => {
     expect(css).toMatch(/@media \(hover: hover\) and \(pointer: fine\) and \(prefers-reduced-transparency: no-preference\) and \(prefers-contrast: no-preference\)/);
     expect(css).toMatch(/@supports \(backdrop-filter: blur\(1px\)\)/);
-    expect(css).toMatch(/prefers-reduced-transparency: reduce\) \{ :root \{ --surface: var\(--surface-solid\)/);
+    expect(css).toMatch(/prefers-reduced-transparency: reduce\)(, \(prefers-contrast: more\))? \{ :root \{ --surface: var\(--surface-solid\)/);
   });
 });
