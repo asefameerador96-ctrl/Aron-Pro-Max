@@ -32,9 +32,10 @@ class RequestIsolation(parallelism: Int, val timeoutMs: Long = DEFAULT_TIMEOUT_M
         const val DEFAULT_TIMEOUT_MS = 25_000L
 
         /**
-         * One thread fewer than the write pool. Some calls hold a connection while they borrow a second one (the ingest
-         * resolves reach inside its family transaction); Hikari cannot deadlock while threads <= pool - 1 for nesting
-         * depth two (checker finding on AUD-PERF-02). The read pool is not counted for the same reason.
+         * One thread fewer than the write pool, so one connection stays free for the work that runs on Dispatchers.IO
+         * outside this dispatcher (the per-request config and generation lookups, the readiness ping). A nested
+         * `withHandle` inside a transaction on the same Jdbi reuses the thread's handle (JDBI 3.55), so a handler never
+         * needs two write connections (`BatchAcceptanceTest.aWritePoolOfOneConnectionStillIngestsAFamily`).
          */
         @Suppress("UNUSED_PARAMETER")
         fun forPools(writePoolMax: Int, readPoolMax: Int?): RequestIsolation = RequestIsolation(writePoolMax - 1)
