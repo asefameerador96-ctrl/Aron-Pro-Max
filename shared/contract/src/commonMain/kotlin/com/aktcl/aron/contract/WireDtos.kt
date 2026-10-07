@@ -16,7 +16,9 @@ data class LoginRequest(
     @SerialName("password") val password: String,
     @SerialName("client") val client: String,
     @SerialName("device_uuid") val deviceUuid: String? = null,
-)
+) {
+    override fun toString(): String = "LoginRequest(username=${username}, password=***, client=${client}, deviceUuid=${deviceUuid})"
+}
 
 @Serializable
 data class LoginResponse(
@@ -34,7 +36,9 @@ data class LoginResponse(
     @SerialName("config_version") val configVersion: Long,
     @SerialName("server_time") val serverTime: String,
     @SerialName("min_app_version_code") val minAppVersionCode: Int? = null,
-)
+) {
+    override fun toString(): String = "LoginResponse(status=${status}, accessToken=***, accessExpiresAt=${accessExpiresAt}, refreshToken=***, refreshExpiresAt=${refreshExpiresAt}, uploadRefreshToken=***, bindToken=***, mfaToken=***, user=${user}, scope=${scope}, device=${device}, configVersion=${configVersion}, serverTime=${serverTime}, minAppVersionCode=${minAppVersionCode})"
+}
 
 @Serializable
 data class UserSummary(
@@ -72,7 +76,9 @@ data class RefreshRequest(
     @SerialName("refresh_token") val refreshToken: String? = null,
     @SerialName("grant") val grant: String,
     @SerialName("device_uuid") val deviceUuid: String? = null,
-)
+) {
+    override fun toString(): String = "RefreshRequest(refreshToken=***, grant=${grant}, deviceUuid=${deviceUuid})"
+}
 
 @Serializable
 data class TokenPair(
@@ -82,13 +88,17 @@ data class TokenPair(
     @SerialName("refresh_expires_at") val refreshExpiresAt: String,
     @SerialName("scope_version") val scopeVersion: Int,
     @SerialName("server_time") val serverTime: String,
-)
+) {
+    override fun toString(): String = "TokenPair(accessToken=***, accessExpiresAt=${accessExpiresAt}, refreshToken=***, refreshExpiresAt=${refreshExpiresAt}, scopeVersion=${scopeVersion}, serverTime=${serverTime})"
+}
 
 @Serializable
 data class LogoutRequest(
     @SerialName("scope") val scope: String,
     @SerialName("refresh_token") val refreshToken: String? = null,
-)
+) {
+    override fun toString(): String = "LogoutRequest(scope=${scope}, refreshToken=***)"
+}
 
 // ---- Bundle (docs/24 s3.6) ----
 
@@ -264,7 +274,7 @@ data class RecordEnvelope(
     @SerialName("sig") val sig: String? = null,
 )
 
-/** One on-demand location fix with the integrity evidence captured with it (docs/24 s11.1). */
+/** Required members lat, lng, accuracy_m may be null: encode records with explicitNulls = true so a no-fix GeoFix keeps its keys. One on-demand location fix with the integrity evidence captured with it (docs/24 s11.1). */
 @Serializable
 data class GeoFix(
     @SerialName("purpose") val purpose: String,

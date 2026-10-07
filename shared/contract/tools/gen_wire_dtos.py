@@ -23,6 +23,7 @@ GROUPS = [
                               "MemoPayload", "MemoLinePayload", "MemoDiscountPayload", "QcLinePayload"]),
     ("Sync batch", ["SyncBatchRequest", "SyncBatchResponse", "RecordAck"]),
 ]
+SECRETS = {"password", "access_token", "refresh_token", "upload_refresh_token", "bind_token", "mfa_token"}
 NESTED = {("BundleMeta", "paged_sections"): "PagedSection", ("SyncBatchResponse", "summary"): "SyncBatchSummary"}
 ID_ALIASES = {"Id", "Mtk", "MtkNonNegative"}
 RAW = {"RadioEnvironment": "JsonObject", "SyncRecord": "JsonObject"}  # everything else unknown -> JsonElement
@@ -121,6 +122,8 @@ def schema_members(sch):
 def emit_class(name, sch, owner_for_nested):
     props, req = schema_members(sch)
     doc = (sch.get("description") or "").strip().split("\n")[0]
+    if name == "GeoFix":
+        doc = "Required members lat, lng, accuracy_m may be null: encode records with explicitNulls = true so a no-fix GeoFix keeps its keys. " + doc
     lines = []
     if doc and name not in ("PagedSection", "SyncBatchSummary"):
         lines.append(f"/** {doc} */")
@@ -136,11 +139,17 @@ def emit_class(name, sch, owner_for_nested):
             default = ""
         elif has_default:
             d = strip_null(ps)["default"]
-            decl, default = t, f" = {str(d).lower() if isinstance(d, bool) else d}"
+            decl, default = t, f" = {str(d).lower() if isinstance(d, bool) else (chr(34) + d + chr(34) if isinstance(d, str) else d)}"
         else:
             decl, default = f"{t}?", " = null"
         lines.append(f'    @SerialName("{p}") val {kt_name(p)}: {decl}{default},')
-    lines.append(")")
+    secret = [p for p in props if p in SECRETS]
+    if secret:
+        # never print credentials: a DTO in a log line or crash report shows *** (CLAUDE.md rule 8)
+        shown = ", ".join(f"{kt_name(p)}=" + ("***" if p in SECRETS else f"${{{kt_name(p)}}}") for p in props)
+        lines.append(f') {{\n    override fun toString(): String = "{name}({shown})"\n}}')
+    else:
+        lines.append(")")
     return "\n".join(lines)
 
 

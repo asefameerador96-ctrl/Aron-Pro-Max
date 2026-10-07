@@ -165,6 +165,20 @@ class WireDtosDriftTest {
     }
 
     @Test
+    fun slicesAreNotStaleAgainstTheContract() {
+        for (name in WireDtoNames.all + setOf("MasterAudit")) {
+            assertEquals(OpenApi.schema(name), slice(name), "slice $name differs from contract/openapi.yaml: run tools/slice-contract.py and gen_wire_dtos.py")
+        }
+    }
+
+    @Test
+    fun secretsAreNeverPrinted() {
+        val s = LoginRequest("u", "hunter2", "web").toString() + RefreshRequest(refreshToken = "tok-abc", grant = "full") +
+            TokenPair(accessToken = "acc-xyz", accessExpiresAt = "t", refreshToken = "ref-xyz", refreshExpiresAt = "t", scopeVersion = 1, serverTime = "t")
+        assertFalse(listOf("hunter2", "tok-abc", "acc-xyz", "ref-xyz").any { it in s }, s)
+    }
+
+    @Test
     fun everyRequestedSchemaHasADto() {
         val requested = listOf(
             "LoginRequest", "LoginResponse", "UserSummary", "ScopeSummary", "NodeRef", "LoginDevice", "RefreshRequest", "TokenPair",
