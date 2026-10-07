@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Registry retention (AUD-DG-06): in each Aron repository keep the newest KEEP images plus every image younger than
 # MIN_AGE_DAYS, and NEVER delete an image that a container app or the migrate job runs now (by digest or by tag).
-# Everything older is deleted by digest (tag and manifest together; layers are reclaimed by the registry).
+# Everything older that carries a tag is deleted by digest (tag and manifest together; layers are reclaimed by the
+# registry). Untagged manifests are never touched (children of an index, attestations).
 # The Basic registry has no retention policy of its own and 10 GiB of storage; this keeps it bounded.
 # Rollback reach = the KEEP newest commits (docs/runbooks/rollback-bad-deploy.md).
 # Usage: infra/scripts/acr-purge.sh <resource-group> [keep=30]   (DRY_RUN=true lists without deleting)
@@ -31,8 +32,11 @@ for repo in aron-backend aron-web; do
   rows="$(az acr manifest list-metadata --registry "$registry" --name "$repo" --orderby time_desc \
     --query "[].[digest, join(',', tags || \`[]\`), lastUpdateTime]" -o tsv)" || die "cannot list the manifests of $repo"
   i=0
-  while IFS=$'\t' read -r digest tags updated; do
-    [ -n "$digest" ] || continue
+  # '|' as the separator: tab is IFS whitespace, so an empty tag list between two tabs would shift the fields.
+  while IFS='|' read -r digest tags updated; do
+    # Only tagged manifests count and are deleted: untagged ones are the children of a multi-platform index or
+    # attestations; deleting one could break the image that references it. Deleting a tag's manifest frees its own.
+    if [ -z "$digest" ] || [ -z "$tags" ]; then continue; fi
     i=$(( i + 1 ))
     reason=""
     [ "$i" -le "$KEEP" ] && reason="newest $KEEP"
@@ -52,7 +56,7 @@ for repo in aron-backend aron-web; do
       echo "deleted ${repo}@${digest} (${tags:-untagged}, ${updated})"
     fi
     deleted=$(( deleted + 1 ))
-  done <<<"$rows"
+  done <<<"$(tr '\t' '|' <<<"$rows")"
 done
 line="ACR purge of ${registry}: kept ${kept}, $([ "$DRY_RUN" = true ] && echo 'would delete' || echo deleted) ${deleted} (keep ${KEEP}, min age ${MIN_AGE_DAYS} days)"
 [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$line" >> "$GITHUB_STEP_SUMMARY"

@@ -46,16 +46,14 @@ if [ -n "$ROLLBACK_SHA" ]; then
   RUN_MIGRATIONS=false
 fi
 # Dhaka selling window (docs/18): once real users exist, no deploy while reps sell; a rollback is always allowed.
-if [ -n "${ARON_DEPLOY_FREEZE_DHAKA:-}" ] && [ -z "$ROLLBACK_SHA" ]; then
-  [[ "$ARON_DEPLOY_FREEZE_DHAKA" =~ ^([0-2][0-9]):([0-5][0-9])-([0-2][0-9]):([0-5][0-9])$ ]] \
-    || die "ARON_DEPLOY_FREEZE_DHAKA must look like 07:00-19:00, was '$ARON_DEPLOY_FREEZE_DHAKA'"
-  now_min=$(( 10#$(TZ=Asia/Dhaka date +%H) * 60 + 10#$(TZ=Asia/Dhaka date +%M) ))
-  from_min=$(( 10#${BASH_REMATCH[1]} * 60 + 10#${BASH_REMATCH[2]} ))
-  to_min=$(( 10#${BASH_REMATCH[3]} * 60 + 10#${BASH_REMATCH[4]} ))
-  if [ "$now_min" -ge "$from_min" ] && [ "$now_min" -lt "$to_min" ]; then
-    die "deploys are frozen ${ARON_DEPLOY_FREEZE_DHAKA} Asia/Dhaka (ARON_DEPLOY_FREEZE_DHAKA); run it again after the window"
+# Checked at the start and again right before the migrations and the apps (the lock wait and the build take time).
+check_freeze() { # stage
+  if [ -z "${ARON_DEPLOY_FREEZE_DHAKA:-}" ] || [ -n "$ROLLBACK_SHA" ]; then return 0; fi
+  if in_freeze_window "$ARON_DEPLOY_FREEZE_DHAKA"; then
+    die "deploys are frozen ${ARON_DEPLOY_FREEZE_DHAKA} Asia/Dhaka (ARON_DEPLOY_FREEZE_DHAKA), stopped $1; run it again after the window"
   fi
-fi
+}
+check_freeze "at the start"
 export AZURE_LOCATION="${AZURE_LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_SUFFIX="${ARON_NAME_SUFFIX:-}"
 whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
@@ -171,7 +169,9 @@ deployed_sha="$(live_sha)"
 guard_newer_live "start"
 # Nothing that reaches Azure changed since the live commit (docs, Android, tests only): nothing to deploy.
 deploy_paths=(shared db backend web infra build.gradle.kts settings.gradle.kts gradle.properties gradle .github/workflows/deploy.yml)
-if [ -z "$ROLLBACK_SHA" ] && [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "${FORCE_INFRA:-false}" != true ] \
+# The same commit again (a re-run, e.g. after a failed health gate) always deploys fully, so the gate runs again.
+if [ -z "$ROLLBACK_SHA" ] && [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "$deployed_sha" != "$SHA" ] \
+   && [ "${FORCE_INFRA:-false}" != true ] \
    && git merge-base --is-ancestor "$deployed_sha" "$SHA" 2>/dev/null \
    && git diff --quiet "$deployed_sha" "$SHA" -- "${deploy_paths[@]}" 2>/dev/null; then
   summary "Skipped: nothing deployable changed between the live commit $deployed_sha and $SHA."
@@ -274,8 +274,17 @@ infra/scripts/seed-secrets.sh "$KV"
 # Each commit's image is pushed ONCE as <repo>:<sha>, its tag locked (write-enabled false; delete stays allowed for
 # the purge, infra/scripts/acr-purge.sh), and the apps run it BY DIGEST (AUD-DG-06): a re-pushed or moved tag can
 # never change what runs. A re-run or a rollback of a commit whose image exists reuses it without building.
-digest_of() { # repo tag -> digest, empty when the tag does not exist
-  az acr repository show --name "$REGISTRY_NAME" --image "$1:$2" --query digest -o tsv 2>/dev/null || true
+digest_of() { # repo tag -> digest; empty ONLY when the registry says the repository or tag does not exist
+  local out err i
+  for i in 1 2 3; do
+    if out="$(az acr repository show --name "$REGISTRY_NAME" --image "$1:$2" --query digest -o tsv 2>"$migrate_log")"; then
+      printf '%s' "$out"; return 0
+    fi
+    err="$(cat "$migrate_log")"
+    grep -qiE 'not found|MANIFEST_UNKNOWN|NAME_UNKNOWN|does not exist' <<<"$err" && return 0
+    sleep $(( i * 10 ))
+  done
+  die "cannot read $1:$2 from the registry: $err"
 }
 publish() { # repo build-command...  -> sets IMAGE_REF to <registry>/<repo>@<digest>
   local repo="$1" d; shift
@@ -295,11 +304,11 @@ publish() { # repo build-command...  -> sets IMAGE_REF to <registry>/<repo>@<dig
 }
 build_backend() {
   ./gradlew --console=plain -q :backend:app:installDist
-  docker build --pull -q -f infra/docker/backend.Dockerfile -t "${REGISTRY}/aron-backend:${SHA}" \
+  docker build --pull -q --provenance=false --sbom=false -f infra/docker/backend.Dockerfile -t "${REGISTRY}/aron-backend:${SHA}" \
     --label "org.opencontainers.image.revision=${SHA}" backend/app/build/install/aron-backend
 }
 build_web() {
-  docker build --pull -q -f infra/docker/web.Dockerfile -t "${REGISTRY}/aron-web:${SHA}" \
+  docker build --pull -q --provenance=false --sbom=false -f infra/docker/web.Dockerfile -t "${REGISTRY}/aron-web:${SHA}" \
     --build-arg "NEXT_PUBLIC_MAPS_WEB_KEY=${MAPS_WEB_KEY:-}" --label "org.opencontainers.image.revision=${SHA}" web
 }
 az acr login --name "$REGISTRY_NAME"
@@ -318,9 +327,18 @@ else
 fi
 summary "Images (by digest): backend ${BACKEND_IMAGE}; web ${WEB_IMAGE:-none}"
 export ARON_BACKEND_IMAGE="$BACKEND_IMAGE" ARON_WEB_IMAGE="$WEB_IMAGE" ARON_BUILD_ID="$SHA"
+ARON_MIGRATE_IMAGE=""
+if [ -n "$ROLLBACK_SHA" ]; then
+  # The migrate job keeps the image that applied the newest migrations: an older Flyway would refuse the newer
+  # schema ("applied migration not resolved locally") if a person started the job later.
+  ARON_MIGRATE_IMAGE="$(az containerapp job show -g "$RG" -n "$JOB" --query 'properties.template.containers[0].image' -o tsv)" \
+    || die "rollback: cannot read the migrate job's current image"
+fi
+export ARON_MIGRATE_IMAGE
 
 # ------------------------------------------------------------------------------------------------ migrations
 guard_newer_live "before the migrations"
+check_freeze "before the migrations"
 if [ "$RUN_MIGRATIONS" = true ]; then
   # The point-in-time-restore target if these migrations damage data (docs/runbooks/rollback-bad-migration.md).
   summary "PITR restore point (before the migrations): $(date -u +%Y-%m-%dT%H:%M:%SZ) on server $(out "$outputs" postgresServerName 2>/dev/null || echo "(see aron-infra outputs)")"
@@ -380,6 +398,7 @@ fi
 
 # ------------------------------------------------------------------------------------------------------ apps
 guard_newer_live "before the apps"
+check_freeze "before the apps"
 # Multiple revision mode (stage, prod): the revision serving now is the fallback if the health gate fails.
 api_mode="$(az containerapp show -g "$RG" -n "$api_name" --query properties.configuration.activeRevisionsMode -o tsv 2>/dev/null || true)"
 prev_revision="$(az containerapp show -g "$RG" -n "$api_name" --query properties.latestReadyRevisionName -o tsv 2>/dev/null || true)"
@@ -389,7 +408,7 @@ apps="$(ARON_DEPLOY_SERVICES=true az deployment group create -g "$RG" -n aron-ap
 API_HOST="$(out "$apps" apiHost)"
 WEB_DEPLOYED="$(out "$apps" webDeployed)"
 WEB_HOST="$(out "$apps" webHost)"
-api_mode_now="$(az containerapp show -g "$RG" -n "$api_name" --query properties.configuration.activeRevisionsMode -o tsv)"
+api_mode_now="$(az containerapp show -g "$RG" -n "$api_name" --query properties.configuration.activeRevisionsMode -o tsv || true)"
 
 if [ "$PRIVATE_LINK" = true ]; then
   expected=1; [ "$WEB_DEPLOYED" = true ] && expected=2

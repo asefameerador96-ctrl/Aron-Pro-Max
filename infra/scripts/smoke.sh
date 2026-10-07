@@ -57,6 +57,8 @@ note "GET $ready_url -> 200"
 # 3. the web login page (the web app scales to zero in dev, so allow a cold start)
 if [ -n "$web_host" ]; then
   login_url="https://${web_host}/login"
+  # Its own 10 minutes, so a long Front Door wait above never leaves the web cold start a single try.
+  deadline=$(( $(date +%s) + ${SMOKE_WEB_TIMEOUT_S:-600} ))
   while :; do
     code="$(curl -sS -L -o "$body" -w '%{http_code}' --max-time 30 "$login_url" || echo 000)"
     [ "$code" = "200" ] && break

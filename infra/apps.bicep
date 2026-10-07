@@ -23,6 +23,8 @@ param tags object = {}
 param backendImage string
 @description('The commit the image was built from (reported as `build` by /v1/health); empty = the image tag.')
 param buildId string = ''
+@description('Image of the migrate job; empty = backendImage. A rollback keeps the job on the newest image (deploy.sh).')
+param migrateImage string = ''
 @description('Web image; empty = no web app yet (web/ does not exist).')
 param webImage string = ''
 param deployServices bool = true
@@ -138,7 +140,7 @@ resource migrate 'Microsoft.App/jobs@2025-07-01' = {
       containers: [
         {
           name: 'migrate'
-          image: backendImage
+          image: empty(migrateImage) ? backendImage : migrateImage
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
             { name: 'ARON_ROLE', value: 'migrate' }

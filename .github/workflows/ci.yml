@@ -150,9 +150,9 @@ jobs:
           echo "SCAN_RANGE=${range}" >> "${GITHUB_ENV}"
           echo "CHECK_BASE=${check}" >> "${GITHUB_ENV}"
           echo "gitleaks range: ${range:-whole history}; gate base: ${check}"
-      - name: Install gitleaks, oasdiff and squawk (pinned, checksum-verified)
+      - name: Install gitleaks, oasdiff, squawk and osv-scanner (pinned, checksum-verified)
         run: |
-          for t in gitleaks oasdiff squawk; do tools/ci/install-tool.sh "$t" "${RUNNER_TEMP}/bin"; done
+          for t in gitleaks oasdiff squawk osv-scanner; do tools/ci/install-tool.sh "$t" "${RUNNER_TEMP}/bin"; done
           echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
       - name: Gate self-tests (each gate fails on a deliberate violation; tools/ci/test_gates.py)
         run: python3 tools/ci/test_gates.py
@@ -162,6 +162,26 @@ jobs:
           # The whole history every time (about 2 s): no pushed commit is ever skipped, whatever run was cancelled.
           gitleaks git --no-banner --redact --exit-code 1 --config tools/ci/gitleaks.toml \
             --gitleaks-ignore-path tools/ci/gitleaksignore .
+      - name: Dependency scan (OSV-Scanner; high or critical in a production dependency fails)
+        # AUD-SEC-05. web/package-lock.json today; the Gradle verification file joins it when it exists (Day 6).
+        # Dev-only findings and unknown severities are warnings; exceptions are dated lines in tools/ci/osv-allow.txt.
+        run: |
+          set +e
+          osv-scanner scan source --lockfile web/package-lock.json --format json > "${RUNNER_TEMP}/osv.json"
+          rc=$?
+          set -e
+          # 0 = nothing found, 1 = vulnerabilities found (the gate decides); anything else is a scanner failure.
+          [ "${rc}" -le 1 ] || { echo "::error::osv-scanner failed (exit ${rc})"; exit 1; }
+          python3 tools/ci/osv-gate.py "${RUNNER_TEMP}/osv.json" tools/ci/osv-allow.txt
+      - name: npm install scripts reviewed (web/.npmrc ignore-scripts; tools/ci/npm-install-scripts.txt)
+        run: python3 tools/ci/install-scripts-check.py web/package-lock.json tools/ci/npm-install-scripts.txt
+      - name: Static analysis (Semgrep, pinned image; findings new since the base fail)
+        run: tools/ci/semgrep.sh "${CHECK_BASE}"
+      - name: Dependency review (pull requests; high or critical fails)
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: high
       - name: Migrations (shipped ones unchanged, versions in order, squawk on the new ones)
         if: needs.changes.outputs.db == 'true'
         run: tools/ci/migrations-check.sh "${CHECK_BASE}" squawk
@@ -413,6 +433,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: bash scripts/ci.sh install
+      - name: npm audit of the production dependencies (high or critical fails; AUD-SEC-05)
+        run: npm audit --omit=dev --audit-level=high
       - name: Generated contract types are up to date
         run: bash scripts/ci.sh generate
       - run: bash scripts/ci.sh lint
@@ -467,6 +489,16 @@ jobs:
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: infra/scripts/image-smoke.sh
+      - name: Image vulnerability scan (Trivy pinned by checksum; a fixable CRITICAL fails)
+        # AUD-SEC-05. --ignore-unfixed: a critical with no fixed package yet cannot be acted on and would block every
+        # push; it still shows in the SBOM below and in the weekly CodeQL/Dependabot view.
+        env:
+          TAG: ${{ github.sha }}
+        run: |
+          trivy="$(tools/ci/install-tool.sh trivy "${RUNNER_TEMP}/bin")"
+          for img in aron-backend aron-web; do
+            "${trivy}" image --quiet --no-progress --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 "${img}:${TAG}"
+          done
       - name: SBOM of the backend and web images (SPDX, syft pinned by checksum)
         env:
           TAG: ${{ github.sha }}

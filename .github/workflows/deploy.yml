@@ -66,8 +66,9 @@ env:
 # One deploy per environment at a time, never cancelled mid-flight; GitHub keeps one pending run and a newer one
 # replaces it, so after a burst of pushes only the newest green head deploys. deploy.sh also holds an Azure-side lock
 # (manual runs, promote-prod) and skips an ancestor of the live commit or a commit with nothing deployable changed.
+# A rollback has its own group: a newer push must never cancel a pending rollback, nor a rollback a pending fix.
 concurrency:
-  group: deploy-${{ inputs.environment || 'dev' }}
+  group: deploy-${{ inputs.environment || 'dev' }}${{ (github.event_name == 'workflow_dispatch' && inputs.rollback_sha != '') && '-rollback' || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -133,7 +134,9 @@ jobs:
           fi
           echo "Azure settings present: group ${AZURE_RESOURCE_GROUP}, region ${AZURE_LOCATION}"
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The job runs only for a green ci run of a PUSH to the integration branch (job condition above), never for a
+      # pull request, so the checked-out commit is already on the branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 nosemgrep: workflow-run-target-code-checkout
         with:
           fetch-depth: 0
           # The commit the green ci run tested (workflow_run runs on the branch tip otherwise).

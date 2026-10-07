@@ -554,7 +554,8 @@ class Workflows(unittest.TestCase):
         self.assertIn("title=Azure is not set up for this repository", d, "clear failure when secrets are absent")
         self.assertNotRegex(d, r"(?m)^\s*(push|pull_request|pull_request_target):", "deploy is called or dispatched only")
         # A GitHub concurrency group would cancel pending CI runs; deploy.sh serialises instead.
-        self.assertIn("group: deploy-${{ inputs.environment || 'dev' }}\n  cancel-in-progress: false", d, "a deploy is never cancelled")
+        self.assertIn("group: deploy-${{ inputs.environment || 'dev' }}${{ (github.event_name == 'workflow_dispatch' && inputs.rollback_sha != '') && '-rollback' || '' }}\n  cancel-in-progress: false", d,
+                      "a deploy is never cancelled; a rollback has its own group, so a push never cancels a pending rollback")
         self.assertIn("RUN_MIGRATIONS: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_migrations == false) && 'false' || 'true' }}", d)
         call = d[d.index("workflow_call:"):d.index("workflow_dispatch:")]
         self.assertIn("run_migrations:", call, "a called deploy (promote-prod) must see run_migrations = true, not null")
@@ -650,7 +651,7 @@ class Workflows(unittest.TestCase):
                        "tools/ci/contract-breaking.sh", "fetch-depth: 0"):
             self.assertIn(needle, block)
         tools = (ROOT / "tools" / "ci" / "install-tool.sh").read_text(encoding="utf-8")
-        self.assertEqual(len(re.findall(r'sha="[0-9a-f]{64}"', tools)), 4, "every gate binary is checksum-pinned")
+        self.assertEqual(len(re.findall(r'sha="[0-9a-f]{64}"', tools)), 6, "every gate binary is checksum-pinned")
         self.assertIn("sha256sum -c", tools)
 
     def test_release_apk_and_size_gate(self):
@@ -773,12 +774,14 @@ class DeploySafety(unittest.TestCase):
         d = self.deploy()
         self.assertLess(d.index("PITR restore point (before the migrations)"), d.index("containerapp job start"))
         full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn('if [ -n "${ARON_DEPLOY_FREEZE_DHAKA:-}" ] && [ -z "$ROLLBACK_SHA" ]; then', full)
-        self.assertIn("TZ=Asia/Dhaka", full)
+        self.assertIn('if [ -z "${ARON_DEPLOY_FREEZE_DHAKA:-}" ] || [ -n "$ROLLBACK_SHA" ]; then return 0; fi', full)
+        self.assertIn('check_freeze "at the start"', full)
 
-    def run_smoke(self, build="b" * 40, ready=200, login=200, want="b" * 40, web="web.example"):
+    def run_smoke(self, build="b" * 40, ready=200, login=200, want="b" * 40, web="web.example", timeout="0"):
         import subprocess, tempfile
+        builds = build if isinstance(build, list) else [build]
         with tempfile.TemporaryDirectory() as t:
+            counter = Path(t) / "n"
             stub = Path(t) / "curl"
             stub.write_text(f"""#!/usr/bin/env python3
 import sys
@@ -787,7 +790,12 @@ url = a[-1]
 out = a[a.index('-o') + 1] if '-o' in a else None
 hdr = a[a.index('-D') + 1] if '-D' in a else None
 if url.endswith('/v1/health'):
-    code, body = 200, '{{"status":"ok","build":"{build}"}}'
+    import os
+    c = {str(counter)!r}
+    n = int(open(c).read()) if os.path.exists(c) else 0
+    if hdr: open(c, 'w').write(str(n + 1))
+    builds = {builds!r}
+    code, body = 200, '{{"status":"ok","build":"%s"}}' % builds[min(n, len(builds) - 1)]
     if hdr: open(hdr, 'w').write('HTTP/2 200\\r\\nx-aron-api: 1\\r\\n')
 elif url.endswith('/v1/health/ready'):
     code, body = {ready}, 'database: down' if {ready} != 200 else 'ok'
@@ -801,7 +809,8 @@ sys.stdout.write(str(code))
             stub.chmod(0o755)
             (Path(t) / "sleep").write_text("#!/bin/sh\nexit 0\n")
             (Path(t) / "sleep").chmod(0o755)
-            env = {**os.environ, "PATH": f"{t}:{os.environ['PATH']}", "SMOKE_TIMEOUT_S": "0"}
+            env = {**os.environ, "PATH": f"{t}:{os.environ['PATH']}", "SMOKE_TIMEOUT_S": timeout,
+                   "SMOKE_WEB_TIMEOUT_S": "0"}
             r = subprocess.run(["bash", str(ROOT / "infra" / "scripts" / "smoke.sh"), "api.example", want, web],
                                env=env, capture_output=True, text=True, timeout=60)
             return r.returncode, r.stdout + r.stderr
@@ -816,6 +825,9 @@ sys.stdout.write(str(code))
         self.assertIn("database: down", out, "the readiness response is shown")
         self.assertNotEqual(self.run_smoke(login=502)[0], 0, "a broken web login page must fail the gate")
         self.assertEqual(self.run_smoke(login=502, web="")[0], 0, "no web host, no web check")
+        rc, out = self.run_smoke(build=["a" * 40, "a" * 40, "b" * 40], timeout="600")
+        self.assertEqual(rc, 0, "the gate waits while the old revision still answers, then passes on the new build")
+        self.assertIn("build " + "a" * 40, out)
 
     def run_purge(self, manifests, in_use, keep="10", dry=False):
         import subprocess, tempfile
@@ -848,6 +860,7 @@ else: sys.exit('unexpected az ' + a)
         old = "2020-01-01T00:00:00Z"
         ms = [(f"sha256:{i:064x}", f"c{i}", old) for i in range(14)]          # newest first
         ms[13] = (ms[13][0], ms[13][1], "2999-01-01T00:00:00Z")  # young: kept although old by rank
+        ms.insert(3, ("sha256:" + "f" * 64, "", old))  # untagged child of an index: never counted, never deleted
         in_use = "craronx.azurecr.io/aron-backend@sha256:%064x" % 12 + "\n" + "craronx.azurecr.io/aron-backend:c11"
         rc, deleted, out = self.run_purge(ms, in_use)
         self.assertEqual(rc, 0, out)
@@ -857,11 +870,66 @@ else: sys.exit('unexpected az ' + a)
         self.assertEqual((rc, deleted), (0, []), "a dry run deletes nothing")
         self.assertNotEqual(self.run_purge(ms, in_use, keep="3")[0], 0, "keep below 10 is refused")
 
+    def test_freeze_window(self):
+        import subprocess
+        def inside(window, minute):
+            r = subprocess.run(["bash", "-c", f'source infra/scripts/lib.sh; in_freeze_window "{window}" {minute}'],
+                               cwd=ROOT, capture_output=True, text=True)
+            return "error" if "::error::" in r.stderr else {0: True, 1: False}.get(r.returncode, "error")
+        self.assertEqual([inside("07:00-19:00", m) for m in (419, 420, 1139, 1140)], [False, True, True, False])
+        self.assertEqual([inside("22:00-06:00", m) for m in (1319, 1320, 0, 359, 360)], [False, True, True, True, False],
+                         "a window past midnight wraps")
+        for bad in ("24:00-06:00", "7:00-19:00", "07:00-29:00"):
+            self.assertEqual(inside(bad, 0), "error", f"{bad} must be refused, never ignored")
+        d = self.deploy()
+        for stage in ('check_freeze "before the migrations"', 'check_freeze "before the apps"'):
+            self.assertIn(stage, d)
+        self.assertLess(d.index('check_freeze "before the apps"'), d.index("ARON_DEPLOY_SERVICES=true"))
+
+    def test_rerun_of_the_live_commit_deploys_again(self):
+        d = self.deploy()
+        i = d.index('summary "Skipped: nothing deployable changed')
+        self.assertIn('[ "$deployed_sha" != "$SHA" ]', d[i - 600:i], "a re-run after a failed gate must run the gate again")
+        self.assertIn("--provenance=false --sbom=false", d, "no attestation manifests the purge could orphan")
+        self.assertIn('ARON_MIGRATE_IMAGE="$(az containerapp job show', d, "a rollback keeps the migrate job on the newest image")
+        self.assertIn("image: '[if(empty(parameters('migrateImage')), parameters('backendImage'), parameters('migrateImage'))]'".replace("image: '", "").rstrip("'"), json.dumps(load("apps.json")))
+
     def test_purge_workflow(self):
         w = (WORKFLOWS / "acr-purge.yml").read_text(encoding="utf-8")
         self.assertIn("DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run != false) && 'true' || 'false' }}", w)
         self.assertIn("environment: azure-dev", w)
         self.assertNotRegex(w, r"(?m)^\s*(push|pull_request|pull_request_target):")
+
+
+class SupplyChainGates(unittest.TestCase):
+    """AUD-SEC-05 and the lead's scanning ask: OSV, Semgrep, npm audit, Trivy, dependency review, ignore-scripts."""
+
+    def test_wired_into_ci(self):
+        c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        gates = c[c.index("\n  gates:"):c.index("\n  contract:")]
+        for needle in ("for t in gitleaks oasdiff squawk osv-scanner; do", "tools/ci/osv-gate.py", "tools/ci/osv-allow.txt",
+                       'tools/ci/semgrep.sh "${CHECK_BASE}"', "tools/ci/install-scripts-check.py web/package-lock.json",
+                       "actions/dependency-review-action@", "fail-on-severity: high"):
+            self.assertIn(needle, gates)
+        self.assertIn("if: github.event_name == 'pull_request'", gates[gates.index("Dependency review"):])
+        web = c[c.index("\n  web:"):c.index("\n  images:")]
+        self.assertIn("npm audit --omit=dev --audit-level=high", web)
+        images = c[c.index("\n  images:"):c.index("\n  infra:")]
+        self.assertIn("--severity CRITICAL --ignore-unfixed --exit-code 1", images)
+        self.assertLess(images.index("image-smoke.sh"), images.index("trivy"))
+
+    def test_pins(self):
+        sg = (ROOT / "tools" / "ci" / "semgrep.sh").read_text(encoding="utf-8")
+        self.assertRegex(sg, r'IMAGE="semgrep/semgrep:[\d.]+@sha256:[0-9a-f]{64}"', "semgrep image pinned by digest")
+        self.assertIn('[ -n "$base" ] && args+=(--baseline-commit "$base" --error)', sg)
+        tools = (ROOT / "tools" / "ci" / "install-tool.sh").read_text(encoding="utf-8")
+        for t in ("osv-scanner)", "trivy)"):
+            self.assertIn(t, tools)
+
+    def test_web_installs_without_scripts(self):
+        self.assertIn("ignore-scripts=true", (ROOT / "web" / ".npmrc").read_text(encoding="utf-8"))
+        df = (ROOT / "infra" / "docker" / "web.Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("COPY package.json package-lock.json .npmrc ./", df, "the image build must use web/.npmrc")
 
 
 if __name__ == "__main__":
