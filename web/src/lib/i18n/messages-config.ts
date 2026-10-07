@@ -435,6 +435,8 @@ const pairs = {
   "geo.cal.use": ["Try this radius", "এই ব্যাসার্ধ দেখুন"],
   "geo.map": ["Map: click to place a circle of the radius", "মানচিত্র: ব্যাসার্ধের বৃত্ত বসাতে ক্লিক করুন"],
   "geo.map.placeholder": ["The map needs the Maps key; it is not set in this environment.", "মানচিত্রের জন্য ম্যাপস কী লাগে; এই পরিবেশে সেট করা নেই।"],
+  "geo.map.capped": ["The map is paused for today (daily limit reached).", "আজকের জন্য মানচিত্র বন্ধ (দৈনিক সীমা পৌঁছেছে)।"],
+  "geo.map.failed": ["The map could not be loaded.", "মানচিত্র লোড করা যায়নি।"],
   "geo.save": ["Save radius", "ব্যাসার্ধ সংরক্ষণ"],
   "geo.need_id": ["Enter the id of the area to see and edit its radius.", "ব্যাসার্ধ দেখতে ও বদলাতে এলাকার আইডি দিন।"],
   "geo.level": ["Level", "স্তর"],
