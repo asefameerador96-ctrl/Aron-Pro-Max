@@ -87,3 +87,6 @@ include(":android:app-amo")
 include(":android:app-tso")
 // Lane android-sys: camera, photo pipeline and media queue; permissions, update, support upload, language and logout.
 include(":android:core-system")
+
+// Lane android-core-ui: Roborazzi screenshot tests of the core screens (test scope only, no APK cost).
+include(":android:ui-screenshots")
