@@ -83,6 +83,8 @@ class VisitFlow(
     private val nextSequenceNo: () -> Int,
     /** Called after a `blocked` visit is committed: the shell writes its `visit_close` with outcome `abandoned` (s11.2). */
     private val onBlocked: suspend (OpenVisit) -> Unit = {},
+    private val openStore: OpenVisitStore = OpenVisitStore.None,
+    private val configCheck: ConfigCheck = ConfigCheck.None,
 ) {
     private val lock = Mutex()
     private var visitUuid: String = ""
@@ -102,6 +104,19 @@ class VisitFlow(
         refreshCount = 0
         fixUuid = null
         visitUuid = newUuid() // minted once per open(): a retried commit reuses it and cannot create a second visit
+        // R8: the local OPEN row exists at once, so a kill and relaunch resumes the visit; no outbox record yet.
+        runCatching { openStore.begin(visitUuid, selected.outletId, selected.routeId, metaProvider.meta(selected.routeId).capturedAt) }
+        ui.value = VisitUiState.ReadingFix
+        evaluate(fixes.readFix(PURPOSE_VISIT))
+    }
+
+    /** After a relaunch: the OPEN row of today, so the screen can continue the check for the same visit uuid. */
+    suspend fun pendingOpenRow(businessDate: String): OpenVisitRow? = openStore.findOpen(businessDate)
+
+    /** Resumes a visit found by [pendingOpenRow]: same visit uuid, a fresh fix, a fresh count of refreshes. */
+    suspend fun resume(row: OpenVisitRow, outlet: VisitOutlet): VisitUiState = lock.withLock {
+        check(session.current.value == null) { "a visit is already open: close it first" }
+        this.outlet = outlet; refreshCount = 0; fixUuid = null; visitUuid = row.visitUuid
         ui.value = VisitUiState.ReadingFix
         evaluate(fixes.readFix(PURPOSE_VISIT))
     }
@@ -112,6 +127,7 @@ class VisitFlow(
         check(cur is VisitUiState.NeedsDecision) { "refresh only applies while the geo check is undecided" }
         if (!cur.refreshLeft) return@withLock cur
         refreshCount += 1
+        runCatching { configCheck.checkOnResume() } // F-SYS-092: never blocks, never throws into the flow
         ui.value = VisitUiState.ReadingFix
         evaluate(fixes.readFix(PURPOSE_REFRESH))
     }
@@ -199,6 +215,7 @@ class VisitFlow(
             geoAction = action.wire, geoValidated = result.verdict == GeoVerdict.IN_RANGE,
             photoValidated = photoUuid != null, forceReasonCode = reason, openedAtIso = opened,
         )
+        runCatching { openStore.clear(visitUuid) }
         val st = if (action == GeoAction.BLOCKED) VisitUiState.Blocked(open) else VisitUiState.Open(open)
         if (action != GeoAction.BLOCKED) session.set(open)
         ui.value = st

@@ -1,10 +1,9 @@
 // Per-operation consistency rules the proxy applies before calling the API (the API validates again).
 import { containsMask } from "./mask";
-import type { OpKey } from "./ops";
 
 export type FieldProblem = { pointer: string; code: string };
 
-export function opRules(op: OpKey, body: Record<string, unknown>): FieldProblem[] {
+export function opRules(op: string, body: Record<string, unknown>): FieldProblem[] {
   if (op === "quarantine.resolve") {
     const out: FieldProblem[] = [];
     const fix = body.fixed_record;
