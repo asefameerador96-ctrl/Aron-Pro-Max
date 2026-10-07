@@ -43,3 +43,4 @@ F-SYS-052-followup,S,2026-10-07T17:50Z,2026-10-07T17:56Z,6,2,cfg.auth offline un
 F-SYS-032-followup,S,2026-10-07T17:56Z,2026-10-07T18:08Z,12,1,early crash catcher before Hilt; Opus check PASS; medium (device-clock time) fixed with test
 N-053+F-SYS-074,M+M,2026-10-07T17:55Z,2026-10-07T18:25Z,30,10,core-map lite map + online-only attendance address; Opus FAIL (medium: last address survived logout) fixed with tests; lows fixed
 F-SYS-075-notice-recheck,S,2026-10-07T18:25Z,2026-10-07T18:40Z,15,4,resume re-check after Later; overlay keeps the day composed; Opus PASS (medium teardown) fixed with test
+BC-56-followup,S,2026-10-07T18:40Z,2026-10-07T18:55Z,15,4,enforce mode holds integrity release; Opus PASS; scheduled-row test added

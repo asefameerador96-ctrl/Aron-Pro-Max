@@ -88,6 +88,7 @@
   - Live lite render, pins and snapshot write: device check D-MAP-074 (address part ready now; map part when the AMO/TSO hosts land).
   - For android-core-ui (via the lead): add `core-map` to `HardcodedStringScanner`'s module set (core-ui test). Its strings are already in resources (bn + en).
 - **Location notice re-check (handover item) done**: after "Later", each resume re-reads the need; when a config delta has made the notice required (and it is not accepted) it is drawn OVER the day (no teardown: a visit in progress keeps its state; Back is swallowed; only Accept or Logout). A read error keeps "Later". Opus check PASS; its medium (mid-sale teardown) and lows fixed with the test (state survives, error keeps Later, shown_at = reappearance time). Limit: the flip shows at the resume after the delta is applied.
+- **BC-56 follow-up done**: `cfg.sec.record_signature_mode` (db V0053) is read by `SyncEngine`; under enforce the integrity-quarantined rows are held without spending a release round, and record/off releases them (one round per business date as before). Opus check PASS; its scheduled-row test gap added. Accepted low: a phone stuck on a stale enforce holds the rows until the next delta or bundle (no on-screen sign).
 - Request filed: docs/requests/android-core-sys-media-mobile-bytes.md (android-sys: a sent-bytes callback so `b_mob_media` is counted).
 - Lead note (18:21Z): backend-core built F-API-070, BC-62 (urgent flag) and BC-63 on lane/backend-core 15dba8dd; F-SYS-047/080 start when it is on INT.
   - Accepted lows: before API 33 a timed-out geocode keeps its IO thread until the platform call returns; the offline image shows no capture time.
@@ -110,7 +111,6 @@
      - LocationNotice re-check when the setting turns required mid-session.
      - The media lane should call `DeviceTelemetry.noteMobileMediaBytes`.
      - Replace the seed `baseline-prof.txt` with the generated profiles once D-PERF-04 runs.
-     - BC-56: read `cfg.sec.record_signature_mode` from config once db registers it with delivery both.
      - `cfg.app.image_cache_mb`, `local_history_days` and `outbox_keep_days` wait for db rows; the defaults hold.
 - **Open requests (new):** docs/requests/android-core-backend-urgent-push-flag.md, to backend-core (send `urgent` in the config_pull data).
 - **Notes for the lead:** the server never enforces `checkout_too_early` (backend-core, info). Lane decision: `URGENT_RESERVE` = 4 config requests over the daily cap of 24 for urgent pushes.

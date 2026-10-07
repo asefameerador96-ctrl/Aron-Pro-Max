@@ -348,6 +348,21 @@ class RecordSignatureTest {
         assertEquals("acked", state(v2))
     }
 
+    /** Checker: a scheduled enforce row in effect overrides the unscheduled record row (resolved at the engine's now). */
+    @Test fun aScheduledEnforceInEffectHoldsTheRows() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        quarantinedBefore(visitUuid, closeUuid)
+        fun row(value: String, from: String?, scheduled: Boolean) = com.aktcl.aron.core.database.entity.ConfigValueEntity(
+            key = SyncEngine.KEY_SIGNATURE_MODE, valueJson = value, scopeType = "global", scopeId = null, effectiveFrom = from,
+            effectiveTo = null, configVersion = 2, requiresAck = false, scheduled = scheduled,
+        )
+        db.referenceDao().insertConfig(listOf(row("\"record\"", null, false), row("\"enforce\"", "2000-01-01T00:00:00.000Z", true)))
+        fake.enforce = true
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals(0, sentCount(visitUuid))
+        assertEquals(null, db.referenceDao().meta(SyncEngine.KEY_INTEGRITY_RELEASE))
+    }
+
     /** Rows quarantined after an episode ended start a new one. */
     @Test fun rowsQuarantinedLaterStartANewEpisode() = runBlocking {
         val (visitUuid, closeUuid) = visitWithClose()
