@@ -111,7 +111,8 @@ class BackOfficeAndConfigV0023Test {
         assertEquals(
             listOf(
                 "cfg.auth.lockout_attempts=down", "cfg.auth.lockout_min=up", "cfg.device.lockdown_level=enum_order", "cfg.geo.max_accuracy_m=down",
-                "cfg.geo.mock_policy=enum_order", "cfg.geo.radius_m=down", "cfg.sale.stock_check=enum_order",
+                "cfg.geo.mock_policy=enum_order", "cfg.geo.radius_m=down", "cfg.pii.export_rows_per_day=down", "cfg.pii.list_rows_per_hour=down",
+                "cfg.sale.stock_check=enum_order",
             ),
             c.column("SELECT key || '=' || restrictive_dir FROM app.cfg_key WHERE restrictive_dir <> 'none' ORDER BY key"),
         )

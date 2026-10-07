@@ -145,14 +145,14 @@ class SchemaV1aTest {
     fun configValuesNeverOverlapAndAreClosedNotEdited() {
         val insert = """
             INSERT INTO app.cfg_version (config_version, kind, committed_by, summary)
-              SELECT 2, 'change', id, 't' FROM app.app_user WHERE username = 'aron.system';
+              SELECT 1000, 'change', id, 't' FROM app.app_user WHERE username = 'aron.system';   -- a free version above the migrations' own
             INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason)
-              VALUES ('cfg.geo.radius_m', 'zone', 7, '120', '2026-10-01T00:00Z', 2, 'test');
+              VALUES ('cfg.geo.radius_m', 'zone', 7, '120', '2026-10-01T00:00Z', 1000, 'test');
         """.trimIndent()
         assertRejected(
             "23P01",
             insert + "\nINSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
-                "VALUES ('cfg.geo.radius_m', 'zone', 7, '150', '2026-10-05T00:00Z', 2, 'test');",
+                "VALUES ('cfg.geo.radius_m', 'zone', 7, '150', '2026-10-05T00:00Z', 1000, 'test');",
         )
         assertRejected("42501", "$insert\nUPDATE app.cfg_value SET value = '130';")
         assertRejected("42501", "$insert\nDELETE FROM app.cfg_value;")

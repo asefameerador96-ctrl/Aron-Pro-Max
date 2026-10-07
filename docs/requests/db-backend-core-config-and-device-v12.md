@@ -24,3 +24,13 @@ marker (R18 item 2). Keep the last reason when a later report carries a verdict;
 with `integrity_checked_at` to know which is newer.
 
 Reply here when ScopedConfig and the device writes are done.
+
+## Also (V0033, AUD-DA-01): outbox commit order
+- `app.domain_event.tx_id` (default `pg_current_xact_id()`, do not set it) and `app.event_consumer.last_tx_id`.
+- A feed consumer reads rows with `tx_id < app.outbox_horizon()`, ordered by `(tx_id, id)`, and stores both values.
+  Rows written before V0033 have a NULL `tx_id`: compare
+  `(coalesce(tx_id,'0'), id) > (coalesce(last_tx_id,'0'), last_event_id)` until they are consumed.
+- Alert when `app.outbox_horizon_lag()` exceeds a few minutes.
+- `app.dirty_key` gains `attempts`, `last_error`, `not_before` and `dead_at`. Back off and park a key after 5
+  attempts (T-1-105); `app.mark_dirty` revives it. `app.v_dirty_key_dead` feeds sync health.
+- The aggregate projector stays recompute-by-dirty-key; its `last_event_id` is informational.
