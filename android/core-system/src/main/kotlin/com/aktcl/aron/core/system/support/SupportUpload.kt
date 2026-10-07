@@ -51,7 +51,7 @@ internal data class SupportUploadDto(
 enum class SupportStep { SENT, RETRY, REFUSED }
 
 /** `POST /v1/support/pda-upload` then the blob PUT. */
-interface SupportApi {
+fun interface SupportApi {
     suspend fun send(job: SupportJob, file: ByteArray): Pair<SupportStep, String?>
 }
 
