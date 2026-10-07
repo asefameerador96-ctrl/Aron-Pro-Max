@@ -14,7 +14,7 @@
 #
 # Needs (created by infra/bootstrap-azure.ps1): secrets AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID;
 # variables AZURE_RESOURCE_GROUP, AZURE_LOCATION, ARON_ALERT_EMAILS. Optional: variables ARON_BUDGET_AMOUNT,
-# ARON_NAME_SUFFIX; secrets FCM_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY.
+# ARON_NAME_SUFFIX; secrets FCM_SERVICE_ACCOUNT_JSON, PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON (optional), MAPS_WEB_KEY.
 # Actions are pinned by commit SHA (tag in the comment), resolved with `git ls-remote` on 2026-10-05.
 
 name: deploy
@@ -174,5 +174,6 @@ jobs:
         env:
           GIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
+          PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON }}
           MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
         run: infra/deploy.sh "${ENV_NAME}"

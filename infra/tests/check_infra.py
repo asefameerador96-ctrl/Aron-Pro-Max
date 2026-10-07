@@ -202,6 +202,22 @@ class StackIsComplete(unittest.TestCase):
                 or re.search(r"secretNames\.%s\b" % key, (ROOT / "infra" / "modules" / "keyvault.bicep").read_text(encoding="utf-8"))
             self.assertTrue(created, f"apps.bicep references Key Vault secret {name}, which nothing creates")
 
+    def test_play_integrity_secret_is_api_only_and_never_turns_the_gate_on(self):
+        """docs/requests/backend-core-play-integrity-secret.md: the API gets its own optional decode account; the
+        placeholder is one space (read as absent, the API then uses the FCM account); infra never sets the gate."""
+        apps = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        self.assertIn("{ name: 'ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON', secretRef: 'play-integrity-service-account' }", apps)
+        self.assertIn("concat(commonEnv, jwtSecretRefs, appSecretRefs, apiOnlySecretRefs, [", apps)
+        self.assertEqual(apps.count("apiOnlySecretRefs"), 2, "the worker does not get the decode account")
+        seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
+        self.assertIn("printf ' ' > \"$tmp/pi.json\"", seed)
+        self.assertIn("PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON }}",
+                      (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8"))
+        for f in list((ROOT / "infra").rglob("*.sh")) + list((ROOT / "infra").rglob("*.bicep*")) + list((ROOT / "infra").rglob("*.sql")):
+            text = f.read_text(encoding="utf-8")
+            for key in ("require_integrity", "require_enrolled"):
+                self.assertNotRegex(text, key + r"['\"]?\s*,\s*'true'", f"{f} turns {key} on (lead ruling: dev gates stay at their defaults)")
+
     def test_front_door_references_are_conditional(self):
         # An unconditional `existing` node is read at deployment time and fails in the TEST profile (no Front Door).
         res = load("apps.json")["resources"]
