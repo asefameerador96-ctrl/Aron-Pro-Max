@@ -16,7 +16,8 @@ import { names, suffixFor, secretNames } from 'lib/naming.bicep'
 @minLength(2)
 @maxLength(8)
 param namePrefix string = 'aron'
-@allowed(['dev', 'prod'])
+@description('dev = test account; stage and prod = final account (docs/30 s1).')
+@allowed(['dev', 'stage', 'prod'])
 param environmentName string
 @description('Azure region. Defaults to the resource group region (bootstrap: AZURE_LOCATION, southeastasia).')
 param location string = resourceGroup().location

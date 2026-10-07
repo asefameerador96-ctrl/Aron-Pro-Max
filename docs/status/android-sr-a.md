@@ -1,14 +1,39 @@
 # Status: lane android-sr-a (2026-10-07)
 
-## Done
-Nothing: every one of the 35 rows has an unmet dependency owned by another lane. See `docs/requests/android-sr-a-blocked.md`.
+## Working mode
+Local Gradle cannot resolve (Maven Central 429, no mirror by lead's ruling). Code is pushed to `lane/android-sr-a`; CI there is the build and test. Nothing is merged to INT until CI is green for that commit. Logic and tests come first (pure Kotlin over core-database and shared:rules); Compose screens follow when the N-023 kit slices land.
 
-## Blocked (all rows)
-First unmet dependencies: N-023, N-021, F-SYS-006, F-SYS-008, F-SYS-049, F-SYS-023 and the other android-core/backend rows listed in the request.
+## Interface for android-sr-b: visit and outlet state (agreed here, in `feature-outlet`)
+Package `com.aktcl.aron.feature.outlet`:
+- `VisitSession.current: StateFlow<OpenVisit?>`: the committed visit of the call in progress. **Sale, review, QC and dues screens read this and never open a visit.** `OpenVisit(visitUuid, outletId, routeId, geoVerdict, geoAction, geoValidated, photoValidated, forceReasonCode, openedAtIso)`. `geoValidated` is true only for an `in_range` verdict; a force sale has `photoValidated = true`, `geoValidated = false`. Call `VisitSession.close()` when the visit ends (your visit_close commit).
+- `VisitFlow(fixes, metaProvider, committer, session, settings, ...)`: `open(outlet)`, `refresh()`, `forceSale(reasonCode, photoUuid)`; state in `VisitFlow.state: StateFlow<VisitUiState>` (`Idle`, `ReadingFix`, `NeedsDecision`, `Open`, `Blocked`).
+- The visit row is committed (one transaction with its fix and outbox record, via `VisitCommitter` = `CaptureRepository.recordVisitOpen`) when the verdict is final: at once when in range; after Force Sale otherwise; or as `blocked` under mock policy `block_sale`. Refresh re-reads and re-evaluates in memory.
+- Ports android-geo-dpc implements: `LocationFixSource.readFix(purpose): FixReading` (one balanced-power fix; failure is a non-ok `FixReading`, never an exception; carries the mock flag and device-state facts).
+- Stock (F-SR-014): `StockLoad` in `feature-stock`; the day's loaded total per SKU comes from `captureDao().stockBalanceOn(businessDate)`; sr-b's sale stock column subtracts sales from that.
+- Picker (F-SR-016/074): `OutletPicker.rows(...)` over `OutletEntity`.
 
-## Next three rows when unblocked
-F-SR-008 (Home header), F-SR-009 (tile grid), F-SR-014 (stock load), then F-SR-016 and F-SR-017.
+## Done (logic, tests green locally and in CI; Compose screens pending N-023)
+F-SR-017, 019 (T1: Opus checker found 6 defects, all fixed with tests), F-SR-014, 016, 074, 011, 012, 046, 047, 063, 008, 009, 064, 072, 079, 049, 037, 038, 039, 076, N-040 (T2: Sonnet checker found defects, fixed with tests). "Done" here means the domain logic and its acceptance tests; each row's screen is still to do and each row is not fully closed until its screen lands.
 
-## Traps noted
-- android-sr-b depends on my F-SR-014 and F-SR-017 (see `docs/requests/android-sr-b-*`); interface to agree in `feature-outlet`.
-- Android SDK is installed by `tools/android-sdk.sh` (`sdk.dir=/opt/android-sdk`); Maven Central may need the mirror init script.
+## Open items from the checkers (need a lead or owner ruling)
+- F-SR-017 says "opens the visit row at once"; SRA-01 commits when the verdict is final. Refresh fixes are not stored (contract has FixPurpose.refresh). Ruling wanted.
+- F-SR-019 mentions the conditional config check F-SYS-092 before a refresh when online: no hook yet.
+- Close form for outlet requests: docs/15 says new/info have no confirm, F-SR-039 requires a confirm for info; built per F-SR-039.
+- Requests filed: docs/requests/android-sr-a-task-tables.md, android-sr-a-outlet-request-capture.md.
+
+## Built (logic and tests; screens pending N-023)
+- F-SR-017, F-SR-019: `VisitFlow` + `VisitFlowTest` (13 cases: in range, out of range, refresh cap, force sale, mocked, blocked, no fix, no outlet location).
+- F-SR-016, F-SR-074 logic: `OutletPicker` + `OutletPickerTest`.
+- F-SR-014 logic: `StockLoad` + `StockLoadTest`.
+
+## Decisions taken (DECISIONS.md is read-only for lanes)
+- **SRA-01** A visit record has one fix and one final verdict (contract action: sale_allowed, force_sale, blocked), so the row is committed when the verdict is final, not before. A kill mid-refresh restarts the check. Reason: the contract has no refreshed or pending verdict.
+- **SRA-02** Picker label shows the phone as 11 digits (normalised); closed, merged and archived outlets are hidden (reading of "11-digit phones and closed outlets hidden").
+- **SRA-03** Stock re-save guard window default 120 s (`cfg` key not in the registry; request to follow if the lead wants it configurable).
+- **SRA-04** Picker chip is the first character of the name, Latin upper-cased, Bangla as is, anything else `#`.
+
+## Blocked / waiting
+Compose screens: N-023 kit. Real fix source: N-021. Bundle into Room and app wiring: F-SYS-006.
+
+## Next
+F-SR-011/012 attendance logic, F-SR-046/047 tasks logic (needs F-API-026 DTO), F-SR-079 capture component state, F-SR-063 stale-bundle rules.
