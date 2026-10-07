@@ -395,10 +395,7 @@ class DeviceService(
         }
     }
 
-    private fun audit(h: Handle, p: AronPrincipal?, entity: String, entityId: String, action: String, before: JsonElement?, after: JsonElement?, reason: String?, requestId: String? = null) {
-        h.createUpdate(
-            "INSERT INTO app.audit_log (actor_user_id, actor_username, actor_role, via, entity, entity_id, action, before, after, reason, request_id) VALUES (:u, :n, :r, :via, :e, :id, :a, CAST(:b AS jsonb), CAST(:af AS jsonb), :reason, CAST(:rid AS uuid))",
-        ).bind("u", p?.userId).bind("n", p?.username?.take(40)).bind("r", p?.role?.wire).bind("via", if (p == null) "device" else "api").bind("e", entity).bind("id", entityId.take(64)).bind("a", action)
-            .bind("b", before?.toString()).bind("af", after?.toString()).bind("reason", reason?.take(500)).bind("rid", requestId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }).execute()
-    }
+    /** Through the platform audit writer (F-SYS-059): NUL and length safety, one row shape for every module. */
+    private fun audit(h: Handle, p: AronPrincipal?, entity: String, entityId: String, action: String, before: JsonElement?, after: JsonElement?, reason: String?, requestId: String? = null) =
+        com.aktcl.aron.backend.platform.AuditLog.write(h, p, entity, entityId, action, before, after, reason, requestId, via = if (p == null) "device" else "api")
 }

@@ -68,7 +68,7 @@ data class Health(val status: String, val api: String, val server_time: String, 
 
 /** The API: platform plugins, health, then every context's routes under /v1 (docs/24 s3, s6.2). */
 fun Application.aronApi(w: Wiring) {
-    installAronPlatform(PlatformContext(w.clock, w.config, w.generation, w.build, w.frontDoorId))
+    installAronPlatform(PlatformContext(w.clock, w.config, w.generation, w.build, w.frontDoorId, cachedGeneration = w.cachedGeneration))
     w.admission?.let { installAdmissionControl(it) }
     routing {
         route(ContractInfo.API_BASE_PATH) {
@@ -80,7 +80,7 @@ fun Application.aronApi(w: Wiring) {
 
 private fun Route.healthRoutes(w: Wiring) {
     // Liveness never touches PostgreSQL (contract getHealth).
-    get("/health") { call.respond(Health("ok", ContractInfo.API_BASE_PATH, w.clock.now().wire(), w.generation(), w.build)) }
+    get("/health") { call.respond(Health("ok", ContractInfo.API_BASE_PATH, w.clock.now().wire(), w.cachedGeneration(), w.build)) }
     head("/health") { call.respond(HttpStatusCode.OK) }
     get("/health/ready") {
         if (w.database?.ping() != true) {

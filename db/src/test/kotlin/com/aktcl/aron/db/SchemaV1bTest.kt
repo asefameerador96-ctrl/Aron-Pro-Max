@@ -211,8 +211,9 @@ class SchemaV1bTest {
     @Test
     fun theCrossDateUuidCheckIsOneStatementLevelTriggerPerPartitionedTable() = db.connect().use { c ->
         // V0021 (AUD-PERF-01): AFTER INSERT FOR EACH STATEMENT with a transition table, never a per-row dynamic query.
+        // V0041 partitioned geo_breadcrumb the same way.
         assertEquals(
-            listOf("memo:after:statement", "memo_line:after:statement", "visit:after:statement"),
+            listOf("geo_breadcrumb:after:statement", "memo:after:statement", "memo_line:after:statement", "visit:after:statement"),
             c.column(
                 "SELECT k.relname || ':' || CASE WHEN t.tgtype & 2 = 2 THEN 'before' ELSE 'after' END || ':' || " +
                     "CASE WHEN t.tgtype & 1 = 1 THEN 'row' ELSE 'statement' END FROM pg_trigger t JOIN pg_class k ON k.oid = t.tgrelid " +

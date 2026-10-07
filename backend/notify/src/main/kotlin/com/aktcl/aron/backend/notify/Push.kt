@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.io.readByteArray
 import kotlinx.serialization.Serializable
+import org.jdbi.v3.core.Handle
 import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.time.OffsetDateTime
@@ -84,6 +85,14 @@ class PushNotifier(
         4, 4, 30, TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue(2_000),
         { r -> Thread(r, "push").apply { isDaemon = true } }, java.util.concurrent.ThreadPoolExecutor.DiscardPolicy(),
     )
+    /**
+     * Admin notifications run on their own small pool (checker finding): a national send of thousands of tokens never
+     * delays a task nudge on [pool]. The queue is bounded and refuses visibly (AbortPolicy).
+     */
+    private val broadcastPool = java.util.concurrent.ThreadPoolExecutor(
+        2, 2, 30, TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue(200),
+        { r -> Thread(r, "push-broadcast").apply { isDaemon = true } }, java.util.concurrent.ThreadPoolExecutor.AbortPolicy(),
+    )
     private val pending = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
     @Volatile private var warned = false
 
@@ -105,25 +114,52 @@ class PushNotifier(
 
     /** Sends now (the executor's body; public for tests). Returns the number of tokens reached. */
     fun deliver(userId: Long, reason: String): Int {
-        val s = sender ?: return 0
-        val tokens = db.jdbi.withHandle<List<Pair<Long, String>>, Exception> { h ->
-            h.createQuery(
-                """
-                SELECT t.id, t.token FROM app.push_token t
-                JOIN app.app_user u ON u.id = t.user_id AND u.status = 'active'
-                JOIN app.device d ON d.id = t.device_id AND d.status = 'active'
-                WHERE t.user_id = :u AND t.revoked_at IS NULL
-                  AND EXISTS (SELECT 1 FROM app.device_binding b WHERE b.user_id = t.user_id AND b.device_id = t.device_id AND b.status = 'active')
-                  AND EXISTS (SELECT 1 FROM app.refresh_family f WHERE f.user_id = t.user_id AND f.device_id = t.device_id AND f.grant_kind = 'full'
-                              AND f.revoked_at IS NULL AND f.sliding_expires_at > :now AND f.absolute_expires_at > :now)
-                """.trimIndent(),
-            ).bind("u", userId).bind("now", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC))
-                .map { rs, _ -> rs.getLong(1) to rs.getString(2) }.list()
+        if (sender == null) return 0
+        val tokens = db.jdbi.withHandle<List<Pair<Long, String>>, Exception> { h -> liveTokens(h, listOf(userId)) }
+        return sendAll(tokens) { mapOf("kind" to "sync_nudge", "reason" to reason) }
+    }
+
+    /**
+     * The push tokens that may receive a nudge: the user is active, the phone is active and still bound to the user, and
+     * the pair holds a live full grant (a logged-out user, a revoked or replaced phone and a disabled user get nothing).
+     */
+    fun liveTokens(h: Handle, userIds: Collection<Long>): List<Pair<Long, String>> = if (userIds.isEmpty()) emptyList() else h.createQuery(
+        """
+        SELECT t.id, t.token FROM app.push_token t
+        JOIN app.app_user u ON u.id = t.user_id AND u.status = 'active'
+        JOIN app.device d ON d.id = t.device_id AND d.status = 'active'
+        WHERE t.user_id = ANY(:u) AND t.revoked_at IS NULL
+          AND EXISTS (SELECT 1 FROM app.device_binding b WHERE b.user_id = t.user_id AND b.device_id = t.device_id AND b.status = 'active')
+          AND EXISTS (SELECT 1 FROM app.refresh_family f WHERE f.user_id = t.user_id AND f.device_id = t.device_id AND f.grant_kind = 'full'
+                      AND f.revoked_at IS NULL AND f.sliding_expires_at > :now AND f.absolute_expires_at > :now)
+        ORDER BY t.id
+        """.trimIndent(),
+    ).bindArray("u", Long::class.javaObjectType, userIds.toList()).bind("now", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC))
+        .map { rs, _ -> rs.getLong(1) to rs.getString(2) }.list()
+
+    /**
+     * Queues one data message per token (an admin notification, N-037). Returns false when nothing can be sent (no FCM
+     * service account) or the queue is full; delivery is best effort like every nudge.
+     */
+    fun broadcast(tokens: List<Pair<Long, String>>, dataFor: (tokenId: Long) -> Map<String, String>): Boolean {
+        if (sender == null || tokens.isEmpty()) return false
+        return try {
+            tokens.chunked(200).forEach { chunk ->
+                broadcastPool.execute { runCatching { sendAll(chunk, dataFor) }.onFailure { log.warn("broadcast failed: ${it.javaClass.simpleName}") } }
+            }
+            true
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            log.warn("broadcast queue full: ${tokens.size} tokens not all queued")
+            false
         }
+    }
+
+    private fun sendAll(tokens: List<Pair<Long, String>>, dataFor: (Long) -> Map<String, String>): Int {
+        val s = sender ?: return 0
         var sent = 0
         for ((id, token) in tokens) {
             // One token's failure never skips the user's other phones.
-            val ok = runCatching { s.send(token, mapOf("kind" to "sync_nudge", "reason" to reason)) }
+            val ok = runCatching { s.send(token, dataFor(id)) }
                 .onFailure { log.warn("push send failed push_token_id=$id: ${it.javaClass.simpleName}") }.getOrNull() ?: continue
             if (ok) sent++
             else db.jdbi.useHandle<Exception> { h ->
@@ -137,7 +173,7 @@ class PushNotifier(
     /** Waits for queued nudges (tests). */
     fun drain(timeoutMs: Long = 5_000) {
         val until = System.currentTimeMillis() + timeoutMs
-        while ((pool.activeCount > 0 || pool.queue.isNotEmpty()) && System.currentTimeMillis() < until) Thread.sleep(10)
+        while ((pool.activeCount > 0 || pool.queue.isNotEmpty() || broadcastPool.activeCount > 0 || broadcastPool.queue.isNotEmpty()) && System.currentTimeMillis() < until) Thread.sleep(10)
     }
 }
 

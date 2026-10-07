@@ -46,6 +46,13 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject lateinit var components: SessionComponents
     @Inject lateinit var shellLogout: ShellLogout
+    @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+
+    /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch { updateShell.check(atLogin = false) }
+    }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
@@ -70,20 +77,7 @@ class MainActivity : ComponentActivity() {
                             val logoutFlow = remember(s.user.userId) { shellLogout.flow(AppRole.AMO, s.user.userId) }
                             var unsent by remember { mutableStateOf<Int?>(null) }
                             unsent?.let { n -> UnsentItemsDialog(n, onSyncNow = { logoutFlow.syncNow(); unsent = null }, onCancel = { unsent = null }) }
-                            val vm = viewModel(key = "home-" + s.user.userId) {
-                                HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
-                            }
-                            HomePlaceholderScreen(
-                                viewModel = vm,
-                                user = HomeUser(
-                                    fullName = s.user.fullName,
-                                    username = s.user.username,
-                                    role = s.user.role,
-                                    offline = s.mode == UnlockMode.OFFLINE,
-                                    reauthRequired = s.reauthRequired,
-                                    updateRequired = s.updateRequired,
-                                ),
-                                onLogout = {
+                            val logoutTap: () -> Unit = {
                                     lifecycleScope.launch {
                                         // A failed count or a logout already running throws: refuse this tap, never crash.
                                         try {
@@ -101,9 +95,23 @@ class MainActivity : ComponentActivity() {
                                             Toast.makeText(this@MainActivity, SystemR.string.logout_failed, Toast.LENGTH_LONG).show()
                                         }
                                     }
-                                },
+                            }
+                            val vm = viewModel(key = "home-" + s.user.userId) {
+                                HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
+                            }
+                            UpdateHost(updateShell, dayOpen = { false }, serverSaidTooOld = s.updateRequired, onLogout = { logoutTap() }) { HomePlaceholderScreen(
+                                viewModel = vm,
+                                user = HomeUser(
+                                    fullName = s.user.fullName,
+                                    username = s.user.username,
+                                    role = s.user.role,
+                                    offline = s.mode == UnlockMode.OFFLINE,
+                                    reauthRequired = s.reauthRequired,
+                                    updateRequired = s.updateRequired,
+                                ),
+                                onLogout = { logoutTap() },
                                 onLanguageSelect = onLanguageSelect,
-                            )
+                            ) }
                         }
                     }
                 }

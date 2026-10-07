@@ -68,6 +68,8 @@ class AuthFixture(
     val keys = throwawayKeys()
     val hasher = PasswordHasher(memoryKiB = 19 * 1024)
     val limiter = HashLimiter(hashConcurrency, hashQueue)
+    /** Web logins hash here, apart from the phones' [limiter] (AUD-SEC-02). */
+    val webLimiter = HashLimiter(maxOf(1, hashConcurrency / 4), hashQueue / 4)
     private val fakeUsers = FakeUsers()
     private val jdbiUsers = fresh?.let { JdbiUserStore(it.db, clock, svCacheMs = 0) }
     val users: UserStore = jdbiUsers ?: fakeUsers
@@ -81,7 +83,7 @@ class AuthFixture(
     val reach = ReachResolver { userId, role, _, date ->
         Reach(userId, role, date, false, setOf(5012L), setOf(10231L), role == Role.SR, listOf(ReachNode("route", 10231, "R-334-01", "Banani Daily")))
     }
-    val login = LoginService(users, devices, hasher, limiter, lockouts, issuer, refresh, reach, config, clock)
+    val login = LoginService(users, devices, hasher, limiter, lockouts, issuer, refresh, reach, config, clock, webLimiter = webLimiter)
     val verifier = AccessTokenVerifier(keys, clock)
     val guard = AuthGuardDeps(verifier, scopeVersions, config, clock)
     val deps = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = "fd-test")
@@ -138,7 +140,7 @@ class AuthFixture(
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.device_binding SET status = 'revoked', unbound_at = now() WHERE status = 'active'") }
     }
 
-    fun close() { limiter.close(); fresh?.close() }
+    fun close() { limiter.close(); webLimiter.close(); fresh?.close() }
 
     fun user(id: Long, username: String, role: Role, status: String = "active") =
         UserRecord(id, username, "Test $username", role, status, "bn", role.wire, passwordHash, 7, false)

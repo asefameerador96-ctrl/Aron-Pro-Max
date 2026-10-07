@@ -309,6 +309,9 @@ class SrDay(
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
 
+    /** Today's day is open on this phone: attendance recorded and no Sales Submit yet (the updater's day gate, F-SYS-020). */
+    suspend fun dayOpen(): Boolean = businessDate().let { d -> db.captureDao().attendanceOn(d).isNotEmpty() && db.captureDao().daySubmitsOn(d).isEmpty() }
+
     fun visitOutlet(o: OutletEntity) = VisitOutlet(
         outletId = o.outletId, routeId = o.routeId, name = o.name, code = o.code, lat = o.lat, lng = o.lng,
         locationBasis = if (o.lat == null || o.lng == null) "none" else if (o.locationConfirmed) "master" else "provisional",
