@@ -27,6 +27,15 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
 
+## Day 3, 15:20 UTC: my regression fixed (deploy run 37639072495)
+
+Deploy run 142 (62ee65f) failed at `az deployment group create ... --tags aron-sha=...`: "unrecognized arguments"
+(`az deployment group create` has no `--tags`; my 14:00 change, not caught locally because no az here). Nothing was
+changed in Azure (the error is argument parsing, before any request). Fix: the commit is recorded after a successful
+apply as the resource-group tag `aron-infra-sha` (`az tag update --operation Merge`, the same call and right the
+deploy lock already uses) and read with `az group show`. The test now also asserts the create call carries no `--tags`.
+Lesson: every new az flag gets checked against the CLI reference before push (no az in lane containers).
+
 ## Day 3, 14:30 UTC: dblogins no longer blocks the apps while per-app logins are off
 
 Deploy runs 37630304505 and 37632012265 (with the system-log query) failed like 37624445094: dblogins execution Failed
