@@ -83,6 +83,7 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.maps.compose) // N-041: loaded only by OutletMapActivity, which starts only on tap
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     debugImplementation(libs.androidx.compose.ui.tooling)

@@ -304,4 +304,16 @@ class VisitFlowTest {
         f.open(outlet); assertTrue(f.refresh() is VisitUiState.NeedsDecision)
         assertEquals(1, calls)
     }
+
+    @Test fun theOutOfRangeStateCarriesThePhonePositionForTheMap() = runTest {
+        val (f, _, _) = flow(listOf(fix(lat = farLat())))
+        val st = f.open(outlet) as VisitUiState.NeedsDecision
+        assertEquals(farLat(), st.phoneLat!!, 1e-9); assertEquals(90.4042, st.phoneLng!!, 1e-9)
+    }
+
+    @Test fun noFixMeansNoPhonePositionOnTheMap() = runTest {
+        val (f, _, _) = flow(listOf(fix(status = "timeout", acc = null)))
+        val st = f.open(outlet) as VisitUiState.NeedsDecision
+        assertNull(st.phoneLat); assertNull(st.phoneLng)
+    }
 }
