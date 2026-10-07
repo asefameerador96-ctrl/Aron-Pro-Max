@@ -1,6 +1,8 @@
 package com.aktcl.aron.core.database
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -12,7 +14,8 @@ import java.util.concurrent.ConcurrentHashMap
 class UserDatabases(private val context: Context, private val passphrase: (userId: Long) -> ByteArray?) {
     private val open = ConcurrentHashMap<Long, AronDatabase>()
 
-    fun of(userId: Long): AronDatabase = open.computeIfAbsent(userId) { id ->
-        AronDatabase.open(context, id, passphrase(id)?.let(SqlCipher::factory))
+    /** Opens (once) the database of [userId]; the Keystore unwrap and the first open run off the main thread. */
+    suspend fun of(userId: Long): AronDatabase = open[userId] ?: withContext(Dispatchers.IO) {
+        open.computeIfAbsent(userId) { id -> AronDatabase.open(context, id, passphrase(id)?.let(SqlCipher::factory)) }
     }
 }

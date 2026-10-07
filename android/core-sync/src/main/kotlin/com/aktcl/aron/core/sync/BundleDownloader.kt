@@ -187,7 +187,7 @@ class BundleDownloaders(
 ) {
     private val byUser = java.util.concurrent.ConcurrentHashMap<Long, BundleDownloader>()
 
-    fun of(userId: Long): BundleDownloader = byUser.computeIfAbsent(userId) {
-        BundleDownloader(databases.of(it), api, File(stagingRoot, "u$it"), clock)
+    suspend fun of(userId: Long): BundleDownloader = byUser[userId] ?: databases.of(userId).let { db ->
+        byUser.computeIfAbsent(userId) { BundleDownloader(db, api, File(stagingRoot, "u$it"), clock) }
     }
 }
