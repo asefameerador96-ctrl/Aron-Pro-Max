@@ -192,14 +192,14 @@ fun SrApp(
         SrScreen.SETTINGS -> {
             val update = updateShell?.state?.collectAsState()?.value
             // The switch's stored value is a SharedPreferences read: loaded off the main thread, row shown once known.
-            var wifiOnly by remember { mutableStateOf<Boolean?>(null) }
-            LaunchedEffect(mediaShell) { wifiOnly = mediaShell?.let { m -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { m.wifiOnly.wifiOnly() } } }
+            var wifiOnly by rememberSaveable { mutableStateOf<Boolean?>(null) }
+            LaunchedEffect(mediaShell) { if (wifiOnly == null) wifiOnly = mediaShell?.let { m -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { m.wifiOnly.wifiOnly() } } }
             SettingsContent(
                 versionText, onLanguageSelect, onLogout,
-                onUpdate = updateShell?.let { u -> { u.openPage(); scope.launch { u.check(atLogin = false) } } },
+                onUpdate = updateShell?.let { u -> { u.openPage() } },
                 updateAvailable = update is com.aktcl.aron.core.system.update.UpdateState.Available,
                 photosWifiOnly = wifiOnly,
-                onPhotosWifiOnly = { on -> wifiOnly = on; mediaShell?.let { m -> scope.launch { m.setWifiOnly(on) } } },
+                onPhotosWifiOnly = { on -> wifiOnly = on; mediaShell?.setWifiOnly(on) },
                 onSupport = shell?.let { { screen = SrScreen.SUPPORT } },
             )
         }
