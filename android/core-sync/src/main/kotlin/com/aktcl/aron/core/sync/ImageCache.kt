@@ -37,9 +37,9 @@ class ImageCache(
 
     private val lock = Mutex()
 
-    /** Applies `cfg.app.image_cache_mb` (held to 5..500 MB) and evicts down to it at once. */
+    /** Applies `cfg.app.image_cache_mb` (held to the registry's 10..70 MB, db V0055) and evicts down to it at once. */
     suspend fun setCapMb(mb: Int) {
-        capBytes = mb.coerceIn(5, 500) * MB
+        capBytes = mb.coerceIn(10, 70) * MB
         lock.withLock { withContext(Dispatchers.IO) { evict(null) } }
     }
 
@@ -123,7 +123,7 @@ class ImageCache(
 
     companion object {
         /** Pilot default (no value in the specs; decision AC-15). */
-        const val DEFAULT_CAP_MB = 50L
+        const val DEFAULT_CAP_MB = 40L
         /** One compressed thumbnail per SKU (docs/15): anything bigger is refused, never stored over mobile data. */
         const val THUMBNAIL_MAX_BYTES = 300L * 1024L
         const val CFG_CAP_MB = "cfg.app.image_cache_mb"
