@@ -282,7 +282,9 @@ class SchemaV1aTest {
             // docs/21 s4 names the password policy keys (V0040, docs/requests/backend-core-password-history.md).
             "cfg.auth.password_history_depth", "cfg.auth.password_min_age_h", "cfg.auth.password_denylist_enabled",
             // docs/19 s9 (V0053, docs/requests/backend-core-record-signature-mode-key.md).
-            "cfg.sec.record_signature_mode")
+            "cfg.sec.record_signature_mode",
+            // docs/19 s9 field-app keys (V0055, docs/requests/backend-core-app-cfg-keys.md).
+            "cfg.app.local_history_days", "cfg.app.outbox_keep_days", "cfg.app.image_cache_mb")
         assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))
