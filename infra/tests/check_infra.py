@@ -577,7 +577,8 @@ class Workflows(unittest.TestCase):
                  "approve-private-link.sh", "smoke.sh", "die \"budget $BUDGET not found"]
         positions = [d.index(step) for step in order]
         self.assertEqual(positions, sorted(positions), "deploy steps out of order")
-        self.assertIn('die "migrations $execution ended ${status:-without finishing in 20 minutes}; the apps were NOT updated', d)
+        self.assertIn('die "migrations $execution ended ${status}; the apps were NOT updated', d)
+        self.assertIn("az containerapp job stop", d, "a timed-out migration is stopped before the lock is released")
         block = d[d.index('if [ "$RUN_MIGRATIONS" = true ]; then'):d.index("# ---", d.index('if [ "$RUN_MIGRATIONS" = true ]; then'))]
         self.assertIn('execution="$(az containerapp job start', block)
         # The only retry: a first execution that could not open a database connection, once.
@@ -591,8 +592,13 @@ class Workflows(unittest.TestCase):
         self.assertLess(body.index('note "deploy lock held"'), body.index("merge-base --is-ancestor"),
                         "the ordering guard runs while the lock is held")
         self.assertIn("trap 'rm -f \"$whatif_file\" \"$migrate_log\"; release_lock' EXIT", d)
-        self.assertIn('[ "$(read_lock | cut -d\' \' -f1)" = "$lock_me" ] && break', d, "write, settle, re-read")
-        self.assertIn("-lt 5700 ]", d, "a lock older than 95 minutes is stale")
+        self.assertIn('if got="$(read_lock)" && [ "$(lock_owner "$got")" = "$lock_me" ]; then break; fi', d, "write, settle, re-read")
+        self.assertIn('if ! cur="$(read_lock)"; then', d, "a failed read counts as held")
+        self.assertIn("|| return 1", d[d.index("read_lock() {"):d.index("lock_owner()")])
+        self.assertIn("[[ \"$ts\" =~ ^[0-9]{9,11}$ ]] || { echo 999999; return; }", d, "a malformed value is stale, not fatal")
+        self.assertIn("lock_ttl=900", d)
+        self.assertIn("trap 'exit 130' INT TERM", d)
+        self.assertIn("while sleep 60; do", d, "heartbeat")
         full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn('RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"', full)
         self.assertNotIn("grep -qs", full, "no source sniffing to decide what to deploy")
@@ -655,6 +661,14 @@ class Workflows(unittest.TestCase):
         self.assertIn("for img in aron-backend aron-web; do", block)
         self.assertIn('-o "spdx-json=sbom-${img}.spdx.json"', block)
         self.assertNotIn("sbom-action", block)
+
+    def test_data_dictionary_stays_a_required_check(self):
+        c = self.text("ci.yml")
+        jvm = c[c.index("\n  jvm:"):c.index("\n  android:")]
+        self.assertIn(":db:build", jvm, "DataDictionaryTest runs inside :db:build")
+        self.assertIn("tools/data-dictionary/render.sh", jvm)
+        self.assertIn("name: data-dictionary-${{ github.sha }}", jvm)
+        self.assertIn("docs/data-dictionary\\.md", c, "a dictionary-only change re-runs the JVM job")
 
     def test_codeql_covers_kotlin_and_typescript(self):
         q = self.text("codeql.yml")

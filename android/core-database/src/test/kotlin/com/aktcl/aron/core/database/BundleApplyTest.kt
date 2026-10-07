@@ -35,7 +35,7 @@ class BundleApplyTest {
         val extra = Json.parseToJsonElement(
             """{
               "prices": [
-                {"id": 1, "sku_id": 100, "price_type": "outlet", "amount_mtk": 9000, "per_base_qty": 1, "valid_from": "2026-09-01", "valid_to": "2026-10-05"},
+                {"id": 1, "sku_id": 100, "price_type": "outlet", "amount_mtk": 9000, "per_base_qty": 1, "valid_from": "2026-09-01", "valid_to": "2026-10-06"},
                 {"id": 2, "sku_id": 100, "price_type": "outlet", "amount_mtk": 9500, "per_base_qty": 1, "valid_from": "2026-10-06", "valid_to": null},
                 {"id": 3, "sku_id": 100, "price_type": "cc", "amount_mtk": 8800, "per_base_qty": 1, "valid_from": "2026-09-01"}
               ],

@@ -60,6 +60,7 @@ class BatchAcceptanceTest {
     private var otherOutletId = 0L
     private val skus = mutableListOf<Pair<Long, Long>>() // sku id to outlet price
     private val memoSeq = java.util.concurrent.atomic.AtomicInteger(100)
+    private val captureSeq = java.util.concurrent.atomic.AtomicInteger(0)
 
     @BeforeAll
     fun setUp() {
@@ -98,7 +99,12 @@ class BatchAcceptanceTest {
     private fun json(s: String): JsonObject = Json.parseToJsonElement(s).jsonObject
     private fun uuid() = UUID.randomUUID().toString()
 
-    private suspend fun HttpClient.token(): String {
+    private var cachedToken: String? = null
+
+    /** One login per class: the login limiter (10 per 15 min per username) never empties under the fixed clock. */
+    private suspend fun HttpClient.token(): String = cachedToken ?: login().also { cachedToken = it }
+
+    private suspend fun HttpClient.login(): String {
         val r = post("/v1/auth/login") {
             contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9")
             setBody("""{"username":"sr1001","password":"$password","client":"app_sr","device_uuid":"$devPhone"}""")
@@ -132,14 +138,21 @@ class BatchAcceptanceTest {
     }
 
     /** A sale family: visit (with fix and verdict), memo with two lines, visit close. */
-    private fun saleFamily(outlet: Long = outletId, memoNo: String = "sr1001-270103-${memoSeq.incrementAndGet()}"): List<JsonObject> {
+    private fun saleFamily(
+        outlet: Long = outletId,
+        memoNo: String = "sr1001-270103-${memoSeq.incrementAndGet()}",
+        headerGrossDelta: Long = 0,
+        priceDelta: Long = 0,
+        lat: Double = 23.80,
+    ): List<JsonObject> {
         val visit = uuid(); val memo = uuid()
-        val (s1, p1) = skus[0]; val (s2, p2) = skus[1]
-        val g1 = 20 * p1; val g2 = 10 * p2; val gross = g1 + g2
+        val (s1, p1x) = skus[0]; val (s2, p2x) = skus[1]
+        val p1 = p1x + priceDelta; val p2 = p2x + priceDelta
+        val g1 = 20 * p1; val g2 = 10 * p2; val gross = g1 + g2 + headerGrossDelta
         val visitPayload = Json.parseToJsonElement(
             """
             {"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"2027-01-03T03:41:00.120Z","sequence_no":1,"planned":true,
-             "fix":{"purpose":"visit_open","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+             "fix":{"purpose":"visit_open","fix_status":"ok","lat":$lat,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
                     "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
              "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}
             """.trimIndent(),
@@ -159,13 +172,15 @@ class BatchAcceptanceTest {
             """.trimIndent(),
         ).jsonObject
         val close = Json.parseToJsonElement("""{"visit_client_uuid":"$visit","outcome_code":"sold","call_declined":false,"ended_at":"2027-01-03T03:43:10.000Z","is_zero_sale":false}""").jsonObject
+        // Every family is its own capture: a distinct captured_at, so the content fingerprint tells families apart.
+        val at = JsonPrimitive(Instant.parse("2027-01-03T03:00:00Z").plusMillis(captureSeq.incrementAndGet().toLong()).toString())
         return listOf(
             envelope("visit", visit, visit, 0, visitPayload, outlet),
             envelope("memo", memo, visit, 1, memoPayload, outlet),
             envelope("memo_line", uuid(), visit, 2, line(1, s1, 20, p1, g1)),
             envelope("memo_line", uuid(), visit, 2, line(2, s2, 10, p2, g2)),
             envelope("visit_close", uuid(), visit, 1, close),
-        )
+        ).map { JsonObject(it + ("captured_at" to at)) }
     }
 
     private fun count(sql: String): Long = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery(sql).mapTo(Long::class.java).one() }
@@ -303,7 +318,7 @@ class BatchAcceptanceTest {
         // Its own wiring: the limiter is per replica, and the fixed clock never empties its window.
         val own = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), clock)
         application { aronApi(own) }
-        val token = client.token()
+        val token = client.login()
         val body = batch(saleFamily())
         val statuses = (1..45).map { client.send(token, body) }
         val limited = statuses.firstOrNull { it.status == HttpStatusCode.TooManyRequests }
@@ -311,4 +326,130 @@ class BatchAcceptanceTest {
         assertTrue((limited.headers["Retry-After"]?.toIntOrNull() ?: 0) > 0)
         assertEquals("ERR_RATE_LIMITED", json(limited.bodyAsText())["code"]!!.jsonPrimitive.content)
     }
+
+    // ---- F-SYS-055 batch replay and content fingerprint ---------------------------------------------------------
+
+    /** The same family with every uuid re-minted (a phone that lost its outbox ids and resends). */
+    private fun remint(family: List<JsonObject>): List<JsonObject> {
+        val map = HashMap<String, String>()
+        fun swap(e: kotlinx.serialization.json.JsonElement): kotlinx.serialization.json.JsonElement = when (e) {
+            is JsonObject -> JsonObject(e.mapValues { swap(it.value) })
+            is kotlinx.serialization.json.JsonArray -> kotlinx.serialization.json.JsonArray(e.map { swap(it) })
+            is JsonPrimitive -> if (e.isString && Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$").matches(e.content)) JsonPrimitive(map.getOrPut(e.content) { uuid() }) else e
+            else -> e
+        }
+        return family.map { swap(it) as JsonObject }
+    }
+
+    @Test
+    fun aReplayWithRegeneratedUuidsIsCaughtByTheContentFingerprint() = testApplication {
+        app()
+        val token = client.token()
+        val family = saleFamily()
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(family)).bodyAsText())))
+        val outletMemos = count("SELECT count(*) FROM app.memo WHERE memo_no = '${family[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content}'")
+        val r = json(client.send(token, batch(remint(family))).bodyAsText())
+        val acks = r["acks"]!!.jsonArray.map { it.jsonObject["status"]!!.jsonPrimitive.content + ":" + it.jsonObject["code"]!!.jsonPrimitive.contentOrNull() }
+        assertEquals(listOf("quarantined:content_duplicate", "quarantined:content_duplicate", "quarantined:content_duplicate", "quarantined:content_duplicate", "quarantined:content_duplicate"), acks)
+        assertEquals(outletMemos, count("SELECT count(*) FROM app.memo WHERE memo_no = '${family[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content}'"), "no second sale")
+    }
+
+    // ---- F-SYS-048 poison-row isolation ---------------------------------------------------------------------------
+
+    @Test
+    fun onePoisonRecordInABatchOf100IsServerErrorAndTheOther99AreAccepted() = testApplication {
+        app()
+        // A fault the server cannot classify: the database raises an internal error for one specific visit.
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("CREATE OR REPLACE FUNCTION app.test_poison() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.sequence_no = 999 THEN RAISE EXCEPTION 'poison' USING ERRCODE = 'XX000'; END IF; RETURN NEW; END $$")
+            h.execute("DROP TRIGGER IF EXISTS test_poison ON app.visit")
+            h.execute("CREATE TRIGGER test_poison BEFORE INSERT ON app.visit FOR EACH ROW EXECUTE FUNCTION app.test_poison()")
+        }
+        try {
+            val token = client.token()
+            val visits = (1..100).map { i ->
+                val v = saleFamily().first()
+                JsonObject(v + ("payload" to JsonObject(v["payload"]!!.jsonObject + ("sequence_no" to JsonPrimitive(if (i == 50) 999 else i)))))
+            }
+            val r = json(client.send(token, batch(visits)).bodyAsText())
+            val acks = r["acks"]!!.jsonArray.map { it.jsonObject }
+            assertEquals(99, acks.count { it["status"]!!.jsonPrimitive.content == "accepted" })
+            val poison = acks[49]
+            assertEquals("rejected", poison["status"]!!.jsonPrimitive.content)
+            assertEquals("server_error", poison["code"]!!.jsonPrimitive.content)
+            assertEquals(true, poison["retryable"]!!.jsonPrimitive.boolean)
+            val cu = visits[49]["client_uuid"]!!.jsonPrimitive.content
+            assertEquals(1, count("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = '$cu' AND code = 'server_error' AND retryable"))
+            assertEquals(1, count("SELECT count(*) FROM app.ingest_registry WHERE client_uuid = '$cu' AND status = 'parked'"))
+            // Resent after the fault is gone, it is stored once.
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DROP TRIGGER test_poison ON app.visit") }
+            assertEquals(listOf("accepted"), statuses(json(client.send(token, batch(listOf(visits[49]))).bodyAsText())))
+            assertEquals(1, count("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = '$cu' AND stored_at IS NOT NULL"))
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DROP TRIGGER IF EXISTS test_poison ON app.visit") }
+        }
+    }
+
+    // ---- F-SYS-014 invalid references are kept, never dropped ----------------------------------------------------
+
+    @Test
+    fun aMemoLineForAnUnknownSkuIsKeptForReviewAndTheOtherRowsAreAccepted() = testApplication {
+        app()
+        val token = client.token()
+        val family = saleFamily()
+        val bad = family[3].let { l -> JsonObject(l + ("payload" to JsonObject(l["payload"]!!.jsonObject + ("sku_id" to JsonPrimitive(987_654_321))))) }
+        val r = json(client.send(token, batch(family.take(3) + bad + family[4])).bodyAsText())
+        val acks = r["acks"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("accepted", "accepted", "accepted", "rejected", "accepted"), acks.map { it["status"]!!.jsonPrimitive.content })
+        assertEquals("unknown_sku", acks[3]["code"]!!.jsonPrimitive.content)
+        val cu = bad["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(1, count("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = '$cu' AND code = 'unknown_sku' AND payload->'payload'->>'sku_id' = '987654321'"), "kept with its payload, never dropped")
+        val totals = r["server_totals"]!!.jsonArray.map { it.jsonObject }.single { it["business_date"]!!.jsonPrimitive.content == day }
+        assertTrue(totals["by_type"]!!.jsonObject["memo_line"]!!.jsonObject["rejected"]!!.jsonPrimitive.int >= 1, "reconciliation counts it")
+    }
+
+
+    // ---- F-SYS-062 server recompute ------------------------------------------------------------------------------
+
+    @Test
+    fun aMemoWhoseTotalDisagreesWithItsLinesIsQuarantinedWithItsLinesAndNothingIsStored() = testApplication {
+        app()
+        val token = client.token()
+        val family = saleFamily(headerGrossDelta = 1000) // header internally consistent, but gross != sum of lines
+        val r = json(client.send(token, batch(family)).bodyAsText())
+        val acks = r["acks"]!!.jsonArray.map { it.jsonObject["status"]!!.jsonPrimitive.content + ":" + it.jsonObject["code"]!!.jsonPrimitive.contentOrNull() }
+        assertEquals(listOf("accepted:null", "quarantined:arithmetic_mismatch", "quarantined:arithmetic_mismatch", "quarantined:arithmetic_mismatch", "accepted:null"), acks)
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${family[1]["client_uuid"]!!.jsonPrimitive.content}'"))
+        assertEquals(0, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${family[1]["client_uuid"]!!.jsonPrimitive.content}'"))
+        assertEquals(3, count("SELECT count(*) FROM app.sync_quarantine WHERE code = 'arithmetic_mismatch' AND (client_uuid = '${family[1]["client_uuid"]!!.jsonPrimitive.content}' OR payload->'payload'->>'memo_client_uuid' = '${family[1]["client_uuid"]!!.jsonPrimitive.content}')"))
+        // A header whose own equation fails (net != gross - discounts) is quarantined too, never a schema rejection.
+        val broken = saleFamily().let { f -> f.mapIndexed { i, rec -> if (i == 1) JsonObject(rec + ("payload" to JsonObject(rec["payload"]!!.jsonObject + ("net_mtk" to JsonPrimitive(10))))) else rec } }
+        assertEquals("quarantined", statuses(json(client.send(token, batch(broken)).bodyAsText()))[1])
+    }
+
+    @Test
+    fun aPriceMismatchIsFlaggedButThePrintedMemoIsStored() = testApplication {
+        app()
+        val token = client.token()
+        val family = saleFamily(priceDelta = 50)
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(family)).bodyAsText())))
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${family[1]["client_uuid"]!!.jsonPrimitive.content}' AND 'price_mismatch' = ANY(server_flags)"))
+        val fair = saleFamily()
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(fair)).bodyAsText())))
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${fair[1]["client_uuid"]!!.jsonPrimitive.content}' AND server_flags IS NOT NULL AND cardinality(server_flags) > 0"))
+    }
+
+    @Test
+    fun aFixOutsideBangladeshIsFlaggedAndTheVisitIsStored() = testApplication {
+        app()
+        val token = client.token()
+        val family = saleFamily(lat = 30.5)
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(family)).bodyAsText())))
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'GEO_OUT_OF_BOUNDS' AND subject_type = 'visit' AND subject_id = '${family[0]["client_uuid"]!!.jsonPrimitive.content}'"))
+        val inside = saleFamily()
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(inside)).bodyAsText())))
+        assertEquals(0, count("SELECT count(*) FROM app.risk_signal WHERE subject_id = '${inside[0]["client_uuid"]!!.jsonPrimitive.content}'"))
+    }
+
+    private fun JsonPrimitive.contentOrNull(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
 }

@@ -28,6 +28,12 @@ enum class ApplyResult {
 
     /** Older than the stored bundle (an earlier date, or a lower snapshot of the same date): ignored, never rolled back. */
     OLDER_IGNORED,
+
+    /**
+     * A prefetch of a later day (`meta.is_prefetch`): kept aside, today's reference data untouched, and applied by
+     * [ReferenceRepository.promotePrefetch] when that day starts.
+     */
+    PREFETCH_STORED,
 }
 
 /**
@@ -43,8 +49,9 @@ class ReferenceRepository(private val db: AronDatabase) {
      * table of its own, and each route's open memos, plan, targets and day state, are stored as raw JSON. [etag] is kept
      * for the next `If-None-Match`.
      */
-    suspend fun apply(bundle: BundleReference, raw: JsonObject? = null, etag: String? = null): ApplyResult {
+    suspend fun apply(bundle: BundleReference, raw: JsonObject? = null, etag: String? = null, asDay: Boolean = !bundle.meta.isPrefetch): ApplyResult {
         val date = bundle.meta.validForBusinessDate
+        if (!asDay) return storePrefetch(bundle, requireNotNull(raw) { "a prefetch is stored as raw JSON" }, etag)
         val version = bundle.meta.bundleVersion
         val routes = bundle.routes.map { s ->
             RouteEntity(
@@ -103,6 +110,40 @@ class ReferenceRepository(private val db: AronDatabase) {
         }
     }
 
+    /** Keeps a later day's snapshot aside (sync_meta), replacing an older prefetch; today's tables are not touched. */
+    private suspend fun storePrefetch(bundle: BundleReference, raw: JsonObject, etag: String?): ApplyResult = db.withTransaction {
+        val version = bundle.meta.bundleVersion
+        if (compare(version, dao.meta(KEY_BUNDLE_VERSION)) <= 0) return@withTransaction ApplyResult.OLDER_IGNORED
+        if (compare(version, dao.meta(KEY_PREFETCH_VERSION)) < 0) return@withTransaction ApplyResult.OLDER_IGNORED
+        dao.putMeta(SyncMetaEntity(KEY_PREFETCH_JSON, raw.toString()))
+        dao.putMeta(SyncMetaEntity(KEY_PREFETCH_VERSION, version))
+        dao.putMeta(SyncMetaEntity(KEY_PREFETCH_DATE, bundle.meta.validForBusinessDate))
+        putOrDelete(KEY_PREFETCH_ETAG, etag)
+        ApplyResult.PREFETCH_STORED
+    }
+
+    /** The stored prefetch's date and ETag (for a conditional prefetch request), or null. */
+    suspend fun prefetch(): Pair<String, String?>? = dao.meta(KEY_PREFETCH_DATE)?.let { it to dao.meta(KEY_PREFETCH_ETAG) }
+
+    /**
+     * Applies the stored prefetch when its date is [businessDate] (the day starts, typically offline on a cached bundle,
+     * docs/24 s4.10 Stale bundle). A prefetch of an earlier date is discarded. Returns null when there is none for the day.
+     */
+    suspend fun promotePrefetch(businessDate: String): ApplyResult? {
+        val date = dao.meta(KEY_PREFETCH_DATE) ?: return null
+        if (date < businessDate) { clearPrefetch(); return null }
+        if (date != businessDate) return null
+        val text = dao.meta(KEY_PREFETCH_JSON) ?: run { clearPrefetch(); return null }
+        val raw = Json.parseToJsonElement(text) as JsonObject
+        val result = apply(BundleReference.json.decodeFromJsonElement(BundleReference.serializer(), raw), raw, dao.meta(KEY_PREFETCH_ETAG), asDay = true)
+        clearPrefetch()
+        return result
+    }
+
+    private suspend fun clearPrefetch() = db.withTransaction {
+        listOf(KEY_PREFETCH_JSON, KEY_PREFETCH_VERSION, KEY_PREFETCH_DATE, KEY_PREFETCH_ETAG).forEach { dao.deleteMeta(it) }
+    }
+
     private suspend fun putOrDelete(key: String, value: String?) =
         if (value != null) dao.putMeta(SyncMetaEntity(key, value)) else dao.deleteMeta(key)
 
@@ -143,6 +184,10 @@ class ReferenceRepository(private val db: AronDatabase) {
         const val KEY_BUNDLE_ETAG = "bundle.etag"
         const val KEY_BUNDLE_CURSOR = "bundle.cursor"
         const val KEY_BUNDLE_SERVER_TIME = "bundle.server_time"
+        private const val KEY_PREFETCH_JSON = "prefetch.json"
+        private const val KEY_PREFETCH_VERSION = "prefetch.version"
+        private const val KEY_PREFETCH_DATE = "prefetch.date"
+        private const val KEY_PREFETCH_ETAG = "prefetch.etag"
 
         /** The config version the phone holds (`X-Config-Version`); the sync engine also moves it from batch responses. */
         const val KEY_CONFIG_VERSION = "sync.config_version"
