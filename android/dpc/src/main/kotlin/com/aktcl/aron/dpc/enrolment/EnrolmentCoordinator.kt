@@ -51,7 +51,7 @@ data class PendingEnrolment(
     val publicKey: JwkEcPublic? = null,
     val chain: List<String> = emptyList(),
 ) {
-    override fun toString() = "PendingEnrolment(device_uuid=$deviceUuid, key=$keyAlias, $extras)"
+    override fun toString() = "PendingEnrolment(device_uuid=$deviceUuid, key=$keyAlias, $extras)" // i18n-ignore: debug toString with the token redacted, never shown to users
 }
 
 sealed interface EnrolmentState {
