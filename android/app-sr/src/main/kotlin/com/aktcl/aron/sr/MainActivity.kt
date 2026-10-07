@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
+    @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
     private var dayHolder: SrDayHolder? = null
     /** N-038: counts taps on a task notification; SrApp opens the task list on each new value. */
@@ -86,6 +87,11 @@ class MainActivity : ComponentActivity() {
             val id = (components.session.settled() as? SessionState.Active)?.user?.userId ?: return@launch
             activityLog.refreshSampling(id)
             activityLog.log(id, "app", "open")
+            // F-SYS-029: the cache cap from the user's bundle (cfg.app.image_cache_mb)
+            runCatching {
+                val db = databases.of(id)
+                com.aktcl.aron.core.sync.SessionSyncRunner.configInt(com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(com.aktcl.aron.core.sync.ImageCache.CFG_CAP_MB, com.aktcl.aron.core.sync.SyncEngine.iso(components.trustedClock.nowMs())))
+            }.getOrNull()?.let { imageCache.setCapMb(it) }
         }
     }
 

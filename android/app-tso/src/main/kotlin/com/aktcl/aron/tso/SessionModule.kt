@@ -139,4 +139,17 @@ object SessionModule {
             activeUser = { (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
             currentUser = { (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
         )
+
+    /** F-SYS-029: pack thumbnails and AV/KV assets, bounded LRU on disk (AV only on unmetered networks). */
+    @Provides
+    @Singleton
+    fun imageCache(@ApplicationContext context: Context): com.aktcl.aron.core.sync.ImageCache =
+        com.aktcl.aron.core.sync.ImageCache(
+            File(context.cacheDir, "images"),
+            okhttp3.OkHttpClient.Builder().connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS).readTimeout(30, java.util.concurrent.TimeUnit.SECONDS).retryOnConnectionFailure(false).build(), // AV may take minutes; a stalled read stops
+            unmetered = {
+                val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+                cm?.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
+            },
+        )
 }
