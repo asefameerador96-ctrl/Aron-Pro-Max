@@ -129,6 +129,19 @@ class JdbiRefreshStore(private val db: Database) : RefreshStore {
         }
     }
 
+    override fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String) {
+        if (deviceId == null && deviceUuid == null) return
+        db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                """
+                UPDATE app.refresh_family SET revoked_at = :at, revoke_reason = :r
+                WHERE user_id = :u AND grant_kind = :g AND revoked_at IS NULL
+                  AND (device_id = CAST(:d AS bigint) OR device_uuid = CAST(:du AS uuid))
+                """.trimIndent(),
+            ).bind("at", at.odt()).bind("r", reason).bind("u", userId).bind("g", grant.wire).bind("d", deviceId).bind("du", deviceUuid).execute()
+        }
+    }
+
     companion object {
         const val UPLOAD_HORIZON_DAYS = 3650L
         fun clientOf(flavour: String) = if (flavour == "web") "web" else "app_$flavour"

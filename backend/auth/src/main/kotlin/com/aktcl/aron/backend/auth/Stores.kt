@@ -83,6 +83,8 @@ interface RefreshStore {
     /** Marks [hash] used at [at] and stores the child token; false when the token was already used. */
     fun rotate(hash: String, at: Instant, childHash: String, childExpiresAt: Instant): Boolean
     fun revokeFamily(familyId: Long, at: Instant, reason: String)
+    /** Revokes the user's open [grant] families on one phone (by device row or, before enrolment, by device_uuid). */
+    fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String)
 }
 
 /** Failed-login counters and locks per lockout key (docs/24 s8.1). */

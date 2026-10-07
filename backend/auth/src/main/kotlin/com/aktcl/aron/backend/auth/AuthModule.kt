@@ -83,6 +83,17 @@ fun Route.authRoutes(d: AuthDeps) {
             call.respond(withContext(Dispatchers.IO) { d.login.bindDevice(p, req, call.request.headers["X-Device-Proof"]) })
         }
     }
+    // Logout (F-API-031): the full or the upload grant. The upload grant may call it too (s3.2), and so may a temporary
+    // password; a stale scope version never blocks it.
+    authenticated(d.guard, { audiences = setOf(Audience.API, Audience.UPLOAD); allowPasswordChangeRequired = true; checkScopeVersion = false }) {
+        post("/auth/logout") {
+            val req = call.receiveStrict(LogoutRequest.serializer())
+            val p = call.principal
+            withContext(Dispatchers.IO) { logout(call, p, req, d) }
+            if (!p.isPhone) call.response.headers.append("Set-Cookie", "aron_rt=; Path=/v1/auth/refresh; HttpOnly; Secure; SameSite=Strict; Max-Age=0", safeOnly = false)
+            call.respond(io.ktor.http.HttpStatusCode.NoContent)
+        }
+    }
     authenticated(d.guard) {
         get("/me") {
             val p = call.principal
@@ -103,6 +114,19 @@ private fun me(call: ApplicationCall, d: AuthDeps): Me {
                 mfa_enabled = false,
                 menus = d.menusForRole(user.role.wire)?.take(200),
             )
+}
+
+/**
+ * `session` revokes the full grant at once: the presented refresh tokens' families (body and the web aron_rt cookie, the caller's only)
+ * and, on a phone, every full family of the user on that phone. `upload` revokes the upload grant (the phone calls
+ * it after its outbox and media queue are empty, D24-57); `all` both. A token of another user is ignored. Idempotent.
+ */
+private fun logout(call: ApplicationCall, p: com.aktcl.aron.backend.platform.AronPrincipal, req: LogoutRequest, d: AuthDeps) {
+    val grants = when (req.scope) { "session" -> setOf(Grant.FULL); "upload" -> setOf(Grant.UPLOAD); else -> setOf(Grant.FULL, Grant.UPLOAD) }
+    listOfNotNull(req.refresh_token, call.request.cookies["aron_rt"]).forEach { t ->
+        d.refresh.peek(t)?.family?.let { f -> if (f.userId == p.userId && f.grant in grants) d.refresh.revoke(f.id, RefreshService.REASON_LOGOUT) }
+    }
+    if (p.isPhone) grants.forEach { g -> d.refresh.revokeDeviceGrant(p.userId, p.deviceId, p.deviceUuid, g, RefreshService.REASON_LOGOUT) }
 }
 
 private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps): TokenPair {

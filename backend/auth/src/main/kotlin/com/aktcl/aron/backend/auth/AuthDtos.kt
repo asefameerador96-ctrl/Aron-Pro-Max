@@ -100,3 +100,14 @@ data class BindDeviceRequest(val device_uuid: String, val otp: String) {
 
     override fun toString() = "BindDeviceRequest(device_uuid=$device_uuid, otp=***)"
 }
+
+/** POST /v1/auth/logout (contract LogoutRequest). */
+@Serializable
+data class LogoutRequest(val scope: String, val refresh_token: String? = null) {
+    init {
+        require(scope in setOf("session", "upload", "all")) { "/scope: enum" }
+        require(refresh_token == null || refresh_token.length in 43..64) { "/refresh_token: length" }
+    }
+
+    override fun toString() = "LogoutRequest(scope=$scope)"
+}
