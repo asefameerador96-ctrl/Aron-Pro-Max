@@ -514,6 +514,8 @@ if [ -n "$DBLOGINS_JOB" ]; then
     # dbPerAppLogins is off: the apps still connect as the admin login and never use these logins, so a failure here
     # must not hold back the apps. It stays visible (warning, summary row) until the job passes.
     echo "::warning::database logins $execution ended ${status:-unknown}; per-app logins are OFF, so the apps deploy anyway"
+    # Bisect the cause in the same run (two short executions with template overrides; secrets are never printed).
+    infra/scripts/dblogins-probe.sh "$RG" "$DBLOGINS_JOB" || echo "::warning::dblogins probe could not run"
     dblogins_result="FAILED (${status:-unknown}; per-app logins off, apps not affected)"
   else
     note "database logins succeeded"

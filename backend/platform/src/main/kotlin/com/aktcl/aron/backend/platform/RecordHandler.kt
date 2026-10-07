@@ -52,6 +52,13 @@ interface RecordHandler {
 
     fun check(h: Handle, rec: IngestRecord): RecordRefusal? = null
 
+    /**
+     * The server id of an earlier stored row that is the same fact under another client_uuid (a domain duplicate, e.g.
+     * a consent re-accepted after a wipe); the record is then acked `duplicate` with that id and nothing is stored.
+     * Runs after [check], in the record's savepoint; take any lock the answer needs here.
+     */
+    fun sameAs(h: Handle, rec: IngestRecord): Long? = null
+
     fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {}
 
     /**
