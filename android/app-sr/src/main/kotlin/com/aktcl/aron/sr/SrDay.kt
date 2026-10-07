@@ -350,6 +350,19 @@ class SrDay(
         },
     )
 
+    /** F-SR-040: the bundle's own requests (30 days, status, reason) merged with those still only on this phone. Local reads only. */
+    suspend fun ownRequests(): List<com.aktcl.aron.feature.outlet.OwnRequestRow> {
+        val names = data.value.outlets.associate { it.outletId to it.name }
+        val local = db.captureDao().outletRequests().map { r ->
+            val proposed = runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(r.proposedJson) as? kotlinx.serialization.json.JsonObject)?.get("name") }.getOrNull()
+            val name = (proposed as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content ?: r.outletId?.let(names::get)
+            val ob = db.outboxDao().byClientUuid(r.clientUuid)
+            com.aktcl.aron.feature.outlet.LocalRequest(r.clientUuid, r.requestType, name, r.meta.capturedAt, ob?.state, ob?.lastCode)
+        }
+        val since = iso(clock.nowMs() - 30L * 24 * 3600 * 1000)
+        return com.aktcl.aron.feature.outlet.OwnRequests.rows(reference.section("my_outlet_requests"), local, since)
+    }
+
     /** The camera pipeline of F-SYS-030; [attachMedia] replaces the placeholder once the user's media queue is open. */
     @Volatile var photoPipeline: PhotoPipeline = NoCameraPipeline
 

@@ -73,3 +73,23 @@ On the A06, on a screen using `AronHoldToConfirm` (for example submit Review):
 3. Press and hold for 1.5 s without lifting. Pass: confirms once (one vibration tick), never twice.
 4. Press, hold 1.0 s, slide the finger off the button and release. Pass: cancelled.
 5. Turn TalkBack on, double-tap and hold (or use the Confirm custom action). Pass: confirms.
+
+### D-SRA-1 SR Settings language and logout (F-SR-005, F-SR-007; android-sr-a)
+Host proof: `SettingsScreenTest` (logout confirmation, Bangla digits, optional rows), AppLocale tests.
+On the Galaxy A06 with the seeded day:
+1. Settings, tap the Bangla switch. Pass: every visible string is Bangla with Bengali digits. Kill the app from Recents and reopen: still Bangla. Repeat for English.
+2. Settings, Log out, Cancel. Pass: still signed in. Log out again, confirm. Pass: login screen; sign in again as the same SR: yesterday's saved visits and unsent memos are still there and upload.
+3. Kill and relaunch mid-way through step 2's confirmation dialog. Pass: no crash, session state is consistent.
+
+### D-SRA-2 Force Sale photo (F-SR-018; android-sr-a)
+Host proof: ForceSaleController and screen tests, camera pipeline tests (core-media).
+On the A06, standing more than the outlet radius from a seeded outlet: open Sale, pick the outlet, Force Sale, choose a reason, take the outlet photo. Pass: sale proceeds; the visit shows photo_validated true, geo_validated false; offline then online: one location-change request and one photo upload per Force Sale. Deny the camera permission: Pass: the permission gate explains and blocks, no crash.
+
+### D-SRA-3 PDA to Support (F-SR-006; android-sr-a)
+Blocked until the support public key is configured. Then: Settings, PDA to Support, Send in airplane mode. Pass: "will be sent when online". Turn the network on. Pass: after the worker runs the screen shows Sent at HH:MM (Dhaka time).
+
+### D-SRA-4 Outlet map on tap (N-041; android-sr-a)
+After the Maps key restriction includes the SR package: out of range at an outlet, tap Map. Pass: pin, radius circle and own position show; with the network off the text distance and Force Sale still work.
+
+### D-SRA-5 My requests (F-SR-040; android-sr-a)
+Host proof: `OwnRequestsTest` (merge, statuses, reason, Bangla, empty). On the A06: Outlet, send one new-outlet request offline. Pass: My requests shows it as "Saved on this phone, waiting to be sent". Go online, sync, refresh the bundle (open the app next morning or pull a delta). Pass: it shows Pending, then Verified/Approved/Rejected as the office decides; a rejected one shows "Reason: ...". Kill and relaunch: the list is unchanged. Repeat in Bangla.
