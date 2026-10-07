@@ -29,7 +29,7 @@ object StockTags {
 }
 
 /** What the last Save said, shown under the list. */
-enum class StockMessage { SAVED, REFUSED_SAME_VALUES, NOTHING_ENTERED }
+enum class StockMessage { SAVED, REFUSED_SAME_VALUES, NOTHING_ENTERED, SAVE_FAILED }
 
 @Composable
 private fun categoryLabel(code: String): String = when (code) {
@@ -84,6 +84,7 @@ fun StockContent(
             StockMessage.SAVED -> AronBanner(stringResource(R.string.stk_saved), Modifier.testTag(StockTags.MESSAGE), BannerKind.Info)
             StockMessage.REFUSED_SAME_VALUES -> AronBanner(stringResource(R.string.stk_refused), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
             StockMessage.NOTHING_ENTERED -> AronBanner(stringResource(R.string.stk_nothing), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
+            StockMessage.SAVE_FAILED -> AronBanner(stringResource(R.string.stk_save_failed), Modifier.testTag(StockTags.MESSAGE), BannerKind.Error)
             null -> Unit
         }
         if (slipNotPrinted) AronBanner(stringResource(R.string.stk_slip_not_printed), kind = BannerKind.Warning)

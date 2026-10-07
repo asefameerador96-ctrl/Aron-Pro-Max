@@ -58,6 +58,20 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     of docs/24 s12.5, JSON Schema each, published versions fixed); insert trigger refuses an uncatalogued type or
     version, a non-object payload or a missing required key. `docs/data-events.md` rendered by `DataEventsTest`.
 
+- **Enterprise-bar audit rows** (2026-10-07; Opus checker per migration):
+  - `V0020` (AUD-DA-03, TP-7, REL-03): roles `auth_rw`, `pii_reader` (outlet contact columns), `support_ro`; `web_ro`
+    and `bi_reader` read only `dw.v_*` (+ `dw.v_outlet_masked`); `app.db_role_limit` + `app.apply_login_limits()` write
+    the docs/18 timeouts onto login identities; tests with real logins (SHOW, DROP refused, 57014 cancel). Checker PASS.
+    Infra and backend asks: `docs/requests/db-runtime-roles.md` (update section).
+  - `V0021` (AUD-PERF-01): set-based client_uuid uniqueness. Measured on the docs/22-volume database (7 trading days:
+    726k outlets, 2.0 M visits, 1.7 M memos, 2.8 M lines, 25 monthly partitions), 200-row batches of visit + memo +
+    2 lines each: **66-79 ms p95 with V0007's per-row trigger, 8-16 ms p95 with V0021** (2.3-2.7 ms with no check);
+    checker independently 37.8 -> 8.5 ms. `db/perf/generate.sql`, `db/perf/ingest_batches.sql`. Checker PASS.
+  - `V0022`: `tracking_action.created` v1 catalogued (the analytics producer was refused); producer asked to drop the
+    free-text note (`docs/requests/db-event-tracking-action-note.md`).
+  - AUD-DA-04 (system code lists): built and checked (PASS after fixes) but **held**: it breaks backend-masterdata's
+    fixture (`docs/requests/db-masterdata-code-list-fixture.md`); ships as the next migration once that is idempotent.
+
 ## Lead rulings applied (docs/24 s14a, 2026-10-06)
 
 R1 registry hash partitioning, R2 only the s9.5 keys, R3 scope_id ordinals, R4 `_` in SKU codes: already as built.
@@ -67,7 +81,8 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 
 ## Next
 
-- Index and query-plan review at docs/22 volume (`db/perf/generate.sql`): in progress.
+- Index and query-plan review at docs/22 volume (`db/perf/generate.sql`): ingest measured (V0021); bundle, worker and
+  dashboard plans in progress. Then AUD-DA-01 (outbox commit order, dirty-key dead letter), DA-02, DA-05..08, PERF-03/07/08.
 
 - Back-office tables of docs/24 s12.1 that no db row names (`survey`, `survey_question`, `rubric`, `tutorial`,
   `print_template`, `supervisor_target`, `web_entry_*`, `qc_summary_entry`, `entry_unlock`, `dues_adjustment`,

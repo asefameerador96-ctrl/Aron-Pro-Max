@@ -19,5 +19,6 @@ export const MASTER_LINKS: readonly MasterLink[] = [
   { id: "sr-transfer", href: "/admin/sr-transfer", labelKey: "menu.admin.sr_transfer", group: "routes", roles: ADMIN_PORTAL_ROLES },
   { id: "code-lists", href: "/admin/code-lists/qc_fault_type", labelKey: "menu.config.qc_faults", group: "lists", roles: ADMIN_PORTAL_ROLES },
   { id: "print-templates", href: "/admin/print-templates", labelKey: "menu.config.print_templates", group: "lists", roles: ADMIN_PORTAL_ROLES },
-  { id: "sr-lifecycle", href: "/admin/sr-lifecycle", labelKey: "menu.admin.sr_lifecycle", group: "routes", roles: ADMIN_PORTAL_ROLES },
+  { id: "sr-lifecycle", href: "/admin/sr-lifecycle", labelKey: "menu.admin.sr_lifecycle", group: "routes", roles: ["ADMIN", "SUPERADMIN"] },
+  { id: "tutorials", href: "/admin/tutorials", labelKey: "menu.admin.tutorials", group: "lists", roles: ADMIN_PORTAL_ROLES },
 ];

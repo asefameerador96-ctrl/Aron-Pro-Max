@@ -100,6 +100,8 @@ class Wiring(
     val build: String,
     val mount: Route.() -> Unit,
     val frontDoorId: String? = null,
+    /** Admission control and backpressure (N-056); null in tests that do not exercise it. */
+    val admission: com.aktcl.aron.backend.analytics.AdmissionControl? = null,
 ) {
     companion object {
         /**
@@ -144,6 +146,11 @@ class Wiring(
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
             val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + extraRecordHandlers)), db, config, clock)
+            val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
+            val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
+                ingestCapacity = runCatching { config.int("cfg.api.inflight_batches_per_replica") }.getOrDefault(64),
+                dbWaiting = { hikari?.hikariPoolMXBean?.threadsAwaitingConnection ?: 0 },
+            )
             return Wiring(clock, config, db, generation::current, s.build, mount = {
                 authRoutes(auth)
                 outletRoutes(outlets)
@@ -170,7 +177,7 @@ class Wiring(
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)
                 syncRoutes(sync)
-            }, frontDoorId = s.frontDoorId)
+            }, frontDoorId = s.frontDoorId, admission = admission)
         }
     }
 }

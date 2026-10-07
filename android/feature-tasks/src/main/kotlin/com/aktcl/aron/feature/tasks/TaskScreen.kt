@@ -42,7 +42,7 @@ fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Mod
         if (state.showEmptyState) {
             AronEmptyState(
                 stringResource(R.string.tsk_empty), Modifier.testTag(TaskTags.EMPTY),
-                hint = state.syncedAt?.let { stringResource(R.string.tsk_synced_at, localizedDigits(it.take(16).replace('T', ' '))) } ?: stringResource(R.string.tsk_never_synced),
+                hint = state.syncedAt?.let { stringResource(R.string.tsk_synced_at, localizedDigits(dhakaStamp(it))) } ?: stringResource(R.string.tsk_never_synced),
             )
         } else {
             Text(stringResource(R.string.tsk_swipe_hint), style = MaterialTheme.typography.bodySmall)
@@ -84,3 +84,9 @@ private fun TaskCard(t: TaskItem) {
         t.dueDate?.let { Text(stringResource(R.string.tsk_due, localizedDigits(it)), style = MaterialTheme.typography.bodySmall) }
     }
 }
+
+/** `yyyy-MM-dd HH:mm` in Asia/Dhaka (UTC+6) of an RFC 3339 instant. */
+internal fun dhakaStamp(iso: String): String = runCatching {
+    val local = java.time.Instant.parse(iso).plusSeconds(6 * 3600L).atOffset(java.time.ZoneOffset.UTC)
+    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", java.util.Locale.ROOT).format(local)
+}.getOrDefault(iso.take(16).replace('T', ' '))

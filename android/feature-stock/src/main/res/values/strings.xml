@@ -18,4 +18,5 @@
     <string name="stk_nothing">Enter an Issue quantity first.</string>
     <string name="stk_high">That is a very large quantity. Check it before you save.</string>
     <string name="stk_slip_not_printed">The stock slip is not printed yet. Print it before Sales Submit.</string>
+    <string name="stk_save_failed">Could not save. Nothing was changed. Try again.</string>
 </resources>
