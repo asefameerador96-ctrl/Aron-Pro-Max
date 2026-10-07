@@ -11,6 +11,21 @@ import java.security.MessageDigest
 fun interface DeviceProofSigner {
     /** Returns the 86-character proof, or null when the device key is not available. */
     fun sign(proofString: String): String?
+
+    /**
+     * Like [sign], but tells "not enrolled" (no key: unsigned is correct) from "enrolled but the Keystore failed" (a
+     * transient miss: a record must be held, not shipped unsigned, because a row once sent is never re-signed; F-SYS-072).
+     * A signer that cannot tell the two apart reports every null as [ProofResult.NotEnrolled].
+     */
+    fun attempt(proofString: String): ProofResult = sign(proofString)?.let { ProofResult.Signed(it) } ?: ProofResult.NotEnrolled
+}
+
+sealed interface ProofResult {
+    data class Signed(val value: String) : ProofResult
+    /** No enrolled device key: calls and records go out unsigned. */
+    data object NotEnrolled : ProofResult
+    /** The device is enrolled but signing failed (Keystore busy, key unreadable): hold what must be signed. */
+    data object Failed : ProofResult
 }
 
 /** The proof strings of docs/24 s8.3; lines joined by `\n`, UTF-8. */

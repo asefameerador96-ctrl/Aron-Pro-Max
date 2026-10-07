@@ -16,6 +16,7 @@ import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.AronApiClient
 import com.aktcl.aron.core.network.CallAuth
 import com.aktcl.aron.core.network.DeviceProofSigner
+import com.aktcl.aron.core.network.ProofResult
 import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.core.network.WireJson
 import com.aktcl.aron.dpc.DeviceOwnerPolicy
@@ -127,16 +128,25 @@ class DeviceNonceApi(private val client: AronApiClient) : NonceSource {
  * (a dev phone) there is no key and calls go out without the header.
  */
 class KeystoreProofSigner(private val keys: DeviceKeyStore, private val alias: () -> String?) : DeviceProofSigner {
-    override fun sign(proofString: String): String? {
-        val a = runCatching(alias).getOrNull() ?: return null
-        return keys.sign(a, proofString.toByteArray(Charsets.UTF_8))
+    override fun sign(proofString: String): String? = (attempt(proofString) as? ProofResult.Signed)?.value
+
+    /** No stored alias is "not enrolled"; an unreadable enrolment file or a Keystore miss for a stored alias is a failure. */
+    override fun attempt(proofString: String): ProofResult {
+        val a = try { alias() } catch (_: Exception) { return ProofResult.Failed } ?: return ProofResult.NotEnrolled
+        return keys.sign(a, proofString.toByteArray(Charsets.UTF_8))?.let { ProofResult.Signed(it) } ?: ProofResult.Failed
     }
 
     companion object {
+        /** The DPC's record of a finished enrolment (dpc EnrolmentStore). */
+        const val DONE_FILE = "enrolment-done.txt"
+
         /** The alias the enrolment stored in the DPC's no-backup folder. */
         fun enrolledAlias(context: Context): () -> String? {
-            val store = EnrolmentStore(File(context.applicationContext.noBackupFilesDir, "dpc"))
-            return { store.enrolled()?.keyAlias }
+            val dir = File(context.applicationContext.noBackupFilesDir, "dpc")
+            val store = EnrolmentStore(dir)
+            // enrolled() reads an unreadable file as null; a done file that exists but cannot be read is a failure, not
+            // "never enrolled", so the signer holds headers instead of shipping them unsigned (F-SYS-072 checker).
+            return { store.enrolled()?.keyAlias ?: if (File(dir, DONE_FILE).exists()) error("enrolment file unreadable") else null }
         }
     }
 }

@@ -11,6 +11,7 @@ import com.aktcl.aron.core.network.ApiOrigin
 import com.aktcl.aron.core.network.AronApiClient
 import com.aktcl.aron.core.network.ClientIdentity
 import com.aktcl.aron.core.network.DeviceProofSigner
+import com.aktcl.aron.core.network.ProofResult
 import com.aktcl.aron.core.network.ProofStrings
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
@@ -53,9 +54,10 @@ class RecordSignatureTest {
     }
 
     private var now = 1_791_194_400_000L
+    private var elapsed = 1_000_000L
     private val clock = object : WallClock {
         override fun nowMs(): Long = now
-        override fun elapsedRealtimeMs(): Long = 1_000_000L
+        override fun elapsedRealtimeMs(): Long = elapsed
     }
 
     @Before fun setUp() {
@@ -67,10 +69,10 @@ class RecordSignatureTest {
 
     @After fun tearDown() { db.close(); server.close() }
 
-    private fun engine(signer: DeviceProofSigner?): SyncEngine {
+    private fun engine(signer: DeviceProofSigner?, maxRows: Int = SyncPolicy().batchMaxRows): SyncEngine {
         val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
         val client = AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { DEVICE })
-        return SyncEngine(USER, db, SyncBatchApi(client, null), auth, { DEVICE }, "1.0.3+10003", clock, SyncPolicy(), random = Random(7), recordSigner = signer)
+        return SyncEngine(USER, db, SyncBatchApi(client, null), auth, { DEVICE }, "1.0.3+10003", clock, SyncPolicy(batchMaxRows = maxRows), random = Random(7), recordSigner = signer)
     }
 
     private suspend fun visitWithClose(): Pair<String, String> {
@@ -126,6 +128,148 @@ class RecordSignatureTest {
         assertEquals(SyncStop.DRAINED, engine(DeviceProofSigner { null }).run(SyncTrigger.MANUAL).stop)
         val visit = sentRecords().single { it["client_uuid"]!!.jsonPrimitive.content == visitUuid }
         assertTrue(visit["sig"] == null || visit["sig"] is kotlinx.serialization.json.JsonNull)
+    }
+
+    /** A signer for an enrolled device whose Keystore fails the first [failures] calls. */
+    private fun flaky(failures: Int) = object : DeviceProofSigner {
+        var calls = 0
+        override fun sign(proofString: String): String? = (attempt(proofString) as? ProofResult.Signed)?.value
+        override fun attempt(proofString: String): ProofResult =
+            if (calls++ < failures) ProofResult.Failed else signer.attempt(proofString)
+    }
+
+    private suspend fun lastError() = db.referenceDao().meta(SyncEngine.KEY_LAST_ERROR)
+
+    /** F-SYS-072 residual (a): an enrolled device whose Keystore misses holds the header, it never ships it unsigned. */
+    @Test fun aKeystoreMissHoldsTheHeaderUntilItCanBeSigned() = runBlocking {
+        val (visitUuid, _) = visitWithClose()
+        val s = flaky(failures = 2) // the first attempt and its immediate retry
+        val held = engine(s).run(SyncTrigger.MANUAL)
+        assertEquals(SyncStop.RETRY_LATER, held.stop)
+        assertEquals(SyncEngine.CODE_KEY_UNAVAILABLE, held.code)
+        assertTrue(held.retryAfterMs!! > 0)
+        assertTrue("nothing sent", fake.requests.isEmpty())
+        assertEquals(2, held.unsent) // visit and close stay pending, not in flight
+        assertEquals(null, db.outboxDao().byClientUuid(visitUuid)!!.sig)
+        assertEquals(0, db.outboxDao().byClientUuid(visitUuid)!!.attempts)
+        assertEquals(SyncStop.DRAINED, engine(s).run(SyncTrigger.MANUAL).stop)
+        val visit = sentRecords().single { it["client_uuid"]!!.jsonPrimitive.content == visitUuid }
+        assertEquals(86, visit["sig"]!!.jsonPrimitive.content.length)
+        assertEquals(null, db.referenceDao().meta(SyncEngine.KEY_SIG_HOLD))
+    }
+
+    @Test fun aSingleMissIsRetriedAtOnce() = runBlocking {
+        val (visitUuid, _) = visitWithClose()
+        assertEquals(SyncStop.DRAINED, engine(flaky(failures = 1)).run(SyncTrigger.MANUAL).stop)
+        assertEquals(86, sentRecords().single { it["client_uuid"]!!.jsonPrimitive.content == visitUuid }["sig"]!!.jsonPrimitive.content.length)
+    }
+
+    /**
+     * A key that stays broken must not keep the day's sales on the phone: held for [SyncEngine.SIG_HOLD_MS] of elapsed
+     * time (not a number of runs: taps or connectivity triggers come seconds apart), then every batch goes in the same run.
+     */
+    @Test fun aBrokenKeyHoldsForABoundedTimeThenDrainsEveryBatch() = runBlocking {
+        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
+        val visits = (1..5).map { i -> TestRows.visit(outletId = 50000L + i, seq = i).also { (v, f) -> repo.recordVisitOpen(v, f) }.first.clientUuid }
+        val broken = flaky(failures = Int.MAX_VALUE)
+        repeat(5) { assertEquals(SyncStop.RETRY_LATER, engine(broken, maxRows = 2).run(SyncTrigger.MANUAL).stop) }
+        assertTrue("held while inside the window", fake.requests.isEmpty())
+        assertEquals(SyncEngine.CODE_KEY_UNAVAILABLE, lastError()) // goes out as X-Last-Sync-Error with the next batch
+        elapsed += SyncEngine.SIG_HOLD_MS
+        val report = engine(broken, maxRows = 2).run(SyncTrigger.MANUAL)
+        assertEquals(SyncStop.DRAINED, report.stop)
+        assertEquals(3, fake.requests.size) // all three batches in one run, not one batch per window
+        visits.forEach { u -> val r = sentRecords().single { it["client_uuid"]!!.jsonPrimitive.content == u }; assertTrue(r["sig"] == null || r["sig"] is kotlinx.serialization.json.JsonNull) }
+        // A later sale on the same broken key goes at once (still degraded); a key that works again ends the episode.
+        TestRows.visit(outletId = 50009L, seq = 9).let { (v, f) -> repo.recordVisitOpen(v, f) }
+        assertEquals(SyncStop.DRAINED, engine(broken).run(SyncTrigger.MANUAL).stop)
+        TestRows.visit(outletId = 50010L, seq = 10).let { (v, f) -> repo.recordVisitOpen(v, f) }
+        assertEquals(SyncStop.DRAINED, engine(signer).run(SyncTrigger.MANUAL).stop)
+        assertEquals(null, db.referenceDao().meta(SyncEngine.KEY_SIG_HOLD))
+    }
+
+    @Test fun aRebootRestartsTheHoldWindow() = runBlocking {
+        visitWithClose()
+        val broken = flaky(failures = Int.MAX_VALUE)
+        elapsed = 50 * 60_000L
+        assertEquals(SyncStop.RETRY_LATER, engine(broken).run(SyncTrigger.MANUAL).stop)
+        elapsed = 1_000L // rebooted: elapsed time is smaller than when the hold began
+        assertEquals(SyncStop.RETRY_LATER, engine(broken).run(SyncTrigger.MANUAL).stop)
+        elapsed += SyncEngine.SIG_HOLD_MS
+        assertEquals(SyncStop.DRAINED, engine(broken).run(SyncTrigger.MANUAL).stop)
+    }
+
+    /** A success between misses resets the hold, so a later episode gets its full window. */
+    @Test fun aSignedRunResetsTheHold() = runBlocking {
+        visitWithClose()
+        assertEquals(SyncStop.RETRY_LATER, engine(flaky(failures = 2)).run(SyncTrigger.MANUAL).stop)
+        assertTrue(db.referenceDao().meta(SyncEngine.KEY_SIG_HOLD) != null)
+        assertEquals(SyncStop.DRAINED, engine(signer).run(SyncTrigger.MANUAL).stop)
+        assertEquals(null, db.referenceDao().meta(SyncEngine.KEY_SIG_HOLD))
+    }
+
+    /** Degraded, a key that signs some rows and fails others keeps sending: only a batch with no failure ends it. */
+    @Test fun aPartlyWorkingKeyIsNeverHeldAgainOnceDegraded() = runBlocking {
+        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
+        TestRows.visit(outletId = 50001L, seq = 1).let { (v, f) -> repo.recordVisitOpen(v, f) }
+        val broken = flaky(failures = Int.MAX_VALUE)
+        assertEquals(SyncStop.RETRY_LATER, engine(broken).run(SyncTrigger.MANUAL).stop)
+        elapsed += SyncEngine.SIG_HOLD_MS
+        assertEquals(SyncStop.DRAINED, engine(broken).run(SyncTrigger.MANUAL).stop)
+        // Two new visits; the key signs the first and fails the second (and its retry).
+        TestRows.visit(outletId = 50002L, seq = 2).let { (v, f) -> repo.recordVisitOpen(v, f) }
+        TestRows.visit(outletId = 50003L, seq = 3).let { (v, f) -> repo.recordVisitOpen(v, f) }
+        var calls = 0
+        val mixed = object : DeviceProofSigner {
+            override fun sign(proofString: String): String? = (attempt(proofString) as? ProofResult.Signed)?.value
+            override fun attempt(proofString: String): ProofResult = if (calls++ == 0) signer.attempt(proofString) else ProofResult.Failed
+        }
+        assertEquals(SyncStop.DRAINED, engine(mixed).run(SyncTrigger.MANUAL).stop)
+        assertEquals(2, fake.requests.size)
+        assertTrue(SyncEngine.SigHold.parse(db.referenceDao().meta(SyncEngine.KEY_SIG_HOLD))!!.degraded)
+    }
+
+    /** core-sync names the DPC's private done file; a rename in the DPC must fail here, not silently reopen the gap. */
+    @Test fun theDoneFileNameMatchesTheDpcStore() {
+        val store = com.aktcl.aron.dpc.enrolment.EnrolmentStore(java.io.File(context.noBackupFilesDir, "dpc"))
+        val getter = store.javaClass.getDeclaredMethod("getDoneFile").apply { isAccessible = true }
+        assertEquals(com.aktcl.aron.core.sync.device.KeystoreProofSigner.DONE_FILE, (getter.invoke(store) as java.io.File).name)
+    }
+
+    /** The DPC's store reads an unreadable done file as "not enrolled"; the signer's alias source must not. */
+    @Test fun anUnreadableEnrolmentFileIsAFailureNotNotEnrolled() {
+        val dir = java.io.File(context.noBackupFilesDir, "dpc")
+        dir.deleteRecursively()
+        val keys = object : com.aktcl.aron.core.geo.integrity.DeviceKeyStore {
+            override fun create(alias: String, challenge: ByteArray) = throw UnsupportedOperationException()
+            override fun exists(alias: String) = true
+            override fun sign(alias: String, data: ByteArray): String? = "k".repeat(86)
+            override fun delete(alias: String) = Unit
+            override fun aliases(): List<String> = emptyList()
+        }
+        val s = com.aktcl.aron.core.sync.device.KeystoreProofSigner(keys, com.aktcl.aron.core.sync.device.KeystoreProofSigner.enrolledAlias(context))
+        assertEquals(ProofResult.NotEnrolled, s.attempt("p"))
+        dir.mkdirs()
+        java.io.File(dir, com.aktcl.aron.core.sync.device.KeystoreProofSigner.DONE_FILE).writeText("garbage without the keys")
+        assertEquals(ProofResult.Failed, s.attempt("p"))
+    }
+
+    @Test fun keystoreSignerTellsNotEnrolledFromFailed() {
+        val keys = object : com.aktcl.aron.core.geo.integrity.DeviceKeyStore {
+            var works = true
+            override fun create(alias: String, challenge: ByteArray) = throw UnsupportedOperationException()
+            override fun exists(alias: String) = true
+            override fun sign(alias: String, data: ByteArray): String? = if (works) "k".repeat(86) else null
+            override fun delete(alias: String) = Unit
+            override fun aliases(): List<String> = emptyList()
+        }
+        assertEquals(ProofResult.NotEnrolled, com.aktcl.aron.core.sync.device.KeystoreProofSigner(keys) { null }.attempt("p"))
+        assertEquals(ProofResult.Failed, com.aktcl.aron.core.sync.device.KeystoreProofSigner(keys) { error("unreadable") }.attempt("p"))
+        val enrolled = com.aktcl.aron.core.sync.device.KeystoreProofSigner(keys) { "aron-dk-1" }
+        assertEquals(ProofResult.Signed("k".repeat(86)), enrolled.attempt("p"))
+        keys.works = false
+        assertEquals(ProofResult.Failed, enrolled.attempt("p"))
+        assertEquals(null, enrolled.sign("p"))
     }
 
     /**

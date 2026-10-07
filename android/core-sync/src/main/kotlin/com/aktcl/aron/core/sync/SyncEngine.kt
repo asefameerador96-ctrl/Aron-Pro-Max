@@ -19,6 +19,7 @@ import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.Grant
+import com.aktcl.aron.core.network.ProofResult
 import com.aktcl.aron.core.network.TransportFailure
 import com.aktcl.aron.core.network.WireJson
 import com.aktcl.aron.core.session.SessionRepository
@@ -134,8 +135,9 @@ class SyncEngine(
     suspend fun run(trigger: SyncTrigger): SyncReport = lockOf(userId).withLock { Run(trigger).execute() }
 
     /**
-     * F-SYS-072 (BC-53): the server used to quarantine every header without a valid sig as `device_integrity_failed`; it
-     * now accepts them unless `cfg.sec.record_signature_mode` is enforce, and releases a resend of such a registry row.
+     * F-SYS-072 (BC-53): the server quarantines every header without a valid sig as `device_integrity_failed`; BC-53 asks
+     * it to accept them unless `cfg.sec.record_signature_mode` is enforce and to release a resend of such a registry row
+     * (not on INT on 2026-10-07: docs/requests/android-core-backend-record-signature-mode.md; until then rounds re-quarantine).
      * The phone treats a quarantine as terminal, so those rows are resent by uuid in rounds: at most one per business date
      * and [INTEGRITY_RELEASE_ROUNDS] per episode, because the phone cannot see the server's mode (an older server or
      * enforce answers them quarantined again; a later day's round catches a server upgraded meanwhile). The episode ends
@@ -199,7 +201,7 @@ class SyncEngine(
                 val batchUuid = ClientIds.newUuid()
                 // F-SYS-072: header records are signed once, here, before the batch is persisted; every resend and every
                 // later batch of the row carries the same sig (the server's batch fingerprint includes it).
-                val sigs = signatures(chosen)
+                val sigs = signatures(chosen) ?: return holdForKeystore()
                 val marked = db.withTransaction {
                     sigs.forEach { (seq, sig) -> outbox.setSig(seq, sig) }
                     val n = outbox.markInFlight(batchUuid, chosen.map { it.seq })
@@ -435,24 +437,63 @@ class SyncEngine(
             return JsonObject((payload as JsonObject).filterKeys { it != "sig" } + ("sig" to JsonPrimitive(sig)))
         }
 
-        /** Signs the header records among [rows] that have no sig yet; a missing key or an unreadable payload signs nothing. */
-        suspend fun signatures(rows: List<OutboxEntity>): List<Pair<Long, String>> {
+        /**
+         * Signs the header records among [rows] that have no sig yet; no key (not enrolled) or an unreadable payload signs
+         * nothing. Null when the device is enrolled but the Keystore failed twice for a row: the caller holds the batch,
+         * because a row sent unsigned is never re-signed (and the server quarantines it). The hold lasts at most
+         * [SIG_HOLD_MS] of elapsed time from the first failure (counted in this boot; a reboot starts it again); after that
+         * the phone is degraded and every batch goes, unsigned where signing fails, until a signature succeeds again: a
+         * broken key must not keep the day's sales on the phone, and the server keeps what it quarantines for review.
+         */
+        suspend fun signatures(rows: List<OutboxEntity>): List<Pair<Long, String>>? {
             val signer = recordSigner ?: return emptyList()
             // Only rows never sent: the server's registry hash of a record includes sig, so a row that once went out
             // unsigned (before enrolment, or a Keystore miss) and was parked must come back byte-identical, or it is
             // quarantined as payload_conflict (F-SYS-072 checker). Keystore calls are blocking: off the caller's thread.
             val fresh = rows.filter { it.sig == null && it.recordType in SIGNED_TYPES && it.attempts == 0 && it.lastCode == null }
             if (fresh.isEmpty()) return emptyList()
-            return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { fresh.mapNotNull { row ->
+            var failed = false
+            val sigs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { fresh.mapNotNull { row ->
                 try {
                     val payload = RECORD_JSON.parseToJsonElement(row.payloadJson) as? JsonObject ?: return@mapNotNull null
-                    signer.sign(com.aktcl.aron.core.network.ProofStrings.record(row.recordType, row.clientUuid, payload))?.let { row.seq to it }
+                    val proof = com.aktcl.aron.core.network.ProofStrings.record(row.recordType, row.clientUuid, payload)
+                    var r = signer.attempt(proof)
+                    if (r is ProofResult.Failed) r = signer.attempt(proof) // one immediate retry: most misses are transient
+                    when (r) {
+                        is ProofResult.Signed -> row.seq to r.value
+                        ProofResult.NotEnrolled -> null
+                        ProofResult.Failed -> { failed = true; null }
+                    }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (_: Exception) {
                     null
                 }
             } }
+            val hold = SigHold.parse(meta.meta(KEY_SIG_HOLD))
+            if (!failed) {
+                if (hold != null) meta.deleteMeta(KEY_SIG_HOLD)
+                return sigs
+            }
+            val now = clock.elapsedRealtimeMs()
+            val next = when {
+                hold == null -> SigHold(now, 1, false)
+                hold.degraded -> hold // only a batch with no failure ends it: a partly working key must not re-hold
+                now < hold.sinceElapsedMs -> SigHold(now, 1, false) // rebooted: elapsed time restarted
+                now - hold.sinceElapsedMs >= SIG_HOLD_MS -> hold.copy(degraded = true)
+                else -> hold.copy(runs = hold.runs + 1)
+            }
+            meta.putMeta(SyncMetaEntity(KEY_SIG_HOLD, next.wire()))
+            if (!next.degraded) return null
+            meta.putMeta(SyncMetaEntity(KEY_LAST_ERROR, CODE_KEY_UNAVAILABLE))
+            return sigs
+        }
+
+        /** Nothing was marked in flight: the rows stay pending, unsigned and unsent, for the next run to sign. */
+        suspend fun holdForKeystore(): SyncReport {
+            meta.putMeta(SyncMetaEntity(KEY_LAST_ERROR, CODE_KEY_UNAVAILABLE))
+            val runs = SigHold.parse(meta.meta(KEY_SIG_HOLD))?.runs ?: 1
+            return report(SyncStop.RETRY_LATER, code = CODE_KEY_UNAVAILABLE, retryAfterMs = Backoff.delayMs(runs, policy, random))
         }
 
         suspend fun release(batchUuid: String, code: String) = db.withTransaction {
@@ -504,6 +545,17 @@ class SyncEngine(
         return taken
     }
 
+    /** The F-SYS-072 hold of header rows on a Keystore failure; the database file is per user, so this is too. */
+    internal data class SigHold(val sinceElapsedMs: Long, val runs: Int, val degraded: Boolean) {
+        fun wire() = "$sinceElapsedMs:$runs:${if (degraded) 1 else 0}"
+        companion object {
+            fun parse(v: String?): SigHold? = v?.split(':')?.takeIf { it.size == 3 }?.let { p ->
+                val since = p[0].toLongOrNull() ?: return null
+                SigHold(since, p[1].toIntOrNull() ?: 1, p[2] == "1")
+            }
+        }
+    }
+
     sealed interface Step {
         data object Next : Step
         data class Split(val limit: Int) : Step
@@ -517,6 +569,11 @@ class SyncEngine(
             "attendance_event", "stock_movement", "visit", "memo", "memo_void", "due_collection", "outlet_change_request", "redemption", "gift_photo",
         )
         const val KEY_LAST_ERROR = "sync.last_error"
+        /** F-SYS-072: header rows held because the enrolled key could not sign them (`<since elapsed ms>:<runs>:<0|1 degraded>`). */
+        const val KEY_SIG_HOLD = "sync.sig_hold.v1"
+        /** Longest hold before unsigned headers go (the server quarantines them for review rather than the phone keeping them). */
+        const val SIG_HOLD_MS = 30 * 60_000L
+        const val CODE_KEY_UNAVAILABLE = "device_key_unavailable"
         /** F-SYS-072: rounds of device_integrity_failed releases in this episode (`<rounds>:<business date>`). */
         const val KEY_INTEGRITY_RELEASE = "sync.integrity_release.v1"
         const val INTEGRITY_RELEASE_ROUNDS = 7

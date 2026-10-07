@@ -78,6 +78,16 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Seventh session (2026-10-07, from ~18:20Z)
+- INT merged (docs only) and pushed.
+- **F-SYS-072 residuals** (T1; Opus checker FAIL, re-check FAIL, both fixed with tests; RecordSignatureTest 20, RecordSignatureVectorTest 2):
+  - (a) done. `DeviceProofSigner.attempt()` returns `ProofResult.Signed / NotEnrolled / Failed`, and fun-interface signers map null to NotEnrolled. `KeystoreProofSigner`: no alias is NotEnrolled; an alias read that throws, a done file that exists but cannot be read (dpc `EnrolmentStore.enrolled()` swallows errors), or a Keystore null is Failed.
+  - `SyncEngine.signatures()`: a never-sent header that fails twice holds the batch. Nothing is marked in flight; the run stops RETRY_LATER `device_key_unavailable` with backoff. The hold lasts up to `SIG_HOLD_MS` (30 min elapsed; a reboot restarts it). After that the phone is degraded: every batch goes, unsigned where signing fails, until a batch signs with no failure.
+  - Meta `sync.sig_hold.v1` is in the per-user file. X-Device-Proof gets one inline retry, then goes without the header (never final).
+  - (b) and (c) are routed in docs/requests/android-core-backend-record-sig-vector.md. (c) is a signed vector with non-canonical numbers, Bangla and an escape; the phone verifies it, and backend-core is asked to add it beside JcsTest. (b) key rotation needs backend-core: verify against the previous keys of the lineage, or drop `sig` from the registry hash (ask 4 of the signature-mode request), after which the phone re-signs.
+  - **Row stays open** until (b) and (c), and ask 1 of android-core-backend-record-signature-mode.md (no `record_signature_mode` in ingest on INT), are on INT. Until then, unsigned headers sent after the hold are quarantined `device_integrity_failed` on the server: there for review, not accepted.
+  - Open plausibles: dpc `EnrolmentStore.write()` deletes the done file before a retried rename, so a read in that gap is NotEnrolled (dpc lane; rare); `DONE_FILE` names a private dpc literal, pinned by a reflection test.
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~18:15Z, sixth session)
 - **Done this session** (each with a fresh Opus checker, re-checked where it failed; every confirmed defect fixed with a test; head 2838c5aa, INT merged at d4d33ac3): AUD-PERF-05 (session restore off the main thread; device check D-PERF-05), F-SYS-075 (location notice and consent), F-SYS-053 **closed** (backend BC-54), F-SYS-072 BC-53 release of `device_integrity_failed` rows (row stays open), F-SYS-028 (local purge), F-SYS-024 (activity log), F-SYS-032 phone half (error reporting; device check D-ERR), F-SYS-029 core part (bounded image cache).
 - **In progress:** nothing.
