@@ -18,6 +18,7 @@ export interface OpDef {
 }
 
 const ADMINS = ["ADMIN", "SUPERADMIN"] as const;
+const SUPERS = ["SUPERADMIN"] as const;
 const SUPPORT_UP = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const;
 
 export const OPS = {
@@ -37,6 +38,12 @@ export const OPS = {
   "device.directive": { method: "POST", path: "/v1/admin/devices/{device_id}/directives", roles: SUPPORT_UP, reason: null },
   // F-ADM-078 replace-device wizard
   "device.replace": { method: "POST", path: "/v1/admin/devices/{device_id}/replace", roles: SUPPORT_UP, reason: "reason" },
+  // F-ADM-027 / P12 releases: register a CI-built APK (draft), change rollout, block or retire; only a SUPERADMIN publishes (docs/24 s8.5)
+  "release.create": { method: "POST", path: "/v1/admin/releases", roles: ADMINS, reason: null },
+  "release.update": { method: "PATCH", path: "/v1/admin/releases/{release_id}", roles: ADMINS, reason: "change_reason", ifMatch: true },
+  "release.publish": { method: "PATCH", path: "/v1/admin/releases/{release_id}", roles: SUPERS, reason: "change_reason", ifMatch: true },
+  // F-ADM-030 / P14 quarantine review: accept, accept with fix (re-map), discard, return to device
+  "quarantine.resolve": { method: "POST", path: "/v1/admin/quarantine/{quarantine_id}/resolve", roles: ADMINS, reason: "reason" },
 } as const satisfies Record<string, OpDef>;
 
 export type OpKey = keyof typeof OPS;

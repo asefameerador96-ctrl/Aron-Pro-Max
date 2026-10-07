@@ -3,7 +3,7 @@ import { onApiFailure } from "@/components/admin/crud/pages";
 import { apiGet } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
 import { canOp } from "@/lib/admin/access";
-import type { Device, DeviceStatusPage } from "@/lib/admin/types";
+import type { Device, DeviceStatusPage, Directive } from "@/lib/admin/types";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
@@ -16,7 +16,7 @@ export default async function DevicePage({ params }: { params: Promise<{ id: str
   const [d, h, dirs] = await Promise.all([
     apiGet<Device>(`/v1/admin/devices/${id}`, session.at),
     apiGet<DeviceStatusPage>(`/v1/admin/devices/${id}/status-history`, session.at, { limit: 20 }),
-    apiGet<{ items: import("@/lib/admin/types").Directive[] }>(`/v1/admin/devices/${id}/directives`, session.at),
+    apiGet<{ items: Directive[] }>(`/v1/admin/devices/${id}/directives`, session.at),
   ]);
   if (!d.ok) return onApiFailure(d.status, d.problem, locale);
   return <DeviceDetailView locale={locale} device={d.data} history={h.ok ? h.data.items : []} directives={dirs.ok ? dirs.data.items : []} canWrite={canOp("device.state", session.user.role)} />;
