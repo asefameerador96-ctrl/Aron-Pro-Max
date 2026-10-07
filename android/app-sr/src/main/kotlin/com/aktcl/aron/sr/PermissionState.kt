@@ -17,6 +17,8 @@ object SrPermissions {
         AppPermission.PRECISE_LOCATION -> listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         AppPermission.CAMERA -> listOf(Manifest.permission.CAMERA)
         AppPermission.BLUETOOTH -> if (Build.VERSION.SDK_INT >= 31) listOf(Manifest.permission.BLUETOOTH_CONNECT) else emptyList()
+        // Below Android 13 there is no runtime permission: no names, so it reads as granted and is never asked.
+        AppPermission.NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
     }
 
     private fun granted(context: Context, p: AppPermission): Boolean = when (p) {
