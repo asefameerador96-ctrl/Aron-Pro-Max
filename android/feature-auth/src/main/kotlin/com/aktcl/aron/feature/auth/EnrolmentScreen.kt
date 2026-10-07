@@ -151,7 +151,8 @@ fun EnrolmentContent(
             Text(stringResource(if (state.busy && !state.pending) R.string.enrol_busy else R.string.enrol_submit))
         }
         Spacer(Modifier.height(24.dp))
-        TextButton(onClick = onSkip, enabled = !state.busy, modifier = Modifier.testTag(EnrolTags.SKIP)) {
+        // Never disabled: a slow network must not hold up the offline unlock at the start of a day.
+        TextButton(onClick = onSkip, modifier = Modifier.testTag(EnrolTags.SKIP)) {
             Text(stringResource(R.string.enrol_skip))
         }
     }
@@ -188,15 +189,18 @@ fun EnrolmentGate(
     login: @Composable (onEnrol: (() -> Unit)?) -> Unit,
 ) {
     var show by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf<Boolean?>(null) }
+    // Bumped when the screen is reopened from login: the status is read again and the screen state starts fresh.
+    var epoch by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
     var current by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<EnrolStatus?>(null) }
-    LaunchedEffect(Unit) {
-        val s = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching(status).getOrNull() } ?: EnrolStatus(true, false, null)
+    LaunchedEffect(epoch) {
+        // An unreadable state counts as not enrolled: the screen (with its skip) is shown rather than hiding enrolment.
+        val s = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching(status).getOrNull() } ?: EnrolStatus(false, false, null)
         current = s
         if (show == null) show = !s.enrolled
     }
     val s = current ?: return // a few ms: the background is the splash
     if (show == true) {
-        val vm = androidx.lifecycle.viewmodel.compose.viewModel(key = "enrolment") { EnrolmentViewModel(submit, s.pending, s.refusedCode) }
+        val vm = androidx.lifecycle.viewmodel.compose.viewModel(key = "enrolment-$epoch") { EnrolmentViewModel(submit, s.pending, s.refusedCode) }
         EnrolmentScreen(
             vm, appTitle,
             onEnrolled = { current = s.copy(enrolled = true, pending = false); show = false },
@@ -204,6 +208,6 @@ fun EnrolmentGate(
             onLanguageSelect = onLanguageSelect,
         )
     } else {
-        login(if (!s.enrolled) ({ show = true }) else null)
+        login(if (!s.enrolled) ({ current = null; epoch += 1; show = true }) else null)
     }
 }

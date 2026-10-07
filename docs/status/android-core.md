@@ -86,12 +86,24 @@
   - The device-owner QR enrols in the same process: new `Enrolment.install(coordinator, accepted)` hook in dpc, called by `acceptProvisioningExtras`.
   - The phone keeps its `X-Device-Id` UUID; it gets a fresh one only after `ERR_DEVICE_REVOKED` or `ERR_CONFLICT`. The server's UUID is recorded and repaired at start after a kill.
   - `ERR_ENROLMENT_*`, `ERR_DEVICE_REVOKED`, `ERR_CONFLICT` and `ERR_VALIDATION` drop the token. Nothing is sent without a signing digest. A typed or scanned QR naming another server is refused.
-- **(b) f357e344: enrolment screen (T1; Opus checker run at push).**
+- **(b) f357e344 and the follow-up below: enrolment screen (T1; Opus checker PASS with 2 medium and 3 low findings).**
+  - Fixed in the follow-up: Skip stays enabled while a call runs; enrol calls time out after 20 s; an unreadable status shows the screen instead of hiding it; reopening from login starts fresh; a token for another server is cleared from the field.
+  - Left as is: the screen shows on every logged-out start until the phone is enrolled. That is acceptable with the gate on, since such a phone cannot log in online anyway.
   - `feature-auth` `EnrolmentGate` is the logged-out entry of all three apps. Scan QR (Google code scanner, no camera permission) or paste the token or QR text. A stored token is retried on open.
   - "Log in without enrolling" keeps offline unlock reachable; the login screen offers "Enrol this phone" with `ERR_DEVICE_NOT_ENROLLED`.
   - AMO and TSO now wire the bind (OTP) step, like SR.
   - The scanner adds about 70 KB. sr-release was already +5.6 to 7.1 % per ABI against the baseline before it (INT drift): the size gate warns.
 - No migration and no contract change. Owner steps: `docs/status/device-checks.md` D-ENR (release-signed APK required: the server checks the signing certificate).
+- **APK size warning (lead's question, sr-release, measured 2026-10-07).**
+  - **How it was measured:** baseline commit 2e34ef7 compared with lane head + INT, both built locally (R8, `apkanalyzer` with the R8 mapping).
+  - **Growth is the same on every ABI:** the native libraries are byte-identical. The growth is about +350 KB of compressed dex plus +40 KB of `resources.arsc` (strings). The same ~390 KB lands on every per-ABI APK, so armeabi-v7a, the smallest, shows the largest percentage (+7.1 %; arm64 +5.8 %, x86/x86_64 +5.6 to 5.7 %).
+  - **Top 3 contributors, uncompressed dex (+518 KB in total):**
+    1. `core-sync` +102 KB: sync shells, device runtime, enrolment.
+    2. `app-sr` shell +67 KB, with the SR features it now hosts: `feature-memo` +51 KB and `feature-sale` +31 KB.
+    3. `core-system` +67 KB: updater, logout, PDA to Support.
+  - **Libraries are a small part:** Compose runtime, CameraX, coroutines and Firebase add about +20 KB each.
+  - **Reading:** this is feature growth, not a dependency jump. Part (b)'s code scanner adds about 70 KB on top.
+  - **Options:** re-baseline after the slice is complete, or trim later (for example R8 full mode on the `contract` DTOs). No code change was made for this.
 - Known limits:
   - The device-owner path does not compare the QR's `api_base_url` with the build's origin; the token goes only to the build's own origin, which is safe.
   - A failed first try is retried by the screen (open or "Try again") and at the next cold start; there is no background retry job.

@@ -75,8 +75,10 @@ class EnrolmentViewModel(
                     EnrolmentOutcome.Enrolled -> it.copy(busy = false, input = "", pending = false, enrolled = true)
                     is EnrolmentOutcome.Waiting -> it.copy(busy = false, input = "", pending = true, message = EnrolMessage.Waiting(outcome.offline))
                     is EnrolmentOutcome.Refused -> it.copy(busy = false, input = "", pending = false, message = EnrolMessage.Refused(outcome.code))
-                    // An unreadable entry keeps the text so a typo can be corrected.
-                    is EnrolmentOutcome.Unreadable -> it.copy(busy = false, message = EnrolMessage.Unreadable)
+                    // An unreadable entry keeps the text so a typo can be corrected; a real token for another server is
+                    // not kept on screen.
+                    is EnrolmentOutcome.Unreadable -> it.copy(busy = false, message = EnrolMessage.Unreadable,
+                        input = if (outcome.reason == "other_server") "" else it.input)
                 }
             }
         }

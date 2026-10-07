@@ -231,6 +231,8 @@ class ApiEnrolmentTransport(private val client: AronApiClient) : EnrolmentTransp
         val r = client.call(
             path = "/v1/devices/enrol",
             auth = CallAuth.None,
+            // Short, like login: a weak network gives the screen its "try again" quickly instead of a long wait.
+            callTimeoutS = CALL_TIMEOUT_S,
             build = { post(WireJson.requests.encodeToString(EnrolDeviceRequest.serializer(), request).toRequestBody(JSON)) },
             decode = { body, _ -> WireJson.responses.decodeFromString(EnrolDeviceResponse.serializer(), body) },
         )
@@ -256,6 +258,7 @@ class ApiEnrolmentTransport(private val client: AronApiClient) : EnrolmentTransp
     private companion object {
         val JSON = "application/json".toMediaType()
         val SHA256_HEX = Regex("^[0-9a-f]{64}$")
+        const val CALL_TIMEOUT_S = 20L
     }
 }
 

@@ -29,7 +29,7 @@ The lead posts each check here as soon as the build for it exists, with exact st
 Use the **release-signed** APK from CI (the server checks the app's signing certificate against the published app_release; a debug-signed APK is refused with "could not verify this phone or app").
 
 Normally installed phone (D-01 and the other checks):
-1. Laptop: admin portal `/admin/enrolment`, create a token: app SR (or AMO, TSO), lockdown **dev**, 1 use. The QR shows once; keep the page open.
+1. Laptop: admin portal `/admin/enrolment`, create a token: app SR (or AMO, TSO), lockdown **dev**, 1 use. The QR shows once; keep the page open. (Dev has a published release row per app, cert digest 468d9b4e…a4fb. Without the portal, signed in as admin1001: `POST /v1/admin/enrolment-tokens` with `{"flavour":"sr","lockdown_level":"dev","max_uses":2,"expires_in_h":24}`; the answer's `enrolment_token` can be pasted in the app (`qr_text` is the QR content).)
 2. Phone: install the APK and open it. The app shows "Enrol this phone". Tap **Scan QR** and scan the laptop screen (Google's scanner opens; no camera permission is asked). Without the scanner, paste the token text instead.
 3. "Enrolling…", then the login screen. Log in with the user of that app. The app asks for a 4-digit code: open `/device-otp` on the laptop, read the code (valid 120 minutes), enter it. Home opens.
 4. If it says the token expired or was used, create a new one (step 1). "No connection": the token is kept; tap **Try again** when online.

@@ -70,4 +70,12 @@ class EnrolmentViewModelTest {
         vm.onScanned(null)
         assertEquals(0, calls)
     }
+
+    @Test fun aTokenForAnotherServerIsNotKeptOnScreen() {
+        val vm = EnrolmentViewModel({ EnrolmentOutcome.Unreadable("other_server") }, pending = false, refusedCode = null)
+        vm.onInput("{\"other\":\"qr\"}")
+        vm.onSubmit()
+        assertEquals(EnrolMessage.Unreadable, vm.state.value.message)
+        assertEquals("", vm.state.value.input)
+    }
 }
