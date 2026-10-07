@@ -9,6 +9,9 @@ import com.aktcl.aron.core.printing.bt.SimPrinter
 import com.aktcl.aron.core.printing.render.Pbm
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -225,5 +228,36 @@ class PrintFlowTest {
         assertEquals(true, e.ledger.events.single().userConfirmed)
         e.printing.recover()
         assertEquals(1, e.ledger.events.size)
+    }
+
+    @Test fun recoverInsideTheWindowBeforeThePrinterAnswersLeavesTheJobAlone() = runTest {
+        val sim = SimPrinter({ testScheduler.currentTime })
+        val pm = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
+        val mem = MemLedger()
+        lateinit var printing: MemoPrinting
+        // A second caller runs recover() right after the job is saved, before the printer has answered.
+        val racing = object : PrintLedger by mem {
+            override suspend fun savePending(job: PendingPrint) {
+                mem.savePending(job)
+                if (!job.paperOut) printing.recover()
+            }
+        }
+        printing = MemoPrinting(pm, { Fixtures.renderer() }, racing, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime })
+        val a = printing.printMemo(memoUuid, Fixtures.seededSale) as PrintAttempt.AwaitingConfirmation
+        assertTrue(mem.events.isEmpty())
+        printing.confirm(a, true)
+        assertEquals(listOf(PrintEvent.PRINTED), mem.events.map { it.outcome })
+        assertEquals(true, mem.events.single().userConfirmed)
+    }
+
+    @Test fun aCancelledPrintIsLeftForRecover() = runTest {
+        val e = env()
+        e.sim.hangWrites = true
+        val job = launch { e.printing.printMemo(memoUuid, Fixtures.seededSale) }
+        runCurrent(); advanceTimeBy(500); job.cancel(); runCurrent()
+        assertEquals(1, e.ledger.pending().size)
+        e.printing.recover()
+        assertTrue(e.ledger.pending().isEmpty())
+        assertEquals(PrintEvent.FAILED, e.ledger.events.single().outcome)
     }
 }
