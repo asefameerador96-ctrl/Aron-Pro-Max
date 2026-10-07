@@ -254,12 +254,18 @@ class DuesRecheckTest {
      * order (24), one record set per batch and all in one batch, plus a full resend, must end at the in-order memo
      * and outlet balance: 0 when c1+c2 < due, the over-collection when c1+c2 > due.
      */
+    // Split by amount set: each half stays well inside the 60 s test timeout on a loaded machine.
     @Test
-    fun memoTwoCollectionsAndVoidInEveryUploadOrderEndAtTheInOrderBalance() = testApplication {
+    fun memoTwoCollectionsAndVoidInEveryUploadOrderEndAtTheInOrderBalance() = memoTwoCollections(10_000L to 0L)
+
+    @Test
+    fun memoTwoCollectionsAboveTheDueAndVoidInEveryUploadOrderEndAtTheInOrderBalance() = memoTwoCollections(40_000L to -10_000L)
+
+    private fun memoTwoCollections(case: Pair<Long, Long>) = testApplication {
         app()
         val token = client.token()
         val failures = ArrayList<String>()
-        for ((c2Amount, expected) in listOf(10_000L to 0L, 40_000L to -10_000L)) {
+        for ((c2Amount, expected) in listOf(case)) {
             for (oneBatch in listOf(false, true)) {
                 for (perm in permutations(listOf(0, 1, 2, 3))) {
                     val outlet = newOutlet()
