@@ -144,6 +144,7 @@ class BatchAcceptanceTest {
         headerGrossDelta: Long = 0,
         priceDelta: Long = 0,
         lat: Double = 23.80,
+        dueMtk: Long = 0,
     ): List<JsonObject> {
         val visit = uuid(); val memo = uuid()
         val (s1, p1x) = skus[0]; val (s2, p2x) = skus[1]
@@ -161,7 +162,7 @@ class BatchAcceptanceTest {
             """
             {"visit_client_uuid":"$visit","outlet_id":$outlet,"memo_no":"$memoNo","memo_kind":"sale","committed_at":"2027-01-03T03:43:00.120Z",
              "price_list_date":"$day","price_type":"outlet","gross_mtk":$gross,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,
-             "round_adj_mtk":0,"net_mtk":$gross,"paid_mtk":$gross,"due_mtk":0,"is_credit":false,"line_count":2,"discount_line_count":0,"qc_line_count":0,
+             "round_adj_mtk":0,"net_mtk":$gross,"paid_mtk":${gross - dueMtk},"due_mtk":$dueMtk,"is_credit":${dueMtk > 0},"line_count":2,"discount_line_count":0,"qc_line_count":0,
              "offer_version_ids":[],"rounding_mode":"half_up_paisa"}
             """.trimIndent(),
         ).jsonObject
@@ -449,6 +450,66 @@ class BatchAcceptanceTest {
         val inside = saleFamily()
         assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(inside)).bodyAsText())))
         assertEquals(0, count("SELECT count(*) FROM app.risk_signal WHERE subject_id = '${inside[0]["client_uuid"]!!.jsonPrimitive.content}'"))
+    }
+
+
+    // ---- F-SYS-060 dues ledger -------------------------------------------------------------------------------------
+
+    private val fixJson = """{"purpose":"PURPOSE","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+        "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}"""
+
+    private fun ledger(memo: String) = fresh.db.jdbi.withHandle<List<Pair<String, Long>>, Exception> { h ->
+        h.createQuery("SELECT entry_kind, amount_mtk FROM app.due_ledger WHERE memo_client_uuid = CAST(:m AS uuid) ORDER BY id").bind("m", memo)
+            .map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list()
+    }
+
+    @Test
+    fun aCreditMemoACollectionAndAVoidEachAddOneLedgerRowAndReplaysAddNone() = testApplication {
+        app()
+        val token = client.token()
+        val family = saleFamily(dueMtk = 50_000)
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(family)).bodyAsText())))
+        val memo = family[1]["client_uuid"]!!.jsonPrimitive.content
+        val memoNo = family[1]["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content
+        assertEquals(listOf("memo_due" to 50_000L), ledger(memo))
+        val cu = uuid()
+        val collection = envelope("due_collection", cu, cu, 0, Json.parseToJsonElement(
+            """{"outlet_id":$outletId,"against_memo_client_uuid":"$memo","against_memo_no":"$memoNo","against_memo_business_date":"$day","amount_mtk":20000,
+               "is_full_settlement":false,"outstanding_before_mtk":50000,"payment_mode":"cash"}""",
+        ).jsonObject)
+        val r = json(client.send(token, batch(listOf(collection))).bodyAsText())
+        assertEquals(listOf("accepted"), statuses(r), r.toString())
+        assertEquals(listOf("memo_due" to 50_000L, "collection" to -20_000L), ledger(memo))
+        assertEquals(listOf("duplicate"), statuses(json(client.send(token, batch(listOf(collection))).bodyAsText())))
+        val vu = uuid()
+        val void = envelope("memo_void", vu, vu, 0, Json.parseToJsonElement(
+            """{"memo_client_uuid":"$memo","memo_no":"$memoNo","reason_code":"retailer_cancelled","retailer_ack":true,"fix":${fixJson.replace("PURPOSE", "memo_void")}}""",
+        ).jsonObject)
+        assertEquals(listOf("accepted"), statuses(json(client.send(token, batch(listOf(void))).bodyAsText())))
+        assertEquals(listOf("memo_due" to 50_000L, "collection" to -20_000L, "memo_void" to -30_000L), ledger(memo))
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo' AND status = 'voided' AND voided_by_client_uuid = '$vu'"))
+        // Server totals no longer count the voided memo.
+        val totals = json(client.send(token, batch(listOf(void))).bodyAsText())["server_totals"]!!.jsonArray.map { it.jsonObject }.single { it["business_date"]!!.jsonPrimitive.content == day }
+        assertEquals(count("SELECT count(*) FROM app.memo WHERE user_id = (SELECT id FROM app.app_user WHERE username = 'sr1001') AND business_date = '$day' AND status = 'active'"),
+            totals["money"]!!.jsonObject["active_memo_count"]!!.jsonPrimitive.content.toLong())
+    }
+
+    @Test
+    fun fifoAgeingBucketsSumToTheOutletBalance() {
+        val outlet = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT max(id) FROM app.outlet WHERE route_id = :r").bind("r", routeId).mapTo(Long::class.java).one() }
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            fun row(date: String, kind: String, amt: Long) = h.execute(
+                "INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, source_client_uuid) VALUES (?, CAST(? AS date), ?, ?, gen_random_uuid())", outlet, date, kind, amt)
+            row("2026-10-20", "opening_balance", 10_000)   // 75 days old
+            row("2026-11-20", "opening_balance", 20_000)   // 44 days
+            row("2026-12-20", "opening_balance", 30_000)   // 14 days
+            row("2027-01-01", "opening_balance", 40_000)   // 2 days
+            row("2027-01-02", "collection", -15_000)       // pays the 10,000 and 5,000 of the 20,000 (FIFO)
+        }
+        val a = fresh.db.jdbi.withHandle<com.aktcl.aron.backend.sync.DuesLedger.Ageing, Exception> { h -> com.aktcl.aron.backend.sync.DuesLedger.ageing(h, outlet, java.time.LocalDate.parse(day)) }
+        assertEquals(listOf(40_000L, 30_000L, 15_000L, 0L), listOf(a.d0to7, a.d8to30, a.d31to60, a.d61plus))
+        assertEquals(85_000L, a.balance)
+        assertEquals(a.balance, a.d0to7 + a.d8to30 + a.d31to60 + a.d61plus + a.credit)
     }
 
     private fun JsonPrimitive.contentOrNull(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
