@@ -11,6 +11,10 @@ import com.aktcl.aron.backend.auth.PasswordHasher
 import com.aktcl.aron.backend.auth.RefreshService
 import com.aktcl.aron.backend.auth.TokenIssuer
 import com.aktcl.aron.backend.auth.authRoutes
+import com.aktcl.aron.backend.config.ConfigDeps
+import com.aktcl.aron.backend.config.ConfigResolver
+import com.aktcl.aron.backend.config.ConfigService
+import com.aktcl.aron.backend.config.configAdminRoutes
 import com.aktcl.aron.backend.masterdata.GeoRepository
 import com.aktcl.aron.backend.masterdata.OutletsDeps
 import com.aktcl.aron.backend.masterdata.SqlReachResolver
@@ -52,10 +56,12 @@ class Wiring(
             val login = LoginService(users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock)
             val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
+            val configDeps = ConfigDeps(ConfigService(db, ConfigResolver(db, clock), clock), guard, clock)
             // The server generation table arrives with the sync schema (N-006); until then the nil generation is sent.
             return Wiring(clock, config, db, { NIL_GENERATION }, s.build, mount = {
                 authRoutes(auth)
                 outletRoutes(outlets)
+                configAdminRoutes(configDeps)
             }, frontDoorId = s.frontDoorId)
         }
     }
