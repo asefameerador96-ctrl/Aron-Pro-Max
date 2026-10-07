@@ -108,6 +108,18 @@ class RecordSignatureTest {
         assertEquals(1, signed.size)
     }
 
+    /** Checker: a row that already went out unsigned and came back (parked, released) stays unsigned, byte-identical. */
+    @Test fun aRowAlreadySentUnsignedIsNeverSignedLater() = runBlocking {
+        val (visitUuid, _) = visitWithClose()
+        val row = db.outboxDao().nextSendable(10, 99, emptyList()).first { it.clientUuid == visitUuid }
+        db.outboxDao().markInFlight("b-old", listOf(row.seq))
+        db.outboxDao().returnToPending("b-old", "parent_missing") // what a parked or released row looks like
+        assertEquals(SyncStop.DRAINED, engine(signer).run(SyncTrigger.MANUAL).stop)
+        val visit = sentRecords().single { it["client_uuid"]!!.jsonPrimitive.content == visitUuid }
+        assertTrue(visit["sig"] == null || visit["sig"] is kotlinx.serialization.json.JsonNull)
+        assertTrue(signed.isEmpty())
+    }
+
     @Test fun beforeEnrolmentRecordsGoWithoutSig() = runBlocking {
         val (visitUuid, _) = visitWithClose()
         assertEquals(SyncStop.DRAINED, engine(DeviceProofSigner { null }).run(SyncTrigger.MANUAL).stop)

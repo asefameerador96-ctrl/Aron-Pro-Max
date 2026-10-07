@@ -20,3 +20,9 @@ Ask:
 3. Proposal: one shared test vector (public key JWK, record JSON, sig) verified by both sides, so a drift in either
    canonicaliser shows up in CI. The phone side already runs the backend's RFC 8785 vectors (core-network `JcsTest`);
    say if you want the signed vector and android-core will add it.
+
+4. (Opus checker on the phone side, CONFIRMED path) Leave `sig` out of the ingest registry hash (`Rec.hash`, compared in
+   step 2 before step 6), as `VOLATILE` already does for the content fingerprint. Otherwise a record first sent unsigned
+   (before enrolment, or a Keystore miss) and parked, then sent signed, is quarantined `PAYLOAD_CONFLICT`. The phone now
+   never signs a row that has been sent before, so this is defence in depth, and it is what makes key rotation safe later
+   (re-signing rows the server has already seen).

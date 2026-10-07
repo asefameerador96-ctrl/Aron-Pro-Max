@@ -408,9 +408,14 @@ class SyncEngine(
         }
 
         /** Signs the header records among [rows] that have no sig yet; a missing key or an unreadable payload signs nothing. */
-        fun signatures(rows: List<OutboxEntity>): List<Pair<Long, String>> {
+        suspend fun signatures(rows: List<OutboxEntity>): List<Pair<Long, String>> {
             val signer = recordSigner ?: return emptyList()
-            return rows.filter { it.sig == null && it.recordType in SIGNED_TYPES }.mapNotNull { row ->
+            // Only rows never sent: the server's registry hash of a record includes sig, so a row that once went out
+            // unsigned (before enrolment, or a Keystore miss) and was parked must come back byte-identical, or it is
+            // quarantined as payload_conflict (F-SYS-072 checker). Keystore calls are blocking: off the caller's thread.
+            val fresh = rows.filter { it.sig == null && it.recordType in SIGNED_TYPES && it.attempts == 0 && it.lastCode == null }
+            if (fresh.isEmpty()) return emptyList()
+            return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { fresh.mapNotNull { row ->
                 try {
                     val payload = RECORD_JSON.parseToJsonElement(row.payloadJson) as? JsonObject ?: return@mapNotNull null
                     signer.sign(com.aktcl.aron.core.network.ProofStrings.record(row.recordType, row.clientUuid, payload))?.let { row.seq to it }
@@ -419,7 +424,7 @@ class SyncEngine(
                 } catch (_: Exception) {
                     null
                 }
-            }
+            } }
         }
 
         suspend fun release(batchUuid: String, code: String) = db.withTransaction {
