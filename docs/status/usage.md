@@ -49,3 +49,12 @@
 | 2026-10-07 16:50 | infra (session 3) | - | 599 | n/a | seven_day allowed_warning | idle, asked to hand over and recycle |
 | 2026-10-07 16:50 | android-core-ui | - | 175 | n/a | seven_day allowed_warning | nudged (sr-a now on INT: re-record goldens) |
 | 2026-10-07 16:50 | android-print | - | 319 | n/a | seven_day allowed_warning | idle (not nudged, waits on sr-a/sr-b wiring) |
+| 2026-10-07 18:50 | integrator (session 3) | - | 534 | n/a | seven_day allowed_warning | running; asked to hand over and recycle |
+| 2026-10-07 18:50 | backend-core (session 7) | - | 0 | n/a | seven_day allowed_warning | new session (session 6 recycled at 384k) |
+| 2026-10-07 18:50 | db (session 4) | - | 156 | n/a | seven_day allowed_warning | running (V0055) |
+| 2026-10-07 18:50 | android-core (session 9) | - | 0 | n/a | seven_day allowed_warning | new session (N-053, F-SYS-074) |
+| 2026-10-07 18:50 | android-sr-a | - | 272 | n/a | seven_day allowed_warning | running (5 rows left) |
+| 2026-10-07 18:50 | android-sr-b | - | 398 | n/a | seven_day allowed_warning | idle, 0 rows left |
+| 2026-10-07 18:50 | infra (session 4) | - | 297 | n/a | seven_day allowed_warning | running (slice smoke, dev seed) |
+| 2026-10-07 18:50 | android-core-ui | - | 196 | n/a | seven_day allowed_warning | nudged (push c84f0f78, last row) |
+| 2026-10-07 18:50 | android-print | - | 319 | n/a | seven_day allowed_warning | nudged (6 rows, wiring done) |
