@@ -97,6 +97,11 @@ fun LocationNoticeGate(
     LaunchedEffect(key) {
         need = loadOrRequired(load)
     }
+    // "Later" holds only while the setting allows it: a config delta that turns the notice required mid-session (applied
+    // by the resume config check) brings it back at the next resume. One local read per resume, only after "Later".
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        if (later) scope.launch { recheckAfterLater(load)?.let { need = it; later = false } }
+    }
     val n = need
     if (n == null) {
         Box(Modifier.fillMaxSize().testTag(LocationNoticeTags.LOADING), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -133,6 +138,10 @@ fun LocationNoticeGate(
         onLater = { later = true },
     )
 }
+
+/** After "Later": the fresh need when the notice is now required and still not accepted, else null (keep "Later"). */
+internal suspend fun recheckAfterLater(load: suspend () -> NoticeNeed): NoticeNeed? =
+    loadOrRequired(load).takeIf { it.needed && it.required }
 
 /** One retry, then the required notice: a read error never lets a sale start without acceptance (checker). */
 internal suspend fun loadOrRequired(load: suspend () -> NoticeNeed): NoticeNeed {

@@ -61,6 +61,39 @@ class LocationNoticeScreenTest {
         assertEquals(emptyList<Long>(), accepted)
     }
 
+    /** Handover item: a config delta that turns the notice required mid-session ends "Later" at the next resume. */
+    @Test fun laterEndsAtTheNextResumeWhenTheNoticeTurnsRequired() {
+        var need = NoticeNeed(needed = true, required = false)
+        val owner = object : androidx.lifecycle.LifecycleOwner {
+            val registry = androidx.lifecycle.LifecycleRegistry.createUnsafe(this)
+            override val lifecycle: androidx.lifecycle.Lifecycle get() = registry
+        }
+        owner.registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED
+        compose.setContent {
+            CompositionLocalProvider(androidx.lifecycle.compose.LocalLifecycleOwner provides owner) {
+                AronTheme(AppLanguage.EN) { LocationNoticeGate(7L, load = { need }, accept = { accepted += it }, nowMs = { 1_000L }) { Text("DAY") } }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag(LocationNoticeTags.LATER).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("DAY").assertIsDisplayed()
+        // Still optional at the next resume: "Later" holds.
+        compose.runOnIdle { owner.registry.currentState = androidx.lifecycle.Lifecycle.State.STARTED; owner.registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED }
+        compose.waitForIdle()
+        compose.onNodeWithText("DAY").assertIsDisplayed()
+        // The delta turned it required: the next resume shows the notice with no way past but Accept.
+        need = NoticeNeed(needed = true, required = true)
+        compose.runOnIdle { owner.registry.currentState = androidx.lifecycle.Lifecycle.State.STARTED; owner.registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED }
+        compose.waitForIdle()
+        compose.onNodeWithText("DAY").assertDoesNotExist()
+        compose.onNodeWithTag(LocationNoticeTags.LATER).assertDoesNotExist()
+        compose.onNodeWithTag(LocationNoticeTags.ACCEPT).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("DAY").assertIsDisplayed()
+        assertEquals(listOf(1_000L), accepted)
+    }
+
     @Test fun acceptedNoticeOpensTheDayAtOnce() {
         show(NoticeNeed(needed = false, required = true))
         compose.onNodeWithText("DAY").assertIsDisplayed()
