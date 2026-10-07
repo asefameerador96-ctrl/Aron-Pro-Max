@@ -47,6 +47,33 @@ requests
 | where total >= 20 and p95 > 1000
 '''
   }
+  // N-062 sync health. The Application Insights Java agent sends slf4j errors to `traces` (severityLevel 3) and errors
+  // logged with a throwable to `exceptions`; both carry the logger name in customDimensions.LoggerName. Evaluated every
+  // minute so a seeded error alerts within about 5 minutes of ingestion.
+  syncErrors: {
+    description: 'Sync health: the sync ingest (aron.sync.*) logged an error in the last 5 minutes (a family, record or day-state write failed; batch_uuid in the message). Owner: backend-core (sync). Runbook: RB-01.'
+    severity: 2
+    window: 'PT5M'
+    frequency: 'PT1M'
+    query: '''
+union traces, exceptions
+| where tostring(customDimensions.LoggerName) startswith "aron.sync" and (itemType == "exception" or severityLevel >= 3)
+| summarize failed = count()
+| where failed > 0
+'''
+  }
+  aggregationStuck: {
+    description: 'Sync health: a queued aggregation key failed 3 or more times in 15 minutes ("key stays queued": the dashboards stop moving for that subject and day). Owner: backend (analytics). Runbook: RB-01.'
+    severity: 2
+    window: 'PT15M'
+    frequency: 'PT1M'
+    query: '''
+union traces, exceptions
+| where tostring(customDimensions.LoggerName) == "aron.analytics.worker" and (itemType == "exception" or severityLevel >= 3)
+| summarize failed = count()
+| where failed >= 3
+'''
+  }
 }
 
 resource queryAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for a in items(appRequests): if (enableLogAlerts) {
@@ -59,7 +86,7 @@ resource queryAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for 
     severity: a.value.severity
     enabled: true
     scopes: [appInsightsId]
-    evaluationFrequency: 'PT5M'
+    evaluationFrequency: a.value.?frequency ?? 'PT5M'
     windowSize: a.value.window
     criteria: {
       allOf: [

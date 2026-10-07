@@ -573,6 +573,10 @@ if [ "$api_mode_now" = Multiple ]; then
       || echo "::warning::could not deactivate the old revision $r"
   done
 fi
+# Release marker on the App Insights charts (N-062); never fails the deploy.
+infra/scripts/release-marker.sh "$rg_id" "$ENV_NAME" "$SHA" \
+  "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-local}" \
+  "$([ -n "$ROLLBACK_SHA" ] && echo rollback || echo deploy)" || echo "::warning::release marker step failed"
 if [ "$ARON_DEPLOY_BUDGET" = true ]; then
   amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \
     || die "budget $BUDGET not found in $RG"

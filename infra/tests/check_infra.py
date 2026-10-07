@@ -1283,6 +1283,64 @@ class BrowserUploads(unittest.TestCase):
         self.assertIn("ARON_BLOB_ORIGIN", web_env)
 
 
+
+class Observability(unittest.TestCase):
+    """N-062: sync-health alerts on the Java agent's logs, the ops workbook, release markers from the deploy."""
+
+    def test_sync_health_alerts(self):
+        t, _ = module("main.json", "alerts")
+        rules = t["variables"]["appRequests"]
+        for key, logger in (("syncErrors", 'startswith "aron.sync"'), ("aggregationStuck", '== "aron.analytics.worker"')):
+            a = rules[key]
+            self.assertEqual(a["frequency"], "PT1M", "evaluated every minute: alert within about 5 minutes")
+            self.assertIn("union traces, exceptions", a["query"], "errors logged with a throwable land in exceptions")
+            self.assertIn(logger, a["query"])
+            self.assertIn("Owner:", a["description"])
+            self.assertIn("Runbook: RB-", a["description"])
+        self.assertIn("frequency", json.dumps(resources_of(t, "Microsoft.Insights/scheduledQueryRules")))
+
+    def test_workbook(self):
+        t, _ = module("main.json", "monitoring")
+        (wb,) = resources_of(t, "Microsoft.Insights/workbooks")
+        self.assertEqual(wb["kind"], "shared")
+        text = json.dumps(t)
+        for needle in ("Notebook/1.0", "showAnnotations", "/v1/sync/batch", "aron.analytics.worker"):
+            self.assertIn(needle, text)
+
+    def _marker(self, az_exit):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            log = Path(d) / "az.log"
+            (Path(d) / "az").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "{log}"\nexit {az_exit}\n')
+            (Path(d) / "az").chmod(0o755)
+            env = dict(os.environ, PATH=f"{d}:{os.environ['PATH']}")
+            r = subprocess.run(["bash", "infra/scripts/release-marker.sh", "/subscriptions/s/resourceGroups/rg-aron-dev",
+                                "dev", "c992c9cf8f6f1c1ce3983606e54b091593896bd0", "https://x/runs/1"],
+                               env=env, capture_output=True, text=True, cwd=ROOT)
+            return r, log.read_text().splitlines()
+
+    def test_release_marker_request(self):
+        r, args = self._marker(0)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(args[:4], ["rest", "--method", "put", "--uri"])
+        self.assertEqual(args[4], "/subscriptions/s/resourceGroups/rg-aron-dev/providers/Microsoft.Insights/components/"
+                                  "appi-aron-dev/Annotations?api-version=2015-05-01")
+        body = json.loads(args[args.index("--body") + 1])
+        self.assertEqual(body["Category"], "Deployment", "other categories do not show in the portal (Learn)")
+        self.assertEqual(body["AnnotationName"], "deploy c992c9c")
+        self.assertRegex(body["EventTime"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertEqual(json.loads(body["Properties"])["Commit"], "c992c9cf8f6f1c1ce3983606e54b091593896bd0")
+
+    def test_release_marker_never_fails_the_deploy(self):
+        r, _ = self._marker(1)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("::warning::release marker not written", r.stdout)
+        src = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        call = src.index("infra/scripts/release-marker.sh")
+        self.assertLess(src.index('infra/scripts/smoke.sh "$API_HOST"'), call, "only after the health gate passed")
+        self.assertIn('|| echo "::warning::release marker step failed"', src[call:call + 400])
+
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():
         sys.exit(f"compiled templates not found in {COMPILED}; run infra/validate.sh")
