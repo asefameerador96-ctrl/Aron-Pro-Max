@@ -1,8 +1,8 @@
-# Web glass spec: Calm Glass for the dashboard and admin portal (v1 draft, 2026-10-07)
+# Web glass spec: Calm Glass for the dashboard and admin portal (v1, refined 2026-10-07)
 
-Binding inputs: `docs/32` (direction, tiers), `docs/design/tokens.md` v1 (names and values; **it wins over this file on any difference**), `docs/31` s1 (gates), `CLAUDE.md`. This file maps those tokens to CSS variables and Tailwind v4, and specifies the web-only parts: layout, navigation, tables, forms, the configuration console, charts, motion and states. Anything marked **+web** is a web extension that `tokens.md` should adopt or reject (list in s14). The sister file is `docs/design/android-glass.md`.
+Binding inputs: `docs/32` (direction, tiers), `docs/design/tokens.md` v1 (names and values; **it wins over this file on any difference**), `docs/31` s1 (gates), `CLAUDE.md`. Changes of the refine pass are in `docs/design/CHANGELOG.md`; the web is office use, so docs/32 2a.1 lets it keep translucent cards and data surfaces, but it shares the colour roles, the glare-checked ledger and the 48 px touch rule with the phones. This file maps those tokens to CSS variables and Tailwind v4, and specifies the web-only parts: layout, navigation, tables, forms, the configuration console, charts, motion and states. Anything marked **+web** is a web extension that `tokens.md` should adopt or reject (list in s14). The sister file is `docs/design/android-glass.md`.
 
-Checked, not eyeballed: web-only contrast pairs (s2.4) were computed from the tokens.md values over the worst backdrop; the chart palette was run through the dataviz validator on the real chart surfaces; the CSS blocks and class recipes of this file compile with Tailwind 4.3, the inline script parses and the TypeScript snippet type-checks. Repo today: Next 16, React 19, Tailwind 4.3 (CSS-first), Noto Sans Bengali Variable bundled, `components/shell.tsx`, `components/map-panel.tsx`, `components/admin/kit/*`, config pages under `app/admin/config/*`. **No new runtime dependency**: charts are inline SVG.
+Checked, not eyeballed: web-only contrast pairs (s2.4) were recomputed 2026-10-07 from the tokens.md v1 values over the worst backdrop; the chart palette was run through the dataviz validator on the real chart surfaces; the CSS blocks and class recipes of this file compile with Tailwind 4.3, the inline script parses and the TypeScript snippet type-checks. Repo today: Next 16, React 19, Tailwind 4.3 (CSS-first), Noto Sans Bengali Variable bundled, `components/shell.tsx`, `components/map-panel.tsx`, `components/admin/kit/*`, config pages under `app/admin/config/*`. **No new runtime dependency**: charts are inline SVG.
 
 ## 1. Stance for the web (what differs from the phones)
 
@@ -30,11 +30,11 @@ Checked, not eyeballed: web-only contrast pairs (s2.4) were computed from the to
   --surface-solid: #FFFFFF;  --surface-solid-raised: #F2F5FA;  --scrim-a: .32;
   --border-hairline: rgb(255 255 255 / .45);  --border-hairline-top: rgb(255 255 255 / .75);  --border-hairline-bottom: rgb(11 27 51 / .10);
   --border-divider: rgb(11 27 51 / .08);  --border-solid: rgb(11 27 51 / .30);  --border-input: #66768F;  --border-focus: #0A58CC;
-  --text-primary: #0B1B33;  --text-secondary: #475569;  --text-disabled: #8793A6;  --text-on-accent: #FFFFFF;
-  --accent: #0A58CC;  --accent-hi: #1B68DC;  --accent-pressed: #0846A8;  --accent-container: #DCE9FD;  --accent-on-container: #0A3F94;
+  --text-primary: #0B1B33;  --text-secondary: #303D52;  --text-disabled: #738097;  --text-placeholder: #5F6D84;  --text-on-accent: #FFFFFF;
+  --accent: #0A58CC;  --accent-text: #063B84;  --accent-hi: #052E6B;  --accent-fill: #041F49;  --accent-pressed: #031734;  --accent-container: #DCE9FD;  --accent-on-container: #0A3F94;   /* accent = graphics only */
   --success: #0B7A45;  --success-container: #D6F0E1;  --success-on-container: #0A5A33;
   --warning: #9A5200;  --warning-container: #FFE9C7;  --warning-on-container: #7A4300;
-  --danger: #C0182D;   --danger-container: #FDDDE1;   --danger-on-container: #8E1224;
+  --danger: #C0182D;   --danger-container: #FDDDE1;   --danger-on-container: #8E1224;   --danger-fill: #7A0E1C;
   --offline: #53627C;  --offline-container: #E3E8F0;  --offline-on-container: #3F4C63;
   --state-pressed: rgb(11 27 51 / .08);  --state-disabled-fill: #DCE2EB;  --state-disabled-label: #515E73;
   --state-skeleton: rgb(11 27 51 / .07);  --state-skeleton-sweep: rgb(255 255 255 / .45);
@@ -56,11 +56,11 @@ Checked, not eyeballed: web-only contrast pairs (s2.4) were computed from the to
   --surface-solid: #141D30;  --surface-solid-raised: #1C2740;  --scrim-a: .56;
   --border-hairline: rgb(255 255 255 / .14);  --border-hairline-top: rgb(255 255 255 / .22);  --border-hairline-bottom: rgb(255 255 255 / .06);
   --border-divider: rgb(255 255 255 / .08);  --border-solid: rgb(255 255 255 / .24);  --border-input: #8394B0;  --border-focus: #84B6FF;
-  --text-primary: #F1F5FB;  --text-secondary: #A9B6CB;  --text-disabled: #6B7A93;  --text-on-accent: #05122B;
-  --accent: #84B6FF;  --accent-hi: #A0C8FF;  --accent-pressed: #68A2F8;  --accent-container: #1B3568;  --accent-on-container: #BBD6FF;
+  --text-primary: #F8FAFD;  --text-secondary: #C2CCDD;  --text-disabled: #6B7A93;  --text-placeholder: #8F9DB5;  --text-on-accent: #010712;
+  --accent: #84B6FF;  --accent-text: #A8CFFF;  --accent-hi: #C9E1FF;  --accent-fill: #B3D4FF;  --accent-pressed: #DDEBFF;  --accent-container: #1B3568;  --accent-on-container: #BBD6FF;
   --success: #4CD38B;  --success-container: #12382A;  --success-on-container: #9BE7BF;
   --warning: #FFB84D;  --warning-container: #45330F;  --warning-on-container: #FFD58F;
-  --danger: #FF7A8A;   --danger-container: #4A1B25;   --danger-on-container: #FFB3BE;
+  --danger: #FF7A8A;   --danger-container: #4A1B25;   --danger-on-container: #FFB3BE;   --danger-fill: #FFB3BE;
   --offline: #9FB0CB;  --offline-container: #27324A;  --offline-on-container: #C3D0E6;
   --state-pressed: rgb(255 255 255 / .10);  --state-disabled-fill: #2A3550;  --state-disabled-label: #97A6BF;
   --state-skeleton: rgb(255 255 255 / .10);  --state-skeleton-sweep: rgb(255 255 255 / .12);
@@ -72,28 +72,28 @@ Checked, not eyeballed: web-only contrast pairs (s2.4) were computed from the to
   --elev-sheet: 0 2px 6px rgb(0 0 0 / .40), 0 8px 24px rgb(0 0 0 / .50);
   --elev-dialog: 0 4px 8px rgb(0 0 0 / .45), 0 8px 32px rgb(0 0 0 / .55); }
 ```
-`:root[data-theme="sunlight"]` takes the third column of `tokens.md` s2 (flat `--bg-gradient: none`, every glass surface 100 percent opaque, `--border-solid` 1.5 px edges, no shadows) and forces tier C. It is the "High contrast (sunlight)" choice in the theme menu and the default when the user theme is `system` and `prefers-contrast: more` matches. The glow radii are `vw` because the gradient lives on one fixed full-viewport layer, `<div class="fixed inset-0 -z-10 bg-page" aria-hidden>` in the root layout, so scrolling never repaints it. Banding of the light gradient is checked on a 1366 x 768 office panel (tokens s2.1 note).
+`:root[data-theme="sunlight"]` takes the third column of `tokens.md` s2 (flat `--bg-gradient: none`, every glass surface 100 percent opaque, `--border-solid` **2 px** edges, no shadows) and forces tier C. It is the "High contrast (sunlight)" choice in the theme menu and the default when the user theme is `system` and `prefers-contrast: more` matches. The glow radii are `vw` because the gradient lives on one fixed full-viewport layer, `<div class="fixed inset-0 -z-10 bg-page" aria-hidden>` in the root layout, so scrolling never repaints it. Banding of the light gradient is checked on a 1366 x 768 office panel (tokens s2.1 note).
 
 ### 2.3 Rules for colour use (tokens s1 "colour budget", plus the web case)
-- `accent` fills the one primary action of a view or sheet; accent text only for links and secondary-button labels. `success`, `warning`, `danger`, `offline` only for status; **offline is never danger**.
+- `accent.hi` to `accent.fill` (a deep blue) is the one primary action of a view or sheet; `accent` (the brighter blue) is for icons, rings, meters, switch tracks and chart-adjacent graphics, never for text; **text, links, tertiary buttons and secondary-button labels use `accent.text`** (on the page at the glow peak `accent` as text is 4.26:1 raw and 2.82 under glare, `accent.text` 7.11 and 3.14). `success`, `warning`, `danger`, `offline` only for status; **offline is never danger**; nominal states are quiet (the "Live" chip has no container).
 - **Status text uses `*-on-container`** (on its container chip or banner, or on glass); the base status colours are for icons, dots, bars and borders (3:1). Reason: `danger` as text on dark glass is 3.82:1 and `offline` 4.35:1, below AA.
 - Text-bearing chips, banners and icon wells are always opaque `*-container`. A selected row or tile is `accent-container` plus a check icon, never colour alone. Glass never nests: a box inside a glass card uses `surface-solid-raised`.
 
 ### 2.4 Contrast
-Shared pairs: the ledger in `tokens.md` s2.7 is binding (`text.primary` on glass 14.59 light and 8.74 dark, AAA for key numbers; `text.secondary` 6.42 and 4.66; `accent` 5.42 and 4.60; bars at 86 and 92 percent; containers; `border.input`; `border.focus`). **Web-only pairs**, computed 2026-10-07 from the tokens values; worst backdrop light `#BAD5FD` (gradient stop 0 under glow A at 50 percent), dark `#172B5B` (stop 0 under glow A at 18 percent); effective `surface-data` `#F9FCFF` light and `#141E33` dark:
-| Pair | Light | Dark | Gate |
+Shared pairs: the ledger in `tokens.md` s2.7 is binding and carries both columns, raw and glare (`text.primary` on field 15.77 / 5.11 light, 14.21 / 4.65 dark; `text.secondary` 8.94 / 3.45 and 7.39 / 3.12; `accent.text` 9.77 / 3.85 and 9.22 / 3.53; primary label 13.05 / 4.56 and 13.24 / 4.99; containers, `border.input`, `border.focus`). **Web-only pairs**, recomputed 2026-10-07 from the v1 values over the worst backdrop (light `#BAD5FD`: gradient stop 0 under glow A at 50 percent; dark `#172B5B`; effective `surface-data` `#F9FCFF` light and `#141E33` dark). The web is a desk screen (docs/32 2a.3: 4.5:1 minimum), so these are gated on the raw ratio; glare is listed for information:
+| Pair | Light raw / glare | Dark raw / glare | Gate |
 |---|---|---|---|
-| `text-primary` on `surface-data` | 16.73 | 15.19 | AAA 7 (key numbers) |
-| `text-secondary` on `surface-data` (axis labels, helper text in tables) | 7.36 | 8.11 | AA 4.5 |
-| `accent` as text on `surface-data` | 6.22 | 8.01 | AA 4.5 |
-| `border-input` on `surface-data` | 4.48 | 5.41 | 3 |
+| `text-primary` on `surface-data` | 16.71 / 5.31 | 15.92 / 5.07 | AAA 7 (key numbers) |
+| `text-secondary` on `surface-data` (axis labels, helper text in tables) | 10.64 / 3.86 | 10.29 / 3.85 | AA 4.5 |
+| `accent-text` on `surface-data` | 10.36 / 3.99 | 10.33 / 3.85 | AA 4.5 |
+| `border-input` on `surface-data` | 4.47 / n.a. | 5.41 / n.a. | 3 |
 | `*-on-container` as text on `surface-glass` (minimum of the four) | 6.88 | 5.66 | AA 4.5 |
 | base status colours as icons on `surface-glass` (minimum of the four) | 4.66 | 3.82 | 3 |
-| destructive button label on `danger` | 6.16 | 7.45 | AA 4.5 |
-| map labels (`text-secondary`) on the map land | 6.69 | 8.47 | AA 4.5 |
-| `text-secondary` on the map panel (strong 86 percent) over land / water / a black pin or label | 7.45 / 7.30 / 5.47 | 7.67 / n.a. / 4.85 | AA 4.5 |
+| destructive button label on `danger-fill` | 11.01 / 4.51 | 11.96 / 4.67 | key figure 7 |
+| map labels (`text-secondary`) on the map land | 9.69 | 10.74 | AA 4.5 |
+| `text-secondary` on the map panel (strong 86 percent) over land / water / a black pin or label | 10.78 / 10.54 / 7.94 | 9.75 / 9.64 / 6.17 | AA 4.5 |
 | `accent` map pin on the map land | 5.65 | 8.37 | 3 |
-The kit's token test (s14) recomputes these from `tokens.css`.
+The kit's token test (s14) recomputes these from `tokens.css`. (The v1 draft's `text-secondary` `#475569` measured 2.74:1 under glare on the page at the glow peak and its primary label 3.14:1; both are fixed in tokens.)
 
 ### 2.5 Tailwind v4 mapping (`@theme inline`: utilities read the variable at runtime, so themes and tiers flip with no component code)
 ```css
@@ -103,13 +103,15 @@ The kit's token test (s14) recomputes these from `tokens.css`.
   --color-solid: var(--surface-solid);  --color-raised: var(--surface-solid-raised);  --color-data: var(--surface-data);
   --color-scrim: var(--surface-scrim);  --color-hairline: var(--border-hairline);  --color-divider: var(--border-divider);
   --color-outline: var(--border-solid); --color-input: var(--border-input);  --color-focus: var(--border-focus);
-  --color-primary: var(--text-primary); --color-secondary: var(--text-secondary);  --color-disabled: var(--text-disabled);
+  --color-primary: var(--text-primary); --color-secondary: var(--text-secondary);  --color-disabled: var(--text-disabled);  --color-placeholder: var(--text-placeholder);
   --color-on-accent: var(--text-on-accent);
-  --color-accent: var(--accent);  --color-accent-hi: var(--accent-hi);  --color-accent-pressed: var(--accent-pressed);
+  --color-accent: var(--accent-text);          /* text-accent is the safe text colour */
+  --color-accent-graphic: var(--accent);        /* bg, ring, stroke and fill: icons, meters, switch tracks */
+  --color-accent-hi: var(--accent-hi);  --color-accent-fill: var(--accent-fill);  --color-accent-pressed: var(--accent-pressed);
   --color-accent-container: var(--accent-container);  --color-accent-on-container: var(--accent-on-container);
   --color-success: var(--success);  --color-success-container: var(--success-container);  --color-success-on-container: var(--success-on-container);
   --color-warning: var(--warning);  --color-warning-container: var(--warning-container);  --color-warning-on-container: var(--warning-on-container);
-  --color-danger: var(--danger);  --color-danger-container: var(--danger-container);  --color-danger-on-container: var(--danger-on-container);
+  --color-danger: var(--danger);  --color-danger-container: var(--danger-container);  --color-danger-on-container: var(--danger-on-container);  --color-danger-fill: var(--danger-fill);
   --color-offline: var(--offline);  --color-offline-container: var(--offline-container);  --color-offline-on-container: var(--offline-on-container);
   --color-pressed: var(--state-pressed);  --color-disabled-fill: var(--state-disabled-fill);
   --color-disabled-label: var(--state-disabled-label);  --color-skeleton: var(--state-skeleton);
@@ -132,7 +134,7 @@ The kit's token test (s14) recomputes these from `tokens.css`.
 }
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));   /* images and the map only; colours flip by variable */
 ```
-Names are the `tokens.md` s9 utilities (`bg-glass`, `text-primary`, `rounded-card`, `shadow-sheet`, `text-numeral`, `ease-out-soft`...). **Three collisions with `tokens.md` s9, reported in s14:** `border-solid` is already Tailwind's border-style utility, so the `border.solid` colour is exposed as `border-outline` on the web; `ring-focus` needs a solid ring-offset colour that does not exist on glass, so the web kit uses `outline-focus` (outlines follow the radius and the gap stays transparent); `text-disabled` is the one text colour that is not for live text, so lint bans it outside `aria-disabled` controls. Rules: no raw hex, `slate-*` or `bg-white` in `src/` outside `tokens.css` (ESLint rule `no-raw-colors` next to `eslint-rules/`); no `dark:` on a token colour.
+Names are the `tokens.md` s9 utilities (`bg-glass`, `text-primary`, `rounded-card`, `shadow-sheet`, `text-numeral`, `ease-out-soft`...); `text-accent` is `accent.text` and the brighter `accent` is `*-accent-graphic`. **Three collisions with `tokens.md` s9, reported in s14:** `border-solid` is already Tailwind's border-style utility, so the `border.solid` colour is exposed as `border-outline` on the web; `ring-focus` needs a solid ring-offset colour that does not exist on glass, so the web kit uses `outline-focus` (outlines follow the radius and the gap stays transparent); `text-disabled` is the one text colour that is not for live text, so lint bans it outside `aria-disabled` controls. Rules: no raw hex, `slate-*` or `bg-white` in `src/` outside `tokens.css` (ESLint rule `no-raw-colors` next to `eslint-rules/`); no `dark:` on a token colour.
 
 ### 2.6 Theme, density and tier stamped before first paint (inline script with the CSP nonce; every storage access in try/catch)
 ```js
@@ -147,11 +149,11 @@ Tier is a surface treatment only; layout, radii and type are identical in all th
 |---|---|---|---|
 | Card, stat card (`glass-card`) | the B recipe, **no blur**: light fill 66 to 58 percent plus sheen 30 percent over the top 45 percent; dark 12 percent plus bottom shade 0 to 14 percent; hairline; `shadow-card` | same | `surface-solid`, 1 px `border-outline`, no shadow |
 | Data surface (`glass-data`: tables, charts, key rows) **+web** | `surface-data` 92 / 94 percent | same | solid |
-| Top bar, stuck table header (`glass-bar`) | `surface-glass-strong` **86 percent**, **blur 16** (`--glass-blur-bar`) plus `saturate(1.4)` **+web**, vibrancy tint 4 percent, divider edge | strong 92 percent, no blur | solid, 1 px inner edge |
-| Sidebar (`glass-rail`) **+web** | strong 86 percent, tint, **no blur** (nothing scrolls behind it) | strong 92 percent | solid |
-| Side sheet, drawer (`glass-sheet`) | strong 86 percent, **blur 28** (`--glass-blur-sheet`), scrim at 55 percent of `surface-scrim`, `shadow-sheet` | strong 92 percent, no blur, full scrim | solid, full scrim |
-| Map side panel (`glass-panel`) **+web** | strong 86 percent, blur 16; while the map moves 92 percent, no blur | strong 92 percent | solid |
-| Dialog, popover, menu, tooltip (`glass-dialog`, `glass-pop`) | strong **94 percent, no blur**, `shadow-dialog` | same | solid |
+| Top bar, stuck table header (`glass-bar`) | `surface-glass-strong` **86 percent**, **blur 16** (`--glass-blur-bar`) plus `saturate(1.4)` **+web**, vibrancy tint 4 percent, divider edge | strong **96 percent**, no blur (without blur a 92 percent bar shows sharp ghost text) | solid, 1 px inner edge |
+| Sidebar (`glass-rail`) **+web** | strong 86 percent, tint, **no blur** (nothing scrolls behind it) | strong 96 percent | solid |
+| Side sheet, drawer (`glass-sheet`) | strong 86 percent, **blur 28** (`--glass-blur-sheet`), scrim at 55 percent of `surface-scrim`, `shadow-sheet` | strong 96 percent, no blur, full scrim | solid, full scrim |
+| Map side panel (`glass-panel`) **+web** | strong 86 percent, blur 16; while the map moves 96 percent, no blur | strong 96 percent | solid |
+| Dialog, popover, menu, tooltip (`glass-dialog`, `glass-pop`) | strong **96 percent, no blur**, `shadow-dialog` | same | solid |
 | Chips, banners, icon wells | opaque `*-container` | same | same |
 `glass.floor`: any surface that carries text over moving content has an effective fill of at least 86 percent, which is what the ledger assumes. **Limits (tokens):** at most **2** blurred layers on screen (`glass.blur.maxLayers`), so top bar plus stuck header, or top bar plus map panel; an open sheet sets `data-overlay` on `<html>` and the layers under the scrim lose their blur (1 pass); never blur inside a scrolling list or under a dialog; blur area at most 40 percent of the viewport except a sheet (the panel, 380 x 650, is 23 percent at 1366 x 768); never animate the blur radius, animate `transform` and `opacity`; if a 320 ms sheet entry drops frames on the reference laptop, enter with the 92 percent fill and switch the blur on at `transitionend`.
 
@@ -169,19 +171,19 @@ export function pickGlass(admin: "auto" | "lite" | "off", user: "auto" | Glass, 
 }
 ```
 ```css
-:root { --glass-flat: var(--surface-glass); --strong-a: .86; --dialog-a: .94; --scrim-k: .55; --card-edge: var(--border-hairline);
+:root { --glass-flat: var(--surface-glass); --strong-a: .86; --dialog-a: .96; --scrim-k: .55; --card-edge: var(--border-hairline);
   --glass-fill-strong: rgb(var(--strong-rgb) / var(--strong-a));  --glass-fill-dialog: rgb(var(--strong-rgb) / var(--dialog-a));
   --glass-blur-bar: 16px;  --glass-blur-sheet: 28px;
   --bf-bar: blur(var(--glass-blur-bar)) saturate(1.4);  --bf-sheet: blur(var(--glass-blur-sheet)) saturate(1.4);
   --surface-scrim: rgb(0 0 0 / calc(var(--scrim-a) * var(--scrim-k))); }
-:root[data-glass="lite"] { --strong-a: .92; --scrim-k: 1; --bf-bar: none; --bf-sheet: none; }
+:root[data-glass="lite"] { --strong-a: .96; --scrim-k: 1; --bf-bar: none; --bf-sheet: none; }
 :root[data-glass="off"], :root[data-theme="sunlight"] {
   --glass-flat: var(--surface-solid);  --card-fill: var(--surface-solid);  --card-edge: var(--border-solid);  --vibrancy-tint: transparent;
   --glass-fill-strong: var(--surface-solid);  --glass-fill-dialog: var(--surface-solid);  --scrim-k: 1;
   --bf-bar: none;  --bf-sheet: none;  --elev-card: 0 0 #0000; }
 /* Fallbacks. `:root:root` (specificity 0,2,0), placed last, beats data-glass="lite" and "full". */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root:root { --strong-a: .92; --scrim-k: 1; --bf-bar: none; --bf-sheet: none; } }                      /* B look */
+  :root:root { --strong-a: .96; --scrim-k: 1; --bf-bar: none; --bf-sheet: none; } }                      /* B look */
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
   :root:root { --glass-flat: var(--surface-solid);  --card-fill: var(--surface-solid);  --card-edge: var(--border-solid);
     --vibrancy-tint: transparent;  --glass-fill-strong: var(--surface-solid);  --glass-fill-dialog: var(--surface-solid);
@@ -207,23 +209,23 @@ html[data-overlay] .glass-bar { -webkit-backdrop-filter: none; backdrop-filter: 
 Utilities avoid `@apply`, so each is one rule. The optional "animated highlight" of tier A (a pointer-following specular on the one hero card, moved with `opacity` and CSS variables from a rAF-throttled `pointermove`, `@media (hover: hover) and (pointer: fine)`) is off in B, C and reduced motion.
 
 ## 4. Typography and numbers (Bangla first)
-Weights are **400 and 700 only**, as on the phones (tokens s7); no light weights, no italic. `--font-sans` puts the system UI face first for Latin (SF on Apple, Segoe on Windows, Roboto; zero bytes, **+web**); Bengali glyphs fall through to the bundled Noto Sans Bengali Variable; `:lang(bn)` puts Noto first so a Bangla page is typographically Bangla, digits included. Letter-spacing is 0 everywhere. Minimums: Latin 13 px, Bangla 14 px. The scale is `tokens.md` s7.1 plus two **+web** roles (`hero`, `table`):
+Weights follow the type tokens (tokens s7): 400, 700 and **`weight.semi` 600** for heading, body-strong and label. The web bundles Noto Sans Bengali Variable and the system UI face has 600, so the web uses 600 now; the Android kit renders those roles as 700 until its variable-font gate passes (an accepted, temporary difference); no light weights, no italic. `--font-sans` puts the system UI face first for Latin (SF on Apple, Segoe on Windows, Roboto; zero bytes, **+web**); Bengali glyphs fall through to the bundled Noto Sans Bengali Variable; `:lang(bn)` puts Noto first so a Bangla page is typographically Bangla, digits included. Letter-spacing is 0 everywhere. Minimums: Latin 13 px, Bangla 14 px. The scale is `tokens.md` s7.1 plus two **+web** roles (`hero`, `table`):
 | Utility | Latin size / line | Bangla size / line | Weight | Use |
 |---|---|---|---|---|
 | `text-hero` **+web** | 48 / 56 | 48 / 68 | 700 | the one hero figure of a dashboard |
 | `text-display` | 34 / 40 | 34 / 48 | 700 | stat-card values, the day's grand total, large page title |
 | `text-numeral` | 26 / 32 | 26 / 38 | 700 | KPI values in compact density, row money |
 | `text-title` | 22 / 30 | 22 / 32 | 700 | card, sheet and dialog title |
-| `text-heading` | 18 / 26 | 18 / 26 | 700 | section and panel headings |
-| `text-body`, `text-body-strong` | 16 / 24 | 16 / 26 | 400, 700 | forms, prose; row titles, buttons |
-| `text-caption`, `text-label` | 13 / 18 | 14 / 20 | 400, 700 | helper text; chip text, column headers |
+| `text-heading` | 18 / 26 | 18 / 26 | 600 | section and panel headings |
+| `text-body`, `text-body-strong` | 16 / 24 | 16 / 26 | 400, 600 | forms, prose; row titles, buttons |
+| `text-caption`, `text-label` | 13 / 18 | 14 / 20 | 400, 600 | helper text; chip text, column headers |
 | `text-table` **+web** | 14 / 20 | 14 / 22 | 400 | table cells (density sets it, s8.2) |
 ```css
 :root { --fs-caption: .8125rem; --lh-caption: 1.125rem; --lh-body: 1.5rem; --lh-title: 1.875rem; --lh-numeral: 2rem; --lh-display: 2.5rem; --lh-hero: 3.5rem; }
 :lang(bn) { --fs-caption: .875rem; --lh-caption: 1.25rem; --lh-body: 1.625rem; --lh-title: 2rem; --lh-numeral: 2.375rem; --lh-display: 3rem; --lh-hero: 4.25rem; letter-spacing: 0; }
 ```
 (Variables, because `@theme inline` bakes literal values; Bangla needs at least 1.40 em, tokens s7.1.) Hero and stat values use the default proportional figures; the bundled fonts already give every digit one advance so money columns align, and `tabular-nums` stays on table columns and axis ticks as a guard. Never clip: Bangla containers have `min-height` from the line height.
-- One formatter (`formatNumber`, `formatMoney` in `lib/i18n`): ASCII stored, Bengali digits per `cfg.locale.digits` (UI-SR-08), money from integer milli-taka with two decimals and the taka sign after the amount at 0.6 em (`৪,৩৯১.০০ ৳`; `৳` is set in the Bengali face even on an English page), quantities with their own unit beside the value and never summed across units (UI-SR-10). Identifiers (codes, usernames, phones, versions) stay ASCII. Digit grouping follows `LocaleDigits` (tokens s10 item 1, Q1).
+- One formatter (`formatNumber`, `formatMoney` in `lib/i18n`): ASCII stored, Bengali digits per `cfg.locale.digits` (UI-SR-08), money from integer milli-taka with two decimals and the taka sign after the amount, joined by U+00A0, **at 0.8 em with a 14 px floor** and the `.00` part at 0.75 em on hero and display money (`৪,৩৯১.০০ ৳`; `৳` is set in the Bengali face even on an English page), numbers never wrap or clip (tokens s7.3), Bengali digits and values never below 14 px, quantities with their own unit beside the value and never summed across units (UI-SR-10). Identifiers (codes, usernames, phones, versions) stay ASCII. Digit grouping follows `LocaleDigits` (tokens s10 item 1, Q1).
 - Mixed text carries `lang` on the fragment (`<span lang="en">`) so screen readers switch voice.
 
 ## 5. Layout grid and breakpoints
@@ -253,31 +255,31 @@ Short screens: under 800 px of height the filter bar collapses to one `Filters (
 - **Sidebar** (`glass-rail`, 264, inline-end hairline): brand row 56; group labels `text-label` `text-secondary` (no uppercase transform: Bangla has no case); items 40 tall, radius 12, icon 20 plus label; active item = `bg-accent-container text-accent-on-container font-bold` with `aria-current="page"`; hover `bg-pressed`. Collapsed rail 72: icon only, tooltip on hover and focus, label kept in the accessible name. The role-driven `menuFor(role)` stays the only source of items.
 - **Top bar** (`glass-bar`, 56, sticky): scope badge (read-only, server-derived: never an editor of reach), command search (`Ctrl/Cmd+K`: pages, config keys, outlets by id), connection chip (s12.5), language (`বাংলা | EN`), theme (system, light, dark, high contrast), density, user menu. A divider and `shadow-card` appear after the page has scrolled 8 px (`data-scrolled` from the sentinel).
 - **Drawer** (below md): `glass-sheet` from the start edge, 320 / 86vw, scrim, focus trap, `Esc` closes.
-- **Segmented control** (tabs, density, theme): height 36, radius 12, track `bg-raised`, thumb radius 9 in `bg-solid` with `shadow-card`; the thumb slides with `transform` in `duration-base`; roving tabindex, arrow keys, `role="tablist"` or `radiogroup`.
+- **Segmented control** (tabs, density, theme, metric switches): `min-height: var(--ctl-h)` (40; 48 on a coarse pointer), radius 14, track `bg-raised`; **the selected segment is `bg-accent-container` with a 1.5 px `accent-graphic` ring, `text-accent-on-container` and a 16 px check** (the v1 draft's white thumb on the raised track was 1.09:1, and both labels were Bold), the unselected `text-secondary`; segment widths are weighted by label width; the thumb follows the real segment bounds (`transform` plus `width` in `duration-base`, measured with a `ResizeObserver`); roving tabindex, arrow keys, `role="tablist"` or `radiogroup`; below 480 px at 150 percent text it becomes a vertical radio list.
 
 ## 7. Components
 ### 7.1 Buttons, chips, fields
 | Item | Spec |
 |---|---|
-| Control height `--ctl-h` | 40 regular, 44 comfortable, 32 compact on a precise pointer; **48 on a coarse pointer** (`size.touch`); radius full |
-| Primary | lit gradient `accent-hi` to `accent`, `text-on-accent` (5.17 to 6.40 light, 8.97 to 10.82 dark), `text-body-strong`, `shadow-accent`; hover moves the gradient to `accent` to `accent-pressed`; press `scale(.97)` over `--motion-press`. **One per view or sheet.** |
-| Secondary | `glass-card` fill, `text-primary` label |
-| Tertiary | text only, `text-accent`, underline on hover and focus |
-| Destructive | `danger` fill, label `text-on-accent` (6.16 light, 7.45 dark), only in a confirm step that names the object |
+| Control height `--ctl-h` | 40 regular, 44 comfortable, 32 compact on a precise pointer; **48 on a coarse pointer** (`size.touch`), **and that applies to `.seg`, `.nv` and `.wbtn` too** (`min-height: max(var(--ctl-h), 48px)` under `@media (pointer: coarse)`); radius full |
+| Primary | lit gradient `accent-hi` to `accent-fill` (deep blue), `text-on-accent` (13.05:1, glare 4.56 light; 13.24 and 4.99 dark), `text-body-strong`, `shadow-accent`; hover moves the gradient to `accent-fill` to `accent-pressed`; press `scale(.97)` over `--motion-press`. **One per view or sheet.** (The brighter fill needs a written amendment of docs/32 2a.3 and 2a.4: tokens s2.5.) |
+| Secondary | **opaque** `bg-raised` with a 1 px `border-divider` (never glass on glass), `text-accent` label (9.77:1 on `raised`) |
+| Tertiary | text only, `text-accent` (the deep text blue), underline on hover and focus |
+| Destructive | `danger-fill` fill, label `text-on-accent` (11.01 light, 11.96 dark), only in a confirm step that names the object |
 | Disabled | `aria-disabled="true"` (stays focusable), `bg-disabled-fill` and `text-disabled-label` (about 5:1), and a visible reason beside it or in a tooltip ("A second approver is needed"); never silent |
-| Chip | height 28 (`size.chip`), radius 12, icon 16 plus `text-label`, opaque `*-container` and `*-on-container` |
+| Chip | height 28 (`size.chip`), may grow to 2 lines (no `nowrap`), radius 12, icon 16 plus `text-label`, opaque `*-container` and `*-on-container`; a nominal state (Live, Synced, Done) has no container |
 | Risk chip | `C0` offline container (neutral), `C1` accent container, `C2` warning container, `C3` danger container, each with its words ("C2 after delay", "C3 second approver") |
-| Input | height `--ctl-h`, radius 12, `bg-raised`, 1 px `border-input` (3:1 verified), `text-body`, placeholder `text-secondary` |
+| Input | height `--ctl-h`, radius 12, `bg-raised`, 1 px `border-input` (3:1 verified), `text-body`, placeholder `text-placeholder` (4.80:1) |
 | Focus | `outline: 2px solid var(--border-focus); outline-offset: 2px` on `:focus-visible` |
 Class recipes (kit components wrap these; nothing else in `src/` composes colours):
 | Component | Classes |
 |---|---|
 | Card / data card | `glass-card p-(--card-pad) text-primary` / `glass-data p-(--card-pad) text-primary` |
-| Primary button | `inline-flex h-(--ctl-h) items-center gap-2 rounded-full bg-linear-to-b from-accent-hi to-accent px-5 text-body-strong text-on-accent shadow-accent hover:from-accent hover:to-accent-pressed active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus` |
-| Secondary button | `inline-flex h-(--ctl-h) items-center gap-2 rounded-full glass-card px-5 text-body-strong text-primary` |
+| Primary button | `inline-flex h-(--ctl-h) items-center gap-2 rounded-full bg-linear-to-b from-accent-hi to-accent-fill px-5 text-body-strong text-on-accent shadow-accent hover:from-accent-fill hover:to-accent-pressed active:scale-[.97] focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus` |
+| Secondary button | `inline-flex h-(--ctl-h) items-center gap-2 rounded-full bg-raised border border-divider px-5 text-body-strong text-accent` |
 | Chip | `inline-flex h-7 items-center gap-1.5 rounded-chip bg-success-container px-2.5 text-label text-success-on-container` (swap the role) |
-| Input | `h-(--ctl-h) w-full rounded-chip border border-input bg-raised px-3 text-body text-primary placeholder:text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus` |
-| Nav item | `flex h-10 items-center gap-3 rounded-chip px-3 text-body text-secondary hover:bg-pressed aria-[current=page]:bg-accent-container aria-[current=page]:text-accent-on-container aria-[current=page]:font-bold` |
+| Input | `h-(--ctl-h) w-full rounded-chip border border-input bg-raised px-3 text-body text-primary placeholder:text-placeholder focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus` |
+| Nav item | `flex min-h-10 items-center gap-3 rounded-chip px-3 py-1.5 text-body text-secondary hover:bg-pressed aria-[current=page]:bg-accent-container aria-[current=page]:text-accent-on-container aria-[current=page]:font-bold` (text-body 16/26 as specified, not 15 px at 1.3, which risks clipping stacked marks in "জিওফেন্সের ব্যাসার্ধ") |
 
 ### 7.2 Forms and validation
 Label above the field (`text-label` `text-secondary`; no floating labels), helper below (`text-caption` `text-secondary`), one column up to 560 wide, two columns only for short related pairs. Required fields carry the word "required" in the label (not a lone red star); optional ones are not marked. Reason fields (every write sends a reason, 10 characters minimum per the config registry) show a live counter ("৭/১০"). **States:**
@@ -293,7 +295,7 @@ Timing: validate on blur, then live; never block typing. On submit failure, focu
 **Password change** (docs/09 rules: at least 12 characters, mixed case and a number, not one of the last 10, not within 24 h of the last change): a live checklist of four rows under the field, each with an icon (circle, then check), the rule in words, `aria-live="polite"`; submit stays enabled and the server decides. **Login:** one centred `glass-dialog` (420 wide) over the gradient, wordmark, username and password, a second step for the MFA roles (`SUPPORT`, `ADMIN`, `SUPERADMIN`) with one code field (`autocomplete="one-time-code"`, `inputmode="numeric"`, paste works, no per-digit boxes), language switch top right; errors never say which of username or password was wrong.
 
 ### 7.3 Cards with big numbers (stat card)
-`glass-card`, padding 20 (regular), min-height 128, radius 20, gap 8. Anatomy: label (`text-label` `text-secondary`, sentence case, no colon) / value (`text-display`, `text-primary`, proportional figures; `text-numeral` in compact density) with the unit in `text-body` `text-secondary` / delta chip (arrow icon, signed number, the named period "vs yesterday"; colour is direction times whether up is good, always with arrow and sign) / optional 12-point sparkline (current point `accent`, rest `text-secondary` at 50 percent) / optional meter (6 px high, fill accent then warning then danger by severity, track the lighter step of the same ramp, value also printed). Hero card: `text-hero`, span 6, exactly one per view. Example set from the SR home: outlets visited `৬/৬০`, strike rate `১০%`, net `৪,৩৯১.০০ ৳`. Money and counts are `text-primary` at AAA (14.59 light, 8.74 dark on glass). Loading shows the label and a skeleton value block; error shows the label and "Could not load" with a retry; zero is shown as `০`, never blank.
+`glass-card`, padding 20 (regular), min-height 128, radius 20, gap 8. Anatomy: label (`text-label` `text-secondary`, sentence case, no colon) / value (`text-display`, `text-primary`, proportional figures; `text-numeral` in compact density) with the unit in `text-body` `text-secondary` / delta chip (arrow icon, signed number, the named period "vs yesterday"; colour is direction times whether up is good, always with arrow and sign) / optional 12-point sparkline (current point `accent`, rest `text-secondary` at 50 percent) / optional meter (6 px high, fill `accent-graphic`; severity colours only after the owner names thresholds, Q-WD-01; value always printed, `role="progressbar"` with a spoken value). Hero card: `text-hero`, span 6, exactly one per view. Example set from the SR home: outlets visited `৬/৬০`, strike rate `১০%`, net `৪,৩৯১.০০ ৳`. Money and counts are `text-primary` at AAA (14.59 light, 8.74 dark on glass). Loading shows the label and a skeleton value block; error shows the label and "Could not load" with a retry; zero is shown as `০`, never blank.
 
 ### 7.4 Overlays
 | Overlay | Surface | Size | Rules |
@@ -434,13 +436,13 @@ Per-card errors keep the rest of the page alive. Card: `danger` icon, message in
 ### 12.4 Long text
 Names and addresses in Bangla and English run to 60+ characters. Regular and comfortable: two lines (`line-clamp: 2`) then ellipsis, the full text in `title` and in the detail sheet; compact: one line plus ellipsis. Never truncate numbers, money, codes or ids (codes get `overflow-wrap: anywhere`). Cells `min-width: 0`, column minimum widths in `rem`. Test fixture: a 64-character Bangla outlet name with conjuncts at 200 percent text.
 ### 12.5 Connection chip (top bar)
-`Live` (success dot), `Reconnecting` (offline icon with the bounded sync arc), `Offline, data as of 08:41` (offline container): 28 px chip, polite live region, never a modal. Offline, write controls are `aria-disabled` with the reason and reads come from the last response. After reconnect the chip returns to Live and unsent form drafts are offered, not auto-sent.
+`Live` (**quiet**: no container, a small dot and the word in `text-secondary`), `Reconnecting` (offline icon with the sync arc, at most 3 turns then static), `Offline, data as of 08:41` (offline container): 28 px chip, polite live region, never a modal. Offline, write controls are `aria-disabled` with the reason and reads come from the last response. After reconnect the chip returns to Live and unsent form drafts are offered, not auto-sent.
 
 ## 13. Keyboard and screen-reader rules (WCAG 2.2 AA, plus the docs/32 gates)
 - **Landmarks:** `header`, `nav` with a label, one `main`, `aside` for the map panel; skip links "Skip to content" and "Skip to table"; one `h1` per page, no skipped levels; the document title and a polite announcement update on every route change.
 - **Focus:** a visible outline always; sticky bars must not hide it (`scroll-padding-top: calc(var(--topbar-h) + var(--head-h) + 8px)`, criterion 2.4.11); order follows reading order; modal sheets trap and return focus; the map panel is non-modal and reachable before the map; `Esc` closes the topmost overlay only.
-- **Targets:** at least 32 x 32 CSS px for pointer controls, 48 on coarse pointers (criterion 2.5.8 asks 24).
-- **Patterns:** tabs and segmented controls (arrow keys, roving tabindex), combobox for scope pickers (`aria-expanded`, `aria-activedescendant`), switch (`role="switch"`, `aria-checked`), slider (native range), dialog (`<dialog>`), table (`<caption>`, `scope`, `aria-sort`), toasts (`role="status"`), chips with text labels. Map: a labelled region, a **"Skip map"** link, the pin list as the keyboard and screen-reader alternative, `+` and `-` zoom keys. Charts: summary plus table view (s10).
+- **Targets:** at least 32 x 32 CSS px for pointer controls, **48 on coarse pointers for every control including `.seg`, `.nv` and `.wbtn`** (criterion 2.5.8 asks 24).
+- **Patterns:** tabs and segmented controls (arrow keys, roving tabindex), combobox for scope pickers (`aria-expanded`, `aria-activedescendant`), switch (`role="switch"`, `aria-checked`), slider (native range), dialog (`<dialog>`), table (`<caption>`, `scope`, `aria-sort`), toasts (`role="status"`), chips with text labels. Map: a labelled region, a **"Skip map"** link, the pin list as the keyboard and screen-reader alternative, `+` and `-` zoom keys. Charts: summary plus table view (s10). Ranked-bar values, axis ticks and every Bengali digit run are at least 14 px (Bangla floor); the `Ctrl K` hint is 13 px.
 - **Shortcuts:** `Ctrl/Cmd+K` search, `/` focus table search, `?` list shortcuts; single-key shortcuts are off while focus is in an input and can be switched off in the user menu (criterion 2.1.4).
 - **Not colour alone:** status, delta, diff, risk, pin validity, selection and chart series each have an icon, sign, shape or text.
 - **Language:** `<html lang>` follows the locale; Bengali digits depend on the voice, so test NVDA with a Bangla voice and give key figures an `aria-label` that spells the value when the voice mis-reads digits (Q3).
@@ -448,8 +450,8 @@ Names and addresses in Bangla and English run to 60+ characters. Regular and com
 
 ## 14. Budgets, tests, migration, reports back
 **Budgets** (the web lane records measured numbers in `docs/status/web-*.md`; none are claimed here): CSS after purge at most 40 KB gzip; no Latin web font; the Noto Sans Bengali subset loads for `bn` only; LCP at most 2.5 s p75 on office broadband; interaction to feedback at most 100 ms (INP at most 200 ms); sorting or filtering a 200-row page shows the result within 100 ms of the response on a 2020-class laptop at 1366 x 768; no `box-shadow` or blur animation; `content-visibility: auto` with `contain-intrinsic-size` on below-the-fold dashboard sections.
-**CI** (docs/32 s4: every screen ships its states and its tier and theme previews): a Playwright screenshot matrix on Chromium: theme (light, dark; sunlight only with tier off) x tier (full, lite, off) x viewport (360 x 800, 768 x 1024, 1366 x 768, 1920 x 1080) for dashboard home, a table at each density, geofence, rules and change requests; states loading, empty, error, long-text, offline; `axe` on every state; a token test that recomputes the s2.4 pairs from `tokens.css` and fails below the gates; a theme-parity test; the `no-raw-colors` lint; a reduced-motion test (no transition longer than 120 ms); a sheet focus-trap test; the dataviz validator on the `--viz-*` variables.
-**Migration of today's code** (restyle PRs by the web lanes; this file touches none of it): `bg-slate-50 text-slate-900` shell to a transparent shell over the fixed `bg-page` layer; `bg-white border-slate-200` panels to `glass-card`; header and sidebar to `glass-bar` and `glass-rail`; `bg-brand-600 hover:bg-brand-700 text-white` to the primary button recipe; `text-brand-700 underline` to `text-accent`; `border-slate-300` inputs to `border-input bg-raised`; `rounded` to `rounded-chip`; the `h-72` map box to the full-bleed map with the panel; keep `--color-brand-*` as aliases of `accent` for one release.
+**CI** (docs/32 s4: every screen ships its states and its tier and theme previews): a Playwright screenshot matrix on Chromium: theme (light, dark; sunlight only with tier off) x tier (full, lite, off) x viewport (360 x 800, 768 x 1024, 1366 x 768, 1920 x 1080) for dashboard home, a table at each density, geofence, rules and change requests; states loading, empty, error, long-text, offline; `axe` on every state; a token test that recomputes the shared ledger (raw and glare, tokens s2.7) and the s2.4 pairs from `tokens.css` and fails below the gates; a touch-target test (every control 48 px under `pointer: coarse`, including `.seg`, `.nv`, `.wbtn`); a theme-parity test; the `no-raw-colors` lint; a reduced-motion test (no transition longer than 120 ms); a sheet focus-trap test; the dataviz validator on the `--viz-*` variables.
+**Migration of today's code** (restyle PRs by the web lanes; this file touches none of it): `bg-slate-50 text-slate-900` shell to a transparent shell over the fixed `bg-page` layer; `bg-white border-slate-200` panels to `glass-card`; header and sidebar to `glass-bar` and `glass-rail`; `bg-brand-600 hover:bg-brand-700 text-white` to the primary button recipe; `text-brand-700 underline` to `text-accent` (the deep text blue); `border-slate-300` inputs to `border-input bg-raised`; `rounded` to `rounded-chip`; the `h-72` map box to the full-bleed map with the panel; keep `--color-brand-*` as aliases of `accent-text` (text) and `accent-hi` (fills) for one release.
 
-**Reports back to `tokens.md` (log in `DECISIONS.md`):** **+web additions:** `surface.data`, `hero` and `table` type roles, the web control heights (`--ctl-h`), `saturate(1.4)` on blurred bars, the sidebar and map-panel treatments, the system UI Latin face, `--viz-*` chart variables, baseline ink. **Collisions and corrections:** `border-solid` collides with Tailwind's border-style utility (web uses `border-outline`); `ring-focus` becomes `outline-focus` on glass; reduced transparency should map to tier C, not to the 92 percent fill; status colours as text need `*-on-container` on dark glass (3.82:1 and 4.35:1 otherwise). **Lines the web respects from tokens:** two weights only, Bangla minimum 14 px, at most 2 blurred layers, cards never blurred.
-**Open questions:** Q1 digit grouping, South Asian (`LocaleDigits`) or Western (docs/20 T-0-121), which also decides the web formatter (tokens s10 item 1); Q2 Google cloud Map IDs and the two styles must be created by the Maps project owner; Q3 Bangla screen-reader digit reading; Q4 whether TSO and AMO use the dashboards on phones enough to promote the 360 layout from "works" to "designed"; Q5 how well `prefers-reduced-transparency` is supported in the browsers AKTCL offices run; Q6 whether the sunlight theme is wanted on the web or only on the phones (default taken: offered as "High contrast").
+**Reports back to `tokens.md` (log in `DECISIONS.md`):** **+web additions:** `surface.data`, `hero` and `table` type roles, the web control heights (`--ctl-h`), `saturate(1.4)` on blurred bars, the sidebar and map-panel treatments, `--viz-*` chart variables, baseline ink. **Collisions and corrections:** `border-solid` collides with Tailwind's border-style utility (web uses `border-outline`); `ring-focus` becomes `outline-focus` on glass; `text-accent` is `accent.text` and the brighter blue is `accent-graphic`; reduced transparency should map to tier C, not to the 96 percent fill; status text always uses `*-on-container`. **Lines the web respects from tokens:** Bangla minimum 14 px, at most 2 blurred layers, cards never blurred, the 48 px coarse-pointer rule, the glare-checked ledger. **Latin face:** the web sets Latin in the system UI face (zero bytes) while Android bundles Noto Sans Latin; one face for both needs a font request (README decision 4).
+**Open questions:** Q1 digit grouping, South Asian (`LocaleDigits`) or Western (docs/20 T-0-121), which also decides the web formatter (tokens s10 item 1); Q2 Google cloud Map IDs and the two styles must be created by the Maps project owner; Q3 Bangla screen-reader digit reading; Q4 whether TSO and AMO use the dashboards on phones enough to promote the 360 layout from "works" to "designed"; Q5 how well `prefers-reduced-transparency` is supported in the browsers AKTCL offices run; Q6 whether the sunlight theme is wanted on the web or only on the phones (default taken: offered as "High contrast", 2 px edges, no type step).
