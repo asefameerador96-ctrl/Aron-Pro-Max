@@ -317,7 +317,13 @@ class SrDay(
     }
 
     /** Finishes jobs a killed process left (paper out becomes printed, else failed); once per process, before any print. */
-    suspend fun recoverPrinting() { runCatching { printing.recover() } }
+    private var printingRecovered = false
+
+    suspend fun recoverPrinting() {
+        if (printingRecovered) return
+        printingRecovered = true
+        runCatching { printing.recover() }
+    }
 
     /** The stock slip of one Save, from the stored rows only (quantities as entered in the base unit). */
     suspend fun stockSlip(movements: List<com.aktcl.aron.core.database.entity.StockMovementEntity>): com.aktcl.aron.core.printing.doc.StockSlipPrint {
@@ -342,14 +348,17 @@ class SrDay(
     /** Prints one slip for every unprinted stock row of today; the confirmation question is answered by [answerStockPrint]. */
     fun printUnprintedStock() {
         printScope.launch {
-            val rows = unprintedStock()
-            if (rows.isEmpty() || _stockAttempt.value != null) return@launch
-            _stockAttempt.value = printing.printStockSlip(rows.minByOrNull { it.skuId }!!.clientUuid, stockSlip(rows))
+            if (_stockAttempt.value != null) return@launch
+            // One slip covers exactly one Save (the ledger flips the rows of the named row's Save); the next Save prints on the next tap.
+            val save = StockSlips.oldestUnprintedSave(unprintedStock())
+            if (save.isEmpty()) return@launch
+            runCatching { printing.printStockSlip(StockSlips.slipUuid(save), stockSlip(save)) }.onSuccess { _stockAttempt.value = it }
         }
     }
 
     fun answerStockPrint(a: com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation, readable: Boolean) {
-        printScope.launch { printing.confirm(a, readable); _stockAttempt.value = null }
+        // A ledger error keeps the attempt, so the answer can be given again; it never crashes the app.
+        printScope.launch { runCatching { printing.confirm(a, readable) }.onSuccess { _stockAttempt.value = null } }
     }
 
     fun closeStockAttempt() { _stockAttempt.value = null }
