@@ -14,8 +14,6 @@ import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasLongClickAction
-import androidx.compose.ui.test.or
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.TextLayoutResult
@@ -42,7 +40,7 @@ class KitGalleryTest {
             node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
             assertFalse("text overflows: ${node.config.getOrNull(SemanticsProperties.Text)}", results.first().hasVisualOverflow)
         }
-        val clickable = rule.onAllNodes(hasClickAction() or hasLongClickAction()).fetchSemanticsNodes()
+        val clickable = rule.onAllNodes(hasClickAction() or SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)).fetchSemanticsNodes()
         assertTrue(clickable.size >= 12)
         with(rule.density) {
             clickable.forEach { n ->
