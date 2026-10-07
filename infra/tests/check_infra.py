@@ -1679,6 +1679,13 @@ class SliceSmoke(unittest.TestCase):
         self.assertIn("ON CONFLICT (flavour, version_code, abi) DO NOTHING", rel, "idempotent")
         self.assertEqual(sorted(re.findall(r"\('(sr|amo|tso)',\s+'[0-9a-f]{64}'\)", rel)), ["amo", "sr", "tso"])
         self.assertNotRegex(rel, r"require_enrolled|require_integrity|lockdown|cfg_value", "no gate or config change")
+        # N-027 gate: the smoke device is recorded as enrolled (single-use dev token) only when it carries the real
+        # Key Vault key; nothing else is touched.
+        run = (ROOT / "infra/scripts/devseed-run.sh").read_text(encoding="utf-8")
+        enrol = run[run.index("WITH dev AS ("):run.index("UPDATE app.device d SET enrolment_token_id")]
+        self.assertIn("public_key_thumbprint = :'tp' AND enrolment_token_id IS NULL", enrol)
+        self.assertIn("'dev', 1, 1,", enrol, "dev level, max one use, already used")
+        self.assertNotRegex(run, r"require_enrolled|require_integrity|cfg_value", "no gate or config change")
         self.assertIn('echo "::add-mask::${slice_pw}"', d)
         self.assertIn('( publish aron-devseed build_devseed', d, "a failed seed image never stops the deploy")
         for f in ("stage", "prod"):
