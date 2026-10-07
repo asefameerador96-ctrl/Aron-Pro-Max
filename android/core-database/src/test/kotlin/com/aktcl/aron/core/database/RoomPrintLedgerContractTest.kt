@@ -49,7 +49,14 @@ class RoomPrintLedgerContractTest : PrintLedgerContract() {
         return sale.memo.clientUuid
     }
 
-    override suspend fun newStock(): String = TestRows.stock().also { repo.recordStock(listOf(it)) }.clientUuid
+    private var saves = 0
+    override suspend fun newStockSave(skus: Int): List<String> {
+        // One Save = one CaptureMeta; each Save is captured at its own second.
+        val meta = TestRows.meta().copy(capturedAt = "2026-10-05T04:3${saves++}:07.120Z")
+        val rows = List(skus) { TestRows.stock(skuId = 100L + it).copy(meta = meta) }
+        repo.recordStock(rows)
+        return rows.map { it.clientUuid }
+    }
     override suspend fun memoPrintedAtMs(memo: String) = db.captureDao().memo(memo)!!.printedAt?.let { Instant.parse(it).toEpochMilli() }
     override suspend fun memoPrintCount(memo: String) = db.captureDao().memo(memo)!!.printCount
     override suspend fun slipPrinted(stock: String) = db.captureDao().stockOn("2026-10-05").first { it.clientUuid == stock }.slipPrinted
@@ -80,5 +87,11 @@ class RoomPrintLedgerContractTest : PrintLedgerContract() {
         assertEquals(1, room.history(memo).size)
         assertEquals(1, outboxRecords(e.clientUuid))
         assertEquals(1, memoPrintCount(memo))
+    }
+
+    @Test fun printedAtKeepsMilliseconds() = runTest {
+        val memo = newMemo()
+        room.record(PrintEvent(java.util.UUID.randomUUID().toString(), "memo", memo, null, 1, PrintEvent.PRINTED, true, 3, null, 1_000))
+        assertEquals("1970-01-01T00:00:01.000Z", db.captureDao().memo(memo)!!.printedAt)
     }
 }
