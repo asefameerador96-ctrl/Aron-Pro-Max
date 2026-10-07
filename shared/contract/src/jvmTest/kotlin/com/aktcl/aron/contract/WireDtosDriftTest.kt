@@ -191,6 +191,19 @@ class WireDtosDriftTest {
         )
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun enumValues(slice: Map<String, Any?>): List<String> = (slice["enum"] as List<Any?>).map { it.toString() }
+
+    @Test
+    fun rulesGeoWireNamesEqualTheContract() {
+        // shared:rules keeps its own enums (no dependency on the contract); their wire names must be the contract's
+        assertEquals(enumValues(slice("GeoVerdict")).toSet(), com.aktcl.aron.rules.GeoVerdict.entries.map { it.wire }.toSet())
+        val action = (members(slice("DeviceGeoVerdict")).first.getValue("action")["enum"] as List<*>).map { it.toString() }.toSet()
+        // refresh_offered is a screen state (offer a second fix), never sent: the record carries the final action
+        assertEquals(action, com.aktcl.aron.rules.GeoAction.entries.map { it.wire }.toSet() - "refresh_offered")
+        assertEquals(enumValues(slice("LocationBasis")).toSet(), setOf("master", "provisional", "placeholder", "none"))
+    }
+
     @Test
     fun secretsAreNeverPrinted() {
         val s = LoginRequest("u", "hunter2", "web").toString() + RefreshRequest(refreshToken = "tok-abc", grant = "full") +
@@ -205,7 +218,8 @@ class WireDtosDriftTest {
             "LogoutRequest", "BundleMeta", "BundleUser", "Route", "RouteSnapshot", "BundleOutlet", "Sku", "SkuPrice", "OpenMemo",
             "RecordEnvelope", "GeoFix", "FixDeviceState", "GnssSummary", "DeviceGeoVerdict", "AttendanceEventPayload",
             "StockMovementPayload", "VisitPayload", "VisitClosePayload", "MemoPayload", "MemoLinePayload", "MemoDiscountPayload",
-            "QcLinePayload", "SyncBatchRequest", "SyncBatchResponse", "RecordAck",
+            "QcLinePayload", "PlayIntegrityUnavailable", "ChangePasswordRequest", "DeviceStatusReport", "EnrolDeviceRequest", "Me", "DeviceOtp",
+            "SyncBatchRequest", "SyncBatchResponse", "RecordAck",
         )
         assertEquals(requested.toSet(), WireDtoNames.serializers.keys)
     }
@@ -260,7 +274,10 @@ internal object WireDtoNames {
         "StockMovementPayload" to serializer<StockMovementPayload>(), "VisitPayload" to serializer<VisitPayload>(),
         "VisitClosePayload" to serializer<VisitClosePayload>(), "MemoPayload" to serializer<MemoPayload>(),
         "MemoLinePayload" to serializer<MemoLinePayload>(), "MemoDiscountPayload" to serializer<MemoDiscountPayload>(),
-        "QcLinePayload" to serializer<QcLinePayload>(), "SyncBatchRequest" to serializer<SyncBatchRequest>(),
+        "QcLinePayload" to serializer<QcLinePayload>(),
+        "PlayIntegrityUnavailable" to serializer<PlayIntegrityUnavailable>(), "ChangePasswordRequest" to serializer<ChangePasswordRequest>(),
+        "DeviceStatusReport" to serializer<DeviceStatusReport>(), "EnrolDeviceRequest" to serializer<EnrolDeviceRequest>(),
+        "Me" to serializer<Me>(), "DeviceOtp" to serializer<DeviceOtp>(), "SyncBatchRequest" to serializer<SyncBatchRequest>(),
         "SyncBatchResponse" to serializer<SyncBatchResponse>(), "RecordAck" to serializer<RecordAck>(),
     )
     val all: Set<String> = serializers.keys

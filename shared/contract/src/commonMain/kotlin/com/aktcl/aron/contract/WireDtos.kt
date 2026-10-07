@@ -22,6 +22,7 @@ data class LoginRequest(
     override fun toString(): String = "LoginRequest(username=${username}, password=***, client=${client}, deviceUuid=${deviceUuid})"
 }
 
+/** For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15). */
 @Serializable
 data class LoginResponse(
     @SerialName("status") val status: String,
@@ -32,6 +33,7 @@ data class LoginResponse(
     @SerialName("upload_refresh_token") val uploadRefreshToken: String? = null,
     @SerialName("bind_token") val bindToken: String? = null,
     @SerialName("mfa_token") val mfaToken: String? = null,
+    @SerialName("password_change_token") val passwordChangeToken: String? = null,
     @SerialName("user") val user: UserSummary,
     @SerialName("scope") val scope: ScopeSummary? = null,
     @Serializable(with = LoginDeviceWire::class) @SerialName("device") val device: LoginDevice? = null,
@@ -39,7 +41,7 @@ data class LoginResponse(
     @SerialName("server_time") val serverTime: String,
     @SerialName("min_app_version_code") val minAppVersionCode: Int? = null,
 ) {
-    override fun toString(): String = "LoginResponse(status=${status}, accessToken=***, accessExpiresAt=${accessExpiresAt}, refreshToken=***, refreshExpiresAt=${refreshExpiresAt}, uploadRefreshToken=***, bindToken=***, mfaToken=***, user=${user}, scope=${scope}, device=${device}, configVersion=${configVersion}, serverTime=${serverTime}, minAppVersionCode=${minAppVersionCode})"
+    override fun toString(): String = "LoginResponse(status=${status}, accessToken=***, accessExpiresAt=${accessExpiresAt}, refreshToken=***, refreshExpiresAt=${refreshExpiresAt}, uploadRefreshToken=***, bindToken=***, mfaToken=***, passwordChangeToken=***, user=${user}, scope=${scope}, device=${device}, configVersion=${configVersion}, serverTime=${serverTime}, minAppVersionCode=${minAppVersionCode})"
 }
 
 @Serializable
@@ -162,6 +164,7 @@ data class Route(
     @SerialName("visit_days_mask") val visitDaysMask: Int,
     @SerialName("sequence_no") val sequenceNo: Int? = null,
     @SerialName("status") val status: String,
+    @SerialName("assignees") val assignees: List<JsonObject>? = null,
 )
 
 /** Per-route section of the bundle; replaced as a whole when the route is added to the user. */
@@ -476,6 +479,107 @@ data class QcLinePayload(
     @SerialName("qty_base") val qtyBase: Int,
     @SerialName("unit_price_mtk") val unitPriceMtk: Long,
     @SerialName("settlement_mtk") val settlementMtk: Long,
+)
+
+// ---- Device enrolment, admin identity (contract v1.2) ----
+
+/** Explicit "Play Integrity unavailable" marker sent instead of a token when the phone tried and could not get one. */
+@Serializable
+data class PlayIntegrityUnavailable(
+    @SerialName("reason") val reason: String,
+    @SerialName("detail") val detail: String? = null,
+)
+
+@Serializable
+data class ChangePasswordRequest(
+    @SerialName("current_password") val currentPassword: String,
+    @SerialName("new_password") val newPassword: String,
+)
+
+/** Phone status (docs/24 s10.3). Sent by POST /v1/devices/me/status and as the `device_status` record payload. */
+@Serializable
+data class DeviceStatusReport(
+    @SerialName("reported_at") val reportedAt: String,
+    @SerialName("trigger") val trigger: String? = null,
+    @SerialName("app_version") val appVersion: String,
+    @SerialName("device_info") val deviceInfo: JsonElement,
+    @SerialName("device_owner") val deviceOwner: Boolean,
+    @SerialName("lockdown_level_applied") val lockdownLevelApplied: String,
+    @SerialName("policy_version_applied") val policyVersionApplied: Long?,
+    @SerialName("policy_apply_errors") val policyApplyErrors: List<JsonObject>? = null,
+    @SerialName("restrictions_applied") val restrictionsApplied: Map<String, Boolean>? = null,
+    @SerialName("blocking_active") val blockingActive: Boolean,
+    @SerialName("blocking_since") val blockingSince: String? = null,
+    @SerialName("suspended_packages") val suspendedPackages: List<String>? = null,
+    @SerialName("permissions") val permissions: Map<String, String>? = null,
+    @SerialName("battery_optimisation_ignored") val batteryOptimisationIgnored: Boolean? = null,
+    @SerialName("user_control_disabled") val userControlDisabled: Boolean? = null,
+    @SerialName("location_enabled") val locationEnabled: Boolean,
+    @SerialName("location_mode") val locationMode: String? = null,
+    @SerialName("dev_options_enabled") val devOptionsEnabled: Boolean,
+    @SerialName("adb_enabled") val adbEnabled: Boolean,
+    @SerialName("auto_time_enabled") val autoTimeEnabled: Boolean,
+    @SerialName("time_zone") val timeZone: String? = null,
+    @SerialName("mock_location_apps") val mockLocationApps: List<String>,
+    @SerialName("play_services_version") val playServicesVersion: Int? = null,
+    @SerialName("play_integrity") val playIntegrity: JsonElement? = null,
+    @SerialName("play_integrity_unavailable") val playIntegrityUnavailable: PlayIntegrityUnavailable? = null,
+    @SerialName("root_hints") val rootHints: List<String>? = null,
+    @SerialName("pending_rows") val pendingRows: Int,
+    @SerialName("pending_media") val pendingMedia: Int? = null,
+    @SerialName("last_sync_at") val lastSyncAt: String? = null,
+    @SerialName("battery_pct") val batteryPct: Int,
+    @SerialName("charging") val charging: Boolean? = null,
+    @SerialName("free_storage_mb") val freeStorageMb: Int? = null,
+    @SerialName("printer") val printer: JsonObject? = null,
+)
+
+/** Encode DeviceStatusReport with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object DeviceStatusReportWire : JsonTransformingSerializer<DeviceStatusReport>(DeviceStatusReport.serializer()) {
+    private val alwaysEmitted = listOf("policy_version_applied")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class EnrolDeviceRequest(
+    @SerialName("enrolment_token") val enrolmentToken: String,
+    @SerialName("device_uuid") val deviceUuid: String,
+    @SerialName("app_package") val appPackage: String,
+    @SerialName("app_version") val appVersion: String,
+    @SerialName("app_signing_cert_sha256") val appSigningCertSha256: String,
+    @SerialName("device_owner") val deviceOwner: Boolean,
+    @SerialName("public_key") val publicKey: JsonElement,
+    @SerialName("key_attestation_chain") val keyAttestationChain: List<String>,
+    @SerialName("device_info") val deviceInfo: JsonElement,
+    @Serializable(with = DeviceStatusReportWire::class) @SerialName("status") val status: DeviceStatusReport? = null,
+    @SerialName("play_integrity_unavailable") val playIntegrityUnavailable: PlayIntegrityUnavailable? = null,
+)
+
+@Serializable
+data class Me(
+    @SerialName("user") val user: UserSummary,
+    @SerialName("permissions") val permissions: List<String>,
+    @SerialName("scope") val scope: ScopeSummary,
+    @SerialName("pii") val pii: Boolean? = null,
+    @SerialName("mfa_enabled") val mfaEnabled: Boolean? = null,
+    @SerialName("menus") val menus: List<JsonElement>? = null,
+)
+
+@Serializable
+data class DeviceOtp(
+    @SerialName("user_id") val userId: Long,
+    @SerialName("username") val username: String,
+    @SerialName("full_name") val fullName: String,
+    @SerialName("zone_id") val zoneId: Long? = null,
+    @SerialName("otp") val otp: String? = null,
+    @SerialName("device_model") val deviceModel: String? = null,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("expires_at") val expiresAt: String,
+    @SerialName("attempts") val attempts: Int,
+    @SerialName("employee_code") val employeeCode: String? = null,
+    @SerialName("zone_code") val zoneCode: String? = null,
+    @SerialName("zone_name") val zoneName: String? = null,
 )
 
 // ---- Sync batch ----

@@ -21,9 +21,12 @@ GROUPS = [
     ("Records (docs/24 s4)", ["RecordEnvelope", "GeoFix", "FixDeviceState", "GnssSummary", "DeviceGeoVerdict",
                               "AttendanceEventPayload", "StockMovementPayload", "VisitPayload", "VisitClosePayload",
                               "MemoPayload", "MemoLinePayload", "MemoDiscountPayload", "QcLinePayload"]),
+    ("Device enrolment, admin identity (contract v1.2)", ["PlayIntegrityUnavailable", "ChangePasswordRequest", "DeviceStatusReport",
+                                                          "EnrolDeviceRequest", "Me", "DeviceOtp"]),
     ("Sync batch", ["SyncBatchRequest", "SyncBatchResponse", "RecordAck"]),
 ]
-SECRETS = {"password", "access_token", "refresh_token", "upload_refresh_token", "bind_token", "mfa_token"}
+SECRETS = {"password", "access_token", "refresh_token", "upload_refresh_token", "bind_token", "mfa_token",
+           "password_change_token"}
 NESTED = {("BundleMeta", "paged_sections"): "PagedSection", ("SyncBatchResponse", "summary"): "SyncBatchSummary"}
 ID_ALIASES = {"Id", "Mtk", "MtkNonNegative"}
 RAW = {"RadioEnvironment": "JsonObject", "SyncRecord": "JsonObject"}  # everything else unknown -> JsonElement
