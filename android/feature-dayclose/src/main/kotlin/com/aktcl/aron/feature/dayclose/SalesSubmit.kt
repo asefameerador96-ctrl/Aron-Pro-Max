@@ -24,7 +24,8 @@ sealed interface SubmitBlock {
     data object AlreadySubmitted : SubmitBlock
 }
 
-data class SubmitGate(val enabled: Boolean, val blocks: List<SubmitBlock>, val duesWarning: DuesAtSubmit?)
+/** [notes] are answered-by-server rows (rejected, quarantined): shown and recorded in the submit, never blocking. */
+data class SubmitGate(val enabled: Boolean, val blocks: List<SubmitBlock>, val duesWarning: DuesAtSubmit?, val notes: List<SubmitBlock> = emptyList())
 
 object SalesSubmitRules {
     /**
@@ -36,10 +37,13 @@ object SalesSubmitRules {
         val blocks = ArrayList<SubmitBlock>()
         if (alreadySubmitted) blocks += SubmitBlock.AlreadySubmitted
         if (states.pending + states.inFlight > 0) blocks += SubmitBlock.Unsynced(states.pending, states.inFlight)
-        if (states.rejected > 0) blocks += SubmitBlock.Rejected(states.rejected)
-        if (states.quarantined > 0) blocks += SubmitBlock.Quarantined(states.quarantined)
+        // The server has already answered a rejected or quarantined row (docs/24 s4.12: reconciled = accepted + rejected + quarantined);
+        // they can never be retried, so they must not lock the day. They are carried into the day_submit counts.
+        val notes = ArrayList<SubmitBlock>()
+        if (states.rejected > 0) notes += SubmitBlock.Rejected(states.rejected)
+        if (states.quarantined > 0) notes += SubmitBlock.Quarantined(states.quarantined)
         counts.filterNot { it.matches }.forEach { blocks += SubmitBlock.CountMismatch(it.recordType, it.device, it.server) }
-        return SubmitGate(blocks.isEmpty(), blocks, dues.takeIf { it.retailersWithDues > 0 || it.outstandingMtk > 0 })
+        return SubmitGate(blocks.isEmpty(), blocks, dues.takeIf { it.retailersWithDues > 0 || it.outstandingMtk > 0 }, notes)
     }
 
     /** The Sync data button retries until the counts agree; it is offered whenever the device and server disagree. */

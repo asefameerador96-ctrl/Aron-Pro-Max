@@ -49,11 +49,16 @@ object HomeMoneyBuilder {
     fun build(memos: List<StoredMemo>, skus: Map<Long, SummarySku>): HomeMoney {
         val superseded = memos.mapNotNull { it.supersedesUuid }.toSet()
         val live = memos.filter { it.memoUuid !in superseded }
-        val cats = live.flatMap { m -> m.lines.map { skus[it.skuId]?.categoryCode.orEmpty() to it } }.groupBy({ it.first }, { it.second }).toSortedMap().map { (c, ls) ->
-            val value = ls.sumOf { it.grossMtk }
-            val disc = live.sumOf { m -> m.discounts.filter { skus[it.skuId]?.categoryCode.orEmpty() == c && it.kind != "drp" }.sumOf { it.valueMtk } }
-            val drp = live.sumOf { m -> m.discounts.filter { skus[it.skuId]?.categoryCode.orEmpty() == c && it.kind == "drp" }.sumOf { it.valueMtk } }
-            val qc = live.sumOf { m -> m.qcLines.filter { skus[it.skuId]?.categoryCode.orEmpty() == c }.sumOf { it.settlementMtk } }
+        fun cat(skuId: Long?) = skus[skuId]?.categoryCode.orEmpty()
+        val lineCats = live.flatMap { m -> m.lines.map { cat(it.skuId) to it } }.groupBy({ it.first }, { it.second })
+        // A category appears when it has a sale, a discount or a QC line; memo-level discounts (no SKU) sit in the "" row,
+        // so the category rows always add up to the grand total.
+        val keys = (lineCats.keys + live.flatMap { m -> m.discounts.map { cat(it.skuId) } + m.qcLines.map { cat(it.skuId) } }).toSortedSet()
+        val cats = keys.map { c ->
+            val value = lineCats[c].orEmpty().sumOf { it.grossMtk }
+            val disc = live.sumOf { m -> m.discounts.filter { cat(it.skuId) == c && it.kind != "drp" }.sumOf { it.valueMtk } }
+            val drp = live.sumOf { m -> m.discounts.filter { cat(it.skuId) == c && it.kind == "drp" }.sumOf { it.valueMtk } }
+            val qc = live.sumOf { m -> m.qcLines.filter { cat(it.skuId) == c }.sumOf { it.settlementMtk } }
             MoneyCategory(c, value, disc, drp, qc, value - disc - drp - qc)
         }
         return HomeMoney(

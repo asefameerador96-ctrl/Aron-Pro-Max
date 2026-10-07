@@ -19,3 +19,11 @@ Print from stored rows only: `MemoEntity` (memo_no, committed_at, outlet_id, pri
 
 ## Next three
 CI result then fixes; F-SR-060 and F-SR-023 screens when the kit lands; Memo menu model (F-SR-030).
+
+## Checker findings (2026-10-07)
+T2 checker (Sonnet) on F-SR-036/030/032/054/010/069/034/035: 4 confirmed defects, all fixed with the checker's tests kept (`CheckerTest.kt` in feature-memo and feature-dayclose):
+1. Home money category rows missed memo-level discounts and QC on categories with no sale: now a `""` row and QC-only categories appear; rows add up to the grand total.
+2. Day summary Discount column dropped memo-level offers: a `""` category row carries them.
+3. Sales Submit gate blocked forever on a rejected row: rejected and quarantined rows are now notes (carried into the day_submit counts), not blocks. Q-UI-08 stays an open sponsor question.
+Flagged, not a defect: `MemoDetail.canMarkPaid` uses the stored due; the UI must use `DueLedger.markPaid != null`.
+T1 checker (Opus) on the sale rows: pending.

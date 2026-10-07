@@ -67,8 +67,15 @@ object DaySummaryCalculator {
             val ret = ((issuedBase[id] ?: 0L) - qty - (qcReturnBase[id] ?: 0L)).coerceAtLeast(0L)
             SkuSummaryRow(id, sku?.categoryCode ?: "", withSku.size, qty, value, disc, value - disc, ret)
         }
-        val cats = rows.groupBy { it.categoryCode }.toSortedMap().map { (c, rs) ->
+        val skuCats = rows.groupBy { it.categoryCode }.toSortedMap().map { (c, rs) ->
             CategorySummaryRow(c, rs.sumOf { it.qtyBase }, rs.sumOf { it.valueMtk }, rs.sumOf { it.discountMtk }, rs.sumOf { it.discountedValueMtk }, rs.sumOf { it.returnQtyBase })
+        }
+        // Memo-level offers (no SKU) form their own "" category row so the Discount column reconciles with the
+        // "discount and others" line.
+        val memoLevel = live.sumOf { m -> m.discounts.filter { it.skuId == null && it.kind != "drp" }.sumOf { it.valueMtk } }
+        val cats = if (memoLevel == 0L) skuCats else (skuCats.filter { it.categoryCode != "" } + skuCats.filter { it.categoryCode == "" } +
+            CategorySummaryRow("", 0, 0, memoLevel, -memoLevel, 0)).let { l ->
+            l.filter { it.categoryCode != "" } + l.filter { it.categoryCode == "" }.reduce { a, b -> CategorySummaryRow("", a.qtyBase + b.qtyBase, a.valueMtk + b.valueMtk, a.discountMtk + b.discountMtk, a.discountedValueMtk + b.discountedValueMtk, a.returnQtyBase + b.returnQtyBase) }
         }
         val gross = live.sumOf { m -> m.lines.sumOf { it.grossMtk } }
         val net = live.sumOf { it.netMtk }

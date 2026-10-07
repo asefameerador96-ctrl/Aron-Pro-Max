@@ -21,11 +21,11 @@ class SalesSubmitTest {
         assertTrue(g.enabled); assertEquals(2, g.duesWarning!!.retailersWithDues)
     }
 
-    @Test fun pendingInFlightRejectedAndQuarantinedBlock() {
+    @Test fun pendingAndInFlightBlockRejectedAndQuarantinedOnlyNote() {
         assertFalse(SalesSubmitRules.gate(clean.copy(pending = 1), ok, noDues, false).enabled)
         assertFalse(SalesSubmitRules.gate(clean.copy(inFlight = 2), ok, noDues, false).enabled)
-        assertTrue(SalesSubmitRules.gate(clean.copy(rejected = 1), ok, noDues, false).blocks.single() is SubmitBlock.Rejected)
-        assertTrue(SalesSubmitRules.gate(clean.copy(quarantined = 1), ok, noDues, false).blocks.single() is SubmitBlock.Quarantined)
+        assertTrue(SalesSubmitRules.gate(clean.copy(rejected = 1), ok, noDues, false).let { it.enabled && it.notes.single() is SubmitBlock.Rejected })
+        assertTrue(SalesSubmitRules.gate(clean.copy(quarantined = 1), ok, noDues, false).let { it.enabled && it.notes.single() is SubmitBlock.Quarantined })
     }
 
     @Test fun aBlankServerColumnBeforeTheFirstSyncBlocksAndAMismatchNamesTheType() {
