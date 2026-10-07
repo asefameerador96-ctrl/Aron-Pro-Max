@@ -93,11 +93,33 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      BASE: ${{ needs.changes.outputs.base }}
+      BEFORE: ${{ needs.changes.outputs.base }}
+      INTEGRATION_BRANCH: claude/wonderful-thompson-k6ejnf
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Choose the comparison base
+        # SCAN_RANGE: the pushed commits for gitleaks (BEFORE..SHA works even when BEFORE is not an ancestor).
+        # CHECK_BASE: an ANCESTOR of this commit for the migration and contract gates: the merge-base with BEFORE,
+        # else (first push of a branch, force-push, manual run) the merge-base with the integration branch, else
+        # (a run on the integration branch tip itself) the parent commit.
+        run: |
+          range="" check=""
+          if [ -n "${BEFORE}" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            range="${BEFORE}..${GITHUB_SHA}"
+            check="$(git merge-base "${BEFORE}" "${GITHUB_SHA}" || true)"
+          fi
+          if [ -z "${check}" ] && git rev-parse -q --verify "origin/${INTEGRATION_BRANCH}" >/dev/null; then
+            check="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}" || true)"
+          fi
+          if [ -z "${check}" ] || [ "${check}" = "${GITHUB_SHA}" ]; then
+            check="$(git rev-parse HEAD~1)"
+            echo "::notice::no earlier base for this run; the migration and contract gates compare with the parent commit"
+          fi
+          echo "SCAN_RANGE=${range}" >> "${GITHUB_ENV}"
+          echo "CHECK_BASE=${check}" >> "${GITHUB_ENV}"
+          echo "gitleaks range: ${range:-whole history}; gate base: ${check}"
       - name: Install gitleaks, oasdiff and squawk (pinned, checksum-verified)
         run: |
           for t in gitleaks oasdiff squawk; do tools/ci/install-tool.sh "$t" "${RUNNER_TEMP}/bin"; done
@@ -108,14 +130,15 @@ jobs:
         run: |
           # Known base: only the new commits. Unknown base (manual run, new branch): the whole history.
           range=()
-          [ -n "${BASE}" ] && range=(--log-opts="${BASE}..${GITHUB_SHA}")
-          gitleaks git --no-banner --redact --exit-code 1 --gitleaks-ignore-path tools/ci/gitleaksignore "${range[@]}" .
+          [ -n "${SCAN_RANGE}" ] && range=(--log-opts="${SCAN_RANGE}")
+          gitleaks git --no-banner --redact --exit-code 1 --config tools/ci/gitleaks.toml \
+            --gitleaks-ignore-path tools/ci/gitleaksignore "${range[@]}" .
       - name: Migrations (shipped ones unchanged, versions in order, squawk on the new ones)
         if: needs.changes.outputs.db == 'true'
-        run: tools/ci/migrations-check.sh "${BASE:-$(git rev-parse HEAD~1)}" squawk
+        run: tools/ci/migrations-check.sh "${CHECK_BASE}" squawk
       - name: Contract breaking-change check (oasdiff)
         if: needs.changes.outputs.contract == 'true'
-        run: tools/ci/contract-breaking.sh "${BASE:-$(git rev-parse HEAD~1)}" oasdiff
+        run: tools/ci/contract-breaking.sh "${CHECK_BASE}" oasdiff
 
   contract:
     name: Contract lint
@@ -352,22 +375,15 @@ jobs:
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: infra/scripts/image-smoke.sh
-      - name: SBOM of the backend image (SPDX)
-        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
-        with:
-          image: aron-backend:${{ github.sha }}
-          format: spdx-json
-          output-file: sbom-aron-backend.spdx.json
-          upload-artifact: false
-          upload-release-assets: false
-      - name: SBOM of the web image (SPDX)
-        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
-        with:
-          image: aron-web:${{ github.sha }}
-          format: spdx-json
-          output-file: sbom-aron-web.spdx.json
-          upload-artifact: false
-          upload-release-assets: false
+      - name: SBOM of the backend and web images (SPDX, syft pinned by checksum)
+        env:
+          TAG: ${{ github.sha }}
+        run: |
+          syft="$(tools/ci/install-tool.sh syft "${RUNNER_TEMP}/bin")"
+          for img in aron-backend aron-web; do
+            "${syft}" scan "docker:${img}:${TAG}" -o "spdx-json=sbom-${img}.spdx.json" -q
+            echo "${img}: $(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["packages"]))' "sbom-${img}.spdx.json") packages"
+          done
       - name: Upload the SBOMs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

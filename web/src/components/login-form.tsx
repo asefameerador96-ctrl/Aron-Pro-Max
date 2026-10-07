@@ -16,6 +16,7 @@ export function LoginForm({ next }: { next: string }) {
   const [step, setStep] = useState<Step>("password");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [show, setShow] = useState(false);
 
   async function run(path: string, body: unknown) {
     setBusy(true);
@@ -45,7 +46,7 @@ export function LoginForm({ next }: { next: string }) {
   function onPassword(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    void run("/api/bff/login", { username: String(f.get("username") ?? "").trim(), password: String(f.get("password") ?? "") });
+    void run("/api/bff/login", { username: String(f.get("username") ?? "").trim(), password: String(f.get("password") ?? ""), remember: f.get("remember") === "on" });
   }
   function onMfa(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -70,11 +71,20 @@ export function LoginForm({ next }: { next: string }) {
         <form onSubmit={onPassword} className="space-y-4" data-testid="login-form">
           <label className="block text-sm font-medium">
             {t("auth.username")}
-            <input name="username" autoComplete="username" required maxLength={40} className={input} />
+            <input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required maxLength={40} className={input} />
           </label>
-          <label className="block text-sm font-medium">
-            {t("auth.password")}
-            <input name="password" type="password" autoComplete="current-password" required maxLength={128} className={input} />
+          <div className="text-sm font-medium">
+            <label htmlFor="login-password">{t("auth.password")}</label>
+            <div className="relative">
+              <input id="login-password" name="password" type={show ? "text" : "password"} autoComplete="current-password" required maxLength={128} className={`${input} pr-20`} />
+              <button type="button" onClick={() => setShow((v) => !v)} aria-pressed={show} data-testid="toggle-password" className="absolute inset-y-0 right-2 my-auto h-8 rounded px-2 text-sm font-semibold text-brand-700">
+                {t(show ? "auth.hide" : "auth.show")}
+              </button>
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="remember" defaultChecked={false} data-testid="remember-me" />
+            {t("auth.remember")}
           </label>
           <button type="submit" disabled={busy} className={button}>
             {t("auth.submit")}

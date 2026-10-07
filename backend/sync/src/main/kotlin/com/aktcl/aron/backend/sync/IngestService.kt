@@ -1,0 +1,521 @@
+package com.aktcl.aron.backend.sync
+
+import com.aktcl.aron.backend.platform.ApiProblem
+import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.Database
+import com.aktcl.aron.backend.platform.Reach
+import com.aktcl.aron.backend.platform.ReachResolver
+import com.aktcl.aron.backend.platform.ResponseJson
+import com.aktcl.aron.backend.platform.ServerConfig
+import com.aktcl.aron.backend.platform.wire
+import com.aktcl.aron.contract.ContractInfo
+import com.aktcl.aron.contract.ProblemCode
+import com.aktcl.aron.contract.RecordOutcomeCode
+import com.aktcl.aron.contract.Role
+import com.aktcl.aron.rules.BusinessDate
+import kotlinx.datetime.toJavaLocalDate
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import org.jdbi.v3.core.Handle
+import org.slf4j.LoggerFactory
+import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
+import java.security.interfaces.ECPublicKey
+import java.sql.SQLException
+import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
+
+/** The verified uploader: identity only from the token and the device row, never from the body (docs/24 s4.1 item 3). */
+data class Uploader(
+    val userId: Long,
+    val role: Role,
+    val scopeVersion: Long,
+    val deviceId: Long,
+    val deviceUuid: String,
+    /** The device's key for record `sig` checks; null for a phone without a usable key (dev database only). */
+    val deviceKey: ECPublicKey?,
+)
+
+/**
+ * Idempotent ingest of one sync batch (F-API-006, docs/24 s3.3, s4.4 to s4.6):
+ *
+ * - **Batch replay.** `(device, batch_uuid)` is stored with the fingerprint of its record set (SHA-256 over the sorted
+ *   `client_uuid:payload_sha256` lines) and the gzip response. The same set again returns the stored response with
+ *   `replayed: true`; another set under the same `batch_uuid` is `409 ERR_SYNC_BATCH_UUID_REUSED`.
+ * - **Records.** Processed in array order; consecutive records of one family share one transaction, each record in its
+ *   own savepoint, so a rejected child never rolls back its accepted header. `ingest_registry` (client_uuid PK) is the
+ *   one uniqueness point: same uuid and hash is `duplicate`, same uuid and another hash is quarantined
+ *   `payload_conflict`, and a record is never applied twice or overwritten.
+ * - **Nothing is dropped.** Every record ends accepted/duplicate, rejected (kept in `sync_rejected`) or quarantined
+ *   (kept in `sync_quarantine`); exactly one ack per record in request order.
+ * - An unexpected error inside a family rolls the family back and acks its records `rejected(server_error)`,
+ *   retryable, parked for a resend; the rest of the batch goes on (poison-row isolation).
+ */
+class IngestService(
+    private val db: Database,
+    private val config: ServerConfig,
+    private val reach: ReachResolver,
+    private val clock: AronClock = AronClock.SYSTEM,
+    private val generation: () -> String = { com.aktcl.aron.backend.platform.NIL_GENERATION },
+) {
+    private val log = LoggerFactory.getLogger("aron.sync.ingest")
+
+    /** Outcome of one record before the ack is built. */
+    private data class Outcome(val status: String, val code: RecordOutcomeCode? = null, val serverId: Long? = null) {
+        companion object {
+            fun accepted(id: Long?) = Outcome("accepted", null, id)
+            fun duplicate(id: Long?) = Outcome("duplicate", null, id)
+            fun of(code: RecordOutcomeCode) = Outcome(code.status.wire, code, null)
+        }
+    }
+
+    /** One record as received, with what the batch fingerprint and the registry need. */
+    private class Rec(val index: Int, val json: JsonObject) {
+        val clientUuid: String = (json["client_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
+        val type: String = (json["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
+        val family: String = (json["family_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: clientUuid
+        val hash: ByteArray = Jcs.sha256(json)
+        val hashHex: String = hash.joinToString("") { "%02x".format(it) }
+    }
+
+    /** Per-batch caches. */
+    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant) {
+        val today: LocalDate = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
+        private val reaches = HashMap<LocalDate, Reach>()
+        fun reachOn(d: LocalDate): Reach = reaches.getOrPut(d) { reach.reach(up.userId, up.role, up.scopeVersion, d) }
+        val backdateDays: Long = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
+        val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
+    }
+
+    fun ingest(up: Uploader, req: SyncBatchRequest): SyncBatchResponse {
+        val now = clock.now()
+        if (req.schema_version > ContractInfo.SCHEMA_VERSION) {
+            throw ApiProblem(ProblemCode.ERR_UNSUPPORTED_SCHEMA_VERSION, "schema_version ${req.schema_version} is above ${ContractInfo.SCHEMA_VERSION}")
+        }
+        val recs = req.records.mapIndexed { i, r -> Rec(i, r) }
+        val fingerprint = sha256(recs.map { "${it.clientUuid}:${it.hashHex}" }.sorted().joinToString("\n").toByteArray())
+
+        replayOrClaim(up, req, recs.size, fingerprint, now)?.let { return it }
+
+        val ctx = Ctx(up, req.batch_uuid, now)
+        val outcomes = arrayOfNulls<Outcome>(recs.size)
+        var i = 0
+        while (i < recs.size) {
+            var j = i
+            while (j + 1 < recs.size && recs[j + 1].family == recs[i].family) j++
+            val family = recs.subList(i, j + 1)
+            try {
+                db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+            } catch (e: Exception) {
+                log.error("family failed batch_uuid=${req.batch_uuid} family=${recs[i].family}", e)
+                db.jdbi.useTransaction<Exception> { h -> family.forEach { r -> outcomes[r.index] = park(h, ctx, r, RecordOutcomeCode.SERVER_ERROR, e.javaClass.simpleName) } }
+            }
+            i = j + 1
+        }
+
+        val acks = recs.map { r ->
+            val o = outcomes[r.index]!!
+            RecordAck(
+                client_uuid = r.clientUuid, type = r.type, status = o.status, code = o.code?.wire,
+                retryable = if (o.status == "rejected") o.code?.retryable else null,
+                message_key = o.code?.let { "sync.outcome.${it.wire}" }, server_id = o.serverId,
+            )
+        }
+        val response = db.jdbi.withHandle<SyncBatchResponse, Exception> { h ->
+            val dates = (recs.mapNotNull { r -> (r.json["business_date"] as? JsonPrimitive)?.content?.let { runCatching { LocalDate.parse(it) }.getOrNull() } } + ctx.today)
+                .distinct().sortedDescending().take(10)
+            SyncBatchResponse(
+                batch_uuid = req.batch_uuid, replayed = false, received_at = now.wire(), acks = acks,
+                summary = AckSummary(acks.count { it.status == "accepted" }, acks.count { it.status == "duplicate" }, acks.count { it.status == "rejected" }, acks.count { it.status == "quarantined" }),
+                server_totals = dates.sorted().map { serverTotals(h, up.userId, it, now) },
+                day_states = dayStates(h, up.userId, dates),
+                resolutions = resolutions(h, up.userId, now),
+                hold_s = runCatching { config.int("cfg.ops.sync_hold_s") }.getOrDefault(0).coerceIn(0, 900),
+                config_version = config.configVersion(), bundle_version_current = null, generation = generation(),
+            )
+        }
+        db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                """
+                UPDATE app.sync_batch SET response_gz = :gz, completed_at = :now, counts = CAST(:counts AS jsonb)
+                WHERE device_id = :d AND batch_uuid = CAST(:b AS uuid)
+                """.trimIndent(),
+            ).bind("gz", gzip(ResponseJson.encodeToString(SyncBatchResponse.serializer(), response).toByteArray()))
+                .bind("now", ts(now)).bind("counts", ResponseJson.encodeToString(AckSummary.serializer(), response.summary))
+                .bind("d", up.deviceId).bind("b", req.batch_uuid).execute()
+        }
+        return response
+    }
+
+    /** Returns the stored response of a completed identical batch, 409 for a reused batch_uuid, or null to process. */
+    private fun replayOrClaim(up: Uploader, req: SyncBatchRequest, count: Int, fingerprint: ByteArray, now: Instant): SyncBatchResponse? =
+        db.jdbi.inTransaction<SyncBatchResponse?, Exception> { h ->
+            val retention = runCatching { config.int("cfg.retention.sync_batch_response_h") }.getOrDefault(48).toLong()
+            h.createUpdate(
+                """
+                INSERT INTO app.sync_batch (device_id, batch_uuid, user_id, fingerprint, record_count, trigger, attempt, app_version, pending_rows, received_at, expires_at)
+                VALUES (:d, CAST(:b AS uuid), :u, :fp, :n, :trigger, 1, :app, :pending, :now, :exp)
+                ON CONFLICT (device_id, batch_uuid) DO NOTHING
+                """.trimIndent(),
+            ).bind("d", up.deviceId).bind("b", req.batch_uuid).bind("u", up.userId).bind("fp", fingerprint).bind("n", count)
+                .bind("trigger", req.trigger).bind("app", req.app_version.take(40)).bind("pending", req.pending_rows.coerceAtLeast(0))
+                .bind("now", ts(now)).bind("exp", ts(now.plusSeconds(retention * 3600))).execute()
+            val row = h.createQuery("SELECT fingerprint, response_gz, user_id FROM app.sync_batch WHERE device_id = :d AND batch_uuid = CAST(:b AS uuid) FOR UPDATE")
+                .bind("d", up.deviceId).bind("b", req.batch_uuid)
+                .map { rs, _ -> Triple(rs.getBytes(1), rs.getBytes(2), rs.getLong(3)) }.one()
+            if (!row.first.contentEquals(fingerprint) || row.third != up.userId) {
+                throw ApiProblem(ProblemCode.ERR_SYNC_BATCH_UUID_REUSED, "batch_uuid ${req.batch_uuid} was used for another record set")
+            }
+            val stored = row.second ?: return@inTransaction null
+            h.createUpdate("UPDATE app.sync_batch SET replay_count = replay_count + 1 WHERE device_id = :d AND batch_uuid = CAST(:b AS uuid)")
+                .bind("d", up.deviceId).bind("b", req.batch_uuid).execute()
+            ResponseJson.decodeFromString(SyncBatchResponse.serializer(), gunzip(stored).decodeToString()).copy(replayed = true)
+        }
+
+    private fun processInSavepoint(h: Handle, ctx: Ctx, r: Rec): Outcome {
+        val sp = "rec_${r.index}"
+        h.savepoint(sp)
+        return try {
+            process(h, ctx, r).also { h.release(sp) }
+        } catch (e: SQLException) {
+            // A record the database refuses (type, range, check or reference): that record only, never the batch.
+            h.rollbackToSavepoint(sp)
+            val state = e.sqlState ?: ""
+            if (state.startsWith("22") || state.startsWith("23")) {
+                log.info("record refused by the database client_uuid=${r.clientUuid} type=${r.type} sqlstate=$state")
+                finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "database refused the record ($state)")
+            } else throw e
+        } catch (e: org.jdbi.v3.core.statement.UnableToExecuteStatementException) {
+            h.rollbackToSavepoint(sp)
+            val state = (e.cause as? SQLException)?.sqlState ?: ""
+            if (state.startsWith("22") || state.startsWith("23")) {
+                log.info("record refused by the database client_uuid=${r.clientUuid} type=${r.type} sqlstate=$state")
+                finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "database refused the record ($state)")
+            } else throw e
+        }
+    }
+
+    private fun process(h: Handle, ctx: Ctx, r: Rec): Outcome {
+        // 1. Shape: envelope and payload members of the contract (unevaluatedProperties false).
+        val shapeError = shapeError(r)
+        if (shapeError != null) {
+            if (!UUID_V4.matches(r.clientUuid)) {
+                // Without a valid client_uuid the record cannot be registered or kept; it is acked and logged only.
+                log.warn("record without a valid client_uuid batch_uuid=${ctx.batchUuid} index=${r.index} type=${r.type.take(40)}")
+                return Outcome.of(RecordOutcomeCode.SCHEMA_INVALID)
+            }
+            val code = if (r.type !in TypeRules.BY_TYPE) RecordOutcomeCode.UNKNOWN_RECORD_TYPE else RecordOutcomeCode.SCHEMA_INVALID
+            return finalReject(h, ctx, r, code, shapeError)
+        }
+        val rule = TypeRules.BY_TYPE.getValue(r.type)
+        val env = r.json
+        val payload = env["payload"] as JsonObject
+        val bd = LocalDate.parse(env.str("business_date")!!)
+
+        // 2. Registry: one uniqueness point for every device record.
+        val prior = h.createQuery("SELECT status, outcome_code, payload_sha256, server_id FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) FOR UPDATE")
+            .bind("c", r.clientUuid).map { rs, _ -> Prior(rs.getString(1), rs.getString(2), rs.getBytes(3), rs.getObject(4) as Long?) }.findOne().orElse(null)
+        if (prior != null) {
+            if (!prior.hash.contentEquals(r.hash)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.PAYLOAD_CONFLICT, "same client_uuid, different payload", register = false)
+            when (prior.status) {
+                "accepted", "voided" -> { touch(h, r); return Outcome.duplicate(prior.serverId) }
+                "rejected" -> { touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.SCHEMA_INVALID) }
+                "quarantined" -> { touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT) }
+                // parked: process again (the parent may have arrived)
+            }
+        }
+
+        // 3. Business-date window (s3.8 item 4): too old or in the future is quarantined, never dropped.
+        val captured = Instant.parse(env.str("captured_at")!!)
+        if (bd.isBefore(ctx.today.minusDays(ctx.backdateDays)) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
+            return quarantine(h, ctx, r, bd, RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, "business_date $bd, today ${ctx.today}")
+        }
+
+        // 4. References that must exist (unknown ids are final rejections, s4.5).
+        val routeId = env.long("route_id")
+        val outletId = payload.long("outlet_id")
+        val skuId = payload.long("sku_id")
+        var routeZone: Long? = null
+        if (routeId != null) {
+            routeZone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", routeId).mapTo(Long::class.java).findOne().orElse(null)
+                ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_ROUTE, "route $routeId")
+        }
+        var outlet: Pair<Long?, Long>? = null
+        if (outletId != null) {
+            outlet = h.createQuery("SELECT route_id, zone_id FROM app.outlet WHERE id = :o").bind("o", outletId)
+                .map { rs, _ -> (rs.getObject(1) as Long?) to rs.getLong(2) }.findOne().orElse(null)
+                ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_OUTLET, "outlet $outletId")
+        }
+        if (skuId != null && h.createQuery("SELECT count(*) FROM app.sku WHERE id = :s").bind("s", skuId).mapTo(Long::class.java).one() == 0L) {
+            return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_SKU, "sku $skuId")
+        }
+
+        // 5. Scope on the record's business date (s8.4): from the token's user, never from the body.
+        if (!rule.telemetry) {
+            val reach = ctx.reachOn(bd)
+            if (routeId != null && !reach.coversRoute(routeId, routeZone!!)) {
+                val code = if (reach.ownRecordsOnly) RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE else RecordOutcomeCode.SCOPE_OUT_OF_REACH
+                return quarantine(h, ctx, r, bd, code, "route $routeId on $bd")
+            }
+            if (outlet != null) {
+                val (oRoute, oZone) = outlet
+                val ok = if (reach.ownRecordsOnly) oRoute != null && oRoute in reach.routeIds else reach.coversZone(oZone) || (oRoute != null && oRoute in reach.routeIds)
+                if (!ok) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "outlet $outletId on $bd")
+            }
+        }
+
+        // 6. Record signature on header records when the device has a key (s8.3).
+        if (rule.signedHeader && ctx.up.deviceKey != null) {
+            val sig = env.str("sig")
+            val unsigned = JsonObject(env.filterKeys { it != "sig" })
+            val msg = listOf("aron-sig-v1", r.type, r.clientUuid, sha256Hex(Jcs.canonicalize(unsigned).toByteArray())).joinToString("\n")
+            if (sig == null || !com.aktcl.aron.backend.platform.DeviceProof.verify(ctx.up.deviceKey, msg, sig)) {
+                return quarantine(h, ctx, r, bd, RecordOutcomeCode.DEVICE_INTEGRITY_FAILED, "record signature does not verify")
+            }
+        }
+
+        // 7. Parents (s4.2 rule 3): a child whose parent is not stored yet is parked.
+        for (field in rule.parents) {
+            val parent = payload.str(field) ?: continue
+            if (!UUID_V4.matches(parent)) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "$field is not a UUID v4")
+            val stored = h.createQuery("SELECT count(*) FROM app.ingest_registry WHERE client_uuid = CAST(:p AS uuid) AND status IN ('accepted','voided')")
+                .bind("p", parent).mapTo(Long::class.java).one() > 0 ||
+                // Parents written outside the batch (online endpoints, migrated history) are in their table only.
+                (PARENT_TABLES[field]?.let { t ->
+                    h.createQuery("SELECT count(*) FROM app.$t WHERE client_uuid = CAST(:p AS uuid)").bind("p", parent).mapTo(Long::class.java).one() > 0
+                } ?: false)
+            if (!stored) return park(h, ctx, r, RecordOutcomeCode.PARENT_MISSING, "$field $parent")
+        }
+
+        // 8. Store.
+        val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
+        return when (stored) {
+            is RecordWriter.Result.Stored -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.accepted(stored.serverId) }
+            is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
+            is RecordWriter.Result.Refused -> {
+                if (stored.code.status.wire == "quarantined") quarantine(h, ctx, r, bd, stored.code, stored.detail)
+                else if (stored.code.retryable == true) park(h, ctx, r, stored.code, stored.detail)
+                else finalReject(h, ctx, r, stored.code, stored.detail)
+            }
+        }
+    }
+
+    private data class Prior(val status: String, val code: String?, val hash: ByteArray, val serverId: Long?)
+
+    private fun code(wire: String?): RecordOutcomeCode? = wire?.let { w -> RecordOutcomeCode.entries.firstOrNull { it.wire == w } }
+
+    private fun touch(h: Handle, r: Rec) {
+        h.createUpdate("UPDATE app.ingest_registry SET last_seen_at = now(), seen_count = seen_count + 1 WHERE client_uuid = CAST(:c AS uuid)").bind("c", r.clientUuid).execute()
+    }
+
+    private fun register(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?) {
+        h.createUpdate(
+            """
+            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at)
+            VALUES (CAST(:c AS uuid), :t, :h, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now)
+            ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id,
+                last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1
+            WHERE app.ingest_registry.status = 'parked' AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
+            """.trimIndent(),
+        ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
+            .bind("s", status).bind("code", code?.wire).bind("sid", serverId).bind("bd", bd).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
+            .bind("b", ctx.batchUuid).bind("now", ts(ctx.now)).execute()
+        if (status == "accepted") {
+            h.createUpdate("UPDATE app.sync_rejected SET stored_at = :now WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :h AND stored_at IS NULL")
+                .bind("now", ts(ctx.now)).bind("c", r.clientUuid).bind("h", r.hash).execute()
+        }
+    }
+
+    private fun rejectedRow(h: Handle, ctx: Ctx, r: Rec, code: RecordOutcomeCode, detail: String?, retryable: Boolean) {
+        val bd = r.json.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        h.createUpdate(
+            """
+            INSERT INTO app.sync_rejected (client_uuid, record_type, code, retryable, payload_sha256, payload, detail, user_id, device_id, route_id, business_date, batch_uuid,
+                                           first_received_at, last_received_at, parked_until)
+            VALUES (CAST(:c AS uuid), :t, :code, :retry, :h, CAST(:p AS jsonb), :detail, :u, :d, :route, :bd, CAST(:b AS uuid), :now, :now, :until)
+            ON CONFLICT (client_uuid, payload_sha256) DO UPDATE SET attempts = app.sync_rejected.attempts + 1, last_received_at = EXCLUDED.last_received_at,
+                code = EXCLUDED.code, retryable = EXCLUDED.retryable, detail = EXCLUDED.detail, batch_uuid = EXCLUDED.batch_uuid,
+                parked_until = COALESCE(app.sync_rejected.parked_until, EXCLUDED.parked_until)
+            """.trimIndent(),
+        ).bind("c", r.clientUuid).bind("t", r.type.take(40).ifEmpty { "unknown" }).bind("code", code.wire).bind("retry", retryable).bind("h", r.hash)
+            .bind("p", r.json.toString()).bind("detail", detail?.take(1000)).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
+            .bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid).bind("now", ts(ctx.now))
+            .bind("until", if (retryable) ts(ctx.now.plusSeconds(ctx.parkedTtlDays * 86_400)) else null).execute()
+    }
+
+    private fun finalReject(h: Handle, ctx: Ctx, r: Rec, code: RecordOutcomeCode, detail: String?): Outcome {
+        rejectedRow(h, ctx, r, code, detail, retryable = false)
+        val bd = r.json.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        if (r.type.matches(TYPE_PATTERN)) register(h, ctx, r, bd, "rejected", code, null)
+        return Outcome.of(code)
+    }
+
+    /** A retryable rejection: kept in sync_rejected with parked_until; the registry says parked so a resend is processed again. */
+    private fun park(h: Handle, ctx: Ctx, r: Rec, code: RecordOutcomeCode, detail: String?): Outcome {
+        if (!UUID_V4.matches(r.clientUuid)) return Outcome.of(code)
+        rejectedRow(h, ctx, r, code, detail, retryable = true)
+        val bd = r.json.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        if (r.type.matches(TYPE_PATTERN)) register(h, ctx, r, bd, "parked", code, null)
+        return Outcome.of(code)
+    }
+
+    private fun quarantine(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String?, register: Boolean = true): Outcome {
+        h.createUpdate(
+            """
+            INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, detail, user_id, device_id, route_id, business_date, batch_uuid, received_at)
+            VALUES (CAST(:c AS uuid), :t, :code, :h, CAST(:p AS jsonb), :detail, :u, :d, :route, :bd, CAST(:b AS uuid), :now)
+            ON CONFLICT (client_uuid, payload_sha256) DO NOTHING
+            """.trimIndent(),
+        ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", r.json.toString()).bind("detail", detail?.take(1000))
+            .bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid)
+            .bind("now", ts(ctx.now)).execute()
+        if (register) register(h, ctx, r, bd, "quarantined", code, null)
+        return Outcome.of(code)
+    }
+
+    /** Envelope and payload members against the contract (required present, nothing unknown); null when the shape is fine. */
+    private fun shapeError(r: Rec): String? {
+        val env = r.json
+        val shape = PayloadShapes.BY_TYPE[r.type] ?: return "unknown type '${r.type.take(40)}'"
+        (env.keys - PayloadShapes.ENVELOPE.allowed).firstOrNull()?.let { return "unknown envelope member $it" }
+        (PayloadShapes.ENVELOPE.required + "payload" - env.keys).firstOrNull()?.let { return "missing envelope member $it" }
+        if (!UUID_V4.matches(r.clientUuid)) return "client_uuid is not a lower-case UUID v4"
+        if (!UUID_V4.matches(env.str("family_uuid") ?: "")) return "family_uuid is not a lower-case UUID v4"
+        val rank = env.int("rank")
+        if (rank == null || rank !in 0..3) return "rank must be 0..3"
+        val sv = env.int("schema_version")
+        if (sv == null || sv !in 1..ContractInfo.SCHEMA_VERSION) return "schema_version must be 1..${ContractInfo.SCHEMA_VERSION}"
+        val bd = env.str("business_date")
+        if (bd == null || !DATE.matches(bd) || runCatching { LocalDate.parse(bd) }.isFailure) return "business_date"
+        val ca = env.str("captured_at")
+        if (ca == null || runCatching { Instant.parse(ca) }.isFailure) return "captured_at"
+        for (k in listOf("route_id", "acting_for_user_id")) {
+            val v = env[k]
+            if (v != null && v !is JsonNull && (v !is JsonPrimitive || v.isString || (v.longOrNull ?: 0) < 1)) return "$k must be a positive integer"
+        }
+        val payload = env["payload"] as? JsonObject ?: return "payload must be an object"
+        (payload.keys - shape.allowed).firstOrNull()?.let { return "unknown payload member $it" }
+        (shape.required - payload.keys).firstOrNull()?.let { return "missing payload member $it" }
+        for ((k, nested) in shape.nested) {
+            val v = payload[k] ?: continue
+            if (v is JsonNull) continue
+            val o = v as? JsonObject ?: return "$k must be an object"
+            (o.keys - nested.allowed).firstOrNull()?.let { return "unknown member $k.$it" }
+            (nested.required - o.keys).firstOrNull()?.let { return "missing member $k.$it" }
+        }
+        for (k in listOf("outlet_id", "sku_id")) {
+            val v = payload[k] ?: continue
+            if (v !is JsonNull && (v !is JsonPrimitive || v.isString || (v.longOrNull ?: 0) < 1)) return "$k must be a positive integer"
+        }
+        return null
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Response sections
+
+    /** Per type accepted/rejected/quarantined of the user's date from the registry, and the money of the date (s4.12). */
+    private fun serverTotals(h: Handle, userId: Long, date: LocalDate, now: Instant): ServerTotals {
+        val byType = h.createQuery(
+            "SELECT record_type, status, count(*) FROM app.ingest_registry WHERE user_id = :u AND business_date = :d GROUP BY record_type, status",
+        ).bind("u", userId).bind("d", date).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getInt(3)) }.list()
+            .groupBy { it.first }.mapValues { (_, rows) ->
+                fun n(vararg s: String) = rows.filter { it.second in s }.sumOf { it.third }
+                TypeOutcomeCounts(accepted = n("accepted", "voided"), rejected = n("rejected", "parked"), quarantined = n("quarantined"))
+            }.toSortedMap()
+        return ServerTotals(date.toString(), now.wire(), byType, money(h, userId, date))
+    }
+
+    private fun money(h: Handle, userId: Long, date: LocalDate): MoneyTotals {
+        data class M(val count: Int, val gross: Long, val offer: Long, val drp: Long, val qc: Long, val net: Long, val paid: Long, val due: Long)
+        val m = h.createQuery(
+            """
+            SELECT count(*) FILTER (WHERE line_count > 0), COALESCE(sum(gross_mtk), 0), COALESCE(sum(offer_discount_mtk), 0), COALESCE(sum(drp_discount_mtk), 0),
+                   COALESCE(sum(qc_deduction_mtk), 0), COALESCE(sum(net_mtk), 0), COALESCE(sum(paid_mtk), 0), COALESCE(sum(due_mtk), 0)
+            FROM app.memo WHERE user_id = :u AND business_date = :d AND status = 'active' AND voided_at IS NULL
+            """.trimIndent(),
+        ).bind("u", userId).bind("d", date).map { rs, _ -> M(rs.getInt(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5), rs.getLong(6), rs.getLong(7), rs.getLong(8)) }.one()
+        val collected = h.createQuery("SELECT COALESCE(sum(amount_mtk), 0) FROM app.due_collection WHERE user_id = :u AND business_date = :d AND voided_at IS NULL")
+            .bind("u", userId).bind("d", date).mapTo(Long::class.java).one()
+        val byCategory = h.createQuery(
+            """
+            SELECT s.category_code, sum(l.gross_mtk) FROM app.memo_line l
+            JOIN app.memo m ON m.client_uuid = l.memo_client_uuid AND m.business_date = l.business_date
+            JOIN app.sku s ON s.id = l.sku_id
+            WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.voided_at IS NULL AND l.voided_at IS NULL
+            GROUP BY s.category_code ORDER BY s.category_code
+            """.trimIndent(),
+        ).bind("u", userId).bind("d", date).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
+        val sold = h.createQuery(
+            """
+            SELECT l.sku_id, sum(l.qty_base) FROM app.memo_line l
+            JOIN app.memo m ON m.client_uuid = l.memo_client_uuid AND m.business_date = l.business_date
+            WHERE m.user_id = :u AND m.business_date = :d AND m.status = 'active' AND m.voided_at IS NULL AND l.voided_at IS NULL
+            GROUP BY l.sku_id ORDER BY l.sku_id
+            """.trimIndent(),
+        ).bind("u", userId).bind("d", date).map { rs, _ -> rs.getLong(1).toString() to rs.getLong(2) }.list().toMap()
+        val issued = h.createQuery(
+            "SELECT sku_id, sum(qty_base) FROM app.stock_movement WHERE user_id = :u AND business_date = :d AND voided_at IS NULL GROUP BY sku_id ORDER BY sku_id",
+        ).bind("u", userId).bind("d", date).map { rs, _ -> rs.getLong(1).toString() to rs.getLong(2) }.list().toMap()
+        return MoneyTotals(m.count, m.gross, m.offer, m.drp, m.qc, m.net, m.paid, m.due, collected, byCategory, issued, sold)
+    }
+
+    private fun dayStates(h: Handle, userId: Long, dates: List<LocalDate>): List<RouteDayStateDto> = h.createQuery(
+        """
+        SELECT route_id, business_date, state, planned, submit_cycle, submit_voided, submit_count_mismatch, logged_in_at, sales_submitted_at, final_submitted_at
+        FROM app.route_day WHERE (assigned_user_id = :u OR acting_user_id = :u) AND business_date = ANY(CAST(:d AS date[])) ORDER BY business_date, route_id LIMIT 40
+        """.trimIndent(),
+    ).bind("u", userId).bindArray("d", String::class.java, dates.map { it.toString() }).map { rs, _ ->
+        fun t(c: String) = rs.getObject(c, OffsetDateTime::class.java)?.toInstant()?.wire()
+        RouteDayStateDto(
+            rs.getLong("route_id"), rs.getObject("business_date", LocalDate::class.java).toString(), rs.getString("state"), rs.getBoolean("planned"),
+            rs.getInt("submit_cycle"), rs.getBoolean("submit_voided"), rs.getObject("submit_count_mismatch") as Boolean?,
+            t("logged_in_at"), t("sales_submitted_at"), t("final_submitted_at"),
+        )
+    }.list()
+
+    /** Decisions on the user's quarantined records in the last 7 days (the phone applies each once, by client_uuid). */
+    private fun resolutions(h: Handle, userId: Long, now: Instant): List<Resolution> = h.createQuery(
+        """
+        SELECT client_uuid, record_type, status, resolved_at FROM app.sync_quarantine
+        WHERE user_id = :u AND status <> 'open' AND resolved_at > :since AND code <> 'payload_conflict' ORDER BY resolved_at DESC LIMIT 200
+        """.trimIndent(),
+    ).bind("u", userId).bind("since", ts(now.minusSeconds(7 * 86_400))).map { rs, _ ->
+        Resolution(rs.getString(1), rs.getString(2), rs.getString(3), rs.getObject(4, OffsetDateTime::class.java).toInstant().wire())
+    }.list()
+
+    companion object {
+        val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+        private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+        private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")
+
+        /** Table of a parent reference, for parents stored without a registry row (online commands, migrated history). */
+        private val PARENT_TABLES = mapOf(
+            "visit_client_uuid" to "visit", "origin_visit_client_uuid" to "visit", "source_visit_client_uuid" to "visit",
+            "memo_client_uuid" to "memo", "against_memo_client_uuid" to "memo", "supersedes_client_uuid" to "memo",
+            "task_uuid" to "task", "request_uuid" to "outlet_change_request",
+        )
+
+        fun sha256(b: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(b)
+        fun sha256Hex(b: ByteArray): String = sha256(b).joinToString("") { "%02x".format(it) }
+        fun ts(i: Instant): OffsetDateTime = OffsetDateTime.ofInstant(i, ZoneOffset.UTC)
+
+        fun gzip(b: ByteArray): ByteArray = ByteArrayOutputStream().also { o -> GZIPOutputStream(o).use { it.write(b) } }.toByteArray()
+        fun gunzip(b: ByteArray): ByteArray = GZIPInputStream(b.inputStream()).use { it.readBytes() }
+    }
+}
+
+internal fun JsonObject.str(k: String): String? = (this[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
+internal fun JsonObject.long(k: String): Long? = (this[k] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
+internal fun JsonObject.int(k: String): Int? = (this[k] as? JsonPrimitive)?.takeIf { !it.isString }?.intOrNull
+internal fun JsonObject.bool(k: String): Boolean? = (this[k] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
+internal fun JsonElement.isNullish(): Boolean = this is JsonNull

@@ -178,6 +178,15 @@ class N009ReviewTest {
     }
 
     @Test
+    fun aGzipBodyIsDecodedExactlyOnce() = run {
+        // The Compression plugin compresses responses only; a request body is gunzipped by receiveStrict alone.
+        val bos = ByteArrayOutputStream()
+        GZIPOutputStream(bos).use { it.write("""{"name":"gz","count":2}""".toByteArray()) }
+        val r = postEcho(bos.toByteArray(), gzip = true)
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+    }
+
+    @Test
     fun gzipBombIsCapped() = run {
         val bos = ByteArrayOutputStream()
         GZIPOutputStream(bos).use { gz -> gz.write("""{"name":"""".toByteArray()); gz.write(ByteArray(50 * 1024 * 1024) { 'a'.code.toByte() }); gz.write("\",\"count\":1}".toByteArray()) }
