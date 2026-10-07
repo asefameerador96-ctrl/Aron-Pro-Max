@@ -42,6 +42,9 @@ Updated 2026-10-07 22:55 UTC (sixth infra session).
   `aron-play-integrity-service-account` -> API-only env ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON; seeded from the
   optional GitHub secret PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON, else a one-space placeholder (API reads it as absent and
   decodes with the FCM account). Owner step first: Play Integrity API enabled on the FCM project and the app linked.
+- **Web job fix proven**: CI run 37695217707 (2fe687b9) green, Web job 4.8 min (browser 1 s from cache, e2e 3.3 min).
+- **pg_trgm allow-listed** (bb221dfe, db AUD-PERF-07): azure.extensions + PG_TRGM; db's migration must not reach INT
+  before it (db session_011K2gmzr1feSNNQxnqWkRt5 is inactive; the lead relays).
 - **Worker check is blocking now** (lane/infra, after its first green run): a failed check ends the deploy with `die`.
   The slice smoke itself stays non-blocking until the lead says otherwise.
 
