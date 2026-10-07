@@ -22,6 +22,7 @@ data class LoginRequest(
     override fun toString(): String = "LoginRequest(username=${username}, password=***, client=${client}, deviceUuid=${deviceUuid})"
 }
 
+/** For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15). */
 @Serializable
 data class LoginResponse(
     @SerialName("status") val status: String,
@@ -32,6 +33,7 @@ data class LoginResponse(
     @SerialName("upload_refresh_token") val uploadRefreshToken: String? = null,
     @SerialName("bind_token") val bindToken: String? = null,
     @SerialName("mfa_token") val mfaToken: String? = null,
+    @SerialName("password_change_token") val passwordChangeToken: String? = null,
     @SerialName("user") val user: UserSummary,
     @SerialName("scope") val scope: ScopeSummary? = null,
     @Serializable(with = LoginDeviceWire::class) @SerialName("device") val device: LoginDevice? = null,
@@ -39,7 +41,7 @@ data class LoginResponse(
     @SerialName("server_time") val serverTime: String,
     @SerialName("min_app_version_code") val minAppVersionCode: Int? = null,
 ) {
-    override fun toString(): String = "LoginResponse(status=${status}, accessToken=***, accessExpiresAt=${accessExpiresAt}, refreshToken=***, refreshExpiresAt=${refreshExpiresAt}, uploadRefreshToken=***, bindToken=***, mfaToken=***, user=${user}, scope=${scope}, device=${device}, configVersion=${configVersion}, serverTime=${serverTime}, minAppVersionCode=${minAppVersionCode})"
+    override fun toString(): String = "LoginResponse(status=${status}, accessToken=***, accessExpiresAt=${accessExpiresAt}, refreshToken=***, refreshExpiresAt=${refreshExpiresAt}, uploadRefreshToken=***, bindToken=***, mfaToken=***, passwordChangeToken=***, user=${user}, scope=${scope}, device=${device}, configVersion=${configVersion}, serverTime=${serverTime}, minAppVersionCode=${minAppVersionCode})"
 }
 
 @Serializable
@@ -162,6 +164,7 @@ data class Route(
     @SerialName("visit_days_mask") val visitDaysMask: Int,
     @SerialName("sequence_no") val sequenceNo: Int? = null,
     @SerialName("status") val status: String,
+    @SerialName("assignees") val assignees: List<JsonObject>? = null,
 )
 
 /** Per-route section of the bundle; replaced as a whole when the route is added to the user. */

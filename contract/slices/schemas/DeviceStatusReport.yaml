@@ -130,6 +130,30 @@ DeviceStatusReport:
       oneOf:
       - $ref: '#/components/schemas/PlayIntegrityEvidence'
       - type: 'null'
+    play_integrity_unavailable:
+      description: Why `play_integrity` is null. When the phone tried Play Integrity exactly one of `play_integrity`
+        and `play_integrity_unavailable` is non-null.
+      oneOf:
+      - $ref: '#/components/schemas/PlayIntegrityUnavailable'
+      - type: 'null'
+    root_hints:
+      type: array
+      maxItems: 16
+      description: Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence;
+        they never block a sale alone (docs/05).
+      items:
+        type: string
+        enum:
+        - su_binary
+        - test_keys
+        - ro_debuggable
+        - ro_secure_off
+        - root_app
+        - hook_framework
+        - root_mount
+        - clone_app_installed
+        - secondary_user
+        - foreign_data_dir
     pending_rows:
       type: integer
       minimum: 0
