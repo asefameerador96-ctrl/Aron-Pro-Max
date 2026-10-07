@@ -108,7 +108,13 @@ class DeviceStatusReporter(
      * for the next background run. One run at a time per phone, so two workers never ask Play twice.
      */
     suspend fun beforeBatch(db: AronDatabase, allowEvidence: Boolean = true): String? = try {
-        lock.withLock { report(db, allowEvidence) }
+        // A waited-for run (Sales Submit, Sync button, check-out) never queues behind a background run inside Play: when
+        // the lock is held it skips; that run's report rides the next batch anyway.
+        if (allowEvidence) lock.withLock { report(db, true) } else if (lock.tryLock()) {
+            try { report(db, false) } finally { lock.unlock() }
+        } else {
+            null
+        }
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {

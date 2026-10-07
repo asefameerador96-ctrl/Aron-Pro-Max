@@ -95,6 +95,10 @@ abstract class OutboxDao {
     @Query("SELECT record_type AS recordType, COUNT(*) AS count FROM outbox WHERE business_date = :businessDate AND state IN ('pending', 'in_flight') GROUP BY record_type ORDER BY record_type")
     abstract suspend fun unsentCounts(businessDate: String): List<TypeCount>
 
+    /** Rows the server refused or holds for review: stored only in its sync_rejected / sync_quarantine, never in the day's tables. */
+    @Query("SELECT client_uuid FROM outbox WHERE state IN ('rejected', 'quarantined')")
+    abstract suspend fun refusedUuids(): List<String>
+
     /** When the server last answered a row of this type and date (null when none is answered). */
     @Query("SELECT MAX(acked_at) FROM outbox WHERE business_date = :businessDate AND record_type = :recordType AND acked_at IS NOT NULL")
     abstract suspend fun lastAckedAt(businessDate: String, recordType: String): String?

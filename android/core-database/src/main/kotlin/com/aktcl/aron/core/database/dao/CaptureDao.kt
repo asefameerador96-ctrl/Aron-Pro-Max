@@ -99,6 +99,10 @@ interface CaptureDao {
     @Query("SELECT * FROM memo WHERE business_date = :businessDate ORDER BY committed_at")
     suspend fun memosOn(businessDate: String): List<MemoEntity>
 
+    /** Every memo line of a business date in one query (reconciliation money, F-SYS-009). */
+    @Query("SELECT * FROM memo_line WHERE business_date = :businessDate")
+    suspend fun linesOn(businessDate: String): List<MemoLineEntity>
+
     @Query("SELECT * FROM memo_line WHERE memo_client_uuid = :memoClientUuid ORDER BY line_no")
     suspend fun linesOf(memoClientUuid: String): List<MemoLineEntity>
 

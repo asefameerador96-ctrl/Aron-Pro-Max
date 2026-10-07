@@ -94,10 +94,11 @@ class ReconciliationTest {
         assertNull(r.money.matches)
     }
 
-    private suspend fun answer(byType: String, money: JsonObject, asOf: String = "2026-10-05T05:30:00.000Z") {
+    private suspend fun answer(byType: String, money: JsonObject, asOf: String = "2026-10-05T05:30:00.000Z", receivedAt: String = asOf) {
         val totals = """{"business_date":"$date","as_of":"$asOf","by_type":$byType,"money":$money}"""
         Json.decodeFromString(ServerTotals.serializer(), totals) // the stored text is a contract ServerTotals
         db.referenceDao().putMeta(SyncMetaEntity(ReconciliationRepository.KEY_SERVER_TOTALS + date, totals))
+        db.referenceDao().putMeta(SyncMetaEntity(ReconciliationRepository.KEY_SERVER_TOTALS_AT + date, receivedAt))
     }
 
     private suspend fun ackAll(at: String) {
@@ -125,11 +126,12 @@ class ReconciliationTest {
         val r = recon.reconcile(date, "SR")
         fun row(k: String) = r.rows.first { it.key == k }
         assertEquals(ReconReason.SERVER_HAS_MORE, row("outlet").reason)
-        // Answered at 05:40, after the server's 05:30 figures: the next sync refreshes them.
+        // Answered at 05:40 (a replayed answer), after the figures received at 05:30: the next sync refreshes them.
         assertEquals(ReconReason.AWAITING_SERVER, row("sale").reason)
         assertEquals(1, row("sale").awaited)
         assertEquals(false, r.money.matches)
         assertEquals(listOf("net_mtk"), r.money.differingMembers)
+        assertEquals(ReconReason.AWAITING_SERVER, r.money.reason)
         answer("""{"visit":{"accepted":1,"rejected":0,"quarantined":0},"memo":{"accepted":1,"rejected":0,"quarantined":0}}""", money(), asOf = "2026-10-05T06:00:00.000Z")
         assertEquals(ReconReason.SERVER_HAS_FEWER, recon.reconcile(date, "SR").rows.first { it.key == "sale" }.reason)
     }
@@ -143,5 +145,56 @@ class ReconciliationTest {
         assertEquals(ReconciliationRepository.SR_DEFAULT, ReconciliationRepository.rowTypes(null, "SR"))
         assertEquals(emptyList<Pair<String, List<String>>>(), ReconciliationRepository.rowTypes("garbage", "AMO"))
         assertFalse(ReconciliationRepository.rowTypes("""{"SR.x":["memo"]}""", "SRX").isNotEmpty())
+    }
+
+    // ---- checker round 1 (F-SYS-009)
+
+    /** Defect 1: the server sums every active memo; only the count needs lines. */
+    @Test
+    fun aZeroLineMemoWithQcIsSummedLikeTheServer() = runBlocking {
+        val (visit, fix) = TestRows.visit(outletId = 50002, seq = 2)
+        repo.recordVisitOpen(visit, fix)
+        val s = TestRows.sale(visit.clientUuid, memoNo = "sr334001-261005-019")
+        repo.recordSale(s.copy(memo = s.memo.copy(outletId = 50002, memoKind = "zero_sale", grossMtk = 0, offerDiscountMtk = 0, qcDeductionMtk = 18_000,
+            netMtk = -18_000, paidMtk = 0, dueMtk = -18_000, lineCount = 0, discountLineCount = 0), lines = emptyList(), discounts = emptyList()))
+        val m = money()
+        assertEquals(1L, m["active_memo_count"]!!.jsonPrimitive.long) // the earlier edited sale only
+        assertEquals(36_000L, m["qc_deduction_mtk"]!!.jsonPrimitive.long)
+        assertEquals(192_000L - 18_000L, m["net_mtk"]!!.jsonPrimitive.long)
+    }
+
+    /** Defect 2: refused or quarantined rows are not in the server's tables, and a refused edit retires nothing. */
+    @Test
+    fun refusedRowsAreNotInDeviceMoney() = runBlocking {
+        val editUuid = db.captureDao().memosOn(date).single { it.supersedesClientUuid != null }.clientUuid
+        db.outboxDao().nextPending(100).filter { it.clientUuid == editUuid }.forEach {
+            db.outboxDao().applyAck(it.clientUuid, OutboxState.REJECTED, "edit_not_allowed", null, "2026-10-05T05:20:00.000Z")
+        }
+        val m = money()
+        assertEquals(1L, m["active_memo_count"]!!.jsonPrimitive.long) // the original is active again
+        assertEquals(217_500L, m["gross_mtk"]!!.jsonPrimitive.long)
+        val stock = db.captureDao().stockOn(date).first { it.skuId == 103L }
+        db.outboxDao().applyAck(stock.clientUuid, OutboxState.QUARANTINED, "arithmetic_mismatch", null, "2026-10-05T05:20:00.000Z")
+        assertTrue("103" !in money()["issued_qty_base_by_sku"]!!.jsonObject)
+    }
+
+    /** Defect 4: a shortfall in the very batch that brought the figures is the server's, not "awaiting". */
+    @Test
+    fun aShortfallInTheBatchThatCarriedTheTotalsIsNotAwaiting() = runBlocking {
+        ackAll("2026-10-05T05:30:00.400Z")
+        answer("""{"memo":{"accepted":1,"rejected":0,"quarantined":0}}""", money(), asOf = "2026-10-05T05:30:00.000Z", receivedAt = "2026-10-05T05:30:00.400Z")
+        val r = recon.reconcile(date, "SR")
+        assertEquals(ReconReason.SERVER_HAS_FEWER, r.rows.first { it.key == "sale" }.reason)
+        assertEquals(true, r.money.matches)
+        assertNull(r.money.reason)
+    }
+
+    /** Defect 3: a money mismatch carries a reason; before the first answer unsent money rows say so. */
+    @Test
+    fun aMoneyMismatchCarriesAReason() = runBlocking {
+        assertEquals(ReconReason.NOT_SENT, recon.reconcile(date, "SR").money.reason)
+        ackAll("2026-10-05T05:30:00.400Z")
+        answer("""{}""", JsonObject(money() + ("gross_mtk" to JsonPrimitive(1))), receivedAt = "2026-10-05T05:30:00.400Z")
+        assertEquals(ReconReason.SERVER_HAS_FEWER, recon.reconcile(date, "SR").money.reason)
     }
 }

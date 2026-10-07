@@ -343,6 +343,9 @@ class SyncEngine(
                     r.bundleVersionCurrent?.let { meta.putMeta(SyncMetaEntity(KEY_BUNDLE_CURRENT, it)) }
                     for (totals in r.serverTotals) {
                         meta.putMeta(SyncMetaEntity(KEY_SERVER_TOTALS + totals.businessDate, WireJson.requests.encodeToString(ServerTotals.serializer(), totals)))
+                        // Phone time of this answer, the same `now` its acks carry: reconciliation tells rows answered
+                        // later (the figures are older than them) from a real shortfall without comparing two clocks.
+                        meta.putMeta(SyncMetaEntity(com.aktcl.aron.core.database.repo.ReconciliationRepository.KEY_SERVER_TOTALS_AT + totals.businessDate, now))
                     }
                     meta.putMeta(SyncMetaEntity(KEY_DAY_STATES, WireJson.requests.encodeToString(ListSerializer(RouteDayState.serializer()), r.dayStates)))
                 }

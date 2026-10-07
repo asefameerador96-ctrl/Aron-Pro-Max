@@ -237,4 +237,35 @@ class DeviceStatusReporterTest {
         assertEquals(false, config.isWorkingDay("2026-10-09"))
         assertEquals(true, config.isWorkingDay("2026-10-07"))
     }
+
+    /** Checker round 2 (defect 6): as the server's DayPlan, the most specific scope decides and an off-day wins at equal scope. */
+    @Test
+    fun emergencyOffInTheZoneBeatsAGlobalOrZoneMakeUpDay() {
+        val c = DayConfig.Calendar.parse(
+            """{"weekend_days":[5],"entries":[
+              {"id":1,"date":"2026-10-09","scope_type":"global","scope_id":0,"kind":"makeup_day","selling_day":true,"name_en":"m"},
+              {"id":2,"date":"2026-10-11","scope_type":"zone","scope_id":7,"kind":"makeup_day","selling_day":true,"name_en":"m"},
+              {"id":5,"date":"2026-10-12","scope_type":"global","scope_id":0,"kind":"holiday","selling_day":false,"name_en":"h"},
+              {"id":6,"date":"2026-10-12","scope_type":"zone","scope_id":7,"kind":"makeup_day","selling_day":true,"name_en":"m"}]}""",
+            """[{"id":3,"date":"2026-10-09","scope_type":"zone","scope_id":7,"kind":"emergency_off","selling_day":false,"name_en":"hartal"},
+               {"id":4,"date":"2026-10-11","scope_type":"zone","scope_id":7,"kind":"emergency_off","selling_day":false,"name_en":"hartal"}]""",
+        )
+        assertEquals(false, c.isWorkingDay("2026-10-09"))
+        assertEquals(false, c.isWorkingDay("2026-10-11"))
+        assertEquals(true, c.isWorkingDay("2026-10-12")) // a zone make-up day beats a global holiday
+    }
+
+    /** Checker round 2 (defect 5): Sales Submit never waits behind a background run that is inside Play Integrity. */
+    @Test
+    fun daySubmitDoesNotWaitForABackgroundRunsEvidence() = runBlocking {
+        val inPlay = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val r = DeviceStatusReporter({ facts }, { signals }, tracker, { inPlay.complete(Unit); kotlinx.coroutines.delay(3_000); evidence }, state, clock, "1")
+        val background = async(kotlinx.coroutines.Dispatchers.Default) { r.beforeBatch(db, allowEvidence = true) }
+        inPlay.await()
+        val t0 = System.nanoTime()
+        r.beforeBatch(db, allowEvidence = false)
+        val waitedMs = (System.nanoTime() - t0) / 1_000_000
+        background.await()
+        assertTrue("Sales Submit waited $waitedMs ms", waitedMs < 500)
+    }
 }

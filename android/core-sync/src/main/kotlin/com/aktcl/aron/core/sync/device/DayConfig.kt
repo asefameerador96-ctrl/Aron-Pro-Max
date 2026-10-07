@@ -41,36 +41,44 @@ class DayConfig {
     }
 
     /**
-     * Contract `CalendarSection` plus the delta's `calendar_changes`, decided as the server's `app.is_working_day`: a dated
-     * entry that is a selling day wins (a make-up day beats a weekend and an off-day), any other dated entry makes the day
-     * off, otherwise the weekend days are off. Null when the phone has no calendar yet (the DPC then treats the day as
-     * working: the rep checked in).
+     * Contract `CalendarSection` plus the delta's `calendar_changes`, decided as the server's `DayPlan.isSellingDay`
+     * (backend/platform): among the dated entries the most specific scope decides (zone over territory over division over
+     * wing over global), and at equal scope an off-day wins over a make-up day; with no dated entry the weekend days are off.
+     * The bundle carries only the entries of the user's own zones. Null when the phone has no calendar yet (the DPC then
+     * treats the day as working: the rep checked in).
      */
     fun isWorkingDay(businessDate: String): Boolean? = calendar?.isWorkingDay(businessDate)
 
-    internal class Calendar(private val weekendDays: Set<Int>, private val sellingByDate: Map<String, List<Boolean>>) {
+    internal data class Entry(val date: String, val specificity: Int, val sellingDay: Boolean)
+
+    internal class Calendar(private val weekendDays: Set<Int>, private val byDate: Map<String, List<Entry>>) {
         fun isWorkingDay(date: String): Boolean? {
             val day = runCatching { LocalDate.parse(date) }.getOrNull() ?: return null
-            val dated = sellingByDate[date].orEmpty()
-            if (dated.any { it }) return true
-            if (dated.isNotEmpty()) return false
+            val dated = byDate[date].orEmpty()
+            if (dated.isNotEmpty()) {
+                val top = dated.maxOf { it.specificity }
+                return dated.filter { it.specificity == top }.all { it.sellingDay }
+            }
             return day.dayOfWeek.value !in weekendDays
         }
 
         companion object {
+            private val SPECIFICITY = mapOf("global" to 0, "wing" to 1, "division" to 2, "territory" to 3, "zone" to 4)
+
             fun parse(text: String, changes: String? = null): Calendar {
                 val o = Json.parseToJsonElement(text).jsonObject
                 val weekend = o["weekend_days"]?.jsonArray?.map { it.jsonPrimitive.int }?.toSet() ?: setOf(5)
                 val changed = changes?.let { runCatching { Json.parseToJsonElement(it).jsonArray }.getOrNull() }.orEmpty()
                 // Keyed by holiday id: a later change of the same holiday replaces the earlier version.
-                val byId = LinkedHashMap<String, Pair<String, Boolean>>()
+                val byId = LinkedHashMap<String, Entry>()
                 (o["entries"]?.jsonArray.orEmpty() + changed).forEachIndexed { i, e ->
                     val m = e as? kotlinx.serialization.json.JsonObject ?: return@forEachIndexed
                     val date = m["date"]?.jsonPrimitive?.contentOrNull ?: return@forEachIndexed
                     val id = m["id"]?.jsonPrimitive?.contentOrNull ?: "#$i"
-                    byId[id] = date to (m["selling_day"]?.jsonPrimitive?.booleanOrNull ?: false)
+                    val scope = SPECIFICITY[m["scope_type"]?.jsonPrimitive?.contentOrNull] ?: 0
+                    byId[id] = Entry(date, scope, m["selling_day"]?.jsonPrimitive?.booleanOrNull ?: false)
                 }
-                return Calendar(weekend, byId.values.groupBy({ it.first }, { it.second }))
+                return Calendar(weekend, byId.values.groupBy { it.date })
             }
         }
     }
