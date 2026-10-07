@@ -1,0 +1,43 @@
+path: /v1/admin/config/changes
+method: post
+operation:
+  tags:
+  - admin-config
+  operationId: createConfigChange
+  summary: Write one or more scoped values with a mandatory reason; C3 changes wait for a second approver.
+  description: Applied at once (status `applied`) for risk class 0 to 2 (C2 after `cfg.sys.c2_delay_min`, status
+    `scheduled`), or `pending_approval` for C3. Validated against type, bounds, scope levels and the dependency
+    rules (docs/24 s9).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ConfigChangeRequest'
+        examples:
+          radiusZone:
+            summary: Widen the geofence radius for one dense zone
+            value:
+              reason: Dense market at Gulshan-1; 80 percent of outlets share a 55 m cell (docs/22 P-10).
+              changes:
+              - key: cfg.geo.radius_m
+                scope_type: zone
+                scope_id: 5012
+                value: 150
+                effective_from: null
+                effective_to: null
+  responses:
+    '201':
+      description: Change created (applied, scheduled or pending approval).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigChange'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

@@ -1,0 +1,43 @@
+TutorialItem:
+  type: object
+  required:
+  - tutorial_id
+  - kind
+  - title_en
+  - url
+  - sort
+  additionalProperties: false
+  properties:
+    tutorial_id:
+      $ref: '#/components/schemas/Id'
+    kind:
+      type: string
+      enum:
+      - video
+      - manual
+    title_en:
+      type: string
+      maxLength: 120
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    url:
+      type: string
+      format: uri
+      maxLength: 1000
+    bytes:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    duration_s:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 7200
+    sort:
+      type: integer
+      minimum: 0

@@ -1,0 +1,34 @@
+path: /v1/admin/devices
+method: get
+operation:
+  tags:
+  - admin-devices
+  operationId: listDevices
+  summary: Device fleet with enrolment, trust, policy and last contact.
+  parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/DeviceState'
+  - name: trust_level
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/TrustLevel'
+  - $ref: '#/components/parameters/FlavourQueryOptional'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of devices.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DevicePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

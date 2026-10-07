@@ -1,0 +1,64 @@
+QuarantineItem:
+  type: object
+  required:
+  - quarantine_id
+  - client_uuid
+  - type
+  - code
+  - status
+  - user_id
+  - business_date
+  - received_at
+  - payload
+  additionalProperties: false
+  properties:
+    quarantine_id:
+      $ref: '#/components/schemas/Id'
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    type:
+      $ref: '#/components/schemas/RecordType'
+    code:
+      $ref: '#/components/schemas/RecordOutcomeCode'
+    status:
+      $ref: '#/components/schemas/QuarantineStatus'
+    user_id:
+      $ref: '#/components/schemas/Id'
+    device_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    received_at:
+      $ref: '#/components/schemas/Timestamp'
+    payload:
+      $ref: '#/components/schemas/SyncRecord'
+    detail:
+      type:
+      - string
+      - 'null'
+      maxLength: 1000
+    resolved_by_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    resolved_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    resolution_note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

@@ -1,0 +1,7 @@
+TargetRevisionStatus:
+  type: string
+  enum:
+  - pending_approval
+  - approved
+  - rejected
+  - superseded

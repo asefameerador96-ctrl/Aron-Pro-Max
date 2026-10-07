@@ -1,0 +1,35 @@
+RecordAck:
+  type: object
+  required:
+  - client_uuid
+  - type
+  - status
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    type:
+      $ref: '#/components/schemas/RecordType'
+    status:
+      $ref: '#/components/schemas/AckStatus'
+    code:
+      description: Present when status is rejected or quarantined.
+      oneOf:
+      - $ref: '#/components/schemas/RecordOutcomeCode'
+      - type: 'null'
+    retryable:
+      type:
+      - boolean
+      - 'null'
+      description: Present when status is rejected.
+    message_key:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z0-9_.]{3,80}$
+    server_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1

@@ -1,0 +1,22 @@
+path: /v1/admin/rubrics
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: listRubrics
+  summary: Assessment rubrics (joint-call stars, TSO visit query).
+  parameters:
+  - $ref: '#/components/parameters/StatusQuery'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of rubrics.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RubricPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

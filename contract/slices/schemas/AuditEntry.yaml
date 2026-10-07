@@ -1,0 +1,71 @@
+AuditEntry:
+  type: object
+  required:
+  - id
+  - at
+  - actor_user_id
+  - via
+  - entity
+  - entity_id
+  - action
+  - row_hash
+  additionalProperties: false
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    at:
+      $ref: '#/components/schemas/Timestamp'
+    actor_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    actor_username:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    actor_role:
+      oneOf:
+      - $ref: '#/components/schemas/Role'
+      - type: 'null'
+    via:
+      type: string
+      enum:
+      - web
+      - api
+      - job
+      - device
+    entity:
+      type: string
+      maxLength: 40
+    entity_id:
+      type: string
+      maxLength: 64
+    action:
+      type: string
+      maxLength: 60
+    before:
+      type:
+      - object
+      - 'null'
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    after:
+      type:
+      - object
+      - 'null'
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    reason:
+      type:
+      - string
+      - 'null'
+      maxLength: 500
+    request_id:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    row_hash:
+      $ref: '#/components/schemas/Sha256Hex'

@@ -1,0 +1,20 @@
+path: /v1/app/home
+method: get
+operation:
+  tags:
+  - app
+  operationId: getAppHome
+  summary: Role-scoped KPI snapshot for the AMO and TSO app home screens (explicit open, never a timer).
+  parameters:
+  - $ref: '#/components/parameters/BusinessDateQuery'
+  responses:
+    '200':
+      description: Snapshot with an as-of stamp.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppHome'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

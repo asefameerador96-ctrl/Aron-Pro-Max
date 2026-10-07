@@ -1,0 +1,13 @@
+RedemptionRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: redemption
+      payload:
+        $ref: '#/components/schemas/RedemptionPayload'
+  unevaluatedProperties: false

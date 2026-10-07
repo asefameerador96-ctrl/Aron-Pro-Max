@@ -1,0 +1,47 @@
+DayException:
+  type: object
+  required:
+  - exception_uuid
+  - raised_by_user_id
+  - reason_code
+  - route_ids
+  - from_date
+  - to_date
+  - status
+  - raised_at
+  additionalProperties: false
+  properties:
+    exception_uuid:
+      $ref: '#/components/schemas/Uuid'
+    raised_by_user_id:
+      $ref: '#/components/schemas/Id'
+    reason_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    route_ids:
+      type: array
+      items:
+        $ref: '#/components/schemas/Id'
+    from_date:
+      $ref: '#/components/schemas/BusinessDate'
+    to_date:
+      $ref: '#/components/schemas/BusinessDate'
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500
+    status:
+      $ref: '#/components/schemas/DecisionStatus'
+    raised_at:
+      $ref: '#/components/schemas/Timestamp'
+    decided_by_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    decided_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

@@ -1,0 +1,26 @@
+MemoVoidPayload:
+  type: object
+  required:
+  - memo_client_uuid
+  - memo_no
+  - reason_code
+  - fix
+  - retailer_ack
+  additionalProperties: false
+  properties:
+    memo_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    memo_no:
+      $ref: '#/components/schemas/MemoNo'
+    reason_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    fix:
+      $ref: '#/components/schemas/GeoFix'
+    retailer_ack:
+      type: boolean
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

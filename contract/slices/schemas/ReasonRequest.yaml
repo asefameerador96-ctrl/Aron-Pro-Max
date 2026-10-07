@@ -1,0 +1,8 @@
+ReasonRequest:
+  type: object
+  required:
+  - reason
+  additionalProperties: false
+  properties:
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

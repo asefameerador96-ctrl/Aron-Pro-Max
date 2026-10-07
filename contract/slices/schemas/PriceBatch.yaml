@@ -1,0 +1,32 @@
+PriceBatch:
+  type: object
+  required:
+  - batch_uuid
+  - status
+  - valid_from
+  - rows
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    status:
+      type: string
+      enum:
+      - pending_approval
+      - published
+      - rejected
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    rows:
+      type: integer
+      minimum: 0
+    decided_by_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    decided_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

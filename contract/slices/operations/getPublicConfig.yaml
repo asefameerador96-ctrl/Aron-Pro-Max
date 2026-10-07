@@ -1,0 +1,20 @@
+path: /v1/config/public
+method: get
+operation:
+  tags:
+  - health
+  operationId: getPublicConfig
+  summary: Unauthenticated values the login screen needs (minimum versions, banner, helpdesk).
+  description: Cached at Front Door for 60 s. Never contains a secret or personal data.
+  security: []
+  responses:
+    '200':
+      description: Public configuration.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublicConfig'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

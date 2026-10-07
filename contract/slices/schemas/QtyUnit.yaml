@@ -1,0 +1,9 @@
+QtyUnit:
+  type: string
+  enum:
+  - stick
+  - piece
+  - dozen
+  - pack
+  description: Base units are stick, piece, dozen; `pack` exists only as an entry unit (qty_base = qty_entered x
+    pack_factor).

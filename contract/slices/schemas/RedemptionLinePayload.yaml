@@ -1,0 +1,28 @@
+RedemptionLinePayload:
+  type: object
+  required:
+  - redemption_client_uuid
+  - gift_id
+  - qty
+  - points_each
+  - points_total
+  additionalProperties: false
+  properties:
+    redemption_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    gift_id:
+      $ref: '#/components/schemas/Id'
+    qty:
+      type: integer
+      minimum: 1
+      maximum: 50
+    points_each:
+      type: integer
+      minimum: 1
+      maximum: 100000
+      description: Gift cost in the bundle at capture.
+    points_total:
+      type: integer
+      minimum: 1
+      maximum: 1000000
+      description: qty x points_each.

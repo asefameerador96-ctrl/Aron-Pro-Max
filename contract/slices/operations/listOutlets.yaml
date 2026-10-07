@@ -1,0 +1,39 @@
+path: /v1/admin/outlets
+method: get
+operation:
+  tags:
+  - admin-outlets
+  operationId: listOutlets
+  summary: Outlets in reach (PII columns only with the pii claim).
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - name: route_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: cluster_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/OutletStatus'
+  - $ref: '#/components/parameters/UpdatedSince'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of outlets.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OutletPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

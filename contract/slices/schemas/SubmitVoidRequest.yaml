@@ -1,0 +1,27 @@
+SubmitVoidRequest:
+  type: object
+  required:
+  - route_id
+  - business_date
+  - reason_code
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    reason_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500
+    confirmer_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: The zone TSO confirming a SUPPORT-initiated void.

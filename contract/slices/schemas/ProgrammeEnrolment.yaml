@@ -1,0 +1,34 @@
+ProgrammeEnrolment:
+  type: object
+  required:
+  - programme_id
+  - outlet_id
+  - valid_from
+  additionalProperties: false
+  properties:
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    league_label:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+      description: Diamond League label shown on Outlet Points.
+    tier_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: Astha tier (sub-channel) or Superstar slab.
+    base_target:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'

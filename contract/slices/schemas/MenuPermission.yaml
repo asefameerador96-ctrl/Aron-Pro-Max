@@ -1,0 +1,22 @@
+MenuPermission:
+  type: object
+  required:
+  - menu_id
+  - actions
+  additionalProperties: false
+  properties:
+    menu_id:
+      type: string
+      pattern: ^[a-z][a-z0-9_.]{1,60}$
+    actions:
+      type: array
+      maxItems: 10
+      items:
+        type: string
+        enum:
+        - view
+        - create
+        - edit
+        - approve
+        - export
+        - void

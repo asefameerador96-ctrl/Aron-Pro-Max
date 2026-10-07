@@ -1,0 +1,68 @@
+TargetRevision:
+  type: object
+  required:
+  - revision_id
+  - batch_uuid
+  - month
+  - status
+  - level
+  - rows
+  - created_by_user_id
+  - created_at
+  additionalProperties: false
+  properties:
+    revision_id:
+      $ref: '#/components/schemas/Id'
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    month:
+      $ref: '#/components/schemas/Month'
+    status:
+      $ref: '#/components/schemas/TargetRevisionStatus'
+    level:
+      type: integer
+      minimum: 1
+      maximum: 5
+      description: Approval level reached (cfg.target.approval_levels).
+    rows:
+      type: integer
+      minimum: 0
+    scope_summary:
+      type:
+      - string
+      - 'null'
+      maxLength: 200
+    created_by_user_id:
+      $ref: '#/components/schemas/Id'
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    decisions:
+      type: array
+      maxItems: 5
+      items:
+        type: object
+        required:
+        - level
+        - decision
+        - user_id
+        - at
+        additionalProperties: false
+        properties:
+          level:
+            type: integer
+            minimum: 1
+            maximum: 5
+          decision:
+            type: string
+            enum:
+            - approve
+            - reject
+          user_id:
+            $ref: '#/components/schemas/Id'
+          at:
+            $ref: '#/components/schemas/Timestamp'
+          note:
+            type:
+            - string
+            - 'null'
+            maxLength: 500

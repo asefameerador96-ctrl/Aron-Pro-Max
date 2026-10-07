@@ -1,0 +1,29 @@
+path: /v1/config/delta
+method: get
+operation:
+  tags:
+  - config
+  operationId: getConfigDelta
+  summary: Resolved config changes for the caller's scope chain since a version.
+  description: Called when a response's `X-Config-Version` is newer than the applied one, on foreground resume (at
+    most every `cfg.sync.config_check_min_gap_min`) and on opening a visit. 304 when nothing relevant changed.
+  parameters:
+  - $ref: '#/components/parameters/XDeviceId'
+  - name: since
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+  responses:
+    '200':
+      description: Changes to apply in one local transaction.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigDelta'
+    '304':
+      $ref: '#/components/responses/NotModified'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '410':
+      $ref: '#/components/responses/Gone'

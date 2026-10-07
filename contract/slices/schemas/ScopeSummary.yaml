@@ -1,0 +1,16 @@
+ScopeSummary:
+  type: object
+  required:
+  - scope_version
+  - nodes
+  additionalProperties: false
+  properties:
+    scope_version:
+      type: integer
+      minimum: 0
+    nodes:
+      type: array
+      maxItems: 16
+      description: Top reach nodes (the server expands reach itself; the client never sends scope).
+      items:
+        $ref: '#/components/schemas/NodeRef'

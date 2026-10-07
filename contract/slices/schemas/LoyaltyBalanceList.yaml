@@ -1,0 +1,14 @@
+LoyaltyBalanceList:
+  type: object
+  required:
+  - as_of
+  - items
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    items:
+      type: array
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/LoyaltyBalance'

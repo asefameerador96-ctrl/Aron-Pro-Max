@@ -1,0 +1,35 @@
+ClientErrorReport:
+  type: object
+  required:
+  - error_uuid
+  - source
+  - occurred_at
+  - message
+  additionalProperties: false
+  properties:
+    error_uuid:
+      $ref: '#/components/schemas/Uuid'
+    source:
+      type: string
+      enum:
+      - web
+    occurred_at:
+      $ref: '#/components/schemas/Timestamp'
+    page:
+      type:
+      - string
+      - 'null'
+      maxLength: 200
+    message:
+      type: string
+      maxLength: 500
+    stack:
+      type:
+      - string
+      - 'null'
+      maxLength: 16000
+    build:
+      type:
+      - string
+      - 'null'
+      maxLength: 40

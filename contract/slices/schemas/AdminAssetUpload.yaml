@@ -1,0 +1,20 @@
+AdminAssetUpload:
+  type: object
+  required:
+  - asset_id
+  - upload_url
+  - blob_path
+  - expires_at
+  additionalProperties: false
+  properties:
+    asset_id:
+      $ref: '#/components/schemas/Uuid'
+    upload_url:
+      type: string
+      format: uri
+      maxLength: 2000
+    blob_path:
+      type: string
+      maxLength: 300
+    expires_at:
+      $ref: '#/components/schemas/Timestamp'

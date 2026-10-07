@@ -1,0 +1,37 @@
+path: /v1/admin/prices/batches/{batch_uuid}/decision
+method: post
+operation:
+  tags:
+  - admin-products
+  operationId: decidePriceBatch
+  summary: Second-approver decision on a price batch that moves a price by more than cfg.price.max_change_pct.
+  parameters:
+  - name: batch_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+    description: The publish batch.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DecisionRequest'
+  responses:
+    '200':
+      description: Decided; on approval the prices become effective from their date.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PriceBatch'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

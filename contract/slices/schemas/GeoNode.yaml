@@ -1,0 +1,58 @@
+GeoNode:
+  allOf:
+  - $ref: '#/components/schemas/MasterAudit'
+  - type: object
+    required:
+    - id
+    - level
+    - code
+    - name
+    - status
+    properties:
+      id:
+        $ref: '#/components/schemas/Id'
+      level:
+        $ref: '#/components/schemas/GeoLevel'
+      code:
+        type: string
+        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$
+      name:
+        type: string
+        maxLength: 120
+      name_bn:
+        type:
+        - string
+        - 'null'
+        maxLength: 120
+      parent_id:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        minimum: 1
+        description: Null only for wings.
+      status:
+        $ref: '#/components/schemas/ActiveStatus'
+      dep_name:
+        type:
+        - string
+        - 'null'
+        maxLength: 120
+        description: Zones only.
+      email:
+        type:
+        - string
+        - 'null'
+        format: email
+        maxLength: 120
+      address:
+        type:
+        - string
+        - 'null'
+        maxLength: 300
+      pda_contact_no:
+        type:
+        - string
+        - 'null'
+        pattern: ^\+?[0-9]{5,15}$
+  unevaluatedProperties: false

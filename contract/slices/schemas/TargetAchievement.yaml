@@ -1,0 +1,75 @@
+TargetAchievement:
+  type: object
+  required:
+  - month
+  - as_of
+  - node
+  - tilldate_basis
+  - rows
+  additionalProperties: false
+  properties:
+    month:
+      $ref: '#/components/schemas/Month'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    node:
+      $ref: '#/components/schemas/NodeRef'
+    tilldate_basis:
+      type: string
+      enum:
+      - calendar_days
+      - working_days
+      - route_days
+    rows:
+      type: array
+      items:
+        type: object
+        required:
+        - product_level
+        - product_id
+        - name
+        - unit
+        - target_qty
+        - achieved_qty
+        - tilldate_target_qty
+        - remaining_qty
+        additionalProperties: false
+        properties:
+          product_level:
+            $ref: '#/components/schemas/ProductLevel'
+          product_id:
+            $ref: '#/components/schemas/Id'
+          name:
+            type: string
+            maxLength: 120
+          unit:
+            type: string
+            enum:
+            - stick
+            - piece
+            - dozen
+            - box
+            - pack
+          target_qty:
+            $ref: '#/components/schemas/Decimal3'
+          achieved_qty:
+            $ref: '#/components/schemas/Decimal3'
+          tilldate_target_qty:
+            $ref: '#/components/schemas/Decimal3'
+          achievement_pct:
+            type:
+            - number
+            - 'null'
+            minimum: 0
+          remaining_qty:
+            $ref: '#/components/schemas/Decimal3'
+          memo_target:
+            type:
+            - integer
+            - 'null'
+            minimum: 0
+          memo_achieved:
+            type:
+            - integer
+            - 'null'
+            minimum: 0

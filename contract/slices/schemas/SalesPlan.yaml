@@ -1,0 +1,21 @@
+SalesPlan:
+  type: object
+  required:
+  - zone_id
+  - valid_from
+  - sku_ids
+  additionalProperties: false
+  properties:
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    sku_ids:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/Id'

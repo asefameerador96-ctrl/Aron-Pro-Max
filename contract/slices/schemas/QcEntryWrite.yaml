@@ -1,0 +1,54 @@
+QcEntryWrite:
+  type: object
+  required:
+  - client_uuid
+  - source
+  - business_date
+  - zone_id
+  - rows
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    source:
+      type: string
+      enum:
+      - market
+      - warehouse
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Required for market QC.
+    rows:
+      type: array
+      minItems: 1
+      maxItems: 5000
+      items:
+        type: object
+        required:
+        - sku_id
+        - fault_type_code
+        - qty_base
+        additionalProperties: false
+        properties:
+          sku_id:
+            $ref: '#/components/schemas/Id'
+          fault_type_code:
+            type: string
+            pattern: ^[a-z][a-z0-9_]{1,40}$
+          qty_base:
+            type: integer
+            minimum: 0
+            maximum: 10000000
+    reason:
+      oneOf:
+      - $ref: '#/components/schemas/ChangeReason'
+      - type: 'null'
+      description: Required for warehouse QC.

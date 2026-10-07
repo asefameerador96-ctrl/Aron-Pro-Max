@@ -1,0 +1,26 @@
+DeviceTrust:
+  type: object
+  required:
+  - enrolled
+  - device_owner_verified
+  - integrity_verdict
+  - trust_level
+  additionalProperties: false
+  properties:
+    enrolled:
+      type: boolean
+    device_owner_verified:
+      type: boolean
+    integrity_verdict:
+      type: string
+      enum:
+      - pass
+      - fail
+      - unevaluated
+      - stale
+    integrity_checked_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    trust_level:
+      $ref: '#/components/schemas/TrustLevel'

@@ -1,0 +1,13 @@
+RiskReviewRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: risk_review
+      payload:
+        $ref: '#/components/schemas/RiskReviewPayload'
+  unevaluatedProperties: false

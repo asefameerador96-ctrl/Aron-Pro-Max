@@ -1,0 +1,13 @@
+BindDeviceRequest:
+  type: object
+  required:
+  - device_uuid
+  - otp
+  additionalProperties: false
+  properties:
+    device_uuid:
+      $ref: '#/components/schemas/Uuid'
+    otp:
+      type: string
+      pattern: ^[0-9]{4,8}$
+      description: Length cfg.auth.otp_length (4); Bengali digits are normalised by the phone.

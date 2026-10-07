@@ -1,0 +1,31 @@
+ConfigChangeItem:
+  type: object
+  required:
+  - key
+  - scope_type
+  - scope_id
+  - value
+  additionalProperties: false
+  properties:
+    key:
+      $ref: '#/components/schemas/ConfigKeyName'
+    scope_type:
+      $ref: '#/components/schemas/ConfigScopeType'
+    scope_id:
+      type: integer
+      format: int64
+      minimum: 0
+    value:
+      description: New value; null removes the override at this scope (closes the open row).
+      oneOf:
+      - $ref: '#/components/schemas/ConfigValueJson'
+      - type: 'null'
+    effective_from:
+      description: Null = now. Future-dated-only keys require a future Dhaka midnight.
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    effective_to:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
