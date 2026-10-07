@@ -3,7 +3,7 @@ package com.aktcl.aron.core.ui
 import android.content.Context
 import android.provider.Settings
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -32,7 +32,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -69,14 +68,15 @@ fun rememberSunlightSuggestion(sunlightOn: Boolean): Pair<Boolean, () -> Unit> {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     var visible by remember { mutableStateOf(false) }
-    DisposableEffect(owner, sunlightOn) {
+    // keyed on the owner only: turning sunlight off must not re-run the effect (that replays ON_RESUME and re-suggests)
+    DisposableEffect(owner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) visible = !sunlightOn && SunlightSuggestion.shouldSuggest(SunlightSuggestion.read(context))
+            if (event == Lifecycle.Event.ON_RESUME) visible = SunlightSuggestion.shouldSuggest(SunlightSuggestion.read(context))
         }
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
-    return visible to { visible = false }
+    return (visible && !sunlightOn) to { visible = false }
 }
 
 /** The top-bar sun control: one tap, 48 dp, announced as a toggle with its state (not by colour alone). */
@@ -86,8 +86,9 @@ fun SunlightToggle(on: Boolean, onToggle: (Boolean) -> Unit, modifier: Modifier 
     val label = stringResource(R.string.core_ui_sunlight_toggle)
     Box(
         modifier.sizeIn(minWidth = AronTokens.Touch.Min, minHeight = AronTokens.Touch.Min)
-            .clickable(role = Role.Switch) { onToggle(!on) }
-            .semantics(mergeDescendants = true) { contentDescription = label; selected = on },
+            .aronFocusRing(androidx.compose.foundation.shape.CircleShape)
+            .toggleable(value = on, role = Role.Switch, onValueChange = onToggle)
+            .semantics(mergeDescendants = true) { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         val ink = if (on) c.accent else c.textPrimary
