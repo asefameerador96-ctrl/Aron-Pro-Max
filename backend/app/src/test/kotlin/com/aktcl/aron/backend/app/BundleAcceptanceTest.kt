@@ -158,6 +158,10 @@ class BundleAcceptanceTest {
         assertEquals(mapOf("MIR-SR-D" to true, "MIR-SR-3F" to true, "MIR-SR-2F" to false), byCode.mapValues { it.value["planned_today"]!!.jsonPrimitive.boolean })
         assertEquals(40, routes.sumOf { it["target_outlets"]!!.jsonPrimitive.int })
         assertEquals(60, routes.sumOf { it["outlets"]!!.jsonArray.size })
+        // F-SYS-086: the day's first login (logged_in) dirties each route-day's tile key.
+        assertEquals(3L, fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery("SELECT count(DISTINCT d.subject_id) FROM app.dirty_key d JOIN app.route r ON r.id = d.subject_id WHERE d.kind = 'route_day_agg' AND d.business_date = DATE '2027-01-03' AND r.code IN ('MIR-SR-D', 'MIR-SR-3F', 'MIR-SR-2F')").mapTo(Long::class.java).one()
+        })
         routes.forEach { rt ->
             assertEquals("logged_in", rt["day_state"]!!.jsonObject["state"]!!.jsonPrimitive.content)
             assertEquals("primary", rt["assignment_kind"]!!.jsonPrimitive.content)
@@ -190,6 +194,13 @@ class BundleAcceptanceTest {
         assertEquals("default", values["cfg.geo.radius_m"]!!["scope_type"]!!.jsonPrimitive.content)
         assertEquals("global", values["cfg.device.lockdown_level"]!!["scope_type"]!!.jsonPrimitive.content, "the dev override wins over the default")
         assertEquals("dev", values["cfg.device.lockdown_level"]!!["value"]!!.jsonPrimitive.content)
+        // N-033: the device policy version (app-block list) is the config version the policy renders at.
+        assertEquals(b["config"]!!.jsonObject["config_version"]!!.jsonPrimitive.long, b["device_policy_version"]!!.jsonPrimitive.long)
+        assertTrue("cfg.device.blocked_packages" in values.keys, "the app-block list reaches the phone with the config")
+        // V0055 field-app keys (F-SYS-024/028/029, docs/19 s9): global defaults, delivered to the device.
+        mapOf("cfg.app.local_history_days" to 7, "cfg.app.outbox_keep_days" to 3, "cfg.app.image_cache_mb" to 40).forEach { (k, v) ->
+            assertEquals(v, values[k]?.get("value")?.jsonPrimitive?.int, "$k reaches the phone")
+        }
         assertTrue(values.keys.none { it == "cfg.geo.max_speed_kmh" || it == "cfg.device.require_enrolled" }, "server-only keys stay on the server")
         // Code lists, calendar, user, reason texts.
         assertTrue(b["code_lists"]!!.jsonArray.any { it.jsonObject["list_key"]!!.jsonPrimitive.content == "force_reason" })
@@ -332,6 +343,49 @@ class BundleAcceptanceTest {
         assertEquals(250, byOutlet[outlet], changes.toString())
         assertTrue(byOutlet.filterKeys { it != outlet }.values.all { it == 100 }, "the other outlets keep the resolved default")
         assertEquals(HttpStatusCode.NotModified, delta(before + 1).status, "nothing changed after the radius version")
+    }
+
+    @Test
+    @Order(8)
+    fun avKvContentAndThePosmSurveyReachTheSrsBundleWithoutOtherRoutesOutlets() = testApplication {
+        application { aronApi(wiring) }
+        val t = client.token()
+        val (own, offRoute) = fresh.db.jdbi.withHandle<Pair<Long, Long>, Exception> { h ->
+            val own = h.createQuery("SELECT min(o.id) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'MIR-SR-D'").mapTo(Long::class.java).one()
+            val off = h.createQuery("SELECT min(id) FROM app.outlet WHERE route_id IS NULL OR route_id NOT IN (SELECT route_id FROM app.route_assignment a JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'sr1001')").mapTo(Long::class.java).findOne().orElse(-1L)
+            fun item(title: String, kind: String, seq: Int, outlets: String, from: String = "2027-01-01", to: String = "2027-01-31") = h.execute(
+                "INSERT INTO app.content_item (kind, title_en, asset_url, sha256, bytes, valid_from, valid_to, sequence, outlet_ids) " +
+                    "VALUES ('$kind', '$title', 'https://example.invalid/$title', sha256('$title'::bytea), 1000, DATE '$from', DATE '$to', $seq, '$outlets'::bigint[])",
+            )
+            item("everyone", "av", 1, "{}")
+            item("mine", "kv", 2, "{$own,$off}")
+            item("elsewhere", "kv", 3, "{$off}")
+            item("expired", "av", 4, "{}", "2026-12-01", "2026-12-31")
+            val survey = h.createQuery("INSERT INTO app.survey (kind, valid_from) VALUES ('posm', DATE '2027-01-01') RETURNING id").mapTo(Long::class.java).one()
+            h.execute(
+                "INSERT INTO app.survey_version (survey_id, version, title_en, questions) VALUES (?, 1, 'POSM', CAST(? AS jsonb))", survey,
+                """[{"question_id":1,"key":"q1","answer_type":"bool","label_en":"POSM present?","label_bn":"পস আছে?","required":true,"show_if_key":null,"show_if_bool":null,"photo":false},
+                    {"question_id":2,"key":"q1_1","answer_type":"photo_only","label_en":"Photo","label_bn":null,"required":true,"show_if_key":"q1","show_if_bool":true,"photo":true}]""",
+            )
+            // An AMO survey with a version: only the role filter keeps it off the SR's phone.
+            val amo = h.createQuery("INSERT INTO app.survey (kind, valid_from) VALUES ('amo_survey', DATE '2027-01-01') RETURNING id").mapTo(Long::class.java).one()
+            h.execute("INSERT INTO app.survey_version (survey_id, version, title_en, questions) VALUES (?, 1, 'AMO', CAST(? AS jsonb))", amo,
+                """[{"question_id":1,"key":"a1","answer_type":"text","label_en":"Note","label_bn":null,"required":false,"show_if_key":null,"show_if_bool":null,"photo":false},
+                    {"key":"broken","answer_type":"bool"}]""")
+            own to off
+        }
+        val b = client.bundle(t).gunzipJson()
+        val content = b["content"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("everyone", "mine"), content.map { it["title_en"]!!.jsonPrimitive.content }, "valid, active, on the caller's outlets, in play order")
+        assertEquals(emptyList(), content[0]["outlet_ids"]!!.jsonArray.toList(), "empty = every outlet")
+        assertEquals(listOf(own), content[1]["outlet_ids"]!!.jsonArray.map { it.jsonPrimitive.long }, "another route's outlet is not named to this phone")
+        assertTrue(Regex("^[0-9a-f]{64}$").matches(content[0]["sha256"]!!.jsonPrimitive.content))
+        val survey = b["surveys"]!!.jsonArray.single().jsonObject
+        val qs = survey["questions"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf(false, true), qs.map { it["requires_photo"]!!.jsonPrimitive.boolean })
+        assertEquals("q1", qs[1]["show_if_key"]!!.jsonPrimitive.content, "Q1.1 is shown only when Q1 is yes")
+        assertEquals("পস আছে?", qs[0]["label_bn"]!!.jsonPrimitive.content)
+        assertTrue(survey.keys.none { "point" in it } && qs.none { q -> q.keys.any { "point" in it } }, "loyalty points are deferred (docs/27)")
     }
 
     private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullSafe(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content

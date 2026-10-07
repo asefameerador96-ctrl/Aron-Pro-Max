@@ -184,9 +184,12 @@ class DayStateTest {
         val job = RouteDayPlanningJob(fresh.db, DbServerConfig(fresh.db, RegistryDefaults(), clock), clock)
         assertEquals(0, job.settleExpired(), "not before the 30-minute deadline")
         now.set(now.get().plus(Duration.ofMinutes(31)))
+        // F-SYS-086: the timeout moves the state without any stored record; the move itself dirties the tile's key.
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DELETE FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = ?", r2) }
         try {
             assertEquals(1, job.settleExpired())
             assertEquals("sales_submitted", state(r2))
+            assertEquals(1, count("SELECT count(*) FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = $r2 AND business_date = DATE '$day'"))
             assertEquals(1, count("SELECT count(*) FROM app.route_day WHERE route_id = $r2 AND business_date = DATE '$day' AND submit_count_mismatch"))
         } finally { now.set(Instant.parse("2027-01-03T04:00:00Z")) }
     }
