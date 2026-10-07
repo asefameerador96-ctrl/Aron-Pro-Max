@@ -553,7 +553,7 @@ Source: contract/openapi.yaml, version 1.3.0.
 - `operations/listTasks.yaml`  GET /v1/tasks (863 B)
 - `operations/createTask.yaml`  POST /v1/tasks (916 B)
 - `operations/cancelTask.yaml`  POST /v1/tasks/{task_uuid}/cancel (826 B)
-- `operations/sendNotification.yaml`  POST /v1/admin/notifications (944 B)
+- `operations/sendNotification.yaml`  POST /v1/admin/notifications (1035 B)
 - `operations/getTeamLocations.yaml`  GET /v1/team/locations (593 B)
 - `operations/getTeamStock.yaml`  GET /v1/team/stock (607 B)
 - `operations/listLeave.yaml`  GET /v1/leave (736 B)

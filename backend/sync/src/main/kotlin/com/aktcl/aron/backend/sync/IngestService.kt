@@ -335,6 +335,12 @@ class IngestService(
             log.warn("resync_late client_uuid=${r.clientUuid} type=${r.type} business_date=$bd user=${ctx.up.userId} batch_uuid=${ctx.batchUuid}")
         }
 
+        // 3b. A check-out before cfg.day.checkout_earliest_time (Dhaka, by the user's role and home geography) is held
+        // for review, never dropped (s4.5 `checkout_too_early`; the phone enforces the same value offline, the server re-checks).
+        if (r.type == "attendance_event" && payload.str("kind") == "check_out" && checkoutTooEarly(h, ctx.up, captured)) {
+            return quarantine(h, ctx, r, bd, RecordOutcomeCode.CHECKOUT_TOO_EARLY, "check-out at ${captured.atZone(DHAKA).toLocalTime()} Dhaka")
+        }
+
         // 4. References that must exist (unknown ids are final rejections, s4.5).
         val routeId = env.long("route_id")
         val outletId = payload.long("outlet_id")
@@ -846,8 +852,32 @@ class IngestService(
 
     private data class ResyncWindow(val startedAt: Instant, val oldestDate: LocalDate)
 
+    /** True when [captured] (Dhaka time of day) is before the user's `cfg.day.checkout_earliest_time` (inclusive bound). */
+    private fun checkoutTooEarly(h: Handle, up: Uploader, captured: Instant): Boolean {
+        val geo = h.createQuery(
+            """
+            SELECT (SELECT ordinal FROM app.role_def WHERE role = u.role) AS role_ord, z.id AS zone_id, t.id AS territory_id, d.id AS division_id, d.wing_id
+            FROM app.app_user u LEFT JOIN app.zone z ON z.id = u.home_zone_id LEFT JOIN app.territory t ON t.id = z.territory_id
+            LEFT JOIN app.division d ON d.id = t.division_id WHERE u.id = :u
+            """.trimIndent(),
+        ).bind("u", up.userId).mapToMap().findOne().orElse(null) ?: return false
+        fun long(k: String) = (geo[k] as Number?)?.toLong()
+        val chain = ScopedConfig.Chain.of(
+            com.aktcl.aron.contract.ConfigScopeType.ROLE to long("role_ord"), com.aktcl.aron.contract.ConfigScopeType.WING to long("wing_id"),
+            com.aktcl.aron.contract.ConfigScopeType.DIVISION to long("division_id"), com.aktcl.aron.contract.ConfigScopeType.TERRITORY to long("territory_id"),
+            com.aktcl.aron.contract.ConfigScopeType.ZONE to long("zone_id"),
+        )
+        // The value in force at the capture (config changed later never re-judges an earlier check-out).
+        val word = ScopedConfig.load(h, captured, captured, setOf(CHECKOUT_KEY)).value(CHECKOUT_KEY, chain)
+            ?.let { runCatching { it.jsonPrimitive.content }.getOrNull() } ?: return false
+        val earliest = runCatching { java.time.LocalTime.parse(word) }.getOrNull() ?: return false
+        return captured.atZone(DHAKA).toLocalTime().isBefore(earliest)
+    }
+
     companion object {
         private const val FAMILY_TRIES = 3
+        private const val CHECKOUT_KEY = "cfg.day.checkout_earliest_time"
+        private val DHAKA: java.time.ZoneId = java.time.ZoneId.of("Asia/Dhaka")
         private const val FAMILY_RETRY_BUDGET_MS = 10_000L
         private val UUID_ANY = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")

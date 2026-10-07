@@ -251,4 +251,30 @@ class IngestRetryTest {
         restore("TIMESTAMPTZ '2027-01-01 04:00:00+00'", "TIMESTAMPTZ '2026-12-31 23:00:00+00'")
         client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined", trigger = "resync")
     }
+
+    /** An attendance check-out captured at [capturedAt] on [day]. */
+    private fun checkOut(capturedAt: String): JsonObject {
+        val cu = uuid()
+        val n = seq.incrementAndGet()
+        return buildJsonObject {
+            put("type", "attendance_event"); put("client_uuid", cu); put("family_uuid", cu); put("rank", 0); put("schema_version", 1)
+            put("business_date", day); put("captured_at", capturedAt); put("captured_elapsed_ms", 18330000 + n); put("boot_count", 412)
+            put("clock_offset_ms", 0); put("captured_offline", true); put("config_version", 1)
+            put("payload", json(
+                """
+                {"kind":"check_out","fix":{"purpose":"attendance_out","fix_status":"ok","lat":$pinLat,"lng":$pinLng,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                 "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}
+                """.trimIndent(),
+            ))
+        }
+    }
+
+    /** s4.5 `checkout_too_early`: a check-out before cfg.day.checkout_earliest_time (17:00 Dhaka, inclusive) is held for review. */
+    @Test
+    fun aCheckOutBeforeTheEarliestTimeIsQuarantined() = testApplication {
+        application { aronApi(wiring) }
+        val early = client.send(listOf(checkOut("2027-01-03T05:30:00.000Z")), want = "quarantined") // 11:30 Dhaka
+        assertEquals("checkout_too_early", early["acks"]!!.jsonArray.single().jsonObject["code"]!!.jsonPrimitive.content)
+        client.send(listOf(checkOut("2027-01-03T11:00:00.000Z").let { JsonObject(it + ("captured_at" to kotlinx.serialization.json.JsonPrimitive("2027-01-02T11:00:00.000Z")) + ("business_date" to kotlinx.serialization.json.JsonPrimitive("2027-01-02"))) }))
+    }
 }
