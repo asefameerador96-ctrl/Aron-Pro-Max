@@ -73,7 +73,9 @@ data class Settings(
             val dbUrl = src.get("ARON_DB_URL")
                 ?: if (prod) throw SettingsException("ARON_DB_URL is required in prod") else "jdbc:postgresql://localhost:5432/aron"
             val jwtKey = src.secret("ARON_JWT_SIGNING_KEY")
-            if (jwtKey == null && role != ServerRole.MIGRATE) {
+            // Only the API signs and verifies tokens; the worker and migrate roles run without the key, so it lives in
+            // as few replicas as possible (AUD-SEC-07).
+            if (jwtKey == null && role == ServerRole.API) {
                 throw SettingsException(
                     "ARON_JWT_SIGNING_KEY (or ARON_JWT_SIGNING_KEY_FILE) is required for role ${role.name.lowercase()}: " +
                         "an ES256 PKCS#8 PEM from Key Vault secret aron-jwt-signing-key. Locally: " +
