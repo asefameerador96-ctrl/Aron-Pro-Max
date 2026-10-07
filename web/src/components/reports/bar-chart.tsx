@@ -11,7 +11,7 @@ export function BarChart({ locale, title, rows }: { locale: Locale; title: strin
         {rows.map((r) => (
           <li key={r.label} className="flex items-center gap-2 text-xs" data-label={r.label} data-value={r.value}>
             <span className="w-28 shrink-0 truncate text-slate-600">{r.label}</span>
-            <span className="h-4 rounded bg-brand-600" style={{ width: `${Math.round((r.value / max) * 100)}%`, minWidth: r.value > 0 ? "2px" : 0 }} aria-hidden="true" />
+            <span className="h-4 rounded" style={{ backgroundColor: "var(--chart-1)", width: `${Math.round((r.value / max) * 100)}%`, minWidth: r.value > 0 ? "2px" : 0 }} aria-hidden="true" />
             <span className="tabular-nums">{formatNumber(locale, r.value)}</span>
           </li>
         ))}

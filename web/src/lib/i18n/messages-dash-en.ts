@@ -264,4 +264,7 @@ export const dashEn = {
   "geo.visits": "Visits",
 
   "tracking.previous_day": "Day before ({date})",
+
+  "error.page.title": "This page could not be shown",
+  "error.page.retry": "Try again",
 } as const;
