@@ -1203,6 +1203,10 @@ class DbLoginsGate(unittest.TestCase):
         self.assertIn("az containerapp job logs show", block)
         self.assertIn("az containerapp job execution show", block)
         self.assertIn('summary "| Database logins |', d)
+        self.assertIn("infra/scripts/dblogins-probe.sh", block)
+        p = (ROOT / "infra" / "scripts" / "dblogins-probe.sh").read_text(encoding="utf-8")
+        self.assertIn("--yaml", p, "per-execution override; the job's own template is unchanged")
+        self.assertNotIn('echo "$x"', p, "never prints a secret value")
 
 
 class InfraStageSkip(unittest.TestCase):

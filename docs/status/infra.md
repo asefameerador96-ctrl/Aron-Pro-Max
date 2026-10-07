@@ -27,6 +27,27 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
 
+## Day 3, 16:30 UTC: FIRST GREEN DEV DEPLOY (run 37649162760, c992c9c) — proven on Azure
+
+| Item | Result |
+|---|---|
+| what-if guard with live PostgreSQL zones (primary 2, standby 1) | passed |
+| main.bicep apply (new `aron-dev-resource-health-recovered` alert created) | passed |
+| images built once, deployed **by digest** (backend `@sha256:5657854f...`, web `@sha256:336eeb80...`) | passed |
+| PITR restore point recorded before migrations (16:16:13Z) | passed |
+| migrations (by digest) | passed |
+| apps + Front Door routes | passed |
+| health gate: `/v1/health` 200 with `X-Aron-Api: 1` and build = c992c9c, `/v1/health/ready` 200, web `/login` 200 | passed |
+| storage CORS (preflight from this session, 16:35 UTC): Front Door origin + PUT + `x-ms-blob-type,content-type` -> 200 with exactly those; foreign origin -> 403; DELETE -> 403 | passed |
+| alerts deployed (seeded-failure proof still to run) | deployed |
+| dblogins | **FAILED, not blocking** (per-app logins off): execution `5uyo1ah` status Failed, end null, "No replicas found for execution" = the replica was never created (not psql). No console or system log. |
+
+dblogins next: `infra/scripts/dblogins-probe.sh` now runs on that failure in the deploy itself, two short executions of the
+same job with template overrides: A (image only, `psql --version`) and B (A plus the four Key Vault secret refs; prints
+only set/unset). A fails -> image/pull; B fails -> a secret reference; both pass -> the 7 KB `ARON_SQL` value or the
+command. The next INT deploy reports it. `aron-infra-sha` tag: written by this run's apply, so the next deploy shows
+whether the infra stage is skipped.
+
 ## Day 3, 16:10 UTC: worker without the token signing key (backend-core request, AUD-SEC-07)
 
 `docs/requests/infra-worker-no-signing-key.md`: the backend change (worker and migrate start without
