@@ -78,4 +78,14 @@ class ConfigDeltaTest {
         set("cfg.sys.config_delta_max_age_versions", "global", 0, 50)
         assertTrue(svc.currentVersion() > 3)
     }
+
+    @Test
+    fun aFlagChangeAppearsInTheNextDeltaAndCapturedDataShapeIsUntouched() { // F-API-065: flags are the cfg.flag.* keys
+        val sr = env.ids.getValue("sr1001")
+        val since = svc.currentVersion()
+        svc.create(env.principal("admin1001", Role.ADMIN), ConfigChangeRequestIn("Hide the credit screen for now", false, listOf(ConfigChangeItemIn("cfg.flag.credit_ui", "global", 0, JsonPrimitive(false)))), null, null)
+        clock.advance(2)
+        val flag = assertIs<DeltaOutcome.Changes>(delta.delta(sr, null, since, null)).body.values.single { it.key == "cfg.flag.credit_ui" }
+        assertEquals("false", flag.value.toString())
+    }
 }
