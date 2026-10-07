@@ -123,6 +123,9 @@
     - The recordSale 300 ms benchmark and JankStats readouts, as those screens land (sale lanes).
     - A Gradle Managed Device or CI emulator run (infra AUD-TP-4).
     - The first A06 numbers: device check, laptop session, lab phone only. Debug-signed variants never install over a device-owner field app, and `force-stop` clears its alarms until the next launch.
+- INT merged again (backend-core BC-55 and BC-56, WireDtos `BundleUser.consents`).
+- **F-SYS-075 follow-up (BC-55) done**: `ConsentRepository.acceptedOnServer` reads the bundle's `user.consents` (the raw `user` section, per-user database). `LocationNotice.state` counts it, so a wipe or reinstall does not ask again, while a new policy version still does. A missing or unreadable section fails closed. Opus check: PASS.
+  - Info: a server void reaches the phone only with the next full bundle. Extra local accepts are acked as duplicates.
 - Trap 40: a check run without the Android SDK fails at configuration ("SDK location not found"). Grep the log for `BUILD FAILED`, not only the wrapper's exit code.
 
 ## Handover (READY TO RECYCLE, 2026-10-07 ~17:30Z by the server clock, seventh session)
