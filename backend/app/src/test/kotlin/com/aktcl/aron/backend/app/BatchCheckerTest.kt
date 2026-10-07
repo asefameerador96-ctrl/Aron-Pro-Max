@@ -175,14 +175,17 @@ class BatchCheckerTest {
             """.trimIndent(),
         ).jsonObject
         val close = Json.parseToJsonElement("""{"visit_client_uuid":"$visit","outcome_code":"sold","call_declined":false,"ended_at":"2027-01-03T03:43:10.000Z","is_zero_sale":false}""").jsonObject
-        val at = JsonPrimitive(Instant.parse("2027-01-03T03:00:00Z").plusMillis(captureSeq.incrementAndGet().toLong()).toString())
+        val at = JsonPrimitive(Instant.parse("2027-01-02T18:30:00Z").plusSeconds(captureSeq.incrementAndGet() * 60L).toString())
         return listOf(
             envelope("visit", visit, visit, 0, visitPayload),
             envelope("memo", memo, visit, 1, memoPayload),
             envelope("memo_line", uuid(), visit, 2, line(memo, 1, s1, 20, p1)),
             envelope("memo_line", uuid(), visit, 2, line(memo, 2, s2, 10, p2)),
             envelope("visit_close", uuid(), visit, 1, close),
-        ).map { JsonObject(it + ("captured_at" to at)) }
+        ).map { JsonObject(it + ("captured_at" to at)) }.map { r ->
+            // Each family is its own sale minute (s4.5 content fingerprint: outlet, lines and minute).
+            if (r["type"]!!.jsonPrimitive.content == "memo") JsonObject(r + ("payload" to JsonObject(r["payload"]!!.jsonObject + ("committed_at" to at)))) else r
+        }
     }
 
     /** Each family is its own capture (the content fingerprint of F-SYS-055 tells families apart by captured_at). */

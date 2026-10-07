@@ -29,6 +29,7 @@ room {
 
 dependencies {
     implementation(project(":android:core-common"))
+    api(project(":android:core-printing")) // RoomPrintLedger implements core-printing's PrintLedger
     implementation(project(":shared:contract"))
     implementation(libs.kotlinx.serialization.json)
     api(libs.androidx.room.runtime)

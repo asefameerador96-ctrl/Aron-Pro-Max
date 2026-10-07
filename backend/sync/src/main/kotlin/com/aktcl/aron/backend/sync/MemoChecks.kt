@@ -34,7 +34,15 @@ object MemoChecks {
             val p = memo["payload"] as? JsonObject ?: continue
             val children = records.filter { it.str("type") in CHILD_TYPES && (it["payload"] as? JsonObject)?.str("memo_client_uuid") == mu }
             val counts = Triple(children.count { it.str("type") == "memo_line" }, children.count { it.str("type") == "memo_discount" }, children.count { it.str("type") == "qc_line" })
-            if (counts != Triple(p.int("line_count"), p.int("discount_line_count"), p.int("qc_line_count"))) continue
+            val stated = Triple(p.int("line_count") ?: 0, p.int("discount_line_count") ?: 0, p.int("qc_line_count") ?: 0)
+            if (counts.first > stated.first || counts.second > stated.second || counts.third > stated.third) {
+                // More children than the header counts (s7.4 counts = the child records): never a split family.
+                val detail = "memo $mu: children $counts exceed the stated counts $stated"
+                out[mu] = detail
+                children.forEach { c -> c.str("client_uuid")?.let { out[it] = detail } }
+                continue
+            }
+            if (counts != stated) continue
             val problems = runCatching { verify(p, children.map { it.str("type")!! to (it["payload"] as JsonObject) }) }.getOrElse { listOf("unreadable: ${it.message}") }
             if (problems.isNotEmpty()) {
                 val detail = "memo $mu: " + problems.joinToString("; ")
@@ -44,6 +52,40 @@ object MemoChecks {
         }
         return out
     }
+
+    /**
+     * A memo line naming an SKU the server does not have is rejected `unknown_sku` (s4.5); its memo and the other
+     * children are then quarantined with it, so a memo is never stored with a line missing behind its gross.
+     */
+    fun unknownSkuSiblings(h: Handle, records: List<JsonObject>): Map<String, String> {
+        val lines = records.filter { it.str("type") == "memo_line" }
+        val skus = lines.mapNotNull { (it["payload"] as? JsonObject)?.long("sku_id") }.distinct()
+        if (skus.isEmpty()) return emptyMap()
+        val known = h.createQuery("SELECT id FROM app.sku WHERE id = ANY(:s)").bindArray("s", Long::class.javaObjectType, skus).mapTo(Long::class.java).set()
+        val out = HashMap<String, String>()
+        lines.filter { (it["payload"] as? JsonObject)?.long("sku_id")?.let { s -> s !in known } == true }.forEach { bad ->
+            val memo = (bad["payload"] as JsonObject).str("memo_client_uuid") ?: return@forEach
+            val detail = "memo $memo: line ${bad.str("client_uuid")} names an unknown SKU"
+            out[memo] = detail
+            records.filter { it.str("type") in CHILD_TYPES && (it["payload"] as? JsonObject)?.str("memo_client_uuid") == memo && it !== bad }
+                .forEach { c -> c.str("client_uuid")?.let { out[it] = detail } }
+        }
+        return out
+    }
+
+    /**
+     * Content fingerprint of a memo (s4.5 `content_duplicate`: same outlet, lines and minute): outlet, the minute of
+     * `committed_at` and the sorted (sku, qty) of its lines in the segment. Only for a memo whose lines are all there.
+     */
+    fun memoFingerprints(records: List<JsonObject>): Map<String, ByteArray> = records.filter { it.str("type") == "memo" }.mapNotNull { memo ->
+        val mu = memo.str("client_uuid") ?: return@mapNotNull null
+        val p = memo["payload"] as? JsonObject ?: return@mapNotNull null
+        val lines = records.filter { it.str("type") == "memo_line" && (it["payload"] as? JsonObject)?.str("memo_client_uuid") == mu }.map { it["payload"] as JsonObject }
+        if (lines.size != p.int("line_count") || lines.isEmpty()) return@mapNotNull null
+        val minute = p.str("committed_at")?.take(16) ?: return@mapNotNull null
+        val body = "mfp1|${p.long("outlet_id")}|$minute|" + lines.map { "${it.long("sku_id")}:${it.long("qty_base")}:${it.str("line_kind")}" }.sorted().joinToString(",")
+        mu to java.security.MessageDigest.getInstance("SHA-256").digest(body.toByteArray())
+    }.toMap()
 
     /** Equations a single record shows on its own; null when they hold (or the record is not money). */
     fun recordMismatch(type: String, p: JsonObject): String? = runCatching {
@@ -109,7 +151,7 @@ object MemoChecks {
             """
             SELECT m.line_count = (SELECT count(*) FROM app.memo_line l WHERE l.memo_client_uuid = m.client_uuid)
                AND m.discount_line_count = (SELECT count(*) FROM app.memo_discount d WHERE d.memo_client_uuid = m.client_uuid)
-               AND m.qc_line_count = (SELECT count(*) FROM app.qc_entry_line q WHERE q.memo_client_uuid = m.client_uuid) AS complete,
+               AND m.qc_line_count = (SELECT count(*) FROM app.qc_entry_line q WHERE q.memo_client_uuid = m.client_uuid AND q.applied_to_memo) AS complete,
                m.gross_mtk = COALESCE((SELECT sum(l.gross_mtk) FROM app.memo_line l WHERE l.memo_client_uuid = m.client_uuid), 0)
                AND m.offer_discount_mtk = COALESCE((SELECT sum(d.value_mtk) FROM app.memo_discount d WHERE d.memo_client_uuid = m.client_uuid AND d.kind <> 'drp'), 0)
                AND m.drp_discount_mtk = COALESCE((SELECT sum(d.value_mtk) FROM app.memo_discount d WHERE d.memo_client_uuid = m.client_uuid AND d.kind = 'drp'), 0)
@@ -118,6 +160,16 @@ object MemoChecks {
             """.trimIndent(),
         ).bind("m", memo).map { rs, _ -> rs.getBoolean(1) to rs.getBoolean(2) }.findOne().orElse(null) ?: return
         if (split.first && !split.second) flag(h, memo, "arithmetic_mismatch")
+        // More stored children than the header counts: a split family that went wrong.
+        val over = h.createQuery(
+            """
+            SELECT m.line_count < (SELECT count(*) FROM app.memo_line l WHERE l.memo_client_uuid = m.client_uuid)
+                OR m.discount_line_count < (SELECT count(*) FROM app.memo_discount d WHERE d.memo_client_uuid = m.client_uuid)
+                OR m.qc_line_count < (SELECT count(*) FROM app.qc_entry_line q WHERE q.memo_client_uuid = m.client_uuid AND q.applied_to_memo)
+            FROM app.memo m WHERE m.client_uuid = CAST(:m AS uuid) LIMIT 1
+            """.trimIndent(),
+        ).bind("m", memo).mapTo(Boolean::class.java).findOne().orElse(false)
+        if (over) flag(h, memo, "arithmetic_mismatch")
     }
 
     private fun flag(h: Handle, memo: String, flag: String) {

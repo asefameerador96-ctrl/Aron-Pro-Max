@@ -49,7 +49,7 @@ class SchemaMigrationTest {
             db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c -> while (c.moveToNext()) tables += c.getString(0) }
             assertTrue("missing tables: ${expectedTables - tables}", tables.containsAll(expectedTables))
 
-            for (table in AronDatabase.DEVICE_TABLES) {
+            for (table in AronDatabase.DEVICE_TABLES.filter { it in tables }) { // later versions add tables; checked there
                 var pk: String? = null
                 var notNull = false
                 db.query("PRAGMA table_info(`$table`)").use { c ->
@@ -80,10 +80,35 @@ class SchemaMigrationTest {
     }
 
     @Test
+    fun version2To3AddsTheDayRecordTablesAndKeepsEveryRow() {
+        helper.createDatabase("migration-23", 2).use { db ->
+            db.execSQL(
+                """INSERT INTO outbox (client_uuid, record_type, family_uuid, rank, business_date, payload_json, payload_sha256, state,
+                   attempts, created_at) VALUES ('6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f', 'memo', 'f', 1, '2026-10-05', '{}', 'h', 'pending', 0, 't')""",
+            )
+            db.execSQL("INSERT INTO price (price_id, sku_id, price_type, amount_mtk, per_base_qty, valid_from) VALUES (1, 100, 'outlet', 9000, 1, '2026-09-01')")
+        }
+        helper.runMigrationsAndValidate("migration-23", 3, true).use { db ->
+            db.query("SELECT COUNT(*) FROM outbox").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
+            db.query("SELECT COUNT(*) FROM price").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
+            for (t in listOf("due_collection", "visit_skip", "day_submit", "outlet_change_request", "task_event", "task", "memo_counter")) {
+                db.query("SELECT COUNT(*) FROM `$t`").use { c -> assertTrue(c.moveToFirst()) }
+            }
+            for (t in listOf("due_collection", "visit_skip", "day_submit", "outlet_change_request", "task_event")) {
+                db.query("PRAGMA table_info(`$t`)").use { c ->
+                    var pk: String? = null
+                    while (c.moveToNext()) if (c.getInt(c.getColumnIndexOrThrow("pk")) == 1) pk = c.getString(c.getColumnIndexOrThrow("name"))
+                    assertEquals("$t must be keyed by client_uuid", "client_uuid", pk)
+                }
+            }
+        }
+    }
+
+    @Test
     fun theExportedSchemaMatchesTheCompiledEntities() {
         // The file is created from the exported JSON; opening it with the compiled Room database runs Room's identity-hash
         // check, which throws when the entities and the exported schema differ.
-        helper.createDatabase("identity-test", 2).close()
+        helper.createDatabase("identity-test", 3).close()
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         val db = androidx.room.Room.databaseBuilder(context, AronDatabase::class.java, "identity-test").build()
         db.openHelper.writableDatabase
