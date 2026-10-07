@@ -61,3 +61,9 @@ end to end until these parts exist in modules android-print does not own.
   rejected print does not count, so the next print has no marker only while no copy has counted yet; after a
   counted original, a rejected reprint is followed by the same reprint number with the marker. Otherwise a
   rejected reprint would let an unmarked second original out.
+
+## Lead ruling (2026-10-07)
+1. **Config keys:** `cfg.print.confirm_after_print` (bool, default true), `cfg.memo.reprint_watermark` (bool, default true) and `cfg.sale.require_printer_before_sale` (bool, default false) are added to the registry by the db lane (next migration). The Review Print button is never gated on the printer unless the last one is true.
+2. **Marker after a rejected print:** your reading is approved. A rejected (`failed_user`) print does not count; no marker only while no copy has counted yet; after a counted original, a rejected reprint is followed by the same reprint number **with** the marker (an unmarked second original must never get out).
+3. **Persistence (section 1)** is queued with android-core in its Room v3 list (T1, Opus checker); it announces `PrintLedger` in `docs/status/android-core.md`. **Screens (section 2)**: feature-stock and the app-sr shell are android-sr-a's; feature-sale and feature-memo are android-sr-b's (both told).
+4. The android-print session is retired (handoff in `docs/status/android-print.md`). A replacement starts when `PrintLedger` is on INT, to finish the wiring rows and run the device checks D-P1/D-P2 with the owner.

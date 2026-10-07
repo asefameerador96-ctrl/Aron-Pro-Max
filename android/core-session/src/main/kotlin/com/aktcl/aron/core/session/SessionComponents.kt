@@ -40,7 +40,10 @@ class SessionComponents(
     private val tokens = DelegatingTokenSource()
 
     /** Trusted time (docs/24 s3.8, F-SYS-049): fed by every API response's `X-Server-Time`. */
-    val trustedClock = TrustedClockSource(File(storageDir, "time-anchors"), bootCount)
+    val trustedClock = TrustedClockSource(
+        File(storageDir, "time-anchors"), bootCount,
+        bootId = { runCatching { File("/proc/sys/kernel/random/boot_id").readText().trim() }.getOrNull()?.takeIf { it.isNotEmpty() } },
+    )
     val clock: WallClock = clock ?: trustedClock
 
     val deviceIdentity = DeviceIdentity(storageDir)

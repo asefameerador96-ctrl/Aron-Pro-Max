@@ -82,4 +82,14 @@ class CheckerF006DbTest {
         assertEquals(ApplyResult.APPLIED, repo.promotePrefetch("2026-10-06"))
         assertEquals(2, repo.routesOfDay("2026-10-06").size)
     }
+
+    /** Fix check: a raw section over the CursorWindow limit (Bangla and a surrogate pair at a chunk edge) reads back whole. */
+    @Test fun aLargeRawSectionReadsBackIntact() = runTest {
+        val text = "ক".repeat(399_999) + "\uD83D\uDE00" + "খ".repeat(1_000_000)
+        val raw = JsonObject(bundle("2026-10-05:3", "2026-10-05") + ("tutorials" to JsonPrimitive(text)))
+        assertEquals(ApplyResult.APPLIED, apply(raw))
+        assertEquals(JsonPrimitive(text).toString(), repo.section("tutorials"))
+        assertEquals(ApplyResult.APPLIED, apply(bundle("2026-10-05:4", "2026-10-05")))
+        assertEquals(null, db.referenceDao().section("tutorials#1"))
+    }
 }
