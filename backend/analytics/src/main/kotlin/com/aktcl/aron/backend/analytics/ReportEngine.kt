@@ -82,7 +82,8 @@ class ReportEngine(
         for ((n, c) in listOf("std_criteria" to q.std_criteria, "memo_criteria" to q.memo_criteria)) if (c != null && c.op !in setOf(">", ">=", "=", "<=", "<")) bad("$n.op")
         q.outlet_code?.let { if (it.length > 32) bad("outlet_code") }
         for (s in q.output.sort) {
-            if (def.columns.none { it.key == s.col }) bad("output.sort.col", "unknown_column")
+            // A masked (personal) column is not sortable: the order would reveal what the mask hides.
+            if (def.columns.none { it.key == s.col && (p.pii || !it.pii) }) bad("output.sort.col", "unknown_column")
             if (s.dir != "asc" && s.dir != "desc") bad("output.sort.dir")
         }
         val (from, to) = period(q.period, today) { f, w -> bad(f, w) }
@@ -130,7 +131,8 @@ class ReportEngine(
     // ---------------- running ----------------
 
     private fun orderBy(def: ReportDefinition, q: ReportQuery): String =
-        (q.output.sort.map { "\"${it.col}\" ${it.dir}" } + def.columns.take(1).map { "\"${it.key}\"" } + listOf("1")).distinct().joinToString(", ")
+        // Requested sort first, then every column by position: a total order, so paging never repeats or skips a row.
+        (q.output.sort.map { "\"${it.col}\" ${it.dir}" } + (1..def.columns.size).map { it.toString() }).joinToString(", ")
 
     private fun wrapped(handler: ReportHandler, ctx: ReportContext): Pair<String, SqlSpec> {
         val spec = handler.spec(ctx)
@@ -139,8 +141,9 @@ class ReportEngine(
 
     private fun query(h: Handle, sql: String, ctx: ReportContext, spec: SqlSpec): Query {
         val q = h.createQuery(sql)
+        q.configure(org.jdbi.v3.core.statement.SqlStatements::class.java) { it.isUnusedBindingAllowed = true }   // a report need not use every scope binding
         ctx.bind(q)
-        spec.binds.forEach { (k, v) -> q.bind(k, v) }
+        spec.binds.forEach { (k, v) -> if (v is Array<*>) q.bindArray(k, Long::class.javaObjectType, v.map { it as Long }) else q.bind(k, v) }
         return q
     }
 
@@ -157,9 +160,10 @@ class ReportEngine(
         val rows = query(h, "SELECT * FROM $from ORDER BY ${orderBy(def, q)} LIMIT :lim OFFSET :off", ctx, spec)
             .bind("lim", q.output.page_size).bind("off", (q.output.page - 1).toLong() * q.output.page_size)
             .map { rs, _ -> rowOf(rs, def, ctx.pii) }.list()
-        val totals = if (spec.totalColumns.isEmpty()) null else
-            query(h, "SELECT " + spec.totalColumns.joinToString(", ") { "coalesce(sum(\"$it\"), 0) AS \"$it\"" } + " FROM $from", ctx, spec)
-                .map { rs, _ -> spec.totalColumns.associateWith { scalar(rs.getObject(it)) } }.one()
+        val totalCols = spec.totalColumns.filter { k -> def.columns.any { it.key == k && (ctx.pii || !it.pii) } }
+        val totals = if (totalCols.isEmpty()) null else
+            query(h, "SELECT " + totalCols.joinToString(", ") { "coalesce(sum(\"$it\"), 0) AS \"$it\"" } + " FROM $from", ctx, spec)
+                .map { rs, _ -> totalCols.associateWith { scalar(rs.getObject(it)) } }.one()
         return ReportResult(key, clock.now().wire(), visibleColumns(def, ctx.pii), rows, totals, q.output.page, q.output.page_size, total)
     }
 

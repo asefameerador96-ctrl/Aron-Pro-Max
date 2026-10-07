@@ -179,4 +179,69 @@ class ReportApiTest {
         for (s in listOf("=1+1", "+cmd", "-2+3", "@SUM(A1)", "\tx", "\rx", "  =x")) assertTrue(ReportOutputs.sanitize(s).startsWith("'"), s)
         for (s in listOf("Route 1", "12", "রুট", "a=b", "")) assertEquals(s, ReportOutputs.sanitize(s))
     }
+
+    // ---------------- checker_ tests (independent checker, F-API-017) ----------------
+
+    private object PiiReport : ReportHandler {
+        override val definition = definition(
+            "route-memo", "Pii probe", "sales", "route",
+            listOf(col("route_code", "Route code", "string"), col("secret", "Secret", "integer", pii = true), col("memos", "Memos", "integer")), listOf("period"),
+        )
+        // secret order is the reverse of route_code order, so sorting by it reveals the masked column's order.
+        override fun spec(ctx: ReportContext) = SqlSpec(
+            "SELECT g.route_code, (1000 - g.route_id)::bigint AS secret, sum(a.active_memo_count)::bigint AS memos FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id " +
+                "WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")} GROUP BY 1, 2",
+            totalColumns = listOf("secret", "memos"),
+        )
+    }
+
+    private fun appWith(handlers: List<ReportHandler>, jobs: ExportJobs = ExportJobs.UNAVAILABLE, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
+        val clock = AronClock { Instant.parse("2026-10-04T12:00:00Z") }
+        val reach = ReachResolver { uid, _, _, _ -> reaches.getValue(uid) }
+        val deps = ReportDeps(fresh.db, ReportEngine(fresh.db, config, clock, handlers), reach, AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, config), clock, jobs)
+        application {
+            installAronPlatform(PlatformContext(config = RegistryDefaults(), generation = { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }))
+            routing { route("/v1") { reportRoutes(deps) } }
+        }
+        block()
+    }
+
+    @Test
+    fun checker_sortByMaskedPiiColumnMustNotRevealItsOrder() = appWith(listOf(PiiReport)) {
+        // Sorting by a column the caller cannot see is refused (400), never answered: the order would leak the masked values.
+        val r = query(10, Role.ANALYST, """{"period":{"date":"2026-10-04"},"output":{"format":"json","sort":[{"col":"secret","dir":"asc"}]}}""")
+        assertEquals(HttpStatusCode.BadRequest, r.status); assertTrue(r.bodyAsText().contains("ERR_REPORT_INVALID_QUERY"))
+    }
+
+    @Test
+    fun checker_totalsMustNotCarryAMaskedPiiColumn() = appWith(listOf(PiiReport)) {
+        val o = Json.parseToJsonElement(query(10, Role.ANALYST, body()).bodyAsText()).jsonObject
+        assertFalse(o["totals"]!!.jsonObject.containsKey("secret"), "totals include the pii column the caller may not see: " + o["totals"])
+    }
+
+    @Test
+    fun checker_exportLogLimitUpTo500PerContract() = app {
+        val r = client.get("/v1/report-exports?limit=300") { bearerAuth(TestTokens.web(10, Role.ANALYST)) }
+        assertEquals(HttpStatusCode.OK, r.status, "contract Limit allows 1..500: " + r.bodyAsText())
+    }
+
+    @Test
+    fun checker_pagingIsStableWhenTheFirstColumnTies() = app {
+        fresh.db.jdbi.useHandle<Exception> { it.execute("INSERT INTO dw.agg_daily_route (business_date, route_id, zone_id, active_memo_count, gross_mtk) SELECT d::date, route_id, zone_id, 1, 1000 FROM dw.agg_daily_route, generate_series('2026-08-01'::date, '2026-10-03'::date, '1 day') d WHERE business_date = '2026-10-04'") }
+        val seen = mutableListOf<String>(); var total = 0
+        for (pg in 1..30) {
+            val o = Json.parseToJsonElement(query(10, Role.ANALYST, """{"period":{"from":"2026-08-01","to":"2026-10-04"},"date_grouping":"day","output":{"format":"json","page_size":25,"page":$pg}}""").bodyAsText()).jsonObject
+            total = o["total_rows"]!!.jsonPrimitive.content.toInt()
+            seen += o["rows"]!!.jsonArray.map { it.jsonObject["route_code"]!!.jsonPrimitive.content + "|" + it.jsonObject["period"]!!.jsonPrimitive.content }
+            if (seen.size >= total) break
+        }
+        assertEquals(total, seen.size); assertEquals(total, seen.toSet().size, "a row appeared on two pages (unstable ORDER BY ties)")
+    }
+
+    @Test
+    fun checker_pdfWithoutJobsIs503WithRetryAfterAndNothingLogged() = appWith(listOf(RouteMemoReport)) {
+        val r = query(10, Role.ANALYST, body("pdf"))
+        assertEquals(HttpStatusCode.ServiceUnavailable, r.status); assertEquals("60", r.headers["Retry-After"])
+        assertEquals(0, Json.parseToJsonElement(client.get("/v1/report-exports") { bearerAuth(TestTokens.web(10, Role.ANALYST)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
+    }
 }

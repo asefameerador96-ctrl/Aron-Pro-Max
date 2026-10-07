@@ -88,7 +88,8 @@ fun Route.reportRoutes(d: ReportDeps) {
                         d.db.jdbi.useHandle<Exception> { w -> d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
                         XlsxBody(ReportOutputs.xlsxBytes(def, cols, all, watermark), "$key-${ctx.from}_${ctx.to}.xlsx")
                     }
-                    else -> {   // print
+                    else -> {   // print: a screen-sized view; bigger sets are xlsx
+                        if (rows > d.engine.syncMaxRows()) throw ApiProblem(ProblemCode.ERR_REPORT_TOO_LARGE, "the print view is limited to ${d.engine.syncMaxRows()} rows; narrow the filters or export xlsx")
                         val all = ArrayList<Map<String, JsonElement>>(rows)
                         d.engine.stream(h, key, ctx) { all += it }
                         d.db.jdbi.useHandle<Exception> { w -> d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
@@ -108,7 +109,7 @@ fun Route.reportRoutes(d: ReportDeps) {
             val p = call.principal
             val q = call.request.queryParameters
             fun lng(n: String) = q[n]?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value"))) }
-            val limit = q["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..200 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad limit", errors = listOf(FieldError("query.limit", "out_of_range"))) } ?: 50
+            val limit = q["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..500 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad limit", errors = listOf(FieldError("query.limit", "out_of_range"))) } ?: 100
             // Everyone sees their own exports; the admin roles see everyone's and may narrow by user.
             val userFilter = if (p.role in ADMIN_VIEWERS) lng("user_id") else p.userId
             val cursor = q["cursor"]?.let { it.toLongOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad cursor", errors = listOf(FieldError("query.cursor", "invalid_value"))) }
