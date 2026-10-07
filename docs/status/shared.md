@@ -36,3 +36,7 @@
 - BacklogCoverageTest now ignores DEFERRED rows still listed in the coverage table; `:shared:contract:jvmTest` green. (Table itself is in docs/24-build-spec-verification.md, not edited.)
 - Formats: money sign position is a parameter (`SignPosition`, default trailing); dates default `yyyy-MM-dd` (`iso=false` for dd/MM/yyyy); times 24-hour.
 - BLOCKED: android-core DTO request. It needs `contract/openapi.yaml`; the session's permission classifier denied reading it and forbids re-reading it in slices or by script. Needs the user to allow it or a different source.
+
+## 2026-10-07
+- Remaining shared row: N-002 (contract DTO hosting in shared:contract). BLOCKED: needs reading contract/openapi.yaml; the session classifier denied that read and forbids re-reading it by slices/scripts. Waiting for the user to allow it.
+- Filed docs/requests/shared-ci-web-contract-drift.md (infra): regenerate web types in CI and diff.
