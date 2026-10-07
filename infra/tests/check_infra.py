@@ -1035,8 +1035,9 @@ class PerAppDatabaseLogins(unittest.TestCase):
         self.assertIn("workerDbUrlSecret", worker_secrets["db-direct-url"])
         mig = secrets("migrate")
         self.assertIn("dbDirectUrl", mig["db-direct-url"], "the migrate job keeps the admin login")
-        for f in ("dev", "dev-lite", "stage", "prod"):
-            # Off until api_rw has the DELETE grants the admin flows use (docs/requests/db-runtime-roles-gaps.md).
+        # On in dev since the grants gap closed (V0029); off elsewhere until dev has proven it.
+        self.assertIs(params("dev.apps.parameters.json")["dbPerAppLogins"], True)
+        for f in ("dev-lite", "stage", "prod"):
             self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], False, f)
         self.assertIs(param_default("apps.json", "dbPerAppLogins"), False, "off unless a profile turns it on")
 
