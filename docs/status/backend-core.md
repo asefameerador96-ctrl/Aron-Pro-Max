@@ -42,6 +42,8 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - **F-API-008/009/039** day endpoints (`DayApi.kt`, BC-60), `DayApiTest`; scope registry lines added. Submit void, reopen, cover, exceptions are DROP rows.
 - Requests filed: `backend-core-outlet-pin-history.md`, `backend-core-login-device-proof.md` (contract v1.4); salvage draft `backend-core-web-client-ip.md` discarded (duplicate of `backend-core-bff-client-ip.md`). Salvage branch `claude/bc-s5-salvage`: tests taken; its REL-01/02, SEC-02 work duplicates ours.
 - db answered (lane/db 0a04b6fc, not yet on INT): V0053 `cfg.sec.record_signature_mode`, V0054 `app.security_event` (auth_rw INSERT only, no RETURNING; detail <= 2000 bytes; `db-security-event-and-signature-mode-answer.md`). When on INT: JDBI sink beside the log sink (bounded queue, off the request path).
+- db answered cfg.app keys: V0055 on lane/db 6f9b6dcf (docs/19 values 7/3/40, global; `db-app-cfg-keys-answer.md`). When on INT: bundle test that they arrive in `config.values`.
+- Pushed: lane/backend-core c417270a (sync+app green; full suite green on the merge). Salvage branch delete was refused by the remote (still at 96ec5eae): lead to remove.
 - Open: D5 late rows only for the uploader's routes; risk job window (today/yesterday) misses late-swept mismatches (backend-admin); partial index for unchecked visits (db, fleet); cfg.app keys still not in db; android-core re-queue of device_integrity_failed rows (lead).
 
 ## Session 5 (2026-10-07)
