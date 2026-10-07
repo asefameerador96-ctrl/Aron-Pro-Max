@@ -52,8 +52,8 @@ private fun AronColorRoles.toMaterial(): ColorScheme {
 /**
  * The v1 type scale (docs/design/tokens.md s7): display 34/40, numeral 26/32, title 22/30, heading 18/26, body 16/24,
  * caption 13/18, label 13/18; Bangla line heights are taller (display 48, numeral 38, title 32, body 26, caption and
- * label 14/20). Only the bundled 400 and 700 weights exist. Sunlight lifts body one step (Latin 17 sp, Bangla 18/28) and
- * sets Bangla body in bold, the only heavier weight bundled (docs/32 s2a item 5 asks for 500; no such face exists).
+ * label 14/20). Bundled: 400 and 700, plus Bengali Medium 500 (Bangla body and caption use it, docs/32 s2a item 5). Sunlight
+ * lifts body one step (Latin 17 sp, Bangla 18/28).
  */
 fun aronTypography(language: AppLanguage, sunlight: Boolean = false): Typography {
     val family = AronFonts.forLanguage(language)
