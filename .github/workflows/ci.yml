@@ -182,8 +182,12 @@ jobs:
         # already landed on the integration branch never counts as new here. On the integration branch, the gate base.
         run: |
           base="${CHECK_BASE}"
-          if [ "${GITHUB_REF}" != "refs/heads/${INTEGRATION_BRANCH}" ] && git rev-parse -q --verify "origin/${INTEGRATION_BRANCH}" >/dev/null; then
+          # Lane pushes only: pull requests (the daily gate PR) and main keep the gate base, which covers the promotion.
+          if [ "${GITHUB_EVENT_NAME}" = push ] && [ "${GITHUB_REF}" != "refs/heads/main" ] \
+             && [ "${GITHUB_REF}" != "refs/heads/${INTEGRATION_BRANCH}" ] && git rev-parse -q --verify "origin/${INTEGRATION_BRANCH}" >/dev/null; then
             base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}" || echo "${CHECK_BASE}")"
+            # A lane head equal to the integration tip has no own diff: keep the gate base instead of scanning nothing.
+            [ "${base}" != "${GITHUB_SHA}" ] || base="${CHECK_BASE}"
           fi
           echo "semgrep base: ${base}"
           tools/ci/semgrep.sh "${base}"

@@ -63,18 +63,18 @@ permissions:
 env:
   INTEGRATION_BRANCH: claude/wonderful-thompson-k6ejnf
 
-# One deploy per environment at a time, never cancelled mid-flight; GitHub keeps one pending run and a newer one
-# replaces it, so after a burst of pushes only the newest green head deploys. deploy.sh also holds an Azure-side lock
-# (manual runs, promote-prod) and skips an ancestor of the live commit or a commit with nothing deployable changed.
-# A rollback has its own group: a newer push must never cancel a pending rollback, nor a rollback a pending fix.
-concurrency:
-  group: deploy-${{ inputs.environment || 'dev' }}${{ (github.event_name == 'workflow_dispatch' && inputs.rollback_sha != '') && '-rollback' || '' }}
-  cancel-in-progress: false
-
 jobs:
   deploy:
     name: Deploy to ${{ inputs.environment || 'dev' }}
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    # One deploy per environment at a time, never cancelled mid-flight; GitHub keeps one pending run and a newer one
+    # replaces it, so after a burst of pushes only the newest green head deploys. The group sits on the JOB (CI audit
+    # 2026-10-07 s5 item 5): a run whose `if` is false (a red or pull-request ci run) never enters it, so it can no
+    # longer replace a waiting green deploy. A rollback has its own group. deploy.sh also holds an Azure-side lock and
+    # skips an ancestor of the live commit or a commit with nothing deployable changed.
+    concurrency:
+      group: deploy-${{ inputs.environment || 'dev' }}${{ (github.event_name == 'workflow_dispatch' && inputs.rollback_sha != '') && '-rollback' || '' }}
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || 'azure-dev' }}
