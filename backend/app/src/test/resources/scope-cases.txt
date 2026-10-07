@@ -60,6 +60,8 @@ GET /v1/leave -> case LeaveTest#randomisedListsNeverLeakLeaveOutsideTheCallersRe
 GET /v1/me -> exempt: the caller's own account, token or phone only; no geography rows
 GET /v1/memos -> case SyncReadsTest#memosAreReadByNumberOrOutletWithLinesAndNeverOutsideTheCallersReach
 GET /v1/outlets/nearby -> case NearbyOutletsTest#nearbyOutletsAreTheSeededOnesInsideTheCircleAndTheReachNearestFirst
+GET /v1/risk-signals -> case RiskSignalsTest#supervisorsSeeOnlySignalsInTheirReachAndFieldRepsNone
+POST /v1/risk-signals/{signal_id}/review -> case RiskSignalsTest#aReviewIsAnIdempotentEventAndOutOfReachIsNotFound
 GET /v1/report-exports -> gap: backend-reports
 GET /v1/report-exports/{export_id} -> gap: backend-reports
 GET /v1/reports -> gap: backend-reports

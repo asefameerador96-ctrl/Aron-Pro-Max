@@ -233,3 +233,4 @@ take the tests even if your code differs. The branch also carries three request 
 filed: backend-core-outlet-pin-history.md (backend-admin + db), backend-core-web-client-ip.md
 (web-dashboard + infra), backend-core-login-device-proof.md (contract v1.4: no X-Device-Proof on login).
 File or discard them explicitly, then delete the salvage branch.
+- F-SYS-025 blocked on db `backend-core-route-day-downloads.md` (uploads already stored; downloads have only the first). F-API-007 blocked on db `backend-core-media-upload-ledger.md`. F-API-010/011 need contract operations (`GET /v1/outlets`, `GET /v1/routes` are not in the contract).
