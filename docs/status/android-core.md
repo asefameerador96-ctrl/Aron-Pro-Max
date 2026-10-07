@@ -78,6 +78,31 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Handover (READY TO RECYCLE, 2026-10-07 ~12:50Z, fourth session)
+- **Done this session** (details in "Fourth session" below; every row had a fresh Opus checker and every confirmed defect is a test):
+  - android-sys shell wiring: photos (app-sr `MediaShell`: upload worker, `media_meta` sink, camera, photo claim before commit), logout (core-sync `shell/ShellLogout` in SR/AMO/TSO), updater (core-sync `shell/UpdateShell` + `UpdateHost` in each app).
+  - Checker re-rounds on ec28160 and 3926bd6f: fixed (delta version spent only by an answered request; `UserDatabases.close`/`allowOpen`/`exists`).
+  - INT red job: core-media consumer-rules, ACCESS_NETWORK_STATE in core-sync/core-system/core-media, core-sync NewApi; core-sync no longer links core-media (MediaUploaderTest guard).
+  - F-SYS-003 phone side: `AuthApi.bindDevice`, `SessionRepository.bindDevice`, `OtpError.DEVICE_LIMIT` / `SIGN_IN_AGAIN`.
+  - backend-core 503/generation note items 1 and 2.
+  - Lane head pushed: 333190db (INT merged).
+- **In progress:** nothing.
+- **Next, in this order:**
+  1. N-038 push on the phone, including backend-core's data keys (`announcement`, `config_pull`, `bundle_pull` with `pull_after_s` jitter, `sync_nudge`/`task_assigned`); no polling; one sync per nudge.
+  2. F-SYS-052, F-SYS-072, F-SYS-053, then the AUD rows (AUD-PERF-05 key format, AUD-TP-4 is infra's) and the rest of `python3 tools/my-rows.py android-core --todo` in (day, id) order.
+  3. Support tile (item 5) once `cfg.support.public_key_spki` exists (docs/requests/android-sys-support-key.md).
+- **Open requests / owed to others:**
+  - android-sr-a: wire the OTP screen to `session.bindDevice` (exact steps in the F-SYS-003 bullet below); a slot in feature-home `SettingsContent` for `WifiOnlyPhotosRow` and an "App update" entry (silent releases), and the `DayGateBanner(FINISH_OPEN_DAY_ONLY)` on home.
+  - infra: SR APK baseline refresh (docs/requests/android-core-apk-baseline.md; integrator says infra 5308ee7 does it).
+  - Decision recorded: AMO/TSO have no offline day yet, so a required update blocks them at once.
+- **Traps found this session:**
+  19. core-media's `theRecordSyncNeverWaitsForPhotos` reads core-sync/build.gradle.kts as text: the string "core-media" must not appear there, not even in a comment.
+  20. `MediaStore.forUser` creates its folder: check `media/u<id>` exists before building a store (no database opened for users without photos).
+  21. Run lint on every android module with `--continue` before pushing a manifest or API-level change: CI's Android job runs lintDebug everywhere.
+  22. After `git merge` of INT, look at `git diff --stat HEAD@{1} HEAD -- android shared` and rebuild before pushing when it is non-empty.
+  23. Report a pushed commit id only after reading it from `git rev-parse` (three wrong ids were sent today).
+  24. The server binds a phone before its temporary-password check: a bind can answer `password_change_required` with the OTP already spent.
+
 ## Fourth session (2026-10-07, from ~09:30Z)
 - **android-sys app-shell wiring** (docs/requests/android-sys-app-wiring.md items 1, 2, 6; android-sys-logout-wiring.md shell part):
   - core-sync `shell/MediaShell` (Hilt singleton in all three shells): `install()` in Application.onCreate sets `MediaRuntime.wiring` (every known user, that user's upload grant, `OutboxRecordProbe` over the outbox plus `CaptureDao.photoOwnerExists`, `media_meta` sink -> `recordMediaMeta`; a fix row not on the phone goes as `fix: null`) and asks once for an upload; `cfg.media.*` read from the user's bundle; `wifiOnly` (WifiOnlySetting) and `scheduler` on the trusted clock; `afterSync(report)` asks for an upload when a sync run acked rows (`SessionSyncRunner(afterRun = ...)`).
