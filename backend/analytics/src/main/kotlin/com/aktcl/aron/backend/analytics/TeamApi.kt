@@ -57,7 +57,44 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
     private fun clause(z: List<Long>?, col: String) = if (z == null) "true" else "$col = ANY(:zones)"
     private fun bindZones(q: org.jdbi.v3.core.statement.Query, z: List<Long>?) = q.also { if (z != null) it.bindArray("zones", Long::class.javaObjectType, z) }
 
+    /**
+     * An SR's home strip: the same KPI definitions over the route-days of the SR's own routes, so the phone's local strip equals it after sync
+     * (docs/24 s12.4). Zone and territory callers get the dashboard rollup of their reach.
+     */
+    private fun routeHome(reach: Reach, date: LocalDate): AppHome = db.readJdbi.withHandle<AppHome, Exception> { h ->
+        val ids = reach.routeIds.toList().ifEmpty { listOf(-1L) }
+        val row = h.createQuery(
+            """
+            SELECT g.route_id, g.route_name, g.route_code, a.day_state, a.planned, a.exception_approved, a.target_outlets, a.visited_outlets, a.successful_calls, a.visits,
+                   a.geo_valid_visits, a.force_sale_visits, a.mock_visits, a.suspicious_visits, a.active_memo_count, a.gross_mtk, a.net_mtk, a.updated_at
+              FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id WHERE a.business_date = :d AND a.route_id = ANY(:r) ORDER BY g.route_code
+            """,
+        ).bind("d", date).bindArray("r", Long::class.javaObjectType, ids).map { rs, _ -> rs.toRow() }.list()
+        val target = row.filter { it.planned && !it.excused }
+        val tr = target.size.toLong(); val lr = target.count { it.state != "not_started" }.toLong(); val sr = target.count { it.state == "sales_submitted" || it.state == "final_submitted" }.toLong()
+        val tout = target.sumOf { it.targetOutlets.toLong() }; val sc = row.sumOf { it.calls.toLong() }; val vis = row.sumOf { it.visits.toLong() }
+        val k = DashboardKpis(
+            tr.toInt(), lr.toInt(), pct(lr, tr), sr.toInt(), pct(sr, lr), pct(sr, tr), tout.toInt(), row.sumOf { it.visited }, sc.toInt(), pct(sc, tout), row.sumOf { it.memos },
+            row.sumOf { it.gross }, row.sumOf { it.net }, pct(row.sumOf { it.geoValid.toLong() }, vis), pct(row.sumOf { it.force.toLong() }, vis), row.sumOf { it.mock }, row.sumOf { it.susp },
+        )
+        val first = row.firstOrNull()
+        val asOf = row.maxOfOrNull { it.updatedAt } ?: clock.now()
+        AppHome(asOf.wire(), date.toString(), NodeRefDto("route", first?.routeId ?: 0, first?.code, first?.name), k, team = emptyList())
+    }
+
+    private class RouteRow(
+        val routeId: Long, val name: String, val code: String, val state: String, val planned: Boolean, val excused: Boolean, val targetOutlets: Int, val visited: Int, val calls: Int, val visits: Int,
+        val geoValid: Int, val force: Int, val mock: Int, val susp: Int, val memos: Int, val gross: Long, val net: Long, val updatedAt: java.time.Instant,
+    )
+
+    private fun java.sql.ResultSet.toRow() = RouteRow(
+        getLong("route_id"), getString("route_name"), getString("route_code"), getString("day_state"), getBoolean("planned"), getBoolean("exception_approved"), getInt("target_outlets"), getInt("visited_outlets"),
+        getInt("successful_calls"), getInt("visits"), getInt("geo_valid_visits"), getInt("force_sale_visits"), getInt("mock_visits"), getInt("suspicious_visits"), getInt("active_memo_count"),
+        getLong("gross_mtk"), getLong("net_mtk"), getObject("updated_at", OffsetDateTime::class.java).toInstant(),
+    )
+
     fun home(reach: Reach, date: LocalDate): AppHome {
+        if (reach.ownRecordsOnly) return routeHome(reach, date)
         val s = dashboards.summary(reach, null, null, date, date)
         val team = db.readJdbi.withHandle<List<TeamDayRow>, Exception> { h ->
             val z = zones(h, reach, null)
@@ -81,13 +118,15 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
     fun stock(reach: Reach, zoneId: Long?, date: LocalDate): TeamStockList {
         val rows = db.readJdbi.withHandle<List<TeamStockItem>, Exception> { h ->
             val z = zones(h, reach, zoneId)
-            // current = issued - sold - free (promo, DRP reward, sample lines leave the bag too) - returned. No phone numbers are read.
+            // current = issued - sold - free (promo, DRP reward, sample lines leave the bag too) - returned, plus signed adjustments and minus damaged and short stock. No phone numbers are read.
             val flat = bindZones(
                 h.createQuery(
                     """
                     SELECT u.id AS uid, u.full_name, p.sku_id, p.base_unit, sum(a.issued_qty_base) iss, sum(a.sold_qty_base) sold, sum(a.returned_qty_base) ret,
-                           sum(a.issued_qty_base - a.sold_qty_base - a.free_qty_base - a.returned_qty_base) cur
+                           sum(a.issued_qty_base - a.sold_qty_base - a.free_qty_base - a.returned_qty_base + coalesce(mv.adj, 0)) cur
                       FROM dw.agg_daily_route_sku a JOIN dw.dim_geo g ON g.route_id = a.route_id JOIN dw.dim_product p ON p.sku_id = a.sku_id
+                      LEFT JOIN (SELECT route_id, sku_id, sum(CASE kind WHEN 'adjustment' THEN qty_base WHEN 'damaged' THEN -qty_base WHEN 'short' THEN -qty_base ELSE 0 END) AS adj
+                                   FROM app.stock_movement WHERE business_date = :d AND voided_at IS NULL GROUP BY 1, 2) mv ON mv.route_id = a.route_id AND mv.sku_id = a.sku_id
                       JOIN app.route_day rd ON rd.route_id = a.route_id AND rd.business_date = a.business_date
                       JOIN app.app_user u ON u.id = coalesce(rd.acting_user_id, rd.assigned_user_id)
                      WHERE a.business_date = :d AND ${clause(z, "g.zone_id")} GROUP BY u.id, u.full_name, p.sku_id, p.base_unit ORDER BY u.full_name, u.id, p.sku_id
@@ -105,6 +144,8 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
 class AppTeamDeps(val service: TeamService, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
 private val TEAM_ROLES = Role.entries.toSet() - Role.SR - Role.SUPPORT
+/** The SR reads its own strip; stock and the team list are for supervisors. */
+private val HOME_ROLES = TEAM_ROLES + Role.SR
 
 private fun ApplicationCall.dateParam(name: String, today: LocalDate, required: Boolean = false): LocalDate {
     val raw = request.queryParameters[name] ?: if (required) throw ApiProblem(ProblemCode.ERR_VALIDATION, "$name is required", errors = listOf(FieldError("query.$name", "required"))) else return today
@@ -119,7 +160,7 @@ fun Route.appTeamRoutes(d: AppTeamDeps) {
     authenticated(d.guard) {
         get("/app/home") {
             val p = call.principal
-            if (p.role !in TEAM_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "app home is for AMO, TSO and the web roles")
+            if (p.role !in HOME_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "app home is not available to this role")
             val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
             call.respond(d.service.home(d.reach.reach(p.userId, p.role, p.scopeVersion, today), call.dateParam("business_date", today)))
         }

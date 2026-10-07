@@ -1,38 +1,14 @@
 package com.aktcl.aron.dpc.enrolment
 
-import com.aktcl.aron.dpc.policy.DevicePolicy
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 
-// The enrolment request is shared:contract's `EnrolDeviceRequest` (v1.2); its `public_key` and `device_info` are JSON,
-// built from the two classes below. `EnrolDeviceResponse` has no shared DTO yet (REQUEST:
-// docs/requests/android-core-contract-dtos.md); EnrolmentTest checks its members against contract/openapi.yaml.
+// Enrolment wire types are shared:contract DTOs (v1.2); EnrolmentExtras is phone-only (the QR admin extras).
 
-@Serializable
-data class JwkEcPublic(val kty: String = "EC", val crv: String = "P-256", val x: String, val y: String)
+typealias JwkEcPublic = com.aktcl.aron.contract.JwkEcPublicDevice
+typealias DeviceInfoDto = com.aktcl.aron.contract.DeviceInfo
+typealias EnrolDeviceResponse = com.aktcl.aron.contract.EnrolDeviceResponse
 
-@Serializable
-data class DeviceInfoDto(
-    val manufacturer: String,
-    val model: String,
-    @SerialName("os_api_level") val osApiLevel: Int,
-    @SerialName("os_version") val osVersion: String,
-    @SerialName("security_patch") val securityPatch: String?,
-    val abi: String,
-    @SerialName("ram_mb") val ramMb: Int,
-    @SerialName("storage_total_mb") val storageTotalMb: Int?,
-)
-
-@Serializable
-data class EnrolDeviceResponse(
-    @SerialName("device_id") val deviceId: Long,
-    @SerialName("device_uuid") val deviceUuid: String,
-    @SerialName("enrolled_at") val enrolledAt: String,
-    @SerialName("lockdown_level") val lockdownLevel: String,
-    @SerialName("trust_level") val trustLevel: String,
-    val policy: DevicePolicy,
-    @SerialName("server_time") val serverTime: String,
-)
+/** An EC P-256 public key (contract `JwkEcPublicDevice`). */
+fun ecJwk(x: String, y: String): JwkEcPublic = JwkEcPublic(kty = "EC", crv = "P-256", x = x, y = y)
 
 /** The `aron.*` admin extras of the provisioning QR (docs/24 s10.4 step 2), validated. */
 data class EnrolmentExtras(
