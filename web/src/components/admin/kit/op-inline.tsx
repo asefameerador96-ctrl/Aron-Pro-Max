@@ -49,7 +49,7 @@ export function OpInline({ op, params, body, version, label, noReason, successKe
       });
       const data = (await res.json().catch(() => ({}))) as { data?: Record<string, unknown> | null } & Partial<Problem>;
       if (res.ok) {
-        const shown = resultField && data.data ? String(data.data[resultField] ?? "") : "";
+        const shown = resultField && data.data ? String(resultField.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), data.data) ?? "") : "";
         setMsg({ kind: "ok", text: `${t(successKey ?? "admin.save.ok")}${shown ? ` ${shown}` : ""}` });
         setOpen(false);
         setReason("");

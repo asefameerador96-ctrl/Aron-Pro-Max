@@ -34,9 +34,9 @@ describe("console", () => {
     const ro = html(<ConfigConsoleView {...props} canWrite={false} />);
     expect(ro).not.toContain("data-key=");
   });
-  it("switches ask for a duration", () => {
-    expect(text(html(<ConfigConsoleView {...props} switches />))).toContain("Duration (hours)");
-    expect(text(html(<ConfigConsoleView {...props} />))).not.toContain("Duration (hours)");
+  it("switches (kind O) always ask for a duration, other keys never do", () => {
+    expect(text(html(<ConfigConsoleView {...props} />))).toContain("Duration (hours)");
+    expect(text(html(<ConfigConsoleView {...props} keys={[props.keys[0]!]} />))).not.toContain("Duration (hours)");
   });
   it("shows Bangla descriptions in bn", () => {
     expect(text(html(<ConfigConsoleView {...props} locale="bn" />))).toContain("মিটারে ব্যাসার্ধ");

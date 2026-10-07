@@ -1,0 +1,17 @@
+# squawk rules for NEW migrations (tools/ci/migrations-check.sh). Owner: infra lane; the db lane may ask for a change
+# through docs/requests/. Kept on: everything that protects a live table under load (lock_timeout before DDL,
+# CREATE INDEX CONCURRENTLY on an existing table, NOT VALID then VALIDATE for new constraints and foreign keys,
+# no column drop or rename without expand/contract, no blocking type changes).
+pg_version = "16.0"
+assume_in_transaction = true
+excluded_rules = [
+  # The schema chooses integer widths and varchar limits on purpose (docs/16: money is bigint milli-taka; counts and
+  # small codes are int/smallint; length limits are validation).
+  "prefer-bigint-over-int",
+  "prefer-bigint-over-smallint",
+  "prefer-text-field",
+  # Flyway applies each migration exactly once inside a transaction; IF NOT EXISTS would hide schema drift.
+  "prefer-robust-stmts",
+  # A backfill may legitimately run long; lock_timeout (kept on) is what protects the live writes.
+  "require-statement-timeout",
+]

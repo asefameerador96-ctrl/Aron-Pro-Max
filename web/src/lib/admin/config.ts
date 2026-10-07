@@ -26,12 +26,14 @@ export function parseConfigInput(type: ValueType, raw: string, bounds?: ConfigBo
     case "money_mtk": {
       if (!INTEGER.test(text)) return { ok: false, code: "invalid" };
       const n = Number(text);
+      if (!Number.isSafeInteger(n)) return { ok: false, code: "too_big" };
       return inRange(n, bounds) ?? { ok: true, value: n };
     }
     case "number":
     case "pct": {
       if (!NUMBER.test(text)) return { ok: false, code: "invalid" };
       const n = Number(text);
+      if (!Number.isFinite(n)) return { ok: false, code: "too_big" };
       if (type === "pct" && (n < 0 || n > 100)) return { ok: false, code: n < 0 ? "too_small" : "too_big" };
       return inRange(n, bounds) ?? { ok: true, value: n };
     }
