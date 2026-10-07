@@ -35,7 +35,7 @@ import com.aktcl.aron.rules.Formats
 import com.aktcl.aron.rules.UiLocale
 
 @Composable
-private fun money(mtk: Long): String = Formats.money(mtk, if (LocalAppLanguage.current == AppLanguage.BN) UiLocale.BN else UiLocale.EN)
+internal fun money(mtk: Long): String = Formats.money(mtk, if (LocalAppLanguage.current == AppLanguage.BN) UiLocale.BN else UiLocale.EN)
 
 /** The Memo menu: today's live memos with the total beside each; selecting one shows [MemoDetailView] (F-SR-030). */
 @Composable

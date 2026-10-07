@@ -18,4 +18,19 @@
     <string name="summary_discount_and_others">ডিসকাউন্ট এবং অন্যান্য (-)</string>
     <string name="summary_grand_total">সর্বমোট</string>
     <string name="summary_print">প্রিন্ট</string>
+    <string name="journey_title">বিক্রয় যাত্রা</string>
+    <string name="journey_counts">পরিকল্পিত %1$s, ভিজিট %2$s, বিক্রয় %3$s, ভিজিট হয়নি %4$s</string>
+    <string name="journey_not_visited">ভিজিট হয়নি</string>
+    <string name="journey_visited">ভিজিট হয়েছে</string>
+    <string name="journey_sold">বিক্রয় হয়েছে</string>
+    <string name="kpi_visited">আউটলেট ভিজিট %1$s/%2$s</string>
+    <string name="kpi_strike">স্ট্রাইক রেট %1$s%%</string>
+    <string name="kpi_non_visit">ভিজিটহীন %1$s</string>
+    <string name="kpi_no_sale">বিক্রয়হীন %1$s</string>
+    <string name="kpi_stock_line">%1$s: ইস্যু %2$s, স্টক %3$s %4$s</string>
+    <string name="money_gross">মোট মূল্য</string>
+    <string name="money_discount">মোট ডিসকাউন্ট</string>
+    <string name="money_drp">স্লাইড ডিসকাউন্ট</string>
+    <string name="money_qc">মোট কিউসি</string>
+    <string name="money_grand">সর্বমোট</string>
 </resources>
