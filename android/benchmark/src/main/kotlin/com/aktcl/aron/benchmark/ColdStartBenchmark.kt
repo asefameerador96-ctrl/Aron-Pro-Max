@@ -40,8 +40,10 @@ class ColdStartBenchmark {
         val shell = InstrumentationRegistry.getInstrumentation().uiAutomation
         fun run(cmd: String): String =
             shell.executeShellCommand(cmd).let { fd -> android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes().decodeToString() } }
-        // The compile state is fixed, not left to install history: the shipped profile compiled the way ProfileInstaller
-        // would after install, then one launch that is not counted.
+        // The compile state is fixed, not left to install history or earlier tests: reset, have ProfileInstaller write the
+        // shipped profile (what CompilationMode.Partial does), compile with it, then one launch that is not counted.
+        run("cmd package compile --reset $targetPackage")
+        run("am broadcast -a androidx.profileinstaller.action.INSTALL_PROFILE $targetPackage/androidx.profileinstaller.ProfileInstallReceiver")
         run("cmd package compile -f -m speed-profile $targetPackage")
         run("am force-stop $targetPackage")
         run("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $targetPackage")

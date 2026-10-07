@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- AUD-PERF-04: only the `benchmark` build type is profileable from the shell (macrobenchmark); release is not. -->
+<!-- AUD-PERF-04: only the `benchmark` and `benchmarkProfile` build types are profileable from the shell (macrobenchmark); release is not. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <application>
