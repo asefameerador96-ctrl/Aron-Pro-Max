@@ -29,6 +29,8 @@ check(testCopySuffix == null || Regex("^\\.[a-z][a-z0-9_]{0,20}$").matches(testC
     "aron.applicationIdSuffix must look like .copy, got: $testCopySuffix"
 }
 
+val playIntegrityProjectNumber: Long = ((findProperty("aron.playIntegrityProjectNumber") as String?)?.trim()?.ifEmpty { null } ?: "0").toLong()
+
 // A release build never talks plain HTTP (docs/24 s5.8): fail it here instead of crashing the app at launch.
 val apiBaseUrlIsHttps = apiBaseUrl.startsWith("https://")
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
@@ -45,6 +47,9 @@ android {
         versionName = (findProperty("aron.versionName") as String?) ?: "0.1.0"
         buildConfigField("String", "ARON_ROLE", "\"SR\"")
         buildConfigField("String", "API_BASE_URL", "\"" + apiBaseUrl + "\"")
+        // Play Integrity (docs/24 s8.7): the Google Cloud project number, not a secret; 0 means not configured and the
+        // status report carries the not_configured marker (R12).
+        buildConfigField("long", "PLAY_INTEGRITY_PROJECT_NUMBER", playIntegrityProjectNumber.toString() + "L")
         if (testCopySuffix != null) applicationIdSuffix = testCopySuffix
     }
     buildFeatures { compose = true }
