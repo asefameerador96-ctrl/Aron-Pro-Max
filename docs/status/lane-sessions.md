@@ -1,5 +1,20 @@
 # Lane sessions (the lead keeps this current; the lane check reads it)
 
+## Restart 2026-10-07 ~15:55 UTC (lead session aron-b3)
+
+Every lane stopped at ~10:39-10:44 UTC (last lane pushes and CI runs) and stayed silent for ~5 hours. The lead
+session was resumed with a fresh context at ~15:46 UTC and could no longer reach the old lane sessions by id,
+so the critical-path lanes were restarted as fresh remote sessions on the same briefs (state from git and
+docs/status, per docs/29 s3). The sessions in the table below are therefore **all retired**; the active lanes
+are now the lead's remote agents: integrator (Sonnet), backend-core (Opus), db (Opus), android-core (Opus),
+android-sr-a (Sonnet), android-sr-b (Sonnet), android-core-ui (Sonnet), android-print (Opus), infra (Opus).
+The integrator verified git fetch/push from the remote environment before the others were started.
+Still on hold (unchanged, see the throttle note and docs/status/hold-notes.md): web-config, web-admin,
+web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-geo-dpc stays finished
+(device halves DEVICE-PENDING). The laptop operator session is untouched.
+
+## Retired registry (pre-restart)
+
 | Sub-lane | Session id | Model | Started | Notes |
 |---|---|---|---|---|
 | db | session_017dmQw2byPhYrFKrGJrEMRj | Opus | 2026-10-07 | recycled 05:35; previous session_01KAjUS8Gz437Nx93fsiVFYX is retired (READY TO RECYCLE 05:33) |
