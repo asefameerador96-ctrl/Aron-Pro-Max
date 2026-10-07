@@ -53,7 +53,9 @@ class DayApiTest {
     private lateinit var fresh: FreshDb
     private lateinit var wiring: Wiring
     private val now = Instant.parse("2027-01-03T06:00:00Z")
-    private val clock = AronClock { now }
+    /** Seconds the test clock moved past [now] (a retry comes later than the first call). */
+    @Volatile private var moved = 0L
+    private val clock = AronClock { now.plusSeconds(moved) }
     private val password = "throwaway-" + System.nanoTime()
     private val devPhone = "00000000-0000-4000-8000-000000000001"
     private val day = "2027-01-03"
@@ -195,6 +197,7 @@ class DayApiTest {
         val cu = uuid()
         val r = client.salesSubmit(cu, "2027-01-02")
         assertEquals("sales_submitted", state(r, r.bodyAsText())["state"]!!.jsonPrimitive.content)
+        moved += 2 // the retry comes later: the server's capture time differs, the answer must not
         val again = client.salesSubmit(cu, "2027-01-02")
         assertEquals("sales_submitted", state(again, again.bodyAsText())["state"]!!.jsonPrimitive.content)
         val events = fresh.db.jdbi.withHandle<Long, Exception> { h ->
@@ -245,7 +248,7 @@ class DayApiTest {
         assertEquals("manual", res["kind"]!!.jsonPrimitive.content)
         val replay = client.finalSubmit(tso, cu)
         assertEquals(HttpStatusCode.OK, replay.status, replay.bodyAsText())
-        assertEquals(res["submitted_at"], json(replay.bodyAsText())["submitted_at"], "the replay answers the first success")
+        assertEquals(res, json(replay.bodyAsText()), "the replay answers the first success")
         val second = client.finalSubmit(tso, uuid())
         assertEquals(HttpStatusCode.Conflict, second.status, second.bodyAsText())
         val problem = json(second.bodyAsText())
@@ -261,6 +264,35 @@ class DayApiTest {
             h.createQuery("SELECT late_rows FROM app.final_submit WHERE client_uuid = CAST(:c AS uuid)").bind("c", cu).mapTo(Int::class.java).one()
         }
         assertEquals(1, late)
+    }
+
+    @Test
+    fun aZoneDayAfterTodayIsRefusedAndAUuidIsBoundToItsZoneDay() = testApplication {
+        application { aronApi(wiring) }
+        val tso = client.web("tso1001")
+        val tomorrow = client.post("/v1/day/final-submit") {
+            bearerAuth(tso); contentType(ContentType.Application.Json)
+            setBody("""{"client_uuid":"${uuid()}","zone_id":$zone,"business_date":"2027-01-04"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, tomorrow.status, tomorrow.bodyAsText())
+        val cu = uuid()
+        val first = client.post("/v1/day/final-submit") {
+            bearerAuth(tso); contentType(ContentType.Application.Json)
+            setBody("""{"client_uuid":"$cu","zone_id":$zone,"business_date":"2026-12-30"}""")
+        }
+        assertEquals(HttpStatusCode.OK, first.status, first.bodyAsText())
+        val other = client.post("/v1/day/final-submit") {
+            bearerAuth(tso); contentType(ContentType.Application.Json)
+            setBody("""{"client_uuid":"$cu","zone_id":$zone,"business_date":"2026-12-29"}""")
+        }
+        assertEquals(HttpStatusCode.Conflict, other.status, other.bodyAsText())
+        // Every route of the zone got a closed route-day, assigned or not.
+        val open = fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery(
+                "SELECT count(*) FROM app.route r WHERE r.zone_id = :z AND r.status = 'active' AND NOT EXISTS (SELECT 1 FROM app.route_day d WHERE d.route_id = r.id AND d.business_date = DATE '2026-12-30' AND d.final_submitted_at IS NOT NULL)",
+            ).bind("z", zone).mapTo(Long::class.java).one()
+        }
+        assertEquals(0L, open)
     }
 
     @Test

@@ -115,6 +115,8 @@ class DayService(
     private val ingest: IngestService,
     private val clock: AronClock = AronClock.SYSTEM,
 ) {
+    private val planner = RouteDayPlanningJob(db, config, clock)
+
     fun salesSubmit(p: AronPrincipal, req: SalesSubmitRequest): DayStateListDto {
         val deviceId = p.deviceId
         val deviceUuid = p.deviceUuid
@@ -128,13 +130,63 @@ class DayService(
         }
         if (req.submit_cycle !in 1..50) throw invalid("/submit_cycle")
         if (req.dues_outstanding_mtk < 0) throw invalid("/dues_outstanding_mtk")
-        val key = db.jdbi.withHandle<String?, Exception> { h ->
-            h.createQuery("SELECT public_key_jwk::text FROM app.device WHERE id = :d AND device_uuid = CAST(:u AS uuid)").bind("d", deviceId).bind("u", deviceUuid)
-                .mapTo(String::class.java).findOne().orElse(null)
+        // A retry of a submit already stored (the first response was lost) skips the ingest: the synthesized record
+        // carries the server's time, so a second copy would not be byte-identical. The state is read back either way.
+        if (!storedFor(p.userId, req.client_uuid)) {
+            val key = db.jdbi.withHandle<String?, Exception> { h ->
+                h.createQuery("SELECT public_key_jwk::text FROM app.device WHERE id = :d AND device_uuid = CAST(:u AS uuid)").bind("d", deviceId).bind("u", deviceUuid)
+                    .mapTo(String::class.java).findOne().orElse(null)
+            }
+            val res = try {
+                ingest.ingest(Uploader(p.userId, p.role, p.scopeVersion, deviceId, deviceUuid, key?.let(DeviceProof::publicKey)), onlineBatch(req, deviceUuid))
+            } catch (e: ApiProblem) {
+                // Two copies racing: the first one's record is stored; the second answers its state.
+                if (e.code != ProblemCode.ERR_SYNC_BATCH_UUID_REUSED || !storedFor(p.userId, req.client_uuid)) throw e
+                null
+            }
+            res?.acks?.single()?.let { ack ->
+                if (ack.status != "accepted" && ack.status != "duplicate") {
+                    if (ack.code == "schema_invalid") throw ApiProblem(ProblemCode.ERR_VALIDATION, "the Sales Submit does not match the day_submit record shape")
+                    throw ApiProblem(ProblemCode.ERR_CONFLICT, "Sales Submit not stored: ${ack.status} ${ack.code ?: ""}".trim(), context = mapOf("record_status" to JsonPrimitive(ack.status), "record_code" to JsonPrimitive(ack.code)))
+                }
+            }
+        } else if (!storedAs(p.userId, req.client_uuid, "day_submit")) {
+            throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid was used for another record")
         }
+        return db.jdbi.withHandle<DayStateListDto, Exception> { h ->
+            if (req.scope == "supervisor_day") DayStateListDto(emptyList(), supervisorDay(h, p.userId, date))
+            else DayStateListDto(routeDayStates(h, req.route_id!!, date), null)
+        }
+    }
+
+    private fun storedFor(userId: Long, clientUuid: String): Boolean = db.jdbi.withHandle<Boolean, Exception> { h ->
+        h.createQuery("SELECT EXISTS (SELECT 1 FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) AND user_id = :u AND status IN ('accepted','voided'))")
+            .bind("c", clientUuid).bind("u", userId).mapTo(Boolean::class.java).one()
+    }
+
+    private fun storedAs(userId: Long, clientUuid: String, type: String): Boolean = db.jdbi.withHandle<Boolean, Exception> { h ->
+        h.createQuery("SELECT EXISTS (SELECT 1 FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) AND user_id = :u AND record_type = :t)")
+            .bind("c", clientUuid).bind("u", userId).bind("t", type).mapTo(Boolean::class.java).one()
+    }
+
+    /** The route-day as it is now (never the stored batch response, which a replay would return). */
+    private fun routeDayStates(h: Handle, route: Long, date: LocalDate): List<RouteDayStateDto> =
+        h.createQuery(
+            """
+            SELECT state, planned, submit_cycle, submit_voided, submit_count_mismatch, logged_in_at, sales_submitted_at, final_submitted_at
+            FROM app.route_day WHERE route_id = :r AND business_date = :d
+            """.trimIndent(),
+        ).bind("r", route).bind("d", date).map { rs, _ ->
+            fun t(c: String) = rs.getObject(c, OffsetDateTime::class.java)?.toInstant()?.wire()
+            RouteDayStateDto(
+                route, date.toString(), rs.getString("state"), rs.getBoolean("planned"), rs.getInt("submit_cycle"), rs.getBoolean("submit_voided"),
+                rs.getObject("submit_count_mismatch") as Boolean?, t("logged_in_at"), t("sales_submitted_at"), t("final_submitted_at"),
+            )
+        }.list()
+
+    /** The online submit as the record the outbox would carry; counts the request does not hold are zero (online means the day's outbox is empty). */
+    private fun onlineBatch(req: SalesSubmitRequest, deviceUuid: String): SyncBatchRequest {
         val now = clock.now()
-        // The online submit is the record the outbox would carry; counts the request does not hold are zero (an
-        // online submit means the phone's outbox for the day is empty).
         val record = buildJsonObject {
             put("type", "day_submit"); put("client_uuid", req.client_uuid); put("family_uuid", req.client_uuid); put("rank", 0)
             put("schema_version", 1); put("business_date", req.business_date); put("captured_at", now.wire())
@@ -148,21 +200,11 @@ class DayService(
                 put("retailers_with_dues", 0); put("stock_slip_printed", false)
             })
         }
-        val batch = SyncBatchRequest(
+        return SyncBatchRequest(
             batch_uuid = derivedV4("aron-online-sales-submit\n" + req.client_uuid), device_uuid = deviceUuid, schema_version = ContractInfo.SCHEMA_VERSION,
             app_version = "online", trigger = "manual", sent_at_device = now.wire(), pending_rows = 0, time_anchors = emptyList(),
             device_counts = emptyMap(), records = listOf(record),
         )
-        val res = ingest.ingest(Uploader(p.userId, p.role, p.scopeVersion, deviceId, deviceUuid, key?.let(DeviceProof::publicKey)), batch)
-        val ack = res.acks.single()
-        if (ack.status != "accepted" && ack.status != "duplicate") {
-            if (ack.code == "schema_invalid") throw ApiProblem(ProblemCode.ERR_VALIDATION, "the Sales Submit does not match the day_submit record shape")
-            throw ApiProblem(ProblemCode.ERR_CONFLICT, "Sales Submit not stored: ${ack.status} ${ack.code ?: ""}".trim(), context = mapOf("record_status" to JsonPrimitive(ack.status), "record_code" to JsonPrimitive(ack.code)))
-        }
-        return db.jdbi.withHandle<DayStateListDto, Exception> { h ->
-            if (req.scope == "supervisor_day") DayStateListDto(emptyList(), supervisorDay(h, p.userId, date))
-            else DayStateListDto(res.day_states.filter { it.route_id == req.route_id && it.business_date == req.business_date }, null)
-        }
     }
 
     private fun supervisorDay(h: Handle, userId: Long, date: LocalDate): SupervisorDayStateDto? =
@@ -228,23 +270,28 @@ class DayService(
             p.role.wire in delegates -> "delegated"
             else -> throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "Final Submit is the TSO's (or a delegate role's)")
         }
-        // A replay of the same client_uuid answers the first success, whoever asks now and whatever the scope is now.
-        replay(req.client_uuid)?.let { (zone, d, res) ->
-            if (zone != req.zone_id || d != date) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid was used for another zone-day")
-            return res
-        }
-        requireZone(p, req.zone_id, date)
         val now = clock.now()
+        val today = LocalDate.ofInstant(now, java.time.ZoneId.of("Asia/Dhaka"))
+        if (date.isAfter(today)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "a zone-day after today cannot be final-submitted", errors = listOf(FieldError("/business_date", "invalid_value")))
+        // A retry of the caller's own submit answers the first success (whatever the scope is now).
+        replay(h = null, req.client_uuid, p.userId)?.let { return it.checked(req, date) }
+        requireZone(p, req.zone_id, date)
         return db.jdbi.inTransaction<FinalSubmitResultDto, Exception> { h ->
-            // One Final Submit per zone-day at a time: concurrent submits of the zone queue here.
+            // Same uuid racing (double click, timeout retry): the uuid lock first, then the zone-day lock, always in
+            // this order; the loser of either race sees the winner's row below.
+            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 3))", "final-uuid:${req.client_uuid}")
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 3))", "final:${req.zone_id}:$date")
+            replay(h, req.client_uuid, null)?.let { found ->
+                if (found.first != p.userId) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid was used by another submit")
+                return@inTransaction found.checked(req, date)
+            }
             h.createQuery("SELECT submitted_at FROM app.final_submit WHERE zone_id = :z AND business_date = :d AND reopened_at IS NULL")
                 .bind("z", req.zone_id).bind("d", date).mapTo(OffsetDateTime::class.java).findOne().orElse(null)?.let { at ->
                     throw ApiProblem(ProblemCode.ERR_DAY_ALREADY_FINAL_SUBMITTED, "the zone-day is already final-submitted", context = mapOf("submitted_at" to JsonPrimitive(at.toInstant().wire())))
                 }
             val preview = previewIn(h, req.zone_id, date)
             val states = JsonArray(preview.routes.map { r ->
-                buildJsonObject { put("route_id", r.route_id); put("state", r.state); put("memo_count", r.memo_count); put("net_mtk", r.net_mtk); put("kind", kind) }
+                buildJsonObject { put("route_id", r.route_id); put("state", r.state); put("memo_count", r.memo_count); put("net_mtk", r.net_mtk) }
             })
             h.createUpdate(
                 """
@@ -253,6 +300,15 @@ class DayService(
                 """.trimIndent(),
             ).bind("u", req.client_uuid).bind("z", req.zone_id).bind("d", date).bind("by", p.userId).bind("at", ts(now))
                 .bind("via", if (p.isPhone) "app" else "web").bind("rs", states.toString()).execute()
+            // Every listed route gets a route-day (planned by the planner when assigned, else unplanned), so a row that
+            // arrives later finds it closed and counts as late.
+            val listed = preview.routes.map { it.route_id }
+            if (listed.isNotEmpty()) {
+                planner.planIn(h, date, listed)
+                h.createUpdate(
+                    "INSERT INTO app.route_day (route_id, business_date, planned) SELECT r, :d, false FROM unnest(CAST(:r AS bigint[])) r ON CONFLICT (route_id, business_date) DO NOTHING",
+                ).bind("d", date).bindArray("r", Long::class.javaObjectType, listed).execute()
+            }
             val routeIds = h.createUpdate(
                 """
                 UPDATE app.route_day SET final_submitted_at = COALESCE(final_submitted_at, :at)
@@ -265,17 +321,35 @@ class DayService(
         }
     }
 
-    private fun replay(clientUuid: String): Triple<Long, LocalDate, FinalSubmitResultDto>? = db.jdbi.withHandle<Triple<Long, LocalDate, FinalSubmitResultDto>?, Exception> { h ->
-        h.createQuery("SELECT zone_id, business_date, submitted_at, route_states::text FROM app.final_submit WHERE client_uuid = CAST(:u AS uuid)")
-            .bind("u", clientUuid).map { rs, _ ->
-                val zone = rs.getLong(1)
-                val d = rs.getObject(2, LocalDate::class.java)
-                val rows = kotlinx.serialization.json.Json.parseToJsonElement(rs.getString(4)).jsonArray.map { it as JsonObject }
-                fun JsonObject.long(k: String) = (this[k] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
-                val kind = rows.firstOrNull()?.get("kind")?.jsonPrimitive?.content ?: "manual"
-                Triple(zone, d, FinalSubmitResultDto(zone, d.toString(), rs.getObject(3, OffsetDateTime::class.java).toInstant().wire(), kind, rows.size,
-                    rows.sumOf { it.long("memo_count") }.toInt(), rows.sumOf { it.long("net_mtk") }))
-            }.findOne().orElse(null)
+    /**
+     * The first success of [clientUuid]: (submitter, result). Rebuilt from the stored row; `kind` from the submitter's
+     * role (TSO: manual, else delegated). With [onlyBy], only that user's submit is found (a replay never shows another
+     * caller's zone-day).
+     */
+    private fun replay(h: Handle?, clientUuid: String, onlyBy: Long?): Pair<Long, FinalSubmitResultDto>? {
+        fun q(h: Handle) = h.createQuery(
+            """
+            SELECT f.zone_id, f.business_date, f.submitted_at, f.route_states::text, f.submitted_by, u.role
+            FROM app.final_submit f JOIN app.app_user u ON u.id = f.submitted_by
+            WHERE f.client_uuid = CAST(:u AS uuid) AND (CAST(:by AS bigint) IS NULL OR f.submitted_by = :by)
+            """.trimIndent(),
+        ).bind("u", clientUuid).bind("by", onlyBy).map { rs, _ ->
+            val zone = rs.getLong(1)
+            val d = rs.getObject(2, LocalDate::class.java)
+            val rows = kotlinx.serialization.json.Json.parseToJsonElement(rs.getString(4)).jsonArray.map { it as JsonObject }
+            fun JsonObject.long(k: String) = (this[k] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+            rs.getLong(5) to FinalSubmitResultDto(
+                zone, d.toString(), rs.getObject(3, OffsetDateTime::class.java).toInstant().wire(), if (rs.getString(6) == Role.TSO.wire) "manual" else "delegated",
+                rows.size, rows.sumOf { it.long("memo_count") }.toInt(), rows.sumOf { it.long("net_mtk") },
+            )
+        }.findOne().orElse(null)
+        return if (h != null) q(h) else db.jdbi.withHandle<Pair<Long, FinalSubmitResultDto>?, Exception> { q(it) }
+    }
+
+    /** The replayed result must be for the zone-day the request names. */
+    private fun Pair<Long, FinalSubmitResultDto>.checked(req: FinalSubmitRequest, date: LocalDate): FinalSubmitResultDto {
+        if (second.zone_id != req.zone_id || second.business_date != date.toString()) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid was used for another zone-day")
+        return second
     }
 
     private fun invalid(pointer: String) = ApiProblem(ProblemCode.ERR_VALIDATION, pointer.removePrefix("/"), errors = listOf(FieldError(pointer, "invalid_value")))
