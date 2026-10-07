@@ -59,7 +59,8 @@ class ContentSurveyTest {
 
     @Test fun theBundleFillsContentAndSurveysAndEverySnapshotReplacesThem() = runTest {
         apply(bundle("[${item(1, "kv", 2)},${item(2, "av", 1, "[50001]")},${item(3, "av", 2, "[50002]")},${item(4, "kv", 1, to = "2026-10-04")}," +
-            """{"content_id":5,"kind":"av"}]""", survey))
+            """{"content_id":5,"kind":"av"},""" +
+            item(6, "kv", 1).replace("\"outlet_ids\":[]", "\"outlet_ids\":[\"x\"]") + "," + item(8, "kv", 1).replace(",\"outlet_ids\":[]", "") + "]", survey))
         // Outlet 50001: the assigned AV (sequence 1), then the all-outlet KV; the expired item and the other outlet's AV are not shown.
         assertEquals(listOf(2L, 1L), db.referenceDao().contentForOutlet(50001, "2026-10-05").map { it.contentId })
         assertEquals(listOf(3L, 1L), db.referenceDao().contentForOutlet(50002, "2026-10-05").map { it.contentId })

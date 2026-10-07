@@ -63,7 +63,7 @@ class ContentAssetsTest {
         val av = item(1, "av-1")
         val kv = item(2, "kv-2")
         val bad = item(3, "kv-3", sha256 = "0".repeat(64))
-        val old = item(4, "kv-4", to = "2026-10-04")
+        val old = item(4, "kv-4", sha256 = "c".repeat(64), to = "2026-10-04")
         db.referenceDao().insertContentItems(listOf(av, kv, bad, old))
 
         // On mobile data with wifi_only: nothing is downloaded and the screen sees "missing".
@@ -81,6 +81,8 @@ class ContentAssetsTest {
         wifi = true
         assertEquals(2, assets.prefetch(db, "2026-10-05", allowMetered = false))
         assertEquals("only the failed item is not asked again in this process either", asked, server.requestCount)
+        // A new version published at the same path (another sha256) is not the cached file.
+        assertNull(assets.file(av.copy(version = 2, sha256 = "b".repeat(64))))
     }
 
     @Test fun thePolicyReadsTheConfigValue() {

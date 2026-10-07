@@ -578,7 +578,10 @@ class ReferenceRepository(private val db: AronDatabase) {
             val bytes = num("bytes")?.takeIf { it in 1..MAX_CONTENT_BYTES } ?: return null
             val from = str("valid_from")?.takeIf { DATE.matches(it) } ?: return null
             val to = str("valid_to")?.takeIf { DATE.matches(it) && it >= from } ?: return null
-            val outlets = (o["outlet_ids"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content?.toLongOrNull() }.distinct()
+            // `outlet_ids` is required: absent, or naming outlets none of which parse, never widens to every outlet (checker).
+            val listed = o["outlet_ids"] as? JsonArray ?: return null
+            val outlets = listed.mapNotNull { (it as? JsonPrimitive)?.content?.toLongOrNull() }.distinct()
+            if (listed.isNotEmpty() && outlets.isEmpty()) return null
             val item = com.aktcl.aron.core.database.entity.ContentItemEntity(
                 contentId = id, version = num("version")?.toInt()?.takeIf { it >= 1 } ?: return null, kind = kind,
                 titleEn = str("title_en") ?: "", titleBn = str("title_bn"), assetUrl = url, sha256 = sha, bytes = bytes,

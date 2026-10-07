@@ -11,6 +11,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.ContentItemEntity
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -23,14 +24,19 @@ import java.io.File
 class ContentAssets(private val cache: ImageCache) {
 
     /** The cached file of [item], or null. Disk only: never the network. */
-    suspend fun file(item: ContentItemEntity): File? = cache.get(item.assetUrl)
+    suspend fun file(item: ContentItemEntity): File? = cache.get(item.assetUrl, key(item))
 
     /**
      * Downloads every item valid on [today] or later that is not cached yet, in play-date order. Returns the files now on
      * disk. Never throws; an item that fails is tried again by the next job.
      */
     suspend fun prefetch(db: AronDatabase, today: String, allowMetered: Boolean): Int =
-        db.referenceDao().contentFrom(today).count { cache.fetch(it.assetUrl, ImageCache.Kind.AV, sha256 = it.sha256, allowMetered = allowMetered) != null }
+        db.referenceDao().contentFrom(today).count {
+            cache.fetch(it.assetUrl, ImageCache.Kind.AV, sha256 = it.sha256, allowMetered = allowMetered, cacheKey = key(it)) != null
+        }
+
+    /** Files are keyed by their sha256 (checker): a new version published at the same path is a new file. */
+    private fun key(item: ContentItemEntity) = "content:" + item.sha256
 
     companion object {
         /** Pilot cap of the AV/KV cache (no value in the specs: 50 items of up to cfg.content.max_item_mb 8 MB fit twice over). */
@@ -49,14 +55,16 @@ class ContentAssets(private val cache: ImageCache) {
 object ContentPrefetch {
     const val KEY_USER = "user_id"
 
-    fun name(userId: Long) = "aron-content-$userId"
+    /** The constraint is part of the name: a policy change queues its own job instead of being kept out by KEEP. */
+    fun name(userId: Long, allowMetered: Boolean) = "aron-content-$userId-" + if (allowMetered) "any" else "wifi"
 
     fun schedule(workManager: WorkManager, userId: Long, allowMetered: Boolean) {
+        if (!allowMetered) workManager.cancelUniqueWork(name(userId, true))
         val request = OneTimeWorkRequestBuilder<ContentPrefetchWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(if (allowMetered) NetworkType.CONNECTED else NetworkType.UNMETERED).setRequiresStorageNotLow(true).build())
             .setInputData(Data.Builder().putLong(KEY_USER, userId).build())
             .build()
-        workManager.enqueueUniqueWork(name(userId), ExistingWorkPolicy.KEEP, request)
+        workManager.enqueueUniqueWork(name(userId, allowMetered), ExistingWorkPolicy.KEEP, request)
     }
 }
 
@@ -97,21 +105,26 @@ class ContentShell(
         ),
     )
 
-    /** The policy the last job read (`any` lets the next job run on mobile data). */
-    @Volatile private var metered = false
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
 
-    /** After a sync run: one waiting job per user (KEEP); it starts when the network allows. */
+    /** After a sync run: one waiting job per user (KEEP), constrained by that user's policy; it starts when the network allows. */
     fun afterSync(userId: Long) {
-        runCatching { ContentPrefetch.schedule(WorkManager.getInstance(app), userId, metered) }
+        scope.launch {
+            try {
+                if (!databases.exists(userId)) return@launch
+                ContentPrefetch.schedule(WorkManager.getInstance(app), userId, allowsMetered(databases.of(userId)))
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        }
     }
+
+    private suspend fun allowsMetered(db: AronDatabase) = ContentAssets.allowsMetered(
+        com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(ContentAssets.CFG_POLICY, SyncEngine.iso(components.trustedClock.nowMs())),
+    )
 
     /** The job's work: the user's items from today's business date (trusted time), by the configured policy. */
     suspend fun prefetch(userId: Long) {
         if (!databases.exists(userId)) return
         val db = databases.of(userId)
-        val clock = components.trustedClock
-        val policy = com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(ContentAssets.CFG_POLICY, SyncEngine.iso(clock.nowMs()))
-        metered = ContentAssets.allowsMetered(policy)
-        assets.prefetch(db, clock.businessDate().toString(), metered)
+        assets.prefetch(db, components.trustedClock.businessDate().toString(), allowsMetered(db))
     }
 }
