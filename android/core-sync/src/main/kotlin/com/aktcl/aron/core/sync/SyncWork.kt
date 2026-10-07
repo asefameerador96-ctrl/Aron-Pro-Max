@@ -28,6 +28,9 @@ interface SyncRunner {
 
     /** Rows still unsent now (re-read after the run, so a save during the run is never missed); null to trust the report. */
     suspend fun unsent(userId: Long): Int? = null
+
+    /** F-SYS-047: the other users with a database on this phone (a restore concerns their acked rows too). */
+    fun otherUsers(userId: Long): List<Long> = emptyList()
 }
 
 /**
@@ -164,6 +167,8 @@ class SessionSyncRunner(
     }
 
     override suspend fun unsent(userId: Long): Int = if (!databases.exists(userId)) 0 else databases.of(userId).outboxDao().unsentCount()
+
+    override fun otherUsers(userId: Long): List<Long> = runCatching { databases.knownUserIds() }.getOrDefault(emptyList()).filter { it != userId }
 }
 
 /**
@@ -353,6 +358,9 @@ class SyncWorker(
             return if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.success()
         }
         scheduler.afterRun(userId, report, name, failures)
+        // F-SYS-047: a restore concerns every user's acked rows on a shared phone, also one who signed out with nothing
+        // left to upload (the upload grant survives logout): each gets its own jittered resync run.
+        if (report.resyncRequested) runCatching { runner.otherUsers(userId).forEach { scheduler.requestSync(it, SyncTrigger.RESYNC) } }
         return Result.success()
     }
 

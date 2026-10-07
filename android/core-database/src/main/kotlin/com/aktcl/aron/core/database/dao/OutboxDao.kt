@@ -103,11 +103,11 @@ abstract class OutboxDao {
     /**
      * F-SYS-047: rows acked at or after [since] (phone time of the ack, RFC 3339 UTC) go back to pending with the same
      * client_uuid, payload and sig after a server restore, so the server's registry answers each by uuid (stored again, or
-     * duplicate) and nothing is stored twice. `last_code` gets `resync` when empty, so the signer never signs a row that
-     * already went out (its registry hash includes sig). Returns the rows put back.
+     * duplicate) and nothing is stored twice. `last_code` becomes `resync`: the signer never signs a row that already went
+     * out, and every batch carrying such a row goes with trigger `resync` (the server's backdate allowance). Returns the rows put back.
      */
     @Query(
-        """UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, last_code = COALESCE(last_code, 'resync')
+        """UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, last_code = 'resync'
            WHERE state = 'acked' AND acked_at IS NOT NULL AND acked_at >= :since""",
     )
     abstract suspend fun resendAckedSince(since: String): Int

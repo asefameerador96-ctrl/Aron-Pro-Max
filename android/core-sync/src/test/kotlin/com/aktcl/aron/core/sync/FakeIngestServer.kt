@@ -71,6 +71,7 @@ class FakeIngestServer : Dispatcher() {
     var generation = "9b2f6a4e-1c3d-4e5f-8a7b-0c1d2e3f4a5b"
     var generationKind = "initial"
     var lostAfterUtc: String? = null
+    var mintedAt = "2026-10-05T12:00:00.000Z"
     var generationReads = 0
     /** Answers the next N generation reads with 503. */
     var generationFails = 0
@@ -95,7 +96,7 @@ class FakeIngestServer : Dispatcher() {
                 put("generation", JsonPrimitive(generation)); put("kind", JsonPrimitive(generationKind))
                 put("restore_point_utc", lostAfterUtc?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("lost_after_utc", lostAfterUtc?.let { JsonPrimitive(it) } ?: JsonNull)
-                put("minted_at", JsonPrimitive("2026-10-05T12:00:00.000Z"))
+                put("minted_at", JsonPrimitive(mintedAt))
             }.toString())
         }
         if (request.url.encodedPath != "/v1/sync/batch") return api(404, problem("ERR_NOT_FOUND", 404))

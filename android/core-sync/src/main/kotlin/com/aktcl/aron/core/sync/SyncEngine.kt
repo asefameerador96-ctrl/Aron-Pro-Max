@@ -467,7 +467,10 @@ class SyncEngine(
                 put("device_uuid", JsonPrimitive(device))
                 put("schema_version", JsonPrimitive(ContractInfo.SCHEMA_VERSION))
                 put("app_version", JsonPrimitive(appVersion))
-                put("trigger", JsonPrimitive(batchTrigger.wire))
+                // Rows put back after a restore always go as `resync` (any later run, a resent persisted batch): the server's
+                // backdate allowance applies only to that trigger (checker). Such a row is the only unsent row with an
+                // `acked_at` (the put-back keeps it; a retryable reject may overwrite `last_code`, never `acked_at`).
+                put("trigger", JsonPrimitive(if (rows.any { it.ackedAt != null }) SyncTrigger.RESYNC.wire else batchTrigger.wire))
                 put("sent_at_device", JsonPrimitive(iso(clock.nowMs())))
                 put("pending_rows", JsonPrimitive(outbox.unsentCount()))
                 put("time_anchors", WireJson.requests.encodeToJsonElement(ANCHORS, timeAnchors().takeLast(3)))
@@ -584,8 +587,11 @@ class SyncEngine(
          */
         suspend fun handleGeneration() {
             try {
-                val stored = meta.meta(KEY_GENERATION)
-                val hint = generationHint()?.lowercase()?.takeIf { it != NIL_GENERATION }
+                val stored = meta.meta(KEY_GENERATION)?.lowercase() // older builds stored it as received
+                // A dismissal holds for an hour (a replica's stale header); after that the same value is asked about again.
+                val dismissed = meta.meta(KEY_GENERATION_DISMISSED)?.split('|')
+                    ?.takeIf { (it.getOrNull(1)?.toLongOrNull() ?: 0L) > clock.nowMs() - DISMISS_TTL_MS }?.first()
+                val hint = generationHint()?.lowercase()?.takeIf { it != NIL_GENERATION && it != dismissed }
                 if (stored == null) {
                     hint?.let { meta.putMeta(SyncMetaEntity(KEY_GENERATION, it)) }
                     return
@@ -593,8 +599,10 @@ class SyncEngine(
                 val now = clock.nowMs()
                 val seen = meta.meta(KEY_GENERATION_SEEN)?.split('|')
                 if (seen == null) {
-                    if (hint == null || hint == stored) return
-                    noteGeneration(hint, now)
+                    // A resync run always asks the server (it is rare): on a shared phone another user's run, or a new
+                    // process, may have no hint left, and a user with nothing to upload must still get the re-send.
+                    if (trigger != SyncTrigger.RESYNC && (hint == null || hint == stored)) return
+                    if (hint != null && hint != stored) noteGeneration(hint, now)
                     if (trigger != SyncTrigger.RESYNC) return
                 } else {
                     val due = seen.getOrNull(1)?.toLongOrNull() ?: 0L
@@ -605,15 +613,27 @@ class SyncEngine(
                 val g = (api.current(tok) as? com.aktcl.aron.core.network.ApiResult.Success)?.value ?: return
                 val current = g.generation.lowercase()
                 if (current == NIL_GENERATION) return
-                if (current == stored) { meta.deleteMeta(KEY_GENERATION_SEEN); return }
+                if (current == stored) {
+                    // False alarm (a replica's cached header): forget the note and ignore that hint until a fresh one.
+                    meta.deleteMeta(KEY_GENERATION_SEEN)
+                    hint?.let { meta.putMeta(SyncMetaEntity(KEY_GENERATION_DISMISSED, "$it|$now")) }
+                    return
+                }
                 val windowH = configInt(KEY_RESYNC_WINDOW_H)?.coerceIn(1, 168) ?: DEFAULT_RESYNC_WINDOW_H
-                val windowStart = now - windowH * 3_600_000L
+                // The window runs back from when the new generation started, as the server's allowance does (checker): a phone
+                // that first syncs days after the restore still re-sends what the restore lost.
+                val minted = runCatching { java.time.Instant.parse(g.mintedAt).toEpochMilli() }.getOrNull()
+                // Once the server's own allowance for this generation is long over (minted days ago), only the last window.
+                val windowMs = windowH * 3_600_000L
+                val from = minted?.takeIf { now - it <= windowMs + STALE_GENERATION_MS } ?: now
+                val windowStart = from - windowMs
                 val lostAfter = (g.lostAfterUtc ?: g.restorePointUtc)?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
                 val since = maxOf(lostAfter ?: windowStart, windowStart) - RESYNC_CLOCK_MARGIN_MS
                 val put = db.withTransaction {
                     val n = outbox.resendAckedSince(iso(since))
                     meta.putMeta(SyncMetaEntity(KEY_GENERATION, current))
                     meta.deleteMeta(KEY_GENERATION_SEEN)
+                    meta.deleteMeta(KEY_GENERATION_DISMISSED)
                     meta.putMeta(SyncMetaEntity(KEY_RESYNC_LAST, "$current|${g.kind}|$n|${iso(now)}"))
                     n
                 }
@@ -702,6 +722,13 @@ class SyncEngine(
         const val KEY_GENERATION_SEEN = "sync.server_generation_seen"
         /** F-SYS-047: the last re-send, `<generation>|<kind>|<rows>|<at>` (support file). */
         const val KEY_RESYNC_LAST = "sync.resync_last"
+        /** F-SYS-047: a header generation the server's statement denied (false alarm); ignored until a fresh one. */
+        const val KEY_GENERATION_DISMISSED = "sync.server_generation_dismissed"
+        /** `last_code` of a row put back after a restore (OutboxDao.resendAckedSince). */
+        const val RESYNC_CODE = "resync"
+        const val DISMISS_TTL_MS = 3_600_000L
+        /** Beyond the jitter and a day of margin the server no longer takes a generation's re-sends as such. */
+        const val STALE_GENERATION_MS = 2 * 24 * 3_600_000L
         const val KEY_RESYNC_WINDOW_H = "cfg.sync.resync_window_h"
         const val KEY_RESYNC_JITTER_S = "cfg.sync.resync_jitter_s"
         const val DEFAULT_RESYNC_WINDOW_H = 24
