@@ -141,7 +141,7 @@ class SchemaV1cTest {
         assertEquals(
             listOf("agg_daily_route.suspicious_visits", "agg_daily_route_brand.memo_count", "agg_daily_zone.suspicious_visits"),
             c.column(
-                "SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = 'dw' " +
+                "SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = 'dw' AND table_name LIKE 'agg\\_%' " +
                     "AND (column_name = 'suspicious_visits' OR (table_name = 'agg_daily_route_brand' AND column_name = 'memo_count')) ORDER BY 1",
             ),
         )

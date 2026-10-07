@@ -259,4 +259,11 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "routes.col.amo": "এএমও",
   "routes.col.sr": "এসআর",
   "routes.col.visit": "ভিজিট",
+
+  "report.pdf": "পিডিএফ নামান",
+  "report.chart": "চার্ট",
+  "report.chart_note": "একই তথ্য নিচের টেবিলে আছে।",
+  "geo.visits": "ভিজিট",
+
+  "tracking.previous_day": "আগের দিন ({date})",
 };

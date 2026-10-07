@@ -3,7 +3,7 @@ import { PII_MASK, columnLabel, formatCell, isNumeric, type Cell, type ReportCol
 import type { ReportResult } from "@/lib/reports/server";
 
 /** Result table. PII columns are masked here as well as on the server unless the caller holds the PII permission (defence in depth). */
-export function ReportTable({ result, locale, pii }: { result: ReportResult; locale: Locale; pii: boolean }) {
+export function ReportTable({ result, locale, pii, drill }: { result: ReportResult; locale: Locale; pii: boolean; drill?: { column: string; idColumn: string; href: (id: string) => string } }) {
   const labels = { yes: t(locale, "common.yes"), no: t(locale, "common.no") };
   const cols: ReportColumn[] = result.columns;
   if (result.rows.length === 0) {
@@ -33,7 +33,13 @@ export function ReportTable({ result, locale, pii }: { result: ReportResult; loc
             <tr key={i} className="hover:bg-slate-50">
               {cols.map((c) => (
                 <td key={c.key} data-col={c.key} data-pii={c.pii && !pii ? "masked" : undefined} className={`whitespace-nowrap px-3 py-2 ${isNumeric(c) ? "text-right tabular-nums" : "text-left"}`}>
-                  {show(c, r[c.key] as Cell)}
+                  {drill && c.key === drill.column && r[drill.idColumn] !== undefined && r[drill.idColumn] !== null ? (
+                    <a href={drill.href(String(r[drill.idColumn]))} className="text-brand-700 underline" data-testid="drill-link">
+                      {show(c, r[c.key] as Cell)}
+                    </a>
+                  ) : (
+                    show(c, r[c.key] as Cell)
+                  )}
                 </td>
               ))}
             </tr>

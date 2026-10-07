@@ -1,0 +1,120 @@
+# Domain events
+
+Generated from `app.domain_event_type` by `tools/data-dictionary/render.sh` (db lane); do not edit by hand.
+The outbox `app.domain_event` is read in `id` order by the aggregate projector and Phase 2 consumers (docs/24 s6.3, s12.5).
+
+## Versioning rules (V0017)
+
+- Every outbox row names `event_type` and `payload_version`; the insert trigger refuses a pair that is not a
+  catalogue row, a payload that is not a JSON object and one that lacks a required key (presence only).
+- Payloads carry ids, codes, counts and amounts, never names, phone numbers, NIDs or coordinates.
+- Adding an optional key keeps the version. Removing or renaming a key, changing its type or meaning, or making
+  a key required adds a new version (a db migration; ask through docs/requests). A published schema never changes.
+- Producers write the newest version that is not deprecated; consumers handle every version that is not
+  deprecated and ignore keys they do not know.
+
+| Event | Version | Aggregate | aggregate_id | Producer | Status |
+|---|---|---|---|---|---|
+| [`memo.created`](#memocreated-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current |
+| [`memo.voided`](#memovoided-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current |
+| [`outlet.changed`](#outletchanged-v1) | 1 | `outlet` | `outlet.id` | backend:masterdata | current |
+| [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | current |
+| [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | current |
+| [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | current |
+| [`visit.closed`](#visitclosed-v1) | 1 | `visit` | `visit.client_uuid` | backend:sync | current |
+
+## memo.created v1
+
+A memo was accepted (ingest or web entry). The projector adds it to the day aggregates of its route, outlet and SKUs. Introduced in V0017; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `memo_kind` | string | yes | memo.memo_kind |
+| `memo_uuid` | string (uuid) | yes | memo.client_uuid |
+| `net_mtk` | integer | yes | net amount, milli-taka |
+| `outlet_id` | integer | yes |  |
+| `route_id` | integer | yes |  |
+| `user_id` | integer | yes | the SR who sold |
+| `acting_for_user_id` | integer or null | no |  |
+| `due_mtk` | integer | no |  |
+| `gross_mtk` | integer | no |  |
+| `line_count` | integer | no |  |
+| `paid_mtk` | integer | no |  |
+| `visit_uuid` | string or null (uuid) | no | memo.visit_client_uuid |
+
+## memo.voided v1
+
+A memo was voided (data-void tombstone or Final Submit void). The projector removes it from the day aggregates. Introduced in V0017; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `memo_uuid` | string (uuid) | yes |  |
+| `route_id` | integer | yes |  |
+| `voided_at` | string (date-time) | yes |  |
+| `reason_code` | string or null | no | code_list void_reason |
+
+## outlet.changed v1
+
+An outlet was created, edited, moved, merged or closed. Names, phones and coordinates are not in the payload. Introduced in V0017; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `change` | string | yes | one of created, updated, location_confirmed, route_changed, merged, closed, reopened |
+| `outlet_id` | integer | yes |  |
+| `fields` | array | no | outlet columns that changed |
+| `merged_into_id` | integer or null | no |  |
+| `route_id` | integer or null | no |  |
+| `zone_id` | integer or null | no |  |
+
+## route_day.state_changed v1
+
+A route-day moved state (logged in, in field, synced, submitted, final submitted, voided). Introduced in V0017; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `from_state` | string or null | yes |  |
+| `route_day_id` | integer | yes |  |
+| `route_id` | integer | yes |  |
+| `to_state` | string | yes |  |
+| `acting_user_id` | integer or null | no |  |
+| `submit_cycle` | integer | no |  |
+
+## stock.moved v1
+
+A stock ledger row was accepted (issue, return, adjustment, damaged, short). Introduced in V0017; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `kind` | string | yes | stock_movement.kind |
+| `movement_uuid` | string (uuid) | yes |  |
+| `qty_base` | integer | yes | signed quantity in base units |
+| `route_id` | integer | yes |  |
+| `sku_id` | integer | yes |  |
+| `user_id` | integer | yes |  |
+
+## target.revised v1
+
+A target revision was committed (Phase 2 target engine; deferred programme, docs/27). Introduced in V0017; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `revision_id` | integer | yes |  |
+| `revision_no` | integer | yes |  |
+| `target_set_id` | integer | yes |  |
+| `months` | array | no |  |
+
+## visit.closed v1
+
+A visit was accepted with its geo verdict. The projector counts calls, strike rate and geo validity. Introduced in V0017; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `outlet_id` | integer | yes |  |
+| `route_id` | integer | yes |  |
+| `user_id` | integer | yes |  |
+| `verdict` | string | yes | visit.verdict |
+| `visit_kind` | string | yes | visit.visit_kind |
+| `visit_uuid` | string (uuid) | yes |  |
+| `distance_m` | number or null | no |  |
+| `fix_is_mock` | boolean or null | no |  |
+| `planned` | boolean | no |  |

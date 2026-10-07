@@ -1,0 +1,21 @@
+# backend-reports lane status
+
+Updated 2026-10-07.
+
+## Done (pushed to INT)
+- **F-SYS-015** aggregation worker: outbox projector (gap-safe), dirty-key claim/lease, route-day and zone-day rebuilds, facts, SKU/brand/outlet/hourly aggregates. Opus checker found 4 defects, all fixed with tests. Wired into `ARON_ROLE=worker`.
+- **F-API-014** `GET /v1/dashboards/summary` (the contract's name for the national dashboard): scoped from the token's reach, 30 s cache per scope hash, as-of, children, by_category/channel/brand, BSR. Sonnet checker: no confirmed defects.
+
+## In progress / next three
+1. F-API-017 ReportQuery registry (json, inline xlsx via fastexcel, print; logged export behind an `ExportLog` interface).
+2. F-API-053 / F-SYS-058 / F-SYS-064 need the export tables: BLOCKED on `docs/requests/backend-reports-export-tables.md` (db lane).
+3. Report handler batches A, B, C (N-048, N-051, N-052), then F-API-013/015/016/018/023/024/034.
+
+## Requests filed
+- `backend-reports-db-indexes-and-events.md` (db: indexes, segment aggregate; backend-core: outbox events).
+- `backend-reports-export-tables.md` (db: report_export, pii_read_budget).
+
+## Traps
+- Local Gradle works only with the committed mirror (settings.gradle.kts); Postgres in the container stops now and then: `pg_ctlcluster 16 main start`.
+- Seed fixture `backend/analytics/src/test/resources/seed_day.sql` (control totals in AggregationTest/DashboardTest) is reusable for report tests; it needs one session (pg_temp functions).
+- Contract names differ from backlog names: `/v1/dashboards/summary`, `/v1/reports/{key}/query` (POST), `/v1/report-exports`.

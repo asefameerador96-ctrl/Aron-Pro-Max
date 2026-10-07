@@ -1,0 +1,24 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+F-ADM-033,S,2026-10-07T03:40Z,2026-10-07T04:10Z,30,1,checker: weekday validation fixed
+F-ADM-034,M,2026-10-07T03:50Z,2026-10-07T04:15Z,25,3,checker: export filter parity, cap notice, loop guard fixed; ANALYST access open (see md)
+F-ADM-053,S,2026-10-07T03:50Z,2026-10-07T04:15Z,0,0,same content component as F-ADM-034
+F-ADM-022,S,2026-10-07T04:00Z,2026-10-07T04:20Z,20,0,columns 7 of 8 until contract adds employee code and zone name (request filed)
+F-TSO-022,M,2026-10-07T04:00Z,2026-10-07T04:20Z,0,0,same content as F-ADM-022 without issue
+F-ADM-013,L,2026-10-07T04:20Z,2026-10-07T05:00Z,40,2,checker: switch duration per kind O key; safe numbers
+F-ADM-038,M,2026-10-07T04:30Z,2026-10-07T05:00Z,0,0,
+F-ADM-040,S,2026-10-07T04:30Z,2026-10-07T05:00Z,0,0,
+F-ADM-041,S,2026-10-07T04:30Z,2026-10-07T05:00Z,0,0,
+F-ADM-042,M,2026-10-07T04:40Z,2026-10-07T05:10Z,0,1,checker: ADMIN cannot approve risk 3
+F-ADM-043,M,2026-10-07T04:40Z,2026-10-07T05:10Z,0,1,checker: per key and scope history added
+F-ADM-044,S,2026-10-07T04:50Z,2026-10-07T05:10Z,0,0,
+F-ADM-009,M,2026-10-07T05:10Z,2026-10-07T05:40Z,30,2,checker: int rounding, revoke on enrolled removed
+F-ADM-048,S,2026-10-07T05:10Z,2026-10-07T05:40Z,0,0,
+F-ADM-078,M,2026-10-07T05:20Z,2026-10-07T05:40Z,0,1,checker: wizard blocked for revoked or replaced
+F-ADM-027,M,2026-10-07T05:30Z,2026-10-07T06:00Z,30,4,checker: publish bypass closed (SUPERADMIN only), size and code gates, lowercase checksum, key shape
+F-ADM-049,S,2026-10-07T05:30Z,2026-10-07T06:00Z,0,0,
+F-ADM-030,M,2026-10-07T06:00Z,2026-10-07T06:30Z,30,7,checker: PII masking rewritten, paging cursor, fixed-record rules
+F-ADM-051,S,2026-10-07T06:00Z,2026-10-07T06:30Z,0,0,
+F-ADM-050,S,2026-10-07T06:10Z,2026-10-07T06:30Z,0,1,real-date check; ops dashboard (F-WEB-045) does not exist yet: same endpoint only
+F-ADM-039,L,2026-10-07T06:30Z,2026-10-07T07:00Z,30,pending,map is a placeholder without the Maps key
+N-045,L,2026-10-07T06:40Z,2026-10-07T07:10Z,30,pending,QR verified in tests; real phone enrolment is DEVICE-PENDING
+N-046,M,2026-10-07T06:50Z,2026-10-07T07:10Z,0,pending,

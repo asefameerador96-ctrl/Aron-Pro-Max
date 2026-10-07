@@ -2,7 +2,7 @@ import { onApiFailure } from "@/components/admin/crud/pages";
 import { one, type SearchParams } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
 import { canOp } from "@/lib/admin/access";
-import { latestVersion, listKeys, reachOf, versionDetail } from "@/lib/admin/config-load";
+import { globalValues, latestVersion, listKeys, reachOf, versionDetail } from "@/lib/admin/config-load";
 import type { ConfigKey, ResolvedConfigValue } from "@/lib/admin/types";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
@@ -25,6 +25,6 @@ export async function ConfigConsolePage({ searchParams, basePath, titleKey, intr
   const v = version.ok ? (version.data?.version ?? null) : null;
   const [detail, reach] = v === null ? [null, null] : await Promise.all([versionDetail(session.at, v), reachOf(session.at, v)]);
   const values: Record<string, ResolvedConfigValue> = {};
-  if (detail?.ok) for (const r of detail.data.values) values[r.key] = r;
+  if (detail?.ok) Object.assign(values, globalValues(detail.data));
   return <ConfigConsoleView locale={locale} basePath={basePath} titleKey={titleKey} introKey={introKey} keys={keys} areas={areas} area={area} values={values} reach={reach?.ok ? reach.data : null} canWrite={canOp("config.change", session.user.role)} switches={switches} />;
 }
