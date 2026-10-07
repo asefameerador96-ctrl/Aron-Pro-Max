@@ -11,6 +11,8 @@
 
 ARG JRE_IMAGE=eclipse-temurin:21.0.12_8-jre-noble@sha256:7739f0ffce786528961eea6bf46d9610ee968ac6127c9b2e93494757bdecce9f
 
+# CI and the deploy replace this stage with the named build context "agent" (infra/scripts/fetch-ai-agent.sh downloads
+# the same pinned jar with retries and checks the same SHA-256); a plain local `docker build` still uses the ADD below.
 FROM ${JRE_IMAGE} AS agent
 ARG AI_AGENT_VERSION=3.7.10
 ARG AI_AGENT_SHA256=93a70c8f5d364c7e777f6c4d1b235dba91aef8448bd3fa94359f1d7f3e2eb0ec

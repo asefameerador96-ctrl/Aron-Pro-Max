@@ -58,6 +58,9 @@ param apiConcurrentRequests int = 50
 param apiPrescaleReplicas int = 0
 @description('Readiness probe path; the contract has /v1/health/ready (database check).')
 param apiReadinessPath string = '/v1/health/ready'
+// Device enrolment (N-031, backend AttestationTrust): SHA-256 fingerprints of the Android key-attestation root
+// certificates. Public data; source URL and retrieval date in infra/params/attestation-roots.json.
+param attestationRootsSha256 array = loadJsonContent('params/attestation-roots.json').sha256
 
 // worker sizing
 param workerCpu string = '1.0'
@@ -121,6 +124,10 @@ var commonEnv = [
   { name: 'ARON_FRONT_DOOR_ID', value: frontDoorEnabled ? fd!.properties.frontDoorId : '' }
   { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
 ]
+
+// The public https base URL of the api (device enrolment challenges carry it): Front Door when there is one, else the
+// api's own address in the Container Apps environment (no self-reference: built from the environment's default domain).
+var publicApiUrl = frontDoorEnabled ? 'https://${fdEndpoint!.properties.hostName}' : 'https://${n.apiApp}.${env.properties.defaultDomain}'
 
 var appSecretRefs = [
   { name: 'ARON_JWT_SIGNING_KEY', secretRef: 'jwt-signing-key' }
@@ -267,6 +274,8 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
           env: concat(commonEnv, appSecretRefs, [
             { name: 'ARON_ROLE', value: 'api' }
             { name: 'PORT', value: '8080' }
+            { name: 'ARON_PUBLIC_API_URL', value: publicApiUrl }
+            { name: 'ARON_ATTESTATION_ROOTS', value: join(attestationRootsSha256, ',') }
             { name: 'ARON_DB_URL', secretRef: 'db-url' }
             { name: 'ARON_DB_POOL_MAX', value: string(apiDbPoolMax) }
             { name: 'ARON_DB_READ_POOL_MAX', value: string(apiDbReadPoolMax) }

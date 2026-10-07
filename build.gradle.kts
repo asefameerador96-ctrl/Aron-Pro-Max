@@ -38,6 +38,16 @@ val robolectricJvmArgs = listOf(
     "--add-opens=java.base/java.io=ALL-UNNAMED",
 )
 
+// Robolectric downloads its android-all runtime jars itself at test time (not through the Gradle repositories), from
+// repo1.maven.org by default. Same mirror rule as settings.gradle.kts: lane and developer containers use Google's copy
+// of Maven Central (Central rate-limits their shared IP with HTTP 429); GitHub Actions and ARON_NO_MIRROR=1 keep the
+// default, so CI still resolves from the real Central.
+val robolectricMirror = if (System.getenv("GITHUB_ACTIONS") == null && System.getenv("ARON_NO_MIRROR") == null) {
+    "https://maven-central.storage-download.googleapis.com/maven2"
+} else {
+    null
+}
+
 subprojects {
     group = "com.aktcl.aron"
     version = (findProperty("aron.version") as String?) ?: "0.1.0"
@@ -105,7 +115,10 @@ subprojects {
             testOptions {
                 unitTests.isIncludeAndroidResources = true
                 unitTests.isReturnDefaultValues = true
-                unitTests.all { it.jvmArgs(robolectricJvmArgs) }
+                unitTests.all {
+                    it.jvmArgs(robolectricJvmArgs)
+                    robolectricMirror?.let { url -> it.systemProperty("robolectric.dependency.repo.url", url) }
+                }
             }
             lint {
                 abortOnError = true
@@ -139,7 +152,10 @@ subprojects {
             testOptions {
                 unitTests.isIncludeAndroidResources = true
                 unitTests.isReturnDefaultValues = true
-                unitTests.all { it.jvmArgs(robolectricJvmArgs) }
+                unitTests.all {
+                    it.jvmArgs(robolectricJvmArgs)
+                    robolectricMirror?.let { url -> it.systemProperty("robolectric.dependency.repo.url", url) }
+                }
             }
             lint {
                 abortOnError = true
