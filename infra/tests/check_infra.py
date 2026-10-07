@@ -1500,7 +1500,8 @@ class SliceSmoke(unittest.TestCase):
                         "products": {"skus": [{"id": 5, "code": "GL-20", "status": "active", "base_unit": "stick"}]},
                         "prices": [{"sku_id": 5, "price_type": "outlet", "amount_mtk": 14500, "per_base_qty": 1, "valid_from": "2026-01-01"}],
                         "routes": [{"route_id": 3, "planned_today": True, "sales_plan_sku_ids": [5],
-                                    "outlets": [{"outlet_id": 9, "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100}]}]})
+                                    "outlets": [{"outlet_id": 8, "code": "MIR-D-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100},
+                                                {"outlet_id": 9, "code": "SMOKE-SR-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100}]}]})
                 if u.path == "/v1/sync/totals":
                     return self.reply(200, {"totals": {"by_type": {"memo": len(state["memos"])}}})
                 if u.path == "/v1/app/home":
@@ -1538,6 +1539,7 @@ class SliceSmoke(unittest.TestCase):
         (memo,) = state["memos"].values()
         self.assertIn(memo["client_uuid"], state["voided"], "the smoke sale is voided")
         self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-9\d{3}$", "contract pattern, clear of phone blocks")
+        self.assertEqual(memo["payload"]["outlet_id"], 9, "the smoke's own outlet, never a tester's")
 
     def test_fails_when_a_re_upload_doubles_the_sale(self):
         srv, state = self.serve(doubles=True)
@@ -1551,7 +1553,15 @@ class SliceSmoke(unittest.TestCase):
         self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.index("infra/scripts/slice-smoke.py"))
         self.assertLess(d.index('DBLOGINS_JOB="$(az deployment'), d.index("publish aron-devseed build_devseed"))
         self.assertLess(d.index("publish aron-devseed build_devseed"), d.index('guard_newer_live "before the apps"'))
-        self.assertIn('ARON_DEV_SEED="$([ "${ARON_DEV_SEED:-}" = true ] && [[ "$PROFILE" == dev* ]] && echo true || echo false)"', d)
+        self.assertIn("grep -qx 'param devSeed = true' \"infra/params/${PROFILE}.apps.bicepparam\"", d, "a committed switch")
+        self.assertIn('rm -f "$ctx"/04_*.sql', d, "the global dev relaxations stay off (lead)")
+        self.assertIn("param devSeed = true\n", (ROOT / "infra/params/dev.apps.bicepparam").read_text(encoding="utf-8"))
+        for f in ("dev-lite", "stage", "prod"):
+            self.assertNotIn("param devSeed = true", (ROOT / f"infra/params/{f}.apps.bicepparam").read_text(encoding="utf-8"), f)
+        self.assertNotIn("ARON_DEV_SEED", (WORKFLOWS / "deploy.yml").read_text(encoding="utf-8"), "no repository variable")
+        sql = (ROOT / "infra/sql/devseed-smoke-outlet.sql").read_text(encoding="utf-8")
+        self.assertIn("'SMOKE-SR-001'", sql)
+        self.assertNotIn("cfg_value", sql)
         self.assertIn('echo "::add-mask::${slice_pw}"', d)
         self.assertIn('( publish aron-devseed build_devseed', d, "a failed seed image never stops the deploy")
         for f in ("stage", "prod"):

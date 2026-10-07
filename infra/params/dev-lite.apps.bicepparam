@@ -19,8 +19,9 @@ param buildId = readEnvironmentVariable('ARON_BUILD_ID', '')
 param migrateImage = readEnvironmentVariable('ARON_MIGRATE_IMAGE', '')
 // Per-app database logins (docs/requests/db-runtime-roles.md); deploy.sh imports the psql image and sets it.
 param psqlImage = readEnvironmentVariable('ARON_PSQL_IMAGE', '')
-// Dev seed (db/seed) for the SR slice smoke; deploy.sh sets ARON_DEV_SEED=true only on dev profiles.
-param devSeed = readEnvironmentVariable('ARON_DEV_SEED', 'false') == 'true'
+// Dev seed (db/seed without its global dev relaxations) + the SR slice smoke after every deploy (lead 2026-10-07).
+// deploy.sh reads this exact line; stage and prod never carry it.
+param devSeed = false
 // OFF until api_rw has the DELETE grants the admin flows need (docs/requests/db-runtime-roles-gaps.md); the logins are still created.
 param dbPerAppLogins = false
 param deployServices = empty(envServices) ? true : bool(envServices)

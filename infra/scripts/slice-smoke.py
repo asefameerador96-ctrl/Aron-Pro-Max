@@ -18,7 +18,7 @@ through the public address (Front Door), as the seeded SR on the seeded dev phon
 Payload shapes follow backend/app/src/test/.../SyncConvergenceFuzzTest.kt (the server's own accepted records).
 Exit 0 when every step passed, 1 otherwise; one line per step, and with GITHUB_STEP_SUMMARY a table there.
 Environment: SLICE_API_HOST (host only), SLICE_PASSWORD (the seed password; never printed), optional SLICE_USER
-(sr1001), SLICE_DEVICE, SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300).
+(sr1001), SLICE_DEVICE, SLICE_OUTLET_CODE (SMOKE-SR-001), SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300).
 """
 import datetime
 import gzip
@@ -36,6 +36,7 @@ PASSWORD = os.environ.get("SLICE_PASSWORD", "")
 DEVICE = os.environ.get("SLICE_DEVICE", "00000000-0000-4000-8000-000000000001")
 APP_VERSION = os.environ.get("SLICE_APP_VERSION", "1.0.9+9")
 TILE_WAIT_S = int(os.environ.get("SLICE_TILE_WAIT_S", "300"))
+OUTLET_CODE = os.environ.get("SLICE_OUTLET_CODE", "SMOKE-SR-001")  # the smoke's own outlet (infra/sql/devseed-smoke-outlet.sql)
 TILE_POLL_S = float(os.environ.get("SLICE_TILE_POLL_S", "15"))
 SCHEME = os.environ.get("SLICE_SCHEME", "https")  # http only for the offline test against a local stub
 DHAKA = datetime.timezone(datetime.timedelta(hours=6))
@@ -118,13 +119,13 @@ def run():
     for r in bundle["routes"]:
         if not r.get("planned_today"):
             continue
-        outlet = next((o for o in r["outlets"] if o.get("lat") is not None and o.get("status") == "active"), None)
+        outlet = next((o for o in r["outlets"] if o.get("code") == OUTLET_CODE and o.get("lat") is not None), None)
         sku_id = next((i for i in r["sales_plan_sku_ids"] if i in skus and i in prices), None)
         if outlet and sku_id:
             pick = (r, outlet, skus[sku_id], prices[sku_id])
             break
     step("2b route, outlet, SKU", pick is not None,
-         "no planned route with a pinned active outlet and a priced plan SKU" if pick is None
+         f"no planned route with the smoke outlet {OUTLET_CODE} and a priced plan SKU" if pick is None
          else f"route {pick[0]['route_id']}, outlet {pick[1]['outlet_id']}, sku {pick[2]['code']}")
     route, outlet, sku, price = pick
 

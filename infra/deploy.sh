@@ -56,9 +56,10 @@ check_freeze() { # stage
 check_freeze "at the start"
 export AZURE_LOCATION="${AZURE_LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_SUFFIX="${ARON_NAME_SUFFIX:-}"
-# Dev seed and the SR slice smoke (lead request 2026-10-07): dev profiles only, and only when the GitHub variable
-# ARON_DEV_SEED is true (db/seed relaxes device enrolment on the database it is loaded into).
-ARON_DEV_SEED="$([ "${ARON_DEV_SEED:-}" = true ] && [[ "$PROFILE" == dev* ]] && echo true || echo false)"; export ARON_DEV_SEED
+# Dev seed and the SR slice smoke (lead 2026-10-07): switched on by the COMMITTED line "param devSeed = true" in the
+# profile's apps parameter file (dev only; stage and prod never carry it), so nobody has to set a repository variable.
+ARON_DEV_SEED="$([[ "$PROFILE" == dev* ]] && grep -qx 'param devSeed = true' "infra/params/${PROFILE}.apps.bicepparam" && echo true || echo false)"
+export ARON_DEV_SEED
 whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
 lock_tag="aron-deploy-lock"; lock_held=false; hb_pid=""
 lock_me="${GITHUB_RUN_ID:-local}.${GITHUB_RUN_ATTEMPT:-1}.$$"
@@ -537,11 +538,15 @@ fi
 # ------------------------------------------------------------------------------------------------- dev seed
 # db/seed (sr1001, the bound dev phone, Mirpur outlets and SKUs) for the SR slice smoke. Runs the dev seed image
 # through the dblogins job (template override: its identity, registry and secrets), never blocks the deploy.
-devseed_result="off (ARON_DEV_SEED is not true)"
+devseed_result="off (no param devSeed = true)"
 if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ] && [ -n "$DBLOGINS_JOB" ]; then
   build_devseed() {
     local ctx; ctx="$(mktemp -d)"
+    # db/seed without 04_dev_config_and_codes.sql (lead: its global relaxations of enrolment, integrity and lockdown
+    # stay OFF on dev), plus the smoke's own outlet, loaded last.
     cp db/seed/0*.sql infra/scripts/devseed-run.sh "$ctx/"
+    rm -f "$ctx"/04_*.sql
+    cp infra/sql/devseed-smoke-outlet.sql "$ctx/09_smoke_outlet.sql"
     docker build -q --provenance=false --sbom=false --build-arg "PSQL_IMAGE=${ARON_PSQL_IMAGE}" \
       -f infra/docker/devseed.Dockerfile -t "${REGISTRY}/aron-devseed:${SHA}" "$ctx"
   }
@@ -633,7 +638,7 @@ infra/scripts/release-marker.sh "$rg_id" "$ENV_NAME" "$SHA" \
   "$([ -n "$ROLLBACK_SHA" ] && echo rollback || echo deploy)" || echo "::warning::release marker step failed"
 # SR slice smoke (lead request 2026-10-07): login, bundle, one sale uploaded twice (duplicate acked, count +1), memo
 # read, dashboard tile, then the sale is voided. Non-blocking for now; result in the summary.
-slice_result="off (ARON_DEV_SEED is not true)"
+slice_result="off (no param devSeed = true)"
 if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ]; then
   if slice_pw="$(az keyvault secret show --vault-name "$KV" --name aron-dev-seed-password --query value -o tsv 2>/dev/null)" \
      && [ -n "$slice_pw" ]; then
