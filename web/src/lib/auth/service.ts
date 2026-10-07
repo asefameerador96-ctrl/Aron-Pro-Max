@@ -6,7 +6,7 @@ import type { LoginResponse, Problem, ScopeSummary, UserSummary } from "@/contra
 import { apiClient, outcome, transportProblem, type ApiOutcome } from "@/lib/api/client";
 import { DEFAULT_LOCALE, LOCALE_COOKIE, isLocale, type Locale } from "@/lib/i18n/types";
 import { MFA_ROLES, hasRole } from "./roles";
-import { MFA_COOKIE, MFA_PURPOSE, MFA_TTL_S, REFRESH_SKEW_MS, RT_COOKIE, SESSION_COOKIE, SESSION_PURPOSE, cookieOptions } from "./cookies";
+import { MFA_COOKIE, MFA_PURPOSE, MFA_TTL_S, PWC_COOKIE, PWC_PURPOSE, PWC_TTL_S, REFRESH_SKEW_MS, RT_COOKIE, SESSION_COOKIE, SESSION_PURPOSE, cookieOptions } from "./cookies";
 import { open, seal } from "./seal";
 import { readSession, type SessionData } from "./session";
 
@@ -71,6 +71,7 @@ export function setAuthCookies(res: NextResponse, a: AuthCookies): void {
   res.cookies.set(SESSION_COOKIE, seal(a.session, SESSION_PURPOSE, ttl), cookieOptions(ttl, persistent));
   if (a.refreshToken) res.cookies.set(RT_COOKIE, a.refreshToken, cookieOptions(ttl, persistent));
   res.cookies.delete(MFA_COOKIE);
+  res.cookies.delete(PWC_COOKIE);
 }
 
 export function setMfaCookie(res: NextResponse, mfaToken: string): void {
@@ -81,8 +82,17 @@ export function readMfaToken(value: string | undefined): string | null {
   return open<{ mfaToken: string }>(value, MFA_PURPOSE)?.mfaToken ?? null;
 }
 
+export function setPasswordChangeCookie(res: NextResponse, token: string, remember: boolean): void {
+  res.cookies.set(PWC_COOKIE, seal({ token, remember }, PWC_PURPOSE, PWC_TTL_S), cookieOptions(PWC_TTL_S));
+}
+
+export function readPasswordChange(value: string | undefined): { token: string; remember: boolean } | null {
+  const v = open<{ token: string; remember: boolean }>(value, PWC_PURPOSE);
+  return v?.token ? { token: v.token, remember: v.remember === true } : null;
+}
+
 export function clearAuthCookies(res: NextResponse): void {
-  for (const n of [SESSION_COOKIE, RT_COOKIE, MFA_COOKIE]) res.cookies.delete(n);
+  for (const n of [SESSION_COOKIE, RT_COOKIE, MFA_COOKIE, PWC_COOKIE]) res.cookies.delete(n);
 }
 
 /** Rotate the refresh cookie and mint a new access token, then re-read the principal (role and scope may have changed). */

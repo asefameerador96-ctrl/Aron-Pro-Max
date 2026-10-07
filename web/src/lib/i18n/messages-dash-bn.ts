@@ -187,6 +187,9 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "sync.col.rejected": "বাতিল",
   "sync.col.quarantined": "কোয়ারেন্টাইন",
   "sync.col.p95": "পি৯৫ (সে.)",
+  "sync.oldest_photo": "সবচেয়ে পুরনো {min} মিনিট",
+  "sync.col.photos": "ছবি",
+  "sync.col.ack": "কনফিগ স্বীকৃতি",
   "sync.state.not_started": "শুরু হয়নি",
   "sync.state.logged_in": "লগইন",
   "sync.state.in_field": "মাঠে",
@@ -230,6 +233,9 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "auth.remember": "আমাকে মনে রাখুন",
 
   "credentials.guideline": "পাসওয়ার্ডের নিয়ম",
+  "auth.password_change.title": "নতুন পাসওয়ার্ড দিন",
+  "auth.password_change.hint": "চালিয়ে যাওয়ার আগে পাসওয়ার্ড বদলাতে হবে। বর্তমান পাসওয়ার্ড দিন, তারপর নতুন একটি দিন: কমপক্ষে ১২ অক্ষর, একটি বড় হাতের অক্ষর, একটি ছোট হাতের অক্ষর ও একটি অঙ্ক সহ।",
+  "auth.password_change.signin_again": "পাসওয়ার্ড বদলানো হয়েছে। নতুন পাসওয়ার্ড দিয়ে আবার সাইন ইন করুন।",
   "credentials.rule.length": "কমপক্ষে {n}টি অক্ষর।",
   "credentials.rule.mixed": "কমপক্ষে একটি বড় হাতের অক্ষর, একটি ছোট হাতের অক্ষর ও একটি অঙ্ক।",
   "credentials.rule.history": "আগের ১০টির কোনোটি নয়, এবং ২৪ ঘণ্টার মধ্যে আবার বদলানো যাবে না।",
@@ -266,6 +272,7 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "geo.visits": "ভিজিট",
 
   "tracking.previous_day": "আগের দিন ({date})",
+  "tracking.same_time_yesterday": "গতকাল একই সময়ে ({date}, {time})",
 
   "error.page.title": "এই পাতা দেখানো যায়নি",
   "error.page.retry": "আবার চেষ্টা করুন",

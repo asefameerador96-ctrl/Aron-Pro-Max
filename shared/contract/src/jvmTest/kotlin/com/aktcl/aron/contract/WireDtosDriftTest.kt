@@ -78,7 +78,7 @@ class WireDtosDriftTest {
                         "integer" -> if (t["format"] == "int64") "LONG" else "INT"
                         "number" -> "DOUBLE"
                         "object", null -> if (n in WireDtoNames.all) "CLASS:$n" else "ELEMENT"
-                        else -> error("unhandled alias $n")
+                        else -> "ELEMENT" // multi-type alias (JsonScalar): raw JSON on the phone
                     }
                 }
             }
@@ -142,6 +142,13 @@ class WireDtosDriftTest {
             val exp = expectedKind(ps)
             val act = kindOf(d.getElementDescriptor(i))
             assertTrue(matches(exp, act), "$where: contract says $exp, Kotlin has $act")
+            // inline objects (also as list items) are generated as nested classes: check them member by member too
+            val ns = nonNull(ps)
+            val inline = if (ns["type"] == "array") nonNull(ns["items"] as Map<String, Any?>) else ns
+            if (inline["type"] == "object" && inline.containsKey("properties")) {
+                val ed = d.getElementDescriptor(i)
+                check(where, if (ns["type"] == "array") ed.getElementDescriptor(0) else ed, inline)
+            }
         }
     }
 
@@ -205,6 +212,30 @@ class WireDtosDriftTest {
     }
 
     @Test
+    fun everyGeneratedClassRedactsItsSecretMembers() {
+        val pattern = Regex("password|token|otp|secret|totp|recovery_codes|attestation|^code$|qr_payload|qr_text")
+        val notSecret = setOf("token_id", "token_prefix", "enrolment_token_id", "temporary_password_expires_at")
+        val src = File(System.getProperty("aron.slices")).resolve("../../../shared/contract/src/commonMain/kotlin/com/aktcl/aron/contract/WireDtos.kt")
+            .canonicalFile.readText()
+        val blocks = Regex("""(?s)@Serializable\ndata class (\w+)\((.*?)\n\)(.*?)(?=\n@Serializable|\n/\*\*|\nobject |\z)""").findAll(src).toList()
+        assertTrue(blocks.size >= 60, "found only ${blocks.size} generated classes")
+        var secretMembers = 0
+        for (b in blocks) {
+            val secrets = Regex("""@SerialName\("([a-z_0-9]+)"\)""").findAll(b.groupValues[2]).map { it.groupValues[1] }
+                .filter { it !in notSecret && pattern.containsMatchIn(it) }.toList()
+            if (secrets.isEmpty()) continue
+            secretMembers += secrets.size
+            val tail = b.groupValues[3]
+            assertTrue("override fun toString" in tail, "${b.groupValues[1]} has secret members $secrets but no redacting toString")
+            for (m in secrets) {
+                val kt = m.split('_').mapIndexed { i, w -> if (i == 0) w else w.replaceFirstChar { it.uppercase() } }.joinToString("")
+                assertTrue("$kt=***" in tail, "${b.groupValues[1]}.$kt is printed by toString")
+            }
+        }
+        assertTrue(secretMembers >= 12, "expected the auth/enrolment secrets to be found, saw $secretMembers")
+    }
+
+    @Test
     fun secretsAreNeverPrinted() {
         val s = LoginRequest("u", "hunter2", "web").toString() + RefreshRequest(refreshToken = "tok-abc", grant = "full") +
             TokenPair(accessToken = "acc-xyz", accessExpiresAt = "t", refreshToken = "ref-xyz", refreshExpiresAt = "t", scopeVersion = 1, serverTime = "t")
@@ -219,6 +250,8 @@ class WireDtosDriftTest {
             "RecordEnvelope", "GeoFix", "FixDeviceState", "GnssSummary", "DeviceGeoVerdict", "AttendanceEventPayload",
             "StockMovementPayload", "VisitPayload", "VisitClosePayload", "MemoPayload", "MemoLinePayload", "MemoDiscountPayload",
             "QcLinePayload", "PlayIntegrityUnavailable", "ChangePasswordRequest", "DeviceStatusReport", "EnrolDeviceRequest", "Me", "DeviceOtp",
+            "JwkEcPublicDevice", "DeviceInfo", "PermissionGrant", "AppControlPolicy", "BlockingSchedule", "DevicePolicy", "EnrolDeviceResponse",
+            "TimeAnchor", "Resolution", "RouteDayState", "ServerTotals", "ResolvedConfigValue", "FieldError", "Problem",
             "SyncBatchRequest", "SyncBatchResponse", "RecordAck",
         )
         assertEquals(requested.toSet(), WireDtoNames.serializers.keys)
@@ -277,7 +310,14 @@ internal object WireDtoNames {
         "QcLinePayload" to serializer<QcLinePayload>(),
         "PlayIntegrityUnavailable" to serializer<PlayIntegrityUnavailable>(), "ChangePasswordRequest" to serializer<ChangePasswordRequest>(),
         "DeviceStatusReport" to serializer<DeviceStatusReport>(), "EnrolDeviceRequest" to serializer<EnrolDeviceRequest>(),
-        "Me" to serializer<Me>(), "DeviceOtp" to serializer<DeviceOtp>(), "SyncBatchRequest" to serializer<SyncBatchRequest>(),
+        "Me" to serializer<Me>(), "DeviceOtp" to serializer<DeviceOtp>(),
+        "JwkEcPublicDevice" to serializer<JwkEcPublicDevice>(), "DeviceInfo" to serializer<DeviceInfo>(),
+        "PermissionGrant" to serializer<PermissionGrant>(), "AppControlPolicy" to serializer<AppControlPolicy>(),
+        "BlockingSchedule" to serializer<BlockingSchedule>(), "DevicePolicy" to serializer<DevicePolicy>(),
+        "EnrolDeviceResponse" to serializer<EnrolDeviceResponse>(), "TimeAnchor" to serializer<TimeAnchor>(),
+        "Resolution" to serializer<Resolution>(), "RouteDayState" to serializer<RouteDayState>(),
+        "ServerTotals" to serializer<ServerTotals>(), "ResolvedConfigValue" to serializer<ResolvedConfigValue>(),
+        "FieldError" to serializer<FieldError>(), "Problem" to serializer<Problem>(), "SyncBatchRequest" to serializer<SyncBatchRequest>(),
         "SyncBatchResponse" to serializer<SyncBatchResponse>(), "RecordAck" to serializer<RecordAck>(),
     )
     val all: Set<String> = serializers.keys

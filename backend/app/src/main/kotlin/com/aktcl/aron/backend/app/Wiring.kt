@@ -88,8 +88,6 @@ import com.aktcl.aron.backend.sync.IngestService
 import com.aktcl.aron.backend.sync.ServerGeneration
 import com.aktcl.aron.backend.sync.SyncDeps
 import com.aktcl.aron.backend.sync.syncRoutes
-import com.aktcl.aron.backend.sync.TeamDeps
-import com.aktcl.aron.backend.sync.teamRoutes
 
 /** The object graph of the API process; tests build their own with throwaway keys and in-memory stores. */
 class Wiring(
@@ -168,7 +166,6 @@ class Wiring(
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)
                 syncRoutes(sync)
-                teamRoutes(TeamDeps(db, reach, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission)
         }
     }

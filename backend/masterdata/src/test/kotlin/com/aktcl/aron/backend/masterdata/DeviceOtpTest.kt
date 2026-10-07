@@ -101,4 +101,14 @@ class DeviceOtpTest {
         assertEquals(HttpStatusCode.BadRequest, client.post("/v1/admin/device-otps") { bearerAuth(adm); contentType(ContentType.Application.Json); setBody(body(env.ids.getValue("sr1001"), "short")) }.status)
         assertEquals(HttpStatusCode.BadRequest, client.post("/v1/admin/device-otps") { bearerAuth(adm); contentType(ContentType.Application.Json); setBody(body(env.ids.getValue("dmo1001"), "A DMO has no field phone to bind")) }.status)
     }
+
+    @Test
+    fun panelRowsCarryEmployeeCodeAndZoneNameAndCode() = app { // contract v1.2
+        val sr = env.ids.getValue("sr1001")
+        val issued = Json.parseToJsonElement(client.post("/v1/admin/device-otps") { bearerAuth(tok("admin1001", Role.ADMIN)); contentType(ContentType.Application.Json); setBody(body(sr, "Panel columns check for v1.2")) }.bodyAsText()).jsonObject
+        val expected = env.scalar("SELECT u.employee_code || '|' || z.code || '|' || z.name FROM app.app_user u JOIN app.zone z ON z.id = u.home_zone_id WHERE u.id = $sr")!!
+        assertEquals(expected, listOf("employee_code", "zone_code", "zone_name").joinToString("|") { issued[it]!!.jsonPrimitive.content })
+        val listed = Json.parseToJsonElement(client.get("/v1/admin/device-otps?q=sr1001") { bearerAuth(tok("admin1001", Role.ADMIN)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.single().jsonObject
+        assertEquals(expected, listOf("employee_code", "zone_code", "zone_name").joinToString("|") { listed[it]!!.jsonPrimitive.content })
+    }
 }
