@@ -4,6 +4,11 @@ import android.app.Application
 import androidx.work.Configuration
 import com.aktcl.aron.core.sync.AronWorkerFactory
 import com.aktcl.aron.core.sync.ConnectivityFlush
+import com.aktcl.aron.core.sync.WorkManagerSyncScheduler
+import com.aktcl.aron.core.sync.device.DeviceRuntime
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -12,10 +17,15 @@ import javax.inject.Inject
 class AronTSOApplication : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: AronWorkerFactory
     @Inject lateinit var connectivityFlush: ConnectivityFlush
+    @Inject lateinit var deviceRuntime: DeviceRuntime
+    @Inject lateinit var syncScheduler: WorkManagerSyncScheduler
 
     override fun onCreate() {
         super.onCreate()
         ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives
+        // DPC: trusted clock and calendar, re-apply the stored policy; integrity evidence after each online login.
+        // Off the main thread; nothing here touches the network or waits for it.
+        deviceRuntime.start(CoroutineScope(SupervisorJob() + Dispatchers.Default), syncScheduler)
     }
 
     override val workManagerConfiguration: Configuration

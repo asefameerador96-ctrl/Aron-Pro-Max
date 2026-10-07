@@ -10,7 +10,11 @@ import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.core.network.LoginStatus
 import com.aktcl.aron.contract.LoginRequest
 import com.aktcl.aron.contract.LoginResponse
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -84,6 +88,14 @@ class SessionRepository(
     private val refreshMutex = Mutex()
     private val _state = MutableStateFlow(restore())
     val state: StateFlow<SessionState> = _state.asStateFlow()
+
+    private val _onlineLogins = MutableSharedFlow<Long>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /**
+     * The user id of every completed online login (not a restore, not an offline unlock). Listeners (integrity evidence,
+     * docs/24 s8.7) react after the login has returned; nothing here waits for them.
+     */
+    val onlineLogins: SharedFlow<Long> = _onlineLogins.asSharedFlow()
 
     private fun restore(): SessionState {
         val active = store.active() ?: return SessionState.LoggedOut
@@ -162,6 +174,7 @@ class SessionRepository(
                 )
                 store.saveProfile(profile)
                 activate(profile, UnlockMode.ONLINE, reauthRequired = false, updateRequired = false)
+                _onlineLogins.tryEmit(profile.userId)
                 LoginOutcome.LoggedIn(profile, UnlockMode.ONLINE)
             }
         }

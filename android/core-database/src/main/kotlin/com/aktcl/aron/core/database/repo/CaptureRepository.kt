@@ -217,6 +217,15 @@ class CaptureRepository(
     }
 
     /**
+     * Queues a `device_status` record (F-SYS-031, N-026): one outbox row in one transaction. It belongs to no route-day, so a
+     * Sales Submit never refuses it.
+     */
+    suspend fun recordDeviceStatus(clientUuid: String, meta: CaptureMeta, report: com.aktcl.aron.contract.DeviceStatusReport) = db.withTransaction {
+        requireUuids(clientUuid)
+        outbox.insert(listOf(RecordMapping.deviceStatus(clientUuid, meta, report, nowIso())))
+    }
+
+    /**
      * The server reopened a submitted route-day (a submit void): captures of [businessDate] and [routeId] are allowed again
      * until a submit of a later cycle than [voidedCycle].
      */

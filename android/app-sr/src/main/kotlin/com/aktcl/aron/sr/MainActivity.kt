@@ -45,9 +45,18 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var fixManager: FixManager
     @Inject lateinit var printerManager: com.aktcl.aron.core.printing.bt.PrinterManager
     @Inject lateinit var bundleDownloaders: com.aktcl.aron.core.sync.BundleDownloaders
+    @Inject lateinit var deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime
+    @Inject lateinit var resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck
+    private var dayHolder: SrDayHolder? = null
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
+    }
+
+    /** R9 (F-SYS-092): one conditional config check when the app comes to the front; launched, never awaited. */
+    override fun onResume() {
+        super.onResume()
+        dayHolder?.day?.value?.launchConfigCheck()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,11 +74,14 @@ class MainActivity : ComponentActivity() {
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect)
                         }
                         is SessionState.Active -> {
-                            val holder = viewModel(key = "sr-day-" + s.user.userId) { SrDayHolder() }
+                            val holder = viewModel(key = "sr-day-" + s.user.userId) { SrDayHolder() }.also { dayHolder = it }
                             val day by holder.day.collectAsStateWithLifecycle()
                             LaunchedEffect(s.user.userId) {
                                 if (holder.day.value == null) {
-                                    holder.day.value = SrDay(s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName)
+                                    holder.day.value = SrDay(
+                                        s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
+                                        deviceRuntime, resumeConfigCheck,
+                                    ).also { it.launchDayConfigRefresh() }
                                 }
                             }
                             day?.let { d ->

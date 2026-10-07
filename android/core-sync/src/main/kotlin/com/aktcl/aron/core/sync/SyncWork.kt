@@ -52,17 +52,28 @@ interface SyncHold {
 }
 
 /** Production runner: the user's own database, upload grant, device id and trusted-time anchors. */
-class SessionSyncRunner(private val databases: UserDatabases, private val components: SessionComponents) : SyncRunner {
-    override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport = SyncEngine(
+class SessionSyncRunner(
+    private val databases: UserDatabases,
+    private val components: SessionComponents,
+    /** Runs before the batch is built (device status and integrity, `DeviceRuntime.beforeBatch`); must never throw. */
+    private val beforeBatch: suspend (userId: Long, db: com.aktcl.aron.core.database.AronDatabase) -> Unit = { _, _ -> },
+) : SyncRunner {
+    override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
+        val db = databases.of(userId)
+        try { beforeBatch(userId, db) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        return engine(userId, db).run(trigger)
+    }
+
+    private fun engine(userId: Long, db: com.aktcl.aron.core.database.AronDatabase) = SyncEngine(
         userId = userId,
-        db = databases.of(userId),
+        db = db,
         api = SyncBatchApi(components.apiClient, components.proofSigner),
         auth = SessionUploadAuth(components.session),
         deviceUuid = { components.deviceIdentity.deviceUuid },
         appVersion = components.appVersion,
         clock = components.clock,
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
-    ).run(trigger)
+    )
 
     override suspend fun unsent(userId: Long): Int = databases.of(userId).outboxDao().unsentCount()
 }

@@ -38,6 +38,7 @@ import com.aktcl.aron.feature.tasks.TaskBoard
 import com.aktcl.aron.rules.BusinessDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.datetime.LocalDate
 import java.time.Instant
@@ -64,7 +65,29 @@ class SrDay(
     fixManager: FixManager,
     val printerManager: com.aktcl.aron.core.printing.bt.PrinterManager,
     private val userName: String,
+    /** Geo, integrity and DPC wiring (core-sync); null in previews and tests. */
+    private val deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime? = null,
+    /** F-SYS-092 resume config check; null in previews and tests. */
+    private val resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck? = null,
 ) {
+    /** Work started from the day that nobody waits for (the resume config check, settings reloads). */
+    private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+
+    /**
+     * R9: launches the conditional config check and returns at once; a visit or a sale never waits for it. Also bound as
+     * the VisitFlow's [com.aktcl.aron.feature.outlet.ConfigCheck], so even an awaiting caller only pays a launch.
+     */
+    fun launchConfigCheck() {
+        val check = resumeConfigCheck ?: return
+        background.launch {
+            val r = runCatching { check.checkOnResume(userId) }.getOrNull()
+            if (r == com.aktcl.aron.core.sync.ConfigCheckResult.APPLIED) { deviceRuntime?.refreshDayConfig(userId, db); runCatching { reload() } }
+        }
+    }
+
+    /** Reloads what device code reads synchronously (cfg.geo.* for fixes, the DPC calendar) from this user's bundle. */
+    fun launchDayConfigRefresh() { deviceRuntime?.let { rt -> background.launch { rt.refreshDayConfig(userId, db) } } }
+
     private val clock = components.trustedClock
     val capture = CaptureRepository(db) { iso(clock.nowMs()) }
     val reference = ReferenceRepository(db)
@@ -138,7 +161,7 @@ class SrDay(
         data.value = data.value.copy(downloading = true)
         try {
             runCatching { downloaders.of(userId).download(businessDate()) }
-                .onSuccess { if (it.outcome == BundleOutcome.APPLIED || it.outcome == BundleOutcome.UNCHANGED) reload() }
+                .onSuccess { if (it.outcome == BundleOutcome.APPLIED || it.outcome == BundleOutcome.UNCHANGED) { reload(); deviceRuntime?.refreshDayConfig(userId, db) } }
         } finally {
             data.value = data.value.copy(downloading = false)
         }
@@ -187,6 +210,8 @@ class SrDay(
                 val policy = DeviceOwnerPolicy.get(context)
                 if (e.kind == "check_in") policy.onCheckInCommitted() else policy.onCheckOutCommitted()
             }
+            // Play Integrity evidence at check-in (docs/24 s8.7): collected by the next sync run, never awaited here.
+            if (e.kind == "check_in") runCatching { deviceRuntime?.wantEvidence() }
             runCatching { scheduler.requestSync(userId, if (e.kind == "check_in") SyncTrigger.WRITE_DEBOUNCE else SyncTrigger.CHECKOUT) }
         },
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,
@@ -200,6 +225,7 @@ class SrDay(
         committer = { v, f -> capture.recordVisitOpen(v, f); runCatching { requestSync() } },
         session = visitSession, settings = { GeoSettings.DEFAULT }, nowIso = { iso(clock.nowMs()) },
         nextSequenceNo = { nextSequence++ },
+        configCheck = com.aktcl.aron.feature.outlet.ConfigCheck { launchConfigCheck() },
     )
 
     // ---- printing (F-SR-015): the ledger is Room, the renderer is built once (font parsing is the expensive part)

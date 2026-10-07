@@ -227,6 +227,9 @@ class ReferenceRepository(private val db: AronDatabase) {
 
     suspend fun bundleVersion(): String? = dao.meta(KEY_BUNDLE_VERSION)
 
+    /** The config version the phone holds (bundle or delta), 0 before the first bundle: the envelope's `config_version`. */
+    suspend fun configVersionHeld(): Long = dao.meta(KEY_CONFIG_VERSION)?.toLongOrNull() ?: 0L
+
     /** The business date the stored bundle is valid for. */
     suspend fun businessDate(): String? = dao.meta(KEY_BUNDLE_DATE)
 
