@@ -277,7 +277,7 @@ class SchemaV1aTest {
         val dbKeys = db.connect().use { it.column("SELECT key FROM app.cfg_key") }.filterNotNull().toSet()
         assertTrue(specKeys.size >= 226, "s9.5 of contract v1.1 names 226 keys, parsed ${specKeys.size}")
         // Keys the lead added by ruling after s9.5 was written (docs/requests/android-print-integration.md, 2026-10-07; V0024).
-        val ruled = setOf("cfg.print.confirm_after_print", "cfg.memo.reprint_watermark", "cfg.sale.require_printer_before_sale")
+        val ruled = setOf("cfg.print.confirm_after_print", "cfg.memo.reprint_watermark", "cfg.sale.require_printer_before_sale", "cfg.support.public_key_spki")
         assertEquals(specKeys + ruled, dbKeys)
         db.connect().use { c ->
             assertEquals("100", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.geo.radius_m'"))
