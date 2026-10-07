@@ -34,6 +34,14 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - **Task columns** (db V0037/V0038 on INT): `Tasks.kt` stores `route_id` (named and in reach, or the outlet's) and `cancel_reason`; tests in `TasksTest`. No checker run on this small follow-up (own tests only); if the sync `task` payload gains `route_id`, scope-check the route.
 - db (11:56Z) on lane/db, not yet on INT: V0040 `app.password_history` + `cfg.auth.password_history_depth`/`password_min_age_h`/`password_denylist_enabled` (un-skip `ChangePasswordTest.noneOfTheLastTenPasswords` and store history once on INT); V0041 partitions `app.geo_breadcrumb` (no code change needed).
 
+## Session 7 close-out: next rows (session 8 starts here)
+1. **Not served yet, phone-facing (backend-core):** `GET /v1/outlets` (F-API-010: scoped, paginated `updated_since`, PII-gated; scope-leak case), `POST /v1/media/upload` (F-API-007 multipart fallback, idempotent by (client_uuid, purpose)). Check `backend/app/build/route-inventory.txt` against the contract for any other unserved phone path first.
+2. **When db V0056/V0057 reach INT** (lane/db b88b6632): write `resync_late` into `ingest_registry.flags` (merge on the ON CONFLICT path, never assign; `db-resync-late-flag-answer.md`) and assert it; same storage for `checkout_too_early` until the quarantine switch (BC-63).
+3. **T1 rows left** (`my-rows.py backend-core --todo`; many listed rows are done: AUD-REL-01/02, F-API-008/009/039, F-SYS-003/004, F-API-003/004, F-SYS-094, F-API-029 (served by config), F-SYS-054 (BC-69), N-033 server part, F-SYS-086 core share): N-027 Play Integrity verdicts + key attestation (L), N-028 GNSS consistency, F-SYS-063 retention job, F-SYS-090 working-day windows. T2: F-API-019/025(done: /memos)/055, F-SYS-025/035/050/057/084/091, N-044.
+4. **Open from checkers** (BC-66, BC-68): digest has no sync_hold/admission path; memo scope test lacks a positive (national) control and an AMO/TSO zone case; test classes on `Wiring.production` do not close `securityStore`.
+5. **Requests out:** backend-admin `backend-core-dirty-keys-admin-writes.md` (data void, route assignment), `backend-core-survey-option-codes.md`; lead: TSO visit-query model (BC-67).
+6. Infra's `infra/scripts/slice-smoke.py` still marks GET /v1/memos (and /v1/sync/totals) "not served": both are on lane/backend-core since 07ff510d; infra can make them hard checks once promoted.
+
 ## Session 7 (2026-10-07, start here)
 - Merged INT (V0055). Lead priority (18:51Z): **GET /v1/sync/totals** and **GET /v1/memos** served as the contract says (BC-66, `SyncReadsTest`, scope registry lines); no contract change.
 - **AUD-SEC-03 sink** (BC-64): `JdbiSecurityEvents` beside the log line, own one-connection pool, bounded queue, plain INSERT (auth_rw-safe), detail capped; `JdbiSecurityEventsTest`.
@@ -54,6 +62,7 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - **Window**: dates from today (Dhaka) back `cfg.sync.max_backdate_days` (7) days, the window in which a re-sent row is still stored (an older one would be quarantined as too old); an item outside it, or in the future, is answered as matching. Send only dates you still hold completely (never one partly purged), and count a quarantined row that a reviewer later released (it arrives in `resolutions`) as acked. At most 200 items per call (400 above). An unknown type, a malformed bucket or a `device_uuid` that is not a lowercase uuid is 400.
 - **Answer**: `resend[]` lists (date, type, bucket indexes) whose count or hash differ; `{"resend":[]}` when all match. Re-send those rows with trigger `digest_resend`.
 - **Generation**: call `GET /v1/sync/generation?since=<the last generation you handled>`; re-send from `earliest_lost_after_utc` when it is not null, else from `lost_after_utc`. `previous_generation` names the one the current replaced.
+- **F-SYS-054** verified (BC-69), **F-API-057** `POST /v1/media/sas` (BC-70, `MediaSasTest`).
 - Opus checkers: sink (PASS, 4 minor fixed), sync reads + dirty keys + N-033 (PASS, 1 major fixed, minors logged in BC-66).
 
 ## Session 6 close-out: next rows (session 7 starts here)

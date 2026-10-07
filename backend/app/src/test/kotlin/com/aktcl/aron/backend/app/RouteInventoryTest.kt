@@ -267,6 +267,8 @@ class RouteInventoryTest {
             "POST /v1/auth/change-password" to "aud=aron-api,aron-pwchange;grace=0;sv=true;pwchange=true",
             "POST /v1/auth/bind-device" to "aud=aron-bind;grace=0;sv=true;pwchange=true",
             "POST /v1/auth/logout" to "aud=aron-api,aron-upload;grace=0;sv=false;pwchange=true",
+            // The photo upload grant (contract createMediaUploadUrls: "the upload grant may call this operation"), like the batch.
+            "POST /v1/media/sas" to "aud=aron-api,aron-upload;grace=60;sv=false;pwchange=false",
             "POST /v1/sync/batch" to "aud=aron-api,aron-upload;grace=60;sv=false;pwchange=false",
         )
 

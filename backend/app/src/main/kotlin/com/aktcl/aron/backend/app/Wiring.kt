@@ -99,6 +99,8 @@ import com.aktcl.aron.backend.sync.SyncDeps
 import com.aktcl.aron.backend.sync.syncRoutes
 import com.aktcl.aron.backend.sync.dayRoutes
 import com.aktcl.aron.backend.sync.memoRoutes
+import com.aktcl.aron.backend.media.mediaRoutes
+import com.aktcl.aron.backend.media.MediaDeps
 import com.aktcl.aron.backend.sync.taskRoutes
 import com.aktcl.aron.backend.notify.notificationRoutes
 import com.aktcl.aron.backend.notify.pushRoutes
@@ -277,6 +279,7 @@ class Wiring(
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
                 dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock)))
                 memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
+                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
