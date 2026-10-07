@@ -29,7 +29,7 @@ class KitGalleryTest {
         }
     }
 
-    @Test fun bangla() {
+    @Test @Config(sdk = [34], qualifiers = "bn-w360dp-h640dp") fun bangla() {
         render(AppLanguage.BN)
         rule.onNodeWithText("কিট গ্যালারি").assertExists()
         rule.onNodeWithText("সংরক্ষণ").assertHeightIsAtLeast(48.dp)
@@ -46,9 +46,10 @@ class KitGalleryTest {
 
     @Test fun holdConfirmsAfterTheHoldTime() {
         render(AppLanguage.EN)
-        rule.onNodeWithText("Hold to submit sales").performTouchInput { down(center); advanceEventTime(1500); up() }
-        rule.mainClock.advanceTimeBy(1600)
-        rule.waitForIdle()
+        rule.mainClock.autoAdvance = false
+        rule.onNodeWithText("Hold to submit sales").performTouchInput { down(center) }
+        rule.mainClock.advanceTimeBy(1500)
+        rule.mainClock.advanceTimeBy(100)
         rule.onAllNodesWithText("Submit sales?").assertCountEquals(1)
     }
 }
