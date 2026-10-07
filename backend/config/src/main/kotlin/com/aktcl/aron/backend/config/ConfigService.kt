@@ -35,7 +35,14 @@ import java.util.UUID
  * advisory lock, closes the rows it supersedes (`effective_to`, never an UPDATE of the value), inserts the new rows
  * under a new monotonic `config_version`, writes the audit row and `NOTIFY cfg_changed`, all in one transaction.
  */
-class ConfigService(private val db: Database, val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM) {
+/** Whether a TSO's reach covers a zone (implemented over the masterdata reach resolver at wiring time). */
+fun interface NodeReach {
+    fun coversZone(p: AronPrincipal, zoneId: Long): Boolean
+    /** National roles see every zone (docs/24 s8.4). */
+    fun national(p: AronPrincipal): Boolean = p.role in setOf(Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+}
+
+class ConfigService(private val db: Database, val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM, private val nodeReach: NodeReach? = null) {
     private val dhaka = ZoneId.of("Asia/Dhaka")
 
     // ---------------------------------------------------------------- reads
@@ -105,11 +112,13 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
     // ---------------------------------------------------------------- write: create
 
     /** POST /admin/config/changes. [clientUuid] (Idempotency-Key) makes a replay return the first answer. */
-    fun create(p: AronPrincipal, req: ConfigChangeRequestIn, clientUuid: UUID?, requestId: String?): ConfigChangeDto {
-        if (p.role != Role.ADMIN && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "config changes are made by ADMIN or SUPERADMIN")
+    fun create(p: AronPrincipal, req: ConfigChangeRequestIn, clientUuid: UUID?, requestId: String?, revertOf: Long? = null, kind: String = "change"): ConfigChangeDto {
+        val tso = p.role == Role.TSO
+        if (p.role != Role.ADMIN && p.role != Role.SUPERADMIN && !tso) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "config changes are made by ADMIN or SUPERADMIN")
         if (req.reason.trim().length < 10 || req.reason.length > 500) throw ApiProblem(ProblemCode.ERR_CFG_REASON_REQUIRED, "a reason of 10 to 500 characters is required", errors = listOf(FieldError("body.reason", "length")))
         if (req.changes.isEmpty() || req.changes.size > 100) throw ApiProblem(ProblemCode.ERR_VALIDATION, "1 to 100 changes", errors = listOf(FieldError("body.changes", "out_of_range")))
-        if (req.break_glass) throw ApiProblem(ProblemCode.ERR_VALIDATION, "break-glass is handled by the change-request workflow", errors = listOf(FieldError("body.break_glass", "unsupported")))
+        if (req.break_glass && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "break-glass is for a SUPERADMIN")
+        if (req.break_glass && tso) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "break-glass is for a SUPERADMIN")
         val now = clock.now()
         val reg = resolver.registry()
         val items = req.changes.mapIndexed { i, it -> prepare(it, i, reg, now) }
@@ -117,6 +126,20 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
         items.groupBy { Triple(it.def.key, it.item.scope_type, it.item.scope_id) }.filterValues { it.size > 1 }.keys.firstOrNull()?.let {
             throw ApiProblem(ProblemCode.ERR_VALIDATION, "${it.first} appears twice at ${it.second}:${it.third}", errors = listOf(FieldError("body.changes", "duplicate")))
         }
+        if (tso) {
+            // A TSO proposes (or, with cfg.geo.tso_radius_mode = apply, sets) the radius of outlets, routes and zones of own reach only.
+            val reach = nodeReach ?: throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "TSO radius proposals are not enabled")
+            for (pr in items) {
+                if (pr.def.key != "cfg.geo.radius_m" || pr.item.scope_type !in setOf("outlet", "route", "zone") || pr.item.value is JsonNull)
+                    throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a TSO changes only the radius of outlets, routes and zones")
+                val zone = db.jdbi.withHandle<Long?, Exception> { h ->
+                    h.createQuery(when (pr.item.scope_type) { "zone" -> "SELECT id FROM app.zone WHERE id = :i"; "route" -> "SELECT zone_id FROM app.route WHERE id = :i"; else -> "SELECT zone_id FROM app.outlet WHERE id = :i" })
+                        .bind("i", pr.item.scope_id).mapTo(Long::class.java).findOne().orElse(null)
+                }
+                if (zone == null || !reach.coversZone(p, zone)) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "outside your territory")
+            }
+        }
+        val tsoPropose = tso && resolver.resolve("cfg.geo.tso_radius_mode", listOf(ScopeNode("global", 0)), now).value.let { (it as JsonPrimitive).content } == "propose"
         return db.jdbi.inTransaction<ConfigChangeDto, Exception> { h ->
             if (clientUuid != null) {
                 h.createQuery("SELECT change_id, requested_by FROM app.cfg_change WHERE client_uuid = CAST(:u AS uuid)").bind("u", clientUuid.toString()).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null)?.let { (id, by) ->
@@ -131,22 +154,41 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 val at = pr.from ?: now
                 val before = resolver.resolve(pr.def.key, chain, at).value
                 val after = if (pr.item.value !is JsonNull) pr.item.value else resolver.resolve(pr.def.key, chain.filterNot { it == node }, at).value
-                RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, before, after)
+                var c = RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, before, after)
+                // F-ADM-012: an outlet override above 3 x the radius its zone resolves to needs an approver (C3).
+                if (pr.def.key == "cfg.geo.radius_m" && node.type == "outlet" && pr.item.value !is JsonNull) {
+                    val zoneValue = (resolver.resolve(pr.def.key, chain.filterNot { it == node }, at).value as? JsonPrimitive)?.doubleOrNull
+                    val nv = (pr.item.value as? JsonPrimitive)?.doubleOrNull
+                    if (zoneValue != null && nv != null && nv > 3 * zoneValue) c = 3
+                }
+                c
             }
             if (risk >= 3 && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a class C3 change is requested by a SUPERADMIN")
             val delayMin = if (risk == 2) cfgInt(h, "cfg.sys.c2_delay_min", now) else 0
-            val status = when { risk >= 3 -> "pending_approval"; risk == 2 && delayMin > 0 -> "scheduled"; else -> "applied" }
+            var effItems = outItems
+            if (req.break_glass) {
+                val mode = (resolver.resolve("cfg.sys.break_glass_mode", listOf(ScopeNode("global", 0)), now).value as JsonPrimitive).content
+                val maxH = cfgInt(h, "cfg.sys.break_glass_max_h", now)
+                if (mode == "off") throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "break-glass is switched off")
+                val restore = revertOf != null
+                if (mode == "restore_only" && !restore) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "break-glass may only restore")
+                if (!restore) outItems.forEachIndexed { i, pr ->
+                    if (!isRestrictive(pr, now)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "break-glass may only restore or restrict", errors = listOf(FieldError("body.changes[$i]", "not_restrictive")))
+                }
+                if (!restore) effItems = outItems.map { pr -> val cap = now.plusSeconds(maxH * 3600L); if (pr.to == null || pr.to.isAfter(cap)) { if (pr.from != null && !cap.isAfter(pr.from)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "break-glass takes effect now, not later", errors = listOf(FieldError("body.changes", "future_start"))); Prepared(pr.def, pr.item, pr.from, cap, pr.old) } else pr }
+            }
+            val status = when { req.break_glass -> "applied"; tsoPropose -> "pending_approval"; risk >= 3 -> "pending_approval"; risk == 2 && delayMin > 0 -> "scheduled"; else -> "applied" }
             val applyAt = if (status == "scheduled") now.plusSeconds(delayMin * 60L) else null
             if (applyAt != null) outItems.forEachIndexed { i, pr ->
                 if (pr.to != null && !pr.to.isAfter(applyAt)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "effective_to ends before the change applies", errors = listOf(FieldError("body.changes[$i].effective_to", "before_apply")))
             }
             val blast = blastRadius(h, outItems)
             val inserted = h.createQuery(
-                "INSERT INTO app.cfg_change (status, items, reason, risk_class, requested_by, requested_at, apply_at, blast_radius, client_uuid) " +
-                    "VALUES ('pending_approval', CAST(:items AS jsonb), :reason, :risk, :by, :at, :apply, CAST(:blast AS jsonb), CAST(:cu AS uuid)) ON CONFLICT (client_uuid) DO NOTHING RETURNING change_id",
-            ).bind("items", itemsJson(outItems)).bind("reason", req.reason.trim()).bind("risk", risk).bind("by", p.userId)
+                "INSERT INTO app.cfg_change (status, items, reason, risk_class, requested_by, requested_at, apply_at, blast_radius, client_uuid, is_revert_of) " +
+                    "VALUES ('pending_approval', CAST(:items AS jsonb), :reason, :risk, :by, :at, :apply, CAST(:blast AS jsonb), CAST(:cu AS uuid), :rv) ON CONFLICT (client_uuid) DO NOTHING RETURNING change_id",
+            ).bind("items", itemsJson(effItems)).bind("reason", req.reason.trim()).bind("risk", risk).bind("by", p.userId)
                 .bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("apply", applyAt?.let { OffsetDateTime.ofInstant(it, ZoneOffset.UTC) })
-                .bind("blast", Json.encodeToString(blast)).bind("cu", clientUuid?.toString()).mapTo(Long::class.java).findOne().orElse(null)
+                .bind("blast", Json.encodeToString(blast)).bind("cu", clientUuid?.toString()).bind("rv", revertOf).mapTo(Long::class.java).findOne().orElse(null)
             if (inserted == null) {
                 // A concurrent request with the same Idempotency-Key won the insert: answer with its change.
                 val (id, by) = h.createQuery("SELECT change_id, requested_by FROM app.cfg_change WHERE client_uuid = CAST(:u AS uuid)").bind("u", clientUuid.toString()).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.one()
@@ -154,9 +196,9 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 return@inTransaction loadChange(h, id)!!
             }
             val changeId: Long = inserted
-            AuditWriter.write(h, p, "cfg_change", changeId.toString(), "create", null, JsonPrimitive(status), req.reason, requestId)
+            AuditWriter.write(h, p, "cfg_change", changeId.toString(), if (req.break_glass) "break_glass" else "create", null, JsonPrimitive(status), req.reason, requestId)
             when (status) {
-                "applied" -> commit(h, changeId, p.userId, now, "change", requestId, p)
+                "applied" -> commit(h, changeId, p.userId, now, kind, requestId, p)
                 "scheduled" -> h.createUpdate("UPDATE app.cfg_change SET status = 'scheduled' WHERE change_id = :id").bind("id", changeId).execute()
                 // pending_approval is the insert default
             }
@@ -164,12 +206,48 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
         }
     }
 
+    // ---------------------------------------------------------------- write: revert and rollback
+
+    /**
+     * POST /admin/config/versions/{v}/rollback. `revert_this_version` restores what version v replaced; `rollback_to_this_version`
+     * restores the whole state as of v. Both create a NEW change (never deleting history) that goes through the normal risk route.
+     */
+    fun rollback(p: AronPrincipal, version: Long, mode: String, reason: String, requestId: String?, breakGlass: Boolean = false): ConfigChangeDto {
+        if (mode != "revert_this_version" && mode != "rollback_to_this_version") throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad mode", errors = listOf(FieldError("body.mode", "invalid_value")))
+        val now = clock.now()
+        val items = db.jdbi.withHandle<List<ConfigChangeItemIn>, Exception> { h ->
+            h.createQuery("SELECT 1 FROM app.cfg_version WHERE config_version = :v").bind("v", version).mapTo(Int::class.java).findOne().orElse(null) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "version $version")
+            data class K(val key: String, val type: String, val id: Long)
+            val touched: Set<K> = h.createQuery(
+                if (mode == "revert_this_version") "SELECT DISTINCT key, scope_type, scope_id FROM app.cfg_value WHERE config_version = :v OR superseded_in_version = :v"
+                else "SELECT DISTINCT key, scope_type, scope_id FROM app.cfg_value WHERE config_version > :v OR superseded_in_version > :v",
+            ).bind("v", version).map { rs, _ -> K(rs.getString(1), rs.getString(2), rs.getLong(3)) }.list().toSet()
+            val at = OffsetDateTime.ofInstant(now, ZoneOffset.UTC)
+            touched.mapNotNull { k ->
+                // Target: the state before v (revert) or as of v (rollback); null = no row, i.e. remove the override.
+                val target = h.createQuery(
+                    if (mode == "revert_this_version")
+                        "SELECT value FROM app.cfg_value WHERE key = :k AND scope_type = :t AND scope_id = :i AND superseded_in_version = :v ORDER BY effective_from DESC LIMIT 1"
+                    else "SELECT value FROM app.cfg_value WHERE key = :k AND scope_type = :t AND scope_id = :i AND config_version <= :v AND (superseded_in_version IS NULL OR superseded_in_version > :v) ORDER BY effective_from DESC LIMIT 1",
+                ).bind("k", k.key).bind("t", k.type).bind("i", k.id).bind("v", version).mapTo(String::class.java).findOne().map { Json.parseToJsonElement(it) }.orElse(JsonNull)
+                val current = h.createQuery("SELECT value FROM app.cfg_value WHERE key = :k AND scope_type = :t AND scope_id = :i AND effective_from <= :now AND (effective_to IS NULL OR effective_to > :now)")
+                    .bind("k", k.key).bind("t", k.type).bind("i", k.id).bind("now", at).mapTo(String::class.java).findOne().map { Json.parseToJsonElement(it) }.orElse(JsonNull)
+                if (target == current) null else ConfigChangeItemIn(k.key, k.type, k.id, target)
+            }.sortedWith(compareBy({ it.key }, { it.scope_type }, { it.scope_id }))
+        }
+        if (items.isEmpty()) throw ApiProblem(ProblemCode.ERR_CONFLICT, "nothing to change: the current values already equal that state")
+        if (items.size > 100) throw ApiProblem(ProblemCode.ERR_VALIDATION, "more than 100 values would change; split the rollback")
+        val text = (if (mode == "rollback_to_this_version") "Rollback to v$version: " else "Revert v$version: ") + reason
+        return create(p, ConfigChangeRequestIn(text.take(500), breakGlass, items), null, requestId, revertOf = version, kind = if (mode == "rollback_to_this_version") "rollback" else "revert")
+    }
+
     // ---------------------------------------------------------------- write: decide
 
     fun decide(p: AronPrincipal, changeId: Long, req: ConfigDecisionIn, requestId: String?): ConfigChangeDto {
-        if (req.decision !in setOf("approve", "reject", "cancel")) throw ApiProblem(ProblemCode.ERR_VALIDATION, "decision must be approve, reject or cancel", errors = listOf(FieldError("body.decision", "invalid_value")))
+        if (req.decision !in setOf("approve", "reject", "cancel", "adopt")) throw ApiProblem(ProblemCode.ERR_VALIDATION, "decision must be approve, reject, cancel or adopt", errors = listOf(FieldError("body.decision", "invalid_value")))
         if (p.role != Role.ADMIN && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "not allowed to decide config changes")
         val now = clock.now()
+        var pendingAdopt: ConfigChangeDto? = null
         return db.jdbi.inTransaction<ConfigChangeDto, Exception> { h ->
             val row = h.createQuery("SELECT status, requested_by, risk_class FROM app.cfg_change WHERE change_id = :id FOR UPDATE").bind("id", changeId)
                 .map { rs, _ -> Triple(rs.getString(1), rs.getLong(2), rs.getInt(3)) }.findOne().orElse(null) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "change $changeId")
@@ -189,7 +267,17 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     h.createUpdate("UPDATE app.cfg_change SET approver = :a, approved_at = :at, decided_at = :at, decision_note = :n WHERE change_id = :id")
                         .bind("a", p.userId).bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("n", req.note).bind("id", changeId).execute()
                     AuditWriter.write(h, p, "cfg_change", changeId.toString(), "approve", JsonPrimitive(status), JsonPrimitive("applied"), req.note, requestId)
-                    commit(h, changeId, p.userId, now, "change", requestId, p)
+                    commit(h, changeId, p.userId, now, kindOf(h, changeId), requestId, p)
+                }
+                "adopt" -> {
+                    if (status != "pending_approval") state()
+                    val proposerRole = h.createQuery("SELECT u.role FROM app.cfg_change c JOIN app.app_user u ON u.id = c.requested_by WHERE c.change_id = :id").bind("id", changeId).mapTo(String::class.java).one()
+                    if (proposerRole != "TSO") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "only a TSO proposal is adopted")
+                    val orig = loadChange(h, changeId)!!
+                    h.createUpdate("UPDATE app.cfg_change SET status = 'cancelled', decided_at = :at, decision_note = :n WHERE change_id = :id")
+                        .bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("n", ("adopted: " + (req.note ?: "")).take(500)).bind("id", changeId).execute()
+                    AuditWriter.write(h, p, "cfg_change", changeId.toString(), "adopt", JsonPrimitive(status), JsonPrimitive("cancelled"), req.note, requestId)
+                    pendingAdopt = orig
                 }
                 "reject", "cancel" -> {
                     if (status != "pending_approval" && status != "scheduled") state()
@@ -205,6 +293,13 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 }
             }
             loadChange(h, changeId)!!
+        }.let { c ->
+            val orig = pendingAdopt
+            if (orig != null) {
+                // The adopting editor becomes the requester of a fresh change set with the proposal's items; it takes the normal risk route.
+                val items = orig.changes.map { ConfigChangeItemIn(it.key, it.scope_type, it.scope_id, it.value, it.effective_from, it.effective_to) }
+                create(p, ConfigChangeRequestIn(("Adopted TSO proposal #$changeId: " + orig.reason).take(500), false, items), null, requestId)
+            } else c
         }.also { if (risk3(it)) resolver.invalidate() }
     }
 
@@ -287,36 +382,64 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
         return BlastRadius(zones, routes, outlets, devices)
     }
 
-    private fun blast(h: Handle, type: String, id: Long): BlastRadius {
-        val zoneFilter = when (type) {
-            "global" -> "TRUE"
-            "wing" -> "z.territory_id IN (SELECT t.id FROM app.territory t JOIN app.division d ON d.id = t.division_id WHERE d.wing_id = :id)"
-            "division" -> "z.territory_id IN (SELECT t.id FROM app.territory t WHERE t.division_id = :id)"
-            "territory" -> "z.territory_id = :id"
-            "zone" -> "z.id = :id"
-            "route" -> "z.id = (SELECT zone_id FROM app.route WHERE id = :id)"
-            "outlet" -> "z.id = (SELECT zone_id FROM app.outlet WHERE id = :id)"
-            "geo_class" -> "z.id IN (SELECT o.zone_id FROM app.outlet o JOIN app.geo_class_def g ON g.geo_class = o.geo_class WHERE g.ordinal = :id)"
-            else -> "FALSE"
-        }
+    internal fun blast(h: Handle, type: String, id: Long): BlastRadius {
+        val zoneFilter = zoneFilterSql(type)
         val z = "SELECT z.id FROM app.zone z WHERE $zoneFilter"
         fun count(sql: String) = h.createQuery(sql).also { if (type != "global") it.bind("id", id) }.mapTo(Int::class.java).one()
+        // Devices are counted exactly as the reach view targets them: active bound phones, by device zone, else home zone, else route zone.
+        val devZone = "COALESCE(d.zone_id, u.home_zone_id, (SELECT r.zone_id FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = u.id AND a.ended_at IS NULL AND (a.valid_to IS NULL OR a.valid_to > current_date) ORDER BY a.valid_from DESC LIMIT 1))"
+        val devBase = "SELECT count(DISTINCT d.id) FROM app.device d JOIN app.device_binding b ON b.device_id = d.id AND b.status = 'active' JOIN app.app_user u ON u.id = b.user_id WHERE d.status IN ('enrolled','active')"
         val devicesSql = when (type) {
-            "user" -> "SELECT count(*) FROM app.device_binding b WHERE b.user_id = :id AND b.unbound_at IS NULL"
-            "device" -> "SELECT 1"
-            "role" -> "SELECT count(DISTINCT b.device_id) FROM app.device_binding b JOIN app.app_user u ON u.id = b.user_id JOIN app.role_def r ON r.role = u.role WHERE b.unbound_at IS NULL AND r.ordinal = :id"
-            else -> "SELECT count(DISTINCT b.device_id) FROM app.device_binding b JOIN app.app_user u ON u.id = b.user_id WHERE b.unbound_at IS NULL AND (u.home_zone_id IN ($z) OR EXISTS " +
-                "(SELECT 1 FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = u.id AND a.ended_at IS NULL AND (a.valid_to IS NULL OR a.valid_to > current_date) AND r.zone_id IN ($z)))"
+            "user" -> "$devBase AND u.id = :id"
+            "device" -> "SELECT count(*) FROM app.device d WHERE d.id = :id AND d.status IN ('enrolled','active')"
+            "role" -> "$devBase AND u.role = (SELECT role FROM app.role_def WHERE ordinal = :id)"
+            else -> "$devBase AND $devZone IN ($z)"
         }
         return when (type) {
-            "role" -> BlastRadius(0, 0, 0, count(devicesSql))
-            "user" -> BlastRadius(0, 0, 0, count(devicesSql))
-            "device" -> BlastRadius(0, 0, 0, 1)
+            "role", "user", "device" -> BlastRadius(0, 0, 0, count(devicesSql))
+            "route" -> BlastRadius(1, 1, count("SELECT count(*) FROM app.outlet o WHERE o.status = 'active' AND o.route_id = :id"), count(devicesSql))
+            "outlet" -> BlastRadius(1, count("SELECT count(*) FROM app.outlet o WHERE o.id = :id AND o.route_id IS NOT NULL"), 1, count(devicesSql))
             else -> BlastRadius(
                 zones = count("SELECT count(*) FROM ($z) x"), routes = count("SELECT count(*) FROM app.route r WHERE r.zone_id IN ($z)"),
                 outlets = count("SELECT count(*) FROM app.outlet o WHERE o.status = 'active' AND o.zone_id IN ($z)"), devices = count(devicesSql),
             )
         }
+    }
+
+    /** `revert` / `rollback` for a change made by a rollback request (reason prefix), else `change`. */
+    private fun kindOf(h: Handle, changeId: Long): String = h.createQuery("SELECT is_revert_of, reason FROM app.cfg_change WHERE change_id = :id").bind("id", changeId)
+        .map { rs, _ -> if (rs.getObject(1) == null) "change" else if (rs.getString(2).startsWith("Rollback to v")) "rollback" else "revert" }.one()
+
+    /** True when the item moves the value the node resolves to in the key's restrictive direction (break-glass: restore or restrict only). */
+    private fun isRestrictive(pr: Prepared, now: Instant): Boolean {
+        if (pr.item.value is JsonNull) return false
+        val chain = resolver.chainOf(pr.item.scope_type, pr.item.scope_id)
+        val cur = resolver.resolve(pr.def.key, chain, now).value
+        val nv = pr.item.value
+        val c = (cur as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull; val n = (nv as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
+        return when (pr.def.restrictiveDir) {
+            "up" -> c != null && n != null && n >= c
+            "down" -> c != null && n != null && n <= c
+            "enum_order" -> {
+                val order = (pr.def.bounds["enum"] as? JsonArray)?.map { (it as JsonPrimitive).content }.orEmpty()
+                val ci = order.indexOf((cur as? JsonPrimitive)?.content); val ni = order.indexOf((nv as? JsonPrimitive)?.content)
+                ci >= 0 && ni >= ci
+            }
+            else -> false
+        }
+    }
+
+    /** SQL predicate on `app.zone z` for the zones a scope node covers (binds :id except for global). */
+    internal fun zoneFilterSql(type: String): String = when (type) {
+        "global" -> "TRUE"
+        "wing" -> "z.territory_id IN (SELECT t.id FROM app.territory t JOIN app.division d ON d.id = t.division_id WHERE d.wing_id = :id)"
+        "division" -> "z.territory_id IN (SELECT t.id FROM app.territory t WHERE t.division_id = :id)"
+        "territory" -> "z.territory_id = :id"
+        "zone" -> "z.id = :id"
+        "route" -> "z.id = (SELECT zone_id FROM app.route WHERE id = :id)"
+        "outlet" -> "z.id = (SELECT zone_id FROM app.outlet WHERE id = :id)"
+        "geo_class" -> "z.id IN (SELECT o.zone_id FROM app.outlet o JOIN app.geo_class_def g ON g.geo_class = o.geo_class WHERE g.ordinal = :id)"
+        else -> "FALSE"
     }
 
     /** Applies the change [changeId] under a new version; requires the change row to be locked or just inserted by this transaction. */

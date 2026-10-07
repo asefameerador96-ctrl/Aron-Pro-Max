@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
-import type { OpKey } from "@/lib/admin/ops";
+import type { OpKey, TeamOpKey } from "@/lib/admin/ops";
+import { latinDigits, scaledInt } from "@/lib/admin/taka";
 import type { MessageKey } from "@/lib/i18n";
 import { Field, inputClass } from "./field";
 import { ReasonField, REASON_MIN_LENGTH } from "./reason-field";
@@ -24,6 +25,18 @@ export interface OpFieldDef {
   nullable?: boolean;
   /** `int` fields: the value is multiplied by this before sending (e.g. 1000 to turn taka into milli-taka). */
   scale?: number;
+  /** Smallest allowed value after scaling. */
+  min?: number;
+  /** A date field: the earliest allowed date (YYYY-MM-DD). */
+  minDate?: string;
+  /** An `*_id` field that may be 0 (the global scope). */
+  allowZero?: boolean;
+  /** An enum whose option values are numbers (sent as numbers). */
+  asNumber?: boolean;
+  /** A text field whose content must be valid JSON but is sent as the text itself (a template definition string). */
+  jsonString?: boolean;
+  /** Lower-case the text before checking and sending (a pasted fingerprint). */
+  lowercase?: boolean;
   /** Largest allowed value after scaling (a size gate, for example). */
   max?: number;
   /** The text must match this regular expression (a checksum, for example). */
@@ -35,7 +48,11 @@ export interface OpResult {
 }
 
 interface Props {
-  op: OpKey;
+  op: OpKey | TeamOpKey;
+  /** BFF endpoint: the admin whitelist by default, "/api/bff/team-op" for web-role pages. */
+  endpoint?: string;
+  /** Body members that get a fresh client UUID per attempt-set (idempotency: a retry reuses it, a success renews it). */
+  uuidMembers?: string[];
   params?: Record<string, string>;
   fields: OpFieldDef[];
   /** Fixed body members merged under the typed values (e.g. a scope the page already chose). */
@@ -50,6 +67,8 @@ interface Props {
   resultField?: string;
   /** Clear the form after a success. */
   resetOnSuccess?: boolean;
+  /** Ask this question (a browser confirm) before posting an irreversible action. */
+  confirmText?: string;
   testId?: string;
 }
 
@@ -61,7 +80,17 @@ function fieldMessage(t: ReturnType<typeof useI18n>["t"], code: string): string 
 function toValue(f: OpFieldDef, raw: string): unknown {
   if (f.kind === "checkbox") return raw === "true";
   if (raw.trim() === "") return f.nullable ? null : undefined;
-  if (f.kind === "int") return Math.round(Number(raw) * (f.scale ?? 1));
+  if (f.kind === "int") {
+    const text = latinDigits(raw.trim());
+    if (f.scale) {
+      const v = scaledInt(text, f.scale);
+      return v === null || v === 0 ? Symbol.for("invalid-int") : v; // a zero amount changes nothing
+    }
+    const n = /^\d{1,15}$/.test(text) ? Number(text) : NaN;
+    if (!Number.isSafeInteger(n)) return Symbol.for("invalid-int");
+    if (f.name.endsWith("_id") && n < 1 && !f.allowZero) return Symbol.for("invalid-int"); // ids start at 1
+    return n;
+  }
   if (f.kind === "number") return Number(raw);
   if (f.kind === "json") {
     try {
@@ -70,10 +99,11 @@ function toValue(f: OpFieldDef, raw: string): unknown {
       return Symbol.for("invalid-json");
     }
   }
-  return raw.trim();
+  if (f.kind === "enum" && f.asNumber) return Number(raw);
+  return f.lowercase ? raw.trim().toLowerCase() : raw.trim();
 }
 
-export function OpForm({ op, params, fields, fixed, version, submitLabel, noReason, successKey, resultField, resetOnSuccess = true, testId = "op-form" }: Props) {
+export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, version, submitLabel, noReason, successKey, resultField, resetOnSuccess = true, confirmText, testId = "op-form" }: Props) {
   const { t, problem } = useI18n();
   const router = useRouter();
   const initial = Object.fromEntries(fields.map((f) => [f.name, f.initial ?? (f.kind === "checkbox" ? "false" : f.kind === "enum" && f.required ? (f.options?.[0]?.value ?? "") : "")]));
@@ -83,21 +113,33 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [ver, setVer] = useState(version);
+  const [uuids, setUuids] = useState<Record<string, string>>(() => Object.fromEntries((uuidMembers ?? []).map((m) => [m, crypto.randomUUID()])));
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setErrors({});
     setBanner(null);
     const local: Record<string, string> = {};
-    const body: Record<string, unknown> = { ...fixed };
+    const body: Record<string, unknown> = { ...fixed, ...uuids };
     for (const f of fields) {
       const raw = values[f.name] ?? "";
       if (f.required && f.kind !== "checkbox" && raw.trim() === "") local[f.name] = t("error.field.required");
-      if ((f.kind === "int" || f.kind === "number") && raw.trim() !== "" && !Number.isFinite(Number(raw))) local[f.name] = t("error.field.invalid");
+      if (f.kind === "number" && raw.trim() !== "" && !Number.isFinite(Number(raw))) local[f.name] = t("error.field.invalid");
       const v = toValue(f, raw);
+      if (v === Symbol.for("invalid-int")) local[f.name] = t("error.field.invalid");
+      if (f.kind === "int" && raw.trim() !== "" && !f.scale && /^-/.test(raw.trim())) local[f.name] = t("error.field.invalid");
+      if (typeof v === "number" && f.min !== undefined && v < f.min) local[f.name] = t("cfgc.error.too_small");
       if (v === Symbol.for("invalid-json")) local[f.name] = t("error.field.invalid");
       if (typeof v === "number" && f.max !== undefined && v > f.max) local[f.name] = t("cfgc.error.too_big");
-      if (f.pattern && raw.trim() !== "" && !new RegExp(f.pattern).test(raw.trim())) local[f.name] = t("error.field.invalid");
+      if (f.minDate && raw !== "" && raw < f.minDate) local[f.name] = t("error.field.invalid");
+      if (f.jsonString && raw.trim() !== "") {
+        try {
+          JSON.parse(raw);
+        } catch {
+          local[f.name] = t("error.field.invalid");
+        }
+      }
+      if (f.pattern && raw.trim() !== "" && !new RegExp(f.pattern).test(f.lowercase ? raw.trim().toLowerCase() : raw.trim())) local[f.name] = t("error.field.invalid");
       if (v !== undefined && typeof v !== "symbol") body[f.name] = v;
     }
     if (!noReason && Array.from(reason.trim()).length < REASON_MIN_LENGTH) local.reason = t("admin.reason.too_short");
@@ -105,9 +147,10 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
       setErrors(local);
       return;
     }
+    if (confirmText && !window.confirm(confirmText)) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/bff/admin-op", {
+      const res = await fetch(endpoint ?? "/api/bff/admin-op", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -121,6 +164,7 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
         setBanner({ kind: "ok", text: `${t(successKey ?? "admin.save.ok")}${shown ? ` ${shown}` : ""}` });
         setReason("");
         if (resetOnSuccess) setValues(initial);
+        setUuids(Object.fromEntries((uuidMembers ?? []).map((m) => [m, crypto.randomUUID()])));
         router.refresh();
         return;
       }
@@ -162,6 +206,7 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
               id={`f-${f.name}`}
               name={f.name}
               type={f.kind === "date" ? "date" : "text"}
+              min={f.kind === "date" ? f.minDate : undefined}
               value={values[f.name] ?? ""}
               onChange={(e) => set(f.name, e.target.value)}
               inputMode={f.kind === "int" ? "numeric" : f.kind === "number" ? "decimal" : undefined}

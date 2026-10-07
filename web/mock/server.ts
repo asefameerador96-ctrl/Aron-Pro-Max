@@ -4,6 +4,9 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
+import { handleTable, type Ctx, type Row } from "./tables";
+import { seedCodeLists, seedTables, tableDefs } from "./master-seed";
+import { freshDashStore, handleDash, hasPii, type DashStore } from "./dash";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 interface MockUser {
@@ -12,6 +15,8 @@ interface MockUser {
   scope: ScopeSummary;
   mfa: boolean;
   state?: "locked" | "password_change";
+  /** Master-data fixture user: skips the dashboard mock (mock/dash.ts) so the admin portal sees the master-data tables of mock/master-seed.ts. */
+  master?: boolean;
 }
 
 const nationalScope: ScopeSummary = { scope_version: 3, nodes: [{ type: "national", id: 0, code: null, name: null }] };
@@ -26,8 +31,14 @@ function users(): Record<string, MockUser> {
   });
   return {
     tso334: u(2001, "tso334", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 334, code: "T-334", name: "Banani" }] }),
+    tso335: u(2005, "tso335", "Salma Begum", "TSO", "tso-pass-2", { scope_version: 7, nodes: [{ type: "territory", id: 335, code: "T-335", name: "Gulshan" }] }),
+    tso999: u(2006, "tso999", "Outside Scope", "TSO", "tso-pass-3", { scope_version: 7, nodes: [{ type: "territory", id: 999, code: "T-999", name: "Elsewhere" }] }),
+    dmo1: u(2004, "dmo1", "Habib Rahman", "DMO", "dmo-pass-1", { scope_version: 4, nodes: [{ type: "division", id: 10, code: "D-10", name: "Dhaka North" }] }),
     wm1: u(2002, "wm1", "Karim Hossain", "WM", "wm-pass-1", { scope_version: 2, nodes: [{ type: "wing", id: 1, code: "W-1", name: "Dhaka Wing" }] }),
     analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
+    madmin1: { ...u(3101, "madmin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true), master: true },
+    msupport1: { ...u(3102, "msupport1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true), master: true },
+    mtso1: { ...u(3103, "mtso1", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 6, code: "T-334", name: "Banani" }] }), master: true },
     admin1: u(3001, "admin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true),
     support1: u(3002, "support1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true),
     sr334001: u(1001, "sr334001", "Testing Banani", "SR", "sr-pass-1", { scope_version: 7, nodes: [{ type: "route", id: 10231, code: "R-334-01", name: "RouteDaily" }] }),
@@ -45,6 +56,10 @@ interface State {
   stubs: Stub[];
   calls: StubCall[];
   users: Record<string, MockUser>;
+  tables: Record<string, Row[]>;
+  codeLists: Record<string, unknown[]>;
+  bulkBatches: Map<string, { batch_uuid: string; updated: number; unchanged: number; replayed: boolean }>;
+  /** Alias of tables.clusters (used by tests). */
   clusters: Cluster[];
   audit: AuditEntry[];
   access: Map<string, { userId: string; exp: number }>;
@@ -53,12 +68,7 @@ interface State {
   refreshCount: number;
   nextId: number;
   accessTtlS: number;
-}
-
-function seedClusters(): Cluster[] {
-  const now = "2026-10-01T04:00:00.000Z";
-  const c = (id: number, zone_id: number, name: string, cluster_type: string | null): Cluster => ({ id, zone_id, name, cluster_type, status: "active", created_at: now, updated_at: now, version: 1 });
-  return [c(1, 1, "Banani Market", "market"), c(2, 1, "Gulshan-1 Circle", "urban"), c(3, 2, "Mirpur-10", "urban"), c(4, 2, "Uttara Sector 7", null), c(5, 3, "Savar Bazar", "semi_urban"), c(6, 3, "Ashulia Haat", "rural"), c(7, 3, "Hatirjheel", "urban")];
+  dash: DashStore;
 }
 
 export interface MockOptions {
@@ -78,7 +88,8 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 }
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
-  return { stubs: [], calls: [], users: users(), clusters: seedClusters(), audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
+  const tables = seedTables();
+  return { stubs: [], calls: [], users: users(), tables, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -164,7 +175,7 @@ function authed(state: State, req: IncomingMessage): { user: MockUser } | { erro
 const ADMIN_READ: Role[] = ["ADMIN", "SUPERADMIN", "SUPPORT", "ANALYST"];
 const ADMIN_WRITE: Role[] = ["ADMIN", "SUPERADMIN"];
 
-function audit(state: State, user: MockUser, entity: string, entity_id: number, action: string, before: AuditEntry["before"], after: AuditEntry["after"], reason: string | null): void {
+function audit(state: State, user: MockUser, entity: string, entity_id: number | string, action: string, before: AuditEntry["before"], after: AuditEntry["after"], reason: string | null): void {
   const prev = state.audit[state.audit.length - 1]?.row_hash ?? "0".repeat(64);
   const entry = { id: state.audit.length + 1, at: new Date().toISOString(), actor_user_id: user.summary.user_id, actor_username: user.summary.username, actor_role: user.summary.role, via: "web" as const, entity, entity_id: String(entity_id), action, before, after, reason, request_id: randomUUID() };
   state.audit.push({ ...entry, row_hash: createHash("sha256").update(prev + JSON.stringify(entry)).digest("hex") });
@@ -180,7 +191,15 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     reset();
     return send(res, 204, undefined);
   }
-  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters });
+  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, tables: state.tables, exports: state.dash.exports, actions: state.dash.actions, leave: state.dash.leave });
+  if (path === "/__mock/now" && method === "POST") {
+    state.dash.now = ((await readJson(req)) as { now?: string | null } | undefined)?.now ?? null;
+    return send(res, 204, undefined);
+  }
+  if (path === "/__mock/tutorial" && method === "POST") {
+    state.dash.tutorialExtra.push((await readJson(req)) as DashStore["tutorialExtra"][number]);
+    return send(res, 204, undefined);
+  }
 
   if (path === "/v1/health") return send(res, 200, { status: "ok", api: "/v1", server_time: new Date().toISOString(), generation: "00000000-0000-4000-8000-000000000001", build: "mock" });
 
@@ -233,7 +252,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   const user = a.user;
 
   if (path === "/v1/me") {
-    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: false, mfa_enabled: user.mfa };
+    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: hasPii(user.summary.role), mfa_enabled: user.mfa };
     return send(res, 200, me);
   }
 
@@ -247,55 +266,82 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     return send(res, r.status, r.body, r.headers);
   }
 
+  if (!user.master && await handleDash({
+    user: { role: user.summary.role, scope: user.scope, id: user.summary.user_id, name: user.summary.full_name, password: state.dash.passwords[user.summary.user_id] ?? user.password },
+    method, path, url, store: state.dash, problem,
+    body: () => readJson(req),
+    send: (status, body, headers) => send(res, status, body, headers),
+    raw: (status, contentType, body, headers) => {
+      res.writeHead(status, { "Content-Type": contentType, "X-Aron-Api": "1", "X-Request-Id": randomUUID(), ...headers });
+      res.end(status === 204 ? undefined : body);
+    },
+  })) return;
+
   if (path.startsWith("/v1/admin/")) {
     const write = method !== "GET";
-    if (!(write ? ADMIN_WRITE : ADMIN_READ).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    if (!(write ? (path.endsWith("/credentials") ? [...ADMIN_WRITE, "SUPPORT" as Role] : ADMIN_WRITE) : ADMIN_READ).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
   }
 
-  if (path === "/v1/admin/clusters" && method === "GET") {
-    const q = url.searchParams;
-    const limit = Math.min(500, Number(q.get("limit") ?? 100));
-    const offset = q.get("cursor") ? Number(Buffer.from(q.get("cursor")!, "base64url").toString()) : 0;
-    let rows = state.clusters.filter((c) => (!q.get("zone_id") || c.zone_id === Number(q.get("zone_id"))) && (!q.get("status") || c.status === q.get("status")) && (!q.get("q") || c.name.toLowerCase().includes(q.get("q")!.toLowerCase())));
-    rows = rows.sort((x, y) => x.id - y.id);
-    const page = rows.slice(offset, offset + limit);
-    const next = offset + limit < rows.length ? Buffer.from(String(offset + limit)).toString("base64url") : null;
-    return send(res, 200, { items: page, next_cursor: next });
-  }
-  if (path === "/v1/admin/clusters" && method === "POST") {
-    const b = (await readJson(req)) as Record<string, unknown> | undefined;
-    if (!b || typeof b !== "object") return send(res, 400, problem(400, "ERR_MALFORMED_JSON"));
-    const errors = [...(unknownMembers(b, ["zone_id", "name", "cluster_type"]) ?? [])];
-    if (typeof b.name !== "string" || b.name.length < 1 || b.name.length > 120) errors.push({ pointer: "/name", code: "required" });
-    if (!Number.isInteger(b.zone_id)) errors.push({ pointer: "/zone_id", code: "required" });
+  if (path === "/v1/admin/code-lists" && method === "GET") return send(res, 200, { lists: Object.entries(state.codeLists).map(([list_key, items]) => ({ list_key, items })) });
+  const cl = /^\/v1\/admin\/code-lists\/([a-z_]+)$/.exec(path);
+  if (cl && method === "PUT") {
+    if (!ADMIN_WRITE.includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const key = cl[1]!;
+    const b = (await readJson(req)) as { items?: Record<string, unknown>[]; change_reason?: string } | undefined;
+    const errors: NonNullable<Problem["errors"]> = [];
+    if (!b || !Array.isArray(b.items) || b.items.length < 1) errors.push({ pointer: "/items", code: "required" });
+    if (typeof b?.change_reason !== "string" || Array.from(b.change_reason).length < 10) errors.push({ pointer: "/change_reason", code: "too_short" });
+    b?.items?.forEach((i, n) => {
+      if (typeof i.code !== "string" || !/^[a-z][a-z0-9_]{1,40}$/.test(i.code)) errors.push({ pointer: `/items/${n}/code`, code: "pattern" });
+      if (typeof i.label_en !== "string" || !i.label_en) errors.push({ pointer: `/items/${n}/label_en`, code: "required" });
+    });
     if (errors.length) return send(res, 400, problem(400, "ERR_VALIDATION", { errors }));
-    if (state.clusters.some((c) => c.zone_id === b.zone_id && c.name === b.name)) return send(res, 409, problem(409, "ERR_MASTER_DUPLICATE_CODE"));
-    const now = new Date().toISOString();
-    const row: Cluster = { id: state.nextId++, zone_id: b.zone_id as number, name: b.name as string, cluster_type: (b.cluster_type as string | null | undefined) ?? null, status: "active", created_at: now, updated_at: now, version: 1 };
-    state.clusters.push(row);
-    audit(state, user, "cluster", row.id, "cluster.create", null, { name: row.name, zone_id: row.zone_id }, null);
-    return send(res, 201, row);
+    const before = state.codeLists[key] ?? [];
+    state.codeLists[key] = b!.items!;
+    audit(state, user, "code_list", 0, `code_list.${key}.put`, { items: before.length }, { items: b!.items!.length }, b!.change_reason!);
+    return send(res, 200, { list_key: key, items: state.codeLists[key] });
   }
-  const item = /^\/v1\/admin\/clusters\/([0-9]+)$/.exec(path);
-  if (item && method === "PATCH") {
-    const row = state.clusters.find((c) => c.id === Number(item[1]));
-    if (!row) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
-    if (req.headers["if-match"] !== `"${row.version}"`) return send(res, 412, problem(412, "ERR_PRECONDITION_FAILED"));
-    const b = (await readJson(req)) as Record<string, unknown> | undefined;
-    if (!b || typeof b !== "object" || Object.keys(b).length === 0) return send(res, 400, problem(400, "ERR_VALIDATION"));
-    const errors = [...(unknownMembers(b, ["zone_id", "name", "cluster_type", "status", "change_reason"]) ?? [])];
-    if (b.change_reason !== undefined && b.change_reason !== null && (typeof b.change_reason !== "string" || b.change_reason.length < 10)) errors.push({ pointer: "/change_reason", code: "too_short" });
-    if (b.status !== undefined && b.status !== "active" && b.status !== "inactive") errors.push({ pointer: "/status", code: "pattern" });
-    if (errors.length) return send(res, 400, problem(400, "ERR_VALIDATION", { errors }));
-    const before = { name: row.name, zone_id: row.zone_id, cluster_type: row.cluster_type ?? null, status: row.status };
-    if (typeof b.name === "string") row.name = b.name;
-    if (Number.isInteger(b.zone_id)) row.zone_id = b.zone_id as number;
-    if (b.cluster_type !== undefined) row.cluster_type = b.cluster_type as string | null;
-    if (b.status === "active" || b.status === "inactive") row.status = b.status;
-    row.version++;
-    row.updated_at = new Date().toISOString();
-    audit(state, user, "cluster", row.id, "cluster.update", before, { name: row.name, zone_id: row.zone_id, cluster_type: row.cluster_type ?? null, status: row.status }, (b.change_reason as string | null | undefined) ?? null);
-    return send(res, 200, row);
+
+  if (path === "/v1/admin/outlets/outlet-kind" && method === "POST") {
+    if (!ADMIN_WRITE.includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const b = (await readJson(req)) as { batch_uuid?: string; outlet_kind?: string; outlet_ids?: number[]; reason?: string } | undefined;
+    if (!b || !b.batch_uuid || !["retail", "wholesale"].includes(b.outlet_kind ?? "") || !Array.isArray(b.outlet_ids) || b.outlet_ids.length < 1 || typeof b.reason !== "string" || Array.from(b.reason).length < 10) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    const seen = state.bulkBatches.get(b.batch_uuid);
+    if (seen) return send(res, 200, { ...seen, replayed: true });
+    let updated = 0;
+    let unchanged = 0;
+    for (const id of b.outlet_ids) {
+      const o = state.tables.outlets!.find((x) => x.id === id);
+      if (!o) continue;
+      if (o.outlet_kind === b.outlet_kind) unchanged++;
+      else {
+        o.outlet_kind = b.outlet_kind;
+        o.version++;
+        updated++;
+        audit(state, user, "outlet", id, "outlet.outlet_kind", { outlet_kind: b.outlet_kind === "wholesale" ? "retail" : "wholesale" }, { outlet_kind: b.outlet_kind! }, b.reason);
+      }
+    }
+    const result = { batch_uuid: b.batch_uuid, updated, unchanged, replayed: false };
+    state.bulkBatches.set(b.batch_uuid, result);
+    return send(res, 200, result);
+  }
+
+  if (path.startsWith("/v1/outlet-requests")) {
+    const ACT: Role[] = ["DMO", "WM", "ADMIN", "SUPERADMIN"];
+    const READ: Role[] = ["TSO", "DMO", "WM", "TOP", "ANALYST", "ADMIN", "SUPERADMIN"];
+    if (!(method === "GET" ? READ : ACT).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const ctx2: Ctx = { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) };
+    if (await handleTable(tableDefs(state), ctx2, method, url, req, res, ACT.includes(user.summary.role), user.summary.role, user.summary.user_id)) return;
+  }
+
+  if (path.startsWith("/v1/admin/")) {
+    const ctx: Ctx = {
+      send,
+      problem,
+      readJson,
+      audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason),
+    };
+    if (await handleTable(tableDefs(state), ctx, method, url, req, res, ADMIN_WRITE.includes(user.summary.role), user.summary.role, user.summary.user_id)) return;
   }
 
   if (path === "/v1/admin/audit" && method === "GET") {

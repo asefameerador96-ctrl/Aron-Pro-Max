@@ -2,4 +2,26 @@
 <resources>
     <string name="core_ui_brand_footer">© AKTCL</string>
     <string name="core_ui_offline_mode">অফলাইন: আপনার কাজ এই ফোনে সংরক্ষিত আছে, পরে সিঙ্ক হবে</string>
+    <string name="core_ui_kit_gallery_title">কিট গ্যালারি</string>
+    <string name="core_ui_kit_gallery_save">সংরক্ষণ</string>
+    <string name="core_ui_kit_gallery_cancel">বাতিল</string>
+    <string name="core_ui_kit_gallery_outlet">আউটলেট</string>
+    <string name="core_ui_kit_gallery_outlet_sub">বনানী স্টোর (C-1042 · 01711000000)</string>
+    <string name="core_ui_kit_gallery_stepper_less">কমান</string>
+    <string name="core_ui_kit_gallery_stepper_more">বাড়ান</string>
+    <string name="core_ui_kit_gallery_hold_submit">বিক্রয় জমা দিতে চেপে ধরুন</string>
+    <string name="core_ui_kit_gallery_confirm_title">বিক্রয় জমা দেবেন?</string>
+    <string name="core_ui_kit_gallery_confirm_msg">এরপর আজকের মেমো পরিবর্তন করা যাবে না।</string>
+    <string name="core_ui_kit_gallery_empty">আজকের রুটে কোনো আউটলেট নেই</string>
+    <string name="core_ui_kit_gallery_empty_hint">অনলাইনে এসে রুট আবার নামান</string>
+    <string name="core_ui_kit_gallery_error">রুট লোড করা যায়নি</string>
+    <string name="core_ui_kit_gallery_retry">আবার চেষ্টা করুন</string>
+    <string name="core_ui_kit_gallery_tile_attendance">অ্যাটেনডেন্স</string>
+    <string name="core_ui_kit_gallery_tile_stock">স্টক</string>
+    <string name="core_ui_kit_gallery_tile_sale">বিক্রয়</string>
+    <string name="core_ui_kit_gallery_tile_task">টাস্ক ডেলিগেশন</string>
+    <string name="core_ui_chip_offline">অফলাইন</string>
+    <string name="core_ui_chip_syncing">সিঙ্ক হচ্ছে</string>
+    <string name="core_ui_chip_synced">সিঙ্ক হয়েছে</string>
+    <string name="core_ui_chip_waiting">%1$s টি অপেক্ষায়</string>
 </resources>

@@ -26,18 +26,18 @@ class ConfigDeps(val service: ConfigService, val guard: AuthGuardDeps, val clock
 /** Roles that read the registry, values, changes and versions on the web (docs/24 s8.5). Field roles read config only through the bundle and delta. */
 private val CONFIG_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 
-private fun ApplicationCall.reader() = principal.also {
+internal fun ApplicationCall.reader() = principal.also {
     if (it.role !in CONFIG_READERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "config is not available to this role")
 }
 
-private fun bad(pointer: String, code: String = "invalid_value"): Nothing = throw ApiProblem(ProblemCode.ERR_VALIDATION, "invalid $pointer", errors = listOf(FieldError(pointer, code)))
+internal fun bad(pointer: String, code: String = "invalid_value"): Nothing = throw ApiProblem(ProblemCode.ERR_VALIDATION, "invalid $pointer", errors = listOf(FieldError(pointer, code)))
 
-private fun ApplicationCall.limit(): Int = request.queryParameters["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..200 } ?: bad("query.limit", "out_of_range") } ?: 50
-private fun ApplicationCall.cursor(): Long? = request.queryParameters["cursor"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: bad("query.cursor") }
+internal fun ApplicationCall.limit(): Int = request.queryParameters["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..200 } ?: bad("query.limit", "out_of_range") } ?: 50
+internal fun ApplicationCall.cursor(): Long? = request.queryParameters["cursor"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: bad("query.cursor") }
 private fun ApplicationCall.keyParam(): String = request.queryParameters["key"]?.takeIf { it.matches(Regex("^cfg\\.[a-z]+\\.[a-z0-9_]+(\\.[a-z0-9_]+)?$")) } ?: bad("query.key")
 private fun ApplicationCall.date(name: String): LocalDate? = request.queryParameters[name]?.let { runCatching { LocalDate.parse(it) }.getOrNull() ?: bad("query.$name") }
 
-private val SCOPE_TYPES = Precedence.rank.keys
+internal val SCOPE_TYPES = Precedence.rank.keys
 
 /** The `admin-config` surface of the contract: registry, values, resolve, change requests, decisions and versions. */
 fun Route.configAdminRoutes(d: ConfigDeps) {
@@ -84,6 +84,13 @@ fun Route.configAdminRoutes(d: ConfigDeps) {
             val p = call.principal
             val id = call.parameters["change_id"]?.toLongOrNull()?.takeIf { it >= 1 } ?: bad("path.change_id")
             call.respond(s.decide(p, id, parse<ConfigDecisionIn>(call.receiveText()), call.requestId))
+        }
+        post("/admin/config/versions/{version}/rollback") {
+            val p = call.principal
+            val v = call.parameters["version"]?.toLongOrNull()?.takeIf { it >= 1 } ?: bad("path.version")
+            val body = parse<ConfigRollbackIn>(call.receiveText())
+            if (body.reason.trim().length < 10 || body.reason.length > 500) throw ApiProblem(ProblemCode.ERR_CFG_REASON_REQUIRED, "a reason of 10 to 500 characters is required", errors = listOf(FieldError("body.reason", "length")))
+            call.respond(HttpStatusCode.Created, s.rollback(p, v, body.mode, body.reason, call.requestId))
         }
         get("/admin/config/versions") {
             call.reader()

@@ -5,4 +5,26 @@
     <string name="core_ui_language_bangla" translatable="false">বাংলা</string>
     <string name="core_ui_brand_footer">© AKTCL</string>
     <string name="core_ui_offline_mode">Offline: your work is saved on this phone and will sync later</string>
+    <string name="core_ui_kit_gallery_title">Kit gallery</string>
+    <string name="core_ui_kit_gallery_save">Save</string>
+    <string name="core_ui_kit_gallery_cancel">Cancel</string>
+    <string name="core_ui_kit_gallery_outlet">Outlet</string>
+    <string name="core_ui_kit_gallery_outlet_sub">Banani Store (C-1042 · 01711000000)</string>
+    <string name="core_ui_kit_gallery_stepper_less">Decrease</string>
+    <string name="core_ui_kit_gallery_stepper_more">Increase</string>
+    <string name="core_ui_kit_gallery_hold_submit">Hold to submit sales</string>
+    <string name="core_ui_kit_gallery_confirm_title">Submit sales?</string>
+    <string name="core_ui_kit_gallery_confirm_msg">You cannot change today\'s memos after this.</string>
+    <string name="core_ui_kit_gallery_empty">No outlets on today\'s route</string>
+    <string name="core_ui_kit_gallery_empty_hint">Pull the route again when you are online</string>
+    <string name="core_ui_kit_gallery_error">Could not load the route</string>
+    <string name="core_ui_kit_gallery_retry">Try again</string>
+    <string name="core_ui_kit_gallery_tile_attendance">Attendance</string>
+    <string name="core_ui_kit_gallery_tile_stock">Stock</string>
+    <string name="core_ui_kit_gallery_tile_sale">Sale</string>
+    <string name="core_ui_kit_gallery_tile_task">Task delegation</string>
+    <string name="core_ui_chip_offline">Offline</string>
+    <string name="core_ui_chip_syncing">Syncing</string>
+    <string name="core_ui_chip_synced">Synced</string>
+    <string name="core_ui_chip_waiting">%1$s waiting</string>
 </resources>

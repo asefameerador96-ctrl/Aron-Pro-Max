@@ -2,7 +2,10 @@ package com.aktcl.aron.core.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
@@ -32,15 +35,17 @@ object AronFonts {
 /** The app language inside Compose; screens use it for digits ([localizedDigits]). */
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.DEFAULT }
 
-private val AronColors = lightColorScheme(
-    primary = Color(0xFF0B5D3B),
-    onPrimary = Color.White,
-    secondary = Color(0xFF8C1D18),
-    onSecondary = Color.White,
-    background = Color(0xFFF7F8F6),
-    surface = Color.White,
-    error = Color(0xFFB3261E),
-)
+private fun AronColorRoles.toMaterial(): ColorScheme {
+    val base = if (dark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = accent, onPrimary = onAccent, secondary = accent, onSecondary = onAccent,
+        background = bgGradientBottom, onBackground = textPrimary, surface = surfaceSolid, onSurface = textPrimary,
+        surfaceVariant = surfaceSolid, onSurfaceVariant = textSecondary, error = danger,
+        errorContainer = danger.copy(alpha = 0.14f), onErrorContainer = textPrimary,
+        secondaryContainer = accent.copy(alpha = 0.14f), onSecondaryContainer = textPrimary,
+        tertiaryContainer = warning.copy(alpha = 0.16f), onTertiaryContainer = textPrimary,
+    )
+}
 
 /** Every Material text style in the bundled family of [language]. */
 fun aronTypography(language: AppLanguage): Typography {
@@ -57,9 +62,15 @@ fun aronTypography(language: AppLanguage): Typography {
 }
 
 @Composable
-fun AronTheme(language: AppLanguage, content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalAppLanguage provides language) {
-        MaterialTheme(colorScheme = AronColors, typography = aronTypography(language), content = content)
+fun AronTheme(
+    language: AppLanguage,
+    dark: Boolean = isSystemInDarkTheme(),
+    tier: GlassTier = LocalGlassTier.current,
+    content: @Composable () -> Unit,
+) {
+    val roles = if (dark) AronTokens.Dark else AronTokens.Light
+    CompositionLocalProvider(LocalAppLanguage provides language, LocalAronColors provides roles, LocalGlassTier provides tier) {
+        MaterialTheme(colorScheme = roles.toMaterial(), typography = aronTypography(language), content = content)
     }
 }
 

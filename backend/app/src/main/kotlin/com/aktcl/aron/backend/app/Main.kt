@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.app
 
+import com.aktcl.aron.backend.analytics.AggregationWorker
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.Migrator
@@ -50,9 +51,9 @@ fun main() {
             embeddedServer(Netty, port = settings.port) { aronApi(wiring) }.start(wait = true)
         }
         ServerRole.WORKER -> {
-            // The analytics lane adds the job loop (aggregates, bundle generator, scheduled jobs); until then the
-            // worker stays alive so the Container Apps revision is healthy.
-            log.info("aron worker started (no jobs registered yet)")
+            // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
+            AggregationWorker(Database.fromSettings(settings)).start()
+            log.info("aron worker started (aggregation)")
             Thread.currentThread().join()
         }
     }

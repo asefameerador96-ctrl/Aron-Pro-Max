@@ -8,6 +8,8 @@ export interface SessionData {
   atExp: number; // epoch ms
   user: UserSummary;
   scope: ScopeSummary | null;
+  /** "Remember me" was ticked at sign-in: the cookies outlive the browser session. Off by default, never for admin roles. */
+  rem?: boolean;
 }
 
 export function readSession(cookieValue: string | undefined): SessionData | null {

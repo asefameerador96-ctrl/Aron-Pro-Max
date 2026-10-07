@@ -27,7 +27,8 @@ These were stated by the sponsor (one human, the owner) and apply to every sessi
 11. **Environments, Git and release** (`docs/30`): local, CI, dev (test account), device lab (our QA for the apps), then staging and prod/live in the final account. All work is in GitHub on the integration branch `claude/wonderful-thompson-k6ejnf`; `main` is the protected release branch promoted by a daily gate pull request, but **no pull request is opened until the owner has approved the flow**.
 12. **Enterprise bar** (`docs/31`): measurable gates for speed, battery, size, data, security and money correctness; the database is a product (stable `dw` views, domain-event outbox, versioned reference data, data dictionary) so later dashboards and verticals can reuse it.
 13. **Repository and builds (owner, 2026-10-07):** the repository stays **public until the product is complete**, then the owner makes it private (set an Actions spending limit first); the Maven Central mirror in `settings.gradle.kts` is approved for lane and developer containers (not for CI); git governance is approved.
-14. **Timeline:** Day 1 was 2026-10-05; Day 7 is 2026-10-11; the hard cap, Day 10, is 2026-10-14. The lead checks every lane every two hours, nudges idle ones, reports to the owner every evening, and says early when a day will slip.
+14. **UI and design (owner, 2026-10-07):** the interface follows `docs/32-design-system.md` ("Calm Glass": Apple-like clarity, glassmorphism, smooth motion) with three glass tiers so the look never costs speed, legibility or battery on the 2 GB field phones; every screen is built from the shared kit and shows its empty, loading, offline, error and long-Bangla states.
+15. **Timeline:** Day 1 was 2026-10-05; Day 7 is 2026-10-11; the hard cap, Day 10, is 2026-10-14. The lead checks every lane every two hours, nudges idle ones, reports to the owner every evening, and says early when a day will slip.
 
 ## Non-negotiable constraints
 

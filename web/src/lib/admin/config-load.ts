@@ -1,7 +1,7 @@
 // Server-side loaders of the configuration pages: one place that knows which contract operation feeds which widget.
 import type { ApiOutcome } from "@/lib/api/client";
 import { rawRequest } from "@/lib/api/raw";
-import type { ConfigChange, ConfigChangePage, ConfigKey, ConfigReach, ConfigVersion, ConfigVersionDetail, ConfigVersionPage } from "./types";
+import type { ConfigChange, ConfigChangePage, ResolvedConfigValue, ConfigKey, ConfigReach, ConfigVersion, ConfigVersionDetail, ConfigVersionPage } from "./types";
 
 const get = <T>(path: string, token: string, query?: Record<string, string | number | undefined>): Promise<ApiOutcome<T>> => rawRequest<T>({ method: "GET", path, token, query });
 
@@ -31,3 +31,10 @@ export function sharePct(n: number, of: number): number | null {
 }
 
 export type { ConfigChange };
+
+/** Values at the GLOBAL (or default) level of a version: the rows the console edits. A zone or route override never stands in for them. */
+export function globalValues(detail: ConfigVersionDetail): Record<string, ResolvedConfigValue> {
+  const out: Record<string, ResolvedConfigValue> = {};
+  for (const v of detail.values) if (v.scope_type === "global" || v.scope_type === "default") out[v.key] = v;
+  return out;
+}

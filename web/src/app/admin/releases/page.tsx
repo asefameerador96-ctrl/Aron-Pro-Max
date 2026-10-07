@@ -4,7 +4,7 @@ import { apiGet } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
 import { canOp } from "@/lib/admin/access";
 import { adoptionByVersion } from "@/lib/admin/adoption";
-import { latestVersion, listKeys, versionDetail } from "@/lib/admin/config-load";
+import { globalValues, latestVersion, listKeys, versionDetail } from "@/lib/admin/config-load";
 import type { AppReleasePage, Device, DevicePage, ReleasePolicyList, ResolvedConfigValue } from "@/lib/admin/types";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
@@ -25,7 +25,7 @@ export default async function ReleasesPage() {
   const values: Record<string, ResolvedConfigValue> = {};
   if (ver.ok && ver.data) {
     const d = await versionDetail(session.at, ver.data.version);
-    if (d.ok) for (const v of d.data.values) values[v.key] = v;
+    if (d.ok) Object.assign(values, globalValues(d.data));
   }
   const apkDefault = keys.ok ? keys.data.items.find((k) => k.key === "cfg.release.apk_max_mb")?.default_value : undefined;
   const apkMax = Number(values["cfg.release.apk_max_mb"]?.value ?? apkDefault ?? 30);

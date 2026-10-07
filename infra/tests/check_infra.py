@@ -345,6 +345,9 @@ class ReliabilityProperties(unittest.TestCase):
 
 
 class SizingParameters(unittest.TestCase):
+    def wf(self, name):
+        return (WORKFLOWS / name).read_text(encoding="utf-8")
+
     def test_final_profile_is_zone_redundant_with_geo_backup(self):
         p = params("prod.parameters.json")
         self.assertEqual(p["postgresHaMode"], "ZoneRedundant")
@@ -418,6 +421,36 @@ class SizingParameters(unittest.TestCase):
         self.assertNotRegex(m, r"network!?\.outputs\.(vnetId|postgresSubnetId|acaSubnetId)")
         self.assertIn("var pgSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', n.vnet, 'snet-pg')", m)
         self.assertIn("var acaSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', n.vnet, 'snet-aca')", m)
+
+    def test_stage_profile_is_parameters_only_and_prod_shaped(self):
+        # docs/30 s1: staging lives in the final account; here it is a parameter file nobody can deploy yet.
+        st, pr = params("stage.parameters.json"), params("prod.parameters.json")
+        self.assertEqual(st["environmentName"], "stage")
+        for k in ("postgresSkuName", "postgresSkuTier", "postgresStorageType", "postgresHaMode", "privateNetworking",
+                  "deployFrontDoor", "frontDoorSku", "containerEnvZoneRedundant", "postgresReadReplica"):
+            self.assertEqual(st[k], pr[k], f"stage must be prod-shaped in {k}")
+        self.assertNotEqual(st["vnetAddressPrefix"], pr["vnetAddressPrefix"])
+        self.assertEqual(params("stage.apps.parameters.json")["environmentName"], "stage")
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('case "$PROFILE" in dev|dev-lite|prod) ;;', d, "deploy.sh must not offer stage yet")
+        self.assertNotIn("stage", self.wf("deploy.yml").split("options:")[1].split("\n")[0])
+
+    def test_promotion_workflows_are_inert_until_the_final_account(self):
+        pp, ra = self.wf("promote-prod.yml"), self.wf("release-app.yml")
+        for name, w in (("promote-prod", pp), ("release-app", ra)):
+            self.assertIn("vars.ARON_FINAL_ACCOUNT", w, name)
+            self.assertIn(f"title={name} is inert", w, name)
+        self.assertIn("needs.guard.outputs.go == 'true'", pp)
+        self.assertIn("uses: ./.github/workflows/deploy.yml", pp)
+        self.assertIn("git merge-base --is-ancestor", pp, "promote only what is on main")
+        self.assertIn('select(.name == "Deploy to stage" and .conclusion == "success")', pp, "soak = a real staging deploy")
+        self.assertIn("environment: prod", pp)
+        self.assertIn("needs.guard.outputs.go == 'true'", ra)
+        for sname in ("ANDROID_SIGNING_KEYSTORE_BASE64", "ANDROID_SIGNING_KEYSTORE_PASSWORD",
+                      "ANDROID_SIGNING_KEY_ALIAS", "ANDROID_SIGNING_KEY_PASSWORD"):
+            self.assertIn(f"secrets.{sname}", ra)
+        self.assertIn("--ks-pass env:KSP", ra, "passwords go to apksigner by environment, never on the command line")
+        self.assertIn("SHA256SUMS", ra)
 
     def test_test_profile_matches_docs_28(self):
         p = params("dev-lite.parameters.json")
@@ -513,13 +546,20 @@ class Workflows(unittest.TestCase):
         self.assertIn("|| 'azure-dev' }}", d)
         self.assertIn(f"INTEGRATION_BRANCH: {INTEGRATION_BRANCH}", d)
         # The exact guard (an inverted comparison would let every other branch deploy).
-        self.assertIn('if [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then\n'
+        self.assertIn('elif [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then\n'
                       '            echo "::error::Deploys run only from', d)
+        # prod: only a server-v* tag (promote-prod.yml); any other ref fails.
+        self.assertIn('if [ "${ENV_NAME}" = prod ]; then\n', d)
+        self.assertIn('            case "${REF}" in\n              refs/tags/server-v[0-9]*) echo', d)
         self.assertIn("title=Azure is not set up for this repository", d, "clear failure when secrets are absent")
         self.assertNotRegex(d, r"(?m)^\s*(push|pull_request|pull_request_target):", "deploy is called or dispatched only")
         # A GitHub concurrency group would cancel pending CI runs; deploy.sh serialises instead.
         self.assertNotIn("concurrency:", d)
-        self.assertIn("RUN_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_migrations && 'false' || 'true' }}", d)
+        self.assertIn("RUN_MIGRATIONS: ${{ inputs.run_migrations == false && 'false' || 'true' }}", d)
+        call = d[d.index("workflow_call:"):d.index("workflow_dispatch:")]
+        self.assertIn("run_migrations:", call, "a called deploy (promote-prod) must see run_migrations = true, not null")
+        self.assertIn('[ "${GITHUB_WORKFLOW}" = promote-prod ]', d, "prod only through promote-prod")
+        self.assertIn('[ "${FINAL}" = "true" ]', d, "prod only in the final account")
         conditions = re.findall(r"(?m)^\s*if:\s*(.*)$", d)
         self.assertEqual(conditions, ["failure() && steps.login.outcome == 'failure'"],
                          "only the sign-in explanation may be conditional; no deploy step may be switched off")
@@ -537,8 +577,28 @@ class Workflows(unittest.TestCase):
                  "approve-private-link.sh", "smoke.sh", "die \"budget $BUDGET not found"]
         positions = [d.index(step) for step in order]
         self.assertEqual(positions, sorted(positions), "deploy steps out of order")
-        self.assertIn('die "migrations $execution ended $status; the apps were NOT updated', d)
-        self.assertIn('if [ "$RUN_MIGRATIONS" = true ]; then\n  execution="$(az containerapp job start', d)
+        self.assertIn('die "migrations $execution ended ${status}; the apps were NOT updated', d)
+        self.assertIn("az containerapp job stop", d, "a timed-out migration is stopped before the lock is released")
+        block = d[d.index('if [ "$RUN_MIGRATIONS" = true ]; then'):d.index("# ---", d.index('if [ "$RUN_MIGRATIONS" = true ]; then'))]
+        self.assertIn('execution="$(az containerapp job start', block)
+        # The only retry: a first execution that could not open a database connection, once.
+        self.assertIn("for attempt in 1 2; do", block)
+        self.assertIn('[ "$attempt" -eq 1 ] && [ "$status" = Failed ]', block)
+        self.assertIn("FlywaySqlUnableToConnectToDbException|Connection is not available, request timed out", block)
+
+    def test_deploy_holds_one_lock_for_the_whole_deploy(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        body = d[d.index("# ---"):]
+        self.assertLess(body.index('note "deploy lock held"'), body.index("merge-base --is-ancestor"),
+                        "the ordering guard runs while the lock is held")
+        self.assertIn("trap 'rm -f \"$whatif_file\" \"$migrate_log\"; release_lock' EXIT", d)
+        self.assertIn('if got="$(read_lock)" && [ "$(lock_owner "$got")" = "$lock_me" ]; then break; fi', d, "write, settle, re-read")
+        self.assertIn('if ! cur="$(read_lock)"; then', d, "a failed read counts as held")
+        self.assertIn("|| return 1", d[d.index("read_lock() {"):d.index("lock_owner()")])
+        self.assertIn("[[ \"$ts\" =~ ^[0-9]{9,11}$ ]] || { echo 999999; return; }", d, "a malformed value is stale, not fatal")
+        self.assertIn("lock_ttl=900", d)
+        self.assertIn("trap 'exit 130' INT TERM", d)
+        self.assertIn("while sleep 60; do", d, "heartbeat")
         full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn('RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"', full)
         self.assertNotIn("grep -qs", full, "no source sniffing to decide what to deploy")
@@ -567,7 +627,7 @@ class Workflows(unittest.TestCase):
             self.assertEqual(c.count("cancel-in-progress"), 1, wf.name)
         self.assertNotRegex(self.text("deploy.yml"), r"(?m)^\s*concurrency:", "deploy serialises with the Azure-side lock in deploy.sh")
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn("waiting until no other deployment runs in", d)
+        self.assertIn("deploy lock held", d)
         self.assertIn("merge-base --is-ancestor", d)
 
     def test_repository_gates_run_on_every_push(self):
@@ -575,11 +635,12 @@ class Workflows(unittest.TestCase):
         block = c[c.index("\n  gates:"):c.index("\n  contract:")]
         self.assertNotIn("\n    if:", block, "the gates job runs on every push and pull request")
         for needle in ("tools/ci/install-tool.sh", "tools/ci/test_gates.py", "gitleaks git --no-banner --redact --exit-code 1",
-                       "--gitleaks-ignore-path tools/ci/gitleaksignore", "tools/ci/migrations-check.sh",
+                       "--gitleaks-ignore-path tools/ci/gitleaksignore", "--config tools/ci/gitleaks.toml", "tools/ci/migrations-check.sh",
+                       '"${CHECK_BASE}" squawk', 'git merge-base "${BEFORE}" "${GITHUB_SHA}"',
                        "tools/ci/contract-breaking.sh", "fetch-depth: 0"):
             self.assertIn(needle, block)
         tools = (ROOT / "tools" / "ci" / "install-tool.sh").read_text(encoding="utf-8")
-        self.assertEqual(len(re.findall(r'sha="[0-9a-f]{64}"', tools)), 3, "every gate binary is checksum-pinned")
+        self.assertEqual(len(re.findall(r'sha="[0-9a-f]{64}"', tools)), 4, "every gate binary is checksum-pinned")
         self.assertIn("sha256sum -c", tools)
 
     def test_release_apk_and_size_gate(self):
@@ -596,10 +657,18 @@ class Workflows(unittest.TestCase):
     def test_images_get_an_sbom(self):
         c = self.text("ci.yml")
         block = c[c.index("\n  images:"):c.index("\n  infra:")]
-        self.assertEqual(block.count("anchore/sbom-action@"), 2)
-        for img in ("aron-backend", "aron-web"):
-            self.assertIn(f"image: {img}:${{{{ github.sha }}}}", block)
-        self.assertIn("format: spdx-json", block)
+        self.assertIn('syft="$(tools/ci/install-tool.sh syft', block, "syft comes checksum-pinned, not from an install script")
+        self.assertIn("for img in aron-backend aron-web; do", block)
+        self.assertIn('-o "spdx-json=sbom-${img}.spdx.json"', block)
+        self.assertNotIn("sbom-action", block)
+
+    def test_data_dictionary_stays_a_required_check(self):
+        c = self.text("ci.yml")
+        jvm = c[c.index("\n  jvm:"):c.index("\n  android:")]
+        self.assertIn(":db:build", jvm, "DataDictionaryTest runs inside :db:build")
+        self.assertIn("tools/data-dictionary/render.sh", jvm)
+        self.assertIn("name: data-dictionary-${{ github.sha }}", jvm)
+        self.assertIn("docs/data-dictionary\\.md", c, "a dictionary-only change re-runs the JVM job")
 
     def test_codeql_covers_kotlin_and_typescript(self):
         q = self.text("codeql.yml")

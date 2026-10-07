@@ -24,7 +24,7 @@ function req(path: string, method: string, body: unknown, cookies: Record<string
 }
 const setCookies = (res: Response) => Object.fromEntries(res.headers.getSetCookie().map((l) => [l.split("=")[0]!, l.split(";")[0]!.split("=").slice(1).join("=")]));
 async function admin(): Promise<Record<string, string>> {
-  const c1 = setCookies(await loginPost(req("/api/bff/login", "POST", { username: "admin1", password: "admin-pass-1" })));
+  const c1 = setCookies(await loginPost(req("/api/bff/login", "POST", { username: "madmin1", password: "admin-pass-1" })));
   const c2 = setCookies(await mfaPost(req("/api/bff/mfa/verify", "POST", { code: "123456" }, { [MFA_COOKIE]: c1[MFA_COOKIE]! })));
   return { [SESSION_COOKIE]: c2[SESSION_COOKIE]!, [RT_COOKIE]: c2[RT_COOKIE]! };
 }
