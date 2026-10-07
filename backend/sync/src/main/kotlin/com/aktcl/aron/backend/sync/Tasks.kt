@@ -78,7 +78,13 @@ private val TYPE_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
  * POST /v1/sync/batch; [TaskRecords] keeps the status in step. A task's status is the newest event's by capture time,
  * so late or reordered events end where the phone left it; a cancelled task stays cancelled.
  */
-class TaskService(private val db: Database, private val reach: ReachResolver, private val clock: AronClock = AronClock.SYSTEM) {
+class TaskService(
+    private val db: Database,
+    private val reach: ReachResolver,
+    private val clock: AronClock = AronClock.SYSTEM,
+    /** The assignee's phone gets a data-only nudge after a new task commits (N-037). */
+    private val nudger: com.aktcl.aron.backend.platform.Nudger = com.aktcl.aron.backend.platform.Nudger.NONE,
+) {
     private fun reachOf(p: AronPrincipal): Reach =
         reach.reach(p.userId, p.role, p.scopeVersion, BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate())
 
@@ -112,12 +118,14 @@ class TaskService(private val db: Database, private val reach: ReachResolver, pr
         val uuid = req.task_uuid.lowercase()
         val now = clock.now()
         val r = reachOf(p)
-        return db.jdbi.inTransaction<TaskApiDto, Exception> { h ->
+        var created = false
+        val dto = db.jdbi.inTransaction<TaskApiDto, Exception> { h ->
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", uuid)
             byUuid(h, uuid)?.let { existing ->
                 // A replay of the same create returns the first one; another create under the same uuid is a conflict.
                 val same = existing.assigned_by_user_id == p.userId && existing.assignee_user_id == req.assignee_user_id &&
-                    existing.title == req.title && existing.task_type_code == req.task_type_code
+                    existing.title == req.title && existing.task_type_code == req.task_type_code &&
+                    existing.description == req.description && existing.due_date == req.due_date && existing.outlet_id == req.outlet_id
                 if (!same) throw ApiProblem(ProblemCode.ERR_CONFLICT, "task_uuid already used for another task")
                 return@inTransaction existing
             }
@@ -136,8 +144,12 @@ class TaskService(private val db: Database, private val reach: ReachResolver, pr
             ).bind("u", uuid).bind("bd", BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()).bind("by", p.userId).bind("now", OffsetDateTime.ofInstant(now, ZoneOffset.UTC))
                 .bind("type", req.task_type_code).bind("assignee", req.assignee_user_id).bind("outlet", req.outlet_id).bind("title", req.title)
                 .bind("desc", req.description).bind("due", req.due_date).execute()
+            created = true
             byUuid(h, uuid)!!
         }
+        // After the commit, once per task (a replay sends nothing); never the task data, only a nudge to sync.
+        if (created && req.assignee_user_id != p.userId) nudger.nudge(req.assignee_user_id, "task_assigned")
+        return dto
     }
 
     fun cancel(p: AronPrincipal, uuidRaw: String, @Suppress("UNUSED_PARAMETER") reason: String): TaskApiDto {
@@ -148,7 +160,7 @@ class TaskService(private val db: Database, private val reach: ReachResolver, pr
             val t = h.createQuery("SELECT user_id, assignee_user_id, status FROM app.task WHERE client_uuid = CAST(:u AS uuid) AND voided_at IS NULL FOR UPDATE")
                 .bind("u", uuid).map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getString(3)) }.findOne().orElse(null)
                 ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such task")
-            val allowed = t.first == p.userId || p.role in setOf(Role.ADMIN, Role.SUPERADMIN) || (p.role == Role.TSO && assigneeInReach(h, r, t.second))
+            val allowed = t.first == p.userId || p.role in setOf(Role.ADMIN, Role.SUPERADMIN) || (p.role == Role.TSO && assigneeInReach(h, r, t.second, requireActive = false))
             if (!allowed) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only the creator, the zone's TSO or an admin cancels a task")
             when (t.third) {
                 "cancelled" -> Unit // idempotent
@@ -168,10 +180,11 @@ class TaskService(private val db: Database, private val reach: ReachResolver, pr
                 "WHERE a.user_id = $col AND r.zone_id $z AND a.valid_from <= :today AND (a.valid_to IS NULL OR a.valid_to > :today)))"
         }
 
-        fun assigneeInReach(h: Handle, r: Reach, userId: Long): Boolean {
+        /** [requireActive]: a new task needs an active assignee; cancelling a disabled user's task does not. */
+        fun assigneeInReach(h: Handle, r: Reach, userId: Long, requireActive: Boolean = true): Boolean {
             if (userId == r.userId) return true
-            val active = h.createQuery("SELECT count(*) FROM app.app_user WHERE id = :u AND status = 'active'").bind("u", userId).mapTo(Long::class.java).one() > 0
-            if (!active) return false
+            val known = h.createQuery("SELECT count(*) FROM app.app_user WHERE id = :u${if (requireActive) " AND status = 'active'" else ""}").bind("u", userId).mapTo(Long::class.java).one() > 0
+            if (!known) return false
             if (r.national) return true
             if (r.ownRecordsOnly) return false
             return h.createQuery("SELECT ${userInZones(":u")}").bind("u", userId).bindArray("z", Long::class.javaObjectType, r.zoneIds.toList())
@@ -206,7 +219,10 @@ class TaskService(private val db: Database, private val reach: ReachResolver, pr
  * `scope_out_of_reach`); a stored `task_event` sets the task's status from the newest event by capture time
  * (resolved = completed, reopened = ongoing); a cancelled task is never reopened by a late event.
  */
-class TaskRecords(private val reach: ReachResolver) : RecordHandler {
+class TaskRecords(
+    private val reach: ReachResolver,
+    private val nudger: com.aktcl.aron.backend.platform.Nudger = com.aktcl.aron.backend.platform.Nudger.NONE,
+) : RecordHandler {
     override val types = setOf("task", "task_event")
 
     override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
@@ -218,6 +234,12 @@ class TaskRecords(private val reach: ReachResolver) : RecordHandler {
     }
 
     override fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {
+        if (rec.type == "task") {
+            // A phone-created task (an AMO's control call) nudges the assignee; a rolled-back family at worst sends one
+            // spurious nudge, which only makes the phone sync.
+            rec.payload.long("assignee_user_id")?.takeIf { it != rec.userId }?.let { nudger.nudge(it, "task_assigned") }
+            return
+        }
         if (rec.type != "task_event") return
         val task = rec.payload.str("task_uuid") ?: return
         h.createQuery("SELECT id FROM app.task WHERE client_uuid = CAST(:t AS uuid) FOR UPDATE").bind("t", task).mapTo(Long::class.java).findOne()
