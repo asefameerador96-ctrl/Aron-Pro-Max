@@ -11,7 +11,7 @@ The build works again (owner-approved Maven mirror in settings.gradle.kts). All 
 | F-SYS-031 integrity signals | parts done, wiring pending | batch hook in core-sync; `root_hints` member: `android-geo-dpc-root-hints.md` |
 | N-029 policy core | built, checked; DEVICE-PENDING | prod-policy checks on an enrolled A06 |
 | N-032 app blocking | built, checked (DPC side); DEVICE-PENDING | check-in/out call from F-SR-011; airplane-mode and reboot check on a phone |
-| N-035 breadcrumbs | built, checked (5 checker findings fixed); DEVICE-PENDING | battery on the A06; wiring (controller install, geo_breadcrumb sink, check-in/out calls) in the wiring request |
+| N-035 breadcrumbs | built, checked (5 checker findings fixed); foreground-only until the lead rules on `android-geo-dpc-breadcrumb-background.md` (F-SYS-023 forbids background location); DEVICE-PENDING | battery on the A06; wiring (controller install, geo_breadcrumb sink, check-in/out calls) in the wiring request |
 | N-034 managed update | built, checked (3 confirmed + 5 plausible checker findings fixed); DEVICE-PENDING | update worker wiring (prompt UI for `AwaitingUser`, unique work) in the wiring request; device check on an enrolled phone |
 | N-030 enrolment by QR | client built, checked; server and wiring pending | needs N-031 (server) and `android-geo-dpc-enrol-replay.md`; Android 12+ activities wait for `android-geo-dpc-provisioning-activities.md`; app start wiring in the wiring request; device check D-04 |
 
