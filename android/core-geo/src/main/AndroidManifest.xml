@@ -1,12 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- android:core-geo: on-demand location fixes only (docs/24 s5.5, s11.1). No background location here: breadcrumbs
-     (N-035) declare ACCESS_BACKGROUND_LOCATION only when that row lands, and the DPC grants it only while enabled. -->
+<!-- android:core-geo: on-demand location fixes (docs/24 s5.5, s11.1), plus optional batched breadcrumbs (N-035).
+     Background location is declared for breadcrumbs; the DPC grants it only while cfg.geo.breadcrumbs_enabled is true
+     and denies it otherwise (docs/24 s10.2). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- Mock-location app detection (FixDeviceState.mock_app_present, docs/24 s10.3); the apps ship outside Play. -->
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+    <application>
+        <!-- Batched breadcrumb deliveries from the fused provider through the app's own PendingIntent. -->
+        <receiver
+            android:name="com.aktcl.aron.core.geo.BreadcrumbReceiver"
+            android:exported="false" />
+    </application>
 </manifest>
