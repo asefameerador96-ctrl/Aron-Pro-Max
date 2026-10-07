@@ -35,10 +35,11 @@ internal fun json(r: String): JsonObject = Json.parseToJsonElement(r).jsonObject
 internal val JsonObject.code: String? get() = this["code"]?.jsonPrimitive?.content
 
 internal suspend fun HttpClient.login(
-    username: String, password: String, device: String? = null, client: String = "app_sr", ip: String = "103.4.145.10",
+    username: String, password: String, device: String? = null, client: String = "app_sr", ip: String = "103.4.145.10", fdid: String? = null,
 ): HttpResponse = post("/v1/auth/login") {
     contentType(ContentType.Application.Json)
     header("X-Azure-ClientIP", ip)
+    fdid?.let { header("X-Azure-FDID", it) }
     header("X-App-Version", "1.0.0+100")
     setBody("""{"username":"$username","password":"$password","client":"$client"${device?.let { ",\"device_uuid\":\"$it\"" } ?: ""}}""")
 }
@@ -189,13 +190,15 @@ open class LoginTest {
     @Test
     fun underTwoHundredParallelLoginsTheHashLimiterAnswers503WithRetryAfterAndStaysBounded() {
         val f = fixture(hashConcurrency = 4, hashQueue = 16)
-        repeat(200) { i -> f.addUser(f.user(10_000L + i, "storm$i", Role.SR)) }
+        // Known phones (AUD-SEC-02: only a phone the server knows hashes in the phones' pool).
+        val phones = (0 until 200).map { UUID.randomUUID().toString() }
+        repeat(200) { i -> f.addUser(f.user(10_000L + i, "storm$i", Role.SR)); f.addDevice(DeviceRecord(20_000L + i, phones[i], "active", "sr", null)) }
         val heapBefore = Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() }
         testApplication {
             application { f.application(this) }
             val results = coroutineScope {
                 (0 until 200).map { i ->
-                    async { client.login("storm$i", "correct horse 1", UUID.randomUUID().toString(), ip = "103.4.145.10") }
+                    async { client.login("storm$i", "correct horse 1", phones[i], ip = "103.4.145.10") }
                 }.awaitAll()
             }
             val statuses = results.groupingBy { it.status.value }.eachCount()

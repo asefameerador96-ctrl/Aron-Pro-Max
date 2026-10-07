@@ -157,6 +157,11 @@ class JdbiLockoutStore(private val db: Database) : LockoutStore {
     }
 
     override fun recordFailure(key: String, now: Instant, window: Duration): Int = db.jdbi.withHandle<Int, Exception> { h ->
+        // Keeps the table bounded (AUD-SEC-02): rows idle for a day and not locked are dropped, a few per failure.
+        h.createUpdate(
+            """DELETE FROM app.auth_lockout WHERE lock_key IN (SELECT lock_key FROM app.auth_lockout
+                 WHERE updated_at < :idle AND (locked_until IS NULL OR locked_until <= :now) LIMIT 20)""",
+        ).bind("idle", now.minus(Duration.ofDays(1)).odt()).bind("now", now.odt()).execute()
         h.createQuery(
             """INSERT INTO app.auth_lockout AS l (lock_key, failures, window_started_at, updated_at) VALUES (:k, 1, :now, :now)
                ON CONFLICT (lock_key) DO UPDATE SET
@@ -170,7 +175,7 @@ class JdbiLockoutStore(private val db: Database) : LockoutStore {
     override fun lock(key: String, now: Instant, base: Duration): Instant = db.jdbi.withHandle<Instant, Exception> { h ->
         h.createQuery(
             """UPDATE app.auth_lockout SET
-                 locked_until = :now + make_interval(secs => least(:base * power(2, least(lock_count, 10)), 86400)),
+                 locked_until = :now + make_interval(secs => least(:base * power(2, least(lock_count, 10)), 7200)),
                  lock_count = lock_count + 1, failures = 0, updated_at = :now
                WHERE lock_key = :k AND (locked_until IS NULL OR locked_until <= :now) RETURNING locked_until""",
         ).bind("k", key).bind("now", now.odt()).bind("base", base.seconds.toDouble()).map { rs, _ -> rs.instant("locked_until")!! }.findOne()
