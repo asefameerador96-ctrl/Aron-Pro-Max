@@ -19,7 +19,7 @@ data class EnrolmentExtras(
     val lockdownLevel: String,
     val zoneCode: String?,
 ) {
-    override fun toString() = "EnrolmentExtras(api=$apiBaseUrl, env=$env, flavour=$flavour, lockdown=$lockdownLevel, zone=$zoneCode, token=<redacted>)"
+    override fun toString() = "EnrolmentExtras(api=$apiBaseUrl, env=$env, flavour=$flavour, lockdown=$lockdownLevel, zone=$zoneCode, token=<redacted>)" // i18n-ignore: debug toString with the token redacted, never shown to users
 
     companion object {
         const val KEY_TOKEN = "aron.enrolment_token"

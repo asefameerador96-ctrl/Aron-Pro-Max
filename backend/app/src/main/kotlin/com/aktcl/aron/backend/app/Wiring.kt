@@ -12,6 +12,11 @@ import com.aktcl.aron.backend.analytics.DailyTrackingService
 import com.aktcl.aron.backend.analytics.AppTeamDeps
 import com.aktcl.aron.backend.analytics.TeamService
 import com.aktcl.aron.backend.analytics.dailyTrackingRoutes
+import com.aktcl.aron.backend.analytics.devices.AttestationTrust
+import com.aktcl.aron.backend.analytics.devices.DeviceDeps
+import com.aktcl.aron.backend.analytics.devices.DeviceService
+import com.aktcl.aron.backend.analytics.devices.EnrolmentSettings
+import com.aktcl.aron.backend.analytics.devices.deviceRoutes
 import com.aktcl.aron.backend.analytics.dashboardRoutes
 import com.aktcl.aron.backend.analytics.appTeamRoutes
 import com.aktcl.aron.backend.analytics.opsRoutes
@@ -43,6 +48,8 @@ import com.aktcl.aron.backend.config.ConfigDelta
 import com.aktcl.aron.backend.config.ConfigDeltaDeps
 import com.aktcl.aron.backend.config.configAdminRoutes
 import com.aktcl.aron.backend.config.configDeltaRoutes
+import com.aktcl.aron.backend.masterdata.DataVoidDeps
+import com.aktcl.aron.backend.masterdata.dataVoidRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
 import com.aktcl.aron.backend.masterdata.AdminPricesDeps
@@ -110,6 +117,9 @@ class Wiring(
          */
         @Suppress("UNUSED_PARAMETER")
         fun recordHandlers(db: Database, clock: AronClock): List<RecordHandler> = listOf(
+            com.aktcl.aron.backend.config.ConfigAckHandler(),
+            com.aktcl.aron.backend.masterdata.DomainEventProducer(),
+            com.aktcl.aron.backend.masterdata.DataVoidBarrierHandler(com.aktcl.aron.backend.sync.TypeRules.BY_TYPE.keys),
         )
 
         /** [extraRecordHandlers] are for tests only; production handlers are listed in [recordHandlers]. */
@@ -129,6 +139,12 @@ class Wiring(
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
+            // Enrolment (N-031): the public API URL the QR carries and the SHA-256 of the Google attestation roots to trust in production (new environment values, docs/requests/backend-reports-device-env.md).
+            val enrolment = EnrolmentSettings(
+                System.getenv("ARON_PUBLIC_API_URL") ?: "https://localhost:8080", s.env.name.lowercase(),
+                AttestationTrust(System.getenv("ARON_ATTESTATION_ROOTS").orEmpty().split(',').map { it.trim().lowercase() }.filter { it.length == 64 }.toSet()),
+            )
+            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock), reach, guard, clock)
             val ops = OpsDeps(OpsService(db, config, clock), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
             val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
@@ -140,8 +156,9 @@ class Wiring(
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
             val permDeps = ConfigPermissionsDeps(ConfigPermissions(db, configService, clock), guard)
             val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
-            // REQUEST: the Azure Blob implementation of BlobSasIssuer belongs to the infra lane; until then SAS issue answers 503 (docs/requests/backend-admin-blob-sas.md).
-            val blob = com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
+            // Azure user-delegation SAS via the managed identity when ARON_BLOB_ACCOUNT is set (Azure); 503 elsewhere
+            // (docs/requests/backend-admin-blob-sas.md).
+            val blob: BlobSasIssuer = AzureBlobSasIssuer.fromEnvironment() ?: com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
@@ -158,6 +175,7 @@ class Wiring(
                 appTeamRoutes(team)
                 dailyTrackingRoutes(tracking)
                 opsRoutes(ops)
+                deviceRoutes(deviceEnrolment)
                 reportRoutes(reports)
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
@@ -169,8 +187,9 @@ class Wiring(
                 tutorialRoutes(TutorialsDeps(db, blob, guard))
                 supportUploadRoutes(SupportUploadDeps(db, blob, config, guard, clock))
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
+                dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
                 adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
-                adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock))
+                adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock, config = config))
                 adminProductsRoutes(AdminProductsDeps(db, guard, clock))
                 adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)

@@ -12,7 +12,7 @@ import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.entity.TaskEntity
 import com.aktcl.aron.core.database.reference.BundleReference
 import com.aktcl.aron.core.database.reference.ConfigDeltaWire
-import com.aktcl.aron.core.database.reference.ResolvedValue
+import com.aktcl.aron.contract.ResolvedConfigValue
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -22,6 +22,9 @@ import kotlinx.serialization.json.Json
 
 /** The route of the day as the SR app reads it offline. */
 data class RouteDay(val route: RouteEntity, val outlets: List<OutletEntity>)
+
+/** What [ReferenceRepository.applyConfigDelta] did. */
+enum class DeltaResult { APPLIED, STALE, GAP }
 
 /** What [ReferenceRepository.apply] did with a bundle. */
 enum class ApplyResult {
@@ -97,13 +100,17 @@ class ReferenceRepository(private val db: AronDatabase) {
             dao.clearRoutes()
             dao.clearSkus()
             dao.clearPrices()
-            dao.clearConfig()
+            // Config moves forward only: a delta may already have brought it past this bundle's version (F-SYS-092).
+            val heldConfig = dao.meta(KEY_CONFIG_VERSION)?.toLongOrNull()
+            val bundleConfig = bundle.config?.configVersion ?: bundle.meta.configVersion
+            val keepConfig = heldConfig != null && bundleConfig != null && bundleConfig < heldConfig
+            if (!keepConfig) dao.clearConfig()
             dao.clearSections()
             dao.insertRoutes(routes)
             dao.insertOutlets(outlets)
             dao.insertSkus(skus)
             dao.insertPrices(prices)
-            dao.insertConfig(config)
+            if (!keepConfig) dao.insertConfig(config)
             dao.insertSections(sections)
             dao.clearTasks()
             dao.insertTasks(tasks)
@@ -114,7 +121,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             putOrDelete(KEY_BUNDLE_ETAG, etag)
             putOrDelete(KEY_BUNDLE_CURSOR, bundle.meta.cursor)
             putOrDelete(KEY_BUNDLE_SERVER_TIME, bundle.meta.serverTime)
-            (bundle.config?.configVersion ?: bundle.meta.configVersion)?.let { dao.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, it.toString())) }
+            if (!keepConfig) bundleConfig?.let { dao.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, it.toString())) }
             ApplyResult.APPLIED
         }
     }
@@ -135,11 +142,17 @@ class ReferenceRepository(private val db: AronDatabase) {
      * Applies a config delta (docs/24 s4.10 Config delta) in one transaction: changed values and scheduled values replace
      * those of their keys, removed keys go, outlet radius changes update the outlets, calendar changes are kept raw
      * (`calendar_changes`), a policy change is flagged (`device_policy.refresh_needed`), and the phone's config version
-     * moves to `to_version`. A delta not newer than the stored version is ignored. Returns true when applied.
+     * moves to `to_version`. A delta not newer than the stored version is ignored (STALE); one that starts after it is refused
+     * and flags a bundle refresh (GAP).
      */
-    suspend fun applyConfigDelta(delta: ConfigDeltaWire): Boolean = db.withTransaction {
+    suspend fun applyConfigDelta(delta: ConfigDeltaWire): DeltaResult = db.withTransaction {
         val current = dao.meta(KEY_CONFIG_VERSION)?.toLongOrNull()
-        if (current != null && delta.toVersion <= current) return@withTransaction false
+        if (current != null && delta.toVersion <= current) return@withTransaction DeltaResult.STALE
+        // A delta must start at (or before) what the phone holds; a gap means changes in between are missing.
+        if (current == null || delta.fromVersion > current) {
+            dao.putMeta(SyncMetaEntity(KEY_BUNDLE_REFRESH, "true"))
+            return@withTransaction DeltaResult.GAP
+        }
         for ((key, rows) in delta.values.groupBy { it.key }) {
             dao.deleteConfig(key, scheduled = false)
             dao.insertConfig(rows.map { configRow(it, scheduled = false) })
@@ -156,7 +169,7 @@ class ReferenceRepository(private val db: AronDatabase) {
         }
         if (delta.policyChanged) dao.putMeta(SyncMetaEntity(KEY_POLICY_REFRESH, "true"))
         dao.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, delta.toVersion.toString()))
-        true
+        DeltaResult.APPLIED
     }
 
     /** The stored prefetch's date and ETag (for a conditional prefetch request), or null. */
@@ -317,7 +330,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             )
         }
 
-        private fun configRow(v: ResolvedValue, scheduled: Boolean) = ConfigValueEntity(
+        private fun configRow(v: ResolvedConfigValue, scheduled: Boolean) = ConfigValueEntity(
             key = v.key, valueJson = v.value.toString(), scopeType = v.scopeType, scopeId = v.scopeId, effectiveFrom = v.effectiveFrom,
             effectiveTo = v.effectiveTo, configVersion = v.configVersion, requiresAck = v.requiresAck, scheduled = scheduled,
         )

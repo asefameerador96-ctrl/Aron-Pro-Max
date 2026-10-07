@@ -334,6 +334,14 @@ class IngestService(
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.ARITHMETIC_MISMATCH, why)
         }
 
+        // 8b. Handlers' early checks (before parents): a refusal here is final even when the parent is missing.
+        handlers.forType(r.type).let { early ->
+            if (early.isNotEmpty()) {
+                val rec = IngestRecord(r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now)
+                for (hd in early) hd.checkEarly(h, rec)?.let { return refuse(h, ctx, r, bd, it.code, it.detail) }
+            }
+        }
+
         // 9. Parents (s4.2 rule 3): a child whose parent is not stored yet is parked; the child of a content duplicate
         // is a duplicate too.
         for (field in rule.parents) {
@@ -366,7 +374,14 @@ class IngestService(
             }
         }
 
-        // 10. Registered handlers' own checks, then store.
+        // 10. Visit-kind policy (F-SYS-078): a phone books only its role's kinds; web_entry comes from the web only.
+        if (r.type == "visit") payload.str("visit_kind")?.let { k ->
+            if (k !in (DEVICE_VISIT_KINDS[ctx.up.role] ?: emptySet())) {
+                return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "visit_kind $k is not a ${ctx.up.role.wire} device kind")
+            }
+        }
+        // 11. Ledger rules (an edit names an active memo), registered handlers' own checks, then store.
+        DuesLedger.check(h, r.type, payload)?.let { (code, detail) -> return refuse(h, ctx, r, bd, code, detail) }
         val hs = handlers.forType(r.type)
         val ingestRec = if (hs.isEmpty()) null else IngestRecord(
             r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now,
@@ -696,6 +711,16 @@ class IngestService(
         fun gunzip(b: ByteArray): ByteArray = GZIPInputStream(b.inputStream()).use { it.readBytes() }
     }
 }
+
+/**
+ * Visit kinds a field phone may upload, by the uploader's role (F-SYS-078). An AMO or TSO may also make an own sale call
+ * (`sr_call`, e.g. covering a route); `web_entry` visits are created by the Web Entry endpoint, never by a phone.
+ */
+internal val DEVICE_VISIT_KINDS: Map<com.aktcl.aron.contract.Role, Set<String>> = mapOf(
+    com.aktcl.aron.contract.Role.SR to setOf("sr_call"),
+    com.aktcl.aron.contract.Role.AMO to setOf("sr_call", "amo_control_call", "amo_joint_call"),
+    com.aktcl.aron.contract.Role.TSO to setOf("sr_call", "tso_visit"),
+)
 
 internal fun JsonObject.str(k: String): String? = (this[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
 internal fun JsonObject.long(k: String): Long? = (this[k] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull

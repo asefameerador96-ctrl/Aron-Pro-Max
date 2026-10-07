@@ -7,8 +7,9 @@ import com.aktcl.aron.core.network.AccessTokenSource
 import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.AuthApi
 import com.aktcl.aron.core.network.Grant
-import com.aktcl.aron.core.network.LoginRequest
-import com.aktcl.aron.core.network.LoginResponse
+import com.aktcl.aron.core.network.LoginStatus
+import com.aktcl.aron.contract.LoginRequest
+import com.aktcl.aron.contract.LoginResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -118,7 +119,7 @@ class SessionRepository(
     }
 
     private fun onLoginAnswer(answer: LoginResponse, password: String): LoginOutcome = when (answer.status) {
-        LoginResponse.STATUS_OK -> {
+        LoginStatus.OK -> {
             val access = answer.accessToken
             val refresh = answer.refreshToken
             if (access == null || refresh == null) {
@@ -140,7 +141,7 @@ class SessionRepository(
                     bindOrdinal = answer.device?.bindOrdinal ?: previous?.bindOrdinal,
                     memoSeqBlockSize = answer.device?.memoSeqBlockSize ?: previous?.memoSeqBlockSize,
                     configVersion = answer.configVersion,
-                    scopeVersion = answer.scope?.scopeVersion,
+                    scopeVersion = answer.scope?.scopeVersion?.toLong(),
                 )
                 // Tokens first, then the profile, then the active pointer: a kill between steps leaves either the old
                 // session or a complete new one, never a pointer to a user without tokens.
@@ -154,7 +155,7 @@ class SessionRepository(
                         uploadRefreshToken = answer.uploadRefreshToken ?: store.tokens(profile.userId).uploadRefreshToken,
                         uploadAccessToken = null,
                         uploadAccessExpiresAt = null,
-                        scopeVersion = answer.scope?.scopeVersion,
+                        scopeVersion = answer.scope?.scopeVersion?.toLong(),
                         reauthRequired = false,
                         uploadReauthRequired = false,
                     ),
@@ -164,8 +165,8 @@ class SessionRepository(
                 LoginOutcome.LoggedIn(profile, UnlockMode.ONLINE)
             }
         }
-        LoginResponse.STATUS_BIND_REQUIRED -> LoginOutcome.BindRequired(answer.bindToken)
-        LoginResponse.STATUS_PASSWORD_CHANGE_REQUIRED -> LoginOutcome.PasswordChangeRequired
+        LoginStatus.BIND_REQUIRED -> LoginOutcome.BindRequired(answer.bindToken)
+        LoginStatus.PASSWORD_CHANGE_REQUIRED -> LoginOutcome.PasswordChangeRequired
         else -> LoginOutcome.Refused(null, null) // mfa_required is a web outcome; a phone never gets it
     }
 
@@ -302,7 +303,7 @@ class SessionRepository(
                                 tokens.copy(
                                     accessToken = pair.accessToken, accessExpiresAt = pair.accessExpiresAt,
                                     refreshToken = pair.refreshToken ?: sent, refreshExpiresAt = pair.refreshExpiresAt,
-                                    scopeVersion = pair.scopeVersion, reauthRequired = false,
+                                    scopeVersion = pair.scopeVersion.toLong(), reauthRequired = false,
                                 )
                             } else {
                                 tokens.copy(

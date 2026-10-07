@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
-import { formatPriceMtk, mtkToTaka, parseTakaToMtk } from "@/lib/admin/price-money";
+import { formatPriceMtk, parseTakaToMtk } from "@/lib/admin/price-money";
 import { PRICE_TYPES, type PriceType } from "@/lib/admin/price-types";
 import { callMasterOp } from "./master-op-client";
 import { Field, inputClass } from "./kit/field";
@@ -15,7 +15,16 @@ export interface PriceSku {
   name: string;
   /** Current price in force per type, in milli-taka. */
   current: Partial<Record<PriceType, number>>;
+  /** The price in force is for this many base units (sticks, pieces, dozens); omitted means 1. A new price keeps the same basis. */
+  perBase?: Partial<Record<PriceType, number>>;
 }
+
+/** The day after an ISO business date: a publish is from a FUTURE Dhaka date, never today. */
+const nextDay = (iso: string): string => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
 
 interface Preview {
   skus_affected: number;
@@ -34,7 +43,8 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
   const { t, locale, number, problem } = useI18n();
   const router = useRouter();
   const [cells, setCells] = useState<Record<string, string>>({});
-  const [validFrom, setValidFrom] = useState(minDate);
+  const earliest = nextDay(minDate);
+  const [validFrom, setValidFrom] = useState(earliest);
   const [reason, setReason] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -44,7 +54,7 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
 
   const key = (sku: number, type: PriceType) => `${sku}:${type}`;
   const rows = useMemo(() => {
-    const out: { sku_id: number; price_type: PriceType; amount_mtk: number }[] = [];
+    const out: { sku_id: number; price_type: PriceType; amount_mtk: number; per_base_qty?: number }[] = [];
     const bad: Record<string, string> = {};
     for (const s of skus) {
       for (const ty of PRICE_TYPES) {
@@ -55,7 +65,10 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
           bad[key(s.id, ty)] = t("prices.bad_amount");
           continue;
         }
-        if (mtk !== s.current[ty]) out.push({ sku_id: s.id, price_type: ty, amount_mtk: mtk });
+        if (mtk !== s.current[ty]) {
+          const pb = s.perBase?.[ty];
+          out.push({ sku_id: s.id, price_type: ty, amount_mtk: mtk, ...(pb && pb > 1 ? { per_base_qty: pb } : {}) }); // keep the pack basis the admin saw
+        }
       }
     }
     return { changes: out, bad };
@@ -71,7 +84,7 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
   function validate(): boolean {
     const e: Record<string, string> = {};
     if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
-    if (!validFrom || validFrom < minDate) e.valid_from = t("error.field.past");
+    if (!validFrom || validFrom < earliest) e.valid_from = t("error.field.past");
     if (rows.changes.length === 0) e.cells = t("prices.nothing");
     if (Object.keys(rows.bad).length) e.cells = t("prices.bad_amount");
     setErrors(e);
@@ -92,10 +105,11 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
   async function publish() {
     if (!preview || !validate()) return;
     setBusy(true);
+    const needsApproval = preview.approval_required; // the 201 answer is a SkuPriceList with no status: the preview told us
     const r = await callMasterOp<{ status?: string }>("price.publish", { body: body(), reason: reason.trim() });
     setBusy(false);
     if (r.ok) {
-      setBanner({ ok: true, text: r.data?.status === "pending_approval" ? t("prices.pending_approval") : t("prices.published") });
+      setBanner({ ok: true, text: needsApproval || r.data?.status === "pending_approval" ? t("prices.pending_approval") : t("prices.published") });
       setCells({});
       setPreview(null);
       setReason("");
@@ -132,6 +146,7 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
                   const cur = s.current[ty];
                   return (
                     <td key={ty} className="px-2 py-1 text-right">
+                      {(s.perBase?.[ty] ?? 1) > 1 ? <span className="block text-xs text-slate-500">{t("prices.per_base", { n: number(s.perBase![ty]!) })}</span> : null}
                       <input
                         aria-label={`${s.code} ${typeLabels[ty]}`}
                         inputMode="decimal"
@@ -161,7 +176,7 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
       {canWrite ? (
         <>
           <Field label={t("entity.field.valid_from")} htmlFor="f-valid_from" required error={errors.valid_from}>
-            <input id="f-valid_from" type="date" min={minDate} value={validFrom} onChange={(e) => { setValidFrom(e.target.value); setPreview(null); batch.current = crypto.randomUUID(); }} className={`${inputClass} w-48`} />
+            <input id="f-valid_from" type="date" min={earliest} value={validFrom} onChange={(e) => { setValidFrom(e.target.value); setPreview(null); batch.current = crypto.randomUUID(); }} className={`${inputClass} w-48`} />
           </Field>
           <ReasonField value={reason} onChange={(v) => { setReason(v); setPreview(null); }} error={errors.reason} />
           <div className="flex flex-wrap gap-3">
@@ -206,7 +221,7 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
           {banner.text}
         </p>
       ) : null}
-      <p className="text-xs text-slate-500">{t("prices.note", { example: mtkToTaka(12500) })}</p>
+      <p className="text-xs text-slate-500">{t("prices.note", { example: formatPriceMtk(locale, 12500) })}</p>
     </div>
   );
 }

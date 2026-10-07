@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- F-SYS-023: runtime-permission gate -->
+    <string name="perm_gate_title_attendance">Attendance needs your location</string>
+    <string name="perm_gate_title_sale">Sale needs your location</string>
+    <string name="perm_gate_title_outlet">Outlet requests need your location</string>
+    <string name="perm_gate_title_photo">Photos need the camera</string>
+    <string name="perm_gate_title_print">Printing needs Bluetooth</string>
+    <string name="perm_gate_location_why">ARON checks that you are at the outlet before attendance and every sale. Without location permission these cannot start. Selling and memos stay on this phone; nothing else is affected.</string>
+    <string name="perm_gate_location_off">Location is switched off on this phone. Turn it on to check in and to sell.</string>
+    <string name="perm_gate_camera_why">The camera is used only to take the outlet photo when you press the shutter. It is never on in the background.</string>
+    <string name="perm_gate_bluetooth_why">Bluetooth is used only to connect to the memo printer. Without it the sale still saves; you can print the memo later.</string>
+    <string name="perm_gate_settings_steps_location">Open Settings, tap Permissions, and set Location to \"Allow only while using the app\" with Precise location on. Then come back to ARON.</string>
+    <string name="perm_gate_settings_steps_camera">Open Settings, tap Permissions, and set Camera to \"Allow only while using the app\". Then come back to ARON.</string>
+    <string name="perm_gate_settings_steps_bluetooth">Open Settings, tap Permissions, and allow Nearby devices. Then come back to ARON.</string>
+    <string name="perm_gate_precise_needed">ARON needs your precise location to check that you are at the outlet. Approximate location is not enough: allow precise location.</string>
+    <string name="perm_gate_allow">Allow</string>
+    <string name="perm_gate_open_settings">Open Settings</string>
+    <string name="perm_gate_turn_on_location">Turn on location</string>
+    <string name="perm_gate_back">Back</string>
+    <!-- F-SYS-022 logout -->
+    <string name="logout_unsent_title">Not everything is sent</string>
+    <plurals name="logout_unsent_message">
+        <item quantity="one">%1$s item not yet sent. Connect to the internet and tap Sync now; log out when the count is zero.</item>
+        <item quantity="other">%1$s items not yet sent. Connect to the internet and tap Sync now; log out when the count is zero.</item>
+    </plurals>
+    <string name="logout_sync_now">Sync now</string>
+    <string name="logout_cancel">Cancel</string>
+    <string name="logout_wipe_incomplete">Logged out, but some files on this phone could not be removed. Log in and out again to finish.</string>
+</resources>

@@ -9,7 +9,7 @@
 # Budget: under 15 minutes wall time for a full run (docs/31 s2); the jobs run in parallel and path-filtered.
 #
 # Secrets (never committed; set them in GitHub > Settings > Secrets and variables > Actions, docs/24 s13.6):
-#   MAPS_ANDROID_KEY          Google Maps SDK for Android key (AMO and TSO apps); manifest placeholder mapsApiKey
+#   MAPS_ANDROID_KEY          Google Maps SDK for Android key (SR, AMO and TSO apps); manifest placeholder mapsApiKey
 #   MAPS_WEB_KEY              Google Maps JavaScript API key for web/ (NEXT_PUBLIC_MAPS_WEB_KEY at next build)
 #   GOOGLE_SERVICES_JSON      Firebase google-services.json content, written into android/app-{sr,amo,tso}/
 #   FCM_SERVICE_ACCOUNT_JSON  Firebase service account for the backend FCM sender; copied to Key Vault by the deploy
@@ -121,7 +121,7 @@ jobs:
     name: Repository gates (secrets, migrations, contract)
     needs: changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       BEFORE: ${{ needs.changes.outputs.base }}
       INTEGRATION_BRANCH: claude/wonderful-thompson-k6ejnf
@@ -173,10 +173,20 @@ jobs:
           # 0 = nothing found, 1 = vulnerabilities found (the gate decides); anything else is a scanner failure.
           [ "${rc}" -le 1 ] || { echo "::error::osv-scanner failed (exit ${rc})"; exit 1; }
           python3 tools/ci/osv-gate.py "${RUNNER_TEMP}/osv.json" tools/ci/osv-allow.txt
+      - name: Wall-clock reads in tests (report only until 2026-10-09, then blocking; escape comment wall-clock-ok)
+        run: python3 tools/ci/wallclock-scan.py .
       - name: npm install scripts reviewed (web/.npmrc ignore-scripts; tools/ci/npm-install-scripts.txt)
         run: python3 tools/ci/install-scripts-check.py web/package-lock.json tools/ci/npm-install-scripts.txt
       - name: Static analysis (Semgrep, pinned image; findings new since the base fail)
-        run: tools/ci/semgrep.sh "${CHECK_BASE}"
+        # A lane's own diff only: on a lane branch the base is the integration commit it last merged, so code another lane
+        # already landed on the integration branch never counts as new here. On the integration branch, the gate base.
+        run: |
+          base="${CHECK_BASE}"
+          if [ "${GITHUB_REF}" != "refs/heads/${INTEGRATION_BRANCH}" ] && git rev-parse -q --verify "origin/${INTEGRATION_BRANCH}" >/dev/null; then
+            base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}" || echo "${CHECK_BASE}")"
+          fi
+          echo "semgrep base: ${base}"
+          tools/ci/semgrep.sh "${base}"
       - name: Dependency review (pull requests; high or critical fails)
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
@@ -205,7 +215,10 @@ jobs:
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet --user pyyaml==6.0.2
           python3 tools/slice-contract.py --check
       - name: Lint contract/openapi.yaml (Redocly, 0 errors and 0 warnings)
-        run: npx --yes @redocly/cli@2 lint contract/openapi.yaml --config contract/redocly.yaml
+        # Exact version, no install scripts (AUD-SEC-05); a new version is a reviewed change here.
+        env:
+          npm_config_ignore_scripts: "true"
+        run: npx --yes @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml
 
   jvm:
     name: Shared, db and backend (build and tests)
@@ -349,6 +362,10 @@ jobs:
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # Manifest placeholder mapsApiKey of all three apps (root build.gradle.kts; SR has the on-tap map since docs/24
+      # s14a R19). Optional: without the secret the APKs build and the map shows no tiles.
+      MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
@@ -373,12 +390,12 @@ jobs:
           -Paron.apiBaseUrl="${ARON_API_BASE_URL}" -Paron.versionCode="${ARON_VERSION_CODE}" -Paron.versionName="${ARON_VERSION_NAME}"
           :android:app-sr:assembleRelease :android:app-amo:assembleRelease :android:app-tso:assembleRelease
       - name: APK size gate (30 MB per ABI, installed 70 MB, warn +5 %, fail +15 % against the baseline)
+        # One universal APK per app today; per-ABI splits too once android-core enables them (tools/ci/release-apks.py
+        # accepts both layouts and requires the universal provisioning APK).
         run: |
+          list="$(python3 tools/ci/release-apks.py)"
           apks=()
-          for app in sr amo tso; do
-            for f in "android/app-${app}/build/outputs/apk/release/"*.apk; do apks+=("${app}-release=$f"); done
-          done
-          [ "${#apks[@]}" -eq 3 ] || { echo "::error::expected 3 release APKs, found ${#apks[@]}"; exit 1; }
+          while IFS=$'\t' read -r _app _variant gate _stem path; do apks+=("${gate}=${path}"); done <<< "${list}"
           python3 tools/ci/apk-size-gate.py "${apks[@]}"
       - name: Sign with the release key (integration branch pushes only, when the ANDROID_SIGNING_* secrets exist)
         # AUD-DG-03: the owner's device-owner phones are installed ONCE with a release-signed build (changing the signer
@@ -398,12 +415,12 @@ jobs:
           printf '%s' "${KS}" | base64 -d > "${ks}"
           signer="${ANDROID_HOME}/build-tools/36.0.0/apksigner"
           mkdir -p signed
-          for app in sr amo tso; do
-            src="$(ls android/app-${app}/build/outputs/apk/release/*-release-unsigned.apk)"
-            dst="signed/aron-${app}-${ARON_VERSION_NAME}-dev.apk"
+          list="$(python3 tools/ci/release-apks.py)"
+          while IFS=$'\t' read -r app variant _gate stem src; do
+            dst="signed/${stem}-${ARON_VERSION_NAME}-dev.apk"
             "${signer}" sign --ks "${ks}" --ks-pass env:KSP --ks-key-alias "${ALIAS}" --key-pass env:KP --out "${dst}" "${src}"
-            "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app}: /"
-          done
+            "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app} ${variant}: /"
+          done <<< "${list}"
           (cd signed && sha256sum ./*.apk > SHA256SUMS && cat SHA256SUMS)
           echo "signed=true" >> "${GITHUB_OUTPUT}"
       - name: Upload the release-signed dev APKs
@@ -446,6 +463,18 @@ jobs:
         run: bash scripts/ci.sh build
       - run: npx playwright install --with-deps chromium
       - run: bash scripts/ci.sh e2e
+      - name: Flaky e2e tests (passed only on retry) are reported, never silent (AUD-TP-6)
+        if: always()
+        run: |
+          [ -f test-results/results.json ] || { echo "no Playwright JSON report"; exit 0; }
+          python3 - test-results/results.json <<'PY'
+          import json, sys
+          stats = json.load(open(sys.argv[1])).get("stats", {})
+          flaky = stats.get("flaky", 0)
+          print(f"e2e: {stats.get('expected', 0)} passed, {flaky} flaky, {stats.get('unexpected', 0)} failed")
+          if flaky:
+              print(f"::warning::{flaky} e2e test(s) passed only on retry: quarantine or fix within one working day (docs/20 P5)")
+          PY
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

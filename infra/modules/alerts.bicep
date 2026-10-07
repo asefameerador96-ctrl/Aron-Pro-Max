@@ -10,6 +10,8 @@ param postgresId string
 param actionGroupId string
 @description('Log-search rules are billed per rule per month; off in the TEST profile, metric alerts stay.')
 param enableLogAlerts bool = true
+@description('Service Health alert for this subscription (region incidents). Its scope is the subscription, which the deploy identity (rights on this group only) may not be able to use; off until the lead grants subscription Reader (docs/requests/infra-service-health-scope.md).')
+param enableServiceHealthAlert bool = false
 
 var appRequests = {
   batch5xx: {
@@ -79,6 +81,8 @@ var pgMetrics = [
   { name: 'pg-cpu', metric: 'cpu_percent', threshold: 80, window: 'PT15M', severity: 2, description: 'PostgreSQL CPU above 80 % for 15 minutes: next SKU (docs/18 s3.5).' }
   { name: 'pg-storage', metric: 'storage_percent', threshold: 70, window: 'PT30M', severity: 2, description: 'PostgreSQL storage above 70 %: grow now, SSD v2 has no autogrow (docs/18 s3.5).' }
   { name: 'pg-connections-failed', metric: 'connections_failed', threshold: 10, window: 'PT5M', severity: 2, description: 'PostgreSQL failed connections.' }
+  // AUD-REL-04: the database is down (is_db_alive drops to 0). HA state changes reach the Resource Health alert below.
+  { name: 'pg-not-alive', metric: 'is_db_alive', threshold: 1, window: 'PT5M', severity: 1, description: 'PostgreSQL is not alive for 5 minutes. Owner: infra lane. Runbook: RB-02 (database failover; not written yet, docs/runbooks/README.md).' }
 ]
 
 resource metricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for m in pgMetrics: {
@@ -100,9 +104,9 @@ resource metricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for m in p
           name: m.metric
           metricName: m.metric
           metricNamespace: 'Microsoft.DBforPostgreSQL/flexibleServers'
-          operator: 'GreaterThan'
+          operator: m.metric == 'is_db_alive' ? 'LessThan' : 'GreaterThan'
           threshold: m.threshold
-          timeAggregation: m.metric == 'connections_failed' ? 'Total' : 'Average'
+          timeAggregation: m.metric == 'connections_failed' ? 'Total' : (m.metric == 'is_db_alive' ? 'Minimum' : 'Average')
         }
       ]
     }
@@ -110,3 +114,52 @@ resource metricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for m in p
     actions: [{ actionGroupId: actionGroupId }]
   }
 }]
+
+// AUD-REL-04: Azure says a resource in this group is unavailable or degraded (PostgreSQL HA failover or degraded HA,
+// Container Apps, Front Door, storage, Key Vault). Activity-log alerts are free. Service Health (region incidents) is
+// subscription-scoped: enableServiceHealthAlert below.
+resource resourceHealth 'Microsoft.Insights/activityLogAlerts@2020-10-01' = {
+  name: '${namePrefix}-resource-health'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'A resource in this group is Unavailable or Degraded according to Azure Resource Health. Owner: infra lane. Runbooks: RB-01 (apps), RB-02 (database).'
+    enabled: true
+    scopes: [resourceGroup().id]
+    condition: {
+      allOf: [
+        { field: 'category', equals: 'ResourceHealth' }
+        {
+          anyOf: [
+            { field: 'properties.currentHealthStatus', equals: 'Unavailable' }
+            { field: 'properties.currentHealthStatus', equals: 'Degraded' }
+          ]
+        }
+      ]
+    }
+    actions: { actionGroups: [{ actionGroupId: actionGroupId }] }
+  }
+}
+
+resource serviceHealth 'Microsoft.Insights/activityLogAlerts@2020-10-01' = if (enableServiceHealthAlert) {
+  name: '${namePrefix}-service-health'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Azure Service Health: an incident or planned maintenance affects this subscription. Owner: infra lane. Runbook: RB-01.'
+    enabled: true
+    scopes: [subscription().id]
+    condition: {
+      allOf: [
+        { field: 'category', equals: 'ServiceHealth' }
+        {
+          anyOf: [
+            { field: 'properties.incidentType', equals: 'Incident' }
+            { field: 'properties.incidentType', equals: 'Maintenance' }
+          ]
+        }
+      ]
+    }
+    actions: { actionGroups: [{ actionGroupId: actionGroupId }] }
+  }
+}

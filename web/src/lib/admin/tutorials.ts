@@ -19,16 +19,25 @@ export interface FieldIssue {
   code: string;
 }
 
-/** POST /api/bff/admin/assets: the body of AdminAssetUploadRequest for a tutorial video or manual. */
+/** Purposes this lane uploads, with the type and size limit of each (AdminAssetUploadRequest; content items at most 20 MB, images 300 KB). */
+export const ASSET_RULES = {
+  tutorial_video: { mimes: ["video/mp4"], max: MAX_ASSET_BYTES },
+  tutorial_manual: { mimes: ["application/pdf"], max: MAX_ASSET_BYTES },
+  content_av: { mimes: ["video/mp4"], max: 20_971_520 },
+  content_kv: { mimes: ["image/jpeg", "image/png"], max: 307_200 },
+} as const;
+export type AssetPurpose = keyof typeof ASSET_RULES;
+
+/** POST /api/bff/admin/assets: the body of AdminAssetUploadRequest for a tutorial or content file. */
 export function checkAssetRequest(b: unknown): { issues: FieldIssue[]; body?: { asset_id: string; purpose: string; mime: string; bytes: number; sha256: string } } {
   const issues: FieldIssue[] = [];
   if (!isObj(b)) return { issues: [{ pointer: "", code: "invalid" }] };
   for (const k of Object.keys(b)) if (!["asset_id", "purpose", "mime", "bytes", "sha256"].includes(k)) issues.push({ pointer: `/${k}`, code: "unknown_member" });
   if (typeof b.asset_id !== "string" || !UUID_V4.test(b.asset_id)) issues.push({ pointer: "/asset_id", code: "invalid" });
-  const kind = b.purpose === "tutorial_video" ? "video" : b.purpose === "tutorial_manual" ? "manual" : null;
-  if (!kind) issues.push({ pointer: "/purpose", code: "invalid" });
-  else if (b.mime !== KIND_MIME[kind]) issues.push({ pointer: "/mime", code: "invalid" });
-  if (typeof b.bytes !== "number" || !Number.isSafeInteger(b.bytes) || b.bytes < 1 || b.bytes > MAX_ASSET_BYTES) issues.push({ pointer: "/bytes", code: "invalid" });
+  const rule = typeof b.purpose === "string" && Object.prototype.hasOwnProperty.call(ASSET_RULES, b.purpose) ? ASSET_RULES[b.purpose as AssetPurpose] : null;
+  if (!rule) issues.push({ pointer: "/purpose", code: "invalid" });
+  else if (typeof b.mime !== "string" || !(rule.mimes as readonly string[]).includes(b.mime)) issues.push({ pointer: "/mime", code: "invalid" });
+  if (typeof b.bytes !== "number" || !Number.isSafeInteger(b.bytes) || b.bytes < 1 || b.bytes > (rule?.max ?? MAX_ASSET_BYTES)) issues.push({ pointer: "/bytes", code: "invalid" });
   if (typeof b.sha256 !== "string" || !SHA256.test(b.sha256)) issues.push({ pointer: "/sha256", code: "invalid" });
   if (issues.length) return { issues };
   return { issues, body: { asset_id: b.asset_id as string, purpose: b.purpose as string, mime: b.mime as string, bytes: b.bytes as number, sha256: b.sha256 as string } };

@@ -17,7 +17,7 @@ android {
             it.inputs.files(
                 rootProject.fileTree("android") {
                     include("app-*/src/**", "feature-*/src/**", "core-ui/src/**", "core-printing/src/**", "core-sync/src/**", "dpc/src/**")
-                    exclude("**/src/test/**", "**/src/androidTest/**")
+                    exclude("**/src/test*/**", "**/src/androidTest*/**", "**/src/sharedTest*/**", "**/src/*Fixtures/**")
                 },
             ).withPropertyName("scannedSources").withPathSensitivity(PathSensitivity.RELATIVE)
         }

@@ -94,8 +94,10 @@ argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2-jvm" }
 azure-sdk-bom = { module = "com.azure:azure-sdk-bom", version.ref = "azure-sdk-bom" }
 azure-storage-blob = { module = "com.azure:azure-storage-blob" }
 azure-identity = { module = "com.azure:azure-identity" }
+azure-core-http-jdk-httpclient = { module = "com.azure:azure-core-http-jdk-httpclient" }
 firebase-admin = { module = "com.google.firebase:firebase-admin", version.ref = "firebase-admin" }
 fastexcel = { module = "org.dhatim:fastexcel", version.ref = "fastexcel" }
+bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.80" }   # tests only: builds key-attestation chains
 
 # Android
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
@@ -147,6 +149,13 @@ snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "s
 androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-core" }   # android-core: instrumented tests (same 1.7.0 train)
+
+# Appended by android-sys (F-SYS-030): in-app CameraX still capture (no camera-video: no microphone) and EXIF orientation.
+androidx-camera-core = { module = "androidx.camera:camera-core", version = "1.6.2" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version = "1.6.2" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version = "1.6.2" }
+androidx-camera-view = { module = "androidx.camera:camera-view", version = "1.6.2" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version = "1.4.2" }
 
 [bundles]
 ktor-server = ["ktor-server-core", "ktor-server-netty", "ktor-server-content-negotiation", "ktor-server-status-pages",

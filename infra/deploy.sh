@@ -269,6 +269,8 @@ BUDGET="$(out "$outputs" budgetName)"
 
 # ------------------------------------------------------------------------------------------------- secrets
 infra/scripts/seed-secrets.sh "$KV"
+# Passwords and URLs of the per-app database logins (created by the dblogins job after the migrations).
+infra/scripts/db-login-secrets.sh "$KV"
 
 # -------------------------------------------------------------------------------------------------- images
 # Each commit's image is pushed ONCE as <repo>:<sha>, its tag locked (write-enabled false; delete stays allowed for
@@ -314,7 +316,10 @@ build_web() {
 az acr login --name "$REGISTRY_NAME"
 publish aron-backend build_backend; BACKEND_IMAGE="$IMAGE_REF"
 WEB_IMAGE=""
-if [ -n "$ROLLBACK_SHA" ] && [ -n "$(digest_of aron-web "$SHA")" ]; then
+web_digest=""
+# Its own statement, so a registry error stops the deploy (inside an `if` a failed $(...) would read as "absent").
+if [ -n "$ROLLBACK_SHA" ]; then web_digest="$(digest_of aron-web "$SHA")"; fi
+if [ -n "$web_digest" ]; then
   publish aron-web build_web; WEB_IMAGE="$IMAGE_REF"
 elif [ -z "$ROLLBACK_SHA" ] && [ -f web/package.json ]; then
   publish aron-web build_web; WEB_IMAGE="$IMAGE_REF"
@@ -325,6 +330,18 @@ elif [ -n "$ROLLBACK_SHA" ]; then
 else
   note "web/ has no package.json: no web app"
 fi
+# psql client for the dblogins job, imported once from Docker Hub by digest into this registry (the apps never pull
+# from Docker Hub at run time; the purge leaves tools/ alone).
+PSQL_SOURCE="docker.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+PSQL_TAG="16-alpine-721873c34ceb"
+psql_digest="$(digest_of tools/postgres "$PSQL_TAG")"
+if [ -z "$psql_digest" ]; then
+  az acr import --name "$REGISTRY_NAME" --source "$PSQL_SOURCE" --image "tools/postgres:${PSQL_TAG}" -o none \
+    || die "cannot import the psql image into $REGISTRY_NAME"
+  psql_digest="$(digest_of tools/postgres "$PSQL_TAG")"
+fi
+[[ "$psql_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "no digest for tools/postgres:${PSQL_TAG}"
+export ARON_PSQL_IMAGE="${REGISTRY}/tools/postgres@${psql_digest}"
 summary "Images (by digest): backend ${BACKEND_IMAGE}; web ${WEB_IMAGE:-none}"
 export ARON_BACKEND_IMAGE="$BACKEND_IMAGE" ARON_WEB_IMAGE="$WEB_IMAGE" ARON_BUILD_ID="$SHA"
 ARON_MIGRATE_IMAGE=""
@@ -396,12 +413,42 @@ else
   note "migrations not run (RUN_MIGRATIONS=$RUN_MIGRATIONS)"
 fi
 
+# ------------------------------------------------------------------------------------------------- db logins
+# Per-app least-privilege logins (infra/sql/runtime-logins.sql) must exist with the Key Vault passwords before the
+# apps switch to them. Needs the V0014/V0020 roles, so after the migrations. Runs in a rollback too (idempotent, no
+# schema change), because the apps template of the current commit may point the apps at these logins.
+DBLOGINS_JOB="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbLoginsJobName.value -o tsv)"
+if [ -n "$DBLOGINS_JOB" ]; then
+  execution="$(az containerapp job start -g "$RG" -n "$DBLOGINS_JOB" --query name -o tsv)"
+  note "database logins started: $execution"
+  status=""
+  for _ in $(seq 1 60); do
+    status="$(az containerapp job execution show -g "$RG" -n "$DBLOGINS_JOB" --job-execution-name "$execution" --query properties.status -o tsv 2>/dev/null || echo unknown)"
+    case "$status" in Succeeded|Failed|Stopped|Degraded) break ;; esac
+    sleep 10
+  done
+  if [ "$status" != Succeeded ]; then
+    job_logs "$execution"
+    die "database logins $execution ended ${status:-unknown}; the apps were NOT updated"
+  fi
+  note "database logins succeeded"
+fi
+
 # ------------------------------------------------------------------------------------------------------ apps
 guard_newer_live "before the apps"
 check_freeze "before the apps"
 # Multiple revision mode (stage, prod): the revision serving now is the fallback if the health gate fails.
 api_mode="$(az containerapp show -g "$RG" -n "$api_name" --query properties.configuration.activeRevisionsMode -o tsv 2>/dev/null || true)"
-prev_revision="$(az containerapp show -g "$RG" -n "$api_name" --query properties.latestReadyRevisionName -o tsv 2>/dev/null || true)"
+# The fallback is a revision that serves traffic now and runs ANOTHER build: on a re-run of the same commit the
+# latest ready revision may be this commit's bad one, which must never be the place traffic is "put back" on.
+prev_revision=""
+if [ "$api_mode" = Multiple ]; then
+  while IFS=$'\t' read -r rev build; do
+    if [ -n "$rev" ] && [ "$build" != "$SHA" ]; then prev_revision="$rev"; break; fi
+  done < <(az containerapp revision list -g "$RG" -n "$api_name" \
+             --query "[?properties.trafficWeight > \`0\`].[name, properties.template.containers[0].env[?name=='ARON_BUILD'].value | [0]]" -o tsv 2>/dev/null || true)
+  note "fallback revision if the health gate fails: ${prev_revision:-none (no serving revision with another build)}"
+fi
 note "apps (and Front Door routes when the profile has Front Door)"
 apps="$(ARON_DEPLOY_SERVICES=true az deployment group create -g "$RG" -n aron-apps --template-file infra/apps.bicep \
   --parameters "infra/params/${PROFILE}.apps.bicepparam" --query properties.outputs -o json)"

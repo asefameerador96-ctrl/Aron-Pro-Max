@@ -10,23 +10,24 @@ Updated 2026-10-07 (evening). Local lane tests: config 48, masterdata 105, app 2
 - **F-API-035c, 080, F-ADM-081** products, SKUs, product tree, price preview/publish/decision with the second-approver rail. Opus checker: 5 defects, fixed (shared commit lock with config, numeric overflow, reason trim, per-batch serialisation).
 - Built by sub-agents in worktrees, merged, wired, lane tests green; checkers (Sonnet) running: **F-API-035, 035b, 045** (master-data CRUD, outlet-kind bulk), **F-API-020, 020b, 022, 027, 030, 032, 035a** (visit plans, leave, tutorials, PDA upload, feedback, content).
 
+## Built in the second session (contract v1.2 was already on INT, 57f6bd7)
+- **F-API-041** `ConfigAckHandler` (config module, in `Wiring.recordHandlers`): unknown version parked `config_version_unknown`; device `config_version_applied` only moves forward; the reach view reads `cfg_ack.acked_config_version`. Test `ConfigAckHandlerTest`.
+- **F-API-048 / F-ADM-058** `POST /v1/admin/data-void` (`DataVoidApi.kt`): TSO (own reach), ADMIN, SUPERADMIN. Tombstones 25 route-bearing record tables plus geo_fix by route and date, flips `ingest_registry` to `voided`, reverses dues with one `adjustment` per source record, writes `route_day_void_barrier`, audits with the reason, 409 `ERR_DAY_ALREADY_FINAL_SUBMITTED`, replay by `client_uuid`. `DataVoidBarrierHandler` (all ingest types) refuses late rows captured before the barrier as `voided_by_admin`. Web-entry tables are voided by name once they exist. Test `DataVoidAcceptanceTest` (app module).
+- **N-049** `DomainEventProducer` (memo.created, memo.voided, visit.closed, stock.moved, built from the stored row, same savepoint, first store only); `RecordWriter` sets `external_ref = client_uuid` on every stored row (one line in the sync module, backend-core please keep); the data void emits `memo.voided`. `route_day.state_changed` stays with the day state machine (F-SYS-016).
+- **F-SYS-013** `RiskSignals.kt`: pure `RiskRules`, `RiskSignalEvaluator.evaluateDay`, `RiskSignalJob` (worker, every 15 min, today and yesterday). Signals: GEO_MOCK, GEO_TELEPORT, GEO_ZERO_JITTER, GEO_ROUTE_SINGLE_POINT, GEO_DEVICE_SERVER_MISMATCH (reads `visit.server_verdict`, filled when backend-core ships F-SYS-012). Not built yet: PERFECT_ACCURACY, SAME_POINT, STALE_FIX, GNSS_*, SHORT_VISIT_GAPS, DEVICE_* (same shape; add to `RiskRules`). Test `RiskSignalsTest`.
+- Opus checker on F-API-041/048: 7 defects, all fixed (test `DataVoidCheckerTest`): dues reversal nets per memo (no double reversal, memo_void/supersession untouched); barrier only for app scopes; barrier is `checkEarly` (new `RecordHandler.checkEarly`, called before the parent check in IngestService, so children of a late family are final `voided_by_admin`) under a shared xact advisory lock vs the void's exclusive one; TSO may void `web_entry` only (ADMIN/SUPERADMIN for app memos: docs/24 s8.5, lead may re-rule against docs/21); non-numeric config_version is `schema_invalid`; one void per client_uuid under an advisory lock. Not proven/left: collection on a later day after a void, phone-clock `captured_at` vs trusted time, rows without envelope route_id, tombstone coverage of non-route types, route-day state after void. Checker did not review N-049/F-SYS-013 (no defects reported on them; unreviewed): ask a fresh checker if the lead wants T1 rigour there.
+
 ## Blocked, with requests filed
-- `backend-admin-contract-gaps.md` (F-API-041 needs the sync RecordHandler; F-API-083 no contract path; TSO OTP issue vs s8.5; permission shape), `backend-admin-restrictive-dir.md`, `backend-admin-price-batch-table.md`, `backend-admin-content-tables.md` (incl. a V0007 leave trigger defect), `backend-admin-blob-sas.md`, `backend-admin-contract-changes.md` (me.menus, DeviceOtp columns; waiting for the lead's ruling).
-- F-API-049 needs an `entry_unlock` table (db request still to file); F-API-048, 050, 051, 052, 038, N-049, F-ADM-058, F-SYS-013 need sync ingest (F-API-006, F-SYS-012, F-SYS-059) from backend-core.
+- F-API-049, 050, 052, 038 (web half) and the `web_entry` void scope need db tables: `docs/requests/backend-admin-web-entry-tables.md`.
+- F-API-051 is a TRIM (docs/27, no Astha quantity path): nothing to build.
 - F-ADM-037 needs F-API-055 (outlet requests, backend-core).
+- Data-void maker-checker (docs/24 s8.6) is not in the contract: `docs/requests/backend-admin-data-void-second-person.md` (lead).
+- Older requests still open: restrictive-dir, price-batch-table, content-tables (V0007 leave trigger), blob-sas, nul-in-text.
 
-## Contract v1.2 items: DONE (DeviceOtp employee_code/zone_code/zone_name; routes include=assignees, one query; tests ContractV12Test, DeviceOtpTest). Original note:
-- `DeviceOtp` gets `employee_code`, `zone_code`, `zone_name` (nullable): one extra join in `DeviceOtps.kt` list and `issueOtp` result.
-- `GET /v1/admin/routes?include=assignees` returns `Route.assignees [{user_id, full_name, role, username}]` with ONE query (AdminRoutes.kt list), for web-dashboard F-WEB-010.
-- backend-core calls `ConfigPermissions.menusForRole` for `me.menus`.
-
-## Next three rows
-1. The two v1.2 items above (after `git pull`, commit starts "Contract v1.2").
-2. F-API-049 entry-unlock (needs the db `entry_unlock` table request: not yet filed) and then F-API-048 data void, F-API-050/051/052, F-API-038, N-049 once backend-core lands F-API-006 / F-SYS-059.
-3. F-API-041 config_ack handler once the RecordHandler registry exists (routed to backend-core by the lead).
-
-## Next (older note)
-Apply checker findings for the two Sonnet checks; file the `entry_unlock` request; implement the two contract changes once ruled; then the ingest-dependent rows when backend-core lands F-API-006.
+## Next rows
+1. Fix the checker findings on the rows above.
+2. When db lands the web-entry tables: F-API-049, 050, 052, 038, then the `web_entry` void scope.
+3. The remaining `RiskRules` of docs/24 s11.4.
 
 ## Traps
 - Never run two Gradle builds in one worktree at once (test-result files collide); checkers use their own worktree.
