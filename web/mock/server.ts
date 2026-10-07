@@ -405,6 +405,39 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     return send(res, 200, row);
   }
 
+  const def = /^\/v1\/admin\/(surveys|rubrics|content)(?:\/(\d+))?$/.exec(path);
+  if (def && user.master) {
+    if (!(method === "GET" ? ADMIN_READ : ADMIN_WRITE).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const kind = def[1]!;
+    const idKey = kind === "surveys" ? "survey_id" : kind === "rubrics" ? "rubric_id" : "content_id";
+    const rows = state.tables[kind]!;
+    if (method === "GET") return send(res, 200, { items: rows, next_cursor: null });
+    const b = (await readJson(req)) as Record<string, unknown> | null;
+    const reason = typeof b?.change_reason === "string" ? b.change_reason : "";
+    if (!b || Array.from(reason).length < 10) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    const { change_reason: _r, questions, criteria, ...rest } = b;
+    void _r;
+    const shaped: Record<string, unknown> = { ...rest };
+    if (questions) shaped.questions = (questions as Record<string, unknown>[]).map((q, i) => ({ question_id: i + 1, answer_type: q.answer_type, label_en: q.label_en, label_bn: q.label_bn ?? null, option_codes: [], requires_photo: q.photo === true, key: q.key }));
+    if (criteria) shaped.criteria = (criteria as Record<string, unknown>[]).map((c, i) => ({ criterion_id: i + 1, label_en: c.label_en, label_bn: c.label_bn ?? null, answer_type: c.answer_type, enabled: true, key: c.key }));
+    if (kind === "content") {
+      if (!state.blobs.has(String(b.asset_id))) return send(res, 400, problem(400, "ERR_VALIDATION"));
+      Object.assign(shaped, { asset_url: `https://blob.example/content/${b.asset_id}`, sha256: "b".repeat(64), bytes: state.blobs.get(String(b.asset_id)), duration_s: null, outlet_ids: [], updated_at: new Date().toISOString() });
+    }
+    if (method === "POST") {
+      const row = { [idKey]: state.nextId++, version: 1, status: "active", ...shaped } as unknown as Row;
+      rows.push(row);
+      audit(state, user, kind, String(row[idKey]), `${kind}.create`, {}, {}, reason);
+      return send(res, 201, row);
+    }
+    const row = rows.find((r) => r[idKey] === Number(def[2]));
+    if (!row) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+    if (req.headers["if-match"] !== `"${row.version}"`) return send(res, 412, problem(412, "ERR_PRECONDITION_FAILED"));
+    Object.assign(row, shaped, { version: (row.version as number) + 1 });
+    audit(state, user, kind, String(row[idKey]), `${kind}.update`, {}, {}, reason);
+    return send(res, 200, row);
+  }
+
   const fb = /^\/v1\/feedback(?:\/([0-9a-f-]{36}))?$/.exec(path);
   if (fb && user.master) {
     const rows = state.tables.feedback!;
