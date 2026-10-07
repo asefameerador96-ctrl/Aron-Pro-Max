@@ -27,6 +27,46 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
 
+## Day 3, 14:30 UTC: dblogins no longer blocks the apps while per-app logins are off
+
+Deploy runs 37630304505 and 37632012265 (with the system-log query) failed like 37624445094: dblogins execution Failed
+within about a minute, and Log Analytics has neither console nor system log for it. The job is checked against the
+working migrate job (same identity, registry, Key Vault, environment; image is a multi-arch index with linux/amd64;
+compiled command correct). Nobody has `az` until the owner runs the two read-only commands sent to the lead.
+Change: a dblogins failure now prints the execution record and the container log stream straight from the platform
+(`az containerapp job execution show`, `az containerapp job logs show`), and it stops the deploy only when the apps
+use the per-app logins (`dbPerAppLogins` output of aron-apps-migrate is not false). With the switch off (today) it is a
+warning plus a "Database logins | FAILED" summary row, so the apps, the health gate, alerts and CORS get deployed and
+proven. Test `DbLoginsGate`. The system-log query now matches with `contains` (hyphenated names).
+
+## Day 3, 14:10 UTC: Front Door health alert, infra-stage skip, recovered alert (lead)
+
+- **Front Door Sev4 alert 13:11 UTC:** fired during deploy run 37624445094, while main.bicep was applying (12:58 to 13:07)
+  and right after. main.bicep re-PUTs the Front Door profile and endpoint (modules/frontdoor.bicep) on EVERY apply, and
+  apps.bicep re-PUTs the api/web origin groups, origins and routes on every apps deploy. An identical PUT still starts
+  a Front Door configuration rollout, the likely cause of a transient Degraded event. Dev answered 200 throughout
+  later probes (lead 13:52).
+- **Infra stage skip fixed:** the skip compared infra/ with the commit live in the api, which never advanced while
+  dblogins failed, so every INT push re-applied main.bicep. main.bicep's deployment now carries the tag
+  `aron-sha=<commit>` and the skip diffs against that commit (fallback: the live api commit). The first apply after
+  this lands still runs once and writes the tag. Test `InfraStageSkip`.
+- **Alert wiring (as built):** action group `ag-aron-dev` (email, common alert schema) <- `aron-dev-resource-health`,
+  an Activity Log alert on category ResourceHealth with status Unavailable or Degraded, scoped to the resource group.
+  Activity-log alerts have no severity field, so the mail shows Azure's default Sev4, and they are stateless: **no
+  "Resolved" mail ever follows.** Added `aron-dev-resource-health-recovered` (Available after Unavailable or Degraded,
+  free) so a transient event is closed in the inbox. Metric alerts (pg-not-alive Sev1, pg-cpu Sev2, ...) do send Resolved.
+
+## Day 3, 13:30 UTC: dev deploy reaches the database logins job
+
+Deploy run 37624445094 (c13e75d), the first with the zone fix (laptop session, 347687d) and the psql import by digest
+(laptop session, ac9e44a): **proven on Azure:** what-if guard passes with the live zones (primary 2, standby 1),
+main.bicep applied, the psql image imported into ACR by digest, both app images built once and run **by digest**
+(`aron-backend@sha256:b3c0e071...`), migrations succeeded. **Failed:** the dblogins job execution
+`caj-aron-dev-dblogins-gf9ulpy` ended Failed with NO console log in Log Analytics (6 min), so the apps were not
+updated (the old revision keeps serving). Not yet proven: health gate, alerts, storage CORS (all after dblogins).
+deploy.sh now also prints the Container Apps system log of a failed execution (image pull / start errors). The
+console log of gf9ulpy is needed from a session with az (asked via the lead). Zone block in deploy.sh: not touched.
+
 ## Day 3, 11:00 UTC: first green INT deploy blocked by the failover drill (fixed on lane/infra)
 
 (Superseded at 16:30 UTC by the section above: the 11:00 lookup took `[0]` of a name-prefix match, could read a drill

@@ -23,6 +23,7 @@ class AronSRApplication : Application(), Configuration.Provider {
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var sessionComponents: com.aktcl.aron.core.session.SessionComponents
     @Inject lateinit var mediaShell: MediaShell
+    @Inject lateinit var systemShell: SystemShell
 
     override fun onCreate() {
         super.onCreate()
@@ -36,6 +37,8 @@ class AronSRApplication : Application(), Configuration.Provider {
         }
         // Photos (F-SYS-010): every user's queue uploads on its own job, whoever is signed in; no network work here.
         mediaShell.install()
+        // PDA to Support (F-SYS-021): the worker finds the signed-in user's queue; no network work here.
+        systemShell.install()
     }
 
     override val workManagerConfiguration: Configuration
