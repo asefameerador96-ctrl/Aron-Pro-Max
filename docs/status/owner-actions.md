@@ -14,3 +14,4 @@ Only what needs the owner's account, approval or hands (CLAUDE.md rule 7). Newes
 | 8 | before making the repo private | set a GitHub Actions spending limit | private repos meter CI minutes | owner |
 | 9 | 2026-10-10 | review the full-size dev Azure resources kept for a week (docs/28 exception) | cost | infra |
 | 10 | when ready | review the design preview (sent 08:39 UTC) and say what to change; brand colour if AKTCL has one (Q-UI-13) | docs/32 | design |
+| 11 | when the lab phones are on USB | device-owner steps of the geo and device-owner lane (docs/status/device-checks.md, android-geo-dpc section: enrolment on a factory-reset test phone, app blocking, spoofing apps) | N-021/026/029/030/032/034/035 device halves | android-geo-dpc notes, laptop operator |
