@@ -74,11 +74,15 @@ class StoredMemoPrintTotalsTest {
             val qc = if (withDeductions) listOf(QcLineEntity(ClientIds.newUuid(), meta(), visit, memo, true, lines[0].skuId, "torn_pack", "MFC", 1, lines[0].basePriceMtk, lines[0].basePriceMtk)) else emptyList()
             val discount = disc.sumOf { it.valueMtk }
             val qcMtk = qc.sumOf { it.settlementMtk }
-            val net = gross - discount - qcMtk
+            // A DRP discount and a rounding adjustment on the memo row only: a mapper that recomputed net from the lines,
+            // the discount rows or the QC rows would print a different total than the stored one.
+            val drp = if (withDeductions) 1_000L + rnd.nextInt(5_000) else 0L
+            val roundAdj = (rnd.nextInt(999) - 499).toLong().let { if (it == 0L) 7L else it }
+            val net = gross - discount - drp - qcMtk + roundAdj
             val paid = if (rnd.nextBoolean()) net else (net * rnd.nextInt(100) / 100)
             val entity = MemoEntity(
                 memo, meta(), visit, 1L + i, "sr334001-261005-${100 + i}", "sale", "2026-10-05T04:35:00.000Z", "2026-10-05", "outlet",
-                gross, discount, 0, qcMtk, 0, net, paid, net - paid, net - paid > 0, null, lines.size, disc.size, qc.size,
+                gross, discount, drp, qcMtk, roundAdj, net, paid, net - paid, net - paid > 0, null, lines.size, disc.size, qc.size,
             )
             repo.recordSale(SaleCapture(entity, lines, disc, qc))
             stored[memo] = entity
@@ -96,9 +100,10 @@ class StoredMemoPrintTotalsTest {
                 assertEquals(row.dueMtk, mtk(doc.fields.getValue("due")))
                 assertEquals(row.qcDeductionMtk, mtk(doc.fields.getValue("total_qc")))
                 assertEquals(row.offerDiscountMtk + row.drpDiscountMtk, mtk(doc.fields.getValue("total_discount")))
+                assertEquals(row.roundAdjMtk, mtk(doc.fields.getValue("rounding")))
+                assertEquals(db.captureDao().linesOf(m.memoUuid).map { it.grossMtk }, doc.tables.getValue("lines").map { mtk(it.getValue("value")) })
             }
             assertEquals(row.memoNo, print.memoNo)
-            assertEquals(db.captureDao().linesOf(m.memoUuid).map { it.grossMtk }, print.lines.map { it.grossMtk })
         }
     }
 }
