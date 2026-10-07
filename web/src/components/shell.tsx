@@ -8,8 +8,8 @@ import { NavLink } from "./nav-link";
 import { ScopeBadge } from "./scope-badge";
 
 /** Header (identity, scope, language), role-driven menu and content area, shared by the dashboards and the admin portal. */
-export function Shell({ session, locale, children }: { session: SessionData; locale: Locale; children: ReactNode }) {
-  const sections = menuFor(session.user.role);
+export function Shell({ session, locale, children, allowedMenus = null }: { session: SessionData; locale: Locale; children: ReactNode; allowedMenus?: ReadonlySet<string> | null }) {
+  const sections = menuFor(session.user.role, undefined, allowedMenus);
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">

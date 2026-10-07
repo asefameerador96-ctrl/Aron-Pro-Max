@@ -11,6 +11,8 @@ export type MenuGroup = "main" | "reports" | "products" | "admin" | "config";
 
 export interface MenuItem {
   id: string;
+  /** Page-registry id the role x menu x action matrix (cfg.web.menu_by_role) knows this item by; items without one are always shown. */
+  menuId?: string;
   labelKey: MessageKey;
   href: string;
   roles: RoleList;
@@ -43,10 +45,11 @@ export interface MenuSection {
 
 const GROUP_LABEL: Record<MenuGroup, MessageKey> = { main: "menu.group.main", reports: "menu.group.reports", products: "menu.group.products", admin: "menu.group.admin", config: "menu.group.config" };
 
-export function menuFor(role: Role, menu: readonly MenuItem[] = MENU): MenuSection[] {
+/** `allowed`: menu ids the matrix grants this user (view); null = no matrix known, the static role lists decide alone. */
+export function menuFor(role: Role, menu: readonly MenuItem[] = MENU, allowed: ReadonlySet<string> | null = null): MenuSection[] {
   const sections: MenuSection[] = [];
   for (const group of ["main", "reports", "products", "admin", "config"] as const) {
-    const items = menu.filter((m) => m.group === group && m.roles.includes(role));
+    const items = menu.filter((m) => m.group === group && m.roles.includes(role) && (allowed === null || m.menuId === undefined || allowed.has(m.menuId)));
     if (items.length) sections.push({ group, labelKey: GROUP_LABEL[group], items });
   }
   return sections;

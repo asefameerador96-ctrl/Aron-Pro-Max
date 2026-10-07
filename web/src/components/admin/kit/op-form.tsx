@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
 import type { OpKey, TeamOpKey } from "@/lib/admin/ops";
+import { latinDigits, scaledInt } from "@/lib/admin/taka";
 import type { MessageKey } from "@/lib/i18n";
 import { Field, inputClass } from "./field";
 import { ReasonField, REASON_MIN_LENGTH } from "./reason-field";
@@ -26,6 +27,10 @@ export interface OpFieldDef {
   scale?: number;
   /** Smallest allowed value after scaling. */
   min?: number;
+  /** A date field: the earliest allowed date (YYYY-MM-DD). */
+  minDate?: string;
+  /** An `*_id` field that may be 0 (the global scope). */
+  allowZero?: boolean;
   /** An enum whose option values are numbers (sent as numbers). */
   asNumber?: boolean;
   /** A text field whose content must be valid JSON but is sent as the text itself (a template definition string). */
@@ -75,7 +80,17 @@ function fieldMessage(t: ReturnType<typeof useI18n>["t"], code: string): string 
 function toValue(f: OpFieldDef, raw: string): unknown {
   if (f.kind === "checkbox") return raw === "true";
   if (raw.trim() === "") return f.nullable ? null : undefined;
-  if (f.kind === "int") return f.scale || /^-?\d+$/.test(raw.trim()) ? Math.round(Number(raw) * (f.scale ?? 1)) : Symbol.for("invalid-int");
+  if (f.kind === "int") {
+    const text = latinDigits(raw.trim());
+    if (f.scale) {
+      const v = scaledInt(text, f.scale);
+      return v === null || v === 0 ? Symbol.for("invalid-int") : v; // a zero amount changes nothing
+    }
+    const n = /^\d{1,15}$/.test(text) ? Number(text) : NaN;
+    if (!Number.isSafeInteger(n)) return Symbol.for("invalid-int");
+    if (f.name.endsWith("_id") && n < 1 && !f.allowZero) return Symbol.for("invalid-int"); // ids start at 1
+    return n;
+  }
   if (f.kind === "number") return Number(raw);
   if (f.kind === "json") {
     try {
@@ -109,12 +124,14 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
     for (const f of fields) {
       const raw = values[f.name] ?? "";
       if (f.required && f.kind !== "checkbox" && raw.trim() === "") local[f.name] = t("error.field.required");
-      if ((f.kind === "int" || f.kind === "number") && raw.trim() !== "" && !Number.isFinite(Number(raw))) local[f.name] = t("error.field.invalid");
+      if (f.kind === "number" && raw.trim() !== "" && !Number.isFinite(Number(raw))) local[f.name] = t("error.field.invalid");
       const v = toValue(f, raw);
       if (v === Symbol.for("invalid-int")) local[f.name] = t("error.field.invalid");
+      if (f.kind === "int" && raw.trim() !== "" && !f.scale && /^-/.test(raw.trim())) local[f.name] = t("error.field.invalid");
       if (typeof v === "number" && f.min !== undefined && v < f.min) local[f.name] = t("cfgc.error.too_small");
       if (v === Symbol.for("invalid-json")) local[f.name] = t("error.field.invalid");
       if (typeof v === "number" && f.max !== undefined && v > f.max) local[f.name] = t("cfgc.error.too_big");
+      if (f.minDate && raw !== "" && raw < f.minDate) local[f.name] = t("error.field.invalid");
       if (f.jsonString && raw.trim() !== "") {
         try {
           JSON.parse(raw);
@@ -189,6 +206,7 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
               id={`f-${f.name}`}
               name={f.name}
               type={f.kind === "date" ? "date" : "text"}
+              min={f.kind === "date" ? f.minDate : undefined}
               value={values[f.name] ?? ""}
               onChange={(e) => set(f.name, e.target.value)}
               inputMode={f.kind === "int" ? "numeric" : f.kind === "number" ? "decimal" : undefined}
