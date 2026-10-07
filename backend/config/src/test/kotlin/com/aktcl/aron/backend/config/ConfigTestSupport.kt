@@ -27,6 +27,7 @@ object TestTokens {
     }
 
     fun web(userId: Long, role: Role, sv: Long = 1): String {
+        // wall-clock-ok: token validity window against the app guard, which verifies with the system clock
         val now = Instant.now()
         val c = JWTClaimsSet.Builder().issuer("aron").audience("aron-api").subject(userId.toString()).claim("uname", "u$userId")
             .claim("role", role.wire).claim("sv", sv).claim("flv", "web").claim("perm", emptyList<String>()).claim("pii", false)
@@ -38,8 +39,10 @@ object TestTokens {
 
 /** A settable clock that starts at the next 12:00 Asia/Dhaka (outside the C3 freeze windows). */
 class TestClock : AronClock {
+    // wall-clock-ok: TestClock starts near real time because the database stamps committed_at and defaults with now(); tests then move it only through advance()/setDhaka()
     @Volatile var at: Instant = Instant.now().atZone(ZoneId.of("Asia/Dhaka")).let { z ->
         val noon = z.toLocalDate().atTime(12, 0).atZone(z.zone)
+        // wall-clock-ok: same start point as the line above
         (if (noon.toInstant().isAfter(Instant.now())) noon else noon.plusDays(1)).toInstant()
     }
     override fun now(): Instant = at
@@ -63,6 +66,7 @@ class SeededConfigDb : AutoCloseable {
         ids = fresh.db.jdbi.withHandle<Map<String, Long>, Exception> { h -> h.createQuery("SELECT username, id FROM app.app_user").map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap() }
     }
 
+    // wall-clock-ok: principal expiry is only read by the guard on the system clock
     fun principal(username: String, role: Role) = AronPrincipal(ids.getValue(username), username, role, 1, "aron-api", null, null, "web", emptyList(), false, listOf("pwd"), UUID.randomUUID().toString(), Instant.now().plusSeconds(900))
 
     fun one(sql: String): String? = fresh.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery(sql).mapTo(String::class.java).findOne().orElse(null) }

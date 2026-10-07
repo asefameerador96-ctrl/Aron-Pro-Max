@@ -2,6 +2,100 @@
 
 Updated 2026-10-07 (Day 3, afternoon Dhaka; replacement infra session).
 
+## Day 3, 10:00 UTC: three CI blockers for the first INT promotion (lead)
+
+- **APK size baseline regenerated (SR armeabi-v7a +16.1 % on lane/android-core 2e34ef7, run 372).** Measured by
+  building SR release locally on INT 97feb99 and on 2e34ef7 and diffing the APKs (apkanalyzer with the R8 mappings):
+  the universal APK grew 0.63 MB: dex +463 KB compressed (+755 KB uncompressed), the new CameraX native library
+  `libimage_processing_util_jni.so` (+24 KB armeabi-v7a, +33 KB arm64-v8a), nothing else above 5 KB. Of the dex growth,
+  `androidx.camera` (camera-core, camera-camera2 with its CameraPipe backend, camera-view; F-SYS-030 still capture) is
+  +658 KB (87 %), `androidx.exifinterface` +34 KB, our own code +93 KB (`core.media` +47 KB, `core.database` +24 KB),
+  the rest under 21 KB each. One CameraX backend artifact is declared (no camera-video, no duplicates); no unshrunk
+  library, no font or asset growth. Explained by approved code, so the baseline is reset to the CI sizes of 2e34ef7
+  (MB to two decimals from the run 372 size table, times 2^20). SR armeabi-v7a is now 4.37 MB against the 30 MB
+  budget (docs/31). The +15 % fail and +5 % warn rules are unchanged.
+- **Container images red on f1db789:** fixed in f9429de (`infra/scripts/fetch-ai-agent.sh`, see the commit).
+- **Web red on 7b0b015, 8afb986, 3828ab0:** flaky e2e in `web/e2e/config-journeys.spec.ts` (lines 26 and 112), no web or
+  contract change on those heads; routed to web-config via the lead.
+
+## Day 3, 08:45 UTC (fourth infra session): CI audit items 2 to 6, drill polling, enrolment settings
+
+- **Last green INT run (audit item 2):** `tools/ci/last-green-int.sh` prints one line (run number, sha, finish time,
+  age in minutes, INT head verdict); exit 3 when INT has had no green run for more than 30 minutes
+  (`LAST_GREEN_ALERT_MIN`). Every ci run writes the line to its summary (step in "Detect changed areas", never fails).
+  First reading, 08:40 UTC: **last green INT run #163 0c63e39 finished 04:57 UTC, 221 min ago; INT head 97feb99: failure.**
+- **Train candidates (item 3), verified in ci.yml:** the concurrency group is per ref, and each candidate has its own ref
+  `lane/train-<time>`, so no lane push can replace a candidate run; only a newer push to the SAME candidate ref replaces
+  its pending run. A candidate cancelled while pending is re-run by `workflow_dispatch` on that ref (no inputs; the
+  changes job then runs everything). The deploy never starts from a candidate (it needs a push run on INT).
+- **Gate jobs folded (item 4):** the "Contract lint" job is now three steps of "Repository gates (secrets, migrations,
+  contract)" (same `changes.contract` condition). "Detect changed areas" stays separate: every job fans out from it,
+  so folding it into the gates job would make all jobs wait for the gates. `tools/github-governance.ps1` drops the
+  required check "Contract lint" in the same commit (a test now asserts every ci job is a required check and no
+  required check lacks a job). **Lead: main's live protection still lists "Contract lint"; the laptop operator re-runs
+  the protection step of the governance script before the first gate pull request, or that PR waits forever.**
+- **Dependabot (item 5):** no major bump is proposed in any ecosystem (gradle, npm, actions, docker); the Kotlin, AGP and
+  KSP lines stay held entirely.
+- **Local Android builds and HTTP 429 (item 6), measured in this lane container 06:43 to 06:48 UTC:** single requests to
+  repo.maven.apache.org, the Google mirror of Central, dl.google.com (Google Maven: AndroidX, AGP), plugins.gradle.org,
+  services.gradle.org and Robolectric android-all on Central all answered 200. A cold build (empty Gradle cache, fresh
+  SDK via `tools/android-sdk.sh` in 26 s) of `:android:feature-memo:testDebugUnitTest :android:core-ui:testDebugUnitTest`
+  passed in 5 min 20 s with no 429. **What can still 429:** only Maven Central itself (repo1/repo.maven.apache.org) under
+  bursts from the shared lane IP. Gradle tries the mirror first (settings.gradle.kts); Google Maven is not mirrored and
+  did not rate-limit. Robolectric fetched its android-all jars from Central directly (outside Gradle), so it had no
+  mirror: **fixed** in build.gradle.kts (`robolectric.dependency.repo.url` = the mirror in lane containers; CI keeps
+  Central). Both android-all jars (API 34 and 36, 150 and 213 MB) came through the mirror. So the status lines "local
+  Gradle is unusable / CI is the compiler" in android-core-ui, android-sr-a and android-sr-b are stale: local compile and
+  Robolectric tests work (first run downloads about 1 GB; later runs are cached).
+- **Drill polling (lead item):** `infra/scripts/drill.sh failover` probes readiness in the background every 5 s from
+  BEFORE the Azure call; the summary separates the call duration ("NOT the outage") from the user-visible outage (first
+  failed probe to ready again) and fails when the api never comes back or fails again. Behavioural test with stub az
+  and curl (`check_infra.py Drills`). RB-02 updated. Restore drill: still waiting for "owner approved restore drill".
+- **Device enrolment settings (lead #3, N-031):** the api gets `ARON_PUBLIC_API_URL` (Front Door https URL; without Front
+  Door the api's own Container Apps address) and `ARON_ATTESTATION_ROOTS` (comma list) on every deploy, in every profile
+  (dev, dev-lite, stage, prod) from `infra/params/attestation-roots.json` (default of the `attestationRootsSha256`
+  parameter; a profile may override). Source:
+  https://developer.android.com/privacy-and-security/security-key-attestation#root_certificate , retrieved 2026-10-07:
+  SHA-256 of each root certificate DER, the two current roots (RSA to 2042, ECDSA "Key Attestation CA1" to 2035) plus the
+  two earlier roots still valid (to 2034 and 2036); the earlier root that expired 2026-05-24 is left out.
+- **INT red (audit priority):** INT run 346 (97feb99) fails only "Android debug APKs, unit tests and lint"; reproducing
+  locally to name the failing task and owner.
+
+## Day 3 late (06:45 UTC): failover drill measured, process change, handoff
+
+**Forced failover drill, dev, 2026-10-07 06:27 UTC (lead approved; run 37581596131):** primary zone 1 -> 2. The Azure
+`restart --failover Forced` call took 429 s to return. Independent probe through Front Door every 5 to 8 s:
+06:27:49 ready 200; 06:27:57 ready 503 (liveness 200); 06:28:06 both timed out; from 06:28:27 both 200 again. So the
+**user-visible outage was about 30 s** and the api reconnected on its own (no revision restart). Caveat: drill.sh
+polls readiness only after the Azure call returns, so its "430 s" line overstates the outage: next session, poll in the
+background during the call (small fix in infra/scripts/drill.sh). RB-02 gets the measured figure.
+Restore drill: waits for the owner's yes, relayed by the lead as "owner approved restore drill".
+
+**Process change (lead, 06:30 UTC, docs/26 s3):** push only to `lane/infra`; the integrator promotes green lane heads
+via `lane/train-*` to INT. First lane/infra push: deploy concurrency moved to the job (CI audit s5 item 5).
+
+**Next session, in order (lead's CI-audit list, then rows):**
+1. Done: deploy concurrency on the job (lane/infra). Verify after promotion that a red ci run no longer replaces a
+   waiting green deploy.
+2. `tools/ci/last-green-int.sh` (last green INT run and its age, for the evening report) plus a summary line on every
+   ci run; alert idea: INT without a green run for 30 min.
+3. ci.yml: `lane/train-*` candidate runs never replaced by lane pushes (one group per ref does it; verify) and a
+   cancelled pending candidate can be re-dispatched (workflow_dispatch exists; verify inputs).
+4. Fold the three tiny gate jobs into one (keep the required-check names in tools/github-governance.ps1 in step; tell
+   the lead if a name changes).
+5. Dependabot: ignore major bumps of eslint and of any package failing CI today.
+6. Android local compile: confirm the committed Maven mirror covers Google Maven, AndroidX/AGP and Robolectric
+   android-all, or document what still 429s; update the stale lines in core-ui and sr-b status (via the lead).
+7. Checker on storage CORS and the Semgrep lane base: CORS confirmed working (headers match the web upload code);
+   Semgrep override limited to lane pushes (PRs and main keep the gate base), pushed. Custom domain later: add to uploadOrigins.
+8. Switch `dbPerAppLogins` to true when db says the DELETE-grant migration is on INT; watch the first deploy.
+9. Flip the wall-clock scan to `--blocking` on 2026-10-09 (lead routes the 14 offenders).
+10. Rows: N-062 observability, N-057 (prod-only parameters), N-064 release candidate (Day 7); seeded-failure proof of
+    the REL-04 alerts; drill.sh background polling.
+**Not yet proven on Azure** (INT deploys were skipped while INT was red): deploy by digest, the dblogins job and psql
+import, the health gate with build check, the new alerts, storage CORS. The first green INT deploy proves them; read
+its summary.
+
 ## Day 3 afternoon (replacement session): deploy safety, supply-chain gates, per-app database logins
 
 Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pending findings; all fixed or noted):

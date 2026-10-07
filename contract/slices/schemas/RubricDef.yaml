@@ -44,5 +44,12 @@ RubricDef:
             - score_1_5
             - text
             - bool
+            description: The one rubric answer type enum for read and write; `score_1_5` is a score from 1 to 5.
+              `RubricWrite` also accepts the older spelling `stars_1_5` of the same type (docs/24 s14a R20).
           enabled:
             type: boolean
+          key:
+            type: string
+            pattern: ^[a-z][a-z0-9_]{1,40}$
+            description: Stable key of the criterion (the `key` of `RubricWrite`), returned on the admin read (`RubricAdmin`)
+              so a definition round-trips into the write (docs/24 s14a R20); the bundle may omit it.

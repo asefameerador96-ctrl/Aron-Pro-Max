@@ -30,6 +30,7 @@ class AdminUsersRoutesTest {
 
     /** docs/19 `cfg.auth.temp_password_ttl_h` defaults to 24 hours (F-TSO-023). */
     private fun assertTtl24h(at: String) {
+        // wall-clock-ok: the app under test runs on AronClock.SYSTEM; compares its expiry to now within 2 minutes (elapsed, not date-dependent)
         val h = java.time.Duration.between(java.time.Instant.now(), java.time.Instant.parse(at)).toMinutes()
         assertTrue(h in 24 * 60 - 2..24 * 60, "temporary password lives 24 h, got $h min")
     }

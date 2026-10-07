@@ -59,6 +59,8 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
     override fun current(userId: Long): Long? = gate(userId).sv
 
     override fun mustChangePassword(userId: Long): Boolean = gate(userId).mustChange
+
+    override fun invalidate(userId: Long) { gateCache.remove(userId) }
 }
 
 /** Refresh families and hashed tokens; rotation is atomic (the unused-token update and the child insert commit together). */
@@ -124,6 +126,19 @@ class JdbiRefreshStore(private val db: Database) : RefreshStore {
         db.jdbi.useHandle<Exception> { h ->
             h.createUpdate("UPDATE app.refresh_family SET revoked_at = :at, revoke_reason = :r WHERE id = :f AND revoked_at IS NULL")
                 .bind("at", at.odt()).bind("r", reason).bind("f", familyId).execute()
+        }
+    }
+
+    override fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String) {
+        if (deviceId == null && deviceUuid == null) return
+        db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                """
+                UPDATE app.refresh_family SET revoked_at = :at, revoke_reason = :r
+                WHERE user_id = :u AND grant_kind = :g AND revoked_at IS NULL
+                  AND (device_id = CAST(:d AS bigint) OR device_uuid = CAST(:du AS uuid))
+                """.trimIndent(),
+            ).bind("at", at.odt()).bind("r", reason).bind("u", userId).bind("g", grant.wire).bind("d", deviceId).bind("du", deviceUuid).execute()
         }
     }
 

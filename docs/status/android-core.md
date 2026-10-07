@@ -1,4 +1,4 @@
-# Status: lane android-core (Day 2)
+# Status: lane android-core (Day 3)
 
 ## Done (builder, then an independent checker per row; every confirmed defect fixed with a test)
 - **N-001** Native build and the three app shells. `:android:app-{sr,amo,tso}:assembleDebug` gives `com.aktcl.aron.sr/.amo/.tso`.
@@ -77,6 +77,47 @@
 - **Print** (android-print request s1): `RoomPrintLedger(db, envelope = { base -> CaptureMeta })` implements `PrintLedger`.
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
+
+## Fourth session (2026-10-07, from ~09:30Z)
+- **android-sys app-shell wiring** (docs/requests/android-sys-app-wiring.md items 1, 2, 6; android-sys-logout-wiring.md shell part):
+  - core-sync `shell/MediaShell` (Hilt singleton in all three shells): `install()` in Application.onCreate sets `MediaRuntime.wiring` (every known user, that user's upload grant, `OutboxRecordProbe` over the outbox plus `CaptureDao.photoOwnerExists`, `media_meta` sink -> `recordMediaMeta`; a fix row not on the phone goes as `fix: null`) and asks once for an upload; `cfg.media.*` read from the user's bundle; `wifiOnly` (WifiOnlySetting) and `scheduler` on the trusted clock; `afterSync(report)` asks for an upload when a sync run acked rows (`SessionSyncRunner(afterRun = ...)`).
+  - app-sr: `SrDay.attachMedia(mediaShell.componentsFor(userId, ::businessDate))` (camera, `MediaPhotoPipeline` replacing `NoCameraPipeline`, `resume()`); `CameraCaptureOverlay` drawn above the screens; photos are claimed (`attach`) before the visit (force_sale) and the outlet request (outlet_capture) commit, with the stored fix uuid. The Force Sale shot reused by its location request stays with the visit.
+  - Logout: core-sync `shell/ShellLogout.flow(role, userId)` (LogoutFlow + DatabaseLogoutPorts); SR keeps its confirmation and calls `logout()`; AMO and TSO use `check()`, `UnsentItemsDialog` and a toast for `WipeIncomplete`.
+  - `SessionComponents.okHttp` is public (the media blob client derives from it).
+  - Permission gates: app-sr already had them (android-sr-a). AMO/TSO shells are still the home placeholder: no attendance/sale screens to gate yet.
+  - **Still open:** updater (item 4), PDA to Support tile (item 5, waits on the support key), Wi-Fi-only row in Settings (needs a slot in feature-home `SettingsContent`, android-sr-a).
+- **Checker round on ec28160 and 3926bd6f** (fresh Opus): 1 confirmed, 1 plausible, both fixed with tests:
+  - A delta that got no answer (offline, 503, 401, failure) no longer spends the server version (`BundleDownloader.ANSWERED`; `BundleDownloaderTest.anUnansweredDeltaIsTriedAgainAfterTheNextSyncRun`).
+  - `UserDatabases.close` now blocks `of()` for that user until `allowOpen` (ShellLogout calls it when the logout ends), so a worker cannot reopen and cache a database whose files are being deleted (`CheckerUserDatabasesCloseTest`).
+- **Checker round 1 on the wiring** (fresh Opus): 2 confirmed, 4 plausible; fixed:
+  - the media worker no longer opens every user's database (`MediaStore` makes its folder when built: `MediaShell.hasQueue` looks first);
+  - logout never crashes the app (a failed count or a second tap shows `logout_failed`);
+  - a queued sync of a wiped TSO user creates no database (`UserDatabases.exists`, checked by `SessionSyncRunner`);
+  - an answered but refused delta (4xx, unreadable) spends the version again; only offline, 401, 429, 503 and 5xx do not (`BundleDownloader.spendsVersion`);
+  - an outlet request retried after a failed commit keeps one fix uuid, so the photo's stamp names the stored fix;
+  - photo file I/O off the main thread (resume, claim, unsent count, install).
+  - Not changed: the Force Sale photo's stamp is the visit's stored fix (the contract's `media_meta.fix` is a stored row); the shutter fix travels in the location request.
+- **INT red job (lead #4)**: `core-media/consumer-rules.pro`; ACCESS_NETWORK_STATE in core-sync and core-system manifests; core-sync lint also needed `AndroidDevice` `isLocationEnabled` behind API 28 (providers below). `:android:core-sync:lintDebug :android:core-system:lintDebug :android:core-media:mergeDebugConsumerProguardFiles` pass locally.
+- **Integrator red on 2e34ef70, fixed:** (1) core-media's `theRecordSyncNeverWaitsForPhotos` forbids core-sync from linking core-media: `MediaShell` moved to app-sr (only app with a camera), `ShellLogout` takes the photo count and upload as lambdas; AMO/TSO no longer link core-media. (2) SR release +16.1 % (armeabi-v7a) is the CameraX camera itself: `docs/requests/android-core-apk-baseline.md` asks infra to refresh the SR baseline.
+- **Next:** updater (item 4), support tile (item 5, waits on the key), the Wi-Fi-only row (needs a slot in feature-home Settings, android-sr-a), then the requests naming android-core and `my-rows.py android-core --todo`.
+
+## Handover (READY TO RECYCLE, 2026-10-07 ~08:45Z, third session)
+- **Done this session** (each with independent Opus checkers; every confirmed defect is a test):
+  - **DTO stubs removed** (one checker round, no defects): auth, bundle head parts, the SR record payloads, Route/RouteSnapshot/BundleOutlet/Sku/SkuPrice, ResolvedConfigValue, TimeAnchor come from `com.aktcl.aron.contract.*`. Kept local: `BundleHead`, `LoginStatus`, `Grant`, the lenient `Problem` reader (an error body must still map to a code), the v3 payloads, `MediaMetaPayload`, `ConfigSection`/`ConfigDeltaWire`, `DeviceNonceDto` (not generated). Wire change: null `distance_m`/`outlet_lat`/`outlet_lng` are now left out of `geo` (optional in the contract).
+  - **Geo/integrity/DPC wiring** (docs/requests/android-geo-dpc-wiring.md; three checker rounds): core-sync `device/DeviceRuntime` (Hilt singleton in all three shells) builds the FixManager (`cfg.geo.*` via `DayConfig`, `integrity_ref`), configures the DPC (trusted clock, bundle calendar incl. `calendar_changes`, server `DayPlan` precedence) and re-applies off the main thread after loading the active user's calendar; `DeviceStatusReporter` runs in the sync worker before each batch: `integrity_change` reports (root_hints, R13/R18) and Play Integrity evidence at login (`SessionRepository.onlineLogins`), check-in (`check_in` trigger) and every `cfg.device.integrity_refresh_h`, marker when none (R12), 25 s deadline, never for Sales Submit/Sync button/check-out runs, never queued behind another run; `KeystoreProofSigner` (X-Device-Proof once enrolled); `aron.playIntegrityProjectNumber` build property (0 = not_configured, no network).
+  - **R9 binding**: `ResumeConfigCheck` provided; app-sr binds VisitFlow's `ConfigCheck` as a launch (never awaited) and runs it on resume.
+  - **F-SYS-009** (three checker rounds): `ReconciliationRepository` (core-database): `device_counts`, `deviceMoney` with the server's `IngestService.money` definitions (refused/quarantined rows out, refused edits retire nothing), rows from `cfg.sync.reconcile_types` (flat R17 or nested), states MATCH/MISMATCH/NO_SERVER_YET, reasons NOT_SENT/AWAITING_SERVER/SERVER_HAS_FEWER/SERVER_HAS_MORE for rows and money. Every batch carries `device_money`. **For android-sr-b (F-SR-034):** render `ReconRow.reason`/`MoneyCheck.reason` as text, Server column blank with `deviceAsOf` when `server == null`; build `day_submit` with `deviceCountsJson(date)` / `deviceMoney(date)`.
+  - **F-SYS-007** (one checker round, fixed): `ReferenceRepository.applyBundleDelta` (one transaction, open memos follow moved outlets, resolutions stashed with the cursor), `SyncApi.bundleDelta`, `BundleDownloader.refreshDelta/refreshIfServerNewer/refreshOnForeground`; triggers: after a fully answered sync run when the server's bundle is newer (once per version), on foreground per `cfg.bundle.delta_min_interval_min` (app-sr). The phone never marks a login on a delta (s4.9 lets the server count it: the server lane decides).
+  - **android-sys requests**: `CaptureRepository.recordMediaMeta` (media-meta), `UserDatabases.close`, `SessionRepository.forgetUser` (logout core parts).
+- **Next** (in this order):
+  1. android-sys app-shell wiring: docs/requests/android-sys-app-wiring.md (MediaRuntime in each Application, `mediaScheduler.requestUpload()` after a sync run that acked rows, `MediaMetaSink` -> `recordMediaMeta`, updater, support tile) and the shell part of android-sys-logout-wiring.md (`LogoutFlow` in the three shells). Not yet re-checked by a checker: commit ec28160 (media-meta, close, forgetUser) and the F-SYS-007/F-SYS-009 fix commit 3926bd6f; give both one more checker round.
+  2. Open checker notes not fixed (judged low value or another lane's): FCM delta nudge not wired (N-038); AMO/TSO have no foreground delta trigger; a background delta does not reload SrDay (sr-a); `targets`/`achievement_mtd` delta sections ignored (deferred, docs/27); templates replaced by `kind` only; `ReferenceRepository.apply` clears `calendar_changes` even when it keeps a newer delta config; `retry_exhausted` rows read SERVER_HAS_FEWER; `DpcBootReceiver.reapply` may run once before the calendar loads.
+  3. Then `my-rows.py android-core --todo` in day order (F-SYS-052, F-SYS-072, N-038, AUD-*).
+- **Traps found this session:**
+  15. A fresh container has no Android SDK: run `tools/android-sdk.sh` and write `sdk.dir=/opt/android-sdk` to `local.properties` (git-ignored).
+  16. Push only to `lane/android-core` (lead #3, docs/26 s3); the integrator promotes to INT.
+  17. `kotlinx.coroutines.async` called by its full name inside `runBlocking` resolves to the deprecated top-level function: import it.
+  18. The generated DTOs are strict: hand-written bundle fixtures need every required member (Route `updated_at`, `version`).
 
 ## Handover (READY TO RECYCLE, 2026-10-07 ~06:55Z, second session)
 - **Done this session:**
@@ -235,6 +276,9 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
 - **AC-16:** a memo number is reserved in its own transaction before the sale is written (the row's "a failed save burns a number"), where docs/24 s7.5 says "the same transaction"; a number is therefore never handed out twice even if a failed save was printed.
 - **AC-17:** the resume config check is capped at 24 requests per business date; docs/24 names a daily cap but the s9.5 registry has no key for it.
 - **AC-14:** the save debounce is "5 s after the first save of a burst" (`ExistingWorkPolicy.KEEP`), not "5 s of quiet": REPLACE would cancel a running upload on every save.
+- **AC-18:** the lenient `Problem` reader stays local (the contract `Problem` requires `request_id` etc.; a strict parse would turn an edge or older server's error into MALFORMED instead of its code).
+- **AC-19:** `device_status` goes only as an outbox record from the sync worker (D24-53), not also by `POST /v1/devices/me/status`; the report rides the batch that the worker is about to send.
+- **AC-20:** device-wide integrity evidence rides whichever user's run comes first on a shared phone (the report describes the phone, not the user).
 - **AC-12:** ownership. Per the lead's Day-1 notes, android-core owns the three app shells' build wiring. The Day-1 login screen in feature-auth and the home placeholder in feature-home were built here because N-001 needs them and android-sr had no Day-1 rows. android-sr takes them over from Day 2 (F-SR-001, F-SR-008).
 
 ## Requests filed
