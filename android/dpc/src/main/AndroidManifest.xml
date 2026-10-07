@@ -30,5 +30,9 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- Releases blocked apps at the hard end time (N-032); only the app's own PendingIntent reaches it. -->
+        <receiver
+            android:name="com.aktcl.aron.dpc.blocking.HardEndReceiver"
+            android:exported="false" />
     </application>
 </manifest>
