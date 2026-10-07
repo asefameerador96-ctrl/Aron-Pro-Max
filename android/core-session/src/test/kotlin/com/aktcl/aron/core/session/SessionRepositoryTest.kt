@@ -47,12 +47,12 @@ class SessionRepositoryTest {
     @Before fun setUp() { server = MockWebServer(); server.start() }
     @After fun tearDown() { server.close() }
 
-    private inner class Phone(storage: File = tmp.root) {
+    private inner class Phone(storage: File = tmp.root, d: DispatcherProvider = dispatchers, c: SecretCipher = cipher) {
         val identity = DeviceIdentity(storage)
         private val holder = Holder()
         val api = AronApiClient(ApiOrigin.parse(server.url("/").toString(), true), AronApiClient.defaultOkHttp(), ClientIdentity("0.1.0+1") { identity.deviceUuid }, holder)
-        val store = SessionStore(File(storage, "session"), cipher)
-        val session = SessionRepository(AuthApi(api), store, verifier, identity, "app_sr", clock, OfflineUnlockPolicy(), dispatchers).also { holder.target = it }
+        val store = SessionStore(File(storage, "session"), c)
+        val session = SessionRepository(AuthApi(api), store, verifier, identity, "app_sr", clock, OfflineUnlockPolicy(), d).also { holder.target = it }
         val sync = SyncApi(api)
     }
 
@@ -79,6 +79,64 @@ class SessionRepositoryTest {
     private suspend fun Phone.loginOnline(password: String = "secret-1"): LoginOutcome {
         server.enqueue(api(200, loginOk))
         return session.login(" SR334001 ", password)
+    }
+
+    /** Holds the first task dispatched (the repository's background restore) and runs everything else in place. */
+    private class HoldFirst : CoroutineDispatcher() {
+        var held: Runnable? = null
+        var threadOfFirst: Thread? = null
+        override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+            if (threadOfFirst == null) { threadOfFirst = Thread.currentThread(); held = block } else block.run()
+        }
+        fun release() { held?.run(); held = null }
+    }
+
+    private fun holding(d: HoldFirst) = object : DispatcherProvider {
+        override val io: CoroutineDispatcher = d
+        override val default: CoroutineDispatcher = d
+    }
+
+    @Test
+    fun audPerf05_theRestoreIsNotDoneByTheConstructorButBehindRestoring() = runTest {
+        Phone().loginOnline()
+        val hold = HoldFirst()
+        val relaunched = Phone(d = holding(hold))
+        assertEquals("the constructor (main thread under Hilt) restores nothing", SessionState.Restoring, relaunched.session.state.value)
+        assertTrue("the restore was handed to the IO dispatcher", hold.held != null)
+        hold.release()
+        assertEquals(1001L, (relaunched.session.state.value as SessionState.Active).user.userId)
+    }
+
+    @Test
+    fun audPerf05_settledNeverAnswersRestoringAndALaterRestoreNeverOverwritesALogout() = runTest {
+        Phone().loginOnline()
+        val hold = HoldFirst()
+        val relaunched = Phone(d = holding(hold))
+        assertTrue(relaunched.session.settled() is SessionState.Active)
+        relaunched.logoutOnline()
+        hold.release() // the background restore arrives late
+        assertEquals(SessionState.LoggedOut, relaunched.session.state.value)
+    }
+
+    @Test
+    fun audPerf05_aLoginWhileRestoringIsKeptAndTheTokenIsReadyForTheNetworkThread() = runTest {
+        val hold = HoldFirst()
+        val phone = Phone(d = holding(hold))
+        assertTrue(phone.loginOnline() is LoginOutcome.LoggedIn)
+        hold.release()
+        assertTrue(phone.session.state.value is SessionState.Active)
+        assertEquals(contractAccessToken, phone.session.currentAccessToken(Grant.FULL))
+    }
+
+    @Test
+    fun audPerf05_aKeystoreFailureAtRestoreLeavesTheUserSignedOutNeverACrash() = runTest {
+        Phone().loginOnline()
+        val broken = object : SecretCipher {
+            override fun encrypt(plain: ByteArray) = cipher.encrypt(plain)
+            override fun decrypt(blob: ByteArray): ByteArray = throw java.security.GeneralSecurityException("keystore")
+        }
+        val relaunched = Phone(c = broken)
+        assertEquals(SessionState.LoggedOut, relaunched.session.settled())
     }
 
     @Test
@@ -150,6 +208,44 @@ class SessionRepositoryTest {
         phone.session.logout()
         clock.now += 1
         assertEquals(OfflineRefusal.EXPIRED, (phone.session.login("sr334001", "secret-1") as LoginOutcome.OfflineUnavailable).refusal)
+    }
+
+    /**
+     * F-SYS-052 checker: rebooting every morning and setting the date back to just after the last unlock used to keep the
+     * 7-day window open forever. The uptime of each boot now counts, so the window closes after 7 days of use.
+     */
+    @Test
+    fun rebootingAndSettingTheDateBackEveryDayCannotStretchTheOfflineWindow() = runTest {
+        val loginAt = clock.now
+        clock.elapsed = 3_600_000L; clock.boot = 5
+        val phone = Phone()
+        phone.loginOnline("secret-1")
+        phone.logoutOnline()
+        server.close()
+        var outcome: LoginOutcome? = null
+        for (day in 1..9) {
+            clock.boot += 1                         // reboot
+            clock.now = loginAt + day * 60_000L      // the date set back to just after the last unlock
+            clock.elapsed = 20 * 3_600_000L          // a 20-hour field day of uptime before the next unlock
+            outcome = phone.session.login("sr334001", "secret-1")
+            if (outcome is LoginOutcome.OfflineUnavailable) break
+            phone.session.noteTimePassing()
+            phone.session.logout()
+        }
+        // 9 days of 20 h is 180 h > 168 h: refused by day 9 at the latest, never open for good.
+        assertEquals(OfflineRefusal.EXPIRED, (outcome as LoginOutcome.OfflineUnavailable).refusal)
+    }
+
+    @Test
+    fun anHonestDayOfUseWithRebootsStaysInsideTheWindow() = runTest {
+        clock.elapsed = 1_000L; clock.boot = 1
+        val phone = Phone()
+        phone.loginOnline("secret-1")
+        phone.logoutOnline()
+        server.close()
+        // Two days later, after a reboot, with a true clock: still unlocks (uptime and date agree well within 7 days).
+        clock.now += 2 * 86_400_000L; clock.boot = 2; clock.elapsed = 5 * 3_600_000L
+        assertTrue(phone.session.login("sr334001", "secret-1") is LoginOutcome.LoggedIn)
     }
 
     @Test
@@ -303,6 +399,32 @@ class SessionRepositoryTest {
         assertTrue(phone.store.tokens(1001).refreshToken != null)
         server.close()
         assertTrue(phone.session.login("sr334001", "secret-1") is LoginOutcome.LoggedIn)
+    }
+
+    /**
+     * F-SYS-052: with user B signed in on the shared phone, A's rows still upload under A's own grant: the upload refresh
+     * for A sends A's upload refresh token, stores A's new upload token under A only, and leaves B's session untouched.
+     */
+    @Test
+    fun whileBIsSignedInAsRowsGetAnUploadTokenOfAOnly() = runTest {
+        val phone = Phone()
+        phone.loginOnline("secret-1")
+        val uploadRefreshOfA = Json.parseToJsonElement(loginOk).jsonObject["upload_refresh_token"]!!.jsonPrimitive.content
+        val second = loginOk.replace("\"user_id\":1001", "\"user_id\":1002").replace("sr334001", "sr334002")
+            .replace(contractAccessToken, "access-of-1002").replace(uploadRefreshOfA, "u".repeat(43))
+        server.enqueue(api(200, second))
+        assertTrue(phone.session.login("sr334002", "secret-2") is LoginOutcome.LoggedIn)
+        server.enqueue(api(200, tokenPair("upload-of-1001", "v".repeat(43))))
+        assertTrue(phone.session.refresh(1001, Grant.UPLOAD))
+        var refresh = server.takeRequest()
+        while (refresh.url.encodedPath != "/v1/auth/refresh") refresh = server.takeRequest() // the two logins first
+        val body = Json.parseToJsonElement(refresh.body!!.utf8()).jsonObject
+        assertEquals("upload", body["grant"]!!.jsonPrimitive.content)
+        assertEquals(uploadRefreshOfA, body["refresh_token"]!!.jsonPrimitive.content)
+        assertEquals("upload-of-1001", phone.session.uploadAccessToken(1001))
+        assertEquals(null, phone.session.uploadAccessToken(1002))
+        assertEquals("access-of-1002", phone.session.currentAccessToken(Grant.FULL))
+        assertEquals(1002L, (phone.session.state.value as SessionState.Active).user.userId)
     }
 
     @Test

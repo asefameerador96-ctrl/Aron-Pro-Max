@@ -66,6 +66,10 @@ abstract class OutboxDao {
     @Query("UPDATE outbox SET state = 'in_flight', batch_uuid = :batchUuid WHERE seq IN (:seqs) AND state = 'pending'")
     abstract suspend fun markInFlight(batchUuid: String, seqs: List<Long>): Int
 
+    /** F-SYS-072: stores a record's `sig` once; a row already signed keeps its first signature (retries must be identical). */
+    @Query("UPDATE outbox SET sig = :sig WHERE seq = :seq AND sig IS NULL")
+    abstract suspend fun setSig(seq: Long, sig: String): Int
+
     @Query("UPDATE outbox SET state = 'pending', batch_uuid = NULL, last_code = :lastCode WHERE batch_uuid = :batchUuid AND state = 'in_flight'")
     abstract suspend fun returnToPending(batchUuid: String, lastCode: String?): Int
 
@@ -87,6 +91,22 @@ abstract class OutboxDao {
     )
     protected abstract suspend fun applyAckUnchecked(clientUuid: String, state: String, code: String?, serverId: Long?, at: String): Int
 
+    /**
+     * F-SYS-072 release (BC-53; bounded rounds in SyncEngine): rows the server quarantined with [code] (`device_integrity_failed`, from the time
+     * it quarantined every unsigned or badly signed header) go back to pending with the same client_uuid, payload and sig,
+     * so the server's registry answers them by uuid (released, or duplicate) and nothing is stored twice. `last_code` is
+     * kept, so the signer never signs a row that already went out. Returns the rows released.
+     */
+    @Query("UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0 WHERE state = 'quarantined' AND last_code = :code")
+    abstract suspend fun releaseQuarantined(code: String): Int
+
+    @Query("SELECT COUNT(*) FROM outbox WHERE state = 'quarantined' AND last_code = :code")
+    abstract suspend fun countQuarantined(code: String): Int
+
+    /** Rows carrying [code] in any state that is not final-acked: quarantined, or released and pending / in flight. */
+    @Query("SELECT COUNT(*) FROM outbox WHERE state IN ('quarantined', 'pending', 'in_flight') AND last_code = :code")
+    abstract suspend fun countWithCode(code: String): Int
+
     /** Committed rows per record type for a business date: the device side of reconciliation (s4.12). */
     @Query("SELECT record_type AS recordType, COUNT(*) AS count FROM outbox WHERE business_date = :businessDate GROUP BY record_type ORDER BY record_type")
     abstract suspend fun committedCounts(businessDate: String): List<TypeCount>
@@ -102,10 +122,6 @@ abstract class OutboxDao {
     /** When the server last answered a row of this type and date (null when none is answered). */
     @Query("SELECT MAX(acked_at) FROM outbox WHERE business_date = :businessDate AND record_type = :recordType AND acked_at IS NOT NULL")
     abstract suspend fun lastAckedAt(businessDate: String, recordType: String): String?
-
-    /** Acked rows are kept 7 days for reconciliation and reprint, then purged (s4.5); unacked rows are never deleted. */
-    @Query("DELETE FROM outbox WHERE state = 'acked' AND acked_at IS NOT NULL AND acked_at < :before")
-    abstract suspend fun purgeAckedBefore(before: String): Int
 
     /** Rows per state, for the support file (F-SYS-021 / F-SR-006). */
     @Query("SELECT state AS recordType, COUNT(*) AS count FROM outbox GROUP BY state")

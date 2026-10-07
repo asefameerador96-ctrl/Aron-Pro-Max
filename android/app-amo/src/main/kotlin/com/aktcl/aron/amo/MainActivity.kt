@@ -47,11 +47,37 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var components: SessionComponents
     @Inject lateinit var shellLogout: ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+    @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
+    @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
+    @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
+    @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
+    @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
+    private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
     override fun onResume() {
         super.onResume()
         lifecycleScope.launch { updateShell.check(atLogin = false) }
+        pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
+        lifecycleScope.launch { components.session.noteTimePassing() } // F-SYS-052: the offline window counts real uptime
+        lifecycleScope.launch { // F-SYS-024: today's sampling, then the app-open event
+            val id = (components.session.settled() as? SessionState.Active)?.user?.userId ?: return@launch
+            activityLog.refreshSampling(id)
+            activityLog.log(id, "app", "open")
+            // F-SYS-029: the cache cap from the user's bundle (cfg.app.image_cache_mb)
+            runCatching {
+                val db = databases.of(id)
+                com.aktcl.aron.core.sync.SessionSyncRunner.configInt(com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(com.aktcl.aron.core.sync.ImageCache.CFG_CAP_MB, com.aktcl.aron.core.sync.SyncEngine.iso(components.trustedClock.nowMs())))
+            }.getOrNull()?.let { imageCache.setCapMb(it) }
+        }
+    }
+
+    /** F-SYS-024: the buffered events become one outbox row when the app leaves the screen (they ride the next upload). */
+    override fun onStop() {
+        super.onStop()
+        val id = (components.session.state.value as? SessionState.Active)?.user?.userId ?: return
+        activityLog.log(id, "app", "close")
+        activityLog.flushSoon(id) // the log's own scope: onDestroy right after must not cancel the write
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -68,6 +94,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
+                        SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore
                         SessionState.LoggedOut -> {
                             val vm = viewModel { LoginViewModel(components.session::login) }
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect)
@@ -99,6 +126,14 @@ class MainActivity : ComponentActivity() {
                             val vm = viewModel(key = "home-" + s.user.userId) {
                                 HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
                             }
+                            // F-SYS-075: the location notice first.
+                            com.aktcl.aron.feature.auth.LocationNoticeGate(
+                                key = s.user.userId,
+                                load = { locationNotice.state(s.user.userId).let { com.aktcl.aron.feature.auth.NoticeNeed(it.needed, it.required) } },
+                                accept = { shownAt -> locationNotice.accept(s.user.userId, language.tag, shownAt) },
+                                nowMs = components.trustedClock::nowMs,
+                                onLogout = { logoutTap() },
+                            ) {
                             UpdateHost(updateShell, dayOpen = { false }, serverSaidTooOld = s.updateRequired, onLogout = { logoutTap() }) { HomePlaceholderScreen(
                                 viewModel = vm,
                                 user = HomeUser(
@@ -112,6 +147,7 @@ class MainActivity : ComponentActivity() {
                                 onLogout = { logoutTap() },
                                 onLanguageSelect = onLanguageSelect,
                             ) }
+                            }
                         }
                     }
                 }

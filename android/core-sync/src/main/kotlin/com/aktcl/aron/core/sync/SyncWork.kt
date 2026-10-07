@@ -61,19 +61,63 @@ class SessionSyncRunner(
     private val bundles: BundleDownloaders? = null,
     /** After every run (the media shell asks for a photo upload once records were acked); must never throw. */
     private val afterRun: (userId: Long, report: SyncReport) -> Unit = { _, _ -> },
+    /** F-SYS-053: a config delta when the batch answer's X-Config-Version is newer than the held one; null in tests. */
+    private val config: ResumeConfigCheck? = null,
+    /** F-SYS-024: buffered events become one outbox row before the batch is built (they ride this upload). */
+    private val activityLog: ActivityLog? = null,
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
         // A queued run of a user wiped since (TSO logout) must not create an empty database and bring the user back.
         if (!databases.exists(userId)) return SyncReport(SyncStop.DRAINED, 0, 0, 0, 0, 0, 0, code = "no_database")
         val db = databases.of(userId)
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        activityLog?.flush(userId)
         val report = engine(userId, db).run(trigger)
         // Only after a run the server answered in full: never straight after a hold, 429, 503 or a refusal (s4.10, s4.7).
-        if (report.stop == SyncStop.DRAINED || report.stop == SyncStop.RUN_LIMIT) {
+        // The delta goes out under the FULL grant of the signed-in user: a run for another user on a shared phone (A's rows
+        // uploading while B is signed in) must never pull B's day into A's database (F-SYS-052 checker).
+        val active = (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
+        if (refreshesBundle(userId, active, report.stop)) {
             try { bundles?.of(userId)?.refreshIfServerNewer() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         }
+        if (config != null && refreshesBundle(userId, active, report.stop)) {
+            try {
+                val meta = db.referenceDao()
+                val held = meta.meta(SyncEngine.KEY_CONFIG_VERSION)?.toLongOrNull()
+                val server = meta.meta(SyncEngine.KEY_CONFIG_VERSION_SERVER)?.toLongOrNull()
+                if (pullsConfig(held, server)) config.pullAfterPush(userId)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        }
+        dailyPurge(db)
+        components.session.noteTimePassing() // F-SYS-052: proven uptime for the 7-day offline window
         try { afterRun(userId, report) } catch (_: Exception) { }
         return report
+    }
+
+    /**
+     * F-SYS-028: once per business date (trusted time), after a run, whatever its outcome (the purge only touches whole
+     * acked families). `cfg.app.local_history_days` (default 7, held to 1..90). Never throws.
+     */
+    private suspend fun dailyPurge(db: com.aktcl.aron.core.database.AronDatabase) {
+        try {
+            val clock = components.trustedClock
+            if (clock.clockOffsetMs() == null) return // no server-time anchor: a clock set forward must never wipe history
+            val today = clock.businessDate().toString()
+            val meta = db.referenceDao()
+            if (meta.meta(KEY_PURGE_DATE) == today) return
+            val nowIso = SyncEngine.iso(clock.nowMs())
+            val ref = com.aktcl.aron.core.database.repo.ReferenceRepository(db)
+            suspend fun days(key: String, default: Int) = configInt(ref.config(key, nowIso)) ?: default
+            com.aktcl.aron.core.database.repo.LocalPurge(db).purge(
+                today, nowIso,
+                historyDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS).coerceIn(1, 90),
+                keepDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_KEEP_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_KEEP_DAYS).coerceIn(1, 90),
+            )
+            meta.putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(KEY_PURGE_DATE, today))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
     }
 
     private fun engine(userId: Long, db: com.aktcl.aron.core.database.AronDatabase) = SyncEngine(
@@ -85,7 +129,24 @@ class SessionSyncRunner(
         appVersion = components.appVersion,
         clock = components.clock,
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
+        recordSigner = components.proofSigner, // F-SYS-072: the same enrolled key as X-Device-Proof
     )
+
+    companion object {
+        /** F-SYS-028: the business date of the last purge. */
+        const val KEY_PURGE_DATE = "purge.last_business_date"
+
+        /** A config value (JSON text) as an int: `7` or `"7"`; anything else is null (the default applies). */
+        fun configInt(json: String?): Int? = json?.let {
+            runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim()?.toIntOrNull() }.getOrNull()
+        }
+        /** The server said its config is newer than what the phone holds (a portal change since the last delta). */
+        fun pullsConfig(held: Long?, server: Long?): Boolean = held != null && server != null && server > held
+
+        /** A bundle delta after a run: only for the signed-in user, and only after a run the server answered in full. */
+        fun refreshesBundle(userId: Long, activeUserId: Long?, stop: SyncStop): Boolean =
+            userId == activeUserId && (stop == SyncStop.DRAINED || stop == SyncStop.RUN_LIMIT)
+    }
 
     override suspend fun unsent(userId: Long): Int = if (!databases.exists(userId)) 0 else databases.of(userId).outboxDao().unsentCount()
 }
@@ -248,8 +309,20 @@ class SyncWorker(
 }
 
 
-/** Builds [SyncWorker] with its dependencies; the app registers it through `Configuration.Provider`. */
-class AronWorkerFactory(private val runner: () -> SyncRunner, private val scheduler: () -> WorkManagerSyncScheduler) : WorkerFactory() {
-    override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? =
-        if (workerClassName == SyncWorker::class.java.name) SyncWorker(appContext, workerParameters, runner(), scheduler()) else null
+/**
+ * Builds [SyncWorker] and the push pull job ([com.aktcl.aron.core.sync.push.PushPullWorker], N-038) with their
+ * dependencies; the app registers it through `Configuration.Provider`. The pull job never gets the [SyncRunner]: a push
+ * cannot cause an upload (docs/24 s4.7).
+ */
+class AronWorkerFactory(
+    private val runner: () -> SyncRunner,
+    private val scheduler: () -> WorkManagerSyncScheduler,
+    private val pushPull: (() -> com.aktcl.aron.core.sync.push.PushPull)? = null,
+) : WorkerFactory() {
+    override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? = when (workerClassName) {
+        SyncWorker::class.java.name -> SyncWorker(appContext, workerParameters, runner(), scheduler())
+        com.aktcl.aron.core.sync.push.PushPullWorker::class.java.name ->
+            com.aktcl.aron.core.sync.push.PushPullWorker(appContext, workerParameters, pushPull?.invoke() ?: com.aktcl.aron.core.sync.push.PushPull { false })
+        else -> null
+    }
 }
