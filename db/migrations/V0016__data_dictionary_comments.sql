@@ -3027,7 +3027,7 @@ COMMENT ON COLUMN dw.v_daily_sku.gross_mtk IS 'Gross sales value before discount
 COMMENT ON COLUMN dw.v_daily_sku.memo_count IS 'Active memos containing the SKU.';
 COMMENT ON COLUMN dw.v_daily_sku.updated_at IS 'UTC instant of the last update.';
 
-COMMENT ON VIEW dw.v_daily_sr IS 'Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts.
+COMMENT ON VIEW dw.v_daily_sr IS 'Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts (active memos with lines); a user-day with neither an SR call nor such a memo has no row.
 owner: worker | capture: SERVER | retention: event_fact | pii: none';
 COMMENT ON COLUMN dw.v_daily_sr.business_date IS 'Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it.';
 COMMENT ON COLUMN dw.v_daily_sr.user_id IS 'User (app.app_user); for device records the capturing user from the token.';

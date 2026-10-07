@@ -36,10 +36,10 @@ BEGIN
       RAISE EXCEPTION 'role % is a member of % and would inherit their rights; revoke by hand before migrating', r, extra;
     END IF;
     fixes := '{}';
-    IF attr.rolcanlogin THEN fixes := fixes || 'NOLOGIN'; END IF;
-    IF attr.rolcreatedb THEN fixes := fixes || 'NOCREATEDB'; END IF;
-    IF attr.rolcreaterole THEN fixes := fixes || 'NOCREATEROLE'; END IF;
-    IF attr.rolinherit THEN fixes := fixes || 'NOINHERIT'; END IF;
+    IF attr.rolcanlogin THEN fixes := array_append(fixes, 'NOLOGIN'); END IF;
+    IF attr.rolcreatedb THEN fixes := array_append(fixes, 'NOCREATEDB'); END IF;
+    IF attr.rolcreaterole THEN fixes := array_append(fixes, 'NOCREATEROLE'); END IF;
+    IF attr.rolinherit THEN fixes := array_append(fixes, 'NOINHERIT'); END IF;
     IF cardinality(fixes) > 0 THEN
       IF NOT pg_has_role(current_user, r, 'USAGE WITH ADMIN OPTION') THEN
         RAISE EXCEPTION 'role % needs %; this login lacks ADMIN on it, run ALTER ROLE as its creator', r, array_to_string(fixes, ' ');

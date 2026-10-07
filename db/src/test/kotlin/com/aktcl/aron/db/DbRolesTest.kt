@@ -90,6 +90,17 @@ class DbRolesTest {
     }
 
     @Test
+    fun aRoleLeftWithAWrongAttributeIsRepairedByTheNextMigration() {
+        db.connect().use { it.exec("ALTER ROLE bi_reader INHERIT") }
+        try {
+            TestPostgres.createDatabase().migrated().use { }
+            db.connect().use { c -> assertEquals("f", c.scalar("SELECT rolinherit FROM pg_roles WHERE rolname = 'bi_reader'")) }
+        } finally {
+            db.connect().use { it.exec("ALTER ROLE bi_reader NOINHERIT") }
+        }
+    }
+
+    @Test
     fun anotherLoginMigratesANewDatabaseWhereTheRolesAlreadyExist() {
         // The roles are server-wide: a second database migrated by a different CREATEROLE login (no ADMIN on the roles)
         // reuses them unchanged. The password is generated here and dropped with the login.
