@@ -23,7 +23,7 @@ fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = 
     val tiles = listOf(OutletRequestKind.NEW, OutletRequestKind.CLOSE, OutletRequestKind.INFO, OutletRequestKind.CLUSTER)
     Column(modifier.fillMaxSize().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         Text(stringResource(R.string.out_menu_title), style = MaterialTheme.typography.headlineSmall)
-        AronTileGrid(tiles, columns = 4) { k, mod ->
+        AronTileGrid(tiles) { k, mod ->
             AronTile(
                 label = stringResource(when (k) { OutletRequestKind.NEW -> R.string.out_req_new; OutletRequestKind.CLOSE -> R.string.out_req_close; OutletRequestKind.INFO -> R.string.out_req_info; else -> R.string.out_req_cluster }),
                 onClick = { onKind(k) }, modifier = mod.testTag(OutletMenuTags.kind(k)),
