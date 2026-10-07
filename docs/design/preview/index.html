@@ -103,7 +103,7 @@
     radial-gradient(circle 324px at 12% 6%,rgb(var(--glow-a)/var(--glow-a-k)),rgb(var(--glow-a)/0)),
     radial-gradient(circle 288px at 95% 78%,rgb(var(--glow-b)/var(--glow-b-k)),rgb(var(--glow-b)/0)),
     linear-gradient(168deg,var(--bg-s0) 0%,var(--bg-s1) 50%,var(--bg-s2) 100%)}
-.pbg.web{background:
+.pbg.w{background:
     radial-gradient(circle 1229px at 12% 6%,rgb(var(--glow-a)/var(--glow-a-k)),rgb(var(--glow-a)/0)),
     radial-gradient(circle 1093px at 95% 78%,rgb(var(--glow-b)/var(--glow-b-k)),rgb(var(--glow-b)/0)),
     linear-gradient(168deg,var(--bg-s0) 0%,var(--bg-s1) 50%,var(--bg-s2) 100%)}
@@ -112,7 +112,7 @@
     radial-gradient(circle 90vw at 12% 6%,rgb(var(--glow-a)/var(--glow-a-k)),rgb(var(--glow-a)/0)),
     radial-gradient(circle 80vw at 95% 78%,rgb(var(--glow-b)/var(--glow-b-k)),rgb(var(--glow-b)/0)),
     linear-gradient(168deg,var(--bg-s0) 0%,var(--bg-s1) 50%,var(--bg-s2) 100%)}
-:root[data-tier="C"] .pbg,:root[data-tier="C"] .pbg.web,:root[data-tier="C"] .page-bg{background:var(--bg-solid)}
+:root[data-tier="C"] .pbg,:root[data-tier="C"] .pbg.w,:root[data-tier="C"] .page-bg{background:var(--bg-solid)}
 
 /* ---- type (tokens s7): 400 and 700 only; Bangla line heights >= 1.41 em ---- */
 html[data-lang="bn"]{--ff:var(--ff-bn),var(--ff-lat),sans-serif;--fs-cap:14px;--lh-hero:68px;--lh-display:48px;--lh-numeral:38px;--lh-title:32px;--lh-body:26px;--lh-cap:20px;--lh-table:22px}
@@ -173,6 +173,7 @@ h1,h2,h3,h4,p{margin:0}
 .c-neu{background:var(--surface-raised);color:var(--text-secondary);box-shadow:inset 0 0 0 1px var(--border-divider)}
 :root[data-theme="sunlight"] .chip{box-shadow:inset 0 0 0 1px currentColor}
 .chipbtn{display:grid;place-items:center;min-width:48px;min-height:48px;padding:0;border:0;background:none}
+.chips-row .chipbtn{min-width:0;margin:-10px 0}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:56px;padding:8px 24px;border:0;border-radius:999px;text-align:center;
   font-size:calc(16px*var(--fs));line-height:calc(var(--lh-body)*var(--fs));font-weight:700;
   transition:transform var(--motion-press) linear,background var(--motion-fast) var(--ease-out),box-shadow var(--motion-fast) var(--ease-out)}
@@ -190,7 +191,7 @@ h1,h2,h3,h4,p{margin:0}
 .btn[aria-disabled="true"]:active{transform:none}
 :root[data-tier="C"] .btn.pri{background:var(--accent);box-shadow:none}
 :root[data-tier="C"] .btn.sec{background:var(--surface-solid);box-shadow:none;border:1.5px solid var(--accent)}
-:root[data-tier="C"] .btn[aria-disabled="true"]{border:0}
+:root[data-tier="C"] .btn[aria-disabled="true"],:root[data-tier="C"] .btn.pri[aria-disabled="true"],:root[data-tier="C"] .btn.sec[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);border:0;box-shadow:none}
 .ib{display:grid;place-items:center;width:48px;height:48px;border:0;border-radius:50%;background:none;color:var(--text-primary);flex:none}
 .ib:active{background:var(--state-pressed)}
 .ib.warnic{color:var(--warning-on-container)}
@@ -215,6 +216,7 @@ h1,h2,h3,h4,p{margin:0}
 .sw[aria-checked="true"] i{transform:translateX(20px);width:20px;height:20px;background:var(--text-on-accent);color:var(--accent)}
 .sw[aria-checked="true"] i svg{opacity:1}
 .meter{height:6px;border-radius:3px;background:var(--skeleton);overflow:hidden;flex:1}
+.wc .meter{flex:none;width:100%}
 .meter b{display:block;height:100%;border-radius:3px;background:var(--accent)}
 .stp{display:flex;align-items:center;gap:8px}
 .stp .sb2{display:grid;place-items:center;width:48px;height:48px;padding:0;border:0;border-radius:50%;flex:none;transition:transform var(--motion-press) linear}
@@ -243,10 +245,12 @@ h1,h2,h3,h4,p{margin:0}
 .gp{position:absolute;left:50%;bottom:6px;width:112px;height:4px;margin-left:-56px;border-radius:2px;background:var(--text-primary);opacity:.55;z-index:31;pointer-events:none}
 .tb{position:sticky;top:0;z-index:5;padding-top:28px;box-shadow:inset 0 -1px 0 var(--bar-edge);flex:none}
 :root[data-tier="C"] .tb{box-shadow:none;border-bottom:var(--card-bw) solid var(--border-solid)}
-.tb-row{display:flex;align-items:center;gap:2px;min-height:64px;padding:0 4px 0 4px}
+.tb-row{display:flex;align-items:center;gap:2px;min-height:64px;padding:0 8px 0 4px}
 .tb-title{flex:1;min-width:0;padding:0 4px}
 .tb-title.long{font-size:calc(18px*var(--fs));line-height:calc(26px*var(--fs))}
 .tb-end{display:flex;align-items:center;flex:none}
+html[data-fs="130"] .tb .chip,html[data-fs="200"] .tb .chip{width:28px;padding:0;justify-content:center;border-radius:50%}
+html[data-fs="130"] .tb .chip .lbl,html[data-fs="200"] .tb .chip .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .bb{position:sticky;bottom:0;z-index:5;margin-top:auto;padding:12px 16px 16px;box-shadow:inset 0 1px 0 var(--hl-top),0 -1px 0 var(--bar-edge);flex:none}
 :root[data-tier="C"] .bb{box-shadow:none;border-top:var(--card-bw) solid var(--border-solid)}
 .bb-row{display:flex;gap:12px;align-items:center}
@@ -259,7 +263,7 @@ h1,h2,h3,h4,p{margin:0}
 .hdr-row{display:flex;align-items:center;gap:12px;padding:8px 4px 8px 16px;min-height:64px}
 .avatar{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--accent-container);color:var(--accent-on-container);font-weight:700;font-size:16px;font-family:var(--ff-lat)}
 .hdr-txt{flex:1;min-width:0}
-.hdr-sub{max-height:calc(26px*var(--fs));overflow:hidden;transition:max-height var(--motion-base) var(--ease-out),opacity var(--motion-fast)}
+.hdr-sub{max-height:calc(var(--lh-cap)*var(--fs)*3);overflow:hidden;transition:max-height var(--motion-base) var(--ease-out),opacity var(--motion-fast)}
 .screen[data-scrolled] .hdr-sub{max-height:0;opacity:0}
 .group-h{padding:8px 4px 0;color:var(--text-secondary)}
 .chips-row{display:flex;flex-wrap:wrap;gap:8px}
@@ -435,11 +439,12 @@ html[data-fs="200"] .web .s3{grid-column:span 6}html[data-fs="200"] .web .s4,htm
 .wbtn.pri{color:var(--text-on-accent);background:linear-gradient(180deg,var(--accent-hi),var(--accent));box-shadow:0 4px 10px color-mix(in srgb,var(--accent) 28%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
 .wbtn.pri:hover{background:linear-gradient(180deg,var(--accent),var(--accent-pressed))}
 :root[data-tier="C"] .wbtn.pri{background:var(--accent);box-shadow:none;border:0}
+:root[data-tier="C"] .wbtn[aria-disabled="true"],:root[data-tier="C"] .wbtn.pri[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);border:0}
 .wbtn[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);box-shadow:none;cursor:not-allowed;border:0}
 .spark{margin-inline-start:auto;flex:none}
 .rk{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;align-items:center}
 .rk .bar-t{position:relative;height:16px}
-.rk .bar-t i{position:absolute;left:0;top:0;bottom:0;border-radius:2px 4px 4px 2px;background:var(--viz-1)}
+.rk .bar-t i{position:absolute;left:0;top:0;bottom:0;width:calc((100% - 92px)*var(--r));border-radius:2px 4px 4px 2px;background:var(--viz-1)}
 .rk .bar-t b{position:absolute;top:50%;transform:translateY(-50%);font-weight:700;font-size:calc(13px*var(--fs));white-space:nowrap;font-variant-numeric:tabular-nums}
 .att{display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:12px;text-decoration:none;color:inherit}
 .att:hover{background:var(--state-pressed)}
@@ -457,12 +462,13 @@ html[data-fs="200"] .web .s3{grid-column:span 6}html[data-fs="200"] .web .s4,htm
 
 /* ---- geofence page ---- */
 .gmap{position:relative;flex:1;min-height:0;overflow:hidden}
-.gmap svg{position:absolute;inset:0}
+.gmap>svg{position:absolute;inset:0}
 .gpanel{position:absolute;top:16px;right:16px;bottom:16px;width:380px;border-radius:28px;display:flex;flex-direction:column;overflow:hidden;z-index:4;
   background:linear-gradient(var(--vib),var(--vib)),var(--fill-strong);-webkit-backdrop-filter:var(--bf-bar);backdrop-filter:var(--bf-bar);box-shadow:var(--elev-sheet-web),inset 0 1px 0 var(--hl-top)}
 :root[data-tier="C"] .gpanel{border:var(--card-bw) solid var(--border-solid)}
-.gp-body{flex:1;overflow-y:auto;padding:20px 20px 12px;display:flex;flex-direction:column;gap:14px;scrollbar-width:thin;scrollbar-color:var(--border-input) transparent}
-.gp-foot{padding:14px 20px 18px;display:flex;flex-direction:column;gap:8px;box-shadow:inset 0 1px 0 var(--bar-edge)}
+.gp-body>*{flex:none}
+.gp-body{flex:1;overflow-y:auto;padding:18px 20px 8px;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:var(--border-input) transparent}
+.gp-foot{padding:12px 20px 16px;display:flex;flex-direction:column;gap:8px;box-shadow:inset 0 1px 0 var(--bar-edge)}
 .step{display:flex;align-items:center;gap:8px;color:var(--text-secondary)}
 .step b{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--accent-container);color:var(--accent-on-container);font-size:13px;line-height:1}
 .sel{min-height:40px;width:100%;padding:4px 12px;border-radius:12px;border:0;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-input);appearance:none;
@@ -488,10 +494,12 @@ html[dir="rtl"] .sel{background-position:left 12px center}
 }
 @media (max-width:760px){
   .wrap{padding:0 12px}
-  .ctl .wrap{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-  .ctl .cg,.ctl .brand{flex:none}
+  .ctl{position:static}
+  .ctl .wrap{gap:8px 14px}
+  .brand{flex:1 1 100%}
   .gallery{grid-template-columns:minmax(0,1fr)}
 }
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root[data-tier="A"]{--strong-a:.92;--scrim-k:1;--bf-bar:none;--bf-sheet:none}}
 @media print{.ctl{display:none}}
 </style>
 </head>
@@ -661,7 +669,7 @@ function webShell(f){
   return `<figure class="fx in" id="fx-${f.id}" data-fid="${f.id}" style="min-width:0">
    <div class="fit" style="width:1366px;height:808px"><div class="in"><div class="win">
     <div class="win-bar"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i><span class="win-url">aron.example${f.path}</span></div>
-    <div class="web" id="sc-${f.id}"><div class="pbg web"></div></div>
+    <div class="web" id="sc-${f.id}"><div class="pbg w"></div></div>
    </div></div></div>
    <figcaption></figcaption></figure>`;
 }
@@ -795,7 +803,7 @@ addPhone({id:'home',short:['হোম','Home'],t:['হোম','Home'],ref:'F-SR-
     <div class="hdr-txt"><h2 class="t-heading">SR - Testing Banani (sr334001)</h2><p class="t-cap sec hdr-sub">Apsis RouteDaily, 2026-10-05</p></div>
     <button class="ib" data-act="noop" aria-label="${t('সেটিংস','Settings')}">${ic('tune')}</button></div></header>
   <div class="content">
-    <div class="chips-row">${syncChip(true)}${chip('c-ok','check',t('চেক ইন 08:52','Checked in 08:52'))}${chip('c-neu','','Daily')}</div>
+    <div class="chips-row">${chipBtn(true)}${chip('c-ok','check',t('চেক ইন 08:52','Checked in 08:52'))}${chip('c-neu','','Daily')}</div>
     <button class="card hero" data-act="noop" style="--fs:inherit">
       <span class="hero-top"><span class="t-label">${t('আজকের সর্বমোট','Today’s total')}</span>${ic('chevR',20)}</span>
       <span class="t-display">${mo(4391)}</span>
@@ -942,7 +950,7 @@ addPhone({id:'review',short:['নিরীক্ষণ','Review'],t:['নির�
    <section class="card pad">${zero?`<div class="kv"><span class="t-body">${t('জিরো বিক্রয় (কোনো SKU নেই)','Zero sale (no SKU)')}</span><b class="t-bodyS">${mo(0)}</b></div>`:`<div class="g-row h"><span class="t-label">${t('এসকেইউ','SKU')}</span><span class="t-label r">${t('পরিমাণ','Quantity')}</span><span class="t-label r">${t('মূল্য','Value')}</span></div>${byc}`}</section>
    <section class="card pad"><div class="kv"><span class="t-body sec">${t('মোট','Total')}</span><span class="t-bodyS">${mo(tot)}</span></div><div class="hr"></div>
     <div class="kv"><span class="t-bodyS">${t('সর্বমোট','Grand total')}</span><span class="t-display">${mo(tot)}</span></div></section>
-   ${zero?'':`<section class="card pad"><div class="mrow" style="justify-content:space-between"><span class="t-bodyS" style="flex:1">${r.credit&&r.collected!=null?t('বাকি '+due+' টাকা','Due '+due+' taka'):t('এই বিক্রয়টি বাকি হিসাবে চিহ্নিত করুন','Mark this sale as credit')}</span>
+   ${zero?'':`<section class="card pad"><div class="mrow" style="justify-content:space-between"><span class="t-bodyS" style="flex:1">${r.credit&&r.collected!=null?t('বাকি '+(due%1?due.toFixed(2):due)+' টাকা','Due '+(due%1?due.toFixed(2):due)+' taka'):t('এই বিক্রয়টি বাকি হিসাবে চিহ্নিত করুন','Mark this sale as credit')}</span>
      <button class="sw" role="switch" aria-checked="${r.credit}" data-act="credit" aria-label="${t('বাকি','Credit')}"><i>${ic('check',14)}</i></button></div></section>`}
    <button class="card pad rst" data-act="noop" style="display:flex;align-items:center;justify-content:space-between;min-height:56px"><span class="t-bodyS">${t('প্রোডাক্ট QC','Product QC')}</span><span style="color:var(--accent)">${ic('chevR')}</span></button>
    <p class="t-cap sec" style="padding:0 4px">${t('আপনি পরে মেমো সেকশন থেকে প্রিন্ট করতে পারবেন।','You can print later from the Memo section.')}</p></div>
@@ -1112,11 +1120,11 @@ function lineChart(){
    <rect id="lc-hit" x="${L}" y="${T}" width="${pw}" height="${ph}" fill="transparent"/></svg>`};
 }
 function rankBars(items,max,fmtv){
-  return `<div class="rk">${items.map(i=>`<span class="t-body" style="overflow-wrap:anywhere">${i[0]}</span><div class="bar-t"><i style="width:${(i[1]/max*72).toFixed(1)}%"></i><b style="left:calc(${(i[1]/max*72).toFixed(1)}% + 8px)">${fmtv(i[1])}</b></div>`).join('')}</div>`;
+  return `<div class="rk">${items.map(i=>`<span class="t-body" style="overflow-wrap:anywhere">${i[0]}</span><div class="bar-t" style="--r:${(i[1]/max).toFixed(3)}"><i></i><b style="left:calc((100% - 92px)*var(--r) + 8px)">${fmtv(i[1])}</b></div>`).join('')}</div>`;
 }
-const spark=()=>{const v=[4650,4210,3980,4890,5120,4400,3900,3820,4120,3540,4292,4391],mx=5400,mn=3300;
-  const p=v.map((y,i)=>[2+i*(136/11),46-(y-mn)/(mx-mn)*40]);
-  return `<svg class="spark" width="140" height="48" viewBox="0 0 140 48" aria-hidden="true"><path d="${p.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join('')}" fill="none" stroke="var(--text-secondary)" stroke-opacity=".5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${p[11][0]}" cy="${p[11][1]}" r="4" fill="var(--accent)" stroke="var(--surface-solid)" stroke-width="2"/></svg>`;};
+const spark=(v=[4650,4210,3980,4890,5120,4400,3900,3820,4120,3540,4292,4391],W=140,H=48,cls='spark')=>{const mx=Math.max(...v)*1.04,mn=Math.min(...v)*.94;
+  const p=v.map((y,i)=>[2+i*((W-4)/(v.length-1)),H-2-(y-mn)/(mx-mn)*(H-6)]);
+  return `<svg class="${cls}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true" style="${cls==='spark'?'':'width:100%;height:'+H+'px;margin-top:auto'}"><path d="${p.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join('')}" fill="none" stroke="var(--text-secondary)" stroke-opacity=".5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${p[p.length-1][0]}" cy="${p[p.length-1][1]}" r="4" fill="var(--accent)" stroke="var(--surface-solid)" stroke-width="2"/></svg>`;};
 const stat=(lab,val,extra,cls='s3')=>`<section class="card wc ${cls}"><span class="t-label lab">${lab}</span><span class="t-display">${val}</span>${extra||''}</section>`;
 const meter=v=>`<div class="meter" role="img" aria-label="${n(v)}%"><b style="width:${v}%"></b></div>`;
 function dashDraw(el){
@@ -1125,7 +1133,7 @@ function dashDraw(el){
   const att=[['userClock','লগইন করেনি','Not logged in',3],['upload','লগইন করেছে সাবমিট করেনি','Logged in, not submitted',10],['warn','সন্দেহজনক লোকেশন','Suspicious location',3],['flag','ব্যতিক্রম','Exceptions',0]];
   const r=rng(5);let pins='';for(let i=0;i<46;i++)pins+=pin(60+r()*880,40+r()*270,'o');
   for(let i=0;i<9;i++)pins+=pin(120+r()*760,70+r()*220,'sr');pins+=pin(300,220,'old')+pin(610,150,'bad')+pin(780,250,'bad');
-  el.innerHTML=`<div class="pbg web"></div>${rail('dash')}<div class="wmain"><div class="wscroll">${wtop()}
+  el.innerHTML=`<div class="pbg w"></div>${rail('dash')}<div class="wmain"><div class="wscroll">${wtop()}
   <div class="wpage">
    <div class="wh"><div><h1 class="t-display">${t('ড্যাশবোর্ড','Dashboard')}</h1><p class="t-cap sec">${t('ডেটা 18:05 পর্যন্ত · ব্যবসায়িক তারিখ 05 অক্টোবর 2026','Data as of 18:05 · Business date 5 Oct 2026')}</p></div>
     <div class="mrow" style="flex-wrap:wrap;gap:10px">${seg('dseg',[['today',t('আজ','Today')],['yest',t('গতকাল','Yesterday')],['pick',t('তারিখ','Pick a date')]],d.date,'dseg')}
@@ -1137,9 +1145,9 @@ function dashDraw(el){
      <span><span class="dchip c-ok">${ic('tri',14)}${t('+2.3% গতকালের তুলনায়','+2.3% vs yesterday')}</span></span></section>
     ${stat(t('স্ট্রাইক রেট','Strike rate'),n('10%'),meter(10)+`<span class="t-cap sec">${t('60টি টার্গেট আউটলেটের মধ্যে 6টি সফল কল','6 successful calls of 60 target outlets')}</span>`)}
     ${stat(t('আউটলেট ভ্রমণ','Outlets visited'),n('6/60'),meter(10)+`<span class="t-cap sec">${t('আজকের রুটে','On today’s route')}</span>`)}
-    ${stat(t('জিও সঠিক','Geo valid'),n('92%'),meter(92)+`<span class="chips-row">${chip('c-neu','',t('ফোর্স সেল 12','Force sale 12'))}${chip('c-warn','warn',t('সন্দেহজনক 3','Suspicious 3'))}</span>`)}
-    ${stat(t('লগইন %','Login %'),n('94%'),meter(94)+`<span class="t-cap sec">${t('51টি রুটের মধ্যে 48টি','48 of 51 routes')}</span>`)}
-    ${stat(t('সাবমিট %','Submit %'),n('79%'),meter(79)+`<span class="t-cap sec">${t('লগইন করা 48টির মধ্যে 38টি','38 of 48 logged in')}</span>`)}
+    ${stat(t('জিও সঠিক','Geo valid'),n('92%'),meter(92)+`<span class="chips-row">${chip('c-neu','',t('ফোর্স সেল 12','Force sale 12'))}${chip('c-warn','warn',t('সন্দেহজনক 3','Suspicious 3'))}</span>`+spark([88,90,89,91,93,90,92],100,34,'sp2'))}
+    ${stat(t('লগইন %','Login %'),n('94%'),meter(94)+`<span class="t-cap sec">${t('51টি রুটের মধ্যে 48টি','48 of 51 routes')}</span>`+spark([91,92,95,93,96,92,94],100,34,'sp2'))}
+    ${stat(t('সাবমিট %','Submit %'),n('79%'),meter(79)+`<span class="t-cap sec">${t('লগইন করা 48টির মধ্যে 38টি','38 of 48 logged in')}</span>`+spark([70,74,72,78,81,77,79],100,34,'sp2'))}
     <section class="card wc s3"><span class="t-label lab">${t('ফাইনাল সাবমিট অবস্থা','Final Submit status')}</span><span class="t-display">${n('3/5')} <span class="t-body sec">${t('জোন','zones')}</span></span>
      <span class="chips-row">${ZONES.map((z,i)=>chip(i<3?'c-ok':'c-neu',i<3?'checkCircle':'circle',t(z[0],z[1]))).join('')}</span></section>
     <section class="data wc s8" aria-label="${t('বিক্রয় মাসের শুরু থেকে','Sales month to date')}" style="position:relative"><div class="wh" style="align-items:center"><h3 class="t-heading">${t('বিক্রয়, মাসের শুরু থেকে','Sales, month to date')}</h3>
@@ -1199,7 +1207,7 @@ function gfUpdate(el,full){
   $('#gf-cp',el).setAttribute('r',g.m*SCL);$('#gf-cc',el).setAttribute('r',g.cur*SCL);$('#gf-marks',el).innerHTML=gfMarks();
   const lp=$('#gf-lp',el),lc=$('#gf-lc',el);
   lp.textContent=t(g.m+' মি প্রস্তাবিত',g.m+' m proposed');lc.textContent=t(g.cur+' মি এখন',g.cur+' m now');
-  const pa=-0.785,ca=-2.36;lp.style.left=(CX+Math.cos(pa)*g.m*SCL)+'px';lp.style.top=(CY+Math.sin(pa)*g.m*SCL)+'px';lc.style.left=(CX+Math.cos(ca)*g.cur*SCL)+'px';lc.style.top=(CY+Math.sin(ca)*g.cur*SCL)+'px';
+  const pa=-0.785,ca=-2.36;const cl=(v,a,b)=>Math.min(b,Math.max(a,v));lp.style.left=cl(CX+Math.cos(pa)*g.m*SCL,90,640)+'px';lp.style.top=cl(CY+Math.sin(pa)*g.m*SCL,26,684)+'px';lc.style.left=cl(CX+Math.cos(ca)*g.cur*SCL,90,640)+'px';lc.style.top=cl(CY+Math.sin(ca)*g.cur*SCL,26,684)+'px';
   const nf=$('#gf-num',el);if(document.activeElement!==nf)nf.value=n(g.m);
   $('#gf-rng',el).value=posFromM(g.m);$('#gf-rng',el).setAttribute('aria-valuetext',t(g.m+' মিটার',g.m+' metres'));
   const rc=['','c-acc','c-warn','c-dng'][rk],rl=[null,t('C1 এখনই কার্যকর','C1 applies at once'),t('C2 15 মিনিট পরে','C2 after 15 minutes'),t('C3 দ্বিতীয় অনুমোদন লাগবে','C3 needs a second approver')][rk];
@@ -1222,7 +1230,7 @@ function gfUpdate(el,full){
 function geoDraw(el){
   const g=GF,lv=[['outlet',t('আউটলেট','Outlet')],['route',t('রুট','Route')],['zone',t('জোন','Zone')],['territory',t('টেরিটরি','Territory')],['division',t('বিভাগ','Division')]];
   const labels=[[.2,.16,t('বনানী','Banani')],[.7,.12,t('গুলশান লেক','Gulshan Lake')],[.16,.86,t('কড়াইল','Karail')],[.52,.93,t('ক্যান্টনমেন্ট','Cantonment')]];
-  el.innerHTML=`<div class="pbg web"></div>${rail('geo')}<div class="wmain" style="display:flex;flex-direction:column">${wtop()}
+  el.innerHTML=`<div class="pbg w"></div>${rail('geo')}<div class="wmain" style="display:flex;flex-direction:column">${wtop()}
   <div class="gmap"><svg width="1102" height="712" viewBox="0 0 1102 712" role="img" aria-label="${t('জিওফেন্স ম্যাপ: বর্তমান ও প্রস্তাবিত বৃত্ত','Geofence map: current and proposed circles')}">${mapSVG(1102,712,33,labels)}
     ${gfNeighbours.map(p=>pin(p[0].toFixed(0),p[1].toFixed(0),'o')).join('')}
     <circle id="gf-cp" cx="${CX}" cy="${CY}" r="150" fill="var(--accent)" fill-opacity=".14" stroke="var(--accent)" stroke-width="2.5" style="transition:r var(--motion-fast) var(--ease-out)"/>
@@ -1250,10 +1258,9 @@ function geoDraw(el){
      <div class="wif" id="gf-bar" role="img" aria-label="${t('যাচাইয়ের ফল','What-if result')}"></div><p class="t-cap" id="gf-wtxt" role="status"></p>
      <div class="card flat" style="padding:12px;box-shadow:none"><span class="t-label">${t('এই পরিবর্তনে প্রভাব পড়বে','This change affects')}</span><p class="t-cap sec num" id="gf-blast"></p></div>
      <div class="step"><b>3</b><span class="t-label">${t('নিশ্চিত করুন','Confirm')}</span></div>
-     <div id="gf-risk"></div><p class="t-cap sec" id="gf-gate"></p>
      <div class="fld"><label class="t-cap sec" for="gf-why">${t('কারণ (কমপক্ষে 10 অক্ষর)','Reason (at least 10 characters)')}</label><textarea class="ta t-body" id="gf-why" rows="2">${g.why}</textarea><span class="t-cap sec num" id="gf-cnt" style="align-self:flex-end"></span></div>
     </div>
-    <div class="gp-foot"><p class="cap-reason t-cap" id="gf-why-t" style="margin:0"></p><button class="wbtn pri" id="gf-btn" data-act="gfgo" style="width:100%;justify-content:center;min-height:48px"></button></div></aside>
+    <div class="gp-foot"><div id="gf-risk"></div><p class="t-cap sec" id="gf-gate" style="margin-top:-2px"></p><p class="cap-reason t-cap" id="gf-why-t" style="margin:0"></p><button class="wbtn pri" id="gf-btn" data-act="gfgo" style="width:100%;justify-content:center;min-height:48px"></button></div></aside>
    <div class="toast" id="gf-toast" role="status"></div></div></div>`;
   gfUpdate(el,true);
 }
@@ -1288,7 +1295,8 @@ function build(){
   $('#desk').innerHTML=FR.filter(f=>f.kind==='web').map(webShell).join('');
 }
 (function init(){
-  try{const q=new URLSearchParams(location.search),p=JSON.parse(store.get('aron.prev')||'null');
+  try{const mq=m=>matchMedia(m).matches;if(mq('(prefers-contrast: more)'))st.theme='sunlight';else if(mq('(prefers-color-scheme: dark)'))st.theme='dark';if(mq('(prefers-reduced-transparency: reduce)'))st.tier='C';
+    const q=new URLSearchParams(location.search),p=JSON.parse(store.get('aron.prev')||'null');
     if(p)Object.assign(st,{theme:p.theme||st.theme,tier:p.tier||st.tier,fs:p.fs||st.fs,lang:p.lang||st.lang,off:!!p.off});
     ['theme','tier','fs','lang'].forEach(k=>{if(q.has(k))st[k]=q.get(k);});if(q.has('offline'))st.off=q.get('offline')==='1';
     if(!['light','dark','sunlight'].includes(st.theme))st.theme='light';if(!['A','B','C'].includes(st.tier))st.tier='B';

@@ -18,4 +18,9 @@ class UserDatabases(private val context: Context, private val passphrase: (userI
     suspend fun of(userId: Long): AronDatabase = open[userId] ?: withContext(Dispatchers.IO) {
         open.computeIfAbsent(userId) { id -> AronDatabase.open(context, id, passphrase(id)?.let(SqlCipher::factory)) }
     }
+
+    /** Users with a database on this phone (`aron-u<id>.db`), signed in or not: their rows still upload (D24-57). */
+    fun knownUserIds(): List<Long> =
+        context.getDatabasePath("x").parentFile?.list().orEmpty()
+            .mapNotNull { Regex("^aron-u(\\d+)\\.db$").find(it)?.groupValues?.get(1)?.toLongOrNull() }.sorted()
 }

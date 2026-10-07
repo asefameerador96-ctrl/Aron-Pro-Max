@@ -2,3 +2,14 @@ row_id,size,started_utc,finished_utc,minutes,review_findings,notes
 F-SYS-015,L,2026-10-07T03:50Z,2026-10-07T04:18Z,~80,4 (events lost out of order; suspicious rule; zone move; outlet overwrite) fixed with tests,aggregation worker; worker role wired
 F-API-014,M,2026-10-07T04:10Z,2026-10-07T04:26Z,~35,0 confirmed (9 concerns; 3 fixed: SUPPORT gate, cache bound, brand order),GET /v1/dashboards/summary; by_segment omitted pending dw aggregate (request)
 F-API-017,L,2026-10-07T04:25Z,2026-10-07T04:45Z,~60,3 (pii sort, pii totals, log limit) fixed; 4 concerns fixed (total order, print cap),registry+json/xlsx/print; pdf and async xlsx via ExportJobs hook until F-SYS-064
+F-API-015,M,2026-10-07T05:00Z,2026-10-07T05:22Z,~50,"3 confirmed (event not in catalogue, race, multi top nodes) + 4 minor, fixed",daily tracking + actions; nudge event waits for catalogue
+F-API-018,M,2026-10-07T05:00Z,2026-10-07T05:22Z,~35,"2 (multi top nodes, SR strip) fixed",app home incl. SR strip
+F-API-024,S,2026-10-07T05:00Z,2026-10-07T05:22Z,~20,"1 (adjustments in current) fixed",team stock
+F-API-023,S,2026-10-07T05:15Z,2026-10-07T07:00Z,~25,0 pending checker,GET /team/locations restored in analytics after backend-core dropped its duplicate (N-036 note)
+F-SYS-069,S,2026-10-07T05:20Z,2026-10-07T05:22Z,~25,0,memo-number-gaps report computed on read
+F-API-017a,S,-,-,0,-,same handler
+F-API-034,S,2026-10-07T05:30Z,2026-10-07T05:22Z,~20,0 pending checker,suspicious-location report
+N-048,L,2026-10-07T04:45Z,2026-10-07T05:22Z,~90,4 fixed (outlet scope leak, field force, category, std-memo population),batch A (10 handlers)
+F-SYS-026,M,2026-10-07T05:35Z,2026-10-07T05:22Z,~60,"7 found by Opus: 6 fixed, 1 to contract (docs/requests)",sync-health + login-submit
+F-API-028,M,-,-,0,-,quarantine list + discard/return_to_device; accept via hook (request)
+N-056,M,2026-10-07T06:05Z,2026-10-07T05:22Z,~35,pending Opus checker,admission control

@@ -1,6 +1,7 @@
 package com.aktcl.aron.backend.app
 
 import com.aktcl.aron.backend.analytics.AggregationWorker
+import com.aktcl.aron.backend.analytics.installAdmissionControl
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.Migrator
@@ -65,6 +66,7 @@ data class Health(val status: String, val api: String, val server_time: String, 
 /** The API: platform plugins, health, then every context's routes under /v1 (docs/24 s3, s6.2). */
 fun Application.aronApi(w: Wiring) {
     installAronPlatform(PlatformContext(w.clock, w.config, w.generation, w.build, w.frontDoorId))
+    w.admission?.let { installAdmissionControl(it) }
     routing {
         route(ContractInfo.API_BASE_PATH) {
             healthRoutes(w)

@@ -18,6 +18,7 @@ dependencies {
     api(project(":android:core-database"))
     implementation(project(":android:core-geo"))
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)

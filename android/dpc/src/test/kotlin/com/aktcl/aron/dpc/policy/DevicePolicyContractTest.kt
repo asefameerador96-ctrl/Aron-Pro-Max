@@ -35,7 +35,7 @@ class DevicePolicyContractTest {
         }
         assertEquals(props("AppControlPolicy").keys, (encoded["app_control"] as JsonObject).keys)
         assertEquals(props("BlockingSchedule").keys, (encoded["schedule"] as JsonObject).keys)
-        assertEquals(p, DevicePolicy.parse(p.encode()))
+        assertEquals(p, DevicePolicies.parse(p.encode()))
     }
 
     @Test fun contractRestrictionsMapToTheUserManagerKeys() {
