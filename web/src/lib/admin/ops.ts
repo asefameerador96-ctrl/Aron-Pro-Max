@@ -15,9 +15,14 @@ export interface OpDef {
   reason: string | null;
   /** The operation needs If-Match (the row `version`). */
   ifMatch?: boolean;
+  /** The operation takes no request body (sent empty). */
+  noBody?: boolean;
+  /** Body members whose listed values need a stronger role than `roles` (the proxy answers 403). */
+  forbid?: { member: string; values: readonly string[] };
 }
 
 const ADMINS = ["ADMIN", "SUPERADMIN"] as const;
+const SUPERS = ["SUPERADMIN"] as const;
 const SUPPORT_UP = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const;
 
 export const OPS = {
@@ -31,6 +36,21 @@ export const OPS = {
   "config.decide": { method: "POST", path: "/v1/admin/config/changes/{change_id}/decision", roles: ADMINS, reason: "note" },
   // F-ADM-043 P6 revert or roll back to a version (always creates a NEW version)
   "config.rollback": { method: "POST", path: "/v1/admin/config/versions/{version}/rollback", roles: ADMINS, reason: "reason" },
+  // F-ADM-009 / F-ADM-048 devices: suspend, revoke, reactivate (revoke blocks sync, never local capture)
+  "device.state": { method: "POST", path: "/v1/admin/devices/{device_id}/state", roles: SUPPORT_UP, reason: "reason" },
+  // remote directives carry no reason member in the contract; they never change data (docs/24 s10)
+  "device.directive": { method: "POST", path: "/v1/admin/devices/{device_id}/directives", roles: SUPPORT_UP, reason: null },
+  // F-ADM-078 replace-device wizard
+  "device.replace": { method: "POST", path: "/v1/admin/devices/{device_id}/replace", roles: SUPPORT_UP, reason: "reason" },
+  // F-ADM-027 / P12 releases: register a CI-built APK (draft), change rollout, block or retire; only a SUPERADMIN publishes (docs/24 s8.5)
+  "release.create": { method: "POST", path: "/v1/admin/releases", roles: ADMINS, reason: null },
+  "release.update": { method: "PATCH", path: "/v1/admin/releases/{release_id}", roles: ADMINS, reason: "change_reason", ifMatch: true, forbid: { member: "status", values: ["published"] } },
+  "release.publish": { method: "PATCH", path: "/v1/admin/releases/{release_id}", roles: SUPERS, reason: "change_reason", ifMatch: true },
+  // F-ADM-030 / P14 quarantine review: accept, accept with fix (re-map), discard, return to device
+  "quarantine.resolve": { method: "POST", path: "/v1/admin/quarantine/{quarantine_id}/resolve", roles: ADMINS, reason: "reason" },
+  // N-045 enrolment QR: tokens carry a note, not a reason; the secret is shown once
+  "enrolment.create": { method: "POST", path: "/v1/admin/enrolment-tokens", roles: SUPPORT_UP, reason: null },
+  "enrolment.revoke": { method: "POST", path: "/v1/admin/enrolment-tokens/{token_id}/revoke", roles: SUPPORT_UP, reason: null, noBody: true },
 } as const satisfies Record<string, OpDef>;
 
 export type OpKey = keyof typeof OPS;

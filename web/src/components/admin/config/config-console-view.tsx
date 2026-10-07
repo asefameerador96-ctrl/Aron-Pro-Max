@@ -78,7 +78,7 @@ export function ConfigConsoleView({ locale, basePath, titleKey, introKey, keys, 
                         current={value}
                         label={t(locale, "cfgc.col.value")}
                         futureOnly={k.future_dated_only}
-                        duration={switches ? { maxHours: maxSwitchHours } : undefined}
+                        duration={switches || k.kind === "O" ? { maxHours: maxSwitchHours } : undefined}
                       />
                     </div>
                   </details>

@@ -26,12 +26,14 @@ export function parseConfigInput(type: ValueType, raw: string, bounds?: ConfigBo
     case "money_mtk": {
       if (!INTEGER.test(text)) return { ok: false, code: "invalid" };
       const n = Number(text);
+      if (!Number.isSafeInteger(n)) return { ok: false, code: "too_big" };
       return inRange(n, bounds) ?? { ok: true, value: n };
     }
     case "number":
     case "pct": {
       if (!NUMBER.test(text)) return { ok: false, code: "invalid" };
       const n = Number(text);
+      if (!Number.isFinite(n)) return { ok: false, code: "too_big" };
       if (type === "pct" && (n < 0 || n > 100)) return { ok: false, code: n < 0 ? "too_small" : "too_big" };
       return inRange(n, bounds) ?? { ok: true, value: n };
     }
@@ -64,9 +66,23 @@ export function parseConfigInput(type: ValueType, raw: string, bounds?: ConfigBo
     }
     case "json": {
       const v = safeJson(text);
+      const shape = keyName ? jsonShape(keyName, v) : true;
+      if (!shape) return { ok: false, code: "invalid" };
       return v !== undefined && v !== null && typeof v === "object" ? { ok: true, value: v } : { ok: false, code: "invalid" };
     }
   }
+}
+
+const FLAVOURS = ["sr", "amo", "tso"];
+const posInt = (x: unknown) => typeof x === "number" && Number.isSafeInteger(x) && x >= 1 && x <= 2_100_000_000;
+/** Shape rules of json-valued keys the registry cannot express (docs/24 s4: per-flavour version codes). */
+function jsonShape(keyName: string, v: unknown): boolean {
+  if (keyName !== "cfg.release.min_version_code" && keyName !== "cfg.release.blocked_version_codes") return true;
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  if (!Object.keys(o).every((k) => FLAVOURS.includes(k))) return false;
+  if (keyName === "cfg.release.min_version_code") return FLAVOURS.every((f) => posInt(o[f]));
+  return Object.values(o).every((x) => Array.isArray(x) && x.length <= 100 && x.every(posInt));
 }
 
 function safeJson(text: string): unknown {

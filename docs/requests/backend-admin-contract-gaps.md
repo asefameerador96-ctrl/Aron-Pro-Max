@@ -1,0 +1,25 @@
+# backend-admin: backlog rows whose path or handler the contract and platform do not name yet
+
+Filed by the backend-admin lane, 2026-10-07. The lane built each row against the contract's own path and kept going.
+
+1. **Row F-API-037 names `GET and PUT /admin/config` and `GET /config/snapshot`.** The contract has no such paths. The write path is
+   `POST /v1/admin/config/changes` (createConfigChange); reads are `GET /v1/admin/config/{keys,values,resolve,changes,versions}`; the
+   phone reads config through the day bundle (`config.values`) and `GET /v1/config/delta`. Built exactly as the contract names them.
+   The bundle's snapshot is `ConfigResolver.resolveAll(chain, at)` (one statement), for the bundle owner (backend-core, F-API-005) to call.
+   No contract change is needed unless the lead wants a standalone snapshot path.
+2. **Row F-API-083 `GET /config/check` has no path in the contract.** Its behaviour (304 or the delta inline, at most once per
+   `cfg.sync.config_check_min_gap_min`) is the existing `GET /v1/config/delta` with `If-None-Match`; the minimum-gap cache is a client rule
+   (`cfg.sync.config_check_min_gap_min`, delivered to the phone). Request: either add `GET /v1/config/check` to the contract with the
+   same body as `getConfigDelta`, or close F-API-083 as covered by `getConfigDelta` (the server answers 304 whenever the phone is current).
+3. **Row F-API-041 `POST /config/ack`**: the acknowledgement is the sync record `config_ack` (contract `ConfigAckRecord`), not an endpoint.
+   The `app.cfg_ack` table exists (V0007); the ingest `RecordHandler` for `config_ack` belongs to the sync module (backend-core, F-API-006),
+   which has no `RecordHandler` registry yet. Reach reads (`F-API-063`) will read `app.cfg_ack` and `app.device.config_version_applied`.
+   Blocked on the registry; the handler is ten lines once it exists.
+4. **Audit writer.** `platform` has no audit writer yet (F-SYS-059, backend-core). backend-admin writes `app.audit_log` rows through
+   `com.aktcl.aron.backend.config.AuditWriter` (same columns, inside the caller's transaction). When F-SYS-059 lands, replace it by the platform class.
+5. **Device OTP creation at the bind attempt (F-SYS-003, backend-core)** must seal the OTP with `masterdata.OtpCipher`
+   (AES-256-GCM, AAD `device_otp:<user_id>`, label `aron-device-otp-v1`) so the TSO panel can show it.
+6. **TSO may issue device OTPs?** The contract (`issueDeviceOtp`) and docs/24 line 1695 say "the TSO for own zones"; the s8.5 matrix gives the TSO view only. Built to the contract (own reach only). Lead: confirm or tell the lane to restrict POST to SUPPORT, ADMIN, SUPERADMIN (one constant, `OTP_ISSUERS`).
+7. **OTP verify value.** `app.device_otp.otp_sha256` holds `OtpCipher.mac(otp, user_id)` (HMAC-SHA256 under the server key), not a bare SHA-256: a bare hash of four digits is recoverable. The bind check (F-SYS-003) must compare with `mac()`; the OTP creation at the bind attempt (F-TSO-019 login half) lives in backend-core and is not built.
+8. **Permission matrix shape.** The seeded `cfg.web.menu_by_role` uses `{menu, page, actions: read|write|...}`; the contract `MenuPermission` is `{menu_id, actions: view|create|edit|approve|export|void}`. The permissions endpoints map between them (lossy for actions outside the contract enum).
+9. **F-API-065 `/admin/flags`** has no contract path; flags are the `cfg.flag.*` keys, edited through `createConfigChange` and delivered in the config delta.

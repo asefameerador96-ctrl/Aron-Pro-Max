@@ -8,7 +8,7 @@ import { ChangesTable } from "./changes-table";
 
 const STATUSES = ["pending_approval", "scheduled", "applied", "rejected", "cancelled", "expired", "reverted"] as const;
 
-export function ChangesView({ locale, rows, status, nextHref, userId, canDecide }: { locale: Locale; rows: ConfigChange[]; status: string; nextHref: string | null; userId: number; canDecide: boolean }) {
+export function ChangesView({ locale, rows, status, nextHref, userId, canDecide, role }: { locale: Locale; rows: ConfigChange[]; status: string; nextHref: string | null; userId: number; canDecide: boolean; role: string }) {
   return (
     <div className="space-y-4">
       <PageHeading title={t(locale, "cfgp5.title")} intro={t(locale, "cfgp5.scheduled_note")} />
@@ -28,7 +28,7 @@ export function ChangesView({ locale, rows, status, nextHref, userId, canDecide 
                 {t(locale, "cfgp5.blast")}: {t(locale, "cfgp5.blast.line", { zones: formatNumber(locale, b.zones), routes: formatNumber(locale, b.routes), outlets: formatNumber(locale, b.outlets), devices: formatNumber(locale, b.devices) })}
               </p>
               {c.risk_class >= 3 ? <p className="text-xs text-amber-700">{t(locale, "cfgp5.two_person")}</p> : null}
-              {c.status === "pending_approval" && canDecide ? (
+              {c.status === "pending_approval" && canDecide && (c.risk_class < 3 || role === "SUPERADMIN" || c.requested_by === userId) ? (
                 c.requested_by === userId ? (
                   <>
                     <p className="text-xs text-slate-600">{t(locale, "cfgp5.own")}</p>

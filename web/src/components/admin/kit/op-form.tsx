@@ -13,7 +13,7 @@ import { ReasonField, REASON_MIN_LENGTH } from "./reason-field";
 export interface OpFieldDef {
   name: string;
   label: string;
-  kind: "text" | "textarea" | "int" | "number" | "enum" | "date" | "checkbox";
+  kind: "text" | "textarea" | "json" | "int" | "number" | "enum" | "date" | "checkbox";
   required?: boolean;
   hint?: string;
   maxLength?: number;
@@ -24,6 +24,14 @@ export interface OpFieldDef {
   nullable?: boolean;
   /** `int` fields: the value is multiplied by this before sending (e.g. 1000 to turn taka into milli-taka). */
   scale?: number;
+  /** Smallest allowed value after scaling. */
+  min?: number;
+  /** Lower-case the text before checking and sending (a pasted fingerprint). */
+  lowercase?: boolean;
+  /** Largest allowed value after scaling (a size gate, for example). */
+  max?: number;
+  /** The text must match this regular expression (a checksum, for example). */
+  pattern?: string;
 }
 
 export interface OpResult {
@@ -57,9 +65,16 @@ function fieldMessage(t: ReturnType<typeof useI18n>["t"], code: string): string 
 function toValue(f: OpFieldDef, raw: string): unknown {
   if (f.kind === "checkbox") return raw === "true";
   if (raw.trim() === "") return f.nullable ? null : undefined;
-  if (f.kind === "int") return Math.round(Number(raw) * (f.scale ?? 1));
+  if (f.kind === "int") return f.scale || /^-?\d+$/.test(raw.trim()) ? Math.round(Number(raw) * (f.scale ?? 1)) : Symbol.for("invalid-int");
   if (f.kind === "number") return Number(raw);
-  return raw.trim();
+  if (f.kind === "json") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return Symbol.for("invalid-json");
+    }
+  }
+  return f.lowercase ? raw.trim().toLowerCase() : raw.trim();
 }
 
 export function OpForm({ op, params, fields, fixed, version, submitLabel, noReason, successKey, resultField, resetOnSuccess = true, testId = "op-form" }: Props) {
@@ -84,7 +99,12 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
       if (f.required && f.kind !== "checkbox" && raw.trim() === "") local[f.name] = t("error.field.required");
       if ((f.kind === "int" || f.kind === "number") && raw.trim() !== "" && !Number.isFinite(Number(raw))) local[f.name] = t("error.field.invalid");
       const v = toValue(f, raw);
-      if (v !== undefined) body[f.name] = v;
+      if (v === Symbol.for("invalid-int")) local[f.name] = t("error.field.invalid");
+      if (typeof v === "number" && f.min !== undefined && v < f.min) local[f.name] = t("cfgc.error.too_small");
+      if (v === Symbol.for("invalid-json")) local[f.name] = t("error.field.invalid");
+      if (typeof v === "number" && f.max !== undefined && v > f.max) local[f.name] = t("cfgc.error.too_big");
+      if (f.pattern && raw.trim() !== "" && !new RegExp(f.pattern).test(f.lowercase ? raw.trim().toLowerCase() : raw.trim())) local[f.name] = t("error.field.invalid");
+      if (v !== undefined && typeof v !== "symbol") body[f.name] = v;
     }
     if (!noReason && Array.from(reason.trim()).length < REASON_MIN_LENGTH) local.reason = t("admin.reason.too_short");
     if (Object.keys(local).length) {
@@ -101,7 +121,7 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
       });
       const data = (await res.json().catch(() => ({}))) as { data?: Record<string, unknown> | null } & Partial<Problem>;
       if (res.ok) {
-        const shown = resultField && data.data ? String(data.data[resultField] ?? "") : "";
+        const shown = resultField && data.data ? String(resultField.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), data.data) ?? "") : "";
         const newVersion = data.data && typeof data.data.version === "number" ? data.data.version : undefined;
         if (newVersion !== undefined) setVer(newVersion);
         setBanner({ kind: "ok", text: `${t(successKey ?? "admin.save.ok")}${shown ? ` ${shown}` : ""}` });
@@ -139,7 +159,7 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
                 </option>
               ))}
             </select>
-          ) : f.kind === "textarea" ? (
+          ) : f.kind === "textarea" || f.kind === "json" ? (
             <textarea id={`f-${f.name}`} name={f.name} value={values[f.name] ?? ""} onChange={(e) => set(f.name, e.target.value)} maxLength={f.maxLength} rows={3} className={inputClass} />
           ) : f.kind === "checkbox" ? (
             <input id={`f-${f.name}`} name={f.name} type="checkbox" checked={values[f.name] === "true"} onChange={(e) => set(f.name, e.target.checked ? "true" : "false")} className="h-4 w-4" />
