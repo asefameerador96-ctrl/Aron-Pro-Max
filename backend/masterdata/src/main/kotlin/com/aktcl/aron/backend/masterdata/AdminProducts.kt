@@ -68,8 +68,6 @@ data class SkuPageOut(val items: List<SkuOut>, val next_cursor: String?)
 class AdminProductsDeps(val db: Database, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
 /** Master data is read by every web role of docs/24 s8.5 and written by ADMIN and SUPERADMIN only. */
-internal val MASTER_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
-internal val MASTER_WRITERS = setOf(Role.ADMIN, Role.SUPERADMIN)
 
 internal fun adminBad(pointer: String, code: String = "invalid_value"): Nothing =
     throw ApiProblem(ProblemCode.ERR_VALIDATION, "invalid $pointer", errors = listOf(FieldError(pointer, code)))
@@ -140,6 +138,7 @@ internal fun JsonObject.enum(k: String, allowed: Set<String>, required: Boolean,
 internal fun <T> mapDb(block: () -> T): T = try { block() } catch (e: UnableToExecuteStatementException) {
     when ((e.cause as? java.sql.SQLException)?.sqlState) {
         "23505" -> throw ApiProblem(ProblemCode.ERR_MASTER_DUPLICATE_CODE, "a row with this code or name already exists")
+        "22003" -> throw ApiProblem(ProblemCode.ERR_VALIDATION, "a number is out of range", errors = listOf(FieldError("body", "out_of_range")))
         "23P01" -> throw ApiProblem(ProblemCode.ERR_MASTER_OVERLAP, "the dates overlap an existing row")
         "23514", "23503" -> throw ApiProblem(ProblemCode.ERR_VALIDATION, "the values violate a data rule", errors = listOf(FieldError("body", "constraint")))
         else -> throw e
