@@ -78,6 +78,20 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Tenth session (2026-10-07, from ~20:20Z by the container clock)
+- INT (bde7719c) merged (fast-forward). Fresh container: `tools/android-sdk.sh` + `sdk.dir` (trap 40). Checks before the push: shared:contract jvmTest, the three app compiles, core-sync (235), core-database (160), app-sr (19), lint on core-sync, core-database, app-sr: green.
+- **F-SYS-080 phone half: done** (T1; Opus check PASS, its two mediums fixed with tests). `POST /v1/sync/digest` (`SyncDigestApi`, local DTOs) with backend-core's confirmed rule (`DigestHash`: bucket = first hex digit, hash = sum of `mostSignificantBits` mod 2^64, 16 hex; per device and calling user; window `cfg.sync.max_backdate_days` 7).
+  - When: after every generation change (`sync.digest_due` = generation), at Sales Submit, once a day after the first run that acked a batch, from a manual run at most every 10 min; only when the run drained with nothing unsent. Items: only (date, type) the phone holds acked rows of, contract record types only, chunks of 200.
+  - Rows of every named bucket go back (`OutboxDao.resendDigestBuckets`, `last_code` digest_resend, sig kept) and go in the same run; a batch of digest put-backs alone is trigger `digest_resend`, mixed with resync put-backs `resync`. After a re-send one confirming digest (`confirm`); a difference that survives it waits for the next daily one (no loop).
+  - Never digested: dates before the highest purge cutoff (`sync.purge_cutoff_max`, raised before the purge runs; before the first purge, today minus `cfg.app.local_history_days`), and the first capture date of a database never synced (`sync.digest_from`; a logout wipe or reinstall cannot hold that day's earlier rows).
+  - D-517 purge hold: a handled restore sets `sync.digest_purge_hold`; `dailyPurge` waits until a clean digest, at most 8 days.
+  - F-SYS-047: `GET /v1/sync/generation?since=<handled>`; re-send from `earliest_lost_after_utc`, else `lost_after_utc` (closes the two-restore gap; still capped by the resync window, the digest is the backstop).
+  - Tests: DigestResendTest (10, mutation-checked: whole-bucket put-back, earliest loss), PurgeConfigTest hold.
+  - Accepted lows (checker): types outside the contract `RecordType` are not digested (the server's TypeRules list equals it today); quarantine resolutions counted as acked assume the future `QuarantineAcceptor` sets registry `accepted` under the same uuid/user/device (note for backend-core below); the fake server reuses `DigestHash` (agreement rests on hand-checked vectors equal to `SyncDigest.kt`).
+- **Room v5 for android-sr-a: done** (docs/requests/android-sr-a-av-kv-survey-data.md; Opus check PASS, its two mediums fixed). Interface in "Interfaces for feature lanes" below. AutoMigration 4 -> 5, schema 5.json, migration test; LocalPurge and DEVICE_TABLES cover the two capture tables. No points ledger (docs/27).
+  - Accepted lows: a sha mismatch is downloaded again after a process restart (in-memory failed set); the delta carries no content/surveys (the next snapshot replaces them); `wifi_preferred` is treated as Wi-Fi only in the pilot.
+- **For backend-core (note, no request file):** the phone counts a quarantine released by a reviewer (`resolutions`, accepted / accepted_with_fix) as acked in the digest; when the quarantine acceptor is wired it must leave the registry row `accepted` under the same client_uuid, user and device, or that bucket is re-sent daily.
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~20:45Z by the container clock, ninth session)
 - **Done this session** (details in "Ninth session" below; every row had a fresh checker, every FAIL a re-check):
   - N-053 + F-SYS-074: `android/core-map` (lite map, bounded cache, offline list) and the online-only attendance address (Opus FAIL fixed, re-check fixed).
@@ -442,6 +456,11 @@
 - Quarantine resolutions are not applied yet (F-SYS-008).
 
 ## Interfaces for feature lanes (stable, 2026-10-07)
+- **Room v5, AV/KV and POSM survey (android-sr-a, F-SR-020/021):**
+  - Reference (from the bundle's `content` and `surveys`, replaced by every snapshot): `ReferenceDao.contentForOutlet(outletId, businessDate)` (play order: sequence, AV before KV; empty `outlet_ids` = every outlet), `contentFrom(date)`, `surveys()`, `surveyQuestions(surveyId)` (bundle order; `option_codes_json`, `requires_photo`, `question_key`, `show_if_key`, `show_if_bool`).
+  - Files: `ContentShell.assets.file(item)` (SR Hilt singleton `ContentShell`): disk only, null = missing, so log `skipped_missing` and go on. Downloads run ahead in a WorkManager job (Wi-Fi; any network when `cfg.content.download_network_policy` is `any`), sha256-checked, 120 MB LRU of its own.
+  - Records: `CaptureRepository.recordContentView(ContentViewEntity)` returns false for a second view of the same item in the same visit (a skip logged first cannot be followed by `viewed`: log after the item ends). `recordSurveyResponse(SurveyResponseEntity)`: exactly the member of `answer_type` (`photo_only`: the photo uuid alone), one answer per question per visit (a second throws IllegalStateException), so write the answers when the SR confirms the survey, not per tap. Both: SR calls only (`sr_call` visit on this phone), refused after Sales Submit, in the visit family at rank 1.
+  - Reads: `CaptureDao.contentViewsOf(visit)`, `surveyResponsesOf(visit)`.
 
 Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s5.1). Local wire DTOs are marked
 `REQUEST:` and move to `shared:contract` when the shared lane lands them, with the same names.

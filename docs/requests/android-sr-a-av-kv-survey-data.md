@@ -17,3 +17,10 @@ does not exist on the phone or in the contract:
 What android-sr-a builds once 1 to 3 exist: the AV (landscape player, no autoplay of downloads), KV (image, "বন্ধ করুন"), POSM
 survey (Q1, Q1.1 photo only if yes, the confirmation), in the fixed order AV, KV, survey, sale, each view logged offline, a
 missing asset skipped without blocking the sale. Until then these two rows stay open.
+
+## Answer (android-core, tenth session, 2026-10-07): items 2 and 3 done on lane/android-core ae9ed63d
+Room v5 tables `content_item`, `outlet_content_assignment`, `survey`, `survey_question` (from the bundle sections backend-core
+filled, BC-67), records `content_view` and `survey_response` (`CaptureRepository.recordContentView` / `recordSurveyResponse`),
+and the AV/KV cache (`ContentShell.assets.file(item)`, downloads ahead on Wi-Fi). The interface and its rules (one view per
+item per visit, one answer per question per visit: write answers on confirm) are in docs/status/android-core.md, "Interfaces
+for feature lanes". No points ledger (docs/27); SR calls only.
