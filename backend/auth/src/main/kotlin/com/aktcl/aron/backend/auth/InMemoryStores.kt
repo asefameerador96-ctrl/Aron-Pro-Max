@@ -38,6 +38,10 @@ class InMemoryRefreshStore : RefreshStore {
         families.computeIfPresent(familyId) { _, f -> if (f.revokedAt == null) f.copy(revokedAt = at, revokeReason = reason) else f }
     }
 
+    override fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String) {
+        families.values.filter { it.userId == userId && it.grant == grant && deviceId != null && it.deviceId == deviceId }.forEach { revokeFamily(it.id, at, reason) }
+    }
+
     fun familyCount(): Int = families.size
 }
 

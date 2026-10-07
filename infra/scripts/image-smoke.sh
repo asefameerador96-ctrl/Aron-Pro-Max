@@ -37,7 +37,10 @@ wait_http() { # url seconds -> prints status code, writes headers to $tmp/h
 
 note "backend image"
 ./gradlew --console=plain -q :backend:app:installDist
-docker build --pull -q -f infra/docker/backend.Dockerfile -t "aron-backend:$TAG" backend/app/build/install/aron-backend
+agent_ctx="$(mktemp -d)"
+infra/scripts/fetch-ai-agent.sh "$agent_ctx"
+docker build --pull -q --build-context "agent=$agent_ctx" -f infra/docker/backend.Dockerfile -t "aron-backend:$TAG" \
+  backend/app/build/install/aron-backend
 
 note "migrate role (twice)"
 for run in 1 2; do

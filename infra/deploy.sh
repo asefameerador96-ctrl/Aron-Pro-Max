@@ -306,7 +306,10 @@ publish() { # repo build-command...  -> sets IMAGE_REF to <registry>/<repo>@<dig
 }
 build_backend() {
   ./gradlew --console=plain -q :backend:app:installDist
-  docker build --pull -q --provenance=false --sbom=false -f infra/docker/backend.Dockerfile -t "${REGISTRY}/aron-backend:${SHA}" \
+  local agent_ctx; agent_ctx="$(mktemp -d)"
+  infra/scripts/fetch-ai-agent.sh "$agent_ctx"
+  docker build --pull -q --provenance=false --sbom=false --build-context "agent=${agent_ctx}" \
+    -f infra/docker/backend.Dockerfile -t "${REGISTRY}/aron-backend:${SHA}" \
     --label "org.opencontainers.image.revision=${SHA}" backend/app/build/install/aron-backend
 }
 build_web() {

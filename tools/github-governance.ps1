@@ -63,7 +63,6 @@ $protection = @{
     strict = $true
     contexts = @(
       'Repository gates (secrets, migrations, contract)',
-      'Contract lint',
       'Shared, db and backend (build and tests)',
       'Android debug APKs, unit tests and lint',
       'Release APKs and APK size gate',

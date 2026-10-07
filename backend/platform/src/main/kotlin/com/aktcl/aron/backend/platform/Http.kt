@@ -122,6 +122,15 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
             call.respondProblem(ApiProblem(code, "the request is invalid"), ctx.clock)
         }
         exception<Throwable> { call, e ->
+            // A value PostgreSQL cannot store as text (U+0000, SQLSTATE 22021 / 22P05) that reached it by a path other
+            // than receiveStrict (a query or path parameter) is the client's error, never a retryable 500.
+            val state = generateSequence(e) { it.cause }.filterIsInstance<java.sql.SQLException>().firstOrNull()?.sqlState
+            if (state == "22021" || state == "22P05") {
+                return@exception call.respondProblem(
+                    ApiProblem(ProblemCode.ERR_VALIDATION, "a text value holds a character that cannot be stored", errors = listOf(FieldError("", "invalid_character"))),
+                    ctx.clock,
+                )
+            }
             errorLog.error("unhandled error request_id=${call.attributes.getOrNull(RequestIdKey)}", e)
             call.respondProblem(ApiProblem(ProblemCode.ERR_INTERNAL, "unexpected server error"), ctx.clock)
         }

@@ -134,8 +134,6 @@ class Wiring(
             val issuer = TokenIssuer(keys, config, clock)
             val refresh = RefreshService(JdbiRefreshStore(db), config, keys.derivedSecret("aron-refresh-rotation-v1"), clock)
             val devices = JdbiDeviceStore(db)
-            val login = LoginService(users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock)
-            val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
@@ -154,12 +152,35 @@ class Wiring(
             val configService = ConfigService(db, configResolver, clock, toolsReach)
             val configDeps = ConfigDeps(configService, guard, clock)
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
-            val permDeps = ConfigPermissionsDeps(ConfigPermissions(db, configService, clock), guard)
+            val permissions = ConfigPermissions(db, configService, clock)
+            // One cipher for the bind OTP: login creates it sealed with a keyed verifier, the TSO panel opens it (s8.1).
+            val otpCipher = OtpCipher(keys.derivedSecret("aron-device-otp-v1"))
+            val otpSealer = object : com.aktcl.aron.backend.auth.OtpSealer {
+                override fun seal(otp: String, userId: Long) = otpCipher.seal(otp, userId)
+                override fun mac(otp: String, userId: Long) = otpCipher.mac(otp, userId)
+                override fun digits(length: Int) = otpCipher.digits(length)
+            }
+            // cfg.auth.password_min_len is role-scoped (12 for web roles, s9.5): resolved by the role's ordinal.
+            val minPasswordLen: (com.aktcl.aron.contract.Role) -> Int = { role ->
+                val ordinal = db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT ordinal FROM app.role_def WHERE role = :r").bind("r", role.wire).mapTo(Long::class.java).findOne().orElse(null) }
+                val chain = listOfNotNull(ordinal?.let { com.aktcl.aron.backend.config.ScopeNode("role", it) }, com.aktcl.aron.backend.config.ScopeNode("global", 0))
+                (configResolver.resolve("cfg.auth.password_min_len", chain, clock.now()).value as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 12
+            }
+            val login = LoginService(
+                users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock,
+                passwords = com.aktcl.aron.backend.auth.JdbiPasswordStore(db), minPasswordLen = minPasswordLen,
+                binds = com.aktcl.aron.backend.auth.JdbiBindStore(db), otpSealer = otpSealer,
+            )
+            val permDeps = ConfigPermissionsDeps(permissions, guard)
+            val auth = AuthDeps(
+                login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId,
+                menusForRole = { role -> permissions.menusForRole(role).map { kotlinx.serialization.json.Json.encodeToJsonElement(com.aktcl.aron.backend.config.MenuPermissionDto.serializer(), it) } },
+            )
             val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
             // Azure user-delegation SAS via the managed identity when ARON_BLOB_ACCOUNT is set (Azure); 503 elsewhere
             // (docs/requests/backend-admin-blob-sas.md).
             val blob: BlobSasIssuer = AzureBlobSasIssuer.fromEnvironment() ?: com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
-            val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
+            val otpDeps = DeviceOtpDeps(db, reach, otpCipher, config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
             val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + extraRecordHandlers)), db, config, clock)
