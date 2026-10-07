@@ -50,6 +50,7 @@ object LoginTags {
     const val SUBMIT = "login_submit"
     const val MESSAGE = "login_message"
     const val VERSION = "login_version"
+    const val ENROL = "login_enrol"
 }
 
 /**
@@ -62,6 +63,8 @@ fun LoginScreen(
     appTitle: String,
     versionName: String,
     onLanguageSelect: (AppLanguage) -> Unit,
+    /** Shown with the "not enrolled" refusal while this phone is not enrolled (see [EnrolmentGate]). */
+    onEnrol: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (state.bindToken != null) {
@@ -78,6 +81,7 @@ fun LoginScreen(
         onTogglePasswordVisible = viewModel::onTogglePasswordVisible,
         onSubmit = viewModel::onSubmit,
         onLanguageSelect = onLanguageSelect,
+        onEnrol = onEnrol,
     )
 }
 
@@ -91,6 +95,7 @@ fun LoginContent(
     onTogglePasswordVisible: () -> Unit,
     onSubmit: () -> Unit,
     onLanguageSelect: (AppLanguage) -> Unit,
+    onEnrol: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
@@ -135,6 +140,10 @@ fun LoginContent(
             // A solid banner (docs/32 s2a): readable in sun, never colour alone.
             AronBanner(messageText(message), Modifier.testTag(LoginTags.MESSAGE), kind = BannerKind.Error)
             Spacer(Modifier.height(12.dp))
+            if (message == LoginMessage.DeviceNotEnrolled && onEnrol != null) {
+                TextButton(onClick = onEnrol, modifier = Modifier.testTag(LoginTags.ENROL)) { Text(stringResource(R.string.enrol_title)) }
+                Spacer(Modifier.height(12.dp))
+            }
         }
         // The kit's primary button (48 dp+, wraps at large fonts); while busy the label says so and the button is off.
         AronPrimaryButton(

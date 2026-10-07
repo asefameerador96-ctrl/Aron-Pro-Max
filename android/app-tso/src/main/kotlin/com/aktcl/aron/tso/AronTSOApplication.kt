@@ -20,6 +20,7 @@ class AronTSOApplication : Application(), Configuration.Provider {
     @Inject lateinit var errorReporter: com.aktcl.aron.core.sync.ErrorReporter
     @Inject lateinit var connectivityFlush: ConnectivityFlush
     @Inject lateinit var deviceRuntime: DeviceRuntime
+    @Inject lateinit var deviceEnrolment: com.aktcl.aron.core.sync.device.DeviceEnrolment
     @Inject lateinit var syncScheduler: WorkManagerSyncScheduler
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
@@ -37,6 +38,8 @@ class AronTSOApplication : Application(), Configuration.Provider {
         ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives
         // DPC: trusted clock and calendar, re-apply the stored policy; integrity evidence after each online login.
         // Off the main thread; nothing here touches the network or waits for it.
+        // Enrolment (docs/24 s10.4): the QR path's coordinator, the device UUID repair, a pending enrolment run. No sale waits.
+        deviceEnrolment.install(CoroutineScope(SupervisorJob() + Dispatchers.Default))
         deviceRuntime.start(CoroutineScope(SupervisorJob() + Dispatchers.Default), syncScheduler)
         // F-SYS-020: an update check after every online login (the 12 h throttle is skipped at login); resume checks too.
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
