@@ -1,5 +1,5 @@
 Bundled fonts of the ARON apps (android/core-ui/src/main/res/font):
-  noto_sans_bengali_regular.ttf, noto_sans_bengali_bold.ttf: Noto Sans Bengali, unmodified
+  noto_sans_bengali_regular.ttf, noto_sans_bengali_medium.ttf, noto_sans_bengali_bold.ttf: Noto Sans Bengali, unmodified
   noto_sans_latin_regular.ttf, noto_sans_latin_bold.ttf: Noto Sans, subset to Latin-1 and punctuation (a Modified Version)
 
 Copyright 2025 The Noto Project Authors (https://github.com/notofonts/bengali)

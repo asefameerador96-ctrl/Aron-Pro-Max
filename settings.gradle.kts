@@ -87,3 +87,4 @@ include(":android:app-amo")
 include(":android:app-tso")
 // Lane android-sys: camera, photo pipeline and media queue; permissions, update, support upload, language and logout.
 include(":android:core-system")
+include(":android:core-media")

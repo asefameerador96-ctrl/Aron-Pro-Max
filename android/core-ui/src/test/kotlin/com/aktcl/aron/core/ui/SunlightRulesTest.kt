@@ -22,17 +22,20 @@ class SunlightRulesTest {
         val sunEn = aronTypography(AppLanguage.EN, sunlight = true).bodyMedium
         assertEquals(16f, normalEn.fontSize.value, 0f); assertEquals(17f, sunEn.fontSize.value, 0f)
         val normalBn = aronTypography(AppLanguage.BN).bodyMedium
+        val normBnWeight = normalBn.fontWeight
         val sunBn = aronTypography(AppLanguage.BN, sunlight = true).bodyMedium
         assertEquals(26f, normalBn.lineHeight.value, 0f)
         assertEquals(18f, sunBn.fontSize.value, 0f); assertEquals(28f, sunBn.lineHeight.value, 0f)
-        assertEquals(FontWeight.Bold, sunBn.fontWeight)   // the only heavier bundled weight (no 500 face exists)
+        assertEquals(FontWeight.Medium, sunBn.fontWeight)   // docs/32 s2a: Bangla body at least 500 in sunlight
+        assertEquals(FontWeight.Normal, normBnWeight)
     }
 
     @Test fun neverAWeightThatIsNotBundled() {
         for (lang in AppLanguage.values()) for (sun in listOf(false, true)) {
             val t = aronTypography(lang, sun)
             listOf(t.displayLarge, t.titleLarge, t.bodyMedium, t.bodySmall, t.labelMedium).forEach {
-                assertTrue(it.fontWeight == FontWeight.Normal || it.fontWeight == FontWeight.Bold)
+                val medium = it.fontWeight == FontWeight.Medium && lang == AppLanguage.BN && sun   // Bangla sunlight body only
+                assertTrue(it.fontWeight == FontWeight.Normal || it.fontWeight == FontWeight.Bold || medium)
             }
         }
     }
