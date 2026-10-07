@@ -215,6 +215,13 @@ class DataVoidAcceptanceTest {
         assertEquals(500, count("SELECT COALESCE(sum(amount_mtk),0) FROM app.due_ledger WHERE memo_client_uuid = '$memo'"))
         val dueBefore = count("SELECT COALESCE(sum(amount_mtk),0) FROM app.due_ledger WHERE outlet_id = $outletId")
 
+        // N-049: the sale wrote its outbox events in the same transaction, and every stored row has its stable external reference.
+        assertEquals(1, count("SELECT count(*) FROM app.domain_event WHERE event_type = 'memo.created' AND source_client_uuid = '$memo'"))
+        assertEquals(1, count("SELECT count(*) FROM app.domain_event WHERE event_type = 'visit.closed' AND aggregate_id = '${family[0]["client_uuid"]!!.jsonPrimitive.content}' AND source_client_uuid = '${family[4]["client_uuid"]!!.jsonPrimitive.content}'"))
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo' AND external_ref = '$memo'"))
+        assertEquals(List(5) { "duplicate" }, statuses(json(client.send(sr, batch(family)).bodyAsText())))
+        assertEquals(1, count("SELECT count(*) FROM app.domain_event WHERE event_type = 'memo.created' AND source_client_uuid = '$memo'"), "a replay emits nothing")
+
         val cu = uuid()
         val r = client.voidDay(admin, cu)
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
@@ -226,6 +233,7 @@ class DataVoidAcceptanceTest {
         // The ledger is append-only: the open due is taken off by an adjustment, so the outlet balance falls by exactly that memo's 500.
         assertEquals(dueBefore - 500, count("SELECT COALESCE(sum(amount_mtk),0) FROM app.due_ledger WHERE outlet_id = $outletId"))
         assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'data_void' AND entity_id = '$cu' AND reason IS NOT NULL"))
+        assertEquals(1, count("SELECT count(*) FROM app.domain_event WHERE event_type = 'memo.voided' AND aggregate_id = '$memo'"))
 
         // A replay answers the same and changes nothing; the same uuid for another day conflicts.
         val again = client.voidDay(admin, cu)

@@ -99,11 +99,13 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
         val tables = (if (req.scope != "web_entry") APP_VOID_TABLES else emptyList()) + (if (req.scope != "app_memos") WEB_TABLES.filter { exists(h, it) } else emptyList())
         val counts = linkedMapOf<String, Int>()
         val voidedUuids = mutableListOf<String>()
+        val voidedMemos = mutableListOf<String>()
         for (t in tables) {
             val uuids = h.createQuery("UPDATE app.$t SET voided_at = :now WHERE route_id = :r AND business_date = :d AND voided_at IS NULL RETURNING client_uuid").bind("now", now).bind("r", req.route_id).bind("d", date)
                 .map { rs, _ -> rs.getString(1) }.list()
             if (uuids.isNotEmpty()) counts[t] = uuids.size
             voidedUuids += uuids
+            if (t == "memo") voidedMemos += uuids
         }
         // geo_fix has no client_uuid of its own: it follows its route-day.
         val fixes = h.createUpdate("UPDATE app.geo_fix SET voided_at = :now WHERE route_id = :r AND business_date = :d AND voided_at IS NULL").bind("now", now).bind("r", req.route_id).bind("d", date).execute()
@@ -111,6 +113,14 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
         if (voidedUuids.isNotEmpty()) {
             h.createUpdate("UPDATE app.ingest_registry SET status = 'voided' WHERE client_uuid IN (<u>) AND status = 'accepted'").bindList("u", voidedUuids.map { java.util.UUID.fromString(it) }).execute()
             reverseDues(h, voidedUuids, req.client_uuid)
+        }
+        if (voidedMemos.isNotEmpty()) {
+            // The projector takes a voided memo out of the day aggregates (event catalogue: memo.voided v1).
+            h.createUpdate(
+                "INSERT INTO app.domain_event (event_type, payload_version, aggregate_type, aggregate_id, business_date, payload, source_client_uuid) " +
+                    "SELECT 'memo.voided', 1, 'memo', m.client_uuid::text, m.business_date, jsonb_build_object('memo_uuid', m.client_uuid, 'route_id', m.route_id, 'voided_at', CAST(:at AS timestamptz), 'reason_code', 'data_void'), CAST(:src AS uuid) " +
+                    "FROM app.memo m WHERE m.client_uuid IN (<u>)",
+            ).bind("at", now).bind("src", req.client_uuid).bindList("u", voidedMemos.map { java.util.UUID.fromString(it) }).execute()
         }
         val total = counts.values.sum()
         val affected = buildJsonObject { put("scope", req.scope); put("total", total); counts.forEach { (k, v) -> put(k, v) } }

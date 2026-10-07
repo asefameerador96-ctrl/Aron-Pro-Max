@@ -113,6 +113,7 @@ class Wiring(
         @Suppress("UNUSED_PARAMETER")
         fun recordHandlers(db: Database, clock: AronClock): List<RecordHandler> = listOf(
             com.aktcl.aron.backend.config.ConfigAckHandler(),
+            com.aktcl.aron.backend.masterdata.DomainEventProducer(),
             com.aktcl.aron.backend.masterdata.DataVoidBarrierHandler(com.aktcl.aron.backend.sync.TypeRules.BY_TYPE.keys),
         )
 
