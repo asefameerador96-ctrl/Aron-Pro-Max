@@ -29,8 +29,8 @@ class HomeKpiTest {
         val sl = memo("c", listOf(MemoItem(106, 3, 19_000, 57_000)), emptyList(), emptyList(), 57_000)
         val m = HomeMoneyBuilder.build(listOf(aster, fb, sl), skus)
         assertEquals(4_828_500, m.grossMtk); assertEquals(437_500, m.totalDiscountMtk); assertEquals(4_391_000, m.grandTotalMtk)
-        assertEquals(MoneyCategory("lighter", 4_687_500, 437_500, 0, 4_250_000), m.categories[0])
-        assertEquals(MoneyCategory("match", 141_000, 0, 0, 141_000), m.categories[1])
+        assertEquals(MoneyCategory("lighter", 4_687_500, 437_500, 0, 0, 4_250_000), m.categories[0])
+        assertEquals(MoneyCategory("match", 141_000, 0, 0, 0, 141_000), m.categories[1])
     }
 
     @Test fun drpAndQcAppearInTheirOwnLinesAndAnEditIsCountedOnce() {
@@ -38,6 +38,6 @@ class HomeKpiTest {
         val new = memo("n", listOf(MemoItem(105, 10, 28_000, 280_000)), listOf(MemoDiscountItem(105, 1, 28_000, "drp")), listOf(MemoQcItem(105, 1, 14_000)), 238_000, drp = 28_000, qcTotal = 14_000, sup = "o")
         val m = HomeMoneyBuilder.build(listOf(old, new), skus)
         assertEquals(280_000, m.grossMtk); assertEquals(28_000, m.drpDiscountMtk); assertEquals(14_000, m.totalQcMtk); assertEquals(238_000, m.grandTotalMtk)
-        assertEquals(MoneyCategory("match", 280_000, 0, 14_000, 266_000), m.categories.single())
+        assertEquals(MoneyCategory("match", 280_000, 0, 28_000, 14_000, 238_000), m.categories.single())
     }
 }

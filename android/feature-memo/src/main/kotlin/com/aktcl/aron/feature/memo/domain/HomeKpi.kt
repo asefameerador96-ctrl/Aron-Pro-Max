@@ -35,7 +35,7 @@ object KpiStripBuilder {
 }
 
 /** One Home money card line per category and the two cards' totals (F-SR-069). */
-data class MoneyCategory(val categoryCode: String, val valueMtk: Long, val discountMtk: Long, val qcMtk: Long, val netMtk: Long)
+data class MoneyCategory(val categoryCode: String, val valueMtk: Long, val discountMtk: Long, val drpMtk: Long, val qcMtk: Long, val netMtk: Long)
 data class HomeMoney(
     val categories: List<MoneyCategory>,
     val grossMtk: Long,
@@ -52,8 +52,9 @@ object HomeMoneyBuilder {
         val cats = live.flatMap { m -> m.lines.map { skus[it.skuId]?.categoryCode.orEmpty() to it } }.groupBy({ it.first }, { it.second }).toSortedMap().map { (c, ls) ->
             val value = ls.sumOf { it.grossMtk }
             val disc = live.sumOf { m -> m.discounts.filter { skus[it.skuId]?.categoryCode.orEmpty() == c && it.kind != "drp" }.sumOf { it.valueMtk } }
+            val drp = live.sumOf { m -> m.discounts.filter { skus[it.skuId]?.categoryCode.orEmpty() == c && it.kind == "drp" }.sumOf { it.valueMtk } }
             val qc = live.sumOf { m -> m.qcLines.filter { skus[it.skuId]?.categoryCode.orEmpty() == c }.sumOf { it.settlementMtk } }
-            MoneyCategory(c, value, disc, qc, value - disc - qc)
+            MoneyCategory(c, value, disc, drp, qc, value - disc - drp - qc)
         }
         return HomeMoney(
             cats, live.sumOf { it.grossMtk }, live.sumOf { it.offerDiscountMtk + it.drpDiscountMtk }, live.sumOf { it.drpDiscountMtk },
