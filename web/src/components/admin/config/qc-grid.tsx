@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
 import { buildQcRows } from "@/lib/admin/qc-entry";
+import { digitsOnly } from "@/lib/admin/taka";
 import { inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 
@@ -82,7 +83,7 @@ export function QcGrid({ source, zoneId, routeId, date, skus, faults }: { source
                   const k = `${s.id}|${f.code}`;
                   return (
                     <td key={f.code} className={cell}>
-                      <input aria-label={`${s.label} ${f.label}`} value={cells[k] ?? ""} inputMode="numeric" onChange={(ev) => setCells((c) => ({ ...c, [k]: ev.target.value.replace(/\D/g, "").slice(0, 8) }))} aria-invalid={bad.includes(k) ? true : undefined} className={`${inputClass} w-20 text-right`} />
+                      <input aria-label={`${s.label} ${f.label}`} value={cells[k] ?? ""} inputMode="numeric" onChange={(ev) => setCells((c) => ({ ...c, [k]: digitsOnly(ev.target.value).slice(0, 8) }))} aria-invalid={bad.includes(k) ? true : undefined} className={`${inputClass} w-20 text-right`} />
                     </td>
                   );
                 })}

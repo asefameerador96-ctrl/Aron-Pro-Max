@@ -1,4 +1,5 @@
 import { onApiFailure } from "@/components/admin/crud/pages";
+import { loadAllSkus } from "@/lib/admin/skus";
 import { apiGet, one, type SearchParams } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
 import { canTeamOp } from "@/lib/admin/access";
@@ -33,10 +34,10 @@ export async function WebEntryPageContent({ searchParams }: { searchParams: Prom
   let entry: WebEntryRouteDay | null = null;
   let skus: Sku[] = [];
   if (routeId) {
-    const [e, s] = await Promise.all([apiGet<WebEntryRouteDay>("/v1/web-entry/route-day", session.at, { route_id: routeId, business_date: date }), apiGet<{ items: Sku[] }>("/v1/admin/skus", session.at, { status: "active", limit: 500 })]);
+    const [e, s] = await Promise.all([apiGet<WebEntryRouteDay>("/v1/web-entry/route-day", session.at, { route_id: routeId, business_date: date }), loadAllSkus(session.at)]);
     if (!e.ok) return onApiFailure(e.status, e.problem, locale);
     entry = e.data;
-    skus = s.ok ? s.data.items : [];
+    skus = s;
   }
   return <WebEntryView locale={locale} options={options} selection={selection} date={date} today={today} routes={routes} routeId={routeId} entry={entry} skus={skus} canWrite />;
 }

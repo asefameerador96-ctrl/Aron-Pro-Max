@@ -33,6 +33,9 @@ fun KitGallery(modifier: Modifier = Modifier) {
     Surface(modifier, color = MaterialTheme.colorScheme.background) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
             Text(stringResource(R.string.core_ui_kit_gallery_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                StatusChip(SyncChipState.Offline); StatusChip(SyncChipState.Syncing); StatusChip(SyncChipState.Synced); StatusChip(SyncChipState.Waiting(7))
+            }
             OfflineBanner()
             AronTileGrid(tiles, columns = 2) { t, m -> AronTile(stringResource(t.label), onClick = {}, modifier = m, badge = t.badge) }
             AronListRow(stringResource(R.string.core_ui_kit_gallery_outlet), subtitle = stringResource(R.string.core_ui_kit_gallery_outlet_sub), trailing = localizedNumber(1250), onClick = {})
