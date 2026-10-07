@@ -41,12 +41,14 @@ data class Settings(
     val hashQueueMax: Int,
     /** Azure Front Door profile id (X-Azure-FDID); only requests carrying it have a trusted X-Azure-ClientIP. */
     val frontDoorId: String? = null,
+    /** Firebase service account JSON for FCM (Key Vault `aron-fcm-service-account`); push is off without it. */
+    val fcmServiceAccountJson: Secret? = null,
 ) {
     /** Like the data-class form, with credentials in the database URLs redacted (secrets are never printed). */
     override fun toString(): String =
         "Settings(role=$role, env=$env, port=$port, build=$build, dbUrl=${redactUrl(dbUrl)}, dbUser=$dbUser, dbPassword=$dbPassword, " +
             "dbReadUrl=${dbReadUrl?.let(::redactUrl)}, dbPoolMax=$dbPoolMax, dbReadPoolMax=$dbReadPoolMax, jwtSigningKeyPem=$jwtSigningKeyPem, " +
-            "jwtKid=$jwtKid, jwtNextKid=$jwtNextKid, hashConcurrency=$hashConcurrency, hashQueueMax=$hashQueueMax, frontDoorId=$frontDoorId)"
+            "jwtKid=$jwtKid, jwtNextKid=$jwtNextKid, hashConcurrency=$hashConcurrency, hashQueueMax=$hashQueueMax, frontDoorId=$frontDoorId, fcmServiceAccountJson=$fcmServiceAccountJson)"
 
     companion object {
         /** Removes `password=...` parameters and `user:password@` credentials from a JDBC URL. */
@@ -97,6 +99,7 @@ data class Settings(
                 hashConcurrency = src.int("ARON_HASH_CONCURRENCY", 4),
                 hashQueueMax = src.int("ARON_HASH_QUEUE_MAX", 32),
                 frontDoorId = src.get("ARON_FRONT_DOOR_ID"),
+                fcmServiceAccountJson = src.secret("ARON_FCM_SERVICE_ACCOUNT_JSON"),
             )
         }
     }
