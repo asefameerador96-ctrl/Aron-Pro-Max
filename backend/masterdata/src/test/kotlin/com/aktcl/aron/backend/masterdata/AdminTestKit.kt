@@ -35,6 +35,7 @@ import java.time.LocalDate
 /** A seeded database plus the `/v1/admin` master-data routes under test (tests of F-API-035, 035b, 045). */
 class AdminEnv : AutoCloseable {
     val db = SeededAdminDb()
+    // wall-clock-ok: the app under test runs on AronClock.SYSTEM, so its Dhaka "today" is the real one
     val today: LocalDate = BusinessDate.of(System.currentTimeMillis()).toJavaLocalDate()
 
     fun app(requireReason: Boolean = false, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
