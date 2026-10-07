@@ -1470,6 +1470,12 @@ class SliceSmoke(unittest.TestCase):
                                "device_uuid": "00000000-0000-4000-8000-000000000001"}
                     return self.reply(200, {"status": "ok", "access_token": test.TOKEN}) if ok else self.reply(401, {"code": "bad"})
                 if path == "/v1/sync/batch" and self.authed():
+                    envelope = {"type", "client_uuid", "family_uuid", "rank", "schema_version", "business_date", "captured_at",
+                                "route_id", "bundle_version", "config_version", "payload"}
+                    for r in b["records"]:
+                        if not envelope <= r.keys() or (r["type"] == "memo" and not re.fullmatch(
+                                r"[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}", r["payload"]["memo_no"])):
+                            return self.reply(400, {"code": "ERR_VALIDATION"})
                     if b["batch_uuid"] in state["batches"]:
                         return self.reply(200, {**state["batches"][b["batch_uuid"]], "replayed": True})
                     acks = []
@@ -1483,7 +1489,12 @@ class SliceSmoke(unittest.TestCase):
                             if r["type"] == "memo_void":
                                 state["voided"].add(r["payload"]["memo_client_uuid"])
                         acks.append({"client_uuid": r["client_uuid"], "type": r["type"], "status": "duplicate" if dup else "accepted"})
-                    resp = {"batch_uuid": b["batch_uuid"], "replayed": False, "acks": acks}
+                    live = [m for m in state["memos"].values() if m["client_uuid"] not in state["voided"]]
+                    day = b["records"][0]["business_date"]
+                    resp = {"batch_uuid": b["batch_uuid"], "replayed": False, "acks": acks, "server_totals": [{
+                        "business_date": day, "as_of": "x",
+                        "by_type": {"memo": {"accepted": len(state["memos"]), "rejected": 0, "quarantined": 0}},
+                        "money": {"active_memo_count": len(live), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in live)}}]}
                     state["batches"][b["batch_uuid"]] = resp
                     return self.reply(200, resp)
                 return self.reply(401, {"code": "unauthorized"})
@@ -1502,13 +1513,8 @@ class SliceSmoke(unittest.TestCase):
                         "routes": [{"route_id": 3, "planned_today": True, "sales_plan_sku_ids": [5],
                                     "outlets": [{"outlet_id": 8, "code": "MIR-D-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100},
                                                 {"outlet_id": 9, "code": "SMOKE-SR-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100}]}]})
-                if u.path == "/v1/sync/totals":
-                    return self.reply(200, {"totals": {"by_type": {"memo": len(state["memos"])}}})
                 if u.path == "/v1/app/home":
                     return self.reply(200, {"kpis": {"active_memo_count": len(memos), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in memos)}})
-                if u.path == "/v1/memos":
-                    items = [{"memo_client_uuid": m["client_uuid"]} for m in state["memos"].values() if m["payload"]["memo_no"] == q["memo_no"][0]]
-                    return self.reply(200, {"items": items, "next_cursor": None})
                 return self.reply(404, {"code": "not_found"})
 
         srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
@@ -1533,7 +1539,8 @@ class SliceSmoke(unittest.TestCase):
         rc, out = self.run_smoke(srv)
         self.assertEqual(rc, 0, out)
         for line in ("PASS 4 sale uploaded", "PASS 5 re-upload acked duplicate", "PASS 6 batch replay",
-                     "PASS 7 server memo count +1: 0 -> 1", "PASS 8 memo read", "PASS 9 dashboard tile shows the sale",
+                     "PASS 7 server count unchanged by the re-upload: (1, 1, 145000) -> (1, 1, 145000)",
+                     "SKIP 8 memo read: HTTP 404", "PASS 9 dashboard tile shows the sale",
                      "PASS 10 cleanup: sale voided", "### SR slice smoke: PASSED"):
             self.assertIn(line, out)
         (memo,) = state["memos"].values()
@@ -1547,6 +1554,8 @@ class SliceSmoke(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn("FAIL 5 re-upload acked duplicate", out)
         self.assertIn("### SR slice smoke: FAILED", out)
+        self.assertIn("PASS 10 cleanup: sale voided", out, "a failed later step still voids the smoke sale")
+        self.assertTrue(state["voided"])
 
     def test_wired_after_the_health_gate_for_dev_only(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
