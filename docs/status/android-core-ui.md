@@ -36,7 +36,7 @@ AronTheme(language, tier = tier) { GlassSurface { ... }; StatusChip(SyncChipStat
 Scope change (lead, 2026-10-07): F-SYS-023, 030, 010, 037, 019, 022, 020, 021 moved to the Opus lane `android-sys`. This lane keeps N-023 (kit, gallery, overflow tests), the outdoor-first additions, design v1 adoption and tokens. Remaining: Sonnet checker on the outdoor-first slice, screenshot tests (request file), and kit components android-sys asks for (permission rationale, language switch screen).
 
 ## Traps
-- Local Gradle cannot resolve (Maven Central 429): CI is the compiler. Push to `lane/android-core-ui`, merge INT only when green.
+- Local Gradle cannot resolve (Maven Central 429): Push to `lane/android-core-ui`, merge INT only when green.
 - Press-and-hold: the long-click (accessibility) path is unit-tested; the timed 1.2 s hold is checked on the phone (DEVICE-PENDING: hold shorter than 1.2 s must not confirm, full hold must).
 
 ## Token deltas against docs/design/tokens.md v1 (code is the truth; mirror into tokens.md when the design workflow has stopped writing there)
