@@ -71,7 +71,7 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     val scope = rememberCoroutineScope()
     var started by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
     if (!started) {
-        val name = day.dayData.value.outlets.firstOrNull { it.outletId == v.outletId }?.name.orEmpty()
+        val name = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }?.name.orEmpty()
         StartCallPrompt(name, onYes = { kit.callStarted[v.visitUuid] = day.iso(day.currentMs()); started = true }, onNo = { scope.launch { day.closeVisitAbandoned(); onDone() } })
         return
     }
