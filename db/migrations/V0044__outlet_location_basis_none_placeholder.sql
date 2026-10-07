@@ -6,6 +6,8 @@
 
 SET lock_timeout = '5s';
 
+-- Nullable coordinates are the point of the request; the only reader (backend-core's visit re-check) asked for them.
+-- squawk-ignore ban-drop-not-null
 ALTER TABLE app.outlet_location_history ALTER COLUMN lat DROP NOT NULL, ALTER COLUMN lng DROP NOT NULL;
 ALTER TABLE app.outlet_location_history DROP CONSTRAINT outlet_location_history_basis_check;
 ALTER TABLE app.outlet_location_history ADD CONSTRAINT outlet_location_history_basis_check
