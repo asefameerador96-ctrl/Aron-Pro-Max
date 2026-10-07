@@ -12,6 +12,8 @@ import com.aktcl.aron.core.sync.ResumeConfigCheck
 import com.aktcl.aron.core.sync.SyncScheduler
 import com.aktcl.aron.core.sync.device.DeviceRuntime
 import com.aktcl.aron.core.sync.WorkManagerSyncScheduler
+import com.aktcl.aron.core.sync.shell.MediaShell
+import com.aktcl.aron.core.sync.shell.ShellLogout
 import java.io.File
 import com.aktcl.aron.core.session.SessionComponents
 import dagger.Module
@@ -81,7 +83,23 @@ object SessionModule {
     @Singleton
     fun workerFactory(
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
-    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles) }, { scheduler })
+        media: MediaShell,
+    ): AronWorkerFactory = AronWorkerFactory(
+        { SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, afterRun = { _, report -> media.afterSync(report) }) }, { scheduler },
+    )
+
+    /** Photos (android-sys F-SYS-010/030/037): the media worker's wiring, the per-user camera and the Wi-Fi-only switch. */
+    @Provides
+    @Singleton
+    fun mediaShell(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): MediaShell =
+        MediaShell(context, components, databases)
+
+    /** F-SYS-022 logout (docs/requests/android-sys-logout-wiring.md). */
+    @Provides
+    @Singleton
+    fun shellLogout(
+        @ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases, scheduler: WorkManagerSyncScheduler, media: MediaShell,
+    ): ShellLogout = ShellLogout(context, components, databases, scheduler, media)
 
     /** Connectivity trigger (F-SYS-046): uploads for every user on the phone with rows waiting, after a 5 s quiet period. */
     @Provides

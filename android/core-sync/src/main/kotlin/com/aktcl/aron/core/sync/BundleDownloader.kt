@@ -152,10 +152,10 @@ class BundleDownloader(
         val held = repo.bundleVersion() ?: return null
         if (ReferenceRepository.compare(current, held) <= 0) return null
         // Once per server version: a delta and its full fallback that still leave the phone behind are not retried after
-        // every sync run (the foreground refresh and the next newer version still try).
+        // every sync run (the foreground refresh and the next newer version still try). Only an answered request spends
+        // the version: offline, 503, 401 or a failure leave it for the next run (checker: a timeout blocked a price change).
         if (meta.meta(KEY_DELTA_TRIED_FOR) == current) return null
-        meta.putMeta(SyncMetaEntity(KEY_DELTA_TRIED_FOR, current))
-        return refreshDelta()
+        return refreshDelta().also { if (it.outcome in ANSWERED) meta.putMeta(SyncMetaEntity(KEY_DELTA_TRIED_FOR, current)) }
     }
 
     /**
@@ -286,6 +286,11 @@ class BundleDownloader(
         const val KEY_LOGGED_IN = "bundle.logged_in."
         const val KEY_DELTA_FOREGROUND_AT = "bundle.delta_foreground_at"
         const val KEY_DELTA_TRIED_FOR = "bundle.delta_tried_for"
+        /** Outcomes where the server answered: they spend [KEY_DELTA_TRIED_FOR] for the version. */
+        internal val ANSWERED = setOf(
+            BundleOutcome.APPLIED, BundleOutcome.UNCHANGED, BundleOutcome.OLDER_IGNORED, BundleOutcome.NEW_DATE,
+            BundleOutcome.PREFETCH_STORED, BundleOutcome.PREFETCH_PROMOTED,
+        )
 
         /** Paged sections whose rows belong inside `routes[]` (matched by `route_id`). */
         private val ROUTE_NESTED = setOf("outlets", "open_memos")

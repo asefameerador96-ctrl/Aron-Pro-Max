@@ -78,6 +78,18 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Fourth session (2026-10-07, from ~09:30Z)
+- **android-sys app-shell wiring** (docs/requests/android-sys-app-wiring.md items 1, 2, 6; android-sys-logout-wiring.md shell part):
+  - core-sync `shell/MediaShell` (Hilt singleton in all three shells): `install()` in Application.onCreate sets `MediaRuntime.wiring` (every known user, that user's upload grant, `OutboxRecordProbe` over the outbox plus `CaptureDao.photoOwnerExists`, `media_meta` sink -> `recordMediaMeta`; a fix row not on the phone goes as `fix: null`) and asks once for an upload; `cfg.media.*` read from the user's bundle; `wifiOnly` (WifiOnlySetting) and `scheduler` on the trusted clock; `afterSync(report)` asks for an upload when a sync run acked rows (`SessionSyncRunner(afterRun = ...)`).
+  - app-sr: `SrDay.attachMedia(mediaShell.componentsFor(userId, ::businessDate))` (camera, `MediaPhotoPipeline` replacing `NoCameraPipeline`, `resume()`); `CameraCaptureOverlay` drawn above the screens; photos are claimed (`attach`) before the visit (force_sale) and the outlet request (outlet_capture) commit, with the stored fix uuid. The Force Sale shot reused by its location request stays with the visit.
+  - Logout: core-sync `shell/ShellLogout.flow(role, userId)` (LogoutFlow + DatabaseLogoutPorts); SR keeps its confirmation and calls `logout()`; AMO and TSO use `check()`, `UnsentItemsDialog` and a toast for `WipeIncomplete`.
+  - `SessionComponents.okHttp` is public (the media blob client derives from it).
+  - Permission gates: app-sr already had them (android-sr-a). AMO/TSO shells are still the home placeholder: no attendance/sale screens to gate yet.
+  - **Still open:** updater (item 4), PDA to Support tile (item 5, waits on the support key), Wi-Fi-only row in Settings (needs a slot in feature-home `SettingsContent`, android-sr-a).
+- **Checker round on ec28160 and 3926bd6f** (fresh Opus): 1 confirmed, 1 plausible, both fixed with tests:
+  - A delta that got no answer (offline, 503, 401, failure) no longer spends the server version (`BundleDownloader.ANSWERED`; `BundleDownloaderTest.anUnansweredDeltaIsTriedAgainAfterTheNextSyncRun`).
+  - `UserDatabases.close` now blocks `of()` for that user until `allowOpen` (ShellLogout calls it when the logout ends), so a worker cannot reopen and cache a database whose files are being deleted (`CheckerUserDatabasesCloseTest`).
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~08:45Z, third session)
 - **Done this session** (each with independent Opus checkers; every confirmed defect is a test):
   - **DTO stubs removed** (one checker round, no defects): auth, bundle head parts, the SR record payloads, Route/RouteSnapshot/BundleOutlet/Sku/SkuPrice, ResolvedConfigValue, TimeAnchor come from `com.aktcl.aron.contract.*`. Kept local: `BundleHead`, `LoginStatus`, `Grant`, the lenient `Problem` reader (an error body must still map to a code), the v3 payloads, `MediaMetaPayload`, `ConfigSection`/`ConfigDeltaWire`, `DeviceNonceDto` (not generated). Wire change: null `distance_m`/`outlet_lat`/`outlet_lng` are now left out of `geo` (optional in the contract).

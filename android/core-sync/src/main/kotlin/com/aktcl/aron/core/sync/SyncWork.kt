@@ -59,6 +59,8 @@ class SessionSyncRunner(
     private val beforeBatch: suspend (userId: Long, db: com.aktcl.aron.core.database.AronDatabase, trigger: SyncTrigger) -> Unit = { _, _, _ -> },
     /** Bundle deltas after a run when the server's current bundle is newer (F-SYS-007); null in tests. */
     private val bundles: BundleDownloaders? = null,
+    /** After every run (the media shell asks for a photo upload once records were acked); must never throw. */
+    private val afterRun: (userId: Long, report: SyncReport) -> Unit = { _, _ -> },
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
         val db = databases.of(userId)
@@ -68,6 +70,7 @@ class SessionSyncRunner(
         if (report.stop == SyncStop.DRAINED || report.stop == SyncStop.RUN_LIMIT) {
             try { bundles?.of(userId)?.refreshIfServerNewer() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         }
+        try { afterRun(userId, report) } catch (_: Exception) { }
         return report
     }
 

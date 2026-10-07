@@ -6,6 +6,7 @@ import com.aktcl.aron.core.sync.AronWorkerFactory
 import com.aktcl.aron.core.sync.ConnectivityFlush
 import com.aktcl.aron.core.sync.WorkManagerSyncScheduler
 import com.aktcl.aron.core.sync.device.DeviceRuntime
+import com.aktcl.aron.core.sync.shell.MediaShell
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +20,7 @@ class AronTSOApplication : Application(), Configuration.Provider {
     @Inject lateinit var connectivityFlush: ConnectivityFlush
     @Inject lateinit var deviceRuntime: DeviceRuntime
     @Inject lateinit var syncScheduler: WorkManagerSyncScheduler
+    @Inject lateinit var mediaShell: MediaShell
 
     override fun onCreate() {
         super.onCreate()
@@ -26,6 +28,8 @@ class AronTSOApplication : Application(), Configuration.Provider {
         // DPC: trusted clock and calendar, re-apply the stored policy; integrity evidence after each online login.
         // Off the main thread; nothing here touches the network or waits for it.
         deviceRuntime.start(CoroutineScope(SupervisorJob() + Dispatchers.Default), syncScheduler)
+        // Photos (F-SYS-010): every user's queue uploads on its own job, whoever is signed in; no network work here.
+        mediaShell.install()
     }
 
     override val workManagerConfiguration: Configuration

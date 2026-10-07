@@ -301,4 +301,18 @@ class BundleDownloaderTest {
         assertEquals(1, full.size)
         assertNull("the fallback is unconditional", full.single().headers["If-None-Match"])
     }
+    /** Checker (3926bd6f re-check, finding 1): a delta that got no answer (503, offline) does not spend the server version. */
+    @Test
+    fun anUnansweredDeltaIsTriedAgainAfterTheNextSyncRun() = runBlocking {
+        downloader().download()
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(SyncEngine.KEY_BUNDLE_CURRENT, "2026-10-05:4"))
+        deltaAnswer = { problem(503, "ERR_BUNDLE_NOT_READY") }
+        requests.clear()
+        assertEquals(BundleOutcome.NOT_READY, downloader().refreshIfServerNewer()!!.outcome)
+        deltaAnswer = { api(deltaBody()) }
+        assertEquals(BundleOutcome.APPLIED, downloader().refreshIfServerNewer()!!.outcome)
+        assertEquals(2, requests.count { it.url.encodedPath == "/v1/sync/delta" })
+        assertEquals("2026-10-05:4", ReferenceRepository(db).bundleVersion())
+        assertNull(downloader().refreshIfServerNewer()) // now held: nothing newer
+    }
 }

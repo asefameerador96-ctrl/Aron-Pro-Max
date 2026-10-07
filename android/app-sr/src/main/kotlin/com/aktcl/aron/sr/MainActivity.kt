@@ -47,6 +47,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var bundleDownloaders: com.aktcl.aron.core.sync.BundleDownloaders
     @Inject lateinit var deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime
     @Inject lateinit var resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck
+    @Inject lateinit var mediaShell: com.aktcl.aron.core.sync.shell.MediaShell
+    @Inject lateinit var shellLogout: com.aktcl.aron.core.sync.shell.ShellLogout
     private var dayHolder: SrDayHolder? = null
 
     override fun attachBaseContext(newBase: Context) {
@@ -81,7 +83,11 @@ class MainActivity : ComponentActivity() {
                                     holder.day.value = SrDay(
                                         s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
                                         deviceRuntime, resumeConfigCheck,
-                                    ).also { it.launchDayConfigRefresh() }
+                                    ).also { d ->
+                                        d.launchDayConfigRefresh()
+                                        // F-SYS-030/010: the camera and this user's photo queue (opened before the day is shown).
+                                        d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate))
+                                    }
                                 }
                             }
                             day?.let { d ->
@@ -93,11 +99,14 @@ class MainActivity : ComponentActivity() {
                                     ),
                                     health = null, versionText = versionName,
                                     onLanguageSelect = onLanguageSelect,
-                                    onLogout = { lifecycleScope.launch { components.session.logout() } },
+                                    // F-SYS-022: SR keeps its data (it keeps uploading); the flow schedules the upload.
+                                    onLogout = { lifecycleScope.launch { shellLogout.flow(com.aktcl.aron.core.system.logout.AppRole.SR, s.user.userId).logout() } },
                                     onOtherTile = { },
                                     startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
                                 )
                             }
+                            // Drawn after the screens so the camera covers them while a capture is open (F-SYS-030).
+                            day?.media?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
                         }
                     }
                 }
