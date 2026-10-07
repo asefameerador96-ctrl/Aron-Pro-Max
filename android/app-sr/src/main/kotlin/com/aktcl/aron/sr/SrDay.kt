@@ -312,6 +312,20 @@ class SrDay(
 
     fun closeStockAttempt() { _stockAttempt.value = null }
 
+    /** The Summary print result lives here, not in the screen: leaving Summary while "readable?" is open keeps the question. */
+    private val _summaryAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
+    val summaryAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _summaryAttempt.asStateFlow()
+
+    fun printSummary(b: SummaryBundle) {
+        printScope.launch { if (_summaryAttempt.value == null) _summaryAttempt.value = sale.printSummary(b) }
+    }
+
+    fun answerSummaryPrint(a: com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation, readable: Boolean) {
+        printScope.launch { runCatching { printing.confirm(a, readable) }.onSuccess { _summaryAttempt.value = null } }
+    }
+
+    fun closeSummaryAttempt() { _summaryAttempt.value = null }
+
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
 
     /** Today's day is open on this phone: attendance recorded and no Sales Submit yet (the updater's day gate, F-SYS-020). */
