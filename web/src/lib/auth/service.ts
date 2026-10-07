@@ -51,6 +51,8 @@ export function sessionFromLogin(body: LoginResponse, rem = false): SessionData 
     user: body.user,
     scope: body.scope ?? null,
     ...(rem ? { rem: true } : {}),
+    sat: Date.now(),
+    act: Date.now(),
   };
 }
 
@@ -84,7 +86,7 @@ export function clearAuthCookies(res: NextResponse): void {
 }
 
 /** Rotate the refresh cookie and mint a new access token, then re-read the principal (role and scope may have changed). */
-export async function refreshSession(rt: string, rem = false, prevRole?: string): Promise<ApiOutcome<AuthCookies>> {
+export async function refreshSession(rt: string, rem = false, prevRole?: string, sat?: number): Promise<ApiOutcome<AuthCookies>> {
   const client = apiClient(undefined, { Cookie: `aron_rt=${rt}` });
   const r = await outcome(client.POST("/v1/auth/refresh", { body: { grant: "full", refresh_token: null } }));
   if (!r.ok) return r;
@@ -101,7 +103,7 @@ export async function refreshSession(rt: string, rem = false, prevRole?: string)
     status: 200,
     response: r.response,
     data: {
-      session: { at: pair.access_token, atExp: Date.parse(pair.access_expires_at), user: me.data.user, scope: me.data.scope, ...(rem ? { rem: true } : {}) },
+      session: { at: pair.access_token, atExp: Date.parse(pair.access_expires_at), user: me.data.user, scope: me.data.scope, ...(rem ? { rem: true } : {}), sat: sat ?? Date.now(), act: Date.now() },
       refreshToken: newRt,
       refreshExpiresAt: pair.refresh_expires_at,
     },

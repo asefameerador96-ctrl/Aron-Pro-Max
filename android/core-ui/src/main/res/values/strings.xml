@@ -23,4 +23,8 @@
     <string name="core_ui_kit_gallery_tile_stock">Stock</string>
     <string name="core_ui_kit_gallery_tile_sale">Sale</string>
     <string name="core_ui_kit_gallery_tile_task">Task delegation</string>
+    <string name="core_ui_chip_offline">Offline</string>
+    <string name="core_ui_chip_syncing">Syncing</string>
+    <string name="core_ui_chip_synced">Synced</string>
+    <string name="core_ui_chip_waiting">%1$s waiting</string>
 </resources>
