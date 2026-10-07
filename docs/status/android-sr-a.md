@@ -1,5 +1,21 @@
 # Status: lane android-sr-a (2026-10-07)
 
+## HANDOVER (READY TO RECYCLE, 2026-10-07 ~23:00Z, session 2 of the lane)
+**State:** everything is on `lane/android-sr-a` (merged with INT; local Gradle works: `echo sdk.dir=/opt/android-sdk > local.properties`, run tests with `-Pkotlin.incremental=false` when two builds share a tree). Integrator: session_016uXu7QkPQGGTn3FmR92YHu.
+
+**Done this session (all pushed, unit tests green locally, CI is the independent check):**
+- Stock print: `PrintAttemptDialogs`, one slip per Save (oldest first, `StockSlips`), print and confirm in `SrDay` scope, never crash, recover once per login; `reprint_max` and `confirm_after_print` read from config (`PrintConfig`).
+- Home and Outlet menu use auto tile columns; Stock totals and Attendance status are solid `AronCard`s; Home goldens re-recorded.
+- F-SR-002 OTP wired (`LoginViewModel.bind`, Back to login always reachable); Opus checker fixes in.
+- Optional `POST_NOTIFICATIONS` in first-run permissions (N-038).
+- F-SR-020/021: `CallContentHost` after the start-call prompt in `SaleHost` (AV VideoView, KV image, POSM survey with confirmation, Skip escape); pure rules in `feature-outlet` (`CallPlan`, `PosmSurvey`); survey answers survive rotation and process death (`rememberSaveable`). Sonnet T2 checker: 5 defects, all fixed.
+
+**Waiting:** F-SR-048 (tutorial list data) needs F-API-027 (backend-admin, on hold) and a cache table. `cfg.print.disconnect_idle_s` needs a `PrinterManager` setter (docs/requests/android-sr-a-print-idle-config.md, android-print). Stock-slip Bangla category label (android-print item 5) not done: confirm what the paper should show.
+
+**Traps:** (a) INT is green-only; a red CI on my head is mine. (b) `SrSaleHosts.SaleHost` is sr-b's file; I added only the `contentDone`/`CallContentHost` hook, keep it when merging. (c) `StockHost` current copy wins over any stale copy (android-print-wiring-gaps.md). (d) `ContentShell.assets.file(item)` is disk only (null = missing); one view per item per visit and one answer per question per visit (the repo refuses repeats). (e) A required survey question that is not yes/no or photo is treated as optional (the sale must never be blocked). (f) Robolectric downloads of `android-all-instrumented:16` can fail in a container (download, not code).
+
+**Device checks to run (not filed in device-checks.md yet):** D-SRA-AV: AV plays in landscape from the cache, Close mid-video logs `skipped_user`, a deleted file logs `skipped_missing` and the sale proceeds; D-SRA-KV: the KV close button is legible in sunlight mode; D-SRA-SURVEY: Q1 yes asks for the photo, no hides it, confirmation dialog, kill mid-survey then relaunch keeps the answers; D-SRA-OTP: wrong code, locked, Back to login; D-SRA-PRINT: two Saves unprinted, Print twice prints two slips (D-P2a).
+
 ## Working mode
 Local Gradle cannot resolve (Maven Central 429, no mirror by lead's ruling). Code is pushed to `lane/android-sr-a`; CI there is the build and test. Nothing is merged to INT until CI is green for that commit. Logic and tests come first (pure Kotlin over core-database and shared:rules); Compose screens follow when the N-023 kit slices land.
 
@@ -66,3 +82,4 @@ F-API-027. Support sending stays gated on cfg.support.public_key_spki. Device ha
 are filed in docs/status/device-checks.md.
 - Config reads: reprint_max and confirm_after_print wired (SrDay.loadPrintConfig, PrintConfig + test); disconnect_idle_s needs a setter on PrinterManager (docs/requests/android-sr-a-print-idle-config.md). F-SR-020/021 wait on contract and Room data (docs/requests/android-sr-a-av-kv-survey-data.md); F-SR-048 waits on F-API-027.
 - F-SR-020/021 logic ready (feature-outlet CallContent.kt: CallPlan.content = valid today, this outlet, AV then KV by sequence, missing file = skipped_missing step; PosmSurvey.kt: show_if, canSubmit, rows with stable uuid per visit+question; tests). Screens, Room mapping and the visit-flow hook wait for android-core's tables (outlet_content_assignment, survey_question, outbox types).
+- F-SR-020/021 built on android-core's Room v5: SaleHost now runs CallContentHost after the start-call prompt (AV via VideoView, KV image, POSM survey with Q1.1 photo and confirmation), SrDay.pendingContent/logContentView/pendingSurvey/saveSurvey, ContentShell file via SrDay.contentFile. Kill-and-relaunch skips items already logged and a survey already answered. Strings in values and values-bn. Device halves (AV landscape playback, sunlight legibility of KV close button) to file. T2 checker pending.
