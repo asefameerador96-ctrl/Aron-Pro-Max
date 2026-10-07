@@ -72,8 +72,12 @@ object SessionModule {
     /** Upload scheduling (F-SYS-011): feature code calls `requestSync(userId, trigger)` after every commit. */
     @Provides
     @Singleton
-    fun workManagerSyncScheduler(@ApplicationContext context: Context): WorkManagerSyncScheduler =
-        WorkManagerSyncScheduler({ WorkManager.getInstance(context) }, hold = com.aktcl.aron.core.sync.SyncHold.Prefs(context))
+    fun workManagerSyncScheduler(@ApplicationContext context: Context, components: SessionComponents): WorkManagerSyncScheduler =
+        WorkManagerSyncScheduler(
+            { WorkManager.getInstance(context) }, hold = com.aktcl.aron.core.sync.SyncHold.Prefs(context),
+            // F-SYS-079: check-out and Sales Submit uploads are jittered only just after the 17:00 gate opens.
+            checkoutGate = com.aktcl.aron.core.sync.CheckoutGate.dhaka(components.clock::nowMs),
+        )
 
     @Provides
     fun syncScheduler(scheduler: WorkManagerSyncScheduler): SyncScheduler = scheduler

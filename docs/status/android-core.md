@@ -88,6 +88,17 @@
   - **Row stays open** until (b) and (c), and ask 1 of android-core-backend-record-signature-mode.md (no `record_signature_mode` in ingest on INT), are on INT. Until then, unsigned headers sent after the hold are quarantined `device_integrity_failed` on the server: there for review, not accepted.
   - Open plausibles: dpc `EnrolmentStore.write()` deletes the done file before a retried rename, so a read in that gap is NotEnrolled (dpc lane; rare); `DONE_FILE` names a private dpc literal, pinned by a reflection test.
 
+- **F-SYS-071** (T1) per-user encrypted store: already built by earlier rows. Each user has a random 32-byte key, wrapped by the Keystore (`DatabaseKeys`, tested); the per-user SQLCipher file uses a raw key. The three manifests turn backup off, and data-extraction rules exclude every domain.
+  - Added the proof `SqlCipherDeviceTest.noPlaintextReachesAnyFileAndACopyIsUnreadableToAnotherUser`. It has a positive control (the marker is found in a plain database). It shows no plaintext in the db, -wal, -shm or -journal files while the database is open and after close. A copy under another user's name does not open with that user's key and does open with the owner's.
+  - It runs only on a device or emulator: on the A06, or in CI once infra's AUD-TP-4 emulator job lands.
+  - Opus checker: PASS. The positive control it suggested is added. The APK size gate is unchanged (no dependency added).
+- **F-SYS-079** (T1) upload jitter at the 17:00 gate: `CheckoutGate.dhaka(trustedNow)` is true in the first 10 minutes after 17:00 Dhaka (lane decision: "just opened" = 10 min).
+  - Inside that window, check-out and Sales Submit uploads wait U(0, 90 s) under their own unique work name `aron-sync-gate-u<id>`. Submit ignores a server hold, check-out respects it.
+  - Outside the window, Submit is expedited at once and check-out goes at once under the `now` name. Manual is never jittered. A pending debounce or a running upload of earlier rows is never replaced or delayed.
+  - Wired in the SR, AMO and TSO shells (TSO has no caller yet).
+  - Lane decision: 17:00 and 90 s are defaults. `cfg.day.checkout_earliest_time` and `cfg.sync.checkout_jitter_s` (registry bound 0..600; T7 caps the jitter at 120, which is enforced) are not read by the scheduler yet. The SR attendance flow also hardcodes 17:00. Follow-up: pass both from the shell's config cache.
+  - Opus checker FAIL (REPLACE on the main name delayed earlier rows; check-out behind a backoff; key names): fixed with tests (SyncWorkTest 15).
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~18:15Z, sixth session)
 - **Done this session** (each with a fresh Opus checker, re-checked where it failed; every confirmed defect fixed with a test; head 2838c5aa, INT merged at d4d33ac3): AUD-PERF-05 (session restore off the main thread; device check D-PERF-05), F-SYS-075 (location notice and consent), F-SYS-053 **closed** (backend BC-54), F-SYS-072 BC-53 release of `device_integrity_failed` rows (row stays open), F-SYS-028 (local purge), F-SYS-024 (activity log), F-SYS-032 phone half (error reporting; device check D-ERR), F-SYS-029 core part (bounded image cache).
 - **In progress:** nothing.
