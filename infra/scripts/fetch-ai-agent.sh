@@ -13,18 +13,27 @@ sha="$(sed -n 's/^ARG AI_AGENT_SHA256=//p' "$df")"
 if [ -z "$version" ] || [ -z "$sha" ]; then
   echo "::error::AI_AGENT_VERSION or AI_AGENT_SHA256 not found in $df" >&2; exit 1
 fi
-url="https://repo1.maven.org/maven2/com/microsoft/azure/applicationinsights-agent/${version}/applicationinsights-agent-${version}.jar"
+# Two sources, tried in order on every attempt: Maven Central, then Microsoft's GitHub release (the download Learn
+# documents). Maven Central rate-limited a deploy runner with 429 on every attempt (2026-10-07, deploy run 144); the
+# pinned SHA-256 decides either way, so a second source cannot change what goes into the image.
+urls=(
+  "https://repo1.maven.org/maven2/com/microsoft/azure/applicationinsights-agent/${version}/applicationinsights-agent-${version}.jar"
+  "https://github.com/microsoft/ApplicationInsights-Java/releases/download/${version}/applicationinsights-agent-${version}.jar"
+)
 mkdir -p "$dir/agent"
 out="$dir/agent/applicationinsights-agent.jar"
 for attempt in 1 2 3 4 5; do
-  if curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 --max-time 300 -o "$out.part" "$url" \
-     && echo "${sha}  $out.part" | sha256sum -c --quiet - 2>/dev/null; then
-    mv "$out.part" "$out"
-    echo "applicationinsights-agent ${version}: sha256 ok (attempt ${attempt})"
-    exit 0
-  fi
-  echo "::warning::applicationinsights-agent ${version}: download or checksum failed (attempt ${attempt}); retrying"
-  rm -f "$out.part"
+  for url in "${urls[@]}"; do
+    if curl -fsSL --retry 2 --retry-all-errors --retry-delay 5 --max-time 300 -o "$out.part" "$url" \
+       && echo "${sha}  $out.part" | sha256sum -c --quiet - 2>/dev/null; then
+      mv "$out.part" "$out"
+      host="${url#https://}"
+      echo "applicationinsights-agent ${version}: sha256 ok from ${host%%/*} (attempt ${attempt})"
+      exit 0
+    fi
+    echo "::warning::applicationinsights-agent ${version}: download or checksum failed from ${url} (attempt ${attempt})"
+    rm -f "$out.part"
+  done
   sleep $(( attempt * 10 ))
 done
 echo "::error::applicationinsights-agent ${version}: no download matched sha256 ${sha} after 5 attempts" >&2

@@ -1,6 +1,95 @@
 # Infra lane status
 
-Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
+Updated 2026-10-07 17:40 UTC (fifth infra session).
+
+## Fifth infra session, 2026-10-07 17:40 UTC: read this first (the fourth session's handover below still applies)
+
+**Deploy run 144 (INT 4fd5c4d, 16:49 UTC) failed; dev stays on c992c9c (healthy).** Two infra defects, both fixed on
+lane/infra (needs promotion; until then every INT deploy can fail the same way):
+1. **App Insights agent download:** Maven Central answered HTTP 429 on all 5 attempts at the image build. Fix:
+   `fetch-ai-agent.sh` tries Microsoft's GitHub release of the agent after Maven Central on every attempt (the download
+   Learn documents); the same pinned SHA-256 decides (checked here: the GitHub jar is byte-identical, 93a70c8f...).
+2. **Infra stage never skipped:** `params_unchanged` passed the parameter JSON through argv; with the attestation roots
+   it exceeds the 128 KiB per-argument limit ("/usr/bin/python3: Argument list too long", deploy.sh line 248), so
+   every deploy re-applied main.bicep (and re-PUT Front Door). Fix: files instead of argv; the test reproduces the old
+   error. The first deploy after promotion should log "main.bicep skipped" when infra/ is unchanged.
+
+**Not yet seen:** the dblogins probe (zj, 0cd495f) and the worker without the signing key (9114b63) are NOT on INT yet
+(checked 17:00); run 144 stopped before dblogins. Read probe A/B in the first deploy after they land (guide below).
+
+**Built this session (lane/infra):**
+- **N-062 observability:** log alerts `syncErrors` (aron.sync.* errors) and `aggregationStuck` (3+ aggregation worker
+  errors in 15 min), over `union traces, exceptions` (the Java agent sends errors with a throwable to `exceptions`),
+  evaluated every minute (ingestion 1 to 3 min + 1 min evaluation: inside 5 minutes in practice, not guaranteed);
+  shared ops workbook "Aron operations (appi-aron-dev)" (sync volume/5xx/p95, errors by logger, aggregation failures,
+  slow endpoints, latest errors) with release annotations on its charts; `infra/scripts/release-marker.sh` writes a
+  release annotation (Category Deployment) after the health gate, never fails the deploy. Budget alert: present in
+  code; on dev Azure reports the cost policy off, so no budget exists (warning in every run, owner's billing setting).
+  Opus checker: 1 defect (showAnnotations placement), fixed; notes taken (a stopped worker raises no alert: add a
+  no-telemetry alert later; dev-lite has log alerts off, so the proof runs in the dev profile). **Proof still to run on
+  dev:** a seeded sync error and a seeded aggregation failure, each alerting within 5 minutes and visible in the workbook.
+- **drill.sh** picks the profile server by the `aron-infra` output `postgresServerName` (handover item 6 done).
+- **Bookkeeping:** infra rows built on Day 3 recorded in infra.csv by their backlog ids (proofs still open are named
+  in each note); `tools/my-rows.py infra --todo` now lists only N-062 (proof), N-064 (Day 7).
+- **N-057:** already built as parameters (autoscale, read replica, pools; on only in stage/prod); load-test acceptance
+  is a final-account item.
+
+**Wall-clock gate (task 3):** no infra or workflow script depends on it. The scan reads only Kotlin/Java test sources
+(backend, android, shared, db); infra tests are Python/shell and read no clock to decide pass/fail (date calls in
+infra/scripts are runtime timestamps, lock deadlines and drill names). The flip to `--blocking` on 2026-10-09 is a
+one-line ci.yml edit (`wallclock-scan.py --blocking .`); offenders are backend's.
+
+**Governance:** `tools/github-governance.ps1` already requires "Repository gates (secrets, migrations, contract)"; the
+live protection on main still lists "Contract lint" until someone with admin rights re-runs the protection step
+(laptop session, before the first gate pull request). Not a blocker today.
+
+**N-064 (Day 7) plan:** signed release APKs already come from ci.yml on INT (`aron-release-signed-dev-<run>`);
+release-app.yml stays inert until the final account. Left: a release manifest (versions, SHA-256, api/web digests),
+upload to the admin release store (F-ADM-027) and the install/upgrade proof on enrolled phones (owner's hands).
+
+Restore drill: still only after "owner approved restore drill".
+
+## HANDOVER (fourth cloud infra session -> next), 2026-10-07 16:55 UTC: read this first
+
+**Proven on dev (deploy run 37649162760, c992c9c, first green dev deploy):** what-if guard with live PostgreSQL zones
+(primary 2, standby 1), main.bicep, images built once and deployed by digest, PITR point before migrations, migrations,
+apps + Front Door routes, health gate (build = commit, ready 200, web /login 200), storage CORS by preflight (Front Door
+origin + PUT + `x-ms-blob-type,content-type` only; other origins and methods 403), `aron-dev-resource-health-recovered`
+alert created. Table: "FIRST GREEN DEV DEPLOY" below.
+
+**Open, in order:**
+1. **dblogins** fails on every deploy: execution Failed, "No replicas found for execution", no console or system log =
+   the replica is never created (psql never runs). Does NOT block the apps while `dbPerAppLogins` is false (warning +
+   summary row "Database logins | FAILED"); blocks again once the apps use those logins. Ruled out: wrong-arch image,
+   identity/ACR/Key Vault roles (same identity as the working migrate job), secret names, the 300 s timeout (fails in
+   ~1 min), the compiled command. **Read the probe** (lane/infra 0cd495f, train candidate zj): in the first deploy log
+   after zj, lines `probe A (...)` and `probe B (...)` follow the dblogins warning.
+   - A Failed or "could not start" -> image/registry pull of `tools/postgres@sha256:7218...`.
+   - A Succeeded, B Failed -> a Key Vault secret reference of the job (db-direct-url, pw-app-api/worker/jobs).
+   - Both Succeeded (B prints "ARON_... set") -> the 7 KB `ARON_SQL` env value or the real command: move the SQL out of
+     the env (into the image, or a secret volume).
+   After it passes: `dbPerAppLogins = true` in dev params (db's V0029 grants are on INT).
+2. **lane/infra 9114b63** (worker gets no token signing key; backend change on INT since c992c9c): after its deploy,
+   check the worker revision starts. Caveat: the worker identity still has vault-wide Secrets User; per-secret scoping is
+   a final-account item.
+3. **Infra-stage skip:** run 143 wrote the resource-group tag `aron-infra-sha`; a deploy with no infra change should log
+   "main.bicep skipped" (verify; it also stops the per-apply Front Door rollout behind the 13:11 Sev4 mail).
+4. **Wall-clock gate** flips to `--blocking` on 2026-10-09; 14 offenders (backend) at last count; tell the lead daily.
+5. Rows: N-062, N-057 (prod-only parameters), N-064 (release candidate, Day 7), seeded-failure proof of the REL-04 alerts,
+   support key script (`docs/requests/android-sys-support-key.md`, needs Key Vault write: deploy identity or the owner).
+6. Follow-up from the laptop session (below): `drill.sh` should pick its server by exact name, before the next drill.
+
+**Waits on people:** restore drill only after the lead relays "owner approved restore drill". main's branch protection
+still requires "Contract lint" (folded into Repository gates): re-run the protection step of
+`tools/github-governance.ps1` before the first gate pull request. Nobody but the deploy workflow has `az` now.
+
+**Final-account items:** Service Health alert, per-secret Key Vault scoping per identity, `activeRevisionsMode` Multiple
+(stage, prod), restore drill rehearsal, deploy freeze window.
+
+**Traps:** `az deployment group create` has no `--tags` (broke run 142; check new az flags against the CLI reference,
+there is no az here); `az postgres flexible-server list` tsv prints a list one value per line; `az acr import` takes a
+tag or a digest, never both; a laptop session (owner account, +0600 commits) may push lane/infra: fetch and merge it
+before every push.
 
 ## Day 3, 16:30 UTC (fresh session after the team stall): deploy run 37608044223 fixed
 
@@ -26,6 +115,36 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
   `[0].[a,b]` list one value per line), so INT runs 37613509210 and 37613922726 were refused again; replaced by the block above.
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
+
+## Day 3, 16:30 UTC: FIRST GREEN DEV DEPLOY (run 37649162760, c992c9c) — proven on Azure
+
+| Item | Result |
+|---|---|
+| what-if guard with live PostgreSQL zones (primary 2, standby 1) | passed |
+| main.bicep apply (new `aron-dev-resource-health-recovered` alert created) | passed |
+| images built once, deployed **by digest** (backend `@sha256:5657854f...`, web `@sha256:336eeb80...`) | passed |
+| PITR restore point recorded before migrations (16:16:13Z) | passed |
+| migrations (by digest) | passed |
+| apps + Front Door routes | passed |
+| health gate: `/v1/health` 200 with `X-Aron-Api: 1` and build = c992c9c, `/v1/health/ready` 200, web `/login` 200 | passed |
+| storage CORS (preflight from this session, 16:35 UTC): Front Door origin + PUT + `x-ms-blob-type,content-type` -> 200 with exactly those; foreign origin -> 403; DELETE -> 403 | passed |
+| alerts deployed (seeded-failure proof still to run) | deployed |
+| dblogins | **FAILED, not blocking** (per-app logins off): execution `5uyo1ah` status Failed, end null, "No replicas found for execution" = the replica was never created (not psql). No console or system log. |
+
+dblogins next: `infra/scripts/dblogins-probe.sh` now runs on that failure in the deploy itself, two short executions of the
+same job with template overrides: A (image only, `psql --version`) and B (A plus the four Key Vault secret refs; prints
+only set/unset). A fails -> image/pull; B fails -> a secret reference; both pass -> the 7 KB `ARON_SQL` value or the
+command. The next INT deploy reports it. `aron-infra-sha` tag: written by this run's apply, so the next deploy shows
+whether the infra stage is skipped.
+
+## Day 3, 16:10 UTC: worker without the token signing key (backend-core request, AUD-SEC-07)
+
+`docs/requests/infra-worker-no-signing-key.md`: the backend change (worker and migrate start without
+`ARON_JWT_SIGNING_KEY`, `SettingsTest`) is on INT since c992c9c, so the worker container no longer gets the
+`jwt-signing-key` / `jwt-kid` Key Vault references; only api replicas do (test `WorkerWithoutSigningKey`). Note: the
+worker identity still has Key Vault Secrets User on the whole vault (identities.bicep), so this removes the key from the
+worker's environment, not its ability to read it; per-secret role scoping is a final-account item (logged here, not built).
+The api's ~24 s drain fits Container Apps' default 30 s termination grace; nothing here lowers it.
 
 ## Day 3, 15:20 UTC: my regression fixed (deploy run 37639072495)
 

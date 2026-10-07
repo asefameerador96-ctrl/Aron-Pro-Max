@@ -16,6 +16,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronPrimaryButton
+import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
@@ -24,11 +25,12 @@ object OtpTags {
     const val BOXES = "otp_boxes"
     const val VERIFY = "otp_verify"
     const val MESSAGE = "otp_message"
+    const val BACK = "otp_back"
 }
 
 /** Device OTP prompt (F-SR-002): four digits, Verify, and the wrong / expired / too-many-attempts texts. */
 @Composable
-fun OtpContent(state: OtpState, onDigits: (String) -> Unit, onVerify: () -> Unit, modifier: Modifier = Modifier) {
+fun OtpContent(state: OtpState, onDigits: (String) -> Unit, onVerify: () -> Unit, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
     Column(modifier.fillMaxSize().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         Text(stringResource(R.string.otp_title), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.otp_hint))
@@ -53,5 +55,7 @@ fun OtpContent(state: OtpState, onDigits: (String) -> Unit, onVerify: () -> Unit
         }
         if (state.bound) AronBanner(stringResource(R.string.otp_bound), kind = BannerKind.Info)
         AronPrimaryButton(stringResource(R.string.otp_verify), onVerify, Modifier.testTag(OtpTags.VERIFY), enabled = state.canVerify)
+        // Always reachable: after too many wrong codes or a lock the rep must be able to go back and ask for a new code.
+        if (onBack != null) AronSecondaryButton(stringResource(R.string.otp_back), onBack, Modifier.testTag(OtpTags.BACK), enabled = !state.busy)
     }
 }

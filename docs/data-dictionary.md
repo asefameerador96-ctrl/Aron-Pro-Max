@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 145 | 2532 |
+| `app` | 146 | 2539 |
 | `dw` | 33 | 512 |
 
 ## Index
@@ -132,6 +132,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.rubric_version`](#apprubric_version) | table | backend:masterdata | ONLINE | master | none | One row is an immutable published version of a rubric: its scored criteria; assessments reference it. |
 | [`app.sale_abort`](#appsale_abort) | table | backend:sync | OFFLINE | transaction | none | A memo number consumed without a memo, explaining gaps in memo numbering. |
 | [`app.sales_plan`](#appsales_plan) | table | backend:masterdata | ONLINE | master | none | SKU enabled for a zone for a date range. |
+| [`app.security_event`](#appsecurity_event) | table | backend:platform | SERVER | audit | personal | Append-only security events (login failures, lockouts, refresh reuse, device proof and state refusals, scope and password changes, force logout, OTP views) for alerts and support (docs/21 s8.1). |
 | [`app.server_generation`](#appserver_generation) | table | backend:sync | SERVER | ops | none | Database lineage: one row per new generation after creation, failover or restore. |
 | [`app.sku`](#appsku) | table | backend:masterdata | ONLINE | master | none | A sellable product with unit, pack size, names and category. |
 | [`app.sku_price`](#appsku_price) | table | backend:masterdata | ONLINE | master | none | Effective-dated price of a SKU for one of the five price types. |
@@ -3593,6 +3594,24 @@ SKU enabled for a zone for a date range.
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (sku_id) REFERENCES app.sku(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
+
+## app.security_event
+
+Append-only security events (login failures, lockouts, refresh reuse, device proof and state refusals, scope and password changes, force logout, OTP views) for alerts and support (docs/21 s8.1).
+
+`owner: backend:platform | capture: SERVER | retention: audit | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `at` | timestamp with time zone | not null |  | UTC instant of the event. |
+| `kind` | text | not null |  | login_failure, lockout, refresh_reuse, device_proof_invalid, device_state_refused, scope_changed, password_change, force_logout or otp_view. |
+| `user_id` | bigint | null |  | User the event names; no foreign key (a failure may name an unknown account); null when none. |
+| `device_uuid` | uuid | null |  | Device the event came from; null when unknown. |
+| `request_id` | uuid | null |  | Request id of the API call, to join the structured log line. |
+| `detail` | jsonb | not null | personal | Short facts (route, code, username_hash, ip_class, failures, family); never a password, token or OTP. |
+
+Keys: `PRIMARY KEY (id)`
 
 ## app.server_generation
 
