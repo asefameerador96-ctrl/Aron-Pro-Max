@@ -177,7 +177,7 @@ class Wiring(
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
                 dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
                 adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
-                adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock))
+                adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock, config = config))
                 adminProductsRoutes(AdminProductsDeps(db, guard, clock))
                 adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)
