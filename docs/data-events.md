@@ -5,23 +5,25 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
 
 ## Versioning rules (V0017)
 
-- Every outbox row names `event_type` and `payload_version`; the insert trigger refuses a pair that is not a
-  catalogue row, a payload that is not a JSON object and one that lacks a required key (presence only).
+- Every outbox row has `event_type` and `payload_version` (default 1); the insert trigger refuses a pair that is
+  not a catalogue row and a payload that is not a JSON object. A version's required keys are enforced once its
+  `enforce_required` is on (a db migration after the producer sends them, V0018); until then the schema is the
+  target shape and consumers read the source row through `source_client_uuid`.
 - Payloads carry ids, codes, counts and amounts, never names, phone numbers, NIDs or coordinates.
 - Adding an optional key keeps the version. Removing or renaming a key, changing its type or meaning, or making
   a key required adds a new version (a db migration; ask through docs/requests). A published schema never changes.
 - Producers write the newest version that is not deprecated; consumers handle every version that is not
   deprecated and ignore keys they do not know.
 
-| Event | Version | Aggregate | aggregate_id | Producer | Status |
-|---|---|---|---|---|---|
-| [`memo.created`](#memocreated-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current |
-| [`memo.voided`](#memovoided-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current |
-| [`outlet.changed`](#outletchanged-v1) | 1 | `outlet` | `outlet.id` | backend:masterdata | current |
-| [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | current |
-| [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | current |
-| [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | current |
-| [`visit.closed`](#visitclosed-v1) | 1 | `visit` | `visit.client_uuid` | backend:sync | current |
+| Event | Version | Aggregate | aggregate_id | Producer | Status | Required keys enforced |
+|---|---|---|---|---|---|---|
+| [`memo.created`](#memocreated-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current | not yet |
+| [`memo.voided`](#memovoided-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current | not yet |
+| [`outlet.changed`](#outletchanged-v1) | 1 | `outlet` | `outlet.id` | backend:masterdata | current | not yet |
+| [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | current | not yet |
+| [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | current | not yet |
+| [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | current | not yet |
+| [`visit.closed`](#visitclosed-v1) | 1 | `visit` | `visit.client_uuid` | backend:sync | current | not yet |
 
 ## memo.created v1
 
