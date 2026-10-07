@@ -15,6 +15,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -29,6 +33,7 @@ import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMapOptions
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -38,9 +43,10 @@ import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MapsComposeExperimentalApi
 import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
+import com.google.maps.android.compose.rememberUpdatedMarkerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 
 object LiteMapTags {
@@ -93,6 +99,8 @@ fun LiteMapScreen(
                 val shown = remember(points) { points.filter { it.located }.take(MAX_MARKERS) }
                 val frame = remember(shown) { MapFrame.of(shown) }!!
                 val camera = rememberCameraPositionState { position = CameraPosition.fromLatLngZoom(LatLng(frame.lat, frame.lng), frame.zoom) }
+                // A refreshed list moves the frame too: lite mode has no gestures, so a point outside it would be invisible.
+                LaunchedEffect(frame) { camera.move(CameraUpdateFactory.newLatLngZoom(LatLng(frame.lat, frame.lng), frame.zoom)) }
                 val scope = rememberCoroutineScope()
                 GoogleMap(
                     modifier = Modifier.fillMaxWidth().height(MAP_HEIGHT).testTag(LiteMapTags.MAP),
@@ -100,7 +108,7 @@ fun LiteMapScreen(
                     googleMapOptionsFactory = { GoogleMapOptions().liteMode(true).mapToolbarEnabled(false) },
                     uiSettings = MapUiSettings(mapToolbarEnabled = false, zoomControlsEnabled = false, myLocationButtonEnabled = false, tiltGesturesEnabled = false),
                 ) {
-                    shown.forEach { p -> Marker(state = rememberMarkerState(key = p.id, position = LatLng(p.lat!!, p.lng!!)), title = p.label) }
+                    shown.forEach { p -> key(p.id) { Marker(state = rememberUpdatedMarkerState(position = LatLng(p.lat!!, p.lng!!)), title = p.label) } }
                     if (cache != null) MapEffect(cacheKey) { map ->
                         map.setOnMapLoadedCallback {
                             map.snapshot { bmp -> if (bmp != null) scope.launch(Dispatchers.IO) { runCatching { cache.put(cacheKey, encode(bmp)) } } }
@@ -110,7 +118,10 @@ fun LiteMapScreen(
                 if (points.size > shown.size) AronBanner(stringResource(R.string.map_capped, localizedNumber(shown.size.toLong())), Modifier.testTag(LiteMapTags.BANNER))
             }
             MapMode.OFFLINE -> {
-                val image = remember(cacheKey) { cache?.get(cacheKey)?.let { f -> runCatching { BitmapFactory.decodeFile(f.path) }.getOrNull() } }
+                // Disk read and decode off the main thread; the list shows at once and the image follows.
+                val image by produceState<Bitmap?>(null, cacheKey, cache) {
+                    value = withContext(Dispatchers.IO) { cache?.get(cacheKey)?.let { f -> runCatching { BitmapFactory.decodeFile(f.path) }.getOrNull() } }
+                }
                 image?.let { Image(it.asImageBitmap(), stringResource(R.string.map_last_seen_image), Modifier.fillMaxWidth().height(MAP_HEIGHT).testTag(LiteMapTags.SNAPSHOT), contentScale = ContentScale.Crop) }
                 AronBanner(stringResource(R.string.map_offline), Modifier.testTag(LiteMapTags.BANNER), BannerKind.Warning)
             }
@@ -138,7 +149,7 @@ private fun PointList(points: List<MapPoint>, nowMs: Long, staleAfterMin: Int, m
                     age == null -> stringResource(R.string.map_no_fix)
                     else -> stringResource(R.string.map_last_seen, localizedDigits(age.clock), localizedNumber(age.minutesAgo))
                 }
-                Text(if (p.source.isNullOrBlank()) line else "$line · ${p.source}", style = MaterialTheme.typography.bodyMedium)
+                Text(if (p.source.isNullOrBlank()) line else stringResource(R.string.map_line_with_source, line, p.source), style = MaterialTheme.typography.bodyMedium)
             }
         }
     }

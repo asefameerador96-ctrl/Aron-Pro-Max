@@ -31,6 +31,7 @@ class AndroidGeocodeBackend(private val context: Context) : GeocodeBackend {
                 })
             }
         } else {
+            // Before API 33 the call blocks: the resolver's timeout frees the caller, the IO thread finishes on its own.
             @Suppress("DEPRECATION")
             withContext(Dispatchers.IO) { geocoder.getFromLocation(lat, lng, 1)?.firstOrNull() }
         }
@@ -52,9 +53,16 @@ class InMemoryLastAddressStore : LastAddressStore {
     override fun write(value: KnownAddress) { this.value = value }
 }
 
-/** Per user (shared phones keep users apart), app-private, survives a kill and relaunch. */
+/**
+ * Per user (shared phones keep users apart), app-private, survives a kill and relaunch. The file name ends in
+ * `-<userId>` so the logout wipe (core-system `DatabaseLogoutPorts.userFiles`) deletes it with the user's other files.
+ */
 class PrefsLastAddressStore(context: Context, userId: Long) : LastAddressStore {
-    private val prefs = context.getSharedPreferences("aron_map_last_address_u$userId", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(fileName(userId), Context.MODE_PRIVATE)
+
+    companion object {
+        fun fileName(userId: Long) = "aron-map-last-address-$userId"
+    }
 
     override fun read(): KnownAddress? = runCatching {
         val text = prefs.getString("text", null) ?: return null

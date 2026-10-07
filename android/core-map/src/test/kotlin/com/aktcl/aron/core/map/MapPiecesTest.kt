@@ -58,6 +58,18 @@ class MapPiecesTest {
         assertFalse(File(dir, "x.webp.tmp").exists())
     }
 
+    /** Checker finding 5: keys that read alike after sanitising keep separate images. */
+    @Test
+    fun keysThatReadAlikeKeepSeparateImages() {
+        val cache = MapTileCache(File(tmp.root, "map"), { 10_000L })
+        cache.put("zone/1", byteArrayOf(1))
+        cache.put("zone_1", byteArrayOf(2, 2))
+        cache.put("Zone_1", byteArrayOf(3, 3, 3))
+        assertEquals(1L, cache.get("zone/1")!!.length())
+        assertEquals(2L, cache.get("zone_1")!!.length())
+        assertEquals(3L, cache.get("Zone_1")!!.length())
+    }
+
     @Test
     fun theFixAgeIsDhakaTimeWithMinutesAndGreysAfterTheLimit() {
         val fixAt = 1_791_342_600_000L // 2026-10-07T03:10:00Z = 09:10 Dhaka

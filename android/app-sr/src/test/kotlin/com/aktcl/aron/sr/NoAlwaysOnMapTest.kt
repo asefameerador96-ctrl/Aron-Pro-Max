@@ -26,7 +26,8 @@ class NoAlwaysOnMapTest {
         val starters = sources.filter { it.name != "OutletMapActivity.kt" && it.readText().contains("OutletMapActivity") }
         starters.forEach { f ->
             f.readLines().filter { it.contains("OutletMapActivity") }.forEach { line ->
-                assertTrue("${f.name}: $line", line.contains("startActivity") || line.contains("intent(") || line.trimStart().startsWith("import"))
+                // Started only by an explicit startActivity in a click handler (SrApp: the Map button), never from onCreate/init.
+                assertTrue("${f.name}: $line", line.trimStart().startsWith("import") || (line.contains("startActivity(") && line.trimStart().startsWith("{")))
             }
         }
         val manifest = File("src/main/AndroidManifest.xml").readText()

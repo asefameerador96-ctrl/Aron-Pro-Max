@@ -9,6 +9,7 @@ import java.io.File
  * Lite mode draws one static image per view, so this cache, not a tile pyramid, is what the phone keeps on disk.
  */
 class MapTileCache(private val dir: File, private val maxBytes: () -> Long) {
+    @Synchronized
     fun get(key: String): File? {
         val f = File(dir, name(key))
         if (!f.isFile) return null
@@ -17,6 +18,7 @@ class MapTileCache(private val dir: File, private val maxBytes: () -> Long) {
     }
 
     /** Stores [bytes] for [key] (written to a temp file, then renamed: a kill never leaves a half image), then trims. */
+    @Synchronized
     fun put(key: String, bytes: ByteArray) {
         if (bytes.size > maxBytes()) return
         dir.mkdirs()
@@ -31,6 +33,7 @@ class MapTileCache(private val dir: File, private val maxBytes: () -> Long) {
     fun sizeBytes(): Long = files().sumOf { it.length() }
 
     /** Deletes least recently used images until the total is within the cap; stray temp files always go. */
+    @Synchronized
     fun trim() {
         dir.listFiles { f -> f.name.endsWith(".tmp") }?.forEach { it.delete() }
         val cap = maxBytes()
@@ -49,7 +52,13 @@ class MapTileCache(private val dir: File, private val maxBytes: () -> Long) {
     companion object {
         private const val EXT = ".webp"
 
-        /** Keys are caller ids (a screen and its scope); anything outside [a-z0-9_-] is replaced so a key is never a path. */
-        internal fun name(key: String): String = key.lowercase().replace(Regex("[^a-z0-9_-]"), "_").take(80) + EXT
+        /**
+         * Keys are caller ids (a screen and its scope). Anything outside [a-z0-9_-] is replaced so a key is never a path,
+         * and a hash of the raw key keeps two keys that read alike (`zone/1`, `zone_1`) in separate files.
+         */
+        internal fun name(key: String): String {
+            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(key.toByteArray()).take(6).joinToString("") { String.format(java.util.Locale.ROOT, "%02x", it) }
+            return key.lowercase().replace(Regex("[^a-z0-9_-]"), "_").take(60) + "-" + hash + EXT
+        }
     }
 }

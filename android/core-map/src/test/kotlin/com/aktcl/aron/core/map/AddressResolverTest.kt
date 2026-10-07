@@ -6,6 +6,7 @@ import com.aktcl.aron.core.common.AppLanguage
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -91,5 +92,8 @@ class AddressResolverTest {
         PrefsLastAddressStore(context, 7).write(KnownAddress(gulshan.first, gulshan.second, "Gulshan"))
         assertEquals(KnownAddress(gulshan.first, gulshan.second, "Gulshan"), PrefsLastAddressStore(context, 7).read())
         assertNull(PrefsLastAddressStore(context, 8).read())
+        // Checker finding 1: the logout wipe deletes shared_prefs files ending "-<userId>.xml" (DatabaseLogoutPorts).
+        assertTrue((PrefsLastAddressStore.fileName(7) + ".xml").endsWith("-7.xml"))
+        assertFalse((PrefsLastAddressStore.fileName(17) + ".xml").endsWith("-7.xml"))
     }
 }
