@@ -87,3 +87,12 @@ Checker findings (Opus T1: 7, Sonnet T2: 4) fixed; tests kept in each module's `
 ### Added to the handoff (from android-print, 2026-10-07 08:42; see docs/requests/android-print-wiring-gaps.md "Status 2026-10-07 08:50", lane/android-print b6d07b54)
 1. Replace my `ReprintDialogs` with core-printing's `PrintAttemptDialogs` for the memo reprint result. A tap outside the dialog or Back must never record "not readable" (that would let an unmarked second original print): my current `ReprintDialogs` already ignores outside taps (`onDismissRequest = {}`) but confirm it after the swap.
 2. Wire `SummaryScreen.onPrint` to `printing.printDaySummary(daySummaryUuid, DaySummaryPrint)`; `daySummaryUuid` is a UUID v4 stored once per user and business date; map with `PrintMapping.daySummary` from stored mtk values.
+
+## UPDATE 2026-10-07 (replacement session): app-sr wiring landed on lane/android-sr-b (2d1b6a8c)
+Done: `SrSaleKit` + `RoomSaleReads` (catalog from prices and stock tracker, memo numbering from login, server counts from `server_totals`, summary, journey, KPI), hosts in `SrSaleHosts.kt` (Sale with start-call prompt, no-sale outcomes and `visit_close`, Memo with reprint/Mark paid/history, Edit with fresh `memo_edit` fix and geofence gate, Summary with `printDaySummary` (stable v4 uuid per user and date), Sales Submit, Journey, KPI, visit_skip from the picker), Sunlight toggle in the sale-side chrome (`MainActivity` holds the per-user preference), figures on solid `AronCard`. `RoomSaleReadsTest` passes locally (Android SDK installed in the lane container: `ANDROID_HOME=/root/android-sdk`).
+Open / not done:
+- Sunlight toggle on Home and the other sr-a screens (needs the top bar of sr-a's screens): ask android-sr-a to place `SunlightToggle(sunlight, onSunlight)` (already passed into `SrApp`).
+- Swap my `PrintAttemptDialogs` / `ReprintDialogs` for core-printing's once android-print's lane is on INT (outside tap already never answers "not readable").
+- Edit while editing: stock warning counts the old memo's quantity too (old memo is superseded only on commit); warning only, not a block.
+- No end-to-end test of the Compose hosts (needs `SrDay`); device checks (kill mid-commit, edit at the shop, print) are for the device lab.
+- `typeLabel` covers the usual record types; unknown ones show the wire name.
