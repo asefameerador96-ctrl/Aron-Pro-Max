@@ -1,4 +1,4 @@
--- V0019 system reference data: the business code-list items every environment needs (audit AUD-DA-04; docs/16 s3.5 and
+-- V0027 system reference data: the business code-list items every environment needs (audit AUD-DA-04; docs/16 s3.5 and
 -- s3.6, docs/19, D-34, D-38, D-39, D-95, D-159, D-197, D-200, D-258). Until now they existed only in the dev seed, so a
 -- QA, staging or production database had empty pickers. Idempotent: ON CONFLICT DO NOTHING keeps any label an admin
 -- (or the dev seed) already set; codes are immutable (V0005 trigger) and are retired with valid_to, never deleted.
