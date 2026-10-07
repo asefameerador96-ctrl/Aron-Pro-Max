@@ -63,11 +63,16 @@ object RootHints {
         if (CLONE_APPS.any { safe { p.installed(it) } }) hints += "clone_app_installed"
         // A cloned or work-profile copy of the app runs as another Android user or from a foreign data directory.
         if (safe { p.userId != 0 }) hints += "secondary_user"
-        if (safe { !(p.dataDir.startsWith("/data/user/0/$ownPackage") || p.dataDir.startsWith("/data/data/$ownPackage")) }) {
+        if (safe { !isOwnDataDir(p.dataDir, ownPackage) }) {
             hints += "foreign_data_dir"
         }
         return hints
     }
+
+    /** Internal storage of user 0, or the same on adopted SD storage (`/mnt/expand/<volume uuid>/user/0/<package>`). */
+    fun isOwnDataDir(dataDir: String, ownPackage: String): Boolean =
+        dataDir == "/data/user/0/$ownPackage" || dataDir == "/data/data/$ownPackage" ||
+            Regex("^/mnt/expand/[0-9a-fA-F-]+/user/0/${Regex.escape(ownPackage)}$").matches(dataDir)
 }
 
 /**
@@ -79,19 +84,29 @@ class IntegritySignalsTracker(private val dir: File) {
 
     private fun fingerprint(s: IntegritySignals): String = listOf(
         "dev=${s.devOptionsEnabled}", "adb=${s.adbEnabled}", "time=${s.autoTimeEnabled}", "owner=${s.deviceOwner}",
-        "mock=${s.mockLocationApps.sorted().joinToString(",")}", "root=${s.rootHints.sorted().joinToString(",")}",
+        "mock=${s.mockLocationApps.distinct().sorted().joinToString(",")}", "root=${s.rootHints.distinct().sorted().joinToString(",")}",
     ).joinToString("\n")
 
-    /** True when [current] differs from what was last recorded (or nothing was recorded); then records it. */
+    /**
+     * True when [current] differs from what was last recorded (or nothing was recorded). Never throws: when the file
+     * cannot be read or written the answer is true (report again rather than miss a change).
+     */
     @Synchronized
     fun changed(current: IntegritySignals): Boolean {
         val fp = fingerprint(current)
-        val previous = file.takeIf { it.isFile }?.readText()
+        val previous = runCatching { file.takeIf { it.isFile }?.readText() }.getOrNull()
         if (previous == fp) return false
-        dir.mkdirs()
-        val tmp = File(dir, "integrity-signals.tmp")
-        tmp.writeText(fp)
-        if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
         return true
+    }
+
+    /** Records [sent] once its `device_status` is safely in the outbox, so a crash in between re-reports the change. */
+    @Synchronized
+    fun recordSent(sent: IntegritySignals) {
+        runCatching {
+            dir.mkdirs()
+            val tmp = File(dir, "integrity-signals.tmp")
+            tmp.writeText(fingerprint(sent))
+            if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
+        }
     }
 }

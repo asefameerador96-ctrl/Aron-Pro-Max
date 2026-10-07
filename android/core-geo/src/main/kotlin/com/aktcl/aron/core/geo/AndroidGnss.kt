@@ -21,9 +21,12 @@ class AndroidGnssObserver(context: Context, private val clock: WallClock) : FixW
     private val lm = app.getSystemService(LocationManager::class.java)
     private val handler by lazy { Handler(Looper.getMainLooper()) }
 
-    /** Raw-measurement capability of this phone model (API 31+ reports it; below, measurements are tried and counted). */
-    val rawSupported: Boolean by lazy {
-        if (Build.VERSION.SDK_INT >= 31) runCatching { lm?.gnssCapabilities?.hasMeasurements() == true }.getOrDefault(false) else true
+    /**
+     * Raw-measurement capability of this phone model: API 31+ reports it; below, it is unknown (null) until the window
+     * shows it (a measurement arrives, or the callback reports STATUS_NOT_SUPPORTED, or registration fails).
+     */
+    val rawSupported: Boolean? by lazy {
+        if (Build.VERSION.SDK_INT >= 31) runCatching { lm?.gnssCapabilities?.hasMeasurements() == true }.getOrDefault(false) else null
     }
 
     @SuppressLint("MissingPermission") // FixManager checked the permission; a SecurityException yields no window data.
@@ -47,9 +50,18 @@ class AndroidGnssObserver(context: Context, private val clock: WallClock) : FixW
                 }
                 acc.onMeasurements(e.measurements.size, agc)
             }
+
+            @Deprecated("Deprecated in API 31")
+            override fun onStatusChanged(status: Int) {
+                when (status) {
+                    STATUS_NOT_SUPPORTED -> acc.markRawSupported(false)
+                    STATUS_READY -> acc.markRawSupported(true)
+                }
+            }
         }
         val statusOn = runCatching { manager.registerGnssStatusCallback(status, handler) }.getOrDefault(false)
-        val measOn = rawSupported && runCatching { manager.registerGnssMeasurementsCallback(measurements, handler) }.getOrDefault(false)
+        val measOn = rawSupported != false && runCatching { manager.registerGnssMeasurementsCallback(measurements, handler) }.getOrDefault(false)
+        if (!measOn) acc.markRawSupported(false)
         return FixWindow {
             if (statusOn) runCatching { manager.unregisterGnssStatusCallback(status) }
             if (measOn) runCatching { manager.unregisterGnssMeasurementsCallback(measurements) }

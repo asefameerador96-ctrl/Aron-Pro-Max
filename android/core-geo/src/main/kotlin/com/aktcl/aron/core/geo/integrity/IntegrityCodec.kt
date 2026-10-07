@@ -36,7 +36,10 @@ object IntegrityCodec {
      */
     fun derToRawB64url(der: ByteArray): String {
         var i = 0
-        fun byte(): Int = der[i++].toInt() and 0xff
+        fun byte(): Int {
+            require(i < der.size) { "truncated DER" }
+            return der[i++].toInt() and 0xff
+        }
         require(byte() == 0x30) { "not a DER sequence" }
         var len = byte()
         if (len == 0x81) len = byte()

@@ -5,7 +5,6 @@ import android.content.Context
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.security.keystore.StrongBoxUnavailableException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.PrivateKey
@@ -36,14 +35,16 @@ interface DeviceKeyStore {
 }
 
 object DeviceKeySpecs {
-    const val DEFAULT_ALIAS = "aron-device-key-v1"
 
     /** The key spec: P-256, SIGN with SHA-256, attestation [challenge], StrongBox when asked; never exportable. */
-    fun spec(alias: String, challenge: ByteArray, strongBox: Boolean): KeyGenParameterSpec =
+    /** A fresh alias for a new device key (re-enrolment never overwrites the key in use). */
+    fun newAlias(): String = "aron-device-key-" + java.util.UUID.randomUUID().toString()
+
+    fun spec(alias: String, challenge: ByteArray?, strongBox: Boolean): KeyGenParameterSpec =
         KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
             .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
             .setDigests(KeyProperties.DIGEST_SHA256)
-            .setAttestationChallenge(challenge)
+            .apply { if (challenge != null) setAttestationChallenge(challenge) }
             .apply { if (strongBox && Build.VERSION.SDK_INT >= 28) setIsStrongBoxBacked(true) }
             .build()
 
@@ -59,27 +60,46 @@ class AndroidDeviceKeyStore(context: Context) : DeviceKeyStore {
     private val app = context.applicationContext
     private fun keyStore(): KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
+    /**
+     * Creates the key under a NEW [alias] (see [DeviceKeySpecs.newAlias]); an existing key is never touched, so a failed
+     * or refused re-enrolment leaves the key the server holds working. The caller deletes the old alias only after the
+     * server accepted the new key. Tries StrongBox, then the TEE, then (phones whose attestation is broken) the TEE
+     * without attestation, which the server will mark as failed attestation while enrolment still proceeds.
+     */
     override fun create(alias: String, challenge: ByteArray): AttestedKey {
-        val ks = keyStore()
-        if (ks.containsAlias(alias)) ks.deleteEntry(alias) // a re-enrolment replaces the key and its attestation
+        require(!exists(alias)) { "alias in use; create the new key under a new alias" }
         val wantStrongBox = Build.VERSION.SDK_INT >= 28 && app.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
-        val strongBox = if (wantStrongBox) {
-            try { generate(alias, challenge, true); true } catch (_: StrongBoxUnavailableException) { false }
-        } else false
-        if (!strongBox) generate(alias, challenge, false)
-        val chain = keyStore().getCertificateChain(alias)
+        val attempts = listOfNotNull(
+            if (wantStrongBox) Triple(true, challenge, "strongbox") else null,
+            Triple(false, challenge, "tee"),
+            Triple(false, null, "tee-unattested"),
+        )
+        var strongBox = false
+        var last: Exception? = null
+        val made = attempts.any { (sb, ch, _) ->
+            try {
+                generate(alias, ch, sb); strongBox = sb; true
+            } catch (e: Exception) {
+                last = e
+                runCatching { keyStore().deleteEntry(alias) }
+                false
+            }
+        }
+        if (!made) throw IllegalStateException("device key could not be created", last)
+        val ks = keyStore()
+        val chain = ks.getCertificateChain(alias)
         val leaf = chain?.firstOrNull() as? java.security.cert.X509Certificate
-        val pub = (leaf?.publicKey ?: keyStore().getCertificate(alias).publicKey) as ECPublicKey
+        val pub = (leaf?.publicKey ?: ks.getCertificate(alias).publicKey) as ECPublicKey
         return AttestedKey(
             alias = alias,
             publicKey = EcJwk.of(pub),
-            chain = DeviceKeySpecs.encodeChain(chain).ifEmpty { DeviceKeySpecs.encodeChain(arrayOf(keyStore().getCertificate(alias))) },
+            chain = DeviceKeySpecs.encodeChain(chain).ifEmpty { DeviceKeySpecs.encodeChain(arrayOf(ks.getCertificate(alias))) },
             strongBox = strongBox,
             attested = leaf?.getExtensionValue(DeviceKeySpecs.ATTESTATION_OID) != null,
         )
     }
 
-    private fun generate(alias: String, challenge: ByteArray, strongBox: Boolean) {
+    private fun generate(alias: String, challenge: ByteArray?, strongBox: Boolean) {
         KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEYSTORE).run {
             initialize(DeviceKeySpecs.spec(alias, challenge, strongBox))
             generateKeyPair()

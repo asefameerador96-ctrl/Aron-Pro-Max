@@ -97,11 +97,18 @@ class PlatformLocationSource(context: Context) : LocationSource {
                     cont.invokeOnCancellation { signal.cancel() }
                     manager.getCurrentLocation(provider, signal, app.mainExecutor) { loc -> if (cont.isActive) cont.resume(loc) }
                 } else {
+                    // Below API 30 these three are abstract in the platform interface: without them the platform's call
+                    // throws AbstractMethodError on a phone without Play services.
                     val listener = object : LocationListener {
                         override fun onLocationChanged(location: Location) {
                             manager.removeUpdates(this)
                             if (cont.isActive) cont.resume(location)
                         }
+
+                        @Deprecated("Deprecated in API 29")
+                        override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
+                        override fun onProviderEnabled(provider: String) = Unit
+                        override fun onProviderDisabled(provider: String) = Unit
                     }
                     cont.invokeOnCancellation { manager.removeUpdates(listener) }
                     @Suppress("DEPRECATION")

@@ -78,7 +78,8 @@ class PlayIntegritySource(
 private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { cont ->
     addOnSuccessListener { if (cont.isActive) cont.resume(it) }
     addOnFailureListener { if (cont.isActive) cont.resumeWith(Result.failure(it)) }
-    addOnCanceledListener { cont.cancel() }
+    // A task cancelled by Play services is an API failure, not a cancellation of the caller's coroutine.
+    addOnCanceledListener { if (cont.isActive) cont.resumeWith(Result.failure(IllegalStateException("integrity task cancelled"))) }
 }
 
 /** A single-use server nonce (contract `DeviceNonce`, `POST /v1/devices/nonce`); null when offline or refused. */
@@ -99,9 +100,15 @@ class IntegrityEvidenceService(
     suspend fun collect(): IntegrityResult {
         val nonce = try { nonces.nonce() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
             ?: return IntegrityResult.Unavailable(IntegrityUnavailable.OFFLINE)
-        return when (val r = tokens.token(IntegrityCodec.requestHash(nonce, deviceUuid()))) {
-            is IntegrityResult.Evidence -> r.copy(nonce = nonce)
-            is IntegrityResult.Unavailable -> r
+        return try {
+            when (val r = tokens.token(IntegrityCodec.requestHash(nonce, deviceUuid()))) {
+                is IntegrityResult.Evidence -> r.copy(nonce = nonce)
+                is IntegrityResult.Unavailable -> r
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            IntegrityResult.Unavailable(IntegrityUnavailable.API_ERROR, e.javaClass.simpleName)
         }
     }
 

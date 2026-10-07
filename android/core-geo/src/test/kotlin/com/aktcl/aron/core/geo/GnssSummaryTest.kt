@@ -84,4 +84,13 @@ class GnssSummaryTest {
         assertEquals(2, parse(f.gnssJson!!)["satellites_used"])
         assertEquals(3_000, parse(f.gnssJson!!)["window_ms"])
     }
+
+    @Test fun unknownCapabilityIsLearnedFromTheWindow() {
+        assertEquals(false, parse(GnssAccumulator(0, null).summaryJson(1_000))["raw_supported"])
+        val seen = GnssAccumulator(0, null).apply { onMeasurements(5, emptyList()) }
+        assertEquals(true, parse(seen.summaryJson(1_000))["raw_supported"])
+        assertEquals(5, parse(seen.summaryJson(1_000))["raw_measurement_count"])
+        val refused = GnssAccumulator(0, null).apply { markRawSupported(false) }
+        assertEquals(false, parse(refused.summaryJson(1_000))["raw_supported"])
+    }
 }

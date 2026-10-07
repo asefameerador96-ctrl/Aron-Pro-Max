@@ -54,9 +54,11 @@ class RootHintsTest {
         val t = IntegritySignalsTracker(Files.createTempDirectory("sig").toFile())
         val clean = IntegritySignals(false, false, true, true, emptyList(), emptyList())
         assertTrue(t.changed(clean))
+        assertTrue(t.changed(clean)) // not sent yet: still reported
+        t.recordSent(clean)
         assertFalse(t.changed(clean))
         assertTrue(t.changed(clean.copy(adbEnabled = true)))
-        assertFalse(t.changed(clean.copy(adbEnabled = true)))
+        t.recordSent(clean.copy(adbEnabled = true))
         assertFalse(t.changed(clean.copy(adbEnabled = true, mockLocationApps = listOf()).copy(rootHints = listOf())))
         assertTrue(t.changed(clean.copy(adbEnabled = true, rootHints = listOf("su_binary"))))
     }

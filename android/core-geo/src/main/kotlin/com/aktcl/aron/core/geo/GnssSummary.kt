@@ -10,7 +10,12 @@ data class SatelliteSample(val constellation: Int, val cn0DbHz: Double, val used
  * contract `GnssSummary` (docs/24 s11.1). The server's GEO_GNSS_INCONSISTENT rule reads it: too few used satellites,
  * a C/N0 spread too flat for real sky, or a mean too strong are what simulators produce.
  */
-class GnssAccumulator(private val startedElapsedMs: Long, private val rawSupported: Boolean) {
+class GnssAccumulator(private val startedElapsedMs: Long, rawSupported: Boolean?) {
+    /** True or false once known; null (unknown) is reported as not supported. Measurements received prove support. */
+    @Volatile private var raw: Boolean? = rawSupported
+
+    @Synchronized fun markRawSupported(supported: Boolean) { if (raw != true || !supported) raw = supported }
+
     private var last: List<SatelliteSample>? = null
     private var measurementCount = 0L
     private var measurementEvents = 0
@@ -19,6 +24,7 @@ class GnssAccumulator(private val startedElapsedMs: Long, private val rawSupport
     @Synchronized fun onStatus(satellites: List<SatelliteSample>) { last = satellites }
 
     @Synchronized fun onMeasurements(count: Int, agcLevelsDb: List<Double>) {
+        if (raw == null) raw = true
         measurementEvents++
         measurementCount += count.coerceAtLeast(0)
         agc += agcLevelsDb.filter { it.isFinite() }
@@ -45,8 +51,8 @@ class GnssAccumulator(private val startedElapsedMs: Long, private val rawSupport
             "cn0_used_stddev_dbhz" to num(std?.coerceIn(0.0, 40.0)),
             "cn0_all_mean_dbhz" to num(allCn0.mean()?.coerceIn(0.0, 70.0)),
             "ephemeris_share" to num(if (sats.isEmpty()) null else sats.count { it.hasEphemeris }.toDouble() / sats.size),
-            "raw_supported" to rawSupported.toString(),
-            "raw_measurement_count" to (if (rawSupported) measurementCount.toString() else "null"),
+            "raw_supported" to (raw == true).toString(),
+            "raw_measurement_count" to (if (raw == true) measurementCount.toString() else "null"),
             "agc_db_mean" to num(agc.mean()),
         )
         return fields.entries.joinToString(",", "{", "}") { (k, v) -> "\"$k\":$v" }

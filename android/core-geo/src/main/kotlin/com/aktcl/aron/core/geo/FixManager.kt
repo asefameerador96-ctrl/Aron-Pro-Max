@@ -30,10 +30,20 @@ class FixManager(
     private val gnss: FixWindowObserver = FixWindowObserver.None,
     private val settings: () -> FixSettings = { FixSettings() },
 ) {
-    private class Candidate(val location: RawLocation, val timeToFixMs: Long?, val gnssJson: String?)
+    private class Candidate(
+        val location: RawLocation,
+        val timeToFixMs: Long?,
+        val gnssJson: String?,
+        /** The priority this fix was really requested with (a reuse reports it, not today's setting). */
+        val priority: FixPriority,
+        val fromWarmUp: Boolean = false,
+        var used: Boolean = false,
+    )
 
     private val mutex = Mutex()
     private val candidates = HashMap<String, Candidate>()
+    private var wastedWarmUps = 0
+    private var wastedDay: String? = null
 
     /**
      * The fix for [purpose]. [cycle] enables reuse inside one purpose cycle (null: always a fresh request). [refreshCount]
@@ -41,10 +51,18 @@ class FixManager(
      */
     suspend fun take(purpose: FixPurpose, cycle: String? = null, refreshCount: Int = 0): TakenFix = mutex.withLock {
         val s = settings()
-        if (cycle != null && refreshCount == 0) reusable(cycle, s)?.let { return@withLock reuse(purpose, it, refreshCount) }
+        // Permission and the location switch are checked on every take, so a reuse can never hide a revoked permission
+        // or location turned off (docs/24 s11.2 blocks the visit screen then).
+        when (access.state(s.requirePrecise)) {
+            LocationAccessState.PERMISSION_DENIED -> { cycle?.let { drop(it) }; return@withLock failed(purpose, FixStatus.PERMISSION_DENIED, s, refreshCount) }
+            LocationAccessState.LOCATION_OFF -> { cycle?.let { drop(it) }; return@withLock failed(purpose, FixStatus.LOCATION_OFF, s, refreshCount) }
+            LocationAccessState.OK -> Unit
+        }
+        if (cycle != null && refreshCount == 0) reusable(cycle, s)?.let { it.used = true; return@withLock reuse(purpose, it, refreshCount) }
         val fix = request(purpose, s, refreshCount)
         if (cycle != null) {
-            if (fix.second != null) candidates[cycle] = fix.second!! else candidates.remove(cycle)
+            drop(cycle)
+            fix.second?.let { candidates[cycle] = it }
         }
         fix.first
     }
@@ -57,13 +75,32 @@ class FixManager(
         mutex.withLock {
             val s = settings()
             if (reusable(cycle, s) != null) return@withLock
+            drop(cycle)
+            // Warm-ups that expire unused cost battery for nothing: after MAX_WASTED_WARMUPS_PER_DAY of them the day's
+            // budget (docs/24 s5.7: at most 80 fixes) is protected by not warming up again until the next business date.
+            if (wastedToday() >= MAX_WASTED_WARMUPS_PER_DAY) return@withLock
+            if (access.state(s.requirePrecise) != LocationAccessState.OK) return@withLock
             val fix = request(FixPurpose.REFRESH, s, 0)
-            if (fix.second != null) candidates[cycle] = fix.second!! else candidates.remove(cycle)
+            fix.second?.let { candidates[cycle] = Candidate(it.location, it.timeToFixMs, it.gnssJson, it.priority, fromWarmUp = true) }
         }
     }
 
     /** Drops the reusable fix of [cycle] (the rep left the outlet list, the day closed). */
-    suspend fun forget(cycle: String) = mutex.withLock { candidates.remove(cycle); Unit }
+    suspend fun forget(cycle: String) = mutex.withLock { drop(cycle) }
+
+    /** Number of warm-up fixes of the current business date that expired without being reused. */
+    suspend fun wastedWarmUps(): Int = mutex.withLock { wastedToday() }
+
+    private fun drop(cycle: String) {
+        val c = candidates.remove(cycle) ?: return
+        if (c.fromWarmUp && !c.used) { wastedToday(); wastedWarmUps++ }
+    }
+
+    private fun wastedToday(): Int {
+        val today = BusinessDate.of(clock.nowMs()).toString()
+        if (wastedDay != today) { wastedDay = today; wastedWarmUps = 0 }
+        return wastedWarmUps
+    }
 
     private fun reusable(cycle: String, s: FixSettings): Candidate? {
         val c = candidates[cycle] ?: return null
@@ -75,7 +112,7 @@ class FixManager(
     }
 
     private fun reuse(purpose: FixPurpose, c: Candidate, refreshCount: Int): TakenFix =
-        build(purpose, FixStatus.OK, c.location, settings().priority, c.timeToFixMs, c.gnssJson, reused = true, refreshCount)
+        build(purpose, FixStatus.OK, c.location, c.priority, c.timeToFixMs, c.gnssJson, reused = true, refreshCount)
 
     private suspend fun request(purpose: FixPurpose, s: FixSettings, refreshCount: Int): Pair<TakenFix, Candidate?> {
         when (access.state(s.requirePrecise)) {
@@ -112,7 +149,7 @@ class FixManager(
                     build(purpose, FixStatus.PROVIDER_UNAVAILABLE, null, s.priority, timeToFix, gnssJson, false, refreshCount, loc.isMock) to null
                 } else {
                     build(purpose, FixStatus.OK, loc, s.priority, timeToFix, gnssJson, false, refreshCount) to
-                        Candidate(loc, timeToFix, gnssJson)
+                        Candidate(loc, timeToFix, gnssJson, s.priority)
                 }
             }
             SourceResult.TimedOut -> build(purpose, FixStatus.TIMEOUT, null, s.priority, timeToFix, gnssJson, false, refreshCount) to null
@@ -165,6 +202,8 @@ class FixManager(
         lat.isFinite() && lng.isFinite() && lat in -90.0..90.0 && lng in -180.0..180.0
 
     companion object {
+        /** Unused warm-up fixes allowed per business date before warm-ups stop (keeps the day within 80 fixes). */
+        const val MAX_WASTED_WARMUPS_PER_DAY: Int = 8
         /** D-74: a reused fix must be at least this accurate (metres). */
         const val REUSE_MAX_ACCURACY_M: Double = 30.0
         /** Extra time past the provider's own duration before the request is cut off. */
