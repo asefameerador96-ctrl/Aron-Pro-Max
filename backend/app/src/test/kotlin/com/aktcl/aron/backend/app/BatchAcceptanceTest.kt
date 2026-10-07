@@ -517,7 +517,7 @@ class BatchAcceptanceTest {
     // ---- N-036 breadcrumbs and team location; F-SYS-078 multi-visit and visit kinds --------------------------------
 
     @Test
-    fun breadcrumbsAreStoredOnceAndTheTeamReadShowsTheLastPointWithItsAge() = testApplication {
+    fun breadcrumbsAreStoredOnceByClientUuid() = testApplication {
         app()
         val token = client.token()
         fun crumb(at: String, lat: Double): JsonObject {
@@ -528,15 +528,8 @@ class BatchAcceptanceTest {
         assertEquals(listOf("accepted", "accepted"), statuses(json(client.send(token, batch(crumbs)).bodyAsText())))
         assertEquals(listOf("duplicate", "duplicate"), statuses(json(client.send(token, batch(crumbs)).bodyAsText())))
         assertEquals(1, count("SELECT count(*) FROM app.geo_breadcrumb WHERE client_uuid = '${crumbs[1]["client_uuid"]!!.jsonPrimitive.content}'"))
-        val tso = json(client.post("/v1/auth/login") { contentType(ContentType.Application.Json); setBody("""{"username":"tso1001","password":"$password","client":"web"}""") }.bodyAsText())["access_token"]!!.jsonPrimitive.content
-        val r = client.get("/v1/team/locations") { bearerAuth(tso) }
-        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
-        val sr = json(r.bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }.single { it["full_name"]!!.jsonPrimitive.content.contains("Test SR") }
-        val fix = sr["last_fix"]!!.jsonObject
-        assertTrue(fix["at"]!!.jsonPrimitive.content >= "2027-01-03T03:55:00.000Z", fix.toString())
-        assertTrue(fix["age_min"]!!.jsonPrimitive.int <= 10)
-        // An SR is not a supervisor.
-        assertEquals(HttpStatusCode.Forbidden, client.get("/v1/team/locations") { bearerAuth(token); header("X-Device-Id", devPhone) }.status)
+        // The team-location read is backend-reports' GET /v1/team/locations (TeamApiTest); it reads these rows.
+        assertEquals(1, count("SELECT count(*) FROM app.geo_breadcrumb WHERE client_uuid = '${crumbs[0]["client_uuid"]!!.jsonPrimitive.content}' AND fix_lat = 23.81"))
     }
 
     @Test

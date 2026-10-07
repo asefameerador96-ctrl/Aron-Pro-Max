@@ -6,8 +6,8 @@ import { useI18n } from "./i18n-provider";
 
 type Field = "old" | "next" | "confirm";
 
-/** Old, New and Confirm fields with the policy enforced before the request and authored errors per field (F-WEB-033). */
-export function ChangePasswordForm() {
+/** Old, New and Confirm fields (also the forced change at login: `endpoint` and `onResponse` then continue the login) with the policy enforced before the request and authored errors per field (F-WEB-033). */
+export function ChangePasswordForm({ endpoint = "/api/bff/password", onResponse }: { endpoint?: string; onResponse?: (body: Record<string, unknown>) => void } = {}) {
   const { t, problem } = useI18n();
   const [errors, setErrors] = useState<PasswordCheck>({});
   const [serverError, setServerError] = useState<string | null>(null);
@@ -26,10 +26,11 @@ export function ChangePasswordForm() {
     if (!isValid(check)) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/bff/password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ current_password: oldPw, new_password: newPw }) });
+      const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ current_password: oldPw, new_password: newPw }) });
       if (res.ok) {
         form.reset();
-        setDone(true);
+        if (onResponse) onResponse((await res.json().catch(() => ({}))) as Record<string, unknown>);
+        else setDone(true);
         return;
       }
       const p = (await res.json().catch(() => ({}))) as Partial<Problem>;

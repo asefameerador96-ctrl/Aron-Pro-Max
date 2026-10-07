@@ -81,8 +81,8 @@ test("daily tracking: buckets with the exception bucket distinct, yesterday comp
   await page.goto("/daily-tracking?date=2026-10-06"); // an earlier business date: take action is open
   await expect(page.getByTestId("bucket-count-exception")).toHaveText("1");
   await expect(page.getByTestId("bucket-count-not_logged_in")).toHaveText("0");
-  await expect(page.getByTestId("bucket-compare-exception")).toContainText("Day before");
-  await expect(page.getByTestId("comparator-note")).toContainText("not the same time of day");
+  await expect(page.getByTestId("bucket-compare-exception")).toContainText("Same time yesterday");
+  await expect(page.getByTestId("comparator-note")).toHaveCount(0); // the server sent the same-time comparator
   await expect(page.getByTestId("take-action-state")).toContainText("Take action is open");
   const row = page.locator('tr[data-route="10352"]');
   await expect(row).toHaveAttribute("data-bucket", "exception");
@@ -121,8 +121,9 @@ test("sync health: seven figures and a drill from zone to route to device", asyn
   await expect(page.getByTestId("sync-final")).toContainText("of 3 zones");
   await expect(page.getByTestId("sync-trickle")).toContainText("worst");
   await expect(page.getByTestId("sync-quarantine")).toHaveText("1");
-  await expect(page.getByTestId("sync-ack")).toContainText("75.0%");
-  await expect(page.getByTestId("sync-photos")).toHaveText("14");
+  await expect(page.getByTestId("sync-ack")).toContainText("87.5%");
+  await expect(page.getByTestId("sync-photos")).toContainText("4");
+  await expect(page.getByTestId("photos-oldest")).toContainText("90 min");
   await page.getByTestId("zone-table").getByRole("link").first().click();
   await expect(page.getByTestId("route-table")).toBeVisible();
   await page.getByTestId("route-table").getByRole("link", { name: "Banani North" }).click();
@@ -130,7 +131,7 @@ test("sync health: seven figures and a drill from zone to route to device", asyn
   await expect(page.getByTestId("device-table").locator("tbody tr")).toHaveCount(1);
 });
 
-test("sync health: a TSO sees 'not available' for the admin-only figures, not a guess", async ({ page }) => {
+test("sync health: a server that leaves the v1.2 figures out gets 'not available' (no admin read), not a guess", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await english(page);
   await page.goto("/sync-health");

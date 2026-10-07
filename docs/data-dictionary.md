@@ -12,8 +12,8 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 120 | 2288 |
-| `dw` | 22 | 361 |
+| `app` | 121 | 2294 |
+| `dw` | 23 | 377 |
 
 ## Index
 
@@ -43,6 +43,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.content_view`](#appcontent_view) | table | backend:sync | OFFLINE | telemetry | none | One showing or skipping of a content item during a call. |
 | [`app.day_exception`](#appday_exception) | table | backend:sync | OFFLINE | transaction | personal | A rain, hartal or other day exception raised from the field for routes and dates, decided by the zone TSO. |
 | [`app.db_role_grant`](#appdb_role_grant) | table | db | REFERENCE | master | none | Least-privilege grant map of the database roles; app.apply_db_role_grants() generates every GRANT from it. |
+| [`app.db_role_limit`](#appdb_role_limit) | table | db | REFERENCE | master | none | Session limits per privilege role (docs/18 s2.6); app.apply_login_limits() writes them onto the login identities. |
 | [`app.device`](#appdevice) | table | backend:auth | ONLINE | master | none | One enrolled phone with its status, trust level, key, integrity verdict and last contact. |
 | [`app.device_binding`](#appdevice_binding) | table | backend:auth | ONLINE | audit | none | Link of a user to a phone, with the binding ordinal that fixes the memo-number block. |
 | [`app.device_directive`](#appdevice_directive) | table | backend:config | ONLINE | ops | none | A signed remote directive sent to a phone, with delivery and acknowledgement times. |
@@ -161,6 +162,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`dw.v_daily_sku`](#dwv_daily_sku) | view | worker | SERVER | event_fact | none | Stable view: per route, SKU and business date, quantities sold, free, issued and returned and the gross value. |
 | [`dw.v_daily_sr`](#dwv_daily_sr) | view | worker | SERVER | event_fact | none | Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts (active memos with lines); a user-day with neither an SR call nor such a memo has no row. |
 | [`dw.v_geo_integrity`](#dwv_geo_integrity) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, geo-validation outcomes of visits and mock-location evidence of fixes. |
+| [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
 
 ## app.activity_log
 
@@ -899,8 +901,25 @@ Least-privilege grant map of the database roles; app.apply_db_role_grants() gene
 | `except_tables` | text[] | not null |  | Tables a '*' row leaves out. |
 | `except_columns` | text[] | not null |  | Columns a single-table row leaves out; the role is then granted the privilege on every other column. |
 | `note` | text | not null |  | Free-text note. |
+| `only_columns` | text[] | not null |  | Columns a single-table row grants (column grant); empty grants the whole table. |
 
 Keys: `UNIQUE (role, schema_name, object)`; `PRIMARY KEY (id)`
+
+## app.db_role_limit
+
+Session limits per privilege role (docs/18 s2.6); app.apply_login_limits() writes them onto the login identities.
+
+`owner: db | capture: REFERENCE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `role` | text | not null |  | Privilege role the limits belong to. |
+| `statement_timeout` | text | not null |  | statement_timeout for its logins, for example 15s. |
+| `lock_timeout` | text | null |  | lock_timeout for its logins; null leaves the server default. |
+| `idle_in_transaction_session_timeout` | text | not null |  | idle_in_transaction_session_timeout for its logins. |
+| `note` | text | not null |  | Source of the limit. |
+
+Keys: `PRIMARY KEY (role)`
 
 ## app.device
 
@@ -4564,3 +4583,28 @@ Stable view: per user and business date, geo-validation outcomes of visits and m
 | `fixes` | bigint | null |  | Location fixes received for the user-day. |
 | `mock_fixes` | bigint | null |  | Fixes flagged as mock locations. |
 | `avg_accuracy_m` | numeric | null |  | Average fix accuracy in metres (1 decimal). |
+
+## dw.v_outlet_masked
+
+Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107).
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `outlet_code` | text | null |  | Outlet code. |
+| `outlet_name` | text | null |  | Shop name (English). |
+| `outlet_name_bn` | text | null |  | Shop name in Bangla. |
+| `zone_id` | bigint | null |  | Zone (app.zone). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `cluster_id` | bigint | null |  | Cluster (market) of the outlet. |
+| `channel` | text | null |  | Channel (GT, DCC, Astha, RCC, MT, HoReCa). |
+| `sub_channel_id` | bigint | null |  | Sub-channel (app.sub_channel). |
+| `geo_class` | text | null |  | Geographic class of the outlet. |
+| `outlet_kind` | text | null |  | retail or wholesale. |
+| `price_type` | text | null |  | Price type the outlet buys at. |
+| `status` | text | null |  | active, closed, merged or archived. |
+| `location_confirmed` | boolean | null |  | True when the master location is confirmed. |
+| `contact_number_masked` | text | null |  | Phone masked as 01*****NNN (last three digits); null when not a Bangladeshi mobile number. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
