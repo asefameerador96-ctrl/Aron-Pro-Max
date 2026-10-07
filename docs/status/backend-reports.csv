@@ -5,7 +5,7 @@ F-API-017,L,2026-10-07T04:25Z,2026-10-07T04:45Z,~60,3 (pii sort, pii totals, log
 F-API-015,M,2026-10-07T05:00Z,2026-10-07T05:22Z,~50,"3 confirmed (event not in catalogue, race, multi top nodes) + 4 minor, fixed",daily tracking + actions; nudge event waits for catalogue
 F-API-018,M,2026-10-07T05:00Z,2026-10-07T05:22Z,~35,"2 (multi top nodes, SR strip) fixed",app home incl. SR strip
 F-API-024,S,2026-10-07T05:00Z,2026-10-07T05:22Z,~20,"1 (adjustments in current) fixed",team stock
-F-API-023,S,-,-,0,-,delivered by backend-core N-036 (same endpoint); analytics copy removed
+F-API-023,S,2026-10-07T05:15Z,2026-10-07T07:00Z,~25,0 pending checker,GET /team/locations restored in analytics after backend-core dropped its duplicate (N-036 note)
 F-SYS-069,S,2026-10-07T05:20Z,2026-10-07T05:22Z,~25,0,memo-number-gaps report computed on read
 F-API-017a,S,-,-,0,-,same handler
 F-API-034,S,2026-10-07T05:30Z,2026-10-07T05:22Z,~20,0 pending checker,suspicious-location report

@@ -35,6 +35,15 @@ data class TeamDayRow(
 data class AppHome(val as_of: String, val business_date: String, val node: NodeRefDto, val kpis: DashboardKpis, val team: List<TeamDayRow>, val targets: String? = null)
 
 @Serializable
+data class LastFix(val lat: Double, val lng: Double, val accuracy_m: Double?, val at: String, val source: String, val age_min: Int)
+
+@Serializable
+data class TeamLocation(val user_id: Long, val full_name: String, val route_ids: List<Long>, val last_fix: LastFix?)
+
+@Serializable
+data class TeamLocationList(val as_of: String, val items: List<TeamLocation>)
+
+@Serializable
 data class TeamStockSku(val sku_id: Long, val base_unit: String, val issued_qty_base: Long, val sold_qty_base: Long, val returned_qty_base: Long, val current_qty_base: Long)
 
 @Serializable
@@ -43,7 +52,7 @@ data class TeamStockItem(val user_id: Long, val full_name: String, val by_sku: L
 @Serializable
 data class TeamStockList(val as_of: String, val business_date: String, val items: List<TeamStockItem>)
 
-/** App home and team stock for AMO, TSO and the web roles (`GET /team/locations` is backend:sync's, N-036); the reach comes from the token, `zone_id` only narrows (403 outside). */
+/** App home and team stock for AMO, TSO and the web roles (+ `GET /team/locations`, F-API-023; backend:sync's duplicate was dropped); the reach comes from the token, `zone_id` only narrows (403 outside). */
 class TeamService(private val db: Database, private val dashboards: DashboardService, private val clock: AronClock = AronClock.SYSTEM) {
 
     /** Zones the call may read: the reach, narrowed by [zoneId]. null = every zone. Outside the reach, or unknown, is 403. */
@@ -115,6 +124,39 @@ class TeamService(private val db: Database, private val dashboards: DashboardSer
         return AppHome(s.as_of, date.toString(), s.node, s.kpis, team)
     }
 
+    fun locations(reach: Reach, zoneId: Long?, date: LocalDate): TeamLocationList {
+        val now = clock.now()
+        val items = db.readJdbi.withHandle<List<TeamLocation>, Exception> { h ->
+            val z = zones(h, reach, zoneId)
+            // The newest usable (non-mock) fix of the business date per SR, from check-in/out, visits and breadcrumbs the phone has synced.
+            bindZones(
+                h.createQuery(
+                    """
+                    WITH team AS (SELECT u.id AS uid, u.full_name, array_agg(DISTINCT rd.route_id ORDER BY rd.route_id) AS routes
+                                    FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id JOIN app.app_user u ON u.id = coalesce(rd.acting_user_id, rd.assigned_user_id)
+                                   WHERE rd.business_date = :d AND ${clause(z, "g.zone_id")} GROUP BY u.id, u.full_name),
+                    fixes AS (
+                      SELECT user_id, fix_lat AS lat, fix_lng AS lng, fix_accuracy_m AS acc, captured_at, kind AS source FROM app.attendance_event
+                        WHERE business_date = :d AND voided_at IS NULL AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false
+                      UNION ALL SELECT user_id, fix_lat, fix_lng, fix_accuracy_m, opened_at, 'visit' FROM app.visit
+                        WHERE business_date = :d AND voided_at IS NULL AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false
+                      UNION ALL SELECT user_id, fix_lat, fix_lng, fix_accuracy_m, captured_at, 'breadcrumb' FROM app.geo_breadcrumb
+                        WHERE business_date = :d AND voided_at IS NULL AND fix_lat IS NOT NULL AND coalesce(fix_is_mock, false) = false),
+                    last AS (SELECT DISTINCT ON (user_id) * FROM fixes WHERE user_id IN (SELECT uid FROM team) ORDER BY user_id, captured_at DESC)
+                    SELECT t.uid, t.full_name, t.routes, l.lat, l.lng, l.acc, l.captured_at, l.source FROM team t LEFT JOIN last l ON l.user_id = t.uid ORDER BY t.full_name, t.uid
+                    """,
+                ).bind("d", date), z,
+            ).map { rs, _ ->
+                val at = rs.getObject("captured_at", OffsetDateTime::class.java)?.toInstant()
+                TeamLocation(
+                    rs.getLong("uid"), rs.getString("full_name"), (rs.getArray("routes").array as Array<*>).map { (it as Number).toLong() },
+                    at?.let { LastFix(rs.getDouble("lat"), rs.getDouble("lng"), rs.getObject("acc") as Double?, it.wire(), rs.getString("source"), Duration.between(it, now).toMinutes().coerceAtLeast(0).toInt()) },
+                )
+            }.list()
+        }
+        return TeamLocationList(now.wire(), items)
+    }
+
     fun stock(reach: Reach, zoneId: Long?, date: LocalDate): TeamStockList {
         val rows = db.readJdbi.withHandle<List<TeamStockItem>, Exception> { h ->
             val z = zones(h, reach, zoneId)
@@ -163,6 +205,12 @@ fun Route.appTeamRoutes(d: AppTeamDeps) {
             if (p.role !in HOME_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "app home is not available to this role")
             val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
             call.respond(d.service.home(d.reach.reach(p.userId, p.role, p.scopeVersion, today), call.dateParam("business_date", today)))
+        }
+        get("/team/locations") {
+            val p = call.principal
+            if (p.role !in TEAM_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the team map is not available to this role")
+            val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+            call.respond(d.service.locations(d.reach.reach(p.userId, p.role, p.scopeVersion, today), call.zoneParam(), call.dateParam("business_date", today)))
         }
         get("/team/stock") {
             val p = call.principal
