@@ -86,7 +86,7 @@ class AttendanceFlow(
             val eventUuid = newUuid()
             val fixEntity = fix.toEntity(newUuid(), eventUuid, purpose, 0)
             val meta: CaptureMeta = metaProvider.meta(routeIdOf() ?: 0L).let { if (routeIdOf() == null) it.copy(routeId = null) else it }
-            val coords = if (fix.isOk) "%.6f, %.6f".format(fix.lat, fix.lng) else null
+            val coords = if (fix.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", fix.lat, fix.lng) else null
             val event = AttendanceEventEntity(eventUuid, meta, kind, fixEntity.clientUuid, coords)
             committer.commit(event, fixEntity)
             val at = nowIso()
