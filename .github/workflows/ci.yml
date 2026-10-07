@@ -3,9 +3,9 @@
 # Jobs: changed-area filter -> repository gates (gitleaks on the pushed commits; migration checksum, order and squawk
 # lint; oasdiff breaking-change check on the contract: tools/ci/), contract lint, JVM build and tests (shared, db,
 # backend on PostgreSQL 16), web (lint, types, unit tests, build, e2e), three debug APKs plus Android unit tests and
-# lint, the SR release APK with the APK size gate (F-SYS-036), container images (built, booted against PostgreSQL,
-# SBOM per image), infra validation (Bicep build/lint/checks, actionlint) -> on a push to the integration branch only,
-# and only when all of those passed, the Azure deploy (deploy.yml, reusable workflow). CodeQL runs in codeql.yml.
+# lint, the three release APKs (signed on integration pushes) with the APK size gate (F-SYS-036), container images
+# (built, booted against PostgreSQL, SBOM per image), infra validation (Bicep build/lint/checks, actionlint). A green
+# run of a push to the integration branch triggers the Azure deploy (deploy.yml, workflow_run). CodeQL: codeql.yml.
 # Budget: under 15 minutes wall time for a full run (docs/31 s2); the jobs run in parallel and path-filtered.
 #
 # Secrets (never committed; set them in GitHub > Settings > Secrets and variables > Actions, docs/24 s13.6):
@@ -22,18 +22,33 @@ name: ci
 on:
   push:
     branches: [main, "lane/**", "claude/**"]
+    # Docs and status commits are most pushes: they start no run. Re-included: the two documents tests read.
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**/*.md"
+      - "docs/24-build-spec.md"
+      - "docs/data-dictionary.md"
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Six lanes push to the integration branch every few minutes: a push run is NEVER cancelled (grouped by branch AND
-# commit, so every push gets its own complete run, even when the same commit lands on two branches). Only
-# pull_request runs are grouped by ref and cancel their predecessor.
+env:
+  # AUD-DG-03: CI builds talk to the dev environment (Front Door) and carry a version code that always increases,
+  # so a phone installed from one run upgrades to the next. ARON_DEV_API_BASE_URL overrides the origin.
+  ARON_API_BASE_URL: ${{ vars.ARON_DEV_API_BASE_URL || 'https://fde-aron-dev-7i7g53-gpgaa3fpgrhmdgaz.z03.azurefd.net' }}
+  ARON_VERSION_CODE: ${{ github.run_number }}
+  ARON_VERSION_NAME: 0.1.${{ github.run_number }}
+
+# Lead decision 2026-10-07 (CI throughput): one run per ref; a newer push cancels the older run of the same ref. The
+# integration branch is linear (merge-first), so the newer head contains every older commit, and its run compares
+# with the LAST GREEN head (changes job), so nothing of a cancelled run goes untested. The Azure deploy is a separate
+# workflow (deploy.yml, on ci completed) that this never cancels.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   changes:
@@ -41,6 +56,9 @@ jobs:
     # Anything unknown (manual dispatch, a new branch, a force-push, a diff failure) runs everything.
     name: Detect changed areas
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 5
     outputs:
       contract: ${{ steps.filter.outputs.contract }}
@@ -60,7 +78,17 @@ jobs:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
+          # Push: compare with the head of the last SUCCESSFUL ci run on this branch when it is an ancestor (older runs
+          # may have been cancelled by newer pushes), else with the pushed "before".
+          if [ "${EVENT}" = push ]; then
+            green="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=${REF_NAME}&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // ""' 2>/dev/null || true)"
+            if [ -n "${green}" ] && git merge-base --is-ancestor "${green}" "${GITHUB_SHA}" 2>/dev/null; then
+              echo "comparing with the last green head ${green}"; BEFORE="${green}"
+            fi
+          fi
           all() { printf 'contract=true\njvm=true\nandroid=true\nweb=true\ninfra=true\ndeploy=true\ndb=true\nbase=\n' >> "${GITHUB_OUTPUT}"; echo "running everything: $1"; exit 0; }
           case "${EVENT}" in
             pull_request) base="${PR_BASE}" ;;
@@ -74,7 +102,7 @@ jobs:
           common='^(build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew|gradlew\.bat|gradle/|\.github/workflows/ci\.yml)'
           has() { printf '%s\n' "${files}" | grep -Eq "$1" && echo true || echo false; }
           {
-            echo "contract=$(has '^(contract/|\.github/workflows/ci\.yml)')"
+            echo "contract=$(has '^(contract/|tools/slice-contract\.py|\.github/workflows/ci\.yml)')"
             # shared/contract's drift tests read docs/24-build-spec.md, so a spec edit re-runs them.
             # db's DataDictionaryTest compares docs/data-dictionary.md with the migrated schema.
             echo "jvm=$(has "${common}|^(contract/|shared/|db/|backend/|docs/24-build-spec\.md|docs/data-dictionary\.md)")"
@@ -127,13 +155,12 @@ jobs:
           echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
       - name: Gate self-tests (each gate fails on a deliberate violation; tools/ci/test_gates.py)
         run: python3 tools/ci/test_gates.py
-      - name: Secret scan of the pushed commits (gitleaks; reviewed exceptions in tools/ci/gitleaksignore)
+      - name: Secret scan of the whole history (gitleaks; reviewed exceptions in tools/ci/gitleaksignore)
         run: |
           # Known base: only the new commits. Unknown base (manual run, new branch): the whole history.
-          range=()
-          [ -n "${SCAN_RANGE}" ] && range=(--log-opts="${SCAN_RANGE}")
+          # The whole history every time (about 2 s): no pushed commit is ever skipped, whatever run was cancelled.
           gitleaks git --no-banner --redact --exit-code 1 --config tools/ci/gitleaks.toml \
-            --gitleaks-ignore-path tools/ci/gitleaksignore "${range[@]}" .
+            --gitleaks-ignore-path tools/ci/gitleaksignore .
       - name: Migrations (shipped ones unchanged, versions in order, squawk on the new ones)
         if: needs.changes.outputs.db == 'true'
         run: tools/ci/migrations-check.sh "${CHECK_BASE}" squawk
@@ -152,6 +179,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
+      - name: contract/slices is current (generated from openapi.yaml by tools/slice-contract.py)
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet --user pyyaml==6.0.2
+          python3 tools/slice-contract.py --check
       - name: Lint contract/openapi.yaml (Redocly, 0 errors and 0 warnings)
         run: npx --yes @redocly/cli@2 lint contract/openapi.yaml --config contract/redocly.yaml
 
@@ -263,6 +294,7 @@ jobs:
       - name: Assemble the three debug APKs, run Android unit tests and lint
         run: >-
           ./gradlew --console=plain
+          -Paron.apiBaseUrl="${ARON_API_BASE_URL}" -Paron.versionCode="${ARON_VERSION_CODE}" -Paron.versionName="${ARON_VERSION_NAME}"
           :android:app-sr:assembleDebug :android:app-amo:assembleDebug :android:app-tso:assembleDebug
           testDebugUnitTest lintDebug
       - name: Remove google-services.json from the workspace
@@ -291,7 +323,7 @@ jobs:
   android-release:
     # F-SYS-036 and the android-core request: the SR release build (R8, resource shrinking, https-only guard) must keep
     # building, and every release APK stays inside the size budget per ABI (tools/ci/apk-size-gate.py).
-    name: SR release APK and APK size gate
+    name: Release APKs and APK size gate
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
@@ -314,14 +346,53 @@ jobs:
       - name: Install Android SDK packages (same script as the dev box)
         run: tools/android-sdk.sh
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
-      - name: Assemble the SR release APK (unsigned here; signing happens in release-app.yml)
-        run: ./gradlew --console=plain :android:app-sr:assembleRelease
+      - name: Assemble the three release APKs against the dev origin (R8, resource shrinking, https-only guard)
+        run: >-
+          ./gradlew --console=plain
+          -Paron.apiBaseUrl="${ARON_API_BASE_URL}" -Paron.versionCode="${ARON_VERSION_CODE}" -Paron.versionName="${ARON_VERSION_NAME}"
+          :android:app-sr:assembleRelease :android:app-amo:assembleRelease :android:app-tso:assembleRelease
       - name: APK size gate (30 MB per ABI, installed 70 MB, warn +5 %, fail +15 % against the baseline)
         run: |
           apks=()
-          for f in android/app-sr/build/outputs/apk/release/*.apk; do apks+=("sr-release=$f"); done
-          [ "${#apks[@]}" -gt 0 ] || { echo "::error::no SR release APK was built"; exit 1; }
+          for app in sr amo tso; do
+            for f in "android/app-${app}/build/outputs/apk/release/"*.apk; do apks+=("${app}-release=$f"); done
+          done
+          [ "${#apks[@]}" -eq 3 ] || { echo "::error::expected 3 release APKs, found ${#apks[@]}"; exit 1; }
           python3 tools/ci/apk-size-gate.py "${apks[@]}"
+      - name: Sign with the release key (integration branch pushes only, when the ANDROID_SIGNING_* secrets exist)
+        # AUD-DG-03: the owner's device-owner phones are installed ONCE with a release-signed build (changing the signer
+        # later needs a factory reset). Signed with apksigner, so the key never touches the Gradle build.
+        id: sign
+        if: github.event_name == 'push' && github.ref == 'refs/heads/claude/wonderful-thompson-k6ejnf'
+        env:
+          KS: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          KSP: ${{ secrets.ANDROID_SIGNING_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          KP: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+        run: |
+          for v in KS KSP ALIAS KP; do
+            [ -n "${!v}" ] || { echo "::warning::release signing secret ${v} missing: release APKs stay unsigned"; echo "signed=false" >> "${GITHUB_OUTPUT}"; exit 0; }
+          done
+          ks="${RUNNER_TEMP}/release.jks"; trap 'rm -f "${ks}"' EXIT
+          printf '%s' "${KS}" | base64 -d > "${ks}"
+          signer="${ANDROID_HOME}/build-tools/36.0.0/apksigner"
+          mkdir -p signed
+          for app in sr amo tso; do
+            src="$(ls android/app-${app}/build/outputs/apk/release/*-release-unsigned.apk)"
+            dst="signed/aron-${app}-${ARON_VERSION_NAME}-dev.apk"
+            "${signer}" sign --ks "${ks}" --ks-pass env:KSP --ks-key-alias "${ALIAS}" --key-pass env:KP --out "${dst}" "${src}"
+            "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app}: /"
+          done
+          (cd signed && sha256sum ./*.apk > SHA256SUMS && cat SHA256SUMS)
+          echo "signed=true" >> "${GITHUB_OUTPUT}"
+      - name: Upload the release-signed dev APKs
+        if: steps.sign.outputs.signed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: aron-release-signed-dev-${{ github.run_number }}
+          path: signed/
+          if-no-files-found: error
+          retention-days: 30
 
   web:
     # docs/24 s13.2 web gate; steps from web/scripts/ci.sh (docs/requests/web-infra-ci-job.md).
@@ -423,19 +494,3 @@ jobs:
       - name: Bicep build, lint and parameter files; template checks; actionlint; shellcheck
         run: infra/validate.sh
 
-  deploy:
-    # Only a push to the integration branch deploys, and only after every check above passed or was not needed.
-    name: Deploy to Azure (dev)
-    needs: [changes, gates, contract, jvm, web, android, android-release, images, infra]
-    if: >-
-      !cancelled() && !failure()
-      && github.event_name == 'push'
-      && github.ref == 'refs/heads/claude/wonderful-thompson-k6ejnf'
-      && needs.changes.outputs.deploy == 'true'
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: dev
-    secrets: inherit
