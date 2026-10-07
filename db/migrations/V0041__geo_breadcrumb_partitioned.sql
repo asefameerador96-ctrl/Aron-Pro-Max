@@ -73,4 +73,21 @@ COMMENT ON COLUMN app.geo_breadcrumb.external_ref IS 'Stable external reference 
 
 DROP TABLE app.geo_breadcrumb_v0007;
 
+-- The new table was created beside the old one, so PostgreSQL suffixed its generated names with 1; give them back the
+-- house names (geo_breadcrumb_pkey, ..._check, ..._fkey, ..._idx, geo_breadcrumb_id_seq).
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT conname FROM pg_constraint WHERE conrelid = 'app.geo_breadcrumb'::regclass AND conname ~ '1$' LOOP
+    EXECUTE format('ALTER TABLE app.geo_breadcrumb RENAME CONSTRAINT %I TO %I', r.conname, left(r.conname, -1));
+  END LOOP;
+  FOR r IN SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+            WHERE i.indrelid = 'app.geo_breadcrumb'::regclass AND c.relname ~ '1$' LOOP
+    EXECUTE format('ALTER INDEX app.%I RENAME TO %I', r.relname, left(r.relname, -1));
+  END LOOP;
+  IF to_regclass('app.geo_breadcrumb_id_seq1') IS NOT NULL THEN
+    ALTER SEQUENCE app.geo_breadcrumb_id_seq1 RENAME TO geo_breadcrumb_id_seq;
+  END IF;
+END $$;
+
 SELECT app.apply_db_role_grants();

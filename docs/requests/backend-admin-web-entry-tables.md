@@ -30,3 +30,7 @@ Data void (F-API-048) already voids these three by name when the tables exist (`
   they follow their header's void).
 - All three void targets take your DataVoidApi statement unchanged (tested in `WebEntryPasswordBreadcrumbTest`).
   Everything is append-only apart from the closing columns. `web_entry_outlet_sku` is not added because no row asks for it.
+- API notes from the checker: map the column `source = 'web'` to the contract's `web_entry`; refuse a line with
+  return above issue (the CHECK otherwise gives 23514) and duplicate `(sku_id, fault_type_code)` QC rows (23505) with a 4xx
+  before the insert. A warehouse QC has no route, so a route-day data void never reaches it; QC lines carry no
+  `voided_at`, so readers join the header and filter `voided_at IS NULL`.
