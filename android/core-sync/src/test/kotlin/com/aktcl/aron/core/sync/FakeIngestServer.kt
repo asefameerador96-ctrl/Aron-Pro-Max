@@ -41,6 +41,9 @@ class FakeIngestServer : Dispatcher() {
     /** A batch containing any of these uuids fails with 500 before any processing (a poison family). */
     val poison = mutableSetOf<String>()
 
+    /** A batch containing any of these uuids gets 400 ERR_VALIDATION with a pointer to that record. */
+    val invalid = mutableSetOf<String>()
+
     /** client_uuid -> remaining retryable rejects (`parent_missing`). */
     val rejectRetryable = HashMap<String, Int>()
 
@@ -75,6 +78,10 @@ class FakeIngestServer : Dispatcher() {
         val records = body["records"]!!.jsonArray.map { it.jsonObject }
         if (records.any { it.uuid() in poison }) { seen(500); return api(500, problem("ERR_INTERNAL", 500)) }
 
+        records.indexOfFirst { it.uuid() in invalid }.takeIf { it >= 0 }?.let { i ->
+            seen(400)
+            return api(400, """{"status":400,"code":"ERR_VALIDATION","errors":[{"pointer":"/records/$i/payload/qty_base","code":"minimum"}]}""")
+        }
         val batchKey = body["device_uuid"]!!.jsonPrimitive.content + "|" + body["batch_uuid"]!!.jsonPrimitive.content
         val fingerprint = sha256(records.map { "${it.uuid()}:${sha256(canonical(it))}" }.sorted().joinToString("\n"))
         batches[batchKey]?.let { (fp, stored) ->

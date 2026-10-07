@@ -1,6 +1,9 @@
 package com.aktcl.aron.core.sync
 
 import android.content.Context
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.contract.SyncTrigger
@@ -52,12 +55,19 @@ class CheckerF008Test {
     @Before fun setUp() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
+                if (all400) {
+                    return MockResponse.Builder().code(400).addHeader("X-Aron-Api", "1").addHeader("Content-Type", "application/json")
+                        .body("""{"type":"about:blank","status":400,"code":"ERR_VALIDATION"}""").build()
+                }
                 if (invalid400.isNotEmpty() && request.headers["Content-Encoding"] == "gzip") {
                     val raw = request.body?.toByteArray() ?: ByteArray(0)
                     val text = GZIPInputStream(raw.inputStream()).readBytes().decodeToString()
-                    if (invalid400.any { text.contains(it) }) {
+                    // s3.1 item 2: a strict 400 carries one errors[] entry per problem with a JSON Pointer into the request.
+                    val records = kotlinx.serialization.json.Json.parseToJsonElement(text).jsonObject["records"]!!.jsonArray
+                    val i = records.indexOfFirst { it.jsonObject["client_uuid"]!!.jsonPrimitive.content in invalid400 }
+                    if (i >= 0) {
                         return MockResponse.Builder().code(400).addHeader("X-Aron-Api", "1").addHeader("Content-Type", "application/json")
-                            .body("""{"type":"about:blank","status":400,"code":"ERR_VALIDATION"}""").build()
+                            .body("""{"type":"about:blank","status":400,"code":"ERR_VALIDATION","errors":[{"pointer":"/records/$i/payload","code":"invalid"}]}""").build()
                     }
                 }
                 return fake.dispatch(request)
@@ -142,6 +152,45 @@ class CheckerF008Test {
         val r = engine().run(SyncTrigger.MANUAL)
         assertNotEquals("run ended at the batch cap with ${r.unsent} rows unsent after ${r.batches} batches", SyncStop.RUN_LIMIT, r.stop)
         assertEquals(29, fake.storedOf("memo").size)
+    }
+
+    /** Round 2. Every request answers 400 (server-wide strict-schema change, or one bad envelope member). */
+    private var all400 = false
+
+    /**
+     * Round 2: a 400 that is not caused by any record (every batch, every family) must not exhaust the whole outbox. After
+     * the fix each run bisects to single families and counts one failure per family, so 10 runs of a batch-level 400 mark
+     * every unsent sale rejected(retry_exhausted) and it is never sent again.
+     */
+    @Test fun batchLevel400MustNotExhaustEveryRow() = runBlocking {
+        sale(1); sale(2); sale(3)
+        all400 = true
+        repeat(10) { engine().run(SyncTrigger.PERIODIC) }
+        all400 = false
+        repeat(2) { engine().run(SyncTrigger.PERIODIC) }
+        val exhausted = all().filter { it.state == OutboxState.REJECTED }
+        assertTrue("${exhausted.size} rows rejected(retry_exhausted) by a batch-level 400", exhausted.isEmpty())
+        assertEquals(3, fake.storedOf("memo").size)
+    }
+
+    /**
+     * Round 2: wherever the poison family sits, one run isolates it and the other families go (no RUN_LIMIT). The limit
+     * doubling after each good half re-includes the poison, so each bisect level costs about three batches.
+     */
+    @Test fun poisonAtAnyPositionIsIsolatedWithinOneRun() = runBlocking {
+        val failures = ArrayList<String>()
+        for (pos in 1..30) {
+            db.close()
+            context.deleteDatabase(AronDatabase.fileName(USER))
+            db = AronDatabase.open(context, USER, null)
+            fake.poison.clear()
+            val memos = (1..30).map { sale(it) }
+            fake.poison += memos[pos - 1]
+            val r = engine().run(SyncTrigger.MANUAL)
+            val stored = memos.count { fake.registry.containsKey(it) }
+            if (r.stop == SyncStop.RUN_LIMIT || stored != 29) failures += "pos=$pos stop=${r.stop} batches=${r.batches} stored=$stored unsent=${r.unsent}"
+        }
+        assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
 
     private companion object {

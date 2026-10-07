@@ -346,6 +346,25 @@ class SyncEngineTest {
         assertEquals(0, db.outboxDao().unsentCount())
     }
 
+    @Test fun a400PointingAtOneRecordHoldsOnlyThatFamilyAndTheRestGo() = runBlocking {
+        sale(1); val bad = sale(2); sale(3)
+        fake.invalid += bad
+        val r = engine().run(SyncTrigger.MANUAL)
+        assertEquals(SyncStop.RETRY_LATER, r.stop)
+        assertEquals(2, fake.storedOf("memo").size)
+        val badRow = db.outboxDao().byClientUuid(bad)!!
+        assertEquals(1, badRow.attempts)
+        assertTrue(inState().filter { it.familyUuid != badRow.familyUuid }.all { it.state == OutboxState.ACKED && it.attempts == 0 })
+    }
+
+    @Test fun a400WithoutARecordPointerCountsNoFailure() = runBlocking {
+        sale(1)
+        repeat(12) { fake.failBefore += 400; engine().run(SyncTrigger.PERIODIC) }
+        assertTrue(inState().all { it.state == OutboxState.PENDING && it.attempts == 0 })
+        assertEquals(SyncStop.DRAINED, engine().run(SyncTrigger.PERIODIC).stop)
+        assertServerHasExactly(1)
+    }
+
     @Test fun assembleCutsAtTheByteCapButAlwaysTakesOneRow() {
         val big = "x".repeat(200 * 1024)
         fun row(seq: Long, fam: String) = OutboxEntity(seq, ClientIds.newUuid(), "memo", fam, 1, "2026-10-05", big, "h", createdAt = "t")

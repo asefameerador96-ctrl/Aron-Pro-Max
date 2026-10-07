@@ -242,10 +242,23 @@ class SyncEngine(
                     release(batchUuid, code)
                     Step.Next
                 }
-                // A failure the batch itself caused: 500 (s4.7), a strict 400/422 on a record the server could not take apart,
-                // 413. Bisect: halves get new batch_uuids until the failing family is alone; that family then takes one
-                // failure (exhausted after row_max_retries, never stuck) and is held back, so the families behind it still go.
-                f.httpStatus >= 500 || f.httpStatus in BATCH_FAULTS -> {
+                // A strict 400/422 counts against rows only when its errors point into `/records/<i>`: those families take one
+                // failure (exhausted after row_max_retries, never stuck) and are held back; the rest are re-batched. A 400
+                // about the envelope (or with no pointer) is not the rows' fault: released, nothing counted.
+                f.httpStatus == 400 || f.httpStatus == 422 -> {
+                    val culprits = f.problem.errors.mapNotNull { e -> RECORD_POINTER.find(e.pointer ?: "")?.groupValues?.get(1)?.toIntOrNull() }
+                        .filter { it in rows.indices }.map { rows[it].familyUuid }.toSet()
+                    if (culprits.isEmpty()) {
+                        release(batchUuid, code)
+                        Step.Stop(report(SyncStop.FAILED, code = code))
+                    } else {
+                        isolateFamilies(batchUuid, rows, culprits, code)
+                        Step.Isolate
+                    }
+                }
+                // A failure the batch itself caused: 500 (s4.7), 413. Bisect: halves get new batch_uuids until the failing
+                // family is alone; that family then takes one failure and is held back, so the families behind it still go.
+                f.httpStatus >= 500 || f.httpStatus == 413 -> {
                     if (rows.map { it.familyUuid }.distinct().size > 1) {
                         release(batchUuid, code)
                         Step.Split((rows.size / 2).coerceAtLeast(1))
@@ -272,6 +285,12 @@ class SyncEngine(
             excludedFamilies += rows.map { it.familyUuid }
             meta.deleteMeta(attemptKey(batchUuid))
             meta.putMeta(SyncMetaEntity(KEY_LAST_ERROR, code))
+        }
+
+        /** [culprits] take one failure each; the other rows of the batch go back to pending untouched. */
+        suspend fun isolateFamilies(batchUuid: String, rows: List<OutboxEntity>, culprits: Set<String>, code: String) = db.withTransaction {
+            isolate(batchUuid, rows.filter { it.familyUuid in culprits }, code)
+            outbox.returnToPending(batchUuid, null)
         }
 
         suspend fun transport(batchUuid: String, rows: List<OutboxEntity>, failure: TransportFailure): Step {
@@ -440,8 +459,7 @@ class SyncEngine(
         private const val ATTEMPT_PREFIX = "sync.batch_attempt."
         private const val RESOLUTION_PREFIX = "sync.resolution."
 
-        /** Batch-level answers caused by the batch's content (bisected like a 500). */
-        private val BATCH_FAULTS = setOf(400, 413, 422)
+        private val RECORD_POINTER = Regex("^/records/(\\d+)(?:/|$)")
 
         fun attemptKey(batchUuid: String) = ATTEMPT_PREFIX + batchUuid
 
