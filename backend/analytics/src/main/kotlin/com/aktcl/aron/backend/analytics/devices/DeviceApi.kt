@@ -36,7 +36,7 @@ import java.util.zip.GZIPInputStream
 class DeviceDeps(val service: DeviceService, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
 private val DEVICE_WRITERS = setOf(Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT)
-private val DEVICE_READERS = DEVICE_WRITERS + setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST)
+private val DEVICE_READERS = DEVICE_WRITERS + setOf(Role.TSO, Role.DMO, Role.WM)   // docs/24 s8.5: TOP and ANALYST have no access to devices
 private const val MAX_BODY = 256L * 1024
 
 /**
@@ -48,7 +48,7 @@ fun Route.deviceRoutes(d: DeviceDeps) {
 
     post("/devices/enrol") {
         val raw = call.rawBody()
-        val req = decodeStrict(EnrolDeviceRequest.serializer(), raw.decodeToString())
+        val req = decodeStrict(EnrolDeviceRequest.serializer(), call.unzip(raw).decodeToString())
         enrolLimiter.tryAcquire("enrol:" + req.device_uuid).let { if (!it.allowed) throw it.toProblem() }
         call.response.status(HttpStatusCode.Created)
         call.respond(HttpStatusCode.Created, d.service.enrol(req))
@@ -71,7 +71,7 @@ fun Route.deviceRoutes(d: DeviceDeps) {
     post("/devices/me/status") {
         val body = call.rawBody()
         val dev = call.authDevice(d, body)
-        call.respond(d.service.report(dev, decodeStrict(DeviceStatusReportDto.serializer(), body.decodeToString())))
+        call.respond(d.service.report(dev, decodeStrict(DeviceStatusReportDto.serializer(), call.unzip(body).decodeToString())))
     }
 
     authenticated(d.guard) {
@@ -102,6 +102,18 @@ fun Route.deviceRoutes(d: DeviceDeps) {
     }
 }
 
+/** The wire bytes decompressed when the request was sent `Content-Encoding: gzip` (capped at [MAX_BODY]); the proof is over the wire bytes. */
+private fun ApplicationCall.unzip(b: ByteArray): ByteArray {
+    if (request.header(HttpHeaders.ContentEncoding)?.lowercase() != "gzip") return b
+    return try {
+        GZIPInputStream(java.io.ByteArrayInputStream(b)).use { gz ->
+            val out = gz.readNBytes((MAX_BODY + 1).toInt())
+            if (out.size > MAX_BODY) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "decompressed body above $MAX_BODY bytes")
+            out
+        }
+    } catch (e: java.io.IOException) { throw ApiProblem(ProblemCode.ERR_MALFORMED_JSON, "body is not valid gzip") }
+}
+
 /** The body as sent, size-capped, gunzipped when sent gzip (the proof hashes the bytes on the wire, so callers pass what they read before decoding). */
 private suspend fun ApplicationCall.rawBody(): ByteArray {
     request.header(HttpHeaders.ContentLength)?.toLongOrNull()?.let { if (it > MAX_BODY) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "body above $MAX_BODY bytes") }
@@ -116,7 +128,7 @@ private suspend fun ApplicationCall.rawBody(): ByteArray {
  */
 private fun ApplicationCall.authDevice(d: DeviceDeps, body: ByteArray): DeviceService.DeviceRow {
     val bad = ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device proof invalid")
-    val uuid = request.header("X-Device-Id")?.lowercase() ?: throw bad
+    val uuid = request.header("X-Device-Id")?.lowercase()?.takeIf { runCatching { java.util.UUID.fromString(it).toString() == it }.getOrDefault(false) } ?: throw bad
     val proof = request.header("X-Device-Proof") ?: throw bad
     val dev = d.service.deviceByUuid(uuid) ?: throw bad
     val bodyHash = if (body.isEmpty()) "" else DeviceProof.sha256Hex(body)

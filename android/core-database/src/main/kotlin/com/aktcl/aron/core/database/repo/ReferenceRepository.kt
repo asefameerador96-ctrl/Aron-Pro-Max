@@ -12,8 +12,14 @@ import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.entity.TaskEntity
 import com.aktcl.aron.core.database.reference.BundleReference
 import com.aktcl.aron.core.database.reference.ConfigDeltaWire
+import com.aktcl.aron.contract.BundleOutlet
 import com.aktcl.aron.contract.ResolvedConfigValue
+import com.aktcl.aron.contract.RouteSnapshot
+import com.aktcl.aron.contract.Sku
+import com.aktcl.aron.contract.SkuPrice
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.builtins.ListSerializer
@@ -25,6 +31,20 @@ data class RouteDay(val route: RouteEntity, val outlets: List<OutletEntity>)
 
 /** What [ReferenceRepository.applyConfigDelta] did. */
 enum class DeltaResult { APPLIED, STALE, GAP }
+
+/** What [ReferenceRepository.applyBundleDelta] did. */
+enum class BundleDeltaResult {
+    APPLIED,
+
+    /** Already applied, or not newer than the stored bundle: nothing changed. */
+    STALE,
+
+    /** The delta does not continue the stored cursor: nothing changed, a full bundle is flagged. */
+    GAP,
+
+    /** The delta is for another business date than the stored bundle: fetch the full bundle of the day. */
+    NEW_DATE,
+}
 
 /** What [ReferenceRepository.apply] did with a bundle. */
 enum class ApplyResult {
@@ -58,35 +78,10 @@ class ReferenceRepository(private val db: AronDatabase) {
         val date = bundle.meta.validForBusinessDate
         if (!asDay) return storePrefetch(bundle, requireNotNull(raw) { "a prefetch is stored as raw JSON" }, etag)
         val version = bundle.meta.bundleVersion
-        val routes = bundle.routes.map { s ->
-            RouteEntity(
-                routeId = s.routeId, code = s.route.code, name = s.route.name, displayLabel = s.route.displayLabel,
-                zoneId = s.route.zoneId, kind = s.route.kind, visitKind = s.route.visitKind, visitDaysMask = s.route.visitDaysMask,
-                sequenceNo = s.route.sequenceNo, status = s.route.status, assignmentKind = s.assignmentKind,
-                actingForUserId = s.actingForUserId, plannedToday = s.plannedToday, targetOutlets = s.targetOutlets,
-                routeSnapshotVersion = s.routeSnapshotVersion, businessDate = date, bundleVersion = version,
-            )
-        }
-        val outlets = bundle.routes.flatMap { it.outlets }.map { o ->
-            OutletEntity(
-                outletId = o.outletId, routeId = o.routeId, code = o.code, name = o.name, nameBn = o.nameBn, nameSortKey = o.nameSortKey,
-                ownerName = o.ownerName, contactNumber = o.contactNumber, lat = o.lat, lng = o.lng, locationConfirmed = o.locationConfirmed,
-                provisionalLat = o.provisionalLat, provisionalLng = o.provisionalLng, clusterId = o.clusterId, clusterName = o.clusterName,
-                channel = o.channel, subChannelId = o.subChannelId, geoClass = o.geoClass, status = o.status, priceType = o.priceType,
-                outletKind = o.outletKind, radiusM = o.radiusM, maxAccuracyM = o.maxAccuracyM, visitSequence = o.visitSequence,
-                openDueMtk = o.openDueMtk, openDueAsOf = o.openDueAsOf,
-                programmeFlagsJson = Json.encodeToString(ListSerializer(String.serializer()), o.programmeFlags),
-                pendingRequest = o.pendingRequest,
-            )
-        }
-        val skus = bundle.products.skus.map { k ->
-            SkuEntity(
-                skuId = k.id, code = k.code, variantId = k.variantId, categoryCode = k.categoryCode, name = k.name, shortName = k.shortName,
-                nameBn = k.nameBn, baseUnit = k.baseUnit, basePerPack = k.basePerPack, entryUnitDefault = k.entryUnitDefault,
-                reportUnit = k.reportUnit, reportFactor = k.reportFactor, sort = k.sort, status = k.status, version = k.version,
-            )
-        }
-        val prices = bundle.prices.map { PriceEntity(it.id, it.skuId, it.priceType, it.amountMtk, it.perBaseQty, it.validFrom, it.validTo) }
+        val routes = bundle.routes.map { routeRow(it, date, version) }
+        val outlets = bundle.routes.flatMap { it.outlets }.map(::outletRow)
+        val skus = bundle.products.skus.map(::skuRow)
+        val prices = bundle.prices.map(::priceRow)
         val config = bundle.config?.let { c ->
             c.values.map { configRow(it, scheduled = false) } + c.scheduled.map { configRow(it, scheduled = true) }
         }.orEmpty()
@@ -117,6 +112,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             dao.reapplyLocalResolutions()
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_DATE, date))
+            dao.deleteMeta(KEY_BUNDLE_REFRESH) // a whole snapshot answers a gap
             dao.meta(KEY_PREFETCH_DATE)?.let { if (it <= date) clearPrefetch() } // a prefetch of this day or earlier is spent
             putOrDelete(KEY_BUNDLE_ETAG, etag)
             putOrDelete(KEY_BUNDLE_CURSOR, bundle.meta.cursor)
@@ -170,6 +166,175 @@ class ReferenceRepository(private val db: AronDatabase) {
         if (delta.policyChanged) dao.putMeta(SyncMetaEntity(KEY_POLICY_REFRESH, "true"))
         dao.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, delta.toVersion.toString()))
         DeltaResult.APPLIED
+    }
+
+    /**
+     * Applies a `BundleDelta` (F-SYS-007, docs/24 s4.10 Delta) in ONE transaction: the old reference data or the new, never a
+     * mix. Only the rows named change: outlets, prices, SKUs and tasks by key; open memos, day states and route extras in
+     * the route sections; code lists, templates, offers and the supervisor's team and pending requests in their raw
+     * sections; whole routes added or removed. Captured records (memos with the prices they were sold at, the outbox) are
+     * never touched, so a price change applies to new memos only. Nothing here counts as the day's login.
+     * A delta for another date, from another base cursor or not newer than the stored bundle is not applied (see
+     * [BundleDeltaResult]); [BundleDeltaResult.GAP] also flags a full bundle refresh.
+     */
+    suspend fun applyBundleDelta(raw: JsonObject): BundleDeltaResult {
+        val meta = raw["meta"] as? JsonObject ?: return BundleDeltaResult.GAP
+        fun m(k: String) = (meta[k] as? JsonPrimitive)?.contentOrNull
+        val version = m("bundle_version") ?: return BundleDeltaResult.GAP
+        val date = m("valid_for_business_date") ?: return BundleDeltaResult.GAP
+        val base = m("base_cursor")
+        val cursor = m("cursor") ?: return BundleDeltaResult.GAP
+        val sections = raw["sections"] as? JsonObject ?: JsonObject(emptyMap())
+        fun upserts(name: String) = ((sections[name] as? JsonObject)?.get("upsert") as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+        fun deletes(name: String) = ((sections[name] as? JsonObject)?.get("delete") as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+        // Parsed before the transaction: a malformed delta fails here and changes nothing.
+        val outletUps = upserts("outlets").map { DELTA_JSON.decodeFromJsonElement(BundleOutlet.serializer(), it) }
+        val priceUps = upserts("prices").map { DELTA_JSON.decodeFromJsonElement(SkuPrice.serializer(), it) }
+        val skuUps = upserts("skus").map { DELTA_JSON.decodeFromJsonElement(Sku.serializer(), it) }
+        val taskUps = upserts("tasks").map { requireNotNull(taskRow(it)) { "a task without task_uuid" } }
+        val added = (raw["routes_added"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            .map { it to DELTA_JSON.decodeFromJsonElement(RouteSnapshot.serializer(), it) }
+        val removed = (raw["routes_removed"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull() }
+        val dayStates = (raw["day_states"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+        val resolutions = (raw["resolutions"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            val uuid = (o["client_uuid"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+            val res = (o["resolution"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+            uuid to res
+        }
+        val moveMemos = outletUps.isNotEmpty() || deletes("outlets").isNotEmpty() || added.isNotEmpty() || removed.isNotEmpty() ||
+            upserts("open_memos").isNotEmpty() || deletes("open_memos").isNotEmpty()
+        return db.withTransaction {
+            if (dao.meta(KEY_BUNDLE_DATE) != date) return@withTransaction BundleDeltaResult.NEW_DATE
+            val held = dao.meta(KEY_BUNDLE_CURSOR)
+            // Already applied (same cursor) or older than the held bundle. A delta of the same snapshot that only moves day
+            // states (a submit void) has a new cursor and is applied.
+            if (held == cursor || compare(version, dao.meta(KEY_BUNDLE_VERSION)) < 0) return@withTransaction BundleDeltaResult.STALE
+            if (base == null || held != base) {
+                dao.putMeta(SyncMetaEntity(KEY_BUNDLE_REFRESH, "true"))
+                return@withTransaction BundleDeltaResult.GAP
+            }
+            // Open memos of every route, read before any route goes, so a moved or removed route never loses a due.
+            val heldMemos = if (moveMemos) openMemosByRoute() else emptyMap()
+            // Whole routes first, so row upserts of the same delta land on top of them.
+            for (id in removed) {
+                dao.deleteOutletsOfRoute(id)
+                dao.deleteRoute(id)
+                dao.deleteSection("route.$id")
+            }
+            for ((json, snap) in added) {
+                dao.deleteOutletsOfRoute(snap.routeId)
+                dao.insertRoutes(listOf(routeRow(snap, date, version)))
+                dao.insertOutlets(snap.outlets.map(::outletRow))
+                putSection("route.${snap.routeId}", routeExtras(json).toString())
+            }
+            deletes("outlets").mapNotNull { it.toLongOrNull() }.takeIf { it.isNotEmpty() }?.let { dao.deleteOutlets(it) }
+            if (outletUps.isNotEmpty()) dao.insertOutlets(outletUps.map(::outletRow))
+            deletes("prices").mapNotNull { it.toLongOrNull() }.takeIf { it.isNotEmpty() }?.let { dao.deletePrices(it) }
+            if (priceUps.isNotEmpty()) dao.insertPrices(priceUps.map(::priceRow))
+            deletes("skus").mapNotNull { it.toLongOrNull() }.takeIf { it.isNotEmpty() }?.let { dao.deleteSkus(it) }
+            if (skuUps.isNotEmpty()) dao.insertSkus(skuUps.map(::skuRow))
+            deletes("tasks").takeIf { it.isNotEmpty() }?.let { dao.deleteTasks(it) }
+            if (taskUps.isNotEmpty()) dao.insertTasks(taskUps)
+            dao.reapplyLocalResolutions() // a resolution not yet acked survives a server copy of the task
+            if (moveMemos) placeOpenMemos(heldMemos, added.map { it.second }, upserts("open_memos"), deletes("open_memos"))
+            for (st in dayStates) {
+                val routeId = (st["route_id"] as? JsonPrimitive)?.contentOrNull ?: continue
+                editSection("route.$routeId") { JsonObject(it + ("day_state" to st)) }
+            }
+            editListSection("code_lists", raw["code_lists"] as? JsonArray, "list_key")
+            editListSection("templates", raw["templates"] as? JsonArray, "kind")
+            // Offers, targets and achievements are deferred programmes (docs/27): the hooks keep the raw rows current.
+            editKeyed("offers", null, "id", upserts("offers"), deletes("offers"))
+            editKeyed("supervisor", "team", "user_id", upserts("team"), deletes("team"))
+            editKeyed("supervisor", "pending_outlet_requests", "request_uuid", upserts("pending_outlet_requests"), deletes("pending_outlet_requests"))
+            dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
+            dao.putMeta(SyncMetaEntity(KEY_BUNDLE_CURSOR, cursor))
+            m("server_time")?.let { dao.putMeta(SyncMetaEntity(KEY_BUNDLE_SERVER_TIME, it)) }
+            // Resolutions are stashed in the same transaction as the cursor move: the server sends each one once.
+            for (res in resolutions) dao.putMeta(SyncMetaEntity(KEY_RESOLUTION_PREFIX + res.first, res.second))
+            BundleDeltaResult.APPLIED
+        }
+    }
+
+    /** Every route section's open memos, by route id (read before a delta changes routes). */
+    private suspend fun openMemosByRoute(): Map<Long, List<JsonObject>> =
+        dao.routeSectionNames().mapNotNull { it.removePrefix("route.").toLongOrNull() }.associateWith { id ->
+            section("route.$id")?.let { runCatching { (Json.parseToJsonElement(it) as? JsonObject)?.get("open_memos") as? JsonArray }.getOrNull() }
+                .orEmpty().mapNotNull { it as? JsonObject }
+        }
+
+    /**
+     * Open memos live in their route's section (`route.<id>.open_memos`), placed by their outlet's route as the outlet table
+     * says after the delta: a memo follows an outlet that moved, delta upserts replace by memo_client_uuid, deletes remove,
+     * and an added route's own snapshot memos are kept. A memo whose outlet is in none of the user's routes stays where it
+     * was while that route is held (the due must stay collectable offline).
+     */
+    private suspend fun placeOpenMemos(held: Map<Long, List<JsonObject>>, addedRoutes: List<RouteSnapshot>, upserts: List<JsonObject>, deletes: List<String>) {
+        fun uuid(o: JsonObject) = (o["memo_client_uuid"] as? JsonPrimitive)?.contentOrNull
+        fun outlet(o: JsonObject) = (o["outlet_id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()
+        val gone = deletes.toSet()
+        val pool = LinkedHashMap<String, Pair<JsonObject, Long?>>() // uuid -> memo, route it was in
+        for ((route, memos) in held) for (m in memos) uuid(m)?.let { pool[it] = m to route }
+        for (u in upserts) uuid(u)?.let { pool[it] = u to pool[it]?.second }
+        gone.forEach { pool.remove(it) }
+        val routeIds = dao.routeSectionNames().mapNotNull { it.removePrefix("route.").toLongOrNull() }
+        val routeOfOutlet = HashMap<Long, Long>()
+        for (id in routeIds) dao.outletsOf(id).forEach { routeOfOutlet[it.outletId] = id }
+        val placed = routeIds.associateWith { ArrayList<JsonObject>() }
+        val addedIds = addedRoutes.map { it.routeId }.toSet()
+        for ((_, entry) in pool) {
+            val (memo, was) = entry
+            val target = outlet(memo)?.let(routeOfOutlet::get) ?: was?.takeIf { it in placed && it !in addedIds }
+            target?.let { placed.getValue(it) += memo }
+        }
+        for (id in routeIds) {
+            // An added route keeps the open memos its snapshot carried, plus any that now belong to it.
+            val own = if (id in addedIds) {
+                val fromSnapshot = section("route.$id")?.let { (Json.parseToJsonElement(it) as? JsonObject)?.get("open_memos") as? JsonArray }
+                    .orEmpty().mapNotNull { it as? JsonObject }.filter { uuid(it) !in gone }
+                val have = fromSnapshot.mapNotNull(::uuid).toSet()
+                fromSnapshot + placed.getValue(id).filter { uuid(it) !in have }
+            } else {
+                placed.getValue(id)
+            }
+            editSection("route.$id") { r -> JsonObject(r + ("open_memos" to JsonArray(own))) }
+        }
+    }
+
+    private suspend fun putSection(name: String, json: String) {
+        dao.deleteSection(name)
+        dao.insertSections(chunks(json).mapIndexed { i, part -> BundleSectionEntity(chunkName(name, i), part) })
+    }
+
+    /** Rewrites a raw JSON-object section; a missing or unreadable one is left alone. */
+    private suspend fun editSection(name: String, edit: (JsonObject) -> JsonObject) {
+        val current = section(name)?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() } ?: return
+        putSection(name, edit(current).toString())
+    }
+
+    /** Replaces whole entries of a list section by [key] (code lists by `list_key`, templates by `kind`). */
+    private suspend fun editListSection(name: String, changed: JsonArray?, key: String) {
+        if (changed.isNullOrEmpty()) return
+        val current = section(name)?.let { runCatching { Json.parseToJsonElement(it) as? JsonArray }.getOrNull() }.orEmpty()
+        fun k(e: JsonElement) = ((e as? JsonObject)?.get(key) as? JsonPrimitive)?.contentOrNull
+        val replaced = changed.mapNotNull(::k).toSet()
+        putSection(name, JsonArray(current.filter { k(it) !in replaced } + changed).toString())
+    }
+
+    /** Upserts and deletes rows keyed by [key] in a raw list: the section itself, or member [member] of an object section. */
+    private suspend fun editKeyed(name: String, member: String?, key: String, upserts: List<JsonObject>, deletes: List<String>) {
+        if (upserts.isEmpty() && deletes.isEmpty()) return
+        val text = section(name) ?: return
+        val parsed = runCatching { Json.parseToJsonElement(text) }.getOrNull() ?: return
+        fun k(e: JsonElement) = ((e as? JsonObject)?.get(key) as? JsonPrimitive)?.contentOrNull
+        val gone = deletes.toSet() + upserts.mapNotNull(::k)
+        fun merge(list: JsonArray?) = JsonArray(list.orEmpty().filter { k(it) !in gone } + upserts)
+        val updated = if (member == null) merge(parsed as? JsonArray) else {
+            val o = parsed as? JsonObject ?: return
+            JsonObject(o + (member to merge(o[member] as? JsonArray)))
+        }
+        putSection(name, updated.toString())
     }
 
     /** The stored prefetch's date and ETag (for a conditional prefetch request), or null. */
@@ -227,6 +392,9 @@ class ReferenceRepository(private val db: AronDatabase) {
 
     suspend fun bundleVersion(): String? = dao.meta(KEY_BUNDLE_VERSION)
 
+    /** The config version the phone holds (bundle or delta), 0 before the first bundle: the envelope's `config_version`. */
+    suspend fun configVersionHeld(): Long = dao.meta(KEY_CONFIG_VERSION)?.toLongOrNull() ?: 0L
+
     /** The business date the stored bundle is valid for. */
     suspend fun businessDate(): String? = dao.meta(KEY_BUNDLE_DATE)
 
@@ -269,6 +437,9 @@ class ReferenceRepository(private val db: AronDatabase) {
 
         /** Set when the server answers 410 to a config delta: only a full bundle brings the phone up to date. */
         const val KEY_BUNDLE_REFRESH = "bundle.refresh_needed"
+
+        /** sync_meta prefix of server resolutions waiting for their quarantined row (written by deltas and batch answers). */
+        const val KEY_RESOLUTION_PREFIX = "sync.resolution."
         private const val KEY_PREFETCH_JSON = "prefetch.json"
         private const val KEY_PREFETCH_VERSION = "prefetch.version"
         private const val KEY_PREFETCH_DATE = "prefetch.date"
@@ -280,7 +451,7 @@ class ReferenceRepository(private val db: AronDatabase) {
         /** Characters per stored chunk: at most 1.2 MB of UTF-8 even for Bangla text (3 bytes a character). */
         private const val CHUNK_CHARS = 400_000
 
-        private fun chunkName(key: String, i: Int) = if (i == 0) key else "$key#$i"
+        internal fun chunkName(key: String, i: Int) = if (i == 0) key else "$key#$i"
 
         /** Splits [text] into chunks, never between the two halves of a surrogate pair (SQLite stores UTF-8). */
         internal fun chunks(text: String, size: Int = CHUNK_CHARS): List<String> {
@@ -296,6 +467,8 @@ class ReferenceRepository(private val db: AronDatabase) {
             }
             return out
         }
+
+        private val DELTA_JSON = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
         /** Sections with tables of their own; everything else at the top level is kept raw. */
         private val TYPED = setOf("meta", "routes", "prices", "config", "tasks")
@@ -320,7 +493,37 @@ class ReferenceRepository(private val db: AronDatabase) {
             return v.substring(0, i) to seq
         }
 
-        private fun taskRow(o: JsonObject): TaskEntity? {
+        internal fun routeRow(s: RouteSnapshot, date: String, version: String) = RouteEntity(
+            routeId = s.routeId, code = s.route.code, name = s.route.name, displayLabel = s.route.displayLabel,
+            zoneId = s.route.zoneId, kind = s.route.kind, visitKind = s.route.visitKind, visitDaysMask = s.route.visitDaysMask,
+            sequenceNo = s.route.sequenceNo, status = s.route.status, assignmentKind = s.assignmentKind,
+            actingForUserId = s.actingForUserId, plannedToday = s.plannedToday, targetOutlets = s.targetOutlets,
+            routeSnapshotVersion = s.routeSnapshotVersion, businessDate = date, bundleVersion = version,
+        )
+
+        internal fun outletRow(o: BundleOutlet) = OutletEntity(
+            outletId = o.outletId, routeId = o.routeId, code = o.code, name = o.name, nameBn = o.nameBn, nameSortKey = o.nameSortKey,
+            ownerName = o.ownerName, contactNumber = o.contactNumber, lat = o.lat, lng = o.lng, locationConfirmed = o.locationConfirmed,
+            provisionalLat = o.provisionalLat, provisionalLng = o.provisionalLng, clusterId = o.clusterId, clusterName = o.clusterName,
+            channel = o.channel, subChannelId = o.subChannelId, geoClass = o.geoClass, status = o.status, priceType = o.priceType,
+            outletKind = o.outletKind, radiusM = o.radiusM, maxAccuracyM = o.maxAccuracyM, visitSequence = o.visitSequence,
+            openDueMtk = o.openDueMtk, openDueAsOf = o.openDueAsOf,
+            programmeFlagsJson = Json.encodeToString(ListSerializer(String.serializer()), o.programmeFlags),
+            pendingRequest = o.pendingRequest,
+        )
+
+        internal fun skuRow(k: Sku) = SkuEntity(
+            skuId = k.id, code = k.code, variantId = k.variantId, categoryCode = k.categoryCode, name = k.name, shortName = k.shortName,
+            nameBn = k.nameBn, baseUnit = k.baseUnit, basePerPack = k.basePerPack, entryUnitDefault = k.entryUnitDefault,
+            reportUnit = k.reportUnit, reportFactor = k.reportFactor, sort = k.sort, status = k.status, version = k.version,
+        )
+
+        internal fun priceRow(p: SkuPrice) = PriceEntity(p.id, p.skuId, p.priceType, p.amountMtk, p.perBaseQty, p.validFrom, p.validTo)
+
+        /** The raw part of a route snapshot (everything but the route and its outlets), stored as `route.<id>`. */
+        internal fun routeExtras(o: JsonObject): JsonObject = JsonObject(o.filterKeys { it !in ROUTE_TYPED })
+
+        internal fun taskRow(o: JsonObject): TaskEntity? {
             fun str(k: String) = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
             val uuid = str("task_uuid") ?: return null
             return TaskEntity(
@@ -346,7 +549,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             val perRoute = (raw["routes"] as? JsonArray).orEmpty().mapNotNull { r ->
                 val o = r as? JsonObject ?: return@mapNotNull null
                 val id = (o["route_id"] as? JsonPrimitive)?.content ?: return@mapNotNull null
-                BundleSectionEntity("route.$id", JsonObject(o.filterKeys { it !in ROUTE_TYPED }).toString())
+                BundleSectionEntity("route.$id", routeExtras(o).toString())
             }
             return top + perRoute
         }
