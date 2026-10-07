@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sale_title">বিক্রয়</string>
+    <string name="sale_total">মোট</string>
+    <string name="sale_review">নিরীক্ষণ</string>
+    <string name="sale_less">কমান</string>
+    <string name="sale_more">বাড়ান</string>
+    <string name="sale_unit_stick">শলাকা</string>
+    <string name="sale_unit_piece">পিস</string>
+    <string name="sale_unit_dozen">ডজন</string>
+    <string name="sale_unit_pack">প্যাকেট</string>
+    <string name="sale_pack_badge">= %1$s প্যাকেট + %2$s</string>
+    <string name="sale_stock_warning">%2$s এর স্টক আছে মাত্র %1$s।</string>
+    <string name="sale_empty">বিক্রি শুরু করতে একটি পরিমাণ দিন।</string>
+    <string name="sale_zero_sale">এখানে কিছু বিক্রি নেই</string>
+    <string name="sale_zero_confirm_title">শূন্য বিক্রয়</string>
+    <string name="sale_zero_confirm_message">কোনো এসকেইউ দেওয়া হয়নি। বিক্রয় ছাড়া ভিজিট রেকর্ড করবেন?</string>
+    <string name="sale_yes">হ্যাঁ</string>
+    <string name="sale_no">না</string>
+    <string name="review_title">নিরীক্ষণ</string>
+    <string name="review_gross">মোট মূল্য</string>
+    <string name="review_offer_discount">অফার ডিসকাউন্ট</string>
+    <string name="review_drp_discount">স্লাইড ডিসকাউন্ট</string>
+    <string name="review_qc">কিউসি</string>
+    <string name="review_net">সর্বমোট</string>
+    <string name="review_paid">পরিশোধ</string>
+    <string name="review_due">বাকি</string>
+    <string name="review_credit">বাকিতে</string>
+    <string name="review_save">বিক্রয় সংরক্ষণ</string>
+    <string name="review_problem_too_many_lines">একটি মেমোতে সর্বোচ্চ %1$s লাইন হতে পারে (এখন %2$s)।</string>
+    <string name="review_problem_unit">%1$s এর জন্য এই একক অনুমোদিত নয়।</string>
+    <string name="review_problem_paid">পরিশোধ ০ বা তার বেশি এবং মোটের কম হতে হবে, পুরো পয়সায়।</string>
+    <string name="review_problem_nothing">বিক্রির কিছু নেই।</string>
+    <string name="review_problem_other">অনুগ্রহ করে বিক্রয়টি দেখুন।</string>
+</resources>

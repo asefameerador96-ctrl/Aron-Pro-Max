@@ -8,7 +8,7 @@
   { "type": "if", "when": "kind_edited", "blocks": [ { "type": "text", "value": "{@print_edited_memo}", "align": "center", "bold": true } ] },
   { "type": "if", "when": "duplicate", "blocks": [
     { "type": "text", "value": "*** {@print_duplicate} ***", "align": "center", "bold": true, "size": 24 },
-    { "type": "text", "value": "{@print_reprint}: {reprint_no}", "align": "center" } ] },
+    { "type": "text", "value": "{@print_reprint} #{reprint_no}", "align": "center" } ] },
   { "type": "if", "when": "supersedes", "blocks": [
     { "type": "pair", "left": "{@print_supersedes}:", "right": "{supersedes_memo_no}" } ] },
   { "type": "rule", "style": "dashed" },

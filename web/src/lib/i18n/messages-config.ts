@@ -135,6 +135,8 @@ const pairs = {
   "we.col.memos": ["Memos", "মেমো"],
   "we.calls": ["Successful calls", "সফল কল"],
   "we.calls.hint": ["At most the {n} target outlets of the route.", "রুটের {n}টি লক্ষ্য আউটলেটের বেশি নয়।"],
+  "we.col.class": ["Class {id}", "শ্রেণি {id}"],
+  "we.class_sum": ["The classes must add up to the sale (issue minus return).", "শ্রেণিগুলোর যোগফল বিক্রয়ের (ইস্যু বিয়োগ ফেরত) সমান হতে হবে।"],
   "we.return_exceeds": ["Return is more than issue.", "ফেরত ইস্যুর চেয়ে বেশি।"],
   "we.nothing": ["Enter at least one quantity or the successful calls.", "অন্তত একটি পরিমাণ বা সফল কল লিখুন।"],
   "we.overlap": ["The app already has memos for this route-day. The web entry is stored and flagged; the two are never added together.", "এই রুট-দিনের জন্য অ্যাপে মেমো আছে। ওয়েব এন্ট্রি সংরক্ষিত ও চিহ্নিত হয়; দুটি কখনও যোগ হয় না।"],
