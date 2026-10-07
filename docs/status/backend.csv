@@ -91,3 +91,5 @@ N-033,S,2026-10-07T19:30Z,2026-10-07T19:30Z,0,"Opus checker (BC-66)","backfill: 
 F-SYS-035,S,2026-10-07T21:55Z,2026-10-07T21:55Z,0,"-","backfill: bundle suggested_qty empty by default, asserted in BundleAcceptanceTest"
 F-API-019,S,2026-10-07T21:55Z,2026-10-07T22:15Z,20,"Sonnet checker PASS","GET /v1/outlets/nearby (BC-77)"
 F-SYS-050-PART,S,2026-10-07T22:15Z,2026-10-07T22:30Z,15,"Sonnet checker PASS","PARTIAL: pending rows + app version throttled (BC-78); X-Last-Sync-Error waits on db; daily device object not separately tested; row stays open"
+F-SYS-057,M,2026-10-07T22:45Z,2026-10-07T23:10Z,25,"Sonnet checker conditional PASS, fixed","risk-signals list + review (BC-79)"
+F-SYS-084,S,2026-10-07T23:10Z,2026-10-07T23:20Z,10,"-","held rows past 17:30 in sync-health (BC-80)"
