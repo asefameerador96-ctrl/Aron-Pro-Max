@@ -51,3 +51,15 @@ Still missing:
 - **sr-a, Stock:** `lastSaved` lives in composition memory only. After leaving the screen, an unprinted Save can never be printed while the banner keeps saying "slip not printed". Offer Print for today's unprinted Saves from Room (group by `captured_at`, the first row by sku_id is the slip uuid). Run print and confirm in a scope that outlives the screen (the SrDay or app scope, not `rememberCoroutineScope`). The slip's `distributor` is empty; fill it from the route's distributor when the bundle carries it.
 - **sr-a, config:** `MemoPrinting(..., reprintMax = { cfg.memo.reprint_max }, confirmAfterPrint = { cfg.print.confirm_after_print })` and `idleDisconnectMs` from `cfg.print.disconnect_idle_s` once ConfigCheck exposes the values (defaults are used today: 5, true, 120 s).
 - **sr-b, feature-memo:** use `PrintAttemptDialogs` for the reprint result too (same rule: no answer on an outside tap); wire `SummaryScreen.onPrint` → `day.printing.printDaySummary(daySummaryUuid, DaySummaryPrint)`, where `daySummaryUuid` is a UUID v4 stored once per user and business date.
+
+## Status 2026-10-07 11:40 UTC (android-print session #3; checked `lane/android-sr-a` 860d4f7, `lane/android-sr-b` d4dc7e4)
+Landed since 08:50:
+- **sr-a, Stock:** `SrDay.printUnprintedStock` prints today's unprinted Saves from Room (slip uuid = first row by sku_id), the attempt lives in `SrDay` (outlives the screen), and core-printing `PrintAttemptDialogs` answers only on its buttons. Items 7, 8 and the stock dialog gap are closed.
+- **sr-b:** `SrSaleHosts` hosts `SaleRoute` (sale and edit), the Memo menu (`MemoViewModel` + `MemoPrintingReprinter(day.printing)`, `ReprintDialogs` with button-only answers) and `SummaryHost` (`printDaySummary` with a per-date uuid). `PrintMapping` reads stored mtk only; edited memos carry `supersedesMemoNo`; the marker number comes from `MemoPrinting`. Items 5 (Sale, Memo, Summary), 9-14 are closed on sr-b's branch.
+
+Still open (small):
+- **Merge order (sr-a / sr-b):** sr-b's `SrApp.StockHost` is the old version (composition-only `lastSaved`, `AronConfirmDialog` that records "not readable" on an outside tap). When both branches meet on INT, keep **sr-a's** StockHost (`day.printUnprintedStock` / `PrintAttemptDialogs`).
+- **sr-b, `SummaryHost`:** print and confirm run in `rememberCoroutineScope`; leaving the screen while the summary prints cancels the job (recover() then closes it as failed at the next start; no data loss, the paper may be cut short). Run them in the SrDay/app scope like the stock attempt. Minor.
+- **sr-a, config:** `reprint_max`, `confirm_after_print`, `disconnect_idle_s` still use the defaults until ConfigCheck exposes them.
+
+android-print side: the shared `PrintLedgerContract` now also drives the production `MemoPrinting` on each ledger with a simulated MP-58N and compares the paper row for row (reprint marker across a restart and the limit, edited memo, slip over a whole Save, printer off, kill before the answer), so `RoomPrintLedger` is proven for F-SR-015/028/031/066/073 below the screens.

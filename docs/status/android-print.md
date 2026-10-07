@@ -1,4 +1,12 @@
-# Status: lane android-print (Day 3, 2026-10-07, session #2)
+# Status: lane android-print (Day 3, 2026-10-07, session #3)
+
+## Session #3 (after the 10:39 UTC stall)
+- **Flow contract on Room:** `PrintLedgerContract` now also drives the production `MemoPrinting` with the production renderer and `SimPrinter` (moved to `src/testContract`) on each ledger, and compares the paper row for row: reprint marker across a restart and the limit (F-SR-031/066), edited memo prints "supersedes" as its own original (F-SR-066), slip over a whole Save with a marked reprint (F-SR-015), printer off (F-SR-028), kill before the answer, rejected original with a double tap, no-confirmation path (F-SR-073). 7 new scenarios; reference and `RoomPrintLedger` both run them. Opus checker: 0 blocking, 7 minor; fixed 1, 2, 3, 5, 6 (labels), 7; 4 logged below; 6 (Gradle inputs for the font/label files) is a build-file change in android-core's module, not done.
+- **Wiring re-checked** (sr-a 860d4f7, sr-b d4dc7e4): Stock print is complete on sr-a; Sale, Memo menu reprint, Edit and Summary print are hosted on sr-b (`SrSaleHosts`) and follow the contract. Open: keep sr-a's StockHost when sr-a and sr-b meet on INT; sr-b `SummaryHost` uses a screen scope (minor). Recorded in `docs/requests/android-print-wiring-gaps.md`.
+- D-P2b steps extended (edit memo supersedes line, summary print) and its precondition updated to "sr-b's SrSaleHosts on INT".
+- Environment: Robolectric SDK 36 needs Java 21+; the laptop's default JDK is 17. Run Gradle with `JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"` (Java 25).
+- **ShaperOracleTest on newer JDKs:** JDK 25's HarfBuzz drops the empty glyph the font substitutes for a joiner inside a cluster (র‍্যাব, ক্‌ষ, ক্‍ষ, র্‍য), JDK 21's kept it, and the shaper keeps it. It has no contours and adds no width, so the paper is the same. The oracle now ignores contour-less glyphs on both sides (inked glyphs are still compared at absolute positions) and asserts that the joiner glyphs are empty; it is green on JDK 17 and 25.
+- Known gap (checker #4): no test yet prints a memo built from the stored Room row; the production mapper is sr-b's `PrintMapping` (feature-memo), covered by sr-b's tests. Add an abstract `memoPrintOf(memo)` to the contract once it is on INT.
 
 ## Done (builder, then an independent Opus checker, every confirmed defect fixed with a test, re-check clean)
 - **N-018** Bangla memo renderer, `android/core-printing`:

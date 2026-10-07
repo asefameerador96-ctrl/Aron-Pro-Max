@@ -29,6 +29,7 @@ import com.aktcl.aron.core.system.permission.PermissionGate
 import com.aktcl.aron.core.system.permission.PermissionPolicy
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronPrimaryButton
+import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.feature.attendance.AttendanceContent
@@ -67,7 +68,7 @@ import com.aktcl.aron.feature.tasks.TaskContent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, OUTLET_MENU, REQUEST_OUTLET, REQUEST_FORM }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, OUTLET_MENU, REQUEST_OUTLET, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI }
 
 /**
  * The SR day host: Home, Attendance, Stock, the Sale picker with the geo check and Force Sale, Tasks, the Outlet menu and
@@ -80,13 +81,17 @@ fun SrApp(
     day: SrDay, user: HomeUser, health: DeviceHealth?, versionText: String,
     onLanguageSelect: (AppLanguage) -> Unit, onLogout: () -> Unit, onOtherTile: (HomeTile) -> Unit,
     startBundleDownload: suspend () -> Unit,
+    sunlight: Boolean = false, onSunlight: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
     var screen by rememberSaveable { mutableStateOf(SrScreen.HOME) }
     val scope = rememberCoroutineScope()
+    var editMemo by rememberSaveable { mutableStateOf("") }
+    var skipOutlet by remember { mutableStateOf<OutletEntity?>(null) }
     val data by day.dayData.collectAsState()
     val tasks by day.taskBoard.state.collectAsState()
+    val stockAttempt by day.stockAttempt.collectAsState()
     val attendance by day.attendance.state.collectAsState()
     var permissions by remember { mutableStateOf(activity?.let(SrPermissions::state) ?: com.aktcl.aron.feature.home.PermissionGate.initial()) }
     var asking by remember { mutableStateOf<AppPermission?>(null) }
@@ -98,7 +103,7 @@ fun SrApp(
 
     // Start: local data first (never waits), then the bundle in the background, then a refresh of what Home shows.
     LaunchedEffect(Unit) {
-        day.recoverPrinting()
+        day.recoverPrinting(); day.resumeMedia()
         day.reload(); day.nextSequenceFromStore(); day.restoreOpenVisit(); day.taskBoard.load()
         day.attendance.restore(day.attendanceToday())
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
@@ -120,9 +125,11 @@ fun SrApp(
         if (screen == SrScreen.HOME && RoutePicker.needsChoice(planned, day.chosenRouteId())) screen = SrScreen.ROUTE_PICK
     }
     BackHandler(enabled = screen != SrScreen.HOME && screen != SrScreen.PERMISSIONS) {
-        screen = when (screen) { SrScreen.FORCE -> SrScreen.VISIT; SrScreen.REQUEST_FORM -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU; else -> SrScreen.HOME }
+        screen = when (screen) { SrScreen.FORCE -> SrScreen.VISIT; SrScreen.NO_SALE -> SrScreen.VISIT; SrScreen.SKIP -> SrScreen.PICKER; SrScreen.EDIT -> SrScreen.MEMO; SrScreen.REQUEST_FORM -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU; else -> SrScreen.HOME }
     }
 
+    // The camera draws only while a capture is open (and sits behind the camera permission gate of core-system).
+    com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(stockAttempt, onAnswer = day::answerStockPrint, onClose = day::closeStockAttempt)
     when (screen) {
         SrScreen.PERMISSIONS -> {
             LaunchedEffect(permissions) { if (permissions.toAsk.isEmpty()) screen = SrScreen.HOME }
@@ -148,6 +155,11 @@ fun SrApp(
                         HomeTile.SALE -> screen = if (day.visitSession.current.value != null) SrScreen.VISIT else SrScreen.PICKER
                         HomeTile.TASKS -> screen = SrScreen.TASKS
                         HomeTile.OUTLET -> screen = SrScreen.OUTLET_MENU
+                        HomeTile.MEMO -> screen = SrScreen.MEMO
+                        HomeTile.SUMMARY -> screen = SrScreen.SUMMARY
+                        HomeTile.SALES_SUBMIT -> screen = SrScreen.SUBMIT
+                        HomeTile.SALES_JOURNEY -> screen = SrScreen.JOURNEY
+                        HomeTile.KPI -> screen = SrScreen.KPI
                         else -> onOtherTile(t)
                     }
                 },
@@ -163,26 +175,31 @@ fun SrApp(
         SrScreen.PICKER -> PermissionGate(GatedFeature.SALE, onBack = { screen = SrScreen.HOME }) {
             var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
             var opening by remember { mutableStateOf(false) }
+            var skipping by rememberSaveable { mutableStateOf(false) }
             val all = OutletPicker.rows(data.outlets)
-            OutletPickerContent(OutletPicker.rows(data.outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r ->
-                if (!opening) {
-                    opening = true
-                    scope.launch {
-                        runCatching { day.visitFlow.open(day.visitOutlet(r.outlet)) }
-                        opening = false; screen = SrScreen.VISIT
+            Column {
+                // Skip: an outlet marked not reached from the list, no fix, no geo gate, not a visit (F-SR-057).
+                AronSecondaryButton(
+                    stringResource(if (skipping) R.string.sr_skip_cancel else R.string.sr_skip_outlet), { skipping = !skipping },
+                    Modifier.padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S),
+                )
+                OutletPickerContent(OutletPicker.rows(data.outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r ->
+                    if (skipping) { skipOutlet = r.outlet; skipping = false; screen = SrScreen.SKIP }
+                    else if (!opening) {
+                        opening = true
+                        scope.launch {
+                            runCatching { day.visitFlow.open(day.visitOutlet(r.outlet)) }
+                            opening = false; screen = SrScreen.VISIT
+                        }
                     }
-                }
-            })
+                })
+            }
         }
         SrScreen.VISIT -> PermissionGate(GatedFeature.SALE, onBack = { screen = SrScreen.HOME }) {
             val st by day.visitFlow.state.collectAsState()
             val open by day.visitSession.current.collectAsState()
             if (open != null) {
-                Column(Modifier.padding(AronTokens.Space.L)) {
-                    AronBanner(stringResource(R.string.sr_visit_open), kind = BannerKind.Info)
-                    // Placeholder until the sale screens (android-sr-b) own the visit end: no sale yet, so the call is abandoned.
-                    AronPrimaryButton(stringResource(R.string.sr_visit_close), { scope.launch { day.closeVisitAbandoned(); screen = SrScreen.HOME } })
-                }
+                SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME })
             } else {
                 VisitCheckContent(
                     st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { screen = SrScreen.FORCE },
@@ -193,6 +210,14 @@ fun SrApp(
                 )
             }
         }
+        SrScreen.NO_SALE -> NoSaleHost(day, onDone = { screen = SrScreen.HOME })
+        SrScreen.SKIP -> skipOutlet?.let { o -> SkipHost(day, o, onDone = { screen = SrScreen.HOME }) } ?: LaunchedEffect(Unit) { screen = SrScreen.PICKER }
+        SrScreen.MEMO -> MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT })
+        SrScreen.EDIT -> EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO })
+        SrScreen.SUMMARY -> SummaryHost(day, sunlight, onSunlight)
+        SrScreen.SUBMIT -> SubmitHost(day)
+        SrScreen.JOURNEY -> JourneyHost(day)
+        SrScreen.KPI -> KpiHost(day)
         SrScreen.FORCE -> {
             val st by day.visitFlow.state.collectAsState()
             val capture = remember { day.newCapture("outlet_capture") }
@@ -276,11 +301,11 @@ private fun StockHost(day: SrDay) {
     var load by remember { mutableStateOf<com.aktcl.aron.feature.stock.StockLoad?>(null) }
     var version by remember { mutableStateOf(0) }
     var message by remember { mutableStateOf<StockMessage?>(null) }
-    var lastSaved by remember { mutableStateOf<List<com.aktcl.aron.core.database.entity.StockMovementEntity>>(emptyList()) }
     var unprinted by remember { mutableStateOf(true) }
-    var attempt by remember { mutableStateOf<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null) }
     val pm = day.printerManager
     LaunchedEffect(Unit) { load = day.stockLoad(); unprinted = day.slipNotPrinted() }
+    val att by day.stockAttempt.collectAsState()
+    LaunchedEffect(att) { unprinted = day.slipNotPrinted() }
     com.aktcl.aron.core.printing.ui.HoldPrinter(pm)
     val l = load ?: return
     version.let {}
@@ -294,7 +319,7 @@ private fun StockHost(day: SrDay) {
                 scope.launch {
                     when (val out = l.save(day.currentMs(), day.metaProvider.meta(0L))) {
                         is SaveOutcome.Saved -> runCatching { day.capture.recordStock(out.movements) }
-                            .onSuccess { l.committed(out, day.currentMs()); message = StockMessage.SAVED; lastSaved = out.movements; unprinted = day.slipNotPrinted(); day.requestSync() }
+                            .onSuccess { l.committed(out, day.currentMs()); message = StockMessage.SAVED; unprinted = day.slipNotPrinted(); day.requestSync() }
                             .onFailure { l.commitFailed(); message = StockMessage.SAVE_FAILED }
                         is SaveOutcome.Refused -> message = if (out.reason == SaveRefusal.NOTHING_ENTERED) StockMessage.NOTHING_ENTERED else StockMessage.REFUSED_SAME_VALUES
                     }
@@ -302,28 +327,7 @@ private fun StockHost(day: SrDay) {
                 }
             },
             // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03).
-            onPrint = if (lastSaved.isNotEmpty() && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(androidx.compose.ui.platform.LocalContext.current))) ({
-                scope.launch {
-                    val first = lastSaved.minByOrNull { it.skuId }!!
-                    attempt = day.printing.printStockSlip(first.clientUuid, day.stockSlip(lastSaved))
-                    unprinted = day.slipNotPrinted()
-                }
-            }) else null,
+            onPrint = if (unprinted && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(androidx.compose.ui.platform.LocalContext.current))) ({ day.printUnprintedStock() }) else null,
         )
-    }
-    when (val a = attempt) {
-        is com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation -> com.aktcl.aron.core.ui.AronConfirmDialog(
-            stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_readable_question),
-            stringResource(R.string.sr_yes), stringResource(R.string.sr_no),
-            onConfirm = { scope.launch { day.printing.confirm(a, true); attempt = null; unprinted = day.slipNotPrinted() } },
-            onDismiss = { scope.launch { day.printing.confirm(a, false); attempt = null; unprinted = day.slipNotPrinted() } },
-        )
-        com.aktcl.aron.core.printing.flow.PrintAttempt.LimitReached -> com.aktcl.aron.core.ui.AronInfoDialog(
-            stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_limit_reached), stringResource(R.string.sr_ok), { attempt = null },
-        )
-        is com.aktcl.aron.core.printing.flow.PrintAttempt.Failed, com.aktcl.aron.core.printing.flow.PrintAttempt.TooLong -> com.aktcl.aron.core.ui.AronInfoDialog(
-            stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_failed), stringResource(R.string.sr_ok), { attempt = null },
-        )
-        else -> Unit
     }
 }

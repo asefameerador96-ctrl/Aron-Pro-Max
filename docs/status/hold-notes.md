@@ -22,3 +22,8 @@ Lanes on hold are not woken (docs/status/lane-sessions.md, throttle list). The l
 ## backend-reports: audit writes (lead, 2026-10-07 10:27 UTC)
 
 backend-core made `AuditLog.write` the one way to write `app.audit_log` (backend-admin's AuditWriter now delegates to it). When you are released, replace the raw INSERTs into `app.audit_log` in `DailyTrackingApi.kt:190`, `ReportEngine.kt:211` and `OpsApi.kt:288` with `AuditLog.write` calls, with a test that the row is written once and carries the actor and scope.
+
+## From backend-core session 4 (lead, 2026-10-07 12:30 UTC)
+
+- web-dashboard: `docs/requests/backend-core-bff-client-ip.md` (on lane/backend-core): the BFF must forward the real client IP to the API for rate limits and audit. Read it when released.
+- backend-admin: `docs/requests/backend-core-location-history-basis.md` (on lane/backend-core, shared with db): the admin half of the location-history basis. Read it when released.
