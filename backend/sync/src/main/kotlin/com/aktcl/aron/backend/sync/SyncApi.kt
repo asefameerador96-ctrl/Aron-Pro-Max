@@ -216,7 +216,7 @@ private val telemetryLog = org.slf4j.LoggerFactory.getLogger("aron.sync.telemetr
  */
 internal fun recordTelemetry(d: SyncDeps, deviceId: Long, pendingHeader: String?, versionHeader: String?, bodyPending: Int, bodyVersion: String) {
     val pending = pendingHeader?.trim()?.toIntOrNull()?.takeIf { it in 0..1_000_000 } ?: bodyPending.takeIf { it in 0..1_000_000 }
-    val version = (versionHeader?.trim() ?: bodyVersion).takeIf { APP_VERSION.matches(it) }
+    val version = versionHeader?.trim()?.takeIf { APP_VERSION.matches(it) } ?: bodyVersion.takeIf { APP_VERSION.matches(it) }
     val now = java.time.OffsetDateTime.ofInstant(d.clock.now(), java.time.ZoneOffset.UTC)
     try {
         d.db!!.jdbi.useHandle<Exception> { h ->

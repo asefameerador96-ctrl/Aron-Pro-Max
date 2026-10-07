@@ -90,4 +90,4 @@ F-API-029,S,2026-10-07T12:00Z,2026-10-07T12:00Z,0,"-","backfill: served by confi
 N-033,S,2026-10-07T19:30Z,2026-10-07T19:30Z,0,"Opus checker (BC-66)","backfill: server part (bundle device_policy_version, list in config.values, confirm via status policy_version_applied); phone part is android"
 F-SYS-035,S,2026-10-07T21:55Z,2026-10-07T21:55Z,0,"-","backfill: bundle suggested_qty empty by default, asserted in BundleAcceptanceTest"
 F-API-019,S,2026-10-07T21:55Z,2026-10-07T22:15Z,20,"Sonnet checker PASS","GET /v1/outlets/nearby (BC-77)"
-F-SYS-050,S,2026-10-07T22:15Z,2026-10-07T22:30Z,15,"Sonnet checker","batch telemetry on the device row, 10-min throttle (BC-78); last_sync_error waits on db"
+F-SYS-050-PART,S,2026-10-07T22:15Z,2026-10-07T22:30Z,15,"Sonnet checker PASS","PARTIAL: pending rows + app version throttled (BC-78); X-Last-Sync-Error waits on db; daily device object not separately tested; row stays open"
