@@ -32,16 +32,16 @@ class ReportBatchATest : ReportFixture() {
     }
 
     @Test
-    fun stdMemoListsEveryMemoWithItsStatusAndTotals() = app {
+    fun stdMemoListsTheActiveSalesMemosWithTheirSkuLines() = app {
         val o = run(10, Role.ANALYST, "std-memo").result()
-        assertEquals(6, o.rows().size)
-        assertEquals(68_000, o.total("gross_mtk")); assertEquals(68_000, o.total("net_mtk")); assertEquals(60_000, o.total("paid_mtk")); assertEquals(8_000, o.total("due_mtk"))
-        assertEquals("voided", o.rows().by("memo_no", "sr001-261004-003").str("status")); assertEquals(0, o.rows().by("memo_no", "sr001-261004-004").num("line_count").toInt())
-        assertEquals(8_000, o.rows().by("memo_no", "sr001-261004-002").num("due_mtk").toLong())
+        assertEquals(4, o.rows().size)                                                    // the voided and the zero-line memo are not sales
+        assertEquals(63_000, o.total("gross_mtk")); assertEquals(63_000, o.total("net_mtk")); assertEquals(55_000, o.total("paid_mtk")); assertEquals(8_000, o.total("due_mtk"))
+        assertEquals("SKU1 x10, SKU2 x10", o.rows().by("memo_no", "sr001-261004-002").str("lines")); assertEquals(8_000, o.rows().by("memo_no", "sr001-261004-002").num("due_mtk").toLong())
+        assertFalse(o.rows().any { it.str("memo_no") in setOf("sr001-261004-003", "sr001-261004-004") })
         assertEquals(listOf("sr001-261004-002"), run(10, Role.ANALYST, "std-memo", body(""","outlet_code":"O2"""")).result().rows().map { it.str("memo_no") })
-        // The AMO app reads it for its zone only: zone 1 holds memos 001, 002, 003, 004 of sr001 and the sr002 memo, not sr003's.
+        // The AMO app reads it for its zone only: sr001's two and sr002's memo, not sr003's.
         val amo = run(12, Role.AMO, "std-memo").result()
-        assertEquals(5, amo.rows().size); assertFalse(amo.rows().any { it.str("memo_no") == "sr003-261004-001" })
+        assertEquals(3, amo.rows().size); assertFalse(amo.rows().any { it.str("memo_no") == "sr003-261004-001" })
         assertEquals(0, run(14, Role.TSO, "std-memo").result().rows().count { it.str("memo_no")!!.startsWith("sr001") })
     }
 
@@ -122,6 +122,43 @@ class ReportBatchATest : ReportFixture() {
             val x = run(10, Role.ANALYST, key, body(format = "xlsx")); assertEquals(HttpStatusCode.OK, x.status, key)
             assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, key, body(""","geo":{"zone":[$z2]}""")).status, key)
         }
+    }
+
+    // ---- independent checker tests (N-048); each is expected to FAIL against the current handlers ----
+
+    /** field_force_type is a declared filter of sr-efficiency; "amo" must not return the SR rows (all three SRs came back). */
+    @Test
+    fun checker_srEfficiencyIgnoresFieldForceType() = app {
+        val rows = run(10, Role.ANALYST, "sr-efficiency", body(""","field_force_type":"amo"""")).result().rows()
+        assertEquals(0, rows.size, "field_force_type=amo still returned SR rows")
+    }
+
+    /** CPR/BSR declares the `category` selector; a category that holds no product must yield no rows. */
+    @Test
+    fun checker_bsrIgnoresCategorySelector() = app {
+        val rows = run(10, Role.ANALYST, "route-bsr-cpr", body(""","category":[999999]""")).result().rows()
+        assertEquals(0, rows.size, "category selector ignored by route-bsr-cpr")
+    }
+
+    /** STD Memo footer must agree with Route-wise Memo (active memos only): 63,000 gross, not 68,000 with the voided memo. */
+    @Test
+    fun checker_stdMemoTotalsIncludeVoidedMemo() = app {
+        val o = run(10, Role.ANALYST, "std-memo").result()
+        assertEquals(63_000, o.total("gross_mtk"), "footer sums the voided memo (5,000) too")
+    }
+
+    /** A memo sold by a zone-1 route to a zone-2 outlet must not show in the zone-2 TSO's by-outlet net (route-memo shows 24,000 for zone 2). */
+    @Test
+    fun checker_byOutletLeaksOtherZonesSales() = app {
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("ALTER TABLE app.memo DISABLE TRIGGER USER")
+            h.execute("UPDATE app.memo SET outlet_id = (SELECT id FROM app.outlet WHERE code = 'O5') WHERE client_uuid = '00000000-0000-4000-8000-0000000000a1'")
+            h.execute("ALTER TABLE app.memo ENABLE TRIGGER USER")
+        }
+        AggregationWorker(fresh.db).also { it.requestRebuild(day); it.runUntilIdle() }
+        val routeMemoZ2 = run(14, Role.TSO, "route-memo").result().total("net_mtk")
+        val byOutletZ2 = run(14, Role.TSO, "by-outlet").result().total("net_mtk")
+        assertEquals(routeMemoZ2, byOutletZ2, "by-outlet shows another zone's route sales to the zone-2 caller")
     }
 }
 
