@@ -24,7 +24,8 @@ describe("MapsGuard", () => {
     expect(capFromEnv({ MAPS_DAILY_CAP: "5" })).toBe(5);
     expect(capFromEnv({ MAPS_DAILY_CAP: "junk" })).toBe(2000);
     expect(mapsKey({})).toBeNull();
-    expect(mapsKey({ NEXT_PUBLIC_MAPS_WEB_KEY: "k" })).toBe("k");
+    expect(mapsKey({ NEXT_PUBLIC_MAPS_WEB_KEY: "k" })).toBeNull();
+    expect(mapsKey({ MAPS_WEB_KEY: "k" })).toBe("k");
   });
 });
 

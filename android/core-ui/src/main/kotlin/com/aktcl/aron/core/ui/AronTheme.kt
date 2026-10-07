@@ -9,6 +9,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -41,9 +43,9 @@ private fun AronColorRoles.toMaterial(): ColorScheme {
         primary = accent, onPrimary = onAccent, secondary = accent, onSecondary = onAccent,
         background = bgGradientBottom, onBackground = textPrimary, surface = surfaceSolid, onSurface = textPrimary,
         surfaceVariant = surfaceSolid, onSurfaceVariant = textSecondary, error = danger,
-        errorContainer = danger.copy(alpha = 0.14f), onErrorContainer = textPrimary,
-        secondaryContainer = accent.copy(alpha = 0.14f), onSecondaryContainer = textPrimary,
-        tertiaryContainer = warning.copy(alpha = 0.16f), onTertiaryContainer = textPrimary,
+        errorContainer = danger.copy(alpha = AronTokens.Alpha.Container), onErrorContainer = textPrimary,
+        secondaryContainer = accent.copy(alpha = AronTokens.Alpha.Container), onSecondaryContainer = textPrimary,
+        tertiaryContainer = warning.copy(alpha = AronTokens.Alpha.ContainerWarm), onTertiaryContainer = textPrimary,
     )
 }
 
@@ -51,13 +53,15 @@ private fun AronColorRoles.toMaterial(): ColorScheme {
 fun aronTypography(language: AppLanguage): Typography {
     val family = AronFonts.forLanguage(language)
     val base = Typography()
-    fun TextStyle.f() = copy(fontFamily = family)
+    val bn = language == AppLanguage.BN
+    // docs/32 s3: Bangla needs taller lines (body 16/26, title 22/30, caption 13/18, display 34/40)
+    fun TextStyle.f(lineHeight: Int) = if (bn) copy(fontFamily = family, lineHeight = lineHeight.sp) else copy(fontFamily = family)
     return Typography(
-        displayLarge = base.displayLarge.f(), displayMedium = base.displayMedium.f(), displaySmall = base.displaySmall.f(),
-        headlineLarge = base.headlineLarge.f(), headlineMedium = base.headlineMedium.f(), headlineSmall = base.headlineSmall.f(),
-        titleLarge = base.titleLarge.f(), titleMedium = base.titleMedium.f(), titleSmall = base.titleSmall.f(),
-        bodyLarge = base.bodyLarge.f(), bodyMedium = base.bodyMedium.f(), bodySmall = base.bodySmall.f(),
-        labelLarge = base.labelLarge.f(), labelMedium = base.labelMedium.f(), labelSmall = base.labelSmall.f(),
+        displayLarge = base.displayLarge.f(44), displayMedium = base.displayMedium.f(40), displaySmall = base.displaySmall.f(40),
+        headlineLarge = base.headlineLarge.f(40), headlineMedium = base.headlineMedium.f(36), headlineSmall = base.headlineSmall.f(32),
+        titleLarge = base.titleLarge.f(30), titleMedium = base.titleMedium.f(26), titleSmall = base.titleSmall.f(24),
+        bodyLarge = base.bodyLarge.f(26), bodyMedium = base.bodyMedium.f(22), bodySmall = base.bodySmall.f(18),
+        labelLarge = base.labelLarge.f(22), labelMedium = base.labelMedium.f(18), labelSmall = base.labelSmall.f(18),
     )
 }
 
@@ -70,7 +74,11 @@ fun AronTheme(
 ) {
     val roles = if (dark) AronTokens.Dark else AronTokens.Light
     CompositionLocalProvider(LocalAppLanguage provides language, LocalAronColors provides roles, LocalGlassTier provides tier) {
-        MaterialTheme(colorScheme = roles.toMaterial(), typography = aronTypography(language), content = content)
+        MaterialTheme(
+            colorScheme = remember(dark) { roles.toMaterial() },
+            typography = remember(language) { aronTypography(language) },
+            content = content,
+        )
     }
 }
 

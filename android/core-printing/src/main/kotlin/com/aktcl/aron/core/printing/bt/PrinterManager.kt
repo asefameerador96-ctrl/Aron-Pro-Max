@@ -7,7 +7,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -89,7 +92,8 @@ class PrinterManager(
     private val pacing: PrintPacing = PrintPacing(),
     private val idleDisconnectMs: Long = 120_000,
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
-    private val reconnectBackoffMs: List<Long> = listOf(2_000, 5_000, 15_000),
+    /** Waits between reconnect tries while a screen holds the link; the last one repeats until it is released. */
+    private val reconnectBackoffMs: List<Long> = listOf(2_000, 5_000, 15_000, 30_000),
 ) {
     private val _state = MutableStateFlow<PrinterState>(if (store.load() == null) PrinterState.NoPrinter else PrinterState.Off)
     val state: StateFlow<PrinterState> = _state.asStateFlow()
@@ -119,7 +123,12 @@ class PrinterManager(
      * Print is enabled only with a saved printer that is linked now (F-SR-013). An empty roll keeps the link,
      * so Print stays enabled to retry after the roll is changed.
      */
-    val canPrint: Boolean get() = store.load() != null && state.value.let { it == PrinterState.Connected || it == PrinterState.PaperOut }
+    val canPrint: Boolean get() = store.load() != null && printable(state.value)
+
+    /** [canPrint] as a flow, for a Print button that must follow the printer. */
+    val canPrintFlow: Flow<Boolean> = state.map { printable(it) && store.load() != null }.distinctUntilChanged()
+
+    private fun printable(s: PrinterState) = s == PrinterState.Connected || s == PrinterState.PaperOut
 
     /** Saves (or replaces) the paired printer and connects to it. */
     suspend fun select(printer: SavedPrinter): Boolean {
@@ -147,7 +156,7 @@ class PrinterManager(
     fun hold(): () -> Unit {
         synchronized(this) { holders++ }
         idleTimer?.cancel()
-        scope.launch { connect() }
+        scope.launch { if (!connect()) autoReconnect() }
         var released = false
         return {
             synchronized(this) {
@@ -216,9 +225,13 @@ class PrinterManager(
     private fun autoReconnect() {
         if (reconnector?.isActive == true) return
         reconnector = scope.launch {
-            for (wait in reconnectBackoffMs) {
-                if (synchronized(this@PrinterManager) { holders } == 0 || store.load() == null) return@launch
-                delay(wait)
+            var attempt = 0
+            // Only while a printing screen is open: the screen is on anyway, and a try is one RFCOMM connect.
+            while (synchronized(this@PrinterManager) { holders } > 0 && store.load() != null) {
+                delay(reconnectBackoffMs[minOf(attempt, reconnectBackoffMs.lastIndex)])
+                attempt++
+                if (synchronized(this@PrinterManager) { holders } == 0) return@launch
+                if (transport != null && !linkLost) return@launch
                 if (connect()) return@launch
             }
         }

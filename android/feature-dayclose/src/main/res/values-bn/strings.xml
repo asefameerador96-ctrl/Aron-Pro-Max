@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="submit_title">বিক্রয় জমা</string>
+    <string name="submit_status_online">অনলাইন</string>
+    <string name="submit_status_offline">অফলাইন</string>
+    <string name="submit_col_device">ডিভাইস</string>
+    <string name="submit_col_server">সার্ভার</string>
+    <string name="submit_server_blank">—</string>
+    <string name="submit_sync">ডাটা সিঙ্ক করুন</string>
+    <string name="submit_button">বিক্রয় জমা দিন</string>
+    <string name="submit_blocked_unsynced">%1$s টি রেকর্ড এখনও সিঙ্ক হয়নি।</string>
+    <string name="submit_blocked_mismatch">%1$s: ডিভাইসে %2$s, সার্ভারে %3$s।</string>
+    <string name="submit_blocked_done">আজকের বিক্রয় ইতিমধ্যে জমা হয়েছে।</string>
+    <string name="submit_note_rejected">%1$s টি রেকর্ড সার্ভার গ্রহণ করেনি।</string>
+    <string name="submit_note_quarantined">%1$s টি রেকর্ড পর্যালোচনার জন্য রাখা হয়েছে।</string>
+    <string name="submit_dues_warning">%1$s জন খুচরা বিক্রেতার কাছে %2$s বাকি আছে। তবুও জমা দিতে পারবেন।</string>
+    <string name="submit_queued">জমা সংরক্ষিত হয়েছে; অনলাইনে এলে পাঠানো হবে।</string>
+    <string name="submit_success">আজকের বিক্রয় জমা হয়েছে।</string>
+</resources>

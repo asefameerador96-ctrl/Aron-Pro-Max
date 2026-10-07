@@ -68,14 +68,14 @@ export function OpInline({ op, endpoint, uuidMembers, params, body, version, lab
     }
   }
 
-  const btn = danger ? "border-red-300 text-red-700 hover:bg-red-50" : "border-slate-300 text-slate-800 hover:bg-slate-100";
+  const btn = danger ? "border-[var(--danger)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]" : "border-slate-300 text-slate-800 hover:bg-slate-100";
   return (
     <div className="space-y-1" data-testid={testId}>
       {open ? (
         <div className="space-y-1">
           {noReason ? null : <textarea aria-label={t("admin.reason.label")} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} className="w-56 rounded border border-slate-300 px-2 py-1 text-sm" placeholder={t("admin.reason.hint")} />}
           <div className="flex gap-2">
-            <button type="button" disabled={busy} onClick={run} className="rounded bg-brand-600 px-2 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+            <button type="button" disabled={busy} onClick={run} className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
               {t("cfgc.confirm")}
             </button>
             <button type="button" onClick={() => setOpen(false)} className="rounded border border-slate-300 px-2 py-1 text-xs">
@@ -89,7 +89,7 @@ export function OpInline({ op, endpoint, uuidMembers, params, body, version, lab
         </button>
       )}
       {msg ? (
-        <p role={msg.kind === "error" ? "alert" : "status"} data-testid={msg.kind === "ok" ? "form-ok" : "form-error"} className={`text-xs ${msg.kind === "ok" ? "text-green-700" : "text-red-700"}`}>
+        <p role={msg.kind === "error" ? "alert" : "status"} data-testid={msg.kind === "ok" ? "form-ok" : "form-error"} className={`text-xs ${msg.kind === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
           {msg.text}
         </p>
       ) : null}
