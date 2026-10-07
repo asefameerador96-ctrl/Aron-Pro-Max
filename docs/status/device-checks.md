@@ -77,3 +77,6 @@ Blocked until the support public key is configured. Then: Settings, PDA to Suppo
 
 ### D-SRA-4 Outlet map on tap (N-041; android-sr-a)
 After the Maps key restriction includes the SR package: out of range at an outlet, tap Map. Pass: pin, radius circle and own position show; with the network off the text distance and Force Sale still work.
+
+### D-SRA-5 My requests (F-SR-040; android-sr-a)
+Host proof: `OwnRequestsTest` (merge, statuses, reason, Bangla, empty). On the A06: Outlet, send one new-outlet request offline. Pass: My requests shows it as "Saved on this phone, waiting to be sent". Go online, sync, refresh the bundle (open the app next morning or pull a delta). Pass: it shows Pending, then Verified/Approved/Rejected as the office decides; a rejected one shows "Reason: ...". Kill and relaunch: the list is unchanged. Repeat in Bangla.

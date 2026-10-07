@@ -28,7 +28,12 @@ fun SupportHost(shell: SystemShell, userId: Long, versionName: String) {
             val s = support ?: return@SupportContent
             if (status is SupportStatus.Preparing) return@SupportContent
             status = SupportStatus.Preparing
-            scope.launch { status = s.send(); lastSync = s.lastSyncText() }
+            scope.launch {
+                status = try { s.send() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
+                    SupportStatus.Failed(com.aktcl.aron.core.system.support.SupportFailure.BUILD_FAILED)
+                }
+                lastSync = runCatching { s.lastSyncText() }.getOrNull()
+            }
         },
     )
 }

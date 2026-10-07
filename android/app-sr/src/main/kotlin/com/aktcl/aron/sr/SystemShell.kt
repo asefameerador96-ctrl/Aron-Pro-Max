@@ -18,7 +18,11 @@ import com.aktcl.aron.core.system.support.SupportRuntime
 import com.aktcl.aron.core.system.support.SupportStatus
 import com.aktcl.aron.core.system.support.SupportUploader
 import com.aktcl.aron.core.system.update.NetworkStatus
+import com.aktcl.aron.core.system.support.SupportState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -37,7 +41,11 @@ class SystemShell(context: Context, private val components: SessionComponents, p
     private val app = context.applicationContext
 
     /** The last `cfg.support.pda_upload_wifi_only` read from a user's bundle; the registry default (Wi-Fi only) until then. */
-    @Volatile private var supportWifiOnly: Boolean = true
+    private val prefs = app.getSharedPreferences("aron-support", Context.MODE_PRIVATE)
+
+    /** Kept in preferences too: after a process restart the worker reads the rule before any screen has opened. */
+    @Volatile private var supportWifiOnly: Boolean = prefs.getBoolean("wifi_only", true)
+        set(v) { field = v; prefs.edit().putBoolean("wifi_only", v).apply() }
 
     /** Application.onCreate: the support worker finds the signed-in user's uploader and the Wi-Fi rule. */
     fun install() {
@@ -48,6 +56,18 @@ class SystemShell(context: Context, private val components: SessionComponents, p
             },
             wifiOnly = { supportWifiOnly },
         )
+        // A file queued before the session was restored (cold start) or before a restart is never orphaned: when a user is
+        // active and a file waits, the upload is scheduled again.
+        CoroutineScope(Dispatchers.Default + SupervisorJob()).launch {
+            components.session.state.collect { s ->
+                val active = s as? SessionState.Active ?: return@collect
+                runCatching {
+                    if (SupportQueue.forUser(app.filesDir, active.user.userId).current()?.state == SupportState.QUEUED) {
+                        SupportRuntime.schedule(WorkManager.getInstance(app), supportWifiOnly)
+                    }
+                }
+            }
+        }
     }
 
     fun network(): NetworkStatus {
@@ -93,7 +113,10 @@ class SystemShell(context: Context, private val components: SessionComponents, p
             }
         }
 
-        suspend fun lastSyncText(): String? = withContext(Dispatchers.IO) { db.outboxDao().lastAckedAtAny() }
+        /** The newest ack as a Dhaka date and time, "2026-10-07 18:34". */
+        suspend fun lastSyncText(): String? = withContext(Dispatchers.IO) {
+            db.outboxDao().lastAckedAtAny()?.let { iso -> runCatching { DHAKA_STAMP.format(java.time.Instant.parse(iso)) }.getOrDefault(iso) }
+        }
     }
 
     private suspend fun supportInput(userId: Long, db: AronDatabase, versionName: String): SupportInput = withContext(Dispatchers.IO) {
@@ -119,6 +142,7 @@ class SystemShell(context: Context, private val components: SessionComponents, p
         const val RESYNC_WINDOW_MS = 3L * 24 * 3600 * 1000
         const val MAX_UNSENT = 5_000
         const val MAX_ACKED = 2_000
+        val DHAKA_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.ofHours(6))
         val HHMM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneOffset.ofHours(6))
     }
 }

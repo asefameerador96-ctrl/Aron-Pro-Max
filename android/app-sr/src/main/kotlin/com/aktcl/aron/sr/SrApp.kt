@@ -67,7 +67,7 @@ import com.aktcl.aron.feature.tasks.TaskContent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, OUTLET_MENU, REQUEST_OUTLET, REQUEST_FORM }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, OUTLET_MENU, OWN_REQUESTS, REQUEST_OUTLET, REQUEST_FORM }
 
 /**
  * The SR day host: Home, Attendance, Stock, the Sale picker with the geo check and Force Sale, Tasks, the Outlet menu and
@@ -123,7 +123,7 @@ fun SrApp(
         if (screen == SrScreen.HOME && RoutePicker.needsChoice(planned, day.chosenRouteId())) screen = SrScreen.ROUTE_PICK
     }
     BackHandler(enabled = screen != SrScreen.HOME && screen != SrScreen.PERMISSIONS) {
-        screen = when (screen) { SrScreen.FORCE -> SrScreen.VISIT; SrScreen.SUPPORT -> SrScreen.SETTINGS; SrScreen.REQUEST_FORM -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU; else -> SrScreen.HOME }
+        screen = when (screen) { SrScreen.FORCE -> SrScreen.VISIT; SrScreen.SUPPORT -> SrScreen.SETTINGS; SrScreen.OWN_REQUESTS -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_FORM -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU; else -> SrScreen.HOME }
     }
 
     // The camera draws only while a capture is open (and sits behind the camera permission gate of core-system).
@@ -227,7 +227,12 @@ fun SrApp(
             LaunchedEffect(Unit) { day.taskBoard.load() }
             TaskContent(tasks, onResolve = { id -> scope.launch { day.taskBoard.resolve(id) } })
         }
-        SrScreen.OUTLET_MENU -> OutletMenuContent(onKind = { k ->
+        SrScreen.OWN_REQUESTS -> {
+            var rows by remember { mutableStateOf<List<com.aktcl.aron.feature.outlet.OwnRequestRow>?>(null) }
+            LaunchedEffect(Unit) { rows = runCatching { day.ownRequests() }.getOrDefault(emptyList()) }
+            rows?.let { com.aktcl.aron.feature.outlet.OwnRequestsContent(it) }
+        }
+        SrScreen.OUTLET_MENU -> OutletMenuContent(onOwnRequests = { screen = SrScreen.OWN_REQUESTS }, onKind = { k ->
             day.requestKind = k
             screen = if (k == OutletRequestKind.NEW) SrScreen.REQUEST_FORM.also { day.requestOutlet = null } else SrScreen.REQUEST_OUTLET
         })
