@@ -92,13 +92,13 @@ class ResumeConfigCheckTest {
     @Test fun aDeltaIsAppliedInOneGo() = runBlocking {
         val outlet = ReferenceRepository(db).routesOfDay("2026-10-05").first().outlets.first().outletId
         server.enqueue(api(200, """{"from_version":318,"to_version":320,
-            "values":[{"key":"geo.radius_m","value":80,"scope_type":"zone","scope_id":7,"effective_from":null,"requires_ack":true}],
+            "values":[{"key":"cfg.geo.radius_m","value":80,"scope_type":"zone","scope_id":7,"effective_from":null,"requires_ack":true}],
             "scheduled":[{"key":"sale.max_lines","value":50,"scope_type":"global","effective_from":"2026-10-06T00:00:00.000Z","requires_ack":false}],
             "removed_keys":["old.key"],"calendar_changes":[{"date":"2026-10-10","kind":"holiday"}],
             "outlet_radius_changes":[{"outlet_id":$outlet,"radius_m":150,"max_accuracy_m":60}],"policy_changed":true}"""))
         assertEquals(ConfigCheckResult.APPLIED, check.checkOnResume(1))
         val repo = ReferenceRepository(db)
-        assertEquals("80", repo.config("geo.radius_m", "2026-10-05T03:00:00.000Z"))
+        assertEquals("80", repo.config("cfg.geo.radius_m", "2026-10-05T03:00:00.000Z"))
         assertEquals("50", repo.config("sale.max_lines", "2026-10-06T00:00:00.000Z"))
         assertEquals("320", db.referenceDao().meta(ReferenceRepository.KEY_CONFIG_VERSION))
         assertEquals(150, db.referenceDao().outlet(outlet)!!.radiusM)
@@ -110,9 +110,28 @@ class ResumeConfigCheckTest {
         val ack = kotlinx.serialization.json.Json.parseToJsonElement(acks.single().payloadJson).jsonObject
         val payload = ack["payload"]!!.jsonObject
         assertEquals("320", payload["config_version"]!!.toString())
-        assertEquals("""["geo.radius_m"]""", payload["keys"]!!.toString())
+        assertEquals("""["cfg.geo.radius_m"]""", payload["keys"]!!.toString())
         assertEquals(acks.single().clientUuid, acks.single().familyUuid)
         assertEquals(acks.single().clientUuid, ack["client_uuid"]!!.toString().trim('"'))
+    }
+
+    /** Checker: a radius change the outlets did not receive (no outlet_radius_changes) is not acknowledged. */
+    @Test fun aRadiusChangeWithoutOutletRowsIsNotAcknowledged() = runBlocking {
+        server.enqueue(api(200, """{"from_version":318,"to_version":321,
+            "values":[{"key":"cfg.geo.radius_m","value":90,"scope_type":"zone","scope_id":7,"effective_from":null,"requires_ack":true},
+                      {"key":"cfg.sync.hold_s","value":0,"scope_type":"global","effective_from":null,"requires_ack":true}]}"""))
+        assertEquals(ConfigCheckResult.APPLIED, check.checkOnResume(1))
+        val ack = db.outboxDao().nextSendable(100, 99, emptyList()).single { it.recordType == "config_ack" }
+        val keys = kotlinx.serialization.json.Json.parseToJsonElement(ack.payloadJson).jsonObject["payload"]!!.jsonObject["keys"]!!.toString()
+        assertEquals("""["cfg.sync.hold_s"]""", keys)
+    }
+
+    /** Checker: a 304 at a newer server version means nothing changed for this phone: the held version moves, no loop. */
+    @Test fun aNotModifiedAnswerMovesTheHeldVersionToTheServers() = runBlocking {
+        server.enqueue(api(304).newBuilder().addHeader("X-Config-Version", "330").build())
+        assertEquals(ConfigCheckResult.UNCHANGED, check.pullAfterPush(1))
+        assertEquals("330", db.referenceDao().meta(ReferenceRepository.KEY_CONFIG_VERSION))
+        assertTrue(!SessionSyncRunner.pullsConfig(330, 330))
     }
 
     @Test fun aDeltaWithoutAckKeysQueuesNoAck() = runBlocking {

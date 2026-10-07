@@ -170,7 +170,11 @@ class ReferenceRepository(private val db: AronDatabase) {
         }
         if (delta.policyChanged) dao.putMeta(SyncMetaEntity(KEY_POLICY_REFRESH, "true"))
         dao.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, delta.toVersion.toString()))
+        // The visit's radius comes from the outlet row, not the config table: a radius key is acknowledged only when the
+        // delta also re-resolved the outlets (outlet_radius_changes); otherwise the phone would ack a radius it does not
+        // use and its visits would carry the new config_version with the old radius (F-SYS-053 checker, D-431).
         val ackKeys = delta.values.filter { it.requiresAck }.map { it.key }
+            .filter { it !in OUTLET_RESOLVED_KEYS || delta.outletRadiusChanges.isNotEmpty() }
         if (ack != null && ackKeys.isNotEmpty()) {
             db.outboxDao().insert(listOf(RecordMapping.configAck(ack.clientUuid, ack.meta, delta.toVersion, ack.appliedAt, ackKeys, ack.appliedAt)))
         }
@@ -453,6 +457,9 @@ class ReferenceRepository(private val db: AronDatabase) {
         private const val KEY_PREFETCH_VERSION = "prefetch.version"
         private const val KEY_PREFETCH_DATE = "prefetch.date"
         private const val KEY_PREFETCH_ETAG = "prefetch.etag"
+
+        /** Config keys the bundle resolves per outlet into `outlet.radius_m` / `max_accuracy_m`. */
+        val OUTLET_RESOLVED_KEYS = setOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m")
 
         /** The config version the phone holds (`X-Config-Version`); the sync engine also moves it from batch responses. */
         const val KEY_CONFIG_VERSION = "sync.config_version"

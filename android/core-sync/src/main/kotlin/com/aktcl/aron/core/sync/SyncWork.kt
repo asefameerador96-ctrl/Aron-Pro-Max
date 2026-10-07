@@ -103,10 +103,10 @@ class SessionSyncRunner(
     )
 
     companion object {
-        /** A bundle delta after a run: only for the signed-in user, and only after a run the server answered in full. */
         /** The server said its config is newer than what the phone holds (a portal change since the last delta). */
         fun pullsConfig(held: Long?, server: Long?): Boolean = held != null && server != null && server > held
 
+        /** A bundle delta after a run: only for the signed-in user, and only after a run the server answered in full. */
         fun refreshesBundle(userId: Long, activeUserId: Long?, stop: SyncStop): Boolean =
             userId == activeUserId && (stop == SyncStop.DRAINED || stop == SyncStop.RUN_LIMIT)
     }

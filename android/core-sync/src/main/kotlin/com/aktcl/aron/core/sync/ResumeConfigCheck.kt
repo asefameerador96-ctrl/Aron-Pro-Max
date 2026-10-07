@@ -64,7 +64,14 @@ class ResumeConfigCheck(
         // Only answered requests use the cap: offline does nothing (R9).
         if (r !is ApiResult.Transport) meta.putMeta(SyncMetaEntity(countKey, (count + 1).toString()))
         return when (r) {
-            is ApiResult.NotModified -> ConfigCheckResult.UNCHANGED
+            is ApiResult.NotModified -> {
+                // 304 at the server's version V: nothing for this phone's chain changed up to V, so the phone holds V's config.
+                // Without this, a newer X-Config-Version from an unrelated change made every sync ask again until the daily
+                // cap, which then blocked a real change (F-SYS-053 checker).
+                val v = r.meta.configVersion
+                if (v != null && v > since) meta.putMeta(SyncMetaEntity(ReferenceRepository.KEY_CONFIG_VERSION, v.toString()))
+                ConfigCheckResult.UNCHANGED
+            }
             is ApiResult.Transport -> if (r.failure == TransportFailure.MALFORMED) ConfigCheckResult.FAILED else ConfigCheckResult.OFFLINE
             is ApiResult.Failure -> if (r.httpStatus == 410) {
                 meta.putMeta(SyncMetaEntity(ReferenceRepository.KEY_BUNDLE_REFRESH, "true"))
