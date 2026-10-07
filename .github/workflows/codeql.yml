@@ -1,0 +1,88 @@
+# CodeQL static analysis (docs/30 s3, docs/31 s2): Kotlin (shared, backend and the three Android apps with every module
+# they include) and JavaScript/TypeScript (web/). Results go to GitHub > Security > Code scanning. Owner: infra lane.
+#
+# Separate from ci.yml so the 15-minute CI budget and the dev deploy never wait on it; it runs on every push that
+# touches code, on pull requests, and weekly on the integration branch (new queries find old code).
+# Kotlin needs a real compile while CodeQL watches: no Gradle build cache, no daemon, the Kotlin compiler in-process.
+# Push runs are never cancelled (same rule as ci.yml); a pull request cancels its own older run.
+# Actions are pinned by commit SHA (release tag in the comment), resolved with `git ls-remote` on 2026-10-07.
+
+name: codeql
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["android/**", "backend/**", "shared/**", "db/**", "web/**", "**/*.gradle.kts", "gradle/**", ".github/workflows/codeql.yml"]
+  pull_request:
+    paths: ["android/**", "backend/**", "shared/**", "db/**", "web/**", "**/*.gradle.kts", "gradle/**", ".github/workflows/codeql.yml"]
+  schedule:
+    - cron: "17 21 * * 0" # Sunday 21:17 UTC = Monday 03:17 Asia/Dhaka
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: CodeQL ${{ matrix.language }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
+        if: matrix.language == 'java-kotlin'
+        run: |
+          echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
+          echo "ANDROID_SDK_ROOT=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        if: matrix.language == 'java-kotlin'
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Cache the Android SDK
+        if: matrix.language == 'java-kotlin'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/android-sdk
+          key: android-sdk-${{ runner.os }}-${{ hashFiles('tools/android-sdk.sh') }}
+      - name: Install Android SDK packages
+        if: matrix.language == 'java-kotlin'
+        run: tools/android-sdk.sh
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        if: matrix.language == 'java-kotlin'
+        with:
+          # Dependencies may come from the cache; compiled classes must not (CodeQL only sees what is compiled).
+          cache-read-only: true
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+      - name: Compile all Kotlin under CodeQL (no build cache, no daemon, compiler in-process)
+        if: matrix.language == 'java-kotlin'
+        run: >-
+          ./gradlew --console=plain --no-daemon --no-build-cache --no-configuration-cache
+          -Pkotlin.compiler.execution.strategy=in-process -Pkotlin.incremental=false
+          compileKotlinJvm classes
+          :android:app-sr:compileDebugKotlin :android:app-amo:compileDebugKotlin :android:app-tso:compileDebugKotlin
+      - name: Analyse
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: /language:${{ matrix.language }}

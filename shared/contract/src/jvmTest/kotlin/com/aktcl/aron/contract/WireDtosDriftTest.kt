@@ -172,6 +172,26 @@ class WireDtosDriftTest {
     }
 
     @Test
+    fun wireNullsFollowR7() {
+        val fix = GeoFix(
+            purpose = "visit_open", fixStatus = "timeout", lat = null, lng = null, accuracyM = null, provider = "fused", isMock = false, reused = false,
+            device = FixDeviceState(deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false),
+        )
+        val obj = request.encodeToJsonElement(GeoFixWire, fix).jsonObject
+        for (k in listOf("lat", "lng", "accuracy_m")) assertTrue(obj[k] is kotlinx.serialization.json.JsonNull, "$k must be explicit null")
+        assertFalse(obj.containsKey("altitude_m"), "optional null members stay omitted")
+        val dev = request.encodeToJsonElement(LoginDeviceWire, LoginDevice(deviceId = 1, bindOrdinal = null, memoSeqBlockSize = 500)).jsonObject
+        assertTrue(dev["bind_ordinal"] is kotlinx.serialization.json.JsonNull)
+        // nested: the fix inside an attendance payload keeps its nulls too
+        val att = request.encodeToJsonElement(AttendanceEventPayload.serializer(), AttendanceEventPayload(kind = "check_in", fix = fix)).jsonObject
+        assertTrue(att.getValue("fix").jsonObject["lat"] is kotlinx.serialization.json.JsonNull)
+        assertEquals(
+            Json.parseToJsonElement("""{"purpose":"visit_open","fix_status":"timeout","lat":null,"lng":null,"accuracy_m":null,"provider":"fused","is_mock":false,"reused":false,"device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}"""),
+            Json.parseToJsonElement(request.encodeToString(GeoFixWire, fix)),
+        )
+    }
+
+    @Test
     fun secretsAreNeverPrinted() {
         val s = LoginRequest("u", "hunter2", "web").toString() + RefreshRequest(refreshToken = "tok-abc", grant = "full") +
             TokenPair(accessToken = "acc-xyz", accessExpiresAt = "t", refreshToken = "ref-xyz", refreshExpiresAt = "t", scopeVersion = 1, serverTime = "t")

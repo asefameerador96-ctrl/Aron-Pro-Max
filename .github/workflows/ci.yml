@@ -1,9 +1,12 @@
 # CI for the Aron monorepo (docs/24-build-spec.md s13.2). Owner: infra lane.
 #
-# Jobs: changed-area filter -> contract lint, JVM build and tests (shared, db, backend on PostgreSQL 16), web (lint,
-# types, unit tests, build, e2e), three debug APKs plus Android unit tests and lint, container images (built and
-# booted against PostgreSQL), infra validation (Bicep build/lint/checks, actionlint) -> on a push to the
-# integration branch only, and only when all of those passed, the Azure deploy (deploy.yml, reusable workflow).
+# Jobs: changed-area filter -> repository gates (gitleaks on the pushed commits; migration checksum, order and squawk
+# lint; oasdiff breaking-change check on the contract: tools/ci/), contract lint, JVM build and tests (shared, db,
+# backend on PostgreSQL 16), web (lint, types, unit tests, build, e2e), three debug APKs plus Android unit tests and
+# lint, the SR release APK with the APK size gate (F-SYS-036), container images (built, booted against PostgreSQL,
+# SBOM per image), infra validation (Bicep build/lint/checks, actionlint) -> on a push to the integration branch only,
+# and only when all of those passed, the Azure deploy (deploy.yml, reusable workflow). CodeQL runs in codeql.yml.
+# Budget: under 15 minutes wall time for a full run (docs/31 s2); the jobs run in parallel and path-filtered.
 #
 # Secrets (never committed; set them in GitHub > Settings > Secrets and variables > Actions, docs/24 s13.6):
 #   MAPS_ANDROID_KEY          Google Maps SDK for Android key (AMO and TSO apps); manifest placeholder mapsApiKey
@@ -46,6 +49,8 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       infra: ${{ steps.filter.outputs.infra }}
       deploy: ${{ steps.filter.outputs.deploy }}
+      db: ${{ steps.filter.outputs.db }}
+      base: ${{ steps.filter.outputs.base }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -56,7 +61,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          all() { printf 'contract=true\njvm=true\nandroid=true\nweb=true\ninfra=true\ndeploy=true\n' >> "${GITHUB_OUTPUT}"; echo "running everything: $1"; exit 0; }
+          all() { printf 'contract=true\njvm=true\nandroid=true\nweb=true\ninfra=true\ndeploy=true\ndb=true\nbase=\n' >> "${GITHUB_OUTPUT}"; echo "running everything: $1"; exit 0; }
           case "${EVENT}" in
             pull_request) base="${PR_BASE}" ;;
             push) base="${BEFORE}" ;;
@@ -74,10 +79,43 @@ jobs:
             echo "jvm=$(has "${common}|^(contract/|shared/|db/|backend/|docs/24-build-spec\.md)")"
             echo "android=$(has "${common}|^(contract/|shared/|android/|tools/android-sdk\.sh)")"
             echo "web=$(has '^(web/|contract/openapi\.yaml|\.github/workflows/ci\.yml)')"
-            echo "infra=$(has '^(infra/|\.github/)')"
+            echo "infra=$(has '^(infra/|\.github/|tools/ci/)')"
             # What ends up in Azure: the backend image (shared, db, backend), the web image, the Bicep, the deploy.
             echo "deploy=$(has "${common}|^(shared/|db/|backend/|web/|infra/|\.github/workflows/deploy\.yml)")"
+            echo "db=$(has '^(db/migrations/|tools/ci/)')"
+            echo "base=${base}"
           } | tee -a "${GITHUB_OUTPUT}"
+
+  gates:
+    # Cheap repository gates (tools/ci/, pinned binaries with SHA-256): every push and pull request.
+    name: Repository gates (secrets, migrations, contract)
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      BASE: ${{ needs.changes.outputs.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks, oasdiff and squawk (pinned, checksum-verified)
+        run: |
+          for t in gitleaks oasdiff squawk; do tools/ci/install-tool.sh "$t" "${RUNNER_TEMP}/bin"; done
+          echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
+      - name: Gate self-tests (each gate fails on a deliberate violation; tools/ci/test_gates.py)
+        run: python3 tools/ci/test_gates.py
+      - name: Secret scan of the pushed commits (gitleaks; reviewed exceptions in tools/ci/gitleaksignore)
+        run: |
+          # Known base: only the new commits. Unknown base (manual run, new branch): the whole history.
+          range=()
+          [ -n "${BASE}" ] && range=(--log-opts="${BASE}..${GITHUB_SHA}")
+          gitleaks git --no-banner --redact --exit-code 1 --gitleaks-ignore-path tools/ci/gitleaksignore "${range[@]}" .
+      - name: Migrations (shipped ones unchanged, versions in order, squawk on the new ones)
+        if: needs.changes.outputs.db == 'true'
+        run: tools/ci/migrations-check.sh "${BASE:-$(git rev-parse HEAD~1)}" squawk
+      - name: Contract breaking-change check (oasdiff)
+        if: needs.changes.outputs.contract == 'true'
+        run: tools/ci/contract-breaking.sh "${BASE:-$(git rev-parse HEAD~1)}" oasdiff
 
   contract:
     name: Contract lint
@@ -207,6 +245,41 @@ jobs:
             android/**/build/test-results/
           retention-days: 7
 
+  android-release:
+    # F-SYS-036 and the android-core request: the SR release build (R8, resource shrinking, https-only guard) must keep
+    # building, and every release APK stays inside the size budget per ABI (tools/ci/apk-size-gate.py).
+    name: SR release APK and APK size gate
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
+        run: |
+          echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
+          echo "ANDROID_SDK_ROOT=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Cache the Android SDK
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/android-sdk
+          key: android-sdk-${{ runner.os }}-${{ hashFiles('tools/android-sdk.sh') }}
+      - name: Install Android SDK packages (same script as the dev box)
+        run: tools/android-sdk.sh
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - name: Assemble the SR release APK (unsigned here; signing happens in release-app.yml)
+        run: ./gradlew --console=plain :android:app-sr:assembleRelease
+      - name: APK size gate (30 MB per ABI, installed 70 MB, warn +5 %, fail +15 % against the baseline)
+        run: |
+          apks=()
+          for f in android/app-sr/build/outputs/apk/release/*.apk; do apks+=("sr-release=$f"); done
+          [ "${#apks[@]}" -gt 0 ] || { echo "::error::no SR release APK was built"; exit 1; }
+          python3 tools/ci/apk-size-gate.py "${apks[@]}"
+
   web:
     # docs/24 s13.2 web gate; steps from web/scripts/ci.sh (docs/requests/web-infra-ci-job.md).
     name: Web (lint, types, tests, build, e2e)
@@ -279,6 +352,29 @@ jobs:
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: infra/scripts/image-smoke.sh
+      - name: SBOM of the backend image (SPDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: aron-backend:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom-aron-backend.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: SBOM of the web image (SPDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: aron-web:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom-aron-web.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Upload the SBOMs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom-*.spdx.json
+          if-no-files-found: error
+          retention-days: 90
 
   infra:
     name: Infra validation (Bicep, workflows)
@@ -294,7 +390,7 @@ jobs:
   deploy:
     # Only a push to the integration branch deploys, and only after every check above passed or was not needed.
     name: Deploy to Azure (dev)
-    needs: [changes, contract, jvm, web, android, images, infra]
+    needs: [changes, gates, contract, jvm, web, android, android-release, images, infra]
     if: >-
       !cancelled() && !failure()
       && github.event_name == 'push'

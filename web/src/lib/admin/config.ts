@@ -5,6 +5,8 @@ import type { ConfigBounds, ConfigKey } from "./types";
 export type ValueType = ConfigKey["value_type"];
 export type ParseResult = { ok: true; value: unknown } | { ok: false; code: "required" | "invalid" | "too_small" | "too_big" | "not_allowed" | "too_many" };
 
+/** Bounds the registry seed leaves open but the meaning fixes (ISO weekdays). */
+const KEY_BOUNDS: Record<string, ConfigBounds> = { "cfg.calendar.weekend_days": { min: 1, max: 7 } };
 const NUMBER = /^-?\d+(\.\d+)?$/;
 const INTEGER = /^-?\d+$/;
 
@@ -15,7 +17,8 @@ function inRange(n: number, b: ConfigBounds | null | undefined): ParseResult | n
 }
 
 /** Parse the text of an input into the JSON value of a key of type `type`. */
-export function parseConfigInput(type: ValueType, raw: string, bounds?: ConfigBounds | null): ParseResult {
+export function parseConfigInput(type: ValueType, raw: string, bounds?: ConfigBounds | null, keyName?: string): ParseResult {
+  if (keyName && KEY_BOUNDS[keyName]) bounds = { ...bounds, ...KEY_BOUNDS[keyName] };
   const text = raw.trim();
   if (text === "" && type !== "bool") return { ok: false, code: "required" };
   switch (type) {
@@ -23,12 +26,14 @@ export function parseConfigInput(type: ValueType, raw: string, bounds?: ConfigBo
     case "money_mtk": {
       if (!INTEGER.test(text)) return { ok: false, code: "invalid" };
       const n = Number(text);
+      if (!Number.isSafeInteger(n)) return { ok: false, code: "too_big" };
       return inRange(n, bounds) ?? { ok: true, value: n };
     }
     case "number":
     case "pct": {
       if (!NUMBER.test(text)) return { ok: false, code: "invalid" };
       const n = Number(text);
+      if (!Number.isFinite(n)) return { ok: false, code: "too_big" };
       if (type === "pct" && (n < 0 || n > 100)) return { ok: false, code: n < 0 ? "too_small" : "too_big" };
       return inRange(n, bounds) ?? { ok: true, value: n };
     }
@@ -49,6 +54,8 @@ export function parseConfigInput(type: ValueType, raw: string, bounds?: ConfigBo
       const parts = text.startsWith("[") ? safeJson(text) : text.split(",").map((p) => p.trim()).filter((p) => p !== "");
       if (!Array.isArray(parts)) return { ok: false, code: "invalid" };
       const items = parts.map((p) => (typeof p === "string" && NUMBER.test(p) ? Number(p) : p));
+      if (new Set(items.map(String)).size !== items.length) return { ok: false, code: "invalid" };
+      if (!bounds?.enum && !items.every((it) => typeof it === "number" && Number.isInteger(it))) return { ok: false, code: "invalid" };
       if (bounds?.max_items !== undefined && bounds.max_items !== null && items.length > bounds.max_items) return { ok: false, code: "too_many" };
       for (const it of items) if (typeof it === "number") {
         const r = inRange(it, bounds);

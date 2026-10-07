@@ -11,6 +11,13 @@ pluginManagement {
                 includeGroupByRegex("androidx.*")
             }
         }
+        // Maven Central mirror (owner-approved 2026-10-07, DECISIONS.md): lane and developer containers share one outgoing IP
+        // that Maven Central rate-limits (HTTP 429). The mirror is Google's official copy of Central, tried first
+        // everywhere EXCEPT GitHub Actions, so CI always resolves from the real Central (the independent check).
+        // Set ARON_NO_MIRROR=1 to turn it off.
+        if (System.getenv("GITHUB_ACTIONS") == null && System.getenv("ARON_NO_MIRROR") == null) {
+            maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }
+        }
         mavenCentral()
         gradlePluginPortal()
     }
@@ -25,6 +32,10 @@ dependencyResolutionManagement {
                 includeGroupByRegex("com\\.google.*")
                 includeGroupByRegex("androidx.*")
             }
+        }
+        // Same mirror rule as in pluginManagement above.
+        if (System.getenv("GITHUB_ACTIONS") == null && System.getenv("ARON_NO_MIRROR") == null) {
+            maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }
         }
         mavenCentral()
     }
