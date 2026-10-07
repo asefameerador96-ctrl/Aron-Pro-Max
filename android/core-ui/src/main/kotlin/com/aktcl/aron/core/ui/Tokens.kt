@@ -98,6 +98,9 @@ object AronTokens {
     /** Spacing on a 4 dp grid. */
     object Space { val Xs: Dp = 4.dp; val S: Dp = 8.dp; val M: Dp = 12.dp; val L: Dp = 16.dp; val Xl: Dp = 24.dp; val Screen: Dp = 16.dp }
 
+    /** The primary action label is at least this large and bold (docs/32 s2a item 4: the 3:1 glare exception applies only to it). */
+    const val PrimaryLabelMinSp = 18
+
     /** Touch targets: 48 dp minimum, 56 dp for primary actions. */
     object Touch { val Min: Dp = 48.dp; val Primary: Dp = 56.dp }
 

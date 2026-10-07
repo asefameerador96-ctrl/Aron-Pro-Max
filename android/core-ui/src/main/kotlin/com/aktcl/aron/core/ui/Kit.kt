@@ -49,7 +49,7 @@ fun AronPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
             disabledContainerColor = LocalAronColors.current.stateDisabledFill, disabledContentColor = LocalAronColors.current.stateDisabledLabel,
         ),
         contentPadding = PaddingValues(horizontal = AronTokens.Space.Xl, vertical = AronTokens.Space.M),
-    ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge) }
+    ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium) }   // 18 sp bold: the glare exception of s2a item 4 depends on it
 }
 
 /** Secondary action with an outline. */

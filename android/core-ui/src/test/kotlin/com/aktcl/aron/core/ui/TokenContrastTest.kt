@@ -91,7 +91,8 @@ class TokenContrastTest {
 
     @Test fun glareProxyKeyFiguresStayAboveFourPointFive() = modes.forEach { m ->
         m.solids().forEach { glareCheck(m, "key figure on card", m.textPrimary, it, 4.5) }
-        // bold 16 sp+ label on a saturated fill: a blue that keeps 7:1 cannot reach 4.5:1 after the 35 percent white blend, so 3:1 (large text)
+        // The ONLY 3:1 glare exception (docs/32 s2a item 4): the primary action label, large bold type (>= 18 sp, see PrimaryLabelRuleTest)
+        // on a filled accent. Nothing else may use it; every other text keeps 4.5:1 key figures and 3:1 body under glare.
         glareCheck(m, "primary label on accent", m.textOnAccent, m.accent, 3.0)
     }
 

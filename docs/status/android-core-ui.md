@@ -38,3 +38,9 @@ Scope change (lead, 2026-10-07): F-SYS-023, 030, 010, 037, 019, 022, 020, 021 mo
 ## Traps
 - Local Gradle cannot resolve (Maven Central 429): CI is the compiler. Push to `lane/android-core-ui`, merge INT only when green.
 - Press-and-hold: the long-click (accessibility) path is unit-tested; the timed 1.2 s hold is checked on the phone (DEVICE-PENDING: hold shorter than 1.2 s must not confirm, full hold must).
+
+## Token deltas against docs/design/tokens.md v1 (code is the truth; mirror into tokens.md when the design workflow has stopped writing there)
+- Light `accent` #0A58CC -> **#0A50BE** (white label 7.23:1; v1 gave 6.40). Light `accent.hi` #1B68DC -> **#0A50BE** (equal to accent, flat primary fill). `border.focus` light follows accent (#0A50BE).
+- Light `text.disabled` #8793A6 -> **#77839A** (3.5:1 on `surface.solid.raised`; v1 gave 2.85).
+- Type: Bangla body and caption use Noto Sans Bengali Medium (500) in every theme and tier (lead 2026-10-07); `type.heading` (18 sp bold) is the primary button label.
+- Glare exception: only the primary action label (>= 18 sp bold on a filled accent) may hold 3:1 under the 35 percent glare proxy; encoded in `TokenContrastTest` and `PrimaryLabelRuleTest`.

@@ -70,9 +70,9 @@ fun aronTypography(language: AppLanguage, sunlight: Boolean = false): Typography
     val numeral = st(26, 32, 38, bold = true, tnum = true)
     val title = st(22, 30, 32, bold = true)
     val heading = st(18, 26, 26, bold = true)
-    val body = if (sunlight) st(17, 25, 28, bnSize = 18, bnMedium = true) else st(16, 24, 26)
+    val body = if (sunlight) st(17, 25, 28, bnSize = 18, bnMedium = true) else st(16, 24, 26, bnMedium = true)
     val bodyStrong = if (sunlight) st(17, 25, 28, bold = true, bnSize = 18) else st(16, 24, 26, bold = true)
-    val caption = st(13, 18, 20, bnSize = 14, bnMedium = sunlight)
+    val caption = st(13, 18, 20, bnSize = 14, bnMedium = true)
     val label = st(13, 18, 20, bold = true, bnSize = 14)
     return Typography(
         displayLarge = display, displayMedium = display, displaySmall = numeral,
