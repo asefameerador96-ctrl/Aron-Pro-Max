@@ -17,6 +17,7 @@ import kotlin.test.assertTrue
  * V0062: outlet_confirmed_lat_lng (docs/requests/backend-core-outlet-geo-index.md, F-API-019).
  * V0063/V0064: app.device.last_sync_error (docs/requests/backend-core-device-telemetry-columns.md, F-SYS-050).
  * V0067: cfg.app.rejected_keep_days (docs/19 s9).
+ * V0068: pg_trgm indexes for outlet search (AUD-PERF-07).
  * V0065/V0066: route_day.last_bundle_at and bundle_count (docs/requests/backend-core-route-day-downloads.md, F-SYS-025).
  * The database is migrated to V0060, loaded with the dev seed and the slice smoke outlet, then migrated forward: the
  * same path the dev database takes before the 2026-10-08 phone checks.
@@ -72,7 +73,7 @@ class BackendCoreAsksV0061Test {
         assertEquals(outletsBefore, c.scalar(SEED_FINGERPRINT))
         assertEquals("1", c.scalar("SELECT count(*) FROM app.outlet WHERE code = 'SMOKE-SR-001' AND status = 'active' AND location_confirmed"))
         assertEquals("1|", c.scalar("SELECT count(*) || '|' || coalesce(max(last_sync_error), '') FROM app.device WHERE device_uuid = '$DEV_DEVICE'"))
-        assertEquals("true", c.scalar("SELECT (bool_and(success) AND max(version::int) >= 66)::text FROM flyway_schema_history WHERE version IS NOT NULL"))
+        assertEquals("true", c.scalar("SELECT (bool_and(success) AND max(version::int) >= 68)::text FROM flyway_schema_history WHERE version IS NOT NULL"))
     }
 
     @Test
@@ -158,6 +159,18 @@ class BackendCoreAsksV0061Test {
             "app|S|int|30|{\"max\": 90, \"min\": 7}|{global}|1|B|device|cfg.edit.ops",
             c.scalar("SELECT concat_ws('|', area, kind, value_type, default_value::text, bounds::text, scope_levels::text, risk_class, effect, delivery, editor_permission) FROM app.cfg_key WHERE key = 'cfg.app.rejected_keep_days'"),
         )
+    }
+
+    @Test
+    fun outletSearchUsesBothTrigramIndexes() = db.connect().use { c ->
+        c.tx {
+            exec("SET LOCAL enable_seqscan = off")
+            // The masterdata OutletsApi predicate, with :search = '%' || q || '%'.
+            val where = "FROM app.outlet o WHERE (o.name ILIKE '%moke%' OR o.code ILIKE '%moke%')"
+            val plan = column("EXPLAIN (COSTS OFF) SELECT o.code $where").joinToString("\n")
+            assertTrue("outlet_name_trgm" in plan && "outlet_code_trgm" in plan, plan)
+            assertEquals(listOf("SMOKE-SR-001"), column("SELECT o.code $where"))
+        }
     }
 
     private companion object {

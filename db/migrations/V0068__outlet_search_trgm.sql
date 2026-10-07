@@ -1,5 +1,7 @@
--- HELD (not a migration yet): released as the next V####__outlet_search_trgm.sql once infra confirms PG_TRGM is in
--- azure.extensions on dev (docs/requests/db-azure-pg-trgm.md). Flyway does not read db/held.
+-- V0068 trigram indexes for outlet search (AUD-PERF-07). Released from db/held after infra allow-listed PG_TRGM in
+-- azure.extensions (lane/infra bb221dfe; docs/requests/db-azure-pg-trgm.md). ORDER: this migration must deploy in the
+-- same or a later deploy than that infra change (the infra stage sets the server parameter before the migrate job);
+-- on a server without PG_TRGM allow-listed CREATE EXTENSION fails and the migration rolls back whole.
 --
 -- AUD-PERF-07: outlet search is name ILIKE '%q%' OR code ILIKE '%q%' (backend/masterdata OutletsApi). Trigram GIN
 -- indexes serve both sides of the OR (BitmapOr) for q of 3 or more characters. name_bn is not searched today, so it
