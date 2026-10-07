@@ -145,8 +145,9 @@ class Wiring(
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
             val permDeps = ConfigPermissionsDeps(ConfigPermissions(db, configService, clock), guard)
             val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
-            // REQUEST: the Azure Blob implementation of BlobSasIssuer belongs to the infra lane; until then SAS issue answers 503 (docs/requests/backend-admin-blob-sas.md).
-            val blob = com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
+            // Azure user-delegation SAS via the managed identity when ARON_BLOB_ACCOUNT is set (Azure); 503 elsewhere
+            // (docs/requests/backend-admin-blob-sas.md).
+            val blob: BlobSasIssuer = AzureBlobSasIssuer.fromEnvironment() ?: com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
