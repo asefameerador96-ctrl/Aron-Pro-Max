@@ -65,10 +65,10 @@ export function WebEntryGrid({ routeId, date, skus: listed, initialLines, target
 
   const cell = "px-2 py-1 align-top";
   const num = `${inputClass} w-24 text-right`;
-  const err = (k: string) => (errors[k] ? <p role="alert" className="text-xs text-red-700">{errors[k]}</p> : null);
+  const err = (k: string) => (errors[k] ? <p role="alert" className="text-xs text-[var(--danger)]">{errors[k]}</p> : null);
   return (
     <div className="space-y-3" data-testid="web-entry-grid">
-      {appOverlap ? <p role="status" data-testid="app-overlap" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{t("we.overlap")}</p> : null}
+      {appOverlap ? <p role="status" data-testid="app-overlap" className="rounded border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] p-3 text-sm text-[var(--warning)]">{t("we.overlap")}</p> : null}
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left">
@@ -102,13 +102,13 @@ export function WebEntryGrid({ routeId, date, skus: listed, initialLines, target
         <p className="text-xs text-slate-500">{t("we.calls.hint", { n: number(targetOutlets) })}</p>
         {err("c.calls")}
       </div>
-      {errors.empty ? <p role="alert" className="text-xs text-red-700">{errors.empty}</p> : null}
+      {errors.empty ? <p role="alert" className="text-xs text-[var(--danger)]">{errors.empty}</p> : null}
       {canWrite ? (
         <>
-          {saved || needReason ? <p className="text-xs text-amber-700">{t("we.resave")}</p> : null}
+          {saved || needReason ? <p className="text-xs text-[var(--warning)]">{t("we.resave")}</p> : null}
           {saved || needReason ? <ReasonField value={reason} onChange={setReason} error={errors.reason} /> : null}
-          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{banner.text}</p> : null}
-          <button type="button" disabled={busy} onClick={save} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
+          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>{banner.text}</p> : null}
+          <button type="button" disabled={busy} onClick={save} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
         </>
       ) : null}
     </div>

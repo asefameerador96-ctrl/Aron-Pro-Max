@@ -32,7 +32,7 @@ F-ADM-055,S,2026-10-07T08:20Z,2026-10-07T08:50Z,0,3,checker: scheduled values, f
 F-ADM-057,S,2026-10-07T08:00Z,2026-10-07T08:20Z,20,1,SUPPORT may grant (docs/24 s8.5)
 F-ADM-067,M,2026-10-07T08:00Z,2026-10-07T08:20Z,0,1,future-date min
 F-ADM-025,S,2026-10-07T08:00Z,2026-10-07T08:20Z,0,1,add officer
-F-ADM-036,S,2026-10-07T08:00Z,2026-10-07T08:30Z,30,12,exact taka parse; no backend route exists yet
+F-ADM-036,S,2026-10-07T08:00Z,2026-10-07T08:30Z,30,12,DEPENDENCY-WAIT: exact taka parse done; no backend route or ledger yet
 F-WEB-063,S,2026-10-07T08:00Z,2026-10-07T08:20Z,0,1,report key whitelist
 F-WEB-050,L,2026-10-07T08:30Z,2026-10-07T09:10Z,40,5,checker: unlisted SKU lines kept, Bangla digits, stale reason
 F-WEB-052,M,2026-10-07T08:50Z,2026-10-07T09:10Z,0,2,fault order, exclusive valid_to

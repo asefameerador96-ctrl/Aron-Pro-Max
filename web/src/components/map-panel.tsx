@@ -51,6 +51,21 @@ function loadScript(key: string): Promise<GMaps> {
   return loader;
 }
 
+export type MapsResult = { status: "ready"; g: GMaps } | { status: "capped" | "no_key" | "failed" };
+
+/** The one way to get the Maps API: the BFF counts the load against the daily cap and hands out the key to a signed-in user. */
+export async function requestMaps(): Promise<MapsResult> {
+  try {
+    const res = await fetch("/api/bff/maps/load", { method: "POST" });
+    if (res.status === 429) return { status: "capped" };
+    const body = (await res.json()) as { enabled?: boolean; key?: string };
+    if (!body.enabled || !body.key) return { status: "no_key" };
+    return { status: "ready", g: await loadScript(body.key) };
+  } catch {
+    return { status: "failed" };
+  }
+}
+
 export function MapPanel({ pins, labels }: { pins: MapPin[]; labels: MapLabels }) {
   const el = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -59,11 +74,9 @@ export function MapPanel({ pins, labels }: { pins: MapPin[]; labels: MapLabels }
     let dead = false;
     (async () => {
       try {
-        const res = await fetch("/api/bff/maps/load", { method: "POST" });
-        if (res.status === 429) return void (!dead && setPhase("capped"));
-        const body = (await res.json()) as { enabled?: boolean; key?: string };
-        if (!body.enabled || !body.key) return void (!dead && setPhase("no_key"));
-        const g = await loadScript(body.key);
+        const r = await requestMaps();
+        if (r.status !== "ready") return void (!dead && setPhase(r.status));
+        const g = r.g;
         if (dead || !el.current) return;
         const map = new g.maps.Map(el.current, { center: { lat: 23.78, lng: 90.4 }, zoom: 11, mapTypeControl: false, streetViewControl: false });
         const bounds = new g.maps.LatLngBounds();

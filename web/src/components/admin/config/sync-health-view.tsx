@@ -13,7 +13,7 @@ export function SyncHealthView({ locale, data, date, onlyProblems, nextHref }: {
     { key: "u", header: t(locale, "cfgc.col.user"), render: (r) => r.username },
     { key: "d", header: t(locale, "dev.col.model"), render: (r) => r.device_model ?? "—" },
     { key: "a", header: t(locale, "dev.col.app"), render: (r) => r.app_version },
-    { key: "p", header: t(locale, "sh.col.pending"), render: (r) => <span className={r.held_rows_alert ? "font-semibold text-red-700" : ""}>{n(r.pending_rows_reported)}</span>, align: "right" },
+    { key: "p", header: t(locale, "sh.col.pending"), render: (r) => <span className={r.held_rows_alert ? "font-semibold text-[var(--danger)]" : ""}>{n(r.pending_rows_reported)}</span>, align: "right" },
     { key: "r", header: t(locale, "sh.rejected"), render: (r) => n(r.rejected_count), align: "right" },
     { key: "q", header: t(locale, "sh.quarantined"), render: (r) => n(r.quarantined_count), align: "right" },
     { key: "c", header: t(locale, "sh.col.last_contact"), render: (r) => (r.last_contact_at ? formatDateTime(locale, r.last_contact_at) : "—") },

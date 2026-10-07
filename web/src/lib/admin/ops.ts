@@ -55,8 +55,6 @@ export const OPS = {
   "enrolment.revoke": { method: "POST", path: "/v1/admin/enrolment-tokens/{token_id}/revoke", roles: SUPPORT_UP, reason: null, noBody: true },
   // F-ADM-029 / F-ADM-052 reopen a final-submitted zone-day (cfg.day.reopen_roles: admin)
   "day.reopen": { method: "POST", path: "/v1/day/reopen", roles: ADMINS, reason: "reason" },
-  // F-ADM-023 / F-ADM-060 code lists (QC fault types, reasons): items replaced with a change reason; codes are never deleted
-  "code-list.put": { method: "PUT", path: "/v1/admin/code-lists/{list_key}", roles: ADMINS, reason: "change_reason" },
   // F-ADM-057 entry unlock grants replace "call support" for back-dated web entry
   "entry-unlock.create": { method: "POST", path: "/v1/admin/entry-unlocks", roles: SUPPORT_UP, reason: "reason" },
   "entry-unlock.expire": { method: "POST", path: "/v1/admin/entry-unlocks/{unlock_id}/expire", roles: SUPPORT_UP, reason: null, noBody: true },

@@ -27,7 +27,7 @@ export function WebEntryView({ locale, options, selection, date, today, routes, 
     <div className="space-y-4">
       <PageHeading title={t(locale, "we.title")} intro={t(locale, "we.intro")} />
       <GeoCascade levels={levels} viewLabel={t(locale, "otp.view")} allLabel={t(locale, "common.all")} action="/entry/web" extra={[{ name: "date", value: date, label: t(locale, "cfgc.col.date"), type: "date" }]} />
-      {date < today ? <p role="status" data-testid="backdate-banner" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{t(locale, "we.backdate", { date: formatBusinessDate(locale, date) })}</p> : null}
+      {date < today ? <p role="status" data-testid="backdate-banner" className="rounded border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] p-3 text-sm text-[var(--warning)]">{t(locale, "we.backdate", { date: formatBusinessDate(locale, date) })}</p> : null}
       {routes === null ? (
         <p className="rounded border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600">{t(locale, "otp.choose_zone")}</p>
       ) : (

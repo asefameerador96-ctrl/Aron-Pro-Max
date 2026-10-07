@@ -58,8 +58,8 @@ describe("N-047 BFF", () => {
     expect(capped.status).toBe(429);
     expect(await capped.text()).not.toContain("checker-secret-key");
   });
-  // SKIPPED until web-admin removes its direct load (docs/requests/web-dashboard-radius-map-maps-key.md); that file is theirs.
-  it.skip("every Maps script load goes through the capped BFF (only map-panel.tsx loads it; no build-time NEXT_PUBLIC key in client code)", () => {
+  // The geofence radius map (web-config) loads through requestMaps in map-panel.tsx (docs/requests/web-dashboard-radius-map-maps-key.md).
+  it("every Maps script load goes through the capped BFF (only map-panel.tsx loads it; no build-time NEXT_PUBLIC key in client code)", () => {
     const files: string[] = [];
     const walk = (d: string) => {
       for (const f of readdirSync(d)) {
@@ -72,7 +72,7 @@ describe("N-047 BFF", () => {
     const src = files.map((f) => [f, readFileSync(f, "utf8")] as const);
     expect(src.filter(([, s]) => /AIza[0-9A-Za-z_-]{20,}/.test(s)).map(([f]) => f)).toEqual([]); // (holds) no literal key
     expect(src.filter(([, s]) => s.includes("process.env.NEXT_PUBLIC_MAPS_WEB_KEY")).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual([]);
-    expect(src.filter(([, s]) => s.includes("maps.googleapis.com")).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual(["components/map-panel.tsx"]);
-    expect(src.filter(([, s]) => /from "@\/components\/map-panel"/.test(s)).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual(["app/(dashboards)/page.tsx"]);
+    expect(src.filter(([, s]) => s.includes("maps.googleapis.com")).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual(["components/map-panel.tsx", "lib/security-headers.ts"]); // the second is the CSP allow-list, not a load
+    expect(src.filter(([, s]) => /from "@\/components\/map-panel"/.test(s)).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual(["app/(dashboards)/page.tsx", "components/admin/config/radius-map.tsx"]); // both load through requestMaps / MapPanel, never directly
   });
 });
