@@ -367,7 +367,11 @@ class BundleAcceptanceTest {
                 """[{"question_id":1,"key":"q1","answer_type":"bool","label_en":"POSM present?","label_bn":"পস আছে?","required":true,"show_if_key":null,"show_if_bool":null,"photo":false},
                     {"question_id":2,"key":"q1_1","answer_type":"photo_only","label_en":"Photo","label_bn":null,"required":true,"show_if_key":"q1","show_if_bool":true,"photo":true}]""",
             )
-            h.execute("INSERT INTO app.survey (kind, valid_from) VALUES ('amo_survey', DATE '2027-01-01')")
+            // An AMO survey with a version: only the role filter keeps it off the SR's phone.
+            val amo = h.createQuery("INSERT INTO app.survey (kind, valid_from) VALUES ('amo_survey', DATE '2027-01-01') RETURNING id").mapTo(Long::class.java).one()
+            h.execute("INSERT INTO app.survey_version (survey_id, version, title_en, questions) VALUES (?, 1, 'AMO', CAST(? AS jsonb))", amo,
+                """[{"question_id":1,"key":"a1","answer_type":"text","label_en":"Note","label_bn":null,"required":false,"show_if_key":null,"show_if_bool":null,"photo":false},
+                    {"key":"broken","answer_type":"bool"}]""")
             own to off
         }
         val b = client.bundle(t).gunzipJson()
