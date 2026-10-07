@@ -5,7 +5,7 @@ import type { AuditPage, Problem } from "@/contract/types";
 import { apiClient, outcome, type ApiOutcome } from "@/lib/api/client";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { rawRequest } from "@/lib/api/raw";
-import { isWritable, canWrite, type AnyEntity } from "./meta";
+import { isWritable, canWrite, resolvePath, type AnyEntity, type RefMeta } from "./meta";
 import type { WriteRequest } from "./types";
 import { reasonSchema, toFieldErrors, valuesSchema } from "./validation";
 
@@ -18,13 +18,31 @@ export interface RowPage {
 
 export function fillItemPath(meta: AnyEntity, id: string, kind: "item" | "get" = "item"): string {
   const template = (kind === "get" ? meta.api.get : meta.api.item) ?? meta.api.item;
-  return String(template).replace("{id}", encodeURIComponent(id));
+  return resolvePath(String(template), { ...meta.params, id });
+}
+
+export function collectionPath(meta: AnyEntity): string {
+  return resolvePath(String(meta.api.collection), meta.params);
+}
+
+export interface RefOption {
+  value: string;
+  label: string;
+}
+
+/** Options of a `ref` field or filter: the referenced table's rows (first 500; larger tables need a search select). */
+export async function loadRefOptions(ref: RefMeta, token: string): Promise<RefOption[]> {
+  const r = await rawRequest<RowPage>({ method: "GET", path: resolvePath(String(ref.path), ref.params), token, query: { limit: 500 } });
+  if (!r.ok) return [];
+  const valueKey = ref.value ?? "id";
+  const labelKeys = ref.label ?? ["name"];
+  return r.data.items.map((row) => ({ value: String(row[valueKey]), label: labelKeys.map((k) => String(row[k] ?? "")).filter(Boolean).join(" · ") }));
 }
 
 export function listRows(meta: AnyEntity, token: string, query: Record<string, string | undefined>, cursor?: string, limit = PAGE_SIZE): Promise<ApiOutcome<RowPage>> {
   const q: Record<string, string | number | undefined> = { limit, cursor };
   for (const f of meta.filters) q[f.param] = query[f.param];
-  return rawRequest<RowPage>({ method: "GET", path: String(meta.api.collection), token, query: q });
+  return rawRequest<RowPage>({ method: "GET", path: collectionPath(meta), token, query: q });
 }
 
 /** One row. Uses the contract's GET when it has one; otherwise the list page it came from (hint), then a bounded scan. */
@@ -88,7 +106,7 @@ export async function handleCreate(req: NextRequest, meta: AnyEntity): Promise<N
   // but cannot be forwarded (the write schema is closed: sending it would be a 400).
   if (meta.reasonOnCreate) payload[meta.reasonOnCreate] = reason.data;
 
-  const r = await rawRequest<Record<string, unknown>>({ method: "POST", path: String(meta.api.collection), token: auth.session.at, body: payload });
+  const r = await rawRequest<Record<string, unknown>>({ method: "POST", path: collectionPath(meta), token: auth.session.at, body: payload });
   if (!r.ok) return auth.finish(passThrough(r));
   return auth.finish(NextResponse.json({ row: r.data }, { status: 201 }));
 }

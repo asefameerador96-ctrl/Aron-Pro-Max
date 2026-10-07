@@ -36,9 +36,9 @@ describe("menu is driven from data", () => {
     expect(menuFor("ADMIN").map((s) => s.group)).toEqual(["main", "admin"]);
     expect(menuFor("ANALYST").map((s) => s.group)).toEqual(["main"]);
   });
-  it("includes the clusters entity contributed by the registry", () => {
+  it("keeps the admin menu short: master-data tables hang off one hub, not one menu entry each", () => {
     const admin = menuFor("ADMIN").find((s) => s.group === "admin");
-    expect(admin?.items.map((i) => i.href)).toEqual(["/admin", "/admin/clusters", "/admin/audit"]);
+    expect(admin?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/audit"]);
   });
   it("a new item with a role list appears for exactly those roles", () => {
     const extra: MenuItem = { id: "x", labelKey: "menu.dashboard", href: "/x", roles: ["DMO"], group: "main" };

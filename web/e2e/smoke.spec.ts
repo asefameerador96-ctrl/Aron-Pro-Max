@@ -23,7 +23,7 @@ test("TSO logs in and sees an empty dashboard scoped by the server, in Bangla th
   // Bengali digits in the business date (Dhaka).
   await expect(page.getByTestId("business-date")).toHaveText(/[০-৯]/);
   // The TSO has no admin menu.
-  await expect(page.getByRole("link", { name: "ক্লাস্টার" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "মাস্টার ডেটা" })).toHaveCount(0);
   await page.getByRole("link", { name: "English" }).click();
   await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
   await expect(page.getByTestId("business-date")).not.toHaveText(/[০-৯]/);
@@ -86,12 +86,12 @@ test("admin needs the TOTP step; a wrong code is refused", async ({ page }) => {
   await page.getByTestId("mfa-form").locator('input[name="code"]').fill("123456");
   await page.getByTestId("mfa-form").locator('button[type="submit"]').click();
   await expect(page.getByTestId("who")).toContainText("Salma Akter");
-  await expect(page.getByRole("link", { name: "ক্লাস্টার" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "মাস্টার ডেটা" })).toBeVisible();
 });
 
 test("generated CRUD page: list, filter, edit with a mandatory reason, audit row with the reason", async ({ page }) => {
   await loginOk(page, "admin1", "admin-pass-1", "123456");
-  await page.getByRole("link", { name: "ক্লাস্টার" }).click();
+  await page.goto("/admin/clusters");
   await expect(page.getByTestId("data-table")).toContainText("Banani Market");
 
   // filter
@@ -127,7 +127,7 @@ test("create needs a reason too; the BFF refuses a write without one", async ({ 
   await loginOk(page, "admin1", "admin-pass-1", "123456");
   await page.goto("/admin/clusters/new");
   await page.locator("#f-name").fill("New Haat");
-  await page.locator("#f-zone_id").fill("2");
+  await page.locator("#f-zone_id").selectOption({ label: "Z-335-1 · Mirpur Zone 1" });
   await page.getByRole("button", { name: "তৈরি করুন" }).click();
   await expect(page.getByTestId("error-reason")).toBeVisible();
 

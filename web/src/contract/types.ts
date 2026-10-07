@@ -24,3 +24,7 @@ export type ClusterPatch = Schemas["ClusterPatch"];
 export type ClusterPage = Schemas["ClusterPage"];
 
 export type ApiPath = keyof paths;
+export type GeoNode = Schemas["GeoNode"];
+export type GeoNodeWrite = Schemas["GeoNodeWrite"];
+export type GeoNodePatch = Schemas["GeoNodePatch"];
+export type GeoLevel = Schemas["GeoLevel"];

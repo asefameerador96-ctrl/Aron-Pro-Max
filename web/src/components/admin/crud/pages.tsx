@@ -12,7 +12,7 @@ import { DataTable, type Column } from "../kit/data-table";
 import { FilterBar, type FilterControl } from "../kit/filter-bar";
 import { EntityForm, type FormFieldDef } from "./entity-form";
 import { canRead, canWrite, isWritable, type AnyEntity, type AnyField } from "./meta";
-import { getRow, history, listRows } from "./server";
+import { getRow, history, listRows, loadRefOptions, type RefOption } from "./server";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined, max = 80): string | undefined => (Array.isArray(v) ? v[0] : v)?.slice(0, max) || undefined;
@@ -38,25 +38,34 @@ function optionLabel(locale: Locale, f: { options?: readonly string[]; optionKey
   return key ? t(locale, key) : value;
 }
 
-function cell(locale: Locale, f: AnyField, row: Record<string, unknown>): ReactNode {
+type RefOptions = Record<string, RefOption[]>;
+
+/** Options of every `ref` field and filter of an entity, keyed by field name or filter param. */
+async function loadAllRefs(meta: AnyEntity, token: string, onlyFields = false): Promise<RefOptions> {
+  const jobs: Promise<[string, RefOption[]]>[] = [];
+  for (const f of meta.fields) if (f.kind === "ref" && f.ref) jobs.push(loadRefOptions(f.ref, token).then((o) => [f.name, o]));
+  if (!onlyFields) for (const f of meta.filters) if (f.kind === "ref" && f.ref) jobs.push(loadRefOptions(f.ref, token).then((o) => [`filter:${f.param}`, o]));
+  return Object.fromEntries(await Promise.all(jobs));
+}
+
+function cell(locale: Locale, f: AnyField, row: Record<string, unknown>, refs: RefOptions = {}): ReactNode {
   const v = row[f.name];
   if (v === null || v === undefined || v === "") return <span className="text-slate-400">—</span>;
+  if (f.kind === "bool") return t(locale, v ? "common.yes" : "common.no");
+  if (f.kind === "ref") return refs[f.name]?.find((o) => o.value === String(v))?.label ?? formatNumber(locale, Number(v), { useGrouping: false });
   if (f.kind === "int") return formatNumber(locale, Number(v), { useGrouping: false });
   if (f.kind === "timestamp") return formatDateTime(locale, String(v));
   if (f.kind === "enum") return optionLabel(locale, f, String(v));
   return String(v);
 }
 
-function toFormField(locale: Locale, f: AnyField): FormFieldDef {
-  return {
-    name: f.name,
-    label: t(locale, f.labelKey),
-    kind: f.kind === "timestamp" ? "text" : f.kind,
-    required: Boolean(f.required),
-    nullable: Boolean(f.nullable),
-    maxLength: f.maxLength,
-    options: f.options?.map((o) => ({ value: o, label: optionLabel(locale, f, o) })),
-  };
+function toFormField(locale: Locale, f: AnyField, refs: RefOptions = {}): FormFieldDef {
+  const kind: FormFieldDef["kind"] = f.kind === "timestamp" ? "text" : f.kind === "ref" || f.kind === "bool" ? "enum" : f.kind;
+  const options =
+    f.kind === "ref" ? refs[f.name]
+    : f.kind === "bool" ? [{ value: "true", label: t(locale, "common.yes") }, { value: "false", label: t(locale, "common.no") }]
+    : f.options?.map((o) => ({ value: o, label: optionLabel(locale, f, o) }));
+  return { name: f.name, label: t(locale, f.labelKey), kind, required: Boolean(f.required), nullable: Boolean(f.nullable), maxLength: f.maxLength, options };
 }
 
 export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; searchParams: SearchParams }) {
@@ -67,12 +76,12 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
   const query: Record<string, string | undefined> = {};
   for (const f of meta.filters) query[f.param] = one(searchParams[f.param]);
   const cursor = one(searchParams.cursor, CURSOR_MAX);
-  const r = await listRows(meta, session.at, query, cursor);
+  const [r, refs] = await Promise.all([listRows(meta, session.at, query, cursor), loadAllRefs(meta, session.at)]);
   if (!r.ok) return onApiFailure(r.status, r.problem, locale);
 
   const columns: Column<Record<string, unknown>>[] = meta.fields
     .filter((f) => f.column)
-    .map((f) => ({ key: f.name, header: t(locale, f.labelKey), render: (row) => cell(locale, f, row), align: f.kind === "int" ? "right" : "left" }));
+    .map((f) => ({ key: f.name, header: t(locale, f.labelKey), render: (row) => cell(locale, f, row, refs), align: f.kind === "int" ? "right" : "left" }));
   const hint = cursor ? `&c=${encodeURIComponent(cursor)}` : "";
   columns.push({
     key: "_actions",
@@ -83,9 +92,9 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
   const controls: FilterControl[] = meta.filters.map((f) => ({
     param: f.param,
     label: t(locale, f.labelKey),
-    kind: f.kind,
+    kind: f.kind === "ref" ? "enum" : f.kind,
     value: query[f.param] ?? "",
-    options: f.options?.map((o) => ({ value: o, label: optionLabel(locale, f, o) })),
+    options: f.kind === "ref" ? refs[`filter:${f.param}`] : f.options?.map((o) => ({ value: o, label: optionLabel(locale, f, o) })),
   }));
   const keep = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) if (v) keep.set(k, v);
@@ -120,7 +129,8 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
 export async function EntityCreatePage({ meta }: { meta: AnyEntity }) {
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
   if (!canWrite(meta, session.user.role)) return <Forbidden locale={locale} />;
-  const fields = meta.fields.filter((f) => isWritable(f, "create")).map((f) => toFormField(locale, f));
+  const refs = await loadAllRefs(meta, session.at, true);
+  const fields = meta.fields.filter((f) => isWritable(f, "create")).map((f) => toFormField(locale, f, refs));
   const initial = Object.fromEntries(fields.map((f) => [f.name, f.kind === "enum" && f.required ? (f.options?.[0]?.value ?? "") : ""]));
   return (
     <div className="space-y-4">
@@ -137,9 +147,9 @@ export async function EntityEditPage({ meta, id, searchParams }: { meta: AnyEnti
   const row = await getRow(meta, session.at, id, one(searchParams.c, CURSOR_MAX));
   if (!row.ok) return onApiFailure(row.status, row.problem, locale);
   if (!row.data) notFound();
-  const hist = await history(meta, session.at, id);
+  const [hist, refs] = await Promise.all([history(meta, session.at, id), loadAllRefs(meta, session.at, true)]);
 
-  const fields = meta.fields.filter((f) => isWritable(f, "update")).map((f) => toFormField(locale, f));
+  const fields = meta.fields.filter((f) => isWritable(f, "update")).map((f) => toFormField(locale, f, refs));
   const initial = Object.fromEntries(fields.map((f) => [f.name, row.data?.[f.name] === null || row.data?.[f.name] === undefined ? "" : String(row.data[f.name])]));
   const version = Number(row.data.version);
   return (

@@ -4,6 +4,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
+import { handleTable, type Ctx, type Row } from "./tables";
+import { seedTables, tableDefs } from "./seed";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 interface MockUser {
@@ -38,6 +40,8 @@ function users(): Record<string, MockUser> {
 
 interface State {
   users: Record<string, MockUser>;
+  tables: Record<string, Row[]>;
+  /** Alias of tables.clusters (used by tests). */
   clusters: Cluster[];
   audit: AuditEntry[];
   access: Map<string, { userId: string; exp: number }>;
@@ -46,12 +50,6 @@ interface State {
   refreshCount: number;
   nextId: number;
   accessTtlS: number;
-}
-
-function seedClusters(): Cluster[] {
-  const now = "2026-10-01T04:00:00.000Z";
-  const c = (id: number, zone_id: number, name: string, cluster_type: string | null): Cluster => ({ id, zone_id, name, cluster_type, status: "active", created_at: now, updated_at: now, version: 1 });
-  return [c(1, 1, "Banani Market", "market"), c(2, 1, "Gulshan-1 Circle", "urban"), c(3, 2, "Mirpur-10", "urban"), c(4, 2, "Uttara Sector 7", null), c(5, 3, "Savar Bazar", "semi_urban"), c(6, 3, "Ashulia Haat", "rural"), c(7, 3, "Hatirjheel", "urban")];
 }
 
 export interface MockOptions {
@@ -71,7 +69,8 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 }
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
-  return { users: users(), clusters: seedClusters(), audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
+  const tables = seedTables();
+  return { users: users(), tables, clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -235,50 +234,14 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     if (!(write ? ADMIN_WRITE : ADMIN_READ).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
   }
 
-  if (path === "/v1/admin/clusters" && method === "GET") {
-    const q = url.searchParams;
-    const limit = Math.min(500, Number(q.get("limit") ?? 100));
-    const offset = q.get("cursor") ? Number(Buffer.from(q.get("cursor")!, "base64url").toString()) : 0;
-    let rows = state.clusters.filter((c) => (!q.get("zone_id") || c.zone_id === Number(q.get("zone_id"))) && (!q.get("status") || c.status === q.get("status")) && (!q.get("q") || c.name.toLowerCase().includes(q.get("q")!.toLowerCase())));
-    rows = rows.sort((x, y) => x.id - y.id);
-    const page = rows.slice(offset, offset + limit);
-    const next = offset + limit < rows.length ? Buffer.from(String(offset + limit)).toString("base64url") : null;
-    return send(res, 200, { items: page, next_cursor: next });
-  }
-  if (path === "/v1/admin/clusters" && method === "POST") {
-    const b = (await readJson(req)) as Record<string, unknown> | undefined;
-    if (!b || typeof b !== "object") return send(res, 400, problem(400, "ERR_MALFORMED_JSON"));
-    const errors = [...(unknownMembers(b, ["zone_id", "name", "cluster_type"]) ?? [])];
-    if (typeof b.name !== "string" || b.name.length < 1 || b.name.length > 120) errors.push({ pointer: "/name", code: "required" });
-    if (!Number.isInteger(b.zone_id)) errors.push({ pointer: "/zone_id", code: "required" });
-    if (errors.length) return send(res, 400, problem(400, "ERR_VALIDATION", { errors }));
-    if (state.clusters.some((c) => c.zone_id === b.zone_id && c.name === b.name)) return send(res, 409, problem(409, "ERR_MASTER_DUPLICATE_CODE"));
-    const now = new Date().toISOString();
-    const row: Cluster = { id: state.nextId++, zone_id: b.zone_id as number, name: b.name as string, cluster_type: (b.cluster_type as string | null | undefined) ?? null, status: "active", created_at: now, updated_at: now, version: 1 };
-    state.clusters.push(row);
-    audit(state, user, "cluster", row.id, "cluster.create", null, { name: row.name, zone_id: row.zone_id }, null);
-    return send(res, 201, row);
-  }
-  const item = /^\/v1\/admin\/clusters\/([0-9]+)$/.exec(path);
-  if (item && method === "PATCH") {
-    const row = state.clusters.find((c) => c.id === Number(item[1]));
-    if (!row) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
-    if (req.headers["if-match"] !== `"${row.version}"`) return send(res, 412, problem(412, "ERR_PRECONDITION_FAILED"));
-    const b = (await readJson(req)) as Record<string, unknown> | undefined;
-    if (!b || typeof b !== "object" || Object.keys(b).length === 0) return send(res, 400, problem(400, "ERR_VALIDATION"));
-    const errors = [...(unknownMembers(b, ["zone_id", "name", "cluster_type", "status", "change_reason"]) ?? [])];
-    if (b.change_reason !== undefined && b.change_reason !== null && (typeof b.change_reason !== "string" || b.change_reason.length < 10)) errors.push({ pointer: "/change_reason", code: "too_short" });
-    if (b.status !== undefined && b.status !== "active" && b.status !== "inactive") errors.push({ pointer: "/status", code: "pattern" });
-    if (errors.length) return send(res, 400, problem(400, "ERR_VALIDATION", { errors }));
-    const before = { name: row.name, zone_id: row.zone_id, cluster_type: row.cluster_type ?? null, status: row.status };
-    if (typeof b.name === "string") row.name = b.name;
-    if (Number.isInteger(b.zone_id)) row.zone_id = b.zone_id as number;
-    if (b.cluster_type !== undefined) row.cluster_type = b.cluster_type as string | null;
-    if (b.status === "active" || b.status === "inactive") row.status = b.status;
-    row.version++;
-    row.updated_at = new Date().toISOString();
-    audit(state, user, "cluster", row.id, "cluster.update", before, { name: row.name, zone_id: row.zone_id, cluster_type: row.cluster_type ?? null, status: row.status }, (b.change_reason as string | null | undefined) ?? null);
-    return send(res, 200, row);
+  if (path.startsWith("/v1/admin/")) {
+    const ctx: Ctx = {
+      send,
+      problem,
+      readJson,
+      audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason),
+    };
+    if (await handleTable(tableDefs(state), ctx, method, url, req, res, ADMIN_WRITE.includes(user.summary.role))) return;
   }
 
   if (path === "/v1/admin/audit" && method === "GET") {

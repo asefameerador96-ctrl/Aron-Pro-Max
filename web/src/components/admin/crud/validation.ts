@@ -10,7 +10,11 @@ export const REASON_MAX = 500;
 export const codePoints = (s: string): number => Array.from(s).length;
 
 function fieldSchema(f: AnyField): z.ZodType {
-  if (f.kind === "int") {
+  if (f.kind === "bool") {
+    const b = z.preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean());
+    return f.nullable ? z.preprocess((v) => (v === "" ? null : v), b.nullable()) : b;
+  }
+  if (f.kind === "int" || f.kind === "ref") {
     const base = z.coerce.number().int().min(f.min ?? 0);
     return f.nullable ? z.preprocess((v) => (v === "" || v === null ? null : v), base.nullable()) : base;
   }
@@ -22,6 +26,10 @@ function fieldSchema(f: AnyField): z.ZodType {
   const max = f.maxLength;
   if (max) s = s.refine((v) => codePoints(v) <= max, { message: "too_big" });
   if (f.required && !f.nullable) s = s.refine((v) => v.length >= 1, { message: "too_small" });
+  if (f.pattern) {
+    const re = new RegExp(f.pattern);
+    s = s.refine((v) => v === "" || re.test(v), { message: "invalid" });
+  }
   return f.nullable ? z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), s.nullable()) : s;
 }
 
