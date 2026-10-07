@@ -34,6 +34,8 @@ export interface TableDef {
   nextId: () => number;
   /** Extra checks on create (overlaps...): return a problem to refuse. */
   validateCreate?: (b: Record<string, unknown>, rows: Row[]) => { status: number; code: ProblemCode } | null;
+  /** Members computed from the created row (selling_day...). */
+  derive?: (row: Row) => Record<string, unknown>;
   /** Wrap the created row in the response (e.g. { user, temporary_password }). */
   createResponse?: (row: Row) => unknown;
   /** Row actions: POST <item path>/<suffix>. */
@@ -113,9 +115,10 @@ export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, ur
         if (existing.some((r) => keys.every((k) => r[k] === b[k]))) return ctx.send(res, 409, ctx.problem(409, "ERR_MASTER_DUPLICATE_CODE")), true;
       }
       const now = new Date().toISOString();
-      const row: Row = { ...(def.defaults ?? {}), ...Object.fromEntries((def.nullables ?? []).map((k) => [k, null])), ...def.stamp?.(pathParams), ...Object.fromEntries(Object.entries(b).filter(([k]) => k !== "change_reason")), id: def.nextId(), version: 1, created_at: now, updated_at: now };
+      const row: Row = { ...(def.defaults ?? {}), ...Object.fromEntries((def.nullables ?? []).map((k) => [k, null])), ...def.stamp?.(pathParams), ...Object.fromEntries(Object.entries(b).filter(([k]) => k !== "change_reason" && k !== def.create.reasonMember)), id: def.nextId(), version: 1, created_at: now, updated_at: now };
+      Object.assign(row, def.derive?.(row));
       def.rows().push(row);
-      ctx.audit(def.auditEntity, row.id, `${def.auditEntity}.create`, {}, scalar(row, Object.keys(b).filter((k) => k !== "change_reason")), def.create.reason ? ((b.change_reason as string | null | undefined) ?? null) : def.create.reasonMember ? ((b[def.create.reasonMember] as string | null | undefined) ?? null) : null);
+      ctx.audit(def.auditEntity, row.id, `${def.auditEntity}.create`, {}, scalar(row, Object.keys(b).filter((k) => k !== "change_reason" && k !== def.create.reasonMember)), def.create.reason ? ((b.change_reason as string | null | undefined) ?? null) : def.create.reasonMember ? ((b[def.create.reasonMember] as string | null | undefined) ?? null) : null);
       return ctx.send(res, 201, def.createResponse ? def.createResponse(row) : row, { ETag: `"1"` }), true;
     }
     if (it && method === "PATCH") {

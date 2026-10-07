@@ -23,7 +23,8 @@ function fieldSchema(f: AnyField): z.ZodType {
     return z.coerce.number().int().min(1).max(2 ** bits - 1);
   }
   if (f.kind === "int" || f.kind === "ref") {
-    const base = z.coerce.number().int().min(f.min ?? 0);
+    let base = z.coerce.number().int().min(f.min ?? 0);
+    if (f.max !== undefined) base = base.max(f.max);
     return f.nullable ? z.preprocess((v) => (v === "" || v === null ? null : v), base.nullable()) : base;
   }
   if (f.kind === "enum") {

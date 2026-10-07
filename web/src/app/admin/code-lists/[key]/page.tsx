@@ -1,0 +1,44 @@
+import { notFound } from "next/navigation";
+import { CodeListEditor, type EditorItem } from "@/components/admin/codelist-editor";
+import { CODELIST_WRITE_ROLES } from "@/components/admin/crud/codelists-server";
+import { Forbidden } from "@/components/forbidden";
+import { apiClient, outcome } from "@/lib/api/client";
+import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
+import { requireSession } from "@/lib/auth/require";
+import { getLocale } from "@/lib/auth/service";
+import { problemMessage, t } from "@/lib/i18n";
+import { codeListByKey } from "../../_codelists/registry";
+
+export default async function CodeListPage({ params }: { params: Promise<{ key: string }> }) {
+  const [{ key }, session, locale] = await Promise.all([params, requireSession(), getLocale()]);
+  const meta = codeListByKey(key);
+  if (!meta) notFound();
+  if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
+  const r = await outcome(apiClient(session.at).GET("/v1/admin/code-lists"));
+  if (!r.ok) {
+    return (
+      <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">
+        {problemMessage(locale, r.problem.code)}
+      </p>
+    );
+  }
+  const list = r.data.lists.find((l) => l.list_key === key);
+  const items: EditorItem[] = [...(list?.items ?? [])]
+    .sort((a, b) => a.sort - b.sort)
+    .map((i) => ({
+      code: i.code,
+      label_en: i.label_en,
+      label_bn: i.label_bn ?? "",
+      sort: String(i.sort),
+      valid_from: i.valid_from ?? "",
+      valid_to: i.valid_to ?? "",
+      attrs: Object.fromEntries(Object.entries(i.attrs ?? {}).map(([k, v]) => [k, v === null ? "" : String(v)])),
+      saved: true,
+    }));
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold">{t(locale, meta.labelKey)}</h1>
+      <CodeListEditor listKey={key} items={items} attrs={(meta.attrs ?? []).map((a) => ({ key: a.key, label: t(locale, a.labelKey), options: a.options ? [...a.options] : undefined }))} canWrite={(CODELIST_WRITE_ROLES as readonly string[]).includes(session.user.role)} />
+    </div>
+  );
+}

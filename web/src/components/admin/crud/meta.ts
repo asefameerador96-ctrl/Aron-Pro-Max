@@ -39,6 +39,7 @@ interface FieldBase {
   nullable?: boolean;
   maxLength?: number;
   min?: number;
+  max?: number;
   options?: readonly string[];
   optionKeys?: Record<string, MessageKey>;
   /** Show as a list column. */
@@ -140,7 +141,7 @@ export type AnyEntity = EntityMeta<Record<string, unknown>, Record<string, unkno
 export type AnyField = AnyEntity["fields"][number];
 
 export function entityCanEdit(meta: AnyEntity): boolean {
-  return Boolean(meta.api.item) && meta.fields.some((f) => isWritable(f, "update")) && meta.reasonOnUpdate !== null;
+  return Boolean(meta.api.item) && meta.fields.some((f) => isWritable(f, "update"));
 }
 
 export function isWritable(f: AnyField, mode: "create" | "update"): boolean {

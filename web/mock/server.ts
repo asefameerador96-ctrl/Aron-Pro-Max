@@ -5,7 +5,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { handleTable, type Ctx, type Row } from "./tables";
-import { seedTables, tableDefs } from "./seed";
+import { seedCodeLists, seedTables, tableDefs } from "./seed";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 interface MockUser {
@@ -41,6 +41,7 @@ function users(): Record<string, MockUser> {
 interface State {
   users: Record<string, MockUser>;
   tables: Record<string, Row[]>;
+  codeLists: Record<string, unknown[]>;
   /** Alias of tables.clusters (used by tests). */
   clusters: Cluster[];
   audit: AuditEntry[];
@@ -70,7 +71,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { users: users(), tables, clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
+  return { users: users(), tables, codeLists: seedCodeLists(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -232,6 +233,26 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   if (path.startsWith("/v1/admin/")) {
     const write = method !== "GET";
     if (!(write ? (path.endsWith("/credentials") ? [...ADMIN_WRITE, "SUPPORT" as Role] : ADMIN_WRITE) : ADMIN_READ).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+  }
+
+  if (path === "/v1/admin/code-lists" && method === "GET") return send(res, 200, { lists: Object.entries(state.codeLists).map(([list_key, items]) => ({ list_key, items })) });
+  const cl = /^\/v1\/admin\/code-lists\/([a-z_]+)$/.exec(path);
+  if (cl && method === "PUT") {
+    if (!ADMIN_WRITE.includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const key = cl[1]!;
+    const b = (await readJson(req)) as { items?: Record<string, unknown>[]; change_reason?: string } | undefined;
+    const errors: NonNullable<Problem["errors"]> = [];
+    if (!b || !Array.isArray(b.items) || b.items.length < 1) errors.push({ pointer: "/items", code: "required" });
+    if (typeof b?.change_reason !== "string" || Array.from(b.change_reason).length < 10) errors.push({ pointer: "/change_reason", code: "too_short" });
+    b?.items?.forEach((i, n) => {
+      if (typeof i.code !== "string" || !/^[a-z][a-z0-9_]{1,40}$/.test(i.code)) errors.push({ pointer: `/items/${n}/code`, code: "pattern" });
+      if (typeof i.label_en !== "string" || !i.label_en) errors.push({ pointer: `/items/${n}/label_en`, code: "required" });
+    });
+    if (errors.length) return send(res, 400, problem(400, "ERR_VALIDATION", { errors }));
+    const before = state.codeLists[key] ?? [];
+    state.codeLists[key] = b!.items!;
+    audit(state, user, "code_list", 0, `code_list.${key}.put`, { items: before.length }, { items: b!.items!.length }, b!.change_reason!);
+    return send(res, 200, { list_key: key, items: state.codeLists[key] });
   }
 
   if (path.startsWith("/v1/admin/")) {
