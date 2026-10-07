@@ -7,6 +7,8 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -69,5 +71,29 @@ class HomeScreenTest {
         show(AppLanguage.EN, health = DeviceHealthModel.of(35, 450, 3, 30))
         compose.onNodeWithText("Battery 35%  ·  Free 450 MB  ·  3 waiting to upload  ·  Last sync 30 min ago").assertExists()
         compose.onNodeWithText("Check this phone: low battery, low storage or no recent sync.").assertExists()
+    }
+}
+
+/** F-SR-005, F-SR-007: Settings language and Logout with confirmation. */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [36])
+class SettingsScreenTest {
+    @get:Rule val compose = createComposeRule()
+
+    @Test fun logoutAsksForConfirmationThenLogsOut() {
+        var out = 0
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("0.1.0 (12)", {}, { out++ }) } } }
+        compose.onNodeWithTag(SettingsTags.LOGOUT).performClick()
+        assertEquals(0, out)
+        compose.onNodeWithText("Your saved work stays on this phone and will still upload.").assertExists()
+        compose.onAllNodesWithText("Log out").onLast().performClick()
+        assertEquals(1, out)
+    }
+
+    @Test fun banglaShowsTheVersionWithBengaliDigits() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.BN) { SettingsContent("0.1.0 (12)", {}, {}) } } }
+        compose.onNodeWithText("সংস্করণ ০.১.০ (১২)").assertExists()
     }
 }

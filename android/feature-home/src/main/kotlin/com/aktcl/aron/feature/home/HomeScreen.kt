@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTile
 import com.aktcl.aron.core.ui.AronTileGrid
 import com.aktcl.aron.core.ui.AronTokens
@@ -25,6 +26,7 @@ object HomeScreenTags {
     const val SUBTITLE = "hm_subtitle"
     const val BANNER = "hm_banner"
     const val HEALTH = "hm_health"
+    const val SETTINGS = "hm_settings"
     fun tile(t: HomeTile) = "hm_tile_${t.key}"
 }
 
@@ -65,12 +67,14 @@ fun HomeContent(
     health: DeviceHealth?,
     onTile: (HomeTile) -> Unit,
     modifier: Modifier = Modifier,
+    onSettings: (() -> Unit)? = null,
 ) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = AronTokens.Space.M)) {
         Column(Modifier.padding(horizontal = AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
             Text(header.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag(HomeScreenTags.TITLE))
             Text(header.subtitle, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag(HomeScreenTags.SUBTITLE))
             routeKindLabel(header.routeKind)?.let { Text(it, style = MaterialTheme.typography.labelLarge) }
+            if (onSettings != null) AronSecondaryButton(stringResource(R.string.set_open), onSettings, Modifier.testTag(HomeScreenTags.SETTINGS))
         }
         when (freshness) {
             BundleFreshness.Fresh -> Unit
