@@ -85,4 +85,10 @@ class AttendanceFlowTest {
         g.restore(stored + committed.map { it.first.copy(kind = "check_out", meta = it.first.meta.copy(capturedAt = "2026-10-07T12:00:00.000Z")) })
         assertFalse(g.state.value.checkOutEnabled)
     }
+
+    @Test fun aFailedSaveReportsFailedAndLeavesTheButtonsAlone() = runTest {
+        val f = AttendanceFlow(fixes, meta, { _, _ -> error("disk full") }, { null }, { "t" }, { minutes }, newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
+        assertEquals(AttendanceResult.Failed, f.checkIn())
+        assertTrue(f.state.value.checkInEnabled); assertFalse(f.state.value.busy); assertNull(f.state.value.checkedInAt)
+    }
 }

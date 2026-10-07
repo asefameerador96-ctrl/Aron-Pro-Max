@@ -29,6 +29,8 @@ data class LoginResponse(
     @SerialName("upload_refresh_token") val uploadRefreshToken: String? = null,
     @SerialName("bind_token") val bindToken: String? = null,
     @SerialName("mfa_token") val mfaToken: String? = null,
+    /** Contract v1.2: single-purpose token for a forced password change (redacted in toString). */
+    @SerialName("password_change_token") val passwordChangeToken: String? = null,
     val user: UserSummary,
     val scope: ScopeSummary? = null,
     val device: LoginDevice? = null,

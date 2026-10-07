@@ -59,6 +59,8 @@ interface State {
   calls: StubCall[];
   users: Record<string, MockUser>;
   tables: Record<string, Row[]>;
+  /** Bytes received on the mock blob URL, by asset id. */
+  blobs: Map<string, number>;
   codeLists: Record<string, unknown[]>;
   custom: CustomState;
   bulkBatches: Map<string, { batch_uuid: string; updated: number; unchanged: number; replayed: boolean }>;
@@ -93,7 +95,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { stubs: [], calls: [], users: users(), tables, custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore() };
+  return { stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -191,6 +193,16 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   const path = url.pathname;
   const method = req.method ?? "GET";
 
+  if (path.startsWith("/__mock/blob/")) {
+    // Stand-in for the write-only SAS URL: the browser PUTs the file here (cross-origin, so it answers the preflight).
+    const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "PUT, OPTIONS", "Access-Control-Allow-Headers": "*" };
+    if (method === "OPTIONS") return send(res, 204, undefined, cors);
+    if (method !== "PUT") return send(res, 405, null, cors);
+    let bytes = 0;
+    for await (const chunk of req) bytes += (chunk as Buffer).length;
+    state.blobs.set(path.slice("/__mock/blob/".length), bytes);
+    return send(res, 201, undefined, cors);
+  }
   if (path === "/__mock/health") return send(res, 200, { ok: true }, { "X-Aron-Api": "0" });
   if (path === "/__mock/reset" && method === "POST") {
     reset();
@@ -361,6 +373,59 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     const cctx: Ctx = { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) };
     const canW = ADMIN_WRITE.includes(user.summary.role);
     if (await handleCustom(state.custom, cctx, canW, method, url, req, res)) return;
+  }
+
+  const tut = /^\/v1\/admin\/(?:tutorials(?:\/(\d+))?|assets)$/.exec(path);
+  if (tut && user.master) {
+    if (!(method === "GET" ? ADMIN_READ : ADMIN_WRITE).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const rows = state.tables.tutorials!;
+    if (path === "/v1/admin/assets" && method === "POST") {
+      const b = (await readJson(req)) as Record<string, unknown> | null;
+      if (!b || typeof b.asset_id !== "string") return send(res, 400, problem(400, "ERR_VALIDATION"));
+      const host = req.headers.host ?? "127.0.0.1";
+      return send(res, 200, { asset_id: b.asset_id, upload_url: `http://${host}/__mock/blob/${b.asset_id}?sig=mock`, blob_path: `tutorials/${b.asset_id}`, expires_at: new Date(Date.now() + 600_000).toISOString() });
+    }
+    if (method === "GET") return send(res, 200, { items: rows });
+    const b = (await readJson(req)) as Record<string, unknown> | null;
+    const reason = typeof b?.change_reason === "string" ? b.change_reason : "";
+    const need = ["kind", "title_en", "asset_id", "roles", "sort"];
+    if (!b || Array.from(reason).length < 10 || need.some((k) => b[k] === undefined) || !state.blobs.has(String(b.asset_id))) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    const fields = { kind: b.kind, title_en: b.title_en, title_bn: b.title_bn ?? null, sort: b.sort, roles: b.roles, status: b.status ?? "active", asset_id: b.asset_id };
+    if (method === "POST") {
+      const row = { tutorial_id: state.nextId++, url: `https://blob.example/tutorials/${b.asset_id}`, bytes: state.blobs.get(String(b.asset_id)), duration_s: null, ...fields, version: 1 } as unknown as Row;
+      rows.push(row);
+      audit(state, user, "tutorial", String(row.tutorial_id), "tutorial.create", {}, { title_en: String(b.title_en) }, reason);
+      return send(res, 201, row);
+    }
+    const row = rows.find((r) => r.tutorial_id === Number(tut[1]));
+    if (!row) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+    if (req.headers["if-match"] !== `"${row.version}"`) return send(res, 412, problem(412, "ERR_PRECONDITION_FAILED"));
+    Object.assign(row, fields, { version: (row.version as number) + 1 });
+    audit(state, user, "tutorial", String(row.tutorial_id), "tutorial.update", {}, { title_en: String(b.title_en) }, reason);
+    return send(res, 200, row);
+  }
+
+  const fb = /^\/v1\/feedback(?:\/([0-9a-f-]{36}))?$/.exec(path);
+  if (fb && user.master) {
+    const rows = state.tables.feedback!;
+    if (!(method === "GET" ? ADMIN_READ : ADMIN_WRITE).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    if (method === "GET" && !fb[1]) {
+      const cat = url.searchParams.get("category_code");
+      const st = url.searchParams.get("status");
+      const items = rows.filter((r) => (!cat || r.category_code === cat) && (!st || r.status === st));
+      return send(res, 200, { items, next_cursor: null });
+    }
+    if (method === "PATCH" && fb[1]) {
+      const row = rows.find((r) => r.feedback_uuid === fb[1]);
+      if (!row) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+      const b = (await readJson(req)) as Record<string, unknown> | null;
+      const reason = typeof b?.reason === "string" ? b.reason : "";
+      if (!b || !["new", "in_progress", "resolved", "closed"].includes(String(b.status)) || Array.from(reason).length < 10 || Object.keys(b).some((k) => k !== "status" && k !== "reason")) return send(res, 400, problem(400, "ERR_VALIDATION"));
+      const before = { status: row.status as string };
+      row.status = b.status as string;
+      audit(state, user, "feedback", String(fb[1]), "feedback.status", before, { status: row.status as string }, reason);
+      return send(res, 200, row);
+    }
   }
 
   if (path.startsWith("/v1/outlet-requests")) {

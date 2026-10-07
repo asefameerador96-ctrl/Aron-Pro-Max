@@ -20,3 +20,6 @@ F-ADM-006,M,2026-10-07T10:30Z,2026-10-07T12:00Z,0,0,"Sales plan and user scope e
 F-ADM-008,S,2026-10-07T10:30Z,2026-10-07T12:00Z,0,0,"User scope role-node rules; checker pending"
 F-ADM-071,S,2026-10-07T10:30Z,2026-10-07T12:00Z,0,0,"SR transfer; checker pending"
 F-ADM-076,M,2026-10-07T12:00Z,2026-10-07T12:40Z,40,0,"SR lifecycle page (create, bind, reassign, disable) over existing pages; checker pending (T2)"
+F-ADM-028,S,2026-10-07T12:40Z,2026-10-07T13:30Z,50,3,"Feedback inbox (generator entity, PATCH status action with reason); checker: SUPPORT could not read the text (fixed: description column), category shown as code (left; needs the feedback_category list); filters requested"
+F-ADM-076,M,2026-10-07T12:00Z,2026-10-07T13:30Z,0,1,"SR lifecycle page; checker: SUPPORT dead links (fixed: ADMIN/SUPERADMIN only)"
+F-ADM-026,S,2026-10-07T13:30Z,2026-10-07T14:30Z,60,4,"Tutorials: list, add, edit, browser upload to SAS URL via BFF ticket, blob origin in CSP; checker: CSP origin injection, empty bn title, role labels, a11y fixed"

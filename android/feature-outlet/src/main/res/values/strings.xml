@@ -63,4 +63,6 @@
     <string name="out_req_err_geo">Capture the shop location.</string>
     <string name="out_req_err_photo">Take the shop photo.</string>
     <string name="out_req_err_dues">This shop has unpaid dues and cannot be closed.</string>
+    <string name="out_menu_title">Outlet</string>
+    <string name="out_pick_outlet">Choose the outlet</string>
 </resources>
