@@ -4,6 +4,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
+import { freshDashStore, handleDash, hasPii, type DashStore } from "./dash";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 interface MockUser {
@@ -26,6 +27,9 @@ function users(): Record<string, MockUser> {
   });
   return {
     tso334: u(2001, "tso334", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 334, code: "T-334", name: "Banani" }] }),
+    tso335: u(2005, "tso335", "Salma Begum", "TSO", "tso-pass-2", { scope_version: 7, nodes: [{ type: "territory", id: 335, code: "T-335", name: "Gulshan" }] }),
+    tso999: u(2006, "tso999", "Outside Scope", "TSO", "tso-pass-3", { scope_version: 7, nodes: [{ type: "territory", id: 999, code: "T-999", name: "Elsewhere" }] }),
+    dmo1: u(2004, "dmo1", "Habib Rahman", "DMO", "dmo-pass-1", { scope_version: 4, nodes: [{ type: "division", id: 10, code: "D-10", name: "Dhaka North" }] }),
     wm1: u(2002, "wm1", "Karim Hossain", "WM", "wm-pass-1", { scope_version: 2, nodes: [{ type: "wing", id: 1, code: "W-1", name: "Dhaka Wing" }] }),
     analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
     admin1: u(3001, "admin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true),
@@ -46,6 +50,7 @@ interface State {
   refreshCount: number;
   nextId: number;
   accessTtlS: number;
+  dash: DashStore;
 }
 
 function seedClusters(): Cluster[] {
@@ -71,7 +76,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 }
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
-  return { users: users(), clusters: seedClusters(), audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
+  return { users: users(), clusters: seedClusters(), audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -173,7 +178,15 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     reset();
     return send(res, 204, undefined);
   }
-  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters });
+  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, exports: state.dash.exports, actions: state.dash.actions, leave: state.dash.leave });
+  if (path === "/__mock/now" && method === "POST") {
+    state.dash.now = ((await readJson(req)) as { now?: string | null } | undefined)?.now ?? null;
+    return send(res, 204, undefined);
+  }
+  if (path === "/__mock/tutorial" && method === "POST") {
+    state.dash.tutorialExtra.push((await readJson(req)) as DashStore["tutorialExtra"][number]);
+    return send(res, 204, undefined);
+  }
 
   if (path === "/v1/health") return send(res, 200, { status: "ok", api: "/v1", server_time: new Date().toISOString(), generation: "00000000-0000-4000-8000-000000000001", build: "mock" });
 
@@ -225,8 +238,19 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   if ("error" in a) return send(res, a.status, a.error);
   const user = a.user;
 
+  if (await handleDash({
+    user: { role: user.summary.role, scope: user.scope, id: user.summary.user_id, name: user.summary.full_name, password: state.dash.passwords[user.summary.user_id] ?? user.password },
+    method, path, url, store: state.dash, problem,
+    body: () => readJson(req),
+    send: (status, body, headers) => send(res, status, body, headers),
+    raw: (status, contentType, body, headers) => {
+      res.writeHead(status, { "Content-Type": contentType, "X-Aron-Api": "1", "X-Request-Id": randomUUID(), ...headers });
+      res.end(status === 204 ? undefined : body);
+    },
+  })) return;
+
   if (path === "/v1/me") {
-    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: false, mfa_enabled: user.mfa };
+    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: hasPii(user.summary.role), mfa_enabled: user.mfa };
     return send(res, 200, me);
   }
 

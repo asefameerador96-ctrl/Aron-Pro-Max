@@ -32,9 +32,9 @@ describe("route groups and role gate", () => {
 
 describe("menu is driven from data", () => {
   it("shows the admin group only to the portal roles", () => {
-    expect(menuFor("TSO").map((s) => s.group)).toEqual(["main"]);
-    expect(menuFor("ADMIN").map((s) => s.group)).toEqual(["main", "admin"]);
-    expect(menuFor("ANALYST").map((s) => s.group)).toEqual(["main"]);
+    expect(menuFor("TSO").map((s) => s.group)).toEqual(["main", "reports"]);
+    expect(menuFor("ADMIN").map((s) => s.group)).toEqual(["main", "reports", "admin"]);
+    expect(menuFor("ANALYST").map((s) => s.group)).toEqual(["main", "reports"]);
   });
   it("includes the clusters entity contributed by the registry", () => {
     const admin = menuFor("ADMIN").find((s) => s.group === "admin");
