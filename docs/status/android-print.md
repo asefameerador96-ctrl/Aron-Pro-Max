@@ -39,6 +39,14 @@
 - **AP-07:** a rejected print (`failed_user`) does not count; the next print has no marker only while no copy has counted (prevents an unmarked second original).
 - **AP-08:** the printer UI lives in core-printing with Compose (no dependency on core-ui; themed by the host app), so every app reuses one picker and icon.
 
+## In progress
+- Nothing. Every remaining row waits on another lane (above).
+
+## Next three rows (when unblocked)
+1. **F-SR-028 + F-SR-073** end to end: once android-core's Room `PrintLedger` and android-sr's Review screen exist, run `PrintFlowTest`'s scenarios against the Room ledger (instrumented), confirm printed_at/print_count/outbox rows, then mark done.
+2. **F-SR-013**: verify the icon/banner/picker inside the SR screens (Stock, Review, Memo, Summary), then D-P2 on the MP-58N.
+3. **F-SR-031/F-SR-066** (after F-SR-030 memo menu), then **F-SR-015** (after F-SR-014 stock screen): wire `MemoPrinting.printMemo` / `printStockSlip`; the policy, marker and goldens already exist.
+
 ## Traps
 - `HardcodedStringScanTest` (core-ui) scans `core-printing/src/main` too: diagnostics are short codes, test samples live under `src/test/` (shared with androidTest via `src/test/shared/kotlin`).
 - Regenerate goldens only with `-Paron.updateGoldens=true` and look at every changed file.
