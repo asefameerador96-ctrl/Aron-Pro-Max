@@ -36,7 +36,7 @@ GET /v1/admin/permissions -> exempt: company-wide reference data, identical for 
 GET /v1/admin/prices -> gap: backend-admin
 GET /v1/admin/print-templates -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 GET /v1/admin/product-nodes/{level} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
-GET /v1/admin/quarantine -> gap: backend-core
+GET /v1/admin/quarantine -> gap: backend-reports
 GET /v1/admin/route-assignments -> gap: backend-admin
 GET /v1/admin/routes -> case AdminUsersRoutesTest#routesCreatePatchEffectiveDatedVisitDaysDuplicateAndScope
 GET /v1/admin/routes/{id} -> case AdminUsersRoutesTest#routesCreatePatchEffectiveDatedVisitDaysDuplicateAndScope
@@ -102,7 +102,7 @@ POST /v1/admin/prices/batches/{batch_uuid}/decision -> gap: backend-admin
 POST /v1/admin/prices/preview -> gap: backend-admin
 POST /v1/admin/print-templates -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 POST /v1/admin/product-nodes/{level} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
-POST /v1/admin/quarantine/{quarantine_id}/resolve -> gap: backend-core
+POST /v1/admin/quarantine/{quarantine_id}/resolve -> gap: backend-reports
 POST /v1/admin/route-assignments -> gap: backend-admin
 POST /v1/admin/route-assignments/{id}/end -> gap: backend-admin
 POST /v1/admin/routes -> case AdminUsersRoutesTest#routesCreatePatchEffectiveDatedVisitDaysDuplicateAndScope
