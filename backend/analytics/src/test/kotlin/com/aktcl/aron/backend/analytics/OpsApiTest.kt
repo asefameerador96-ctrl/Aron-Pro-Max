@@ -1,0 +1,117 @@
+package com.aktcl.aron.backend.analytics
+
+import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.AuthGuardDeps
+import com.aktcl.aron.backend.platform.ReachResolver
+import com.aktcl.aron.backend.platform.RegistryDefaults
+import com.aktcl.aron.contract.Role
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
+import io.ktor.server.routing.Route
+import io.ktor.server.testing.ApplicationTestBuilder
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/** F-SYS-026 / F-API-028 on the seeded day: figures equal the hand calculation, scope holds, a quarantine action changes state and is audited. */
+class OpsApiTest : ReportFixture() {
+    override val extraSql = """
+        INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, public_key_jwk, public_key_thumbprint, app_signing_cert_sha256, app_version, last_contact_at, pending_rows_reported, config_version_applied, device_info, trust_level)
+          SELECT gen_random_uuid(), 'sr', 'com.aktcl.aron.sr', 'active', true, 'dev', '{}'::jsonb, 'thumb-' || d.n, decode(repeat('ab', 32), 'hex'), '1.0.0+1', d.contact, d.pending, d.cfg, jsonb_build_object('model', d.model), d.trust
+            FROM (VALUES (1, TIMESTAMPTZ '2026-10-04 03:00Z', 5, 5, 'Itel A', 'normal'), (2, TIMESTAMPTZ '2026-10-04 11:50Z', 0, 7, 'Tecno B', 'high'), (3, TIMESTAMPTZ '2026-10-04 11:30Z', 2, 7, 'Infinix C', 'normal')) d(n, contact, pending, cfg, model, trust);
+        INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, status)
+          SELECT dv.id, u.id, 0, 'active' FROM app.device dv JOIN app.app_user u ON u.username = 'sr00' || right(dv.public_key_thumbprint, 1);
+        INSERT INTO app.sync_rejected (client_uuid, record_type, code, retryable, payload_sha256, payload, user_id, business_date, stored_at)
+          SELECT gen_random_uuid(), 'memo', 'unknown_sku', true, decode(repeat('01', 32), 'hex'), '{}'::jsonb, u.id, DATE '2026-10-04', s.stored FROM app.app_user u,
+                 (VALUES (NULL::timestamptz), (NULL::timestamptz), (TIMESTAMPTZ '2026-10-04 10:00Z')) s(stored) WHERE u.username = 'sr001';
+        INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, user_id, route_id, business_date)
+          SELECT gen_random_uuid(), 'memo', q.code, decode(repeat('02', 32), 'hex'), '{"type":"memo"}'::jsonb, u.id, r.id, DATE '2026-10-04'
+            FROM app.app_user u, app.route r, (VALUES ('arithmetic_mismatch'), ('memo_no_duplicate')) q(code) WHERE u.username = 'sr001' AND r.code = 'R1';
+        UPDATE app.route_day SET submit_count_mismatch = true WHERE route_id = (SELECT id FROM app.route WHERE code = 'R3');
+    """.trimIndent()
+
+    override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
+        val dash = DashboardService(fresh.db, clock)
+        r.opsRoutes(OpsDeps(OpsService(fresh.db, RegistryDefaults(), clock), dash, reach, guard, clock))
+    }
+
+    private suspend fun ApplicationTestBuilder.get(uid: Long, role: Role, path: String): HttpResponse = client.get(path) { bearerAuth(TestTokens.web(uid, role)) }
+    private suspend fun ApplicationTestBuilder.post(uid: Long, role: Role, path: String, json: String): HttpResponse =
+        client.post(path) { bearerAuth(TestTokens.web(uid, role)); contentType(ContentType.Application.Json); setBody(json) }
+    private suspend fun HttpResponse.obj(): JsonObject = Json.parseToJsonElement(bodyAsText()).jsonObject
+    private fun JsonObject.s(k: String) = this[k]!!.jsonPrimitive.content
+    private fun JsonObject.i(k: String) = s(k).toInt()
+
+    @Test
+    fun syncHealthFiguresEqualTheHandComputedValues() = app {
+        val o = get(10, Role.ANALYST, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()
+        val sum = o["summary"]!!.jsonObject
+        assertEquals(3, sum.i("devices")); assertEquals(2, sum.i("devices_with_pending")); assertEquals(1, sum.i("held_rows_alerts"))   // sr001 holds 5 rows, silent since 03:00Z (> 4 h before 12:00Z)
+        assertEquals(2, sum.i("rejected")); assertEquals(2, sum.i("quarantined")); assertEquals(1, sum.i("mismatched_route_days"))        // the stored resend and the other users do not count
+        val items = o["items"]!!.jsonArray.map { it.jsonObject }
+        val sr1 = items.first { it.s("username") == "sr001" }
+        assertEquals(5, sr1.i("pending_rows_reported")); assertEquals(2, sr1.i("rejected_count")); assertEquals(2, sr1.i("quarantined_count"))
+        assertEquals("true", sr1.s("held_rows_alert")); assertEquals("Itel A", sr1.s("device_model")); assertEquals(3600.0, sr1["sync_p95_s"]!!.jsonPrimitive.content.toDouble())  // received one hour after commit
+        assertEquals("false", items.first { it.s("username") == "sr003" }.s("held_rows_alert"))
+        assertEquals("true", items.first { it.s("username") == "sr003" }.s("submit_count_mismatch"))
+        assertEquals(setOf("sr001", "sr003"), get(10, Role.ANALYST, "/v1/dashboards/sync-health?business_date=2026-10-04&only_problems=true").obj()["items"]!!.jsonArray.map { it.jsonObject.s("username") }.toSet())
+        // Paging, scope and role gating.
+        val first = get(10, Role.ANALYST, "/v1/dashboards/sync-health?business_date=2026-10-04&limit=2").obj()
+        assertEquals(2, first["items"]!!.jsonArray.size); assertTrue(first["next_cursor"]!!.jsonPrimitive.content != "null")
+        assertEquals(1, get(10, Role.ANALYST, "/v1/dashboards/sync-health?business_date=2026-10-04&limit=2&cursor=${first["next_cursor"]!!.jsonPrimitive.content}").obj()["items"]!!.jsonArray.size)
+        assertEquals(listOf("sr003"), get(14, Role.TSO, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()["items"]!!.jsonArray.map { it.jsonObject.s("username") })
+        assertEquals(HttpStatusCode.Forbidden, get(11, Role.TSO, "/v1/dashboards/sync-health?business_date=2026-10-04&level=zone&node_id=$z2").status)
+        assertEquals(HttpStatusCode.BadRequest, get(10, Role.ANALYST, "/v1/dashboards/sync-health").status)
+        assertEquals(HttpStatusCode.Forbidden, get(12, Role.AMO, "/v1/dashboards/sync-health?business_date=2026-10-04").status)
+    }
+
+    @Test
+    fun loginSubmitListsAndConfigAckShare() = app {
+        val o = get(10, Role.ANALYST, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()
+        val k = o["kpis"]!!.jsonObject
+        assertEquals(100.0, k["login_pct"]!!.jsonPrimitive.content.toDouble()); assertEquals(66.67, k["submit_pct_of_logged_in"]!!.jsonPrimitive.content.toDouble())
+        assertEquals(0, o["not_logged_in"]!!.jsonArray.size)
+        assertEquals(listOf("R2"), o["logged_in_not_submitted"]!!.jsonArray.map { it.jsonObject.s("route_code") })
+        assertEquals(setOf("R1", "R3"), o["submitted"]!!.jsonArray.map { it.jsonObject.s("route_code") }.toSet())
+        assertEquals(listOf("Route3"), get(14, Role.TSO, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["submitted"]!!.jsonArray.map { it.jsonObject.s("route_name") })
+        // Config ack: version 7 is applied by 2 of the 3 selling phones.
+        val svc = OpsService(fresh.db, RegistryDefaults(), AronClock { java.time.Instant.parse("2026-10-04T12:00:00Z") })
+        assertEquals(66.67, svc.configAckPct(7, day)); assertEquals(100.0, svc.configAckPct(5, day))
+    }
+
+    @Test
+    fun quarantineListAndActionsChangeStateAndAreAudited() = app {
+        val list = get(13, Role.ADMIN, "/v1/admin/quarantine?status=open").obj()
+        val items = list["items"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(2, items.size); assertEquals(setOf("arithmetic_mismatch", "memo_no_duplicate"), items.map { it.s("code") }.toSet())
+        assertEquals(1, get(13, Role.ADMIN, "/v1/admin/quarantine?code=memo_no_duplicate").obj()["items"]!!.jsonArray.size)
+        assertEquals(HttpStatusCode.Forbidden, get(11, Role.TSO, "/v1/admin/quarantine").status)
+        val id = items.first { it.s("code") == "arithmetic_mismatch" }.s("quarantine_id")
+        assertEquals(HttpStatusCode.Forbidden, post(10, Role.ANALYST, "/v1/admin/quarantine/$id/resolve", """{"action":"discard","reason":"duplicate row"}""").status)
+        val r = post(13, Role.ADMIN, "/v1/admin/quarantine/$id/resolve", """{"action":"discard","reason":"duplicate row"}""")
+        assertEquals(HttpStatusCode.OK, r.status)
+        val done = r.obj(); assertEquals("discarded", done.s("status")); assertEquals(13, done.i("resolved_by_user_id")); assertEquals("duplicate row", done.s("resolution_note"))
+        assertEquals(1, fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery("SELECT count(*) FROM app.audit_log WHERE entity = 'quarantine' AND entity_id = '$id' AND action = 'discard'").mapTo(Int::class.java).one() })
+        assertEquals(HttpStatusCode.Conflict, post(13, Role.ADMIN, "/v1/admin/quarantine/$id/resolve", """{"action":"discard","reason":"again"}""").status)
+        assertEquals(1, get(13, Role.ADMIN, "/v1/admin/quarantine?status=open").obj()["items"]!!.jsonArray.size)
+        val other = items.first { it.s("code") == "memo_no_duplicate" }.s("quarantine_id")
+        assertEquals(HttpStatusCode.OK, post(13, Role.ADMIN, "/v1/admin/quarantine/$other/resolve", """{"action":"return_to_device","reason":"re-send after refresh"}""").status)
+        assertTrue(get(13, Role.ADMIN, "/v1/admin/quarantine?status=discarded").obj()["items"]!!.jsonArray.any { it.jsonObject.s("resolution_note").startsWith("return_to_device") })
+        // Accepting needs the ingest hook, which is not wired yet: 503, nothing changes. Bad requests are 400, unknown ids 404.
+        assertEquals(HttpStatusCode.BadRequest, post(13, Role.ADMIN, "/v1/admin/quarantine/$other/resolve", """{"action":"accept_with_fix","reason":"fix it"}""").status)
+        assertEquals(HttpStatusCode.BadRequest, post(13, Role.ADMIN, "/v1/admin/quarantine/$other/resolve", """{"action":"wipe","reason":"fix it"}""").status)
+        assertEquals(HttpStatusCode.NotFound, post(13, Role.ADMIN, "/v1/admin/quarantine/999999/resolve", """{"action":"discard","reason":"nothing there"}""").status)
+    }
+}

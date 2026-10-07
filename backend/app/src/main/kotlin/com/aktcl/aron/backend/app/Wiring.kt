@@ -2,6 +2,8 @@ package com.aktcl.aron.backend.app
 
 import com.aktcl.aron.backend.analytics.DashboardDeps
 import com.aktcl.aron.backend.analytics.DashboardService
+import com.aktcl.aron.backend.analytics.OpsDeps
+import com.aktcl.aron.backend.analytics.OpsService
 import com.aktcl.aron.backend.analytics.ReportDeps
 import com.aktcl.aron.backend.analytics.ReportEngine
 import com.aktcl.aron.backend.analytics.ReportHandlers
@@ -12,6 +14,7 @@ import com.aktcl.aron.backend.analytics.TeamService
 import com.aktcl.aron.backend.analytics.dailyTrackingRoutes
 import com.aktcl.aron.backend.analytics.dashboardRoutes
 import com.aktcl.aron.backend.analytics.appTeamRoutes
+import com.aktcl.aron.backend.analytics.opsRoutes
 import com.aktcl.aron.backend.analytics.reportRoutes
 import com.aktcl.aron.backend.auth.AuthDeps
 import com.aktcl.aron.backend.auth.HashLimiter
@@ -115,6 +118,7 @@ class Wiring(
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
+            val ops = OpsDeps(OpsService(db, config, clock), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
             val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
             val reports = ReportDeps(db, ReportEngine(db, config, clock, ReportHandlers.all), reach, guard, clock)
@@ -137,6 +141,7 @@ class Wiring(
                 dashboardRoutes(dashboards)
                 appTeamRoutes(team)
                 dailyTrackingRoutes(tracking)
+                opsRoutes(ops)
                 reportRoutes(reports)
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
