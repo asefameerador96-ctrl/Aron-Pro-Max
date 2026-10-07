@@ -95,6 +95,8 @@ class IngestService(
         fun reachOn(d: LocalDate): Reach = reaches.getOrPut(d) { reach.reach(up.userId, up.role, up.scopeVersion, d) }
         val backdateDays: Long = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
         val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
+        /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
+        var arith: Map<String, String> = emptyMap()
     }
 
     fun ingest(up: Uploader, req: SyncBatchRequest): SyncBatchResponse {
@@ -114,6 +116,7 @@ class IngestService(
             var j = i
             while (j + 1 < recs.size && recs[j + 1].family == recs[i].family) j++
             val family = recs.subList(i, j + 1)
+            ctx.arith = MemoChecks.familyMismatches(family.map { it.json })
             try {
                 db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
             } catch (e: Exception) {
@@ -296,7 +299,12 @@ class IngestService(
             if (twin != null) return quarantine(h, ctx, r, bd, RecordOutcomeCode.CONTENT_DUPLICATE, "same content as $twin", contentFp = contentFp)
         }
 
-        // 8. Parents (s4.2 rule 3): a child whose parent is not stored yet is parked; the child of a content duplicate
+        // 8. Money (F-SYS-062, s7.4): a memo family whose equations fail is quarantined whole, before anything is stored.
+        (ctx.arith[r.clientUuid] ?: MemoChecks.recordMismatch(r.type, payload))?.let { why ->
+            return quarantine(h, ctx, r, bd, RecordOutcomeCode.ARITHMETIC_MISMATCH, why)
+        }
+
+        // 9. Parents (s4.2 rule 3): a child whose parent is not stored yet is parked; the child of a content duplicate
         // is a duplicate too.
         for (field in rule.parents) {
             val parent = payload.str(field) ?: continue
@@ -315,10 +323,15 @@ class IngestService(
             }
         }
 
-        // 9. Store.
+        // 10. Store.
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
-            is RecordWriter.Result.Stored -> { register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp); Outcome.accepted(stored.serverId) }
+            is RecordWriter.Result.Stored -> {
+                register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
+                MemoChecks.afterChildStored(h, r.type, payload)
+                outOfBounds(h, ctx, r, rule, payload, bd, routeId)
+                Outcome.accepted(stored.serverId)
+            }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
             is RecordWriter.Result.Refused -> {
                 if (stored.code.status.wire == "quarantined") quarantine(h, ctx, r, bd, stored.code, stored.detail)
@@ -340,6 +353,25 @@ class IngestService(
             else -> e
         }
         return sha256(("cfp1|" + r.type + "|" + Jcs.canonicalize(strip(r.json))).toByteArray())
+    }
+
+    /** GEO_OUT_OF_BOUNDS (s11.4): a fix outside the Bangladesh box raises a signal; the record itself is stored. */
+    private fun outOfBounds(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
+        val fix = payload["fix"] as? JsonObject ?: return
+        val lat = (fix["lat"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: return
+        val lng = (fix["lng"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: return
+        if (lat in 20.5..26.7 && lng in 88.0..92.7) return
+        h.createUpdate(
+            """
+            INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+            VALUES ('GEO_OUT_OF_BOUNDS', 3, :bd, :st, :sid, :u, :route, 40, CAST(:ev AS jsonb), :cv)
+            ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
+            """.trimIndent(),
+        ).bind("bd", bd).bind("st", if (r.type == "visit") "visit" else "user").bind("sid", if (r.type == "visit") r.clientUuid else ctx.up.userId.toString())
+            .bind("u", ctx.up.userId).bind("route", routeId)
+            .bind("ev", kotlinx.serialization.json.buildJsonObject {
+                put("record_type", JsonPrimitive(rule.type)); put("client_uuid", JsonPrimitive(r.clientUuid)); put("lat", JsonPrimitive(lat)); put("lng", JsonPrimitive(lng))
+            }.toString()).bind("cv", config.configVersion()).execute()
     }
 
     private data class Prior(val status: String, val code: String?, val hash: ByteArray, val serverId: Long?)

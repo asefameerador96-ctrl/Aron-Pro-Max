@@ -99,7 +99,12 @@ class BatchAcceptanceTest {
     private fun json(s: String): JsonObject = Json.parseToJsonElement(s).jsonObject
     private fun uuid() = UUID.randomUUID().toString()
 
-    private suspend fun HttpClient.token(): String {
+    private var cachedToken: String? = null
+
+    /** One login per class: the login limiter (10 per 15 min per username) never empties under the fixed clock. */
+    private suspend fun HttpClient.token(): String = cachedToken ?: login().also { cachedToken = it }
+
+    private suspend fun HttpClient.login(): String {
         val r = post("/v1/auth/login") {
             contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9")
             setBody("""{"username":"sr1001","password":"$password","client":"app_sr","device_uuid":"$devPhone"}""")
@@ -133,14 +138,21 @@ class BatchAcceptanceTest {
     }
 
     /** A sale family: visit (with fix and verdict), memo with two lines, visit close. */
-    private fun saleFamily(outlet: Long = outletId, memoNo: String = "sr1001-270103-${memoSeq.incrementAndGet()}"): List<JsonObject> {
+    private fun saleFamily(
+        outlet: Long = outletId,
+        memoNo: String = "sr1001-270103-${memoSeq.incrementAndGet()}",
+        headerGrossDelta: Long = 0,
+        priceDelta: Long = 0,
+        lat: Double = 23.80,
+    ): List<JsonObject> {
         val visit = uuid(); val memo = uuid()
-        val (s1, p1) = skus[0]; val (s2, p2) = skus[1]
-        val g1 = 20 * p1; val g2 = 10 * p2; val gross = g1 + g2
+        val (s1, p1x) = skus[0]; val (s2, p2x) = skus[1]
+        val p1 = p1x + priceDelta; val p2 = p2x + priceDelta
+        val g1 = 20 * p1; val g2 = 10 * p2; val gross = g1 + g2 + headerGrossDelta
         val visitPayload = Json.parseToJsonElement(
             """
             {"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"2027-01-03T03:41:00.120Z","sequence_no":1,"planned":true,
-             "fix":{"purpose":"visit_open","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+             "fix":{"purpose":"visit_open","fix_status":"ok","lat":$lat,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
                     "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
              "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}
             """.trimIndent(),
@@ -306,7 +318,7 @@ class BatchAcceptanceTest {
         // Its own wiring: the limiter is per replica, and the fixed clock never empties its window.
         val own = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), clock)
         application { aronApi(own) }
-        val token = client.token()
+        val token = client.login()
         val body = batch(saleFamily())
         val statuses = (1..45).map { client.send(token, body) }
         val limited = statuses.firstOrNull { it.status == HttpStatusCode.TooManyRequests }
@@ -394,6 +406,49 @@ class BatchAcceptanceTest {
         assertEquals(1, count("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = '$cu' AND code = 'unknown_sku' AND payload->'payload'->>'sku_id' = '987654321'"), "kept with its payload, never dropped")
         val totals = r["server_totals"]!!.jsonArray.map { it.jsonObject }.single { it["business_date"]!!.jsonPrimitive.content == day }
         assertTrue(totals["by_type"]!!.jsonObject["memo_line"]!!.jsonObject["rejected"]!!.jsonPrimitive.int >= 1, "reconciliation counts it")
+    }
+
+
+    // ---- F-SYS-062 server recompute ------------------------------------------------------------------------------
+
+    @Test
+    fun aMemoWhoseTotalDisagreesWithItsLinesIsQuarantinedWithItsLinesAndNothingIsStored() = testApplication {
+        app()
+        val token = client.token()
+        val family = saleFamily(headerGrossDelta = 1000) // header internally consistent, but gross != sum of lines
+        val r = json(client.send(token, batch(family)).bodyAsText())
+        val acks = r["acks"]!!.jsonArray.map { it.jsonObject["status"]!!.jsonPrimitive.content + ":" + it.jsonObject["code"]!!.jsonPrimitive.contentOrNull() }
+        assertEquals(listOf("accepted:null", "quarantined:arithmetic_mismatch", "quarantined:arithmetic_mismatch", "quarantined:arithmetic_mismatch", "accepted:null"), acks)
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${family[1]["client_uuid"]!!.jsonPrimitive.content}'"))
+        assertEquals(0, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${family[1]["client_uuid"]!!.jsonPrimitive.content}'"))
+        assertEquals(3, count("SELECT count(*) FROM app.sync_quarantine WHERE code = 'arithmetic_mismatch' AND (client_uuid = '${family[1]["client_uuid"]!!.jsonPrimitive.content}' OR payload->'payload'->>'memo_client_uuid' = '${family[1]["client_uuid"]!!.jsonPrimitive.content}')"))
+        // A header whose own equation fails (net != gross - discounts) is quarantined too, never a schema rejection.
+        val broken = saleFamily().let { f -> f.mapIndexed { i, rec -> if (i == 1) JsonObject(rec + ("payload" to JsonObject(rec["payload"]!!.jsonObject + ("net_mtk" to JsonPrimitive(10))))) else rec } }
+        assertEquals("quarantined", statuses(json(client.send(token, batch(broken)).bodyAsText()))[1])
+    }
+
+    @Test
+    fun aPriceMismatchIsFlaggedButThePrintedMemoIsStored() = testApplication {
+        app()
+        val token = client.token()
+        val family = saleFamily(priceDelta = 50)
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(family)).bodyAsText())))
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${family[1]["client_uuid"]!!.jsonPrimitive.content}' AND 'price_mismatch' = ANY(server_flags)"))
+        val fair = saleFamily()
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(fair)).bodyAsText())))
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${fair[1]["client_uuid"]!!.jsonPrimitive.content}' AND server_flags IS NOT NULL AND cardinality(server_flags) > 0"))
+    }
+
+    @Test
+    fun aFixOutsideBangladeshIsFlaggedAndTheVisitIsStored() = testApplication {
+        app()
+        val token = client.token()
+        val family = saleFamily(lat = 30.5)
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(family)).bodyAsText())))
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'GEO_OUT_OF_BOUNDS' AND subject_type = 'visit' AND subject_id = '${family[0]["client_uuid"]!!.jsonPrimitive.content}'"))
+        val inside = saleFamily()
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(inside)).bodyAsText())))
+        assertEquals(0, count("SELECT count(*) FROM app.risk_signal WHERE subject_id = '${inside[0]["client_uuid"]!!.jsonPrimitive.content}'"))
     }
 
     private fun JsonPrimitive.contentOrNull(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
