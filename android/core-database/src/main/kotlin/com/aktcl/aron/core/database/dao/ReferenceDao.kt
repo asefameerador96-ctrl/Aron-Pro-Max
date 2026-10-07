@@ -82,4 +82,9 @@ interface ReferenceDao {
                                WHERE e.event = 'resolved' AND o.state != 'acked')""",
     )
     suspend fun reapplyLocalResolutions()
+
+    @Query("DELETE FROM config_value WHERE key = :key AND scheduled = :scheduled") suspend fun deleteConfig(key: String, scheduled: Boolean)
+    @Query("DELETE FROM config_value WHERE key = :key") suspend fun deleteConfigKey(key: String)
+    @Query("UPDATE outlet SET radius_m = :radiusM, max_accuracy_m = :maxAccuracyM WHERE outlet_id = :outletId")
+    suspend fun updateOutletRadius(outletId: Long, radiusM: Int, maxAccuracyM: Int): Int
 }

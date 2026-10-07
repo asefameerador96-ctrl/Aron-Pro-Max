@@ -25,14 +25,26 @@ class ConnectivityFlush(
 ) {
     private var pending: Job? = null
 
+    /** The last failure of a flush, for diagnostics; never thrown. */
+    @Volatile var lastError: Throwable? = null
+        private set
+
     @Synchronized
     fun onNetworkAvailable() {
         pending?.cancel()
         pending = scope.launch {
             delay(debounceMs)
-            val users = usersWithPendingRows()
-            if (users.isEmpty() || !healthy()) return@launch
-            users.forEach { scheduler.requestSync(it, SyncTrigger.CONNECTIVITY) }
+            // A lookup that fails (an unreadable user database, a lost Keystore key) must never crash the app on a network
+            // change: WorkManager's CONNECTED jobs still cover those rows.
+            try {
+                val users = usersWithPendingRows()
+                if (users.isEmpty() || !healthy()) return@launch
+                users.forEach { scheduler.requestSync(it, SyncTrigger.CONNECTIVITY) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastError = e
+            }
         }
     }
 
