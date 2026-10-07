@@ -264,7 +264,7 @@ class DeviceEnrolmentTest : ReportFixture() {
         assertEquals(HttpStatusCode.OK, client.get("/v1/admin/devices/$id") { bearerAuth(TestTokens.web(11, Role.TSO)) }.status)
         assertEquals(HttpStatusCode.NotFound, client.get("/v1/admin/devices/$id") { bearerAuth(TestTokens.web(14, Role.TSO)) }.status)
         assertEquals(0, Json.parseToJsonElement(client.get("/v1/admin/devices") { bearerAuth(TestTokens.web(14, Role.TSO)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
-        assertEquals(1, Json.parseToJsonElement(client.get("/v1/admin/devices?status=revoked&search=A70") { bearerAuth(TestTokens.web(10, Role.ANALYST)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
+        assertEquals(1, Json.parseToJsonElement(client.get("/v1/admin/devices?status=revoked&search=A70") { bearerAuth(TestTokens.web(13, Role.ADMIN)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
         assertEquals(HttpStatusCode.Forbidden, client.get("/v1/admin/devices") { bearerAuth(TestTokens.web(12, Role.AMO)) }.status)
         assertNotEquals(0, count("SELECT count(*) FROM app.device_policy"))
     }
