@@ -173,6 +173,7 @@ h1,h2,h3,h4,p{margin:0}
 .c-neu{background:var(--surface-raised);color:var(--text-secondary);box-shadow:inset 0 0 0 1px var(--border-divider)}
 :root[data-theme="sunlight"] .chip{box-shadow:inset 0 0 0 1px currentColor}
 .chipbtn{display:grid;place-items:center;min-width:48px;min-height:48px;padding:0;border:0;background:none}
+.chips-row .chipbtn{min-width:0;margin:-10px 0}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:56px;padding:8px 24px;border:0;border-radius:999px;text-align:center;
   font-size:calc(16px*var(--fs));line-height:calc(var(--lh-body)*var(--fs));font-weight:700;
   transition:transform var(--motion-press) linear,background var(--motion-fast) var(--ease-out),box-shadow var(--motion-fast) var(--ease-out)}
@@ -248,6 +249,8 @@ h1,h2,h3,h4,p{margin:0}
 .tb-title{flex:1;min-width:0;padding:0 4px}
 .tb-title.long{font-size:calc(18px*var(--fs));line-height:calc(26px*var(--fs))}
 .tb-end{display:flex;align-items:center;flex:none}
+html[data-fs="130"] .tb .chip,html[data-fs="200"] .tb .chip{width:28px;padding:0;justify-content:center;border-radius:50%}
+html[data-fs="130"] .tb .chip .lbl,html[data-fs="200"] .tb .chip .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .bb{position:sticky;bottom:0;z-index:5;margin-top:auto;padding:12px 16px 16px;box-shadow:inset 0 1px 0 var(--hl-top),0 -1px 0 var(--bar-edge);flex:none}
 :root[data-tier="C"] .bb{box-shadow:none;border-top:var(--card-bw) solid var(--border-solid)}
 .bb-row{display:flex;gap:12px;align-items:center}
@@ -260,7 +263,7 @@ h1,h2,h3,h4,p{margin:0}
 .hdr-row{display:flex;align-items:center;gap:12px;padding:8px 4px 8px 16px;min-height:64px}
 .avatar{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--accent-container);color:var(--accent-on-container);font-weight:700;font-size:16px;font-family:var(--ff-lat)}
 .hdr-txt{flex:1;min-width:0}
-.hdr-sub{max-height:calc(26px*var(--fs));overflow:hidden;transition:max-height var(--motion-base) var(--ease-out),opacity var(--motion-fast)}
+.hdr-sub{max-height:calc(var(--lh-cap)*var(--fs)*3);overflow:hidden;transition:max-height var(--motion-base) var(--ease-out),opacity var(--motion-fast)}
 .screen[data-scrolled] .hdr-sub{max-height:0;opacity:0}
 .group-h{padding:8px 4px 0;color:var(--text-secondary)}
 .chips-row{display:flex;flex-wrap:wrap;gap:8px}
@@ -797,7 +800,7 @@ addPhone({id:'home',short:['হোম','Home'],t:['হোম','Home'],ref:'F-SR-
     <div class="hdr-txt"><h2 class="t-heading">SR - Testing Banani (sr334001)</h2><p class="t-cap sec hdr-sub">Apsis RouteDaily, 2026-10-05</p></div>
     <button class="ib" data-act="noop" aria-label="${t('সেটিংস','Settings')}">${ic('tune')}</button></div></header>
   <div class="content">
-    <div class="chips-row">${syncChip(true)}${chip('c-ok','check',t('চেক ইন 08:52','Checked in 08:52'))}${chip('c-neu','','Daily')}</div>
+    <div class="chips-row">${chipBtn(true)}${chip('c-ok','check',t('চেক ইন 08:52','Checked in 08:52'))}${chip('c-neu','','Daily')}</div>
     <button class="card hero" data-act="noop" style="--fs:inherit">
       <span class="hero-top"><span class="t-label">${t('আজকের সর্বমোট','Today’s total')}</span>${ic('chevR',20)}</span>
       <span class="t-display">${mo(4391)}</span>
@@ -944,7 +947,7 @@ addPhone({id:'review',short:['নিরীক্ষণ','Review'],t:['নির�
    <section class="card pad">${zero?`<div class="kv"><span class="t-body">${t('জিরো বিক্রয় (কোনো SKU নেই)','Zero sale (no SKU)')}</span><b class="t-bodyS">${mo(0)}</b></div>`:`<div class="g-row h"><span class="t-label">${t('এসকেইউ','SKU')}</span><span class="t-label r">${t('পরিমাণ','Quantity')}</span><span class="t-label r">${t('মূল্য','Value')}</span></div>${byc}`}</section>
    <section class="card pad"><div class="kv"><span class="t-body sec">${t('মোট','Total')}</span><span class="t-bodyS">${mo(tot)}</span></div><div class="hr"></div>
     <div class="kv"><span class="t-bodyS">${t('সর্বমোট','Grand total')}</span><span class="t-display">${mo(tot)}</span></div></section>
-   ${zero?'':`<section class="card pad"><div class="mrow" style="justify-content:space-between"><span class="t-bodyS" style="flex:1">${r.credit&&r.collected!=null?t('বাকি '+due+' টাকা','Due '+due+' taka'):t('এই বিক্রয়টি বাকি হিসাবে চিহ্নিত করুন','Mark this sale as credit')}</span>
+   ${zero?'':`<section class="card pad"><div class="mrow" style="justify-content:space-between"><span class="t-bodyS" style="flex:1">${r.credit&&r.collected!=null?t('বাকি '+(due%1?due.toFixed(2):due)+' টাকা','Due '+(due%1?due.toFixed(2):due)+' taka'):t('এই বিক্রয়টি বাকি হিসাবে চিহ্নিত করুন','Mark this sale as credit')}</span>
      <button class="sw" role="switch" aria-checked="${r.credit}" data-act="credit" aria-label="${t('বাকি','Credit')}"><i>${ic('check',14)}</i></button></div></section>`}
    <button class="card pad rst" data-act="noop" style="display:flex;align-items:center;justify-content:space-between;min-height:56px"><span class="t-bodyS">${t('প্রোডাক্ট QC','Product QC')}</span><span style="color:var(--accent)">${ic('chevR')}</span></button>
    <p class="t-cap sec" style="padding:0 4px">${t('আপনি পরে মেমো সেকশন থেকে প্রিন্ট করতে পারবেন।','You can print later from the Memo section.')}</p></div>
@@ -1201,7 +1204,7 @@ function gfUpdate(el,full){
   $('#gf-cp',el).setAttribute('r',g.m*SCL);$('#gf-cc',el).setAttribute('r',g.cur*SCL);$('#gf-marks',el).innerHTML=gfMarks();
   const lp=$('#gf-lp',el),lc=$('#gf-lc',el);
   lp.textContent=t(g.m+' মি প্রস্তাবিত',g.m+' m proposed');lc.textContent=t(g.cur+' মি এখন',g.cur+' m now');
-  const pa=-0.785,ca=-2.36;lp.style.left=(CX+Math.cos(pa)*g.m*SCL)+'px';lp.style.top=(CY+Math.sin(pa)*g.m*SCL)+'px';lc.style.left=(CX+Math.cos(ca)*g.cur*SCL)+'px';lc.style.top=(CY+Math.sin(ca)*g.cur*SCL)+'px';
+  const pa=-0.785,ca=-2.36;const cl=(v,a,b)=>Math.min(b,Math.max(a,v));lp.style.left=cl(CX+Math.cos(pa)*g.m*SCL,90,640)+'px';lp.style.top=cl(CY+Math.sin(pa)*g.m*SCL,26,684)+'px';lc.style.left=cl(CX+Math.cos(ca)*g.cur*SCL,90,640)+'px';lc.style.top=cl(CY+Math.sin(ca)*g.cur*SCL,26,684)+'px';
   const nf=$('#gf-num',el);if(document.activeElement!==nf)nf.value=n(g.m);
   $('#gf-rng',el).value=posFromM(g.m);$('#gf-rng',el).setAttribute('aria-valuetext',t(g.m+' মিটার',g.m+' metres'));
   const rc=['','c-acc','c-warn','c-dng'][rk],rl=[null,t('C1 এখনই কার্যকর','C1 applies at once'),t('C2 15 মিনিট পরে','C2 after 15 minutes'),t('C3 দ্বিতীয় অনুমোদন লাগবে','C3 needs a second approver')][rk];
