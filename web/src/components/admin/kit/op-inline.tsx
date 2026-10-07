@@ -4,12 +4,16 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
-import type { OpKey } from "@/lib/admin/ops";
+import type { OpKey, TeamOpKey } from "@/lib/admin/ops";
 import type { MessageKey } from "@/lib/i18n";
 import { REASON_MIN_LENGTH } from "./reason-field";
 
 interface Props {
-  op: OpKey;
+  op: OpKey | TeamOpKey;
+  /** BFF endpoint: the admin whitelist by default, "/api/bff/team-op" for web-role pages. */
+  endpoint?: string;
+  /** Body members that get a fresh client UUID per attempt-set (idempotency: a retry reuses it, a success renews it). */
+  uuidMembers?: string[];
   params?: Record<string, string>;
   body?: Record<string, unknown>;
   /** If-Match version of the row. */
@@ -25,12 +29,13 @@ interface Props {
   testId?: string;
 }
 
-export function OpInline({ op, params, body, version, label, noReason, successKey, resultField, danger, testId = "op-inline" }: Props) {
+export function OpInline({ op, endpoint, uuidMembers, params, body, version, label, noReason, successKey, resultField, danger, testId = "op-inline" }: Props) {
   const { t, problem } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uuids, setUuids] = useState<Record<string, string>>(() => Object.fromEntries((uuidMembers ?? []).map((m) => [m, crypto.randomUUID()])));
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   async function run() {
@@ -41,17 +46,18 @@ export function OpInline({ op, params, body, version, label, noReason, successKe
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/bff/admin-op", {
+      const res = await fetch(endpoint ?? "/api/bff/admin-op", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ op, params, body, ...(noReason ? {} : { reason: reason.trim() }), ...(version !== undefined ? { version } : {}) }),
+        body: JSON.stringify({ op, params, body: { ...body, ...uuids }, ...(noReason ? {} : { reason: reason.trim() }), ...(version !== undefined ? { version } : {}) }),
       });
       const data = (await res.json().catch(() => ({}))) as { data?: Record<string, unknown> | null } & Partial<Problem>;
       if (res.ok) {
-        const shown = resultField && data.data ? String(data.data[resultField] ?? "") : "";
+        const shown = resultField && data.data ? String(resultField.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), data.data) ?? "") : "";
         setMsg({ kind: "ok", text: `${t(successKey ?? "admin.save.ok")}${shown ? ` ${shown}` : ""}` });
         setOpen(false);
+        setUuids(Object.fromEntries((uuidMembers ?? []).map((m) => [m, crypto.randomUUID()])));
         setReason("");
         router.refresh();
       } else setMsg({ kind: "error", text: problem(data.code) });

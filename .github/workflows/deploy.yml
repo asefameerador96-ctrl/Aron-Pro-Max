@@ -24,6 +24,11 @@ on:
       environment:
         type: string
         default: dev
+      # Declared here too: a called workflow sees the CALLER's event (promote-prod is a workflow_dispatch), so an
+      # undeclared input would read as null and switch the migrations off.
+      run_migrations:
+        type: boolean
+        default: true
   workflow_dispatch:
     inputs:
       environment:
@@ -60,15 +65,28 @@ jobs:
       ARON_ALERT_EMAILS: ${{ vars.ARON_ALERT_EMAILS }}
       ARON_BUDGET_AMOUNT: ${{ vars.ARON_BUDGET_AMOUNT }}
       ARON_NAME_SUFFIX: ${{ vars.ARON_NAME_SUFFIX }}
-      # Only a manual dispatch can turn migrations off (under workflow_call the input is absent, i.e. null).
-      RUN_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_migrations && 'false' || 'true' }}
+      # Migrations run unless a person unticks run_migrations on a manual dispatch (declared, default true, for both
+      # triggers, so the value is never null).
+      RUN_MIGRATIONS: ${{ inputs.run_migrations == false && 'false' || 'true' }}
       FORCE_INFRA: ${{ inputs.force_infra && 'true' || 'false' }}
     steps:
-      - name: Deploy only from the integration branch
+      - name: Deploy only from the integration branch (prod only from a server-v* release tag)
         env:
           REF: ${{ github.ref }}
+          FINAL: ${{ vars.ARON_FINAL_ACCOUNT }}
         run: |
-          if [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then
+          # docs/30 s2: dev and dev-lite come from the integration branch; prod only from a release tag on main, through
+          # promote-prod.yml (the azure-prod environment adds the required approver).
+          if [ "${ENV_NAME}" = prod ]; then
+            # prod only in the final account and only through promote-prod (its checks: tag on main, CI green, staging
+            # soak). In a called workflow GITHUB_WORKFLOW is the caller's name.
+            [ "${FINAL}" = "true" ] || { echo "::error::no prod before the final account exists (ARON_FINAL_ACCOUNT, docs/28)"; exit 1; }
+            [ "${GITHUB_WORKFLOW}" = promote-prod ] || { echo "::error::prod deploys only through promote-prod.yml, not ${GITHUB_WORKFLOW}"; exit 1; }
+            case "${REF}" in
+              refs/tags/server-v[0-9]*) echo "prod release ${REF#refs/tags/}" ;;
+              *) echo "::error::prod deploys only from a server-vX.Y.Z release tag through promote-prod.yml; this run is on ${REF}."; exit 1 ;;
+            esac
+          elif [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then
             echo "::error::Deploys run only from ${INTEGRATION_BRANCH}; this run is on ${REF}."
             exit 1
           fi

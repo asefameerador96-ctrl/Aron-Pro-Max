@@ -25,7 +25,8 @@ export interface ConfigSetFormProps {
   label: string;
   /** Show the optional "effective from" input (future-dated keys require it). */
   futureOnly?: boolean;
-  /** `{ period: ... }` style keys that expire (operational switches) pass a fixed end offset in minutes. */
+  /** Operational switches expire: ask for a duration in hours (mandatory) and send it as effective_to. */
+  duration?: { maxHours: number };
   testId?: string;
 }
 
@@ -39,13 +40,14 @@ const STATUS_KEY: Record<string, MessageKey> = {
   reverted: "cfgc.status.reverted",
 };
 
-export function ConfigSetForm({ keyName, valueType, bounds, scopeLevels, scope, current, optionLabels, label, futureOnly, testId = "config-set-form" }: ConfigSetFormProps) {
+export function ConfigSetForm({ keyName, valueType, bounds, scopeLevels, scope, current, optionLabels, label, futureOnly, duration, testId = "config-set-form" }: ConfigSetFormProps) {
   const { t, problem } = useI18n();
   const router = useRouter();
   const [raw, setRaw] = useState(valueType === "bool" ? String(current === true) : configInputText(current));
   const [level, setLevel] = useState<ConfigScopeType>(scope?.type ?? scopeLevels[0] ?? "global");
   const [scopeId, setScopeId] = useState(scope ? String(scope.id) : level === "global" ? "0" : "");
   const [from, setFrom] = useState("");
+  const [hours, setHours] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -55,16 +57,19 @@ export function ConfigSetForm({ keyName, valueType, bounds, scopeLevels, scope, 
     e.preventDefault();
     setBanner(null);
     const local: Record<string, string> = {};
-    const parsed = parseConfigInput(valueType, raw, bounds);
+    const parsed = parseConfigInput(valueType, raw, bounds, keyName);
     if (!parsed.ok) local.value = t(`cfgc.error.${parsed.code}` as MessageKey);
     const sType = scope?.type ?? level;
     const sId = scope ? scope.id : sType === "global" ? 0 : Number(scopeId);
     if (!Number.isInteger(sId) || sId < 0 || (sType !== "global" && sId < 1)) local.scope_id = t("error.field.invalid");
     if (futureOnly && from === "") local.from = t("error.field.required");
+    const h = Number(hours);
+    if (duration && (!/^\d+$/.test(hours) || h < 1 || h > duration.maxHours)) local.hours = hours === "" ? t("error.field.required") : t("cfgc.error.invalid");
     if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) local.reason = t("admin.reason.too_short");
     setErrors(local);
     if (Object.keys(local).length || !parsed.ok) return;
     const item: Record<string, unknown> = { key: keyName, scope_type: sType, scope_id: sId, value: parsed.value };
+    if (duration && local.hours === undefined) item.effective_to = new Date(Date.now() + h * 3_600_000).toISOString();
     if (from) item.effective_from = new Date(`${from}T00:00:00+06:00`).toISOString();
     setBusy(true);
     try {
@@ -134,6 +139,11 @@ export function ConfigSetForm({ keyName, valueType, bounds, scopeLevels, scope, 
       {futureOnly ? (
         <Field label={t("cfgc.effective_from")} htmlFor={`f-${keyName}`} required error={errors.from} hint={t("cfgc.effective_from.hint")}>
           <input id={`f-${keyName}`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} />
+        </Field>
+      ) : null}
+      {duration ? (
+        <Field label={t("cfgc.duration")} htmlFor={`d-${keyName}`} required error={errors.hours} hint={t("cfgc.duration.hint", { max: duration.maxHours })}>
+          <input id={`d-${keyName}`} value={hours} onChange={(e) => setHours(e.target.value)} inputMode="numeric" className={inputClass} />
         </Field>
       ) : null}
       <ReasonField value={reason} onChange={setReason} error={errors.reason} id={`r-${keyName}`} />

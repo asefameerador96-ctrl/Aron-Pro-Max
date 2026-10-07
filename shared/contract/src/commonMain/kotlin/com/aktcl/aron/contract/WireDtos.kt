@@ -6,6 +6,8 @@ package com.aktcl.aron.contract
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonTransformingSerializer
 import kotlinx.serialization.json.JsonObject
 
 // ---- Auth (docs/24 s5) ----
@@ -32,7 +34,7 @@ data class LoginResponse(
     @SerialName("mfa_token") val mfaToken: String? = null,
     @SerialName("user") val user: UserSummary,
     @SerialName("scope") val scope: ScopeSummary? = null,
-    @SerialName("device") val device: LoginDevice? = null,
+    @Serializable(with = LoginDeviceWire::class) @SerialName("device") val device: LoginDevice? = null,
     @SerialName("config_version") val configVersion: Long,
     @SerialName("server_time") val serverTime: String,
     @SerialName("min_app_version_code") val minAppVersionCode: Int? = null,
@@ -70,6 +72,13 @@ data class LoginDevice(
     @SerialName("bind_ordinal") val bindOrdinal: Int?,
     @SerialName("memo_seq_block_size") val memoSeqBlockSize: Int,
 )
+
+/** Encode LoginDevice with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object LoginDeviceWire : JsonTransformingSerializer<LoginDevice>(LoginDevice.serializer()) {
+    private val alwaysEmitted = listOf("bind_ordinal")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
 
 @Serializable
 data class RefreshRequest(
@@ -300,6 +309,13 @@ data class GeoFix(
     @SerialName("device") val device: FixDeviceState,
 )
 
+/** Encode GeoFix with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object GeoFixWire : JsonTransformingSerializer<GeoFix>(GeoFix.serializer()) {
+    private val alwaysEmitted = listOf("lat", "lng", "accuracy_m")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
 /** Device integrity facts read at the moment of the fix. */
 @Serializable
 data class FixDeviceState(
@@ -346,7 +362,7 @@ data class DeviceGeoVerdict(
 @Serializable
 data class AttendanceEventPayload(
     @SerialName("kind") val kind: String,
-    @SerialName("fix") val fix: GeoFix,
+    @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("address_display") val addressDisplay: String? = null,
 )
 
@@ -372,7 +388,7 @@ data class VisitPayload(
     @SerialName("sequence_no") val sequenceNo: Int,
     @SerialName("planned") val planned: Boolean,
     @SerialName("assessed_user_id") val assessedUserId: Long? = null,
-    @SerialName("fix") val fix: GeoFix,
+    @Serializable(with = GeoFixWire::class) @SerialName("fix") val fix: GeoFix,
     @SerialName("geo") val geo: DeviceGeoVerdict,
 )
 
@@ -411,7 +427,7 @@ data class MemoPayload(
     @SerialName("qc_line_count") val qcLineCount: Int,
     @SerialName("supersedes_client_uuid") val supersedesClientUuid: String? = null,
     @SerialName("edit_reason_code") val editReasonCode: String? = null,
-    @SerialName("edit_fix") val editFix: GeoFix? = null,
+    @Serializable(with = GeoFixWire::class) @SerialName("edit_fix") val editFix: GeoFix? = null,
     @SerialName("offer_version_ids") val offerVersionIds: List<Long>? = null,
     @SerialName("rounding_mode") val roundingMode: String,
 )

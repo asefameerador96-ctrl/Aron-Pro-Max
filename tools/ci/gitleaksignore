@@ -1,0 +1,24 @@
+# gitleaks findings reviewed by the infra lane on 2026-10-07 and judged NOT secrets. One exact fingerprint per
+# finding (commit:file:rule:line), so the same rule in any other place or commit still fails CI.
+# Adding a line needs a reason and a review; a real secret is never allow-listed: it is rotated and removed.
+
+# PEM header text around a key generated at test run time (no key material in git)
+b405be1e5f7e6b8c7ef95e2d6ab27c60d0e454f8:backend/auth/src/test/kotlin/com/aktcl/aron/backend/auth/AuthFixture.kt:private-key:31
+# unsigned alg-none JWT the test must reject (no signature, no secret)
+4ee35fbe7075684f6575615cb63f9fdd9093931c:backend/platform/src/test/kotlin/com/aktcl/aron/backend/platform/N009ReviewTest.kt:jwt:269
+# hand-written OpenAPI example value (placeholder token, never issued by any server)
+f4f0df38be282bf8c5f8eb66ca0ae3831941fe7b:contract/openapi.yaml:generic-api-key:190
+# hand-written OpenAPI example value (placeholder token, never issued by any server)
+f4f0df38be282bf8c5f8eb66ca0ae3831941fe7b:contract/openapi.yaml:generic-api-key:192
+# hand-written OpenAPI example value (placeholder token, never issued by any server)
+f4f0df38be282bf8c5f8eb66ca0ae3831941fe7b:contract/openapi.yaml:generic-api-key:194
+# hand-written OpenAPI example value (placeholder token, never issued by any server)
+f4f0df38be282bf8c5f8eb66ca0ae3831941fe7b:contract/openapi.yaml:generic-api-key:9745
+# hand-written OpenAPI example value (placeholder token, never issued by any server)
+f4f0df38be282bf8c5f8eb66ca0ae3831941fe7b:contract/openapi.yaml:generic-api-key:9753
+# hand-written OpenAPI example value (placeholder token, never issued by any server)
+f4f0df38be282bf8c5f8eb66ca0ae3831941fe7b:contract/openapi.yaml:generic-api-key:9759
+# Azure built-in role definition id (public GUID, not a secret)
+b1b02649f535fc4098286d5cdf9eb1b5956843d9:infra/lib/naming.bicep:generic-api-key:56
+# Azure built-in role definition id (public GUID, not a secret)
+b1b02649f535fc4098286d5cdf9eb1b5956843d9:infra/lib/naming.bicep:generic-api-key:57

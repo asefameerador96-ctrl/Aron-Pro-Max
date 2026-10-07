@@ -345,6 +345,9 @@ class ReliabilityProperties(unittest.TestCase):
 
 
 class SizingParameters(unittest.TestCase):
+    def wf(self, name):
+        return (WORKFLOWS / name).read_text(encoding="utf-8")
+
     def test_final_profile_is_zone_redundant_with_geo_backup(self):
         p = params("prod.parameters.json")
         self.assertEqual(p["postgresHaMode"], "ZoneRedundant")
@@ -418,6 +421,36 @@ class SizingParameters(unittest.TestCase):
         self.assertNotRegex(m, r"network!?\.outputs\.(vnetId|postgresSubnetId|acaSubnetId)")
         self.assertIn("var pgSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', n.vnet, 'snet-pg')", m)
         self.assertIn("var acaSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', n.vnet, 'snet-aca')", m)
+
+    def test_stage_profile_is_parameters_only_and_prod_shaped(self):
+        # docs/30 s1: staging lives in the final account; here it is a parameter file nobody can deploy yet.
+        st, pr = params("stage.parameters.json"), params("prod.parameters.json")
+        self.assertEqual(st["environmentName"], "stage")
+        for k in ("postgresSkuName", "postgresSkuTier", "postgresStorageType", "postgresHaMode", "privateNetworking",
+                  "deployFrontDoor", "frontDoorSku", "containerEnvZoneRedundant", "postgresReadReplica"):
+            self.assertEqual(st[k], pr[k], f"stage must be prod-shaped in {k}")
+        self.assertNotEqual(st["vnetAddressPrefix"], pr["vnetAddressPrefix"])
+        self.assertEqual(params("stage.apps.parameters.json")["environmentName"], "stage")
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('case "$PROFILE" in dev|dev-lite|prod) ;;', d, "deploy.sh must not offer stage yet")
+        self.assertNotIn("stage", self.wf("deploy.yml").split("options:")[1].split("\n")[0])
+
+    def test_promotion_workflows_are_inert_until_the_final_account(self):
+        pp, ra = self.wf("promote-prod.yml"), self.wf("release-app.yml")
+        for name, w in (("promote-prod", pp), ("release-app", ra)):
+            self.assertIn("vars.ARON_FINAL_ACCOUNT", w, name)
+            self.assertIn(f"title={name} is inert", w, name)
+        self.assertIn("needs.guard.outputs.go == 'true'", pp)
+        self.assertIn("uses: ./.github/workflows/deploy.yml", pp)
+        self.assertIn("git merge-base --is-ancestor", pp, "promote only what is on main")
+        self.assertIn('select(.name == "Deploy to stage" and .conclusion == "success")', pp, "soak = a real staging deploy")
+        self.assertIn("environment: prod", pp)
+        self.assertIn("needs.guard.outputs.go == 'true'", ra)
+        for sname in ("ANDROID_SIGNING_KEYSTORE_BASE64", "ANDROID_SIGNING_KEYSTORE_PASSWORD",
+                      "ANDROID_SIGNING_KEY_ALIAS", "ANDROID_SIGNING_KEY_PASSWORD"):
+            self.assertIn(f"secrets.{sname}", ra)
+        self.assertIn("--ks-pass env:KSP", ra, "passwords go to apksigner by environment, never on the command line")
+        self.assertIn("SHA256SUMS", ra)
 
     def test_test_profile_matches_docs_28(self):
         p = params("dev-lite.parameters.json")
@@ -513,13 +546,20 @@ class Workflows(unittest.TestCase):
         self.assertIn("|| 'azure-dev' }}", d)
         self.assertIn(f"INTEGRATION_BRANCH: {INTEGRATION_BRANCH}", d)
         # The exact guard (an inverted comparison would let every other branch deploy).
-        self.assertIn('if [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then\n'
+        self.assertIn('elif [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then\n'
                       '            echo "::error::Deploys run only from', d)
+        # prod: only a server-v* tag (promote-prod.yml); any other ref fails.
+        self.assertIn('if [ "${ENV_NAME}" = prod ]; then\n', d)
+        self.assertIn('            case "${REF}" in\n              refs/tags/server-v[0-9]*) echo', d)
         self.assertIn("title=Azure is not set up for this repository", d, "clear failure when secrets are absent")
         self.assertNotRegex(d, r"(?m)^\s*(push|pull_request|pull_request_target):", "deploy is called or dispatched only")
         # A GitHub concurrency group would cancel pending CI runs; deploy.sh serialises instead.
         self.assertNotIn("concurrency:", d)
-        self.assertIn("RUN_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_migrations && 'false' || 'true' }}", d)
+        self.assertIn("RUN_MIGRATIONS: ${{ inputs.run_migrations == false && 'false' || 'true' }}", d)
+        call = d[d.index("workflow_call:"):d.index("workflow_dispatch:")]
+        self.assertIn("run_migrations:", call, "a called deploy (promote-prod) must see run_migrations = true, not null")
+        self.assertIn('[ "${GITHUB_WORKFLOW}" = promote-prod ]', d, "prod only through promote-prod")
+        self.assertIn('[ "${FINAL}" = "true" ]', d, "prod only in the final account")
         conditions = re.findall(r"(?m)^\s*if:\s*(.*)$", d)
         self.assertEqual(conditions, ["failure() && steps.login.outcome == 'failure'"],
                          "only the sign-in explanation may be conditional; no deploy step may be switched off")
@@ -552,14 +592,64 @@ class Workflows(unittest.TestCase):
         m = re.search(r"if: >-\n((?:\s{6}.*\n)+)", block)
         self.assertTrue(m, "deploy job has no if:")
         self.assertEqual(" ".join(m.group(1).split()), expected_if)
-        self.assertIn("needs: [changes, contract, jvm, web, android, images, infra]", block)
+        self.assertIn("needs: [changes, gates, contract, jvm, web, android, android-release, images, infra]", block)
         self.assertIn("secrets: inherit", block)
 
     def test_push_runs_are_never_cancelled(self):
+        # 14 lanes push to the integration branch: every workflow a push triggers groups by ref AND commit, and only
+        # pull requests cancel their predecessor. The deploy itself is serialised in Azure (deploy.sh lock), not here.
+        for wf in WORKFLOWS.glob("*.yml"):
+            c = self.text(wf.name)
+            if not re.search(r"(?m)^  push:", c):
+                continue
+            self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c, wf.name)
+            self.assertIn("github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha)", c, wf.name)
+            self.assertEqual(c.count("cancel-in-progress"), 1, wf.name)
+        self.assertNotRegex(self.text("deploy.yml"), r"(?m)^\s*concurrency:", "deploy serialises with the Azure-side lock in deploy.sh")
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn("waiting until no other deployment runs in", d)
+        self.assertIn("merge-base --is-ancestor", d)
+
+    def test_repository_gates_run_on_every_push(self):
         c = self.text("ci.yml")
-        self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c)
-        self.assertIn("github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha)", c)
-        self.assertEqual(c.count("cancel-in-progress"), 1)
+        block = c[c.index("\n  gates:"):c.index("\n  contract:")]
+        self.assertNotIn("\n    if:", block, "the gates job runs on every push and pull request")
+        for needle in ("tools/ci/install-tool.sh", "tools/ci/test_gates.py", "gitleaks git --no-banner --redact --exit-code 1",
+                       "--gitleaks-ignore-path tools/ci/gitleaksignore", "--config tools/ci/gitleaks.toml", "tools/ci/migrations-check.sh",
+                       '"${CHECK_BASE}" squawk', 'git merge-base "${BEFORE}" "${GITHUB_SHA}"',
+                       "tools/ci/contract-breaking.sh", "fetch-depth: 0"):
+            self.assertIn(needle, block)
+        tools = (ROOT / "tools" / "ci" / "install-tool.sh").read_text(encoding="utf-8")
+        self.assertEqual(len(re.findall(r'sha="[0-9a-f]{64}"', tools)), 4, "every gate binary is checksum-pinned")
+        self.assertIn("sha256sum -c", tools)
+
+    def test_release_apk_and_size_gate(self):
+        c = self.text("ci.yml")
+        block = c[c.index("\n  android-release:"):c.index("\n  web:")]
+        self.assertIn(":android:app-sr:assembleRelease", block)
+        self.assertIn("python3 tools/ci/apk-size-gate.py", block)
+        gate = (ROOT / "tools" / "ci" / "apk-size-gate.py").read_text(encoding="utf-8")
+        self.assertIn("ABS_DOWNLOAD_MB, ABS_INSTALLED_MB = 30, 70", gate)
+        self.assertIn("WARN_PCT, FAIL_PCT = 5, 15", gate)
+        base = json.loads((ROOT / "tools" / "ci" / "apk-size-baseline.json").read_text(encoding="utf-8"))
+        self.assertIn("arm64-v8a", base["sr-release"])
+
+    def test_images_get_an_sbom(self):
+        c = self.text("ci.yml")
+        block = c[c.index("\n  images:"):c.index("\n  infra:")]
+        self.assertIn('syft="$(tools/ci/install-tool.sh syft', block, "syft comes checksum-pinned, not from an install script")
+        self.assertIn("for img in aron-backend aron-web; do", block)
+        self.assertIn('-o "spdx-json=sbom-${img}.spdx.json"', block)
+        self.assertNotIn("sbom-action", block)
+
+    def test_codeql_covers_kotlin_and_typescript(self):
+        q = self.text("codeql.yml")
+        self.assertIn("language: java-kotlin", q)
+        self.assertIn("language: javascript-typescript", q)
+        self.assertIn("security-events: write", q)
+        self.assertIn("--no-build-cache", q, "CodeQL must see a real Kotlin compile")
+        for app in ("app-sr", "app-amo", "app-tso"):
+            self.assertIn(f":android:{app}:compileDebugKotlin", q)
 
     def test_apks_are_uploaded_on_every_successful_android_run(self):
         c = self.text("ci.yml")
