@@ -90,6 +90,17 @@ interface CaptureDao {
     @Query("SELECT * FROM visit WHERE client_uuid = :clientUuid")
     suspend fun visit(clientUuid: String): VisitEntity?
 
+    /**
+     * True when a record that can own a photo (visit, outlet_change_request, memo) exists: the media worker's probe reads
+     * an acked-then-purged owner as acked, never as "never saved" (android-sys F-SYS-010).
+     */
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM visit WHERE client_uuid = :clientUuid) OR " +
+            "EXISTS(SELECT 1 FROM outlet_change_request WHERE client_uuid = :clientUuid) OR " +
+            "EXISTS(SELECT 1 FROM memo WHERE client_uuid = :clientUuid)",
+    )
+    suspend fun photoOwnerExists(clientUuid: String): Boolean
+
     @Query("SELECT * FROM visit WHERE business_date = :businessDate ORDER BY sequence_no")
     suspend fun visitsOn(businessDate: String): List<VisitEntity>
 
