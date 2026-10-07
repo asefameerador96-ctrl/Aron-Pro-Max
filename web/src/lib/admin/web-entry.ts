@@ -6,8 +6,10 @@ export interface EntryRow {
   issue: string;
   ret: string;
   memos: string;
+  /** Sale split by web-entry class (cfg.web.entry_classes), sub-channel id to typed quantity. */
+  cls?: Record<string, string>;
 }
-export type EntryError = { row: number | null; field: "issue" | "ret" | "memos" | "calls"; code: "invalid" | "return_exceeds_issue" | "too_big" };
+export type EntryError = { row: number | null; field: "issue" | "ret" | "memos" | "calls" | "classes"; code: "invalid" | "return_exceeds_issue" | "too_big" | "class_sum" };
 
 const INT = /^\d{1,8}$/;
 export const MAX_QTY = 10_000_000;
@@ -20,7 +22,7 @@ export const saleOf = (r: EntryRow): number | null => {
 };
 
 /** Validate rows and the successful-calls figure; returns the lines to send (rows with any quantity) or the errors. */
-export function buildEntry(rows: readonly EntryRow[], calls: string, targetOutlets: number): { lines: WebEntryLine[]; errors: EntryError[] } {
+export function buildEntry(rows: readonly EntryRow[], calls: string, targetOutlets: number, classes: readonly number[] = []): { lines: WebEntryLine[]; errors: EntryError[] } {
   const errors: EntryError[] = [];
   const lines: WebEntryLine[] = [];
   rows.forEach((r, i) => {
@@ -37,7 +39,22 @@ export function buildEntry(rows: readonly EntryRow[], calls: string, targetOutle
     check("ret", ret, MAX_QTY);
     check("memos", memos, MAX_MEMOS);
     if (!bad && Number(ret) > Number(issue)) errors.push({ row: i, field: "ret", code: "return_exceeds_issue" });
-    if (!bad && (Number(issue) > 0 || Number(ret) > 0 || Number(memos) > 0)) lines.push({ sku_id: r.sku_id, issue_qty_base: Number(issue), return_qty_base: Number(ret), memo_count: Number(memos) });
+    if (!bad && (Number(issue) > 0 || Number(ret) > 0 || Number(memos) > 0)) {
+      const line: WebEntryLine = { sku_id: r.sku_id, issue_qty_base: Number(issue), return_qty_base: Number(ret), memo_count: Number(memos) };
+      const sale = Number(issue) - Number(ret);
+      if (classes.length === 1) {
+        line.class_qty_base = { [String(classes[0])]: sale }; // one class: the whole sale belongs to it
+      } else if (classes.length > 1) {
+        const typed = classes.map((c) => [String(c), (r.cls?.[String(c)] ?? "") === "" ? "0" : r.cls![String(c)]!] as const);
+        if (typed.some(([, v]) => !INT.test(v))) errors.push({ row: i, field: "classes", code: "invalid" });
+        else {
+          const sum = typed.reduce((a, [, v]) => a + Number(v), 0);
+          if (sum > 0 && sum !== sale) errors.push({ row: i, field: "classes", code: "class_sum" });
+          if (sum > 0) line.class_qty_base = Object.fromEntries(typed.map(([k, v]) => [k, Number(v)]));
+        }
+      }
+      lines.push(line);
+    }
   });
   const c = calls === "" ? "0" : calls;
   if (!/^\d{1,6}$/.test(c)) errors.push({ row: null, field: "calls", code: "invalid" });

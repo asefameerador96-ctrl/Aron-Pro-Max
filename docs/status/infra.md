@@ -58,6 +58,69 @@ Estimate from list prices (Southeast Asia retail API, 2026-10-07), with the apps
 This is about USD 2.5 a day above the 15.5 reported before the apps went live. For 2026-10-10: about 4 days since
 2026-10-06 13:09 UTC, so roughly USD 65 to 85 spent on this group. These are estimates, not readings.
 
+### Day 3 later: lead's throughput, deploy-safety and audit items
+
+- **Dev health (lead question, 04:40 UTC):** `GET /v1/health` and `/v1/health/ready` through Front Door: 200,
+  `X-Aron-Api: 1`, build e2bbf8e. The failed deploy of e2bcabc was the migrate connect timeout (fixed, see above).
+- **AUD-DG-03 done in CI:** dev origin and increasing versionCode in every APK; three release APKs signed with the
+  release key on integration pushes (`aron-release-signed-dev-<run>`). Per-ABI splits requested from android-core
+  (`docs/requests/android-core-abi-splits.md`).
+- **CI throughput:**
+  - Docs-only pushes start no run.
+  - One ci run per ref, and a newer push cancels the older one. Comparisons use the last green head, and gitleaks
+    scans the whole history.
+  - The deploy is its own workflow (`workflow_run`), never cancelled, and only the newest pending deploy waits.
+  - CodeQL runs only on pull requests to main and weekly.
+- **Runner minutes per full run (measured job times):**
+
+  | Job | Minutes |
+  |---|---|
+  | gates | 0.3 |
+  | contract | 0.2 |
+  | JVM | 2.5 |
+  | Android debug | 4.5 |
+  | release APKs (3 apps) | about 3 |
+  | web | 1.6 |
+  | images | 2.6 |
+  | infra | 1.2 |
+  | **ci total** | **about 16** |
+  | deploy, when something deployable changed | 6 to 10 |
+  | CodeQL (PR or weekly only) | about 5 |
+
+  Wall time is about 5 minutes of checks plus the deploy. The repository is public, so these minutes cost nothing
+  today. Before it goes private, the owner sets an Actions spending limit.
+- **Governance check (lead question):** the six required checks in `tools/github-governance.ps1` match the ci.yml
+  job names exactly. Two required checks should be added there: `Repository gates (secrets, migrations, contract)`
+  and `Release APKs and APK size gate`. On pull requests the workflow-level path filter does not apply. A job skipped
+  by the changes filter reports success, so no required check stays pending.
+- **Queue time, before and after (lead item 5):**
+  - Before, per the lead's evidence: run 145's jobs waited about 13 minutes in the queue to run 3 minutes, and
+    runs 172 to 181 were all queued. Every push had its own group, so nothing was ever superseded.
+  - After the change (05:00 UTC): new-configuration runs 190 to 195 started their first job with no queue wait
+    (0.0 min). There is one group per ref; a running run finishes and the older pending one is replaced.
+  - 21 queued runs from before the change were superseded commits already contained in the head; I cancelled them
+    once (queued only, never started). One more had already completed.
+  - CodeQL now runs nightly plus on pull requests to main. Dependabot opens grouped weekly PRs, at most 3 per
+    ecosystem. Dependabot PR #1 (eslint 10) was already closed.
+- **Run 145 (0a947b7) "Shared, db and backend" failure:** not flaky. `AggregationTest >
+  aCrashedWorkersClaimIsTakenOverAfterTheLease` inserted a `memo.created` event with a NULL version, which the db
+  lane's `app.domain_event_type` registry rejects. That is a backend and db mismatch, fixed by a later commit.
+  No infra action.
+- **Next three rows (handoff):**
+  1. AUD-DG-07, REL-06, DG-06 deploy safety: Container Apps revision traffic split with a health gate, and deploy
+     the tested image by digest. The whole-deploy lock is done.
+  2. Scanning gates that also work for a private repo: OSV-scanner for dependencies, Semgrep OSS with Kotlin and
+     TypeScript rules, and `npm audit --omit=dev` as a warning.
+  3. `docs/requests/db-runtime-roles.md`: per-app database logins (`app_api`, `app_worker`, `app_jobs`) as members
+     of the V0014 roles, through a small job inside the VNet with passwords in Key Vault. The PostgreSQL server
+     settings stay untouched (HOLD). Then AUD-DG-04, -08, REL-04, -05, SEC-05, TP-6 by day; Gradle dependency
+     verification on Day 5 or 6.
+- **Traps found:**
+  - A called or `workflow_run` workflow sees null inputs, and `null == false` is true in Actions expressions. Always
+    test `github.event_name` first.
+  - `tools/slice-contract.py` has no `--help`: any argument other than `--check` regenerates every slice.
+  - The deploy identity can write resource-group tags (needed for the lock). If it cannot, the deploy now stops at once.
+
 ## Owner decision 2026-10-06: HOLD (docs/28 "Exception approved")
 
 The full-size resources the first deploy created in `rg-aron-dev` are **kept** for up to one week to rehearse the final

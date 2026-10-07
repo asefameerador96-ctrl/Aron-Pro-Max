@@ -11,9 +11,10 @@ The build works again (owner-approved Maven mirror in settings.gradle.kts). All 
 | F-SYS-031 integrity signals | parts done, wiring pending | batch hook in core-sync; `root_hints` member: `android-geo-dpc-root-hints.md` |
 | N-029 policy core | built, checked; DEVICE-PENDING | prod-policy checks on an enrolled A06 |
 | N-032 app blocking | built, checked (DPC side); DEVICE-PENDING | check-in/out call from F-SR-011; airplane-mode and reboot check on a phone |
+| N-030 enrolment by QR | client built, checked; server and wiring pending | needs N-031 (server) and `android-geo-dpc-enrol-replay.md`; Android 12+ activities wait for `android-geo-dpc-provisioning-activities.md`; app start wiring in the wiring request; device check D-04 |
 
 ## Not started (dependencies in other lanes)
-- N-030 enrolment by QR (needs N-031, backend), N-035 breadcrumbs (needs F-SYS-011), N-034 managed update (needs F-API-029).
+- N-035 breadcrumbs (needs F-SYS-011), N-034 managed update (needs F-API-029).
 
 ## What software cannot stop (honest limits)
 - RF-level GNSS simulators and modified hardware give clean fixes with no mock flag; the server's statistical rules (teleport, zero jitter, same point, GNSS C/N0 spread) flag them over a day, not per fix.

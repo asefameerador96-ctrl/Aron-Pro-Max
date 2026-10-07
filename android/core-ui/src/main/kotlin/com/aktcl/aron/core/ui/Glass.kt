@@ -6,6 +6,8 @@ import android.os.Build
 import android.os.PowerManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -20,7 +22,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 
 /** Glass tiers (docs/32 s2). B is the default on field phones: translucent look, no runtime blur layers. */
 enum class GlassTier { A, B, C }
@@ -75,18 +76,22 @@ fun GlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(AronTokens.Radius.Card),
     tier: GlassTier = LocalGlassTier.current,
-    elevation: Dp = 2.dp,
+    elevation: Dp = AronTokens.Elevation.Card,
+    onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val c = LocalAronColors.current
     val base = when (tier) {
         GlassTier.C -> Modifier.background(c.surfaceSolid, shape)
-        GlassTier.A -> Modifier.background(c.surfaceGlass.copy(alpha = (c.surfaceGlass.alpha + 0.08f).coerceAtMost(1f)), shape)
+        GlassTier.A -> Modifier.background(c.surfaceGlass.copy(alpha = (c.surfaceGlass.alpha + AronTokens.Alpha.TierABoost).coerceAtMost(1f)), shape)
         GlassTier.B -> Modifier
             .background(c.surfaceGlass, shape)
-            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (c.dark) 0.06f else 0.22f), Color.Transparent)), shape)
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (c.dark) AronTokens.Alpha.SheenDark else AronTokens.Alpha.SheenLight), Color.Transparent)), shape)
     }
-    val shadow = if (tier == GlassTier.C || elevation == 0.dp) Modifier else Modifier.shadow(elevation, shape, clip = false, ambientColor = Color.Black.copy(alpha = 0.10f), spotColor = Color.Black.copy(alpha = 0.10f))
-    val borderColor = if (tier == GlassTier.C) c.textSecondary.copy(alpha = 0.35f) else c.borderHairline
-    Box(modifier.then(shadow).then(base).border(BorderStroke(AronTokens.Hairline, borderColor), shape).clip(shape)) { content() }
+    val shadow = if (tier == GlassTier.C || elevation == AronTokens.Elevation.Page) Modifier else Modifier.shadow(elevation, shape, clip = false, ambientColor = Color.Black.copy(alpha = AronTokens.Alpha.Shadow), spotColor = Color.Black.copy(alpha = AronTokens.Alpha.Shadow))
+    val borderColor = if (tier == GlassTier.C) c.textSecondary.copy(alpha = AronTokens.Alpha.SolidBorder) else c.borderHairline
+    // clip BEFORE clickable so the ripple follows the rounded corners
+    val click = if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier
+    Box(modifier.then(shadow).then(base).border(BorderStroke(AronTokens.Hairline, borderColor), shape).clip(shape).then(click)) { content() }
 }

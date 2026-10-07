@@ -18,6 +18,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import kotlinx.datetime.LocalDate
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.time.Instant
@@ -133,5 +134,86 @@ class CheckerF049Test {
         boot++; elapsed = 90_000L; wall += 20 * 60_000L // reboot 20 min later, offline
         val outcome = session.login("sr334001", "secret-1")
         assertFalse("refused: $outcome", outcome is LoginOutcome.OfflineUnavailable)
+    }
+
+    // ---- Round 2: refuting the fixes ----
+
+    /**
+     * R1: with BOOT_COUNT unavailable an anchor applies only while wall − elapsed matches within 2 min. Setting the phone
+     * clock two hours wrong AFTER anchoring (same boot, same process) shifts that fingerprint, the anchor is rejected and
+     * nowMs falls back to the wrong wall clock: the F-SYS-049 acceptance case fails on those phones.
+     */
+    @Test fun withoutBootCountChangingThePhoneClockAfterAnchoringIsStillCorrected() {
+        boot = 0
+        val c = clock()
+        wall = ms("2026-10-05T10:58:00.000Z")
+        c.onApiResponse(meta("2026-10-05T10:58:00.000Z")) // 16:58 Dhaka
+        wall -= 2 * 3_600_000L // rep sets the clock back two hours
+        elapsed += 3 * 60_000; wall += 3 * 60_000
+        assertEquals(ms("2026-10-05T11:01:00.000Z"), c.nowMs())
+        assertTrue(c.isAtOrAfterDhaka(LocalTime.of(17, 0)))
+    }
+
+    /**
+     * R2: max over the boot's anchors makes one bad future X-Server-Time (a replica with a wrong clock) stick for the
+     * whole boot; later correct anchors can no longer pull it back (before the fix the next reply corrected it).
+     */
+    @Test fun oneFutureServerTimeIsCorrectedByTheNextGoodReply() {
+        val c = clock()
+        wall = ms("2026-10-05T10:00:00.000Z")
+        c.onApiResponse(meta("2026-10-06T10:00:00.000Z")) // one day ahead
+        elapsed += 10_000; wall += 10_000
+        c.onApiResponse(meta("2026-10-05T10:00:10.000Z"))
+        elapsed += 10_000; wall += 10_000
+        assertEquals(LocalDate(2026, 10, 5), c.businessDate())
+    }
+
+    /**
+     * R3: trimming by seq to 6 can drop the anchor that gives the max; six later slow replies then move trusted time
+     * backwards (here by 30 s, re-closing the 17:00 gate).
+     */
+    @Test fun trimmingAnchorsMustNotMoveTrustedTimeBackwards() {
+        val c = clock()
+        wall = ms("2026-10-05T09:00:05.000Z")
+        c.onApiResponse(meta("2026-10-05T11:00:05.000Z")) // fast reply: 17:00:05
+        val before = c.nowMs()
+        repeat(6) { elapsed += 1_000; wall += 1_000; c.onApiResponse(meta(Instant.ofEpochMilli(before + (it + 1) * 1_000L - 30_000).toString())) }
+        assertTrue("went back ${(before + 6_000 - c.nowMs()) / 1000} s", c.nowMs() >= before + 6_000)
+        assertTrue(c.isAtOrAfterDhaka(LocalTime.of(17, 0)))
+    }
+
+    // ---- Round 3: refuting the per-boot estimate ----
+
+    /**
+     * R3-1: a reading more than 5 min BEHIND replaces the estimate at once, with no confirmation, while one AHEAD needs a
+     * second reading. One replica with a clock a day behind (the mirror of R2) flips the business date back a day and
+     * re-closes the 17:00 gate; trusted time steps back 24 h.
+     */
+    @Test fun oneServerTimeFarBehindIsNotAdoptedWithoutConfirmation() {
+        val c = clock()
+        wall = ms("2026-10-05T11:30:00.000Z")
+        c.onApiResponse(meta("2026-10-05T11:30:00.000Z")) // 17:30 Dhaka
+        elapsed += 10_000; wall += 10_000
+        c.onApiResponse(meta("2026-10-04T11:30:10.000Z")) // one replica a day behind
+        assertEquals(LocalDate(2026, 10, 5), c.businessDate())
+        assertTrue(c.isAtOrAfterDhaka(LocalTime.of(17, 0)))
+    }
+
+    /**
+     * R3-2: with BOOT_COUNT and boot_id both unknown, a loaded estimate is checked by wall − elapsed. A fresh reply of this
+     * process that is a little late is ignored and the loaded estimate is kept with inProcess = false, so it stays tied to the
+     * wall clock: setting the clock back 2 h then drops trusted time to the wrong wall clock although this process has
+     * just confirmed the boot. Fix: when keeping the current estimate after an in-process reading, mark it inProcess.
+     */
+    @Test fun aLoadedEstimateConfirmedByThisProcessSurvivesAClockChange() {
+        boot = 0
+        wall = ms("2026-10-05T10:50:00.000Z")
+        clock().onApiResponse(meta("2026-10-05T10:50:00.000Z"))
+        elapsed += 60_000; wall += 60_000
+        val c = clock() // process restart
+        c.onApiResponse(meta("2026-10-05T10:50:30.000Z")) // 30 s late reply: ignored
+        wall -= 2 * 3_600_000L // rep sets the clock back
+        elapsed += 60_000; wall += 60_000
+        assertEquals(ms("2026-10-05T10:52:00.000Z"), c.nowMs())
     }
 }
