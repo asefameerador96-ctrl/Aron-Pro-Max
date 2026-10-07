@@ -119,13 +119,13 @@ class BundleService(
                 templates = emptyList(),
                 routes = routes,
                 tasks = tasks(h, user.id),
-                surveys = emptyList(),
+                surveys = BundleContent.surveys(h, user.role, date),
                 rubrics = emptyList(),
                 supervisor = null,
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,
                 programmes = null,
-                content = emptyList(),
+                content = BundleContent.content(h, date, date.plusDays(horizonDays.toLong()), routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet()),
                 tutorials = emptyList(),
             )
         }

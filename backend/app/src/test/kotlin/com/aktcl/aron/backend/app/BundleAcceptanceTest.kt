@@ -345,5 +345,44 @@ class BundleAcceptanceTest {
         assertEquals(HttpStatusCode.NotModified, delta(before + 1).status, "nothing changed after the radius version")
     }
 
+    @Test
+    @Order(8)
+    fun avKvContentAndThePosmSurveyReachTheSrsBundleWithoutOtherRoutesOutlets() = testApplication {
+        application { aronApi(wiring) }
+        val t = client.token()
+        val (own, offRoute) = fresh.db.jdbi.withHandle<Pair<Long, Long>, Exception> { h ->
+            val own = h.createQuery("SELECT min(o.id) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'MIR-SR-D'").mapTo(Long::class.java).one()
+            val off = h.createQuery("SELECT min(id) FROM app.outlet WHERE route_id IS NULL OR route_id NOT IN (SELECT route_id FROM app.route_assignment a JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'sr1001')").mapTo(Long::class.java).findOne().orElse(-1L)
+            fun item(title: String, kind: String, seq: Int, outlets: String, from: String = "2027-01-01", to: String = "2027-01-31") = h.execute(
+                "INSERT INTO app.content_item (kind, title_en, asset_url, sha256, bytes, valid_from, valid_to, sequence, outlet_ids) " +
+                    "VALUES ('$kind', '$title', 'https://example.invalid/$title', sha256('$title'::bytea), 1000, DATE '$from', DATE '$to', $seq, '$outlets'::bigint[])",
+            )
+            item("everyone", "av", 1, "{}")
+            item("mine", "kv", 2, "{$own,$off}")
+            item("elsewhere", "kv", 3, "{$off}")
+            item("expired", "av", 4, "{}", "2026-12-01", "2026-12-31")
+            val survey = h.createQuery("INSERT INTO app.survey (kind, valid_from) VALUES ('posm', DATE '2027-01-01') RETURNING id").mapTo(Long::class.java).one()
+            h.execute(
+                "INSERT INTO app.survey_version (survey_id, version, title_en, questions) VALUES (?, 1, 'POSM', CAST(? AS jsonb))", survey,
+                """[{"question_id":1,"key":"q1","answer_type":"bool","label_en":"POSM present?","label_bn":"পস আছে?","required":true,"show_if_key":null,"show_if_bool":null,"photo":false},
+                    {"question_id":2,"key":"q1_1","answer_type":"photo_only","label_en":"Photo","label_bn":null,"required":true,"show_if_key":"q1","show_if_bool":true,"photo":true}]""",
+            )
+            h.execute("INSERT INTO app.survey (kind, valid_from) VALUES ('amo_survey', DATE '2027-01-01')")
+            own to off
+        }
+        val b = client.bundle(t).gunzipJson()
+        val content = b["content"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("everyone", "mine"), content.map { it["title_en"]!!.jsonPrimitive.content }, "valid, active, on the caller's outlets, in play order")
+        assertEquals(emptyList(), content[0]["outlet_ids"]!!.jsonArray.toList(), "empty = every outlet")
+        assertEquals(listOf(own), content[1]["outlet_ids"]!!.jsonArray.map { it.jsonPrimitive.long }, "another route's outlet is not named to this phone")
+        assertTrue(Regex("^[0-9a-f]{64}$").matches(content[0]["sha256"]!!.jsonPrimitive.content))
+        val survey = b["surveys"]!!.jsonArray.single().jsonObject
+        val qs = survey["questions"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf(false, true), qs.map { it["requires_photo"]!!.jsonPrimitive.boolean })
+        assertEquals("q1", qs[1]["show_if_key"]!!.jsonPrimitive.content, "Q1.1 is shown only when Q1 is yes")
+        assertEquals("পস আছে?", qs[0]["label_bn"]!!.jsonPrimitive.content)
+        assertTrue(survey.keys.none { "point" in it } && qs.none { q -> q.keys.any { "point" in it } }, "loyalty points are deferred (docs/27)")
+    }
+
     private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullSafe(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
 }

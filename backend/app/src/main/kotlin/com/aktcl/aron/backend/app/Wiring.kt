@@ -98,6 +98,7 @@ import com.aktcl.aron.backend.sync.ServerGeneration
 import com.aktcl.aron.backend.sync.SyncDeps
 import com.aktcl.aron.backend.sync.syncRoutes
 import com.aktcl.aron.backend.sync.dayRoutes
+import com.aktcl.aron.backend.sync.memoRoutes
 import com.aktcl.aron.backend.sync.taskRoutes
 import com.aktcl.aron.backend.notify.notificationRoutes
 import com.aktcl.aron.backend.notify.pushRoutes
@@ -152,8 +153,12 @@ class Wiring(
             val geo = GeoRepository(db, clock)
             val reach = SqlReachResolver(db, geo, clock)
             val issuer = TokenIssuer(keys, config, clock)
-            val securityStore = com.aktcl.aron.backend.platform.JdbiSecurityEvents(db)
-            val securityEvents = com.aktcl.aron.backend.platform.LogSecurityEvents(then = securityStore)
+            // Its own one-connection pool: the writer never takes a request connection, and never counts as a pool
+            // waiter (admission control sheds reads when the write pool has waiters).
+            val securityDb = Database(Database.pool(s.dbUrl, s.dbUser, s.dbPassword, 1, "aron-security"))
+            val securitySink = com.aktcl.aron.backend.platform.JdbiSecurityEvents(securityDb)
+            val securityStore = AutoCloseable { runCatching { securitySink.close() }; securityDb.close() }
+            val securityEvents = com.aktcl.aron.backend.platform.LogSecurityEvents(then = securitySink)
             val refresh = RefreshService(JdbiRefreshStore(db), config, keys.derivedSecret("aron-refresh-rotation-v1"), clock, securityEvents = securityEvents)
             val devices = JdbiDeviceStore(db)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
@@ -271,6 +276,7 @@ class Wiring(
                 syncRoutes(sync)
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
                 dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock)))
+                memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,

@@ -51,6 +51,17 @@ fun Route.syncRoutes(d: SyncDeps) {
     authenticated(d.guard) {
         get("/sync/bundle") { getBundle(call, d) }
         if (d.db != null) get("/sync/generation") { getGeneration(call, d.db) }
+        d.ingest?.let { ingest ->
+            get("/sync/totals") {
+                val raw = call.request.queryParameters["business_date"]
+                val date = raw?.takeIf { Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(it) }?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+                    ?: throw com.aktcl.aron.backend.platform.ApiProblem(
+                        com.aktcl.aron.contract.ProblemCode.ERR_VALIDATION, "business_date must be YYYY-MM-DD",
+                        errors = listOf(com.aktcl.aron.backend.platform.FieldError("query.business_date", if (raw == null) "required" else "invalid_value")),
+                    )
+                call.respond(withContext(Dispatchers.IO) { ingest.totals(call.principal.userId, date) })
+            }
+        }
     }
     if (d.ingest != null) {
         // The upload grant may call the batch, an access token expired by at most 60 s is accepted, and a stale scope

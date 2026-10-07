@@ -63,6 +63,10 @@ data class MoneyTotals(
 @Serializable
 data class ServerTotals(val business_date: String, val as_of: String, val by_type: Map<String, TypeOutcomeCounts>, val money: MoneyTotals)
 
+/** GET /v1/sync/totals (contract SyncTotalsResponse): the Server column of Sales Submit for one date. */
+@Serializable
+data class SyncTotalsResponse(val totals: ServerTotals, val day_states: List<RouteDayStateDto>, val supervisor_day: SupervisorDayStateDto?)
+
 @Serializable
 data class Resolution(val client_uuid: String, val type: String, val resolution: String, val resolved_at: String)
 

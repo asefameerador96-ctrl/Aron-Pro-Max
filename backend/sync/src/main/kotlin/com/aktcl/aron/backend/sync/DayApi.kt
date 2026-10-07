@@ -95,6 +95,13 @@ fun Route.dayRoutes(d: DayDeps) {
 
 private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
 
+/** The AMO/TSO day state of [userId] on [date] (contract SupervisorDayState); null when the user has no such day. */
+internal fun supervisorDayState(h: Handle, userId: Long, date: LocalDate): SupervisorDayStateDto? =
+    h.createQuery("SELECT checked_in_at IS NOT NULL AS ci, sales_submitted_at IS NOT NULL AS ss, submit_cycle FROM app.supervisor_day WHERE user_id = :u AND business_date = :d")
+        .bind("u", userId).bind("d", date)
+        .map { rs, _ -> SupervisorDayStateDto(userId, date.toString(), rs.getBoolean("ci"), rs.getBoolean("ss"), rs.getInt("submit_cycle")) }.findOne().orElse(null)
+
+
 /**
  * Sales Submit online and Final Submit (F-API-008, F-API-009, F-API-039; docs/24 s4.9 rules 1, 3, 4).
  *
@@ -207,10 +214,7 @@ class DayService(
         )
     }
 
-    private fun supervisorDay(h: Handle, userId: Long, date: LocalDate): SupervisorDayStateDto? =
-        h.createQuery("SELECT checked_in_at IS NOT NULL AS ci, sales_submitted_at IS NOT NULL AS ss, submit_cycle FROM app.supervisor_day WHERE user_id = :u AND business_date = :d")
-            .bind("u", userId).bind("d", date)
-            .map { rs, _ -> SupervisorDayStateDto(userId, date.toString(), rs.getBoolean("ci"), rs.getBoolean("ss"), rs.getInt("submit_cycle")) }.findOne().orElse(null)
+    private fun supervisorDay(h: Handle, userId: Long, date: LocalDate): SupervisorDayStateDto? = supervisorDayState(h, userId, date)
 
     /** The zone must be in the caller's reach on the date; field roles never see a zone-day. */
     private fun requireZone(p: AronPrincipal, zone: Long, date: LocalDate) {
