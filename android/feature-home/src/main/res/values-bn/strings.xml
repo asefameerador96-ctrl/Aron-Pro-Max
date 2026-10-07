@@ -53,6 +53,7 @@
     <string name="perm_title">ARON-এর যা দরকার তার অনুমতি দিন</string>
     <string name="perm_location_why">সুনির্দিষ্ট অবস্থান: ভিজিট খোলার সময় আপনি দোকানে আছেন কিনা দেখতে। শুধু তখনই অবস্থান নেওয়া হয়, ব্যাকগ্রাউন্ডে কখনো নয়।</string>
     <string name="perm_camera_why">ক্যামেরা: ফোর্স সেল ও আউটলেটের অনুরোধে দোকানের ছবি তুলতে।</string>
+    <string name="perm_notifications_why">নোটিফিকেশন: নতুন কাজ এলে জানাতে।</string>
     <string name="perm_bluetooth_why">ব্লুটুথ: আপনার প্রিন্টারে মেমো ও স্টক স্লিপ প্রিন্ট করতে।</string>
     <string name="perm_allow">অনুমতি দিন</string>
     <string name="perm_granted">অনুমতি দেওয়া আছে</string>
