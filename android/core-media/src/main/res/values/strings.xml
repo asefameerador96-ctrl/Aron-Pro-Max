@@ -10,5 +10,10 @@
     <string name="media_ok">OK</string>
     <!-- F-SYS-037 -->
     <string name="media_wifi_only_title">Upload photos on Wi-Fi only</string>
-    <string name="media_wifi_only_hint">Saves your data pack. Sales and memos always send on any network. Outlet photos for force sale and requests use mobile data after 6 hours.</string>
+    <string name="media_wifi_only_hint">Saves your data pack. Sales and memos always send on any network.</string>
+    <plurals name="media_wifi_only_evidence_after">
+        <item quantity="one">Evidence photos (force sale, outlet photos and checks) use mobile data after %1$s hour.</item>
+        <item quantity="other">Evidence photos (force sale, outlet photos and checks) use mobile data after %1$s hours.</item>
+    </plurals>
+    <string name="media_wifi_only_evidence_never">Evidence photos also wait for Wi-Fi.</string>
 </resources>

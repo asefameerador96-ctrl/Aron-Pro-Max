@@ -10,6 +10,8 @@ Each gate is proven to FAIL on a deliberate violation and to pass on a clean inp
                         expired one does not; the real web lockfile scanned by osv-scanner (when installed)
   release-apks.py       one APK per app or per-ABI splits both list correctly; a missing universal APK or an
                         unknown file name fails
+  wallclock-scan.py     a wall-clock read in a test source is reported (fails with --blocking); the escape comment
+                        and production sources are not flagged
   install-scripts-check.py  a new package with an install script fails; the reviewed ones pass
 Binaries: OASDIFF and SQUAWK (paths) or on PATH; a test that needs a missing binary is skipped, never faked.
 """
@@ -351,6 +353,33 @@ class ReleaseApks(unittest.TestCase):
         rc, _, err = self.run_list(files)
         self.assertEqual(rc, 1)
         self.assertIn("unexpected release output", err)
+
+
+class WallClockScan(unittest.TestCase):
+    def run_scan(self, files, *flags):
+        with tempfile.TemporaryDirectory() as t:
+            for rel, text in files.items():
+                p = Path(t) / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(text)
+            r = subprocess.run([sys.executable, str(HERE / "wallclock-scan.py"), *flags, t], capture_output=True, text=True)
+            return r.returncode, r.stdout
+
+    def test_reports_and_blocks(self):
+        files = {"backend/sync/src/test/kotlin/X.kt": "val d = LocalDate.now()\n",
+                 "android/core-geo/src/test/kotlin/Y.kt": "val t = System.currentTimeMillis()\n"}
+        rc, out = self.run_scan(files)
+        self.assertEqual(rc, 0, "report mode never fails")
+        self.assertIn("2 offender(s)", out)
+        self.assertIn("(android-core/geo/dpc/print)", out)
+        self.assertEqual(self.run_scan(files, "--blocking")[0], 1)
+
+    def test_escape_and_production_code_pass(self):
+        files = {"backend/sync/src/test/kotlin/X.kt": "// wall-clock-ok: elapsed time only\nval t0 = System.currentTimeMillis()\nval i = Instant.now() // wall-clock-ok: token expiry\n",
+                 "backend/sync/src/main/kotlin/Y.kt": "val now = Instant.now()\n"}
+        rc, out = self.run_scan(files, "--blocking")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("0 offender(s)", out)
 
 
 if __name__ == "__main__":

@@ -71,6 +71,33 @@ class DailyTrackingTest : ReportFixture() {
     }
 
     @Test
+    fun comparatorRebuildsYesterdayAtTheSameDhakaClockTime() = app {
+        fun x(sql: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(sql) }
+        x("""
+            INSERT INTO dw.agg_daily_route (business_date, route_id, zone_id, planned, day_state, logged_in_at, target_outlets)
+              SELECT DATE '2026-10-03', r.id, r.zone_id, true, 'final_submitted',
+                     CASE r.code WHEN 'R2' THEN TIMESTAMPTZ '2026-10-03 13:00Z' ELSE TIMESTAMPTZ '2026-10-03 04:00Z' END,
+                     CASE r.code WHEN 'R1' THEN 2 WHEN 'R3' THEN 4 ELSE 2 END
+                FROM app.route r WHERE r.code IN ('R1', 'R2', 'R3');
+            INSERT INTO dw.fact_memo (business_date, memo_client_uuid, memo_no, user_id, route_id, zone_id, outlet_id, status, committed_at, line_count, gross_mtk, offer_discount_mtk,
+                                      drp_discount_mtk, qc_deduction_mtk, net_mtk, paid_mtk, due_mtk, is_credit, captured_offline, received_at, last_event_id)
+              SELECT DATE '2026-10-03', gen_random_uuid(), 'C' || v.o, 1, r.id, r.zone_id, v.o, 'active', v.at::timestamptz, 1, 1, 0, 0, 0, 1, 1, 0, false, false, v.at::timestamptz, 1
+                FROM app.route r JOIN (VALUES ('R1', 101, '2026-10-03 05:00Z'), ('R1', 102, '2026-10-03 06:00Z'), ('R1', 103, '2026-10-03 14:00Z'),
+                                              ('R2', 201, '2026-10-03 14:00Z'), ('R3', 301, '2026-10-03 05:00Z')) v(code, o, at) ON v.code = r.code;
+        """)
+        val o = Json.parseToJsonElement(get(10, Role.ANALYST, "/v1/dashboards/daily-tracking?business_date=2026-10-04").bodyAsText()).jsonObject
+        val c = o["comparator"]!!.jsonObject
+        assertEquals("2026-10-03", c.s("business_date")); assertEquals("18:00", c.s("as_of_time"))
+        val b = c["buckets"]!!.jsonObject.mapValues { it.value.jsonPrimitive.content.toInt() }
+        // R1 had 2 calls of 2 by 18:00 (the third memo came at 20:00) -> ge_100; R2 logged in at 19:00 -> not_logged_in; R3 1 of 4 -> below_80.
+        assertEquals(mapOf("ge_100" to 1, "from_90" to 0, "from_80" to 0, "below_80" to 1, "exception" to 0, "not_logged_in" to 1), b)
+        val z2 = Json.parseToJsonElement(get(14, Role.TSO, "/v1/dashboards/daily-tracking?business_date=2026-10-04").bodyAsText()).jsonObject["comparator"]!!.jsonObject["buckets"]!!.jsonObject
+        assertEquals(1, z2["below_80"]!!.jsonPrimitive.content.toInt()); assertEquals(0, z2["ge_100"]!!.jsonPrimitive.content.toInt())
+        // A past date has no "same time" and answers null.
+        assertEquals("null", Json.parseToJsonElement(get(10, Role.ANALYST, "/v1/dashboards/daily-tracking?business_date=2026-10-03").bodyAsText()).jsonObject["comparator"]!!.toString())
+    }
+
+    @Test
     fun pagingFollowsTheCursorWithoutRepeats() = app {
         val seen = mutableListOf<String>(); var cursor: String? = null
         do {
