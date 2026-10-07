@@ -125,7 +125,6 @@ fun SrApp(
     }
 
     // The camera draws only while a capture is open (and sits behind the camera permission gate of core-system).
-    com.aktcl.aron.core.media.CameraCaptureOverlay(day.media.camera)
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(stockAttempt, onAnswer = day::answerStockPrint, onClose = day::closeStockAttempt)
     when (screen) {
         SrScreen.PERMISSIONS -> {

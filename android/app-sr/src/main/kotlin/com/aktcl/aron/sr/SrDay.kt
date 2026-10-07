@@ -181,7 +181,7 @@ class SrDay(
 
     /** After a relaunch or a language switch: a committed visit with no close is the call in progress (R8). */
     /** Re-arms uploads of photos a killed process left (WorkManager keeps the jobs, this fills gaps). */
-    suspend fun resumeMedia() { runCatching { media.resume() } }
+    suspend fun resumeMedia() { runCatching { media?.resume() } }
 
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
