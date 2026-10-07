@@ -1,6 +1,6 @@
 # backend-core lane status (handoff for a fresh session)
 
-Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
+Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). Last pushed head: see `git log origin/lane/backend-core` (d5d7ca2e is queued with the integrator). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
 
 ## Done this session (pushed to INT)
 - **F-API-005 `GET /v1/sync/bundle`** (`backend/sync/BundleService.kt`, `ScopedConfig.kt`, `ReasonTexts.kt`): Opus checker 5 findings, 4 fixed; growing `snapshot_seq` waits on `docs/requests/backend-bundle-snapshot-table.md` (code ready, test assumption-guarded).
@@ -48,6 +48,12 @@ Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backen
 - Touched another lane's test once: `DataVoidCheckerTest` ingest hold 30 s -> 15 s (inside the 25 s request budget; the void waits on that ingest's lock by design).
 
 - **Lead requests after the handoff (all on lane/backend-core 33fd70db, Opus-checked):** F-SYS-072 signature mode (BC-53), config delta `outlet_radius_changes` (BC-54), consent dedupe + `user.consents` (BC-55, `RecordHandler.sameAs`), integrity-release edges (BC-56). Requests filed: `backend-core-record-signature-mode-key.md`, `backend-core-app-cfg-keys.md` (db). When the app keys land on INT, add a bundle test that they arrive in `config.values`.
+
+## Session 5 close-out: open requests and follow-ups (start here)
+- **Waiting on db:** V0044/V0045 (location history basis) -> then `GeoRecheck.kt` reads the basis from the history row only, drop the fallback, with its test (lead 12:55Z). `backend-core-record-signature-mode-key.md` (registry row, delivery `both`, so the phone sees the mode). `backend-core-app-cfg-keys.md` (image_cache_mb, local_history_days, outbox_keep_days) -> then add a bundle test that they arrive in `config.values`. `backend-core-security-event-table.md` -> then a JDBI sink beside the log sink (bounded queue, off the request path).
+- **Waiting on infra:** `infra-worker-no-signing-key.md`; keep the api termination grace >= 30 s (drain 15 s + Netty ~9 s).
+- **android-core (via lead):** re-queue its `device_integrity_failed` rows once (the release is server-side now); consent seeding from `user.consents` is live in the contract.
+- **Open questions (DECISIONS BC-52..56):** consent withdrawal not modelled; registry lookup not tied to user_id (low); separate refresh/OTP derivation keys before any JWT rotation; HMAC for `username_hash` (infra secret); device gate for phones without `did`; change-password failure events; a pre-change accepted row re-signed later is payload_conflict.
 
 ## Decisions taken (session 3)
 - Change-password revokes every full-grant family of the user except the calling phone's own (the contract says "other"; a web caller has no family id in the token, so all web families go and the BFF logs in again).
