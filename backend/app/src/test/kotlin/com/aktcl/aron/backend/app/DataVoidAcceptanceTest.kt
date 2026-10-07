@@ -85,6 +85,7 @@ class DataVoidAcceptanceTest {
             // A small per-device limit so a storm is cheap to provoke (the guard reads it at wiring time).
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test rl' FROM app.cfg_version")
             h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.device_per_min', 'global', 0, '40'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, now() - interval '1 day', max(config_version), 'test: admins log in without MFA' FROM app.cfg_version")
         }
         keyFile = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
@@ -208,7 +209,7 @@ class DataVoidAcceptanceTest {
     @Test
     fun aVoidTombstonesTheRouteDayRejectsLateRowsReversesDuesAndReplaysIdempotently() = testApplication {
         application { aronApi(wiring) }
-        val sr = client.token(); val admin = client.webToken("tso1001")
+        val sr = client.token(); val admin = client.webToken("admin1001")
         val family = saleFamily(dueMtk = 500)
         assertEquals(List(5) { "accepted" }, statuses(json(client.send(sr, batch(family)).bodyAsText())))
         val memo = family[1]["client_uuid"]!!.jsonPrimitive.content
@@ -255,18 +256,18 @@ class DataVoidAcceptanceTest {
         application { aronApi(wiring) }
         val admin = client.webToken("tso1001")
         assertEquals(HttpStatusCode.Forbidden, client.voidDay(client.webToken("dmo1001"), uuid()).status)
-        assertEquals(HttpStatusCode.Forbidden, client.voidDay(admin, uuid(), route = 999999).status)
+        assertEquals(HttpStatusCode.Forbidden, client.voidDay(admin, uuid(), scope = "web_entry", route = 999999).status)
         val otherRoute = fresh.db.jdbi.withHandle<Long, Exception> { h ->
             h.createUpdate("INSERT INTO app.route (code, name, zone_id, kind, visit_days_mask) SELECT 'RT-OTH', 'Other', id, 'sr', 127 FROM app.zone WHERE code = 'Z-OTHER'").execute()
             h.createQuery("SELECT id FROM app.route WHERE code = 'RT-OTH'").mapTo(Long::class.java).one()
         }
-        assertEquals(HttpStatusCode.Forbidden, client.voidDay(admin, uuid(), route = otherRoute).status, "a TSO cannot void outside the own territory")
+        assertEquals(HttpStatusCode.Forbidden, client.voidDay(admin, uuid(), scope = "web_entry", route = otherRoute).status, "a TSO cannot void outside the own territory")
         fresh.db.jdbi.useHandle<Exception> { h ->
             val sub = h.createQuery("SELECT id FROM app.app_user WHERE username = 'tso1001'").mapTo(Long::class.java).one()
             h.createUpdate("INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, via) SELECT CAST(:u AS uuid), zone_id, DATE '2027-01-02', :s, 'web' FROM app.route WHERE id = :r")
                 .bind("u", uuid()).bind("s", sub).bind("r", routeId).execute()
         }
-        val r = client.voidDay(admin, uuid(), date = "2027-01-02")
+        val r = client.voidDay(admin, uuid(), scope = "web_entry", date = "2027-01-02")
         assertEquals(HttpStatusCode.Conflict, r.status, r.bodyAsText()); assertEquals("ERR_DAY_ALREADY_FINAL_SUBMITTED", json(r.bodyAsText())["code"]?.jsonPrimitive?.content ?: json(r.bodyAsText())["type"]?.jsonPrimitive?.content?.substringAfterLast('/'))
         assertEquals(HttpStatusCode.BadRequest, client.voidDay(admin, uuid(), scope = "bogus").status)
     }
