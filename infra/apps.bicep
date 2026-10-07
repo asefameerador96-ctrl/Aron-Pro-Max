@@ -401,6 +401,8 @@ resource web 'Microsoft.App/containerApps@2025-07-01' = if (deployWeb) {
             { name: 'ARON_API_BASE_URL', value: 'https://${apiHost}' }
             // Seals the BFF session cookies; the web server refuses to start in production without it.
             { name: 'ARON_SESSION_SECRET', secretRef: 'session-secret' }
+            // The storage origin the browser PUTs uploads to (web CSP connect-src; docs/requests/web-admin-asset-upload-csp.md).
+            { name: 'ARON_BLOB_ORIGIN', value: 'https://${st.name}.blob.${environment().suffixes.storage}' }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
           ]
         }
