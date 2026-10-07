@@ -44,6 +44,23 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
   `backend-core-gate-resend-android-core.md` (the phone does not re-send gate quarantines yet).
 - Traps: run tests with `ARON_TEST_PG_URL` in the same shell; after a container restart `service postgresql start` and
   create role `aron`/`aron` superuser + db `aron_test`.
+- Also done (pushed, lane head e3eef117): **F-API-019** GET /v1/outlets/nearby (BC-77), **F-SYS-050** partial (batch
+  telemetry, BC-78; `X-Last-Sync-Error` waits on db), **F-SYS-057** risk-signals list + review, online and synced (BC-79),
+  **F-SYS-084** held rows past 17:30 (BC-80, OpsApi edited minimally). Time-log backfills for rows done in sessions 6-7.
+- Blocked: F-SYS-025 (db `backend-core-route-day-downloads.md`), F-API-007 (db `backend-core-media-upload-ledger.md`),
+  F-SYS-050 rest (db `backend-core-device-telemetry-columns.md`), F-API-010/011 (`GET /v1/outlets`, `GET /v1/routes`
+  are not in the contract), F-SYS-086 rest (backend-admin writes), N-044 (needs F-API-055).
+- **db answered (22:05Z):** V0058 (working-day window keys) and V0059/V0060 (`config_stamp_regress`, `checkout_too_early`
+  registry flags) are on lane/db 2205ff98, not yet on INT. Once INT carries them: F-SYS-091, write `checkout_too_early`
+  in ingest, and check BC-74's `cfg.calendar.window_unit` reads (see `docs/requests/db-working-day-keys-and-flags-answer.md`).
+
+## Session 9 close-out: next rows (session 10 starts here)
+1. When INT has V0058-V0060: **F-SYS-091** (design in item 6 of the session 8 list below) and the `checkout_too_early` flag.
+2. **F-API-055** (T2, M): POST /v1/outlet-requests/{uuid}/verify, /reject, /approve (contract slices exist), idempotent by
+   event uuid; approving a closure sets the outlet closed; then N-044 (cluster requests) on top.
+3. Open checker items: N-027 (a `pass` never expires; non-Play-certified phones always fail, confirm field models on the
+   device check), F-API-019 (no TSO/AMO zone-branch or pii-positive case), F-SYS-057 (masterdata geo job re-scores a
+   reviewed signal; contract lacks 409/403 on risk endpoints).
 
 ## Session 8 close-out: next rows (session 9 starts here)
 1. **N-027** (T1, L): server verification of Play Integrity verdicts and key attestation chains; enrolment gate
@@ -233,4 +250,3 @@ take the tests even if your code differs. The branch also carries three request 
 filed: backend-core-outlet-pin-history.md (backend-admin + db), backend-core-web-client-ip.md
 (web-dashboard + infra), backend-core-login-device-proof.md (contract v1.4: no X-Device-Proof on login).
 File or discard them explicitly, then delete the salvage branch.
-- F-SYS-025 blocked on db `backend-core-route-day-downloads.md` (uploads already stored; downloads have only the first). F-API-007 blocked on db `backend-core-media-upload-ledger.md`. F-API-010/011 need contract operations (`GET /v1/outlets`, `GET /v1/routes` are not in the contract).
