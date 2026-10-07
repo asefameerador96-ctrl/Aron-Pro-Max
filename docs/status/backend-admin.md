@@ -15,7 +15,17 @@ Updated 2026-10-07 (evening). Local lane tests: config 48, masterdata 105, app 2
 - F-API-049 needs an `entry_unlock` table (db request still to file); F-API-048, 050, 051, 052, 038, N-049, F-ADM-058, F-SYS-013 need sync ingest (F-API-006, F-SYS-012, F-SYS-059) from backend-core.
 - F-ADM-037 needs F-API-055 (outlet requests, backend-core).
 
-## Next
+## In progress / owed (contract v1.2, ruled by the lead, not yet on INT)
+- `DeviceOtp` gets `employee_code`, `zone_code`, `zone_name` (nullable): one extra join in `DeviceOtps.kt` list and `issueOtp` result.
+- `GET /v1/admin/routes?include=assignees` returns `Route.assignees [{user_id, full_name, role, username}]` with ONE query (AdminRoutes.kt list), for web-dashboard F-WEB-010.
+- backend-core calls `ConfigPermissions.menusForRole` for `me.menus`.
+
+## Next three rows
+1. The two v1.2 items above (after `git pull`, commit starts "Contract v1.2").
+2. F-API-049 entry-unlock (needs the db `entry_unlock` table request: not yet filed) and then F-API-048 data void, F-API-050/051/052, F-API-038, N-049 once backend-core lands F-API-006 / F-SYS-059.
+3. F-API-041 config_ack handler once the RecordHandler registry exists (routed to backend-core by the lead).
+
+## Next (older note)
 Apply checker findings for the two Sonnet checks; file the `entry_unlock` request; implement the two contract changes once ruled; then the ingest-dependent rows when backend-core lands F-API-006.
 
 ## Traps
