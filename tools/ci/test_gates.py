@@ -344,8 +344,10 @@ class ReleaseManifest(unittest.TestCase):
         rc, m, err = self.run_manifest([f"aron-{a}-0.1.7-dev.apk" for a in ("sr", "amo", "tso")])
         self.assertEqual(rc, 0, err)
         self.assertEqual(m["backend_image"], f"aron-backend:{self.SHA}")
-        self.assertEqual(sorted(i["flavour"] for i in m["apks"]), ["amo", "sr", "tso"])
-        sr = next(i for i in m["apks"] if i["flavour"] == "sr")
+        self.assertEqual(sorted(i["release"]["flavour"] for i in m["apks"]), ["amo", "sr", "tso"])
+        sr = next(i["release"] for i in m["apks"] if i["release"]["flavour"] == "sr")
+        self.assertEqual(set(sr), {"flavour", "abi", "version_name", "version_code", "sha256", "size_bytes", "signing_cert_sha256"},
+                         "AppReleaseWrite fields only (the upload adds download_url)")
         self.assertEqual(sr["abi"], "universal")
         self.assertEqual(sr["version_code"], 7)
         self.assertEqual(sr["signing_cert_sha256"], self.CERT)

@@ -1475,7 +1475,7 @@ class SliceSmoke(unittest.TestCase):
             r = subprocess.run(["openssl", "dgst", "-sha256", "-verify", self.pub, "-signature", sig.name, msg.name], capture_output=True)
         return r.returncode == 0
 
-    def serve(self, doubles=False, memo_read=True):
+    def serve(self, doubles=False, memo_read=True, totals_off=0):
         import gzip as gz, http.server, threading
         from urllib.parse import urlparse, parse_qs
         state = {"records": {}, "batches": {}, "memos": {}, "voided": set(), "calls": []}
@@ -1560,7 +1560,8 @@ class SliceSmoke(unittest.TestCase):
                 if u.path == "/v1/app/home":
                     return self.reply(200, {"kpis": {"active_memo_count": len(memos), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in memos)}})
                 if u.path == "/v1/sync/totals":
-                    return self.reply(200, {"totals": totals(q["business_date"][0]), "day_states": [], "supervisor_day": None})
+                    t = totals(q["business_date"][0]); t["money"]["gross_mtk"] += totals_off
+                    return self.reply(200, {"totals": t, "day_states": [], "supervisor_day": None})
                 if u.path == "/v1/memos" and memo_read:
                     return self.reply(200, {"next_cursor": None, "items": [
                         {"memo_client_uuid": m["client_uuid"], "memo_no": m["payload"]["memo_no"], "status": "active",
@@ -1608,6 +1609,13 @@ class SliceSmoke(unittest.TestCase):
         self.assertIn("### SR slice smoke: FAILED", out)
         self.assertIn("PASS 10 cleanup: sale voided", out, "a failed later step still voids the smoke sale")
         self.assertTrue(state["voided"])
+
+    def test_fails_when_the_totals_endpoint_disagrees_with_the_batch_answers(self):
+        srv, state = self.serve(totals_off=1)
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL 7b GET /v1/sync/totals agrees: (1, 1, 145001)", out)
+        self.assertIn("PASS 10 cleanup: sale voided", out)
 
     def test_fails_when_the_memo_read_is_not_served(self):
         srv, state = self.serve(memo_read=False)

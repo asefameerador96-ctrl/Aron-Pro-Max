@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release manifest of the release-signed APKs (N-064, F-ADM-027): one entry per APK in the shape of the contract's
 AppReleaseWrite (flavour, version_name, version_code, abi, sha256, size_bytes, signing_cert_sha256), so the release
-store upload (POST /v1/admin/releases, once served) only adds download_url. Also records the source commit and the
+store upload (POST /v1/admin/releases, once served) sends each entry's `release` object plus download_url. Also records the source commit and the
 backend (api and worker) and web image tags the same commit deploys (deploy.sh tags images with the commit sha).
 
 Checks, each a failure (exit 1, nothing written): a file name outside aron-<app>[-<abi>]-<version>-dev.apk, an ABI
@@ -71,14 +71,14 @@ def main(argv):
         cert, err = cert_of(apksigner, apk)
         if err:
             errors.append(err)
-        items.append({"flavour": flavour, "abi": abi, "version_name": version_name, "version_code": int(version_code) if version_code.isdigit() else 0,
-                      "sha256": hashlib.sha256(apk.read_bytes()).hexdigest(), "size_bytes": size, "signing_cert_sha256": cert,
-                      "file": apk.name})
+        items.append({"file": apk.name, "release": {  # release: AppReleaseWrite without download_url (additionalProperties false)
+            "flavour": flavour, "abi": abi, "version_name": version_name, "version_code": int(version_code) if version_code.isdigit() else 0,
+            "sha256": hashlib.sha256(apk.read_bytes()).hexdigest(), "size_bytes": size, "signing_cert_sha256": cert}})
     if items:
         for app in ("sr", "amo", "tso"):
-            if not any(i["flavour"] == app and i["abi"] == "universal" for i in items):
+            if not any(i["release"]["flavour"] == app and i["release"]["abi"] == "universal" for i in items):
                 errors.append(f"{app}: no universal APK (the device-owner provisioning file)")
-        if len({i["signing_cert_sha256"] for i in items if i["signing_cert_sha256"]}) > 1:
+        if len({i["release"]["signing_cert_sha256"] for i in items if i["release"]["signing_cert_sha256"]}) > 1:
             errors.append("the APKs are signed with different certificates")
     if errors:
         for e in errors:
@@ -87,7 +87,7 @@ def main(argv):
     manifest = {"schema": 1, "source_sha": sha, "version_name": version_name, "version_code": int(version_code),
                 "backend_image": f"aron-backend:{sha}", "web_image": f"aron-web:{sha}", "apks": items}
     (folder / "release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    for i in items:
+    for i in (x["release"] for x in items):
         print(f"{i['flavour']} {i['abi']}: {i['sha256']} {i['size_bytes']} bytes, cert {i['signing_cert_sha256']}")
     return 0
 
