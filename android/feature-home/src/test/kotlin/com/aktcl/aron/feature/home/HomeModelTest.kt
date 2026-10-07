@@ -42,9 +42,10 @@ class HomeModelTest {
     @Test fun healthWarningsAtTheThresholds() {
         val ok = DeviceHealthModel.of(80, 4000, 3, 30)
         assertFalse(ok.anyWarning)
-        assertTrue(DeviceHealthModel.of(19, 4000, 3, 30).batteryWarn)
-        assertFalse(DeviceHealthModel.of(20, 4000, 3, 30).batteryWarn)
-        assertTrue(DeviceHealthModel.of(80, 299, 3, 30).storageWarn)
+        assertTrue(DeviceHealthModel.of(39, 4000, 3, 30).batteryWarn)
+        assertFalse(DeviceHealthModel.of(40, 4000, 3, 30).batteryWarn)
+        assertTrue(DeviceHealthModel.of(80, 499, 3, 30).storageWarn)
+        assertFalse(DeviceHealthModel.of(80, 500, 3, 30).storageWarn)
         assertTrue(DeviceHealthModel.of(80, 4000, 201, 30).pendingWarn)
         assertTrue(DeviceHealthModel.of(80, 4000, 3, 24 * 60 + 1).syncWarn)
         assertTrue(DeviceHealthModel.of(80, 4000, 3, null).syncWarn) // never synced

@@ -4,6 +4,8 @@ import com.aktcl.aron.core.common.ClientIds
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** A task as the phone holds it (contract `Task`): assigned by an AMO or TSO from the bundle or the delta. */
 data class TaskItem(
@@ -50,6 +52,7 @@ class TaskBoard(
     private val newUuid: () -> String = ClientIds::newUuid,
 ) {
     private val ui = MutableStateFlow(TaskListState())
+    private val lock = Mutex()
     val state: StateFlow<TaskListState> = ui.asStateFlow()
 
     suspend fun load() {
@@ -59,13 +62,13 @@ class TaskBoard(
     }
 
     /** Resolve after the swipe and the tap; a second call on a completed task changes nothing and queues nothing. */
-    suspend fun resolve(taskUuid: String, note: String? = null): Boolean {
-        require(note == null || note.length <= 500) { "note is limited to 500 characters" }
-        val task = ui.value.items.firstOrNull { it.taskUuid == taskUuid } ?: return false
-        if (task.status != "ongoing") return false
+    suspend fun resolve(taskUuid: String, note: String? = null): Boolean = lock.withLock {
+        val clipped = note?.take(500) // the contract limit; the field also enforces it
+        val task = ui.value.items.firstOrNull { it.taskUuid == taskUuid } ?: return@withLock false
+        if (task.status != "ongoing") return@withLock false
         val at = nowIso()
-        store.resolve(taskUuid, at, TaskEventWrite(newUuid(), taskUuid, "resolved", note?.takeIf { it.isNotBlank() }, at))
+        store.resolve(taskUuid, at, TaskEventWrite(newUuid(), taskUuid, "resolved", clipped?.takeIf { it.isNotBlank() }, at))
         load()
-        return true
+        true
     }
 }

@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.tasks
 
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -49,9 +50,15 @@ class TaskBoardTest {
         assertEquals(1, m.queue.size)
     }
 
-    @Test fun overlongNoteIsRejected() = runTest {
-        val b = TaskBoard(Mem(listOf(t("a"))), { "now" }); b.load()
-        assertTrue(runCatching { b.resolve("a", "x".repeat(501)) }.isFailure)
+    @Test fun overlongNoteIsClippedToTheContractLimit() = runTest {
+        val m = Mem(listOf(t("a"))); val b = TaskBoard(m, { "now" }); b.load()
+        assertTrue(b.resolve("a", "x".repeat(501))); assertEquals(500, m.queue.single().note!!.length)
+    }
+
+    @Test fun concurrentDoubleResolveQueuesOnce() = runTest {
+        val m = Mem(listOf(t("a"))); val b = TaskBoard(m, { "now" }); b.load()
+        val r = listOf(async { b.resolve("a") }, async { b.resolve("a") }).map { it.await() }
+        assertEquals(1, r.count { it }); assertEquals(1, m.queue.size)
     }
 
     @Test fun survivesRelaunchBecauseStateIsReloadedFromTheStore() = runTest {

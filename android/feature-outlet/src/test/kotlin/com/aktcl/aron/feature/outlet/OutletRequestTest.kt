@@ -41,6 +41,22 @@ class OutletRequestTest {
         assertTrue(RequestError.PHOTO_REQUIRED in errors(base.copy(photoUuids = emptyList(), confirmed = true)))
     }
 
+    @Test fun theSameFormSubmittedTwiceCarriesOneRequestUuid() = runTest {
+        var n = 0
+        val s = OutletRequests({ saved += it }, { "00000000-0000-4000-8000-%012d".format(++n) })
+        val f = OutletRequestForm(OutletRequestKind.ROUTE_ADD, outletId = 9, note = "x", requestUuid = s.newRequestUuid())
+        s.submit(f); s.submit(f)
+        assertEquals(1, saved.map { it.requestUuid }.toSet().size)
+    }
+
+    @Test fun closeNeedsNoReasonPhotoOrGeoAndCanBeBlockedByDuesConfig() = runTest {
+        val f = OutletRequestForm(OutletRequestKind.CLOSE, outletId = 5, confirmed = true, openDueMtk = 10)
+        assertTrue(svc.validate(f) is RequestValidation.Ok)
+        val blocking = OutletRequests({ saved += it }, closeBlockIfDues = { true })
+        assertEquals(setOf(RequestError.DUES_BLOCK_CLOSE), (blocking.validate(f) as RequestValidation.Invalid).errors)
+        assertTrue(blocking.validate(f.copy(openDueMtk = 0)) is RequestValidation.Ok)
+    }
+
     @Test fun closeAsksConfirmationAndWarnsAboutOpenDues() = runTest {
         val f = OutletRequestForm(OutletRequestKind.CLOSE, outletId = 5, closeReasonCode = "shop_closed", openDueMtk = 125_000)
         assertEquals(setOf(RequestError.CONFIRMATION_REQUIRED), errors(f))

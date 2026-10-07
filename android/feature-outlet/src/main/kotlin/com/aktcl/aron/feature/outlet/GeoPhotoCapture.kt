@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.asStateFlow
 interface PhotoPipeline {
     /** Captures one photo, compresses it and queues its media record; returns the stored photo, or null when cancelled. */
     suspend fun captureAndCompress(photoUuid: String): CapturedPhoto?
+
+    /** Removes a photo that was replaced by a retake, with its queued media record, so it is never uploaded. */
+    suspend fun discard(photoUuid: String)
 }
 
 data class CapturedPhoto(val photoUuid: String, val thumbnailPath: String, val sizeBytes: Long)
@@ -47,11 +50,16 @@ class GeoPhotoCapture(
         if (isRetake && cur.retakesLeft <= 0) return cur
         ui.value = cur.copy(busy = true)
         try {
-            val fix = fixes.readFix(purpose)
             val photo = photos.captureAndCompress(newUuid())
-            ui.value = if (photo == null) {
+            // The fix is read at the shutter, after the camera closes, so it is the freshest the photo can carry.
+            val fix = if (photo == null) null else fixes.readFix(purpose)
+            ui.value = if (photo == null || fix == null) {
                 cur.copy(busy = false) // cancelled: keep what was there, keep the retake
+            } else if (isRetake && !fix.isOk && cur.fix?.isOk == true) {
+                photos.discard(photo.photoUuid) // a retake whose fix failed must not replace a good capture
+                cur.copy(busy = false)
             } else {
+                cur.photo?.let { photos.discard(it.photoUuid) }
                 GeoPhotoState(
                     photo = photo, fix = fix, accuracyMeters = if (fix.isOk) fix.accuracyM?.let { Math.round(it).toInt() } else null,
                     retakesLeft = if (isRetake) cur.retakesLeft - 1 else cur.retakesLeft, busy = false,

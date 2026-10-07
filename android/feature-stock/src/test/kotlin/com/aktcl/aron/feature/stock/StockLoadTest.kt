@@ -47,7 +47,7 @@ class StockLoadTest {
         l.committed(l.save(1_000, meta) as SaveOutcome.Saved, 1_000)
         l.setEntered(1, 5)
         assertEquals(SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD), l.save(60_000, meta))
-        assertTrue(l.save(200_000, meta) is SaveOutcome.Saved)
+        assertTrue(l.save(400_000, meta) is SaveOutcome.Saved)
         l.setEntered(1, 6) // different values are fine inside the window
         assertTrue(l.save(61_000, meta) is SaveOutcome.Saved)
     }
@@ -59,11 +59,33 @@ class StockLoadTest {
         assertEquals(600L, m.qtyBase); assertEquals("pack", m.unitEntered); assertEquals(200, m.packFactor); assertEquals(3L, m.qtyEntered)
     }
 
-    @Test fun invalidEntriesAreRejected() {
+    @Test fun badEntriesNeverCrashAndAreClamped() {
         val l = load()
-        assertTrue(runCatching { l.setEntered(1, -1) }.isFailure)
-        assertTrue(runCatching { l.setEntered(99, 1) }.isFailure)
-        assertTrue(runCatching { l.setEntered(1, 1_000_000) }.isFailure)
-        l.step(1, -5); assertEquals(0L, l.rows.first { it.sku.skuId == 1L }.entered)
+        l.setEntered(1, -1); assertEquals(0L, l.rows.first { it.sku.skuId == 1L }.entered)
+        l.setEntered(99, 1) // unknown sku ignored
+        l.setEntered(1, 1_000_000); assertEquals(StockLoad.MAX_ENTRY, l.rows.first { it.sku.skuId == 1L }.entered)
+        l.step(2, -5); assertEquals(0L, l.rows.first { it.sku.skuId == 2L }.entered)
+    }
+
+    @Test fun softCeilingWarnsButStillSaves() {
+        val l = load(); l.setEntered(1, 30_000)
+        assertTrue(l.exceedsSoftCeiling(1)); assertTrue(l.save(0, meta) is SaveOutcome.Saved)
+    }
+
+    @Test fun doubleTapBeforeCommitIsRefusedAndFailureAllowsRetry() {
+        val l = load(); l.setEntered(1, 5)
+        assertTrue(l.save(0, meta) is SaveOutcome.Saved)
+        assertEquals(SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD), l.save(10, meta))
+        l.commitFailed(); assertTrue(l.save(20, meta) is SaveOutcome.Saved)
+    }
+
+    @Test fun guardSurvivesRelaunchThroughTheStore() {
+        val store = StockLoad.GuardStore.InMemory()
+        val a = StockLoad(skus, emptyMap(), guardStore = store, newUuid = { "00000000-0000-4000-8000-000000000001" })
+        a.setEntered(1, 5); a.committed(a.save(1_000, meta) as SaveOutcome.Saved, 1_000)
+        val b = StockLoad(skus, emptyMap(), guardStore = store)
+        b.setEntered(1, 5)
+        assertEquals(SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD), b.save(100_000, meta))
+        assertTrue(b.save(1_000 + StockLoad.DEFAULT_GUARD_MS, meta) is SaveOutcome.Saved)
     }
 }

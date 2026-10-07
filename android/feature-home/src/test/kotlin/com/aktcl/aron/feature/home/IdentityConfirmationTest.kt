@@ -25,7 +25,7 @@ class IdentityConfirmationTest {
     }
 
     @Test fun yesStoresSelfAndDoesNotAskAgainThatDate() {
-        c.confirmSelf("2026-10-07")
+        c.confirmSelf("2026-10-07", a, a)
         assertEquals(IdentityPrompt.NotNeeded(null), c.promptFor("2026-10-07", listOf(a, b), a, a))
         assertTrue(c.promptFor("2026-10-08", listOf(a, b), a, a) is IdentityPrompt.Ask) // a new date asks again
     }
@@ -38,6 +38,14 @@ class IdentityConfirmationTest {
     @Test fun choosingYourselfAfterNoStoresNoActingFor() {
         assertNull(c.denyAndChoose("2026-10-07", a, a))
         assertEquals(IdentityPrompt.NotNeeded(null), c.promptFor("2026-10-07", listOf(a, b), a, a))
+    }
+
+    @Test fun coverUserOnASingleUserPhoneActsForTheAssignee() =
+        assertEquals(IdentityPrompt.NotNeeded(2L), c.promptFor("2026-10-07", listOf(a), a, b))
+
+    @Test fun yesFromACoverUserStillStoresTheAssignee() {
+        assertEquals(2L, c.confirmSelf("2026-10-07", a, b))
+        assertEquals(IdentityPrompt.NotNeeded(2L), c.promptFor("2026-10-07", listOf(a, b), a, b))
     }
 
     @Test fun duplicateBindingsOfTheSameUserCountOnce() =

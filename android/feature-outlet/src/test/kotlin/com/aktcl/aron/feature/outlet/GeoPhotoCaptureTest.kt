@@ -14,7 +14,9 @@ class GeoPhotoCaptureTest {
     private val fixes = object : LocationFixSource { override suspend fun readFix(purpose: String): FixReading { fixReads++; return next } }
     private var cancel = false
     private val photos = object : PhotoPipeline {
+        val discarded = mutableListOf<String>()
         override suspend fun captureAndCompress(photoUuid: String) = if (cancel) null else CapturedPhoto(photoUuid, "/t/$photoUuid.jpg", 48_000)
+        override suspend fun discard(photoUuid: String) { discarded += photoUuid }
     }
     private var n = 0
     private fun cap() = GeoPhotoCapture(fixes, photos, "outlet_capture", newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
@@ -36,6 +38,18 @@ class GeoPhotoCaptureTest {
         assertTrue(second.photo!!.photoUuid != first); assertEquals(5, second.accuracyMeters); assertEquals(0, second.retakesLeft)
         val third = c.shutter()
         assertEquals(second, third); assertEquals(2, fixReads) // no further read after the retake is used
+    }
+
+    @Test fun retakeDiscardsTheFirstPhotoSoItIsNeverUploaded() = runTest {
+        val c = cap(); val first = c.shutter().photo!!.photoUuid; c.shutter()
+        assertEquals(listOf(first), photos.discarded)
+    }
+
+    @Test fun retakeWithAFailedFixKeepsTheGoodCaptureAndDiscardsTheNewPhoto() = runTest {
+        val c = cap(); val good = c.shutter()
+        next = FixReading("timeout", null, null, null, false)
+        val after = c.shutter()
+        assertEquals(good.photo, after.photo); assertTrue(after.complete); assertEquals(1, photos.discarded.size)
     }
 
     @Test fun failedFixLeavesTheCaptureIncomplete() = runTest {

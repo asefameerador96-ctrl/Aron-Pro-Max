@@ -59,7 +59,7 @@ object DeviceHealthModel {
     /** Defaults are the thresholds of docs/04 style budgets; the shell may pass configured values. */
     fun of(
         batteryPct: Int, freeStorageMb: Long, pendingRows: Int, lastSyncAgeMin: Long?,
-        batteryWarnBelow: Int = 20, storageWarnBelowMb: Long = 300, pendingWarnAbove: Int = 200, syncWarnAboveMin: Long = 24 * 60,
+        batteryWarnBelow: Int = 40, storageWarnBelowMb: Long = 500, pendingWarnAbove: Int = 200, syncWarnAboveMin: Long = 24 * 60,
     ): DeviceHealth {
         require(batteryPct in 0..100) { "battery percent" }
         return DeviceHealth(

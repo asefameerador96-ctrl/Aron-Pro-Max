@@ -29,12 +29,18 @@ class IdentityConfirmation(private val store: IdentityStore) {
     /** [loggedIn] is the session user; [routeAssignee] the user the route is assigned to for the date (primary or cover). */
     fun promptFor(businessDate: String, boundUsers: List<BoundUser>, loggedIn: BoundUser, routeAssignee: BoundUser): IdentityPrompt {
         store.answerFor(businessDate)?.let { return IdentityPrompt.NotNeeded(it.actingForUserId) }
-        if (boundUsers.map { it.userId }.distinct().size < 2) return IdentityPrompt.NotNeeded(null)
+        // Cover work: whoever captures when they are not the route's assignee acts for the assignee, asked or not.
+        val cover = routeAssignee.userId.takeIf { it != loggedIn.userId }
+        if (boundUsers.map { it.userId }.distinct().size < 2) return IdentityPrompt.NotNeeded(cover)
         return IdentityPrompt.Ask(routeAssignee, boundUsers.filter { it.userId != routeAssignee.userId })
     }
 
     /** "Yes, I am the assignee": the logged-in user works the route as themself. */
-    fun confirmSelf(businessDate: String) = store.save(IdentityAnswer(businessDate, null)).let { null as Long? }
+    fun confirmSelf(businessDate: String, loggedIn: BoundUser, routeAssignee: BoundUser): Long? {
+        val acting = routeAssignee.userId.takeIf { it != loggedIn.userId }
+        store.save(IdentityAnswer(businessDate, acting))
+        return acting
+    }
 
     /** "No": [actingFor] is the person whose route is being worked when it differs from the logged-in user. */
     fun denyAndChoose(businessDate: String, loggedIn: BoundUser, actingFor: BoundUser): Long? {

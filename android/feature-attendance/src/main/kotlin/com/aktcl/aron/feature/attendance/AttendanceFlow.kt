@@ -75,7 +75,8 @@ class AttendanceFlow(
 
     suspend fun checkOut(): AttendanceResult {
         val s = ui.value
-        if (s.checkedInAt == null || s.checkedOutAt != null || !s.checkOutEnabled || s.busy) return AttendanceResult.Ignored
+        if (s.checkedInAt == null || s.checkedOutAt != null || s.busy) return AttendanceResult.Ignored
+        if (dhakaMinutesNow() < checkoutEarliestMinutes()) return AttendanceResult.Ignored // recomputed, never a stale flag
         return capture("check_out", "attendance_out")
     }
 
@@ -90,13 +91,14 @@ class AttendanceFlow(
             val event = AttendanceEventEntity(eventUuid, meta, kind, fixEntity.clientUuid, coords)
             committer.commit(event, fixEntity)
             val at = nowIso()
-            val resolved = if (fix.isOk) runCatching { addressResolver(fix.lat!!, fix.lng!!) }.getOrNull() else null
             val cur = ui.value
             ui.value = recompute(
                 if (kind == "check_in") at else cur.checkedInAt,
                 if (kind == "check_out") at else cur.checkedOutAt,
-                resolved ?: coords, fix.isMock,
-            )
+                coords, fix.isMock,
+            ).copy(busy = false)
+            // Display only: resolved after the commit and after the button state is final; a failure keeps the coordinates.
+            if (fix.isOk) runCatching { addressResolver(fix.lat!!, fix.lng!!) }.getOrNull()?.let { ui.value = ui.value.copy(addressText = it) }
             return AttendanceResult.Done(event, fix)
         } finally {
             ui.value = ui.value.copy(busy = false)

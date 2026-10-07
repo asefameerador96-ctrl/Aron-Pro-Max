@@ -30,12 +30,14 @@ data class OutletRequestForm(
     val photoUuids: List<String> = emptyList(),
     val confirmed: Boolean = false,
     val originVisitUuid: String? = null,
+    /** Generated once when the form opens, so a double tap or a retry carries the same uuid (idempotent). */
+    val requestUuid: String? = null,
     /** Open dues in milli-taka of the outlet being closed, for the dues warning. */
     val openDueMtk: Long = 0,
 )
 
 enum class RequestError {
-    OUTLET_REQUIRED, NAME_INVALID, OWNER_INVALID, MOBILE_INVALID, CLUSTER_REQUIRED, CLUSTER_UNCHANGED, REASON_REQUIRED,
+    DUES_BLOCK_CLOSE, OUTLET_REQUIRED, NAME_INVALID, OWNER_INVALID, MOBILE_INVALID, CLUSTER_REQUIRED, CLUSTER_UNCHANGED, REASON_REQUIRED,
     GEO_REQUIRED, PHOTO_REQUIRED, CONFIRMATION_REQUIRED, NOTE_TOO_LONG, TOO_MANY_PHOTOS,
 }
 
@@ -69,7 +71,12 @@ fun interface OutletRequestCommitter {
 class OutletRequests(
     private val committer: OutletRequestCommitter,
     private val newUuid: () -> String = ClientIds::newUuid,
+    /** `cfg.outlet.close_block_if_dues`: when true a close request with open dues is refused (default: only a warning). */
+    private val closeBlockIfDues: () -> Boolean = { false },
 ) {
+    /** A fresh uuid for a form that is just opening; keep it in the form state. */
+    fun newRequestUuid(): String = newUuid()
+
     fun validate(f: OutletRequestForm): RequestValidation {
         val e = linkedSetOf<RequestError>()
         val k = f.kind
@@ -86,7 +93,7 @@ class OutletRequests(
             else if (f.clusterId == f.currentClusterId) e += RequestError.CLUSTER_UNCHANGED
             if (f.note.isNullOrBlank()) e += RequestError.REASON_REQUIRED
         }
-        if (k == OutletRequestKind.CLOSE && f.closeReasonCode == null && f.note.isNullOrBlank()) e += RequestError.REASON_REQUIRED
+        if (k == OutletRequestKind.CLOSE && f.openDueMtk > 0 && closeBlockIfDues()) e += RequestError.DUES_BLOCK_CLOSE
         if (k == OutletRequestKind.ROUTE_ADD && f.note.isNullOrBlank()) e += RequestError.REASON_REQUIRED
         if (k.needsGeoPhoto) {
             if (f.fix == null || !f.fix.isOk) e += RequestError.GEO_REQUIRED
@@ -97,7 +104,7 @@ class OutletRequests(
         if (k.needsConfirmation && !f.confirmed) e += RequestError.CONFIRMATION_REQUIRED
         if (e.isNotEmpty()) return RequestValidation.Invalid(e)
         val draft = OutletRequestDraft(
-            requestUuid = newUuid(), kind = k, outletId = f.outletId,
+            requestUuid = f.requestUuid ?: newUuid(), kind = k, outletId = f.outletId,
             name = f.name?.trim()?.takeIf { it.isNotEmpty() }, ownerName = f.ownerName?.trim()?.takeIf { it.isNotEmpty() },
             contactNumber = f.mobile?.let { TextRules.normalisePhone(it)?.value },
             clusterId = f.clusterId, closeReasonCode = f.closeReasonCode, note = f.note?.trim()?.takeIf { it.isNotEmpty() },
