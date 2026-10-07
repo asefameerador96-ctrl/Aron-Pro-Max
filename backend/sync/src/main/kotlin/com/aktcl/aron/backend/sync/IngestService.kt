@@ -906,9 +906,18 @@ class IngestService(
      * the scoped holiday calendar), capped by the registry retention. Read before any family transaction; a read failure
      * is a retryable 503 for the whole batch.
      */
-    /** The backdate floor for [userId] on [today] with the configured `cfg.sync.max_backdate_days` (the digest's window). */
-    fun backdateFloorFor(userId: Long, today: LocalDate): LocalDate =
-        backdateFloor(userId, today, runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong())
+    /**
+     * The backdate floor for [userId] on [today] with the configured `cfg.sync.max_backdate_days` (the digest's window).
+     * On a read failure the calendar floor: never older than the working-day one, so the digest only asks for less.
+     */
+    fun backdateFloorFor(userId: Long, today: LocalDate): LocalDate {
+        val days = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
+        return try {
+            backdateFloor(userId, today, days)
+        } catch (e: ApiProblem) {
+            today.minusDays(days)
+        }
+    }
 
     private fun backdateFloor(userId: Long, today: LocalDate, days: Long): LocalDate {
         val unit = runCatching { config.string("cfg.calendar.window_unit") }.getOrDefault(WorkingDays.CALENDAR)

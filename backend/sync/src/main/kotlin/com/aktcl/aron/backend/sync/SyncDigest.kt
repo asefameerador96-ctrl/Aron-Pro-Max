@@ -40,8 +40,10 @@ data class SyncDigestResponse(val resend: List<DigestResend>)
  * - Bucket = the first hex digit of the client_uuid (0..15). `count` = rows in the bucket. `hash` = the sum, modulo
  *   2^64, of the uuid's first 8 bytes read as a big-endian unsigned integer (its first 16 hex digits), written as 16
  *   lowercase hex digits (an empty bucket is `0000000000000000`).
- * - Dates from today back `cfg.sync.max_backdate_days` (7) days (Dhaka), the window a re-sent row is still stored
- *   in; an item outside it, or in the future, is answered as matching (no re-send).
+ * - Dates from today back to the window a re-sent row is still stored in (ingest's backdate floor:
+ *   `cfg.sync.max_backdate_days` (7) calendar days, or that many working days when `cfg.calendar.window_unit` =
+ *   `working_days`, never beyond `cfg.retention.ingest_registry_days` - 30 = 15 days; F-SYS-090); an item outside it,
+ *   or in the future, is answered as matching (no re-send).
  * - The phone counts only rows it uploaded under the calling user (a shared phone digests each user's rows apart).
  */
 class SyncDigestService(
@@ -71,7 +73,9 @@ class SyncDigestService(
             if (it.type !in TypeRules.BY_TYPE.keys) throw invalid("/items/$i/type", "unknown record type")
             Triple(date, it.type, it.buckets)
         }
-        val oldest = floor?.invoke(p.userId, today) ?: today.minusDays(windowDays())
+        val calendarFloor = today.minusDays(windowDays())
+        // The working-day floor is only ever older than the calendar one: look it up only when a date needs it.
+        val oldest = if (floor != null && items.any { it.first.isBefore(calendarFloor) }) floor.invoke(p.userId, today) else calendarFloor
         val inWindow = items.filter { (d) -> !d.isAfter(today) && !d.isBefore(oldest) }
         if (inWindow.isEmpty()) return SyncDigestResponse(emptyList())
         val server = buckets(p.userId, deviceId, inWindow.map { it.first }.distinct(), inWindow.map { it.second }.distinct())
