@@ -44,3 +44,14 @@ object SaleDraftOps {
     /** Completing QC locks further edits at this outlet. */
     fun completeQc(d: SaleDraft): SaleDraft = d.copy(qcCompleted = true)
 }
+
+/** Parses the paid amount typed on the credit prompt: digits with at most two decimals, to milli-taka; null when invalid. */
+object PaidInput {
+    private val SHAPE = Regex("^\\d{1,9}(\\.\\d{1,2})?$")
+    fun parse(text: String): Long? {
+        val t = text.trim().map { if (it in '০'..'৯') '0' + (it - '০') else it }.joinToString("")
+        if (!SHAPE.matches(t)) return null
+        val (whole, frac) = t.split('.').let { it[0] to (it.getOrNull(1) ?: "").padEnd(2, '0') }
+        return whole.toLong() * 1000 + frac.toLong() * 10
+    }
+}

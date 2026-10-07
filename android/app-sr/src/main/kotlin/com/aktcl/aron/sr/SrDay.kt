@@ -65,6 +65,8 @@ class SrDay(
     fixManager: FixManager,
     val printerManager: com.aktcl.aron.core.printing.bt.PrinterManager,
     private val userName: String,
+    /** The phone's memo numbering (username, bind ordinal, block size) from the login; null only in previews and tests. */
+    val memoNumbering: com.aktcl.aron.core.database.repo.MemoNumbering? = null,
     /** Geo, integrity and DPC wiring (core-sync); null in previews and tests. */
     private val deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime? = null,
     /** F-SYS-092 resume config check; null in previews and tests. */
@@ -100,10 +102,14 @@ class SrDay(
     /** Reloads what device code reads synchronously (cfg.geo.* for fixes, the DPC calendar) from this user's bundle. */
     fun launchDayConfigRefresh() { deviceRuntime?.let { rt -> background.launch { rt.refreshDayConfig(userId, db) } } }
 
+    internal val database: AronDatabase get() = db
+    val userDisplayName: String get() = userName
     private val clock = components.trustedClock
     val capture = CaptureRepository(db) { iso(clock.nowMs()) }
     val reference = ReferenceRepository(db)
     val visitSession = VisitSession()
+    /** Sale, memo, summary and Sales Submit of android-sr-b on this user's database (one per day object). */
+    val sale: SrSaleKit by lazy { SrSaleKit(this, context, scheduler, ::online) }
 
     private val isoMillis = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC)
     fun iso(ms: Long): String = isoMillis.format(Instant.ofEpochMilli(ms))

@@ -49,9 +49,11 @@ param postgresStorageSizeGb = 1024
 param postgresStorageIops = 12000
 param postgresStorageThroughputMBps = 300
 param postgresHaMode = 'ZoneRedundant'
-// Live zones of an existing server, read by deploy.sh (a failover swaps them); empty for a new server.
-param postgresPrimaryZone = readEnvironmentVariable('ARON_PG_PRIMARY_ZONE', '')
-param postgresStandbyZone = readEnvironmentVariable('ARON_PG_STANDBY_ZONE', '')
+// Live zones of an existing server (set by deploy.sh; a failover swaps them); the defaults apply at creation.
+var envPgPrimaryZone = readEnvironmentVariable('ARON_PG_PRIMARY_ZONE', '')
+var envPgStandbyZone = readEnvironmentVariable('ARON_PG_STANDBY_ZONE', '')
+param postgresPrimaryZone = empty(envPgPrimaryZone) ? '1' : envPgPrimaryZone
+param postgresStandbyZone = empty(envPgStandbyZone) ? '2' : envPgStandbyZone
 param postgresBackupRetentionDays = 35
 param postgresGeoRedundantBackup = true
 // Premium SSD v2 must finish its first backup before an in-region replica can be created (Learn), so the first prod
