@@ -104,7 +104,7 @@ fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modi
             .clip(RoundedCornerShape(12.dp))
             .background(if (enabled) scheme.secondary.copy(alpha = 0.25f) else scheme.surfaceVariant, RoundedCornerShape(12.dp))
             .drawBehind { drawRect(fillColor, size = androidx.compose.ui.geometry.Size(size.width * progress.value, size.height)) }
-            .semantics { role = Role.Button; onLongClick(label = text) { if (enabled) { onConfirmed(); true } else false } }
+            .semantics(mergeDescendants = true) { role = Role.Button; onLongClick(label = text) { if (enabled) { onConfirmed(); true } else false } }
             .pointerInput(enabled, holdMillis) {
                 if (!enabled) return@pointerInput
                 awaitEachGesture {

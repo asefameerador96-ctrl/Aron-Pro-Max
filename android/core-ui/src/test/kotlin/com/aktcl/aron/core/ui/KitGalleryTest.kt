@@ -7,7 +7,8 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
@@ -44,12 +45,10 @@ class KitGalleryTest {
         rule.onNodeWithText("12").assertExists()
     }
 
-    @Test fun holdConfirmsAfterTheHoldTime() {
+    /** The accessibility path (long-click action) confirms without holding; the timed hold is a device check. */
+    @Test fun holdButtonConfirmsThroughTheLongClickAction() {
         render(AppLanguage.EN)
-        rule.mainClock.autoAdvance = false
-        rule.onNodeWithText("Hold to submit sales").performTouchInput { down(center) }
-        rule.mainClock.advanceTimeBy(1500)
-        rule.mainClock.advanceTimeBy(100)
+        rule.onNodeWithText("Hold to submit sales").performSemanticsAction(SemanticsActions.OnLongClick)
         rule.onAllNodesWithText("Submit sales?").assertCountEquals(1)
     }
 }

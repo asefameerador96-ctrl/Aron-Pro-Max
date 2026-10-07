@@ -20,3 +20,4 @@ press-and-hold button, dialogs (confirm/info), empty / error states, kit gallery
 
 ## Traps
 - Local Gradle cannot resolve (Maven Central 429): CI is the compiler. Push to `lane/android-core-ui`, merge INT only when green.
+- Press-and-hold: the long-click (accessibility) path is unit-tested; the timed 1.2 s hold is checked on the phone (DEVICE-PENDING: hold shorter than 1.2 s must not confirm, full hold must).
