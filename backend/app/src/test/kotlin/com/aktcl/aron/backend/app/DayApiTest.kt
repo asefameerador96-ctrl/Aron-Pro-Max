@@ -220,8 +220,8 @@ class DayApiTest {
         assertEquals(HttpStatusCode.Forbidden, r.status, r.bodyAsText())
     }
 
-    private suspend fun HttpClient.finalSubmit(token: String, cu: String, z: Long = zone): HttpResponse = post("/v1/day/final-submit") {
-        bearerAuth(token); contentType(ContentType.Application.Json)
+    private suspend fun HttpClient.finalSubmit(token: String, cu: String, z: Long = zone, phone: Boolean = false): HttpResponse = post("/v1/day/final-submit") {
+        bearerAuth(token); contentType(ContentType.Application.Json); if (phone) header("X-Device-Id", devPhone)
         setBody("""{"client_uuid":"$cu","zone_id":$z,"business_date":"$day"}""")
     }
 
@@ -302,8 +302,8 @@ class DayApiTest {
         assertEquals(HttpStatusCode.Forbidden, client.preview(tso, otherZone).status)
         val r = client.finalSubmit(tso, uuid(), otherZone)
         assertEquals(HttpStatusCode.Forbidden, r.status, r.bodyAsText())
-        val sr = client.finalSubmit(client.login(), uuid())
-        assertTrue(sr.status == HttpStatusCode.Forbidden, sr.bodyAsText())
+        val sr = client.finalSubmit(client.login(), uuid(), phone = true)
+        assertEquals(HttpStatusCode.Forbidden, sr.status, sr.bodyAsText())
         assertEquals(0L, fresh.db.jdbi.withHandle<Long, Exception> { h ->
             h.createQuery("SELECT count(*) FROM app.final_submit WHERE zone_id = :z").bind("z", otherZone).mapTo(Long::class.java).one()
         })
