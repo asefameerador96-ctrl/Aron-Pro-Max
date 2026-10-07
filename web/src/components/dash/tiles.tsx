@@ -15,7 +15,7 @@ export function Tile({ id, locale, titleKey, date, children, wide }: { id: strin
   return (
     <section data-testid={`tile-${id}`} className={`rounded-lg border border-slate-200 bg-white p-4 shadow-sm ${wide ? "md:col-span-2" : ""}`}>
       <h2 className="text-sm font-semibold text-slate-600">{t(locale, titleKey)}</h2>
-      <div className="mt-1">{children}</div>
+      <div className="mt-1 [overflow-wrap:anywhere]">{children}</div>
       <TileMeta locale={locale} businessDate={date.businessDate} asOf={date.asOf} today={date.today} reason={date.reason} />
     </section>
   );
