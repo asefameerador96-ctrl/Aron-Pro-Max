@@ -43,6 +43,8 @@ import com.aktcl.aron.backend.config.ConfigDelta
 import com.aktcl.aron.backend.config.ConfigDeltaDeps
 import com.aktcl.aron.backend.config.configAdminRoutes
 import com.aktcl.aron.backend.config.configDeltaRoutes
+import com.aktcl.aron.backend.masterdata.DataVoidDeps
+import com.aktcl.aron.backend.masterdata.dataVoidRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
 import com.aktcl.aron.backend.masterdata.AdminPricesDeps
@@ -110,6 +112,9 @@ class Wiring(
          */
         @Suppress("UNUSED_PARAMETER")
         fun recordHandlers(db: Database, clock: AronClock): List<RecordHandler> = listOf(
+            com.aktcl.aron.backend.config.ConfigAckHandler(),
+            com.aktcl.aron.backend.masterdata.DomainEventProducer(),
+            com.aktcl.aron.backend.masterdata.DataVoidBarrierHandler(com.aktcl.aron.backend.sync.TypeRules.BY_TYPE.keys),
         )
 
         /** [extraRecordHandlers] are for tests only; production handlers are listed in [recordHandlers]. */
@@ -169,6 +174,7 @@ class Wiring(
                 tutorialRoutes(TutorialsDeps(db, blob, guard))
                 supportUploadRoutes(SupportUploadDeps(db, blob, config, guard, clock))
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
+                dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
                 adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
                 adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock))
                 adminProductsRoutes(AdminProductsDeps(db, guard, clock))

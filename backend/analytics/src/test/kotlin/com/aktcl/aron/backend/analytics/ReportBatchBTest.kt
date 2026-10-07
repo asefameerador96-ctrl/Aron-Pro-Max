@@ -50,7 +50,8 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
     @Test
     fun gigoAndAmoCall() = app {
         val g = run(10, Role.ANALYST, "gigo").result().rows().single()
-        assertEquals("sr001", g.str("username")); assertEquals(8.0, g.num("hours")); assertEquals("ok", g.str("check_in_fix")); assertEquals("false", g.str("any_mock")); assertEquals("Banani", g.str("address"))
+        assertEquals("sr001", g.str("username")); assertEquals(8.0, g.num("hours")); assertEquals("ok", g.str("check_in_fix")); assertEquals("false", g.str("any_mock")); assertEquals(null, g.str("address"))   // the SR's location is masked without the pii claim
+        assertEquals("Banani", run(10, Role.ANALYST, "gigo", pii = true).result().rows().single().str("address"))
         assertEquals(0, run(14, Role.TSO, "gigo").result().rows().size)
         val a = run(10, Role.ANALYST, "amo-call").result().rows().single()
         assertEquals("amo001", a.str("amo")); assertEquals("O1", a.str("outlet_code")); assertEquals("amo_control_call", a.str("visit_kind"))
@@ -119,5 +120,60 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
             assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, key, body(""","geo":{"zone":[$z2]}""")).status, key)
         }
         assertTrue(ReportHandlers.all.map { it.definition.report_key }.toSet().size == ReportHandlers.all.size)
+    }
+
+    // ---------------- independent checker (N-051 / F-API-013) ----------------
+
+    private fun sql(vararg stmts: String) = fresh.db.jdbi.useHandle<Exception> { h -> stmts.forEach { h.execute(it) } }
+    private fun range(extra: String = "") = """{"period":{"from":"2026-10-04","to":"2026-10-05"},"output":{"format":"json","page_size":500}$extra}"""
+
+    /** sr001 covers R3 too (acting user): the day had 18 uploaded records, but sync_batch is joined by user only, so sr001's 15 are counted on both route-days and zone 2's TSO sees zone 1's uploads. */
+    @Test
+    fun checker_dataEntryLogDoesNotDoubleCountACoveringUsersUploads() = app {
+        sql("UPDATE app.route_day SET acting_user_id = (SELECT id FROM app.app_user WHERE username = 'sr001') WHERE route_id = (SELECT id FROM app.route WHERE code = 'R3')")
+        assertEquals(18, run(10, Role.ANALYST, "data-entry-log").result().total("records"))
+    }
+
+    /** `discount` declares the category / product_type / products filters but its SQL ignores them: a SKU2-only query still returns the SKU1 DRP line. */
+    @Test
+    fun checker_discountHonoursItsDeclaredProductFilter() = app {
+        val sku2 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.sku WHERE code = 'SKU2'").mapTo(Long::class.java).one() }
+        assertEquals(0, run(10, Role.ANALYST, "discount", body(""","product_type":"sku","products":[$sku2]""")).result().rows().size)
+    }
+
+    /** Zone names are not unique (only codes are); leaderboard by zone groups by name and merges two zones into one rank. */
+    @Test
+    fun checker_leaderboardKeepsSameNamedZonesApart() = app {
+        sql("UPDATE app.zone SET name = 'Zone1' WHERE code = 'Z2'")
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        assertEquals(2, run(10, Role.ANALYST, "leaderboard", body(""","location":"zone"""")).result().rows().size)
+    }
+
+    /** Same root cause in DSS: GROUP BY zone_name sums two zones into one row. */
+    @Test
+    fun checker_dssKeepsSameNamedZonesApart() = app {
+        sql("UPDATE app.zone SET name = 'Zone1' WHERE code = 'Z2'")
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        assertEquals(2, run(10, Role.ANALYST, "dss").result().rows().size)
+    }
+
+    /** A check-out recorded without a route splits the user-day into two rows (grouped by route_code), so hours is null on both. */
+    @Test
+    fun checker_gigoCheckOutWithoutRouteStaysOnTheUserDayRow() = app {
+        sql("""INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock, address_display)
+  SELECT gen_random_uuid(), gen_random_uuid(), DATE '2026-10-04', u.id, e.r, e.at, 1, e.kind, 'ok', 23.78, 90.41, 8, false, 'Gulshan'
+    FROM app.app_user u, (VALUES ('check_in', TIMESTAMPTZ '2026-10-04 03:00Z', (SELECT id FROM app.route WHERE code = 'R2')), ('check_out', TIMESTAMPTZ '2026-10-04 11:00Z', NULL::bigint)) e(kind, at, r) WHERE u.username = 'sr002'""")
+        val rows = run(10, Role.ANALYST, "gigo").result().rows().filter { it.str("username") == "sr002" }
+        assertEquals(1, rows.size); assertEquals(8.0, rows.single().num("hours"))
+    }
+
+    /** Check-in 22:00 Dhaka, check-out 01:00 Dhaka next day (business_date is the Dhaka date of capture): two rows, no hours. */
+    @Test
+    fun checker_gigoHoursAcrossMidnight() = app {
+        sql("""INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock, address_display)
+  SELECT gen_random_uuid(), gen_random_uuid(), e.d, u.id, r.id, e.at, 1, e.kind, 'ok', 23.78, 90.41, 8, false, 'Gulshan'
+    FROM app.app_user u, app.route r, (VALUES ('check_in', TIMESTAMPTZ '2026-10-04 16:00Z', DATE '2026-10-04'), ('check_out', TIMESTAMPTZ '2026-10-04 19:00Z', DATE '2026-10-05')) e(kind, at, d) WHERE u.username = 'sr002' AND r.code = 'R2'""")
+        val rows = run(10, Role.ANALYST, "gigo", range()).result().rows().filter { it.str("username") == "sr002" }
+        assertEquals(1, rows.size); assertEquals(3.0, rows.single().num("hours"))
     }
 }

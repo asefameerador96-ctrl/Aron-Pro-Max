@@ -86,7 +86,7 @@ object SrEfficiencyReport : ReportHandler {
         SELECT u.username, u.full_name, g.route_code,
                coalesce(sum(a.target_outlets) FILTER (WHERE a.planned AND NOT a.exception_approved), 0)::int AS target_outlets,
                coalesce(sum(a.visited_outlets), 0)::int AS visited_outlets, coalesce(sum(a.successful_calls), 0)::int AS successful_calls,
-               round(100.0 * sum(a.successful_calls) / nullif(sum(a.target_outlets) FILTER (WHERE a.planned AND NOT a.exception_approved), 0), 2) AS strike_rate_pct,
+               round(100.0 * sum(a.successful_calls) FILTER (WHERE a.planned AND NOT a.exception_approved) / nullif(sum(a.target_outlets) FILTER (WHERE a.planned AND NOT a.exception_approved), 0), 2) AS strike_rate_pct,
                coalesce(sum(a.active_memo_count), 0)::int AS memos, coalesce(sum(a.net_mtk), 0)::bigint AS net_mtk, round(coalesce(sum(hrs.h), 0)::numeric, 2) AS hours_in_field
           FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
           JOIN app.route_day rd ON rd.route_id = a.route_id AND rd.business_date = a.business_date
@@ -294,5 +294,6 @@ object ByRouteGeoCaptureReport : ReportHandler {
 object ReportHandlers {
     val all: List<ReportHandler> = listOf(RouteMemoReport, StdMemoReport, SrEfficiencyReport, RouteStdReport, RouteBsrCprReport, ByOutletReport, ByOutletByDayReport, OnlineOfflineReport, TaskPlannerReport, ByRouteGeoCaptureReport, MemoNumberGapsReport, SuspiciousLocationReport,
         DataEntryLogReport, FinalSubmitLogReport, FinalSubmitStatusReport, GigoReport, DssReport, DsRrsReport, TsoTopSheetReport, DailyTrackingReport, LeaderboardReport,
-        AmoCallReport, SrOutletsReport, DiscountReport, FreeSampleReport, SalesSummaryReport)
+        AmoCallReport, SrOutletsReport, DiscountReport, FreeSampleReport, SalesSummaryReport,
+        QcReport, SettlementReport, RouteQcReport)
 }

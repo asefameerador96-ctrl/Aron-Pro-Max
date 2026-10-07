@@ -28,6 +28,10 @@ param migrateImage string = ''
 @description('Web image; empty = no web app yet (web/ does not exist).')
 param webImage string = ''
 param deployServices bool = true
+@description('Client image for the dblogins job (psql 16), imported into the registry by deploy.sh; empty = no job.')
+param psqlImage string = ''
+@description('api and worker connect as their own least-privilege logins (app_api, app_jobs) instead of the server admin; needs psqlImage (the dblogins job creates the logins). The migrate job always uses the admin login.')
+param dbPerAppLogins bool = false
 @description('api revisions: Single (dev: the new revision takes all traffic once ready) or Multiple (stage and prod, docs/30 s3: the previous revision stays active at 0 % so deploy.sh can put traffic back on it when the health gate fails).')
 @allowed(['Single', 'Multiple'])
 param apiRevisionsMode string = 'Single'
@@ -89,6 +93,12 @@ resource idMigrate 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31'
 resource idWeb 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = { name: n.idWeb }
 
 var kvSecretUrl = '${kv.properties.vaultUri}secrets/'
+// Which Key Vault secret each app's database URLs come from (docs/requests/db-runtime-roles.md).
+var perApp = dbPerAppLogins && !empty(psqlImage)
+var apiDbUrlSecret = perApp ? secretNames.dbApiUrl : secretNames.dbUrl
+var apiDbReadUrlSecret = perApp ? secretNames.dbApiReadUrl : secretNames.dbReadUrl
+var workerDbUrlSecret = perApp ? secretNames.dbJobsDirectUrl : secretNames.dbDirectUrl
+var workerDbReadUrlSecret = perApp ? secretNames.dbJobsReadUrl : secretNames.dbReadUrl
 
 func kvSecret(name string, secret string, baseUrl string, identityId string) object => {
   name: name
@@ -158,6 +168,51 @@ resource migrate 'Microsoft.App/jobs@2025-07-01' = {
   }
 }
 
+// ------------------------------------------------------------------------------------------------------- dblogins
+// Creates or repairs the per-app logins (infra/sql/runtime-logins.sql, embedded at build time) as the admin login,
+// inside the VNet. deploy.sh starts it after the migrations and before the apps; idempotent.
+resource dblogins 'Microsoft.App/jobs@2025-07-01' = if (!empty(psqlImage)) {
+  name: n.dbLoginsJob
+  location: location
+  tags: allTags
+  identity: { type: 'UserAssigned', userAssignedIdentities: { '${idMigrate.id}': {} } }
+  properties: {
+    environmentId: env.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Manual'
+      replicaTimeout: 300
+      replicaRetryLimit: 0
+      manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
+      registries: [{ server: acr.properties.loginServer, identity: idMigrate.id }]
+      secrets: [
+        kvSecret('db-direct-url', secretNames.dbDirectUrl, kvSecretUrl, idMigrate.id)
+        kvSecret('pw-app-api', secretNames.dbPwAppApi, kvSecretUrl, idMigrate.id)
+        kvSecret('pw-app-worker', secretNames.dbPwAppWorker, kvSecretUrl, idMigrate.id)
+        kvSecret('pw-app-jobs', secretNames.dbPwAppJobs, kvSecretUrl, idMigrate.id)
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'dblogins'
+          image: psqlImage
+          resources: { cpu: json('0.25'), memory: '0.5Gi' }
+          // The JDBC URL minus its "jdbc:" prefix is a libpq URI (host, port, sslmode, user, password parameters).
+          command: ['/bin/sh', '-c', 'printf "%s" "$ARON_SQL" > /tmp/logins.sql && exec psql "\${ARON_DB_URL#jdbc:}" -X -q -f /tmp/logins.sql']
+          env: [
+            { name: 'ARON_SQL', value: loadTextContent('sql/runtime-logins.sql') }
+            { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
+            { name: 'ARON_PW_APP_API', secretRef: 'pw-app-api' }
+            { name: 'ARON_PW_APP_WORKER', secretRef: 'pw-app-worker' }
+            { name: 'ARON_PW_APP_JOBS', secretRef: 'pw-app-jobs' }
+          ]
+        }
+      ]
+    }
+  }
+}
+
 // ------------------------------------------------------------------------------------------------------------ api
 var prescaleRules = apiPrescaleReplicas > 0 ? [
   {
@@ -196,8 +251,8 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
       }
       registries: [{ server: acr.properties.loginServer, identity: idApi.id }]
       secrets: [
-        kvSecret('db-url', secretNames.dbUrl, kvSecretUrl, idApi.id)
-        kvSecret('db-read-url', secretNames.dbReadUrl, kvSecretUrl, idApi.id)
+        kvSecret('db-url', apiDbUrlSecret, kvSecretUrl, idApi.id)
+        kvSecret('db-read-url', apiDbReadUrlSecret, kvSecretUrl, idApi.id)
         kvSecret('jwt-signing-key', secretNames.jwtSigningKey, kvSecretUrl, idApi.id)
         kvSecret('jwt-kid', secretNames.jwtKid, kvSecretUrl, idApi.id)
         kvSecret('fcm-service-account', secretNames.fcmServiceAccount, kvSecretUrl, idApi.id)
@@ -271,8 +326,8 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
       maxInactiveRevisions: 5
       registries: [{ server: acr.properties.loginServer, identity: idWorker.id }]
       secrets: [
-        kvSecret('db-direct-url', secretNames.dbDirectUrl, kvSecretUrl, idWorker.id)
-        kvSecret('db-read-url', secretNames.dbReadUrl, kvSecretUrl, idWorker.id)
+        kvSecret('db-direct-url', workerDbUrlSecret, kvSecretUrl, idWorker.id)
+        kvSecret('db-read-url', workerDbReadUrlSecret, kvSecretUrl, idWorker.id)
         kvSecret('jwt-signing-key', secretNames.jwtSigningKey, kvSecretUrl, idWorker.id)
         kvSecret('jwt-kid', secretNames.jwtKid, kvSecretUrl, idWorker.id)
         kvSecret('fcm-service-account', secretNames.fcmServiceAccount, kvSecretUrl, idWorker.id)
@@ -442,6 +497,8 @@ resource routeWeb 'Microsoft.Cdn/profiles/afdEndpoints/routes@2024-09-01' = if (
 }
 
 output migrateJobName string = migrate.name
+output dbLoginsJobName string = empty(psqlImage) ? '' : dblogins.name
+output dbPerAppLogins bool = perApp
 output apiFqdn string = deployServices ? api!.properties.configuration.ingress.fqdn : ''
 output webDeployed bool = deployWeb
 output apiHost string = apiHost

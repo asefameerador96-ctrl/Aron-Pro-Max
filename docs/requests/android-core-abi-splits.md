@@ -28,3 +28,12 @@ splits { abi { isEnable = true; reset(); include("arm64-v8a", "armeabi-v7a"); is
 
 Tell infra when it lands. The size gate then measures each split as built, and the baseline in
 `tools/ci/apk-size-baseline.json` is regenerated (`--write-baseline`).
+
+## Update 2026-10-07 (infra): CI is ready for the splits
+
+`tools/ci/release-apks.py` lists either layout (one APK per app, or `app-<x>-<abi>-release-unsigned.apk` plus
+`app-<x>-universal-release-unsigned.apk`) and fails without the universal APK or on an unknown file name. The size gate,
+the dev signing in `ci.yml` and `release-app.yml` all use it: the universal keeps the gate name `sr-release` (and its
+baseline), each split is gated as `sr-release-<abi>` against the absolute budget until the baseline is regenerated, and
+signed copies are named `aron-sr-<abi>-<version>.apk`. So turning the splits on needs no CI change; infra regenerates
+the baseline after the first green run.

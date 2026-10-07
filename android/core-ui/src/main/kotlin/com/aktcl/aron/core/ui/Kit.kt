@@ -108,19 +108,25 @@ fun AronBanner(text: String, modifier: Modifier = Modifier, kind: BannerKind = B
 fun OfflineBanner(modifier: Modifier = Modifier) =
     AronBanner(androidx.compose.ui.res.stringResource(R.string.core_ui_offline_mode), modifier, BannerKind.Warning)
 
-/** One tile of the home grid: [label] with a [badge] count below it (hidden when 0) on a 48 dp+ target. */
+/**
+ * One tile of the home grid: a glass backdrop (chrome) with a SOLID label plate, so the reading never depends on the
+ * glass (docs/32 s2a item 1). [badge] shows below the label, hidden when 0.
+ */
 @Composable
 fun AronTile(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Int = 0, enabled: Boolean = true) {
+    val c = LocalAronColors.current
     GlassSurface(modifier = modifier.heightIn(min = 88.dp), onClick = onClick, enabled = enabled) {
         Column(
             Modifier.fillMaxWidth().heightIn(min = 88.dp).padding(AronTokens.Space.S),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs, Alignment.CenterVertically),
         ) {
-            Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+            Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = c.surfaceSolid) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = if (enabled) c.textPrimary else c.stateDisabledLabel, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.S, vertical = AronTokens.Space.Xs))
+            }
             if (badge > 0) {
-                Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = MaterialTheme.colorScheme.error) {
-                    Text(localizedNumber(badge.toLong()), color = MaterialTheme.colorScheme.onError, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.S, vertical = AronTokens.Space.Xs))
+                Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = c.dangerContainer) {
+                    Text(localizedNumber(badge.toLong()), color = c.dangerOnContainer, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.S, vertical = AronTokens.Space.Xs))
                 }
             }
         }

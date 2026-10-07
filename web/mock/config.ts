@@ -18,6 +18,8 @@ export interface ConfigStore {
   otps: DeviceOtp[];
   entries: Map<string, WebEntryRouteDay>;
   nextChange: number;
+  /** Permission edits wait here until a second SUPERADMIN approves (C3). */
+  pendingMenus: Map<number, { role: string; menus: PermissionMatrix["roles"][number]["menus"] }>;
 }
 
 const K = (key: string, area: string, value_type: ConfigKey["value_type"], default_value: Json, risk_class: number, extra: Partial<ConfigKey> = {}): ConfigKey => ({
@@ -25,7 +27,7 @@ const K = (key: string, area: string, value_type: ConfigKey["value_type"], defau
 });
 
 export const KEYS: ConfigKey[] = [
-  K("cfg.geo.radius_m", "geo", "int", 100, 2, { bounds: { min: 10, max: 5000 }, scope_levels: ["global", "territory", "zone", "route"], restrictive_dir: "down", description_en: "Geofence radius in metres" }),
+  K("cfg.geo.radius_m", "geo", "int", 100, 3, { bounds: { min: 10, max: 5000 }, scope_levels: ["global", "territory", "zone", "route"], restrictive_dir: "down", description_en: "Geofence radius in metres" }),
   K("cfg.sync.batch_max", "sync", "int", 200, 1, { bounds: { min: 10, max: 1000 }, description_en: "Largest sync batch" }),
   K("cfg.flag.web_entry", "flags", "bool", true, 1, { description_en: "Web Entry enabled" }),
   K("cfg.print.footer", "print", "text", "Thank you", 0, { description_en: "Memo footer line" }),
@@ -46,6 +48,7 @@ export function freshConfigStore(): ConfigStore {
     otps: [{ user_id: 1001, username: "sr334001", full_name: "Testing Banani", zone_id: 3341, otp: "482916", device_model: "Samsung A04", created_at: now, expires_at: new Date(Date.now() + 600_000).toISOString(), attempts: 0, employee_code: "E-1001", zone_code: "zone-3341", zone_name: "Banani Zone 1" }],
     entries: new Map(),
     nextChange: 1,
+    pendingMenus: new Map(),
   };
 }
 
@@ -146,7 +149,7 @@ export async function handleConfig(c: CfgCtx): Promise<boolean> {
     const old = (it: { key: string; scope_type: string; scope_id: number }) => resolve(c, it.key, it.scope_type, it.scope_id).value;
     const id = store.nextChange++;
     const base: ConfigChange = { change_id: id, status: "applied", risk_class: risk, changes: b.changes.map((it) => ({ ...(it as ConfigChange["changes"][number]), old_value: old(it) as never })), reason: b.reason, requested_by: c.userId, requested_at: new Date().toISOString(), blast_radius: blast(Number(b.changes[0]!.value) || 0) };
-    if (risk >= 2) {
+    if (risk >= 3) {
       base.status = "pending_approval";
       store.changes.push(base);
       c.audit("config", id, "config.change.request", {}, { risk }, b.reason);
@@ -167,13 +170,20 @@ export async function handleConfig(c: CfgCtx): Promise<boolean> {
     const b = (await c.body()) as { decision?: string; note?: string } | undefined;
     if (ch.status !== "pending_approval") return c.send(409, c.problem(409, "ERR_CONFLICT")), true;
     if (!b?.decision || !["approve", "reject", "cancel", "adopt"].includes(b.decision)) return bad(c, "/decision", "invalid"), true;
-    if (b.decision === "approve" && (ch.requested_by === c.userId || c.role !== "SUPERADMIN")) return c.send(403, c.problem(403, "ERR_FORBIDDEN", { detail: "A different SUPERADMIN approves a risk 2+ change." })), true;
+    if (b.decision === "approve" && c.role !== "SUPERADMIN") return c.send(403, c.problem(403, "ERR_FORBIDDEN")), true;
+    if (b.decision === "approve" && ch.requested_by === c.userId) return c.send(409, c.problem(409, "ERR_CFG_SELF_APPROVAL")), true;
     if (b.decision === "approve") {
+      const pm = store.pendingMenus.get(ch.change_id);
+      if (pm) store.matrix.find((r) => r.role === pm.role)!.menus = pm.menus;
+      store.pendingMenus.delete(ch.change_id);
       ch.status = "applied";
       ch.approved_by = c.userId;
       ch.approved_at = new Date().toISOString();
       ch.config_version = commit(c, ch.changes.map((i) => ({ key: i.key, scope_type: i.scope_type, scope_id: i.scope_id, value: i.value as Json })), "change", `Approved change ${ch.change_id}`, ch.risk_class, ch.change_id);
-    } else ch.status = b.decision === "reject" ? "rejected" : "cancelled";
+    } else {
+      ch.status = b.decision === "reject" ? "rejected" : "cancelled";
+      store.pendingMenus.delete(ch.change_id);
+    }
     c.audit("config", ch.change_id, `config.change.${b.decision}`, {}, { status: ch.status }, b.note ?? null);
     return c.send(200, ch), true;
   }
@@ -211,8 +221,8 @@ export async function handleConfig(c: CfgCtx): Promise<boolean> {
     if (typeof b.reason !== "string" || Array.from(b.reason).length < 10) return bad(c, "/reason", "too_short"), true;
     const row = store.matrix.find((r) => r.role === pr[1]);
     if (!row) return c.send(404, c.problem(404, "ERR_NOT_FOUND")), true;
-    row.menus = b.menus as typeof row.menus;
     const id = store.nextChange++;
+    store.pendingMenus.set(id, { role: pr[1]!, menus: b.menus as typeof row.menus });
     const ch: ConfigChange = { change_id: id, status: "pending_approval", risk_class: 3, changes: [], reason: b.reason, requested_by: c.userId, requested_at: new Date().toISOString(), blast_radius: blast(0) };
     store.changes.push(ch);
     c.audit("permissions", pr[1]!, "permissions.put", {}, { menus: b.menus.length }, b.reason);
