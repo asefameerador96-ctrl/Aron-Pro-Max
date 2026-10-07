@@ -29,6 +29,7 @@ export const ADMIN_PATH_ROLES: readonly { prefix: string; roles: RoleList }[] = 
   { prefix: "/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
   { prefix: "/api/bff/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
   { prefix: "/admin/team", roles: TEAM_CREDENTIAL_ROLES },
+  { prefix: "/admin/radius", roles: ["TSO"] },
 ];
 
 export function hasRole(role: Role | undefined, allowed: RoleList): boolean {

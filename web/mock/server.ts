@@ -320,6 +320,16 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     },
   })) return;
 
+  if (path === "/v1/admin/config/changes" && method === "POST" && user.master && user.summary.role === "TSO") {
+    // A TSO proposes; cfg.geo.tso_radius_mode = propose, so the change always waits for an editor (D24-59). Own territory only.
+    const b = (await readJson(req)) as { reason?: string; changes?: { key: string; scope_type: string; scope_id: number; value: number }[] } | null;
+    const c = b?.changes?.[0];
+    if (!b || !c || b.changes!.length !== 1 || c.key !== "cfg.geo.radius_m" || typeof c.value !== "number" || Array.from(b.reason ?? "").length < 10) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    if (c.scope_type !== "territory" || c.scope_id !== 6) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    audit(state, user, "config_change", state.nextId, "config.propose", {}, { value: c.value }, b.reason ?? null);
+    return send(res, 201, { change_id: state.nextId++, status: "pending_approval", risk_class: c.value > 150 ? 3 : 2, changes: [c], reason: b.reason, requested_by: user.summary.user_id, requested_at: new Date().toISOString(), blast_radius: {} });
+  }
+
   const tsoUsers = /^\/v1\/admin\/users(?:\/(\d+)(\/credentials)?)?$/.exec(path);
   if (tsoUsers && user.master && user.summary.role === "TSO") {
     // A TSO reaches SR and AMO users of its own zones only (docs/24 s8.5); anything else is not found, never "forbidden but exists".

@@ -44,7 +44,7 @@ export const handleTutorialUpdate = (req: NextRequest, id: string) =>
     const o = (typeof input === "object" && input !== null && !Array.isArray(input) ? input : {}) as Record<string, unknown>;
     const { version, ...rest } = o;
     const issues: FieldIssue[] = [];
-    if (!/^[0-9]{1,15}$/.test(id) || Number(id) < 1) issues.push({ pointer: "/id", code: "invalid" });
+    if (!/^[1-9][0-9]{0,14}$/.test(id)) issues.push({ pointer: "/id", code: "invalid" });
     if (typeof version !== "number" || !Number.isInteger(version) || version < 1 || version > 9_999_999_999) issues.push({ pointer: "/version", code: "invalid" });
     const c = checkTutorialWrite(rest);
     issues.push(...c.issues);
@@ -71,7 +71,7 @@ export const handleDefUpdate = (req: NextRequest, kind: string, id: string) =>
         const o = (typeof input === "object" && input !== null && !Array.isArray(input) ? input : {}) as Record<string, unknown>;
         const { version, ...rest } = o;
         const issues: FieldIssue[] = [];
-        if (!/^[0-9]{1,15}$/.test(id) || Number(id) < 1) issues.push({ pointer: "/id", code: "invalid" });
+        if (!/^[1-9][0-9]{0,14}$/.test(id)) issues.push({ pointer: "/id", code: "invalid" });
         if (typeof version !== "number" || !Number.isInteger(version) || version < 1 || version > 9_999_999_999) issues.push({ pointer: "/version", code: "invalid" });
         const c = DEF_KINDS[kind](rest);
         issues.push(...c.issues);

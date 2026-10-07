@@ -60,6 +60,7 @@ export function checkSurveyWrite(b: unknown): Out {
   const qs = b.questions;
   const keys = new Set<string>();
   const questions: Record<string, unknown>[] = [];
+  const boolKeys = new Set<string>();
   if (!Array.isArray(qs) || qs.length < 1 || qs.length > DEF_MAX_ITEMS) issues.push({ pointer: "/questions", code: "invalid" });
   else
     qs.forEach((q, i) => {
@@ -80,12 +81,19 @@ export function checkSurveyWrite(b: unknown): Out {
       else if (typeof q.show_if_key === "string" && !keys.has(q.show_if_key)) issues.push({ pointer: `${p}/show_if_key`, code: "unknown_reference" });
       else if (typeof q.show_if_key === "string" && q.show_if_key === q.key) issues.push({ pointer: `${p}/show_if_key`, code: "unknown_reference" });
       if (q.show_if_bool !== undefined && q.show_if_bool !== null && typeof q.show_if_bool !== "boolean") issues.push({ pointer: `${p}/show_if_bool`, code: "invalid" });
+      // A condition is a pair (question, yes or no) and looks only at a yes/no question: anything else could never show.
+      const hasKey = typeof q.show_if_key === "string";
+      const hasBool = typeof q.show_if_bool === "boolean";
+      if (hasKey !== hasBool) issues.push({ pointer: `${p}/${hasKey ? "show_if_bool" : "show_if_key"}`, code: "required" });
+      if (hasKey && !issues.some((x) => x.pointer.startsWith(`${p}/show_if`)) && boolKeys.has(String(q.show_if_key)) === false) issues.push({ pointer: `${p}/show_if_key`, code: "unknown_reference" });
+      if (q.answer_type === "bool" && typeof q.key === "string") boolKeys.add(q.key);
       questions.push({ ...q, label_en: en, label_bn: bn });
     });
   const valid_from = date(b.valid_from, "/valid_from", issues);
   let valid_to: string | null = null;
   if (b.valid_to !== undefined && b.valid_to !== null) valid_to = date(b.valid_to, "/valid_to", issues);
   if (valid_from && valid_to && valid_to < valid_from) issues.push({ pointer: "/valid_to", code: "before_start" });
+  if (b.kind === "amo_survey" && typeof b.points_per_photo === "number" && b.points_per_photo > 0) issues.push({ pointer: "/points_per_photo", code: "invalid" }); // never for the AMO survey
   if (b.points_per_photo !== undefined && b.points_per_photo !== null && (typeof b.points_per_photo !== "number" || !Number.isInteger(b.points_per_photo) || b.points_per_photo < 0 || b.points_per_photo > 100000)) issues.push({ pointer: "/points_per_photo", code: "invalid" });
   if (b.status !== undefined && !oneOf(["active", "inactive"], b.status)) issues.push({ pointer: "/status", code: "invalid" });
   const change_reason = reason(b, issues);

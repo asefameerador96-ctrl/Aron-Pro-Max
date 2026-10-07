@@ -36,7 +36,7 @@ describe("menu is driven from data", () => {
     for (const r of ["TSO", "ANALYST"] as const) {
       expect(menuFor(r).map((s) => s.group), r).toEqual(["main", "reports", "products", "admin"]);
     }
-    expect(menuFor("TSO").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/team"]);
+    expect(menuFor("TSO").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/team", "/admin/radius"]);
     for (const r of ["ANALYST", "DMO", "WM", "TOP"] as const) {
       expect(menuFor(r).find((s) => s.group === "admin")?.items.map((i) => i.href), r).toEqual(["/admin/outlet-requests"]);
     }

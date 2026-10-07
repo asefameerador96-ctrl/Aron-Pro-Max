@@ -39,3 +39,8 @@ Trap: the admin segment streams behind loading.tsx, so notFound() in a page answ
 F-ADM-020 built at /admin/surveys, /admin/rubrics, /admin/content (checker pending). F-ADM-065 parked: contract has no SKU image member (request web-admin-sku-image). Request web-admin-definition-reads: read and write schemas do not round-trip (no keys on read, rubric enum differs, no asset_id).
 Decision: points_per_photo (loyalty) is not exposed (docs/27 deferred).
 Remaining: F-TSO-023, F-TSO-025 (T1 and T2, Day 5), then wait on contract for F-ADM-065.
+
+## Update (F-ADM-020 fixed, F-TSO-023 done, F-TSO-025 built)
+Done: F-ADM-020 and F-TSO-023 after checker rounds. F-TSO-025 built at /admin/radius (checker pending). Request added: web-admin-temp-password-ttl (backend 72 h vs 24 h).
+Open: F-ADM-065 waits on a SKU image member (request filed). Lead may route the contract requests.
+Known trap: a failed lint leaves a stale .next, then e2e shows 403 pages for new routes; always run lint before build.

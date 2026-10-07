@@ -8,6 +8,7 @@ export const ADMIN_MENU: readonly MenuItem[] = [
   { id: "admin-master-data", labelKey: "menu.admin.master_data", href: "/admin/master-data", roles: ADMIN_PORTAL_ROLES, group: "admin" },
   { id: "admin-outlet-requests", labelKey: "menu.admin.outlet_requests", href: "/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES, group: "admin" },
   { id: "admin-team", labelKey: "menu.admin.team", href: "/admin/team", roles: TEAM_CREDENTIAL_ROLES, group: "admin" },
+  { id: "admin-radius", labelKey: "menu.admin.radius", href: "/admin/radius", roles: ["TSO"], group: "admin" },
   { id: "admin-wholesale", labelKey: "menu.admin.wholesale", href: "/admin/wholesale-marking", roles: ["ADMIN", "SUPERADMIN"], group: "admin" },
   { id: "admin-audit", labelKey: "menu.admin.audit", href: "/admin/audit", roles: ADMIN_PORTAL_ROLES, group: "admin" },
 ];

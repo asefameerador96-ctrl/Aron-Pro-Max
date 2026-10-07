@@ -18,7 +18,7 @@ const futureDate = (v: unknown, pointer: string, out: RuleError[]) => {
   else if (v < businessDate()) out.push({ pointer, code: "past" }); // nothing historic is rewritten
 };
 
-export async function masterOpRules(op: MasterOpKey, body: Record<string, unknown>, params: Record<string, unknown>, token: string, actor: Role): Promise<RuleError[]> {
+export async function masterOpRules(op: MasterOpKey, body: Record<string, unknown>, params: Record<string, unknown>, token: string, actor: Role, ownNodes: readonly { type: string; id: number }[] = []): Promise<RuleError[]> {
   const out: RuleError[] = [];
   const strict = (allowed: string[]) => {
     for (const k of Object.keys(body)) if (!allowed.includes(k)) out.push({ pointer: `/body/${k}`, code: "unknown_member" });
@@ -102,12 +102,27 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
       // Only the two actions of the row; force logout and MFA reset stay with SUPPORT and the administrators.
       const allowed = actor === "TSO" ? ["reset_password", "unlock"] : ["reset_password", "unlock", "force_logout", "reset_mfa"];
       if (typeof body.action !== "string" || !allowed.includes(body.action)) out.push({ pointer: "/body/action", code: "invalid" });
-      if (actor === "TSO") {
-        // The target must be an SR or AMO (the API also checks the zone); a TSO never touches another TSO or an administrator.
+      if (typeof params.id !== "string" && typeof params.id !== "number") out.push({ pointer: "/params/id", code: "invalid" });
+      else if (!/^[1-9][0-9]{0,14}$/.test(String(params.id))) out.push({ pointer: "/params/id", code: "invalid" });
+      else {
+        // Look the target up for every actor: a TSO reaches SR and AMO only; only a SUPERADMIN acts on ADMIN and SUPERADMIN (docs/24 s8.5).
         const u = await rawRequest<{ role?: Role }>({ method: "GET", path: `/v1/admin/users/${encodeURIComponent(String(params.id))}`, token });
-        if (!u.ok) out.push({ pointer: "/params/id", code: u.status === 404 ? "not_found" : "invalid" });
-        else if (u.data.role !== "SR" && u.data.role !== "AMO") out.push({ pointer: "/params/id", code: "forbidden_target" });
+        if (!u.ok) out.push({ pointer: "/params/id", code: u.status === 404 ? "not_found" : u.status === 0 || u.status >= 500 ? "unavailable" : "invalid" });
+        else if (actor === "TSO" ? u.data.role !== "SR" && u.data.role !== "AMO" : (u.data.role === "ADMIN" || u.data.role === "SUPERADMIN") && actor !== "SUPERADMIN") out.push({ pointer: "/params/id", code: "forbidden_target" });
       }
+      break;
+    }
+    case "radius.propose": {
+      strict(["changes", "reason"]);
+      const ch = body.changes;
+      if (!Array.isArray(ch) || ch.length !== 1 || !isObj(ch[0])) return [...out, { pointer: "/body/changes", code: "invalid" }];
+      const c = ch[0];
+      for (const k of Object.keys(c)) if (!["key", "scope_type", "scope_id", "value"].includes(k)) out.push({ pointer: `/body/changes/0/${k}`, code: "unknown_member" });
+      if (c.key !== "cfg.geo.radius_m") out.push({ pointer: "/body/changes/0/key", code: "invalid" });
+      if (c.scope_type !== "territory") out.push({ pointer: "/body/changes/0/scope_type", code: "invalid" });
+      if (!isId(c.scope_id)) out.push({ pointer: "/body/changes/0/scope_id", code: "invalid" });
+      else if (!ownNodes.some((n) => n.type === "territory" && n.id === c.scope_id)) out.push({ pointer: "/body/changes/0/scope_id", code: "forbidden_scope" }); // the server decides reach; this refuses an id the session never had
+      if (typeof c.value !== "number" || !Number.isInteger(c.value) || c.value < 10 || c.value > 5000) out.push({ pointer: "/body/changes/0/value", code: "invalid" });
       break;
     }
     case "assignment.end": {

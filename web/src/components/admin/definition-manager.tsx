@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import { CONTENT_KINDS, DEF_MAX_ITEMS, RUBRIC_ANSWERS, RUBRIC_KINDS, SCOPE_TYPES, SURVEY_ANSWERS, SURVEY_KINDS } from "@/lib/admin/definitions";
 import type { MessageKey } from "@/lib/i18n";
+import { asciiDigits } from "./crud/validation";
 import { fileProblem, uploadAsset } from "./asset-upload";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "./kit/reason-field";
@@ -42,6 +43,7 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
   const [titleBn, setTitleBn] = useState("");
   const [validFrom, setValidFrom] = useState("");
   const [validTo, setValidTo] = useState("");
+  const [status, setStatus] = useState<"active" | "inactive">("active");
   const [sequence, setSequence] = useState("1");
   const [rows, setRows] = useState<Item[]>([blankItem(1)]);
   const [scope, setScope] = useState<Scope[]>([]);
@@ -63,9 +65,10 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
     setTitleBn(String(r?.title_bn ?? ""));
     setValidFrom(String(r?.valid_from ?? ""));
     setValidTo(String(r?.valid_to ?? ""));
+    setStatus(r?.status === "inactive" ? "inactive" : "active");
     setSequence(String(r?.sequence ?? 1));
     setScope(((r?.assigned_scope as { node_type: string; node_id: number }[] | undefined) ?? []).map((s) => ({ node_type: s.node_type, node_id: String(s.node_id) })));
-    const src = ((r?.questions ?? r?.criteria) as Record<string, unknown>[] | undefined) ?? [];
+    const src = (((r?.questions ?? r?.criteria) as Record<string, unknown>[] | undefined) ?? []).filter((q) => q.enabled !== false); // a disabled placeholder must not go live (the write has no `enabled`)
     setRows(
       src.length
         ? src.map((q, i) => ({ ...blankItem(i + 1), label_en: String(q.label_en ?? ""), label_bn: String(q.label_bn ?? ""), answer_type: kind === "rubrics" ? (RUBRIC_READ_TO_WRITE[String(q.answer_type)] ?? "text") : String(q.answer_type ?? "bool"), photo: q.requires_photo === true }))
@@ -82,19 +85,21 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
     if (kind !== "rubrics" && !/^\d{4}-\d{2}-\d{2}$/.test(validFrom)) e.valid_from = t("error.field.required");
     if (kind === "content" && !/^\d{4}-\d{2}-\d{2}$/.test(validTo)) e.valid_to = t("error.field.required");
     if (validFrom && validTo && validTo < validFrom) e.valid_to = t("error.field.invalid");
-    if (kind === "content" && (!/^[0-9]{1,2}$/.test(sequence) || Number(sequence) < 1 || Number(sequence) > 20)) e.sequence = t("error.field.invalid");
+    const seq = String(asciiDigits(sequence)).trim();
+    if (kind === "content" && (!/^[0-9]{1,2}$/.test(seq) || Number(seq) < 1 || Number(seq) > 20)) e.sequence = t("error.field.invalid");
     if (kind !== "content") {
       if (rows.length < 1 || rows.length > DEF_MAX_ITEMS) e.rows = t("error.field.invalid");
       else if (rows.some((r) => !r.label_en.trim() || !/^[a-z][a-z0-9_]{1,40}$/.test(r.key))) e.rows = t("def.rows_invalid");
       else if (new Set(rows.map((r) => r.key)).size !== rows.length) e.rows = t("def.keys_unique");
+      else if (kind === "surveys" && rows.some((r, i) => r.show_if_key && !rows.slice(0, i).some((p) => p.key === r.show_if_key))) e.rows = t("def.stale_condition");
     }
     const purpose = defKind === "kv" ? "content_kv" : "content_av";
     if (kind === "content") {
       if (file) {
         const p = fileProblem(file, purpose);
-        if (p) e.file = t(p === "type" ? "tut.file_type" : p === "big" ? "tut.file_big" : "error.field.invalid");
+        if (p) e.file = t(p === "type" ? "tut.file_type" : p === "big" ? (defKind === "kv" ? "def.file_big_kv" : "def.file_big_av") : "error.field.invalid");
       } else e.file = t("tut.file_required"); // REQUEST: web-admin-definition-reads (asset_id is not readable)
-      if (scope.some((s) => !/^[0-9]{1,15}$/.test(s.node_id) || Number(s.node_id) < 1)) e.scope = t("error.field.invalid");
+      if (scope.some((s) => !/^[0-9]{1,15}$/.test(String(asciiDigits(s.node_id)).trim()) || Number(String(asciiDigits(s.node_id)).trim()) < 1)) e.scope = t("error.field.invalid");
     }
     if (n < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
     else if (n > 500) e.reason = t("error.field.too_long");
@@ -117,10 +122,13 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
         const up = await uploadAsset(file!, purpose);
         if (!up.ok) return setMessage({ ok: false, text: up.code === "upload_failed" ? t("tut.upload_failed") : problem(up.code as never) });
         body.asset_id = up.assetId;
-        body.sequence = Number(sequence);
-        body.assigned_scope = scope.map((s) => ({ node_type: s.node_type, node_id: Number(s.node_id) }));
+        body.sequence = Number(seq);
+        body.assigned_scope = scope.map((s) => ({ node_type: s.node_type, node_id: Number(String(asciiDigits(s.node_id)).trim()) }));
       }
-      if (editing) body.version = editing.version;
+      if (editing) {
+        body.version = editing.version;
+        body.status = status;
+      }
       const res = await fetch(editing ? `/api/bff/admin/defs/${kind}/${editing[ID_KEY[kind]]}` : `/api/bff/admin/defs/${kind}`, { method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
       const json = (await res.json().catch(() => ({}))) as { code?: string };
       if (!res.ok) return setMessage({ ok: false, text: problem((json.code ?? "ERR_INTERNAL") as never) });
@@ -146,6 +154,8 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
             <tr className="border-b border-slate-200 text-slate-600">
               <th className="p-2">{t("def.name")}</th>
               <th className="p-2">{t("tut.kind")}</th>
+              {kind !== "rubrics" ? <th className="p-2">{t("def.validity")}</th> : null}
+              {kind === "content" ? <th className="p-2">{t("def.scope")}</th> : null}
               <th className="p-2">{t("def.version")}</th>
               <th className="p-2">{t("entity.field.status")}</th>
               {canWrite ? <th className="p-2" /> : null}
@@ -154,11 +164,14 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
           <tbody>
             {items.map((r) => {
               const id = Number(r[ID_KEY[kind]]);
-              const name = String(r.title_en ?? `${r.kind}`);
+              const kindLabel = t(`def.kind.${String(r.kind)}` as MessageKey);
+              const name = r.title_en ? String(r.title_en) : kindLabel;
               return (
                 <tr key={id} className="border-b border-slate-100">
                   <td className="p-2 break-words">{name}{r.title_bn ? ` · ${String(r.title_bn)}` : ""}</td>
-                  <td className="p-2">{String(r.kind)}</td>
+                  <td className="p-2">{kindLabel}</td>
+                  {kind !== "rubrics" ? <td className="p-2">{`${String(r.valid_from ?? "")} – ${String(r.valid_to ?? "")}`}</td> : null}
+                  {kind === "content" ? <td className="p-2">{((r.assigned_scope as { node_type: string; node_id: number }[] | undefined) ?? []).map((n) => `${t(`def.node.${n.node_type}` as MessageKey)} ${n.node_id}`).join(", ") || t("def.all_outlets")}</td> : null}
                   <td className="p-2">{number(r.version)}</td>
                   <td className="p-2">{t(r.status === "active" ? "entity.status.active" : "entity.status.disabled")}</td>
                   {canWrite ? (
@@ -186,10 +199,18 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
           <Field label={t("tut.kind")} htmlFor="f-kind" required>
             <select id="f-kind" value={defKind} onChange={(ev) => setDefKind(ev.target.value)} className={`${inputClass} w-64`}>
               {KINDS[kind].map((k) => (
-                <option key={k} value={k}>{k}</option>
+                <option key={k} value={k}>{t(`def.kind.${k}` as MessageKey)}</option>
               ))}
             </select>
           </Field>
+          {editing ? (
+            <Field label={t("entity.field.status")} htmlFor="f-status">
+              <select id="f-status" aria-label={t("entity.field.status")} value={status} onChange={(ev) => setStatus(ev.target.value as "active" | "inactive")} className={`${inputClass} w-48`}>
+                <option value="active">{t("entity.status.active")}</option>
+                <option value="inactive">{t("entity.status.disabled")}</option>
+              </select>
+            </Field>
+          ) : null}
           {kind !== "rubrics" ? (
             <>
               <Field label={t("tut.title_en")} htmlFor="f-title_en" required error={errors.title_en}>
@@ -211,19 +232,19 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
               <legend className="text-sm font-medium text-slate-800">{t(kind === "surveys" ? "def.questions" : "def.criteria")}</legend>
               {rows.map((r, i) => (
                 <div key={i} className="grid gap-2 rounded border border-slate-200 p-3 sm:grid-cols-2" data-testid={`row-${i}`}>
-                  <input aria-label={t("def.key")} data-testid={`key-${i}`} value={r.key} onChange={(ev) => setRow(i, { key: ev.target.value })} className={inputClass} />
+                  <input aria-label={`${t("def.key")} ${i + 1}`} data-testid={`key-${i}`} value={r.key} onChange={(ev) => setRow(i, { key: ev.target.value })} className={inputClass} />
                   <select aria-label={t("def.answer_type")} value={r.answer_type} onChange={(ev) => setRow(i, { answer_type: ev.target.value })} className={inputClass}>
                     {answers.map((a) => (
-                      <option key={a} value={a}>{a}</option>
+                      <option key={a} value={a}>{t(`def.answer.${a}` as MessageKey)}</option>
                     ))}
                   </select>
-                  <input aria-label={t("def.label_en")} data-testid={`label-${i}`} maxLength={300} value={r.label_en} onChange={(ev) => setRow(i, { label_en: ev.target.value })} className={inputClass} />
-                  <input aria-label={t("def.label_bn")} maxLength={300} value={r.label_bn} onChange={(ev) => setRow(i, { label_bn: ev.target.value })} className={inputClass} />
+                  <input aria-label={`${t("def.label_en")} ${i + 1}`} data-testid={`label-${i}`} maxLength={300} value={r.label_en} onChange={(ev) => setRow(i, { label_en: ev.target.value })} className={inputClass} />
+                  <input aria-label={`${t("def.label_bn")} ${i + 1}`} maxLength={300} value={r.label_bn} onChange={(ev) => setRow(i, { label_bn: ev.target.value })} className={inputClass} />
                   {kind === "surveys" ? (
                     <div className="flex flex-wrap items-center gap-3 text-sm sm:col-span-2">
                       <label className="flex items-center gap-1"><input type="checkbox" checked={r.required} onChange={(ev) => setRow(i, { required: ev.target.checked })} />{t("def.required")}</label>
                       <label className="flex items-center gap-1"><input type="checkbox" checked={r.photo} onChange={(ev) => setRow(i, { photo: ev.target.checked })} />{t("def.photo")}</label>
-                      <select aria-label={t("def.show_if")} value={r.show_if_key} onChange={(ev) => setRow(i, { show_if_key: ev.target.value })} className={`${inputClass} w-48`}>
+                      <select aria-label={t("def.show_if")} value={r.show_if_key} onChange={(ev) => setRow(i, { show_if_key: ev.target.value, show_if_bool: ev.target.value ? r.show_if_bool || "true" : "" })} className={`${inputClass} w-48`}>
                         <option value="">{t("def.always")}</option>
                         {rows.slice(0, i).map((p) => (
                           <option key={p.key} value={p.key}>{p.key}</option>
@@ -262,7 +283,7 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
                   <div key={i} className="flex gap-2">
                     <select aria-label={t("def.node_type")} value={s.node_type} onChange={(ev) => setScope(scope.map((x, j) => (j === i ? { ...x, node_type: ev.target.value } : x)))} className={`${inputClass} w-40`}>
                       {SCOPE_TYPES.map((n) => (
-                        <option key={n} value={n}>{n}</option>
+                        <option key={n} value={n}>{t(`def.node.${n}` as MessageKey)}</option>
                       ))}
                     </select>
                     <input aria-label={t("def.node_id")} inputMode="numeric" value={s.node_id} onChange={(ev) => setScope(scope.map((x, j) => (j === i ? { ...x, node_id: ev.target.value } : x)))} className={`${inputClass} w-32`} />
