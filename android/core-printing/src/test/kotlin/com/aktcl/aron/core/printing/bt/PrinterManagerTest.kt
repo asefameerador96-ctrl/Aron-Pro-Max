@@ -156,14 +156,31 @@ class PrinterManagerTest {
         assertEquals(2, sim.connects)
     }
 
-    @Test fun reconnectGivesUpAfterTheBackoffWhenPrinterStaysOff() = runTest {
+    @Test fun reconnectKeepsTryingOnlyWhileAScreenHoldsTheLink() = runTest {
         val (sim, m) = setup()
-        m.hold()
+        val release = m.hold()
         runCurrent()
         sim.switchOff()
-        advanceTimeBy(60_000)
+        advanceTimeBy(120_000)
         assertEquals(PrinterState.Off, m.state.value)
+        val tries = sim.attempts
+        assertTrue("kept trying while held: $tries", tries >= 5)
+        release()
+        advanceTimeBy(600_000)
+        assertTrue("stops after release", sim.attempts <= tries + 1)
         assertEquals(1, sim.connects)
+    }
+
+    @Test fun screenOpenedWithPrinterOffConnectsWhenItIsSwitchedOn() = runTest {
+        val (sim, m) = setup()
+        sim.on = false
+        m.hold()
+        runCurrent()
+        assertEquals(PrinterState.Off, m.state.value)
+        sim.on = true
+        advanceTimeBy(3_000)
+        runCurrent()
+        assertEquals(PrinterState.Connected, m.state.value)
     }
 
     @Test fun selectingAndForgettingAPrinter() = runTest {
