@@ -19,6 +19,11 @@ enum class MediaState {
     @SerialName("uploaded") UPLOADED,
     /** media_meta is in the outbox: the photo is done here (the file is kept `local_keep_days` for display). */
     @SerialName("meta_queued") META_QUEUED,
+    /**
+     * Can never upload (its file no longer matches its SHA-256, or the server refused it for good): kept for the support
+     * bundle, counted in the sync health, never retried.
+     */
+    @SerialName("failed") FAILED,
 }
 
 /** The fix taken at the shutter (docs/17 s8.6): kept in the queue and in media_meta, never in the JPEG. */
@@ -62,7 +67,10 @@ data class MediaItem(
     @SerialName("ref_seen") val refSeen: Boolean = false,
     @SerialName("blob_path") val blobPath: String? = null,
     @SerialName("uploaded_at_ms") val uploadedAtMs: Long? = null,
+    /** Retryable failures (offline, 5xx, expired SAS): informational, never a reason to give up. */
     val attempts: Int = 0,
+    /** Refusals of this photo alone (a 400 on a one-photo SAS request, a refused PUT): three of them make it FAILED. */
+    val refusals: Int = 0,
     @SerialName("last_error") val lastError: String? = null,
 ) {
     val evidence: Boolean get() = ref?.purpose in EVIDENCE_PURPOSES
@@ -79,7 +87,8 @@ data class MediaItem(
  * Idempotent by media UUID. Small by design (tens of photos a day), so a directory listing is the index.
  */
 class MediaStore(val dir: File) {
-    private val lock = Mutex()
+    /** One lock per directory, process-wide: the worker's store and the camera's store may be different instances. */
+    private val lock = locks.computeIfAbsent(dir.absolutePath) { Mutex() }
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     init {
@@ -168,6 +177,7 @@ class MediaStore(val dir: File) {
     }
 
     companion object {
+        private val locks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
         private val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
         /** The per-user directory under the app's private files (docs/24 s5.2). */
