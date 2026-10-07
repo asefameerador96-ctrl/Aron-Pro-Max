@@ -1686,6 +1686,24 @@ esac
         self.assertIn('"ca-aron-${ENV_NAME}-worker" "$BACKEND_IMAGE"', d)
         self.assertIn('summary "| Worker | ${worker_result} |"', d)
 
+
+class JvmSplit(unittest.TestCase):
+    """Lead 2026-10-07: :backend:app:test (about 14.5 of 26 minutes) runs in its own parallel job; every test still runs
+    exactly once, and both job names are required checks on main."""
+
+    def test_app_tests_run_once_in_their_own_job(self):
+        c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        jvm = c[c.index("\n  jvm:"):c.index("\n  jvm-app:")]
+        app = c[c.index("\n  jvm-app:"):c.index("\n  android:")]
+        self.assertIn(":backend:app:build -x :backend:app:test", jvm)
+        self.assertIn("run: ./gradlew --console=plain :backend:app:test", app)
+        self.assertIn("name: Backend app tests", app)
+        self.assertIn("if: needs.changes.outputs.jvm == 'true'", app, "runs exactly when the jvm job runs")
+        self.assertIn("ARON_TEST_PG_URL", app, "its own PostgreSQL service")
+        gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
+        for name in ("'Shared, db and backend (build and tests)'", "'Backend app tests'"):
+            self.assertIn(name, gov)
+
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():
         sys.exit(f"compiled templates not found in {COMPILED}; run infra/validate.sh")
