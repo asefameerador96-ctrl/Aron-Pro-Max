@@ -12,6 +12,7 @@
 | android-core-ui | session_01PompFHeojjtrnV78dsjmsB | Sonnet | 2026-10-07 | N-023 UI kit first, published in slices; split from android-core because 3 lanes wait on it |
 | android-sr-a | session_01Gyh9KAacFpMFb35wUDq21c | Sonnet | 2026-10-07 | |
 | android-sr-b | session_01DCSzXKooAFuYYEGy9UAMSN | Sonnet | 2026-10-07 | |
+| android-sys | (starting 2026-10-07 05:42) | Opus | 2026-10-07 | camera and photo pipeline, media queue, location permission UX, update check, PDA support, language switch, logout: 8 T1 rows moved from android-core-ui |
 | android-geo-dpc | session_018dVKqTVsFaUht9A1J7XEst | Opus | 2026-10-07 | |
 | android-print | session_01FyHPQAii1xCvR7SvMwQEva | Opus | 2026-10-07 | recycled 05:21 after android-core put RoomPrintLedger on INT; previous session_012CxBfkJ79PW16h2NpNtPQv is retired (READY TO RECYCLE 04:51) |
 | web-admin | session_018iHvNJSMqCk8eLitCk9wzU | Sonnet | 2026-10-05 | |

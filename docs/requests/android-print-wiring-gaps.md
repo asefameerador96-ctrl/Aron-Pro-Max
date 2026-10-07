@@ -14,7 +14,7 @@ strings from resources.
 
 ## android-sr-a: app-sr shell (`app-sr`)
 1. **One `PrinterManager` per process** (Hilt `@Singleton` in `SrModule`): `PrinterManager(BluetoothSppTransport.factory(context), PrefsSavedPrinterStore(context), appScope, idleDisconnectMs = cfg.print.disconnect_idle_s * 1000)`.
-2. **`MemoPrinting` per signed-in user**, built where `SrDay` gets the user database:
+2. **One `MemoPrinting` per process for the signed-in user** (its `recover()` skips the jobs that instance has in flight, so a second instance would break that guard), built where `SrDay` gets the user database:
    `MemoPrinting(printerManager, { renderer }, RoomPrintLedger(db, envelope), ClientIds::newUuid, clock::nowMs, reprintMax = { cfg.memo.reprint_max }, confirmAfterPrint = { cfg.print.confirm_after_print })`.
    `envelope` = the same `CaptureMeta` source the captures use (trusted clock, boot count, bundle/config versions); it receives the memo's own meta while its route-day is open, else null.
 3. **Renderer**: `PaperRenderer(PrintFonts(regular, bold), TemplateSet(bundle.templates, labels), labels)` with the fonts read from core-ui `R.font.noto_sans_bengali_regular` / `_bold` (`resources.openRawResource(...).readBytes()`) and `labels = AndroidPrintLabels(context, AppLanguage.BN)`. Build it lazily once (font parsing is the expensive part).
@@ -40,4 +40,4 @@ strings from resources.
 15. A stock slip is one Save = several `stock_movement` rows (one per SKU), but the ledger flips `slip_printed` only on the row named by `ref_client_uuid`. Sales Submit warns while any row is unprinted, so a printed slip would still warn. Wanted: set and clear `slip_printed` on **every row of the same Save** as the named row. Rows of one Save share one `CaptureMeta`, so `business_date` + `captured_at` + `kind` identify the Save without a schema change; a `save_uuid` column is the cleaner option if you prefer a migration. android-print's contract test will add the multi-row case once you answer.
 
 ## android-print (mine, in progress)
-16. `MemoPrinting.printDaySummary(daySummaryUuid, DaySummaryPrint)` (document kind `day_summary`, own family, no local row) and F-SR-015 / F-SR-031 / F-SR-066 tests on the Room ledger.
+16. Done: `MemoPrinting.printDaySummary(daySummaryUuid, DaySummaryPrint)` (kind `day_summary`, no limit, no marker; `daySummaryUuid` = a stable UUID v4 per user and business date). Next: F-SR-015 / F-SR-031 / F-SR-066 cases on the Room ledger.
