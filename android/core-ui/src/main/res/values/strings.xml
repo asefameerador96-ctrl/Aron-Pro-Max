@@ -14,8 +14,8 @@
     <string name="core_ui_kit_gallery_stepper_more">Increase</string>
     <string name="core_ui_kit_gallery_hold_submit">Hold to submit sales</string>
     <string name="core_ui_kit_gallery_confirm_title">Submit sales?</string>
-    <string name="core_ui_kit_gallery_confirm_msg">You cannot change today's memos after this.</string>
-    <string name="core_ui_kit_gallery_empty">No outlets on today's route</string>
+    <string name="core_ui_kit_gallery_confirm_msg">You cannot change today\'s memos after this.</string>
+    <string name="core_ui_kit_gallery_empty">No outlets on today\'s route</string>
     <string name="core_ui_kit_gallery_empty_hint">Pull the route again when you are online</string>
     <string name="core_ui_kit_gallery_error">Could not load the route</string>
     <string name="core_ui_kit_gallery_retry">Try again</string>
