@@ -88,6 +88,31 @@ class ErrorReporterTest {
         assertEquals(ErrorReporter.MAX_FILES, dir.listFiles { f -> f.name.endsWith(".json") }!!.size)
     }
 
+    /** F-SYS-032 follow-up: a crash before Hilt built the graph is kept as a file of nobody and drained at the next start. */
+    @Test fun aCrashBeforeTheGraphExistsIsKeptAndTheFullHandlerTakesOver() = runBlocking {
+        val r = reporter()
+        val before = Thread.getDefaultUncaughtExceptionHandler()
+        var previousCalls = 0
+        Thread.setDefaultUncaughtExceptionHandler { _, _ -> previousCalls++ }
+        try {
+            ErrorReporter.installEarly(dir, "1.0.3+10003", nowMs = { wall }, elapsedMs = { 42L })
+            ErrorReporter.installEarly(dir, "1.0.3+10003", nowMs = { wall }, elapsedMs = { 42L }) // once
+            Thread.getDefaultUncaughtExceptionHandler()!!.uncaughtException(Thread.currentThread(), IllegalStateException("hilt graph"))
+            assertEquals(1, previousCalls)
+            assertEquals(1, dir.listFiles { f -> f.name.endsWith(".u0.json") }!!.size)
+            // The full handler replaces the early one and chains to the original handler, not to the early one.
+            r.install()
+            Thread.getDefaultUncaughtExceptionHandler()!!.uncaughtException(Thread.currentThread(), RuntimeException("later"))
+            assertEquals(2, previousCalls)
+            assertEquals(2, dir.listFiles { f -> f.name.endsWith(".json") }!!.size)
+            assertEquals(2, r.drain(7))
+            val early = errorRows().map { payload(it) }.single { it["exception_class"]!!.jsonPrimitive.content == "java.lang.IllegalStateException" }
+            assertEquals("crash", early["kind"]!!.jsonPrimitive.content)
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(before)
+        }
+    }
+
     @Test fun theHandlerWritesTheFileAndStillCallsThePreviousHandler() = runBlocking {
         val r = reporter()
         val before = Thread.getDefaultUncaughtExceptionHandler()

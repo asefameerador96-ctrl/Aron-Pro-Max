@@ -149,7 +149,7 @@ object SessionModule {
     @Singleton
     fun errorReporter(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.ErrorReporter =
         com.aktcl.aron.core.sync.ErrorReporter(
-            File(context.noBackupFilesDir, "errors"), { databases.of(it) }, components.trustedClock, components.appVersion,
+            com.aktcl.aron.core.sync.ErrorReporter.dirOf(context), { databases.of(it) }, components.trustedClock, components.appVersion,
             com.aktcl.aron.core.sync.LocationNotice.offlineProbe(context),
             activeUser = { (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
             currentUser = { (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },

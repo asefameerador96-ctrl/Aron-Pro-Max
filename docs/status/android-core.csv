@@ -39,4 +39,4 @@ AUD-PERF-06,M,2026-10-07T17:00Z,2026-10-07T17:10Z,10,5,checker PASS; added malfo
 AUD-PERF-04,M,2026-10-07T17:12Z,2026-10-07T17:45Z,33,4,checker FAIL: generator on obfuscated build (blocking); seed too broad; gate compile state; https guard; suffix - fixed; re-check FAIL (gate compile state order-dependent; generator on wrong build) fixed; re-check 2 PASS (broadcast result now asserted); device numbers D-PERF-04
 F-SYS-075-followup,S,2026-10-07T17:38Z,2026-10-07T17:44Z,6,1,BC-55 user.consents read; Opus check PASS
 F-SYS-079-followup,S,2026-10-07T17:44Z,2026-10-07T17:50Z,6,2,cfg checkout time and jitter from DayConfig; Opus check PASS; guard test added
-F-SYS-052-followup,S,2026-10-07T17:50Z,2026-10-07T18:08Z,18,2,cfg.auth offline unlock limits via session profile; Opus check PASS (medium: login dropped values) fixed with tests
+F-SYS-052-followup,S,2026-10-07T17:50Z,2026-10-07T17:56Z,6,2,cfg.auth offline unlock limits via session profile; Opus check PASS (medium: login dropped values) fixed with tests

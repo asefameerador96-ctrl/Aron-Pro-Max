@@ -74,7 +74,8 @@ class ErrorReporter(
     fun install() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         if (previous is Handler) return
-        Thread.setDefaultUncaughtExceptionHandler(Handler(previous))
+        // The early catcher ([installEarly]) hands over: the full handler chains to what was there before it.
+        Thread.setDefaultUncaughtExceptionHandler(Handler((previous as? EarlyHandler)?.previous ?: previous))
     }
 
     private inner class Handler(private val previous: Thread.UncaughtExceptionHandler?) : Thread.UncaughtExceptionHandler {
@@ -246,7 +247,58 @@ class ErrorReporter(
         (bundle + typed).distinct()
     }.getOrDefault(emptyList())
 
+    /**
+     * The catcher for the moments before Hilt has built the graph (super.onCreate): no clock, session or database yet, so
+     * it writes the same crash file under "nobody" (`.u0`) with the device clocks, and the next start drains it into the
+     * signed-in user's outbox. Replaced by the full handler in [install].
+     */
+    internal class EarlyHandler(
+        private val dir: File,
+        private val appVersion: String,
+        val previous: Thread.UncaughtExceptionHandler?,
+        private val nowMs: () -> Long,
+        private val elapsedMs: () -> Long,
+    ) : Thread.UncaughtExceptionHandler {
+        override fun uncaughtException(t: Thread, e: Throwable) {
+            try {
+                dir.mkdirs()
+                val count = dir.listFiles { f -> f.name.endsWith(".json") }?.size ?: 0
+                if (count < MAX_FILES) {
+                    val report = AppErrorReport(
+                        occurredAt = SyncEngine.iso(nowMs()), kind = "crash", exceptionClass = e.javaClass.name.take(200),
+                        message = ErrorScrubber.scrub(e.message, emptyList())?.take(500),
+                        stack = ErrorScrubber.scrub(e.stackTraceToString(), emptyList())?.take(16_000), screen = null, appVersion = appVersion,
+                    )
+                    val uuid = ClientIds.newUuid()
+                    val tmp = File(dir, "$uuid.tmp")
+                    tmp.writeText(Json.encodeToString(CrashFile.serializer(), CrashFile(report, elapsedMs(), 0)))
+                    tmp.renameTo(File(dir, "$uuid.u0.json"))
+                }
+            } catch (_: Throwable) {
+            }
+            previous?.uncaughtException(t, e)
+        }
+    }
+
     companion object {
+        /**
+         * Application.onCreate, before super.onCreate (F-SYS-032): a crash while Hilt builds the graph is kept too. The
+         * time is the device clock (no trusted time exists yet); [dir] must be the reporter's own folder.
+         */
+        fun installEarly(
+            dir: File,
+            appVersion: String,
+            nowMs: () -> Long = { System.currentTimeMillis() },
+            elapsedMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+        ) {
+            val previous = Thread.getDefaultUncaughtExceptionHandler()
+            if (previous is EarlyHandler || previous is ErrorReporter.Handler) return
+            Thread.setDefaultUncaughtExceptionHandler(EarlyHandler(dir, appVersion, previous, nowMs, elapsedMs))
+        }
+
+        /** The reporter's folder (shared by [installEarly] and the Hilt-built reporter). */
+        fun dirOf(context: android.content.Context): File = File(context.noBackupFilesDir, "errors")
+
         const val MAX_FILES = 20
         const val MAX_PER_RUN = 20
         const val MAX_PER_DAY = 50
