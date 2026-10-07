@@ -104,7 +104,7 @@ export function TutorialManager({ items, canWrite }: { items: TutorialRow[]; can
       {items.length === 0 ? (
         <p className="text-slate-600">{t("common.empty")}</p>
       ) : (
-        <table className="w-full text-left text-sm" data-testid="data-table">
+        <table className="w-full text-left text-sm" data-testid="data-table" aria-label={t("menu.admin.tutorials")}>
           <thead>
             <tr className="border-b border-slate-200 text-slate-600">
               <th className="p-2">{t("tut.title_en")}</th>
@@ -120,12 +120,12 @@ export function TutorialManager({ items, canWrite }: { items: TutorialRow[]; can
               <tr key={r.tutorial_id} className="border-b border-slate-100">
                 <td className="p-2 break-words">{r.title_en}{r.title_bn ? ` · ${r.title_bn}` : ""}</td>
                 <td className="p-2">{t(`tut.kind.${r.kind}` as MessageKey)}</td>
-                <td className="p-2">{r.roles.join(", ")}</td>
+                <td className="p-2">{r.roles.map((x) => t(`role.${x}` as MessageKey)).join(", ")}</td>
                 <td className="p-2">{number(r.sort)}</td>
                 <td className="p-2">{t(r.status === "active" ? "entity.status.active" : "entity.status.disabled")}</td>
                 {canWrite ? (
                   <td className="p-2">
-                    <button type="button" data-testid={`edit-${r.tutorial_id}`} onClick={() => startEdit(r)} className="text-brand-600 underline">
+                    <button type="button" data-testid={`edit-${r.tutorial_id}`} onClick={() => startEdit(r)} aria-label={`${t("common.edit")}: ${r.title_en}`} className="text-brand-600 underline">
                       {t("common.edit")}
                     </button>
                   </td>

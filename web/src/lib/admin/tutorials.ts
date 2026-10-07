@@ -42,7 +42,7 @@ export function checkTutorialWrite(b: unknown): { issues: FieldIssue[]; body?: R
   if (!(TUTORIAL_KINDS as readonly unknown[]).includes(b.kind)) issues.push({ pointer: "/kind", code: "invalid" });
   const en = typeof b.title_en === "string" ? b.title_en.trim() : "";
   if (!en || codePoints(en) > 120) issues.push({ pointer: "/title_en", code: en ? "too_long" : "required" });
-  const bn = b.title_bn === undefined || b.title_bn === null ? null : typeof b.title_bn === "string" ? b.title_bn.trim() : undefined;
+  const bn = b.title_bn === undefined || b.title_bn === null ? null : typeof b.title_bn === "string" ? b.title_bn.trim() || null : undefined;
   if (bn === undefined || (bn !== null && codePoints(bn) > 120)) issues.push({ pointer: "/title_bn", code: "invalid" });
   if (typeof b.asset_id !== "string" || !UUID_V4.test(b.asset_id)) issues.push({ pointer: "/asset_id", code: "invalid" });
   const roles = b.roles;

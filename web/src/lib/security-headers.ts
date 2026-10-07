@@ -6,7 +6,7 @@ export function blobOrigin(raw: string | undefined = process.env.ARON_BLOB_ORIGI
   try {
     const u = new URL(raw);
     const ok = u.protocol === "https:" || (u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost"));
-    return ok && u.origin === raw.replace(/\/$/, "") && !u.host.includes("*") ? u.origin : null;
+    return ok && u.origin === raw.replace(/\/$/, "") && /^[a-z0-9.-]+(:[0-9]{1,5})?$/.test(u.host) ? u.origin : null;
   } catch {
     return null;
   }
