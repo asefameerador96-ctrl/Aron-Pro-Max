@@ -87,7 +87,7 @@ open class LoginTest {
             assertEquals("sr334001", b["user"]!!.jsonObject["username"]!!.jsonPrimitive.content)
             // Every LoginResponse member is present (required-nullable ones as null).
             assertEquals(setOf("status", "access_token", "access_expires_at", "refresh_token", "refresh_expires_at", "upload_refresh_token",
-                "bind_token", "mfa_token", "user", "scope", "device", "config_version", "server_time", "min_app_version_code"), b.keys)
+                "bind_token", "mfa_token", "user", "scope", "device", "config_version", "server_time", "min_app_version_code", "password_change_token"), b.keys)
         }
     }
 

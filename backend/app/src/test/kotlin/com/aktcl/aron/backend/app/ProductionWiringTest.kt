@@ -14,6 +14,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
@@ -55,7 +56,14 @@ class ProductionWiringTest {
                     val version = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT COALESCE(max(config_version), 0) FROM app.cfg_version").mapTo(Long::class.java).one() }
                     assertEquals(version.toString(), r.headers["X-Config-Version"], "the header carries the database's config_version")
                     val access = b["access_token"]!!.jsonPrimitive.content
-                    assertEquals(HttpStatusCode.OK, client.get("/v1/me") { bearerAuth(access) }.status)
+                    val me = client.get("/v1/me") { bearerAuth(access) }
+                    assertEquals(HttpStatusCode.OK, me.status)
+                    // Contract v1.2 Me.menus (R10): the caller's role row of cfg.web.menu_by_role, as the permission matrix maps it.
+                    val menus = Json.parseToJsonElement(me.bodyAsText()).jsonObject["menus"]!!.jsonArray
+                    kotlin.test.assertTrue(menus.isNotEmpty(), "the TSO default menu row is returned")
+                    // Seeded {menu: dashboard, page: dashboard, actions: [read, filter]} in the contract shape ("filter" has no contract action).
+                    val dashboard = menus.map { it.jsonObject }.single { it["menu_id"]!!.jsonPrimitive.content == "dashboard.dashboard" }
+                    assertEquals(listOf("view"), dashboard["actions"]!!.jsonArray.map { it.jsonPrimitive.content })
                     assertEquals(HttpStatusCode.OK, client.get("/v1/admin/outlets") { bearerAuth(access) }.status)
                     // Web: the refresh token travels only as the aron_rt cookie, never in the body.
                     assertEquals(kotlinx.serialization.json.JsonNull, b["refresh_token"])

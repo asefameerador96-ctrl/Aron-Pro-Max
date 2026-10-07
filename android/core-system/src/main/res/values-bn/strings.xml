@@ -27,6 +27,7 @@
     <string name="logout_sync_now">এখনই সিঙ্ক</string>
     <string name="logout_cancel">বাতিল</string>
     <string name="logout_wipe_incomplete">লগআউট হয়েছে, কিন্তু ফোনের কিছু ফাইল মোছা যায়নি। শেষ করতে আবার লগইন ও লগআউট করুন।</string>
+    <string name="logout_failed">লগআউট শেষ করা যায়নি। আবার চেষ্টা করুন।</string>
     <!-- F-SYS-020 updater -->
     <string name="update_title">ARON-এর নতুন সংস্করণ প্রস্তুত</string>
     <string name="update_title_required">নতুন দিন শুরু করতে ARON আপডেট করুন</string>

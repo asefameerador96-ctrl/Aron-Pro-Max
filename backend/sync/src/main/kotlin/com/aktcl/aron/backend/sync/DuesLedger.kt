@@ -63,7 +63,7 @@ object DuesLedger {
                 // The memo's outlet, never the payload's: a collection pays its own memo's outlet.
                 val (status, outlet) = memoRow(h, memo) ?: return
                 post(h, outlet, bd, "collection", -amount, memo, p.str("against_memo_no"), cu)
-                if (status != "active") reopenClosure(h, memo, outlet, bd, cu)
+                if (status != "active") reopenClosure(h, memo, outlet, env.str("captured_at"), cu)
             }
             "memo_void" -> {
                 val memo = p.str("memo_client_uuid") ?: return
@@ -88,11 +88,26 @@ object DuesLedger {
 
     /**
      * A collection captured before its memo's void or edit but uploaded after it: the closure took off the whole open
-     * balance, so the memo now sits below zero by what was collected. In arrival order the closure would have taken
+     * balance, so the memo now sits below zero by what was collected. In capture order the closure would have taken
      * off only what was left; an `adjustment` (note [LATE_COLLECTION]) gives back that much of the closure, at most
-     * the closure itself, so any order of upload ends at the in-order balance.
+     * the closure itself, dated on the closure's business date, so every upload order ends at the in-order ledger on
+     * every date. A collection captured after the void or edit (a stale list on another phone) is real cash against
+     * the outlet and gives nothing back.
      */
-    private fun reopenClosure(h: Handle, memo: String, outlet: Long, bd: String, source: String) {
+    private fun reopenClosure(h: Handle, memo: String, outlet: Long, collectionCapturedAt: String?, source: String) {
+        val closure = h.createQuery(
+            """
+            SELECT l.business_date::text, COALESCE(v.captured_at, m.captured_at)
+            FROM app.due_ledger l
+            LEFT JOIN app.memo_void v ON v.client_uuid = l.source_client_uuid AND l.entry_kind = 'memo_void'
+            LEFT JOIN app.memo m ON m.client_uuid = l.source_client_uuid AND l.entry_kind = 'memo_superseded'
+            WHERE l.memo_client_uuid = CAST(:m AS uuid) AND l.entry_kind IN ('memo_void', 'memo_superseded')
+            ORDER BY l.id LIMIT 1
+            """.trimIndent(),
+        ).bind("m", memo).map { rs, _ -> rs.getString(1) to rs.getObject(2, java.time.OffsetDateTime::class.java)?.toInstant() }.findOne().orElse(null) ?: return
+        val (closureDate, closureCapturedAt) = closure
+        val collected = collectionCapturedAt?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+        if (collected != null && closureCapturedAt != null && collected.isAfter(closureCapturedAt)) return
         val (balance, closed, reopened) = h.createQuery(
             """
             SELECT COALESCE(sum(amount_mtk), 0),
@@ -102,7 +117,7 @@ object DuesLedger {
             """.trimIndent(),
         ).bind("m", memo).bind("n", LATE_COLLECTION).map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getLong(3)) }.one()
         val give = minOf(-balance, closed - reopened)
-        if (give > 0) post(h, outlet, bd, "adjustment", give, memo, null, source, LATE_COLLECTION)
+        if (give > 0) post(h, outlet, closureDate, "adjustment", give, memo, null, source, LATE_COLLECTION)
     }
 
     const val LATE_COLLECTION = "late_collection_reopens_closure"

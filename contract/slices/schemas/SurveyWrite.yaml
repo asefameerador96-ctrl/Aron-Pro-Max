@@ -66,6 +66,14 @@ SurveyWrite:
             - 'null'
           photo:
             type: boolean
+          option_codes:
+            type: array
+            maxItems: 20
+            description: Answer options of an `option` question, returned on the read as `option_codes` (docs/24
+              s14a R20).
+            items:
+              type: string
+              pattern: ^[a-z][a-z0-9_]{1,40}$
     valid_from:
       $ref: '#/components/schemas/BusinessDate'
     valid_to:

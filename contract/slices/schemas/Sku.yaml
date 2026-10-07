@@ -78,6 +78,13 @@ Sku:
       oneOf:
       - $ref: '#/components/schemas/Uuid'
       - type: 'null'
+    image_url:
+      type:
+      - string
+      - 'null'
+      format: uri
+      maxLength: 1000
+      description: Pack image (the asset bound by `image_asset_id`); null when the SKU has none (docs/24 s14a R20).
     updated_at:
       $ref: '#/components/schemas/Timestamp'
     version:
