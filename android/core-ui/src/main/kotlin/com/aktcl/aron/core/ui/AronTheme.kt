@@ -23,6 +23,7 @@ import com.aktcl.aron.core.common.LocaleDigits
 object AronFonts {
     val Bengali: FontFamily = FontFamily(
         Font(R.font.noto_sans_bengali_regular, FontWeight.Normal),
+        Font(R.font.noto_sans_bengali_medium, FontWeight.Medium),
         Font(R.font.noto_sans_bengali_bold, FontWeight.Bold),
     )
     val Latin: FontFamily = FontFamily(
@@ -57,11 +58,11 @@ private fun AronColorRoles.toMaterial(): ColorScheme {
 fun aronTypography(language: AppLanguage, sunlight: Boolean = false): Typography {
     val family = AronFonts.forLanguage(language)
     val bn = language == AppLanguage.BN
-    fun st(size: Int, latinLine: Int, bnLine: Int = latinLine, bold: Boolean = false, tnum: Boolean = false, bnSize: Int = size) = TextStyle(
+    fun st(size: Int, latinLine: Int, bnLine: Int = latinLine, bold: Boolean = false, tnum: Boolean = false, bnSize: Int = size, bnMedium: Boolean = false) = TextStyle(
         fontFamily = family,
         fontSize = (if (bn) bnSize else size).sp,
         lineHeight = (if (bn) bnLine else latinLine).sp,
-        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+        fontWeight = if (bold) FontWeight.Bold else if (bn && bnMedium) FontWeight.Medium else FontWeight.Normal,
         letterSpacing = 0.sp,
         fontFeatureSettings = if (tnum) "tnum" else null,
     )
@@ -69,7 +70,7 @@ fun aronTypography(language: AppLanguage, sunlight: Boolean = false): Typography
     val numeral = st(26, 32, 38, bold = true, tnum = true)
     val title = st(22, 30, 32, bold = true)
     val heading = st(18, 26, 26, bold = true)
-    val body = if (sunlight) st(17, 25, 28, bold = bn, bnSize = 18) else st(16, 24, 26)
+    val body = if (sunlight) st(17, 25, 28, bnSize = 18, bnMedium = true) else st(16, 24, 26)
     val bodyStrong = if (sunlight) st(17, 25, 28, bold = true, bnSize = 18) else st(16, 24, 26, bold = true)
     val caption = st(13, 18, 20, bnSize = 14)
     val label = st(13, 18, 20, bold = true, bnSize = 14)

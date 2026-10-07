@@ -18,5 +18,6 @@ class FontLicenseTest {
         assertTrue(text.contains("SIL OPEN FONT LICENSE Version 1.1"))
         assertTrue(text.contains("The Noto Project Authors"))
         assertTrue(text.contains("noto_sans_bengali_regular.ttf"))
+        assertTrue(text.contains("noto_sans_bengali_medium.ttf"))
     }
 }
