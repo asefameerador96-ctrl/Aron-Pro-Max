@@ -32,8 +32,8 @@ AronTheme(language, tier = tier) { GlassSurface { ... }; StatusChip(SyncChipStat
 - Deviation: docs/32 asks for Bangla body weight 500 in sunlight; only 400 and 700 are bundled, so sunlight sets Bangla body in bold (log for the lead).
 - Not done: screenshot tests of home, sale entry, review and memo (needs a screenshot library and those screens; request file to follow). Battery-saver and reduce-transparency engagement of sunlight mode: tier C is already forced by `GlassPolicy`; the sunlight colours themselves stay a user switch.
 
-## Next slices
-press-and-hold button, dialogs (confirm/info), empty / error states, kit gallery screen + font-scale 1.3 test; then F-SYS-023, F-SYS-030, F-SYS-010, F-SYS-019, F-SYS-022, F-SYS-020, F-SYS-021, F-SYS-037.
+## Next
+Scope change (lead, 2026-10-07): F-SYS-023, 030, 010, 037, 019, 022, 020, 021 moved to the Opus lane `android-sys`. This lane keeps N-023 (kit, gallery, overflow tests), the outdoor-first additions, design v1 adoption and tokens. Remaining: Sonnet checker on the outdoor-first slice, screenshot tests (request file), and kit components android-sys asks for (permission rationale, language switch screen).
 
 ## Traps
 - Local Gradle cannot resolve (Maven Central 429): CI is the compiler. Push to `lane/android-core-ui`, merge INT only when green.
