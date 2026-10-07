@@ -37,6 +37,12 @@ SkuPatch:
       oneOf:
       - $ref: '#/components/schemas/Uuid'
       - type: 'null'
+    image_asset_id:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+      description: 'Pack image: an asset uploaded with `POST /v1/admin/assets`, purpose `sku_image` (its 300 KB
+        limit is checked there). Null removes the image; omitted keeps it.'
     change_reason:
       oneOf:
       - $ref: '#/components/schemas/ChangeReason'
