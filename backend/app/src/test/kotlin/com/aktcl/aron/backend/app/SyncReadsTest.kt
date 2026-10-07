@@ -289,5 +289,61 @@ class SyncReadsTest {
         assertEquals(HttpStatusCode.Unauthorized, client.get("/v1/memos?memo_no=$memoNo").status)
     }
 
+    /** The phone's side of the digest rule (docs/24 s4.8), written from the text: hex digits and BigInteger, not bits. */
+    private fun phoneBuckets(uuids: List<String>): List<Pair<Int, String>> = (0 until 16).map { b ->
+        val mine = uuids.filter { it[0].digitToInt(16) == b }
+        val sum = mine.fold(java.math.BigInteger.ZERO) { acc, u -> acc + java.math.BigInteger(u.replace("-", "").take(16), 16) }
+        mine.size to sum.mod(java.math.BigInteger.TWO.pow(64)).toString(16).padStart(16, '0')
+    }
+
+    private fun digestBody(device: String, items: List<Triple<String, String, List<Pair<Int, String>>>>) = buildJsonObject {
+        put("device_uuid", device)
+        put("items", kotlinx.serialization.json.JsonArray(items.map { (d, t, b) ->
+            buildJsonObject {
+                put("business_date", d); put("type", t)
+                put("buckets", kotlinx.serialization.json.JsonArray(b.map { (n, h) -> buildJsonObject { put("count", n); put("hash", h) } }))
+            }
+        }))
+    }.toString()
+
+    private suspend fun HttpClient.digest(token: String, body: String): HttpResponse = post("/v1/sync/digest") {
+        bearerAuth(token); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9"); contentType(ContentType.Application.Json); setBody(body)
+    }
+
+    @Test
+    fun theDigestNamesOnlyTheBucketsThatDifferAndAMissingRowIsResentOnce() = testApplication {
+        app()
+        val token = client.token()
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(saleFamily())).bodyAsText())))
+        val stored = { type: String ->
+            fresh.db.jdbi.withHandle<List<String>, Exception> { h ->
+                h.createQuery("SELECT r.client_uuid::text FROM app.ingest_registry r JOIN app.device d ON d.id = r.device_id WHERE d.device_uuid = CAST(:dev AS uuid) AND r.business_date = DATE '$day' AND r.record_type = :t AND r.status IN ('accepted', 'voided')")
+                    .bind("dev", devPhone).bind("t", type).mapTo(String::class.java).list()
+            }
+        }
+        val memos = stored("memo"); val lines = stored("memo_line")
+        assertTrue(memos.isNotEmpty() && lines.size >= 2)
+        // Everything the phone holds matches: nothing to re-send.
+        val all = digestBody(devPhone, listOf(Triple(day, "memo", phoneBuckets(memos)), Triple(day, "memo_line", phoneBuckets(lines))))
+        val ok = client.digest(token, all)
+        assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText())
+        assertEquals("""{"resend":[]}""", ok.bodyAsText())
+        // The phone holds one memo line the server lost (a uuid the server never stored): exactly its bucket differs.
+        val lost = java.util.UUID.randomUUID().toString()
+        val r = json(client.digest(token, digestBody(devPhone, listOf(Triple(day, "memo_line", phoneBuckets(lines + lost))))).bodyAsText())
+        val resend = r["resend"]!!.jsonArray.single().jsonObject
+        assertEquals("memo_line", resend["type"]!!.jsonPrimitive.content)
+        assertEquals(listOf(lost[0].digitToInt(16)), resend["buckets"]!!.jsonArray.map { it.jsonPrimitive.int })
+        // Outside the window (or in the future): answered as matching.
+        val old = digestBody(devPhone, listOf(Triple("2026-01-01", "memo", phoneBuckets(listOf(lost))), Triple("2027-01-05", "memo", phoneBuckets(listOf(lost)))))
+        assertEquals("""{"resend":[]}""", client.digest(token, old).bodyAsText())
+        // Another device's uuid in the body is refused; a malformed bucket list is 400.
+        assertEquals(HttpStatusCode.Unauthorized, client.digest(token, digestBody("00000000-0000-4000-8000-0000000000ff", emptyList())).status)
+        val short = digestBody(devPhone, listOf(Triple(day, "memo", phoneBuckets(memos).take(15))))
+        assertEquals(HttpStatusCode.BadRequest, client.digest(token, short).status)
+        val upper = digestBody(devPhone, listOf(Triple(day, "memo", phoneBuckets(memos).map { (n, h) -> n to h.uppercase().replace('0', 'A') })))
+        assertEquals(HttpStatusCode.BadRequest, client.digest(token, upper).status)
+    }
+
     private fun JsonPrimitive.contentOrNull(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
 }

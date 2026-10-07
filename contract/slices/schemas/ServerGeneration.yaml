@@ -24,3 +24,16 @@ ServerGeneration:
       - type: 'null'
     minted_at:
       $ref: '#/components/schemas/Timestamp'
+    previous_generation:
+      description: The generation this one replaced; null for the first generation of the lineage.
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    earliest_lost_after_utc:
+      description: 'With `since`: the earliest `lost_after_utc` of every generation minted after `since`, so a phone
+        that missed a generation re-sends from the earliest loss (two restores before it called). Null without `since`,
+        when `since` is the current generation or is not in this lineage''s history (then re-send from `lost_after_utc`
+        and let the digest close the rest).'
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

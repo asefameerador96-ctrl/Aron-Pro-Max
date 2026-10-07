@@ -41,6 +41,16 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - **F-SYS-086** backend-core share (BC-65): route-day state moves and the first login mark the tile key; data void and route-assignment writes requested from backend-admin (`backend-core-dirty-keys-admin-writes.md`).
 - **N-033** server part: bundle `device_policy_version` (= config version the policy renders at); the block list rides `config.values`.
 - **F-SR-020/021 data** (BC-67, lead 18:55Z): bundle `content` and `surveys` filled from the admin tables; no contract or db change was needed (all already existed). Tell android-core and android-sr-a.
+- **POST /v1/sync/digest** (F-SYS-080 server half, BC-68) and **ServerGeneration `previous_generation` + `?since=` -> `earliest_lost_after_utc`** (F-SYS-047 two-restore gap; additive contract change, slices + WireDtos + web openapi.d.ts regenerated).
+
+### Answer to android-core-backend-sync-digest.md (the rule both sides compute; confirmed against docs/24 s4.8)
+- **Per device**: the server counts the rows the calling phone uploaded (user and device from the token; the body `device_uuid` must equal the token's device, else 401 `ERR_DEVICE_PROOF_INVALID`).
+- **Rows counted**: those the server acked as stored, `accepted` or `duplicate` of a stored row (registry `accepted` or `voided`). Do **not** count rows acked `rejected` or `quarantined`, nor parked ones still waiting.
+- **Bucket** = the first hex digit of the lowercase `client_uuid` (0..15); send all 16 buckets for every item.
+- **count** = rows in the bucket. **hash** = the sum of the uuid's first 8 bytes read as a **big-endian unsigned** 64-bit integer (exactly its first 16 hex digits, dashes removed), **modulo 2^64**, written as **16 lowercase hex digits**, zero-padded; an empty bucket is `0000000000000000`. Your byte order is right. In Kotlin: `uuid.mostSignificantBits` summed with ordinary `Long` addition (wraps modulo 2^64), printed with `java.lang.Long.toUnsignedString(h, 16).padStart(16, '0')`.
+- **Window**: dates from today (Dhaka) back 31 days; an item outside it, or in the future, is answered as matching. At most 200 items per call (400 above). An unknown type or a malformed bucket is 400.
+- **Answer**: `resend[]` lists (date, type, bucket indexes) whose count or hash differ; `{"resend":[]}` when all match. Re-send those rows with trigger `digest_resend`.
+- **Generation**: call `GET /v1/sync/generation?since=<the last generation you handled>`; re-send from `earliest_lost_after_utc` when it is not null, else from `lost_after_utc`. `previous_generation` names the one the current replaced.
 - Opus checkers: sink (PASS, 4 minor fixed), sync reads + dirty keys + N-033 (PASS, 1 major fixed, minors logged in BC-66).
 
 ## Session 6 close-out: next rows (session 7 starts here)
