@@ -89,3 +89,14 @@ data class ChangePasswordRequest(val current_password: String, val new_password:
 
     override fun toString() = "ChangePasswordRequest(***)"
 }
+
+/** POST /v1/auth/bind-device (contract BindDeviceRequest; the OTP is never logged). */
+@Serializable
+data class BindDeviceRequest(val device_uuid: String, val otp: String) {
+    init {
+        require(UUID_V4.matches(device_uuid)) { "/device_uuid: pattern" }
+        require(Regex("^[0-9]{4,8}$").matches(otp)) { "/otp: pattern" }
+    }
+
+    override fun toString() = "BindDeviceRequest(device_uuid=$device_uuid, otp=***)"
+}

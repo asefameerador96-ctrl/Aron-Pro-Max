@@ -46,6 +46,9 @@ class LoginService(
     private val passwords: PasswordStore? = null,
     /** `cfg.auth.password_min_len` resolved for a role (role-scoped value, s9.5); wired to the config resolver. */
     private val minPasswordLen: (Role) -> Int = { if (it in PasswordPolicy.FIELD_ROLES) 8 else 12 },
+    /** Device binding by OTP (F-SYS-003); null where a test wires no database. */
+    private val binds: BindStore? = null,
+    private val otpSealer: OtpSealer? = null,
 ) {
     private val perUsername = RateLimiter(10, 15 * 60, clock)
     private val perDevice = RateLimiter(30, 15 * 60, clock)
@@ -152,6 +155,45 @@ class LoginService(
         return complete(fresh, null, null, "web", minVersionCode("web"), afterPasswordChange = true)
     }
 
+    private fun cfgInt(key: String, default: Int): Int = runCatching { config.int(key) }.getOrDefault(default)
+
+    /**
+     * POST /v1/auth/bind-device (F-API-003, F-SYS-003): with the login's bind_token, the phone proves its key over
+     * `aron-proof-v1 / bind / device_uuid / hex sha256(otp) / bucket` and sends the OTP the TSO read out. The OTP is
+     * single use, expires after `cfg.auth.otp_ttl_min`, and after `cfg.auth.otp_max_attempts` (5) wrong tries no
+     * attempt is accepted, not even the right one. A match binds the user to the phone with the next free bind ordinal
+     * and continues the login (tokens).
+     */
+    fun bindDevice(p: AronPrincipal, req: BindDeviceRequest, proof: String?): LoginResponse {
+        val store = binds ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "device binding is not available")
+        val sealer = otpSealer ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "device binding is not available")
+        val now = clock.now()
+        val uuid = p.deviceUuid ?: throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "the bind token names no device")
+        if (req.device_uuid.lowercase() != uuid) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device_uuid differs from the token's device")
+        val device = checkDevice(uuid) ?: throw ApiProblem(ProblemCode.ERR_DEVICE_NOT_ENROLLED, "this phone is not enrolled")
+        if (device.id != p.deviceId) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "the bind token names another device")
+        val key = device.publicKeyJwk?.let(com.aktcl.aron.backend.platform.DeviceProof::publicKey)
+        if (key != null) {
+            val sig = proof ?: throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "X-Device-Proof is required")
+            val ok = com.aktcl.aron.backend.platform.DeviceProof.verifyBucketed(key, sig, now.epochSecond) { b ->
+                listOf("aron-proof-v1", "bind", uuid, com.aktcl.aron.backend.platform.DeviceProof.sha256Hex(req.otp.toByteArray()), b.toString()).joinToString("\n")
+            }
+            if (!ok) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device proof does not verify")
+        } else if (config.bool("cfg.device.require_enrolled")) {
+            throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device key unknown")
+        }
+        val user = users.findById(p.userId) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED)
+        if (user.status != "active") throw ApiProblem(ProblemCode.ERR_AUTH_USER_DISABLED, "user is disabled")
+        when (store.bind(user.id, device.id, req.otp, now, cfgInt("cfg.auth.otp_max_attempts", 5), sealer)) {
+            is BindResult.Bound -> Unit
+            BindResult.Invalid -> throw ApiProblem(ProblemCode.ERR_AUTH_OTP_INVALID, "the code is wrong")
+            BindResult.Expired -> throw ApiProblem(ProblemCode.ERR_AUTH_OTP_EXPIRED, "the code has expired; ask the TSO for a new one")
+            BindResult.AttemptsExceeded -> throw ApiProblem(ProblemCode.ERR_AUTH_OTP_ATTEMPTS_EXCEEDED, "too many wrong codes; ask the TSO for a new one")
+            BindResult.NoFreeOrdinal -> throw ApiProblem(ProblemCode.ERR_AUTH_BIND_LOCKED, "this user is bound to four phones already")
+        }
+        return complete(user, device, uuid, p.flavour, minVersionCode(p.flavour), afterPasswordChange = false)
+    }
+
     /**
      * The steps of a login after the password matched: web temporary password (R15: before TOTP), TOTP for MFA roles,
      * device binding, phone temporary password, then the tokens. [afterPasswordChange] continues a web login after
@@ -183,6 +225,10 @@ class LoginService(
         }
         val ordinal = device?.let { devices.bindOrdinal(user.id, it.id) }
         if (device != null && ordinal == null && config.bool("cfg.auth.bind_otp_required")) {
+            // The OTP the TSO reads on the Device OTP panel is created here, sealed and with a keyed verifier (s8.1).
+            if (binds != null && otpSealer != null) {
+                binds.ensureOtp(user.id, now, Duration.ofMinutes(cfgInt("cfg.auth.otp_ttl_min", 120).toLong()), cfgInt("cfg.auth.otp_length", 4), otpSealer)
+            }
             val bind = issuer.access(subject, Audience.BIND)
             return base("bind_required").copy(bind_token = bind.token)
         }

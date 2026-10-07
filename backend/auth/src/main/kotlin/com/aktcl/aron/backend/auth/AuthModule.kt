@@ -73,6 +73,14 @@ fun Route.authRoutes(d: AuthDeps) {
             else call.respond(call.webCookie(res.refresh_token, res.refresh_expires_at).let { res.copy(refresh_token = null) })
         }
     }
+    // The login's bind_token only (aud aron-bind); X-Device-Id must name the token's device (the guard checks it).
+    authenticated(d.guard, { audiences = setOf(Audience.BIND); allowPasswordChangeRequired = true }) {
+        post("/auth/bind-device") {
+            val req = call.receiveStrict(BindDeviceRequest.serializer())
+            val p = call.principal
+            call.respond(withContext(Dispatchers.IO) { d.login.bindDevice(p, req, call.request.headers["X-Device-Proof"]) })
+        }
+    }
     authenticated(d.guard) {
         get("/me") {
             val p = call.principal
