@@ -40,6 +40,21 @@ class SyncApi(private val client: AronApiClient) {
         )
     }
 
+    /** `GET /v1/config/delta?since=` (s4.10 Config delta): the raw `ConfigDelta`, 304 when unchanged, 410 when too far behind. */
+    suspend fun configDelta(since: Long): ApiResult<String> {
+        val path = "/v1/config/delta"
+        return client.call(
+            path = path,
+            auth = CallAuth.Grant(Grant.FULL),
+            build = {
+                url(client.origin.path(path).newBuilder().addQueryParameter("since", since.toString()).build())
+                header("X-Config-Version", since.toString())
+                get()
+            },
+            decode = { body, _ -> body },
+        )
+    }
+
     /** Connectivity validation: true only for an API answer (with `X-Aron-Api`) within 3 s. */
     suspend fun healthy(): Boolean {
         val result = client.call(
