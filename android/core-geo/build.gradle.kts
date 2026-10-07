@@ -26,4 +26,7 @@ dependencies {
     testImplementation(libs.snakeyaml.engine)
     // The scripted-day test stores every fix in the real geo_fix table to prove the mock flag survives storage.
     testImplementation(project(":android:core-database"))
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.core)
 }
