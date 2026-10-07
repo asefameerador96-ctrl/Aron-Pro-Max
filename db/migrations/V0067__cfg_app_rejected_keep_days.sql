@@ -8,5 +8,4 @@ SET lock_timeout = '5s';
 INSERT INTO app.cfg_key (key, area, kind, value_type, default_value, bounds, bounds_rule, scope_levels, risk_class, risk_rule, effect, delivery, requires_ack, future_dated_only, editor_permission, description_en) VALUES
   ('cfg.app.rejected_keep_days', 'app', 'S', 'int', '30'::jsonb, '{"min": 7, "max": 90}'::jsonb, NULL,
    ARRAY['global']::text[], 1, NULL, 'B', 'device', false, false, 'cfg.edit.ops',
-   'Days rows the server refused stay in the phone''s rejected list before they are purged (docs/17, docs/19 s9).')
-ON CONFLICT (key) DO NOTHING;
+   'Days rows the server refused stay in the phone''s rejected list before they are purged (docs/17, docs/19 s9).');

@@ -156,8 +156,8 @@ class BackendCoreAsksV0061Test {
     @Test
     fun rejectedKeepDaysIsRegisteredAsDocs19Says() = db.connect().use { c ->
         assertEquals(
-            "app|S|int|30|{\"max\": 90, \"min\": 7}|{global}|1|B|device|cfg.edit.ops",
-            c.scalar("SELECT concat_ws('|', area, kind, value_type, default_value::text, bounds::text, scope_levels::text, risk_class, effect, delivery, editor_permission) FROM app.cfg_key WHERE key = 'cfg.app.rejected_keep_days'"),
+            "app|S|int|30|{\"max\": 90, \"min\": 7}|{global}|1|B|device|cfg.edit.ops|f|f|t",
+            c.scalar("SELECT concat_ws('|', area, kind, value_type, default_value::text, bounds::text, scope_levels::text, risk_class, effect, delivery, editor_permission, requires_ack, future_dated_only, bounds_rule IS NULL) FROM app.cfg_key WHERE key = 'cfg.app.rejected_keep_days'"),
         )
     }
 
