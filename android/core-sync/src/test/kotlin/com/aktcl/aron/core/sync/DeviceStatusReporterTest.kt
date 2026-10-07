@@ -172,6 +172,25 @@ class DeviceStatusReporterTest {
         assertEquals(true, cfg.isWorkingDay("2026-10-07"))
     }
 
+    /** Follow-up of F-SYS-079: the check-out gate time and the jitter come from the user's config, within bounds. */
+    @Test
+    fun theCheckoutGateAndJitterAreReadFromConfig() = runBlocking {
+        val cfg = DayConfig()
+        cfg.refresh(db, "2026-10-06T03:00:00.000Z")
+        assertEquals(17 * 60, cfg.checkoutEarliestMinutes) // nothing configured: the defaults
+        assertEquals(90, cfg.checkoutJitterS)
+        fun row(key: String, json: String) = com.aktcl.aron.core.database.entity.ConfigValueEntity(
+            key = key, valueJson = json, scopeType = "global", scopeId = null, effectiveFrom = null, effectiveTo = null,
+            configVersion = 1, requiresAck = false, scheduled = false,
+        )
+        db.referenceDao().insertConfig(listOf(row("cfg.day.checkout_earliest_time", "\"18:30\""), row("cfg.sync.checkout_jitter_s", "45")))
+        cfg.refresh(db, "2026-10-06T03:00:00.000Z")
+        assertEquals(18 * 60 + 30, cfg.checkoutEarliestMinutes)
+        assertEquals(45, cfg.checkoutJitterS)
+        assertEquals(17 * 60, DayConfig.minutesOf("17:00:00"))
+        listOf("23:00", "11:59", "17:61", "5pm", "", null).forEach { assertNull(it, DayConfig.minutesOf(it)) }
+    }
+
     @Test
     fun aThrowingEvidenceSourceStillSendsTheMarkerAndNeverThrows() = runBlocking {
         val r = DeviceStatusReporter({ facts }, { signals }, tracker, { error("boom") }, state, clock, "1")

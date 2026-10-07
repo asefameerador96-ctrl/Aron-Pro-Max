@@ -114,4 +114,39 @@ class PushPullWorkTest {
         run(live(PushPullKind.CONFIG).single())
         assertEquals(WorkInfo.State.SUCCEEDED, all(PushPullKind.CONFIG).single().state)
     }
+
+    /** F-SYS-073: an ordinary config pull waiting out its 120 s spread never holds back an urgent one. */
+    @Test fun anUrgentConfigPullDoesNotWaitBehindAnOrdinaryOne() {
+        val dispatcher = PushDispatcher({ }, { k, ms -> scheduler.schedule(k, ms) }, Random(1))
+        dispatcher.onMessage(mapOf("kind" to "config_pull", "pull_after_s" to "110"))
+        dispatcher.onMessage(mapOf("kind" to "config_pull", "urgent" to "true", "pull_after_s" to "5"))
+        val urgent = live(PushPullKind.CONFIG_URGENT).single()
+        assertEquals(5_000L, spec(urgent).initialDelay)
+        assertEquals(110_000L, spec(live(PushPullKind.CONFIG).single()).initialDelay)
+        run(urgent)
+        assertEquals(listOf(PushPullKind.CONFIG_URGENT), pulls)
+    }
+
+    /**
+     * F-SYS-073 acceptance: no FCM message ever triggers an upload. Random data messages (every known kind and key, hostile
+     * values, kinds that sound like an upload) go through the dispatcher and every job they make is run: the sync runner is
+     * never called and no upload job is queued.
+     */
+    @Test fun noPushMessageEverTriggersAnUpload() {
+        val dispatcher = PushDispatcher({ }, { k, ms -> scheduler.schedule(k, ms) }, Random(5))
+        val r = Random(11)
+        val kinds = listOf("sync_nudge", "announcement", "config_pull", "bundle_pull", "upload", "sync_now", "batch", "", "kill_switch")
+        val values = listOf("true", "false", "0", "-1", "20", "99999", "task_assigned", "upload", "", "x")
+        repeat(300) {
+            val data = buildMap {
+                if (r.nextBoolean()) put("kind", kinds.random(r)) else put("type", listOf("cfg", "upload", "sync").random(r))
+                listOf("reason", "urgent", "pull_after_s", "title_en", "body_en", "version").forEach { k -> if (r.nextBoolean()) put(k, values.random(r)) }
+            }
+            dispatcher.onMessage(data)
+            PushPullKind.entries.forEach { kind -> live(kind).forEach { run(it) } }
+        }
+        assertTrue(pulls.isNotEmpty())
+        assertTrue(uploads.isEmpty())
+        assertTrue(wm.getWorkInfosByTag(WorkManagerSyncScheduler.TAG).get().isEmpty())
+    }
 }

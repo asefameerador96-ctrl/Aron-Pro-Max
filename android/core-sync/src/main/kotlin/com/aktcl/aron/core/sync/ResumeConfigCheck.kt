@@ -38,9 +38,19 @@ class ResumeConfigCheck(
      */
     suspend fun pullAfterPush(userId: Long): ConfigCheckResult = locked(userId) { check(userId, afterPush = true) }
 
-    private suspend fun locked(userId: Long, body: suspend () -> ConfigCheckResult): ConfigCheckResult {
+    /**
+     * The pull job of an FCM config push (F-SYS-073). Unlike [pullAfterPush] it waits for a check already running instead
+     * of skipping: that check may have fetched before the change the push announces, and the push job is not retried. An
+     * [urgent] push (kill switch, `min_version`, blocked versions, a revert) may go [URGENT_RESERVE] requests over the
+     * daily cap, so an ordinary burst that spent the cap cannot hold a kill switch back until tomorrow.
+     */
+    suspend fun pullForPush(userId: Long, urgent: Boolean): ConfigCheckResult =
+        locked(userId, wait = true) { check(userId, afterPush = true, cap = if (urgent) dailyCap + URGENT_RESERVE else dailyCap) }
+
+    private suspend fun locked(userId: Long, wait: Boolean = false, body: suspend () -> ConfigCheckResult): ConfigCheckResult {
         val lock = locks.getOrPut(userId) { Mutex() }
-        if (!lock.tryLock()) return ConfigCheckResult.NOT_DUE // a check is already running: one request at a time
+        if (wait) lock.lock()
+        else if (!lock.tryLock()) return ConfigCheckResult.NOT_DUE // a check is already running: one request at a time
         try {
             return body()
         } finally {
@@ -48,7 +58,7 @@ class ResumeConfigCheck(
         }
     }
 
-    private suspend fun check(userId: Long, afterPush: Boolean): ConfigCheckResult {
+    private suspend fun check(userId: Long, afterPush: Boolean, cap: Int = dailyCap): ConfigCheckResult {
         val elapsed = clock.elapsedRealtimeMs()
         val boot = clock.bootCountNow()
         val lastContact = clock.recentAnchors().lastOrNull()
@@ -58,7 +68,7 @@ class ResumeConfigCheck(
         val meta = database.referenceDao()
         val countKey = KEY_COUNT + clock.businessDate()
         val count = meta.meta(countKey)?.toIntOrNull() ?: 0
-        if (count >= dailyCap) return ConfigCheckResult.CAPPED
+        if (count >= cap) return ConfigCheckResult.CAPPED
         val since = meta.meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull() ?: return ConfigCheckResult.NEEDS_BUNDLE
         val r = api.configDelta(since)
         // Only answered requests use the cap: offline does nothing (R9).
@@ -116,7 +126,10 @@ class ResumeConfigCheck(
 
     private val locks = java.util.concurrent.ConcurrentHashMap<Long, Mutex>()
 
-    private companion object {
-        const val KEY_COUNT = "config_check.count."
+    companion object {
+        private const val KEY_COUNT = "config_check.count."
+
+        /** Requests an urgent config push may make over the daily cap (F-SYS-073; lane decision). */
+        const val URGENT_RESERVE = 4
     }
 }

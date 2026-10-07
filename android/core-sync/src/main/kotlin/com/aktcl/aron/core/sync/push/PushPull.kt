@@ -39,7 +39,8 @@ class SessionPushPull(
         val userId = activeUserId() ?: return false
         return when (kind) {
             PushPullKind.BUNDLE -> bundles.of(userId).refreshDelta().outcome == BundleOutcome.APPLIED
-            PushPullKind.CONFIG -> config.pullAfterPush(userId) == ConfigCheckResult.APPLIED
+            PushPullKind.CONFIG -> config.pullForPush(userId, urgent = false) == ConfigCheckResult.APPLIED
+            PushPullKind.CONFIG_URGENT -> config.pullForPush(userId, urgent = true) == ConfigCheckResult.APPLIED
         }
     }
 }

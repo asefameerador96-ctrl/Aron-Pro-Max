@@ -22,6 +22,8 @@ class ConnectivityFlush(
     private val usersWithPendingRows: suspend () -> List<Long>,
     private val scheduler: SyncScheduler,
     private val debounceMs: Long = 5_000,
+    /** F-SYS-081: the default network came (true) or went (false); must not block. */
+    private val onNetworkChange: (Boolean) -> Unit = {},
 ) {
     private var pending: Job? = null
 
@@ -31,6 +33,7 @@ class ConnectivityFlush(
 
     @Synchronized
     fun onNetworkAvailable() {
+        try { onNetworkChange(true) } catch (_: Exception) { }
         pending?.cancel()
         pending = scope.launch {
             delay(debounceMs)
@@ -50,6 +53,7 @@ class ConnectivityFlush(
 
     @Synchronized
     fun onNetworkLost() {
+        try { onNetworkChange(false) } catch (_: Exception) { }
         pending?.cancel()
         pending = null
     }

@@ -13,8 +13,12 @@ RG="${1:?resource group}"; MODE="${2:?failover or pitr}"
 summary() { [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "$*" >> "$GITHUB_STEP_SUMMARY"; echo "$*"; }
 lock="$(az group show -n "$RG" --query 'tags."aron-deploy-lock"' -o tsv 2>/dev/null || true)"
 if [ -n "$lock" ] && [ "$lock" != None ]; then die "a deploy holds the lock on $RG ($lock); run the drill after it"; fi
-server="$(az postgres flexible-server list -g "$RG" --query "[?starts_with(name, 'psql-aron-')] | [0].name" -o tsv)"
-if [ -z "$server" ] || [ "$server" = None ]; then die "no Aron PostgreSQL server in $RG"; fi
+# The profile server by its exact name (main.bicep output), never a prefix match: a leftover "-drill-" restore or a
+# promoted replica in the same group must not be the one failed over or restored.
+server="$(az deployment group show -g "$RG" -n aron-infra --query properties.outputs.postgresServerName.value -o tsv)"
+if [ -z "$server" ] || [ "$server" = None ]; then die "no aron-infra deployment output postgresServerName in $RG"; fi
+az postgres flexible-server show -g "$RG" -n "$server" --query name -o tsv >/dev/null \
+  || die "the profile server $server (aron-infra output) does not exist in $RG"
 host="$(az deployment group show -g "$RG" -n aron-apps --query properties.outputs.apiHost.value -o tsv)"
 ready_url="https://${host}/v1/health/ready"
 now() { date +%s; }

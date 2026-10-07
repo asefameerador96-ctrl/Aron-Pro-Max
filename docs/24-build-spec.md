@@ -101,6 +101,7 @@ Base package `com.aktcl.aron`. Group `com.aktcl.aron`. Application ids: **`com.a
 | `:android:dpc` | Android library | `com.aktcl.aron.dpc` | `:android:core-common` |
 | `:android:feature-*` (auth, home, attendance, stock, sale, memo, dayclose, outlet, tasks, amo, tso) | Android library, Compose | `com.aktcl.aron.feature.<name>` | any `core-*` and `:android:dpc`; never another feature, never an app |
 | `:android:app-sr`, `:android:app-amo`, `:android:app-tso` | Android application, Compose, KSP, Hilt | `com.aktcl.aron.sr` / `.amo` / `.tso` | every core module, `:android:dpc`, the features of the role (SR: auth, home, attendance, stock, sale, memo, dayclose, outlet, tasks; AMO: the SR set plus amo; TSO: auth, home, tasks, tso) |
+| `:android:benchmark` | Android test (`com.android.test`), macrobenchmark; targets `:android:app-<sr\|amo\|tso>` by `-Paron.benchmarkApp` (default sr) | `com.aktcl.aron.benchmark` | the app's `benchmark` build type (release code, debug-signed, profileable); device or emulator only (AUD-PERF-04, android-core) |
 
 ### 2.2 Dependency direction
 

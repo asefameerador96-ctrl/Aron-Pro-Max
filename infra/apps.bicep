@@ -129,9 +129,13 @@ var commonEnv = [
 // api's own address in the Container Apps environment (no self-reference: built from the environment's default domain).
 var publicApiUrl = frontDoorEnabled ? 'https://${fdEndpoint!.properties.hostName}' : 'https://${n.apiApp}.${env.properties.defaultDomain}'
 
-var appSecretRefs = [
+// Token signing key: api replicas only (AUD-SEC-07, docs/requests/infra-worker-no-signing-key.md); the worker never
+// signs or verifies tokens and starts without it.
+var jwtSecretRefs = [
   { name: 'ARON_JWT_SIGNING_KEY', secretRef: 'jwt-signing-key' }
   { name: 'ARON_JWT_KID', secretRef: 'jwt-kid' }
+]
+var appSecretRefs = [
   { name: 'ARON_FCM_SERVICE_ACCOUNT_JSON', secretRef: 'fcm-service-account' }
   { name: 'ARON_DB_READ_URL', secretRef: 'db-read-url' }
 ]
@@ -197,18 +201,26 @@ resource dblogins 'Microsoft.App/jobs@2025-07-01' = if (!empty(psqlImage)) {
         kvSecret('pw-app-api', secretNames.dbPwAppApi, kvSecretUrl, idMigrate.id)
         kvSecret('pw-app-worker', secretNames.dbPwAppWorker, kvSecretUrl, idMigrate.id)
         kvSecret('pw-app-jobs', secretNames.dbPwAppJobs, kvSecretUrl, idMigrate.id)
+        // The SQL itself (not a secret): mounted as a file. As a 7 KB env value the replica was never created
+        // ("No replicas found for execution"), while the same job with only the image and the four Key Vault refs
+        // ran (deploy run 37659152959, probes A and B).
+        // Checked-in SQL with no credentials (passwords arrive by \getenv from the Key Vault refs above), so not secure.
+        #disable-next-line use-secure-value-for-secure-inputs
+        { name: 'logins-sql', value: loadTextContent('sql/runtime-logins.sql') }
       ]
     }
     template: {
+      // Only the SQL file is projected (an empty secrets list would mount every secret, the database URL included).
+      volumes: [{ name: 'sql', storageType: 'Secret', secrets: [{ secretRef: 'logins-sql', path: 'runtime-logins.sql' }] }]
       containers: [
         {
           name: 'dblogins'
           image: psqlImage
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
           // The JDBC URL minus its "jdbc:" prefix is a libpq URI (host, port, sslmode, user, password parameters).
-          command: ['/bin/sh', '-c', 'printf "%s" "$ARON_SQL" > /tmp/logins.sql && exec psql "\${ARON_DB_URL#jdbc:}" -X -q -f /tmp/logins.sql']
+          command: ['/bin/sh', '-c', 'exec psql "\${ARON_DB_URL#jdbc:}" -X -q -f /sql/runtime-logins.sql']
+          volumeMounts: [{ volumeName: 'sql', mountPath: '/sql' }]
           env: [
-            { name: 'ARON_SQL', value: loadTextContent('sql/runtime-logins.sql') }
             { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
             { name: 'ARON_PW_APP_API', secretRef: 'pw-app-api' }
             { name: 'ARON_PW_APP_WORKER', secretRef: 'pw-app-worker' }
@@ -271,7 +283,7 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
           name: 'api'
           image: backendImage
           resources: { cpu: json(apiCpu), memory: apiMemory }
-          env: concat(commonEnv, appSecretRefs, [
+          env: concat(commonEnv, jwtSecretRefs, appSecretRefs, [
             { name: 'ARON_ROLE', value: 'api' }
             { name: 'PORT', value: '8080' }
             { name: 'ARON_PUBLIC_API_URL', value: publicApiUrl }
@@ -337,8 +349,6 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
       secrets: [
         kvSecret('db-direct-url', workerDbUrlSecret, kvSecretUrl, idWorker.id)
         kvSecret('db-read-url', workerDbReadUrlSecret, kvSecretUrl, idWorker.id)
-        kvSecret('jwt-signing-key', secretNames.jwtSigningKey, kvSecretUrl, idWorker.id)
-        kvSecret('jwt-kid', secretNames.jwtKid, kvSecretUrl, idWorker.id)
         kvSecret('fcm-service-account', secretNames.fcmServiceAccount, kvSecretUrl, idWorker.id)
       ]
     }
