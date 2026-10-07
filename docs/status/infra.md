@@ -4,6 +4,18 @@ Updated 2026-10-07 17:40 UTC (fifth infra session).
 
 ## Fifth infra session, 2026-10-07 17:40 UTC: read this first (the fourth session's handover below still applies)
 
+**SR slice smoke (lead request 18:27, ruling 18:29), lane/infra 634dbd69, waits for promotion:** after the health gate,
+non-blocking, table in the run summary. `infra/scripts/slice-smoke.py` as `sr1001` on the seeded dev phone through
+Front Door: login, bundle, one sale at its own outlet SMOKE-SR-001 (visit, memo, line, close), the same records in a new
+batch (must be duplicate), the batch replayed, server_totals of the batch answers unchanged by the re-upload, memo read
+(SKIPPED: `GET /v1/memos` is in the contract but not served; neither is `GET /v1/sync/totals`), app/home tile polled up
+to 5 min, then the sale is voided (whenever the memo was accepted). Dev seed: committed `param devSeed = true` in
+`infra/params/dev.apps.bicepparam`; the seed image (psql image + argon2 + db/seed WITHOUT 04, the global dev relaxations,
++ `infra/sql/devseed-smoke-outlet.sql`) runs through the dblogins job by template override; `aron-dev-seed-password` is
+generated in Key Vault and hashed in the job. Not proven here: the image build (no Docker daemon in the lane container).
+If login fails on enrolment: the server reads cfg globally (no user/device-scoped override exists): tell the lead.
+Opus checker: 3 defects (unserved endpoints, void not covering steps 5 to 8, stub inventing endpoints), all fixed.
+
 **Deploy run 145 (INT eaac3ad5 = zl with the probe, 17:27 to 17:51 UTC): SUCCESS.** Health gate through Front Door:
 `/v1/health` 200 with `X-Aron-Api: 1` and build = eaac3ad5 (the INT head), ready 200, web `/login` 200; migrations
 succeeded; images by digest. Still "Argument list too long" there (5f37940 not promoted yet), so main.bicep re-applied.
