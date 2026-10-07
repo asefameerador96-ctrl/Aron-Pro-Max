@@ -28,6 +28,7 @@ import com.aktcl.aron.core.sync.SyncReport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -54,6 +55,22 @@ class MediaShell(context: Context, private val components: SessionComponents, pr
     /** Same trusted clock as the uploader (F-SYS-037: the fallback deadline and the uploader must agree). */
     val scheduler: MediaWorkScheduler by lazy {
         MediaWorkScheduler(WorkManager.getInstance(app), wifiOnly::wifiOnly, components.clock::nowMs) { config }
+    }
+
+    private val settingWrites = CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    private val settingLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * Settings switch: stored off the main thread on a process-lived scope (leaving the screen or a rotation never drops
+     * it), writes in tap order, then the upload job is rescheduled with the new network rule.
+     */
+    fun setWifiOnly(on: Boolean) {
+        settingWrites.launch {
+            settingLock.withLock {
+                runCatching { wifiOnly.set(on) }
+                runCatching { scheduler.requestUpload() }
+            }
+        }
     }
 
     /** Application.onCreate: the media worker finds its users and uploaders; photos left by an earlier process go out. */

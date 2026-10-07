@@ -86,6 +86,9 @@ fun SrApp(
     sunlight: Boolean = false, onSunlight: (Boolean) -> Unit = {},
     /** N-038: a new value means the rep tapped a task notification (android-core wiring). */
     openTasks: kotlinx.coroutines.flow.MutableStateFlow<Int>? = null,
+    /** Settings > App update (F-SYS-020) and Photos only on Wi-Fi (F-SYS-037); null in previews and tests (rows hidden). */
+    updateShell: com.aktcl.aron.core.sync.shell.UpdateShell? = null,
+    mediaShell: MediaShell? = null,
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -186,7 +189,20 @@ fun SrApp(
         SrScreen.ATTENDANCE -> PermissionGate(GatedFeature.ATTENDANCE, onBack = { screen = SrScreen.HOME }) {
             AttendanceContent(attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn() } }, onCheckOut = { scope.launch { day.attendance.checkOut() } })
         }
-        SrScreen.SETTINGS -> SettingsContent(versionText, onLanguageSelect, onLogout, onSupport = shell?.let { { screen = SrScreen.SUPPORT } })
+        SrScreen.SETTINGS -> {
+            val update = updateShell?.state?.collectAsState()?.value
+            // The switch's stored value is a SharedPreferences read: loaded off the main thread, row shown once known.
+            var wifiOnly by rememberSaveable { mutableStateOf<Boolean?>(null) }
+            LaunchedEffect(mediaShell) { if (wifiOnly == null) wifiOnly = mediaShell?.let { m -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { m.wifiOnly.wifiOnly() } } }
+            SettingsContent(
+                versionText, onLanguageSelect, onLogout,
+                onUpdate = updateShell?.let { u -> { u.openPage() } },
+                updateAvailable = update is com.aktcl.aron.core.system.update.UpdateState.Available,
+                photosWifiOnly = wifiOnly,
+                onPhotosWifiOnly = { on -> wifiOnly = on; mediaShell?.setWifiOnly(on) },
+                onSupport = shell?.let { { screen = SrScreen.SUPPORT } },
+            )
+        }
         SrScreen.SUPPORT -> shell?.let { SupportHost(it, day.userId, versionText) }
         SrScreen.STOCK -> StockHost(day)
         SrScreen.PICKER -> PermissionGate(GatedFeature.SALE, onBack = { screen = SrScreen.HOME }) {

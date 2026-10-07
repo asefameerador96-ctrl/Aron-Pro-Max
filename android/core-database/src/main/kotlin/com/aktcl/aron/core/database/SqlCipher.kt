@@ -28,7 +28,10 @@ object SqlCipher {
     internal object IncrementalVacuumHook : net.zetetic.database.sqlcipher.SQLiteDatabaseHook {
         override fun preKey(connection: net.zetetic.database.sqlcipher.SQLiteConnection) = Unit
         override fun postKey(connection: net.zetetic.database.sqlcipher.SQLiteConnection) {
-            runCatching { connection.execute("PRAGMA auto_vacuum = INCREMENTAL", null, null) } // never fails the open
+            // Only when not already INCREMENTAL: setting it on an existing file is a write on every connection open (checker).
+            runCatching {
+                if (connection.executeForLong("PRAGMA auto_vacuum", null, null) != 2L) connection.execute("PRAGMA auto_vacuum = INCREMENTAL", null, null)
+            } // never fails the open
         }
     }
 

@@ -143,6 +143,8 @@ class SessionSyncRunner(
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
         recordSigner = components.proofSigner, // F-SYS-072: the same enrolled key as X-Device-Proof
         telemetry = telemetry?.forBatch { key -> com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(key, SyncEngine.iso(components.clock.nowMs())) },
+        generationApi = SyncGenerationApi(components.apiClient), // F-SYS-047
+        generationHint = { com.aktcl.aron.core.network.ServerGenerationHint.latest },
     )
 
     companion object {
@@ -189,6 +191,8 @@ class WorkManagerSyncScheduler(
     /** `cfg.sync.checkout_jitter_s`, read at each request (the shells pass [com.aktcl.aron.core.sync.device.DayConfig]). */
     private val checkoutJitterS: () -> Int = { 90 },
     private val checkoutGate: CheckoutGate? = null,
+    /** `cfg.sync.resync_jitter_s` (default 900), read at each `resync` request. */
+    private val resyncJitterS: () -> Int = { 900 },
     /** Called on every request (every save, check-out, submit): F-SYS-081 samples there, offline too. Must not block. */
     private val onRequest: () -> Unit = {},
 ) : SyncScheduler {
@@ -221,6 +225,11 @@ class WorkManagerSyncScheduler(
             // failures cannot swallow it; the engine's per-user lock keeps runs from overlapping.
             SyncTrigger.CONNECTIVITY, SyncTrigger.FOREGROUND ->
                 enqueue(userId, trigger, nowName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
+            // F-SYS-047: after a server restore, spread over 0 to cfg.sync.resync_jitter_s so the fleet does not arrive at once.
+            SyncTrigger.RESYNC -> {
+                val jitterMs = random.nextLong(0, runCatching { resyncJitterS() }.getOrDefault(900).coerceIn(0, 3_600) * 1000L + 1)
+                enqueue(userId, trigger, resyncName(userId), ExistingWorkPolicy.KEEP, held(userId, jitterMs), expedited = false, failures = 0)
+            }
             else -> enqueue(userId, trigger, mainName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
         }
         ensurePeriodic(userId)
@@ -231,6 +240,8 @@ class WorkManagerSyncScheduler(
      * [failures] is how many runs in a row failed before this one.
      */
     fun afterRun(userId: Long, report: SyncReport, ranAs: String, failures: Int = 0) {
+        // F-SYS-047: a new server generation: one re-send run, jittered 0 to cfg.sync.resync_jitter_s (KEEP: the first wins).
+        if (report.resyncRequested) requestSync(userId, SyncTrigger.RESYNC)
         if (report.unsent == 0) {
             workManager().cancelUniqueWork(periodicName(userId))
             return
@@ -310,6 +321,8 @@ class WorkManagerSyncScheduler(
         const val MAX_CHECKOUT_JITTER_S = 120
         fun retryName(userId: Long) = "aron-sync-retry-u$userId"
         fun periodicName(userId: Long) = "aron-sync-periodic-u$userId"
+        /** F-SYS-047: the jittered re-send run after a server restore. */
+        fun resyncName(userId: Long) = "aron-sync-resync-u$userId"
 
         private fun input(userId: Long, trigger: SyncTrigger, name: String, failures: Int): Data =
             Data.Builder().putLong(KEY_USER, userId).putString(KEY_TRIGGER, trigger.wire).putString(KEY_NAME, name)
