@@ -28,6 +28,22 @@ class ClientIdentity(
     val deviceUuid: () -> String?,
 )
 
+/**
+ * F-SYS-047: the latest `X-Server-Generation` any API response carried in this process (one server per process). The sync
+ * engine compares it with the generation each user's database last handled at the start of a run, so a restore is noticed
+ * even by a phone whose next batch is far away (a bundle, config or health answer is enough). The nil uuid is ignored.
+ */
+object ServerGenerationHint {
+    private const val NIL = "00000000-0000-4000-8000-000000000000"
+    @Volatile var latest: String? = null
+        private set
+
+    fun observe(value: String) {
+        val v = value.trim().lowercase()
+        if (v.isNotEmpty() && v != NIL) latest = v
+    }
+}
+
 /** Receives the marker headers of every API-originated response (trusted-time anchors, config version, generation). */
 fun interface ApiResponseListener {
     fun onApiResponse(meta: ResponseMeta)
@@ -151,6 +167,7 @@ class AronApiClient(
             etag = response.header("ETag"),
             retryAfterS = response.header("Retry-After")?.trim()?.toIntOrNull(),
         )
+        meta.serverGeneration?.let(ServerGenerationHint::observe)
         listener?.onApiResponse(meta)
         if (response.code == 304) return ApiResult.NotModified(meta)
         if (response.isSuccessful) {

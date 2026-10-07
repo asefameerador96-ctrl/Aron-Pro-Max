@@ -20,7 +20,10 @@ class IncrementalVacuumFactory(private val delegate: SupportSQLiteOpenHelper.Fac
         val wrapped = object : SupportSQLiteOpenHelper.Callback(inner.version) {
             override fun onConfigure(db: SupportSQLiteDatabase) {
                 // Before the delegate (Room sets its own pragmas there); never fails the open.
-                runCatching { db.query("PRAGMA auto_vacuum = INCREMENTAL").use { it.moveToFirst() } }
+                runCatching {
+                    val mode = db.query("PRAGMA auto_vacuum").use { if (it.moveToFirst()) it.getLong(0) else -1L }
+                    if (mode != 2L) db.query("PRAGMA auto_vacuum = INCREMENTAL").use { it.moveToFirst() }
+                }
                 inner.onConfigure(db)
             }
             override fun onCreate(db: SupportSQLiteDatabase) = inner.onCreate(db)

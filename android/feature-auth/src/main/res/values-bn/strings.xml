@@ -5,6 +5,7 @@
     <string name="auth_password">পাসওয়ার্ড</string>
     <string name="auth_password_show">দেখান</string>
     <string name="auth_password_hide">লুকান</string>
+    <string name="auth_logging_in">লগইন হচ্ছে...</string>
     <string name="auth_login_button">লগইন করুন</string>
     <string name="auth_version">সংস্করণ %1$s</string>
     <string name="auth_error_empty">ইউজারনেম ও পাসওয়ার্ড দিন।</string>

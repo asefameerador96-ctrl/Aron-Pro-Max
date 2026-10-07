@@ -45,3 +45,5 @@ N-053+F-SYS-074,M+M,2026-10-07T17:55Z,2026-10-07T18:25Z,30,10,core-map lite map 
 F-SYS-075-notice-recheck,S,2026-10-07T18:25Z,2026-10-07T18:40Z,15,4,resume re-check after Later; overlay keeps the day composed; Opus PASS (medium teardown) fixed with test
 BC-56-followup,S,2026-10-07T18:40Z,2026-10-07T18:55Z,15,4,enforce mode holds integrity release; Opus PASS; scheduled-row test added
 F-SYS-028-vacuum,S,2026-10-07T18:55Z,2026-10-07T19:20Z,25,3,new files auto_vacuum INCREMENTAL (SQLCipher postKey hook + framework onConfigure); Opus FAIL (WAL before onConfigure) fixed; device check D-DB-VAC
+settings-slots-binding,S,2026-10-07T19:20Z,2026-10-07T19:45Z,25,6,update row + wifi-only switch in SrApp; Sonnet FAIL x2 fixed; PASS
+F-SYS-047,M,2026-10-07T19:45Z,2026-10-07T20:30Z,45,8,generation re-sync; Opus FAIL (window from now; trigger lost; shared users) fixed; previous_generation asked

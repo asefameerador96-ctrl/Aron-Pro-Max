@@ -50,3 +50,15 @@ Also checked: every `DELETE`/`UPDATE` in `backend/*/src/main` against the map. T
 rows and that nothing wider was granted. backend-core item 2 (suites as `api_rw`) is still theirs.
 
 **infra:** when V0029 is on INT, `dbPerAppLogins` can go on.
+
+## Re-audit (db, 2026-10-07 19:55 UTC, lane/db at V0057; INT has V0029)
+
+Every `INSERT`/`UPDATE`/`DELETE` and every `SELECT ... FOR UPDATE` in `backend/*/src/main` (120 statement/table pairs,
+INT of ~18:00 UTC) checked against the grant map on a database migrated to V0057:
+- API process (`api_rw`): no gap. All statements it cannot run are worker writes (dw projection, `dirty_key`,
+  `event_consumer` in `backend/analytics` Aggregator/AggregationWorker), started only in `ServerRole.WORKER`.
+- Worker process (`worker_rw`): AggregationWorker, RiskSignalJob, RouteDayPlanningJob (incl. its `FOR UPDATE OF rd`): no gap.
+- New since V0029: `app.security_event` (V0054) gives `api_rw` INSERT, so backend-core's sink works under `app_api`.
+
+**infra:** nothing left on the db side; `dbPerAppLogins = true` can go on in dev once INT carries V0029 (it does).
+backend-core item 2 (suites as `api_rw`) remains theirs and is the guard for the next new statement.

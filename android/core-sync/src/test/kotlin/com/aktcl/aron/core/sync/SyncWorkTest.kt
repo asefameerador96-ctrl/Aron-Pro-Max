@@ -139,6 +139,23 @@ class SyncWorkTest {
         assertTrue(CheckoutGate.dhaka({ now }, gateMinutes = { 18 * 60 }).justOpened()) // cfg.day.checkout_earliest_time moved
     }
 
+    /** F-SYS-047: the re-send after a server restore is one job per user, spread over cfg.sync.resync_jitter_s; KEEP. */
+    @Test fun theResyncRunIsJitteredFromConfigAndRequestedOnce() {
+        scheduler = WorkManagerSyncScheduler({ wm }, Random(3), sdkInt = 36, resyncJitterS = { 900 })
+        val delays = (1..40).map { u ->
+            scheduler.requestSync(700L + u, SyncTrigger.RESYNC)
+            spec(live(WorkManagerSyncScheduler.resyncName(700L + u)).single()).also { assertFalse(it.expedited) }.initialDelay
+        }
+        assertTrue(delays.all { it in 0L..900_000L })
+        assertTrue("spread, not all at once", delays.toSet().size > 30 && delays.any { it > 450_000L })
+        val first = live(WorkManagerSyncScheduler.resyncName(701)).single().id
+        scheduler.requestSync(701, SyncTrigger.RESYNC) // a second notice keeps the first job (and its delay)
+        assertEquals(first, live(WorkManagerSyncScheduler.resyncName(701)).single().id)
+        // A run that saw a new generation asks for it through afterRun.
+        scheduler.afterRun(799, SyncReport(SyncStop.DRAINED, 1, 1, 0, 0, 0, 0, resyncRequested = true), WorkManagerSyncScheduler.mainName(799))
+        assertEquals(1, live(WorkManagerSyncScheduler.resyncName(799)).size)
+    }
+
     /** Follow-up of F-SYS-079: the jitter is read from config at each request, and held to T7's 120 s cap. */
     @Test fun theGateJitterComesFromConfigAndIsCapped() {
         var jitterS = 5

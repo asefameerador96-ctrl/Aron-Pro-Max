@@ -31,4 +31,13 @@ class UpdateScreenTest {
         assertEquals(UpdateScreen.None, updateScreen(UpdateState.Available(r, prompt = true, wifiOnly = true), 12, DayGate.OPEN))
         assertEquals(UpdateScreen.None, updateScreen(UpdateState.Current, null, DayGate.OPEN))
     }
+
+    /** Settings > App update (checker): a silent or put-off release is shown on the rep's tap; nothing when current. */
+    @Test
+    fun theSettingsRowShowsAnyAvailableRelease() {
+        assertEquals(UpdateScreen.Prompt(r, required = false), updateScreen(UpdateState.Available(r, prompt = false, wifiOnly = true), SHOW_ANY, DayGate.OPEN))
+        assertEquals(UpdateScreen.Prompt(r, required = false), updateScreen(UpdateState.Available(r, prompt = true, wifiOnly = true), SHOW_ANY, DayGate.OPEN))
+        assertEquals(UpdateScreen.None, updateScreen(UpdateState.Current, SHOW_ANY, DayGate.OPEN))
+        assertEquals(UpdateScreen.Prompt(r, required = true), updateScreen(UpdateState.Required(r, true), SHOW_ANY, DayGate.BLOCKED_UPDATE_REQUIRED))
+    }
 }

@@ -64,3 +64,4 @@ F-SR-020/021 (sr-b's F-SR-060 is promoted, train 29bb4c7a). When merging, KEEP t
 (docs/requests/android-print-wiring-gaps.md — sr-b carried a stale copy). F-SR-048 still waits on
 F-API-027. Support sending stays gated on cfg.support.public_key_spki. Device halves D-SRA-1 to D-SRA-6
 are filed in docs/status/device-checks.md.
+- Config reads: reprint_max and confirm_after_print wired (SrDay.loadPrintConfig, PrintConfig + test); disconnect_idle_s needs a setter on PrinterManager (docs/requests/android-sr-a-print-idle-config.md). F-SR-020/021 wait on contract and Room data (docs/requests/android-sr-a-av-kv-survey-data.md); F-SR-048 waits on F-API-027.
