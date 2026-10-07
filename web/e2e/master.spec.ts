@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, dhakaPlus, loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -18,7 +18,7 @@ test("routes: day mask checkboxes, label kept apart from the name, future effect
   await page.getByLabel("রবি").check(); // + Sun
   await page.getByLabel("শনি").uncheck(); // - Sat
   await page.locator("#f-display_label").fill("(Sun, Mon, Wed)");
-  await page.locator("#f-effective_from").fill("2026-10-25");
+  await page.locator("#f-effective_from").fill(dhakaPlus(10));
   await page.locator("#reason").fill("Visit days moved after the van roster change");
   await page.getByRole("button", { name: "সংরক্ষণ" }).click();
   await expect(page.getByTestId("form-ok")).toBeVisible();
@@ -38,7 +38,7 @@ test("assignments: overlap is refused, a cover is accepted, an open one can be e
   await page.locator("#f-route_id").selectOption({ label: "R-334-01 · Banani Daily" });
   await page.locator("#f-user_id").selectOption({ label: "sr334002 · Karim Mia" });
   await page.locator("#f-kind").selectOption("primary");
-  await page.locator("#f-valid_from").fill("2026-10-10");
+  await page.locator("#f-valid_from").fill(dhakaPlus(3));
   await page.locator("#reason").fill("Second SR on the same route by mistake");
   await page.getByRole("button", { name: "তৈরি করুন" }).click();
   await expect(page.getByTestId("form-error")).toHaveText("একই রুট ও তারিখে আগের একটি দায়িত্বের সাথে এটি মিলে যাচ্ছে।");
@@ -50,10 +50,12 @@ test("assignments: overlap is refused, a cover is accepted, an open one can be e
   // end the first (open) assignment
   await page.getByRole("row", { name: /sr334001/ }).getByTestId("action-end").click();
   await expect(page.getByTestId("row-summary")).toContainText("sr334001");
-  await page.locator("#f-valid_to").fill("2026-10-20");
+  await page.locator("#f-valid_to").fill(dhakaPlus(6));
   await page.locator("#reason").fill("SR moved to another route");
   await page.getByRole("button", { name: "দায়িত্ব শেষ করুন" }).click();
-  await expect(page.getByTestId("data-table")).toContainText("2026-10-20");
+  await page.waitForURL(/\/admin\/route-assignments$/);
+  const ended = (await stateOf()).tables.assignments.find((a: { id: number }) => a.id === 1);
+  expect(ended.valid_to).toBe(dhakaPlus(6));
   const s = await stateOf();
   expect(s.audit.some((a: { entity: string; reason: string }) => a.entity === "route_assignment" && a.reason === "SR moved to another route")).toBe(true);
 });
@@ -96,4 +98,14 @@ test("support resets a password but cannot edit or create users", async ({ page 
   await page.goto("/admin/users");
   await expect(page.getByRole("row", { name: /locked1/ }).getByTestId("action-reset_password")).toHaveCount(0);
   await expect(page.getByRole("row", { name: /locked1/ }).getByTestId("action-unlock")).toBeVisible();
+});
+
+test("create forms say when the contract cannot store the reason; edit forms do not", async ({ page }) => {
+  await loginOk(page, "admin1", "admin-pass-1", "123456");
+  await page.goto("/admin/clusters/new");
+  await expect(page.getByTestId("reason-not-stored")).toBeVisible();
+  await page.goto("/admin/zones/new"); // GeoNodeWrite has change_reason
+  await expect(page.getByTestId("reason-not-stored")).toHaveCount(0);
+  await page.goto("/admin/clusters/1");
+  await expect(page.getByTestId("reason-not-stored")).toHaveCount(0);
 });

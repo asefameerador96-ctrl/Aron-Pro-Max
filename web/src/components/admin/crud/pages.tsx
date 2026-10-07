@@ -5,14 +5,14 @@ import type { ReactNode } from "react";
 import { Forbidden } from "@/components/forbidden";
 import { currentPath, requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
-import { formatDateTime, formatNumber, problemMessage, t, type Locale } from "@/lib/i18n";
+import { formatBusinessDate, formatDateTime, formatNumber, problemMessage, t, type Locale } from "@/lib/i18n";
 import type { Problem } from "@/contract/types";
 import { AuditHistory } from "../audit-history";
 import { DataTable, type Column } from "../kit/data-table";
 import { FilterBar, type FilterControl } from "../kit/filter-bar";
 import { EntityForm, type FormFieldDef } from "./entity-form";
 import { canRead, canWrite, entityCanEdit, isWritable, type ActionMeta, type AnyEntity, type AnyField } from "./meta";
-import { getRow, history, listRows, loadRefOptions, type RefOption } from "./server";
+import { getRow, history, listRows, loadRefOptionsChecked, sanitizeFilters, type RefOption } from "./server";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined, max = 80): string | undefined => (Array.isArray(v) ? v[0] : v)?.slice(0, max) || undefined;
@@ -40,17 +40,46 @@ function optionLabel(locale: Locale, f: { options?: readonly string[]; optionKey
 
 type RefOptions = Record<string, RefOption[]>;
 
-/** Options of every `ref` field and filter of an entity, keyed by field name or filter param. */
-async function loadAllRefs(meta: AnyEntity, token: string, onlyFields = false): Promise<RefOptions> {
-  const jobs: Promise<[string, RefOption[]]>[] = [];
-  for (const f of meta.fields) if (f.kind === "ref" && f.ref) jobs.push(loadRefOptions(f.ref, token).then((o) => [f.name, o]));
-  if (!onlyFields) for (const f of meta.filters) if (f.kind === "ref" && f.ref) jobs.push(loadRefOptions(f.ref, token).then((o) => [`filter:${f.param}`, o]));
-  return Object.fromEntries(await Promise.all(jobs));
+interface RefLoad {
+  refs: RefOptions;
+  /** A referenced list could not be loaded: the form would otherwise show an empty required select with no explanation. */
+  failed: boolean;
+}
+
+/**
+ * Options of the `ref` fields and filters an entity page needs. One call per distinct referenced table (a table used by a
+ * column and a filter is fetched once); `scope: "list"` loads only what the list shows (column fields and filters),
+ * "form" loads the fields of the form.
+ */
+async function loadAllRefs(meta: AnyEntity, token: string, scope: "list" | "form"): Promise<RefLoad> {
+  const wanted: { slot: string; ref: NonNullable<AnyField["ref"]> }[] = [];
+  for (const f of meta.fields) if (f.kind === "ref" && f.ref && (scope === "form" || f.column)) wanted.push({ slot: f.name, ref: f.ref });
+  if (scope === "list") for (const f of meta.filters) if (f.kind === "ref" && f.ref) wanted.push({ slot: `filter:${f.param}`, ref: f.ref });
+  const byTable = new Map<string, Promise<{ options: RefOption[]; failed: boolean }>>();
+  const tableKey = (r: NonNullable<AnyField["ref"]>) => JSON.stringify([r.path, r.params, r.value, r.label]);
+  for (const w of wanted) if (!byTable.has(tableKey(w.ref))) byTable.set(tableKey(w.ref), loadRefOptionsChecked(w.ref, token));
+  const refs: RefOptions = {};
+  let failed = false;
+  for (const w of wanted) {
+    const r = await byTable.get(tableKey(w.ref))!;
+    refs[w.slot] = r.options;
+    failed ||= r.failed;
+  }
+  return { refs, failed };
+}
+
+function RefFailure({ locale }: { locale: Locale }) {
+  return (
+    <p role="alert" data-testid="ref-error" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">
+      {t(locale, "error.ref_load")}
+    </p>
+  );
 }
 
 function cell(locale: Locale, f: AnyField, row: Record<string, unknown>, refs: RefOptions = {}): ReactNode {
   const v = row[f.name];
   if (v === null || v === undefined || v === "") return <span className="text-slate-400">—</span>;
+  if (f.kind === "date") return formatBusinessDate(locale, String(v));
   if (f.kind === "mask") return f.maskBits?.filter((_, bit) => (Number(v) & (1 << bit)) !== 0).map((k) => t(locale, k)).join(" ") ?? String(v);
   if (f.kind === "bool") return t(locale, v ? "common.yes" : "common.no");
   if (f.kind === "ref") return refs[f.name]?.find((o) => o.value === String(v))?.label ?? formatNumber(locale, Number(v), { useGrouping: false });
@@ -60,14 +89,19 @@ function cell(locale: Locale, f: AnyField, row: Record<string, unknown>, refs: R
   return String(v);
 }
 
-function toFormField(locale: Locale, f: AnyField, refs: RefOptions = {}): FormFieldDef {
+/** Options an actor may not choose (docs/24 s8.5 restricted values) are not offered at all. */
+function hidden(meta: AnyEntity | undefined, role: string | undefined, field: string, value: string): boolean {
+  return (meta?.restrictedValues ?? []).some((r) => r.field === field && r.values.includes(value) && !(r.unlessRoles as readonly string[]).includes(role ?? ""));
+}
+
+function toFormField(locale: Locale, f: AnyField, refs: RefOptions = {}, meta?: AnyEntity, role?: string): FormFieldDef {
   const kind: FormFieldDef["kind"] = f.kind === "timestamp" ? "text" : f.kind === "ref" || f.kind === "bool" ? "enum" : f.kind;
   const maskBits = f.kind === "mask" ? f.maskBits?.map((k) => t(locale, k)) : undefined;
   const options =
     f.kind === "ref" ? refs[f.name]
     : f.kind === "bool" ? [{ value: "true", label: t(locale, "common.yes") }, { value: "false", label: t(locale, "common.no") }]
-    : f.options?.map((o) => ({ value: o, label: optionLabel(locale, f, o) }));
-  return { name: f.name, label: t(locale, f.labelKey), kind, required: Boolean(f.required), nullable: Boolean(f.nullable), maxLength: f.maxLength, options, maskBits };
+    : f.options?.filter((o) => !hidden(meta, role, f.name, o)).map((o) => ({ value: o, label: optionLabel(locale, f, o) }));
+  return { name: f.name, label: t(locale, f.labelKey), section: f.section ? t(locale, f.section) : undefined, kind, required: Boolean(f.required), nullable: Boolean(f.nullable), maxLength: f.maxLength, options, maskBits };
 }
 
 export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; searchParams: SearchParams }) {
@@ -75,10 +109,11 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
   if (!canRead(meta, session.user.role)) return <Forbidden locale={locale} />;
   const writable = canWrite(meta, session.user.role);
 
-  const query: Record<string, string | undefined> = {};
-  for (const f of meta.filters) query[f.param] = one(searchParams[f.param]);
+  const rawQuery: Record<string, string | undefined> = {};
+  for (const f of meta.filters) rawQuery[f.param] = one(searchParams[f.param]);
+  const query = sanitizeFilters(meta, rawQuery);
   const cursor = one(searchParams.cursor, CURSOR_MAX);
-  const [r, refs] = await Promise.all([listRows(meta, session.at, query, cursor), loadAllRefs(meta, session.at)]);
+  const [r, { refs, failed }] = await Promise.all([listRows(meta, session.at, query, cursor), loadAllRefs(meta, session.at, "list")]);
   if (!r.ok) return onApiFailure(r.status, r.problem, locale);
 
   const columns: Column<Record<string, unknown>>[] = meta.fields
@@ -137,6 +172,7 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
           <p className="text-sm text-slate-600">{t(locale, "admin.read_only")}</p>
         ) : null}
       </div>
+      {failed ? <RefFailure locale={locale} /> : null}
       <FilterBar controls={controls} applyLabel={t(locale, "common.filter")} clearLabel={t(locale, "common.clear")} allLabel={t(locale, "common.all")} clearHref={`/admin/${meta.slug}`} />
       <DataTable columns={columns} rows={r.data.items} rowKey={(row) => String(row[meta.idField])} empty={t(locale, "common.empty")} caption={t(locale, meta.labelKey)} />
       {nextHref ? (
@@ -153,13 +189,14 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
 export async function EntityCreatePage({ meta }: { meta: AnyEntity }) {
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
   if (!canWrite(meta, session.user.role) || meta.canCreate === false) return <Forbidden locale={locale} />;
-  const refs = await loadAllRefs(meta, session.at, true);
-  const fields = meta.fields.filter((f) => isWritable(f, "create")).map((f) => toFormField(locale, f, refs));
+  const { refs, failed } = await loadAllRefs(meta, session.at, "form");
+  const fields = meta.fields.filter((f) => isWritable(f, "create")).map((f) => toFormField(locale, f, refs, meta, session.user.role));
   const initial = Object.fromEntries(fields.map((f) => [f.name, f.kind === "enum" && f.required ? (f.options?.[0]?.value ?? "") : ""]));
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{t(locale, "admin.new", { entity: t(locale, meta.singularKey) })}</h1>
-      <EntityForm mode="create" slug={meta.slug} fields={fields} initial={initial} listHref={`/admin/${meta.slug}`} />
+      {failed ? <RefFailure locale={locale} /> : null}
+      <EntityForm mode="create" slug={meta.slug} fields={fields} initial={initial} listHref={`/admin/${meta.slug}`} reasonStored={meta.reasonOnCreate !== null} />
     </div>
   );
 }
@@ -167,19 +204,21 @@ export async function EntityCreatePage({ meta }: { meta: AnyEntity }) {
 export async function EntityEditPage({ meta, id, searchParams }: { meta: AnyEntity; id: string; searchParams: SearchParams }) {
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
   if (!canRead(meta, session.user.role)) return <Forbidden locale={locale} />;
-  if (!canWrite(meta, session.user.role) || !entityCanEdit(meta)) return <Forbidden locale={locale} />;
+  if (!entityCanEdit(meta)) notFound(); // an entity without an edit (assignments, holidays) has no edit URL
+  if (!canWrite(meta, session.user.role)) return <Forbidden locale={locale} />;
   const row = await getRow(meta, session.at, id, one(searchParams.c, CURSOR_MAX));
   if (!row.ok) return onApiFailure(row.status, row.problem, locale);
   if (!row.data) notFound();
-  const [hist, refs] = await Promise.all([history(meta, session.at, id), loadAllRefs(meta, session.at, true)]);
+  const [hist, { refs, failed }] = await Promise.all([history(meta, session.at, id), loadAllRefs(meta, session.at, "form")]);
 
-  const fields = meta.fields.filter((f) => isWritable(f, "update")).map((f) => toFormField(locale, f, refs));
+  const fields = meta.fields.filter((f) => isWritable(f, "update")).map((f) => toFormField(locale, f, refs, meta, session.user.role));
   const initial = Object.fromEntries(fields.map((f) => [f.name, row.data?.[f.name] === null || row.data?.[f.name] === undefined ? "" : String(row.data[f.name])]));
   const version = Number(row.data.version);
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{t(locale, "admin.edit", { entity: t(locale, meta.singularKey) })}</h1>
-      <EntityForm mode="update" slug={meta.slug} id={id} version={version} fields={fields} initial={initial} listHref={`/admin/${meta.slug}`} />
+      {failed ? <RefFailure locale={locale} /> : null}
+      <EntityForm mode="update" slug={meta.slug} id={id} version={version} fields={fields} initial={initial} listHref={`/admin/${meta.slug}`} reasonStored={meta.reasonOnUpdate !== null} />
       <AuditHistory entries={hist.ok ? hist.data.items : []} locale={locale} />
     </div>
   );
@@ -199,7 +238,7 @@ export async function EntityActionPage({ meta, id, actionKey, searchParams }: { 
   if (!row.ok) return onApiFailure(row.status, row.problem, locale);
   if (!row.data) notFound();
   if (action.when && !action.when(row.data)) notFound();
-  const refs = await loadAllRefs(meta, session.at, true);
+  const { refs } = await loadAllRefs(meta, session.at, "form");
   const fields = action.fields.map((f) => toFormField(locale, actionField(f), refs));
   const initial = Object.fromEntries(fields.map((f) => [f.name, ""]));
   const summary = meta.fields.filter((f) => f.column).slice(0, 6);
@@ -214,7 +253,7 @@ export async function EntityActionPage({ meta, id, actionKey, searchParams }: { 
           </div>
         ))}
       </dl>
-      <EntityForm mode="action" slug={meta.slug} action={action.key} submitLabel={t(locale, action.labelKey)} id={id} fields={fields} initial={initial} listHref={`/admin/${meta.slug}`} />
+      <EntityForm mode="action" slug={meta.slug} action={action.key} submitLabel={t(locale, action.labelKey)} id={id} version={action.ifMatch ? Number(row.data.version) : undefined} fields={fields} initial={initial} listHref={`/admin/${meta.slug}`} />
     </div>
   );
 }

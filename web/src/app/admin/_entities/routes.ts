@@ -58,7 +58,7 @@ export const routes = defineEntity<Route, RouteWrite, RoutePatch>({
       column: true,
     },
     // A visit-days change takes effect from this future Dhaka date (contract RoutePatch.effective_from).
-    { name: "effective_from", labelKey: "entity.field.effective_from", kind: "date", mode: "update-only" },
+    { name: "effective_from", labelKey: "entity.field.effective_from", kind: "date", mode: "update-only", futureOnly: true },
   ],
   filters: [
     { param: "q", kind: "search", labelKey: "common.search" },
@@ -95,12 +95,13 @@ export const routeAssignments = defineEntity<RouteAssignment, RouteAssignmentWri
       optionKeys: { primary: "entity.kind.primary", cover: "entity.kind.cover" },
       column: true,
     },
-    { name: "valid_from", labelKey: "entity.field.valid_from", kind: "date", mode: "create-only", required: true, column: true },
-    { name: "valid_to", labelKey: "entity.field.valid_to", kind: "date", mode: "create-only", nullable: true, column: true },
+    { name: "valid_from", labelKey: "entity.field.valid_from", kind: "date", mode: "create-only", required: true, futureOnly: true, column: true },
+    { name: "valid_to", labelKey: "entity.field.valid_to", kind: "date", mode: "create-only", nullable: true, futureOnly: true, column: true },
   ],
   filters: [
     { param: "route_id", kind: "ref", labelKey: "entity.field.route", ref: ROUTE_REF },
     { param: "user_id", kind: "ref", labelKey: "entity.field.user", ref: USER_REF },
+    { param: "zone_id", kind: "ref", labelKey: "entity.field.zone_id", ref: ZONE_REF },
     { param: "valid_on", kind: "date", labelKey: "entity.field.valid_on" },
   ],
   readRoles: ADMIN_PORTAL_ROLES,
@@ -114,7 +115,7 @@ export const routeAssignments = defineEntity<RouteAssignment, RouteAssignmentWri
       key: "end",
       labelKey: "action.end_assignment",
       path: "/v1/admin/route-assignments/{id}/end",
-      fields: [{ name: "valid_to", labelKey: "entity.field.valid_to", kind: "date", required: true }],
+      fields: [{ name: "valid_to", labelKey: "entity.field.valid_to", kind: "date", required: true, futureOnly: true }],
       reasonMember: "reason",
       when: (row) => row.valid_to === null || row.valid_to === undefined || String(row.valid_to) > businessDate(),
     }),

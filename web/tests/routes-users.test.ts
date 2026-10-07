@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { routeAssignments, routes } from "@/app/admin/_entities/routes";
 import { users } from "@/app/admin/_entities/users";
 import { valuesSchema } from "@/components/admin/crud/validation";
+import { businessDate } from "@/lib/i18n";
 import { setupMock } from "./helpers/bff";
 
 const { mock, signIn, create, update, act } = setupMock();
 const REASON = "Reason that is long enough";
+const plus = (n: number) => businessDate(new Date(Date.now() + n * 86_400_000)); // relative: the BFF refuses past dates (Dhaka)
 
 describe("routes", () => {
   it("validates the day mask (1..127), kind, code and visit kind", () => {
@@ -18,12 +20,13 @@ describe("routes", () => {
     expect(s.safeParse({ ...ok, visit_kind: "5f" }).success).toBe(false);
     expect(s.safeParse({ ...ok, visit_kind: "" })).toMatchObject({ success: true, data: { visit_kind: null } });
     expect(valuesSchema(routes, "update").safeParse({ code: "X" }).success).toBe(false); // code is create-only
-    expect(valuesSchema(routes, "update").safeParse({ effective_from: "2026-10-20" }).success).toBe(true);
+    expect(valuesSchema(routes, "update").safeParse({ effective_from: plus(10) }).success).toBe(true);
+    expect(valuesSchema(routes, "update").safeParse({ effective_from: "2020-01-01" }).success).toBe(false); // past: refused
     expect(valuesSchema(routes, "update").safeParse({ effective_from: "20/10/2026" }).success).toBe(false);
   });
   it("changes visit days with a future effective date and audits the reason; the label stays apart from the name", async () => {
     const c = await signIn("admin1");
-    const res = await update("routes", "2", { values: { visit_days_mask: "42", display_label: "(Sun, Tue, Thu)", effective_from: "2026-10-20" }, reason: REASON, version: 1 }, c);
+    const res = await update("routes", "2", { values: { visit_days_mask: "42", display_label: "(Sun, Tue, Thu)", effective_from: plus(10) }, reason: REASON, version: 1 }, c);
     expect(res.status).toBe(200);
     expect((await res.json()).row).toMatchObject({ name: "Banani 3F", display_label: "(Sun, Tue, Thu)", visit_days_mask: 42 });
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "route", reason: REASON });
@@ -36,7 +39,7 @@ describe("routes", () => {
 });
 
 describe("route assignments", () => {
-  const body = (extra: Record<string, unknown>) => ({ values: { route_id: "1", user_id: "1002", kind: "primary", valid_from: "2026-10-10", ...extra }, reason: REASON });
+  const body = (extra: Record<string, unknown>) => ({ values: { route_id: "1", user_id: "1002", kind: "primary", valid_from: plus(3), ...extra }, reason: REASON });
   it("has no edit and no PATCH", async () => {
     const c = await signIn("admin1");
     expect((await update("route-assignments", "1", { values: { kind: "cover" }, reason: REASON, version: 1 }, c)).status).toBe(404);
@@ -50,20 +53,20 @@ describe("route assignments", () => {
   });
   it("sends the reason as `reason` (max 300) and nothing else extra", async () => {
     const c = await signIn("admin1");
-    expect((await create("route-assignments", body({ route_id: "4", valid_from: "2026-10-10" }), c)).status).toBe(201);
+    expect((await create("route-assignments", body({ route_id: "4", valid_from: plus(3) }), c)).status).toBe(201);
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "route_assignment", reason: REASON });
-    const long = await create("route-assignments", { ...body({ route_id: "4", valid_from: "2026-11-10", kind: "cover" }), reason: "x".repeat(301) }, c);
+    const long = await create("route-assignments", { ...body({ route_id: "4", valid_from: plus(40), kind: "cover" }), reason: "x".repeat(301) }, c);
     expect(long.status).toBe(400);
   });
   it("ends an open assignment with a reason; history is kept; ending before it began is refused", async () => {
     const c = await signIn("admin1");
-    const bad = await act("route-assignments", "1", "end", { values: { valid_to: "2026-08-01" }, reason: REASON }, c);
-    expect(bad.status).toBe(409);
-    const res = await act("route-assignments", "1", "end", { values: { valid_to: "2026-10-15" }, reason: REASON }, c);
+    const past = await act("route-assignments", "1", "end", { values: { valid_to: "2026-08-01" }, reason: REASON }, c);
+    expect(past.status).toBe(400); // nothing historic is rewritten
+    const res = await act("route-assignments", "1", "end", { values: { valid_to: plus(5) }, reason: REASON }, c);
     expect(res.status).toBe(200);
-    expect(mock.state.tables.assignments!.find((r) => r.id === 1)).toMatchObject({ valid_to: "2026-10-15" });
+    expect(mock.state.tables.assignments!.find((r) => r.id === 1)).toMatchObject({ valid_to: plus(5) });
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "route_assignment", reason: REASON });
-    expect((await act("route-assignments", "1", "end", { values: { valid_to: "2026-10-15" }, reason: "short" }, c)).status).toBe(400);
+    expect((await act("route-assignments", "1", "end", { values: { valid_to: plus(5) }, reason: "short" }, c)).status).toBe(400);
     expect((await act("route-assignments", "1", "nope", { values: {}, reason: REASON }, c)).status).toBe(404);
   });
   it("is read-only for support", async () => {

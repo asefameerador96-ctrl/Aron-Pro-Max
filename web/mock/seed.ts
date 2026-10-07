@@ -68,6 +68,19 @@ export function seedTables(): Record<string, Row[]> {
     holidays: [
       row(1, { date: "2026-12-16", scope_type: "global", scope_id: 0, kind: "holiday", selling_day: false, name_en: "Victory Day", name_bn: "বিজয় দিবস" }),
     ],
+    outlets: [
+      row(1, { code: "DHK-334-001", name: "Banani Store", name_bn: null, owner_name: "Md. Rahim", contact_number: null, address: "Road 11, Banani", zone_id: 14, route_id: 1, cluster_id: 1, channel: "GT", sub_channel_id: 11, geo_class: "Urban", lat: 23.7937, lng: 90.4066, location_confirmed: true, outlet_kind: "retail", price_type: "regular", status: "active", visit_sequence: 1, external_ref: null }),
+      row(2, { code: "DHK-334-002", name: "Gulshan Corner Shop", name_bn: null, owner_name: "Abdul Karim", contact_number: null, address: null, zone_id: 14, route_id: 1, cluster_id: 2, channel: "GT", sub_channel_id: 11, geo_class: "Urban", lat: 23.7925, lng: 90.4078, location_confirmed: false, outlet_kind: "retail", price_type: "regular", status: "active", visit_sequence: 2, external_ref: null }),
+      row(3, { code: "DHK-334-003", name: "Mirpur Wholesale", name_bn: null, owner_name: "Jahangir Alam", contact_number: null, address: "Mirpur-10", zone_id: 15, route_id: 3, cluster_id: 3, channel: "GT", sub_channel_id: 12, geo_class: "Urban", lat: null, lng: null, location_confirmed: false, outlet_kind: "wholesale", price_type: "wholesale", status: "active", visit_sequence: null, external_ref: null }),
+      row(4, { code: "DHK-335-004", name: "Wrongly Closed Tea Stall", name_bn: null, owner_name: "Salam Mia", contact_number: null, address: null, zone_id: 15, route_id: 4, cluster_id: 3, channel: "GT", sub_channel_id: 11, geo_class: "SemiUrban", lat: null, lng: null, location_confirmed: false, outlet_kind: "retail", price_type: "regular", status: "closed", visit_sequence: null, external_ref: null }),
+      row(5, { code: "DHK-335-005", name: "Uttara Pan Shop", name_bn: null, owner_name: "Kamal Hossain", contact_number: null, address: null, zone_id: 15, route_id: null, cluster_id: 4, channel: "GT", sub_channel_id: null, geo_class: null, lat: null, lng: null, location_confirmed: false, outlet_kind: "retail", price_type: "regular", status: "active", visit_sequence: null, external_ref: null }),
+    ],
+    outletRequests: [
+      { request_uuid: "11111111-1111-4111-8111-111111111111", request_type: "new", status: "pending", outlet_id: null, outlet_name: "New Corner Mart", route_id: 1, cluster_id: 1, requested_by_user_id: 1001, requested_at: "2026-10-05T04:00:00.000Z", rejection_reason: null, proposed: { name: "New Corner Mart", owner_name: "Rubel Ahmed" }, photos: [], events: [], version: 1 },
+      { request_uuid: "22222222-2222-4222-8222-222222222222", request_type: "new", status: "verified", outlet_id: null, outlet_name: "Verified Fresh Store", route_id: 1, cluster_id: 2, requested_by_user_id: 1001, verified_by_user_id: 1003, requested_at: "2026-10-04T04:00:00.000Z", rejection_reason: null, proposed: { name: "Verified Fresh Store", owner_name: "Sumon Das", cluster_id: 2 }, photos: [], events: [], version: 1 },
+      { request_uuid: "33333333-3333-4333-8333-333333333333", request_type: "close", status: "verified", outlet_id: 2, outlet_name: "Gulshan Corner Shop", route_id: 1, cluster_id: 2, requested_by_user_id: 1001, verified_by_user_id: 1003, requested_at: "2026-10-04T05:00:00.000Z", rejection_reason: null, proposed: { close_reason_code: "permanent" }, photos: [], events: [], version: 1 },
+      { request_uuid: "44444444-4444-4444-8444-444444444444", request_type: "info", status: "pending", outlet_id: 1, outlet_name: "Banani Store", route_id: 1, cluster_id: 1, requested_by_user_id: 1002, requested_at: "2026-10-05T06:00:00.000Z", rejection_reason: null, proposed: { owner_name: "Md. Rahim Uddin" }, photos: [], events: [], version: 1 },
+    ] as unknown as Row[],
     clusters: [
       row(1, { zone_id: 14, name: "Banani Market", cluster_type: "market" }),
       row(2, { zone_id: 14, name: "Gulshan-1 Circle", cluster_type: "urban" }),
@@ -150,6 +163,70 @@ export function tableDefs(h: Holder): TableDef[] {
       nextId,
     },
     {
+      collection: /^\/v1\/admin\/outlets$/,
+      item: /^\/v1\/admin\/outlets\/(\d+)$/,
+      rows: () => h.tables.outlets!,
+      create: { allowed: ["code", "name", "name_bn", "owner_name", "contact_number", "address", "zone_id", "route_id", "cluster_id", "channel", "sub_channel_id", "geo_class", "lat", "lng", "outlet_kind", "external_ref"], required: ["name", "owner_name", "zone_id", "cluster_id", "channel", "outlet_kind"], reason: true },
+      patch: { allowed: ["name", "name_bn", "owner_name", "contact_number", "address", "route_id", "cluster_id", "channel", "sub_channel_id", "geo_class", "lat", "lng", "outlet_kind", "status", "visit_sequence", "external_ref"] },
+      maxLength: { name: 120, owner_name: 120, address: 300 },
+      patterns: { code: /^[0-9A-Za-z][0-9A-Za-z._/-]{0,31}$/, contact_number: /^01[3-9]\d{8}$/ },
+      unique: [["code"]],
+      auditEntity: "outlet",
+      filters: { zone_id: (r, v) => r.zone_id === Number(v), route_id: (r, v) => r.route_id === Number(v), cluster_id: (r, v) => r.cluster_id === Number(v), status: (r, v) => r.status === v, q: (r, v) => like("name")(r, v) || like("code")(r, v) },
+      defaults: { status: "active", location_confirmed: false, price_type: "regular", visit_sequence: null },
+      nullables: ["code", "name_bn", "contact_number", "address", "route_id", "sub_channel_id", "geo_class", "lat", "lng", "external_ref"],
+      derive: (r) => ({ code: r.code ?? `OUT-${r.id}` }),
+      nextId,
+    },
+    {
+      collection: /^\/v1\/outlet-requests$/,
+      item: /^\/v1\/outlet-requests\/([0-9a-f-]{36})$/,
+      idField: "request_uuid",
+      rows: () => h.tables.outletRequests!,
+      create: { allowed: [], required: [], reason: false },
+      patch: { allowed: [] },
+      auditEntity: "outlet_request",
+      filters: { request_type: (r, v) => r.request_type === v, status: (r, v) => r.status === v },
+      nextId,
+      actions: [
+        {
+          path: /^\/v1\/outlet-requests\/([0-9a-f-]{36})\/verify$/,
+          required: ["sub_channel_id"],
+          allowed: ["sub_channel_id", "geo_class", "note"],
+          run: (row, _b) => (row.status !== "pending" ? { status: 409, body: null, code: "ERR_REQUEST_STATE" } : { status: 200, body: { ...row, status: "verified" }, mutate: { status: "verified" } }),
+        },
+        {
+          path: /^\/v1\/outlet-requests\/([0-9a-f-]{36})\/approve$/,
+          required: ["change_reason"],
+          allowed: ["outlet_code", "route_id", "change_reason"],
+          run: (row, b, actor) => {
+            if (row.status !== "verified") return { status: 409, body: null, code: "ERR_REQUEST_STATE" };
+            if (row.requested_by_user_id === actor || row.verified_by_user_id === actor) return { status: 409, body: null, code: "ERR_SEPARATION_OF_DUTIES" };
+            return { status: 200, body: { ...row, status: "approved" }, mutate: { status: "approved", approved_by_user_id: actor, approved_at: new Date().toISOString() } };
+          },
+          extra: (row, b) => {
+            const outlets = h.tables.outlets!;
+            if (row.request_type === "new") {
+              const id = h.nextId++;
+              const p = row.proposed as Record<string, unknown>;
+              outlets.push({ id, version: 1, created_at: T0, updated_at: T0, status: "active", code: (b.outlet_code as string | null) ?? `NEW-${id}`, name: p.name, owner_name: p.owner_name, zone_id: 14, route_id: (b.route_id as number | null) ?? row.route_id, cluster_id: p.cluster_id ?? 1, channel: "GT", outlet_kind: "retail", price_type: "regular", location_confirmed: false } as Row);
+              row.resulting_outlet_id = id;
+            }
+            if (row.request_type === "close") {
+              const o = outlets.find((x) => x.id === row.outlet_id);
+              if (o) { o.status = "closed"; o.version++; }
+            }
+          },
+        },
+        {
+          path: /^\/v1\/outlet-requests\/([0-9a-f-]{36})\/reject$/,
+          required: ["reason"],
+          allowed: ["reason"],
+          run: (row, b) => (row.status !== "pending" && row.status !== "verified" ? { status: 409, body: null, code: "ERR_REQUEST_STATE" } : { status: 200, body: { ...row, status: "rejected" }, mutate: { status: "rejected", rejection_reason: b.reason } }),
+        },
+      ],
+    },
+    {
       collection: /^\/v1\/admin\/routes$/,
       item: /^\/v1\/admin\/routes\/(\d+)$/,
       rows: () => h.tables.routes!,
@@ -182,6 +259,7 @@ export function tableDefs(h: Holder): TableDef[] {
         {
           roles: ["SUPPORT", "ADMIN", "SUPERADMIN"],
           path: /^\/v1\/admin\/users\/(\d+)\/credentials$/,
+          required: ["action", "reason"],
           allowed: ["action", "reason"],
           run: (row, b) => {
             const action = b.action;
@@ -206,6 +284,7 @@ export function tableDefs(h: Holder): TableDef[] {
       actions: [
         {
           path: /^\/v1\/admin\/route-assignments\/(\d+)\/end$/,
+          required: ["valid_to", "reason"],
           allowed: ["valid_to", "reason"],
           run: (row, b) => (String(b.valid_to) < String(row.valid_from) ? { status: 409, body: null, code: "ERR_REQUEST_STATE" } : { status: 200, body: { ...row, valid_to: b.valid_to }, mutate: { valid_to: b.valid_to } }),
         },

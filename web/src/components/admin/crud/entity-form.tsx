@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { MessageKey } from "@/lib/i18n";
+import { en } from "@/lib/i18n/messages-en";
 import type { Problem } from "@/contract/types";
 import { Field, inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
@@ -11,7 +12,9 @@ import type { FieldError, WriteRequest } from "./types";
 export interface FormFieldDef {
   name: string;
   label: string;
-  kind: "text" | "int" | "enum" | "date" | "mask";
+  kind: "text" | "int" | "enum" | "date" | "mask" | "number";
+  /** Translated section heading; consecutive fields with the same heading are grouped. */
+  section?: string;
   /** Labels of the bits of a `mask` field, bit 0 first. */
   maskBits?: string[];
   required: boolean;
@@ -25,6 +28,8 @@ interface Props {
   slug: string;
   /** Key of the row action (mode "action"). */
   action?: string;
+  /** false: the contract has no member for the reason here, so it is required but not stored (shown as a note). */
+  reasonStored?: boolean;
   /** Label of the submit button (mode "action"). */
   submitLabel?: string;
   id?: string;
@@ -36,12 +41,12 @@ interface Props {
 
 function fieldMessage(t: ReturnType<typeof useI18n>["t"], code: string): string {
   const key = `error.field.${code}` as MessageKey;
-  return t(["required", "too_short", "too_long", "unknown_member"].includes(code) ? key : "error.field.invalid");
+  return t(["required", "too_short", "too_long", "unknown_member", "past"].includes(code) ? key : "error.field.invalid");
 }
 
 /** The form of the CRUD generator: one input per writable field of the metadata, plus the mandatory reason. */
-export function EntityForm({ mode, slug, action, submitLabel, id, version: initialVersion, fields, initial, listHref }: Props) {
-  const { t, problem } = useI18n();
+export function EntityForm({ mode, slug, action, submitLabel, reasonStored = true, id, version: initialVersion, fields, initial, listHref }: Props) {
+  const { t, problem, dateTime } = useI18n();
   const router = useRouter();
   const [values, setValues] = useState<Record<string, string>>(initial);
   const [reason, setReason] = useState("");
@@ -73,7 +78,7 @@ export function EntityForm({ mode, slug, action, submitLabel, id, version: initi
       setErrors(local);
       return;
     }
-    const body: WriteRequest = { values: sent, reason: reason.trim(), ...(mode === "update" ? { version } : {}) };
+    const body: WriteRequest = { values: sent, reason: reason.trim(), ...(mode === "update" || (mode === "action" && version !== undefined) ? { version } : {}) };
     setBusy(true);
     try {
       const res = await fetch(mode === "create" ? `/api/bff/admin/${slug}` : mode === "action" ? `/api/bff/admin/${slug}/${id}/${action}` : `/api/bff/admin/${slug}/${id}`, {
@@ -121,9 +126,9 @@ export function EntityForm({ mode, slug, action, submitLabel, id, version: initi
         <dl className="space-y-1">
           {Object.entries(shown).map(([k, v]) => (
             <div key={k}>
-              <dt className="text-xs text-slate-600">{k}</dt>
+              <dt className="text-xs text-slate-600">{`shown.${k}` in en ? t(`shown.${k}` as MessageKey) : k}</dt>
               <dd className="font-mono text-lg" data-testid={`once-${k}`}>
-                {String(v ?? "")}
+                {/^\d{4}-\d{2}-\d{2}T/.test(String(v)) ? dateTime(String(v)) : String(v ?? "")}
               </dd>
             </div>
           ))}
@@ -137,10 +142,16 @@ export function EntityForm({ mode, slug, action, submitLabel, id, version: initi
 
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" data-testid="entity-form">
-      {fields.map((f) => (
-        <Field key={f.name} label={f.label} htmlFor={`f-${f.name}`} required={f.required} error={errors[f.name]}>
+      {fields.map((f, idx) => (
+        <div key={f.name} className="space-y-4">
+          {f.section && f.section !== fields[idx - 1]?.section ? (
+            <h2 className="border-b border-slate-200 pb-1 pt-2 text-lg font-semibold text-slate-800" data-testid={`section-${idx}`}>
+              {f.section}
+            </h2>
+          ) : null}
+        <Field label={f.label} htmlFor={`f-${f.name}`} required={f.required} error={errors[f.name]}>
           {f.kind === "enum" ? (
-            <select id={`f-${f.name}`} name={f.name} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} className={inputClass}>
+            <select id={`f-${f.name}`} name={f.name} aria-required={f.required || undefined} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} className={inputClass}>
               {f.nullable || !f.required ? <option value="">{t("common.none")}</option> : null}
               {f.options?.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -172,15 +183,22 @@ export function EntityForm({ mode, slug, action, submitLabel, id, version: initi
               name={f.name}
               value={values[f.name] ?? ""}
               onChange={(e) => setValues({ ...values, [f.name]: e.target.value })}
-              inputMode={f.kind === "int" ? "numeric" : undefined}
+              aria-required={f.required || undefined}
+              inputMode={f.kind === "int" ? "numeric" : f.kind === "number" ? "decimal" : undefined}
               maxLength={f.maxLength}
               aria-invalid={errors[f.name] ? true : undefined}
               className={inputClass}
             />
           )}
         </Field>
+        </div>
       ))}
       <ReasonField value={reason} onChange={setReason} error={errors.reason} />
+      {!reasonStored && mode !== "action" ? (
+        <p data-testid="reason-not-stored" className="text-xs text-amber-800">
+          {t("admin.reason.not_stored")}
+        </p>
+      ) : null}
       {banner ? (
         <p role={banner.kind === "error" ? "alert" : "status"} data-testid={banner.kind === "ok" ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.kind === "ok" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
           {banner.text}

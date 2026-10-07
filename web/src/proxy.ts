@@ -24,7 +24,14 @@ export function proxy(req: NextRequest) {
   const isApi = pathname.startsWith("/api/");
 
   // Write pages of an entity (create, edit) need its write roles: a read-only portal role gets a real 403 there too.
-  const writePage = /^\/admin\/([^/]+)\/(new|[0-9]+)(?:\/([^/]+))?\/?$/.exec(pathname);
+  // Match the decoded path: /admin/clusters/%31 is /admin/clusters/1.
+  let decoded = pathname;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    /* an undecodable path keeps the raw form */
+  }
+  const writePage = /^\/admin\/([^/]+)\/(new|[0-9]+|[0-9a-f]{8}-[0-9a-f-]{27})(?:\/([^/]+))?\/?$/.exec(decoded);
   const entity = writePage?.[1] ? entityBySlug(writePage[1]) : undefined;
   const actionRoles = writePage?.[3] ? entity?.actions?.find((a) => a.key === writePage[3])?.writeRoles : undefined;
   if (access === "ok" && session && entity && !(actionRoles ?? entity.writeRoles).includes(session.user.role)) {

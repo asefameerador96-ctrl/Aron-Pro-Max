@@ -21,7 +21,7 @@ export function req(path: string, method: string, body: unknown, c: Record<strin
 }
 export const jar = (res: Response): Record<string, string> => Object.fromEntries(res.headers.getSetCookie().map((l) => [l.split("=")[0]!, l.split(";")[0]!.split("=").slice(1).join("=")]));
 
-const PASSWORDS: Record<string, string> = { admin1: "admin-pass-1", support1: "support-pass-1", tso334: "tso-pass-1" };
+const PASSWORDS: Record<string, string> = { admin1: "admin-pass-1", support1: "support-pass-1", tso334: "tso-pass-1", dmo1: "dmo-pass-1" };
 
 /** Starts the mock for the file; returns helpers. Call once at file level. */
 export function setupMock() {

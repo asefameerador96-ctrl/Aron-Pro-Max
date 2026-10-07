@@ -3,13 +3,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Problem, ProblemCode } from "../src/contract/types";
 
-export type Row = Record<string, unknown> & { id: number; version: number; created_at: string; updated_at: string };
+export type Row = Record<string, unknown> & { id: number | string; version: number; created_at: string; updated_at: string };
 
 export interface Ctx {
   send: (res: ServerResponse, status: number, body: unknown, headers?: Record<string, string | string[]>) => void;
   problem: (status: number, code: ProblemCode, extra?: Partial<Problem>) => Problem;
   readJson: (req: IncomingMessage) => Promise<unknown>;
-  audit: (entity: string, id: number, action: string, before: Record<string, string | number | boolean | null>, after: Record<string, string | number | boolean | null>, reason: string | null) => void;
+  audit: (entity: string, id: number | string, action: string, before: Record<string, string | number | boolean | null>, after: Record<string, string | number | boolean | null>, reason: string | null) => void;
 }
 
 export interface TableDef {
@@ -31,6 +31,8 @@ export interface TableDef {
   defaults?: Record<string, unknown>;
   /** Nullable members set to null when absent on create. */
   nullables?: string[];
+  /** Member holding the row id when it is not `id` (outlet requests use request_uuid). */
+  idField?: string;
   nextId: () => number;
   /** Extra checks on create (overlaps...): return a problem to refuse. */
   validateCreate?: (b: Record<string, unknown>, rows: Row[]) => { status: number; code: ProblemCode } | null;
@@ -39,7 +41,7 @@ export interface TableDef {
   /** Wrap the created row in the response (e.g. { user, temporary_password }). */
   createResponse?: (row: Row) => unknown;
   /** Row actions: POST <item path>/<suffix>. */
-  actions?: { roles?: string[]; path: RegExp; allowed: string[]; run: (row: Row, body: Record<string, unknown>) => { status: number; body: unknown; code?: ProblemCode; mutate?: Record<string, unknown> } }[];
+  actions?: { required?: string[]; roles?: string[]; /** Side effects after a successful run (create the outlet of an approved request...). */ extra?: (row: Row, body: Record<string, unknown>, actor: number, out: { mutate?: Record<string, unknown> }) => void; path: RegExp; allowed: string[]; run: (row: Row, body: Record<string, unknown>, actor: number) => { status: number; body: unknown; code?: ProblemCode; mutate?: Record<string, unknown> } }[];
 }
 
 function fieldErrors(def: TableDef, b: Record<string, unknown>, allowed: string[], required: string[]): NonNullable<Problem["errors"]> {
@@ -58,24 +60,25 @@ function fieldErrors(def: TableDef, b: Record<string, unknown>, allowed: string[
 const scalar = (row: Row, keys: string[]): Record<string, string | number | boolean | null> => Object.fromEntries(keys.map((k) => [k, (row[k] ?? null) as string | number | boolean | null]));
 
 /** Returns true when the request was handled. */
-export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, url: URL, req: IncomingMessage, res: ServerResponse, write: boolean, role = ""): Promise<boolean> {
+export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, url: URL, req: IncomingMessage, res: ServerResponse, write: boolean, role = "", actor = 0): Promise<boolean> {
   for (const def of defs) {
     for (const a of def.actions ?? []) {
       const m = a.path.exec(url.pathname);
       if (!m || method !== "POST") continue;
       if (!(a.roles ? a.roles.includes(role) : write)) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
-      const row = def.rows().find((r) => r.id === Number(m[m.length - 1]));
+      const row = def.rows().find((r) => String(r[def.idField ?? "id"]) === m[m.length - 1]);
       if (!row) return ctx.send(res, 404, ctx.problem(404, "ERR_NOT_FOUND")), true;
       const b = (await ctx.readJson(req)) as Record<string, unknown> | undefined;
       if (!b || typeof b !== "object") return ctx.send(res, 400, ctx.problem(400, "ERR_MALFORMED_JSON")), true;
-      const errors = fieldErrors(def, { ...b, change_reason: b.reason }, [...a.allowed, "change_reason"], a.allowed);
+      const errors = fieldErrors(def, { ...b, change_reason: b.reason ?? b.change_reason ?? b.note }, [...a.allowed, "change_reason"], a.required ?? []);
       if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors })), true;
-      const out = a.run(row, b);
+      const out = a.run(row, b, actor);
       if (out.code) return ctx.send(res, out.status, ctx.problem(out.status, out.code)), true;
+      if (a.extra) a.extra(row, b, actor, out);
       const before = scalar(row, Object.keys(out.mutate ?? {}));
       Object.assign(row, out.mutate ?? {});
       row.version++;
-      ctx.audit(def.auditEntity, row.id, `${def.auditEntity}.${String(b.action ?? "action")}`, before, scalar(row, Object.keys(out.mutate ?? {})), (b.reason as string) ?? null);
+      ctx.audit(def.auditEntity, row[def.idField ?? "id"] as string | number, `${def.auditEntity}.${String(b.action ?? "action")}`, before, scalar(row, Object.keys(out.mutate ?? {})), ((b.reason ?? b.note ?? b.change_reason) as string) ?? null);
       return ctx.send(res, out.status, out.body), true;
     }
     const c = def.collection.exec(url.pathname);
@@ -90,13 +93,13 @@ export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, ur
       const offset = q.get("cursor") ? Number(Buffer.from(q.get("cursor")!, "base64url").toString()) || 0 : 0;
       let rows = def.rows().filter(inScope);
       for (const [param, fn] of Object.entries(def.filters)) if (q.get(param)) rows = rows.filter((r) => fn(r, q.get(param)!));
-      rows = [...rows].sort((a, b) => a.id - b.id);
+      if (!def.idField) rows = [...rows].sort((a, b) => Number(a.id) - Number(b.id));
       const page = rows.slice(offset, offset + limit);
       ctx.send(res, 200, { items: page, next_cursor: offset + limit < rows.length ? Buffer.from(String(offset + limit)).toString("base64url") : null });
       return true;
     }
     if (it && method === "GET") {
-      const row = def.rows().find((r) => r.id === Number(it[it.length - 1]) && inScope(r));
+      const row = def.rows().find((r) => String(r[def.idField ?? "id"]) === it[it.length - 1] && inScope(r));
       ctx.send(res, row ? 200 : 404, row ?? ctx.problem(404, "ERR_NOT_FOUND"), row ? { ETag: `"${row.version}"` } : {});
       return true;
     }
@@ -118,11 +121,11 @@ export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, ur
       const row: Row = { ...(def.defaults ?? {}), ...Object.fromEntries((def.nullables ?? []).map((k) => [k, null])), ...def.stamp?.(pathParams), ...Object.fromEntries(Object.entries(b).filter(([k]) => k !== "change_reason" && k !== def.create.reasonMember)), id: def.nextId(), version: 1, created_at: now, updated_at: now };
       Object.assign(row, def.derive?.(row));
       def.rows().push(row);
-      ctx.audit(def.auditEntity, row.id, `${def.auditEntity}.create`, {}, scalar(row, Object.keys(b).filter((k) => k !== "change_reason" && k !== def.create.reasonMember)), def.create.reason ? ((b.change_reason as string | null | undefined) ?? null) : def.create.reasonMember ? ((b[def.create.reasonMember] as string | null | undefined) ?? null) : null);
+      ctx.audit(def.auditEntity, row[def.idField ?? "id"] as string | number, `${def.auditEntity}.create`, {}, scalar(row, Object.keys(b).filter((k) => k !== "change_reason" && k !== def.create.reasonMember)), def.create.reason ? ((b.change_reason as string | null | undefined) ?? null) : def.create.reasonMember ? ((b[def.create.reasonMember] as string | null | undefined) ?? null) : null);
       return ctx.send(res, 201, def.createResponse ? def.createResponse(row) : row, { ETag: `"1"` }), true;
     }
     if (it && method === "PATCH") {
-      const row = def.rows().find((r) => r.id === Number(it[it.length - 1]) && inScope(r));
+      const row = def.rows().find((r) => String(r[def.idField ?? "id"]) === it[it.length - 1] && inScope(r));
       if (!row) return ctx.send(res, 404, ctx.problem(404, "ERR_NOT_FOUND")), true;
       if (req.headers["if-match"] !== `"${row.version}"`) return ctx.send(res, 412, ctx.problem(412, "ERR_PRECONDITION_FAILED")), true;
       const b = (await ctx.readJson(req)) as Record<string, unknown> | undefined;
@@ -134,7 +137,7 @@ export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, ur
       for (const k of keys) row[k] = b[k];
       row.version++;
       row.updated_at = new Date().toISOString();
-      ctx.audit(def.auditEntity, row.id, `${def.auditEntity}.update`, before, scalar(row, keys), (b.change_reason as string | null | undefined) ?? null);
+      ctx.audit(def.auditEntity, row[def.idField ?? "id"] as string | number, `${def.auditEntity}.update`, before, scalar(row, keys), (b.change_reason as string | null | undefined) ?? null);
       return ctx.send(res, 200, row, { ETag: `"${row.version}"` }), true;
     }
   }

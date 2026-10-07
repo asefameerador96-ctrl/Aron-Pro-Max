@@ -28,6 +28,7 @@ function users(): Record<string, MockUser> {
   });
   return {
     tso334: u(2001, "tso334", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 334, code: "T-334", name: "Banani" }] }),
+    dmo1: u(2004, "dmo1", "Hasan Mahmud", "DMO", "dmo-pass-1", { scope_version: 2, nodes: [{ type: "division", id: 3, code: "D-1", name: "Dhaka North" }] }),
     wm1: u(2002, "wm1", "Karim Hossain", "WM", "wm-pass-1", { scope_version: 2, nodes: [{ type: "wing", id: 1, code: "W-1", name: "Dhaka Wing" }] }),
     analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
     admin1: u(3001, "admin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true),
@@ -42,6 +43,7 @@ interface State {
   users: Record<string, MockUser>;
   tables: Record<string, Row[]>;
   codeLists: Record<string, unknown[]>;
+  bulkBatches: Map<string, { batch_uuid: string; updated: number; unchanged: number; replayed: boolean }>;
   /** Alias of tables.clusters (used by tests). */
   clusters: Cluster[];
   audit: AuditEntry[];
@@ -71,7 +73,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { users: users(), tables, codeLists: seedCodeLists(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
+  return { users: users(), tables, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -157,7 +159,7 @@ function authed(state: State, req: IncomingMessage): { user: MockUser } | { erro
 const ADMIN_READ: Role[] = ["ADMIN", "SUPERADMIN", "SUPPORT", "ANALYST"];
 const ADMIN_WRITE: Role[] = ["ADMIN", "SUPERADMIN"];
 
-function audit(state: State, user: MockUser, entity: string, entity_id: number, action: string, before: AuditEntry["before"], after: AuditEntry["after"], reason: string | null): void {
+function audit(state: State, user: MockUser, entity: string, entity_id: number | string, action: string, before: AuditEntry["before"], after: AuditEntry["after"], reason: string | null): void {
   const prev = state.audit[state.audit.length - 1]?.row_hash ?? "0".repeat(64);
   const entry = { id: state.audit.length + 1, at: new Date().toISOString(), actor_user_id: user.summary.user_id, actor_username: user.summary.username, actor_role: user.summary.role, via: "web" as const, entity, entity_id: String(entity_id), action, before, after, reason, request_id: randomUUID() };
   state.audit.push({ ...entry, row_hash: createHash("sha256").update(prev + JSON.stringify(entry)).digest("hex") });
@@ -173,7 +175,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     reset();
     return send(res, 204, undefined);
   }
-  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters });
+  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, tables: state.tables });
 
   if (path === "/v1/health") return send(res, 200, { status: "ok", api: "/v1", server_time: new Date().toISOString(), generation: "00000000-0000-4000-8000-000000000001", build: "mock" });
 
@@ -255,6 +257,38 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     return send(res, 200, { list_key: key, items: state.codeLists[key] });
   }
 
+  if (path === "/v1/admin/outlets/outlet-kind" && method === "POST") {
+    if (!ADMIN_WRITE.includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const b = (await readJson(req)) as { batch_uuid?: string; outlet_kind?: string; outlet_ids?: number[]; reason?: string } | undefined;
+    if (!b || !b.batch_uuid || !["retail", "wholesale"].includes(b.outlet_kind ?? "") || !Array.isArray(b.outlet_ids) || b.outlet_ids.length < 1 || typeof b.reason !== "string" || Array.from(b.reason).length < 10) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    const seen = state.bulkBatches.get(b.batch_uuid);
+    if (seen) return send(res, 200, { ...seen, replayed: true });
+    let updated = 0;
+    let unchanged = 0;
+    for (const id of b.outlet_ids) {
+      const o = state.tables.outlets!.find((x) => x.id === id);
+      if (!o) continue;
+      if (o.outlet_kind === b.outlet_kind) unchanged++;
+      else {
+        o.outlet_kind = b.outlet_kind;
+        o.version++;
+        updated++;
+        audit(state, user, "outlet", id, "outlet.outlet_kind", { outlet_kind: b.outlet_kind === "wholesale" ? "retail" : "wholesale" }, { outlet_kind: b.outlet_kind! }, b.reason);
+      }
+    }
+    const result = { batch_uuid: b.batch_uuid, updated, unchanged, replayed: false };
+    state.bulkBatches.set(b.batch_uuid, result);
+    return send(res, 200, result);
+  }
+
+  if (path.startsWith("/v1/outlet-requests")) {
+    const ACT: Role[] = ["DMO", "WM", "ADMIN", "SUPERADMIN"];
+    const READ: Role[] = ["TSO", "DMO", "WM", "TOP", "ANALYST", "ADMIN", "SUPERADMIN"];
+    if (!(method === "GET" ? READ : ACT).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const ctx2: Ctx = { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) };
+    if (await handleTable(tableDefs(state), ctx2, method, url, req, res, ACT.includes(user.summary.role), user.summary.role, user.summary.user_id)) return;
+  }
+
   if (path.startsWith("/v1/admin/")) {
     const ctx: Ctx = {
       send,
@@ -262,7 +296,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
       readJson,
       audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason),
     };
-    if (await handleTable(tableDefs(state), ctx, method, url, req, res, ADMIN_WRITE.includes(user.summary.role), user.summary.role)) return;
+    if (await handleTable(tableDefs(state), ctx, method, url, req, res, ADMIN_WRITE.includes(user.summary.role), user.summary.role, user.summary.user_id)) return;
   }
 
   if (path === "/v1/admin/audit" && method === "GET") {

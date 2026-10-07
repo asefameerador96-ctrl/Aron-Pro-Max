@@ -2,12 +2,13 @@
 import type { AnyEntity } from "@/components/admin/crud/meta";
 import { holidays } from "./calendar";
 import { productNodeEntities, skus } from "./products";
+import { outletRequests, outlets } from "./outlets";
 import { clusters } from "./clusters";
 import { geoEntities } from "./geo";
 import { routeAssignments, routes } from "./routes";
 import { users } from "./users";
 
-export const ENTITIES: readonly AnyEntity[] = [...geoEntities, clusters, routes, routeAssignments, users, ...productNodeEntities, skus, holidays];
+export const ENTITIES: readonly AnyEntity[] = [...geoEntities, clusters, routes, routeAssignments, users, ...productNodeEntities, skus, holidays, outlets, outletRequests];
 
 export function entityBySlug(slug: string): AnyEntity | undefined {
   return ENTITIES.find((e) => e.slug === slug);

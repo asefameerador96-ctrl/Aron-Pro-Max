@@ -1,5 +1,6 @@
 // Server-side validation derived from entity metadata. Strict like the API: unknown members are refused.
 import { z } from "zod";
+import { businessDate } from "@/lib/i18n";
 import type { FieldError } from "./types";
 import { isWritable, type AnyEntity, type AnyField } from "./meta";
 
@@ -9,30 +10,51 @@ export const REASON_MAX = 500;
 /** JSON Schema minLength/maxLength count Unicode code points, not UTF-16 units (an emoji is 1, not 2). */
 export const codePoints = (s: string): number => Array.from(s).length;
 
+const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
+/** Bengali digits to ASCII (numbers, dates and flagged text are typed in either script). */
+export const asciiDigits = (v: unknown): unknown => (typeof v === "string" ? v.replace(/[০-৯]/g, (d) => String(BN_DIGITS.indexOf(d))) : v);
+
+/** A real calendar date: 2026-02-30 and 2026-13-45 are not dates. */
+export function isRealDate(v: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if (!m) return false;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
+}
+
 function fieldSchema(f: AnyField): z.ZodType {
   if (f.kind === "bool") {
     const b = z.preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean());
     return f.nullable ? z.preprocess((v) => (v === "" ? null : v), b.nullable()) : b;
   }
+  if (f.kind === "number") {
+    let n = z.preprocess((v) => (typeof v === "string" ? (v.trim() === "" ? Number.NaN : asciiDigits(v.trim())) : v), z.coerce.number().refine((v) => Number.isFinite(v), "invalid"));
+    if (f.min !== undefined || f.max !== undefined) {
+      const lo = f.min ?? -Infinity;
+      const hi = f.max ?? Infinity;
+      n = z.preprocess((v) => (typeof v === "string" ? (v.trim() === "" ? Number.NaN : asciiDigits(v.trim())) : v), z.coerce.number().refine((v) => Number.isFinite(v) && v >= lo && v <= hi, "invalid"));
+    }
+    return f.nullable ? z.preprocess((v) => (v === "" || v === null ? null : v), n.nullable()) : n;
+  }
   if (f.kind === "date") {
-    const d = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "invalid");
+    let d: z.ZodType<string> = z.preprocess(asciiDigits, z.string().refine(isRealDate, "invalid")) as unknown as z.ZodType<string>;
+    if (f.futureOnly) d = d.refine((v) => v >= businessDate(), "past");
     return f.nullable ? z.preprocess((v) => (v === "" ? null : v), d.nullable()) : d;
   }
   if (f.kind === "mask") {
     const bits = f.maskBits?.length ?? 7;
-    return z.coerce.number().int().min(1).max(2 ** bits - 1);
+    return z.preprocess(asciiDigits, z.coerce.number().int().min(1).max(2 ** bits - 1));
   }
   if (f.kind === "int" || f.kind === "ref") {
-    let base = z.coerce.number().int().min(f.min ?? 0);
-    if (f.max !== undefined) base = base.max(f.max);
+    let base = z.preprocess(asciiDigits, z.coerce.number().int().min(f.min ?? 0)) as unknown as z.ZodNumber;
+    if (f.max !== undefined) base = z.preprocess(asciiDigits, z.coerce.number().int().min(f.min ?? 0).max(f.max)) as unknown as z.ZodNumber;
     return f.nullable ? z.preprocess((v) => (v === "" || v === null ? null : v), base.nullable()) : base;
   }
   if (f.kind === "enum") {
     const e = z.enum((f.options ?? []) as [string, ...string[]]);
     return f.nullable ? z.preprocess((v) => (v === "" ? null : v), e.nullable()) : e;
   }
-  const BN = "০১২৩৪৫৬৭৮৯";
-  const ascii = (v: unknown) => (f.normalizeDigits && typeof v === "string" ? v.replace(/[০-৯]/g, (d) => String(BN.indexOf(d))) : v);
+  const ascii = (v: unknown) => (f.normalizeDigits ? asciiDigits(v) : v);
   let s: z.ZodType<string> = z.preprocess(ascii, z.string().trim()) as unknown as z.ZodType<string>;
   const max = f.maxLength;
   if (max) s = s.refine((v) => codePoints(v) <= max, { message: "too_big" });
@@ -75,6 +97,7 @@ export function toFieldErrors(err: z.ZodError, prefix: string): FieldError[] {
     pointer: `${prefix}/${i.path.join("/")}`.replace(/\/$/, ""),
     code:
       i.code === "unrecognized_keys" ? "unknown_member"
+      : i.message === "past" ? "past"
       : i.code === "too_small" || i.message === "too_small" || i.message === "too_short" ? "too_short"
       : i.code === "too_big" || i.message === "too_big" || i.message === "too_long" ? "too_long"
       : "invalid",

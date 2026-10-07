@@ -58,10 +58,13 @@ export const users = defineEntity<User, UserWrite, UserPatch>({
     { param: "q", kind: "search", labelKey: "common.search" },
     { param: "role", kind: "enum", labelKey: "entity.field.role", options: ALL_ROLES, optionKeys: ROLE_KEYS },
     { param: "zone_id", kind: "ref", labelKey: "entity.field.zone_id", ref: ZONE_REF },
-    { param: "status", kind: "enum", labelKey: "entity.field.status", options: ["active", "disabled"], optionKeys: { active: "entity.status.active", disabled: "entity.status.disabled" } },
+    // The list parameter is the contract's ActiveStatus (active | inactive); "inactive" is how a disabled user is filtered.
+    { param: "status", kind: "enum", labelKey: "entity.field.status", options: ["active", "inactive"], optionKeys: { active: "entity.status.active", inactive: "entity.status.disabled" } },
   ],
   readRoles: ADMIN_PORTAL_ROLES,
   writeRoles: ["ADMIN", "SUPERADMIN"],
+  // docs/24 s8.5: only SUPERADMIN writes ADMIN-role users (and so creates or promotes admins).
+  restrictedValues: [{ field: "role", values: ["ADMIN", "SUPERADMIN"], unlessRoles: ["SUPERADMIN"] }],
   reasonOnUpdate: "change_reason",
   // REQUEST: docs/requests/web-admin-create-reason.md (UserWrite has no reason member).
   reasonOnCreate: null,

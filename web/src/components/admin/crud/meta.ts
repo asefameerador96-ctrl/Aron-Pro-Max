@@ -25,7 +25,9 @@ export interface RefMeta {
 interface FieldBase {
   labelKey: MessageKey;
   /** `ref` stores an integer id and shows a select (see `ref`). `bool` is a yes/no select. */
-  kind: "text" | "int" | "enum" | "timestamp" | "ref" | "bool" | "date" | "mask";
+  kind: "text" | "int" | "enum" | "timestamp" | "ref" | "bool" | "date" | "mask" | "number";
+  /** Heading of the form section this field sits under (outlet detail: basic, address, business, additional). */
+  section?: MessageKey;
   /** `mask`: one label per bit, bit 0 first; the value is the sum of the ticked bits. */
   maskBits?: readonly MessageKey[];
   ref?: RefMeta;
@@ -40,6 +42,8 @@ interface FieldBase {
   maxLength?: number;
   min?: number;
   max?: number;
+  /** Date must be today (Dhaka) or later: nothing historic is rewritten (ERR_MASTER_EFFECTIVE_DATE_PAST). */
+  futureOnly?: boolean;
   options?: readonly string[];
   optionKeys?: Record<string, MessageKey>;
   /** Show as a list column. */
@@ -68,7 +72,9 @@ export interface ActionMeta {
   labelKey: MessageKey;
   /** Path with `{id}` (and the entity's params). */
   path: ApiPath;
-  method?: "POST" | "PUT";
+  method?: "POST" | "PUT" | "PATCH";
+  /** Send If-Match with the row version loaded by the action page (PATCH-style actions, e.g. reopen an outlet). */
+  ifMatch?: boolean;
   /** Inputs of the action body (names typed against the action's request schema by defineAction). */
   fields: readonly (FieldBase & { name: string })[];
   /** Body member carrying the mandatory reason, or null when the action body has none. */
@@ -107,10 +113,17 @@ export interface EntityMeta<Row, Write, Patch> {
   /** `entity` value of this table's rows in /v1/admin/audit. */
   auditEntity: string;
   idField: Name<Row>;
+  /** "uuid" for tables keyed by a client UUID (outlet requests); default "int". */
+  idKind?: "int" | "uuid";
   fields: readonly FieldMeta<Row, Write, Patch>[];
   filters: readonly FilterMeta[];
   readRoles: RoleList;
   writeRoles: RoleList;
+  /**
+   * Values only some roles may write (docs/24 s8.5: only SUPERADMIN writes ADMIN-role users). The BFF answers 403 and the form
+   * hides the options for everyone else.
+   */
+  restrictedValues?: readonly { field: string; values: readonly string[]; unlessRoles: RoleList }[];
   /** false = no create page (rows come from elsewhere). Default true. */
   canCreate?: boolean;
   /** Extra row operations. */
@@ -139,6 +152,11 @@ export function defineEntity<Row, Write, Patch>(meta: EntityMeta<Row, Write, Pat
 /** The erased form the generic engine works with (rows are plain records at runtime). */
 export type AnyEntity = EntityMeta<Record<string, unknown>, Record<string, unknown>, Record<string, unknown>>;
 export type AnyField = AnyEntity["fields"][number];
+
+const ID_PATTERNS = { int: /^[0-9]{1,15}$/, uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/ };
+export function validId(meta: AnyEntity, id: string): boolean {
+  return ID_PATTERNS[meta.idKind ?? "int"].test(id);
+}
 
 export function entityCanEdit(meta: AnyEntity): boolean {
   return Boolean(meta.api.item) && meta.fields.some((f) => isWritable(f, "update"));

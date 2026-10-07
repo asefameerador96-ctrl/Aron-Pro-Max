@@ -41,7 +41,7 @@ function geoEntity(level: GeoLevel): AnyEntity {
   fields.push(
     { name: "email", labelKey: "entity.field.email", kind: "text", nullable: true, maxLength: 120, pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" },
     { name: "address", labelKey: "entity.field.address", kind: "text", nullable: true, maxLength: 300 },
-    { name: "pda_contact_no", labelKey: "entity.field.pda_contact_no", kind: "text", nullable: true, maxLength: 16, pattern: "^\\+?[0-9]{5,15}$" },
+    { name: "pda_contact_no", labelKey: "entity.field.pda_contact_no", kind: "text", nullable: true, maxLength: 16, pattern: "^\\+?[0-9]{5,15}$", normalizeDigits: true },
     {
       name: "status",
       labelKey: "entity.field.status",
