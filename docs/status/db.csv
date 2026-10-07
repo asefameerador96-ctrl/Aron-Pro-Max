@@ -9,3 +9,7 @@ db-data-product,L,2026-10-06T11:00Z,2026-10-07T05:10Z,250,"9 (round 1: 2 blocker
 AUD-DA-03+TP-7+REL-03,M,2026-10-07T05:20Z,2026-10-07T06:30Z,70,"4 should-fix + 3 nits (round 1), fixed","V0020 auth_rw/pii_reader/support_ro, view-only web/BI, login limits, v_outlet_masked"
 AUD-PERF-01,M,2026-10-07T05:40Z,2026-10-07T06:35Z,55,"1 should-fix + 3 nits (round 1), fixed","V0021 set-based uniqueness: 200-row batch p95 66-79 ms -> 8-16 ms"
 AUD-DA-04,S,2026-10-07T05:10Z,,60,"4 should-fix + 4 nits (round 1), fixed","code lists built and checked; held for backend-masterdata fixture"
+AUD-DA-03,M,2026-10-07T05:20Z,2026-10-07T06:30Z,0,see AUD-DA-03+TP-7+REL-03,"V0020 (combined row above)"
+AUD-TP-7,M,2026-10-07T05:20Z,2026-10-07T06:30Z,0,see AUD-DA-03+TP-7+REL-03,"V0020 (combined row above)"
+AUD-REL-03,M,2026-10-07T05:20Z,2026-10-07T06:30Z,0,see AUD-DA-03+TP-7+REL-03,"V0020 (combined row above)"
+CI-254-role-race,S,2026-10-07T06:05Z,2026-10-07T06:30Z,25,"1 should-fix (lock leak on failed acquire), fixed","DbRolesTest rolled-back repair + RoleDdlLock; backend FreshDb asked"
