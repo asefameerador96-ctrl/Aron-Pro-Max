@@ -121,6 +121,19 @@ private fun ContentItemStep(day: SrDay, visitUuid: String, item: ContentItemEnti
     }
 }
 
+private const val SEP = "\u0001"
+
+/** Answers as strings "key SEP bool SEP photoUuid" (the survey screen sets only those two fields). */
+private val AnswersSaver = androidx.compose.runtime.saveable.Saver<Map<String, SurveyAnswer>, ArrayList<String>>(
+    save = { m -> ArrayList(m.map { (k, a) -> listOf(k, a.bool?.toString().orEmpty(), a.photoUuid.orEmpty()).joinToString(SEP) }) },
+    restore = { l ->
+        l.mapNotNull { row ->
+            val p = row.split(SEP)
+            if (p.size < 3) null else p[0] to SurveyAnswer(bool = p[1].toBooleanStrictOrNull(), photoUuid = p[2].ifEmpty { null })
+        }.toMap()
+    },
+)
+
 @Composable
 private fun SurveyStep(day: SrDay, visitUuid: String, survey: SurveyEntity, rows: List<SurveyQuestionEntity>, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -139,8 +152,9 @@ private fun SurveyStep(day: SrDay, visitUuid: String, survey: SurveyEntity, rows
         }
     }
     val defs = questions.map { it.first }
-    var answers by remember(visitUuid) { mutableStateOf<Map<String, SurveyAnswer>>(emptyMap()) }
-    var confirm by remember { mutableStateOf(false) }
+    // Survives rotation, a language switch and process death, so a half-answered survey (and its photo uuid) is not lost.
+    var answers by androidx.compose.runtime.saveable.rememberSaveable(visitUuid, stateSaver = AnswersSaver) { mutableStateOf<Map<String, SurveyAnswer>>(emptyMap()) }
+    var confirm by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     val visible = PosmSurvey.visible(defs, answers).map { it.key }.toSet()
     fun takePhoto(key: String) {
