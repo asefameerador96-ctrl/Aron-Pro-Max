@@ -1,0 +1,32 @@
+path: /v1/admin/targets
+method: get
+operation:
+  tags:
+  - admin-targets
+  operationId: listTargets
+  summary: Live monthly targets for routes or zones.
+  parameters:
+  - name: month
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Month'
+  - name: scope_type
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/TargetScopeType'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of targets.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

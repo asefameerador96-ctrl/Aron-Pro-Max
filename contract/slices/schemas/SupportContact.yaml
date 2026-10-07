@@ -1,0 +1,19 @@
+SupportContact:
+  type: object
+  required:
+  - label_en
+  - phone
+  additionalProperties: false
+  properties:
+    label_en:
+      type: string
+      maxLength: 80
+    label_bn:
+      type: string
+      maxLength: 80
+    phone:
+      type: string
+      pattern: ^\+?[0-9]{5,15}$
+    hours:
+      type: string
+      maxLength: 80

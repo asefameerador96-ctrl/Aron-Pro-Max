@@ -1,0 +1,32 @@
+FinalSubmitResult:
+  type: object
+  required:
+  - zone_id
+  - business_date
+  - submitted_at
+  - kind
+  - route_count
+  - memo_count
+  - net_mtk
+  additionalProperties: false
+  properties:
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    submitted_at:
+      $ref: '#/components/schemas/Timestamp'
+    kind:
+      type: string
+      enum:
+      - manual
+      - delegated
+      - auto
+    route_count:
+      type: integer
+      minimum: 0
+    memo_count:
+      type: integer
+      minimum: 0
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'

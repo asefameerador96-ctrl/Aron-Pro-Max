@@ -1,0 +1,31 @@
+LoyaltyBalance:
+  type: object
+  required:
+  - outlet_id
+  - programme_id
+  - balance_points
+  - expiring_points
+  - as_of_date
+  additionalProperties: false
+  properties:
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    league_label:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    balance_points:
+      type: integer
+      description: Ledger balance; negative only after a flagged overdraw.
+    expiring_points:
+      type: integer
+      minimum: 0
+    expiry_date:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    as_of_date:
+      $ref: '#/components/schemas/BusinessDate'

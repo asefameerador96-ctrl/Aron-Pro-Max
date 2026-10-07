@@ -1,0 +1,28 @@
+path: /v1/visit-plans
+method: get
+operation:
+  tags:
+  - people
+  operationId: listVisitPlans
+  summary: TSO visit plans with outlet completion.
+  parameters:
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - name: planner_user_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of plans.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VisitPlanPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

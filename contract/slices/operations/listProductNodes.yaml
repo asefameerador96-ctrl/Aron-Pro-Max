@@ -1,0 +1,29 @@
+path: /v1/admin/product-nodes/{level}
+method: get
+operation:
+  tags:
+  - admin-products
+  operationId: listProductNodes
+  summary: Product tree levels (category, segment, brand, variant).
+  parameters:
+  - $ref: '#/components/parameters/ProductLevelPath'
+  - name: parent_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/StatusQuery'
+  - $ref: '#/components/parameters/UpdatedSince'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of nodes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProductNodePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

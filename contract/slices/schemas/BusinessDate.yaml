@@ -1,0 +1,6 @@
+BusinessDate:
+  type: string
+  format: date
+  description: Asia/Dhaka calendar date of the trusted capture time (cutoff 00:00 Dhaka).
+  examples:
+  - '2026-10-05'

@@ -1,0 +1,20 @@
+path: /v1/admin/programmes
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: listProgrammes
+  summary: Programme definitions (Diamond League, Astha, campaigns, Superstar).
+  parameters:
+  - $ref: '#/components/parameters/StatusQuery'
+  responses:
+    '200':
+      description: Programmes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProgrammeList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

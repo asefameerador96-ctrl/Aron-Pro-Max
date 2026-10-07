@@ -1,0 +1,20 @@
+LogoutRequest:
+  type: object
+  required:
+  - scope
+  additionalProperties: false
+  properties:
+    scope:
+      type: string
+      enum:
+      - session
+      - upload
+      - all
+      description: 'session: revoke the full grant now; upload: revoke the upload grant (call after the outbox and
+        media queue are empty); all: both.'
+    refresh_token:
+      type:
+      - string
+      - 'null'
+      minLength: 43
+      maxLength: 64

@@ -1,0 +1,27 @@
+path: /v1/admin/prices/preview
+method: post
+operation:
+  tags:
+  - admin-products
+  operationId: previewPrices
+  summary: Mandatory preview of a price publish (SKUs, price types, outlets and devices affected; whether a second
+    approver is needed).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/PricePublishRequest'
+  responses:
+    '200':
+      description: Preview.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PricePreview'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

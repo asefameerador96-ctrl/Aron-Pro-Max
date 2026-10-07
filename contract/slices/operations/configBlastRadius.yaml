@@ -1,0 +1,23 @@
+path: /v1/admin/config/blast-radius
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: configBlastRadius
+  summary: Zones, routes, outlets, users and devices a change at a scope would touch.
+  parameters:
+  - $ref: '#/components/parameters/ScopeTypeQuery'
+  - $ref: '#/components/parameters/ScopeIdQuery'
+  responses:
+    '200':
+      description: Counts.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BlastRadius'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

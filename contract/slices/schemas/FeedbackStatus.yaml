@@ -1,0 +1,7 @@
+FeedbackStatus:
+  type: string
+  enum:
+  - new
+  - in_progress
+  - resolved
+  - closed

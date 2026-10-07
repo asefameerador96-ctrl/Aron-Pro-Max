@@ -1,0 +1,7 @@
+LocationBasis:
+  type: string
+  enum:
+  - master
+  - provisional
+  - placeholder
+  - none

@@ -1,0 +1,22 @@
+path: /v1/admin/users/{id}/scope
+method: get
+operation:
+  tags:
+  - admin-users
+  operationId: getUserScope
+  summary: Effective-dated supervisory scope nodes of a user.
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  responses:
+    '200':
+      description: Scope.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserScope'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

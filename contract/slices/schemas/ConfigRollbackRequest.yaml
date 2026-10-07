@@ -1,0 +1,14 @@
+ConfigRollbackRequest:
+  type: object
+  required:
+  - mode
+  - reason
+  additionalProperties: false
+  properties:
+    mode:
+      type: string
+      enum:
+      - revert_this_version
+      - rollback_to_this_version
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

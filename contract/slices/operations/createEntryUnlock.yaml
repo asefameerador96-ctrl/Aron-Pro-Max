@@ -1,0 +1,26 @@
+path: /v1/admin/entry-unlocks
+method: post
+operation:
+  tags:
+  - web-entry
+  operationId: createEntryUnlock
+  summary: Grant back-dated web entry for a zone or route (roles in cfg.web.entry_unlock_roles), audited.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/EntryUnlockWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EntryUnlock'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

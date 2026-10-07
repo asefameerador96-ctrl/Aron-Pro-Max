@@ -1,0 +1,43 @@
+path: /v1/web-entry/route-day
+method: post
+operation:
+  tags:
+  - web-entry
+  operationId: saveWebEntryRouteDay
+  summary: Save one route-day aggregate entry (Issue, Return, Memos, Successful Call per SKU); a re-save replaces
+    with audit.
+  description: 'One entry per route-day; idempotent by `client_uuid`; a re-save with a new `client_uuid` replaces
+    the previous
+
+    entry and writes an audit row. Web rows and app rows for one route-day are never added
+
+    (`cfg.web.entry_app_overlap_policy` = exclusive_flag: stored and flagged). Successful calls may not exceed
+
+    the target-outlet snapshot. Outside `cfg.web.entry_backdate_days` without an active entry unlock:
+
+    `409 ERR_ENTRY_WINDOW_CLOSED`; after Final Submit: `409 ERR_DAY_ALREADY_FINAL_SUBMITTED`. Astha-channel
+
+    outlets are excluded (they use the outlet-SKU entry).
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/WebEntryRouteDayWrite'
+  responses:
+    '200':
+      description: Stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WebEntryRouteDay'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

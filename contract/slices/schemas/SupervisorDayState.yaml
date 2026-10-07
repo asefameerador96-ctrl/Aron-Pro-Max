@@ -1,0 +1,20 @@
+SupervisorDayState:
+  type: object
+  required:
+  - user_id
+  - business_date
+  - checked_in
+  - sales_submitted
+  additionalProperties: false
+  properties:
+    user_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    checked_in:
+      type: boolean
+    sales_submitted:
+      type: boolean
+    submit_cycle:
+      type: integer
+      minimum: 1

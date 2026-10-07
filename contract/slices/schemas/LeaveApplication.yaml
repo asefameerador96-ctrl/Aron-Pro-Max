@@ -1,0 +1,42 @@
+LeaveApplication:
+  type: object
+  required:
+  - leave_uuid
+  - user_id
+  - leave_type_code
+  - from_date
+  - days
+  - to_date
+  - reason
+  - status
+  additionalProperties: false
+  properties:
+    leave_uuid:
+      $ref: '#/components/schemas/Uuid'
+    user_id:
+      $ref: '#/components/schemas/Id'
+    leave_type_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    from_date:
+      $ref: '#/components/schemas/BusinessDate'
+    days:
+      type: integer
+      minimum: 1
+    to_date:
+      $ref: '#/components/schemas/BusinessDate'
+    reason:
+      type: string
+      maxLength: 500
+    status:
+      $ref: '#/components/schemas/DecisionStatus'
+    decided_by_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    decided_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

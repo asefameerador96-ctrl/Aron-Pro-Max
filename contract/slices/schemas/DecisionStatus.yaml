@@ -1,0 +1,6 @@
+DecisionStatus:
+  type: string
+  enum:
+  - pending
+  - approved
+  - rejected

@@ -1,0 +1,27 @@
+LoginRequest:
+  type: object
+  required:
+  - username
+  - password
+  - client
+  additionalProperties: false
+  properties:
+    username:
+      $ref: '#/components/schemas/Username'
+    password:
+      type: string
+      minLength: 1
+      maxLength: 128
+      writeOnly: true
+    client:
+      type: string
+      enum:
+      - app_sr
+      - app_amo
+      - app_tso
+      - web
+    device_uuid:
+      description: Required for app clients; must be an enrolled device.
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'

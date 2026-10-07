@@ -1,0 +1,20 @@
+path: /v1/health
+method: head
+operation:
+  tags:
+  - health
+  operationId: headHealth
+  summary: Connectivity check with no body.
+  security: []
+  responses:
+    '200':
+      description: Alive.
+      headers:
+        X-Aron-Api:
+          $ref: '#/components/headers/XAronApi'
+        X-Server-Time:
+          $ref: '#/components/headers/XServerTime'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

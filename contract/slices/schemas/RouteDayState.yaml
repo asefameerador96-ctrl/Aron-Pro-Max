@@ -1,0 +1,67 @@
+RouteDayState:
+  type: object
+  required:
+  - route_id
+  - business_date
+  - state
+  - submit_cycle
+  - submit_voided
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    state:
+      $ref: '#/components/schemas/DayState'
+    planned:
+      type: boolean
+    submit_cycle:
+      type: integer
+      minimum: 1
+    submit_voided:
+      type: boolean
+    submit_count_mismatch:
+      type:
+      - boolean
+      - 'null'
+    logged_in_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    sales_submitted_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    final_submitted_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    rows_awaited:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: While submit_pending_rows, device counts minus server totals.
+    route_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    route_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    assigned_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    acting_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1

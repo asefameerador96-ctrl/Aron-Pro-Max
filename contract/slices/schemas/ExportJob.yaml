@@ -1,0 +1,42 @@
+ExportJob:
+  type: object
+  required:
+  - export_id
+  - report_key
+  - status
+  - created_at
+  additionalProperties: false
+  properties:
+    export_id:
+      $ref: '#/components/schemas/Uuid'
+    report_key:
+      $ref: '#/components/schemas/ReportKey'
+    status:
+      type: string
+      enum:
+      - queued
+      - running
+      - done
+      - failed
+    row_count:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    download_url:
+      type:
+      - string
+      - 'null'
+      format: uri
+      maxLength: 2000
+    expires_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    error:
+      type:
+      - string
+      - 'null'
+      maxLength: 300

@@ -1,0 +1,13 @@
+VisitPlanPayload:
+  type: object
+  required:
+  - plan_date
+  additionalProperties: false
+  properties:
+    plan_date:
+      $ref: '#/components/schemas/BusinessDate'
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

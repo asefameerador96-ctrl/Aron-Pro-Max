@@ -1,0 +1,36 @@
+path: /v1/admin/prices
+method: get
+operation:
+  tags:
+  - admin-products
+  operationId: listPrices
+  summary: Effective-dated prices per SKU and price type.
+  parameters:
+  - name: sku_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: price_type
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/PriceType'
+  - name: valid_on
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of prices.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SkuPricePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

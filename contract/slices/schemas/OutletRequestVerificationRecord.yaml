@@ -1,0 +1,13 @@
+OutletRequestVerificationRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: outlet_request_verification
+      payload:
+        $ref: '#/components/schemas/OutletRequestVerificationPayload'
+  unevaluatedProperties: false

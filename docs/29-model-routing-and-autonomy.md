@@ -38,7 +38,7 @@ A running session keeps its model. Lane state lives in git and in `docs/status/<
 
 ## 4. Token hygiene for every lane (these cost nothing in quality)
 
-1. Read in this order and stop: `docs/lanes/<your lane>.md`, your rows (`my-rows.py <sublane> --todo`), the one or two spec sections each row names. Do not open `docs/14` to `22`, `docs/evidence/` or the 553 KB contract in full; slice them (`sed -n`, grep, a small script).
+1. Read in this order and stop: `docs/lanes/<your lane>.md`, your rows (`my-rows.py <sublane> --todo`), the one or two spec sections each row names. Do not open `docs/14` to `22`, `docs/evidence/` or the 553 KB contract in full; read `contract/slices/` for the contract (`INDEX.md` first) and slice the other documents (`sed -n`, grep).
 2. Never print or cat large files, build logs or test output; filter to the failing lines.
 3. Run only your module's tests while working. Run the wider build before a push that changes shared, contract, db or root files.
 4. The checker subagent gets only: the row id, its acceptance test, the files changed. Not the whole conversation.

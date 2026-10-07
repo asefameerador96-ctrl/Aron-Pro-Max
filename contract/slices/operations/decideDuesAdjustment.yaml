@@ -1,0 +1,38 @@
+path: /v1/admin/dues-adjustments/{adjustment_id}/decision
+method: post
+operation:
+  tags:
+  - admin-finance
+  operationId: decideDuesAdjustment
+  summary: Approve or reject a dues adjustment (the checker is not the maker); approval adds a ledger row and changes
+    the outlet balance.
+  parameters:
+  - name: adjustment_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+    description: Adjustment id.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DecisionRequest'
+  responses:
+    '200':
+      description: Decided.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DuesAdjustment'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

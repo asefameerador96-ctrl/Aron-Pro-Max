@@ -1,0 +1,32 @@
+path: /v1/outlet-requests/{request_uuid}/verify
+method: post
+operation:
+  tags:
+  - outlet-requests
+  operationId: verifyOutletRequest
+  summary: Web verification of a pending request (the AMO app verifies with an `outlet_request_verification` record).
+  parameters:
+  - $ref: '#/components/parameters/RequestUuidPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/OutletRequestVerifyRequest'
+  responses:
+    '200':
+      description: Verified.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OutletRequest'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

@@ -1,0 +1,57 @@
+Problem:
+  type: object
+  description: RFC 9457 problem details with Aron extension members.
+  required:
+  - type
+  - title
+  - status
+  - code
+  - request_id
+  additionalProperties: false
+  properties:
+    type:
+      type: string
+      format: uri
+      description: '`urn:aron:problem:<code in lower case>`.'
+    title:
+      type: string
+      maxLength: 200
+    status:
+      type: integer
+      minimum: 400
+      maximum: 599
+    detail:
+      type: string
+      maxLength: 2000
+    instance:
+      type: string
+      maxLength: 500
+      description: Request path.
+    code:
+      $ref: '#/components/schemas/ProblemCode'
+    request_id:
+      $ref: '#/components/schemas/Uuid'
+    retryable:
+      type: boolean
+      description: True when the same request may succeed later without change.
+    retry_after_s:
+      type: integer
+      minimum: 1
+      maximum: 3600
+    server_time:
+      $ref: '#/components/schemas/Timestamp'
+    message_key:
+      type: string
+      pattern: ^[a-z0-9_.]{3,80}$
+      description: Localisation key of the user-facing text (bn and en in the app catalogue).
+    errors:
+      type: array
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/FieldError'
+    context:
+      type: object
+      description: Code-specific details (for example `submitted_at` on ERR_DAY_ALREADY_FINAL_SUBMITTED, `min_version_code`
+        on ERR_APP_VERSION_UNSUPPORTED).
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'

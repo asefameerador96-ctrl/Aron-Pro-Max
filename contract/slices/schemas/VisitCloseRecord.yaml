@@ -1,0 +1,13 @@
+VisitCloseRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: visit_close
+      payload:
+        $ref: '#/components/schemas/VisitClosePayload'
+  unevaluatedProperties: false

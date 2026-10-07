@@ -1,0 +1,30 @@
+path: /v1/tasks
+method: post
+operation:
+  tags:
+  - tasks
+  operationId: createTask
+  summary: Create a task online (web, AMO or TSO online path; apps normally queue a `task` record).
+  description: Idempotent by `task_uuid`. The assignee is notified by an FCM nudge when `cfg.notify.task_push_enabled`
+    is true; the task itself always arrives with the next delta.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/TaskCreateRequest'
+  responses:
+    '200':
+      description: Created or replayed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Task'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

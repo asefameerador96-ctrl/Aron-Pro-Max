@@ -1,0 +1,30 @@
+path: /v1/dashboards/sync-health
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getSyncHealth
+  summary: Sync health per device and route-day (pending rows, last contact, rejects, quarantine, mismatch).
+  parameters:
+  - $ref: '#/components/parameters/BusinessDateQueryRequired'
+  - $ref: '#/components/parameters/GeoLevelQuery'
+  - $ref: '#/components/parameters/NodeIdQuery'
+  - name: only_problems
+    in: query
+    required: false
+    schema:
+      type: boolean
+      default: false
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Sync-health rows and summary.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SyncHealthPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

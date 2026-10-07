@@ -1,0 +1,30 @@
+path: /v1/admin/users
+method: get
+operation:
+  tags:
+  - admin-users
+  operationId: listUsers
+  summary: Users in reach.
+  parameters:
+  - name: role
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Role'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/StatusQuery'
+  - $ref: '#/components/parameters/UpdatedSince'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of users.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

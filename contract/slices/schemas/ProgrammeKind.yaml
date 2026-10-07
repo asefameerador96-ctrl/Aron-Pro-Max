@@ -1,0 +1,7 @@
+ProgrammeKind:
+  type: string
+  enum:
+  - diamond_league
+  - astha
+  - campaign
+  - superstar

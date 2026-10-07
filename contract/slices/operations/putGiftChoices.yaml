@@ -1,0 +1,34 @@
+path: /v1/programmes/astha/gift-choices
+method: put
+operation:
+  tags:
+  - programmes
+  operationId: putGiftChoices
+  summary: Save gift choices explicitly (roles in cfg.astha.gift_choice_roles); a choice locks once the SR's photo
+    exists.
+  description: 'Idempotent by each row''s `client_uuid`. A row whose assignment already has a `gift_photo` is refused
+    per row
+
+    with `ERR_GIFT_CHOICE_LOCKED` in `results[]` (cfg.astha.gift_choice_lock = on_sr_photo); the other rows are
+    saved.
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/GiftChoiceWrite'
+  responses:
+    '200':
+      description: Per-row results.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GiftChoiceResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

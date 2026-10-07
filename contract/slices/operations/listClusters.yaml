@@ -1,0 +1,25 @@
+path: /v1/admin/clusters
+method: get
+operation:
+  tags:
+  - admin-geography
+  operationId: listClusters
+  summary: Clusters (outlet groups inside a zone).
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/StatusQuery'
+  - $ref: '#/components/parameters/UpdatedSince'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of clusters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClusterPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

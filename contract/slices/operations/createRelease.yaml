@@ -1,0 +1,28 @@
+path: /v1/admin/releases
+method: post
+operation:
+  tags:
+  - admin-releases
+  operationId: createRelease
+  summary: Register an APK built by CI (SHA-256 and signing certificate checked) as a draft release.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/AppReleaseWrite'
+  responses:
+    '201':
+      description: Draft created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppRelease'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

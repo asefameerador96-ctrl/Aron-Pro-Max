@@ -14,7 +14,8 @@ param(
   [string]$Int  = 'claude/wonderful-thompson-k6ejnf',
   [string]$BaselineSha = 'aac06e0',          # first green deploy through Front Door (CI run 37489113157)
   [string]$BaselineTag = 'baseline-2026-10-06',
-  [int]$OwnerId = 252441038                    # GitHub user id of the owner (required reviewer for prod)
+  [int]$OwnerId = 252441038,                   # GitHub user id of the owner (required reviewer for prod)
+  [switch]$MakePrivate                          # also change the repository visibility from public to private
 )
 $ErrorActionPreference = 'Stop'
 function Step([string]$m) { Write-Host "`n== $m" -ForegroundColor Cyan }
@@ -23,6 +24,12 @@ function Api([string]$method, [string]$url, [string]$bodyJson) {
     $f = New-TemporaryFile; Set-Content -Path $f -Value $bodyJson -Encoding utf8
     try { gh api --method $method $url --input $f 2>&1 } finally { Remove-Item $f -ErrorAction SilentlyContinue }
   } else { gh api --method $method $url 2>&1 }
+}
+
+if ($MakePrivate) {
+  Step 'Make the repository private (it is public today: docs/30 s3a)'
+  gh repo edit $Repo --visibility private --accept-visibility-change-consequences
+  if ($LASTEXITCODE -ne 0) { throw 'could not change visibility' }
 }
 
 Step 'Current state'

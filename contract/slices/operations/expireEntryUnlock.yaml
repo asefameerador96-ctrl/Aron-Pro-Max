@@ -1,0 +1,27 @@
+path: /v1/admin/entry-unlocks/{unlock_id}/expire
+method: post
+operation:
+  tags:
+  - web-entry
+  operationId: expireEntryUnlock
+  summary: Expire an unlock grant now (an expired grant no longer allows back-dated entry).
+  parameters:
+  - name: unlock_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+    description: Grant id.
+  responses:
+    '200':
+      description: Expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EntryUnlock'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

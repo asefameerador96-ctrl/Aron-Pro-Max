@@ -1,0 +1,45 @@
+CallAssessmentPayload:
+  type: object
+  required:
+  - kind
+  - rubric_id
+  - rubric_version
+  - total_score
+  - max_score
+  - delegate_task
+  additionalProperties: false
+  properties:
+    kind:
+      type: string
+      enum:
+      - joint_call
+      - retailer_questionnaire
+    visit_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    visit_plan_outlet_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    rubric_id:
+      $ref: '#/components/schemas/Id'
+    rubric_version:
+      type: integer
+      minimum: 1
+    assessed_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    total_score:
+      type: integer
+      minimum: 0
+      maximum: 1000
+    max_score:
+      type: integer
+      minimum: 0
+      maximum: 1000
+    delegate_task:
+      type: boolean

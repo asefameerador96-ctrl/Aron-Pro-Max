@@ -1,0 +1,84 @@
+SurveyWrite:
+  type: object
+  required:
+  - kind
+  - title_en
+  - questions
+  - valid_from
+  - change_reason
+  additionalProperties: false
+  properties:
+    kind:
+      type: string
+      enum:
+      - posm
+      - amo_survey
+      - tso_visit_query
+    title_en:
+      type: string
+      maxLength: 120
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    questions:
+      type: array
+      minItems: 1
+      maxItems: 50
+      items:
+        type: object
+        required:
+        - key
+        - answer_type
+        - label_en
+        additionalProperties: false
+        properties:
+          key:
+            type: string
+            pattern: ^[a-z][a-z0-9_]{1,40}$
+          answer_type:
+            type: string
+            enum:
+            - bool
+            - num
+            - option
+            - text
+            - photo_only
+          label_en:
+            type: string
+            maxLength: 300
+          label_bn:
+            type:
+            - string
+            - 'null'
+            maxLength: 300
+          required:
+            type: boolean
+          show_if_key:
+            type:
+            - string
+            - 'null'
+            pattern: ^[a-z][a-z0-9_]{1,40}$
+          show_if_bool:
+            type:
+            - boolean
+            - 'null'
+          photo:
+            type: boolean
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    points_per_photo:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      maximum: 100000
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

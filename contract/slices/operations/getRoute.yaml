@@ -1,0 +1,25 @@
+path: /v1/admin/routes/{id}
+method: get
+operation:
+  tags:
+  - admin-routes
+  operationId: getRoute
+  summary: One route.
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  responses:
+    '200':
+      description: Route.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Route'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

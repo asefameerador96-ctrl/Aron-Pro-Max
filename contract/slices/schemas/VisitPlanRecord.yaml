@@ -1,0 +1,13 @@
+VisitPlanRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: visit_plan
+      payload:
+        $ref: '#/components/schemas/VisitPlanPayload'
+  unevaluatedProperties: false

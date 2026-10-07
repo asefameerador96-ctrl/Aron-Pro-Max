@@ -1,0 +1,43 @@
+SyncDigestRequest:
+  type: object
+  required:
+  - device_uuid
+  - items
+  additionalProperties: false
+  properties:
+    device_uuid:
+      $ref: '#/components/schemas/Uuid'
+    items:
+      type: array
+      maxItems: 200
+      items:
+        type: object
+        required:
+        - business_date
+        - type
+        - buckets
+        additionalProperties: false
+        properties:
+          business_date:
+            $ref: '#/components/schemas/BusinessDate'
+          type:
+            $ref: '#/components/schemas/RecordType'
+          buckets:
+            type: array
+            minItems: 16
+            maxItems: 16
+            description: Bucket i holds the acked client_uuids whose first hex digit is i; hash = sum of the first
+              8 bytes of each uuid modulo 2^64, as 16 hex digits.
+            items:
+              type: object
+              required:
+              - count
+              - hash
+              additionalProperties: false
+              properties:
+                count:
+                  type: integer
+                  minimum: 0
+                hash:
+                  type: string
+                  pattern: ^[0-9a-f]{16}$

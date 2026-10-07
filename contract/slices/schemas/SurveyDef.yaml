@@ -1,0 +1,58 @@
+SurveyDef:
+  type: object
+  required:
+  - survey_id
+  - version
+  - questions
+  additionalProperties: false
+  properties:
+    survey_id:
+      $ref: '#/components/schemas/Id'
+    version:
+      type: integer
+      minimum: 1
+    title_en:
+      type: string
+      maxLength: 120
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    questions:
+      type: array
+      maxItems: 50
+      items:
+        type: object
+        required:
+        - question_id
+        - answer_type
+        - label_en
+        additionalProperties: false
+        properties:
+          question_id:
+            $ref: '#/components/schemas/Id'
+          answer_type:
+            type: string
+            enum:
+            - bool
+            - num
+            - option
+            - text
+            - photo_only
+          label_en:
+            type: string
+            maxLength: 300
+          label_bn:
+            type:
+            - string
+            - 'null'
+            maxLength: 300
+          option_codes:
+            type: array
+            maxItems: 20
+            items:
+              type: string
+              pattern: ^[a-z][a-z0-9_]{1,40}$
+          requires_photo:
+            type: boolean

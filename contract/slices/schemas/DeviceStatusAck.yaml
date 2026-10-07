@@ -1,0 +1,22 @@
+DeviceStatusAck:
+  type: object
+  required:
+  - device_id
+  - trust
+  - policy_version_current
+  - server_time
+  additionalProperties: false
+  properties:
+    device_id:
+      $ref: '#/components/schemas/Id'
+    trust:
+      $ref: '#/components/schemas/DeviceTrust'
+    policy_version_current:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    directives:
+      type: array
+      maxItems: 5
+      items:
+        $ref: '#/components/schemas/Directive'
+    server_time:
+      $ref: '#/components/schemas/Timestamp'

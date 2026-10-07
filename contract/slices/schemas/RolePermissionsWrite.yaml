@@ -1,0 +1,14 @@
+RolePermissionsWrite:
+  type: object
+  required:
+  - menus
+  - reason
+  additionalProperties: false
+  properties:
+    menus:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/MenuPermission'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

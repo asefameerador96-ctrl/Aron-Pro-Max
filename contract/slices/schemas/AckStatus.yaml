@@ -1,0 +1,16 @@
+AckStatus:
+  type: string
+  enum:
+  - accepted
+  - duplicate
+  - rejected
+  - quarantined
+  description: 'accepted: stored now. duplicate: already stored with the same payload hash (the phone marks it synced).
+
+    rejected: not stored as a business row; `code` says why and `retryable` says whether to resend after a
+
+    bundle or config refresh; the payload is kept server-side. quarantined: stored for human review; terminal
+
+    for the phone until a resolution arrives.
+
+    '

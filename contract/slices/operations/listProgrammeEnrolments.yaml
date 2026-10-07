@@ -1,0 +1,25 @@
+path: /v1/admin/programmes/{id}/enrolments
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: listProgrammeEnrolments
+  summary: Outlets enrolled in a programme with league, tier or slab and base target.
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of enrolments.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProgrammeEnrolmentPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

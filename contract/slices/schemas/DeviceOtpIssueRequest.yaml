@@ -1,0 +1,11 @@
+DeviceOtpIssueRequest:
+  type: object
+  required:
+  - user_id
+  - reason
+  additionalProperties: false
+  properties:
+    user_id:
+      $ref: '#/components/schemas/Id'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

@@ -1,0 +1,23 @@
+path: /v1/feedback
+method: get
+operation:
+  tags:
+  - people
+  operationId: listFeedback
+  summary: Feedback submitted from the TSO app.
+  parameters:
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of feedback.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FeedbackPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

@@ -1,0 +1,31 @@
+ConfigBounds:
+  type: object
+  additionalProperties: false
+  properties:
+    min:
+      type:
+      - number
+      - 'null'
+    max:
+      type:
+      - number
+      - 'null'
+    enum:
+      type: array
+      maxItems: 50
+      items:
+        type: string
+        maxLength: 60
+    max_items:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    dynamic_min:
+      oneOf:
+      - $ref: '#/components/schemas/ConfigKeyName'
+      - type: 'null'
+    dynamic_max:
+      oneOf:
+      - $ref: '#/components/schemas/ConfigKeyName'
+      - type: 'null'

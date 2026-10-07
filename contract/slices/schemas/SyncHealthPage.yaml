@@ -1,0 +1,48 @@
+SyncHealthPage:
+  type: object
+  required:
+  - as_of
+  - summary
+  - items
+  - next_cursor
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    summary:
+      type: object
+      required:
+      - devices
+      - devices_with_pending
+      - held_rows_alerts
+      - rejected
+      - quarantined
+      - mismatched_route_days
+      additionalProperties: false
+      properties:
+        devices:
+          type: integer
+          minimum: 0
+        devices_with_pending:
+          type: integer
+          minimum: 0
+        held_rows_alerts:
+          type: integer
+          minimum: 0
+        rejected:
+          type: integer
+          minimum: 0
+        quarantined:
+          type: integer
+          minimum: 0
+        mismatched_route_days:
+          type: integer
+          minimum: 0
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/SyncHealthRow'
+    next_cursor:
+      oneOf:
+      - $ref: '#/components/schemas/PageCursor'
+      - type: 'null'

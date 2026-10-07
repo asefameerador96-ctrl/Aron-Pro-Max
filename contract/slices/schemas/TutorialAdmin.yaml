@@ -1,0 +1,20 @@
+TutorialAdmin:
+  allOf:
+  - $ref: '#/components/schemas/TutorialItem'
+  - type: object
+    required:
+    - roles
+    - status
+    - version
+    properties:
+      roles:
+        type: array
+        minItems: 1
+        items:
+          $ref: '#/components/schemas/Role'
+      status:
+        $ref: '#/components/schemas/ActiveStatus'
+      version:
+        type: integer
+        minimum: 1
+  unevaluatedProperties: false

@@ -1,0 +1,27 @@
+path: /v1/admin/targets/template
+method: get
+operation:
+  tags:
+  - admin-targets
+  operationId: getTargetTemplate
+  summary: Target sample workbook for a month and scope (cfg.target.template_version).
+  parameters:
+  - name: month
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Month'
+    description: Target month.
+  - $ref: '#/components/parameters/TerritoryIdQuery'
+  responses:
+    '200':
+      description: The workbook.
+      content:
+        application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+          schema:
+            type: string
+            contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

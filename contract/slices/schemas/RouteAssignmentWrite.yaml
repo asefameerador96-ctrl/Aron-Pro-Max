@@ -1,0 +1,29 @@
+RouteAssignmentWrite:
+  type: object
+  required:
+  - route_id
+  - user_id
+  - kind
+  - valid_from
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    user_id:
+      $ref: '#/components/schemas/Id'
+    kind:
+      type: string
+      enum:
+      - primary
+      - cover
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    valid_to:
+      oneOf:
+      - $ref: '#/components/schemas/BusinessDate'
+      - type: 'null'
+    reason:
+      type:
+      - string
+      - 'null'
+      maxLength: 300

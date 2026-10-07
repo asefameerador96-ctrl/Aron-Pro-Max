@@ -1,0 +1,28 @@
+SupervisorTarget:
+  type: object
+  required:
+  - user_id
+  - month
+  - total_call_target
+  - control_call_target
+  - joint_call_target
+  additionalProperties: false
+  properties:
+    user_id:
+      $ref: '#/components/schemas/Id'
+    month:
+      $ref: '#/components/schemas/Month'
+    daily_call_target:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    total_call_target:
+      type: integer
+      minimum: 0
+    control_call_target:
+      type: integer
+      minimum: 0
+    joint_call_target:
+      type: integer
+      minimum: 0

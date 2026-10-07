@@ -1,0 +1,32 @@
+path: /v1/app/update-check
+method: get
+operation:
+  tags:
+  - app
+  operationId: checkForUpdate
+  summary: Latest published release for this flavour and ABI, with the minimum and blocked versions.
+  parameters:
+  - $ref: '#/components/parameters/FlavourQuery'
+  - name: version_code
+    in: query
+    required: true
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 2100000000
+  - name: abi
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Abi'
+  responses:
+    '200':
+      description: Update decision.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateCheck'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'

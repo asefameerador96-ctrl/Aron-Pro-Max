@@ -1,0 +1,25 @@
+CoverRequest:
+  type: object
+  required:
+  - client_uuid
+  - route_id
+  - user_id
+  - from_date
+  - to_date
+  - reason
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    user_id:
+      $ref: '#/components/schemas/Id'
+    from_date:
+      $ref: '#/components/schemas/BusinessDate'
+    to_date:
+      $ref: '#/components/schemas/BusinessDate'
+    reason:
+      type: string
+      minLength: 3
+      maxLength: 300

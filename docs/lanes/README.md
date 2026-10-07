@@ -6,7 +6,7 @@ You are one lane of the Aron build team. The lead (session `@parent`) coordinate
 1. This page, then `docs/lanes/<your sublane>.md`.
 2. `docs/26-lane-playbook.md` (git protocol, builder then checker, quality rules, time log) and `docs/29-model-routing-and-autonomy.md` (tiers, token hygiene, recycling).
 3. Your rows: `python3 tools/my-rows.py <sublane> --todo` (add `--full` for the whole acceptance test of one row).
-4. Only the spec sections your rows name in `docs/24-build-spec.md`; the contract by slices (`contract/openapi.yaml` is 553 KB: never print it whole).
+4. Only the spec sections your rows name in `docs/24-build-spec.md`; the contract through the generated slices in `contract/slices/` (`INDEX.md` lists every schema and operation; one small file each; regenerate with `python3 tools/slice-contract.py`; `contract/openapi.yaml` itself is 553 KB and stays the only source of truth: never edit a slice, never print the big file).
 5. Binding rules that override everything older: `CLAUDE.md` (sponsor standing rules), `docs/27` (deferred programmes, targets, discounts), `docs/28` (test account, pilot size), `docs/30`, `docs/31`.
 
 ## Work loop (no go-ahead needed)
