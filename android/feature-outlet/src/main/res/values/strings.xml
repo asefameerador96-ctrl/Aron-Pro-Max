@@ -63,6 +63,19 @@
     <string name="out_req_err_geo">Capture the shop location.</string>
     <string name="out_req_err_photo">Take the shop photo.</string>
     <string name="out_req_err_dues">This shop has unpaid dues and cannot be closed.</string>
+    <string name="out_own_open">My requests</string>
+    <string name="out_own_title">My requests</string>
+    <string name="out_own_empty">You have not sent any outlet request in the last 30 days.</string>
+    <string name="out_own_waiting">Saved on this phone, waiting to be sent</string>
+    <string name="out_own_pending">Pending</string>
+    <string name="out_own_verified">Verified</string>
+    <string name="out_own_approved">Approved</string>
+    <string name="out_own_rejected">Rejected</string>
+    <string name="out_own_lapsed">Expired</string>
+    <string name="out_own_discarded">Withdrawn</string>
+    <string name="out_own_reason">Reason: %1$s</string>
+    <string name="out_own_type_location">Location change</string>
+    <string name="out_own_type_other">Outlet request</string>
     <string name="out_menu_title">Outlet</string>
     <string name="out_pick_outlet">Choose the outlet</string>
 </resources>
