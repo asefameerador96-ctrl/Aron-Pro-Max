@@ -17,6 +17,9 @@ interface WallClock {
     /** SystemClock.elapsedRealtime(): monotonic since boot, used for cool-downs that must survive clock changes. */
     fun elapsedRealtimeMs(): Long
 
+    /** Settings.Global.BOOT_COUNT, or 0 when unknown: tells a reboot from elapsed time that merely grew (F-SYS-052). */
+    fun bootCount(): Int = 0
+
     object System : WallClock {
         override fun nowMs(): Long = java.lang.System.currentTimeMillis()
         override fun elapsedRealtimeMs(): Long = android.os.SystemClock.elapsedRealtime()

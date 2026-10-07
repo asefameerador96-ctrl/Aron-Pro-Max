@@ -82,7 +82,22 @@ object SessionModule {
     @Singleton
     fun workerFactory(
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
-    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles) }, { scheduler })
+        resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
+        activityLog: com.aktcl.aron.core.sync.ActivityLog,
+    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, config = resumeConfigCheck, activityLog = activityLog) }, { scheduler },
+        // N-038: the pull a push asks for; it never gets the upload runner.
+        { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
+    )
+
+    /** N-038 push: the FCM token for the signed-in user, the Bangla/English notice and the jittered pull (never an upload). */
+    @Provides
+    @Singleton
+    fun pushShell(@ApplicationContext context: Context, components: SessionComponents): com.aktcl.aron.core.sync.shell.PushShell =
+        com.aktcl.aron.core.sync.shell.PushShell(
+            context, components, com.aktcl.aron.contract.AppFlavour.TSO,
+            localized = { com.aktcl.aron.core.ui.AppLocale.wrap(it) },
+            bangla = { com.aktcl.aron.core.ui.AppLocale.current(it) == com.aktcl.aron.core.common.AppLanguage.BN },
+        )
 
     /** F-SYS-020 updater: update check, download, install (android-sys). */
     @Provides
@@ -106,5 +121,35 @@ object SessionModule {
             // One unreadable database must not hide the others' rows.
             usersWithPendingRows = { databases.knownUserIds().filter { id -> runCatching { databases.of(id).outboxDao().unsentCount() > 0 }.getOrDefault(false) } },
             scheduler = scheduler,
+        )
+
+    /** F-SYS-024: one activity log per process (the shells log into it; the sync runner flushes it before each batch). */
+    @Provides
+    @Singleton
+    fun activityLog(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.ActivityLog =
+        com.aktcl.aron.core.sync.ActivityLog({ databases.of(it) }, components.trustedClock, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(context))
+
+    /** F-SYS-032: crash files, ANRs and handled errors as scrubbed app_error records of the signed-in user. */
+    @Provides
+    @Singleton
+    fun errorReporter(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.ErrorReporter =
+        com.aktcl.aron.core.sync.ErrorReporter(
+            File(context.noBackupFilesDir, "errors"), { databases.of(it) }, components.trustedClock, components.appVersion,
+            com.aktcl.aron.core.sync.LocationNotice.offlineProbe(context),
+            activeUser = { (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
+            currentUser = { (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
+        )
+
+    /** F-SYS-029: pack thumbnails and AV/KV assets, bounded LRU on disk (AV only on unmetered networks). */
+    @Provides
+    @Singleton
+    fun imageCache(@ApplicationContext context: Context): com.aktcl.aron.core.sync.ImageCache =
+        com.aktcl.aron.core.sync.ImageCache(
+            File(context.cacheDir, "images"),
+            okhttp3.OkHttpClient.Builder().connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS).readTimeout(30, java.util.concurrent.TimeUnit.SECONDS).retryOnConnectionFailure(false).build(), // AV may take minutes; a stalled read stops
+            unmetered = {
+                val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+                cm?.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
+            },
         )
 }

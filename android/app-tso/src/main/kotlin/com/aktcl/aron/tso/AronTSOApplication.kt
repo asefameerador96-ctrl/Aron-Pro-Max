@@ -17,14 +17,18 @@ import javax.inject.Inject
 @HiltAndroidApp
 class AronTSOApplication : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: AronWorkerFactory
+    @Inject lateinit var errorReporter: com.aktcl.aron.core.sync.ErrorReporter
     @Inject lateinit var connectivityFlush: ConnectivityFlush
     @Inject lateinit var deviceRuntime: DeviceRuntime
     @Inject lateinit var syncScheduler: WorkManagerSyncScheduler
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+    @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var sessionComponents: com.aktcl.aron.core.session.SessionComponents
 
     override fun onCreate() {
+        com.aktcl.aron.core.common.DebugStrictMode.install(BuildConfig.DEBUG) // before Hilt builds the graph on this thread
         super.onCreate()
+        errorReporter.start(this, CoroutineScope(SupervisorJob() + Dispatchers.Default)) // F-SYS-032, first: crashes from here on are kept
         ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives
         // DPC: trusted clock and calendar, re-apply the stored policy; integrity evidence after each online login.
         // Off the main thread; nothing here touches the network or waits for it.
@@ -33,6 +37,8 @@ class AronTSOApplication : Application(), Configuration.Provider {
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             sessionComponents.session.onlineLogins.collect { updateShell.check(atLogin = true) }
         }
+        // N-038: push nudges (token for the signed-in user, notices, jittered pulls); off without google-services.json.
+        pushShell.install()
     }
 
     override val workManagerConfiguration: Configuration

@@ -312,6 +312,18 @@ class SyncEngineTest {
         assertServerHasExactly(1)
     }
 
+    /** backend-core (android-core-503-and-generation s1): a database 503 is infrastructure: no bisect, nothing counted. */
+    @Test fun serviceUnavailableNeverBisectsOrCountsAgainstFamilies() = runBlocking {
+        sale(1); sale(2); sale(3)
+        fake.failBefore += 503
+        assertEquals(SyncStop.RETRY_LATER, engine().run(SyncTrigger.PERIODIC).stop)
+        assertEquals(1, fake.requests.size) // one request, no halves
+        assertTrue(inState().all { it.attempts == 0 })
+        assertEquals(SyncStop.DRAINED, engine().run(SyncTrigger.PERIODIC).stop)
+        assertEquals(fake.requests[0].body!!["records"]!!.jsonArray.size, fake.requests[1].body!!["records"]!!.jsonArray.size)
+        assertServerHasExactly(3)
+    }
+
     @Test fun holdPausesAutomaticRunsButNotManualOnes() = runBlocking {
         sale(1); sale(2)
         fake.holdS = 60

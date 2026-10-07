@@ -22,6 +22,7 @@ dependencies {
     implementation(project(":android:core-system"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.core.ktx) // NotificationCompat (N-038)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
     testImplementation(libs.androidx.work.testing)

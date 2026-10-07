@@ -109,11 +109,19 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   - `V0044`/`V0045` outlet_location_history bases `none`/`placeholder` without coordinates. Answers
     `backend-core-location-history-basis.md` (answer in `db-location-history-basis-answer.md`).
   - `OutboxCommitOrderTest` drains with bounded polls (integrator's flake report, CI run 37613735145).
-  - **Salvage branch `claude/db-s3-salvage`** (an earlier session 3) has V0039-V0045 that collide with these numbers. Its
-    DA-02 (`capture_context_route_zone_history`) is superseded by V0042/V0043 here. Still to port as V0046+ if still
-    needed after review: drop of prefix-duplicate indexes (PERF-08), outlet PII envelope columns + validate (DA-05),
-    `dw` dim_date build (PERF-07?), retention policy + archive manifest + validate (DA-06). Read each one, do not
-    cherry-pick blindly.
+  - **Salvage branch `claude/db-s3-salvage`**: ported in session 4 as V0047-V0052 (below); its DA-02 is superseded.
+
+- **Session 4 (2026-10-07; Opus checker, round 1: 1 blocker (stale dictionary) + 3 should-fix, fixed):**
+  - `V0047` AUD-PERF-08: four prefix-duplicate indexes dropped; `IndexHygieneTest` fails on any new one.
+  - `V0048` AUD-DA-07 part: `dw.build_dim_date(from, to)` extends the calendar past 2030 (worker only).
+  - `V0049`/`V0050` AUD-DA-05: outlet `nid`, `tin`, `trade_license` (empty, unread) replaced by `*_enc` bytea +
+    `pii_key_id`; `app.pii_key` (wrapped DEKs, never deleted, one active key) for api_rw only. Audit-writer redaction
+    asked of backend-admin/core: `docs/requests/db-audit-pii-redaction.md`. Trigram search held:
+    `db/held/outlet_search_trgm.sql`, `docs/requests/db-azure-pg-trgm.md` (infra).
+  - `V0051`/`V0052` AUD-DA-06 (no-ruling part): `app.retention_policy` (docs/16 s13.1 windows; API cannot see it),
+    `partition_policy.retention_class`, `app.archive_manifest` (status flow, export facts written once, jobs_rw only),
+    `app.archive_candidates(today)`, `app.default_partition_rows()` (worker/jobs logins only). Capture-table
+    partitioning stays deferred (D-DB-PART-01).
 
 ## Handoff (session 3 recycled, 2026-10-07 ~13:10 UTC)
 
@@ -134,10 +142,9 @@ INT has V0001-V0038; the integrator promotes the rest.
   (`backend-admin-web-entry-tables.md`).
 
 **Next rows (lead's order):**
-1. The infra per-app logins, if infra asks (none filed yet; V0029 is the grant base).
-2. The salvage branch `claude/db-s3-salvage` (see above): review and port PERF-08 (prefix-duplicate indexes),
-   DA-05 (outlet PII envelope), PERF-07 (dw dim_date build?) and DA-06 (retention class + archive manifest) as V0047+.
-   Its DA-02 is superseded. Then DA-07 (record the deferred M-61..M-99 objects) and PERF-03.
+1. Infra's per-app logins: answered by V0029 (`db-runtime-roles-gaps.md`); nothing open for db.
+2. Salvage port done (V0047-V0052). Next: DA-07 (record the deferred M-61..M-99 objects in this file) and PERF-03
+   (timeouts are in V0020 `apply_login_limits`; check what is left).
 3. Query-plan candidates still open:
    - `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
    - The `outlet_change_request` and `task (assignee_user_id, status)` indexes.

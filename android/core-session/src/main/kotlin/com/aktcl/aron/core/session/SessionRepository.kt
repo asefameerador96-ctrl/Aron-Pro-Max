@@ -10,7 +10,10 @@ import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.core.network.LoginStatus
 import com.aktcl.aron.contract.LoginRequest
 import com.aktcl.aron.contract.LoginResponse
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -95,8 +98,16 @@ class SessionRepository(
 
     private val loginMutex = Mutex()
     private val refreshMutex = Mutex()
-    private val _state = MutableStateFlow(restore())
+    private val _state = MutableStateFlow<SessionState>(SessionState.Restoring)
+
+    /**
+     * Starts as [SessionState.Restoring] (AUD-PERF-05): the stored session is read and its tokens unwrapped by the Keystore
+     * off the main thread, never in the constructor (Hilt builds this on the main thread at cold start). The shells show
+     * the splash until it settles. Background readers use [settled] instead of `state.value`.
+     */
     val state: StateFlow<SessionState> = _state.asStateFlow()
+    private val restoreLock = Any()
+
 
     private val _onlineLogins = MutableSharedFlow<Long>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -106,6 +117,37 @@ class SessionRepository(
      */
     val onlineLogins: SharedFlow<Long> = _onlineLogins.asSharedFlow()
 
+    /** How long the cold-start restore took (monotonic ms; -1 until it ran). Logged by the shells for D-PERF-05. */
+    @Volatile var restoreTookMs: Long = -1L
+        private set
+
+    init { // last of the properties: the restore may run inline on a test dispatcher
+        CoroutineScope(SupervisorJob() + dispatchers.io).launch { settleBlocking() }
+    }
+
+    /**
+     * The session once the restore has run (it runs here, on the IO dispatcher, if the background start has not done it
+     * yet). Never [SessionState.Restoring].
+     */
+    suspend fun settled(): SessionState = _state.value.takeIf { it != SessionState.Restoring } ?: withContext(dispatchers.io) { settleBlocking() }
+
+    /**
+     * Runs the restore at most once; a login, logout or forget that already moved the state wins (compare-and-set). A
+     * Keystore or file failure restores nothing: the user signs in again (offline unlock still works).
+     */
+    private fun settleBlocking(): SessionState {
+        if (_state.value != SessionState.Restoring) return _state.value
+        synchronized(restoreLock) {
+            if (_state.value == SessionState.Restoring) {
+                val start = clock.elapsedRealtimeMs()
+                val restored = try { restore() } catch (_: Exception) { SessionState.LoggedOut }
+                restoreTookMs = clock.elapsedRealtimeMs() - start
+                _state.compareAndSet(SessionState.Restoring, restored)
+            }
+        }
+        return _state.value
+    }
+
     private fun restore(): SessionState {
         val active = store.active() ?: return SessionState.LoggedOut
         val profile = store.profileByUserId(active.userId) ?: return SessionState.LoggedOut
@@ -113,8 +155,9 @@ class SessionRepository(
         return SessionState.Active(profile, mode, store.tokens(profile.userId).reauthRequired)
     }
 
-    suspend fun login(username: String, password: String): LoginOutcome = loginMutex.withLock {
-        withContext(dispatchers.io) { loginLocked(SessionStore.normalize(username), password) }
+    suspend fun login(username: String, password: String): LoginOutcome {
+        settled() // a restore finishing later must not overwrite this login
+        return loginMutex.withLock { withContext(dispatchers.io) { loginLocked(SessionStore.normalize(username), password) } }
     }
 
     private suspend fun loginLocked(username: String, password: String): LoginOutcome {
@@ -186,6 +229,8 @@ class SessionRepository(
                     lastOnlineLoginMs = clock.wallClockMs(),
                     lastOnlineLoginElapsedMs = clock.elapsedRealtimeMs(),
                     highWaterMs = clock.wallClockMs(),
+                    observedElapsedMs = clock.elapsedRealtimeMs(),
+                    observedBootCount = clock.bootCount(),
                     deviceId = answer.device?.deviceId ?: previous?.deviceId,
                     bindOrdinal = answer.device?.bindOrdinal ?: previous?.bindOrdinal,
                     memoSeqBlockSize = answer.device?.memoSeqBlockSize ?: previous?.memoSeqBlockSize,
@@ -230,14 +275,14 @@ class SessionRepository(
         }
         // Setting the date back never helps: time only moves forward from the highest value seen.
         val now = maxOf(wall, stored.highWaterMs)
-        val profile = stored.copy(highWaterMs = now)
+        val profile = aged(stored.copy(highWaterMs = now), elapsed)
         if (inCooldown(profile, now, elapsed)) {
             store.saveProfile(profile)
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.COOLDOWN, profile.cooldownUntilMs, serverAnswer)
         }
         // Without a reboot since the login, the monotonic clock proves how much real time has passed, whatever the date says.
         val realAge = if (elapsed >= profile.lastOnlineLoginElapsedMs) elapsed - profile.lastOnlineLoginElapsedMs else 0L
-        if (maxOf(now - profile.lastOnlineLoginMs, realAge) > policy.maxDays * DAY_MS) {
+        if (maxOf(now - profile.lastOnlineLoginMs, realAge, profile.provenAgeMs) > policy.maxDays * DAY_MS) {
             store.saveProfile(profile)
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.EXPIRED, serverAnswer = serverAnswer)
         }
@@ -260,6 +305,35 @@ class SessionRepository(
         store.saveProfile(unlocked)
         activate(unlocked, UnlockMode.OFFLINE, store.tokens(unlocked.userId).reauthRequired, updateRequired)
         return LoginOutcome.LoggedIn(unlocked, UnlockMode.OFFLINE, updateRequired)
+    }
+
+    /** Adds the uptime seen since [UserProfile.observedElapsedMs] (after a reboot: everything since boot) to the proven age. */
+    private fun aged(p: UserProfile, elapsed: Long): UserProfile {
+        val boot = clock.bootCount()
+        val base = if (p.observedElapsedMs > 0) p.observedElapsedMs else p.lastOnlineLoginElapsedMs
+        val rebooted = elapsed < base || (boot > 0 && p.observedBootCount > 0 && boot != p.observedBootCount)
+        val passed = if (rebooted) elapsed else elapsed - base
+        return p.copy(provenAgeMs = p.provenAgeMs + passed, observedElapsedMs = elapsed, observedBootCount = boot)
+    }
+
+    /**
+     * Records that time passed for the signed-in user (app in front, a sync run): the date high-water mark and the proven
+     * uptime, so the 7-day offline window cannot be stretched by rebooting and setting the date back. Never throws.
+     */
+    suspend fun noteTimePassing() {
+        settled()
+        loginMutex.withLock { // never interleaved with a login writing the same profile
+            try {
+                val id = (state.value as? SessionState.Active)?.user?.userId ?: return
+                val p = withContext(dispatchers.io) { store.profileByUserId(id) } ?: return
+                withContext(dispatchers.io) {
+                    store.saveProfile(aged(p.copy(highWaterMs = maxOf(p.highWaterMs, clock.wallClockMs())), clock.elapsedRealtimeMs()))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
     }
 
     /**
@@ -285,6 +359,7 @@ class SessionRepository(
      * offline it simply fails and the server-side family expires on its own.
      */
     suspend fun logout() {
+        settled()
         val revoke = loginMutex.withLock {
             val active = _state.value as? SessionState.Active ?: return
             val userId = active.user.userId
@@ -309,6 +384,7 @@ class SessionRepository(
      * session was already ended by [logout].
      */
     suspend fun forgetUser(userId: Long) {
+        settled() // a restore still running must not bring back the user forgotten here
         loginMutex.withLock {
             withContext(dispatchers.io) { store.forget(userId) }
             if ((_state.value as? SessionState.Active)?.user?.userId == userId) _state.value = SessionState.LoggedOut
@@ -318,7 +394,7 @@ class SessionRepository(
     // ---- AccessTokenSource: used by every authenticated call of core-network ----
 
     override fun currentAccessToken(grant: Grant): String? {
-        val active = _state.value as? SessionState.Active ?: return null
+        val active = settleBlocking() as? SessionState.Active ?: return null // network threads only, never main
         val tokens = store.tokens(active.user.userId)
         return if (grant == Grant.FULL) tokens.accessToken else tokens.uploadAccessToken
     }
@@ -331,7 +407,7 @@ class SessionRepository(
     suspend fun uploadAccessToken(userId: Long): String? = withContext(dispatchers.io) { store.tokens(userId).uploadAccessToken }
 
     override suspend fun refreshAfterUnauthorized(grant: Grant, rejectedToken: String?, code: ProblemCode?): Boolean {
-        val active = _state.value as? SessionState.Active ?: return false
+        val active = settled() as? SessionState.Active ?: return false
         return refresh(active.user.userId, grant, rejectedToken)
     }
 

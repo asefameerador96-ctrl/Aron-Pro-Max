@@ -35,6 +35,8 @@ data class OutboxEntity(
     @ColumnInfo(name = "created_at") val createdAt: String,
     @ColumnInfo(name = "acked_at") val ackedAt: String? = null,
     @ColumnInfo(name = "server_id") val serverId: Long? = null,
+    /** F-SYS-072: the record's ES256 `sig`, made once when its batch is first assembled and sent unchanged on every retry. */
+    @ColumnInfo(name = "sig") val sig: String? = null,
 )
 
 /** Outbox row states (docs/24 s4.5, s4.6). */

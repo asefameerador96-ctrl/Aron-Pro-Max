@@ -11,6 +11,21 @@ import java.security.MessageDigest
 fun interface DeviceProofSigner {
     /** Returns the 86-character proof, or null when the device key is not available. */
     fun sign(proofString: String): String?
+
+    /**
+     * Like [sign], but tells "not enrolled" (no key: unsigned is correct) from "enrolled but the Keystore failed" (a
+     * transient miss: a record must be held, not shipped unsigned, because a row once sent is never re-signed; F-SYS-072).
+     * A signer that cannot tell the two apart reports every null as [ProofResult.NotEnrolled].
+     */
+    fun attempt(proofString: String): ProofResult = sign(proofString)?.let { ProofResult.Signed(it) } ?: ProofResult.NotEnrolled
+}
+
+sealed interface ProofResult {
+    data class Signed(val value: String) : ProofResult
+    /** No enrolled device key: calls and records go out unsigned. */
+    data object NotEnrolled : ProofResult
+    /** The device is enrolled but signing failed (Keystore busy, key unreadable): hold what must be signed. */
+    data object Failed : ProofResult
 }
 
 /** The proof strings of docs/24 s8.3; lines joined by `\n`, UTF-8. */
@@ -28,6 +43,19 @@ object ProofStrings {
 
     fun batch(deviceUuid: String, gzipBody: ByteArray, batchUuid: String, attempt: Int): String =
         listOf("aron-proof-v1", "batch", deviceUuid, sha256Hex(gzipBody), batchUuid, attempt.toString()).joinToString("\n")
+
+    /** The `devices/me` calls: [methodPath] is `"<METHOD> <path>"`, e.g. `"PUT /v1/devices/me/push-token"`; [body] empty when none. */
+    fun device(deviceUuid: String, methodPath: String, body: ByteArray, trustedEpochMs: Long): String =
+        listOf("aron-proof-v1", "device", deviceUuid, methodPath, sha256Hex(body), nonceBucket(trustedEpochMs).toString()).joinToString("\n")
+
+    /**
+     * Record `sig` (F-SYS-072): over the record exactly as sent, without its `sig` member, in RFC 8785 form, so the
+     * server's check (IngestService step 6) hashes the same bytes whatever the key order or number layout.
+     */
+    fun record(type: String, clientUuid: String, record: kotlinx.serialization.json.JsonObject): String {
+        val unsigned = kotlinx.serialization.json.JsonObject(record.filterKeys { it != "sig" })
+        return listOf("aron-sig-v1", type, clientUuid, sha256Hex(Jcs.canonicalize(unsigned).toByteArray(Charsets.UTF_8))).joinToString("\n")
+    }
 
     fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
