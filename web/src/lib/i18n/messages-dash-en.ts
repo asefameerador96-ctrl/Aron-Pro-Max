@@ -262,4 +262,6 @@ export const dashEn = {
   "report.chart": "Chart",
   "report.chart_note": "The same figures are in the table below.",
   "geo.visits": "Visits",
+
+  "tracking.previous_day": "Day before ({date})",
 } as const;

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 export interface FilterControl {
   param: string;
   label: string;
-  kind: "int" | "enum" | "search";
+  kind: "int" | "enum" | "search" | "date";
   value: string;
   options?: { value: string; label: string }[];
 }
@@ -28,7 +28,7 @@ export function FilterBar({ controls, applyLabel, clearLabel, allLabel, clearHre
               ))}
             </select>
           ) : (
-            <input name={c.param} defaultValue={c.value} inputMode={c.kind === "int" ? "numeric" : "search"} className={`${cls} w-40`} />
+            <input name={c.param} type={c.kind === "date" ? "date" : "text"} defaultValue={c.value} inputMode={c.kind === "int" ? "numeric" : undefined} className={`${cls} w-40`} />
           )}
         </label>
       ))}

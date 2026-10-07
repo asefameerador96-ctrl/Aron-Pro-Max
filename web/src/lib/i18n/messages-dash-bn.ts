@@ -264,4 +264,6 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "report.chart": "চার্ট",
   "report.chart_note": "একই তথ্য নিচের টেবিলে আছে।",
   "geo.visits": "ভিজিট",
+
+  "tracking.previous_day": "আগের দিন ({date})",
 };

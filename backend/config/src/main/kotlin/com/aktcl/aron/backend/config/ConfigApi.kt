@@ -85,6 +85,13 @@ fun Route.configAdminRoutes(d: ConfigDeps) {
             val id = call.parameters["change_id"]?.toLongOrNull()?.takeIf { it >= 1 } ?: bad("path.change_id")
             call.respond(s.decide(p, id, parse<ConfigDecisionIn>(call.receiveText()), call.requestId))
         }
+        post("/admin/config/versions/{version}/rollback") {
+            val p = call.principal
+            val v = call.parameters["version"]?.toLongOrNull()?.takeIf { it >= 1 } ?: bad("path.version")
+            val body = parse<ConfigRollbackIn>(call.receiveText())
+            if (body.reason.trim().length < 10 || body.reason.length > 500) throw ApiProblem(ProblemCode.ERR_CFG_REASON_REQUIRED, "a reason of 10 to 500 characters is required", errors = listOf(FieldError("body.reason", "length")))
+            call.respond(HttpStatusCode.Created, s.rollback(p, v, body.mode, body.reason, call.requestId))
+        }
         get("/admin/config/versions") {
             call.reader()
             call.respond(s.versions(call.limit(), call.cursor()))

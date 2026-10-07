@@ -98,7 +98,7 @@ describe("team-op proxy", () => {
   });
   it("delete section data needs a reason and is refused for roles outside the list", async () => {
     h.stub({ method: "POST", path: "/v1/admin/data-void", fn: () => ({ status: 200, body: {} }) });
-    const body = { client_uuid: "55555555-5555-4555-8555-555555555555", route_id: 9, business_date: "2026-10-06", scope: "all" };
+    const body = { client_uuid: "55555555-5555-4555-8555-555555555555", route_id: 9, business_date: "2026-10-06", scope: "web_entry" };
     expect((await post(await tso(), { op: "day.data-void", body })).status).toBe(400);
     expect((await post(await tso(), { op: "day.data-void", body, reason: "Wrong route entered by mistake" })).status).toBe(200);
     expect(h.calls()[0]?.body).toEqual({ ...body, reason: "Wrong route entered by mistake" });

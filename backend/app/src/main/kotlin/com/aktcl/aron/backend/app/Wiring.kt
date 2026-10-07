@@ -1,5 +1,8 @@
 package com.aktcl.aron.backend.app
 
+import com.aktcl.aron.backend.analytics.DashboardDeps
+import com.aktcl.aron.backend.analytics.DashboardService
+import com.aktcl.aron.backend.analytics.dashboardRoutes
 import com.aktcl.aron.backend.auth.AuthDeps
 import com.aktcl.aron.backend.auth.HashLimiter
 import com.aktcl.aron.backend.auth.JdbiLockoutStore
@@ -13,6 +16,12 @@ import com.aktcl.aron.backend.auth.TokenIssuer
 import com.aktcl.aron.backend.auth.authRoutes
 import com.aktcl.aron.backend.config.ConfigDeps
 import com.aktcl.aron.backend.config.ConfigResolver
+import com.aktcl.aron.backend.config.ConfigPermissions
+import com.aktcl.aron.backend.config.ConfigPermissionsDeps
+import com.aktcl.aron.backend.config.ConfigPublic
+import com.aktcl.aron.backend.config.ConfigPublicDeps
+import com.aktcl.aron.backend.config.configPermissionRoutes
+import com.aktcl.aron.backend.config.configPublicRoutes
 import com.aktcl.aron.backend.config.ConfigService
 import com.aktcl.aron.backend.config.ConfigTools
 import com.aktcl.aron.backend.config.ConfigToolsDeps
@@ -23,7 +32,12 @@ import com.aktcl.aron.backend.config.configAdminRoutes
 import com.aktcl.aron.backend.config.configDeltaRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
+import com.aktcl.aron.backend.masterdata.AdminPricesDeps
+import com.aktcl.aron.backend.masterdata.AdminProductsDeps
 import com.aktcl.aron.backend.masterdata.OtpCipher
+import com.aktcl.aron.backend.masterdata.adminPricesRoutes
+import com.aktcl.aron.backend.masterdata.adminProductsRoutes
+import com.aktcl.aron.backend.masterdata.deviceReplaceRoutes
 import com.aktcl.aron.backend.masterdata.deviceOtpRoutes
 import com.aktcl.aron.backend.masterdata.OutletsDeps
 import com.aktcl.aron.backend.masterdata.SqlReachResolver
@@ -70,10 +84,14 @@ class Wiring(
             val login = LoginService(users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock)
             val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
+            val dashboards = DashboardDeps(DashboardService(db, clock), reach, guard, clock)
             val configResolver = ConfigResolver(db, clock)
-            val configService = ConfigService(db, configResolver, clock)
+            val toolsReach = com.aktcl.aron.backend.config.NodeReach { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
+            val configService = ConfigService(db, configResolver, clock, toolsReach)
             val configDeps = ConfigDeps(configService, guard, clock)
-            val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock), guard)
+            val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
+            val permDeps = ConfigPermissionsDeps(ConfigPermissions(db, configService, clock), guard)
+            val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
@@ -81,10 +99,16 @@ class Wiring(
             return Wiring(clock, config, db, generation::current, s.build, mount = {
                 authRoutes(auth)
                 outletRoutes(outlets)
+                dashboardRoutes(dashboards)
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
+                deviceReplaceRoutes(otpDeps)
+                adminProductsRoutes(AdminProductsDeps(db, guard, clock))
+                adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)
+                configPermissionRoutes(permDeps)
+                configPublicRoutes(publicDeps)
                 syncRoutes(sync)
             }, frontDoorId = s.frontDoorId)
         }
