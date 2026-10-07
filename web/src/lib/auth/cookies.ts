@@ -20,11 +20,13 @@ export interface CookieOptions {
   secure: boolean;
   sameSite: "strict";
   path: string;
-  maxAge: number;
+  /** Absent for a session cookie: it ends with the browser session (Remember me off, the default). */
+  maxAge?: number;
 }
 
-export function cookieOptions(maxAgeSeconds: number): CookieOptions {
-  return { httpOnly: true, secure: secureCookies(), sameSite: "strict", path: "/", maxAge: Math.max(0, Math.floor(maxAgeSeconds)) };
+export function cookieOptions(maxAgeSeconds: number, persistent = true): CookieOptions {
+  const base = { httpOnly: true, secure: secureCookies(), sameSite: "strict", path: "/" } as const;
+  return persistent ? { ...base, maxAge: Math.max(0, Math.floor(maxAgeSeconds)) } : base;
 }
 
 /** Access tokens of the web live 15 minutes (docs/24 s8.1); refresh a little early. */

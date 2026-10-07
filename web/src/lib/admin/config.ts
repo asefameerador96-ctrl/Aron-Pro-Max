@@ -6,7 +6,13 @@ export type ValueType = ConfigKey["value_type"];
 export type ParseResult = { ok: true; value: unknown } | { ok: false; code: "required" | "invalid" | "too_small" | "too_big" | "not_allowed" | "too_many" };
 
 /** Bounds the registry seed leaves open but the meaning fixes (ISO weekdays). */
-const KEY_BOUNDS: Record<string, ConfigBounds> = { "cfg.calendar.weekend_days": { min: 1, max: 7 } };
+const KEY_BOUNDS: Record<string, ConfigBounds> = {
+  "cfg.calendar.weekend_days": { min: 1, max: 7 },
+  // The registry gives the radius dynamic bounds (cfg.geo.radius_min_m .. radius_max_m); the hard limits are the contract's.
+  "cfg.geo.radius_m": { min: 10, max: 5000 },
+};
+/** Time-of-day bounds the registry seed leaves empty (docs/24 s10.2: hard end time 12:00..23:59). */
+const KEY_TIME: Record<string, [string, string]> = { "cfg.device.blocking_hard_end_time": ["12:00", "23:59"] };
 const NUMBER = /^-?\d+(\.\d+)?$/;
 const INTEGER = /^-?\d+$/;
 
@@ -41,7 +47,11 @@ export function parseConfigInput(type: ValueType, raw: string, bounds?: ConfigBo
       return { ok: true, value: text === "true" };
     case "time": {
       const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(text);
-      return m ? { ok: true, value: text } : { ok: false, code: "invalid" };
+      if (!m) return { ok: false, code: "invalid" };
+      const tb = keyName ? KEY_TIME[keyName] : undefined;
+      if (tb && text < tb[0]) return { ok: false, code: "too_small" };
+      if (tb && text > tb[1]) return { ok: false, code: "too_big" };
+      return { ok: true, value: text };
     }
     case "url":
       return /^https:\/\/[^\s]{3,}$/.test(text) ? { ok: true, value: text } : { ok: false, code: "invalid" };
@@ -66,9 +76,23 @@ export function parseConfigInput(type: ValueType, raw: string, bounds?: ConfigBo
     }
     case "json": {
       const v = safeJson(text);
+      const shape = keyName ? jsonShape(keyName, v) : true;
+      if (!shape) return { ok: false, code: "invalid" };
       return v !== undefined && v !== null && typeof v === "object" ? { ok: true, value: v } : { ok: false, code: "invalid" };
     }
   }
+}
+
+const FLAVOURS = ["sr", "amo", "tso"];
+const posInt = (x: unknown) => typeof x === "number" && Number.isSafeInteger(x) && x >= 1 && x <= 2_100_000_000;
+/** Shape rules of json-valued keys the registry cannot express (docs/24 s4: per-flavour version codes). */
+function jsonShape(keyName: string, v: unknown): boolean {
+  if (keyName !== "cfg.release.min_version_code" && keyName !== "cfg.release.blocked_version_codes") return true;
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  if (!Object.keys(o).every((k) => FLAVOURS.includes(k))) return false;
+  if (keyName === "cfg.release.min_version_code") return FLAVOURS.every((f) => posInt(o[f]));
+  return Object.values(o).every((x) => Array.isArray(x) && x.length <= 100 && x.every(posInt));
 }
 
 function safeJson(text: string): unknown {

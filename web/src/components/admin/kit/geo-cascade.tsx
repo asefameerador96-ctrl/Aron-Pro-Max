@@ -10,7 +10,14 @@ export interface CascadeLevel {
   options: { value: string; label: string }[];
 }
 
-export function GeoCascade({ levels, viewLabel, allLabel, action }: { levels: CascadeLevel[]; viewLabel: string; allLabel: string; action: string }) {
+export interface CascadeExtra {
+  name: string;
+  value: string;
+  label: string;
+  type?: "text" | "date";
+}
+
+export function GeoCascade({ levels, viewLabel, allLabel, action, extra }: { levels: CascadeLevel[]; viewLabel: string; allLabel: string; action: string; extra?: CascadeExtra[] }) {
   const form = useRef<HTMLFormElement>(null);
   function changed(index: number) {
     const f = form.current;
@@ -34,6 +41,12 @@ export function GeoCascade({ levels, viewLabel, allLabel, action }: { levels: Ca
               </option>
             ))}
           </select>
+        </label>
+      ))}
+      {extra?.map((x) => (
+        <label key={x.name} className="text-sm text-slate-700">
+          <span className="mb-1 block">{x.label}</span>
+          <input name={x.name} type={x.type ?? "text"} defaultValue={x.value} className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm" />
         </label>
       ))}
       <button type="submit" className="rounded bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700">
