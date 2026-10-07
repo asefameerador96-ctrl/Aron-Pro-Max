@@ -51,7 +51,7 @@ object SessionModule {
     @Provides
     @Singleton
     fun workManagerSyncScheduler(@ApplicationContext context: Context): WorkManagerSyncScheduler =
-        WorkManagerSyncScheduler({ WorkManager.getInstance(context) })
+        WorkManagerSyncScheduler({ WorkManager.getInstance(context) }, hold = com.aktcl.aron.core.sync.SyncHold.Prefs(context))
 
     @Provides
     fun syncScheduler(scheduler: WorkManagerSyncScheduler): SyncScheduler = scheduler

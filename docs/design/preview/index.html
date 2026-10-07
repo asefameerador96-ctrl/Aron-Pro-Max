@@ -1,0 +1,1305 @@
+<!doctype html>
+<html lang="bn" data-theme="light" data-tier="B" data-lang="bn" data-fs="100">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Aron Calm Glass Preview</title>
+<style>
+/* =====================================================================
+   Aron "Calm Glass" preview. Values are the tokens of docs/design/tokens.md v1
+   (names: group-role-variant). Themes: light, dark, sunlight. Tiers: A, B, C.
+   Sunlight forces tier C. No external requests, no frameworks.
+   ===================================================================== */
+*{box-sizing:border-box}
+:root{
+  color-scheme:light;
+  --bg-s0:#D8E7FB;--bg-s1:#E8EFFA;--bg-s2:#F3F5FB;
+  --glow-a:156 194 255;--glow-a-k:.50;--glow-b:201 184 255;--glow-b-k:.30;--bg-solid:#E8EFFA;
+  --surface-glass:rgba(255,255,255,.62);--strong-rgb:255 255 255;--surface-solid:#FFFFFF;--surface-raised:#F2F5FA;--scrim-a:.32;
+  --hl-top:rgba(255,255,255,.75);--hl-bot:rgba(11,27,51,.10);--bar-edge:rgba(11,27,51,.10);
+  --border-divider:rgba(11,27,51,.08);--border-solid:rgba(11,27,51,.30);--border-input:#66768F;--border-focus:#0A58CC;
+  --text-primary:#0B1B33;--text-secondary:#475569;--text-disabled:#8793A6;--text-on-accent:#FFFFFF;
+  --accent:#0A58CC;--accent-hi:#1B68DC;--accent-pressed:#0846A8;--accent-container:#DCE9FD;--accent-on-container:#0A3F94;
+  --success:#0B7A45;--success-container:#D6F0E1;--success-on-container:#0A5A33;
+  --warning:#9A5200;--warning-container:#FFE9C7;--warning-on-container:#7A4300;
+  --danger:#C0182D;--danger-container:#FDDDE1;--danger-on-container:#8E1224;
+  --offline:#53627C;--offline-container:#E3E8F0;--offline-on-container:#3F4C63;
+  --state-pressed:rgba(11,27,51,.08);--disabled-fill:#DCE2EB;--disabled-label:#515E73;--skeleton:rgba(11,27,51,.07);
+  --card-fill:linear-gradient(180deg,rgba(255,255,255,.30) 0,rgba(255,255,255,0) 45%),linear-gradient(180deg,rgba(255,255,255,.66),rgba(255,255,255,.58));
+  --vib:rgba(10,88,204,.04);
+  --elev-card:0 1px 3px rgba(11,27,51,.06),0 2px 10px rgba(11,27,51,.10);
+  --elev-sheet:0 -4px 24px rgba(11,27,51,.14);
+  --elev-sheet-web:0 2px 6px rgba(11,27,51,.08),0 8px 24px rgba(11,27,51,.14);
+  --elev-dialog:0 4px 8px rgba(11,27,51,.10),0 8px 32px rgba(11,27,51,.18);
+  --surface-data:rgba(255,255,255,.92);
+  --viz-1:#2A78D6;--viz-2:#EB6834;--viz-3:#1BAF7A;
+  --map-land:#EEF1F6;--map-water:#CFE0F5;--map-road:#FFFFFF;--map-lbl:#475569;
+  --card-bw:1px;--paper:#FCFCFA;--paper-ink:#16181D;
+  /* motion (tokens s8) */
+  --motion-press:90ms;--motion-fast:150ms;--motion-base:220ms;--motion-sheet:320ms;
+  --ease-out:cubic-bezier(.2,0,0,1);--ease-in:cubic-bezier(.4,0,1,1);--ease-inout:cubic-bezier(.4,0,.2,1);
+  --ease-spring:linear(0,.086 10%,.263 20%,.454 30%,.622 40%,.754 50%,.851 60%,.916 70%,.958 80%,.983 90%,1);
+  /* fonts: bundled Noto Sans Bengali in the real app; system faces here (no network) */
+  --ff-lat:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --ff-bn:"Noto Sans Bengali","Noto Sans Bengali Variable","Kohinoor Bangla","Bangla Sangam MN","Nirmala UI","Shonar Bangla","Siyam Rupali","Vrinda","Lohit Bengali","FreeSans";
+  --fs:1;
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg-s0:#16233F;--bg-s1:#0F1A2E;--bg-s2:#0A1220;
+  --glow-a:29 78 216;--glow-a-k:.18;--glow-b:91 53 213;--glow-b-k:.10;--bg-solid:#0F1A2E;
+  --surface-glass:rgba(255,255,255,.12);--strong-rgb:26 36 56;--surface-solid:#141D30;--surface-raised:#1C2740;--scrim-a:.56;
+  --hl-top:rgba(255,255,255,.22);--hl-bot:rgba(255,255,255,.06);--bar-edge:rgba(255,255,255,.08);
+  --border-divider:rgba(255,255,255,.08);--border-solid:rgba(255,255,255,.24);--border-input:#8394B0;--border-focus:#84B6FF;
+  --text-primary:#F1F5FB;--text-secondary:#A9B6CB;--text-disabled:#6B7A93;--text-on-accent:#05122B;
+  --accent:#84B6FF;--accent-hi:#A0C8FF;--accent-pressed:#68A2F8;--accent-container:#1B3568;--accent-on-container:#BBD6FF;
+  --success:#4CD38B;--success-container:#12382A;--success-on-container:#9BE7BF;
+  --warning:#FFB84D;--warning-container:#45330F;--warning-on-container:#FFD58F;
+  --danger:#FF7A8A;--danger-container:#4A1B25;--danger-on-container:#FFB3BE;
+  --offline:#9FB0CB;--offline-container:#27324A;--offline-on-container:#C3D0E6;
+  --state-pressed:rgba(255,255,255,.10);--disabled-fill:#2A3550;--disabled-label:#97A6BF;--skeleton:rgba(255,255,255,.10);
+  --card-fill:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(0,0,0,.14) 100%),rgba(255,255,255,.12);
+  --vib:rgba(132,182,255,.04);
+  --elev-card:0 1px 3px rgba(0,0,0,.25),0 2px 10px rgba(0,0,0,.35);
+  --elev-sheet:0 -4px 24px rgba(0,0,0,.45);
+  --elev-sheet-web:0 2px 6px rgba(0,0,0,.40),0 8px 24px rgba(0,0,0,.50);
+  --elev-dialog:0 4px 8px rgba(0,0,0,.45),0 8px 32px rgba(0,0,0,.55);
+  --surface-data:rgba(20,29,48,.94);
+  --viz-1:#3987E5;--viz-2:#D95926;--viz-3:#199E70;
+  --map-land:#121A2B;--map-water:#0D2238;--map-road:#1F2A40;--map-lbl:#A9B6CB;
+  --paper:#F4F4EF;
+}
+:root[data-theme="sunlight"]{
+  color-scheme:light;
+  --bg-solid:#F1F3F7;
+  --surface-glass:#FFFFFF;--strong-rgb:255 255 255;--surface-solid:#FFFFFF;--surface-raised:#EEF1F6;--scrim-a:.56;
+  --hl-top:rgba(5,10,20,.72);--hl-bot:rgba(5,10,20,.72);--bar-edge:rgba(5,10,20,.72);
+  --border-divider:rgba(5,10,20,.40);--border-solid:rgba(5,10,20,.72);--border-input:#2B3648;--border-focus:#000000;
+  --text-primary:#050A14;--text-secondary:#2B3648;--text-disabled:#5B6578;--text-on-accent:#FFFFFF;
+  --accent:#0041B3;--accent-hi:#0041B3;--accent-pressed:#002F85;--accent-container:#CFE0FF;--accent-on-container:#002A73;
+  --success:#005C2E;--success-container:#CFEBD9;--success-on-container:#00391C;
+  --warning:#7A3E00;--warning-container:#FFE0A8;--warning-on-container:#4D2700;
+  --danger:#A30018;--danger-container:#FAD0D6;--danger-on-container:#6B0010;
+  --offline:#3B4658;--offline-container:#DDE2EA;--offline-on-container:#1F2937;
+  --state-pressed:rgba(5,10,20,.12);--disabled-fill:#D9DEE7;--disabled-label:#3B4658;--skeleton:rgba(5,10,20,.10);
+  --vib:transparent;--card-bw:1.5px;
+  --surface-data:#FFFFFF;
+  --map-land:#EEF1F6;--map-water:#CFE0F5;--map-road:#FFFFFF;--map-lbl:#2B3648;
+}
+/* ---- tiers: A real blur on bars and sheets; B glass-lite (no blur); C solid ---- */
+:root[data-tier="A"]{--strong-a:.86;--dialog-a:.94;--bf-bar:blur(16px) saturate(1.4);--bf-sheet:blur(28px) saturate(1.4);--scrim-k:.55}
+:root[data-tier="B"]{--strong-a:.92;--dialog-a:.94;--bf-bar:none;--bf-sheet:none;--scrim-k:1}
+:root[data-tier="C"]{--strong-a:1;--dialog-a:1;--bf-bar:none;--bf-sheet:none;--scrim-k:1;
+  --card-fill:var(--surface-solid);--vib:transparent;--elev-card:0 0 #0000;--surface-glass:var(--surface-solid);--surface-data:var(--surface-solid)}
+:root{
+  --fill-strong:rgb(var(--strong-rgb)/var(--strong-a));--fill-dialog:rgb(var(--strong-rgb)/var(--dialog-a));
+  --surface-scrim:rgb(0 0 0/calc(var(--scrim-a)*var(--scrim-k)));
+}
+:root[data-tier="C"]{--fill-strong:var(--surface-solid);--fill-dialog:var(--surface-solid)}
+/* page background (AronBackground): gradient + two glows; flat in C and sunlight */
+.pbg{position:absolute;inset:0;
+  background:
+    radial-gradient(circle 324px at 12% 6%,rgb(var(--glow-a)/var(--glow-a-k)),rgb(var(--glow-a)/0)),
+    radial-gradient(circle 288px at 95% 78%,rgb(var(--glow-b)/var(--glow-b-k)),rgb(var(--glow-b)/0)),
+    linear-gradient(168deg,var(--bg-s0) 0%,var(--bg-s1) 50%,var(--bg-s2) 100%)}
+.pbg.w{background:
+    radial-gradient(circle 1229px at 12% 6%,rgb(var(--glow-a)/var(--glow-a-k)),rgb(var(--glow-a)/0)),
+    radial-gradient(circle 1093px at 95% 78%,rgb(var(--glow-b)/var(--glow-b-k)),rgb(var(--glow-b)/0)),
+    linear-gradient(168deg,var(--bg-s0) 0%,var(--bg-s1) 50%,var(--bg-s2) 100%)}
+.page-bg{position:fixed;inset:0;z-index:-1;
+  background:
+    radial-gradient(circle 90vw at 12% 6%,rgb(var(--glow-a)/var(--glow-a-k)),rgb(var(--glow-a)/0)),
+    radial-gradient(circle 80vw at 95% 78%,rgb(var(--glow-b)/var(--glow-b-k)),rgb(var(--glow-b)/0)),
+    linear-gradient(168deg,var(--bg-s0) 0%,var(--bg-s1) 50%,var(--bg-s2) 100%)}
+:root[data-tier="C"] .pbg,:root[data-tier="C"] .pbg.w,:root[data-tier="C"] .page-bg{background:var(--bg-solid)}
+
+/* ---- type (tokens s7): 400 and 700 only; Bangla line heights >= 1.41 em ---- */
+html[data-lang="bn"]{--ff:var(--ff-bn),var(--ff-lat),sans-serif;--fs-cap:14px;--lh-hero:68px;--lh-display:48px;--lh-numeral:38px;--lh-title:32px;--lh-body:26px;--lh-cap:20px;--lh-table:22px}
+html[data-lang="en"]{--ff:var(--ff-lat),var(--ff-bn),sans-serif;--fs-cap:13px;--lh-hero:56px;--lh-display:40px;--lh-numeral:32px;--lh-title:30px;--lh-body:24px;--lh-cap:18px;--lh-table:20px}
+html[data-fs="130"] :is(.screen,.web){--fs:1.3}html[data-fs="200"] :is(.screen,.web){--fs:2}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-family:var(--ff);color:var(--text-primary);background:var(--bg-solid);font-size:16px;line-height:1.5;letter-spacing:0;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit;letter-spacing:0}
+button{cursor:pointer}
+.t-hero{font-size:calc(48px*var(--fs));line-height:calc(var(--lh-hero)*var(--fs));font-weight:700}
+.t-display{font-size:calc(34px*var(--fs));line-height:calc(var(--lh-display)*var(--fs));font-weight:700}
+.t-numeral{font-size:calc(26px*var(--fs));line-height:calc(var(--lh-numeral)*var(--fs));font-weight:700}
+.t-title{font-size:calc(22px*var(--fs));line-height:calc(var(--lh-title)*var(--fs));font-weight:700}
+.t-heading{font-size:calc(18px*var(--fs));line-height:calc(26px*var(--fs));font-weight:700}
+.t-body{font-size:calc(16px*var(--fs));line-height:calc(var(--lh-body)*var(--fs));font-weight:400}
+.t-bodyS{font-size:calc(16px*var(--fs));line-height:calc(var(--lh-body)*var(--fs));font-weight:700}
+.t-cap{font-size:calc(var(--fs-cap)*var(--fs));line-height:calc(var(--lh-cap)*var(--fs));font-weight:400}
+.t-label{font-size:calc(var(--fs-cap)*var(--fs));line-height:calc(var(--lh-cap)*var(--fs));font-weight:700}
+.t-table{font-size:calc(14px*var(--fs));line-height:calc(var(--lh-table)*var(--fs));font-weight:400}
+h1,h2,h3,h4,p{margin:0}
+.sec{color:var(--text-secondary)}
+.num{font-variant-numeric:tabular-nums}
+.m{white-space:nowrap}
+.tk{font-family:var(--ff-bn),sans-serif;font-style:normal;font-weight:700;font-size:.6em;margin-inline-start:.2em}
+.ic{flex:none;display:block}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:2px solid var(--border-focus);outline-offset:2px}
+:root[data-theme="sunlight"] :focus-visible{outline-width:3px}
+
+.rst{border:0;color:inherit;text-align:start;width:100%;font:inherit}
+.g-row{display:grid;grid-template-columns:1fr auto auto;gap:4px 14px;align-items:baseline;padding:8px 0;border-top:1px solid var(--border-divider)}
+.g-row.sub{background:var(--surface-raised);margin:2px -16px;padding:6px 16px}
+.g-row.h{border:0;padding-top:0;color:var(--text-secondary)}
+/* ---- glass surfaces ---- */
+.card{position:relative;border-radius:20px;background:var(--card-fill);box-shadow:var(--elev-card)}
+.card::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(180deg,var(--hl-top),var(--hl-bot));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+:root[data-tier="C"] .card{border:var(--card-bw) solid var(--border-solid)}
+:root[data-tier="C"] .card::before{display:none}
+.card.flat{box-shadow:none}
+.card.pad{padding:16px}
+.data{position:relative;border-radius:20px;background:var(--surface-data);box-shadow:var(--elev-card)}
+.data::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;background:linear-gradient(180deg,var(--hl-top),var(--hl-bot));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+:root[data-tier="C"] .data{border:var(--card-bw) solid var(--border-solid);box-shadow:none}
+:root[data-tier="C"] .data::before{display:none}
+.bar{background:linear-gradient(var(--vib),var(--vib)),var(--fill-strong);-webkit-backdrop-filter:var(--bf-bar);backdrop-filter:var(--bf-bar)}
+.raised{background:var(--surface-raised)}
+
+/* ---- chips, buttons ---- */
+.chip{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:2px 10px;border-radius:12px;border:0;font-size:calc(var(--fs-cap)*var(--fs));line-height:calc(var(--lh-cap)*var(--fs));font-weight:700;white-space:nowrap;max-width:100%}
+.c-off{background:var(--offline-container);color:var(--offline-on-container)}
+.c-acc{background:var(--accent-container);color:var(--accent-on-container)}
+.c-ok{background:var(--success-container);color:var(--success-on-container)}
+.c-warn{background:var(--warning-container);color:var(--warning-on-container)}
+.c-dng{background:var(--danger-container);color:var(--danger-on-container)}
+.c-neu{background:var(--surface-raised);color:var(--text-secondary);box-shadow:inset 0 0 0 1px var(--border-divider)}
+:root[data-theme="sunlight"] .chip{box-shadow:inset 0 0 0 1px currentColor}
+.chipbtn{display:grid;place-items:center;min-width:48px;min-height:48px;padding:0;border:0;background:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:56px;padding:8px 24px;border:0;border-radius:999px;text-align:center;
+  font-size:calc(16px*var(--fs));line-height:calc(var(--lh-body)*var(--fs));font-weight:700;
+  transition:transform var(--motion-press) linear,background var(--motion-fast) var(--ease-out),box-shadow var(--motion-fast) var(--ease-out)}
+.btn:active{transform:scale(.97)}
+.btn.pri{color:var(--text-on-accent);background:linear-gradient(180deg,var(--accent-hi),var(--accent));
+  box-shadow:0 6px 12px -2px color-mix(in srgb,var(--accent) 34%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+.btn.pri:active{background:var(--accent-pressed);box-shadow:0 2px 4px -1px color-mix(in srgb,var(--accent) 34%,transparent)}
+.btn.sec{min-height:48px;color:var(--accent);background:var(--card-fill);box-shadow:0 0 0 1px var(--hl-bot),inset 0 1px 0 var(--hl-top)}
+.btn.sec.tall{min-height:56px}
+.btn.sec:active{background:linear-gradient(var(--state-pressed),var(--state-pressed)),var(--card-fill)}
+.btn.txt{min-height:48px;padding:4px 12px;color:var(--accent);background:none;border-radius:14px}
+.btn.txt:active{background:var(--state-pressed);transform:none}
+.btn.dng{color:var(--text-on-accent);background:var(--danger)}
+.btn[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);box-shadow:none;cursor:not-allowed}
+.btn[aria-disabled="true"]:active{transform:none}
+:root[data-tier="C"] .btn.pri{background:var(--accent);box-shadow:none}
+:root[data-tier="C"] .btn.sec{background:var(--surface-solid);box-shadow:none;border:1.5px solid var(--accent)}
+:root[data-tier="C"] .btn[aria-disabled="true"]{border:0}
+.ib{display:grid;place-items:center;width:48px;height:48px;border:0;border-radius:50%;background:none;color:var(--text-primary);flex:none}
+.ib:active{background:var(--state-pressed)}
+.ib.warnic{color:var(--warning-on-container)}
+.printer{width:36px;height:36px;margin:6px;border-radius:50%;display:grid;place-items:center;background:var(--warning-container);color:var(--warning-on-container);position:relative}
+.printer.ok{background:none;color:var(--text-secondary)}
+.printer svg{position:relative}
+.cap-reason{display:flex;align-items:center;gap:6px;margin:0 0 8px;color:var(--text-secondary)}
+
+/* ---- controls: segmented, switch, stepper, meter ---- */
+.seg{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;padding:2px;border-radius:12px;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-divider)}
+.seg::before{content:"";position:absolute;top:2px;bottom:2px;left:2px;width:calc((100% - 4px)/var(--n,2));border-radius:10px;background:var(--surface-solid);
+  box-shadow:var(--elev-card),0 0 0 .5px var(--hl-bot);transform:translateX(calc(var(--i,0)*100%));transition:transform var(--motion-base) var(--ease-out)}
+:root[data-tier="C"] .seg::before{box-shadow:0 0 0 1.5px var(--border-solid)}
+.seg>button{position:relative;z-index:1;min-height:32px;padding:3px 12px;border:0;border-radius:10px;background:none;color:var(--text-secondary);font-weight:700;
+  font-size:calc(var(--fs-cap)*var(--fs));line-height:calc(var(--lh-cap)*var(--fs));white-space:nowrap}
+.seg>button[aria-pressed="true"]{color:var(--text-primary)}
+.seg.m{border-radius:14px}.seg.m::before{border-radius:12px}.seg.m>button{min-height:40px;border-radius:12px}
+.sw{position:relative;flex:none;width:52px;height:32px;padding:0;border:0;border-radius:16px;background:var(--surface-raised);box-shadow:inset 0 0 0 2px var(--border-input);transition:background var(--motion-fast) var(--ease-out)}
+.sw i{position:absolute;top:6px;left:6px;width:20px;height:20px;border-radius:50%;background:var(--border-input);display:grid;place-items:center;color:var(--text-on-accent);transition:transform var(--motion-fast) var(--ease-out),width var(--motion-fast)}
+.sw i svg{opacity:0}
+.sw[aria-checked="true"]{background:var(--accent);box-shadow:none}
+.sw[aria-checked="true"] i{transform:translateX(20px);width:20px;height:20px;background:var(--text-on-accent);color:var(--accent)}
+.sw[aria-checked="true"] i svg{opacity:1}
+.meter{height:6px;border-radius:3px;background:var(--skeleton);overflow:hidden;flex:1}
+.wc .meter{flex:none;width:100%}
+.meter b{display:block;height:100%;border-radius:3px;background:var(--accent)}
+.stp{display:flex;align-items:center;gap:8px}
+.stp .sb2{display:grid;place-items:center;width:48px;height:48px;padding:0;border:0;border-radius:50%;flex:none;transition:transform var(--motion-press) linear}
+.stp .sb2:active{transform:scale(.92)}
+.stp .minus{background:var(--surface-raised);color:var(--text-primary);box-shadow:inset 0 0 0 1px var(--border-divider)}
+.stp .plus{background:var(--accent-container);color:var(--accent)}
+:root[data-theme="sunlight"] .stp .plus{background:var(--accent);color:var(--text-on-accent)}
+:root[data-theme="sunlight"] .stp .minus{box-shadow:inset 0 0 0 1.5px var(--border-solid)}
+.stp .sb2[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);box-shadow:none}
+.stp .well{min-width:72px;min-height:48px;padding:0 8px;display:grid;place-items:center;border-radius:12px;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-input);font-variant-numeric:tabular-nums}
+.stp .well.warn{background:var(--warning-container);color:var(--warning-on-container);box-shadow:inset 0 0 0 1px var(--warning)}
+.stp .unit{color:var(--text-secondary)}
+
+/* ---- device frame (phone) ---- */
+.fit{position:relative}
+.fit>.in{transform-origin:0 0;position:absolute;left:0;top:0}
+.phone{width:380px;height:820px;padding:10px;border-radius:50px;background:#0A0E17;box-shadow:0 0 0 1.5px #2A3142,0 24px 48px -12px rgba(11,27,51,.45),0 8px 16px rgba(11,27,51,.18)}
+.screen{position:relative;width:360px;height:800px;border-radius:40px;overflow:hidden;font-size:16px;color:var(--text-primary);isolation:isolate}
+.scroller{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;scrollbar-width:none;overscroll-behavior:contain}
+.scroller::-webkit-scrollbar{display:none}
+.sbar{position:absolute;top:0;left:0;right:0;height:28px;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:0 22px 0 26px;font-size:12px;line-height:1;font-weight:700;color:var(--text-primary);pointer-events:none;font-family:var(--ff-lat)}
+.sbar::after{content:"";position:absolute;left:50%;top:9px;width:11px;height:11px;margin-left:-5px;border-radius:50%;background:#05070C;box-shadow:0 0 0 1.5px rgba(255,255,255,.08)}
+.sbar .r{display:flex;align-items:center;gap:6px}
+.batt{position:relative;width:22px;height:11px;border-radius:3px;box-shadow:inset 0 0 0 1.4px currentColor;opacity:.9}
+.batt b{position:absolute;left:2px;top:2px;bottom:2px;width:calc(var(--lv,62)*.01*(100% - 4px));border-radius:1px;background:currentColor}
+.gp{position:absolute;left:50%;bottom:6px;width:112px;height:4px;margin-left:-56px;border-radius:2px;background:var(--text-primary);opacity:.55;z-index:31;pointer-events:none}
+.tb{position:sticky;top:0;z-index:5;padding-top:28px;box-shadow:inset 0 -1px 0 var(--bar-edge);flex:none}
+:root[data-tier="C"] .tb{box-shadow:none;border-bottom:var(--card-bw) solid var(--border-solid)}
+.tb-row{display:flex;align-items:center;gap:2px;min-height:64px;padding:0 8px 0 4px}
+.tb-title{flex:1;min-width:0;padding:0 4px}
+.tb-title.long{font-size:calc(18px*var(--fs));line-height:calc(26px*var(--fs))}
+.tb-end{display:flex;align-items:center;flex:none}
+.bb{position:sticky;bottom:0;z-index:5;margin-top:auto;padding:12px 16px 16px;box-shadow:inset 0 1px 0 var(--hl-top),0 -1px 0 var(--bar-edge);flex:none}
+:root[data-tier="C"] .bb{box-shadow:none;border-top:var(--card-bw) solid var(--border-solid)}
+.bb-row{display:flex;gap:12px;align-items:center}
+.bb-row .btn{flex:1}
+.bb-row .w40{flex:0 0 38%}.bb-row .w60{flex:1}
+.bb-sum{display:flex;flex-direction:column;flex:none;min-width:96px;padding-right:4px}
+.content{flex:1;display:flex;flex-direction:column;gap:12px;padding:12px 16px 20px}
+.hdr{position:sticky;top:0;z-index:5;padding-top:28px;box-shadow:inset 0 -1px 0 var(--bar-edge);flex:none}
+:root[data-tier="C"] .hdr{box-shadow:none;border-bottom:var(--card-bw) solid var(--border-solid)}
+.hdr-row{display:flex;align-items:center;gap:12px;padding:8px 4px 8px 16px;min-height:64px}
+.avatar{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--accent-container);color:var(--accent-on-container);font-weight:700;font-size:16px;font-family:var(--ff-lat)}
+.hdr-txt{flex:1;min-width:0}
+.hdr-sub{max-height:calc(26px*var(--fs));overflow:hidden;transition:max-height var(--motion-base) var(--ease-out),opacity var(--motion-fast)}
+.screen[data-scrolled] .hdr-sub{max-height:0;opacity:0}
+.group-h{padding:8px 4px 0;color:var(--text-secondary)}
+.chips-row{display:flex;flex-wrap:wrap;gap:8px}
+.hscroll{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px 0}
+.hscroll::-webkit-scrollbar{display:none}
+.fchip{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:48px;min-height:40px;padding:4px 14px;border-radius:14px;border:0;font-weight:700;
+  font-size:calc(var(--fs-cap)*var(--fs));line-height:calc(var(--lh-cap)*var(--fs));background:var(--surface-glass);color:var(--text-secondary);box-shadow:inset 0 0 0 1px var(--border-divider)}
+.fchip[aria-pressed="true"]{background:var(--accent-container);color:var(--accent-on-container);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.fchip:active{transform:scale(.96)}
+
+/* ---- Home ---- */
+.hero{display:flex;flex-direction:column;gap:6px;padding:16px;text-align:start;border:0;width:100%;color:inherit}
+.hero-top{display:flex;align-items:center;justify-content:space-between;color:var(--text-secondary)}
+.mrow{display:flex;align-items:center;gap:10px}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+html[data-fs="200"] .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tile{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;min-height:96px;padding:12px 6px;border:0;color:var(--text-primary);text-align:center;box-shadow:none;transition:transform var(--motion-press) linear}
+.tile:active{transform:scale(.96)}
+.tile .t-label{display:block;max-width:100%;overflow-wrap:anywhere}
+.well44{position:relative;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--accent-container);color:var(--accent)}
+.badge{position:absolute;top:-4px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;display:grid;place-items:center;background:var(--danger);color:var(--text-on-accent);font-weight:700;font-size:12px;line-height:20px;box-shadow:0 0 0 2px var(--surface-solid)}
+.kpi{min-height:88px;justify-content:center;gap:2px}
+.kv{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.stk{display:grid;grid-template-columns:1fr auto auto;gap:6px 18px;align-items:baseline}
+.stk .h{color:var(--text-secondary)}
+.r{text-align:end}
+.dline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--text-secondary);padding:0 4px}
+.hr{height:1px;background:var(--border-divider);margin:8px 0}
+
+/* ---- flat list rows (long lists: no shadow, no gradient, no stroke) ---- */
+.grp{border-radius:20px;overflow:hidden;background:var(--surface-glass);box-shadow:inset 0 0 0 1px var(--hl-top)}
+:root[data-tier="C"] .grp{box-shadow:none;border:var(--card-bw) solid var(--border-solid)}
+.row{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:12px 16px;border:0;background:none;text-align:start;position:relative;color:inherit}
+.row+.row::before{content:"";position:absolute;top:0;left:16px;right:0;height:1px;background:var(--border-divider)}
+.row:active{background:var(--state-pressed)}
+.row .mid{flex:1;min-width:0}
+.row .end{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none;text-align:end}
+.ok-t{color:var(--success)}
+.srow{padding:12px 16px 14px;display:flex;flex-direction:column;gap:10px;position:relative}
+.srow+.srow::before{content:"";position:absolute;top:0;left:16px;right:0;height:1px;background:var(--border-divider)}
+.srow.on{background:var(--accent-container)}
+.srow.on .sec{color:var(--accent-on-container)}
+.srow .top{display:flex;gap:12px;align-items:center}
+.thumb{position:relative;flex:none;width:48px;height:48px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(145deg,var(--viz-1),var(--accent-pressed))}
+.thumb.l{background:linear-gradient(145deg,var(--viz-2),#B8431A)}
+.thumb.mt{background:linear-gradient(145deg,var(--viz-3),#0F7A55)}
+.pk{position:absolute;right:-7px;bottom:-7px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--accent-container);color:var(--accent-on-container);font-weight:700;font-size:11px;line-height:20px;text-align:center;box-shadow:0 0 0 2px var(--surface-solid);font-family:var(--ff-lat)}
+.stepline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+html[data-fs="200"] .stepline{flex-direction:column;align-items:flex-start}
+.warnline{display:flex;gap:6px;align-items:flex-start;color:var(--warning-on-container);background:var(--warning-container);border-radius:12px;padding:6px 10px}
+
+/* ---- visit / geo ---- */
+.geo{display:flex;gap:14px;padding:16px;border-radius:20px;align-items:center}
+.geo.ok{background:var(--success-container);color:var(--success-on-container)}
+.geo.warn{background:var(--warning-container);color:var(--warning-on-container)}
+.geo .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.geo svg.rg{flex:none}
+.geo .btn.txt{color:inherit;padding:0 8px;min-height:40px;margin-inline-start:-8px;text-decoration:underline;text-underline-offset:3px}
+.rows2{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.radio{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 16px;border-radius:16px;width:100%;border:0;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-input);text-align:start}
+.radio[aria-checked="true"]{background:var(--accent-container);box-shadow:inset 0 0 0 2px var(--accent)}
+.radio .dot{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 2px var(--border-input);display:grid;place-items:center;flex:none;color:var(--text-on-accent)}
+.radio[aria-checked="true"] .dot{background:var(--accent);box-shadow:none}
+.fld{display:flex;flex-direction:column;gap:6px}
+.inp{min-height:56px;width:100%;padding:8px 14px;border-radius:12px;border:0;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-input);color:var(--text-primary);font-variant-numeric:tabular-nums}
+.inp:focus-visible{outline-offset:0}
+
+/* ---- paper slip (print preview). Physical paper, not a UI surface ---- */
+.paper{position:relative;width:236px;margin:0 auto;padding:16px 14px 18px;background:var(--paper);color:var(--paper-ink);border-radius:6px 6px 0 0;
+  font-size:12px;line-height:1.55;box-shadow:0 1px 2px rgba(11,27,51,.12),0 8px 24px -4px rgba(11,27,51,.28);font-family:var(--ff)}
+.paper::after{content:"";position:absolute;left:0;right:0;top:100%;height:8px;
+  background:linear-gradient(135deg,var(--paper) 50%,transparent 50%) 0 0/12px 8px,linear-gradient(225deg,var(--paper) 50%,transparent 50%) 0 0/12px 8px;filter:drop-shadow(0 2px 2px rgba(11,27,51,.12))}
+.paper .c{text-align:center}.paper b{font-weight:700}
+.paper .ln{border:0;border-top:1.5px dashed rgba(22,24,29,.55);margin:6px 0}
+.paper .g{display:grid;grid-template-columns:1fr auto auto;gap:0 10px}
+.paper .g.t{grid-template-columns:1fr auto}
+.paper .big{font-size:15px;font-weight:700}
+.paper .dup{margin-top:6px;text-align:center;font-weight:700;border:1.5px solid var(--paper-ink);padding:2px 0;border-radius:4px}
+
+/* ---- overlays (sheet, dialog) ---- */
+.ov{position:absolute;inset:0;z-index:40;pointer-events:none}
+.ov.open{pointer-events:auto}
+.scrim{position:absolute;inset:0;background:var(--surface-scrim);opacity:0;transition:opacity var(--motion-base) var(--ease-out)}
+.ov.open .scrim{opacity:1}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:85%;overflow:auto;scrollbar-width:none;border-radius:28px 28px 0 0;padding:8px 16px 28px;
+  background:linear-gradient(var(--vib),var(--vib)),var(--fill-strong);-webkit-backdrop-filter:var(--bf-sheet);backdrop-filter:var(--bf-sheet);
+  box-shadow:var(--elev-sheet);transform:translateY(106%);transition:transform var(--motion-sheet) var(--ease-spring);display:flex;flex-direction:column;gap:12px}
+:root[data-tier="C"] .sheet{border:var(--card-bw) solid var(--border-solid);border-bottom:0}
+.ov.open .sheet{transform:none}
+.sheet .handle{align-self:center;width:36px;height:4px;border-radius:2px;background:var(--text-secondary);opacity:.7;margin:4px 0 4px}
+.dlg{position:absolute;left:24px;right:24px;top:50%;padding:24px;border-radius:28px;background:var(--fill-dialog);box-shadow:var(--elev-dialog);display:flex;flex-direction:column;gap:12px;
+  transform:translateY(-50%) scale(.94);opacity:0;transition:transform var(--motion-base) var(--ease-out),opacity var(--motion-base) var(--ease-out)}
+:root[data-tier="C"] .dlg{border:var(--card-bw) solid var(--border-solid)}
+.ov.open .dlg{transform:translateY(-50%);opacity:1}
+.dlg-act{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.okdisc{width:96px;height:96px;border-radius:50%;background:var(--success-container);color:var(--success);display:grid;place-items:center;align-self:center}
+.empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:24px 16px}
+.empty .ill{width:96px;height:96px;border-radius:50%;background:var(--accent-container);color:var(--accent);display:grid;place-items:center}
+
+/* ---- tasks ---- */
+.task{display:flex;flex-direction:column;gap:8px;padding:16px;min-height:120px}
+.task .hd{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.task .ft{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.task .due{display:flex;align-items:center;gap:6px;color:var(--text-secondary)}
+.task.done .t-body{color:var(--text-secondary)}
+
+/* ---- gallery page ---- */
+.wrap{max-width:1480px;margin:0 auto;padding:0 24px}
+.ctl{position:sticky;top:0;z-index:100;box-shadow:inset 0 -1px 0 var(--bar-edge)}
+:root[data-tier="C"] .ctl{box-shadow:none;border-bottom:var(--card-bw) solid var(--border-solid)}
+.ctl .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;padding-top:10px;padding-bottom:10px}
+.brand{display:flex;align-items:center;gap:10px;margin-inline-end:auto;min-width:0}
+.mark{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(180deg,var(--accent-hi),var(--accent));color:var(--text-on-accent);box-shadow:0 4px 10px -2px color-mix(in srgb,var(--accent) 40%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+.cg{display:flex;align-items:center;gap:8px}
+.cg>.lb{color:var(--text-secondary)}
+.cg .seg>button{min-height:34px;padding:3px 13px}
+.swl{display:flex;align-items:center;gap:8px;border:0;background:none;padding:0}
+.hint{color:var(--text-secondary)}
+.intro{padding:34px 0 8px}
+.intro h1{font-size:clamp(30px,4.2vw,52px);line-height:1.18;font-weight:700}
+html[data-lang="bn"] .intro h1{line-height:1.4}
+.intro p{max-width:760px;margin-top:10px}
+.nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 6px}
+.nav a{text-decoration:none}
+.sechead{display:flex;align-items:baseline;gap:14px;margin:44px 0 18px;flex-wrap:wrap}
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,380px));gap:44px 36px;justify-content:center}
+figure{margin:0}
+figcaption{margin-top:14px;max-width:380px;display:flex;flex-direction:column;gap:2px}
+.fx.in{animation:rise var(--motion-base) var(--ease-out) both}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.eff{display:inline-flex;align-items:center;gap:6px}
+footer.foot{margin:56px 0 40px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+footer.foot .card{padding:18px}
+footer.foot ul{margin:8px 0 0;padding-inline-start:18px}
+.sw-dot{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;margin-inline-end:6px;box-shadow:inset 0 0 0 1px var(--border-divider)}
+.seg[aria-disabled="true"]{opacity:.55}
+
+/* ---- desktop (web) frames ---- */
+.win{width:1366px;border-radius:16px;overflow:hidden;background:#0A0E17;box-shadow:0 0 0 1.5px #2A3142,0 28px 56px -14px rgba(11,27,51,.5),0 8px 18px rgba(11,27,51,.18)}
+.win-bar{height:40px;display:flex;align-items:center;gap:8px;padding:0 14px;background:#161C28;color:#9AA7BD;font-size:12px;font-family:var(--ff-lat)}
+.win-bar i{width:12px;height:12px;border-radius:50%;display:block}
+.win-url{margin:0 auto;min-width:360px;padding:4px 14px;border-radius:8px;background:#0A0E17;text-align:center}
+.web{position:relative;width:1366px;height:768px;overflow:hidden;color:var(--text-primary);isolation:isolate;display:flex}
+.rail{position:relative;z-index:6;flex:none;width:264px;height:100%;padding:12px;display:flex;flex-direction:column;gap:2px;overflow:hidden;
+  background:linear-gradient(var(--vib),var(--vib)),var(--fill-strong);box-shadow:inset -1px 0 0 var(--bar-edge)}
+:root[data-tier="C"] .rail{box-shadow:none;border-right:var(--card-bw) solid var(--border-solid)}
+.rail .br{display:flex;align-items:center;gap:10px;height:44px;padding:0 6px;margin-bottom:6px}
+.rail .gl{padding:14px 12px 6px;color:var(--text-secondary)}
+.nv{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:12px;color:var(--text-secondary);text-decoration:none;border:0;background:none;width:100%;text-align:start;font-size:calc(15px*var(--fs));line-height:1.3;font-weight:400}
+.nv:hover{background:var(--state-pressed)}
+.nv[aria-current="page"]{background:var(--accent-container);color:var(--accent-on-container);font-weight:700}
+.wmain{position:relative;flex:1;min-width:0;height:100%}
+.wscroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--border-input) transparent}
+.wtop{position:sticky;top:0;z-index:5;height:56px;display:flex;align-items:center;gap:12px;padding:0 24px;box-shadow:inset 0 -1px 0 var(--bar-edge)}
+:root[data-tier="C"] .wtop{box-shadow:none;border-bottom:var(--card-bw) solid var(--border-solid)}
+.wtop .sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-divider);color:var(--text-secondary)}
+.kbd{margin-inline-start:18px;padding:1px 6px;border-radius:6px;font-size:11px;font-family:var(--ff-lat);box-shadow:inset 0 0 0 1px var(--border-input);color:var(--text-secondary)}
+.wpage{padding:24px 32px 40px;display:flex;flex-direction:column;gap:20px}
+.wh{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.wgrid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:20px}
+.s3{grid-column:span 3}.s4{grid-column:span 4}.s6{grid-column:span 6}.s8{grid-column:span 8}.s12{grid-column:span 12}
+html[data-fs="130"] .web .s3{grid-column:span 4}html[data-fs="130"] .web .s4{grid-column:span 6}html[data-fs="130"] .web .s6,html[data-fs="130"] .web .s8{grid-column:span 12}
+html[data-fs="200"] .web .s3{grid-column:span 6}html[data-fs="200"] .web .s4,html[data-fs="200"] .web .s6,html[data-fs="200"] .web .s8{grid-column:span 12}
+.wc{padding:20px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.wc.hero6{min-height:168px}
+.wc .lab{color:var(--text-secondary)}
+.dchip{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:2px 10px;border-radius:12px;font-weight:700;font-size:calc(var(--fs-cap)*var(--fs));line-height:calc(var(--lh-cap)*var(--fs))}
+.wbtn{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:4px 18px;border:0;border-radius:999px;font-weight:700;font-size:calc(15px*var(--fs));background:var(--card-fill);color:var(--text-primary);box-shadow:0 0 0 1px var(--hl-bot),inset 0 1px 0 var(--hl-top);transition:transform var(--motion-press) linear}
+.wbtn:hover{background:linear-gradient(var(--state-pressed),var(--state-pressed)),var(--card-fill)}
+.wbtn:active{transform:scale(.97)}
+:root[data-tier="C"] .wbtn{background:var(--surface-solid);box-shadow:none;border:var(--card-bw) solid var(--border-solid)}
+.wbtn.pri{color:var(--text-on-accent);background:linear-gradient(180deg,var(--accent-hi),var(--accent));box-shadow:0 4px 10px color-mix(in srgb,var(--accent) 28%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+.wbtn.pri:hover{background:linear-gradient(180deg,var(--accent),var(--accent-pressed))}
+:root[data-tier="C"] .wbtn.pri{background:var(--accent);box-shadow:none;border:0}
+.wbtn[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);box-shadow:none;cursor:not-allowed;border:0}
+.spark{margin-inline-start:auto;flex:none}
+.rk{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;align-items:center}
+.rk .bar-t{position:relative;height:16px}
+.rk .bar-t i{position:absolute;left:0;top:0;bottom:0;width:calc((100% - 92px)*var(--r));border-radius:2px 4px 4px 2px;background:var(--viz-1)}
+.rk .bar-t b{position:absolute;top:50%;transform:translateY(-50%);font-weight:700;font-size:calc(13px*var(--fs));white-space:nowrap;font-variant-numeric:tabular-nums}
+.att{display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;border-radius:12px;text-decoration:none;color:inherit}
+.att:hover{background:var(--state-pressed)}
+.att .n{margin-inline-start:auto;font-weight:700;font-variant-numeric:tabular-nums}
+.attention{display:flex;flex-direction:column}
+.leg{display:flex;gap:16px;flex-wrap:wrap;color:var(--text-secondary)}
+.leg i{display:inline-block;vertical-align:-1px;margin-inline-end:6px}
+.mapcard{position:relative;height:360px;overflow:hidden;padding:0}
+.mapcard svg.map{position:absolute;inset:0;width:100%;height:100%}
+.plate{position:absolute;left:20px;bottom:20px;display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:20px;
+  background:linear-gradient(var(--vib),var(--vib)),var(--fill-strong);-webkit-backdrop-filter:var(--bf-bar);backdrop-filter:var(--bf-bar);box-shadow:var(--elev-sheet-web),inset 0 1px 0 var(--hl-top)}
+:root[data-tier="C"] .plate{border:var(--card-bw) solid var(--border-solid)}
+.tip{position:absolute;pointer-events:none;z-index:3;padding:8px 10px;border-radius:12px;background:var(--fill-dialog);box-shadow:var(--elev-sheet-web);display:none;white-space:nowrap}
+:root[data-tier="C"] .tip{border:var(--card-bw) solid var(--border-solid)}
+
+/* ---- geofence page ---- */
+.gmap{position:relative;flex:1;min-height:0;overflow:hidden}
+.gmap>svg{position:absolute;inset:0}
+.gpanel{position:absolute;top:16px;right:16px;bottom:16px;width:380px;border-radius:28px;display:flex;flex-direction:column;overflow:hidden;z-index:4;
+  background:linear-gradient(var(--vib),var(--vib)),var(--fill-strong);-webkit-backdrop-filter:var(--bf-bar);backdrop-filter:var(--bf-bar);box-shadow:var(--elev-sheet-web),inset 0 1px 0 var(--hl-top)}
+:root[data-tier="C"] .gpanel{border:var(--card-bw) solid var(--border-solid)}
+.gp-body>*{flex:none}
+.gp-body{flex:1;overflow-y:auto;padding:18px 20px 8px;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:var(--border-input) transparent}
+.gp-foot{padding:12px 20px 16px;display:flex;flex-direction:column;gap:8px;box-shadow:inset 0 1px 0 var(--bar-edge)}
+.step{display:flex;align-items:center;gap:8px;color:var(--text-secondary)}
+.step b{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--accent-container);color:var(--accent-on-container);font-size:13px;line-height:1}
+.sel{min-height:40px;width:100%;padding:4px 12px;border-radius:12px;border:0;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-input);appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%2366768F' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+html[dir="rtl"] .sel{background-position:left 12px center}
+.range{width:100%;height:24px;accent-color:var(--accent);margin:0}
+.nf{width:92px;min-height:40px;padding:4px 10px;border-radius:12px;border:0;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-input);font-variant-numeric:tabular-nums;text-align:end}
+.wif{display:flex;height:8px;gap:2px;border-radius:999px;overflow:hidden}
+.wif i{display:block;height:100%}
+.ta{min-height:76px;width:100%;padding:10px 12px;border-radius:12px;border:0;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-input);resize:none}
+.toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,16px);z-index:8;padding:12px 18px;border-radius:18px;background:var(--fill-dialog);box-shadow:var(--elev-dialog);opacity:0;pointer-events:none;
+  transition:opacity var(--motion-base) var(--ease-out),transform var(--motion-base) var(--ease-out);max-width:620px;display:flex;gap:10px;align-items:center}
+:root[data-tier="C"] .toast{border:var(--card-bw) solid var(--border-solid)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---- reduced motion: fades only, no transforms, no animation ---- */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:.12s!important;animation:none!important;scroll-behavior:auto!important}
+  .btn:active,.tile:active,.fchip:active,.stp .sb2:active,.wbtn:active{transform:none}
+  .sheet{transform:none;opacity:0}.ov.open .sheet{opacity:1}
+  .dlg{transform:translateY(-50%)}
+  .seg::before{transition:none}
+}
+@media (max-width:760px){
+  .wrap{padding:0 12px}
+  .ctl .wrap{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .ctl .cg,.ctl .brand{flex:none}
+  .gallery{grid-template-columns:minmax(0,1fr)}
+}
+@media print{.ctl{display:none}}
+</style>
+</head>
+<body>
+<div class="page-bg" aria-hidden="true"></div>
+
+<header class="ctl bar" role="banner">
+  <div class="wrap">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L12 4.5 19 19"/><path d="M8.2 14h7.6"/></svg></span>
+      <div style="min-width:0"><div class="t-heading" style="--fs:1">Aron · Calm Glass</div><div class="t-cap sec" style="--fs:1" data-bn="ডিজাইন প্রিভিউ · টোকেন v1" data-en="Design preview · tokens v1"></div></div>
+    </div>
+    <div class="cg" role="group" aria-labelledby="l-theme">
+      <span class="lb t-label" id="l-theme" style="--fs:1" data-bn="থিম" data-en="Theme"></span>
+      <div class="seg" id="g-theme" style="--n:3;--i:0">
+        <button type="button" data-k="theme" data-v="light" aria-pressed="true" data-bn="আলো" data-en="Light"></button>
+        <button type="button" data-k="theme" data-v="dark" aria-pressed="false" data-bn="অন্ধকার" data-en="Dark"></button>
+        <button type="button" data-k="theme" data-v="sunlight" aria-pressed="false" data-bn="রোদ" data-en="Sunlight" title="High contrast, forces tier C"></button>
+      </div>
+    </div>
+    <div class="cg" role="group" aria-labelledby="l-tier">
+      <span class="lb t-label" id="l-tier" style="--fs:1" data-bn="গ্লাস স্তর" data-en="Glass tier"></span>
+      <div class="seg" id="g-tier" style="--n:3;--i:1">
+        <button type="button" data-k="tier" data-v="A" aria-pressed="false" title="A: real blur on bars and sheets">A</button>
+        <button type="button" data-k="tier" data-v="B" aria-pressed="true" title="B: glass-lite, no blur (field default)">B</button>
+        <button type="button" data-k="tier" data-v="C" aria-pressed="false" title="C: solid">C</button>
+      </div>
+    </div>
+    <div class="cg">
+      <button type="button" class="sw" id="sw-off" role="switch" aria-checked="false" data-act="off" aria-labelledby="l-off"><i><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i></button>
+      <span class="t-label" id="l-off" style="--fs:1;cursor:pointer" data-act="off" data-bn="অফলাইন চিপ" data-en="Offline chip"></span>
+    </div>
+    <div class="cg" role="group" aria-labelledby="l-fs">
+      <span class="lb t-label" id="l-fs" style="--fs:1" data-bn="লেখার মাপ" data-en="Text size"></span>
+      <div class="seg" id="g-fs" style="--n:3;--i:0">
+        <button type="button" data-k="fs" data-v="100" aria-pressed="true">100%</button>
+        <button type="button" data-k="fs" data-v="130" aria-pressed="false">130%</button>
+        <button type="button" data-k="fs" data-v="200" aria-pressed="false">200%</button>
+      </div>
+    </div>
+    <div class="cg" role="group" aria-label="Language">
+      <div class="seg" id="g-lang" style="--n:2;--i:0">
+        <button type="button" data-k="lang" data-v="bn" aria-pressed="true" lang="bn">বাংলা</button>
+        <button type="button" data-k="lang" data-v="en" aria-pressed="false" lang="en">English</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="intro">
+    <h1 id="h1"></h1>
+    <p class="t-body sec" id="lead"></p>
+    <p class="t-cap sec eff" id="effnote" role="status" style="margin-top:10px"></p>
+    <nav class="nav" id="nav" aria-label="Frames"></nav>
+  </section>
+  <div class="sechead"><h2 class="t-title" id="h-ph"></h2><span class="t-cap sec" id="s-ph"></span></div>
+  <div class="gallery" id="phones"></div>
+  <div class="sechead"><h2 class="t-title" id="h-web"></h2><span class="t-cap sec" id="s-web"></span></div>
+  <div id="desk" style="display:flex;flex-direction:column;gap:56px"></div>
+  <footer class="foot" id="foot"></footer>
+</main>
+
+<script>
+'use strict';
+/* ===================== helpers ===================== */
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const root=document.documentElement;
+const st={theme:'light',tier:'B',fs:'100',lang:'bn',off:false};
+const BND='০১২৩৪৫৬৭৮৯';
+const isBn=()=>st.lang==='bn';
+const dg=s=>String(s).replace(/\d/g,c=>BND[c]);
+const t=(b,e)=>isBn()?dg(b):e;            /* bilingual string; Bangla written with ASCII digits, shown as Bengali digits */
+const n=v=>isBn()?dg(v):String(v);        /* localise a number or string */
+const fmt=v=>n(v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
+const mo=(v,c='')=>`<span class="m num ${c}">${fmt(v)}<i class="tk">৳</i></span>`;
+const neg=v=>`<span class="m num">−${fmt(v)}<i class="tk">৳</i></span>`;
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const asc=s=>String(s).replace(/[\u09E6-\u09EF]/g,c=>c.charCodeAt(0)-0x09E6);
+const rng=s=>()=>((s=(s*1664525+1013904223)>>>0)/4294967296);
+
+/* ===================== icons (24 grid, 1.8 stroke) ===================== */
+const CLOUD='<path d="M7 18a4.5 4.5 0 0 1-.4-8.8A6 6 0 0 1 18.2 10.2 4 4 0 0 1 17 18z"/>';
+const PRN='<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v6H7z"/>';
+const IC={
+ back:'<path d="M15 5l-7 7 7 7"/>',chevR:'<path d="M9 5l7 7-7 7"/>',chevD:'<path d="M5 9l7 7 7-7"/>',chevU:'<path d="M5 15l7-7 7 7"/>',
+ check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',plus:'<path d="M12 5v14M5 12h14"/>',minus:'<path d="M5 12h14"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',
+ tune:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+ cloud:CLOUD,cloudOff:CLOUD+'<path d="M4 4l16 16"/>',
+ sync:'<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 20v-4h-4"/>',
+ upload:'<path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/>',
+ warn:'<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.6v.1"/>',
+ printer:PRN,printerOff:PRN+'<path d="M3.5 3.5l17 17"/>',
+ search:'<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+ pin:'<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/>',
+ clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+ flag:'<path d="M5 21V4M5 5h11l-2 3.5 2 3.5H5"/>',
+ calendar:'<rect x="4" y="5.5" width="16" height="14.5" rx="3"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+ store:'<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9"/><path d="M5.5 12v8h13v-8"/><path d="M10 20v-4.5h4V20"/>',
+ box:'<path d="M12 3l8 4.2v9.6L12 21l-8-4.2V7.2z"/><path d="M4 7.2l8 4.3 8-4.3M12 11.5V21"/>',
+ bag:'<path d="M5.5 8h13l-1 12h-11z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>',
+ receipt:'<path d="M6 3.5h12V21l-3-1.8-3 1.8-3-1.8L6 21z"/><path d="M9 8h6M9 12h6"/>',
+ chart:'<path d="M5.5 20v-6M12 20V6M18.5 20v-9"/><path d="M3 20.5h18"/>',
+ send:'<path d="M21 4L10.5 14.5"/><path d="M21 4l-6.5 17-4-6.5L4 10.5z"/>',
+ book:'<path d="M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5z"/><path d="M12 6.5v13"/>',
+ tasks:'<rect x="4" y="3.5" width="16" height="17" rx="3"/><path d="M8 9.5l1.5 1.5L12 8.5M14 10h3M8 15.5l1.5 1.5 2.5-2.5M14 16h3"/>',
+ route:'<circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/>',
+ gauge:'<path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="M12 13.5l4-4.5"/><circle cx="12" cy="14" r="1.2"/>',
+ userClock:'<circle cx="10" cy="8" r="3.5"/><path d="M3.5 20a6.5 6.5 0 0 1 10-5.5"/><circle cx="17.5" cy="17" r="4"/><path d="M17.5 15v2l1.3.8"/>',
+ info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.1"/>',
+ lock:'<rect x="5" y="10.5" width="14" height="10" rx="3"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
+ sun:'<circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>',
+ moon:'<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
+ map:'<path d="M9 5L3.5 7v13L9 18l6 2 5.5-2V5L15 7z"/><path d="M9 5v13M15 7v13"/>',
+ grid:'<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
+ users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M17.5 14a5 5 0 0 1 4 5"/>',
+ phone:'<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>',
+ shield:'<path d="M12 3l7.5 3v5.5c0 4.5-3 8-7.5 9.5-4.5-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
+ file:'<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
+ bell:'<path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/>',
+ circle:'<circle cx="12" cy="12" r="8.5"/>',checkCircle:'<circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.7 2.7 5-5.4"/>',
+ camera:'<path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.3-2h5.4L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.5"/>',
+ login:'<path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M4 12h10M10 8l4 4-4 4"/>',
+ download:'<path d="M12 4v12M7 11l5 5 5-5"/><path d="M5 20h14"/>',
+ filter:'<path d="M4 6h16M7 12h10M10 18h4"/>',
+ tri:'<path d="M12 6l7 11H5z" fill="currentColor" stroke="none"/>',triDown:'<path d="M12 18L5 7h14z" fill="currentColor" stroke="none"/>',
+ dot:'<circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/>',
+ zap:'<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
+ eye:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>'
+};
+const ic=(k,s=24,c='')=>`<svg class="ic ${c}" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
+
+/* ===================== shared builders ===================== */
+const chip=(cls,icon,label)=>`<span class="chip ${cls}">${icon?ic(icon,16):''}<span class="lbl">${label}</span></span>`;
+const syncChip=full=>st.off
+  ?chip('c-off','cloudOff',full?t('অফলাইন · 3 অপেক্ষায়','Offline · 3 waiting'):t('অফলাইন','Offline'))
+  :chip('c-ok','check',full?t('সিঙ্ক হয়েছে 10:42','Synced 10:42'):t('সিঙ্ক','Synced'));
+const chipBtn=full=>`<button class="chipbtn" data-act="sync" aria-label="${t('সিঙ্কের অবস্থা','Sync status')}">${syncChip(full)}</button>`;
+const printerBtn=ok=>`<button class="ib" data-act="noop" aria-label="${ok?t('প্রিন্টার কানেক্টেড','Printer connected'):t('প্রিন্টার কানেক্ট করুন','Connect printer')}"><span class="printer ${ok?'ok':''}">${ic(ok?'printer':'printerOff',20)}</span></button>`;
+const topbar=(title,o={})=>`<header class="bar tb"><div class="tb-row">
+  ${o.back===false?'<span style="width:12px"></span>':`<button class="ib" data-act="noop" aria-label="${t('পেছনে','Back')}">${ic('back')}</button>`}
+  <h2 class="tb-title t-title ${o.long?'long':''}">${title}</h2>
+  <div class="tb-end">${o.printer!==undefined?printerBtn(o.printer):''}${chipBtn(false)}</div></div></header>`;
+const bbar=(inner,reason)=>`<footer class="bar bb">${reason?`<p class="cap-reason t-cap">${ic('info',16)}<span>${reason}</span></p>`:''}<div class="bb-row">${inner}</div></footer>`;
+const pri=(label,act,o={})=>`<button class="btn pri ${o.cls||''}" data-act="${act}" ${o.d?'aria-disabled="true"':''} ${o.attrs||''}>${o.icon?ic(o.icon,22):''}${label}</button>`;
+const sec=(label,act,o={})=>`<button class="btn sec ${o.cls||''}" data-act="${act}" ${o.d?'aria-disabled="true"':''} ${o.attrs||''}>${o.icon?ic(o.icon,22):''}${label}</button>`;
+const txt=(label,act,o={})=>`<button class="btn txt ${o.cls||''}" data-act="${act}" ${o.attrs||''}>${label}${o.icon?ic(o.icon,20):''}</button>`;
+const seg=(id,items,cur,act,m=true)=>`<div class="seg ${m?'m':''}" style="--n:${items.length};--i:${Math.max(0,items.findIndex(i=>i[0]===cur))}" role="group" id="${id}">${items.map(i=>`<button type="button" data-act="${act}" data-v="${i[0]}" aria-pressed="${i[0]===cur}">${i[1]}</button>`).join('')}</div>`;
+const sheet=(inner,id)=>`<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true"><div class="handle"></div>${inner}</div>`;
+const dialog=inner=>`<div class="scrim" data-act="close"></div><div class="dlg" role="alertdialog" aria-modal="true">${inner}</div>`;
+
+/* ===================== frames ===================== */
+const FR=[];                       /* filled by the screen files: {id,kind,t:[bn,en],ref,note:[bn,en],draw(el),ov(fid)} */
+const S={ov:{}};                   /* per-frame overlay state and interactive state */
+function statusBar(){
+  const bars='<svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true"><g fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1" '+(st.off?'opacity=".3"':'')+'/><rect x="4.3" y="5.5" width="3" height="6.5" rx="1" '+(st.off?'opacity=".3"':'')+'/><rect x="8.6" y="3" width="3" height="9" rx="1" '+(st.off?'opacity=".3"':'')+'/><rect x="12.9" y="0" width="3" height="12" rx="1" '+(st.off?'opacity=".3"':'')+'/></g></svg>';
+  return `<span>10:42</span><span class="r">${st.off?'<span style="font-size:11px">'+(isBn()?'×':'×')+'</span>':'<span style="font-size:11px">4G</span>'}${bars}<span class="batt" style="--lv:62"><b></b></span></span>`;
+}
+function phoneShell(f){
+  return `<figure class="fx in" id="fx-${f.id}" data-fid="${f.id}" style="min-width:0">
+   <div class="fit" style="width:380px;height:820px"><div class="in"><div class="phone" role="group" aria-label="${f.t[1]}">
+    <div class="screen" id="sc-${f.id}"><div class="pbg"></div><div class="scroller"></div><div class="sbar"></div><div class="gp"></div><div class="ov"></div></div>
+   </div></div></div>
+   <figcaption></figcaption></figure>`;
+}
+function webShell(f){
+  return `<figure class="fx in" id="fx-${f.id}" data-fid="${f.id}" style="min-width:0">
+   <div class="fit" style="width:1366px;height:808px"><div class="in"><div class="win">
+    <div class="win-bar"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i><span class="win-url">aron.example${f.path}</span></div>
+    <div class="web" id="sc-${f.id}"><div class="pbg w"></div></div>
+   </div></div></div>
+   <figcaption></figcaption></figure>`;
+}
+function caption(f){
+  return `<div class="t-heading">${f.t[isBn()?0:1]}</div><div class="t-cap sec">${f.note[isBn()?0:1]}</div><div class="t-cap sec" style="opacity:.9;font-family:var(--ff-lat)">${f.ref}</div>`;
+}
+function drawFrame(f){
+  const el=$('#sc-'+f.id); if(!el) return;
+  if(f.kind==='phone'){
+    const sc=$('.scroller',el),top=sc.scrollTop;
+    sc.innerHTML=f.draw();
+    sc.scrollTop=top;
+    $('.sbar',el).innerHTML=statusBar();
+    const ov=$('.ov',el),o=S.ov[f.id];
+    if(o){ov.innerHTML=(o.kind==='sync'?syncSheet():f.ov(o.kind));requestAnimationFrame(()=>requestAnimationFrame(()=>ov.classList.add('open')));}
+    else{ov.classList.remove('open');ov.innerHTML='';}
+  }else{
+    f.draw(el);
+  }
+  const cp=$('#fx-'+f.id+' figcaption');cp.innerHTML=caption(f);
+}
+function drawAll(){FR.forEach(drawFrame);}
+function openOv(fid,kind){
+  const f=FR.find(x=>x.id===fid),el=$('#sc-'+fid),ov=$('.ov',el);
+  S.ov[fid]={kind};ov.classList.remove('open');ov.innerHTML=(kind==='sync'?syncSheet():f.ov(kind));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>ov.classList.add('open')));
+}
+function closeOv(fid){
+  const ov=$('#sc-'+fid+' .ov');ov.classList.remove('open');delete S.ov[fid];
+  setTimeout(()=>{if(!S.ov[fid])ov.innerHTML='';},340);
+}
+function syncSheet(){
+  return sheet(`<h3 class="t-title">${t('সিঙ্কের অবস্থা','Sync status')}</h3>
+   <div class="mrow">${syncChip(true)}</div>
+   <div class="card flat pad" style="display:flex;flex-direction:column;gap:8px">
+    <div class="kv"><span class="sec t-body">${t('শেষ সিঙ্ক','Last sync')}</span><b class="t-bodyS num">${n('10:42')}</b></div>
+    <div class="kv"><span class="sec t-body">${t('অপেক্ষায় থাকা রেকর্ড','Records waiting')}</span><b class="t-bodyS num">${n(st.off?3:0)}</b></div>
+    <div class="kv"><span class="sec t-body">${t('ফোনের জায়গা','Free space')}</span><b class="t-bodyS num">${n('1.2')} ${t('জিবি','GB')}</b></div>
+   </div>
+   <p class="t-body sec">${st.off?t('ইন্টারনেট নেই, কিন্তু বিক্রয় চলবে। সংযোগ পেলে নিজে থেকেই সিঙ্ক হবে।','No connection, and selling continues. Sync starts by itself when the signal is back.'):t('সব তথ্য সিঙ্ক হয়েছে।','Everything is synced.')}</p>
+   ${sec(t('এখন সিঙ্ক করুন','Sync now'),'close',{d:st.off,cls:'tall',icon:'sync'})}
+   ${st.off?`<p class="cap-reason t-cap" style="margin-top:-4px">${ic('info',16)}<span>${t('ইন্টারনেট পেলে চালু হবে','Available when online')}</span></p>`:''}`);
+}
+
+/* ===================== controls ===================== */
+function setSeg(id,vals,cur){const g=$('#'+id);if(!g)return;g.style.setProperty('--i',Math.max(0,vals.indexOf(cur)));$$('button',g).forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===cur)));}
+function applyStatic(){
+  $$('[data-bn]').forEach(e=>{e.textContent=isBn()?e.dataset.bn:e.dataset.en;});
+  $('#h1').textContent=isBn()?'Calm Glass: শান্ত, স্বচ্ছ, দ্রুত':'Calm Glass: calm, clear, fast';
+  $('#lead').textContent=isBn()
+    ?'Aron-এর ফিল্ড অ্যাপ ও ওয়েব ড্যাশবোর্ড, আসল টোকেন দিয়ে আঁকা (docs/design/tokens.md)। ওপরে থিম, গ্লাস স্তর, লেখার মাপ ও ভাষা বদলান; ফ্রেমের ভেতরে ট্যাপ করুন, টগল করুন, স্লাইডার টানুন।'
+    :'The Aron field app and web dashboard, drawn with the real tokens (docs/design/tokens.md). Change theme, glass tier, text size and language above; tap, toggle and drag inside the frames.';
+  $('#h-ph').textContent=isBn()?'SR অ্যাপ · ৯টি স্ক্রিন':'SR app · nine screens';
+  $('#s-ph').textContent=isBn()?'৩৬০ × ৮০০ dp · Galaxy A06 আকার':'360 × 800 dp · Galaxy A06 size';
+  $('#h-web').textContent=isBn()?'ওয়েব · ড্যাশবোর্ড ও অ্যাডমিন':'Web · dashboard and admin';
+  $('#s-web').textContent=isBn()?'১৩৬৬ × ৭৬৮ · অফিস ল্যাপটপ':'1366 × 768 · office laptop';
+  const eff=st.theme==='sunlight'?'C':st.tier;
+  $('#effnote').innerHTML=(st.theme==='sunlight'?ic('sun',16)+' ':'')+
+    (isBn()
+      ?`এখন: ${st.theme==='light'?'আলো':st.theme==='dark'?'অন্ধকার':'রোদ (হাই কনট্রাস্ট)'} · স্তর ${eff}${st.theme==='sunlight'?' (রোদে সবসময় C)':eff==='A'?' (বার ও শিটে আসল ব্লার)':eff==='B'?' (ফিল্ডের ডিফল্ট, ব্লার নেই)':' (সলিড)'} · লেখা ${dg(st.fs)}%`
+      :`Now: ${st.theme==='light'?'Light':st.theme==='dark'?'Dark':'Sunlight (high contrast)'} · tier ${eff}${st.theme==='sunlight'?' (sunlight always uses C)':eff==='A'?' (real blur on bars and sheets)':eff==='B'?' (field default, no blur)':' (solid)'} · text ${st.fs}%`);
+  const nav=$('#nav');nav.innerHTML=FR.map(f=>`<a class="fchip" href="#fx-${f.id}" style="min-height:36px;text-decoration:none">${f.short[isBn()?0:1]}</a>`).join('');
+  document.title='Aron Calm Glass Preview';
+  footer();
+}
+function footer(){
+  const L=(b,e)=>isBn()?b:e;
+  $('#foot').innerHTML=`
+  <div class="card"><h3 class="t-heading">${L('তিনটি গ্লাস স্তর','Three glass tiers')}</h3>
+   <ul class="t-cap sec"><li><b>A</b> ${L('বার ১৬ dp ও শিট ২৮ dp আসল ব্লার, ৮৬% ফিল; SR বিল্ডে নেই','real blur 16 dp on bars and 28 dp on sheets, 86% fill; not compiled into the SR build')}</li>
+   <li><b>B</b> ${L('কার্ড একই, বার ও শিট ৯২% অ্যাক্রিলিক, ব্লার নেই; মাঠের ডিফল্ট','same cards, bars and sheets 92% opaque, no blur; the field default')}</li>
+   <li><b>C</b> ${L('সলিড, ১ dp বর্ডার, ছায়া নেই; রোদ থিমে বাধ্যতামূলক','solid, 1 dp border, no shadows; forced by the sunlight theme')}</li></ul></div>
+  <div class="card"><h3 class="t-heading">${L('যা সত্যি, যা আনুমানিক','What is real, what is approximate')}</h3>
+   <ul class="t-cap sec"><li>${L('রং, ব্যাসার্ধ, ছায়া, টাইপ স্কেল, গতি: tokens.md থেকে হুবহু','Colours, radii, shadows, type scale, motion: exact from tokens.md')}</li>
+   <li>${L('ফন্ট: এই ব্রাউজারের সিস্টেম ফন্ট (অ্যাপে Noto Sans Bengali বান্ডেল করা)','Fonts: this browser’s system faces (the app bundles Noto Sans Bengali)')}</li>
+   <li>${L('পণ্যের ছবি, মানচিত্র ও সংখ্যা নমুনা। ডেস্কটপ ব্রাউজারে ফ্রেম-টাইম বিচার করা যায় না; A06 গেট android-glass s10-এ','Product thumbnails, maps and figures are samples. Frame time cannot be judged in a desktop browser; the A06 gates are in android-glass s10')}</li></ul></div>
+  <div class="card"><h3 class="t-heading">${L('এখানে নেই (docs/27, স্থগিত)','Not shown (docs/27, deferred)')}</h3>
+   <ul class="t-cap sec"><li>${L('টার্গেট, লয়্যালটি (আস্থা, ডায়মন্ড লিগ, সুপারস্টার, গিফট), ডিসকাউন্ট/প্রমোশন প্রোগ্রাম','Target, loyalty (Astha, Diamond League, Superstar, gifts), discount and promotion programmes')}</li>
+   <li>${L('সারির শুরুতে ফাঁকা স্লট রাখা আছে, তাই পরে যোগ করলে লেআউট নড়বে না','Rows keep an empty leading slot, so adding them later moves nothing')}</li></ul></div>`;
+}
+function apply(){
+  const eff=st.theme==='sunlight'?'C':st.tier;
+  root.dataset.theme=st.theme;root.dataset.tier=eff;root.dataset.fs=st.fs;root.dataset.lang=st.lang;root.lang=isBn()?'bn':'en';
+  setSeg('g-theme',['light','dark','sunlight'],st.theme);setSeg('g-tier',['A','B','C'],eff);setSeg('g-fs',['100','130','200'],st.fs);setSeg('g-lang',['bn','en'],st.lang);
+  const gt=$('#g-tier');gt.setAttribute('aria-disabled',String(st.theme==='sunlight'));
+  gt.title=st.theme==='sunlight'?'Sunlight forces tier C':'';
+  const sw=$('#sw-off');sw.setAttribute('aria-checked',String(st.off));
+  applyStatic();
+  store.set('aron.prev',JSON.stringify(st));
+}
+function setState(k,v){
+  if(k==='tier'&&st.theme==='sunlight')return;
+  st[k]=v;apply();
+  if(k==='lang'||k==='off')drawAll();
+  if(k==='theme')FR.filter(f=>f.kind==='web').forEach(drawFrame);
+  if(k==='fs')requestAnimationFrame(fitAll);
+}
+/* scale each frame to the width of its column */
+function fitAll(){
+  $$('.fit').forEach(f=>{
+    const inn=f.firstElementChild,w=parseFloat(f.dataset.w||inn.firstElementChild.offsetWidth),h=parseFloat(f.dataset.h||inn.firstElementChild.offsetHeight);
+    const avail=f.parentElement.clientWidth||w,k=Math.min(1,avail/w);
+    inn.style.transform=k<1?`scale(${k})`:'';f.style.width=(w*k)+'px';f.style.height=(h*k)+'px';
+  });
+}
+document.addEventListener('click',e=>{
+  const k=e.target.closest('[data-k]');
+  if(k){setState(k.dataset.k,k.dataset.v);return;}
+  const a=e.target.closest('[data-act]');if(!a)return;
+  const fx=a.closest('[data-fid]'),fid=fx&&fx.dataset.fid;
+  if(a.dataset.act==='off'){setState('off',!st.off);return;}
+  if(fid&&ACT[a.dataset.act])ACT[a.dataset.act](a,fid);
+});
+const ACT={
+  noop(){},
+  sync(a,fid){openOv(fid,'sync');},
+  close(a,fid){closeOv(fid);}
+};
+function redraw(fid){const f=FR.find(x=>x.id===fid);drawFrame(f);}
+
+/* ===================== SR phone screens ===================== */
+const OWNER='রহিম উদ্দিন';
+const addPhone=(o)=>FR.push(Object.assign({kind:'phone',ov:()=>''},o));
+
+/* ---------- 1. Home ---------- */
+addPhone({id:'home',short:['হোম','Home'],t:['হোম','Home'],ref:'F-SR-008…010, 063…065 · UI-SR-01…10',
+ note:['এক নজরে দিনের মোট, এক ট্যাপে সব টুল, নিচে পরবর্তী ধাপ','The day at a glance, every tool one tap away, the next step docked below'],
+ draw(){
+  const tiles=[['userClock','অ্যাটেনডেন্স','Attendance'],['box','স্টক','Stock'],['bag','বিক্রয়','Sale'],['receipt','মেমো','Memo'],['chart','সারসংক্ষেপ','Summary'],['send','বিক্রয় জমা','Sales Submit'],['store','আউটলেট','Outlet'],['book','টিউটোরিয়াল','Tutorial'],['tasks','টাস্ক ডেলিগেশন','Task Delegation',2],['route','বিক্রয় যাত্রা','Sales Journey'],['gauge','কেপিআই','KPI']];
+  return `<header class="bar hdr"><div class="hdr-row"><span class="avatar" aria-hidden="true">S</span>
+    <div class="hdr-txt"><h2 class="t-heading">SR - Testing Banani (sr334001)</h2><p class="t-cap sec hdr-sub">Apsis RouteDaily, 2026-10-05</p></div>
+    <button class="ib" data-act="noop" aria-label="${t('সেটিংস','Settings')}">${ic('tune')}</button></div></header>
+  <div class="content">
+    <div class="chips-row">${syncChip(true)}${chip('c-ok','check',t('চেক ইন 08:52','Checked in 08:52'))}${chip('c-neu','','Daily')}</div>
+    <button class="card hero" data-act="noop" style="--fs:inherit">
+      <span class="hero-top"><span class="t-label">${t('আজকের সর্বমোট','Today’s total')}</span>${ic('chevR',20)}</span>
+      <span class="t-display">${mo(4391)}</span>
+      <span class="mrow"><span class="t-cap sec">${t('আউটলেট ভ্রমণ','Outlets visited')}</span><span class="meter" role="img" aria-label="${n('6')}/${n('60')}"><b style="width:10%"></b></span><b class="t-label num">${n('6/60')}</b></span>
+    </button>
+    <div class="tiles">${tiles.map(x=>`<button class="card tile" data-act="noop"><span class="well44">${ic(x[0])}${x[3]?`<span class="badge" aria-label="${n(x[3])}">${n(x[3])}</span>`:''}</span><span class="t-label">${t(x[1],x[2])}</span></button>`).join('')}</div>
+    <div class="tiles">${[['10%','স্ট্রাইক রেট','Strike rate'],['54','নন ভিজিট','Non-visit'],['0','বিক্রি নেই','No sale']].map(x=>`<div class="card tile kpi"><span class="t-numeral num">${n(x[0])}</span><span class="t-label sec">${t(x[1],x[2])}</span></div>`).join('')}</div>
+    <section class="card pad"><h3 class="t-heading" style="margin-bottom:8px">${t('স্টক','Stock')}</h3>
+      <div class="stk"><span></span><span class="t-label h r">${t('ইস্যু','Issue')}</span><span class="t-label h r">${t('বর্তমান স্টক','Current stock')}</span>
+       <span class="t-body">${t('লাইটার','Lighter')}</span><b class="t-bodyS num r">${n(400)} ${t('পিস','pcs')}</b><b class="t-bodyS num r">${n(25)} ${t('পিস','pcs')}</b>
+       <span class="t-body">${t('ম্যাচ','Match')}</span><b class="t-bodyS num r">${n(400)} ${t('ডজন','doz')}</b><b class="t-bodyS num r">${n(394)} ${t('ডজন','doz')}</b></div></section>
+    <section class="card pad"><h3 class="t-heading" style="margin-bottom:8px">${t('আজকের বিক্রয়','Today’s sales')}</h3>
+      <div class="kv"><span class="t-body sec">${t('ম্যাচ','Match')}</span><span class="t-bodyS">${mo(141)}</span></div>
+      <div class="kv"><span class="t-body sec">${t('লাইটার','Lighter')}</span><span class="t-bodyS">${mo(4687.5)}</span></div>
+      <div class="hr"></div>
+      <div class="kv"><span class="t-body sec">${t('মোট','Total')}</span><span class="t-bodyS">${mo(4828.5)}</span></div>
+      <div class="kv"><span class="t-body sec">${t('ডিসকাউন্ট (−)','Discount (−)')}</span><span class="t-bodyS">${neg(437.5)}</span></div>
+      <div class="hr"></div>
+      <div class="kv"><span class="t-bodyS">${t('সর্বমোট','Grand total')}</span><span class="t-numeral">${mo(4391)}</span></div></section>
+    <p class="dline t-cap">${ic('zap',16)}<span>${t('ব্যাটারি 62%','Battery 62%')} · ${t('খালি জায়গা 1.2 জিবি','Free 1.2 GB')} · ${t('অপেক্ষায় 3','Waiting 3')} · ${t('শেষ সিঙ্ক 10:42','Last sync 10:42')}</span></p>
+  </div>
+  ${bbar(pri(t('বিক্রয় শুরু করুন','Start selling'),'noop',{icon:'bag'}))}`;
+ }});
+
+/* ---------- 2. Route outlet list ---------- */
+S.route={seg:'rem',letter:'all'};
+const OUT=[
+ ['Babu Store','DHK-344-011','01711000011','r'],['Ema Store','DHK-344-014','01711000014','v',210],['Jamal Traders','DHK-344-017','01711000017','r'],
+ ['Mim Enterprise','DHK-344-021','01711000021','s',0,0,['বন্ধ','Closed']],['Sathi Store','DHK-344-025','01711000025','r'],
+ ['আলম ভ্যারাইটি স্টোর','DHK-344-031','01711000031','r'],['করিম টি স্টল','DHK-344-033','01711000033','v',56.5],['খান জেনারেল স্টোর','DHK-344-036','01711000036','r'],
+ ['জননী ফার্মেসি','DHK-344-038','01711000038','s',0,0,['মালিক নেই','Owner absent']],['বনানী স্টোর','DHK-344-003','01711000003','v',134,291.5],
+ ['রহমান ট্রেডার্স','DHK-344-041','01711000041','r'],['শান্তা ফার্মেসি','DHK-344-044','01711000044','r']];
+addPhone({id:'route',short:['রুট','Route'],t:['রুট আউটলেট তালিকা','Route outlet list'],ref:'F-SR-016, 057, 074 · UI-SR-23, 24',
+ note:['ফিল্টার বুড়ো আঙুলের নাগালে (নিচে); সারি সমতল, ছায়াহীন','Filters at thumb reach (bottom); flat, shadowless rows'],
+ draw(){
+  const r=S.route,L=o=>o[0][0].toUpperCase();
+  const vis=OUT.filter(o=>r.seg==='all'||(r.seg==='rem'?o[3]==='r':o[3]!=='r')).filter(o=>r.letter==='all'||L(o)===r.letter);
+  const letters=[...new Set(OUT.map(L))];
+  const groups=letters.filter(l=>vis.some(o=>L(o)===l));
+  const rows=o=>{
+    let end='';
+    if(o[3]==='v')end=`<span class="t-label ok-t" style="display:flex;gap:4px;align-items:center">${ic('check',16)}${t('ভিজিট হয়েছে','Visited')}</span><span class="t-bodyS">${mo(o[4])}</span>${o[5]?chip('c-warn','',t('বাকি','Due')+' '+fmt(o[5])+'৳'):''}`;
+    if(o[3]==='s')end=`<span class="t-label sec" style="display:flex;gap:4px;align-items:center">${ic('check',16)}${t(o[6][0],o[6][1])}</span>`;
+    return `<button class="row" data-act="noop"><span class="mid"><span class="t-bodyS" style="display:block">${o[0]}</span><span class="t-cap sec num" style="display:block;overflow-wrap:anywhere">${o[1]} · ${o[2]} · Apsis Cluster</span></span>${end?`<span class="end">${end}</span>`:''}</button>`;};
+  const body=groups.length?groups.map(g=>`<div><h3 class="group-h t-label">${g}</h3><div class="grp" style="margin-top:6px">${vis.filter(o=>L(o)===g).map(rows).join('')}</div></div>`).join('')
+   :`<div class="empty"><span class="ill">${ic('store',40)}</span><h3 class="t-heading">${t('এই অক্ষরে কোনো আউটলেট নেই','No outlet starts with this letter')}</h3><button class="btn sec" data-act="letter" data-v="all">${t('সব দেখান','Show all')}</button></div>`;
+  return topbar(t('বিক্রয়','Sale'))+`<div class="content">
+    <div class="rows2" style="align-items:center"><h3 class="t-heading">${t('রিটেইলার নির্বাচন করুন','Select a retailer')}</h3><span class="t-label sec num">${n('6/60')} ${t('ভিজিট হয়েছে','visited')}</span></div>
+    <div class="meter" style="flex:none" role="img" aria-label="${n('6/60')}"><b style="width:10%"></b></div>
+    ${seg('rseg',[['rem',t('বাকি 54','Remaining 54')],['vis',t('ভিজিট হয়েছে 6','Visited 6')],['all',t('সব 60','All 60')]],r.seg,'seg')}
+    ${body}</div>
+   <footer class="bar bb"><div class="bb-row"><button class="ib" data-act="noop" aria-label="${t('খুঁজুন','Search')}">${ic('search')}</button>
+    <div class="hscroll" role="group" aria-label="${t('অক্ষর ফিল্টার','Alphabet filter')}"><button class="fchip" data-act="letter" data-v="all" aria-pressed="${r.letter==='all'}">${t('সব','All')}</button>${letters.map(l=>`<button class="fchip" data-act="letter" data-v="${l}" aria-pressed="${r.letter===l}">${r.letter===l?ic('check',14):''}${l}</button>`).join('')}<button class="fchip" data-act="noop" aria-pressed="false">#</button></div></div></footer>`;
+ }});
+
+/* ---------- 3 & 4. Visit open and geo check ---------- */
+S.visit={refresh:2,forced:false,reason:null};
+const ring=inR=>{const x=inR?43:64,y=inR?31:44;return `<svg class="rg" width="76" height="76" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="17" fill="currentColor" fill-opacity=".10" stroke="currentColor" stroke-width="1.8" stroke-dasharray="3 3"/><path d="M36 36L${x} ${y}" stroke="currentColor" stroke-opacity=".5" stroke-width="1.2" stroke-dasharray="2 2"/><circle cx="36" cy="36" r="3.4" fill="currentColor"/><circle cx="${x}" cy="${y}" r="6.5" fill="currentColor" fill-opacity=".16"/><circle cx="${x}" cy="${y}" r="3.7" fill="${inR?'var(--success)':'var(--warning)'}" stroke="var(--surface-solid)" stroke-width="1.6"/></svg>`;};
+const outletCard=()=>`<section class="card pad" style="display:flex;flex-direction:column;gap:6px"><h3 class="t-heading">বনানী স্টোর</h3>
+  <p class="t-cap sec">${t('মালিক','Owner')}: ${OWNER}</p><p class="t-cap sec num" style="overflow-wrap:anywhere">DHK-344-003 · 01711000003 · Apsis Cluster</p>
+  <div class="chips-row" style="margin-top:4px">${chip('c-neu','','GT')}${chip('c-warn','',t('বাকি','Due')+' '+fmt(291.5)+'৳')}${chip('c-neu','clock',t('শেষ ভিজিট 2 দিন আগে','Last visit 2 days ago'))}</div></section>`;
+addPhone({id:'visit-in',short:['ভিজিট · সীমায়','Visit · in range'],t:['ভিজিট খোলা: সীমার মধ্যে','Visit open: in range'],ref:'F-SR-017, 018, 060 · docs/05',
+ note:['অফলাইনেও একটি অন-ডিভাইস GPS রিডিং: সীমার মধ্যে, তাই "কল শুরু করুন"','One on-device fix, works offline: in range, so the primary is "Start call"'],
+ draw(){
+  return topbar('বনানী স্টোর',{long:true})+`<div class="content">${outletCard()}
+   <section class="geo ok" role="status">${ring(true)}<div class="tx"><p class="t-bodyS">${t('আপনি আউটলেটের সীমার মধ্যে আছেন।','You are within the outlet’s range.')}</p><p class="t-cap num">${t('GPS ±12 মি','GPS ±12 m')}</p></div>${ic('checkCircle',28)}</section>
+   <div class="rows2">${txt(t('পূর্বের বিক্রয় দেখুন','View previous sales'),'noop',{icon:'chevR'})}${txt(t('বিক্রয় হবে না','No sale'),'noop',{icon:'chevR'})}</div>
+   <p class="t-cap sec" style="padding:0 4px">${ic('info',14)} ${t('দূরত্ব শুধু সীমার বাইরে দেখানো হয়। ফিক্স অফলাইনে নেওয়া।','Distance is shown only when out of range. The fix was read offline.')}</p></div>
+   ${bbar(pri(t('কল শুরু করুন','Start call'),'noop',{icon:'bag'}))}`;
+ }});
+addPhone({id:'visit-out',short:['ভিজিট · সীমার বাইরে','Visit · out of range'],t:['ভিজিট খোলা: সীমার বাইরে','Visit open: out of range'],ref:'F-SR-017…019, 049, 054, 057 · docs/05',
+ note:['সৎ পথ (রিফ্রেশ) সহজ; "ফোর্স সেল" চাপলে শিটে কারণ চায়: ট্যাপ করে দেখুন','The honest path (Refresh) is the easy one; tap "Force Sale" to see the reason sheet'],
+ draw(){
+  const v=S.visit;let geo,bar;
+  if(v.forced){
+   geo=`<section class="geo warn" role="status">${ic('camera',32)}<div class="tx"><p class="t-bodyS">${t('ফোর্স সেল: ছবি সংরক্ষিত','Force sale: photo saved')}</p><p class="t-cap">${t('কারণ','Reason')}: ${v.reason==='net'?t('ইন্টারনেট সমস্যা','Internet problem'):t('লোকেশন চেঞ্জ','Location changed')} · GEO ±${n(9)} ${t('মি','m')}</p></div></section>`;
+   bar=pri(t('কল শুরু করুন','Start call'),'noop',{icon:'bag'});
+  }else{
+   geo=`<section class="geo warn" role="status">${ring(false)}<div class="tx"><p class="t-bodyS">${t('আপনি নির্বাচিত খুচরা বিক্রেতার সীমার মধ্যে নেই।','You are not within the selected retailer’s range.')}</p>
+    <p class="t-cap num">${t('আনুমানিক 180 মি দূরে · সীমা 100 মি · GPS ±12 মি','About 180 m away · limit 100 m · GPS ±12 m')}</p>
+    <p class="t-cap">${v.refresh>0?t('রিফ্রেশ বাকি: '+v.refresh+' বার','Refreshes left: '+v.refresh):t('আর রিফ্রেশ করা যাবে না','No more refreshes')}</p>
+    <button class="btn txt" data-act="noop" style="align-self:flex-start">${t('ম্যাপ দেখুন','View map')}</button></div></section>`;
+   bar=v.refresh>0
+     ?sec(t('ফোর্স সেল','Force Sale'),'force',{cls:'w40 tall'})+pri(t('রিফ্রেশ ('+v.refresh+' বার বাকি)','Refresh ('+v.refresh+' left)'),'refresh',{cls:'w60',icon:'sync'})
+     :sec(t('রিফ্রেশ','Refresh'),'noop',{cls:'w40 tall',d:true})+pri(t('ফোর্স সেল','Force Sale'),'force',{cls:'w60'});
+  }
+  return topbar('বনানী স্টোর',{long:true})+`<div class="content">${outletCard()}${geo}
+   <div class="rows2">${txt(t('পূর্বের বিক্রয় দেখুন','View previous sales'),'noop',{icon:'chevR'})}${txt(t('বিক্রয় হবে না','No sale'),'noop',{icon:'chevR'})}</div></div>${bbar(bar)}`;
+ },
+ ov(kind){
+  const v=S.visit,rd=(id,l)=>`<button class="radio" role="radio" aria-checked="${v.reason===id}" data-act="reason" data-v="${id}"><span class="dot">${v.reason===id?ic('check',14):''}</span><span class="t-bodyS">${l}</span></button>`;
+  return sheet(`<div class="mrow">${ic('warn',28)}<h3 class="t-title" style="color:var(--warning-on-container)">${t('ফোর্স সেল প্রক্রিয়া','Force Sale')}</h3></div>
+   <p class="t-bodyS">${t('আপনার ফোর্স সেলের কারণ কী?','Why are you doing a force sale?')}</p>
+   <div role="radiogroup" style="display:flex;flex-direction:column;gap:8px">${rd('net',t('ইন্টারনেট সমস্যা','Internet problem'))}${rd('loc',t('লোকেশন চেঞ্জ','Location changed'))}</div>
+   <p class="t-cap sec">${t('ছবির লোকেশন আউটলেটের ঠিকানা সংশোধনের অনুরোধ হিসেবে যাবে।','The photo location is sent as a request to correct the outlet address.')}</p>
+   ${v.reason?'':`<p class="cap-reason t-cap">${ic('info',16)}<span>${t('একটি কারণ বাছুন','Choose a reason')}</span></p>`}
+   <div class="bb-row">${pri(t('ছবি তুলুন','Take photo'),'photo',{d:!v.reason,icon:'camera'})}</div>`);
+ }});
+
+/* ---------- 5. Sale: quantity entry ---------- */
+const SKU=[
+ {id:'maxr',n:'MaxR-10S',c:'cig',p:8,step:10,pack:10,stock:394,recent:1},{id:'maxim',n:'Maxim-20S',c:'cig',p:9.5,step:20,pack:20,stock:520},
+ {id:'prime',n:'Prime Gold-10S',c:'cig',p:6.5,step:10,pack:10,stock:610},{id:'aster',n:'Aster',c:'lt',p:12.5,step:1,pack:50,stock:25,recent:1},
+ {id:'flame',n:'Flame Slim',c:'lt',p:14,step:1,pack:50,stock:80},{id:'fb',n:'FB',c:'mt',p:28,step:1,pack:10,stock:394},{id:'sl',n:'SL Match',c:'mt',p:19,step:1,pack:10,stock:197}];
+const CAT={cig:['সিগারেট','Cigarette','স্টিক','stick','sticks'],lt:['লাইটার','Lighter','পিস','piece','pieces'],mt:['ম্যাচ','Match','ডজন','dozen','dozen']};
+S.sale={maxr:20,maxim:0,prime:0,aster:4,flame:0,fb:5,sl:0};S.cat='all';
+const saleTotal=()=>SKU.reduce((a,k)=>a+k.p*S.sale[k.id],0);
+const thumb=(k,q)=>`<span class="thumb ${k.c==='lt'?'l':k.c==='mt'?'mt':''}" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 30 30">${k.c==='cig'?'<rect x="8" y="4" width="14" height="22" rx="3" fill="#fff" fill-opacity=".92"/><rect x="8" y="4" width="14" height="7" rx="3" fill="#fff" fill-opacity=".5"/>':k.c==='lt'?'<rect x="10" y="12" width="10" height="15" rx="3" fill="#fff" fill-opacity=".92"/><path d="M15 3c3 3.6 3.6 5 3.6 6.6a3.6 3.6 0 0 1-7.2 0C11.4 8 12 6.6 15 3z" fill="#fff" fill-opacity=".92"/>':'<rect x="4" y="9" width="22" height="13" rx="3" fill="#fff" fill-opacity=".92"/><rect x="4" y="9" width="22" height="4" rx="2" fill="#fff" fill-opacity=".5"/>'}</svg>${q>0?`<span class="pk">${n(Math.max(1,Math.round(q/k.pack)))}</span>`:''}</span>`;
+function stepper(id,q,unit,disMinus,warn){
+  return `<div class="stp"><button class="sb2 minus" data-act="step" data-id="${id}" data-d="-1" ${disMinus?'aria-disabled="true"':''} aria-label="${t('কমান','Decrease')}">${ic('minus')}</button><div class="well t-numeral ${warn?'warn':''}">${warn?ic('warn',18):''}<span>${n(q)}</span></div><button class="sb2 plus" data-act="step" data-id="${id}" data-d="1" aria-label="${t('বাড়ান','Increase')}">${ic('plus')}</button><span class="unit t-cap">${unit}</span></div>`;
+}
+function skuRow(k){
+  const q=S.sale[k.id],c=CAT[k.c],unit=t(c[2],c[4]),over=q>k.stock;
+  return `<div class="srow ${q>0?'on':''}"><div class="top">${thumb(k,q)}<div style="flex:1;min-width:0"><div class="t-bodyS">${k.n}</div><div class="t-cap sec num">${mo(k.p)} / ${t(c[2],c[3])} · ${t('স্টকে','In stock')} ${n(k.stock)}</div></div>${q>0?`<b class="t-bodyS">${mo(k.p*q)}</b>`:''}</div>
+   <div class="stepline">${stepper(k.id,q,unit,q<=0,over)}${over?`<span class="warnline t-cap">${ic('warn',16)}<span>${t('স্টকে আছে '+k.stock+'; এর বেশি বিক্রি হচ্ছে।','Only '+k.stock+' in stock; selling more than that.')}</span></span>`:''}</div></div>`;
+}
+addPhone({id:'sale',short:['বিক্রয়','Sale'],t:['বিক্রয়: পরিমাণ এন্ট্রি','Sale: quantity entry'],ref:'F-SR-023, 029, 050 · UI-SR-19, 33',
+ note:['প্রতিটি SKU তার নিজের এককে; স্টক ছাড়ালে সতর্কতা, বাধা নয়: ট্যাপ করে দেখুন','Each SKU in its own unit; going over stock warns but never blocks: tap the steppers'],
+ draw(){
+  const cats=[['all',t('সব','All')],['cig',t('সিগারেট','Cigarette')],['lt',t('লাইটার','Lighter')],['mt',t('ম্যাচ','Match')]];
+  const list=SKU.filter(k=>S.cat==='all'||S.cat===k.c),recent=list.filter(k=>k.recent),rest=k=>!k.recent;
+  const grp=(title,items)=>items.length?`<div><h3 class="group-h t-label">${title}</h3><div class="grp" style="margin-top:6px">${items.map(skuRow).join('')}</div></div>`:'';
+  const byCat=['cig','lt','mt'].map(c=>grp(`${t(CAT[c][0],CAT[c][1])} · ${t(CAT[c][2],CAT[c][4])}`,list.filter(k=>k.c===c&&rest(k)))).join('');
+  const tot=saleTotal();
+  return topbar(t('বিক্রয় · ','Sale · ')+'বনানী স্টোর',{long:true})+`<div class="content">
+   <div class="rows2" style="align-items:center">${txt(t('পূর্বের বিক্রয় দেখুন','View previous sales'),'noop',{icon:'chevR'})}<button class="ib" data-act="noop" aria-label="${t('খুঁজুন','Search')}">${ic('search')}</button></div>
+   <div class="hscroll" role="group" aria-label="${t('ক্যাটাগরি','Category')}">${cats.map(c=>`<button class="fchip" data-act="cat" data-v="${c[0]}" aria-pressed="${S.cat===c[0]}">${S.cat===c[0]?ic('check',14):''}${c[1]}</button>`).join('')}</div>
+   ${grp(t('এই আউটলেটে আগে বিক্রি','Sold here before'),recent)}${byCat}</div>
+   ${bbar(`<div class="bb-sum"><span class="t-cap sec">${t('মোট','Total')}</span><span class="t-numeral">${mo(tot)}</span></div>${pri(t('এগিয়ে যান','Proceed')+' →','noop',{cls:'w60'})}`)}`;
+ }});
+
+/* ---------- 6. Review ---------- */
+S.rev={credit:false,collected:null};
+const revLines=()=>SKU.filter(k=>S.sale[k.id]>0);
+addPhone({id:'review',short:['নিরীক্ষণ','Review'],t:['নিরীক্ষণ: টাকা, বাকি, QC','Review: money, credit, QC'],ref:'F-SR-025…028 · UI-SR-07, 14, 36',
+ note:['আগে সংরক্ষণ, পরে প্রিন্ট। বাকি চালু করে দেখুন; লাইনগুলো বিক্রয় স্ক্রিন থেকে আসে','Commit first, print second. Switch credit on; lines come from the Sale screen'],
+ draw(){
+  const L=revLines(),tot=saleTotal(),r=S.rev,zero=!L.length,due=r.credit&&r.collected!=null?tot-r.collected:0;
+  const byc=['cig','lt','mt'].map(c=>{const ls=L.filter(k=>k.c===c);if(!ls.length)return '';const q=ls.reduce((a,k)=>a+S.sale[k.id],0),v=ls.reduce((a,k)=>a+k.p*S.sale[k.id],0);
+    return ls.map(k=>`<div class="g-row"><span class="t-body">${k.n}</span><span class="t-body num r">${n(S.sale[k.id])} ${t(CAT[c][2],CAT[c][4])}</span><span class="t-body num r">${fmt(k.p*S.sale[k.id])}</span></div>`).join('')+
+    `<div class="g-row sub"><span class="t-label">${t('মোট '+CAT[c][0],'Total '+CAT[c][1].toLowerCase())}</span><span class="t-label num r">${n(q)} ${t(CAT[c][2],CAT[c][4])}</span><span class="t-label num r">${fmt(v)}</span></div>`;}).join('');
+  return topbar(t('নিরীক্ষণ','Review'),{printer:false})+`<div class="content">
+   <p class="t-cap sec" style="padding:0 4px"><b class="t-label" style="color:var(--text-primary)">বনানী স্টোর</b> (C-1042) · ${t('রুট','Route')}: Apsis RouteDaily · ${t('ক্লাস্টার','Cluster')}: Apsis Cluster</p>
+   <section class="card pad">${zero?`<div class="kv"><span class="t-body">${t('জিরো বিক্রয় (কোনো SKU নেই)','Zero sale (no SKU)')}</span><b class="t-bodyS">${mo(0)}</b></div>`:`<div class="g-row h"><span class="t-label">${t('এসকেইউ','SKU')}</span><span class="t-label r">${t('পরিমাণ','Quantity')}</span><span class="t-label r">${t('মূল্য','Value')}</span></div>${byc}`}</section>
+   <section class="card pad"><div class="kv"><span class="t-body sec">${t('মোট','Total')}</span><span class="t-bodyS">${mo(tot)}</span></div><div class="hr"></div>
+    <div class="kv"><span class="t-bodyS">${t('সর্বমোট','Grand total')}</span><span class="t-display">${mo(tot)}</span></div></section>
+   ${zero?'':`<section class="card pad"><div class="mrow" style="justify-content:space-between"><span class="t-bodyS" style="flex:1">${r.credit&&r.collected!=null?t('বাকি '+due+' টাকা','Due '+due+' taka'):t('এই বিক্রয়টি বাকি হিসাবে চিহ্নিত করুন','Mark this sale as credit')}</span>
+     <button class="sw" role="switch" aria-checked="${r.credit}" data-act="credit" aria-label="${t('বাকি','Credit')}"><i>${ic('check',14)}</i></button></div></section>`}
+   <button class="card pad rst" data-act="noop" style="display:flex;align-items:center;justify-content:space-between;min-height:56px"><span class="t-bodyS">${t('প্রোডাক্ট QC','Product QC')}</span><span style="color:var(--accent)">${ic('chevR')}</span></button>
+   <p class="t-cap sec" style="padding:0 4px">${t('আপনি পরে মেমো সেকশন থেকে প্রিন্ট করতে পারবেন।','You can print later from the Memo section.')}</p></div>
+   ${bbar(`<div class="bb-sum"><span class="t-cap sec">${t('সর্বমোট','Grand total')}</span><span class="t-numeral">${mo(tot)}</span></div>${pri(t('প্রিন্ট','Print'),'print',{cls:'w60',icon:'printer'})}`)}`;
+ },
+ ov(kind){
+  const tot=saleTotal(),r=S.rev,c=r.collected==null?Math.floor(tot*0.8):r.collected;
+  if(kind==='credit')return sheet(`<h3 class="t-title">${t('পরিশোধিত টাকার পরিমাণ লিখুন','Enter the amount paid')}</h3>
+   <p class="t-body sec">${t('এখন আপনি রিটেইলার থেকে কত টাকা সংগ্রহ করছেন?','How much are you collecting from the retailer now?')}</p>
+   <div class="fld"><label class="t-cap sec" for="coll">${t('আদায়কৃত অর্থ','Amount collected')}</label><input id="coll" class="inp t-bodyS" inputmode="decimal" data-bind="collected" value="${c.toFixed(2)}"></div>
+   <div class="kv"><span class="t-body sec">${t('বাকিঃ','Due:')}</span><span class="t-numeral" id="due-live">${mo(Math.max(0,tot-c))}</span></div>
+   <p class="t-cap" id="due-err" style="color:var(--danger-on-container);background:var(--danger-container);padding:6px 10px;border-radius:12px;display:${c>=tot?'block':'none'}">${t('আদায়ের অঙ্ক মোটের চেয়ে কম হতে হবে।','The amount collected must be less than the total.')}</p>
+   <div class="bb-row">${pri(t('নিশ্চিত করুন','Confirm'),'creditOk',{attrs:'id="credit-ok"',d:c>=tot})}</div>`);
+  if(kind==='commit')return dialog(`<h3 class="t-title">${t('আপনি কি নিশ্চিত?','Are you sure?')}</h3><p class="t-body">${t('বিক্রয় জমা হবে','The sale will be submitted.')}</p>
+   <p class="t-cap sec">${t('জমার পর মেমো আর বদলানো যাবে না।','After this the memo cannot be changed.')}</p>
+   <div class="dlg-act">${txt(t('না','No'),'close')}${pri(t('হ্যাঁ','Yes'),'commitYes',{cls:'',attrs:'style="min-height:48px"'})}</div>`);
+  if(kind==='done')return sheet(`<div class="okdisc">${ic('check',48)}</div><h3 class="t-title" style="text-align:center">${t('বিক্রয় সফলভাবে জমা হয়েছে','Sale submitted successfully')}</h3>
+   <p class="t-body sec" style="text-align:center">${t('আপনি কি এই বিক্রয়টি প্রিন্ট করতে চান?','Do you want to print this sale?')}</p>
+   <div class="bb-row">${txt(t('পরে','Later'),'close',{cls:'w40'})}${pri(t('প্রিন্ট করুন','Print'),'close',{cls:'w60',icon:'printer'})}</div>`);
+  return '';
+ }});
+
+/* ---------- 7. Memo and print preview ---------- */
+addPhone({id:'memo',short:['মেমো','Memo'],t:['মেমো ও প্রিন্ট প্রিভিউ','Memo and print preview'],ref:'F-SR-028…033, 066, 073 · UI-SR-26…29',
+ note:['৫৮ মিমি থার্মাল স্লিপের প্রিভিউ; পুনঃমুদ্রণে "অনুলিপি" চিহ্ন','58 mm thermal slip preview; a reprint is marked "Duplicate"'],
+ draw(){
+  const lbl=(b,e)=>t(b,e);
+  return topbar(t('মেমো','Memo'),{printer:true})+`<div class="content">
+   <div class="card flat pad" style="background:var(--accent-container);color:var(--accent-on-container);display:flex;gap:10px;align-items:flex-start;box-shadow:none">${ic('info',22)}<p class="t-cap" style="flex:1">${t('আপনি আউটলেট নির্বাচন করে একটি মেমো দেখতে পারবেন। এখান থেকে মেমো পুনরায় প্রিন্ট করতে পারবেন।','You can select an outlet and view its memo. You can reprint the memo from here.')}</p><button class="ib" style="width:36px;height:36px;margin:-6px -6px 0 0;color:inherit" data-act="noop" aria-label="${t('বন্ধ','Dismiss')}">${ic('x',18)}</button></div>
+   <button class="card pad rst" data-act="noop" style="display:flex;align-items:center;gap:10px;min-height:64px"><span style="flex:1;min-width:0"><span class="t-bodyS" style="display:block">বনানী স্টোর</span><span class="t-cap sec num" style="display:block">${t('মেমো','Memo')} ${n('0012')} · ${n('10:42')} · ${fmt(134)}৳</span></span>${chip('c-warn','',t('বাকি','Due'))}${ic('chevD',22)}</button>
+   <div style="padding:6px 0 14px"><div class="paper" role="img" aria-label="${t('৫৮ মিমি মেমো স্লিপ','58 mm memo slip')}">
+     <div class="c big">AKTCL</div><div class="c"><b>বনানী স্টোর</b> (DHK-344-003)</div>
+     <div class="c num">${lbl('মেমো নং','Memo no')} ${n('0012')} · ${n('05-10-2026 10:42')}</div><div class="c">SR: sr334001</div><hr class="ln">
+     <div class="g"><b>${lbl('এসকেইউ','SKU')}</b><b class="num r">${lbl('পরিমাণ','Qty')}</b><b class="num r">${lbl('দাম','Price')}</b>
+      <span>Aster</span><span class="num r">${n(4)} ${lbl('পিস','pc')}</span><span class="num r">${fmt(50)}</span>
+      <span>FB</span><span class="num r">${n(3)} ${lbl('ডজন','doz')}</span><span class="num r">${fmt(84)}</span></div><hr class="ln">
+     <div class="g t"><span>${lbl('মোট','Total')}</span><span class="num r">${fmt(134)}</span><b class="big">${lbl('সর্বমোট','Grand total')}</b><b class="big num r">${fmt(134)} ৳</b></div><hr class="ln">
+     <div class="g t"><span>${lbl('আদায়','Paid')}</span><span class="num r">${fmt(50)}</span><span>${lbl('বাকি','Due')}</span><span class="num r">${fmt(84)}</span></div>
+     <div class="dup">${lbl('অনুলিপি (ডুপ্লিকেট)','DUPLICATE')}</div></div></div>
+   <p class="t-cap sec" style="text-align:center;margin-top:-4px">${t('৫৮ মিমি স্লিপ · প্রিন্ট প্রিভিউ','58 mm slip · print preview')}</p>
+   <section class="card pad" style="background:linear-gradient(var(--warning-container),var(--warning-container));box-shadow:none;display:flex;flex-direction:column;gap:8px"><p class="t-bodyS" style="color:var(--warning-on-container)">${t('এই বিক্রয়টি বাকিতে করা হয়েছে।','This sale was made on credit.')}</p>${sec(t('পরিশোধিত করুন','Mark as paid'),'noop',{cls:'',attrs:'style="align-self:flex-start"'})}</section>
+   <section class="card pad" style="display:flex;flex-direction:column;gap:10px"><p class="t-bodyS">${t('ছাপা ঠিক আছে?','Is the print readable?')}</p><div class="chips-row"><button class="fchip" data-act="noop" aria-pressed="false">${t('হ্যাঁ','Yes')}</button><button class="fchip" data-act="noop" aria-pressed="false">${t('না, আবার ছাপুন','No, print again')}</button></div></section></div>
+   ${bbar(sec(t('এডিট','Edit'),'noop',{cls:'w40 tall'})+pri(t('প্রিন্ট','Print'),'noop',{cls:'w60',icon:'printer'}),'')}`;
+ }});
+
+/* ---------- 8. Day summary ---------- */
+S.sum={open:false};
+addPhone({id:'summary',short:['সারসংক্ষেপ','Summary'],t:['বিক্রয় সারসংক্ষেপ','Day summary'],ref:'F-SR-036 · UI-SR-30…34',
+ note:['পুরো দিন, এককভেদে; ভিন্ন একক কখনো যোগ হয় না। "ডিসকাউন্ট এবং অন্যান্য" ট্যাপ করুন','The whole day, per unit; units are never added together. Tap "Discount and others"'],
+ draw(){
+  const row=(name,memo,qty,u,val,ret,disc)=>`<div class="srow" style="gap:4px"><div class="rows2" style="align-items:baseline;flex-wrap:nowrap"><b class="t-bodyS">${name}</b><b class="t-bodyS">${mo(val)}</b></div>
+   <div class="t-cap sec num">${t('মেমো','Memos')} ${n(memo)} · ${t('পরিমাণ','Qty')} ${n(qty)} ${u} · ${t('ফেরত','Return')} ${n(ret)} ${u}</div>
+   ${disc?`<div class="t-cap sec num">${t('ডিসকাউন্ট','Discount')} ${minus1(disc[0])} · ${t('ডিসকাউন্টের পর','After discount')} ${fmt(disc[1])}</div>`:''}</div>`;
+  const minus1=v=>'−'+fmt(v);
+  return topbar(t('বিক্রয় সারসংক্ষেপ','Day summary'),{printer:false,long:true})+`<div class="content">
+   <div class="card flat pad" style="background:var(--accent-container);color:var(--accent-on-container);display:flex;gap:10px;box-shadow:none">${ic('info',22)}<p class="t-cap">${t('আপনার পুরো দিনের বিক্রয় বিবরণ এখানে থাকবে','Your whole day’s sales detail is here')}</p></div>
+   <div><h3 class="group-h t-label">${t('লাইটার · পিস','Lighter · pieces')}</h3><div class="grp" style="margin-top:6px">${row('Aster',4,375,t('পিস','pcs'),4687.5,25,[437.5,4250])}
+     <div class="srow" style="background:var(--surface-raised);gap:2px"><div class="t-label num">${t('লাইটার মোট','Lighter total')} ${n(375)} ${t('পিস','pcs')} · ${fmt(4687.5)} · ${fmt(4250)} · ${t('ফেরত','Ret')} ${n(25)}</div></div></div></div>
+   <div><h3 class="group-h t-label">${t('ম্যাচ · ডজন','Match · dozen')}</h3><div class="grp" style="margin-top:6px">${row('FB',1,3,t('ডজন','doz'),84,197)}${row('SL Match',1,3,t('ডজন','doz'),57,197)}
+     <div class="srow" style="background:var(--surface-raised);gap:2px"><div class="t-label num">${t('ম্যাচ মোট','Match total')} ${n(6)} ${t('ডজন','doz')} · ${fmt(141)} · ${t('ফেরত','Ret')} ${n(394)}</div></div></div></div>
+   <section class="card pad"><button data-act="expand" aria-expanded="${S.sum.open}" style="display:flex;width:100%;align-items:center;justify-content:space-between;gap:8px;border:0;background:none;padding:0;min-height:44px;text-align:start;color:inherit"><span class="t-body sec">${t('ডিসকাউন্ট এবং অন্যান্য (−)','Discount and others (−)')}</span><span class="mrow"><span class="t-bodyS">${neg(437.5)}</span>${ic(S.sum.open?'chevU':'chevD',20)}</span></button>
+    ${S.sum.open?`<div style="padding:4px 0 2px"><div class="kv t-cap sec"><span>${t('অফার ডিসকাউন্ট','Offer discount')}</span><b class="num">${minus1(437.5)}</b></div><div class="kv t-cap sec"><span>${t('স্লাইড','Slide')}</span><b class="num">${minus1(0)}</b></div><div class="kv t-cap sec"><span>QC</span><b class="num">${minus1(0)}</b></div></div>`:''}
+    <div class="hr"></div><div class="kv"><span class="t-bodyS">${t('সর্বমোট','Grand total')}</span><span class="t-display">${mo(4391)}</span></div></section></div>
+   ${bbar(pri(t('প্রিন্ট','Print'),'noop',{icon:'printer'}))}`;
+ }});
+
+/* ---------- 9. Tasks ---------- */
+S.tasks={tab:'ong',done:{}};
+const TASKS=[
+ {id:1,tag:'OOS',o:'Babu Store',d:'Babu Store দোকানে Maxim এ OOS আছে',due:['৩০ নভেম্বর','30 Nov'],st:'ong'},
+ {id:2,tag:'Display',o:'Ema Store',d:'Ema Store-এর সামনে ডিসপ্লে র‍্যাক ঠিক করুন',due:['৪ অক্টোবর','4 Oct'],st:'ong',late:1},
+ {id:3,tag:'Collect',o:'বনানী স্টোর',d:'বনানী স্টোর থেকে বাকি টাকা আদায় করুন',due:['১০ অক্টোবর','10 Oct'],st:'ong'},
+ {id:4,tag:'OOS',o:'করিম টি স্টল',d:'করিম টি স্টলে Aster লাইটার দিন',due:['২ অক্টোবর','2 Oct'],st:'done'},
+ {id:5,tag:'Display',o:'Jamal Traders',d:'Jamal Traders-এ নতুন পোস্টার লাগান',due:['১ অক্টোবর','1 Oct'],st:'done'}];
+addPhone({id:'tasks',short:['টাস্ক','Tasks'],t:['টাস্ক','Tasks'],ref:'F-SR-046, 047 · UI-SR-43',
+ note:['অফলাইনে সমাধান হয়, পরের সিঙ্কে যায়: "সমাধান করুন" ট্যাপ করুন','Resolve offline, it syncs later: tap "Resolve"'],
+ draw(){
+  const d=S.tasks.done,all=TASKS.map(x=>Object.assign({},x,{st:d[x.id]?'done':x.st}));
+  const ong=all.filter(x=>x.st==='ong'),don=all.filter(x=>x.st==='done'),cur=S.tasks.tab,list=cur==='ong'?ong:don;
+  const card=x=>`<article class="card task ${x.st==='done'?'done':''}"><div class="hd"><span class="chip c-neu" style="font-family:var(--ff-lat)">${x.tag}</span>${x.st==='done'?chip('c-ok','check',d[x.id]?(st.off?t('সম্পন্ন · অপেক্ষায়','Done · waiting'):t('সম্পন্ন','Done')):t('সম্পন্ন','Done')):chip(x.late?'c-warn':'c-warn',x.late?'clock':'clock',x.late?t('মেয়াদ পেরিয়েছে','Overdue'):t('চলমান','Ongoing'))}</div>
+   <h3 class="t-bodyS">${x.o}</h3><p class="t-body">${x.d}</p>
+   <div class="ft"><span class="due t-cap">${ic('flag',16)}${t('শেষ তারিখ ','Completion on ')+(isBn()?x.due[0]:x.due[1])}</span>${x.st==='ong'?txt(t('সমাধান করুন','Resolve'),'resolve',{attrs:'data-id="'+x.id+'"',icon:'check'}):''}</div></article>`;
+  const empty=`<div class="empty"><span class="ill">${ic('tasks',40)}</span><h3 class="t-heading">${cur==='ong'?t('সব কাজ সম্পন্ন','All tasks are done'):t('এখনো কিছু সম্পন্ন হয়নি','Nothing completed yet')}</h3><p class="t-body sec">${t('সিঙ্ক হয়েছে 10:42','Synced 10:42')}</p></div>`;
+  return topbar(t('টাস্ক','Tasks'))+`<div class="content">${seg('tseg',[['ong',t('চলমান '+ong.length,'Ongoing '+ong.length)],['done',t('সম্পন্ন '+don.length,'Completed '+don.length)]],cur,'tseg')}
+   ${list.length?list.map(card).join(''):empty}</div>`;
+ }});
+
+/* ---------- interactions ---------- */
+Object.assign(ACT,{
+ step(a,fid){const k=SKU.find(x=>x.id===a.dataset.id),d=+a.dataset.d;if(d<0&&S.sale[k.id]<=0)return;S.sale[k.id]=Math.max(0,S.sale[k.id]+d*k.step);S.rev.credit=false;S.rev.collected=null;redraw('sale');redraw('review');},
+ cat(a){S.cat=a.dataset.v;redraw('sale');},
+ seg(a){S.route.seg=a.dataset.v;redraw('route');},
+ letter(a){S.route.letter=a.dataset.v;redraw('route');},
+ force(a,fid){openOv('visit-out','force');},
+ reason(a){S.visit.reason=a.dataset.v;openOv('visit-out','force');},
+ photo(a){if(!S.visit.reason)return;S.visit.forced=true;closeOv('visit-out');redraw('visit-out');},
+ refresh(a){if(S.visit.refresh>0)S.visit.refresh--;redraw('visit-out');},
+ credit(a){S.rev.credit=!S.rev.credit;if(S.rev.credit){openOv('review','credit');}else{S.rev.collected=null;}redraw('review');},
+ creditOk(a){const tot=saleTotal(),v=S.rev.collected==null?Math.floor(tot*0.8):S.rev.collected;if(v>=tot)return;S.rev.collected=v;closeOv('review');redraw('review');},
+ print(a){openOv('review','commit');},
+ commitYes(a){openOv('review','done');},
+ tseg(a){S.tasks.tab=a.dataset.v;redraw('tasks');},
+ resolve(a){S.tasks.done[a.dataset.id]=true;redraw('tasks');},
+ expand(a){S.sum.open=!S.sum.open;redraw('summary');}
+});
+/* closing a credit sheet without confirming turns credit off again */
+const _close=ACT.close;
+ACT.close=function(a,fid){if(fid==='review'&&S.ov.review&&S.ov.review.kind==='credit'){S.rev.credit=false;S.rev.collected=null;closeOv(fid);redraw('review');return;}_close(a,fid);};
+document.addEventListener('input',e=>{
+  const i=e.target.closest('[data-bind="collected"]');if(!i)return;
+  const tot=saleTotal(),v=parseFloat(asc(i.value).replace(/[^\d.]/g,''))||0;
+  $('#due-live').innerHTML=mo(Math.max(0,tot-v));$('#due-err').style.display=v>=tot?'block':'none';
+  const ok=$('#credit-ok');ok.setAttribute('aria-disabled',String(v>=tot));S.rev._tmp=v;
+});
+const _cok=ACT.creditOk;
+ACT.creditOk=function(a,fid){const tot=saleTotal(),inp=$('#coll'),v=parseFloat(asc(inp?inp.value:'').replace(/[^\d.]/g,''));if(!(v>=0)||v>=tot)return;S.rev.collected=v;closeOv('review');redraw('review');};
+
+/* ===================== Web frames ===================== */
+const addWeb=o=>FR.push(Object.assign({kind:'web'},o));
+const intl=v=>n(Math.round(v).toLocaleString('en-US'));
+const WNAV=[
+ [['ওভারভিউ','Overview'],[['grid','ড্যাশবোর্ড','Dashboard','dash'],['chart','রিপোর্ট','Reports'],['map','টিম ম্যাপ','Team map']]],
+ [['মাস্টার ডেটা','Master data'],[['store','আউটলেট','Outlets'],['users','ব্যবহারকারী','Users'],['phone','ডিভাইস','Devices']]],
+ [['কনফিগারেশন','Configuration'],[['pin','জিওফেন্সের ব্যাসার্ধ','Geofence radius','geo'],['tune','নিয়ম ও সীমা','Rules'],['file','পরিবর্তনের অনুরোধ','Change requests'],['shield','অডিট','Audit']]]];
+const rail=act=>`<aside class="rail" aria-label="${t('প্রধান মেনু','Main menu')}"><div class="br"><span class="mark" style="width:32px;height:32px;border-radius:11px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L12 4.5 19 19"/><path d="M8.2 14h7.6"/></svg></span><b class="t-heading">Aron</b></div>
+ ${WNAV.map(g=>`<div class="gl t-label">${t(g[0][0],g[0][1])}</div>${g[1].map(i=>`<a class="nv" href="#" onclick="return false" ${i[3]===act?'aria-current="page"':''}>${ic(i[0],20)}<span>${t(i[1],i[2])}</span></a>`).join('')}`).join('')}
+ <div style="margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 8px"><span class="avatar" style="width:36px;height:36px;font-size:14px">TS</span><span style="min-width:0"><span class="t-label" style="display:block">TSO · sr334001</span><span class="t-cap sec" style="display:block">${t('টেরিটরি: বনানী','Territory: Banani')}</span></span></div></aside>`;
+const wtop=()=>`<header class="bar wtop"><span class="chip c-neu">${ic('lock',16)}<span>${t('টেরিটরি: বনানী','Territory: Banani')}</span></span>
+ <span class="pill t-cap" style="min-width:300px">${ic('search',18)}<span>${t('পাতা, কনফিগ কী, আউটলেট খুঁজুন','Search pages, config keys, outlets')}</span><span class="kbd">Ctrl K</span></span><span class="sp"></span>
+ ${st.off?chip('c-off','cloudOff',t('অফলাইন, ডেটা 18:05 পর্যন্ত','Offline, data as of 18:05')):chip('c-ok','dot',t('লাইভ','Live'))}
+ <div class="seg" style="--n:2;--i:${isBn()?0:1};min-width:120px" role="group" aria-label="Language"><button type="button" data-k="lang" data-v="bn" aria-pressed="${isBn()}">বাংলা</button><button type="button" data-k="lang" data-v="en" aria-pressed="${!isBn()}">EN</button></div>
+ <button class="ib" data-act="wtheme" style="width:40px;height:40px" aria-label="${t('থিম বদলান','Change theme')}">${ic(st.theme==='dark'?'moon':'sun',20)}</button></header>`;
+
+/* stylised map plate (sample, not Google Maps) */
+function mapSVG(w,h,seed,labels){
+  const r=rng(seed);let s=`<rect width="${w}" height="${h}" fill="var(--map-road)"/>`,x=-30;
+  while(x<w){const cw=64+r()*120;let y=-30;while(y<h){const ch=48+r()*96;s+=`<rect x="${(x+4)|0}" y="${(y+4)|0}" width="${(cw-8)|0}" height="${(ch-8)|0}" rx="7" fill="var(--map-land)"/>`;y+=ch;}x+=cw;}
+  s+=`<path d="M${w*.6} -10C${w*.68} ${h*.1} ${w*.56} ${h*.2} ${w*.66} ${h*.3}S${w*.88} ${h*.36} ${w*.97} ${h*.26}L${w+10} -10Z" fill="var(--map-water)"/>`;
+  s+=`<path d="M-10 ${h*.82}L${w*.42} ${h*.58}L${w+10} ${h*.66}" stroke="var(--map-road)" stroke-width="16" stroke-linecap="round" fill="none"/>`;
+  (labels||[]).forEach(l=>{s+=`<text x="${w*l[0]}" y="${h*l[1]}" fill="var(--map-lbl)" font-size="13" font-weight="700" text-anchor="middle" style="paint-order:stroke;stroke:var(--map-land);stroke-width:4">${l[2]}</text>`;});
+  return s;
+}
+const pin=(x,y,k)=>k==='o'?`<circle cx="${x}" cy="${y}" r="5" fill="var(--accent)" stroke="var(--surface-solid)" stroke-width="2"/>`
+ :k==='sr'?`<rect x="${x-6}" y="${y-6}" width="12" height="12" rx="3" fill="var(--viz-2)" stroke="var(--surface-solid)" stroke-width="2"/>`
+ :k==='old'?`<rect x="${x-6}" y="${y-6}" width="12" height="12" rx="3" fill="none" stroke="var(--viz-2)" stroke-width="2"/>`
+ :`<rect x="${x-6}" y="${y-6}" width="12" height="12" rx="3" fill="var(--surface-solid)" stroke="var(--danger)" stroke-width="2"/>`;
+
+/* ---------- Dashboard ---------- */
+const ZONES=[['বনানী','Banani',1840,12],['গুলশান','Gulshan',1210.5,9],['বারিধারা','Baridhara',760,10],['মহাখালী','Mohakhali',415,8],['নিকেতন','Niketan',165.5,6]];
+S.dash={date:'today',zm:'sales'};
+function lineChart(){
+  const W=640,H=236,L=48,R=70,T=16,B=32,pw=W-L-R,ph=H-T-B,X=d=>L+(d-1)/30*pw,Y=v=>T+ph-(v/6000)*ph;
+  const cur=[3820,4120,3540,4292,4391],r=rng(11),prev=Array.from({length:30},(_,i)=>Math.round(3300+r()*2100+(i%7===5?-500:0)));
+  const path=a=>a.map((v,i)=>(i?'L':'M')+X(i+1).toFixed(1)+' '+Y(v).toFixed(1)).join('');
+  const yt=[0,2000,4000,6000],xt=[1,5,10,15,20,25,30];
+  return {W,H,L,R,T,B,X,Y,cur,prev,svg:`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${t('মাসের শুরু থেকে বিক্রয়: এই মাস ও গত মাস','Sales month to date: this month and last month')}" style="display:block;touch-action:none" id="lc">
+   ${yt.map(v=>`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v?'var(--border-divider)':'var(--text-secondary)'}" ${v?'':'stroke-opacity=".35"'} stroke-width="1"/><text x="${L-8}" y="${Y(v)+4}" text-anchor="end" font-size="12" fill="var(--text-secondary)" class="num">${intl(v)}</text>`).join('')}
+   ${xt.map(d=>`<text x="${X(d)}" y="${H-10}" text-anchor="middle" font-size="12" fill="var(--text-secondary)" class="num">${n(d)}</text>`).join('')}
+   <path d="${path(prev)}" fill="none" stroke="var(--viz-2)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+   <path d="${path(cur)}" fill="none" stroke="var(--viz-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+   <path d="${path(cur)}L${X(5)} ${Y(0)}L${X(1)} ${Y(0)}Z" fill="var(--viz-1)" fill-opacity=".10"/>
+   <circle cx="${X(5)}" cy="${Y(4391)}" r="4.5" fill="var(--viz-1)" stroke="var(--surface-solid)" stroke-width="2"/>
+   <text x="${X(5)+10}" y="${Y(4391)+4}" font-size="13" font-weight="700" fill="var(--text-primary)" class="num">${intl(4391)}</text>
+   <circle cx="${X(30)}" cy="${Y(prev[29])}" r="4.5" fill="var(--viz-2)" stroke="var(--surface-solid)" stroke-width="2"/>
+   <text x="${X(30)+10}" y="${Y(prev[29])+4}" font-size="13" font-weight="700" fill="var(--text-primary)" class="num">${intl(prev[29])}</text>
+   <line id="lc-x" y1="${T}" y2="${T+ph}" stroke="var(--text-secondary)" stroke-opacity=".5" stroke-width="1" style="display:none"/>
+   <rect id="lc-hit" x="${L}" y="${T}" width="${pw}" height="${ph}" fill="transparent"/></svg>`};
+}
+function rankBars(items,max,fmtv){
+  return `<div class="rk">${items.map(i=>`<span class="t-body" style="overflow-wrap:anywhere">${i[0]}</span><div class="bar-t" style="--r:${(i[1]/max).toFixed(3)}"><i></i><b style="left:calc((100% - 92px)*var(--r) + 8px)">${fmtv(i[1])}</b></div>`).join('')}</div>`;
+}
+const spark=(v=[4650,4210,3980,4890,5120,4400,3900,3820,4120,3540,4292,4391],W=140,H=48,cls='spark')=>{const mx=Math.max(...v)*1.04,mn=Math.min(...v)*.94;
+  const p=v.map((y,i)=>[2+i*((W-4)/(v.length-1)),H-2-(y-mn)/(mx-mn)*(H-6)]);
+  return `<svg class="${cls}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true" style="${cls==='spark'?'':'width:100%;height:'+H+'px;margin-top:auto'}"><path d="${p.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join('')}" fill="none" stroke="var(--text-secondary)" stroke-opacity=".5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${p[p.length-1][0]}" cy="${p[p.length-1][1]}" r="4" fill="var(--accent)" stroke="var(--surface-solid)" stroke-width="2"/></svg>`;};
+const stat=(lab,val,extra,cls='s3')=>`<section class="card wc ${cls}"><span class="t-label lab">${lab}</span><span class="t-display">${val}</span>${extra||''}</section>`;
+const meter=v=>`<div class="meter" role="img" aria-label="${n(v)}%"><b style="width:${v}%"></b></div>`;
+function dashDraw(el){
+  const sc0=$('.wscroll',el),top=sc0?sc0.scrollTop:0,lc=lineChart(),d=S.dash;
+  const zdata=ZONES.map(z=>[t(z[0],z[1]),d.zm==='sales'?z[2]:z[3]]),zmax=Math.max(...zdata.map(z=>z[1]));
+  const att=[['userClock','লগইন করেনি','Not logged in',3],['upload','লগইন করেছে সাবমিট করেনি','Logged in, not submitted',10],['warn','সন্দেহজনক লোকেশন','Suspicious location',3],['flag','ব্যতিক্রম','Exceptions',0]];
+  const r=rng(5);let pins='';for(let i=0;i<46;i++)pins+=pin(60+r()*880,40+r()*270,'o');
+  for(let i=0;i<9;i++)pins+=pin(120+r()*760,70+r()*220,'sr');pins+=pin(300,220,'old')+pin(610,150,'bad')+pin(780,250,'bad');
+  el.innerHTML=`<div class="pbg w"></div>${rail('dash')}<div class="wmain"><div class="wscroll">${wtop()}
+  <div class="wpage">
+   <div class="wh"><div><h1 class="t-display">${t('ড্যাশবোর্ড','Dashboard')}</h1><p class="t-cap sec">${t('ডেটা 18:05 পর্যন্ত · ব্যবসায়িক তারিখ 05 অক্টোবর 2026','Data as of 18:05 · Business date 5 Oct 2026')}</p></div>
+    <div class="mrow" style="flex-wrap:wrap;gap:10px">${seg('dseg',[['today',t('আজ','Today')],['yest',t('গতকাল','Yesterday')],['pick',t('তারিখ','Pick a date')]],d.date,'dseg')}
+     <button class="wbtn" data-act="noop">${ic('filter',18)}${t('ফিল্টার (3)','Filters (3)')}</button><button class="wbtn" data-act="noop">${ic('sync',18)}${t('হালনাগাদ','Refresh')}</button><button class="wbtn" data-act="noop">${ic('download',18)}${t('রপ্তানি','Export')}</button></div></div>
+   <div class="wgrid">
+    <section class="card wc hero6 s6"><span class="t-label lab">${t('বিক্রয় (সর্বমোট)','Sales (grand total)')}</span>
+     <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap"><span class="t-hero">${mo(4391)}</span>${spark()}</div>
+     <span class="t-body sec">${t('মোট','Total')} ${mo(4828.5)} · ${t('মেমো','Memos')} ${n(6)}</span>
+     <span><span class="dchip c-ok">${ic('tri',14)}${t('+2.3% গতকালের তুলনায়','+2.3% vs yesterday')}</span></span></section>
+    ${stat(t('স্ট্রাইক রেট','Strike rate'),n('10%'),meter(10)+`<span class="t-cap sec">${t('60টি টার্গেট আউটলেটের মধ্যে 6টি সফল কল','6 successful calls of 60 target outlets')}</span>`)}
+    ${stat(t('আউটলেট ভ্রমণ','Outlets visited'),n('6/60'),meter(10)+`<span class="t-cap sec">${t('আজকের রুটে','On today’s route')}</span>`)}
+    ${stat(t('জিও সঠিক','Geo valid'),n('92%'),meter(92)+`<span class="chips-row">${chip('c-neu','',t('ফোর্স সেল 12','Force sale 12'))}${chip('c-warn','warn',t('সন্দেহজনক 3','Suspicious 3'))}</span>`+spark([88,90,89,91,93,90,92],100,34,'sp2'))}
+    ${stat(t('লগইন %','Login %'),n('94%'),meter(94)+`<span class="t-cap sec">${t('51টি রুটের মধ্যে 48টি','48 of 51 routes')}</span>`+spark([91,92,95,93,96,92,94],100,34,'sp2'))}
+    ${stat(t('সাবমিট %','Submit %'),n('79%'),meter(79)+`<span class="t-cap sec">${t('লগইন করা 48টির মধ্যে 38টি','38 of 48 logged in')}</span>`+spark([70,74,72,78,81,77,79],100,34,'sp2'))}
+    <section class="card wc s3"><span class="t-label lab">${t('ফাইনাল সাবমিট অবস্থা','Final Submit status')}</span><span class="t-display">${n('3/5')} <span class="t-body sec">${t('জোন','zones')}</span></span>
+     <span class="chips-row">${ZONES.map((z,i)=>chip(i<3?'c-ok':'c-neu',i<3?'checkCircle':'circle',t(z[0],z[1]))).join('')}</span></section>
+    <section class="data wc s8" aria-label="${t('বিক্রয় মাসের শুরু থেকে','Sales month to date')}" style="position:relative"><div class="wh" style="align-items:center"><h3 class="t-heading">${t('বিক্রয়, মাসের শুরু থেকে','Sales, month to date')}</h3>
+      <div class="leg t-cap"><span><i style="width:16px;height:3px;border-radius:2px;background:var(--viz-1)"></i>${t('এই মাস','This month')}</span><span><i style="width:16px;height:3px;border-radius:2px;background:var(--viz-2)"></i>${t('গত মাস','Last month')}</span><button class="btn txt" style="min-height:32px;padding:0 8px" data-act="noop">${t('টেবিল হিসেবে দেখুন','View as table')}</button></div></div>
+      ${lc.svg}<div class="tip" id="lc-tip"></div></section>
+    <section class="data wc s4"><h3 class="t-heading">${t('চ্যানেল','Channels')}</h3>${rankBars([[t('জেনারেল স্টোর','General store'),3210],[t('টি স্টল','Tea stall'),890.5],[t('ফার্মেসি','Pharmacy'),290.5]],3210,v=>fmt(v)+'৳')}
+      <span class="t-cap sec" style="margin-top:6px">${t('নিট বিক্রয়, চ্যানেল অনুযায়ী','Net sales by channel')}</span></section>
+    <section class="data wc s8"><div class="wh" style="align-items:center"><h3 class="t-heading">${t('জোন র‍্যাঙ্কিং','Zone ranking')}</h3>${seg('zseg',[['sales',t('বিক্রয়','Sales')],['strike',t('স্ট্রাইক রেট','Strike rate')]],d.zm,'zseg',false)}</div>
+      ${rankBars(zdata,zmax,v=>d.zm==='sales'?fmt(v)+'৳':n(v)+'%')}</section>
+    <section class="data wc s4"><h3 class="t-heading">${t('এখনই দেখুন','Needs attention')}</h3><div class="attention">${att.map(a=>`<a class="att" href="#" onclick="return false"><span style="color:${a[3]?'var(--text-secondary)':'var(--success)'}">${ic(a[3]?a[0]:'check',22)}</span><span class="t-body">${t(a[1],a[2])}</span><span class="n t-bodyS">${n(a[3])}</span>${ic('chevR',18)}</a>`).join('')}</div>
+      <div style="margin-top:6px">${'<button class="wbtn pri" data-act="noop" style="width:100%;justify-content:center">'+t('ব্যবস্থা নিন','Take action')+'</button>'}</div></section>
+    <section class="card mapcard s12" aria-label="${t('টিম ম্যাপ','Team map')}"><svg class="map" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${mapSVG(1000,360,21,[[.22,.2,t('বনানী','Banani')],[.62,.14,t('গুলশান লেক','Gulshan Lake')],[.45,.9,t('ক্যান্টনমেন্ট','Cantonment')]])}${pins}</svg>
+      <div class="plate"><span style="display:flex;flex-direction:column"><b class="t-bodyS">${t('টিম ম্যাপ','Team map')}</b><span class="t-cap sec num">${t('48 জন এসআর · শেষ সিঙ্ক 18:05','48 SRs · last sync 18:05')}</span></span><button class="wbtn pri" data-act="noop">${ic('map',18)}${t('মানচিত্র দেখান','Show map')}</button></div>
+      <div class="plate" style="left:auto;right:20px;bottom:20px"><span class="leg t-cap" style="gap:12px"><span><svg width="12" height="12" style="vertical-align:-1px;margin-inline-end:6px"><circle cx="6" cy="6" r="5" fill="var(--accent)"/></svg>${t('আউটলেট','Outlet')}</span><span><svg width="12" height="12" style="vertical-align:-1px;margin-inline-end:6px"><rect x="1" y="1" width="10" height="10" rx="3" fill="var(--viz-2)"/></svg>${t('এসআর','SR')}</span><span><svg width="12" height="12" style="vertical-align:-1px;margin-inline-end:6px"><rect x="1" y="1" width="10" height="10" rx="3" fill="none" stroke="var(--danger)" stroke-width="2"/></svg>${t('সন্দেহজনক','Suspicious')}</span></span></div></section>
+   </div></div></div></div>`;
+  const ns=$('.wscroll',el);ns.scrollTop=top;
+  /* chart crosshair and tooltip (value first, textContent only) */
+  const hit=$('#lc-hit',el),xl=$('#lc-x',el),tip=$('#lc-tip',el),svg=$('#lc',el);
+  if(hit)hit.addEventListener('pointermove',ev=>{
+    const b=svg.getBoundingClientRect(),k=svg.viewBox.baseVal.width/b.width,sx=(ev.clientX-b.left)*k,dd=Math.max(1,Math.min(30,Math.round((sx-lc.L)/(lc.W-lc.L-lc.R)*30+1)));
+    xl.setAttribute('x1',lc.X(dd));xl.setAttribute('x2',lc.X(dd));xl.style.display='';
+    const rows=[];if(dd<=5)rows.push(['var(--viz-1)',lc.cur[dd-1],t('এই মাস','This month')]);rows.push(['var(--viz-2)',lc.prev[dd-1],t('গত মাস','Last month')]);
+    tip.textContent='';const h=document.createElement('div');h.className='t-cap sec';h.textContent=t(dd+' অক্টোবর',dd+' Oct');tip.appendChild(h);
+    rows.forEach(rw=>{const d=document.createElement('div');d.style.cssText='display:flex;gap:8px;align-items:baseline';const v=document.createElement('b');v.className='t-bodyS num';v.textContent=fmt(rw[1])+' ৳';const s=document.createElement('span');s.className='t-cap sec';s.textContent=rw[2];const dot=document.createElement('i');dot.style.cssText='width:10px;height:3px;border-radius:2px;background:'+rw[0];d.append(v,dot,s);tip.appendChild(d);});
+    const pr=svg.parentElement.getBoundingClientRect(),px=(lc.X(dd)/k)+(b.left-pr.left);tip.style.display='block';tip.style.left=Math.min(px+14,pr.width-190)+'px';tip.style.top='54px';
+  });
+  if(hit)hit.addEventListener('pointerleave',()=>{xl.style.display='none';tip.style.display='none';});
+}
+addWeb({id:'dash',path:'/',short:['ড্যাশবোর্ড','Dashboard'],t:['ম্যানেজার ড্যাশবোর্ড','Manager dashboard'],ref:'F-WEB-001 · screens-web s1',
+ note:['একটি হিরো সংখ্যা, মিটার, লাইন ও র‍্যাঙ্কিং; চার্টে মাউস রাখুন, জোন র‍্যাঙ্কিং বদলান','One hero figure, meters, a line and a ranking; hover the chart, switch the zone ranking'],draw:dashDraw});
+
+/* ---------- Geofence radius page ---------- */
+const VS=(()=>{const r=rng(7),a=[];for(let i=0;i<98;i++)a.push(8+r()*92);for(let i=0;i<9;i++)a.push(103+r()*44);for(let i=0;i<17;i++)a.push(155+r()*430);
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a.map(d=>({d,ang:r()*Math.PI*2}));})();
+const GF={cur:100,m:150,level:'territory',days:30,why:'',toast:'',panel:true};
+const SCL=1.4,CX=372,CY=364,BLAST={outlet:[0,0,1,1],route:[0,1,34,1],zone:[1,6,138,6],territory:[3,18,412,48],division:[14,96,2210,420]};
+const mFromPos=p=>{let m=20*Math.pow(100,p/1000);const step=m<150?5:m<=500?10:50;return Math.min(2000,Math.max(20,Math.round(m/step)*step));};
+const posFromM=m=>Math.round(1000*Math.log(m/20)/Math.log(100));
+const gfRisk=()=>{const g=GF;let r=g.level==='outlet'?1:g.level==='division'?3:2;if(g.m>150&&g.m>g.cur)r=3;return r;};
+const gfNeighbours=(()=>{const r=rng(3),a=[];for(let i=0;i<30;i++){const an=r()*6.283,d=170+r()*430;a.push([CX+Math.cos(an)*d*SCL*.8,CY+Math.sin(an)*d*SCL*.6]);}return a;})();
+function gfWif(){
+  const N=GF.days===7?29:GF.days===14?58:124,vs=VS.slice(0,N);
+  const now=vs.filter(v=>v.d<=GF.cur).length,nw=vs.filter(v=>v.d<=GF.m).length;
+  return {N,valid:Math.max(0,nw-now),invalid:Math.max(0,now-nw)};
+}
+function gfMarks(){
+  const w=gfWif();let s='';
+  VS.slice(0,w.N).forEach(v=>{const x=CX+Math.cos(v.ang)*v.d*SCL,y=CY+Math.sin(v.ang)*v.d*SCL;if(x<4||x>1098||y<4||y>708)return;
+    const was=v.d<=GF.cur,now=v.d<=GF.m;
+    if(!was&&now)s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.5" fill="var(--surface-solid)" stroke="var(--viz-3)" stroke-width="2.5"/>`;
+    else if(was&&!now)s+=`<rect x="${(x-5).toFixed(1)}" y="${(y-5).toFixed(1)}" width="10" height="10" rx="2" fill="none" stroke="var(--danger)" stroke-width="2.5"/>`;
+    else s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="var(--text-secondary)" fill-opacity=".55"/>`;});
+  return s;
+}
+function gfUpdate(el,full){
+  const g=GF,w=gfWif(),rk=gfRisk(),ch=g.m>150&&g.m>g.cur;
+  $('#gf-cp',el).setAttribute('r',g.m*SCL);$('#gf-cc',el).setAttribute('r',g.cur*SCL);$('#gf-marks',el).innerHTML=gfMarks();
+  const lp=$('#gf-lp',el),lc=$('#gf-lc',el);
+  lp.textContent=t(g.m+' মি প্রস্তাবিত',g.m+' m proposed');lc.textContent=t(g.cur+' মি এখন',g.cur+' m now');
+  const pa=-0.785,ca=-2.36;lp.style.left=(CX+Math.cos(pa)*g.m*SCL)+'px';lp.style.top=(CY+Math.sin(pa)*g.m*SCL)+'px';lc.style.left=(CX+Math.cos(ca)*g.cur*SCL)+'px';lc.style.top=(CY+Math.sin(ca)*g.cur*SCL)+'px';
+  const nf=$('#gf-num',el);if(document.activeElement!==nf)nf.value=n(g.m);
+  $('#gf-rng',el).value=posFromM(g.m);$('#gf-rng',el).setAttribute('aria-valuetext',t(g.m+' মিটার',g.m+' metres'));
+  const rc=['','c-acc','c-warn','c-dng'][rk],rl=[null,t('C1 এখনই কার্যকর','C1 applies at once'),t('C2 15 মিনিট পরে','C2 after 15 minutes'),t('C3 দ্বিতীয় অনুমোদন লাগবে','C3 needs a second approver')][rk];
+  $('#gf-risk',el).innerHTML=`<span class="chip ${rc}">${ic(rk===1?'zap':rk===2?'clock':'users',16)}<span>${rl}</span></span>`;
+  $('#gf-gate',el).textContent=ch?t('150 মি-এর ওপরে বাড়ালে দ্বিতীয় অনুমোদনকারী লাগবে।','An increase above 150 m needs a second approver.'):[null,t('প্রয়োগ করলে এখনই কার্যকর হবে।','Takes effect as soon as you apply.'),t('অনুরোধের 15 মিনিট পর কার্যকর হবে।','Takes effect 15 minutes after the request.'),t('দ্বিতীয় অনুমোদনকারী অনুমোদন করলে কার্যকর হবে।','Takes effect after a second approver agrees.')][rk];
+  const un=w.N-w.valid-w.invalid,seg=(c,k)=>k?`<i style="flex:${k};background:${c}"></i>`:'';
+  $('#gf-bar',el).innerHTML=seg('var(--viz-3)',w.valid)+seg('var(--viz-2)',w.invalid)+seg('color-mix(in srgb,var(--text-secondary) 35%,transparent)',un);
+  $('#gf-wtxt',el).innerHTML=w.N?t(`${w.N}টি ভিজিট যাচাই: ${w.valid}টি বৈধ হতো, ${w.invalid}টি অবৈধ হতো, ${un}টি অপরিবর্তিত।`,`${w.N} visits checked: ${w.valid} would become valid, ${w.invalid} would become invalid, ${un} unchanged.`):t('এই সময়ে কোনো ভিজিট নেই','No visits in this period');
+  const b=BLAST[g.level];$('#gf-blast',el).textContent=t(`${b[0]}টি জোন, ${b[1]}টি রুট, ${b[2]}টি আউটলেট, ${b[3]} জন ব্যবহারকারী`,`${b[0]} zones, ${b[1]} routes, ${b[2]} outlets, ${b[3]} users`);
+  const same=g.m===g.cur,short=g.why.trim().length<10,off=st.off;
+  const btn=$('#gf-btn',el),why=same?t('ব্যাসার্ধ বদলায়নি','The radius has not changed'):off?t('ইন্টারনেট নেই','No internet connection'):short?t('কারণ কমপক্ষে 10 অক্ষর','The reason needs at least 10 characters'):'';
+  btn.setAttribute('aria-disabled',String(!!why));$('#gf-why-t',el).innerHTML=why?ic('info',16)+'<span>'+why+'</span>':'';
+  btn.textContent=rk===1?t('প্রয়োগ করুন','Apply'):t('অনুরোধ করুন','Request');
+  $('#gf-cnt',el).textContent=n(Math.min(g.why.trim().length,99))+'/'+n(10);
+  $('#gf-days',el).style.setProperty('--i',[7,14,30].indexOf(g.days));$$('#gf-days button',el).forEach(x=>x.setAttribute('aria-pressed',String(+x.dataset.v===g.days)));
+  $('#gf-cur',el).innerHTML=n(g.cur)+' <span class="t-body sec">'+t('মি','m')+'</span>';
+  const tt=$('#gf-toast',el);tt.className='toast'+(g.toast?' show':'');tt.innerHTML=g.toast?ic('checkCircle',22)+'<span class="t-body">'+g.toast+'</span>':'';
+  const err=$('#gf-err',el);if(err)err.style.display=GF.bad?'flex':'none';
+}
+function geoDraw(el){
+  const g=GF,lv=[['outlet',t('আউটলেট','Outlet')],['route',t('রুট','Route')],['zone',t('জোন','Zone')],['territory',t('টেরিটরি','Territory')],['division',t('বিভাগ','Division')]];
+  const labels=[[.2,.16,t('বনানী','Banani')],[.7,.12,t('গুলশান লেক','Gulshan Lake')],[.16,.86,t('কড়াইল','Karail')],[.52,.93,t('ক্যান্টনমেন্ট','Cantonment')]];
+  el.innerHTML=`<div class="pbg w"></div>${rail('geo')}<div class="wmain" style="display:flex;flex-direction:column">${wtop()}
+  <div class="gmap"><svg width="1102" height="712" viewBox="0 0 1102 712" role="img" aria-label="${t('জিওফেন্স ম্যাপ: বর্তমান ও প্রস্তাবিত বৃত্ত','Geofence map: current and proposed circles')}">${mapSVG(1102,712,33,labels)}
+    ${gfNeighbours.map(p=>pin(p[0].toFixed(0),p[1].toFixed(0),'o')).join('')}
+    <circle id="gf-cp" cx="${CX}" cy="${CY}" r="150" fill="var(--accent)" fill-opacity=".14" stroke="var(--accent)" stroke-width="2.5" style="transition:r var(--motion-fast) var(--ease-out)"/>
+    <circle id="gf-cc" cx="${CX}" cy="${CY}" r="100" fill="none" stroke="var(--text-secondary)" stroke-width="2"/>
+    <g id="gf-marks"></g>
+    <circle cx="${CX}" cy="${CY}" r="13" fill="var(--accent)" fill-opacity=".24"/><circle cx="${CX}" cy="${CY}" r="7" fill="var(--accent)" stroke="var(--surface-solid)" stroke-width="2.5"/></svg>
+   <span class="chip" id="gf-lp" style="position:absolute;transform:translate(-50%,-50%);background:var(--accent);color:var(--text-on-accent);box-shadow:var(--elev-card)"></span>
+   <span class="chip" id="gf-lc" style="position:absolute;transform:translate(-50%,-50%);background:var(--fill-dialog);color:var(--text-primary);box-shadow:var(--elev-card),inset 0 0 0 1px var(--border-solid)"></span>
+   <span class="chip" style="position:absolute;left:${CX+22}px;top:${CY+8}px;background:var(--fill-dialog);color:var(--text-primary);box-shadow:var(--elev-card)">বনানী স্টোর</span>
+   <div style="position:absolute;left:16px;bottom:72px;display:flex;flex-direction:column;border-radius:14px;overflow:hidden;background:var(--fill-dialog);box-shadow:var(--elev-card)"><button class="ib" style="border-radius:0" data-act="noop" aria-label="Zoom in">${ic('plus')}</button><button class="ib" style="border-radius:0;box-shadow:inset 0 1px 0 var(--border-divider)" data-act="noop" aria-label="Zoom out">${ic('minus')}</button></div>
+   <span class="t-cap sec" style="position:absolute;left:16px;bottom:12px;padding:2px 8px;border-radius:8px;background:var(--fill-dialog)">${t('নমুনা মানচিত্র','Sample map')}</span>
+   <button class="bar" data-act="noop" style="position:absolute;left:50%;bottom:0;transform:translateX(-62%);height:48px;padding:0 22px;border:0;border-radius:20px 20px 0 0;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text-primary);box-shadow:var(--elev-sheet-web)">${ic('chevU',18)}<span class="t-label">${t('ঘনত্ব ও ক্যালিব্রেশন','Density and calibration')}</span></button>
+   <aside class="gpanel" aria-label="${t('জিওফেন্সের ব্যাসার্ধ','Geofence radius')}"><div class="gp-body">
+     <div style="display:flex;align-items:flex-start;gap:8px"><div style="flex:1"><h1 class="t-title">${t('জিওফেন্সের ব্যাসার্ধ','Geofence radius')}</h1><p class="t-cap sec">${t('প্রযোজ্য: টেরিটরি · বনানী · সংস্করণ 12 · অডিট','Applies to: Territory · Banani · version 12 · Audit')}</p></div></div>
+     <div class="step"><b>1</b><span class="t-label">${t('কোথায়','Where')}</span></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><select class="sel t-body" id="gf-level" aria-label="${t('স্তর','Level')}">${lv.map(l=>`<option value="${l[0]}" ${g.level===l[0]?'selected':''}>${l[1]}</option>`).join('')}</select><select class="sel t-body" aria-label="${t('এলাকা','Area')}"><option>${t('বনানী','Banani')}</option><option>${t('গুলশান','Gulshan')}</option></select></div>
+     <div class="step"><b>2</b><span class="t-label">${t('কত দূর','How far')}</span></div>
+     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span class="t-display" id="gf-cur"></span>${chip('c-neu','',t('বিভাগ থেকে','from Division'))}</div>
+     <span class="t-cap sec" style="margin-top:-8px">${t('এখানে কার্যকর ব্যাসার্ধ','Radius in force here')}</span>
+     <div><input class="range" id="gf-rng" type="range" min="0" max="1000" step="1" value="${posFromM(g.m)}" aria-label="${t('ব্যাসার্ধ','Radius')}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" class="t-cap sec"><span>${t('ছোট: বেশি ফোর্স সেল','Small: more force sales')}</span><span style="text-align:end">${t('বড়: ভুল দোকান বৈধ হওয়ার ঝুঁকি','Large: a neighbouring shop may count')}</span></div></div>
+     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><input class="nf t-bodyS" id="gf-num" inputmode="numeric" aria-label="${t('মিটার','Metres')}"><span class="t-body sec">${t('মি','m')}</span><span class="t-cap sec" style="flex:1;min-width:120px">${t('20 থেকে 2,000 মি','20 to 2,000 m')}</span></div>
+     <p id="gf-err" class="t-cap" style="display:none;gap:8px;align-items:center;border-radius:12px;padding:6px 10px;background:var(--danger-container);color:var(--danger-on-container)">${ic('warn',16)}<span>${t('20 থেকে 2,000 মিটারের মধ্যে একটি সংখ্যা দিন।','Enter a number from 20 to 2,000 metres.')}</span></p>
+     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="t-label sec">${t('যদি এই ব্যাসার্ধ হতো…','If the radius were…')}</span>${seg('gf-days',[[7,n(7)],[14,n(14)],[30,n(30)]].map(x=>[x[0],x[1]]),30,'gfdays',false)}</div>
+     <div class="wif" id="gf-bar" role="img" aria-label="${t('যাচাইয়ের ফল','What-if result')}"></div><p class="t-cap" id="gf-wtxt" role="status"></p>
+     <div class="card flat" style="padding:12px;box-shadow:none"><span class="t-label">${t('এই পরিবর্তনে প্রভাব পড়বে','This change affects')}</span><p class="t-cap sec num" id="gf-blast"></p></div>
+     <div class="step"><b>3</b><span class="t-label">${t('নিশ্চিত করুন','Confirm')}</span></div>
+     <div class="fld"><label class="t-cap sec" for="gf-why">${t('কারণ (কমপক্ষে 10 অক্ষর)','Reason (at least 10 characters)')}</label><textarea class="ta t-body" id="gf-why" rows="2">${g.why}</textarea><span class="t-cap sec num" id="gf-cnt" style="align-self:flex-end"></span></div>
+    </div>
+    <div class="gp-foot"><div id="gf-risk"></div><p class="t-cap sec" id="gf-gate" style="margin-top:-2px"></p><p class="cap-reason t-cap" id="gf-why-t" style="margin:0"></p><button class="wbtn pri" id="gf-btn" data-act="gfgo" style="width:100%;justify-content:center;min-height:48px"></button></div></aside>
+   <div class="toast" id="gf-toast" role="status"></div></div></div>`;
+  gfUpdate(el,true);
+}
+addWeb({id:'geo',path:'/admin/config/geofence',short:['জিওফেন্স','Geofence'],t:['জিওফেন্স ব্যাসার্ধ (অ্যাডমিন)','Geofence radius (admin)'],ref:'F-ADM-039 · screens-web s2',
+ note:['স্লাইডার টানুন: বৃত্ত, যাচাই, ঝুঁকির স্তর ও বোতাম লাইভ বদলায়; কারণ লিখলে বোতাম চালু হয়','Drag the slider: circle, what-if, risk class and button change live; the button needs a reason'],draw:geoDraw});
+
+/* ---------- web interactions ---------- */
+Object.assign(ACT,{
+ dseg(a){S.dash.date=a.dataset.v;redraw('dash');},
+ zseg(a){S.dash.zm=a.dataset.v;redraw('dash');},
+ wtheme(a){const o=['light','dark','sunlight'];setState('theme',o[(o.indexOf(st.theme)+1)%3]);},
+ gfdays(a,fid){GF.days=+a.dataset.v;gfUpdate($('#sc-geo'));},
+ gfgo(a){const g=GF;if(a.getAttribute('aria-disabled')==='true')return;const rk=gfRisk();
+   g.toast=rk===1?t(`ব্যাসার্ধ ${g.m} মি প্রয়োগ হয়েছে। ফোন পরের সিঙ্কে পাবে।`,`Radius ${g.m} m applied. Phones get it at their next sync.`):t('অনুরোধ #123 জমা হয়েছে, অনুমোদনের অপেক্ষায়','Request #123 submitted, waiting for approval');
+   if(rk===1)g.cur=g.m;g.why='';$('#gf-why').value='';gfUpdate($('#sc-geo'));clearTimeout(g._t);g._t=setTimeout(()=>{g.toast='';gfUpdate($('#sc-geo'));},4200);}
+});
+document.addEventListener('input',e=>{
+  const el=$('#sc-geo');if(!el||!el.contains(e.target))return;
+  if(e.target.id==='gf-rng'){GF.m=mFromPos(+e.target.value);GF.bad=false;gfUpdate(el);}
+  else if(e.target.id==='gf-why'){GF.why=e.target.value;gfUpdate(el);}
+  else if(e.target.id==='gf-num'){const v=parseInt(asc(e.target.value).replace(/[^\d]/g,''),10);if(v>=20&&v<=2000){GF.m=v;GF.bad=false;}else GF.bad=true;gfUpdate(el);}
+});
+document.addEventListener('change',e=>{
+  const el=$('#sc-geo');if(!el||!el.contains(e.target))return;
+  if(e.target.id==='gf-level'){GF.level=e.target.value;gfUpdate(el);}
+  if(e.target.id==='gf-num'){gfUpdate(el);}
+});
+
+/* ===================== init ===================== */
+function build(){
+  $('#phones').innerHTML=FR.filter(f=>f.kind==='phone').map(phoneShell).join('');
+  $('#desk').innerHTML=FR.filter(f=>f.kind==='web').map(webShell).join('');
+}
+(function init(){
+  try{const q=new URLSearchParams(location.search),p=JSON.parse(store.get('aron.prev')||'null');
+    if(p)Object.assign(st,{theme:p.theme||st.theme,tier:p.tier||st.tier,fs:p.fs||st.fs,lang:p.lang||st.lang,off:!!p.off});
+    ['theme','tier','fs','lang'].forEach(k=>{if(q.has(k))st[k]=q.get(k);});if(q.has('offline'))st.off=q.get('offline')==='1';
+    if(!['light','dark','sunlight'].includes(st.theme))st.theme='light';if(!['A','B','C'].includes(st.tier))st.tier='B';
+    if(!['100','130','200'].includes(String(st.fs)))st.fs='100';st.fs=String(st.fs);if(!['bn','en'].includes(st.lang))st.lang='bn';
+  }catch(e){}
+  build();apply();drawAll();
+  $$('.screen').forEach(sc=>{const s=$('.scroller',sc);let on=false;s.addEventListener('scroll',()=>{const y=s.scrollTop;if(!on&&y>32){on=true;sc.setAttribute('data-scrolled','')}else if(on&&y<8){on=false;sc.removeAttribute('data-scrolled')}},{passive:true});});
+  fitAll();addEventListener('resize',()=>{clearTimeout(window._rz);window._rz=setTimeout(fitAll,60);});
+  setTimeout(()=>$$('.fx').forEach(f=>f.classList.remove('in')),600);
+})();
+</script>
+</body>
+</html>

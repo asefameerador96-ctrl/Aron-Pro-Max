@@ -1,7 +1,11 @@
 package com.aktcl.aron.core.sync
 
 import com.aktcl.aron.contract.RecordAck
+import com.aktcl.aron.contract.Resolution
+import com.aktcl.aron.contract.RouteDayState
+import com.aktcl.aron.contract.ServerTotals
 import com.aktcl.aron.contract.SyncBatchResponse
+import kotlinx.serialization.builtins.ListSerializer
 import androidx.room.withTransaction
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.ProblemCode
@@ -336,10 +340,9 @@ class SyncEngine(
                     meta.putMeta(SyncMetaEntity(KEY_GENERATION, r.generation))
                     r.bundleVersionCurrent?.let { meta.putMeta(SyncMetaEntity(KEY_BUNDLE_CURRENT, it)) }
                     for (totals in r.serverTotals) {
-                        val date = (totals as? JsonObject)?.get("business_date")?.jsonPrimitive?.content ?: continue
-                        meta.putMeta(SyncMetaEntity(KEY_SERVER_TOTALS + date, totals.toString()))
+                        meta.putMeta(SyncMetaEntity(KEY_SERVER_TOTALS + totals.businessDate, WireJson.requests.encodeToString(ServerTotals.serializer(), totals)))
                     }
-                    meta.putMeta(SyncMetaEntity(KEY_DAY_STATES, JsonArray(r.dayStates).toString()))
+                    meta.putMeta(SyncMetaEntity(KEY_DAY_STATES, WireJson.requests.encodeToString(ListSerializer(RouteDayState.serializer()), r.dayStates)))
                 }
             }
             val automatic = trigger != SyncTrigger.MANUAL && trigger != SyncTrigger.DAY_SUBMIT
@@ -354,9 +357,8 @@ class SyncEngine(
          * quarantined yet (its batch's answer was lost and the batch is still in flight) is kept and applied as soon as
          * the row is quarantined, so it is never dropped.
          */
-        suspend fun applyResolutions(delivered: List<JsonElement>, now: String) {
-            for (e in delivered) {
-                val res = runCatching { WireJson.responses.decodeFromJsonElement(ResolutionDto.serializer(), e) }.getOrNull() ?: continue
+        suspend fun applyResolutions(delivered: List<Resolution>, now: String) {
+            for (res in delivered) {
                 if (AckRules.resolution(res.resolution) != null) meta.putMeta(SyncMetaEntity(RESOLUTION_PREFIX + res.clientUuid, res.resolution))
             }
             for (stash in meta.metaWithPrefix(RESOLUTION_PREFIX)) {

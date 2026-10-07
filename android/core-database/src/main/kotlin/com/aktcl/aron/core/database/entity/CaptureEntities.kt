@@ -146,6 +146,10 @@ data class MemoEntity(
     /** JSON array of offer version ids applied, e.g. `[12,15]`. */
     @ColumnInfo(name = "offer_version_ids_json") val offerVersionIdsJson: String = "[]",
     @ColumnInfo(name = "rounding_mode") val roundingMode: String = "half_up_paisa",
+    /** First successful print (UTC), set by the print ledger; local state, not part of the memo record. */
+    @ColumnInfo(name = "printed_at") val printedAt: String? = null,
+    /** Number of `printed` print events of this memo. */
+    @ColumnInfo(name = "print_count", defaultValue = "0") val printCount: Int = 0,
 )
 
 /** Memo line (record `memo_line`, rank 2). */

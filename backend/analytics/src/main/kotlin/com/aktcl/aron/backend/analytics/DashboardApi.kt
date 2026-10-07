@@ -102,7 +102,8 @@ class DashboardService(
         val key = "${scope.hash}|${node.first}|${node.second}|$from|$to"
         val now = clock.now()
         cache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
-        val v = db.readJdbi.withHandle<DashboardSummary, Exception> { h -> compute(h, reach, scope, node, from, to) }
+        val multi = level == null && nodeId == null && !reach.national && reach.topNodes.size > 1
+        val v = db.readJdbi.withHandle<DashboardSummary, Exception> { h -> compute(h, reach, scope, node, from, to, multi) }
         if (cache.size > 2_000) { cache.entries.removeIf { Duration.between(it.value.first, now) >= ttl }; if (cache.size > 2_000) cache.clear() }
         cache[key] = now to v
         return v
@@ -125,15 +126,16 @@ class DashboardService(
         return lv to (nodeId?.takeIf { it > 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "node_id required", errors = listOf(FieldError("query.node_id", "required"))))
     }
 
-    private fun compute(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, from: LocalDate, to: LocalDate): DashboardSummary {
+    private fun compute(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, from: LocalDate, to: LocalDate, multi: Boolean): DashboardSummary {
         val lv = LEVELS.getValue(node.first)
-        // Zones of the node, narrowed to the reach.
-        val nodeZones: List<Long> = if (lv.col == null) emptyList() else
+        // Zones of the node, narrowed to the reach. A caller with several top nodes and no selector reads the whole reach (labelled by the first node).
+        val nodeZones: List<Long> = if (lv.col == null || multi) emptyList() else
             h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE ${lv.col} = :id").bind("id", node.second).mapTo(Long::class.java).list()
-        if (lv.col != null) {
+        if (lv.col != null && !multi) {
             if (nodeZones.isEmpty() || (!reach.national && !reach.zoneIds.containsAll(nodeZones))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
         }
         val eff = when {
+            multi -> ZoneScope(false, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
             lv.col != null -> ZoneScope(false, nodeZones)
             else -> scope
         }

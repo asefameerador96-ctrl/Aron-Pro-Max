@@ -18,9 +18,11 @@ class VisitFlowTest {
     private class FakeFixes(private val queue: ArrayDeque<FixReading>) : LocationFixSource {
         var reads = 0
         val purposes = mutableListOf<String>()
-        override suspend fun readFix(purpose: String): FixReading {
+        val counts = mutableListOf<Int>()
+        override suspend fun readFix(purpose: String, refreshCount: Int): FixReading {
             reads++
             purposes += purpose
+            counts += refreshCount
             return queue.removeFirst()
         }
     }
@@ -79,7 +81,7 @@ class VisitFlowTest {
         f.open(outlet)
         val st = f.refresh()
         assertTrue(st is VisitUiState.Open)
-        assertEquals(listOf("visit_open", "refresh"), src.purposes)
+        assertEquals(listOf("visit_open", "visit_open"), src.purposes); assertEquals(listOf(0, 1), src.counts)
         assertEquals(1, rec.visits[0].second.refreshCount)
     }
 
@@ -191,7 +193,7 @@ class VisitFlowTest {
     @Test fun readingFixIsShownDuringTheRead() = runTest {
         val seen = mutableListOf<VisitUiState>()
         lateinit var fl: VisitFlow
-        val src = object : LocationFixSource { override suspend fun readFix(purpose: String): FixReading { seen += fl.state.value; return fix() } }
+        val src = object : LocationFixSource { override suspend fun readFix(purpose: String, refreshCount: Int): FixReading { seen += fl.state.value; return fix() } }
         val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
         fl = VisitFlow(src, meta, Recorder(), VisitSession(), { GeoSettings.DEFAULT }, { UUID.randomUUID().toString() }, { "x" }, { 1 })
         fl.open(outlet)
