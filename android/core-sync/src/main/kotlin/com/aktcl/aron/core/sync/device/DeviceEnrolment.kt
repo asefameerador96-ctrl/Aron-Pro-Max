@@ -28,6 +28,7 @@ import com.aktcl.aron.dpc.enrolment.EnrolmentState
 import com.aktcl.aron.dpc.enrolment.EnrolmentStore
 import com.aktcl.aron.dpc.enrolment.EnrolmentTransport
 import com.aktcl.aron.dpc.enrolment.JwkEcPublic
+import com.aktcl.aron.dpc.enrolment.PendingEnrolment
 import com.aktcl.aron.dpc.enrolment.ecJwk
 import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
@@ -116,6 +117,7 @@ class DeviceEnrolment(
             }
             coordinator.accept(extras)
         }
+        val sent = store.pending()
         return when (val s = coordinator.run()) {
             is EnrolmentState.Enrolled -> { reconcile(); EnrolmentOutcome.Enrolled }
             is EnrolmentState.Waiting -> {
@@ -123,7 +125,7 @@ class DeviceEnrolment(
                 when {
                     code == null -> EnrolmentOutcome.Waiting(offline = s.reason in OFFLINE_REASONS)
                     // The server's last word on this phone or request: the token leaves the phone like a refused token.
-                    code in FINAL_REFUSALS -> { dropPending(code); EnrolmentOutcome.Refused(code) }
+                    code in FINAL_REFUSALS -> { sent?.let { dropPending(it, code) }; EnrolmentOutcome.Refused(code) }
                     else -> EnrolmentOutcome.Refused(code)
                 }
             }
@@ -132,10 +134,14 @@ class DeviceEnrolment(
         }
     }
 
-    private fun dropPending(code: String) {
-        if (store.enrolled() != null) return
-        store.pending()?.keyAlias?.let { runCatching { keys.delete(it) } }
-        store.saveRefused(code)
+    /** Drops [sent] only if it is still the pending enrolment (a newer token entered meanwhile is kept). */
+    private fun dropPending(sent: PendingEnrolment, code: String) {
+        synchronized(store) { // the store's own monitor: no accept() can slip in between the check and the drop
+            val now = store.pending() ?: return
+            if (store.enrolled() != null || now.extras.enrolmentToken != sent.extras.enrolmentToken || now.deviceUuid != sent.deviceUuid) return
+            now.keyAlias?.let { runCatching { keys.delete(it) } }
+            store.saveRefused(code)
+        }
     }
 
     sealed interface Input {
@@ -167,7 +173,7 @@ class DeviceEnrolment(
                 val extras = EnrolmentExtras.parse({ k -> runCatching { bundle[k]?.jsonPrimitive?.content }.getOrNull() }, ownPackage) { why = it }
                     ?: return Input.Bad(why)
                 // A QR of another server (a production token scanned into a dev build) is refused before any call.
-                if (extras.apiBaseUrl != apiOrigin.trimEnd('/')) return Input.Bad("other_server")
+                if (!sameOrigin(extras.apiBaseUrl, apiOrigin)) return Input.Bad("other_server")
                 return Input.Ok(extras)
             }
             val token = text.filterNot { it.isWhitespace() }
@@ -176,6 +182,17 @@ class DeviceEnrolment(
             // A bare token carries no extras: env is unknown here and the lockdown level is the server's (from the token
             // row, returned in the response). Both fields are stored for the record only.
             return Input.Ok(EnrolmentExtras(token, apiOrigin.trimEnd('/'), env = "", flavour = flavour, lockdownLevel = "dev", zoneCode = null))
+        }
+
+        /** Scheme, host (any case) and effective port. */
+        fun sameOrigin(a: String, b: String): Boolean {
+            fun key(u: String) = runCatching {
+                val uri = java.net.URI(u.trim().trimEnd('/'))
+                val scheme = uri.scheme?.lowercase() ?: return@runCatching null
+                val port = if (uri.port != -1) uri.port else if (scheme == "https") 443 else if (scheme == "http") 80 else -1
+                Triple(scheme, uri.host?.lowercase(), port)
+            }.getOrNull()
+            return key(a)?.let { it == key(b) } ?: false
         }
 
         /** The production wiring, one per process (the app's DI). */

@@ -251,6 +251,7 @@ class DeviceEnrolmentTest {
         assertEquals(token, bare.extras.enrolmentToken)
         assertEquals(https, bare.extras.apiBaseUrl)
         assertEquals(DeviceEnrolment.Input.Bad("other_server"), DeviceEnrolment.readInput(qr("https://api.other.example"), pkg, https))
+        assertTrue(DeviceEnrolment.readInput(qr("https://API.aron.example:443"), pkg, https) is DeviceEnrolment.Input.Ok)
         assertEquals("sr", bare.extras.flavour)
     }
 

@@ -40,6 +40,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     @Inject lateinit var components: SessionComponents
+    @Inject lateinit var deviceEnrolment: com.aktcl.aron.core.sync.device.DeviceEnrolment
     @Inject lateinit var databases: UserDatabases
     @Inject lateinit var scheduler: SyncScheduler
     @Inject lateinit var fixManager: FixManager
@@ -131,9 +132,16 @@ class MainActivity : ComponentActivity() {
                     val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
                         SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore
-                        SessionState.LoggedOut -> {
+                        SessionState.LoggedOut -> com.aktcl.aron.feature.auth.EnrolmentGate(
+                            // Enrolment (docs/24 s10.4) before the first login of a new install; never in a signed-in day.
+                            status = { com.aktcl.aron.feature.auth.EnrolStatus(deviceEnrolment.enrolled(), deviceEnrolment.pending(), deviceEnrolment.refusedCode()) },
+                            submit = deviceEnrolment::submit,
+                            appTitle = stringResource(R.string.app_name),
+                            onLanguageSelect = onLanguageSelect,
+                        ) { onEnrol ->
+                            // The bind step (OTP from /device-otp) follows the first login of an enrolled phone.
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
-                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect)
+                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol)
                         }
                         is SessionState.Active -> {
                             val holder = viewModel(key = "sr-day-" + s.user.userId) { SrDayHolder() }.also { dayHolder = it }
