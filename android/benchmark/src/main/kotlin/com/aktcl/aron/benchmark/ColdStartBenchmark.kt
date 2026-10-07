@@ -15,7 +15,8 @@ import org.junit.runner.RunWith
  * Cold start of the field app (docs/04 gate: 2.5 s to the first screen on the Galaxy A06). Runs on a device or emulator
  * only. [coldStart] records the numbers in the macrobenchmark report (with and without the baseline profile);
  * [coldStartMeetsTheGate] fails when the median `am start -W` TotalTime of five process-cold launches (speed-profile
- * compiled, one warm-up not counted) is 2.5 s or more. Lab phones only (see build.gradle.kts).
+ * compiled, one warm-up not counted) is 2.5 s or more. Read the gate from the `benchmark` run (obfuscated, like release).
+ * Lab phones only (see build.gradle.kts).
  */
 @RunWith(AndroidJUnit4::class)
 class ColdStartBenchmark {
@@ -43,7 +44,9 @@ class ColdStartBenchmark {
         // The compile state is fixed, not left to install history or earlier tests: reset, have ProfileInstaller write the
         // shipped profile (what CompilationMode.Partial does), compile with it, then one launch that is not counted.
         run("cmd package compile --reset $targetPackage")
-        run("am broadcast -a androidx.profileinstaller.action.INSTALL_PROFILE $targetPackage/androidx.profileinstaller.ProfileInstallReceiver")
+        val installed = run("am broadcast -a androidx.profileinstaller.action.INSTALL_PROFILE $targetPackage/androidx.profileinstaller.ProfileInstallReceiver")
+        // result=1 is ProfileInstaller's success; anything else would time an uncompiled app, so say so instead.
+        assertTrue("profile not installed: $installed", installed.contains("result=1"))
         run("cmd package compile -f -m speed-profile $targetPackage")
         run("am force-stop $targetPackage")
         run("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $targetPackage")

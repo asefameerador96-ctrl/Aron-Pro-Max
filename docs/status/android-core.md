@@ -105,7 +105,7 @@
     - A malformed body and a body cut off mid-stream are covered.
   - Honest limit: the budget is proven on the JVM (Robolectric SQLite). The A06 number comes from the benchmark module (AUD-PERF-04).
   - Checker nit: `call` now decodes as UTF-8 whatever the Content-Type charset says (the /v1 API is UTF-8).
-- **AUD-PERF-04 phone speed tooling** (T1; Opus checker FAIL, fixed, see the re-check line below):
+- **AUD-PERF-04 phone speed tooling: done in code** (T1; Opus checker FAIL, re-check FAIL, both fixed; re-check 2 PASS). The gate resets compilation, installs the profile through the ProfileInstaller broadcast (`result=1` asserted), and compiles before timing. The generator skips unless the target is the `-profile` build. The A06 numbers are D-PERF-04:
   - `:android:benchmark` (`com.android.test`, `-Paron.benchmarkApp=sr|amo|tso`, default sr):
     - `ColdStartBenchmark`: macrobenchmark StartupTimingMetric with and without the profile, plus `coldStartMeetsTheGate`. That test takes the median `am start -W` TotalTime of 5 process-cold launches, after `cmd package compile -m speed-profile` and one warm-up launch, and requires it under 2,500 ms.
     - `BaselineProfileGenerator` (startup path; Android 13+).
