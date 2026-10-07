@@ -20,7 +20,7 @@ class OutletRequestTest {
         val r = svc.submit(f)
         assertTrue(r is RequestValidation.Ok)
         val d = saved.single()
-        assertEquals("01712345678".length, d.contactNumber!!.length); assertEquals("new", d.kind.wire); assertEquals(null, d.outletId)
+        assertEquals("01712345678", d.contactNumber); assertEquals("new", d.kind.wire); assertEquals(null, d.outletId)
         assertEquals(7L, d.clusterId); assertEquals("00000000-0000-4000-8000-000000000042", d.requestUuid)
     }
 
