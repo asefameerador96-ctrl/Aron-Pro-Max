@@ -25,5 +25,5 @@ export async function QuarantinePageContent({ searchParams, basePath, titleKey }
   const item = one(sp.item, 15);
   const selected = item ? (r.data.items.find((q) => String(q.quarantine_id) === item) ?? null) : null;
   const nextHref = r.data.next_cursor ? `${basePath}${qs({ ...filters, cursor: r.data.next_cursor })}` : null;
-  return <QuarantineView locale={locale} rows={r.data.items} filters={filters} basePath={basePath} nextHref={nextHref} canWrite={canOp("quarantine.resolve", session.user.role)} titleKey={titleKey} selected={selected} />;
+  return <QuarantineView locale={locale} rows={r.data.items} filters={filters} basePath={basePath} nextHref={nextHref} canWrite={canOp("quarantine.resolve", session.user.role)} titleKey={titleKey} selected={selected} cursor={one(sp.cursor, 512)} />;
 }
