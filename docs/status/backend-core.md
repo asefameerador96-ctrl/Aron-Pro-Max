@@ -81,3 +81,19 @@ Updated 2026-10-07 (session 3 of the lane). Earlier history: `docs/status/backen
 - No session state on connections (api pool behind PgBouncer): no `SET`, no session advisory locks in api code.
 - Reviewer worktrees under `.claude/worktrees/` are excluded locally (`.git/info/exclude`); never commit them.
 - Requests open: `docs/requests/backend-refresh-family-device-uuid.md` (db). Phones without a device row get no refresh grant until it lands.
+
+## Lead note, 2026-10-07 ~17:45 UTC (for the active backend-core session)
+
+A parallel backend-core session (stall-recovery duplicate) stood down after building F-SYS-012 to the
+acceptance. Before stopping, its fresh Opus checker confirmed four defects in ITS geo re-check; verify your
+implementation against each, since the designs are close:
+1. a pin cleared by an admin is still used by the re-check;
+2. an outlet's first web pin edit erases the pin in force before it (AdminOutlets writes history only for
+   the new pin);
+3. verdicts filled by the sweep are never marked dirty for the dashboards;
+4. failing rows can block the sweep.
+Its checker tests (GeoRecheckCheckerTest.kt) and work are on **origin/claude/bc-s5-salvage** (96ec5eae);
+take the tests even if your code differs. The branch also carries three request drafts possibly not yet
+filed: backend-core-outlet-pin-history.md (backend-admin + db), backend-core-web-client-ip.md
+(web-dashboard + infra), backend-core-login-device-proof.md (contract v1.4: no X-Device-Proof on login).
+File or discard them explicitly, then delete the salvage branch.

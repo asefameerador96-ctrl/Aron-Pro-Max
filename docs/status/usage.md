@@ -31,3 +31,12 @@
 | 2026-10-07 10:50 | android-core-ui | - | 145 | n/a | seven_day allowed_warning | idle (not nudged, critical path only) |
 | 2026-10-07 10:50 | android-print | - | 319 | n/a | seven_day allowed_warning | idle (not nudged) |
 | 2026-10-07 10:50 | backend-reports | - | 257 | n/a | seven_day allowed_warning | on hold |
+| 2026-10-07 12:50 | integrator (session 2) | - | 299 | n/a | seven_day allowed_warning | idle, near recycle |
+| 2026-10-07 12:50 | backend-core (session 5) | - | 0 | n/a | seven_day allowed_warning | running |
+| 2026-10-07 12:50 | android-core | - | 460 | n/a | seven_day allowed_warning | asked to recycle |
+| 2026-10-07 12:50 | android-sr-a | - | 199 | n/a | seven_day allowed_warning | idle, OTP wiring next |
+| 2026-10-07 12:50 | android-sr-b | - | 348 | n/a | seven_day allowed_warning | idle |
+| 2026-10-07 12:50 | db (session 3) | - | 286 | n/a | seven_day allowed_warning | running |
+| 2026-10-07 12:50 | infra | - | 383 | n/a | seven_day allowed_warning | idle, verifying dev deploy |
+| 2026-10-07 12:50 | android-core-ui | - | 175 | n/a | seven_day allowed_warning | blocked on sr-a promotion |
+| 2026-10-07 12:50 | android-print | - | 319 | n/a | seven_day allowed_warning | idle |
