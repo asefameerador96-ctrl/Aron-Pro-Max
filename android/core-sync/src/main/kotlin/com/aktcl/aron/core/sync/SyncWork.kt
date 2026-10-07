@@ -85,9 +85,36 @@ class SessionSyncRunner(
                 if (pullsConfig(held, server)) config.pullAfterPush(userId)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         }
+        dailyPurge(db)
         components.session.noteTimePassing() // F-SYS-052: proven uptime for the 7-day offline window
         try { afterRun(userId, report) } catch (_: Exception) { }
         return report
+    }
+
+    /**
+     * F-SYS-028: once per business date (trusted time), after a run, whatever its outcome (the purge only touches whole
+     * acked families). `cfg.app.local_history_days` (default 7, held to 1..90). Never throws.
+     */
+    private suspend fun dailyPurge(db: com.aktcl.aron.core.database.AronDatabase) {
+        try {
+            val clock = components.trustedClock
+            if (clock.clockOffsetMs() == null) return // no server-time anchor: a clock set forward must never wipe history
+            val today = clock.businessDate().toString()
+            val meta = db.referenceDao()
+            if (meta.meta(KEY_PURGE_DATE) == today) return
+            val nowIso = SyncEngine.iso(clock.nowMs())
+            val ref = com.aktcl.aron.core.database.repo.ReferenceRepository(db)
+            suspend fun days(key: String, default: Int) = configInt(ref.config(key, nowIso)) ?: default
+            com.aktcl.aron.core.database.repo.LocalPurge(db).purge(
+                today, nowIso,
+                historyDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS).coerceIn(1, 90),
+                keepDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_KEEP_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_KEEP_DAYS).coerceIn(1, 90),
+            )
+            meta.putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(KEY_PURGE_DATE, today))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
     }
 
     private fun engine(userId: Long, db: com.aktcl.aron.core.database.AronDatabase) = SyncEngine(
@@ -103,6 +130,13 @@ class SessionSyncRunner(
     )
 
     companion object {
+        /** F-SYS-028: the business date of the last purge. */
+        const val KEY_PURGE_DATE = "purge.last_business_date"
+
+        /** A config value (JSON text) as an int: `7` or `"7"`; anything else is null (the default applies). */
+        fun configInt(json: String?): Int? = json?.let {
+            runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim()?.toIntOrNull() }.getOrNull()
+        }
         /** The server said its config is newer than what the phone holds (a portal change since the last delta). */
         fun pullsConfig(held: Long?, server: Long?): Boolean = held != null && server != null && server > held
 

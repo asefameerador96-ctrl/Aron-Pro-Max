@@ -123,10 +123,6 @@ abstract class OutboxDao {
     @Query("SELECT MAX(acked_at) FROM outbox WHERE business_date = :businessDate AND record_type = :recordType AND acked_at IS NOT NULL")
     abstract suspend fun lastAckedAt(businessDate: String, recordType: String): String?
 
-    /** Acked rows are kept 7 days for reconciliation and reprint, then purged (s4.5); unacked rows are never deleted. */
-    @Query("DELETE FROM outbox WHERE state = 'acked' AND acked_at IS NOT NULL AND acked_at < :before")
-    abstract suspend fun purgeAckedBefore(before: String): Int
-
     /** Rows per state, for the support file (F-SYS-021 / F-SR-006). */
     @Query("SELECT state AS recordType, COUNT(*) AS count FROM outbox GROUP BY state")
     abstract suspend fun countsByState(): List<TypeCount>
