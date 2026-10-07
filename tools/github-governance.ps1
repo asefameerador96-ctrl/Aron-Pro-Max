@@ -19,11 +19,20 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 function Step([string]$m) { Write-Host "`n== $m" -ForegroundColor Cyan }
+# A failed call is never silent: the exit code is checked and the response printed as a warning (a call that is allowed to
+# fail, such as re-adding an existing deployment policy, is only a warning). The script counts failures and ends with an
+# error summary, so "Done" is never printed after a failed step.
+$script:ApiFailures = 0
 function Api([string]$method, [string]$url, [string]$bodyJson) {
   if ($bodyJson) {
     $f = New-TemporaryFile; Set-Content -Path $f -Value $bodyJson -Encoding utf8
-    try { gh api --method $method $url --input $f 2>&1 } finally { Remove-Item $f -ErrorAction SilentlyContinue }
-  } else { gh api --method $method $url 2>&1 }
+    try { $out = gh api --method $method $url --input $f 2>&1 } finally { Remove-Item $f -ErrorAction SilentlyContinue }
+  } else { $out = gh api --method $method $url 2>&1 }
+  if ($LASTEXITCODE -ne 0) {
+    $script:ApiFailures++
+    Write-Warning "gh api $method $url failed (exit $LASTEXITCODE): $($out -join ' ')"
+  }
+  $out
 }
 
 if ($MakePrivate) {
@@ -104,4 +113,5 @@ try {
   Write-Host 'secret scanning and push protection enabled'
 } catch { Write-Warning "not available on this plan: $($_.Exception.Message) (gitleaks in CI covers it)" }
 
+if ($script:ApiFailures -gt 0) { throw "$($script:ApiFailures) API call(s) failed: read the warnings above; nothing was deleted, the script is idempotent and can be re-run." }
 Write-Host "`nDone. Next: the lead opens the first promotion PR (INT to main) at the first daily gate." -ForegroundColor Green
