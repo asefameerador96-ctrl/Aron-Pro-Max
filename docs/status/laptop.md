@@ -86,3 +86,6 @@ Verified afterwards with read-only `gh api` calls (the script discards API error
 - Environments: `azure-dev` unchanged (branch `claude/wonderful-thompson-k6ejnf`); `azure-stage` (branch `main` only);
   `azure-prod` (tags `server-v*` only, required reviewer: the owner).
 - Repository still public; default branch unchanged; secret scanning and push protection enabled (both were already on).
+
+`adb devices`: no devices attached. Windows sees a Galaxy Note8 only over Bluetooth; no USB, MTP or ADB interface is
+present. The phone is not connected by USB, or the cable is charge-only, or USB debugging is not on yet.
