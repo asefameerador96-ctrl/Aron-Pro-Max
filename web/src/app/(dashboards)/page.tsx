@@ -1,4 +1,4 @@
-import { FinalSubmitPanel } from "@/components/dash/final-submit-panel";
+import { FinalSubmitPanel, zoneFinalOf } from "@/components/dash/final-submit-panel";
 import { Big, Tile, n, pctText, takaText } from "@/components/dash/tiles";
 import { MapPanel, type MapPin } from "@/components/map-panel";
 import { requireSession } from "@/lib/auth/require";
@@ -103,7 +103,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </ul>
           </Tile>
           <Tile id="finalsubmit" locale={locale} titleKey="dashboard.final_submit" date={d()}>
-            <FinalSubmitPanel locale={locale} kpis={k} zones={summary.data.children} />
+            <FinalSubmitPanel locale={locale} kpis={k} zones={summary.data.children} zoneFinal={loginSubmit.ok ? zoneFinalOf(loginSubmit.data.zones) : undefined} />
           </Tile>
           <Tile id="loginsubmit" locale={locale} titleKey="dashboard.login_submit" date={d(loginSubmit.ok ? loginSubmit.data.as_of : null)}>
             {loginSubmit.ok ? (

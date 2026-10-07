@@ -32,6 +32,7 @@ export async function handleMasterOp(req: NextRequest): Promise<NextResponse> {
   else if (n > max) errors.push({ pointer: "/reason", code: "too_long" });
   else body[def.reason] = reason;
   errors.push(...(await masterOpRules(key, body, isObj(input.params) ? input.params : {}, auth.session.at, role)));
+  if (errors.some((e) => e.code === "not_found")) return auth.finish(problemResponse(404, "ERR_NOT_FOUND"));
   if (errors.length) return auth.finish(problemResponse(400, "ERR_VALIDATION", { errors }));
 
   const r = await rawRequest<unknown>({ method: def.method, path, token: auth.session.at, body });

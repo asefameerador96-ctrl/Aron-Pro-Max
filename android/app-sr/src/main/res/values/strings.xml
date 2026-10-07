@@ -2,4 +2,6 @@
 <resources>
     <!-- Launcher label (F-SYS-033): the same in Bangla and English, as on the current phones. -->
     <string name="app_name" translatable="false">ARON SR</string>
+    <string name="sr_visit_open">Your visit is open. The sale screens continue from here.</string>
+    <string name="sr_visit_close">Close visit</string>
 </resources>

@@ -42,7 +42,7 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
       // Role-node consistency needs the user's role: read it from the API, never from the browser.
       const u = await rawRequest<{ role?: Role }>({ method: "GET", path: `/v1/admin/users/${encodeURIComponent(String(params.id))}`, token });
       if (!u.ok || !u.data.role) {
-        out.push({ pointer: "/params/id", code: "invalid" });
+        out.push({ pointer: "/params/id", code: !u.ok && u.status === 404 ? "not_found" : "invalid" });
         break;
       }
       // Only SUPERADMIN writes ADMIN-role users (docs/24 s8.5).
@@ -50,7 +50,14 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
       nodes.forEach((n, i) => {
         if (!isObj(n) || Object.keys(n).some((k) => k !== "node_type" && k !== "node_id")) out.push({ pointer: `/body/nodes/${i}`, code: "invalid" });
         else if (typeof n.node_type !== "string" || !scopeNodeAllowed(u.data.role!, n.node_type)) out.push({ pointer: `/body/nodes/${i}/node_type`, code: "role_node_mismatch" });
-        else if (typeof n.node_id !== "number" || !Number.isInteger(n.node_id) || n.node_id < (n.node_type === "national" ? 0 : 1)) out.push({ pointer: `/body/nodes/${i}/node_id`, code: "invalid" });
+        else if (typeof n.node_id !== "number" || !Number.isSafeInteger(n.node_id) || n.node_id < (n.node_type === "national" ? 0 : 1)) out.push({ pointer: `/body/nodes/${i}/node_id`, code: "invalid" });
+      });
+      const seen = new Set<string>();
+      nodes.forEach((n, i) => {
+        if (!isObj(n)) return;
+        const k = `${String(n.node_type)}:${String(n.node_id)}`;
+        if (seen.has(k)) out.push({ pointer: `/body/nodes/${i}`, code: "duplicate" });
+        seen.add(k);
       });
       if (nodes.length === 0 && u.data.role !== "SR") out.push({ pointer: "/body/nodes", code: "required" });
       break;
@@ -60,6 +67,7 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
       strict(["batch_uuid", "valid_from", "prices", "change_reason"]);
       if (typeof body.batch_uuid !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(body.batch_uuid)) out.push({ pointer: "/body/batch_uuid", code: "invalid" });
       futureDate(body.valid_from, "/body/valid_from", out);
+      if (body.valid_from === businessDate()) out.push({ pointer: "/body/valid_from", code: "past" }); // contract: from a FUTURE Dhaka date
       const prices = body.prices;
       if (!Array.isArray(prices) || prices.length < 1 || prices.length > 1000) {
         out.push({ pointer: "/body/prices", code: "invalid" });
@@ -86,6 +94,7 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
       if (body.kind !== "primary" && body.kind !== "cover") out.push({ pointer: "/body/kind", code: "invalid" });
       futureDate(body.valid_from, "/body/valid_from", out);
       if (body.valid_to !== undefined && body.valid_to !== null) futureDate(body.valid_to, "/body/valid_to", out);
+      if (typeof body.valid_from === "string" && typeof body.valid_to === "string" && body.valid_to <= body.valid_from) out.push({ pointer: "/body/valid_to", code: "before_start" });
       break;
     }
     case "assignment.end": {
