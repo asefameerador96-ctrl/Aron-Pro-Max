@@ -49,8 +49,30 @@ export async function loadRefOptionsChecked(ref: RefMeta, token: string): Promis
   return { options, failed: false };
 }
 
+/** The label of ONE referenced row (one GET), or null when the reference has no GET-one path or the call fails. */
+export async function loadRefLabel(ref: RefMeta, id: string, token: string): Promise<string | null> {
+  if (!ref.get || !/^[0-9]{1,15}$/.test(id)) return null;
+  const r = await rawRequest<Record<string, unknown>>({ method: "GET", path: resolvePath(String(ref.get), { ...ref.params, id }), token });
+  if (!r.ok) return null;
+  return (ref.label ?? ["name"]).map((k) => String(r.data[k] ?? "")).filter(Boolean).join(" · ") || null;
+}
+
 export async function loadRefOptions(ref: RefMeta, token: string): Promise<RefOption[]> {
   return (await loadRefOptionsChecked(ref, token)).options;
+}
+
+/** Every row of a list operation (follows the cursor, 20 pages of 500 at most); `failed` when any page failed. */
+export async function loadAllRows(path: string, token: string, query: Record<string, string | number | undefined> = {}): Promise<{ rows: Record<string, unknown>[]; failed: boolean }> {
+  const rows: Record<string, unknown>[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < REF_MAX_PAGES; page++) {
+    const r = await rawRequest<RowPage>({ method: "GET", path, token, query: { ...query, limit: REF_PAGE, cursor } });
+    if (!r.ok) return { rows, failed: true };
+    rows.push(...r.data.items);
+    if (!r.data.next_cursor) break;
+    cursor = r.data.next_cursor;
+  }
+  return { rows, failed: false };
 }
 
 /** Keep only filter values the contract accepts, so a typo in the URL shows an unfiltered list, not a raw 400 (Search minLength 2, Id integer). */

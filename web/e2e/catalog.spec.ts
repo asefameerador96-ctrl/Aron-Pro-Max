@@ -32,31 +32,27 @@ test("product tree: brand under a segment shows the parent label; SKU create wit
   await expect(page.locator("#f-base_per_pack")).toHaveCount(0);
 });
 
-test("QC fault types: group and applies_to attributes, locked codes, add and retire, audited with the reason", async ({ page }) => {
+test("classification lists: locked codes, add an item, retire another, audited with the reason", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/master-data");
-  await page.getByTestId("codelist-qc_fault_type").click();
-  await expect(page.getByTestId("codelist-row")).toHaveCount(11);
+  await page.getByTestId("codelist-geo_class").click();
+  await expect(page.getByTestId("codelist-row")).toHaveCount(4);
   await expect(page.getByTestId("codelist-row").first().getByLabel("কোড")).toHaveAttribute("readonly", "");
 
   await page.getByTestId("codelist-add").click();
-  const row = page.getByTestId("codelist-row").nth(11);
-  await row.getByLabel("কোড").fill("mould");
-  await row.getByLabel("ইংরেজি লেবেল").fill("Mould");
-  await row.getByLabel("বাংলা লেবেল").fill("ছাতা");
-  await row.getByLabel("গ্রুপ").selectOption("MKT");
-  await row.getByLabel("যেখানে প্রযোজ্য").selectOption("app");
-  // retire an existing one
-  await page.getByTestId("codelist-row").nth(6).getByLabel("বন্ধের তারিখ").fill("2026-12-31");
+  const row = page.getByTestId("codelist-row").nth(4);
+  await row.getByLabel("কোড").fill("char_land");
+  await row.getByLabel("ইংরেজি লেবেল").fill("River char");
+  await row.getByLabel("বাংলা লেবেল").fill("চর");
+  await page.getByTestId("codelist-row").nth(3).getByLabel("বন্ধের তারিখ").fill("2026-12-31");
   await page.getByTestId("codelist-save").click();
   await expect(page.getByTestId("error-reason")).toBeVisible();
-  await page.locator("#reason").fill("Adding mould and retiring wet stock");
+  await page.locator("#reason").fill("Adding river chars and retiring hill");
   await page.getByTestId("codelist-save").click();
   await expect(page.getByTestId("form-ok")).toBeVisible();
-  const s = await stateOf();
-  expect(s.audit.at(-1)).toMatchObject({ entity: "code_list", reason: "Adding mould and retiring wet stock" });
+  expect((await stateOf()).audit.at(-1)).toMatchObject({ entity: "code_list", reason: "Adding river chars and retiring hill" });
   await page.reload();
-  await expect(page.getByTestId("codelist-row")).toHaveCount(12);
+  await expect(page.getByTestId("codelist-row")).toHaveCount(5);
 });
 
 test("code list: a bad code is flagged on its row and nothing is saved", async ({ page }) => {

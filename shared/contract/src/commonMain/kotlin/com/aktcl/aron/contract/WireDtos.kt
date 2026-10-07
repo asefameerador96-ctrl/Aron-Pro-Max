@@ -66,7 +66,9 @@ data class NodeRef(
     @SerialName("id") val id: Long,
     @SerialName("code") val code: String? = null,
     @SerialName("name") val name: String? = null,
-)
+) {
+    override fun toString(): String = "NodeRef(type=${type}, id=${id}, code=***, name=${name})"
+}
 
 @Serializable
 data class LoginDevice(
@@ -150,6 +152,14 @@ data class BundleUser(
 )
 
 @Serializable
+data class RouteAssignees(
+    @SerialName("user_id") val userId: Long,
+    @SerialName("full_name") val fullName: String,
+    @SerialName("role") val role: String,
+    @SerialName("username") val username: String,
+)
+
+@Serializable
 data class Route(
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String,
@@ -164,8 +174,10 @@ data class Route(
     @SerialName("visit_days_mask") val visitDaysMask: Int,
     @SerialName("sequence_no") val sequenceNo: Int? = null,
     @SerialName("status") val status: String,
-    @SerialName("assignees") val assignees: List<JsonObject>? = null,
-)
+    @SerialName("assignees") val assignees: List<RouteAssignees>? = null,
+) {
+    override fun toString(): String = "Route(createdAt=${createdAt}, updatedAt=${updatedAt}, version=${version}, id=${id}, code=***, name=${name}, displayLabel=${displayLabel}, zoneId=${zoneId}, kind=${kind}, visitKind=${visitKind}, visitDaysMask=${visitDaysMask}, sequenceNo=${sequenceNo}, status=${status}, assignees=${assignees})"
+}
 
 /** Per-route section of the bundle; replaced as a whole when the route is added to the user. */
 @Serializable
@@ -182,7 +194,7 @@ data class RouteSnapshot(
     @SerialName("sales_plan_sku_ids") val salesPlanSkuIds: List<Long>,
     @SerialName("targets") val targets: List<JsonElement>,
     @SerialName("achievement_mtd") val achievementMtd: List<JsonElement>,
-    @SerialName("day_state") val dayState: JsonElement,
+    @SerialName("day_state") val dayState: RouteDayState,
 )
 
 /** Outlet as the phone needs it. `radius_m` and `max_accuracy_m` are already resolved for this outlet (outlet > route > zone > geo_class > territory > division > wing > global). */
@@ -217,7 +229,9 @@ data class BundleOutlet(
     @SerialName("programme_flags") val programmeFlags: List<String>,
     @SerialName("pending_request") val pendingRequest: Boolean,
     @SerialName("suggested_qty") val suggestedQty: List<JsonElement>? = null,
-)
+) {
+    override fun toString(): String = "BundleOutlet(outletId=${outletId}, routeId=${routeId}, code=***, name=${name}, nameBn=${nameBn}, nameSortKey=${nameSortKey}, ownerName=${ownerName}, contactNumber=${contactNumber}, lat=${lat}, lng=${lng}, locationConfirmed=${locationConfirmed}, provisionalLat=${provisionalLat}, provisionalLng=${provisionalLng}, clusterId=${clusterId}, clusterName=${clusterName}, channel=${channel}, subChannelId=${subChannelId}, geoClass=${geoClass}, status=${status}, priceType=${priceType}, outletKind=${outletKind}, radiusM=${radiusM}, maxAccuracyM=${maxAccuracyM}, visitSequence=${visitSequence}, openDueMtk=${openDueMtk}, openDueAsOf=${openDueAsOf}, programmeFlags=${programmeFlags}, pendingRequest=${pendingRequest}, suggestedQty=${suggestedQty})"
+}
 
 @Serializable
 data class Sku(
@@ -238,7 +252,9 @@ data class Sku(
     @SerialName("thumbnail_media_uuid") val thumbnailMediaUuid: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("version") val version: Int? = null,
-)
+) {
+    override fun toString(): String = "Sku(id=${id}, code=***, variantId=${variantId}, categoryCode=${categoryCode}, name=${name}, shortName=${shortName}, nameBn=${nameBn}, baseUnit=${baseUnit}, basePerPack=${basePerPack}, entryUnitDefault=${entryUnitDefault}, reportUnit=${reportUnit}, reportFactor=${reportFactor}, sort=${sort}, status=${status}, thumbnailMediaUuid=${thumbnailMediaUuid}, updatedAt=${updatedAt}, version=${version})"
+}
 
 @Serializable
 data class SkuPrice(
@@ -494,6 +510,20 @@ data class PlayIntegrityUnavailable(
 data class ChangePasswordRequest(
     @SerialName("current_password") val currentPassword: String,
     @SerialName("new_password") val newPassword: String,
+) {
+    override fun toString(): String = "ChangePasswordRequest(currentPassword=***, newPassword=***)"
+}
+
+@Serializable
+data class DeviceStatusReportPolicyApplyErrors(
+    @SerialName("item") val item: String,
+    @SerialName("error") val error: String,
+)
+
+@Serializable
+data class DeviceStatusReportPrinter(
+    @SerialName("bonded_name") val bondedName: String? = null,
+    @SerialName("mac_sha256") val macSha256: String? = null,
 )
 
 /** Phone status (docs/24 s10.3). Sent by POST /v1/devices/me/status and as the `device_status` record payload. */
@@ -502,11 +532,11 @@ data class DeviceStatusReport(
     @SerialName("reported_at") val reportedAt: String,
     @SerialName("trigger") val trigger: String? = null,
     @SerialName("app_version") val appVersion: String,
-    @SerialName("device_info") val deviceInfo: JsonElement,
+    @SerialName("device_info") val deviceInfo: DeviceInfo,
     @SerialName("device_owner") val deviceOwner: Boolean,
     @SerialName("lockdown_level_applied") val lockdownLevelApplied: String,
     @SerialName("policy_version_applied") val policyVersionApplied: Long?,
-    @SerialName("policy_apply_errors") val policyApplyErrors: List<JsonObject>? = null,
+    @SerialName("policy_apply_errors") val policyApplyErrors: List<DeviceStatusReportPolicyApplyErrors>? = null,
     @SerialName("restrictions_applied") val restrictionsApplied: Map<String, Boolean>? = null,
     @SerialName("blocking_active") val blockingActive: Boolean,
     @SerialName("blocking_since") val blockingSince: String? = null,
@@ -531,7 +561,7 @@ data class DeviceStatusReport(
     @SerialName("battery_pct") val batteryPct: Int,
     @SerialName("charging") val charging: Boolean? = null,
     @SerialName("free_storage_mb") val freeStorageMb: Int? = null,
-    @SerialName("printer") val printer: JsonObject? = null,
+    @SerialName("printer") val printer: DeviceStatusReportPrinter? = null,
 )
 
 /** Encode DeviceStatusReport with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
@@ -549,12 +579,14 @@ data class EnrolDeviceRequest(
     @SerialName("app_version") val appVersion: String,
     @SerialName("app_signing_cert_sha256") val appSigningCertSha256: String,
     @SerialName("device_owner") val deviceOwner: Boolean,
-    @SerialName("public_key") val publicKey: JsonElement,
+    @SerialName("public_key") val publicKey: JwkEcPublicDevice,
     @SerialName("key_attestation_chain") val keyAttestationChain: List<String>,
-    @SerialName("device_info") val deviceInfo: JsonElement,
+    @SerialName("device_info") val deviceInfo: DeviceInfo,
     @Serializable(with = DeviceStatusReportWire::class) @SerialName("status") val status: DeviceStatusReport? = null,
     @SerialName("play_integrity_unavailable") val playIntegrityUnavailable: PlayIntegrityUnavailable? = null,
-)
+) {
+    override fun toString(): String = "EnrolDeviceRequest(enrolmentToken=***, deviceUuid=${deviceUuid}, appPackage=${appPackage}, appVersion=${appVersion}, appSigningCertSha256=${appSigningCertSha256}, deviceOwner=${deviceOwner}, publicKey=${publicKey}, keyAttestationChain=***, deviceInfo=${deviceInfo}, status=${status}, playIntegrityUnavailable=${playIntegrityUnavailable})"
+}
 
 @Serializable
 data class Me(
@@ -580,7 +612,237 @@ data class DeviceOtp(
     @SerialName("employee_code") val employeeCode: String? = null,
     @SerialName("zone_code") val zoneCode: String? = null,
     @SerialName("zone_name") val zoneName: String? = null,
+) {
+    override fun toString(): String = "DeviceOtp(userId=${userId}, username=${username}, fullName=${fullName}, zoneId=${zoneId}, otp=***, deviceModel=${deviceModel}, createdAt=${createdAt}, expiresAt=${expiresAt}, attempts=${attempts}, employeeCode=${employeeCode}, zoneCode=${zoneCode}, zoneName=${zoneName})"
+}
+
+// ---- Device policy and enrolment (docs/24 s10) ----
+
+/** Device public key (Android Keystore, EC P-256). */
+@Serializable
+data class JwkEcPublicDevice(
+    @SerialName("kty") val kty: String,
+    @SerialName("crv") val crv: String,
+    @SerialName("x") val x: String,
+    @SerialName("y") val y: String,
 )
+
+@Serializable
+data class DeviceInfo(
+    @SerialName("manufacturer") val manufacturer: String,
+    @SerialName("model") val model: String,
+    @SerialName("os_api_level") val osApiLevel: Int,
+    @SerialName("os_version") val osVersion: String,
+    @SerialName("security_patch") val securityPatch: String? = null,
+    @SerialName("abi") val abi: String,
+    @SerialName("ram_mb") val ramMb: Int,
+    @SerialName("storage_total_mb") val storageTotalMb: Int? = null,
+)
+
+@Serializable
+data class PermissionGrant(
+    @SerialName("permission") val permission: String,
+    @SerialName("state") val state: String,
+    @SerialName("min_api") val minApi: Int,
+)
+
+@Serializable
+data class AppControlPolicy(
+    @SerialName("mode") val mode: String,
+    @SerialName("blocked_packages") val blockedPackages: List<String>,
+    @SerialName("allowed_packages") val allowedPackages: List<String>,
+    @SerialName("always_allowed_packages") val alwaysAllowedPackages: List<String>,
+)
+
+/** App blocking tied to attendance (evaluated on the phone on trusted time, offline). */
+@Serializable
+data class BlockingSchedule(
+    @SerialName("enabled") val enabled: Boolean,
+    @SerialName("starts_on") val startsOn: String,
+    @SerialName("ends_on") val endsOn: String,
+    @SerialName("hard_end_time") val hardEndTime: String?,
+    @SerialName("working_days_only") val workingDaysOnly: Boolean,
+)
+
+/** Encode BlockingSchedule with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object BlockingScheduleWire : JsonTransformingSerializer<BlockingSchedule>(BlockingSchedule.serializer()) {
+    private val alwaysEmitted = listOf("hard_end_time")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+/** UserManager restrictions set with DevicePolicyManager.addUserRestriction (true = restricted). */
+@Serializable
+data class DevicePolicyUserRestrictions(
+    @SerialName("no_debugging_features") val noDebuggingFeatures: Boolean,
+    @SerialName("no_install_unknown_sources") val noInstallUnknownSources: Boolean,
+    @SerialName("no_install_apps") val noInstallApps: Boolean,
+    @SerialName("no_factory_reset") val noFactoryReset: Boolean,
+    @SerialName("no_safe_boot") val noSafeBoot: Boolean,
+    @SerialName("no_add_user") val noAddUser: Boolean,
+    @SerialName("no_config_date_time") val noConfigDateTime: Boolean,
+    @SerialName("no_usb_file_transfer") val noUsbFileTransfer: Boolean,
+    @SerialName("no_config_location") val noConfigLocation: Boolean,
+)
+
+@Serializable
+data class DevicePolicyGlobalSettings(
+    @SerialName("auto_time_required") val autoTimeRequired: Boolean,
+    @SerialName("adb_enabled") val adbEnabled: Boolean,
+    @SerialName("location_mode_high_accuracy") val locationModeHighAccuracy: Boolean,
+)
+
+@Serializable
+data class DevicePolicySelfProtection(
+    @SerialName("uninstall_blocked") val uninstallBlocked: Boolean,
+    @SerialName("user_control_disabled") val userControlDisabled: Boolean,
+    @SerialName("battery_optimisation_exempt") val batteryOptimisationExempt: Boolean,
+)
+
+@Serializable
+data class DevicePolicyLocation(
+    @SerialName("require_precise") val requirePrecise: Boolean,
+    @SerialName("require_location_on") val requireLocationOn: Boolean,
+    @SerialName("breadcrumbs_enabled") val breadcrumbsEnabled: Boolean,
+    @SerialName("breadcrumb_interval_min") val breadcrumbIntervalMin: Int,
+)
+
+@Serializable
+data class DevicePolicyStatusReport(
+    @SerialName("on_events") val onEvents: List<String>,
+    @SerialName("min_interval_min") val minIntervalMin: Int,
+)
+
+@Serializable
+data class DevicePolicyIntegrity(
+    @SerialName("play_integrity_required") val playIntegrityRequired: Boolean,
+    @SerialName("refresh_h") val refreshH: Int,
+    @SerialName("key_attestation_required") val keyAttestationRequired: Boolean,
+) {
+    override fun toString(): String = "DevicePolicyIntegrity(playIntegrityRequired=${playIntegrityRequired}, refreshH=${refreshH}, keyAttestationRequired=***)"
+}
+
+/** Device-owner policy (docs/24 s10.2). Applied by android:dpc; works offline once received. */
+@Serializable
+data class DevicePolicy(
+    @SerialName("policy_version") val policyVersion: Long,
+    @SerialName("lockdown_level") val lockdownLevel: String,
+    @SerialName("generated_at") val generatedAt: String,
+    @SerialName("user_restrictions") val userRestrictions: DevicePolicyUserRestrictions,
+    @SerialName("global_settings") val globalSettings: DevicePolicyGlobalSettings,
+    @SerialName("self_protection") val selfProtection: DevicePolicySelfProtection,
+    @SerialName("permission_grants") val permissionGrants: List<PermissionGrant>,
+    @SerialName("app_control") val appControl: AppControlPolicy,
+    @Serializable(with = BlockingScheduleWire::class) @SerialName("schedule") val schedule: BlockingSchedule,
+    @SerialName("location") val location: DevicePolicyLocation,
+    @SerialName("status_report") val statusReport: DevicePolicyStatusReport,
+    @SerialName("integrity") val integrity: DevicePolicyIntegrity,
+)
+
+@Serializable
+data class EnrolDeviceResponse(
+    @SerialName("device_id") val deviceId: Long,
+    @SerialName("device_uuid") val deviceUuid: String,
+    @SerialName("enrolled_at") val enrolledAt: String,
+    @SerialName("lockdown_level") val lockdownLevel: String,
+    @SerialName("trust_level") val trustLevel: String,
+    @SerialName("policy") val policy: DevicePolicy,
+    @SerialName("server_time") val serverTime: String,
+)
+
+// ---- Sync batch parts and errors ----
+
+@Serializable
+data class TimeAnchor(
+    @SerialName("boot_count") val bootCount: Int,
+    @SerialName("server_time") val serverTime: String,
+    @SerialName("elapsed_ms") val elapsedMs: Long,
+)
+
+@Serializable
+data class Resolution(
+    @SerialName("client_uuid") val clientUuid: String,
+    @SerialName("type") val type: String,
+    @SerialName("resolution") val resolution: String,
+    @SerialName("resolved_at") val resolvedAt: String,
+)
+
+@Serializable
+data class RouteDayState(
+    @SerialName("route_id") val routeId: Long,
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("state") val state: String,
+    @SerialName("planned") val planned: Boolean? = null,
+    @SerialName("submit_cycle") val submitCycle: Int,
+    @SerialName("submit_voided") val submitVoided: Boolean,
+    @SerialName("submit_count_mismatch") val submitCountMismatch: Boolean? = null,
+    @SerialName("logged_in_at") val loggedInAt: String? = null,
+    @SerialName("sales_submitted_at") val salesSubmittedAt: String? = null,
+    @SerialName("final_submitted_at") val finalSubmittedAt: String? = null,
+    @SerialName("rows_awaited") val rowsAwaited: Int? = null,
+    @SerialName("route_code") val routeCode: String? = null,
+    @SerialName("route_name") val routeName: String? = null,
+    @SerialName("assigned_user_id") val assignedUserId: Long? = null,
+    @SerialName("acting_user_id") val actingUserId: Long? = null,
+)
+
+/** The server's view of one user and business date. */
+@Serializable
+data class ServerTotals(
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("as_of") val asOf: String,
+    @SerialName("by_type") val byType: Map<String, JsonElement>,
+    @SerialName("money") val money: JsonElement,
+)
+
+@Serializable
+data class ResolvedConfigValue(
+    @SerialName("key") val key: String,
+    @SerialName("value") val value: JsonElement,
+    @SerialName("scope_type") val scopeType: String,
+    @SerialName("scope_id") val scopeId: Long? = null,
+    @SerialName("effective_from") val effectiveFrom: String?,
+    @SerialName("effective_to") val effectiveTo: String? = null,
+    @SerialName("config_version") val configVersion: Long? = null,
+    @SerialName("requires_ack") val requiresAck: Boolean,
+    @SerialName("bounds") val bounds: JsonElement? = null,
+)
+
+/** Encode ResolvedConfigValue with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object ResolvedConfigValueWire : JsonTransformingSerializer<ResolvedConfigValue>(ResolvedConfigValue.serializer()) {
+    private val alwaysEmitted = listOf("effective_from")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class FieldError(
+    @SerialName("pointer") val pointer: String,
+    @SerialName("code") val code: String,
+    @SerialName("message") val message: String? = null,
+) {
+    override fun toString(): String = "FieldError(pointer=${pointer}, code=***, message=${message})"
+}
+
+/** RFC 9457 problem details with Aron extension members. */
+@Serializable
+data class Problem(
+    @SerialName("type") val type: String,
+    @SerialName("title") val title: String,
+    @SerialName("status") val status: Int,
+    @SerialName("detail") val detail: String? = null,
+    @SerialName("instance") val instance: String? = null,
+    @SerialName("code") val code: String,
+    @SerialName("request_id") val requestId: String,
+    @SerialName("retryable") val retryable: Boolean? = null,
+    @SerialName("retry_after_s") val retryAfterS: Int? = null,
+    @SerialName("server_time") val serverTime: String? = null,
+    @SerialName("message_key") val messageKey: String? = null,
+    @SerialName("errors") val errors: List<FieldError>? = null,
+    @SerialName("context") val context: Map<String, JsonElement>? = null,
+) {
+    override fun toString(): String = "Problem(type=${type}, title=${title}, status=${status}, detail=${detail}, instance=${instance}, code=***, requestId=${requestId}, retryable=${retryable}, retryAfterS=${retryAfterS}, serverTime=${serverTime}, messageKey=${messageKey}, errors=${errors}, context=${context})"
+}
 
 // ---- Sync batch ----
 
@@ -593,7 +855,7 @@ data class SyncBatchRequest(
     @SerialName("trigger") val trigger: String,
     @SerialName("sent_at_device") val sentAtDevice: String,
     @SerialName("pending_rows") val pendingRows: Int,
-    @SerialName("time_anchors") val timeAnchors: List<JsonElement>,
+    @SerialName("time_anchors") val timeAnchors: List<TimeAnchor>,
     @SerialName("device_counts") val deviceCounts: Map<String, JsonElement>,
     @SerialName("device_money") val deviceMoney: Map<String, JsonElement>? = null,
     @SerialName("telemetry") val telemetry: JsonElement? = null,
@@ -615,10 +877,10 @@ data class SyncBatchResponse(
     @SerialName("received_at") val receivedAt: String,
     @SerialName("acks") val acks: List<RecordAck>,
     @SerialName("summary") val summary: SyncBatchSummary,
-    @SerialName("server_totals") val serverTotals: List<JsonElement>,
-    @SerialName("day_states") val dayStates: List<JsonElement>,
+    @SerialName("server_totals") val serverTotals: List<ServerTotals>,
+    @SerialName("day_states") val dayStates: List<RouteDayState>,
     @SerialName("supervisor_day") val supervisorDay: JsonElement? = null,
-    @SerialName("resolutions") val resolutions: List<JsonElement>,
+    @SerialName("resolutions") val resolutions: List<Resolution>,
     @SerialName("hold_s") val holdS: Int,
     @SerialName("config_version") val configVersion: Long,
     @SerialName("bundle_version_current") val bundleVersionCurrent: String? = null,
@@ -635,4 +897,6 @@ data class RecordAck(
     @SerialName("retryable") val retryable: Boolean? = null,
     @SerialName("message_key") val messageKey: String? = null,
     @SerialName("server_id") val serverId: Long? = null,
-)
+) {
+    override fun toString(): String = "RecordAck(clientUuid=${clientUuid}, type=${type}, status=${status}, code=***, retryable=${retryable}, messageKey=${messageKey}, serverId=${serverId})"
+}

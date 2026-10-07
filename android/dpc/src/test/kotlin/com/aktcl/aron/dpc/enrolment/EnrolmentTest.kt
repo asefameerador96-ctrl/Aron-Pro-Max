@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.Intent
 import android.os.PersistableBundle
+import com.aktcl.aron.contract.EnrolDeviceRequest
 import com.aktcl.aron.dpc.policy.policyFixture
 import java.io.File
 import java.nio.file.Files
@@ -150,11 +151,9 @@ class EnrolmentTest {
         val root = File(System.getProperty("aron.openapi")!!).inputStream().use { Load(LoadSettings.builder().build()).loadFromInputStream(it) } as Map<String, Any?>
         val schemas = (root["components"] as Map<String, Any?>)["schemas"] as Map<String, Any?>
         fun props(n: String) = ((schemas[n] as Map<String, Any?>)["properties"] as Map<String, Any?>).keys
-        val req = EnrolDeviceRequest(token, "u", pkg, "1.0.0+1", "0".repeat(64), true, JwkEcPublic(x = "a", y = "b"), listOf("c"), facts.deviceInfo())
         val j = Json { encodeDefaults = true }
-        assertEquals(props("EnrolDeviceRequest"), Json.parseToJsonElement(j.encodeToString(EnrolDeviceRequest.serializer(), req)).jsonObject.keys)
         assertEquals(props("DeviceInfo"), Json.parseToJsonElement(j.encodeToString(DeviceInfoDto.serializer(), facts.deviceInfo())).jsonObject.keys)
-        assertEquals(props("JwkEcPublicDevice"), Json.parseToJsonElement(j.encodeToString(JwkEcPublic.serializer(), req.publicKey)).jsonObject.keys)
+        assertEquals(props("JwkEcPublicDevice"), Json.parseToJsonElement(j.encodeToString(JwkEcPublic.serializer(), JwkEcPublic(x = "a", y = "b"))).jsonObject.keys)
         assertEquals(props("EnrolDeviceResponse"), Json.parseToJsonElement(j.encodeToString(EnrolDeviceResponse.serializer(), response("u"))).jsonObject.keys)
     }
 
@@ -232,6 +231,7 @@ class EnrolmentTest {
         c.accept(parse(good).first!!)
         c.run(); c.run()
         assertEquals(listOf("Y2VydA=="), sent[0].keyAttestationChain)
+        assertEquals("x".repeat(43), sent[0].publicKey.jsonObject["x"].toString().trim('"'))
         assertEquals(sent[0], sent[1])
     }
 
@@ -250,8 +250,7 @@ class EnrolmentTest {
     @Test fun theTokenNeverAppearsInToString() {
         val e = parse(good).first!!
         val p = PendingEnrolment(e, "u")
-        val r = EnrolDeviceRequest(token, "u", pkg, "1.0.0+1", "0".repeat(64), true, JwkEcPublic(x = "a", y = "b"), listOf("c"), facts.deviceInfo())
-        listOf(e.toString(), p.toString(), r.toString()).forEach { assertFalse(it, token in it) }
+        listOf(e.toString(), p.toString()).forEach { assertFalse(it, token in it) }
     }
 
     @Test fun aNewQrDuringKeyCreationIsNotOverwritten() = runTest {

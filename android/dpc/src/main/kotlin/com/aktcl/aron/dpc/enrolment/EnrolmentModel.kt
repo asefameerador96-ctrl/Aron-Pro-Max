@@ -3,14 +3,10 @@ package com.aktcl.aron.dpc.enrolment
 import com.aktcl.aron.dpc.policy.DevicePolicy
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 
-// Contract `EnrolDeviceRequest` / `EnrolDeviceResponse` (docs/24 s10.4). REQUEST: docs/requests/android-core-contract-dtos.md
-// (DTOs in shared:contract); EnrolmentContractTest checks every member against contract/openapi.yaml until then.
-
-/** Contract `PlayIntegrityUnavailable` (v1.2). */
-@Serializable
-data class PlayIntegrityUnavailableDto(val reason: String, val detail: String? = null)
+// The enrolment request is shared:contract's `EnrolDeviceRequest` (v1.2); its `public_key` and `device_info` are JSON,
+// built from the two classes below. `EnrolDeviceResponse` has no shared DTO yet (REQUEST:
+// docs/requests/android-core-contract-dtos.md); EnrolmentTest checks its members against contract/openapi.yaml.
 
 @Serializable
 data class JwkEcPublic(val kty: String = "EC", val crv: String = "P-256", val x: String, val y: String)
@@ -26,25 +22,6 @@ data class DeviceInfoDto(
     @SerialName("ram_mb") val ramMb: Int,
     @SerialName("storage_total_mb") val storageTotalMb: Int?,
 )
-
-@Serializable
-data class EnrolDeviceRequest(
-    @SerialName("enrolment_token") val enrolmentToken: String,
-    @SerialName("device_uuid") val deviceUuid: String,
-    @SerialName("app_package") val appPackage: String,
-    @SerialName("app_version") val appVersion: String,
-    @SerialName("app_signing_cert_sha256") val appSigningCertSha256: String,
-    @SerialName("device_owner") val deviceOwner: Boolean,
-    @SerialName("public_key") val publicKey: JwkEcPublic,
-    @SerialName("key_attestation_chain") val keyAttestationChain: List<String>,
-    @SerialName("device_info") val deviceInfo: DeviceInfoDto,
-    /** `DeviceStatusReport` built by the app, or null (the first status follows after login). */
-    val status: JsonElement? = null,
-    /** Why there is no Play Integrity token in [status], when the phone tried and could not get one. */
-    @SerialName("play_integrity_unavailable") val playIntegrityUnavailable: PlayIntegrityUnavailableDto? = null,
-) {
-    override fun toString() = "EnrolDeviceRequest(device_uuid=$deviceUuid, app=$appPackage $appVersion, token=<redacted>)"
-}
 
 @Serializable
 data class EnrolDeviceResponse(
