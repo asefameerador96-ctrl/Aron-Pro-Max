@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.aktcl.aron.contract.SyncTrigger
+import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.OutletEntity
@@ -61,6 +62,8 @@ class SrDay(
     private val components: SessionComponents,
     private val scheduler: SyncScheduler,
     fixManager: FixManager,
+    val printerManager: com.aktcl.aron.core.printing.bt.PrinterManager,
+    private val userName: String,
 ) {
     private val clock = components.trustedClock
     val capture = CaptureRepository(db) { iso(clock.nowMs()) }
@@ -190,6 +193,38 @@ class SrDay(
         session = visitSession, settings = { GeoSettings.DEFAULT }, nowIso = { iso(clock.nowMs()) },
         nextSequenceNo = { nextSequence++ },
     )
+
+    // ---- printing (F-SR-015): the ledger is Room, the renderer is built once (font parsing is the expensive part)
+    private val renderer: com.aktcl.aron.core.printing.PaperRenderer by lazy {
+        val labels = com.aktcl.aron.core.printing.AndroidPrintLabels(context, AppLanguage.BN)
+        fun font(id: Int) = context.resources.openRawResource(id).use { it.readBytes() }
+        com.aktcl.aron.core.printing.PaperRenderer(
+            com.aktcl.aron.core.printing.render.PrintFonts(font(com.aktcl.aron.core.ui.R.font.noto_sans_bengali_regular), font(com.aktcl.aron.core.ui.R.font.noto_sans_bengali_bold)),
+            com.aktcl.aron.core.printing.TemplateSet(emptyList(), labels), labels,
+        )
+    }
+
+    val printing: com.aktcl.aron.core.printing.flow.MemoPrinting by lazy {
+        com.aktcl.aron.core.printing.flow.MemoPrinting(
+            printerManager, { renderer }, com.aktcl.aron.core.database.repo.RoomPrintLedger(db, { base -> base ?: metaProvider.meta(0L) }),
+            com.aktcl.aron.core.common.ClientIds::newUuid, clock::nowMs,
+        )
+    }
+
+    /** Finishes jobs a killed process left (paper out becomes printed, else failed); once per process, before any print. */
+    suspend fun recoverPrinting() { runCatching { printing.recover() } }
+
+    /** The stock slip of one Save, from the stored rows only (quantities as entered in the base unit). */
+    suspend fun stockSlip(movements: List<com.aktcl.aron.core.database.entity.StockMovementEntity>): com.aktcl.aron.core.printing.doc.StockSlipPrint {
+        val skus = reference.skus().associateBy { it.skuId }
+        return com.aktcl.aron.core.printing.doc.StockSlipPrint(
+            printedAtEpochMs = clock.nowMs(), sr = userName, route = data.value.route?.name.orEmpty(), distributor = "",
+            lines = movements.sortedBy { it.skuId }.map { com.aktcl.aron.core.printing.doc.StockSlipLine(skus[it.skuId]?.categoryCode.orEmpty(), skus[it.skuId]?.shortName ?: it.skuId.toString(), it.qtyBase) },
+        )
+    }
+
+    /** True while any stock row of today is not on a printed slip (Sales Submit warns on this). */
+    suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
 
