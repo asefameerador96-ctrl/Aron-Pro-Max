@@ -497,7 +497,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: web
@@ -520,7 +520,18 @@ jobs:
         env:
           NEXT_PUBLIC_MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
         run: bash scripts/ci.sh build
-      - run: npx playwright install --with-deps chromium
+      - name: Playwright version (browser cache key)
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "${GITHUB_OUTPUT}"
+      - name: Cache the Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Chromium for e2e (capped download and apt, retry once, preinstalled Chrome as the fallback)
+        # --with-deps hung in apt-get update until the job timeout (run 37691144739): tools/ci/playwright-chromium.sh
+        timeout-minutes: 14
+        run: bash ../tools/ci/playwright-chromium.sh
       - run: bash scripts/ci.sh e2e
       - name: Flaky e2e tests (passed only on retry) are reported, never silent (AUD-TP-6)
         if: always()
