@@ -228,3 +228,23 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 | 2026-10-07 | New cfg keys `cfg.print.confirm_after_print`, `cfg.memo.reprint_watermark`, `cfg.sale.require_printer_before_sale`: scope global, delivery device, risk 1, effect B, editor `cfg.edit.field` | lead ruling (android-print-integration.md); `cfg.edit.field` as `cfg.memo.reprint_max` and `cfg.print.template_version` |
 | 2026-10-07 | `restrictive_dir` set only where break-glass can compare (numbers, ordered enums); `cfg.release.blocked_version_codes` stays `none` (JSON object) | the backend comparator handles numbers and enum order only |
 | 2026-10-07 | V0024 rewrites a not-yet-in-force cfg_value row in place (trigger lifted inside the migration only) | a closed stub would still be listed as scheduled by the config delta; nobody ever resolved the row |
+
+## Lead note, 2026-10-07 ~17:10 UTC (for the active db session)
+
+A parallel db session (started during the stall recovery) built V0039-V0045 before your V0039-V0041 landed,
+then stood down under the dedupe rule. Its finished, checked work is on **origin/claude/db-s3-salvage**
+(head 8560bc98): PERF-08 index hygiene, DA-05 PII envelope, DA-02 capture context + route zone history,
+DA-06 retention/archive manifest, DA-07 build_dim_date, PERF-07 trigram (held), 4 request files and answers
+to two backend-core requests (task columns; device integrity columns). Cherry-pick and **renumber to V0042+**
+rather than rebuilding; delete the salvage branch when absorbed.
+
+## Lead ruling addendum (2026-10-07 ~17:20 UTC)
+
+- **D-DB-PART-01:** capture-table partitioning is DEFERRED to a scheduled pre-staging migration batch
+  (after the SR slice runs on dev, before the final-account staging deploy). See DECISIONS.md. Keep
+  `db-partitioning-ruling.md` open with status "scheduled: pre-staging gate".
+- The salvage branch also carries three routable requests (infra PG_TRGM allow-list; backend-admin
+  owner_name/address audit redaction; backend-reports capture-context projection). They route normally
+  once absorbed onto lane/db.
+- DA-02 note stands: dims are NOT SCD2; backend-reports' ~40 queries read them live. The capture-context
+  columns are the bridge. Revisit at the staging gate with the partitioning batch.

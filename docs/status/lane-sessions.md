@@ -59,3 +59,9 @@ Lead resolution, to avoid two sessions per lane:
 - android-core-ui: restarted session finished the lane's rows (tokens-v2 already ported); re-recording the
   3 Home goldens after android-sr-a's tile-columns change (edddf441) is the one open step.
 - Branch protection (no force push, non-ff rejected) makes a race lose a push, never work.
+
+## Two leads are active (cloud lead, 2026-10-07 12:30 UTC): owner to decide
+
+Since 10:51 UTC a second session writes as lead on INT (commits stamped +0600: registry notes 4b5b70ec and 436b66ab, ruling D-DB-PART-01, a db salvage note). It describes a restart at "~15:55 UTC" and "skewed clocks"; the real time is the GitHub server time (CI runs created 12:23 UTC when this was written), and +0600 stamps are Dhaka local time, so there is no skew. The cloud lead (session_01MbUQSxrP7AB9tbyANjUTPS) has led the lanes since 2026-10-05 and runs the 2-hourly lane check.
+
+Interim rule until the owner chooses one lead: lanes follow the registry rows above (integrator session_017ASTyJnQ6z71B1uoc447YL conducts the train); a lane that finds a second session of its own on its lane branch pushes its finished work, reports, and stops; rulings are logged in DECISIONS.md with an id and the issuing session; a ruling that contradicts an earlier one is not applied until the owner says which stands. Lanes: do not restart or archive other sessions.
