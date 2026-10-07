@@ -24,14 +24,14 @@ class DbRolesTest {
         db = TestPostgres.createDatabase().migrated()
         db.connect().use { c ->
             // Let the test login act as each role (PostgreSQL 16 membership with SET, without inheriting).
-            roles.forEach { c.exec("GRANT $it TO CURRENT_USER WITH INHERIT FALSE, SET TRUE") }
+            TestPostgres.RoleDdlLock.hold { roles.forEach { c.exec("GRANT $it TO CURRENT_USER WITH INHERIT FALSE, SET TRUE") } }
             c.exec("INSERT INTO app.app_user (username, full_name, role) VALUES ('sr0001', 'SR', 'SR')")
         }
     }
 
     @AfterAll
     fun tearDown() {
-        db.connect().use { c -> roles.forEach { runCatching { c.exec("REVOKE $it FROM CURRENT_USER") } } }
+        db.connect().use { c -> TestPostgres.RoleDdlLock.hold { roles.forEach { runCatching { c.exec("REVOKE $it FROM CURRENT_USER") } } } }
         db.close()
     }
 
@@ -108,7 +108,7 @@ class DbRolesTest {
     }
 
     @Test
-    fun loginIdentitiesGetTheSessionLimitsOfTheirRoleAndCannotDropAnything() {
+    fun loginIdentitiesGetTheSessionLimitsOfTheirRoleAndCannotDropAnything(): Unit = TestPostgres.RoleDdlLock.hold {
         val login = "zz_api_" + java.util.UUID.randomUUID().toString().take(8)
         val password = java.util.UUID.randomUUID().toString()
         db.connect().use { c ->
@@ -132,19 +132,51 @@ class DbRolesTest {
         }
     }
 
+    /** The role block of V0014 (the DO statement), run as the migration runs it. */
+    private val v0014RoleBlock: String = java.io.File(System.getProperty("aron.migrations"))
+        .listFiles { f -> f.name.startsWith("V0014__") }!!.single().readText()
+        .let { t -> t.substring(t.indexOf("DO $$"), t.indexOf("END $$;") + "END $$;".length) }
+
+    /**
+     * The roles are server-wide, so a broken attribute is set and repaired inside one transaction that is rolled back:
+     * no other session (another test JVM migrating at the same time) ever sees bi_reader broken and races to fix it.
+     */
     @Test
-    fun aRoleLeftWithAWrongAttributeIsRepairedByTheNextMigration() {
-        db.connect().use { it.exec("ALTER ROLE bi_reader INHERIT") }
-        try {
-            TestPostgres.createDatabase().migrated().use { }
-            db.connect().use { c -> assertEquals("f", c.scalar("SELECT rolinherit FROM pg_roles WHERE rolname = 'bi_reader'")) }
-        } finally {
-            db.connect().use { it.exec("ALTER ROLE bi_reader NOINHERIT") }
+    fun aRoleLeftWithAWrongAttributeIsRepairedByTheNextMigration(): Unit = TestPostgres.RoleDdlLock.hold {
+        db.connect().use { c ->
+            c.autoCommit = false
+            try {
+                c.exec("ALTER ROLE bi_reader INHERIT")
+                c.exec(v0014RoleBlock)
+                assertEquals("f", c.scalar("SELECT rolinherit FROM pg_roles WHERE rolname = 'bi_reader'"))
+            } finally {
+                c.rollback()
+            }
         }
+        db.connect().use { c -> assertEquals("f", c.scalar("SELECT rolinherit FROM pg_roles WHERE rolname = 'bi_reader'")) }
+    }
+
+    /**
+     * CI run 254: "tuple concurrently updated" on ALTER ROLE bi_reader when test processes migrated while a test changed
+     * the role. Migrations of the harness and role changes of the tests are serialised by TestPostgres.RoleDdlLock;
+     * here three databases migrate at the same time as repeated repairs, and every one succeeds.
+     */
+    @Test
+    fun concurrentRoleMigrationsAndRepairsDoNotRace() {
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+        try {
+            val migrations = (1..3).map { pool.submit<String> { TestPostgres.createDatabase().use { d -> d.migrated(); d.name } } }
+            val repairs = pool.submit { repeat(5) { aRoleLeftWithAWrongAttributeIsRepairedByTheNextMigration() } }
+            migrations.forEach { assertTrue(it.get(10, java.util.concurrent.TimeUnit.MINUTES).startsWith("aron_db_test_")) }
+            repairs.get(10, java.util.concurrent.TimeUnit.MINUTES)
+        } finally {
+            pool.shutdownNow()
+        }
+        db.connect().use { c -> assertEquals("f", c.scalar("SELECT rolinherit FROM pg_roles WHERE rolname = 'bi_reader'")) }
     }
 
     @Test
-    fun anotherLoginMigratesANewDatabaseWhereTheRolesAlreadyExist() {
+    fun anotherLoginMigratesANewDatabaseWhereTheRolesAlreadyExist(): Unit = TestPostgres.RoleDdlLock.hold {
         // The roles are server-wide: a second database migrated by a different CREATEROLE login (no ADMIN on the roles)
         // reuses them unchanged. The password is generated here and dropped with the login.
         val login = "zz_mig_" + java.util.UUID.randomUUID().toString().take(8)
