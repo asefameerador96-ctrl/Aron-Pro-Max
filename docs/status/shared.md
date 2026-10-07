@@ -51,3 +51,4 @@
 - Lane closed by the lead. N-002, docs/requests/android-core-contract-dtos.md and the web drift check are reassigned to session shared-2.
 - Everything else in Days 1 and 2 is done and checked (N-003, N-004, F-SYS-017, F-SYS-045, F-SYS-051, F-SYS-070). Time log note: start times and minutes were not recorded in this session, so the minutes column is blank.
 - Open from this session: verdict/action wire names (GeoVerdict, GeoAction) were never diffed against the contract; shared-2 should do that.
+- R7 (docs/24 s14a) applied: classes with required-nullable members (`GeoFix`, `LoginDevice`) get a generated `<Name>Wire` serializer (always emits those members as explicit null); nested fields use it automatically, top-level encode with `GeoFixWire` / `LoginDeviceWire`. Optional nulls stay omitted. Wire test `wireNullsFollowR7`. Local Gradle ran via the documented mirror init script before the lead's no-mirror instruction; CI on INT is the independent check.
