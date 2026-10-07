@@ -42,8 +42,17 @@ media.attach(photoUuid, MediaRef(purpose = "force_sale" /* or "outlet_capture" *
 
 - **F-SYS-020** done in core-system (package `update`), **app wiring and phone run pending** (D-S4). `UpdateManager(UpdateApi(apiClient), PrefsUpdateMemory(ctx), flavour, BuildConfig.VERSION_CODE, Build.SUPPORTED_ABIS.toList(), clock::nowMs)`: `check(atLogin)` at login and on resume (12 h throttle, cached offline, minimum only rises); `dayGate(dayOpen, session.updateRequired)` before a new day; `UpdateContent` / `DayGateBanner` screens; `ApkDownloader(okHttp, File(filesDir, "updates"))` (Range resume, SHA-256, 2x space, https only, only its own files); `AndroidUpdater(ctx).install(apk, release, syncIdleFlow)` (unknown-sources guidance, archive package/version/signer checks incl. key rotation, never mid-batch: waits at most 60 s). Room migrations keep pending rows (android-core's migration tests); the updater never touches the database.
 
-## In progress
-- **F-SYS-021** PDA to Support (package `support`): built, 10 tests green, pushed as WIP; Opus checker running. `SupportController(SupportQueue.forUser(filesDir, id), source, supportPublicKey, maxUploadMb, schedule = { SupportRuntime.schedule(wm, wifiOnly) }, clock)`, `SupportContent(status, appVersion, lastSync, onSend)`, `SupportWorker` (`aron-support`). Encrypted (RSA-OAEP + AES-GCM) to the support public key, which is not configured yet: `docs/requests/android-sys-support-key.md`.
+- **F-SYS-021** done in core-system (package `support`), **shell wiring and the support key pending**: `SupportController.send()` builds the file (app version, last sync, counts, unsent + rejected + quarantined payloads, recent acked ones, last 200 log lines), gzips and encrypts it (RSA-OAEP SHA-256 + AES-256-GCM) to the support public key, queues it kill-safe (`files/support/u<id>/`) and schedules `aron-support` (Wi-Fi only per `cfg.support.pda_upload_wifi_only`). Offline: "will be sent when online"; sent: "Sent to support at HH:MM"; after 3 failed attempts the failure is shown while it keeps retrying; FAILED after 30 or on a refusal ("too large" for 413). Opus checker: 3 code defects fixed, re-check accepts the code.
+
+## Handover (all eight rows built and checked, 2026-10-07)
+- **Rows:** F-SYS-023, 030, 010, 037, 019, 022, 020, 021 are on INT. Each had a fresh Opus checker, and every confirmed defect is fixed with a test. Test counts: `:android:core-system` 88, `:android:core-media` 81. Robolectric runs locally through the mirror.
+- **Not yet true on a phone:** the app shells do not wire core-system/core-media, apart from the permission gate (android-sr-a wired it). The full list is in `docs/requests/android-sys-app-wiring.md`. Device checks D-S1 to D-S4 wait on that wiring.
+- **Process:** from the lead's 06:37 change (which reached this session late), lane work goes to `lane/android-sys` only. My F-SYS-010 to F-SYS-021 pushes went straight to INT before I saw the change. Every one of them had local tests and `:android:app-sr:assembleDebug` green.
+- **Traps:**
+  1. `consumer-rules.pro` is required in every Android library module (root build.gradle.kts line 99). A new module without it breaks every consumer.
+  2. A checker running Gradle on a module at the same time as you breaks that module's test-results; run checkers on another module, or wait for them.
+  3. WorkManager KEEP on a name the running job owns queues nothing. Use a slot pair (`runningAs`) when a job must leave a successor.
+  4. `runCatching` around suspend calls swallows cancellation; use the `attempt` helper pattern instead.
 
 ## Requests filed
 - `docs/requests/android-sys-media-meta.md` (android-core): `recordMediaMeta` and the `media_meta` record mapping.

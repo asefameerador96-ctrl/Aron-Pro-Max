@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export const MOCK = `http://127.0.0.1:${process.env.E2E_MOCK_PORT ?? 4010}`;
 
@@ -28,4 +28,18 @@ export async function loginOk(page: Page, username: string, password: string, to
 /** A Dhaka business date `n` days from now (the portal refuses past dates, so tests use relative ones). */
 export function dhakaPlus(n: number): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(Date.now() + n * 86_400_000));
+}
+
+/** Wait until React has attached to an element (hydration done). A click or fill before that is lost or reverted, which makes a journey flaky under load. */
+export async function hydrated(locator: Locator): Promise<void> {
+  await expect(locator).toBeVisible();
+  await locator.evaluate((el) => new Promise<void>((resolve, reject) => {
+    const started = Date.now();
+    const check = () => {
+      if (Object.keys(el).some((k) => k.startsWith("__reactProps$"))) resolve();
+      else if (Date.now() - started > 15_000) reject(new Error("element never hydrated"));
+      else setTimeout(check, 25);
+    };
+    check();
+  }));
 }

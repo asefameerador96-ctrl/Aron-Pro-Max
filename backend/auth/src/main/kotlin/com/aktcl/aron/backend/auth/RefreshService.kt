@@ -91,6 +91,9 @@ class RefreshService(
 
     fun revoke(familyId: Long, reason: String) = store.revokeFamily(familyId, clock.now(), reason)
 
+    fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, reason: String) =
+        store.revokeDeviceGrant(userId, deviceId, deviceUuid, grant, clock.now(), reason)
+
     private fun slidingExpiry(grant: Grant, now: Instant, absolute: Instant?): Instant {
         val days = if (grant == Grant.FULL) config.int("cfg.auth.refresh_ttl_days") else config.int("cfg.auth.upload_grant_idle_days")
         val sliding = now.plus(Duration.ofDays(days.toLong()))

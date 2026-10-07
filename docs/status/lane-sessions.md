@@ -13,7 +13,7 @@
 | android-sr-a | session_01TyF3Y1MGEyGN2Ke8EHwZUG | Sonnet | 2026-10-07 | recycled 08:46; session_01Gyh9KAacFpMFb35wUDq21c retired (READY TO RECYCLE 08:46) |
 | android-sr-b | session_019i1dfbm7pSrMDPXskSLY3v | Sonnet | 2026-10-07 | recycled 08:39; session_01DCSzXKooAFuYYEGy9UAMSN retired (READY TO RECYCLE 08:38) |
 | android-sys | session_01GXvRHr1e5rHuj8p68xW15F | Opus | 2026-10-07 | camera and photo pipeline, media queue, location permission UX, update check, PDA support, language switch, logout: 8 T1 rows moved from android-core-ui |
-| android-geo-dpc | session_018dVKqTVsFaUht9A1J7XEst | Opus | 2026-10-07 | |
+| android-geo-dpc | session_018dVKqTVsFaUht9A1J7XEst | Opus | 2026-10-07 | FINISHED 08:50: every row built and Opus-checked (head 7b0b015f on lane/android-geo-dpc); device halves DEVICE-PENDING; no replacement started (nothing left to build); waits for wiring call sites in other lanes (docs/requests/android-geo-dpc-wiring.md) |
 | android-print | session_01FyHPQAii1xCvR7SvMwQEva | Opus | 2026-10-07 | recycled 05:21 after android-core put RoomPrintLedger on INT; previous session_012CxBfkJ79PW16h2NpNtPQv is retired (READY TO RECYCLE 04:51) |
 | web-admin | session_018iHvNJSMqCk8eLitCk9wzU | Sonnet | 2026-10-05 | |
 | web-config | session_0146veK2iXvmHGwiPBpbBJ2k | Sonnet | 2026-10-07 | |
@@ -24,4 +24,4 @@
 
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
 
-**Throttle (2026-10-07 08:38 UTC, usage constraint):** woken automatically: integrator, backend-core, db, android-core, android-sr-a, android-sr-b, android-core-ui, android-geo-dpc, android-print, infra. ON HOLD until the lead releases them: web-config, web-admin, web-dashboard, backend-reports, backend-admin, android-sys, shared-2.
+**Throttle (2026-10-07 08:38 UTC, usage constraint):** woken automatically: integrator, backend-core, db, android-core, android-sr-a, android-sr-b, android-core-ui, android-geo-dpc, android-print, infra. ON HOLD until the lead releases them: web-config (released 2026-10-07 09:41 UTC for ONE job only: de-flake web/e2e/config-journeys.spec.ts, then back on hold), web-admin, web-dashboard, backend-reports, backend-admin, android-sys, shared-2.

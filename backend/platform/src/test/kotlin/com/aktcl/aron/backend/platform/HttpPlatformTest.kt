@@ -41,6 +41,7 @@ class HttpPlatformTest {
         routing {
             get("/v1/ok") { call.respondText("ok") }
             get("/v1/boom") { error("secret internal detail") }
+            get("/v1/sqlnul") { throw IllegalStateException("query failed", java.sql.SQLException("invalid byte sequence", "22021")) }
             get("/v1/big") { call.respond(mapOf("x" to "a".repeat(5000))) }
             post("/v1/echo") { call.respond(call.receiveStrict(Echo.serializer())) }
         }
@@ -129,6 +130,26 @@ class HttpPlatformTest {
         val huge = post("""{"name":"${"x".repeat(300 * 1024)}","count":1}""")
         assertEquals(HttpStatusCode.PayloadTooLarge, huge.status)
         assertTrue(huge.bodyAsText().contains("ERR_PAYLOAD_TOO_LARGE"))
+    }
+
+    /** docs/requests/backend-admin-nul-in-text.md: U+0000 is a 400 at the platform layer, never a retryable 500. */
+    @Test
+    fun aNulCharacterIsA400NeverA500() = run {
+        for (body in listOf("""{"name":"a","count":1,"note":"x\u0000y"}""", """{"name":"a\u0000","count":1}""")) {
+            val r = client.post("/v1/echo") { contentType(ContentType.Application.Json); setBody(body) }
+            assertEquals(HttpStatusCode.BadRequest, r.status, body)
+            val p = Json.parseToJsonElement(r.bodyAsText()).jsonObject
+            assertEquals("ERR_VALIDATION", p["code"]!!.jsonPrimitive.content)
+            val e = p["errors"]!!.jsonArray.single().jsonObject
+            assertEquals("invalid_character", e["code"]!!.jsonPrimitive.content)
+            assertEquals(if ("note" in body) "/note" else "/name", e["pointer"]!!.jsonPrimitive.content)
+        }
+        // An escaped backslash followed by "u0000" is ordinary text.
+        assertEquals(HttpStatusCode.OK, client.post("/v1/echo") { contentType(ContentType.Application.Json); setBody("""{"name":"a\\u0000","count":1}""") }.status)
+        // A NUL that reaches PostgreSQL another way (a query parameter) is mapped from SQLSTATE 22021.
+        val q = client.get("/v1/sqlnul")
+        assertEquals(HttpStatusCode.BadRequest, q.status)
+        assertTrue(q.bodyAsText().contains("invalid_character"))
     }
 
     @Test
