@@ -548,4 +548,5 @@ export const bn: Record<MessageKey, string> = {
   "error.ERR_CFG_SCOPE_NOT_ALLOWED": "এই স্তরে এই সেটিং বদলানো যায় না।",
   "error.ERR_CFG_FREEZE_WINDOW": "এখন পরিবর্তন বন্ধ আছে (ফ্রিজ সময়)। পরে চেষ্টা করুন।",
   "error.ERR_CFG_REASON_REQUIRED": "এই পরিবর্তনের জন্য কারণ লাগবে।",
+  "prices.per_base": "প্রতি {n} একক",
 };

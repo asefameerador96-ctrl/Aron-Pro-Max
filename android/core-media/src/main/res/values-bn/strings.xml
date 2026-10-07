@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- F-SYS-030 camera and photo pipeline -->
+    <string name="media_take_photo">ছবি তুলুন</string>
+    <string name="media_cancel">বাতিল</string>
+    <string name="media_camera_unavailable">ক্যামেরা চালু হয়নি। অন্য ক্যামেরা অ্যাপ বন্ধ করে আবার চেষ্টা করুন।</string>
+    <string name="media_no_space">ছবি নেওয়ার জায়গা নেই। ফোনের অন্য ফাইল মুছে ফেলুন।</string>
+    <string name="media_capture_failed">ছবি সেভ হয়নি। আবার তুলুন।</string>
+    <string name="media_photo_title">ছবি</string>
+    <string name="media_ok">ঠিক আছে</string>
+    <!-- F-SYS-037 -->
+    <string name="media_wifi_only_title">শুধু ওয়াই-ফাইতে ছবি পাঠান</string>
+    <string name="media_wifi_only_hint">আপনার ডেটা প্যাক বাঁচায়। বিক্রি ও মেমো সব নেটওয়ার্কেই যায়। ফোর্স সেল ও অনুরোধের দোকানের ছবি ৬ ঘণ্টা পর মোবাইল ডেটায় যাবে।</string>
+</resources>

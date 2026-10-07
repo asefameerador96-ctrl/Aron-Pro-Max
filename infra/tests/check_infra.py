@@ -434,7 +434,9 @@ class SizingParameters(unittest.TestCase):
         self.assertEqual(params("stage.apps.parameters.json")["environmentName"], "stage")
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn('case "$PROFILE" in dev|dev-lite|prod) ;;', d, "deploy.sh must not offer stage yet")
-        self.assertNotIn("stage", self.wf("deploy.yml").split("options:")[1].split("\n")[0])
+        options = self.wf("deploy.yml").split("options:")[1].split("\n")[0]
+        self.assertNotIn("stage", options)
+        self.assertNotIn("prod", options, "AUD-DG-08: no manual prod deploy before the final account (promote-prod only)")
 
     def test_promotion_workflows_are_inert_until_the_final_account(self):
         pp, ra = self.wf("promote-prod.yml"), self.wf("release-app.yml")
@@ -996,6 +998,48 @@ class PerAppDatabaseLogins(unittest.TestCase):
         smoke = (ROOT / "infra" / "scripts" / "image-smoke.sh").read_text(encoding="utf-8")
         self.assertIn('"ARON_DB_URL=$PG_API"', smoke, "CI runs the api as app_api")
         self.assertIn('"ARON_DB_URL=$PG_JOBS"', smoke, "CI runs the worker as app_jobs")
+
+
+class PlatformAlerts(unittest.TestCase):
+    """AUD-REL-04: application-metric-free alerts, each naming an owner and a runbook."""
+
+    def test_database_and_resource_health(self):
+        t, _ = module("main.json", "alerts")
+        text = json.dumps(t)
+        for needle in ("is_db_alive", "pg-not-alive", "ResourceHealth", "Unavailable", "Degraded", "ServiceHealth"):
+            self.assertIn(needle, text)
+        (rh, sh) = sorted(resources_of(t, "Microsoft.Insights/activityLogAlerts"), key=lambda r: r["name"])
+        self.assertEqual(rh["properties"]["scopes"], ["[resourceGroup().id]"])
+        self.assertIn("Owner:", rh["properties"]["description"])
+        self.assertEqual(sh.get("condition"), "[parameters('enableServiceHealthAlert')]", "off until subscription Reader exists")
+
+    def test_app_alerts(self):
+        apps = load("apps.json")
+        text = json.dumps(apps["variables"]) + json.dumps(apps["resources"]["appMetricAlerts"])
+        for needle in ("api-5xx", "statusCodeCategory", "5xx", "-restarts", "-no-replica", "RestartCount", "Replicas",
+                       "Microsoft.App/containerApps"):
+            self.assertIn(needle, text)
+        self.assertEqual(apps["resources"]["appMetricAlerts"]["condition"], "[parameters('deployServices')]")
+        src = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        block = src[src.index("var appAlerts"):src.index("resource appMetricAlerts")]
+        self.assertEqual(block.count("description:"), block.count("Owner: infra lane"), "every alert names its owner")
+        self.assertEqual(block.count("description:"), block.count("Runbook: RB-"), "every alert names its runbook")
+
+
+class Drills(unittest.TestCase):
+    """AUD-REL-05: the s5a drills are a workflow behind explicit approval phrases; the restore copy never outlives the run."""
+
+    def test_drill_workflow_and_script(self):
+        w = (WORKFLOWS / "drill.yml").read_text(encoding="utf-8")
+        self.assertNotRegex(w, r"(?m)^\s*(push|pull_request|schedule|workflow_call):", "manual dispatch only")
+        self.assertIn('failover) want="lead approved failover drill" ;;', w)
+        self.assertIn('pitr) want="owner approved restore drill" ;;', w)
+        self.assertLess(w.index("Approval phrase"), w.index("azure/login@"), "nothing touches Azure before the phrase")
+        d = (ROOT / "infra" / "scripts" / "drill.sh").read_text(encoding="utf-8")
+        self.assertIn("trap cleanup EXIT", d, "the restored server is deleted on every exit")
+        self.assertLess(d.index("trap cleanup EXIT"), d.index("az postgres flexible-server restore"))
+        self.assertIn("--failover Forced", d)
+        self.assertIn('die "a deploy holds the lock', d, "never during a deploy")
 
 
 if __name__ == "__main__":

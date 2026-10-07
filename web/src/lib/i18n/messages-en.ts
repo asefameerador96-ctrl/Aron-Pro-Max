@@ -545,6 +545,7 @@ export const en = {
   "error.ERR_CFG_SCOPE_NOT_ALLOWED": "This setting cannot be changed at that level.",
   "error.ERR_CFG_FREEZE_WINDOW": "Changes are paused right now (freeze window). Try later.",
   "error.ERR_CFG_REASON_REQUIRED": "A reason is required for this change.",
+  "prices.per_base": "per {n} units",
 } as const;
 
 export type MessageKey = keyof typeof en;

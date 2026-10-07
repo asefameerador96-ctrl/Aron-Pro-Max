@@ -453,6 +453,18 @@ jobs:
         run: bash scripts/ci.sh build
       - run: npx playwright install --with-deps chromium
       - run: bash scripts/ci.sh e2e
+      - name: Flaky e2e tests (passed only on retry) are reported, never silent (AUD-TP-6)
+        if: always()
+        run: |
+          [ -f test-results/results.json ] || { echo "no Playwright JSON report"; exit 0; }
+          python3 - test-results/results.json <<'PY'
+          import json, sys
+          stats = json.load(open(sys.argv[1])).get("stats", {})
+          flaky = stats.get("flaky", 0)
+          print(f"e2e: {stats.get('expected', 0)} passed, {flaky} flaky, {stats.get('unexpected', 0)} failed")
+          if flaky:
+              print(f"::warning::{flaky} e2e test(s) passed only on retry: quarantine or fix within one working day (docs/20 P5)")
+          PY
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

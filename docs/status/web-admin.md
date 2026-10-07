@@ -44,3 +44,6 @@ Remaining: F-TSO-023, F-TSO-025 (T1 and T2, Day 5), then wait on contract for F-
 Done: F-ADM-020 and F-TSO-023 after checker rounds. F-TSO-025 built at /admin/radius (checker pending). Request added: web-admin-temp-password-ttl (backend 72 h vs 24 h).
 Open: F-ADM-065 waits on a SKU image member (request filed). Lead may route the contract requests.
 Known trap: a failed lint leaves a stale .next, then e2e shows 403 pages for new routes; always run lint before build.
+
+## Update (prices checker)
+F-ADM-005 Opus (money) checker found 14 (6 in the grid and page, 8 in the mock); all fixed. Not changed: no stale-data guard between two admins (contract has no version on publish), future and pending prices are not listed on the page.
