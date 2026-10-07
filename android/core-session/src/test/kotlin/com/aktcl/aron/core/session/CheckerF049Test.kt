@@ -181,4 +181,39 @@ class CheckerF049Test {
         assertTrue("went back ${(before + 6_000 - c.nowMs()) / 1000} s", c.nowMs() >= before + 6_000)
         assertTrue(c.isAtOrAfterDhaka(LocalTime.of(17, 0)))
     }
+
+    // ---- Round 3: refuting the per-boot estimate ----
+
+    /**
+     * R3-1: a reading more than 5 min BEHIND replaces the estimate at once, with no confirmation, while one AHEAD needs a
+     * second reading. One replica with a clock a day behind (the mirror of R2) flips the business date back a day and
+     * re-closes the 17:00 gate; trusted time steps back 24 h.
+     */
+    @Test fun oneServerTimeFarBehindIsNotAdoptedWithoutConfirmation() {
+        val c = clock()
+        wall = ms("2026-10-05T11:30:00.000Z")
+        c.onApiResponse(meta("2026-10-05T11:30:00.000Z")) // 17:30 Dhaka
+        elapsed += 10_000; wall += 10_000
+        c.onApiResponse(meta("2026-10-04T11:30:10.000Z")) // one replica a day behind
+        assertEquals(LocalDate(2026, 10, 5), c.businessDate())
+        assertTrue(c.isAtOrAfterDhaka(LocalTime.of(17, 0)))
+    }
+
+    /**
+     * R3-2: with BOOT_COUNT and boot_id both unknown, a loaded estimate is checked by wall − elapsed. A fresh reply of this
+     * process that is a little late is ignored and the loaded estimate is kept with inProcess = false, so it stays tied to the
+     * wall clock: setting the clock back 2 h then drops trusted time to the wrong wall clock although this process has
+     * just confirmed the boot. Fix: when keeping the current estimate after an in-process reading, mark it inProcess.
+     */
+    @Test fun aLoadedEstimateConfirmedByThisProcessSurvivesAClockChange() {
+        boot = 0
+        wall = ms("2026-10-05T10:50:00.000Z")
+        clock().onApiResponse(meta("2026-10-05T10:50:00.000Z"))
+        elapsed += 60_000; wall += 60_000
+        val c = clock() // process restart
+        c.onApiResponse(meta("2026-10-05T10:50:30.000Z")) // 30 s late reply: ignored
+        wall -= 2 * 3_600_000L // rep sets the clock back
+        elapsed += 60_000; wall += 60_000
+        assertEquals(ms("2026-10-05T10:52:00.000Z"), c.nowMs())
+    }
 }

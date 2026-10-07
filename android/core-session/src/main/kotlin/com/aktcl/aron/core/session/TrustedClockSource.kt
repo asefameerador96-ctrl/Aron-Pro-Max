@@ -37,6 +37,9 @@ class TrustedClockSource(
         fun at(elapsed: Long) = serverMs + (elapsed - elapsedMs)
     }
 
+    /** Read once per process: the boot cannot change while the process lives. */
+    private val bootIdOnce: String? by lazy { bootId() }
+
     @Volatile private var best: Est? = null
     @Volatile private var candidate: Est? = null
     @Volatile private var recent: List<TimeAnchor> = emptyList()
@@ -72,26 +75,32 @@ class TrustedClockSource(
     }
 
     /**
-     * Takes one server-time observation. Server time + elapsed never runs ahead of true time by more than the server's own
-     * error, so: a slightly older reading (a reply that was slow to arrive) is ignored and time never steps back by it; a
-     * reading more than [JUMP_MS] behind replaces the estimate (the estimate was wrong); a reading more than [JUMP_MS]
-     * ahead is adopted only when a second reading agrees (one bad server clock cannot move the day).
+     * Takes one server-time observation. A slightly older reading (a reply that was slow to arrive) is ignored, so time never
+     * steps back by it; a newer one moves the estimate forward; a reading more than [JUMP_MS] away in either direction is
+     * adopted only when it is closer to the phone's own clock than the estimate or a second reading agrees (one bad server
+     * clock cannot move the day).
      */
     fun record(anchor: TimeAnchor) = synchronized(lock) {
-        val e = Est(anchor.bootCount, anchor.serverTimeMs, anchor.elapsedMs, wallClock() - anchor.elapsedMs, bootId(), inProcess = true)
+        val e = Est(anchor.bootCount, anchor.serverTimeMs, anchor.elapsedMs, wallClock() - anchor.elapsedMs, bootIdOnce, inProcess = true)
         val current = best?.takeIf { valid(it) }
         if (current == null) {
             best = e; candidate = null
         } else {
             val derived = current.at(e.elapsedMs)
             when {
-                e.serverMs > derived + JUMP_MS -> {
+                kotlin.math.abs(e.serverMs - derived) > JUMP_MS -> {
+                    // One reading far from the estimate, either way: adopt it at once only when it is closer to the phone's own
+                    // clock than the estimate is (the estimate itself came from a bad reading); otherwise a second reading must agree.
+                    val wallNow = wallClock()
                     val c = candidate?.takeIf { valid(it) }
-                    if (c != null && kotlin.math.abs(c.at(e.elapsedMs) - e.serverMs) <= JUMP_MS) { best = e; candidate = null } else candidate = e
+                    when {
+                        kotlin.math.abs(e.serverMs - wallNow) < kotlin.math.abs(derived - wallNow) -> { best = e; candidate = null }
+                        c != null && kotlin.math.abs(c.at(e.elapsedMs) - e.serverMs) <= JUMP_MS -> { best = e; candidate = null }
+                        else -> candidate = e
+                    }
                 }
                 e.serverMs >= derived -> { best = e; candidate = null }
-                e.serverMs < derived - JUMP_MS -> { best = e; candidate = null }
-                else -> Unit // a late reply: keep the better estimate
+                else -> best = current.copy(inProcess = true) // a late reply confirms the estimate for this boot; time never steps back
             }
         }
         recent = (recent + anchor).takeLast(MAX_SENT)
@@ -104,7 +113,7 @@ class TrustedClockSource(
         val boot = bootCount()
         if (boot > 0) return est.bootCount == boot
         if (est.inProcess) return true
-        val id = bootId()
+        val id = bootIdOnce
         if (id != null && est.bootIdText != null) return id == est.bootIdText
         val wallBoot = wallClock() - elapsed
         return est.bootWallMs != null && kotlin.math.abs(wallBoot - est.bootWallMs) <= SAME_BOOT_TOLERANCE_MS
