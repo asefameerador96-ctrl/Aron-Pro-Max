@@ -14,8 +14,6 @@ import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasLongClickAction
-import androidx.compose.ui.test.or
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.TextLayoutResult
@@ -26,9 +24,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /** N-023 acceptance: the gallery renders every component, Bangla and English, at font scale 1.3 on 360 x 640 dp. */
 @RunWith(RobolectricTestRunner::class)
+// NATIVE graphics: the legacy Robolectric mode measures text at 1 px per character, which makes every overflow check meaningless.
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w360dp-h640dp")
 class KitGalleryTest {
     @get:Rule val rule = createComposeRule()
@@ -37,23 +38,29 @@ class KitGalleryTest {
     private fun assertNoTruncationAndTouchTargets() {
         val textNodes = rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult)).fetchSemanticsNodes()
         assertTrue(textNodes.size > 20)
-        textNodes.forEach { node ->
+        val overflowing = textNodes.mapNotNull { node ->
             val results = mutableListOf<TextLayoutResult>()
             node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
-            assertFalse("text overflows: ${node.config.getOrNull(SemanticsProperties.Text)}", results.first().hasVisualOverflow)
+            val r = results.firstOrNull() ?: return@mapNotNull null
+            // hasVisualOverflow is not usable here (it is true for every node); test the three real truncations instead
+            val len = r.layoutInput.text.text.trimEnd().length
+            val cutOff = r.getLineEnd(r.lineCount - 1, visibleEnd = true) < len
+            val tooWide = (0 until r.lineCount).any { r.layoutInput.constraints.hasBoundedWidth && r.getLineRight(it) > r.layoutInput.constraints.maxWidth + 1f }
+            if (cutOff || tooWide || r.didOverflowHeight) "${node.config.getOrNull(SemanticsProperties.Text)} size=${node.size} cutOff=$cutOff tooWide=$tooWide overflowH=${r.didOverflowHeight}" else null
         }
-        val clickable = rule.onAllNodes(hasClickAction() or hasLongClickAction()).fetchSemanticsNodes()
+        assertTrue("text overflows: $overflowing", overflowing.isEmpty())
+        val clickable = rule.onAllNodes(hasClickAction() or SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)).fetchSemanticsNodes()
         assertTrue(clickable.size >= 12)
         with(rule.density) {
-            clickable.forEach { n ->
-                assertTrue("touch target ${n.size} too small: ${n.config.getOrNull(SemanticsProperties.Text)}", n.size.height.toDp() >= 47.5.dp && n.size.width.toDp() >= 47.5.dp)
-            }
+            val small = clickable.filter { n -> n.size.height.toDp() < 47.5.dp || n.size.width.toDp() < 47.5.dp }
+                .map { "${it.config.getOrNull(SemanticsProperties.Text)} size=${it.size}" }
+            assertTrue("touch targets too small: $small", small.isEmpty())
         }
     }
 
-    private fun render(language: AppLanguage) = rule.setContent {
+    private fun render(language: AppLanguage, sunlight: Boolean = false) = rule.setContent {
         CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 1.3f)) {
-            AronTheme(language, dark = false) { KitGallery() }
+            AronTheme(language, dark = false, sunlight = sunlight) { KitGallery() }
         }
     }
 
@@ -63,6 +70,18 @@ class KitGalleryTest {
         rule.onNodeWithText("সংরক্ষণ").assertHeightIsAtLeast(48.dp)
         rule.onNodeWithText("বিক্রয় জমা দিতে চেপে ধরুন").assertHeightIsAtLeast(56.dp)
         rule.onNodeWithText("১২").assertExists()
+        assertNoTruncationAndTouchTargets()
+    }
+
+    @Test fun englishInSunlightMode() {
+        render(AppLanguage.EN, sunlight = true)
+        rule.onNodeWithText("Kit gallery").assertExists()
+        assertNoTruncationAndTouchTargets()
+    }
+
+    @Test @Config(sdk = [34], qualifiers = "bn-w360dp-h640dp") fun banglaInSunlightMode() {
+        render(AppLanguage.BN, sunlight = true)
+        rule.onNodeWithText("কিট গ্যালারি").assertExists()
         assertNoTruncationAndTouchTargets()
     }
 
