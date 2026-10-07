@@ -43,9 +43,10 @@ class TokenContrastTest {
 
     @Test fun keyFiguresReachAAAEverywhere() = modes.forEach { m ->
         (m.solids() + m.glassOnPage() + m.barOnBackdrop()).forEach { check(m, "textPrimary", m.textPrimary, it, 7.0) }
-        check(m, "primary label on accent", m.textOnAccent, m.accent, 4.5)
-        check(m, "primary label on accent.hi", m.textOnAccent, m.accentHi, 4.5)
-        check(m, "primary label on accent.pressed", m.textOnAccent, m.accentPressed, 4.5)
+        // the primary button label is a key figure (docs/32 s2a item 3): 7:1 on every fill state
+        check(m, "primary label on accent", m.textOnAccent, m.accent, 7.0)
+        check(m, "primary label on accent.hi", m.textOnAccent, m.accentHi, 7.0)
+        check(m, "primary label on accent.pressed", m.textOnAccent, m.accentPressed, 7.0)
     }
 
     @Test fun sunlightKeyFiguresReachTenToOne() {
@@ -80,12 +81,17 @@ class TokenContrastTest {
         check(m, "disabled label", m.stateDisabledLabel, m.stateDisabledFill, 4.5)
     }
 
+    @Test fun disabledAndPlaceholderTextStaysAboveThree() = modes.forEach { m ->
+        m.solids().forEach { check(m, "textDisabled", m.textDisabled, it, 3.0) }
+    }
+
     @Test fun inputBordersAndFocusRingAreVisible() = modes.forEach { m ->
         m.solids().forEach { check(m, "borderInput", m.borderInput, it, 3.0); check(m, "borderFocus", m.borderFocus, it, 3.0) }
     }
 
     @Test fun glareProxyKeyFiguresStayAboveFourPointFive() = modes.forEach { m ->
         m.solids().forEach { glareCheck(m, "key figure on card", m.textPrimary, it, 4.5) }
+        // bold 16 sp+ label on a saturated fill: a blue that keeps 7:1 cannot reach 4.5:1 after the 35 percent white blend, so 3:1 (large text)
         glareCheck(m, "primary label on accent", m.textOnAccent, m.accent, 3.0)
     }
 
