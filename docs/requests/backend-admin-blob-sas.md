@@ -14,3 +14,8 @@ only, start 5 min back for clock skew, expiry = `expiresAt` (a SAS cannot cap si
 issuing and on the blob-created event). `readUrl`: read for 24 h. Delegation key cached (2 days, renewed with 25 h left).
 Note for backend: the blob-created queue (`media-events`) also receives these support/ and assets/ uploads; the worker
 should ignore or handle those paths. A SAS is a bearer URL: never log it. Offline tests: `AzureBlobSasIssuerTest`.
+
+**Follow-up for backend-admin (independent checker, 2026-10-07):** `AdminContentApi.kt:511` and `:537` store
+`d.blob.readUrl(...)` in `content_item.asset_url`, and `contentOf` (`:436`) returns that stored value. A read URL is a
+24-hour SAS, so the stored link expires the next day. Build it when reading from `blob_path` (as `:554` and
+`TutorialsApi` do), or store only the blob path.
