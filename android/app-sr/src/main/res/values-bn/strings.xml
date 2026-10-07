@@ -5,6 +5,14 @@
     <string name="sr_bundle_downloading">আজকের রুট ব্যাকগ্রাউন্ডে ডাউনলোড হচ্ছে। আপনি কাজ চালিয়ে যেতে পারেন।</string>
     <string name="sr_print_confirm_title">প্রিন্ট</string>
     <string name="sr_yes">হ্যাঁ</string>
+    <string name="sr_content_close">বন্ধ করুন</string>
+    <string name="sr_survey_title">সার্ভে</string>
+    <string name="sr_survey_photo">ছবি তুলুন</string>
+    <string name="sr_survey_photo_retake">আবার ছবি তুলুন</string>
+    <string name="sr_survey_photo_taken">ছবি সংরক্ষিত</string>
+    <string name="sr_survey_submit">জমা দিন</string>
+    <string name="sr_survey_skip">সার্ভে ছাড়া এগিয়ে যান</string>
+    <string name="sr_survey_confirm">আপনি কি সার্ভে জমা দেওয়ার বিষয়ে নিশ্চিত?</string>
     <string name="sr_no">না</string>
     <string name="sr_ok">ঠিক আছে</string>
     <string name="sr_map_title">দোকানের অবস্থান</string>
