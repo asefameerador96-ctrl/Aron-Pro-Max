@@ -1,5 +1,7 @@
 package com.aktcl.aron.core.sync
 
+import com.aktcl.aron.contract.RecordAck
+import com.aktcl.aron.contract.SyncBatchResponse
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -62,7 +64,7 @@ class SyncEngineTest {
     /** Simulates process death on the [killAt]-th send: before the request leaves, or after the server answered. */
     class KillingSender(private val delegate: BatchSender, private val killAt: Int, private val afterServer: Boolean) : BatchSender {
         var sends = 0
-        override suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): ApiResult<SyncBatchResponseDto> {
+        override suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): ApiResult<SyncBatchResponse> {
             sends++
             if (sends == killAt && !afterServer) throw ProcessDeath()
             val r = delegate.send(token, deviceUuid, batchUuid, gzipBody, headers)
@@ -312,6 +314,38 @@ class SyncEngineTest {
         assertServerHasExactly(4)
     }
 
+    @Test fun aResolutionForARowNotYetQuarantinedLocallyIsKeptAndAppliedLater() = runBlocking {
+        val memo = sale(1)
+        fake.rejectRetryable[memo] = 1
+        fake.pendingResolutions += memo to "accepted"
+        engine().run(SyncTrigger.MANUAL)
+        assertEquals(OutboxState.PENDING, db.outboxDao().byClientUuid(memo)!!.state)
+        fake.quarantine += memo
+        engine().run(SyncTrigger.MANUAL)
+        assertEquals(OutboxState.ACKED, db.outboxDao().byClientUuid(memo)!!.state)
+        assertEquals("resolved_accepted", db.outboxDao().byClientUuid(memo)!!.lastCode)
+        assertTrue(db.referenceDao().metaWithPrefix("sync.resolution.").isEmpty())
+    }
+
+    @Test fun aReplayedResponseDoesNotMoveServerStateBackwards() = runBlocking {
+        sale(1)
+        fake.dropAfterCommit = 1
+        engine().run(SyncTrigger.MANUAL)
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(SyncEngine.KEY_CONFIG_VERSION, "999"))
+        engine().run(SyncTrigger.MANUAL)
+        assertTrue(fake.requests.last().replayed)
+        assertEquals("999", db.referenceDao().meta(SyncEngine.KEY_CONFIG_VERSION))
+        assertServerHasExactly(1)
+    }
+
+    @Test fun aSingleFamilyThatTheServerKeepsRefusingWith413EndsRetryExhaustedNotStuck() = runBlocking {
+        val memo = sale(1)
+        fake.failBefore.addAll(List(30) { 413 })
+        repeat(12) { engine().run(SyncTrigger.PERIODIC) }
+        assertEquals(AckRules.RETRY_EXHAUSTED, db.outboxDao().byClientUuid(memo)!!.lastCode)
+        assertEquals(0, db.outboxDao().unsentCount())
+    }
+
     @Test fun assembleCutsAtTheByteCapButAlwaysTakesOneRow() {
         val big = "x".repeat(200 * 1024)
         fun row(seq: Long, fam: String) = OutboxEntity(seq, ClientIds.newUuid(), "memo", fam, 1, "2026-10-05", big, "h", createdAt = "t")
@@ -360,7 +394,7 @@ class SyncEngineTest {
     /** Keeps every request so the test can send an old one again, exactly as it went. */
     class RecordingSender(private val delegate: BatchSender) : BatchSender {
         private val sent = ArrayList<Array<Any>>()
-        override suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): ApiResult<SyncBatchResponseDto> {
+        override suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): ApiResult<SyncBatchResponse> {
             sent += arrayOf(token, deviceUuid, batchUuid, gzipBody, headers)
             return delegate.send(token, deviceUuid, batchUuid, gzipBody, headers)
         }

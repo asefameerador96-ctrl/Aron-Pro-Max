@@ -1,5 +1,7 @@
 package com.aktcl.aron.core.sync
 
+import com.aktcl.aron.contract.RecordAck
+import com.aktcl.aron.contract.SyncBatchResponse
 import com.aktcl.aron.contract.RecordOutcomeCode
 import com.aktcl.aron.core.database.entity.OutboxState
 import kotlin.math.min
@@ -11,9 +13,9 @@ data class SyncPolicy(
     val batchMaxRows: Int = 200,
     /** `cfg.sync.batch_max_kb_raw`: uncompressed record bytes per batch. */
     val batchMaxRawBytes: Int = 256 * 1024,
-    /** `cfg.sync.family_skip_after`: sends after which a row moves behind the others. */
+    /** `cfg.sync.family_skip_after`: definitive failures after which a row moves behind the others. */
     val familySkipAfter: Int = 5,
-    /** `cfg.sync.row_max_retries`: sends after which a still-failing row is `rejected(retry_exhausted)` locally. */
+    /** `cfg.sync.row_max_retries`: definitive failures after which a row is `rejected(retry_exhausted)` locally. */
     val rowMaxRetries: Int = 10,
     /** Batches per run: bounds one run (and its wake lock, `cfg.sync.wakelock_max_s`); the next trigger continues. */
     val maxBatchesPerRun: Int = 25,
@@ -35,24 +37,28 @@ object AckRules {
     const val RETRY_EXHAUSTED = "retry_exhausted"
 
     /**
-     * Maps the server's ack of a row that has been sent [attempts] times. `accepted` and `duplicate` are stored; a
+     * Maps the server's ack of a row that has already failed [failures] times (`outbox.attempts`). `accepted` and `duplicate` are stored; a
      * retryable reject goes back to `pending` until [rowMaxRetries], then is `rejected(retry_exhausted)` locally (still
      * counted in reconciliation); a final reject and a quarantine are terminal for the phone. A status this build does
      * not know keeps the row pending: it is never marked stored on a guess, and it is never dropped.
      */
-    fun target(ack: RecordAckDto, attempts: Int, rowMaxRetries: Int): AckTarget = when (ack.status) {
+    fun target(ack: RecordAck, failures: Int, rowMaxRetries: Int): AckTarget = when (ack.status) {
         "accepted", "duplicate" -> AckTarget(OutboxState.ACKED, null)
         "quarantined" -> AckTarget(OutboxState.QUARANTINED, ack.code)
-        "rejected" -> if (isRetryable(ack)) retry(ack.code, attempts, rowMaxRetries) else AckTarget(OutboxState.REJECTED, ack.code)
-        else -> retry("unknown_status:${ack.status}".take(60), attempts, rowMaxRetries)
+        "rejected" -> if (isRetryable(ack)) retry(ack.code, failures + 1, rowMaxRetries) else AckTarget(OutboxState.REJECTED, ack.code)
+        else -> retry("unknown_status:${ack.status}".take(60), failures + 1, rowMaxRetries)
     }
 
+    /** True when [target] counts as one more definitive failure of the row (it goes back, or is exhausted). */
+    fun isFailure(t: AckTarget): Boolean = t.state == OutboxState.PENDING || t.code == RETRY_EXHAUSTED
+
     /** `retryable` as sent; when absent, the code catalogue decides; an unknown code is retried (it is never lost). */
-    fun isRetryable(ack: RecordAckDto): Boolean =
+    fun isRetryable(ack: RecordAck): Boolean =
         ack.retryable ?: RecordOutcomeCode.entries.firstOrNull { it.wire == ack.code }?.retryable ?: true
 
-    fun retry(code: String?, attempts: Int, rowMaxRetries: Int): AckTarget =
-        if (attempts >= rowMaxRetries) AckTarget(OutboxState.REJECTED, RETRY_EXHAUSTED) else AckTarget(OutboxState.PENDING, code)
+    /** [failuresAfter] includes the failure being recorded now. */
+    fun retry(code: String?, failuresAfter: Int, rowMaxRetries: Int): AckTarget =
+        if (failuresAfter >= rowMaxRetries) AckTarget(OutboxState.REJECTED, RETRY_EXHAUSTED) else AckTarget(OutboxState.PENDING, code)
 
     /** A quarantine resolution (s4.5): accepted counts as stored, discarded as rejected; null for an unknown value. */
     fun resolution(value: String): AckTarget? = when (value) {

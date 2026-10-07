@@ -33,6 +33,13 @@ abstract class OutboxDao {
     )
     abstract suspend fun nextSendable(limit: Int, skipAfter: Int, excludedFamilies: List<String>): List<OutboxEntity>
 
+    /**
+     * Counts one definitive failure of a row (a retryable reject, or its family isolated as the cause of a batch failure).
+     * `attempts` drives skip-ahead and `row_max_retries` (s4.6); re-batching after a split or a release never counts.
+     */
+    @Query("UPDATE outbox SET attempts = attempts + 1 WHERE client_uuid = :clientUuid")
+    abstract suspend fun countFailure(clientUuid: String): Int
+
     /** Rows waiting for an upload: pending or in a batch not yet answered (`X-Pending-Rows`, the periodic-work rule). */
     @Query("SELECT COUNT(*) FROM outbox WHERE state IN ('pending', 'in_flight')")
     abstract suspend fun unsentCount(): Int
@@ -55,7 +62,8 @@ abstract class OutboxDao {
     @Query("SELECT DISTINCT batch_uuid FROM outbox WHERE state = 'in_flight' AND batch_uuid IS NOT NULL")
     abstract suspend fun inFlightBatches(): List<String>
 
-    @Query("UPDATE outbox SET state = 'in_flight', batch_uuid = :batchUuid, attempts = attempts + 1 WHERE seq IN (:seqs) AND state = 'pending'")
+    /** Puts rows into a batch. Sending is not a failure, so `attempts` is not touched here (see [countFailure]). */
+    @Query("UPDATE outbox SET state = 'in_flight', batch_uuid = :batchUuid WHERE seq IN (:seqs) AND state = 'pending'")
     abstract suspend fun markInFlight(batchUuid: String, seqs: List<Long>): Int
 
     @Query("UPDATE outbox SET state = 'pending', batch_uuid = NULL, last_code = :lastCode WHERE batch_uuid = :batchUuid AND state = 'in_flight'")

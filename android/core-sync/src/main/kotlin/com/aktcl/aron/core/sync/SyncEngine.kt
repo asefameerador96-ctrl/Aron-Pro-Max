@@ -1,5 +1,7 @@
 package com.aktcl.aron.core.sync
 
+import com.aktcl.aron.contract.RecordAck
+import com.aktcl.aron.contract.SyncBatchResponse
 import androidx.room.withTransaction
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.ProblemCode
@@ -10,6 +12,7 @@ import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.OutboxEntity
 import com.aktcl.aron.core.database.entity.OutboxState
 import com.aktcl.aron.core.database.entity.SyncMetaEntity
+import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.core.network.TransportFailure
@@ -171,7 +174,9 @@ class SyncEngine(
                     return report(SyncStop.FAILED, code = "assembly_race")
                 }
                 when (val step = send(batchUuid, rows)) {
-                    is Step.Next, is Step.Isolate -> Unit
+                    // After a split, grow back once batches go through again; after the culprit is isolated, full size.
+                    is Step.Next -> limit = minOf(policy.batchMaxRows, limit * 2)
+                    is Step.Isolate -> limit = policy.batchMaxRows
                     is Step.Split -> limit = step.limit
                     is Step.Stop -> return step.report
                 }
@@ -201,7 +206,7 @@ class SyncEngine(
                 when (result) {
                     is ApiResult.Success -> return applyResponse(batchUuid, rows, result.value)
                     is ApiResult.NotModified -> return stopKeeping(SyncStop.FAILED, "not_modified")
-                    is ApiResult.Transport -> return transport(batchUuid, result.failure)
+                    is ApiResult.Transport -> return transport(batchUuid, rows, result.failure)
                     is ApiResult.Failure -> {
                         val code = result.problem.problemCode
                         if (result.httpStatus == 401 && !refreshed &&
@@ -237,27 +242,15 @@ class SyncEngine(
                     release(batchUuid, code)
                     Step.Next
                 }
-                f.httpStatus == 413 -> {
-                    release(batchUuid, code)
-                    if (rows.size <= 1) Step.Stop(report(SyncStop.FAILED, code = code)) else Step.Split((rows.size / 2).coerceAtLeast(1))
-                }
-                f.httpStatus >= 500 -> {
-                    // Bisect (s4.7): halves get new batch_uuids until the failing family is alone; it is then held back for
-                    // the rest of the run, so the families behind it still go.
+                // A failure the batch itself caused: 500 (s4.7), a strict 400/422 on a record the server could not take apart,
+                // 413. Bisect: halves get new batch_uuids until the failing family is alone; that family then takes one
+                // failure (exhausted after row_max_retries, never stuck) and is held back, so the families behind it still go.
+                f.httpStatus >= 500 || f.httpStatus in BATCH_FAULTS -> {
                     if (rows.map { it.familyUuid }.distinct().size > 1) {
                         release(batchUuid, code)
                         Step.Split((rows.size / 2).coerceAtLeast(1))
                     } else {
-                        db.withTransaction {
-                            for (row in rows) {
-                                val t = AckRules.retry(code, row.attempts, policy.rowMaxRetries)
-                                outbox.applyAck(row.clientUuid, t.state, t.code, null, iso(clock.nowMs()))
-                                if (t.state == OutboxState.REJECTED) rejected++ else deferred++
-                            }
-                            excludedFamilies += rows.map { it.familyUuid }
-                            meta.deleteMeta(attemptKey(batchUuid))
-                            meta.putMeta(SyncMetaEntity(KEY_LAST_ERROR, code))
-                        }
+                        isolate(batchUuid, rows, code)
                         Step.Isolate
                     }
                 }
@@ -268,22 +261,36 @@ class SyncEngine(
             }
         }
 
-        suspend fun transport(batchUuid: String, failure: TransportFailure): Step {
+        /** One definitive failure for each of [rows]: back to pending (held for the run) or rejected(retry_exhausted). */
+        suspend fun isolate(batchUuid: String, rows: List<OutboxEntity>, code: String) = db.withTransaction {
+            for (row in rows) {
+                val t = AckRules.retry(code, row.attempts + 1, policy.rowMaxRetries)
+                outbox.countFailure(row.clientUuid)
+                outbox.applyAck(row.clientUuid, t.state, t.code, null, iso(clock.nowMs()))
+                if (t.state == OutboxState.REJECTED) rejected++ else deferred++
+            }
+            excludedFamilies += rows.map { it.familyUuid }
+            meta.deleteMeta(attemptKey(batchUuid))
+            meta.putMeta(SyncMetaEntity(KEY_LAST_ERROR, code))
+        }
+
+        suspend fun transport(batchUuid: String, rows: List<OutboxEntity>, failure: TransportFailure): Step {
             val code = "transport_${failure.name.lowercase()}"
             if (failure == TransportFailure.MALFORMED) {
-                // The server may have stored the batch and would replay the same unreadable answer: re-batch instead.
-                release(batchUuid, code)
+                // The server may have stored the batch and would replay the same unreadable answer: re-batch under a new
+                // uuid, and count it as a failure so a server that keeps answering badly cannot loop the rows forever.
+                isolate(batchUuid, rows, code)
                 return Step.Stop(report(SyncStop.FAILED, code = code))
             }
             meta.putMeta(SyncMetaEntity(KEY_LAST_ERROR, code))
             return Step.Stop(report(SyncStop.OFFLINE, code = code, retryAfterMs = Backoff.delayMs(attemptOf(batchUuid), policy, random)))
         }
 
-        suspend fun applyResponse(batchUuid: String, rows: List<OutboxEntity>, r: SyncBatchResponseDto): Step {
+        suspend fun applyResponse(batchUuid: String, rows: List<OutboxEntity>, r: SyncBatchResponse): Step {
             val matches = r.batchUuid == batchUuid && r.acks.size == rows.size &&
                 r.acks.indices.all { r.acks[it].clientUuid == rows[it].clientUuid }
             if (!matches) {
-                release(batchUuid, "ack_mismatch")
+                isolate(batchUuid, rows, "ack_mismatch")
                 return Step.Stop(report(SyncStop.FAILED, code = "ack_mismatch"))
             }
             val now = iso(clock.nowMs())
@@ -291,6 +298,7 @@ class SyncEngine(
                 rows.forEachIndexed { i, row ->
                     val ack = r.acks[i]
                     val t = AckRules.target(ack, row.attempts, policy.rowMaxRetries)
+                    if (AckRules.isFailure(t)) outbox.countFailure(row.clientUuid)
                     outbox.applyAck(row.clientUuid, t.state, t.code, ack.serverId, now)
                     when (t.state) {
                         OutboxState.ACKED -> acked++
@@ -299,27 +307,47 @@ class SyncEngine(
                         OutboxState.PENDING -> { deferred++; excludedFamilies += row.familyUuid }
                     }
                 }
-                for (res in r.resolutions) {
-                    val t = AckRules.resolution(res.resolution) ?: continue
-                    outbox.applyResolution(res.clientUuid, t.state, t.code!!, now)
-                }
+                applyResolutions(r.resolutions, now)
                 meta.deleteMeta(attemptKey(batchUuid))
                 meta.deleteMeta(KEY_LAST_ERROR)
-                r.configVersion?.let { meta.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, it.toString())) }
-                r.generation?.let { meta.putMeta(SyncMetaEntity(KEY_GENERATION, it)) }
-                r.bundleVersionCurrent?.let { meta.putMeta(SyncMetaEntity(KEY_BUNDLE_CURRENT, it)) }
-                for (totals in r.serverTotals) {
-                    val date = (totals as? JsonObject)?.get("business_date")?.jsonPrimitive?.content ?: continue
-                    meta.putMeta(SyncMetaEntity(KEY_SERVER_TOTALS + date, totals.toString()))
-                }
-                meta.putMeta(SyncMetaEntity(KEY_DAY_STATES, JsonArray(r.dayStates).toString()))
                 meta.putMeta(SyncMetaEntity(KEY_LAST_SUCCESS, now))
+                // A replay is the stored answer of an earlier send (up to 48 h old): its acks hold, its server state does not.
+                if (!r.replayed) {
+                    meta.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, r.configVersion.toString()))
+                    meta.putMeta(SyncMetaEntity(KEY_GENERATION, r.generation))
+                    r.bundleVersionCurrent?.let { meta.putMeta(SyncMetaEntity(KEY_BUNDLE_CURRENT, it)) }
+                    for (totals in r.serverTotals) {
+                        val date = (totals as? JsonObject)?.get("business_date")?.jsonPrimitive?.content ?: continue
+                        meta.putMeta(SyncMetaEntity(KEY_SERVER_TOTALS + date, totals.toString()))
+                    }
+                    meta.putMeta(SyncMetaEntity(KEY_DAY_STATES, JsonArray(r.dayStates).toString()))
+                }
             }
             val automatic = trigger != SyncTrigger.MANUAL && trigger != SyncTrigger.DAY_SUBMIT
             if (r.holdS > 0 && automatic) {
                 return Step.Stop(report(SyncStop.RETRY_LATER, code = "hold", retryAfterMs = Backoff.holdMs(r.holdS, random)))
             }
             return Step.Next
+        }
+
+        /**
+         * Applies quarantine resolutions (s4.5). The server delivers each once; one for a row the phone has not seen
+         * quarantined yet (its batch's answer was lost and the batch is still in flight) is kept and applied as soon as
+         * the row is quarantined, so it is never dropped.
+         */
+        suspend fun applyResolutions(delivered: List<JsonElement>, now: String) {
+            for (e in delivered) {
+                val res = runCatching { WireJson.responses.decodeFromJsonElement(ResolutionDto.serializer(), e) }.getOrNull() ?: continue
+                if (AckRules.resolution(res.resolution) != null) meta.putMeta(SyncMetaEntity(RESOLUTION_PREFIX + res.clientUuid, res.resolution))
+            }
+            for (stash in meta.metaWithPrefix(RESOLUTION_PREFIX)) {
+                val uuid = stash.key.removePrefix(RESOLUTION_PREFIX)
+                val t = AckRules.resolution(stash.value) ?: run { meta.deleteMeta(stash.key); null } ?: continue
+                val row = outbox.byClientUuid(uuid)
+                val done = row == null || outbox.applyResolution(uuid, t.state, t.code!!, now) > 0 ||
+                    row.state == OutboxState.ACKED || row.state == OutboxState.REJECTED
+                if (done) meta.deleteMeta(stash.key)
+            }
         }
 
         suspend fun requestJson(batchUuid: String, rows: List<OutboxEntity>): String {
@@ -403,13 +431,17 @@ class SyncEngine(
 
     companion object {
         const val KEY_LAST_ERROR = "sync.last_error"
-        const val KEY_CONFIG_VERSION = "sync.config_version"
+        const val KEY_CONFIG_VERSION = ReferenceRepository.KEY_CONFIG_VERSION
         const val KEY_GENERATION = "sync.server_generation"
         const val KEY_BUNDLE_CURRENT = "sync.bundle_version_current"
         const val KEY_SERVER_TOTALS = "sync.server_totals."
         const val KEY_DAY_STATES = "sync.day_states"
         const val KEY_LAST_SUCCESS = "sync.last_success_at"
         private const val ATTEMPT_PREFIX = "sync.batch_attempt."
+        private const val RESOLUTION_PREFIX = "sync.resolution."
+
+        /** Batch-level answers caused by the batch's content (bisected like a 500). */
+        private val BATCH_FAULTS = setOf(400, 413, 422)
 
         fun attemptKey(batchUuid: String) = ATTEMPT_PREFIX + batchUuid
 

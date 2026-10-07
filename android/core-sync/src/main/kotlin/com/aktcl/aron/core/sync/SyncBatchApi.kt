@@ -1,5 +1,7 @@
 package com.aktcl.aron.core.sync
 
+import com.aktcl.aron.contract.RecordAck
+import com.aktcl.aron.contract.SyncBatchResponse
 import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.AronApiClient
 import com.aktcl.aron.core.network.CallAuth
@@ -11,7 +13,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 /** Sends one gzip batch body; [SyncBatchApi] in production. */
 fun interface BatchSender {
-    suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): ApiResult<SyncBatchResponseDto>
+    suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): ApiResult<SyncBatchResponse>
 }
 
 /** Telemetry headers of one batch attempt (docs/24 s3.2); they never change the server's outcome. */
@@ -30,7 +32,7 @@ data class BatchHeaders(
  */
 class SyncBatchApi(private val client: AronApiClient, private val signer: DeviceProofSigner?) : BatchSender {
 
-    override suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): ApiResult<SyncBatchResponseDto> {
+    override suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): ApiResult<SyncBatchResponse> {
         val proof = signer?.sign(ProofStrings.batch(deviceUuid, gzipBody, batchUuid, headers.attempt))
         return client.call(
             path = PATH,
@@ -45,7 +47,7 @@ class SyncBatchApi(private val client: AronApiClient, private val signer: Device
                 if (proof != null) header("X-Device-Proof", proof)
                 post(gzipBody.toRequestBody(JSON))
             },
-            decode = { body, _ -> WireJson.responses.decodeFromString(SyncBatchResponseDto.serializer(), body) },
+            decode = { body, _ -> WireJson.responses.decodeFromString(SyncBatchResponse.serializer(), body) },
         )
     }
 
