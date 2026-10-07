@@ -539,6 +539,15 @@ fi
 # db/seed (sr1001, the bound dev phone, Mirpur outlets and SKUs) for the SR slice smoke. Runs the dev seed image
 # through the dblogins job (template override: its identity, registry and secrets), never blocks the deploy.
 devseed_result="off (no param devSeed = true)"
+# The slice smoke's device key from Key Vault into a private temp folder (key.pem); prints the folder. Never logged.
+smoke_device_key() {
+  local dir; dir="$(mktemp -d)"; chmod 700 "$dir"
+  if az keyvault secret download --vault-name "$KV" --name aron-dev-smoke-device-key --file "$dir/key.pem" --encoding utf-8 -o none 2>/dev/null; then
+    chmod 600 "$dir/key.pem"; printf '%s' "$dir"
+  else
+    rm -rf "$dir"; return 1
+  fi
+}
 if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ] && [ -n "$DBLOGINS_JOB" ]; then
   build_devseed() {
     local ctx; ctx="$(mktemp -d)"
@@ -554,11 +563,22 @@ if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ] && [ -n "$DBLOGINS_JOB"
   seed_ref="$(mktemp)"
   if ( publish aron-devseed build_devseed && printf '%s' "$IMAGE_REF" > "$seed_ref" ); then DEVSEED_IMAGE="$(cat "$seed_ref")"; else DEVSEED_IMAGE=""; fi
   rm -f "$seed_ref"
+  # The smoke device's public key (no '$' in a JWK, so safe as an env value): derived from the Key Vault private key.
+  smoke_pub=""
+  if smoke_key_dir="$(smoke_device_key)"; then
+    smoke_pub="$(python3 infra/scripts/slice-smoke.py --print-jwk "$smoke_key_dir/key.pem" 2>/dev/null || true)"
+    rm -rf "$smoke_key_dir"
+  fi
+  [ -n "$smoke_pub" ] || echo "::warning::no smoke device key; the slice smoke upload will be refused (device key unknown)"
   seed_tpl="$(mktemp --suffix .yaml)"
-  python3 - "$DEVSEED_IMAGE" > "$seed_tpl" <<'PY'
+  python3 - "$DEVSEED_IMAGE" "$smoke_pub" > "$seed_tpl" <<'PY'
 import json, sys
-print(json.dumps({"containers": [{"name": "dblogins", "image": sys.argv[1], "resources": {"cpu": 0.25, "memory": "0.5Gi"},
-    "env": [{"name": "ARON_DB_URL", "secretRef": "db-direct-url"}, {"name": "ARON_SEED_PASSWORD", "secretRef": "seed-pw"}]}]}))
+env = [{"name": "ARON_DB_URL", "secretRef": "db-direct-url"}, {"name": "ARON_SEED_PASSWORD", "secretRef": "seed-pw"}]
+if sys.argv[2]:
+    pub = json.loads(sys.argv[2])
+    env += [{"name": "ARON_SMOKE_JWK", "value": json.dumps(pub["jwk"], separators=(",", ":"))},
+            {"name": "ARON_SMOKE_THUMB", "value": pub["thumbprint"]}]
+print(json.dumps({"containers": [{"name": "dblogins", "image": sys.argv[1], "resources": {"cpu": 0.25, "memory": "0.5Gi"}, "env": env}]}))
 PY
   if [ -z "$DEVSEED_IMAGE" ]; then
     echo "::warning::the dev seed image could not be built"; devseed_result="image build failed"
@@ -651,7 +671,9 @@ if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ]; then
   if slice_pw="$(az keyvault secret show --vault-name "$KV" --name aron-dev-seed-password --query value -o tsv 2>/dev/null)" \
      && [ -n "$slice_pw" ]; then
     echo "::add-mask::${slice_pw}"
-    if SLICE_API_HOST="$API_HOST" SLICE_PASSWORD="$slice_pw" python3 infra/scripts/slice-smoke.py; then
+    slice_key_dir="$(smoke_device_key || true)"
+    if SLICE_API_HOST="$API_HOST" SLICE_PASSWORD="$slice_pw" SLICE_DEVICE_KEY="${slice_key_dir:+$slice_key_dir/key.pem}" \
+       python3 infra/scripts/slice-smoke.py; then
       slice_result="PASSED"
     else
       slice_result="FAILED (see the slice smoke table)"; echo "::warning::SR slice smoke failed (non-blocking)"
@@ -660,6 +682,7 @@ if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ]; then
     slice_result="not run (aron-dev-seed-password unreadable)"; echo "::warning::SR slice smoke not run: no seed password"
   fi
   unset slice_pw
+  if [ -n "${slice_key_dir:-}" ]; then rm -rf "$slice_key_dir"; fi
 fi
 if [ "$ARON_DEPLOY_BUDGET" = true ]; then
   amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \

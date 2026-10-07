@@ -10,6 +10,19 @@ for f in /seed/0*.sql; do
   echo "seed: $(basename "$f")"
   psql "$url" -X -q -v ON_ERROR_STOP=1 -f "$f"
 done
+# The smoke device's REAL public key (deploy.sh derives it from Key Vault aron-dev-smoke-device-key), so the slice smoke
+# signs X-Device-Proof like an enrolled phone and no enrolment rule is relaxed (lead 2026-10-07). Only replaces the
+# seed's placeholder (or the same key): a device row with any other real key is never touched.
+if [ -n "${ARON_SMOKE_JWK:-}" ] && [ -n "${ARON_SMOKE_THUMB:-}" ]; then
+  psql "$url" -X -q -v ON_ERROR_STOP=1 <<'SQL'
+\getenv jwk ARON_SMOKE_JWK
+\getenv tp ARON_SMOKE_THUMB
+UPDATE app.device SET public_key_jwk = CAST(:'jwk' AS jsonb), public_key_thumbprint = :'tp'
+ WHERE device_uuid = '00000000-0000-4000-8000-000000000001'
+   AND public_key_thumbprint IN ('seed-dev-device-0001', :'tp');
+SQL
+  echo "seed: smoke device key set"
+fi
 [ -n "${ARON_SEED_PASSWORD:-}" ] || { echo "seed: no ARON_SEED_PASSWORD, accounts keep their passwords"; exit 0; }
 salt="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 16)"
 ARON_SEED_HASH="$(printf '%s' "$ARON_SEED_PASSWORD" | argon2 "$salt" -id -t 2 -k 19456 -p 1 -l 32 -e)"
