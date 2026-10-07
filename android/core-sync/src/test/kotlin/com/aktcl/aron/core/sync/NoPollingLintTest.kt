@@ -20,10 +20,15 @@ class NoPollingLintTest {
     private val rules = listOf(
         Rule("repeating alarm", Regex("""\bset(Inexact)?Repeating\s*\(""")),
         Rule("exact-alarm permission", Regex("""(SCHEDULE|USE)_EXACT_ALARM""")),
-        Rule("alarm", Regex("""\bAlarmManager\b"""), allowedIn = listOf("dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/")),
-        Rule("timer", Regex("""\bjava\.util\.Timer\b|\bTimer\s*\(|\bTimerTask\b""")),
+        Rule("alarm", Regex("""\bAlarmManager\b|\bALARM_SERVICE\b"""), allowedIn = listOf("dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/")),
+        Rule("timer", Regex("""\bjava\.util\.Timer\b|\bTimer\s*\(|\bTimerTask\b|\bticker\s*\(""")),
         Rule("scheduled executor", Regex("""scheduleAtFixedRate|scheduleWithFixedDelay|ScheduledExecutorService|newScheduledThreadPool""")),
-        Rule("foreground service", Regex("""\bstartForeground\s*\(|FOREGROUND_SERVICE|foregroundServiceType"""), allowedIn = listOf("core-printing/")),
+        Rule("delayed handler post", Regex("""\bpostDelayed\s*\(|\bsendMessageDelayed\s*\(""")),
+        Rule(
+            "foreground service",
+            Regex("""\bstartForeground\s*\(|\bstartForegroundService\s*\(|\bsetForeground(Async)?\s*\(|FOREGROUND_SERVICE|foregroundServiceType"""),
+            allowedIn = listOf("core-printing/"),
+        ),
     )
 
     private fun sources(): List<File> = androidRoot.listFiles().orEmpty().filter { File(it, "src/main").isDirectory }
@@ -34,14 +39,15 @@ class NoPollingLintTest {
     fun violations(files: List<Pair<String, String>>): List<String> {
         val out = ArrayList<String>()
         for ((path, text) in files) {
-            val code = text.lines().filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }.joinToString("\n")
+            val code = if (path.endsWith(".kt")) stripKotlin(text) else text.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
             for (r in rules) if (r.pattern.containsMatchIn(code) && r.allowedIn.none { path.startsWith(it) }) out += "$path: ${r.name}"
-            Regex("""PeriodicWorkRequestBuilder<[^>]+>\(\s*(\d+)L?\s*,\s*TimeUnit\.(SECONDS|MINUTES)""").findAll(code).forEach { m ->
-                val minutes = if (m.groupValues[2] == "SECONDS") m.groupValues[1].toLong() / 60 else m.groupValues[1].toLong()
-                if (minutes < 15) out += "$path: periodic work under 15 min"
+            // A periodic request must say its interval as a literal of at least 15 minutes, so a reviewer can see it.
+            Regex("""PeriodicWorkRequestBuilder<[^>]*>\s*\(|PeriodicWorkRequest\.Builder\s*\(""").findAll(code).forEach { m ->
+                val args = code.substring(m.range.last + 1).take(160)
+                if (!periodicAtLeast15(args)) out += "$path: periodic work not a literal of at least 15 min"
             }
             if (!path.startsWith("core-printing/")) {
-                Regex("""while\s*\(\s*(true|isActive)\s*\)\s*\{""").findAll(code).forEach { m ->
+                Regex("""\bwhile\s*\([^)]*\)\s*\{|\bdo\s*\{|\brepeat\s*\([^)]*\)\s*\{|\bfor\s*\([^)]*\)\s*\{""").findAll(code).forEach { m ->
                     val body = block(code, m.range.last)
                     if (Regex("""\bdelay\s*\(|\bThread\.sleep\s*\(""").containsMatchIn(body)) out += "$path: polling loop"
                 }
@@ -49,6 +55,25 @@ class NoPollingLintTest {
         }
         return out
     }
+
+    private fun periodicAtLeast15(args: String): Boolean {
+        Regex("""^\s*(?:[A-Za-z_][\w.]*::class\.java\s*,\s*)?(\d+)L?\s*,\s*TimeUnit\.(MINUTES|HOURS|DAYS)""").find(args)?.let { m ->
+            val n = m.groupValues[1].toLong()
+            return if (m.groupValues[2] == "MINUTES") n >= 15 else n >= 1
+        }
+        Regex("""^\s*(?:[A-Za-z_][\w.]*::class\.java\s*,\s*)?Duration\.of(Minutes|Hours|Days)\s*\(\s*(\d+)L?\s*\)""").find(args)?.let { m ->
+            val n = m.groupValues[2].toLong()
+            return if (m.groupValues[1] == "Minutes") n >= 15 else n >= 1
+        }
+        return false
+    }
+
+    /** Kotlin source without comments and string literals, so neither can trip (or hide) a rule. */
+    private fun stripKotlin(text: String): String = text
+        .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), " ")
+        .replace(Regex("\"\"\".*?\"\"\"", RegexOption.DOT_MATCHES_ALL), "\"\"")
+        .replace(Regex("\"(?:\\\\.|[^\"\\\\\n])*\""), "\"\"")
+        .lines().joinToString("\n") { it.replace(Regex("//.*$"), "") }
 
     /** The text of the brace block that opens at [open]. */
     private fun block(code: String, open: Int): String {
@@ -83,6 +108,7 @@ class NoPollingLintTest {
             "core-printing/src/main/P.kt" to "while (true) { if (ok) break; delay(5) }",
             "dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/H.kt" to "val am: AlarmManager = x",
             "core-sync/src/main/S.kt" to "PeriodicWorkRequestBuilder<W>(15, TimeUnit.MINUTES); while (true) { i++ ; if (i > 3) break }",
+            "feature-y/src/main/T.kt" to "/* never use AlarmManager or Timer() */ val s = \"startForeground( in a string\" // postDelayed in a comment",
         )
         assertEquals(emptyList<String>(), violations(fine))
     }
