@@ -31,4 +31,11 @@ ContentAdmin:
               $ref: '#/components/schemas/Id'
       updated_at:
         $ref: '#/components/schemas/Timestamp'
+      asset_id:
+        description: The admin asset behind `asset_url` (the `asset_id` of `ContentWrite`), so an edit can keep
+          the current file; null for an item stored without an admin asset, whose edit then needs a new file (docs/24
+          s14a R20).
+        oneOf:
+        - $ref: '#/components/schemas/Uuid'
+        - type: 'null'
   unevaluatedProperties: false

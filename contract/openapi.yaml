@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.2.0
+  version: 1.3.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -276,10 +276,12 @@ paths:
       summary: Change the caller's password (policy-checked, revokes the user's other full-grant families).
       description: |
         Authorization: Bearer with an access token (success 204), or, after a web login that answered
-        `password_change_required`, with that response's `password_change_token` (10 min, accepted only here).
-        With the `password_change_token` the success is 200 with a `LoginResponse` that continues the login as for
-        a normal password login: `ok` with tokens, or `mfa_required` with an `mfa_token` when the role requires TOTP
-        (TOTP comes after the password change; docs/24 s14a R15).
+        `password_change_required`, with that response's `password_change_token` (`aud` `aron-pwchange`, 10 min,
+        accepted only here). With the `password_change_token` the success is 200 with a `LoginResponse` that
+        continues the login as for a normal password login: `ok` with tokens, or `mfa_required` with an `mfa_token`
+        when the role requires TOTP (TOTP comes after the password change; docs/24 s14a R15). For `client` web an
+        `ok` delivers the refresh token only in the `Set-Cookie: aron_rt` header (`refresh_token` null in the body),
+        as a web login does; the BFF re-issues its own `aron_rt` cookie (docs/24 s14a R18).
       requestBody:
         required: true
         content:
@@ -287,7 +289,7 @@ paths:
             schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
       responses:
         '200':
-          description: Password changed with a `password_change_token`; the login continues (`ok` or `mfa_required`).
+          description: Password changed with a `password_change_token`; the login continues (`ok` or `mfa_required`). For `client` web an `ok` sets the refresh token as the `aron_rt` cookie (`Set-Cookie`), never in the body.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResponse' }
@@ -1054,6 +1056,35 @@ paths:
               schema: { $ref: '#/components/schemas/OutletRequestPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [outlet-requests]
+      operationId: createOutletRequest
+      summary: Raise an outlet change request from the web (TSO and DMO; idempotent by request_uuid).
+      description: |
+        The web source of the request the apps raise with an `outlet_change_request` record: the same service and
+        table, the same `OutletProposal` with the members each request type requires, and the same life cycle
+        (`pending`, then verification and approval; docs/24 s12.2). Allowed for TSO and DMO on an outlet in their
+        reach (403 `ERR_OUT_OF_SCOPE` otherwise); other roles get 403 `ERR_FORBIDDEN`, and ADMIN and SUPERADMIN edit
+        the outlet directly with `PATCH /v1/admin/outlets/{id}`. A web request carries no fix and no photos
+        (`request_fix` null, `photos` empty). Idempotent by `request_uuid`: a repeat returns the stored request and
+        stores nothing; a `request_uuid` already used for a different request (another requester, outlet or type) is
+        409 `ERR_CONFLICT` (docs/24 s14a R20).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OutletRequestCreateRequest' }
+      responses:
+        '201':
+          description: Created (or the stored request when the same `request_uuid` is sent again).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OutletRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /v1/outlet-requests/{request_uuid}:
     get:
       tags: [outlet-requests]
@@ -1344,9 +1375,20 @@ paths:
       tags: [people]
       operationId: listFeedback
       summary: Feedback submitted from the TSO app.
+      description: Newest first (`created_at` descending). The optional `category_code` and `status` filters narrow the page (docs/24 s14a R20).
       parameters:
         - $ref: '#/components/parameters/FromDate'
         - $ref: '#/components/parameters/ToDate'
+        - name: category_code
+          in: query
+          required: false
+          description: Only feedback of this category (`feedback_category` code list; the pattern of `FeedbackPayload.category_code`).
+          schema: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+        - name: status
+          in: query
+          required: false
+          description: Only feedback in this status.
+          schema: { $ref: '#/components/schemas/FeedbackStatus' }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -5294,7 +5336,7 @@ components:
             - type: 'null'
     LoginResponse:
       type: object
-      description: 'For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15).'
+      description: 'For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min, `aud` `aron-pwchange`) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15). For `client: web` an `ok` (from login or from change-password) delivers the refresh token only in `Set-Cookie: aron_rt` (docs/24 s14a R18).'
       required: [status, user, config_version, server_time]
       additionalProperties: false
       properties:
@@ -5313,7 +5355,7 @@ components:
         upload_refresh_token: { type: [string, 'null'], minLength: 43, maxLength: 64, description: Upload-only grant (phones only). }
         bind_token: { type: [string, 'null'], maxLength: 4096, description: 'Bearer token (aud aron-bind, 10 min) for POST /v1/auth/bind-device.' }
         mfa_token: { type: [string, 'null'], maxLength: 4096, description: 'Bearer token (aud aron-mfa, 5 min) for POST /v1/auth/mfa/verify.' }
-        password_change_token: { type: [string, 'null'], maxLength: 4096, description: 'Bearer token (10 min) accepted only by POST /v1/auth/change-password; set for client web with status password_change_required, else null.' }
+        password_change_token: { type: [string, 'null'], maxLength: 4096, description: 'Bearer token (aud aron-pwchange, 10 min) accepted only by POST /v1/auth/change-password; set for client web with status password_change_required, else null.' }
         user: { $ref: '#/components/schemas/UserSummary' }
         scope:
           oneOf:
@@ -5515,7 +5557,7 @@ components:
             - { $ref: '#/components/schemas/DeviceStatusReport' }
             - type: 'null'
         play_integrity_unavailable:
-          description: Why the enrolment carries no Play Integrity token. When the phone tried Play Integrity exactly one of `play_integrity` (in `status`) and `play_integrity_unavailable` is non-null.
+          description: 'Why the enrolment carries no Play Integrity token. When the phone tried Play Integrity exactly one of `play_integrity` (in `status`) and `play_integrity_unavailable` is non-null. Precedence: this top-level marker is the one that counts for the enrolment attestation; when it is present the copy in the nested `status` (the same state) is ignored on enrolment. A missing marker (an older app) means unknown: never a failure and never a clean phone (docs/24 s14a R18).'
           oneOf:
             - { $ref: '#/components/schemas/PlayIntegrityUnavailable' }
             - type: 'null'
@@ -5718,14 +5760,14 @@ components:
             - { $ref: '#/components/schemas/PlayIntegrityEvidence' }
             - type: 'null'
         play_integrity_unavailable:
-          description: Why `play_integrity` is null. When the phone tried Play Integrity exactly one of `play_integrity` and `play_integrity_unavailable` is non-null.
+          description: 'Why `play_integrity` is null. When the phone tried Play Integrity exactly one of `play_integrity` and `play_integrity_unavailable` is non-null. A missing marker with a null `play_integrity` (an older app) means unknown: never a failure and never a clean phone (docs/24 s14a R18). On enrolment the top-level `EnrolDeviceRequest.play_integrity_unavailable` wins over this nested copy.'
           oneOf:
             - { $ref: '#/components/schemas/PlayIntegrityUnavailable' }
             - type: 'null'
         root_hints:
           type: array
           maxItems: 16
-          description: Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence; they never block a sale alone (docs/05).
+          description: 'Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence; they never block a sale alone (docs/05). Missing (an older app) means unknown, not clean and not a failure: the server stores NULL (never an empty array) and scoring treats it as no evidence (docs/24 s14a R18).'
           items:
             type: string
             enum: [su_binary, test_keys, ro_debuggable, ro_secure_off, root_app, hook_framework, root_mount, clone_app_installed, secondary_user, foreign_data_dir]
@@ -7306,6 +7348,12 @@ components:
       required: [code, label_en, sort]
       additionalProperties: false
       properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+          readOnly: true
+          description: 'Read-only id of the item on lists whose rows are referenced by id: for `sub_channel` it is the sub-channel id of `Outlet.sub_channel_id`, `OutletWrite.sub_channel_id` and `OutletRequestVerifyRequest.sub_channel_id`, so a form can offer a select with Bangla labels. Ignored when sent in `CodeListWrite` (items are matched by `code`); docs/24 s14a R20.'
         code: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
         label_bn: { type: [string, 'null'], maxLength: 120 }
         label_en: { type: string, maxLength: 120 }
@@ -7584,8 +7632,9 @@ components:
               criterion_id: { $ref: '#/components/schemas/Id' }
               label_bn: { type: [string, 'null'], maxLength: 300 }
               label_en: { type: string, maxLength: 300 }
-              answer_type: { type: string, enum: [score_1_5, text, bool] }
+              answer_type: { type: string, enum: [score_1_5, text, bool], description: 'The one rubric answer type enum for read and write; `score_1_5` is a score from 1 to 5. `RubricWrite` also accepts the older spelling `stars_1_5` of the same type (docs/24 s14a R20).' }
               enabled: { type: boolean }
+              key: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$', description: 'Stable key of the criterion (the `key` of `RubricWrite`), returned on the admin read (`RubricAdmin`) so a definition round-trips into the write (docs/24 s14a R20); the bundle may omit it.' }
     SurveyDef:
       type: object
       required: [survey_id, version, questions]
@@ -7612,6 +7661,11 @@ components:
                 maxItems: 20
                 items: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
               requires_photo: { type: boolean }
+              key: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$', description: 'Stable key of the question (the `key` of `SurveyWrite`). `key`, `required`, `show_if_key`, `show_if_bool` and `photo` are returned on the admin read (`SurveyAdmin`) as written, so a definition round-trips into `SurveyWrite` (docs/24 s14a R20); the bundle may omit them.' }
+              required: { type: boolean }
+              show_if_key: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$' }
+              show_if_bool: { type: [boolean, 'null'] }
+              photo: { type: boolean, description: 'The `photo` flag as written; `requires_photo` is true when `photo` is true or the answer type is `photo_only`.' }
     Bundle:
       type: object
       description: The day bundle (docs/24 s4.10). One snapshot of all routes assigned to the user for the business date.
@@ -8288,6 +8342,17 @@ components:
         outlet_code: { type: [string, 'null'], pattern: '^[0-9A-Za-z][0-9A-Za-z._/-]{0,31}$', description: For new outlets; generated when null. }
         route_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Required for AMO-created new outlets. }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    OutletRequestCreateRequest:
+      type: object
+      description: 'Body of `POST /v1/outlet-requests` (web source, docs/24 s14a R20). `request_uuid` is generated by the browser (UUID v4) when the form opens: the idempotency key and the identity of the request, in the same key space as the `client_uuid` of an app `outlet_change_request` record. `proposed` carries the members the request type requires (docs/24 s12.2).'
+      required: [request_uuid, request_type, outlet_id, proposed]
+      additionalProperties: false
+      properties:
+        request_uuid: { $ref: '#/components/schemas/Uuid' }
+        request_type: { type: string, enum: [info, location, cluster, close], description: 'The `OutletRequestType` values on an existing outlet; `new` and `route_add` are raised in the apps only.' }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        proposed: { $ref: '#/components/schemas/OutletProposal' }
+        note: { type: [string, 'null'], maxLength: 500 }
 
     # ---------- tasks and notifications ----------
     Task:
@@ -9358,6 +9423,7 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/Uuid' }
             - type: 'null'
+        image_url: { type: [string, 'null'], format: uri, maxLength: 1000, description: 'Pack image (the asset bound by `image_asset_id`); null when the SKU has none (docs/24 s14a R20).' }
         updated_at: { $ref: '#/components/schemas/Timestamp' }
         version: { type: integer, minimum: 1 }
     SkuWrite:
@@ -9377,6 +9443,7 @@ components:
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
         sort: { type: integer }
+        image_asset_id: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }], description: 'Pack image: an asset uploaded with `POST /v1/admin/assets`, purpose `sku_image` (its 300 KB limit is checked there). Null or omitted: no image.' }
     SkuPatch:
       type: object
       minProperties: 1
@@ -9393,6 +9460,7 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/Uuid' }
             - type: 'null'
+        image_asset_id: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }], description: 'Pack image: an asset uploaded with `POST /v1/admin/assets`, purpose `sku_image` (its 300 KB limit is checked there). Null removes the image; omitted keeps it.' }
         change_reason: { oneOf: [ { $ref: '#/components/schemas/ChangeReason' }, { type: 'null' } ] }
     SkuPage:
       type: object
@@ -9696,6 +9764,7 @@ components:
         node_id: { type: integer, format: int64, minimum: 0 }
         valid_from: { $ref: '#/components/schemas/BusinessDate' }
         valid_to:
+          description: Exclusive end date (Asia/Dhaka business date), as every effective-dated `valid_to` here (`RouteAssignment`, `SkuPrice`) and `app.user_scope`; the node is in scope up to the day before and out of scope from this date on. Null = open-ended. Returns the `valid_to` written by `PUT /v1/admin/users/{id}/scope` unchanged (docs/24 s14a R20).
           oneOf:
             - { $ref: '#/components/schemas/BusinessDate' }
             - type: 'null'
@@ -9726,6 +9795,11 @@ components:
             properties:
               node_type: { type: string, enum: [national, wing, division, territory, zone] }
               node_id: { type: integer, format: int64, minimum: 0 }
+              valid_to:
+                description: 'Optional end of an acting (temporary) scope node: the exclusive end date (Asia/Dhaka business date), as `UserScopeNode.valid_to` and `app.user_scope`; the node is in scope up to the day before and out of scope from this date on (an acting cover whose last day is D sends D + 1). Null or omitted = open-ended. After `valid_from` (400 `ERR_VALIDATION` otherwise). Returned unchanged on the read (docs/24 s14a R20).'
+                oneOf:
+                  - { $ref: '#/components/schemas/BusinessDate' }
+                  - type: 'null'
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
     CredentialActionRequest:
       type: object
@@ -11055,6 +11129,11 @@ components:
                   node_type: { type: string, enum: [wing, division, territory, zone, route, outlet] }
                   node_id: { $ref: '#/components/schemas/Id' }
             updated_at: { $ref: '#/components/schemas/Timestamp' }
+            asset_id:
+              description: The admin asset behind `asset_url` (the `asset_id` of `ContentWrite`), so an edit can keep the current file; null for an item stored without an admin asset, whose edit then needs a new file (docs/24 s14a R20).
+              oneOf:
+                - { $ref: '#/components/schemas/Uuid' }
+                - type: 'null'
       unevaluatedProperties: false
     ContentWrite:
       type: object
@@ -11115,6 +11194,7 @@ components:
           maxItems: 100
           items: { $ref: '#/components/schemas/TutorialItem' }
     TutorialAdmin:
+      description: Admin row of a tutorial. `asset_id` is the current file (the `asset_id` of `TutorialWrite`), so a PATCH can keep it (docs/24 s14a R20).
       allOf:
         - { $ref: '#/components/schemas/TutorialItem' }
         - type: object
@@ -11123,6 +11203,7 @@ components:
             roles: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Role' } }
             status: { $ref: '#/components/schemas/ActiveStatus' }
             version: { type: integer, minimum: 1 }
+            asset_id: { $ref: '#/components/schemas/Uuid' }
       unevaluatedProperties: false
     TutorialWrite:
       type: object
@@ -11202,6 +11283,11 @@ components:
               show_if_key: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$' }
               show_if_bool: { type: [boolean, 'null'] }
               photo: { type: boolean }
+              option_codes:
+                type: array
+                maxItems: 20
+                description: Answer options of an `option` question, returned on the read as `option_codes` (docs/24 s14a R20).
+                items: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
         valid_from: { $ref: '#/components/schemas/BusinessDate' }
         valid_to: { oneOf: [{ $ref: '#/components/schemas/BusinessDate' }, { type: 'null' }] }
         points_per_photo: { type: [integer, 'null'], minimum: 0, maximum: 100000 }
@@ -11245,7 +11331,7 @@ components:
               key: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
               label_en: { type: string, maxLength: 300 }
               label_bn: { type: [string, 'null'], maxLength: 300 }
-              answer_type: { type: string, enum: [stars_1_5, bool, text] }
+              answer_type: { type: string, enum: [stars_1_5, bool, text, score_1_5], description: 'Same enum as the read (`RubricDef` and `RubricAdmin` `criteria[].answer_type`): `score_1_5` is the canonical spelling; `stars_1_5` is the older spelling of the same type, still accepted and stored as `score_1_5` (reads return `score_1_5`; docs/24 s14a R20).' }
         status: { $ref: '#/components/schemas/ActiveStatus' }
         change_reason: { $ref: '#/components/schemas/ChangeReason' }
     RubricPage:

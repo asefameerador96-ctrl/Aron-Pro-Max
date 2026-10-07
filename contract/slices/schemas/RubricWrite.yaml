@@ -40,6 +40,10 @@ RubricWrite:
             - stars_1_5
             - bool
             - text
+            - score_1_5
+            description: 'Same enum as the read (`RubricDef` and `RubricAdmin` `criteria[].answer_type`): `score_1_5`
+              is the canonical spelling; `stars_1_5` is the older spelling of the same type, still accepted and
+              stored as `score_1_5` (reads return `score_1_5`; docs/24 s14a R20).'
     status:
       $ref: '#/components/schemas/ActiveStatus'
     change_reason:

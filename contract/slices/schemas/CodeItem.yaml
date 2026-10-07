@@ -6,6 +6,15 @@ CodeItem:
   - sort
   additionalProperties: false
   properties:
+    id:
+      type: integer
+      format: int64
+      minimum: 1
+      readOnly: true
+      description: 'Read-only id of the item on lists whose rows are referenced by id: for `sub_channel` it is the
+        sub-channel id of `Outlet.sub_channel_id`, `OutletWrite.sub_channel_id` and `OutletRequestVerifyRequest.sub_channel_id`,
+        so a form can offer a select with Bangla labels. Ignored when sent in `CodeListWrite` (items are matched
+        by `code`); docs/24 s14a R20.'
     code:
       type: string
       pattern: ^[a-z][a-z0-9_]{1,40}$

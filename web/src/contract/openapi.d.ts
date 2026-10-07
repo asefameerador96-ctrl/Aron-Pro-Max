@@ -143,10 +143,12 @@ export interface paths {
         /**
          * Change the caller's password (policy-checked, revokes the user's other full-grant families).
          * @description Authorization: Bearer with an access token (success 204), or, after a web login that answered
-         *     `password_change_required`, with that response's `password_change_token` (10 min, accepted only here).
-         *     With the `password_change_token` the success is 200 with a `LoginResponse` that continues the login as for
-         *     a normal password login: `ok` with tokens, or `mfa_required` with an `mfa_token` when the role requires TOTP
-         *     (TOTP comes after the password change; docs/24 s14a R15).
+         *     `password_change_required`, with that response's `password_change_token` (`aud` `aron-pwchange`, 10 min,
+         *     accepted only here). With the `password_change_token` the success is 200 with a `LoginResponse` that
+         *     continues the login as for a normal password login: `ok` with tokens, or `mfa_required` with an `mfa_token`
+         *     when the role requires TOTP (TOTP comes after the password change; docs/24 s14a R15). For `client` web an
+         *     `ok` delivers the refresh token only in the `Set-Cookie: aron_rt` header (`refresh_token` null in the body),
+         *     as a web login does; the BFF re-issues its own `aron_rt` cookie (docs/24 s14a R18).
          */
         post: operations["changePassword"];
         delete?: never;
@@ -752,7 +754,18 @@ export interface paths {
         /** Outlet change requests in the caller's reach (web Outlet Approval Panel, AMO verification list). */
         get: operations["listOutletRequests"];
         put?: never;
-        post?: never;
+        /**
+         * Raise an outlet change request from the web (TSO and DMO; idempotent by request_uuid).
+         * @description The web source of the request the apps raise with an `outlet_change_request` record: the same service and
+         *     table, the same `OutletProposal` with the members each request type requires, and the same life cycle
+         *     (`pending`, then verification and approval; docs/24 s12.2). Allowed for TSO and DMO on an outlet in their
+         *     reach (403 `ERR_OUT_OF_SCOPE` otherwise); other roles get 403 `ERR_FORBIDDEN`, and ADMIN and SUPERADMIN edit
+         *     the outlet directly with `PATCH /v1/admin/outlets/{id}`. A web request carries no fix and no photos
+         *     (`request_fix` null, `photos` empty). Idempotent by `request_uuid`: a repeat returns the stored request and
+         *     stores nothing; a `request_uuid` already used for a different request (another requester, outlet or type) is
+         *     409 `ERR_CONFLICT` (docs/24 s14a R20).
+         */
+        post: operations["createOutletRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -980,7 +993,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Feedback submitted from the TSO app. */
+        /**
+         * Feedback submitted from the TSO app.
+         * @description Newest first (`created_at` descending). The optional `category_code` and `status` filters narrow the page (docs/24 s14a R20).
+         */
         get: operations["listFeedback"];
         put?: never;
         post?: never;
@@ -3344,7 +3360,7 @@ export interface components {
             /** @description Required for app clients; must be an enrolled device. */
             device_uuid?: components["schemas"]["Uuid"] | null;
         };
-        /** @description For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15). */
+        /** @description For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min, `aud` `aron-pwchange`) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15). For `client: web` an `ok` (from login or from change-password) delivers the refresh token only in `Set-Cookie: aron_rt` (docs/24 s14a R18). */
         LoginResponse: {
             /** @enum {string} */
             status: "ok" | "bind_required" | "mfa_required" | "password_change_required";
@@ -3360,7 +3376,7 @@ export interface components {
             bind_token?: string | null;
             /** @description Bearer token (aud aron-mfa, 5 min) for POST /v1/auth/mfa/verify. */
             mfa_token?: string | null;
-            /** @description Bearer token (10 min) accepted only by POST /v1/auth/change-password; set for client web with status password_change_required, else null. */
+            /** @description Bearer token (aud aron-pwchange, 10 min) accepted only by POST /v1/auth/change-password; set for client web with status password_change_required, else null. */
             password_change_token?: string | null;
             user: components["schemas"]["UserSummary"];
             scope?: components["schemas"]["ScopeSummary"] | null;
@@ -3500,7 +3516,7 @@ export interface components {
             key_attestation_chain: string[];
             device_info: components["schemas"]["DeviceInfo"];
             status?: components["schemas"]["DeviceStatusReport"] | null;
-            /** @description Why the enrolment carries no Play Integrity token. When the phone tried Play Integrity exactly one of `play_integrity` (in `status`) and `play_integrity_unavailable` is non-null. */
+            /** @description Why the enrolment carries no Play Integrity token. When the phone tried Play Integrity exactly one of `play_integrity` (in `status`) and `play_integrity_unavailable` is non-null. Precedence: this top-level marker is the one that counts for the enrolment attestation; when it is present the copy in the nested `status` (the same state) is ignored on enrolment. A missing marker (an older app) means unknown: never a failure and never a clean phone (docs/24 s14a R18). */
             play_integrity_unavailable?: components["schemas"]["PlayIntegrityUnavailable"] | null;
         };
         EnrolDeviceResponse: {
@@ -3639,9 +3655,9 @@ export interface components {
             mock_location_apps: components["schemas"]["PackageName"][];
             play_services_version?: number | null;
             play_integrity?: components["schemas"]["PlayIntegrityEvidence"] | null;
-            /** @description Why `play_integrity` is null. When the phone tried Play Integrity exactly one of `play_integrity` and `play_integrity_unavailable` is non-null. */
+            /** @description Why `play_integrity` is null. When the phone tried Play Integrity exactly one of `play_integrity` and `play_integrity_unavailable` is non-null. A missing marker with a null `play_integrity` (an older app) means unknown: never a failure and never a clean phone (docs/24 s14a R18). On enrolment the top-level `EnrolDeviceRequest.play_integrity_unavailable` wins over this nested copy. */
             play_integrity_unavailable?: components["schemas"]["PlayIntegrityUnavailable"] | null;
-            /** @description Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence; they never block a sale alone (docs/05). */
+            /** @description Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence; they never block a sale alone (docs/05). Missing (an older app) means unknown, not clean and not a failure: the server stores NULL (never an empty array) and scoring treats it as no evidence (docs/24 s14a R18). */
             root_hints?: ("su_binary" | "test_keys" | "ro_debuggable" | "ro_secure_off" | "root_app" | "hook_framework" | "root_mount" | "clone_app_installed" | "secondary_user" | "foreign_data_dir")[];
             pending_rows: number;
             pending_media?: number;
@@ -4904,6 +4920,11 @@ export interface components {
             scheduled: components["schemas"]["ResolvedConfigValue"][];
         };
         CodeItem: {
+            /**
+             * Format: int64
+             * @description Read-only id of the item on lists whose rows are referenced by id: for `sub_channel` it is the sub-channel id of `Outlet.sub_channel_id`, `OutletWrite.sub_channel_id` and `OutletRequestVerifyRequest.sub_channel_id`, so a form can offer a select with Bangla labels. Ignored when sent in `CodeListWrite` (items are matched by `code`); docs/24 s14a R20.
+             */
+            readonly id?: number;
             code: string;
             label_bn?: string | null;
             label_en: string;
@@ -5072,9 +5093,14 @@ export interface components {
                 criterion_id: components["schemas"]["Id"];
                 label_bn?: string | null;
                 label_en: string;
-                /** @enum {string} */
+                /**
+                 * @description The one rubric answer type enum for read and write; `score_1_5` is a score from 1 to 5. `RubricWrite` also accepts the older spelling `stars_1_5` of the same type (docs/24 s14a R20).
+                 * @enum {string}
+                 */
                 answer_type: "score_1_5" | "text" | "bool";
                 enabled?: boolean;
+                /** @description Stable key of the criterion (the `key` of `RubricWrite`), returned on the admin read (`RubricAdmin`) so a definition round-trips into the write (docs/24 s14a R20); the bundle may omit it. */
+                key?: string;
             }[];
         };
         SurveyDef: {
@@ -5090,6 +5116,13 @@ export interface components {
                 label_bn?: string | null;
                 option_codes?: string[];
                 requires_photo?: boolean;
+                /** @description Stable key of the question (the `key` of `SurveyWrite`). `key`, `required`, `show_if_key`, `show_if_bool` and `photo` are returned on the admin read (`SurveyAdmin`) as written, so a definition round-trips into `SurveyWrite` (docs/24 s14a R20); the bundle may omit them. */
+                key?: string;
+                required?: boolean;
+                show_if_key?: string | null;
+                show_if_bool?: boolean | null;
+                /** @description The `photo` flag as written; `requires_photo` is true when `photo` is true or the answer type is `photo_only`. */
+                photo?: boolean;
             }[];
         };
         /** @description The day bundle (docs/24 s4.10). One snapshot of all routes assigned to the user for the business date. */
@@ -5487,6 +5520,18 @@ export interface components {
              */
             route_id?: number | null;
             change_reason: components["schemas"]["ChangeReason"];
+        };
+        /** @description Body of `POST /v1/outlet-requests` (web source, docs/24 s14a R20). `request_uuid` is generated by the browser (UUID v4) when the form opens: the idempotency key and the identity of the request, in the same key space as the `client_uuid` of an app `outlet_change_request` record. `proposed` carries the members the request type requires (docs/24 s12.2). */
+        OutletRequestCreateRequest: {
+            request_uuid: components["schemas"]["Uuid"];
+            /**
+             * @description The `OutletRequestType` values on an existing outlet; `new` and `route_add` are raised in the apps only.
+             * @enum {string}
+             */
+            request_type: "info" | "location" | "cluster" | "close";
+            outlet_id: components["schemas"]["Id"];
+            proposed: components["schemas"]["OutletProposal"];
+            note?: string | null;
         };
         Task: {
             task_uuid: components["schemas"]["Uuid"];
@@ -6221,6 +6266,11 @@ export interface components {
             sort: number;
             status: components["schemas"]["ActiveStatus"];
             thumbnail_media_uuid?: components["schemas"]["Uuid"] | null;
+            /**
+             * Format: uri
+             * @description Pack image (the asset bound by `image_asset_id`); null when the SKU has none (docs/24 s14a R20).
+             */
+            image_url?: string | null;
             updated_at?: components["schemas"]["Timestamp"];
             version?: number;
         };
@@ -6240,6 +6290,8 @@ export interface components {
             report_unit?: "stick" | "piece" | "dozen" | "box" | "pack" | null;
             report_factor: components["schemas"]["Decimal3"];
             sort: number;
+            /** @description Pack image: an asset uploaded with `POST /v1/admin/assets`, purpose `sku_image` (its 300 KB limit is checked there). Null or omitted: no image. */
+            image_asset_id?: components["schemas"]["Uuid"] | null;
         };
         SkuPatch: {
             name?: string;
@@ -6251,6 +6303,8 @@ export interface components {
             sort?: number;
             status?: components["schemas"]["ActiveStatus"];
             thumbnail_media_uuid?: components["schemas"]["Uuid"] | null;
+            /** @description Pack image: an asset uploaded with `POST /v1/admin/assets`, purpose `sku_image` (its 300 KB limit is checked there). Null removes the image; omitted keeps it. */
+            image_asset_id?: components["schemas"]["Uuid"] | null;
             change_reason?: components["schemas"]["ChangeReason"] | null;
         };
         SkuPage: {
@@ -6457,6 +6511,7 @@ export interface components {
             /** Format: int64 */
             node_id: number;
             valid_from: components["schemas"]["BusinessDate"];
+            /** @description Exclusive end date (Asia/Dhaka business date), as every effective-dated `valid_to` here (`RouteAssignment`, `SkuPrice`) and `app.user_scope`; the node is in scope up to the day before and out of scope from this date on. Null = open-ended. Returns the `valid_to` written by `PUT /v1/admin/users/{id}/scope` unchanged (docs/24 s14a R20). */
             valid_to?: components["schemas"]["BusinessDate"] | null;
         };
         UserScope: {
@@ -6471,6 +6526,8 @@ export interface components {
                 node_type: "national" | "wing" | "division" | "territory" | "zone";
                 /** Format: int64 */
                 node_id: number;
+                /** @description Optional end of an acting (temporary) scope node: the exclusive end date (Asia/Dhaka business date), as `UserScopeNode.valid_to` and `app.user_scope`; the node is in scope up to the day before and out of scope from this date on (an acting cover whose last day is D sends D + 1). Null or omitted = open-ended. After `valid_from` (400 `ERR_VALIDATION` otherwise). Returned unchanged on the read (docs/24 s14a R20). */
+                valid_to?: components["schemas"]["BusinessDate"] | null;
             }[];
             change_reason: components["schemas"]["ChangeReason"];
         };
@@ -7386,6 +7443,8 @@ export interface components {
                 node_id: components["schemas"]["Id"];
             }[];
             updated_at: components["schemas"]["Timestamp"];
+            /** @description The admin asset behind `asset_url` (the `asset_id` of `ContentWrite`), so an edit can keep the current file; null for an item stored without an admin asset, whose edit then needs a new file (docs/24 s14a R20). */
+            asset_id?: components["schemas"]["Uuid"] | null;
         };
         ContentWrite: {
             kind: components["schemas"]["ContentKind"];
@@ -7422,10 +7481,12 @@ export interface components {
         TutorialList: {
             items: components["schemas"]["TutorialItem"][];
         };
+        /** @description Admin row of a tutorial. `asset_id` is the current file (the `asset_id` of `TutorialWrite`), so a PATCH can keep it (docs/24 s14a R20). */
         TutorialAdmin: components["schemas"]["TutorialItem"] & {
             roles: components["schemas"]["Role"][];
             status: components["schemas"]["ActiveStatus"];
             version: number;
+            asset_id?: components["schemas"]["Uuid"];
         };
         TutorialWrite: {
             /** @enum {string} */
@@ -7482,6 +7543,8 @@ export interface components {
                 show_if_key?: string | null;
                 show_if_bool?: boolean | null;
                 photo?: boolean;
+                /** @description Answer options of an `option` question, returned on the read as `option_codes` (docs/24 s14a R20). */
+                option_codes?: string[];
             }[];
             valid_from: components["schemas"]["BusinessDate"];
             valid_to?: components["schemas"]["BusinessDate"] | null;
@@ -7503,8 +7566,11 @@ export interface components {
                 key: string;
                 label_en: string;
                 label_bn?: string | null;
-                /** @enum {string} */
-                answer_type: "stars_1_5" | "bool" | "text";
+                /**
+                 * @description Same enum as the read (`RubricDef` and `RubricAdmin` `criteria[].answer_type`): `score_1_5` is the canonical spelling; `stars_1_5` is the older spelling of the same type, still accepted and stored as `score_1_5` (reads return `score_1_5`; docs/24 s14a R20).
+                 * @enum {string}
+                 */
+                answer_type: "stars_1_5" | "bool" | "text" | "score_1_5";
             }[];
             status?: components["schemas"]["ActiveStatus"];
             change_reason: components["schemas"]["ChangeReason"];
@@ -8434,7 +8500,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Password changed with a `password_change_token`; the login continues (`ok` or `mfa_required`). */
+            /** @description Password changed with a `password_change_token`; the login continues (`ok` or `mfa_required`). For `client` web an `ok` sets the refresh token as the `aron_rt` cookie (`Set-Cookie`), never in the body. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9454,6 +9520,35 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    createOutletRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutletRequestCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created (or the stored request when the same `request_uuid` is sent again). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutletRequest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     getOutletRequest: {
         parameters: {
             query?: never;
@@ -9848,6 +9943,10 @@ export interface operations {
                 from?: components["parameters"]["FromDate"];
                 /** @description Last business date, inclusive (at most 92 days after `from`). */
                 to?: components["parameters"]["ToDate"];
+                /** @description Only feedback of this category (`feedback_category` code list; the pattern of `FeedbackPayload.category_code`). */
+                category_code?: string;
+                /** @description Only feedback in this status. */
+                status?: components["schemas"]["FeedbackStatus"];
                 /** @description Page size. */
                 limit?: components["parameters"]["Limit"];
                 /** @description Opaque cursor from `next_cursor` of the previous page. */

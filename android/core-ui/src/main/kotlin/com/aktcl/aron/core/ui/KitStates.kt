@@ -141,6 +141,6 @@ fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modi
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = textColor, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(start = AronTokens.Space.Xl, end = AronTokens.Space.Xl, top = AronTokens.Space.M, bottom = AronTokens.Space.M + AronTokens.Space.S))
+        Text(text, color = textColor, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, modifier = Modifier.padding(start = AronTokens.Space.Xl, end = AronTokens.Space.Xl, top = AronTokens.Space.M, bottom = AronTokens.Space.M + AronTokens.Space.S))
     }
 }

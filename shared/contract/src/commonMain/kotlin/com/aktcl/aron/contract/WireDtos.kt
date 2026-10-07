@@ -22,7 +22,7 @@ data class LoginRequest(
     override fun toString(): String = "LoginRequest(username=${username}, password=***, client=${client}, deviceUuid=${deviceUuid})"
 }
 
-/** For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15). */
+/** For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min, `aud` `aron-pwchange`) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15). For `client: web` an `ok` (from login or from change-password) delivers the refresh token only in `Set-Cookie: aron_rt` (docs/24 s14a R18). */
 @Serializable
 data class LoginResponse(
     @SerialName("status") val status: String,
@@ -250,10 +250,11 @@ data class Sku(
     @SerialName("sort") val sort: Int,
     @SerialName("status") val status: String,
     @SerialName("thumbnail_media_uuid") val thumbnailMediaUuid: String? = null,
+    @SerialName("image_url") val imageUrl: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("version") val version: Int? = null,
 ) {
-    override fun toString(): String = "Sku(id=${id}, code=***, variantId=${variantId}, categoryCode=${categoryCode}, name=${name}, shortName=${shortName}, nameBn=${nameBn}, baseUnit=${baseUnit}, basePerPack=${basePerPack}, entryUnitDefault=${entryUnitDefault}, reportUnit=${reportUnit}, reportFactor=${reportFactor}, sort=${sort}, status=${status}, thumbnailMediaUuid=${thumbnailMediaUuid}, updatedAt=${updatedAt}, version=${version})"
+    override fun toString(): String = "Sku(id=${id}, code=***, variantId=${variantId}, categoryCode=${categoryCode}, name=${name}, shortName=${shortName}, nameBn=${nameBn}, baseUnit=${baseUnit}, basePerPack=${basePerPack}, entryUnitDefault=${entryUnitDefault}, reportUnit=${reportUnit}, reportFactor=${reportFactor}, sort=${sort}, status=${status}, thumbnailMediaUuid=${thumbnailMediaUuid}, imageUrl=${imageUrl}, updatedAt=${updatedAt}, version=${version})"
 }
 
 @Serializable
