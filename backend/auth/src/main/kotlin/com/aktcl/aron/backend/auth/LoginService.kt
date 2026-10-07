@@ -91,6 +91,9 @@ class LoginService(
         }
         lockouts.reset(lockKey)
         if (user.status != "active") throw ApiProblem(ProblemCode.ERR_AUTH_USER_DISABLED, "user is disabled")
+        // A phone app serves its own field role only: a web role (and so every MFA role) never logs in through a
+        // phone client, where no TOTP step exists (checker finding, 2026-10-07).
+        if (phone && PHONE_ROLE[flavour] != user.role) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
 
         return complete(user, device, if (phone) req.device_uuid else null, flavour, minVersion, afterPasswordChange = false)
     }
@@ -105,7 +108,7 @@ class LoginService(
      * Returns null for an ordinary access token (204), or, with a web `password_change_token`, the next login step
      * (200: `ok`, or `mfa_required` for an MFA role; TOTP comes after the change).
      */
-    suspend fun changePassword(p: AronPrincipal, req: ChangePasswordRequest): LoginResponse? {
+    suspend fun changePassword(p: AronPrincipal, req: ChangePasswordRequest, callerRefreshToken: String? = null): LoginResponse? {
         val store = passwords ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "password changes are not available")
         val now = clock.now()
         val viaToken = p.audience == Audience.PWCHANGE
@@ -146,7 +149,9 @@ class LoginService(
         if (errors.isNotEmpty()) throw ApiProblem(ProblemCode.ERR_AUTH_PASSWORD_POLICY, "the new password does not meet the policy", errors = errors)
 
         val newHash = limiter.run { hasher.hash(req.new_password) }
-        if (!store.change(user.id, state.currentHash, newHash, now, if (p.isPhone) p.deviceId else null)) {
+        // The caller's own session survives: the phone's family by its device, a web BFF's by the aron_rt it forwards.
+        val keepFamily = callerRefreshToken?.let { refresh.peek(it) }?.family?.takeIf { it.userId == user.id && it.grant == Grant.FULL }?.id
+        if (!store.change(user.id, state.currentHash, newHash, now, if (p.isPhone) p.deviceId else null, keepFamily)) {
             throw ApiProblem(ProblemCode.ERR_CONFLICT, "the password was changed at the same time; try again")
         }
         users.invalidate(user.id)
@@ -284,6 +289,8 @@ class LoginService(
         }
 
     companion object {
+        private val PHONE_ROLE = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
+
         /** IPv4 /24 or IPv6 /48 of the client (the lockout key's IP class); "-" when unknown. */
         fun ipClass(ip: String?): String {
             if (ip.isNullOrBlank()) return "-"

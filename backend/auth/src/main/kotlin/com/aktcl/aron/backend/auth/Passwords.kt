@@ -39,7 +39,8 @@ object PasswordPolicy {
             if (password.none { it.isDigit() }) out += FieldError(p, "missing_digit", "a digit")
         } else if (denylistEnabled) {
             val l = password.lowercase()
-            if (l in DENY || DENY.any { it.length <= 5 && it in l } || (username.length >= 3 && username.lowercase() in l)) {
+            // Any deny word inside the password ("password1", "my-aron-2027"), and the username.
+            if (DENY.any { it in l } || (username.length >= 3 && username.lowercase() in l)) {
                 out += FieldError(p, "too_common", "a common word, the product name or the username")
             }
         }
@@ -58,9 +59,9 @@ interface PasswordStore {
     /**
      * In one transaction: re-checks that the hash is still [expectedHash] (a concurrent change wins once), stores
      * [newHash], clears the temporary flag, keeps the old hash in the history and revokes the user's full-grant refresh
-     * families except the caller phone's own ([keepDeviceId]); upload grants survive (D24-57). False when the hash moved.
+     * families except the caller's own (the phone's by [keepDeviceId], a web session's by [keepFamilyId]); upload grants survive (D24-57). False when the hash moved.
      */
-    fun change(userId: Long, expectedHash: String?, newHash: String, at: Instant, keepDeviceId: Long?): Boolean
+    fun change(userId: Long, expectedHash: String?, newHash: String, at: Instant, keepDeviceId: Long?, keepFamilyId: Long? = null): Boolean
 }
 
 class JdbiPasswordStore(private val db: Database) : PasswordStore {
@@ -77,7 +78,7 @@ class JdbiPasswordStore(private val db: Database) : PasswordStore {
         PasswordState(row.first, row.second, row.third, history)
     }
 
-    override fun change(userId: Long, expectedHash: String?, newHash: String, at: Instant, keepDeviceId: Long?): Boolean =
+    override fun change(userId: Long, expectedHash: String?, newHash: String, at: Instant, keepDeviceId: Long?, keepFamilyId: Long?): Boolean =
         db.jdbi.inTransaction<Boolean, Exception> { h ->
             val current = h.createQuery("SELECT password_hash FROM app.app_user WHERE id = :u FOR UPDATE").bind("u", userId)
                 .mapTo(String::class.java).findOne().orElse(null)
@@ -92,9 +93,10 @@ class JdbiPasswordStore(private val db: Database) : PasswordStore {
                 """
                 UPDATE app.refresh_family SET revoked_at = :at, revoke_reason = 'password_changed'
                 WHERE user_id = :u AND grant_kind = 'full' AND revoked_at IS NULL
-                  AND (CAST(:keep AS bigint) IS NULL OR device_id IS DISTINCT FROM CAST(:keep AS bigint))
+                  AND NOT COALESCE(device_id = CAST(:keep AS bigint), false)
+                  AND NOT COALESCE(id = CAST(:kf AS bigint), false)
                 """.trimIndent(),
-            ).bind("at", at.odt()).bind("u", userId).bind("keep", keepDeviceId).execute()
+            ).bind("at", at.odt()).bind("u", userId).bind("keep", keepDeviceId).bind("kf", keepFamilyId).execute()
             true
         }
 }

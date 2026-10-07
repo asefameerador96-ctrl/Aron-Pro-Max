@@ -24,3 +24,4 @@ PLATFORM-NUL+MIGRATE,S,2026-10-07T06:00Z,2026-10-07T06:15Z,15,"own tests","backe
 ME-MENUS,S,2026-10-07T06:15Z,2026-10-07T06:25Z,10,"own test","R10"
 F-API-004/F-SYS-004,S,2026-10-07T06:25Z,2026-10-07T06:55Z,30,"own test found NULL keep-device left web families alive; fixed; Opus checker running","R15/R18 pwchange token; history waits on db"
 F-SYS-003/F-API-003,M,2026-10-07T06:55Z,2026-10-07T07:20Z,25,"checker pending","OTP sealed + mac, bind-device"
+F-API-004-FIX,S,2026-10-07T07:30Z,2026-10-07T07:50Z,20,"4 found (MFA bypass via phone client, caller web family revoked, deny-list variants, contract statuses); 3 fixed, 1 routed",""

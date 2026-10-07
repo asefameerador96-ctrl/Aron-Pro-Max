@@ -68,7 +68,9 @@ fun Route.authRoutes(d: AuthDeps) {
         post("/auth/change-password") {
             val req = call.receiveStrict(ChangePasswordRequest.serializer())
             val p = call.principal
-            val res = withContext(Dispatchers.IO) { d.login.changePassword(p, req) }
+            // A web BFF forwards its aron_rt so its own session survives the change (docs/21 s2: "except the caller's").
+            val callerRt = call.request.cookies["aron_rt"]
+            val res = withContext(Dispatchers.IO) { d.login.changePassword(p, req, callerRt) }
             if (res == null) call.respond(io.ktor.http.HttpStatusCode.NoContent)
             else call.respond(call.webCookie(res.refresh_token, res.refresh_expires_at).let { res.copy(refresh_token = null) })
         }
