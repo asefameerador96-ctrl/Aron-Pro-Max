@@ -66,7 +66,7 @@ private fun geoEntity(def: GeoDef): MasterEntity {
             })
         },
         validate = { h, ctx, merged, cur, changes ->
-            if (def.parentCol != null && (cur == null || def.parentCol in changes)) {
+            if (def.parentCol != null && (cur == null || def.parentCol in changes || ("status" in changes && merged["status"] == "active"))) {
                 val pid = merged[def.parentCol] as Long
                 val pcol = geoReach(parentLevel(def.level))(ctx.reach, ctx.d.geo.geo())
                 val ok = h.createQuery("SELECT status FROM ${def.parentTable} t WHERE t.id = :id" + (pcol?.let { " AND (${it.sql})" } ?: "")).bind("id", pid).bindPred(pcol)
@@ -120,13 +120,13 @@ private val CLUSTER = MasterEntity(
         ))
     },
     validate = { h, ctx, merged, cur, changes ->
-        if (cur == null || "zone_id" in changes) {
+        if (cur == null || "zone_id" in changes || ("status" in changes && merged["status"] == "active")) {
             val z = merged["zone_id"] as Long
             if (!ctx.reach.coversZone(z)) admBad("body.zone_id", "unknown_zone", "the zone does not exist or is outside your reach")
             val st = h.createQuery("SELECT status FROM app.zone WHERE id = :z").bind("z", z).mapTo(String::class.java).findOne().orElse(null)
                 ?: admBad("body.zone_id", "unknown_zone", "the zone does not exist or is outside your reach")
             if (st != "active") admBad("body.zone_id", "parent_inactive", "the zone is inactive")
-            if (cur != null && h.count("SELECT count(*) FROM app.outlet WHERE cluster_id = :c", "c" to cur["id"]) > 0) inUse("the cluster has outlets; move them before moving the cluster to another zone")
+            if (cur != null && "zone_id" in changes && h.count("SELECT count(*) FROM app.outlet WHERE cluster_id = :c", "c" to cur["id"]) > 0) inUse("the cluster has outlets; move them before moving the cluster to another zone")
         }
     },
     guardDeactivate = { h, _, id ->

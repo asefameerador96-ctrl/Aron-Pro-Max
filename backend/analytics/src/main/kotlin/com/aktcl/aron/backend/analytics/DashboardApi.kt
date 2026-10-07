@@ -237,7 +237,7 @@ class DashboardService(
 class DashboardDeps(val service: DashboardService, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
 /** Field phones read their own home strip (`/app/home`); the dashboards are for TSO and above. */
-private val DASHBOARD_ROLES = Role.entries.toSet() - Role.SR - Role.AMO - Role.SUPPORT   // SUPPORT sees sync health only (docs/24 s8.5)
+internal val DASHBOARD_ROLES = Role.entries.toSet() - Role.SR - Role.AMO - Role.SUPPORT   // SUPPORT sees sync health only (docs/24 s8.5)
 
 fun Route.dashboardRoutes(d: DashboardDeps) {
     authenticated(d.guard) {
