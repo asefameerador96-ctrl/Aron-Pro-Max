@@ -65,7 +65,12 @@ data class BundleUser(
     val memo_seq_block_size: Int,
     val zone_id: Long?,
     val territory_id: Long?,
+    /** Policy versions the user accepted (F-SYS-075): the phone seeds its consent flag and does not ask again. */
+    val consents: List<BundleConsent> = emptyList(),
 )
+
+@Serializable
+data class BundleConsent(val policy_key: String, val policy_version: Int, val accepted_at: String)
 
 @Serializable
 data class ResolvedConfigValue(

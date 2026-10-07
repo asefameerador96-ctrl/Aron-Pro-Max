@@ -424,6 +424,12 @@ class IngestService(
             val refusal = hd.check(h, ingestRec!!) ?: continue
             return refuse(h, ctx, r, bd, refusal.code, refusal.detail)
         }
+        // A domain duplicate (the same fact under a new client_uuid): registered as accepted with the first row's id,
+        // so this uuid's resends are duplicates too, and nothing new is stored.
+        for (hd in hs) hd.sameAs(h, ingestRec!!)?.let { first ->
+            register(h, ctx, r, bd, "accepted", null, first, contentFp)
+            return Outcome.duplicate(first)
+        }
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
             is RecordWriter.Result.Stored -> {

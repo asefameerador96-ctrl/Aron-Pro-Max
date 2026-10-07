@@ -130,6 +130,7 @@ class Wiring(
             com.aktcl.aron.backend.masterdata.DomainEventProducer(),
             com.aktcl.aron.backend.masterdata.DataVoidBarrierHandler(com.aktcl.aron.backend.sync.TypeRules.BY_TYPE.keys),
             com.aktcl.aron.backend.sync.GeoRecheckHandler(),
+            com.aktcl.aron.backend.sync.ConsentRecords(),
         )
 
         /** [extraRecordHandlers] and [pushSender] are for tests only; production handlers are listed in [recordHandlers]. */
