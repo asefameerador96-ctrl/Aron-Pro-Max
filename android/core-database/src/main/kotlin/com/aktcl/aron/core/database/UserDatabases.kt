@@ -42,6 +42,9 @@ class UserDatabases(private val context: Context, private val passphrase: (userI
         open.remove(userId)?.close()
     }
 
+    /** True when [userId] has a database file on this phone (a worker must never create one for a wiped user). */
+    fun exists(userId: Long): Boolean = open.containsKey(userId) || context.getDatabasePath(AronDatabase.fileName(userId)).exists()
+
     /** Ends the [close] window of [userId]: the next [of] opens (or creates) the database again. */
     fun allowOpen(userId: Long) {
         closing -= userId

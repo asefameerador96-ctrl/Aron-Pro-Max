@@ -44,4 +44,15 @@ class MediaMetaCaptureTest {
         assertNull(mediaMetaCapture(item.copy(ref = null), meta, true))
         assertNull(mediaMetaCapture(item.copy(blobPath = null), meta, true))
     }
+
+    /** Checker (wiring round 1, finding 1): MediaStore makes its folder when built, so the guard must look first. */
+    @Test
+    fun aUserWithoutPhotosHasNoQueueAndTheCheckCreatesNone() {
+        val files = kotlin.io.path.createTempDirectory("media").toFile()
+        org.junit.Assert.assertFalse(MediaShell.hasQueue(files, 5))
+        org.junit.Assert.assertFalse("the check must not create the folder", java.io.File(files, "media/u5").exists())
+        com.aktcl.aron.core.media.MediaStore.forUser(files, 5)
+        org.junit.Assert.assertTrue(MediaShell.hasQueue(files, 5))
+        files.deleteRecursively()
+    }
 }

@@ -100,7 +100,17 @@ class MainActivity : ComponentActivity() {
                                     health = null, versionText = versionName,
                                     onLanguageSelect = onLanguageSelect,
                                     // F-SYS-022: SR keeps its data (it keeps uploading); the flow schedules the upload.
-                                    onLogout = { lifecycleScope.launch { shellLogout.flow(com.aktcl.aron.core.system.logout.AppRole.SR, s.user.userId).logout() } },
+                                    onLogout = {
+                                        lifecycleScope.launch {
+                                            try {
+                                                shellLogout.flow(com.aktcl.aron.core.system.logout.AppRole.SR, s.user.userId).logout()
+                                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                                throw e
+                                            } catch (_: Exception) {
+                                                android.widget.Toast.makeText(this@MainActivity, com.aktcl.aron.core.system.R.string.logout_failed, android.widget.Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    },
                                     onOtherTile = { },
                                     startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
                                 )

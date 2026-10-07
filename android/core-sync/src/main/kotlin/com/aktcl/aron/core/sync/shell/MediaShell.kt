@@ -25,6 +25,10 @@ import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.core.session.SessionComponents
 import com.aktcl.aron.core.sync.SyncEngine
 import com.aktcl.aron.core.sync.SyncReport
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -55,13 +59,14 @@ class MediaShell(context: Context, private val components: SessionComponents, pr
     /** Application.onCreate: the media worker finds its users and uploaders; photos left by an earlier process go out. */
     fun install() {
         MediaRuntime.wiring = MediaRuntime.Wiring(users = { databases.knownUserIds() }, uploader = ::uploader, scheduler = { scheduler })
-        scheduler.requestUpload()
+        // The Wi-Fi-only switch is a SharedPreferences read: not on the main thread at app start.
+        CoroutineScope(Dispatchers.IO).launch { runCatching { scheduler.requestUpload() } }
     }
 
     /** The signed-in user's camera and queue (SrDay); call `resume()` on it once at start. */
     suspend fun componentsFor(userId: Long, businessDate: () -> String): MediaComponents {
         config = readConfig(databases.of(userId))
-        return MediaComponents(app, userId, components.clock, businessDate, { config }, scheduler = scheduler)
+        return withContext(Dispatchers.IO) { MediaComponents(app, userId, components.clock, businessDate, { config }, scheduler = scheduler) }
     }
 
     /** Core-sync hook (SessionSyncRunner.afterRun): records were acked, so photos waiting for them may go now. */
@@ -70,13 +75,22 @@ class MediaShell(context: Context, private val components: SessionComponents, pr
     }
 
     /** Photos of [userId] the server does not have yet (the TSO logout counts them). */
-    suspend fun unsentPhotos(userId: Long): Int =
-        MediaStore.forUser(app.filesDir, userId).all().count { it.state == MediaState.ATTACHED || it.state == MediaState.UPLOADED }
+    suspend fun unsentPhotos(userId: Long): Int = withContext(Dispatchers.IO) {
+        if (!hasQueue(userId)) 0
+        else MediaStore.forUser(app.filesDir, userId).all().count { it.state == MediaState.ATTACHED || it.state == MediaState.UPLOADED }
+    }
+
+    /** `MediaStore` creates its folder when built: look first, so a user without photos gets no folder and no open database. */
+    private fun hasQueue(userId: Long): Boolean = hasQueue(app.filesDir, userId)
+
+    internal companion object {
+        fun hasQueue(filesDir: java.io.File, userId: Long): Boolean = java.io.File(filesDir, "media/u$userId").isDirectory
+    }
 
     /** Null when [userId] has no media queue: the worker then never opens that user's database. */
     internal suspend fun uploader(userId: Long): MediaUploader? {
+        if (!hasQueue(userId)) return null
         val store = MediaStore.forUser(app.filesDir, userId)
-        if (!store.dir.isDirectory) return null
         val db = databases.of(userId)
         val cfg = readConfig(db).also { config = it }
         return MediaUploader(

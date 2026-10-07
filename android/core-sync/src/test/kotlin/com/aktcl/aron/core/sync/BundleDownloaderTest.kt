@@ -315,4 +315,25 @@ class BundleDownloaderTest {
         assertEquals("2026-10-05:4", ReferenceRepository(db).bundleVersion())
         assertNull(downloader().refreshIfServerNewer()) // now held: nothing newer
     }
+
+    /** Checker (wiring round 1, finding 4): a refused delta (400) spends the version; no full bundle after every sync. */
+    @Test
+    fun aRefusedDeltaIsNotRetriedAfterEverySyncRun() = runBlocking {
+        downloader().download()
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(SyncEngine.KEY_BUNDLE_CURRENT, "2026-10-05:4"))
+        deltaAnswer = { problem(400, "ERR_VALIDATION") }
+        requests.clear()
+        assertEquals(BundleOutcome.FAILED, downloader().refreshIfServerNewer()!!.outcome)
+        assertNull(downloader().refreshIfServerNewer())
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun onlyAnsweredOutcomesSpendTheVersion() {
+        fun r(o: BundleOutcome, status: Int? = null) = BundleDownloader.spendsVersion(BundleReport(o, httpStatus = status))
+        assertEquals(listOf(false, false, false, false, false, true, true, true), listOf(
+            r(BundleOutcome.OFFLINE), r(BundleOutcome.NOT_READY, 503), r(BundleOutcome.AUTH_REQUIRED, 401),
+            r(BundleOutcome.FAILED, 500), r(BundleOutcome.FAILED, 429), r(BundleOutcome.FAILED, 400), r(BundleOutcome.FAILED), r(BundleOutcome.UNCHANGED),
+        ))
+    }
 }

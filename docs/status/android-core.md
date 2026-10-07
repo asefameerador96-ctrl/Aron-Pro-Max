@@ -89,6 +89,16 @@
 - **Checker round on ec28160 and 3926bd6f** (fresh Opus): 1 confirmed, 1 plausible, both fixed with tests:
   - A delta that got no answer (offline, 503, 401, failure) no longer spends the server version (`BundleDownloader.ANSWERED`; `BundleDownloaderTest.anUnansweredDeltaIsTriedAgainAfterTheNextSyncRun`).
   - `UserDatabases.close` now blocks `of()` for that user until `allowOpen` (ShellLogout calls it when the logout ends), so a worker cannot reopen and cache a database whose files are being deleted (`CheckerUserDatabasesCloseTest`).
+- **Checker round 1 on the wiring** (fresh Opus): 2 confirmed, 4 plausible; fixed:
+  - the media worker no longer opens every user's database (`MediaStore` makes its folder when built: `MediaShell.hasQueue` looks first);
+  - logout never crashes the app (a failed count or a second tap shows `logout_failed`);
+  - a queued sync of a wiped TSO user creates no database (`UserDatabases.exists`, checked by `SessionSyncRunner`);
+  - an answered but refused delta (4xx, unreadable) spends the version again; only offline, 401, 429, 503 and 5xx do not (`BundleDownloader.spendsVersion`);
+  - an outlet request retried after a failed commit keeps one fix uuid, so the photo's stamp names the stored fix;
+  - photo file I/O off the main thread (resume, claim, unsent count, install).
+  - Not changed: the Force Sale photo's stamp is the visit's stored fix (the contract's `media_meta.fix` is a stored row); the shutter fix travels in the location request.
+- **INT red job (lead #4)**: `core-media/consumer-rules.pro`; ACCESS_NETWORK_STATE in core-sync and core-system manifests; core-sync lint also needed `AndroidDevice` `isLocationEnabled` behind API 28 (providers below). `:android:core-sync:lintDebug :android:core-system:lintDebug :android:core-media:mergeDebugConsumerProguardFiles` pass locally.
+- **Next:** updater (item 4), support tile (item 5, waits on the key), the Wi-Fi-only row (needs a slot in feature-home Settings, android-sr-a), then the requests naming android-core and `my-rows.py android-core --todo`.
 
 ## Handover (READY TO RECYCLE, 2026-10-07 ~08:45Z, third session)
 - **Done this session** (each with independent Opus checkers; every confirmed defect is a test):

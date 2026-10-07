@@ -63,6 +63,8 @@ class SessionSyncRunner(
     private val afterRun: (userId: Long, report: SyncReport) -> Unit = { _, _ -> },
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
+        // A queued run of a user wiped since (TSO logout) must not create an empty database and bring the user back.
+        if (!databases.exists(userId)) return SyncReport(SyncStop.DRAINED, 0, 0, 0, 0, 0, 0, code = "no_database")
         val db = databases.of(userId)
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         val report = engine(userId, db).run(trigger)
@@ -85,7 +87,7 @@ class SessionSyncRunner(
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
     )
 
-    override suspend fun unsent(userId: Long): Int = databases.of(userId).outboxDao().unsentCount()
+    override suspend fun unsent(userId: Long): Int = if (!databases.exists(userId)) 0 else databases.of(userId).outboxDao().unsentCount()
 }
 
 /**

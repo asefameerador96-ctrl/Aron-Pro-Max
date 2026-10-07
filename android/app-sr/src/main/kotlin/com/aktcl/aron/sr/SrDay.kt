@@ -302,10 +302,13 @@ class SrDay(
     )
 
     // ---- outlet requests (F-SR-037/038/039/076, N-040): one Room commit with the request's own fix
+    private val requestFixUuids = java.util.concurrent.ConcurrentHashMap<String, String>()
     val outletRequests = OutletRequests(
         committer = { draft ->
             val fix = draft.fix ?: fixSource.readFix("outlet_capture")
-            val (entity, fixEntity) = draft.toEntities(metaProvider.meta(0L), fix)
+            // One fix uuid per request across commit retries: the photo's stamp names the fix row that is finally stored.
+            val fixUuid = requestFixUuids.getOrPut(draft.requestUuid) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+            val (entity, fixEntity) = draft.toEntities(metaProvider.meta(0L), fix, fixUuid)
             draft.photoUuids.forEach { claimPhoto(it, "outlet_capture", "outlet_change_request", entity.clientUuid, fixEntity) }
             capture.recordOutletRequest(entity, fixEntity)
             runCatching { requestSync() }
@@ -323,16 +326,25 @@ class SrDay(
     suspend fun attachMedia(m: com.aktcl.aron.core.media.MediaComponents) {
         media = m
         photoPipeline = MediaPhotoPipeline(m)
-        m.resume()
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { m.resume() } // file I/O, never on the main thread
     }
 
     /**
      * Claims a photo for the record about to be committed (F-SYS-030: before the commit, so the media worker uploads it
      * after the record's ack). Idempotent for the same record. A photo that already belongs to another record (the Force
-     * Sale shot reused by its location request) stays with the first record; the request still names it.
+     * Sale shot reused by its location request) stays with the first record; the request still names it. The stamp is the
+     * owning record's stored fix (the contract's `media_meta.fix` is a stored geo_fix row); for Force Sale that is the
+     * visit's fix, and the shutter fix travels in the location request's own fix row.
      */
     private suspend fun claimPhoto(photoUuid: String, purpose: String, refType: String, refUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) {
         val m = media ?: return
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { claimPhotoIo(m, photoUuid, purpose, refType, refUuid, fix) }
+    }
+
+    private suspend fun claimPhotoIo(
+        m: com.aktcl.aron.core.media.MediaComponents, photoUuid: String, purpose: String, refType: String, refUuid: String,
+        fix: com.aktcl.aron.core.database.entity.GeoFixEntity?,
+    ) {
         val item = m.store.get(photoUuid) ?: return
         val owner = item.ref
         if (owner != null && owner.refClientUuid != refUuid) return

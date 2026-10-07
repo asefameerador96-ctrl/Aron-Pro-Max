@@ -51,6 +51,19 @@ class CheckerUserDatabasesCloseTest {
         dbs.allowOpen(9)
     }
 
+    /** Checker (wiring round 1, finding 3): a queued sync of a wiped user asks [UserDatabases.exists] and creates nothing. */
+    @Test
+    fun aWipedUserHasNoDatabaseAndExistsSaysSo(): Unit = runBlocking {
+        val dbs = UserDatabases(context) { null }
+        dbs.of(11).outboxDao().unsentCount()
+        assertTrue(dbs.exists(11))
+        dbs.close(11)
+        LogoutFiles.delete(context, 11)
+        dbs.allowOpen(11)
+        org.junit.Assert.assertFalse(dbs.exists(11))
+        org.junit.Assert.assertFalse(11L in dbs.knownUserIds())
+    }
+
     private object LogoutFiles {
         fun delete(context: Context, userId: Long) {
             listOf("", "-wal", "-shm", "-journal").forEach { context.getDatabasePath(AronDatabase.fileName(userId) + it).delete() }

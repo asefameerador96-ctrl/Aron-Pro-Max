@@ -85,6 +85,8 @@ class MainActivity : ComponentActivity() {
                                 ),
                                 onLogout = {
                                     lifecycleScope.launch {
+                                        // A failed count or a logout already running throws: refuse this tap, never crash.
+                                        try {
                                         when (val c = logoutFlow.check()) {
                                             is LogoutCheck.Refused -> unsent = c.unsent
                                             is LogoutCheck.Proceed -> when (val r = logoutFlow.logout()) {
@@ -92,6 +94,11 @@ class MainActivity : ComponentActivity() {
                                                 is LogoutResult.WipeIncomplete -> Toast.makeText(this@MainActivity, SystemR.string.logout_wipe_incomplete, Toast.LENGTH_LONG).show()
                                                 else -> Unit
                                             }
+                                        }
+                                        } catch (e: kotlinx.coroutines.CancellationException) {
+                                            throw e
+                                        } catch (_: Exception) {
+                                            Toast.makeText(this@MainActivity, SystemR.string.logout_failed, Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
