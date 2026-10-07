@@ -61,6 +61,20 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
     override fun mustChangePassword(userId: Long): Boolean = gate(userId).mustChange
 
     override fun invalidate(userId: Long) { gateCache.remove(userId) }
+
+    private data class DeviceGate(val status: String?, val at: Long)
+    private val deviceCache = ConcurrentHashMap<Long, DeviceGate>()
+
+    override fun deviceStatus(deviceId: Long): String? {
+        val now = clock.now().toEpochMilli()
+        deviceCache[deviceId]?.let { if (now - it.at < svCacheMs) return it.status }
+        val status = db.jdbi.withHandle<String?, Exception> { h ->
+            h.createQuery("SELECT status FROM app.device WHERE id = :id").bind("id", deviceId).mapTo(String::class.java).findOne().orElse(null)
+        }
+        if (deviceCache.size > 100_000) deviceCache.clear()
+        deviceCache[deviceId] = DeviceGate(status, now)
+        return status
+    }
 }
 
 /** Refresh families and hashed tokens; rotation is atomic (the unused-token update and the child insert commit together). */

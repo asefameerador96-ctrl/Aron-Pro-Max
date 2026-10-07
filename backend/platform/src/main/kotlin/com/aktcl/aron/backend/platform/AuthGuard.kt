@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.platform
 
+import io.ktor.server.request.path
 import com.aktcl.aron.contract.ProblemCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
@@ -14,6 +15,9 @@ fun interface ScopeVersionLookup {
 
     /** True while the user still holds a temporary password (only change-password is allowed then). */
     fun mustChangePassword(userId: Long): Boolean = false
+
+    /** `app.device.status` of a token's device (`did`), null when no such device; cached like the scope version. */
+    fun deviceStatus(deviceId: Long): String? = "active"
 }
 
 /** Dependencies of the bearer guard; one instance per application. */
@@ -65,6 +69,15 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
         if (current > p.scopeVersion) throw ApiProblem(ProblemCode.ERR_SCOPE_CHANGED, "scope changed; refresh and fetch a full bundle")
         if (!cfg.allowPasswordChangeRequired && cfg.deps.scopeVersions.mustChangePassword(p.userId)) {
             throw ApiProblem(ProblemCode.ERR_AUTH_PASSWORD_CHANGE_REQUIRED, "change the temporary password first")
+        }
+        // AUD-SEC-01: a suspended or revoked phone loses API access within the gate cache (10 s), not at token expiry.
+        // Only where the scope check runs: the upload paths (sync/batch, logout) keep taking captured rows.
+        if (p.audience == Audience.API && p.deviceId != null) {
+            when (cfg.deps.scopeVersions.deviceStatus(p.deviceId)) {
+                "suspended" -> throw ApiProblem(ProblemCode.ERR_DEVICE_SUSPENDED, "this phone is suspended")
+                "revoked", "replaced" -> throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "this phone is revoked")
+                null -> if (call.request.path().startsWith("/v1/admin")) throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "unknown phone")
+            }
         }
     }
     return p
