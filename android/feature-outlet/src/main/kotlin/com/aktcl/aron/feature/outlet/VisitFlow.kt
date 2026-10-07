@@ -129,7 +129,7 @@ class VisitFlow(
         refreshCount += 1
         runCatching { configCheck.checkOnResume() } // F-SYS-092: never blocks, never throws into the flow
         ui.value = VisitUiState.ReadingFix
-        evaluate(fixes.readFix(PURPOSE_REFRESH))
+        evaluate(fixes.readFix(PURPOSE_VISIT, refreshCount))
     }
 
     /**

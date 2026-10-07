@@ -16,6 +16,7 @@ dependencies {
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
     api(project(":android:core-database"))
+    implementation(project(":android:core-geo"))
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
