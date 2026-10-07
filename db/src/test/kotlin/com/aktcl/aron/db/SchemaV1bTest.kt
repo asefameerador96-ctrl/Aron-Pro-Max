@@ -208,6 +208,27 @@ class SchemaV1bTest {
         assertTrue(otherDate.message!!.contains("client_uuid"), "the client_uuid key fired: ${otherDate.message}")
     }
 
+    @Test
+    fun theCrossDateUuidCheckIsOneStatementLevelTriggerPerPartitionedTable() = db.connect().use { c ->
+        // V0021 (AUD-PERF-01): AFTER INSERT FOR EACH STATEMENT with a transition table, never a per-row dynamic query.
+        assertEquals(
+            listOf("memo:after:statement", "memo_line:after:statement", "visit:after:statement"),
+            c.column(
+                "SELECT k.relname || ':' || CASE WHEN t.tgtype & 2 = 2 THEN 'before' ELSE 'after' END || ':' || " +
+                    "CASE WHEN t.tgtype & 1 = 1 THEN 'row' ELSE 'statement' END FROM pg_trigger t JOIN pg_class k ON k.oid = t.tgrelid " +
+                    "WHERE t.tgname LIKE '%client_uuid_once' AND t.tgparentid = 0 ORDER BY 1",
+            ),
+        )
+    }
+
+    @Test
+    fun oneStatementCarryingTheSameUuidUnderTwoDatesIsRefused() = tx { c ->
+        val id = UUID.randomUUID()
+        val first = insertSql(c, "visit", id)
+        val both = first + ", " + insertSql(c, "visit", id, "2026-10-06").substringAfter(" VALUES ")
+        assertEquals("23505", assertFailsWith<SQLException> { c.exec(both) }.sqlState)
+    }
+
     @ParameterizedTest
     @MethodSource("v1bTables")
     fun everyTableHasAUtcInstantAndADhakaBusinessDate(table: String) = db.connect().use { c ->
