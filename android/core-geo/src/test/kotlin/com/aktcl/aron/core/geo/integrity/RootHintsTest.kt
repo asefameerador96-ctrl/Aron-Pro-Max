@@ -47,7 +47,7 @@ class RootHintsTest {
     }
 
     @Test fun aProbeThatThrowsNeverBreaksTheRead() {
-        assertEquals(listOf("foreign_data_dir").filter { false }, RootHints.evaluate(Probe(throwing = true), pkg))
+        assertEquals(emptyList<String>(), RootHints.evaluate(Probe(throwing = true), pkg))
     }
 
     @Test fun theTrackerReportsEachChangeOnce() {

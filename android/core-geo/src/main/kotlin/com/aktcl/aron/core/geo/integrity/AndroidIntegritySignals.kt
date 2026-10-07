@@ -26,7 +26,7 @@ class AndroidRootProbe(context: Context) : RootProbe {
     }
 
     override fun mounts(): String = runCatching { File("/proc/self/mounts").readText().take(256 * 1024) }.getOrDefault("")
-    override val userId: Int get() = Process.myUserHandle().hashCode() // UserHandle.hashCode() is the user id
+    override val userId: Int get() = Process.myUid() / 100_000 // UserHandle.PER_USER_RANGE
     override val dataDir: String get() = app.applicationInfo.dataDir ?: ""
 }
 
