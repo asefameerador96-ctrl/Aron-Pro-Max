@@ -50,7 +50,7 @@ export function RadiusMap({ radiusM }: { radiusM: number }) {
   const box = "h-[26rem] w-full overflow-hidden rounded-[var(--radius-sheet)]";
   return (
     <div className={`${box} relative bg-[var(--surface-solid)]`} data-testid={phase === "ready" ? "map-root" : "map-placeholder"} data-phase={phase}>
-      <div ref={host} className="h-full w-full" aria-label={t("geo.map")} />
+      <div ref={host} role="region" className="h-full w-full" aria-label={t("geo.map")} />
       {phase !== "ready" ? (
         <p className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-[var(--text-secondary)]">
           {phase === "loading" ? t("common.loading") : phase === "capped" ? t("geo.map.capped") : phase === "failed" ? t("geo.map.failed") : t("geo.map.placeholder")}

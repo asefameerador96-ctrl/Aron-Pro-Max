@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var databases: UserDatabases
     @Inject lateinit var scheduler: SyncScheduler
     @Inject lateinit var fixManager: FixManager
+    @Inject lateinit var printerManager: com.aktcl.aron.core.printing.bt.PrinterManager
     @Inject lateinit var bundleDownloaders: com.aktcl.aron.core.sync.BundleDownloaders
 
     override fun attachBaseContext(newBase: Context) {
@@ -68,7 +69,7 @@ class MainActivity : ComponentActivity() {
                             val day by holder.day.collectAsStateWithLifecycle()
                             LaunchedEffect(s.user.userId) {
                                 if (holder.day.value == null) {
-                                    holder.day.value = SrDay(s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager)
+                                    holder.day.value = SrDay(s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName)
                                 }
                             }
                             day?.let { d ->

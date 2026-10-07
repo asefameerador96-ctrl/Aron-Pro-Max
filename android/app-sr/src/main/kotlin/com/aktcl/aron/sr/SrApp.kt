@@ -94,6 +94,7 @@ fun SrApp(
 
     // Start: local data first (never waits), then the bundle in the background, then a refresh of what Home shows.
     LaunchedEffect(Unit) {
+        day.recoverPrinting()
         day.reload(); day.nextSequenceFromStore(); day.restoreOpenVisit(); day.taskBoard.load()
         day.attendance.restore(day.attendanceToday())
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
@@ -258,22 +259,54 @@ private fun StockHost(day: SrDay) {
     var load by remember { mutableStateOf<com.aktcl.aron.feature.stock.StockLoad?>(null) }
     var version by remember { mutableStateOf(0) }
     var message by remember { mutableStateOf<StockMessage?>(null) }
-    LaunchedEffect(Unit) { load = day.stockLoad() }
+    var lastSaved by remember { mutableStateOf<List<com.aktcl.aron.core.database.entity.StockMovementEntity>>(emptyList()) }
+    var unprinted by remember { mutableStateOf(true) }
+    var attempt by remember { mutableStateOf<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null) }
+    val pm = day.printerManager
+    LaunchedEffect(Unit) { load = day.stockLoad(); unprinted = day.slipNotPrinted() }
+    com.aktcl.aron.core.printing.ui.HoldPrinter(pm)
     val l = load ?: return
     version.let {}
-    StockContent(
-        rows = l.rows, totals = l.totals, message = message, slipNotPrinted = true,
-        onIssue = { id, q -> l.setEntered(id, q.toLong()); version++ },
-        onSave = {
-            scope.launch {
-                when (val out = l.save(day.currentMs(), day.metaProvider.meta(0L))) {
-                    is SaveOutcome.Saved -> runCatching { day.capture.recordStock(out.movements) }
-                        .onSuccess { l.committed(out, day.currentMs()); message = StockMessage.SAVED; day.requestSync() }
-                        .onFailure { l.commitFailed(); message = StockMessage.SAVE_FAILED }
-                    is SaveOutcome.Refused -> message = if (out.reason == SaveRefusal.NOTHING_ENTERED) StockMessage.NOTHING_ENTERED else StockMessage.REFUSED_SAME_VALUES
+    Column {
+        androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = AronTokens.Space.L)) { com.aktcl.aron.core.printing.ui.PrinterIcon(pm) }
+        com.aktcl.aron.core.printing.ui.PrinterBanner(pm)
+        StockContent(
+            rows = l.rows, totals = l.totals, message = message, slipNotPrinted = unprinted,
+            onIssue = { id, q -> l.setEntered(id, q.toLong()); version++ },
+            onSave = {
+                scope.launch {
+                    when (val out = l.save(day.currentMs(), day.metaProvider.meta(0L))) {
+                        is SaveOutcome.Saved -> runCatching { day.capture.recordStock(out.movements) }
+                            .onSuccess { l.committed(out, day.currentMs()); message = StockMessage.SAVED; lastSaved = out.movements; unprinted = day.slipNotPrinted(); day.requestSync() }
+                            .onFailure { l.commitFailed(); message = StockMessage.SAVE_FAILED }
+                        is SaveOutcome.Refused -> message = if (out.reason == SaveRefusal.NOTHING_ENTERED) StockMessage.NOTHING_ENTERED else StockMessage.REFUSED_SAME_VALUES
+                    }
+                    version++
                 }
-                version++
-            }
-        },
-    )
+            },
+            // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03).
+            onPrint = if (lastSaved.isNotEmpty()) ({
+                scope.launch {
+                    val first = lastSaved.minByOrNull { it.skuId }!!
+                    attempt = day.printing.printStockSlip(first.clientUuid, day.stockSlip(lastSaved))
+                    unprinted = day.slipNotPrinted()
+                }
+            }) else null,
+        )
+    }
+    when (val a = attempt) {
+        is com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation -> com.aktcl.aron.core.ui.AronConfirmDialog(
+            stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_readable_question),
+            stringResource(R.string.sr_yes), stringResource(R.string.sr_no),
+            onConfirm = { scope.launch { day.printing.confirm(a, true); attempt = null; unprinted = day.slipNotPrinted() } },
+            onDismiss = { scope.launch { day.printing.confirm(a, false); attempt = null; unprinted = day.slipNotPrinted() } },
+        )
+        com.aktcl.aron.core.printing.flow.PrintAttempt.LimitReached -> com.aktcl.aron.core.ui.AronInfoDialog(
+            stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_limit_reached), stringResource(R.string.sr_ok), { attempt = null },
+        )
+        is com.aktcl.aron.core.printing.flow.PrintAttempt.Failed, com.aktcl.aron.core.printing.flow.PrintAttempt.TooLong -> com.aktcl.aron.core.ui.AronInfoDialog(
+            stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_failed), stringResource(R.string.sr_ok), { attempt = null },
+        )
+        else -> Unit
+    }
 }

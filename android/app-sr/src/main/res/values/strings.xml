@@ -5,4 +5,8 @@
     <string name="sr_visit_open">Your visit is open. The sale screens continue from here.</string>
     <string name="sr_visit_close">Close visit</string>
     <string name="sr_bundle_downloading">Downloading today\'s route in the background. You can keep working.</string>
+    <string name="sr_print_confirm_title">Print</string>
+    <string name="sr_yes">Yes</string>
+    <string name="sr_no">No</string>
+    <string name="sr_ok">OK</string>
 </resources>
