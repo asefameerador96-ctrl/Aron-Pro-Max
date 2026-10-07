@@ -32,6 +32,7 @@ export default defineConfig({
         ARON_API_BASE_URL: `http://127.0.0.1:${MOCK_PORT}`,
         ARON_SESSION_SECRET: "e2e-only-session-secret-0123456789abcdef",
         ARON_COOKIE_INSECURE: "1",
+        ARON_BLOB_ORIGIN: `http://127.0.0.1:${MOCK_PORT}`,
       },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var databases: UserDatabases
     @Inject lateinit var scheduler: SyncScheduler
     @Inject lateinit var fixManager: FixManager
+    @Inject lateinit var bundleDownloaders: com.aktcl.aron.core.sync.BundleDownloaders
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
@@ -63,9 +64,12 @@ class MainActivity : ComponentActivity() {
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect)
                         }
                         is SessionState.Active -> {
-                            var day by remember(s.user.userId) { mutableStateOf<SrDay?>(null) }
+                            val holder = viewModel(key = "sr-day-" + s.user.userId) { SrDayHolder() }
+                            val day by holder.day.collectAsStateWithLifecycle()
                             LaunchedEffect(s.user.userId) {
-                                day = SrDay(s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager)
+                                if (holder.day.value == null) {
+                                    holder.day.value = SrDay(s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager)
+                                }
                             }
                             day?.let { d ->
                                 SrApp(
@@ -78,6 +82,7 @@ class MainActivity : ComponentActivity() {
                                     onLanguageSelect = onLanguageSelect,
                                     onLogout = { lifecycleScope.launch { components.session.logout() } },
                                     onOtherTile = { },
+                                    startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
                                 )
                             }
                         }

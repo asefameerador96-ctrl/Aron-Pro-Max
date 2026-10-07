@@ -97,8 +97,8 @@ class OpsService(
         rows AS (
           SELECT u.id AS user_id, u.username, t.routes, dv.id AS device_id, dv.device_info ->> 'model' AS model, coalesce(dv.app_version, '0.0.0') AS app_version, dv.last_contact_at,
                  coalesce(t.lb, (SELECT max(sb.received_at) FROM app.sync_batch sb WHERE sb.device_id = dv.id)) AS last_batch_at, coalesce(dv.pending_rows_reported, 0) AS pending,
-                 (SELECT count(*) FROM app.sync_rejected r WHERE r.user_id = u.id AND r.business_date = :d AND r.stored_at IS NULL)::int AS rejected,
-                 (SELECT count(*) FROM app.sync_quarantine q WHERE q.user_id = u.id AND q.business_date = :d AND q.status = 'open')::int AS quarantined,
+                 (SELECT count(*) FROM app.sync_rejected r WHERE r.user_id = u.id AND r.business_date = :d AND r.stored_at IS NULL AND (r.route_id IS NULL OR r.route_id IN (SELECT gz.route_id FROM dw.dim_geo gz WHERE %ZONEGZ%)))::int AS rejected,
+                 (SELECT count(*) FROM app.sync_quarantine q WHERE q.user_id = u.id AND q.business_date = :d AND q.status = 'open' AND (q.route_id IS NULL OR q.route_id IN (SELECT gz.route_id FROM dw.dim_geo gz WHERE %ZONEGZ%)))::int AS quarantined,
                  t.mism, (coalesce(dv.pending_rows_reported, 0) > 0 AND (dv.last_contact_at IS NULL OR dv.last_contact_at < :held_before)) AS held, dv.trust_level,
                  (SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM m.received_at - m.committed_at)) FROM dw.fact_memo m WHERE m.user_id = u.id AND m.business_date = :d)::float8 AS p95
             FROM team t JOIN app.app_user u ON u.id = t.uid JOIN app.device_binding b ON b.user_id = t.uid AND b.status = 'active' JOIN app.device dv ON dv.id = b.device_id)
@@ -108,9 +108,9 @@ class OpsService(
         val heldBefore = clock.now().minus(Duration.ofHours(heldHours()))
         return db.readJdbi.withHandle<SyncHealthPage, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId)
-            val base = "WITH " + healthBase.replace("%ZONE%", node.clause("g.zone_id"))
+            val base = "WITH " + healthBase.replace("%ZONE%", node.clause("g.zone_id")).replace("%ZONEGZ%", node.clause("gz.zone_id"))
             fun q(sql: String) = node.bind(h.createQuery(sql).bind("d", date).bind("held_before", OffsetDateTime.ofInstant(heldBefore, java.time.ZoneOffset.UTC)))
-            val s = q("$base SELECT count(*)::int, count(*) FILTER (WHERE pending > 0)::int, count(*) FILTER (WHERE held)::int, coalesce(sum(rejected), 0)::int, coalesce(sum(quarantined), 0)::int, (SELECT count(*) FROM days WHERE mism)::int FROM rows")
+            val s = q("$base SELECT count(DISTINCT device_id)::int, count(DISTINCT device_id) FILTER (WHERE pending > 0)::int, count(DISTINCT device_id) FILTER (WHERE held)::int, (SELECT coalesce(sum(r), 0) FROM (SELECT DISTINCT user_id, rejected AS r FROM rows) x)::int, (SELECT coalesce(sum(q), 0) FROM (SELECT DISTINCT user_id, quarantined AS q FROM rows) y)::int, (SELECT count(*) FROM days WHERE mism)::int FROM rows")
                 .map { rs, _ -> SyncHealthSummary(rs.getInt(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6)) }.one()
             val problem = if (onlyProblems) "AND (pending > 0 OR rejected > 0 OR quarantined > 0 OR coalesce(mism, false) OR held)" else ""
             val cursor = if (after == null) "" else "AND (user_id, device_id) > (:cu, :cd)"
@@ -131,13 +131,15 @@ class OpsService(
     }
 
     /** Percentage of selling phones (those with a contact that day) whose latest applied config version is at least [version]; null when none sold. */
-    fun configAckPct(version: Long, date: LocalDate): Double? = db.readJdbi.withHandle<Double?, Exception> { h ->
+    fun configAckPct(version: Long, date: LocalDate, zones: List<Long>? = null): Double? = db.readJdbi.withHandle<Double?, Exception> { h ->
         h.createQuery(
             """
-            WITH sellers AS (SELECT DISTINCT b.device_id FROM app.device_binding b JOIN app.route_day rd ON coalesce(rd.acting_user_id, rd.assigned_user_id) = b.user_id AND rd.business_date = :d AND rd.planned WHERE b.status = 'active')
-            SELECT round(100.0 * count(*) FILTER (WHERE coalesce(dv.config_version_applied, 0) >= :v) / nullif(count(*), 0), 2) FROM sellers s JOIN app.device dv ON dv.id = s.device_id
+            WITH sellers AS (SELECT DISTINCT b.device_id FROM app.device_binding b JOIN app.route_day rd ON coalesce(rd.acting_user_id, rd.assigned_user_id) = b.user_id AND rd.business_date = :d AND rd.planned
+                              JOIN dw.dim_geo g ON g.route_id = rd.route_id WHERE b.status = 'active' AND (CAST(:all AS boolean) OR g.zone_id = ANY(:zones)))
+            SELECT round(100.0 * count(*) FILTER (WHERE coalesce(dv.config_version_applied, 0) >= :v) / nullif(count(*), 0), 2)
+              FROM sellers s JOIN app.device dv ON dv.id = s.device_id WHERE (dv.last_contact_at AT TIME ZONE 'Asia/Dhaka')::date >= :d
             """,
-        ).bind("d", date).bind("v", version).map { rs, _ -> rs.getObject(1) as java.math.BigDecimal? }.one()?.toDouble()
+        ).bind("d", date).bind("v", version).bind("all", zones == null).bindArray("zones", Long::class.javaObjectType, zones ?: listOf(-1L)).map { rs, _ -> rs.getObject(1) as java.math.BigDecimal? }.one()?.toDouble()
     }
 
     // ---------------- login and submit lists ----------------
@@ -203,19 +205,25 @@ class OpsService(
     /** discard and return_to_device end the item here (the phone sees the decision in `resolutions[]`); accept and accept_with_fix go through the ingest hook. Every action is audited. */
     fun resolve(p: com.aktcl.aron.backend.platform.AronPrincipal, reach: Reach, id: Long, req: QuarantineResolveRequest, requestId: String?): QuarantineItemDto {
         if (req.action !in setOf("accept", "accept_with_fix", "discard", "return_to_device")) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad action", errors = listOf(FieldError("/action", "invalid_value")))
-        if (req.reason.length !in 3..500) throw ApiProblem(ProblemCode.ERR_VALIDATION, "reason must be 3..500 characters", errors = listOf(FieldError("/reason", "out_of_range")))
+        if (req.reason.trim().length !in 10..500) throw ApiProblem(ProblemCode.ERR_VALIDATION, "reason must be 10..500 characters", errors = listOf(FieldError("/reason", "out_of_range")))
         if (req.action == "accept_with_fix" && (req.fixed_record == null || req.fixed_record is JsonNull)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "fixed_record is required", errors = listOf(FieldError("/fixed_record", "required")))
         return db.jdbi.inTransaction<QuarantineItemDto, Exception> { h ->
             val row = h.createQuery("SELECT q.*, (SELECT zone_id FROM dw.dim_geo WHERE route_id = q.route_id) AS zid FROM app.sync_quarantine q WHERE q.id = :id FOR UPDATE").bind("id", id)
                 .map { rs, _ -> toDto(rs) to (rs.getObject("zid") as Long?) }.findOne().orElse(null)
             // Unknown and outside the reach look the same.
             if (row == null || (!reach.national && (row.second == null || row.second !in reach.zoneIds))) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such quarantine item")
-            if (row.first.status != "open") throw ApiProblem(ProblemCode.ERR_CONFLICT, "already resolved as ${row.first.status}")
+            if (row.first.status != "open") {
+                // The same actor repeating the same decision gets the stored outcome (200); any other transition is a state conflict.
+                val note = row.first.resolution_note.orEmpty()
+                val storedAction = when (row.first.status) { "accepted" -> "accept"; "accepted_with_fix" -> "accept_with_fix"; else -> if (note.startsWith("return_to_device")) "return_to_device" else "discard" }
+                if (row.first.resolved_by_user_id == p.userId && storedAction == req.action) return@inTransaction row.first
+                throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "already resolved as ${row.first.status}")
+            }
             when (req.action) {
                 "accept", "accept_with_fix" -> { acceptor.accept(id, req.fixed_record as? JsonObject, p.userId, req.reason) }
                 else -> h.createUpdate(
                     "UPDATE app.sync_quarantine SET status = 'discarded', resolution_uuid = :ru, resolved_by_user_id = :u, resolved_at = now(), resolution_note = :note WHERE id = :id",
-                ).bind("ru", UUID.randomUUID()).bind("u", p.userId).bind("note", (if (req.action == "return_to_device") "return_to_device: " else "") + req.reason.take(470)).bind("id", id).execute()
+                ).bind("ru", UUID.nameUUIDFromBytes("quarantine:$id:${req.action}:${p.userId}".toByteArray())).bind("u", p.userId).bind("note", (if (req.action == "return_to_device") "return_to_device: " else "") + req.reason.take(470)).bind("id", id).execute()
             }
             h.createUpdate(
                 "INSERT INTO app.audit_log (actor_user_id, actor_username, actor_role, via, entity, entity_id, action, before, after, reason, request_id) VALUES (:u, :n, :r, 'api', 'quarantine', :id, :a, CAST(:b AS jsonb), CAST(:af AS jsonb), :reason, CAST(:rid AS uuid))",

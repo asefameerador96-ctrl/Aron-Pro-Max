@@ -68,4 +68,12 @@ class RequestScreensTest {
         show(AppLanguage.BN) { OutletRequestContent(OutletRequestForm(OutletRequestKind.ROUTE_ADD, outletId = 1), emptySet(), emptyList(), GeoPhotoState(), true, false, {}, {}, {}) }
         compose.onNodeWithText("সংরক্ষিত হয়েছে। অনুরোধটি যাচাইয়ের অপেক্ষায় আছে।").assertExists()
     }
+
+    @Test fun outletMenuShowsFourTilesInOrderAndReportsTheKind() {
+        var k: OutletRequestKind? = null
+        show(AppLanguage.BN) { OutletMenuContent({ k = it }) }
+        compose.onNodeWithText("নতুন দোকান").assertExists(); compose.onNodeWithText("স্থায়ী বন্ধ").assertExists()
+        compose.onNodeWithText("তথ্য পরিবর্তন করুন").assertExists(); compose.onNodeWithText("ক্লাস্টার").assertExists()
+        compose.onNodeWithTag(OutletMenuTags.kind(OutletRequestKind.CLUSTER)).performClick(); assertEquals(OutletRequestKind.CLUSTER, k)
+    }
 }
