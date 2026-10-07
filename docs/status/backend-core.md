@@ -89,6 +89,7 @@ Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backen
 6. Watch: `cfg.sync.reconcile_types` reshape (R17), `backend-bundle-snapshot-table`, `backend-jcs-canonicaliser`, `backend-core-security-event-table`.
 
 ## Traps found
+- **A contract change regenerates three outputs in the same commit:** `python3 tools/slice-contract.py`, `python3 shared/contract/tools/gen_wire_dtos.py`, and the web types (`openapi-typescript@7.13.0 ../contract/openapi.yaml -o src/contract/openapi.d.ts` from web; install the exact version in the scratchpad, web has no node_modules). Then `slice-contract.py --check`, `gen_wire_dtos.py --check`, `npx @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml`. Missing the web file turned the integrator's candidate red (BC-55, 2026-10-07).
 - **Request timeout 25 s (AUD-PERF-02):** a test that holds a request longer (a latch, a lock) gets a 503; keep holds under ~20 s. Production wiring isolates every non-probe call on the bounded dispatcher.
 - **`pkill`/`kill` loops over `pgrep -f` matches can kill your own shell** (exit 144 this session); kill one checked pid at a time.
 - **Fresh container:** PostgreSQL may lack the `aron` role: `su postgres -c "psql -c \"CREATE ROLE aron LOGIN SUPERUSER PASSWORD 'aron'\""` and `createdb -O aron aron_test`.
