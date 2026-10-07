@@ -96,4 +96,26 @@ class SettingsScreenTest {
         compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.BN) { SettingsContent("0.1.0 (12)", {}, {}) } } }
         compose.onNodeWithText("সংস্করণ ০.১.০ (১২)").assertExists()
     }
+
+    @Test fun optionalRowsAppearOnlyWhenTheirParameterIsSet() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        var update = 0; var support = 0; var wifi: Boolean? = null
+        val withRows = androidx.compose.runtime.mutableStateOf(false)
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides ctx) {
+                AronTheme(AppLanguage.EN) {
+                    if (withRows.value) SettingsContent("1", {}, {}, onUpdate = { update++ }, updateAvailable = true, photosWifiOnly = true, onPhotosWifiOnly = { wifi = it }, onSupport = { support++ })
+                    else SettingsContent("1", {}, {})
+                }
+            }
+        }
+        compose.onNodeWithTag(SettingsTags.UPDATE).assertDoesNotExist()
+        compose.onNodeWithTag(SettingsTags.PHOTOS_WIFI).assertDoesNotExist()
+        compose.onNodeWithTag(SettingsTags.SUPPORT).assertDoesNotExist()
+        compose.runOnIdle { withRows.value = true }
+        compose.onNodeWithText("App update (new version ready)").performClick()
+        compose.onNodeWithTag(SettingsTags.SUPPORT).performClick()
+        compose.onNodeWithTag(SettingsTags.PHOTOS_WIFI).assertExists()
+        assertEquals(1, update); assertEquals(1, support)
+    }
 }
