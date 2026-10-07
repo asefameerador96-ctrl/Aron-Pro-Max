@@ -20,6 +20,7 @@ func names(prefix string, env string, suffix string) object => {
   workerApp: 'ca-${prefix}-${env}-worker'
   webApp: 'ca-${prefix}-${env}-web'
   migrateJob: 'caj-${prefix}-${env}-migrate'
+  dbLoginsJob: 'caj-${prefix}-${env}-dblogins'
   idApi: 'id-${prefix}-${env}-api'
   idWorker: 'id-${prefix}-${env}-worker'
   idWeb: 'id-${prefix}-${env}-web'
@@ -47,6 +48,14 @@ var secretNames = {
   dbDirectUrl: 'aron-db-direct-url'
   dbReadUrl: 'aron-db-read-url'
   webSessionSecret: 'aron-web-session-secret'
+  // Per-app logins (infra/scripts/db-login-secrets.sh writes these; infra/sql/runtime-logins.sql creates the logins).
+  dbPwAppApi: 'aron-db-pw-app-api'
+  dbPwAppWorker: 'aron-db-pw-app-worker'
+  dbPwAppJobs: 'aron-db-pw-app-jobs'
+  dbApiUrl: 'aron-db-api-url'
+  dbApiReadUrl: 'aron-db-api-read-url'
+  dbJobsDirectUrl: 'aron-db-jobs-direct-url'
+  dbJobsReadUrl: 'aron-db-jobs-read-url'
 }
 
 @export()

@@ -30,5 +30,5 @@ Logic plus screens, Bangla and English, offline, wired in `app-sr` (`SrApp`, `Sr
 
 ## Later today
 - Printing wired for the stock slip (PrinterManager singleton, MemoPrinting on RoomPrintLedger, recover at day start, Print after Save, slip warning from Room). Open with android-core: item 15 (slip flag on every row of one Save).
-- N-041 needs a decision: docs/requests/android-sr-a-map-on-tap.md.
+- N-041 built (option A, ruling R19): OutletMapActivity started only on tap with outlet pin, radius circle and phone position; text distances always shown; release APK 11.2 MB unsigned (gate 30 MB). Needs the CI mapsApiKey (the same secret) and the owner adding the SR package to the key restriction; the tile view itself is DEVICE-PENDING.
 - Owner design rule (docs/32 s2a, outdoor-first): screens use the kit's components and tokens only; numbers, status and actions sit on solid cards, glass only for chrome. When `ContentCard` lands in the kit, swap it in for the plain Columns on Stock, Attendance and Tasks; no hard-coded colours exist in my modules today.

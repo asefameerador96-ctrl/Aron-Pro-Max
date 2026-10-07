@@ -58,9 +58,9 @@ class KitGalleryTest {
         }
     }
 
-    private fun render(language: AppLanguage) = rule.setContent {
+    private fun render(language: AppLanguage, sunlight: Boolean = false) = rule.setContent {
         CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 1.3f)) {
-            AronTheme(language, dark = false) { KitGallery() }
+            AronTheme(language, dark = false, sunlight = sunlight) { KitGallery() }
         }
     }
 
@@ -70,6 +70,18 @@ class KitGalleryTest {
         rule.onNodeWithText("সংরক্ষণ").assertHeightIsAtLeast(48.dp)
         rule.onNodeWithText("বিক্রয় জমা দিতে চেপে ধরুন").assertHeightIsAtLeast(56.dp)
         rule.onNodeWithText("১২").assertExists()
+        assertNoTruncationAndTouchTargets()
+    }
+
+    @Test fun englishInSunlightMode() {
+        render(AppLanguage.EN, sunlight = true)
+        rule.onNodeWithText("Kit gallery").assertExists()
+        assertNoTruncationAndTouchTargets()
+    }
+
+    @Test @Config(sdk = [34], qualifiers = "bn-w360dp-h640dp") fun banglaInSunlightMode() {
+        render(AppLanguage.BN, sunlight = true)
+        rule.onNodeWithText("কিট গ্যালারি").assertExists()
         assertNoTruncationAndTouchTargets()
     }
 

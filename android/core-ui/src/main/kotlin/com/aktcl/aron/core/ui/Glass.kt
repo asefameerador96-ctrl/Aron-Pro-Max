@@ -68,8 +68,10 @@ fun rememberGlassTier(config: UiGlassConfig = UiGlassConfig.AUTO): GlassTier {
 }
 
 /**
- * The one glass surface. Tier A: stronger tint (a backdrop-blur layer plugs in here later, only for A, see docs/32 s4);
- * B: tinted translucent fill, soft top sheen, hairline border, soft shadow, no blur; C: opaque fill and border.
+ * The one glass surface, for CHROME only (top bar, bottom bar, sheet scrims, tile backdrops, empty-state backdrops).
+ * Anything that carries a number, status or primary action belongs on an [AronCard] (docs/32 s2a item 1).
+ * Tier A: stronger tint (a backdrop-blur layer plugs in here later, only for A); B: tinted translucent fill, soft sheen,
+ * lit edge, soft shadow, no blur; C and sunlight: opaque fill and a solid border, no gradient, no shadow.
  */
 @Composable
 fun GlassSurface(
@@ -82,16 +84,41 @@ fun GlassSurface(
     content: @Composable () -> Unit,
 ) {
     val c = LocalAronColors.current
-    val base = when (tier) {
-        GlassTier.C -> Modifier.background(c.surfaceSolid, shape)
-        GlassTier.A -> Modifier.background(c.surfaceGlass.copy(alpha = (c.surfaceGlass.alpha + AronTokens.Alpha.TierABoost).coerceAtMost(1f)), shape)
-        GlassTier.B -> Modifier
+    val solid = tier == GlassTier.C || c.sunlight
+    val base = when {
+        solid -> Modifier.background(c.surfaceSolid, shape)
+        tier == GlassTier.A -> Modifier.background(c.surfaceGlass.copy(alpha = (c.surfaceGlass.alpha + AronTokens.Alpha.TierABoost).coerceAtMost(1f)), shape)
+        else -> Modifier
             .background(c.surfaceGlass, shape)
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (c.dark) AronTokens.Alpha.SheenDark else AronTokens.Alpha.SheenLight), Color.Transparent)), shape)
     }
-    val shadow = if (tier == GlassTier.C || elevation == AronTokens.Elevation.Page) Modifier else Modifier.shadow(elevation, shape, clip = false, ambientColor = Color.Black.copy(alpha = AronTokens.Alpha.Shadow), spotColor = Color.Black.copy(alpha = AronTokens.Alpha.Shadow))
-    val borderColor = if (tier == GlassTier.C) c.textSecondary.copy(alpha = AronTokens.Alpha.SolidBorder) else c.borderHairline
+    val shadow = if (solid || elevation == AronTokens.Elevation.Page) Modifier else Modifier.shadow(elevation, shape, clip = false, ambientColor = Color.Black.copy(alpha = AronTokens.Alpha.Shadow), spotColor = Color.Black.copy(alpha = AronTokens.Alpha.Shadow))
+    val stroke = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
+    val border = if (solid) BorderStroke(stroke, c.borderSolid) else BorderStroke(stroke, Brush.verticalGradient(listOf(c.borderHairlineTop, c.borderHairlineBottom)))
     // clip BEFORE clickable so the ripple follows the rounded corners
     val click = if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier
-    Box(modifier.then(shadow).then(base).border(BorderStroke(AronTokens.Hairline, borderColor), shape).clip(shape).then(click)) { content() }
+    Box(modifier.then(shadow).then(base).border(border, shape).clip(shape).then(click)) { content() }
+}
+
+/**
+ * The OPAQUE content surface (docs/32 s2a item 1): 100 percent solid fill, never translucent over a gradient, so every
+ * number, status and primary action on it keeps its contrast in sun. Depth comes from a soft shadow and a hairline
+ * (sunlight and tier C: a solid border and no shadow).
+ */
+@Composable
+fun AronCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    val c = LocalAronColors.current
+    val tier = LocalGlassTier.current
+    val shape = RoundedCornerShape(AronTokens.Radius.Card)
+    val flat = tier == GlassTier.C || c.sunlight
+    val shadow = if (flat) Modifier else Modifier.shadow(AronTokens.Elevation.Card, shape, clip = false, ambientColor = Color.Black.copy(alpha = AronTokens.Alpha.Shadow), spotColor = Color.Black.copy(alpha = AronTokens.Alpha.Shadow))
+    val stroke = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
+    val edge = if (flat) c.borderSolid else c.borderHairlineBottom
+    val click = if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier
+    Box(modifier.then(shadow).background(c.surfaceSolid, shape).border(BorderStroke(stroke, edge), shape).clip(shape).then(click)) { content() }
 }

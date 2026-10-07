@@ -33,4 +33,9 @@
     <string name="core_ui_kit_gallery_ok">OK</string>
     <string name="core_ui_kit_gallery_empty_action">Download route</string>
     <string name="core_ui_kit_gallery_disabled">Not available</string>
+    <string name="core_ui_sunlight_toggle">Sunlight mode</string>
+    <string name="core_ui_sunlight_suggest">Bright light? Switch to sunlight mode for easier reading</string>
+    <string name="core_ui_sunlight_switch">Switch</string>
+    <string name="core_ui_sunlight_not_now">Not now</string>
+    <string name="core_ui_kit_gallery_card_title">Today\'s sales</string>
 </resources>

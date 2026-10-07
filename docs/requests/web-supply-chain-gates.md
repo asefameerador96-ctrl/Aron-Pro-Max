@@ -23,7 +23,10 @@ const decipher = createDecipheriv("aes-256-gcm", key(secret, purpose), raw.subar
 
 (and the same option on `createCipheriv` for symmetry). Your existing seal/open tests cover it.
 
-## Ask 2: nothing else
+## Ask 2: stale comment
 
-`@redocly/cli` is not a dependency of web/ (only `@redocly/openapi-core` through `openapi-typescript`, pinned by the
-lockfile), so the audit's "pin @redocly/cli" item has nothing to pin.
+`web/scripts/ci.sh` says `build` "runs lint first via prebuild"; with `ignore-scripts` it no longer does (see above).
+Please update the comment (or call `npm run lint` from `step_build`).
+
+`@redocly/cli` (used by the contract job in ci.yml, not by web/) is now pinned there to an exact version, run without
+install scripts.
