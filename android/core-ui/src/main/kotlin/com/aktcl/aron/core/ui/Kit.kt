@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -23,7 +23,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -31,7 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /** Minimum touch target everywhere in the kit (docs/24 s5.6: 48 dp). */
-val MinTouch = 48.dp
+val MinTouch = AronTokens.Touch.Min
 
 /** Primary action: full width, at least 48 dp tall, the label wraps (never truncates) at large font scales. */
 @Composable
@@ -40,8 +43,8 @@ fun AronPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Primary),
-        shape = RoundedCornerShape(50),
-        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+        shape = AronTokens.ButtonShape,
+        contentPadding = PaddingValues(horizontal = AronTokens.Space.Xl, vertical = AronTokens.Space.M),
     ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge) }
 }
 
@@ -52,9 +55,9 @@ fun AronSecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = 
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.fillMaxWidth().heightIn(min = MinTouch),
-        shape = RoundedCornerShape(50),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        shape = AronTokens.ButtonShape,
+        border = BorderStroke(AronTokens.Hairline, MaterialTheme.colorScheme.primary),
+        contentPadding = PaddingValues(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M),
     ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge) }
 }
 
@@ -69,9 +72,9 @@ fun AronListRow(
 ) {
     val click = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier
     Row(
-        modifier = modifier.fillMaxWidth().then(click).heightIn(min = MinTouch).padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = modifier.fillMaxWidth().then(click).heightIn(min = MinTouch).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -79,7 +82,7 @@ fun AronListRow(
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if (trailing != null) Text(trailing, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.End)
+        if (trailing != null) Text(trailing, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.End, maxLines = 1, softWrap = false)
     }
 }
 
@@ -96,7 +99,7 @@ fun AronBanner(text: String, modifier: Modifier = Modifier, kind: BannerKind = B
     }
     val click = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier
     Surface(color = bg, contentColor = fg, modifier = modifier.fillMaxWidth().then(click)) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.heightIn(min = MinTouch).padding(horizontal = 16.dp, vertical = 12.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.heightIn(min = MinTouch).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M))
     }
 }
 
@@ -105,20 +108,20 @@ fun AronBanner(text: String, modifier: Modifier = Modifier, kind: BannerKind = B
 fun OfflineBanner(modifier: Modifier = Modifier) =
     AronBanner(androidx.compose.ui.res.stringResource(R.string.core_ui_offline_mode), modifier, BannerKind.Warning)
 
-/** One tile of the home grid: [label] under a [badge] count (hidden when 0) on a 48 dp+ target. */
+/** One tile of the home grid: [label] with a [badge] count below it (hidden when 0) on a 48 dp+ target. */
 @Composable
 fun AronTile(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Int = 0, enabled: Boolean = true) {
-    GlassSurface(
-        modifier = modifier.heightIn(min = 88.dp).clickable(enabled = enabled, role = Role.Button, onClick = onClick),
-    ) {
-        Box(Modifier.fillMaxWidth().heightIn(min = 88.dp).padding(8.dp), contentAlignment = Alignment.Center) {
-            Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 3)
+    GlassSurface(modifier = modifier.heightIn(min = 88.dp), onClick = onClick, enabled = enabled) {
+        Column(
+            Modifier.fillMaxWidth().heightIn(min = 88.dp).padding(AronTokens.Space.S),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs, Alignment.CenterVertically),
+        ) {
+            Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
             if (badge > 0) {
-                Surface(
-                    modifier = Modifier.align(Alignment.TopEnd).sizeIn(minWidth = 24.dp, minHeight = 24.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.error,
-                ) { Text(localizedNumber(badge.toLong()), color = MaterialTheme.colorScheme.onError, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) }
+                Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = MaterialTheme.colorScheme.error) {
+                    Text(localizedNumber(badge.toLong()), color = MaterialTheme.colorScheme.onError, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.S, vertical = AronTokens.Space.Xs))
+                }
             }
         }
     }
@@ -128,9 +131,9 @@ fun AronTile(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, 
 @Composable
 fun <T> AronTileGrid(items: List<T>, columns: Int, modifier: Modifier = Modifier, tile: @Composable (T, Modifier) -> Unit) {
     require(columns > 0)
-    Column(modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxWidth().padding(AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
         items.chunked(columns).forEach { rowItems ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 rowItems.forEach { tile(it, Modifier.weight(1f)) }
                 repeat(columns - rowItems.size) { Box(Modifier.weight(1f)) }
             }
@@ -159,18 +162,20 @@ fun AronStepper(
             enabled = value > min,
             modifier = Modifier.sizeIn(minWidth = MinTouch, minHeight = MinTouch).semantics { contentDescription = minusLabel },
             contentPadding = PaddingValues(0.dp),
-        ) { Text("−", style = MaterialTheme.typography.titleLarge) }
+        ) { Text("−", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clearAndSetSemantics { }) }
         Text(
             localizedNumber(value.toLong()),
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
-            modifier = Modifier.width(64.dp),
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.widthIn(min = 64.dp).padding(horizontal = AronTokens.Space.S).semantics { liveRegion = LiveRegionMode.Polite },
         )
         OutlinedButton(
             onClick = { onValueChange((value + step).coerceAtMost(max)) },
             enabled = value < max,
             modifier = Modifier.sizeIn(minWidth = MinTouch, minHeight = MinTouch).semantics { contentDescription = plusLabel },
             contentPadding = PaddingValues(0.dp),
-        ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+        ) { Text("+", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clearAndSetSemantics { }) }
     }
 }
