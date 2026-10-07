@@ -11,6 +11,8 @@ import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.authenticated
 import com.aktcl.aron.backend.platform.principal
+import com.aktcl.aron.backend.platform.RateLimiter
+import com.aktcl.aron.backend.platform.toProblem
 import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
@@ -45,6 +47,11 @@ class AuthDeps(
 
 /** Mounts the auth endpoints of this build under /v1 (contract tag `auth`). */
 fun Route.authRoutes(d: AuthDeps) {
+    // docs/21 s6.1 (AUD-SEC-02): at most 20 refreshes per hour per phone, counted against the device the token's
+    // family is bound to and only after its proof verified (a spoofed X-Device-Id never spends a real phone's budget);
+    // every call, junk included, also counts against its caller's IP class (checker findings 2 and 3).
+    val refreshPerDevice = RateLimiter(20, 3_600, d.clock)
+    val refreshPerIpClass = RateLimiter(600, 60, d.clock)
     route("/auth") {
         post("/login") {
             val req = call.receiveStrict(LoginRequest.serializer())
@@ -53,7 +60,13 @@ fun Route.authRoutes(d: AuthDeps) {
         }
         post("/refresh") {
             val req = call.receiveStrict(RefreshRequest.serializer())
-            val pair = withContext(Dispatchers.IO) { refresh(call, req, d) }
+            val ip = refreshPerIpClass.tryAcquire("ip:" + LoginService.ipClass(call.clientIp(d.trustedFrontDoorId)))
+            if (!ip.allowed) throw ip.toProblem("too many refreshes; retry later")
+            val pair = withContext(Dispatchers.IO) {
+                refresh(call, req, d) { deviceId ->
+                    refreshPerDevice.tryAcquire("d:$deviceId").let { if (!it.allowed) throw it.toProblem("too many refreshes from this phone; retry later") }
+                }
+            }
             val web = req.refresh_token == null
             call.respond(if (web) call.webCookie(pair.refresh_token, pair.refresh_expires_at).let { pair.copy(refresh_token = null) } else pair)
         }
@@ -129,7 +142,8 @@ private fun logout(call: ApplicationCall, p: com.aktcl.aron.backend.platform.Aro
     if (p.isPhone) grants.forEach { g -> d.refresh.revokeDeviceGrant(p.userId, p.deviceId, p.deviceUuid, g, RefreshService.REASON_LOGOUT) }
 }
 
-private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps): TokenPair {
+/** [proven] is called with the family's device id once the phone's grant and proof checks passed (per-phone limit). */
+private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps, proven: (Long) -> Unit = {}): TokenPair {
     val token = req.refresh_token ?: call.request.cookies["aron_rt"]
         ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "refresh_token is required", errors = listOf(FieldError("/refresh_token", "required")))
     val grant = if (req.grant == "upload") Grant.UPLOAD else Grant.FULL
@@ -157,6 +171,7 @@ private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps): To
         }
         // Dev database (require_enrolled false): a phone with no usable key (none, or the seed's placeholder) is bound
         // by device_id and X-Device-Id only (DECISIONS.md).
+        proven(fam.deviceId!!)
         if (device != null && grant == Grant.FULL) {
             when (device.state) {
                 "suspended" -> throw ApiProblem(ProblemCode.ERR_DEVICE_SUSPENDED)

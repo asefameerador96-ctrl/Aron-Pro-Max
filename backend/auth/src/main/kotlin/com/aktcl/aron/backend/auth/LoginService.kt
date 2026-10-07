@@ -49,9 +49,22 @@ class LoginService(
     /** Device binding by OTP (F-SYS-003); null where a test wires no database. */
     private val binds: BindStore? = null,
     private val otpSealer: OtpSealer? = null,
+    /**
+     * Argon2 capacity for web logins, apart from [limiter] (AUD-SEC-02): a web login needs no enrolled device, so an
+     * anonymous flood of web logins must never take the hash slots the 07:00 phone wave needs.
+     */
+    private val webLimiter: HashLimiter = HashLimiter(concurrency = 1, queueMax = 8),
 ) {
     private val perUsername = RateLimiter(10, 15 * 60, clock)
     private val perDevice = RateLimiter(30, 15 * 60, clock)
+    /**
+     * Logins that need no enrolled device, before any hashing (AUD-SEC-02). Web: per caller IP class first, so one
+     * address cannot keep everyone else out, then a replica-wide backstop (the WAF per-IP limit is a final-account
+     * item). Phones unknown to the server (only where `cfg.device.require_enrolled` is off): a backstop of their own,
+     * never per IP (phones share carrier-NAT addresses).
+     */
+    private val webPerIpClass = RateLimiter(30, 60, clock)
+    private val anonGlobal = RateLimiter(300, 60, clock)
 
     suspend fun login(req: LoginRequest, ctx: LoginContext): LoginResponse {
         val now = clock.now()
@@ -78,9 +91,13 @@ class LoginService(
         req.device_uuid?.let { d -> perDevice.tryAcquire("d:$d").let { if (!it.allowed) throw it.toProblem("too many logins from this device") } }
 
         val device = if (phone) checkDevice(req.device_uuid!!) else null
+        // Only a phone the server knows hashes in the phones' pool; everyone else in the small anonymous one.
+        val enrolled = phone && device != null
+        if (!phone) webPerIpClass.tryAcquire("ip:" + ipClass(ctx.clientIp)).let { if (!it.allowed) throw it.toProblem("too many logins from this address; retry later") }
+        if (!enrolled) anonGlobal.tryAcquire(if (phone) "phone" else "web").let { if (!it.allowed) throw it.toProblem("too many logins; retry later") }
 
         val user = users.findByUsername(username)
-        val ok = limiter.run { hasher.verify(user?.passwordHash ?: hasher.dummyHash, req.password) } && user?.passwordHash != null
+        val ok = (if (enrolled) limiter else webLimiter).run { hasher.verify(user?.passwordHash ?: hasher.dummyHash, req.password) } && user?.passwordHash != null
         if (!ok || user == null) {
             val n = lockouts.recordFailure(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_window_min").toLong()))
             if (n >= config.int("cfg.auth.lockout_attempts")) {

@@ -141,6 +141,33 @@ resource resourceHealth 'Microsoft.Insights/activityLogAlerts@2020-10-01' = {
   }
 }
 
+// Activity-log alerts are stateless: they never send "Resolved". This companion mails when a resource that was
+// Unavailable or Degraded is Available again, so a transient event (2026-10-07 13:11, Front Door during a deploy) is
+// closed in the inbox too.
+resource resourceHealthRecovered 'Microsoft.Insights/activityLogAlerts@2020-10-01' = {
+  name: '${namePrefix}-resource-health-recovered'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'A resource in this group is Available again after being Unavailable or Degraded (closes aron-*-resource-health). Owner: infra lane. Runbooks: RB-01 (apps), RB-02 (database).'
+    enabled: true
+    scopes: [resourceGroup().id]
+    condition: {
+      allOf: [
+        { field: 'category', equals: 'ResourceHealth' }
+        { field: 'properties.currentHealthStatus', equals: 'Available' }
+        {
+          anyOf: [
+            { field: 'properties.previousHealthStatus', equals: 'Unavailable' }
+            { field: 'properties.previousHealthStatus', equals: 'Degraded' }
+          ]
+        }
+      ]
+    }
+    actions: { actionGroups: [{ actionGroupId: actionGroupId }] }
+  }
+}
+
 resource serviceHealth 'Microsoft.Insights/activityLogAlerts@2020-10-01' = if (enableServiceHealthAlert) {
   name: '${namePrefix}-service-health'
   location: 'global'

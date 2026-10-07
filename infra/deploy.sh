@@ -256,13 +256,18 @@ if diff:
 sys.exit(1 if diff else 0)
 PY
 }
+# The commit main.bicep was last applied from (tag on the aron-infra deployment). The infra stage is skipped when
+# nothing in infra_paths changed since THAT commit; the live api commit is only the fallback, because it does not
+# advance while a later stage fails (2026-10-07: every INT push re-applied main.bicep while dblogins failed).
+infra_sha="$(az deployment group show -g "$RG" -n aron-infra --query 'tags."aron-sha"' -o tsv 2>/dev/null || true)"
+[[ "$infra_sha" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "${infra_sha}^{commit}" 2>/dev/null || infra_sha="$deployed_sha"
 skip_infra=false
 if [ -n "$ROLLBACK_SHA" ]; then
   # A rollback changes images only; the infrastructure stays as the newest commit left it.
   [ -n "$previous" ] || die "rollback needs a previous successful infra deployment (aron-infra) in $RG"
   skip_infra=true
-elif [ "${FORCE_INFRA:-false}" != "true" ] && [ -n "$previous" ] && [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] \
-   && git diff --quiet "$deployed_sha" "$SHA" -- "${infra_paths[@]}" 2>/dev/null \
+elif [ "${FORCE_INFRA:-false}" != "true" ] && [ -n "$previous" ] && [[ "$infra_sha" =~ ^[0-9a-f]{40}$ ]] \
+   && git diff --quiet "$infra_sha" "$SHA" -- "${infra_paths[@]}" 2>/dev/null \
    && [ "$(az deployment group show -g "$RG" -n aron-infra --query properties.provisioningState -o tsv)" = "Succeeded" ] \
    && params_unchanged; then
   skip_infra=true
@@ -277,7 +282,7 @@ if [ "$skip_infra" != true ]; then
 fi
 
 if [ "$skip_infra" = true ]; then
-  note "infrastructure unchanged since $deployed_sha: main.bicep skipped (FORCE_INFRA=true runs it)"
+  note "infrastructure unchanged since ${infra_sha:-$deployed_sha}: main.bicep skipped (FORCE_INFRA=true runs it)"
   outputs="$previous"
 else
   kv="$(az keyvault list -g "$RG" --query "[?starts_with(name, 'kv-aron-${ENV_NAME}-')].name | [0]" -o tsv)"
@@ -300,7 +305,7 @@ else
     infra/scripts/whatif-guard.py "$whatif_file" || die "what-if shows a change the guard refuses (nothing was changed)"
   note "main.bicep (budget start $ARON_BUDGET_START_DATE)"
   outputs="$(az deployment group create -g "$RG" -n aron-infra --template-file infra/main.bicep \
-    --parameters "infra/params/${PROFILE}.bicepparam" --query properties.outputs -o json)"
+    --parameters "infra/params/${PROFILE}.bicepparam" --tags "aron-sha=${SHA}" --query properties.outputs -o json)"
   unset ARON_DB_ADMIN_PASSWORD
 fi
 REGISTRY="$(out "$outputs" registryLoginServer)"
@@ -427,6 +432,15 @@ job_logs() { # execution
     sleep 30
   done
   echo "(no console log of $1 in Log Analytics after 6 minutes)"
+  # No console output usually means the container never ran (image pull, identity, start command): the platform's
+  # system log for the execution says why (deploy run 37624445094: dblogins Failed with an empty console log).
+  q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
+     | where * contains '$1'
+     | extend line = strcat(coalesce(column_ifexists('Reason_s', ''), column_ifexists('Reason', '')), ': ',
+                            coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
+     | order by TimeGenerated asc | project TimeGenerated, line | take 50"
+  out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv 2>/dev/null || true)"
+  if [ -n "$out" ]; then echo "---- system log of $1"; echo "$out"; echo "----"; else echo "(no system log of $1 either)"; fi
 }
 if [ "$RUN_MIGRATIONS" = true ]; then
   # One more execution ONLY when the first could not open its first database connection (seen twice on 2026-10-06/07:
@@ -465,6 +479,7 @@ fi
 # Per-app least-privilege logins (infra/sql/runtime-logins.sql) must exist with the Key Vault passwords before the
 # apps switch to them. Needs the V0014/V0020 roles, so after the migrations. Runs in a rollback too (idempotent, no
 # schema change), because the apps template of the current commit may point the apps at these logins.
+dblogins_result="not run (no psql image)"
 DBLOGINS_JOB="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbLoginsJobName.value -o tsv)"
 if [ -n "$DBLOGINS_JOB" ]; then
   execution="$(az containerapp job start -g "$RG" -n "$DBLOGINS_JOB" --query name -o tsv)"
@@ -477,9 +492,30 @@ if [ -n "$DBLOGINS_JOB" ]; then
   done
   if [ "$status" != Succeeded ]; then
     job_logs "$execution"
-    die "database logins $execution ended ${status:-unknown}; the apps were NOT updated"
+    # Straight from the platform (Log Analytics had nothing for runs 37624445094, 37630304505, 37632012265): the
+    # execution record (status, start and end, replica states; env values are secret references, never values) and
+    # the container's own log stream.
+    echo "---- execution record of $execution"
+    az containerapp job execution show -g "$RG" -n "$DBLOGINS_JOB" --job-execution-name "$execution" \
+      --query "{status: properties.status, start: properties.startTime, end: properties.endTime, template: properties.template.containers[0].{image: image, command: command}}" \
+      -o jsonc 2>&1 || true
+    echo "---- container log of $execution"
+    az containerapp job logs show -g "$RG" -n "$DBLOGINS_JOB" --execution "$execution" --container dblogins --tail 100 \
+      --format text 2>&1 | tail -n 100 || true
+    echo "----"
+    per_app="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbPerAppLogins.value -o tsv 2>/dev/null || echo unknown)"
+    # tsv prints a JSON boolean as True or true depending on the CLI version; anything but false counts as on.
+    if [ "${per_app,,}" != false ]; then
+      die "database logins $execution ended ${status:-unknown}; the apps use these logins, so they were NOT updated"
+    fi
+    # dbPerAppLogins is off: the apps still connect as the admin login and never use these logins, so a failure here
+    # must not hold back the apps. It stays visible (warning, summary row) until the job passes.
+    echo "::warning::database logins $execution ended ${status:-unknown}; per-app logins are OFF, so the apps deploy anyway"
+    dblogins_result="FAILED (${status:-unknown}; per-app logins off, apps not affected)"
+  else
+    note "database logins succeeded"
+    dblogins_result="succeeded"
   fi
-  note "database logins succeeded"
 fi
 
 # ------------------------------------------------------------------------------------------------------ apps
@@ -549,5 +585,6 @@ summary "| API | https://${API_HOST}/v1/health |"
 summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"
+summary "| Database logins | ${dblogins_result} |"
 summary "| Migrations | ${RUN_MIGRATIONS} |"
 summary "| Budget | ${budget_line} |"
