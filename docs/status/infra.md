@@ -1,6 +1,53 @@
 # Infra lane status
 
-Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
+Updated 2026-10-07 17:40 UTC (fifth infra session).
+
+## Fifth infra session, 2026-10-07 17:40 UTC: read this first (the fourth session's handover below still applies)
+
+**Deploy run 144 (INT 4fd5c4d, 16:49 UTC) failed; dev stays on c992c9c (healthy).** Two infra defects, both fixed on
+lane/infra (needs promotion; until then every INT deploy can fail the same way):
+1. **App Insights agent download:** Maven Central answered HTTP 429 on all 5 attempts at the image build. Fix:
+   `fetch-ai-agent.sh` tries Microsoft's GitHub release of the agent after Maven Central on every attempt (the download
+   Learn documents); the same pinned SHA-256 decides (checked here: the GitHub jar is byte-identical, 93a70c8f...).
+2. **Infra stage never skipped:** `params_unchanged` passed the parameter JSON through argv; with the attestation roots
+   it exceeds the 128 KiB per-argument limit ("/usr/bin/python3: Argument list too long", deploy.sh line 248), so
+   every deploy re-applied main.bicep (and re-PUT Front Door). Fix: files instead of argv; the test reproduces the old
+   error. The first deploy after promotion should log "main.bicep skipped" when infra/ is unchanged.
+
+**Not yet seen:** the dblogins probe (zj, 0cd495f) and the worker without the signing key (9114b63) are NOT on INT yet
+(checked 17:00); run 144 stopped before dblogins. Read probe A/B in the first deploy after they land (guide below).
+
+**Built this session (lane/infra):**
+- **N-062 observability:** log alerts `syncErrors` (aron.sync.* errors) and `aggregationStuck` (3+ aggregation worker
+  errors in 15 min), over `union traces, exceptions` (the Java agent sends errors with a throwable to `exceptions`),
+  evaluated every minute (ingestion 1 to 3 min + 1 min evaluation: inside 5 minutes in practice, not guaranteed);
+  shared ops workbook "Aron operations (appi-aron-dev)" (sync volume/5xx/p95, errors by logger, aggregation failures,
+  slow endpoints, latest errors) with release annotations on its charts; `infra/scripts/release-marker.sh` writes a
+  release annotation (Category Deployment) after the health gate, never fails the deploy. Budget alert: present in
+  code; on dev Azure reports the cost policy off, so no budget exists (warning in every run, owner's billing setting).
+  Opus checker: 1 defect (showAnnotations placement), fixed; notes taken (a stopped worker raises no alert: add a
+  no-telemetry alert later; dev-lite has log alerts off, so the proof runs in the dev profile). **Proof still to run on
+  dev:** a seeded sync error and a seeded aggregation failure, each alerting within 5 minutes and visible in the workbook.
+- **drill.sh** picks the profile server by the `aron-infra` output `postgresServerName` (handover item 6 done).
+- **Bookkeeping:** infra rows built on Day 3 recorded in infra.csv by their backlog ids (proofs still open are named
+  in each note); `tools/my-rows.py infra --todo` now lists only N-062 (proof), N-064 (Day 7).
+- **N-057:** already built as parameters (autoscale, read replica, pools; on only in stage/prod); load-test acceptance
+  is a final-account item.
+
+**Wall-clock gate (task 3):** no infra or workflow script depends on it. The scan reads only Kotlin/Java test sources
+(backend, android, shared, db); infra tests are Python/shell and read no clock to decide pass/fail (date calls in
+infra/scripts are runtime timestamps, lock deadlines and drill names). The flip to `--blocking` on 2026-10-09 is a
+one-line ci.yml edit (`wallclock-scan.py --blocking .`); offenders are backend's.
+
+**Governance:** `tools/github-governance.ps1` already requires "Repository gates (secrets, migrations, contract)"; the
+live protection on main still lists "Contract lint" until someone with admin rights re-runs the protection step
+(laptop session, before the first gate pull request). Not a blocker today.
+
+**N-064 (Day 7) plan:** signed release APKs already come from ci.yml on INT (`aron-release-signed-dev-<run>`);
+release-app.yml stays inert until the final account. Left: a release manifest (versions, SHA-256, api/web digests),
+upload to the admin release store (F-ADM-027) and the install/upgrade proof on enrolled phones (owner's hands).
+
+Restore drill: still only after "owner approved restore drill".
 
 ## HANDOVER (fourth cloud infra session -> next), 2026-10-07 16:55 UTC: read this first
 
