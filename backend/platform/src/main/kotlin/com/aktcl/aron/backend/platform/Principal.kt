@@ -12,7 +12,9 @@ object Audience {
     const val UPLOAD = "aron-upload"
     const val BIND = "aron-bind"
     const val MFA = "aron-mfa"
-    val ALL = setOf(API, UPLOAD, BIND, MFA)
+    /** Web `password_change_required` login: 10 min, accepted only by POST /v1/auth/change-password (R15, R18). */
+    const val PWCHANGE = "aron-pwchange"
+    val ALL = setOf(API, UPLOAD, BIND, MFA, PWCHANGE)
 }
 
 /** The verified caller, built only from a signed access token (docs/24 s8.2). Identity is never read from a body. */

@@ -66,3 +66,20 @@ data class TaskEventPayload(
     val event: String,
     val note: String? = null,
 )
+
+/** Contract `MediaMetaPayload` (android-sys request media-meta); `mime` is always `image/jpeg`, `fix` may be null. */
+@Serializable
+data class MediaMetaPayload(
+    val purpose: String,
+    @SerialName("ref_type") val refType: String,
+    @SerialName("ref_client_uuid") val refClientUuid: String,
+    val sha256: String,
+    val phash: String? = null,
+    val bytes: Int,
+    val width: Int,
+    val height: Int,
+    val mime: String,
+    @SerialName("blob_path") val blobPath: String,
+    @SerialName("taken_at") val takenAt: String,
+    @Serializable(with = GeoFixWire::class) val fix: GeoFix? = null,
+)

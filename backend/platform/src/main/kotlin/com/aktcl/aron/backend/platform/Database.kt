@@ -29,7 +29,8 @@ class Database(val write: DataSource, val read: DataSource = write) : AutoClosea
     companion object {
         fun jdbiFor(ds: DataSource): Jdbi = Jdbi.create(ds).installPlugin(KotlinPlugin())
 
-        fun pool(url: String, user: String?, password: Secret?, maxSize: Int, name: String, readOnly: Boolean = false): HikariDataSource =
+        /** [connectionTimeoutMs] stays 5 s for the api and worker (requests fail fast); only the migrate pool waits longer. */
+        fun pool(url: String, user: String?, password: Secret?, maxSize: Int, name: String, readOnly: Boolean = false, connectionTimeoutMs: Long = 5_000): HikariDataSource =
             HikariDataSource(
                 HikariConfig().apply {
                     jdbcUrl = url
@@ -39,7 +40,7 @@ class Database(val write: DataSource, val read: DataSource = write) : AutoClosea
                     minimumIdle = 1
                     poolName = name
                     isReadOnly = readOnly
-                    connectionTimeout = 5_000
+                    connectionTimeout = connectionTimeoutMs
                     validationTimeout = 2_000
                     // No session state (the api pool goes through PgBouncer transaction pooling): every SQL statement
                     // binds timestamptz values and names Asia/Dhaka explicitly where a business date is derived.
@@ -57,9 +58,19 @@ class Database(val write: DataSource, val read: DataSource = write) : AutoClosea
 
 /** Flyway migrate from classpath:db/migration (the `migrate` role, docs/24 s6.1). Forward-only; validates checksums. */
 object Migrator {
-    fun migrate(ds: DataSource): Int =
+    /** Connection timeout of the migrate role's pool: a fresh job replica may need a while for its first connection. */
+    const val MIGRATE_CONNECTION_TIMEOUT_MS = 30_000L
+
+    /**
+     * [connectRetries] retries the first connection with Flyway's backoff (at most [connectRetriesIntervalS] apart), so a
+     * migrate job that starts before private DNS, TLS and SCRAM are ready waits instead of failing
+     * (docs/requests/backend-migrate-connect-retries.md). Any other migration failure still fails at once.
+     */
+    fun migrate(ds: DataSource, connectRetries: Int = 10, connectRetriesIntervalS: Int = 15): Int =
         Flyway.configure()
             .dataSource(ds)
+            .connectRetries(connectRetries)
+            .connectRetriesInterval(connectRetriesIntervalS)
             .locations("classpath:db/migration")
             .validateOnMigrate(true)
             .load()

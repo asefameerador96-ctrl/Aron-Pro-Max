@@ -26,6 +26,13 @@ class SessionStore(private val root: File, private val cipher: SecretCipher) {
 
     fun saveTokens(userId: Long, tokens: StoredTokens) = write(tokenFile(userId), StoredTokens.serializer(), tokens)
 
+    /** Deletes everything kept for [userId]: tokens (upload grant included), profile and offline verifier, active pointer. */
+    fun forget(userId: Long) {
+        profileByUserId(userId)?.let { profileFile(it.username).delete() }
+        tokenFile(userId).delete()
+        if (active()?.userId == userId) saveActive(null)
+    }
+
     fun active(): ActiveSession? = read(File(root, "active.bin"), ActiveSession.serializer())
 
     fun saveActive(active: ActiveSession?) {

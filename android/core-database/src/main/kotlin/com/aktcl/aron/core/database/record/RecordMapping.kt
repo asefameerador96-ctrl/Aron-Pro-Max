@@ -3,6 +3,8 @@ package com.aktcl.aron.core.database.record
 import com.aktcl.aron.contract.AttendanceEventPayload
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.DeviceGeoVerdict
+import com.aktcl.aron.contract.DeviceStatusReport
+import com.aktcl.aron.contract.DeviceStatusReportWire
 import com.aktcl.aron.contract.FixDeviceState
 import com.aktcl.aron.contract.GeoFix
 import com.aktcl.aron.contract.GnssSummary
@@ -16,6 +18,7 @@ import com.aktcl.aron.contract.VisitPayload
 import com.aktcl.aron.contract.RecordType
 import com.aktcl.aron.core.database.entity.AttendanceEventEntity
 import com.aktcl.aron.core.database.entity.CaptureMeta
+import com.aktcl.aron.core.database.repo.MediaMetaCapture
 import com.aktcl.aron.core.database.entity.DaySubmitEntity
 import com.aktcl.aron.core.database.entity.DueCollectionEntity
 import com.aktcl.aron.core.database.entity.OutletChangeRequestEntity
@@ -199,6 +202,25 @@ object RecordMapping {
     fun taskEvent(e: TaskEventEntity, createdAt: String) = outbox(
         RecordType.TASK_EVENT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
         TaskEventPayload.serializer(), TaskEventPayload(e.taskUuid, e.event, e.note),
+    )
+
+    /**
+     * A phone status report (docs/24 s10.3, D24-53): its own family, rank 0, no route. There is no domain table: the outbox
+     * row is the stored record. Encoded with [DeviceStatusReportWire] so `policy_version_applied` is written even when null.
+     */
+    fun deviceStatus(clientUuid: String, meta: CaptureMeta, report: DeviceStatusReport, createdAt: String) = outbox(
+        RecordType.DEVICE_STATUS, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null), createdAt,
+        DeviceStatusReportWire, report,
+    )
+
+    /** A photo's metadata (s4.11 step 2): its own family, rank 0; the record's client_uuid IS the media uuid. */
+    fun mediaMeta(m: MediaMetaCapture, fix: GeoFixEntity?, createdAt: String) = outbox(
+        RecordType.MEDIA_META, m.mediaUuid, m.mediaUuid, 0, m.meta.copy(routeId = null, actingForUserId = null), createdAt,
+        MediaMetaPayload.serializer(),
+        MediaMetaPayload(
+            m.purpose, m.refType, m.refClientUuid, m.sha256, m.phash, m.bytes, m.width, m.height, "image/jpeg", m.blobPath, m.takenAt,
+            fix?.let(::fix),
+        ),
     )
 
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */

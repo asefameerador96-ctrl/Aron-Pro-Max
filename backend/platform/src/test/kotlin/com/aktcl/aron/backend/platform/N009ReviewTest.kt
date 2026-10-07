@@ -248,9 +248,13 @@ class N009ReviewTest {
         }
     }
 
+    /** Injected clock (infra wall-clock gate): token expiry is judged against this instant, never the real clock. */
+    private val FIXED_NOW: Instant = Instant.parse("2027-01-03T04:00:00Z")
+    private val FIXED_CLOCK = AronClock { FIXED_NOW }
+
     private fun token(
         keys: Pair<ECPrivateKey, ECPublicKey>, kid: String = "sig-1", alg: JWSAlgorithm = JWSAlgorithm.ES256,
-        iss: String = "aron", aud: List<String> = listOf("aron-api"), exp: Instant = Instant.now().plusSeconds(600),
+        iss: String = "aron", aud: List<String> = listOf("aron-api"), exp: Instant = FIXED_NOW.plusSeconds(600),
         flv: String = "sr", dvu: String? = "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10",
     ): String {
         val c = JWTClaimsSet.Builder().issuer(iss).audience(aud).subject("42").expirationTime(Date.from(exp))
@@ -263,7 +267,7 @@ class N009ReviewTest {
     @Test
     fun verifierRejectsBadTokens() {
         val pair = ecPair()
-        val v = AccessTokenVerifier(JwtKeys(pair.first, "sig-1"))
+        val v = AccessTokenVerifier(JwtKeys(pair.first, "sig-1"), FIXED_CLOCK)
         v.verify(token(pair), setOf(Audience.API)) // sanity
         val other = ecPair()
         val bad = mapOf(
@@ -272,7 +276,7 @@ class N009ReviewTest {
             "wrong iss" to token(pair, iss = "evil"),
             "wrong aud" to token(pair, aud = listOf("aron-upload")),
             "two auds" to token(pair, aud = listOf("aron-api", "aron-upload")),
-            "expired" to token(pair, exp = Instant.now().minusSeconds(1)),
+            "expired" to token(pair, exp = FIXED_NOW.minusSeconds(1)),
         )
         for ((why, t) in bad) assertFailsWith<ApiProblem>(why) { v.verify(t, setOf(Audience.API)) }
         assertFailsWith<ApiProblem>("alg none") { v.verify("eyJhbGciOiJub25lIn0.eyJpc3MiOiJhcm9uIn0.", setOf(Audience.API)) }
@@ -282,14 +286,14 @@ class N009ReviewTest {
     fun phoneFlavourTokenWithoutDeviceUuidIsRejected() {
         // docs/24 s3.2: phones must send X-Device-Id equal to dvu. A phone token without dvu skips device binding.
         val pair = ecPair()
-        val v = AccessTokenVerifier(JwtKeys(pair.first, "sig-1"))
+        val v = AccessTokenVerifier(JwtKeys(pair.first, "sig-1"), FIXED_CLOCK)
         assertFailsWith<ApiProblem> { v.verify(token(pair, flv = "sr", dvu = null), setOf(Audience.API)) }
     }
 
     @Test
     fun guardRejectsMismatchedDeviceId() = testApplication {
         val pair = ecPair()
-        val deps = AuthGuardDeps(AccessTokenVerifier(JwtKeys(pair.first, "sig-1")), { 1L }, RegistryDefaults())
+        val deps = AuthGuardDeps(AccessTokenVerifier(JwtKeys(pair.first, "sig-1"), FIXED_CLOCK), { 1L }, RegistryDefaults())
         application {
             installAronPlatform(PlatformContext(config = RegistryDefaults(), generation = { NIL_GENERATION }))
             routing { authenticated(deps) { get("/v1/me") { call.respondText("me") } } }

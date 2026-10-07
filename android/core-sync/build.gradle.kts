@@ -14,6 +14,9 @@ dependencies {
     implementation(project(":android:core-network"))
     api(project(":shared:contract")) // SyncScheduler exposes SyncTrigger
     implementation(project(":android:core-session"))
+    // Device status and integrity wiring (docs/requests/android-geo-dpc-wiring.md): the sync worker queues device_status.
+    implementation(project(":android:core-geo"))
+    implementation(project(":android:dpc"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(platform(libs.firebase.bom))
