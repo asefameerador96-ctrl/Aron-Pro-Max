@@ -112,13 +112,13 @@ class BackOfficeAndConfigV0023Test {
             listOf(
                 "cfg.auth.lockout_attempts=down", "cfg.auth.lockout_min=up", "cfg.device.lockdown_level=enum_order", "cfg.geo.max_accuracy_m=down",
                 "cfg.geo.mock_policy=enum_order", "cfg.geo.radius_m=down", "cfg.pii.export_rows_per_day=down", "cfg.pii.list_rows_per_hour=down",
-                "cfg.sale.stock_check=enum_order",
+                "cfg.sale.stock_check=enum_order", "cfg.sec.record_signature_mode=enum_order",   // V0053
             ),
             c.column("SELECT key || '=' || restrictive_dir FROM app.cfg_key WHERE restrictive_dir <> 'none' ORDER BY key"),
         )
         // enum_order means "later in bounds.enum is more restrictive": the last value must be the strictest.
         assertEquals(
-            listOf("cfg.device.lockdown_level=prod", "cfg.geo.mock_policy=block_sale", "cfg.sale.stock_check=block"),
+            listOf("cfg.device.lockdown_level=prod", "cfg.geo.mock_policy=block_sale", "cfg.sale.stock_check=block", "cfg.sec.record_signature_mode=enforce"),
             c.column("SELECT key || '=' || (bounds -> 'enum' ->> (jsonb_array_length(bounds -> 'enum') - 1)) FROM app.cfg_key WHERE restrictive_dir = 'enum_order' ORDER BY key"),
         )
     }
