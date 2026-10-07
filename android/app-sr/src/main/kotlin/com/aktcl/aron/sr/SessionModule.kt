@@ -99,6 +99,12 @@ object SessionModule {
     fun systemShell(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): SystemShell =
         SystemShell(context, components, databases)
 
+    /** F-SYS-020 updater: update check, download, install (android-sys). */
+    @Provides
+    @Singleton
+    fun updateShell(@ApplicationContext context: Context, components: SessionComponents): com.aktcl.aron.core.sync.shell.UpdateShell =
+        com.aktcl.aron.core.sync.shell.UpdateShell(context, components, com.aktcl.aron.contract.AppFlavour.SR, BuildConfig.VERSION_CODE)
+
     /** F-SYS-022 logout (docs/requests/android-sys-logout-wiring.md). */
     @Provides
     @Singleton

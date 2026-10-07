@@ -4,7 +4,10 @@ import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.bt.PrinterTransportFactory
 import com.aktcl.aron.core.printing.bt.SavedPrinter
 import com.aktcl.aron.core.printing.bt.SavedPrinterStore
+import com.aktcl.aron.core.printing.bt.SimPrinter
+import com.aktcl.aron.core.printing.doc.MemoPrint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -247,6 +250,178 @@ abstract class PrintLedgerContract {
         assertEquals(0, memoPrintCount(stuckMemo))
         listOf(outEvent, stuckEvent).forEach { e -> outboxRecords(e.clientUuid)?.let { assertEquals(1, it) } }
         assertEquals("the next print of the recovered memo is reprint 1", 1, ReprintPolicy.nextReprintNo(ledger.history(outMemo)))
+    }
+
+    // ---- Flow scenarios: `MemoPrinting` on this ledger, the production renderer and a simulated MP-58N
+    // (F-SR-031, F-SR-066, F-SR-073, F-SR-015). The paper is compared row for row with the expected rendering.
+
+    private class OnePrinter : SavedPrinterStore {
+        private var p: SavedPrinter? = SavedPrinter("00:11:22:33:44:55", "MP-58N")
+        override fun load() = p
+        override fun save(printer: SavedPrinter?) { p = printer }
+    }
+
+    /** One app process: its `PrinterManager` and its one `MemoPrinting` on the current [ledger]. */
+    private fun TestScope.process(sim: SimPrinter, reprintMax: Int = 5): MemoPrinting {
+        val pm = PrinterManager(sim.factory(), OnePrinter(), backgroundScope, nowMs = { testScheduler.currentTime })
+        return MemoPrinting(pm, { ContractPaper.renderer }, ledger, { uuid() }, { 10_000 + testScheduler.currentTime }, { reprintMax }, { true })
+    }
+
+    private suspend fun MemoPrinting.memo(memo: String, m: MemoPrint, readable: Boolean) {
+        val a = printMemo(memo, m)
+        assertTrue("printed and asking: $a", a is PrintAttempt.AwaitingConfirmation)
+        confirm(a as PrintAttempt.AwaitingConfirmation, readable)
+    }
+
+    private suspend fun MemoPrinting.slip(stock: String, readable: Boolean) {
+        val a = printStockSlip(stock, ContractPaper.slip)
+        assertTrue("printed and asking: $a", a is PrintAttempt.AwaitingConfirmation)
+        confirm(a as PrintAttempt.AwaitingConfirmation, readable)
+    }
+
+    private fun SimPrinter.paper() = sessions.flatten()
+
+    @Test fun flowReprintsCarryTheMarkerAcrossARestartAndStopAtTheLimit() = runTest {
+        val memo = newMemo()
+        val sim = SimPrinter({ testScheduler.currentTime })
+        var printing = process(sim, reprintMax = 2)
+        printing.memo(memo, ContractPaper.memo, readable = true) // the original
+        val first = memoPrintedAtMs(memo)
+        assertNotNull(first)
+        assertEquals(1, memoPrintCount(memo))
+        printing.memo(memo, ContractPaper.memo, readable = false) // reprint 1, rejected: counts for nothing
+        assertEquals(1, memoPrintCount(memo))
+
+        restart() // a new process reads the count from storage, not from memory
+        printing = process(sim, reprintMax = 2)
+        printing.recover()
+        printing.memo(memo, ContractPaper.memo, readable = true) // reprint 1 again
+        printing.memo(memo, ContractPaper.memo, readable = true) // reprint 2
+        val before = sim.paper().size
+        assertEquals(PrintAttempt.LimitReached, printing.printMemo(memo, ContractPaper.memo))
+        assertEquals("a refused reprint sends nothing", before, sim.paper().size)
+
+        assertEquals(3, memoPrintCount(memo))
+        assertEquals("the first print keeps its time", first, memoPrintedAtMs(memo))
+        val h = ledger.history(memo)
+        assertEquals(listOf("memo", "memo_reprint", "memo_reprint", "memo_reprint"), h.map { it.documentKind })
+        assertEquals(listOf(PrintEvent.PRINTED, PrintEvent.FAILED_USER, PrintEvent.PRINTED, PrintEvent.PRINTED), h.map { it.outcome })
+        assertEquals(listOf(1, 2, 2, 3), h.map { it.printCount })
+        val r = ContractPaper.renderer
+        val papers = listOf(0, 1, 1, 2).map { r.memo(ContractPaper.memo.copy(reprintNo = it)).bitmap }
+        assertTrue("the marker changes the paper", !ContractPaper.same(ContractPaper.rows(papers[0]), listOf(papers[1])))
+        assertTrue("original, reprint 1 twice, reprint 2", ContractPaper.same(sim.paper(), papers))
+        assertTrue(!sim.overflowed)
+    }
+
+    @Test fun flowAnEditedMemoPrintsSupersedesAsItsOwnOriginal() = runTest {
+        val original = newMemo()
+        val edit = newMemo() // the edit is its own memo with its own number from the same series
+        val sim = SimPrinter({ testScheduler.currentTime })
+        val printing = process(sim)
+        printing.memo(original, ContractPaper.memo, readable = true)
+        printing.memo(edit, ContractPaper.edited, readable = true)
+        assertEquals(1, memoPrintCount(original))
+        assertEquals(1, memoPrintCount(edit))
+        assertEquals(listOf("memo"), ledger.history(edit).map { it.documentKind })
+        val r = ContractPaper.renderer
+        assertTrue(
+            "the supersedes line is on the paper",
+            !ContractPaper.same(ContractPaper.rows(r.memo(ContractPaper.edited).bitmap), listOf(r.memo(ContractPaper.edited.copy(supersedesMemoNo = null)).bitmap)),
+        )
+        assertTrue(
+            "the edited memo prints 'supersedes <no>' and no duplicate marker",
+            ContractPaper.same(sim.paper(), listOf(r.memo(ContractPaper.memo).bitmap, r.memo(ContractPaper.edited).bitmap)),
+        )
+    }
+
+    @Test fun flowAStockSlipFlagsItsWholeSaveAndAReprintIsMarked() = runTest {
+        val save = newStockSave(3)
+        val other = newStockSave(2)
+        val sim = SimPrinter({ testScheduler.currentTime })
+        val printing = process(sim)
+        val a = printing.printStockSlip(save.first(), ContractPaper.slip) as PrintAttempt.AwaitingConfirmation
+        save.forEach { assertTrue("paper out counts until a no", slipPrinted(it)) }
+        printing.confirm(a, false)
+        save.forEach { assertTrue("a rejected only slip clears the Save", !slipPrinted(it)) }
+        printing.slip(save.first(), readable = true)
+        printing.slip(save.first(), readable = true)
+        save.forEach { assertTrue(slipPrinted(it)) }
+        other.forEach { assertTrue("another Save is untouched", !slipPrinted(it)) }
+        assertEquals(listOf(PrintEvent.FAILED_USER, PrintEvent.PRINTED, PrintEvent.PRINTED), ledger.history(save.first()).map { it.outcome })
+        val r = ContractPaper.renderer
+        val papers = listOf(0, 0, 1).map { r.stockSlip(ContractPaper.slip.copy(reprintNo = it)).bitmap }
+        assertTrue("the marker changes the slip", !ContractPaper.same(ContractPaper.rows(papers[0]), listOf(papers[2])))
+        assertTrue("rejected, original, reprint 1", ContractPaper.same(sim.paper(), papers))
+    }
+
+    @Test fun flowAPrinterSwitchedOffNeverMarksTheMemoAndTheRetryIsTheOriginal() = runTest {
+        val memo = newMemo()
+        val sim = SimPrinter({ testScheduler.currentTime })
+        sim.on = false
+        val printing = process(sim)
+        assertTrue(printing.printMemo(memo, ContractPaper.memo) is PrintAttempt.Failed)
+        assertNull(memoPrintedAtMs(memo))
+        assertEquals(0, memoPrintCount(memo))
+        assertTrue(ledger.pending().isEmpty())
+        assertEquals(listOf(PrintEvent.FAILED), ledger.history(memo).map { it.outcome })
+        sim.on = true
+        printing.memo(memo, ContractPaper.memo, readable = true)
+        assertEquals(1, memoPrintCount(memo))
+        assertEquals("memo", ledger.history(memo).last().documentKind)
+        assertTrue("one paper, no marker", ContractPaper.same(sim.paper(), listOf(ContractPaper.renderer.memo(ContractPaper.memo).bitmap)))
+    }
+
+    @Test fun flowAKillBeforeTheAnswerKeepsThePaperAndTheNextPrintIsReprint1() = runTest {
+        val memo = newMemo()
+        val sim = SimPrinter({ testScheduler.currentTime })
+        assertTrue(process(sim).printMemo(memo, ContractPaper.memo) is PrintAttempt.AwaitingConfirmation)
+        restart() // killed while "ছাপা ঠিক আছে?" was open
+        assertNotNull("the paper-out flag was durable before the kill", memoPrintedAtMs(memo))
+        assertEquals(0, memoPrintCount(memo))
+        assertTrue(ledger.pending().single().paperOut)
+        val printing = process(sim)
+        printing.recover()
+        assertNotNull(memoPrintedAtMs(memo))
+        assertEquals(1, memoPrintCount(memo))
+        assertNull("nobody answered", ledger.history(memo).single().userConfirmed)
+        printing.memo(memo, ContractPaper.memo, readable = true)
+        assertEquals(listOf("memo", "memo_reprint"), ledger.history(memo).map { it.documentKind })
+        assertEquals(listOf(1, 2), ledger.history(memo).map { it.printCount })
+        assertEquals(2, memoPrintCount(memo))
+        val r = ContractPaper.renderer
+        assertTrue(ContractPaper.same(sim.paper(), listOf(r.memo(ContractPaper.memo).bitmap, r.memo(ContractPaper.memo.copy(reprintNo = 1)).bitmap)))
+    }
+
+    @Test fun flowARejectedOriginalWithADoubleTapRecordsOnceAndTheNextPaperIsUnmarked() = runTest {
+        val memo = newMemo()
+        val sim = SimPrinter({ testScheduler.currentTime })
+        val printing = process(sim)
+        val a = printing.printMemo(memo, ContractPaper.memo) as PrintAttempt.AwaitingConfirmation
+        printing.confirm(a, false)
+        printing.confirm(a, false) // double tap
+        printing.confirm(a, true) // a late other button
+        assertEquals(listOf(PrintEvent.FAILED_USER), ledger.history(memo).map { it.outcome })
+        assertNull(memoPrintedAtMs(memo))
+        assertEquals(0, memoPrintCount(memo))
+        printing.memo(memo, ContractPaper.memo, readable = true)
+        assertEquals("memo", ledger.history(memo).last().documentKind)
+        val original = ContractPaper.renderer.memo(ContractPaper.memo).bitmap
+        assertTrue("two unmarked papers", ContractPaper.same(sim.paper(), listOf(original, original)))
+    }
+
+    @Test fun flowWithoutConfirmationAPrintIsRecordedAtOnce() = runTest {
+        val memo = newMemo()
+        val sim = SimPrinter({ testScheduler.currentTime })
+        val pm = PrinterManager(sim.factory(), OnePrinter(), backgroundScope, nowMs = { testScheduler.currentTime })
+        val printing = MemoPrinting(pm, { ContractPaper.renderer }, ledger, { uuid() }, { 10_000 + testScheduler.currentTime }, { 5 }, { false })
+        assertEquals(PrintAttempt.Done, printing.printMemo(memo, ContractPaper.memo))
+        val e = ledger.history(memo).single()
+        assertEquals(PrintEvent.PRINTED, e.outcome)
+        assertNull(e.userConfirmed)
+        assertEquals(1, memoPrintCount(memo))
+        assertTrue(ledger.pending().isEmpty())
+        outboxRecords(e.clientUuid)?.let { assertEquals(1, it) }
     }
 
     /** `MemoPrinting` as the app builds it at start; recover() never touches the printer or the renderer. */

@@ -88,12 +88,17 @@ class ShaperOracleTest {
         val awt = Font.createFont(Font.TRUETYPE_FONT, ByteArrayInputStream(bytes)).deriveFont(otf.unitsPerEm.toFloat())
             .deriveFont(mapOf(TextAttribute.KERNING to TextAttribute.KERNING_ON, TextAttribute.LIGATURES to TextAttribute.LIGATURES_ON))
         val shaper = Shaper(otf)
+        // Glyphs without contours put no ink on paper. HarfBuzz versions differ on keeping the empty glyph the font uses
+        // for a joiner inside a cluster (the JDK 21 one kept it, the JDK 25 one drops it); the paper is the same either
+        // way, and every inked glyph after it is still compared at its absolute position.
+        fun blank(g: Int) = otf.outline(g).isEmpty()
+        for (j in listOf(0x200C, 0x200D)) assertTrue("joiner U+${Integer.toHexString(j)} must print nothing", blank(otf.glyphOf(j)))
         val failures = ArrayList<String>()
         val texts = corpus()
         for (t in texts) {
-            val want = oracle(awt, t)
+            val want = oracle(awt, t).filterNot { blank(it.first) }
             val run = shaper.shape(t)
-            val got = run.glyphs.indices.map { Triple(run.glyphs[it], run.x[it], run.y[it]) }
+            val got = run.glyphs.indices.map { Triple(run.glyphs[it], run.x[it], run.y[it]) }.filterNot { blank(it.first) }
             val same = want.size == got.size && want.indices.all { i ->
                 want[i].first == got[i].first && Math.abs(want[i].second - got[i].second) <= 1 && Math.abs(want[i].third - got[i].third) <= 1
             }

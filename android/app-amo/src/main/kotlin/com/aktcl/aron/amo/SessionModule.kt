@@ -84,6 +84,12 @@ object SessionModule {
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
     ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles) }, { scheduler })
 
+    /** F-SYS-020 updater: update check, download, install (android-sys). */
+    @Provides
+    @Singleton
+    fun updateShell(@ApplicationContext context: Context, components: SessionComponents): com.aktcl.aron.core.sync.shell.UpdateShell =
+        com.aktcl.aron.core.sync.shell.UpdateShell(context, components, com.aktcl.aron.contract.AppFlavour.AMO, BuildConfig.VERSION_CODE)
+
     /** F-SYS-022 logout (docs/requests/android-sys-logout-wiring.md). */
     @Provides
     @Singleton
