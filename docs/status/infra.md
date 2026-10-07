@@ -59,6 +59,23 @@ Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pen
 - **CI red on INT (06:10 UTC), not infra:** `:backend:config:test` `ConfigToolsTest.whatIfCountsVisitsWhoseVerdictWouldChange`
   (expected 0, was -4) in runs 293, 300 and 309; routed to the lead. The APK size failure in the same runs is fixed above.
 
+- **Semgrep triage (lead, 06:00 UTC).** The gate fails only on findings NEW since its base (Semgrep diff-aware
+  `--baseline-commit`), ERROR and WARNING only. On a lane branch the base is now the integration commit the lane last
+  merged, so another lane's landed code never counts as new; on the integration branch it is the last green head.
+
+  | Finding | File | Decision | Reason |
+  |---|---|---|---|
+  | react-insecure-request x5 | `web/e2e/config-journeys.spec.ts` | skipped (test code) | Playwright calls the local contract mock over http://127.0.0.1; test code never ships. `.semgrepignore` skips `web/e2e/`, `web/tests/`, `**/src/test/`, `*.test.ts(x)`, `*.spec.ts` (05:47 UTC push) |
+  | gcm-no-tag-length | `web/src/lib/auth/seal.ts:35` | kept, routed | tag is sliced at exactly 16 bytes, so not exploitable as written; `{ authTagLength: 16 }` asked of web (`docs/requests/web-supply-chain-gates.md`) |
+  | workflow-run-target-code-checkout | `.github/workflows/deploy.yml` | `nosemgrep` with reason | the job runs only for a green ci run of a PUSH to the integration branch, never a pull request |
+  | secrets-inherit | `.github/workflows/promote-prod.yml` | `nosemgrep` with reason | same repository; deploy.yml reads only the Azure, FCM and Maps secrets |
+  | parse warning | `.github/workflows/promote-prod.yml:87` | noted | Semgrep's bash parser does not handle that `$(( ... ))` line; a warning, not a finding, and it never fails the gate |
+
+  No rule pack was dropped.
+- **Browser uploads** (`docs/requests/web-admin-asset-upload-csp.md`): storage CORS for the web origin (Front Door
+  endpoint, or the web app address without it), PUT only, headers `x-ms-blob-type` and `content-type`; `ARON_BLOB_ORIGIN`
+  on the web app.
+
 **Dev health (05:04 UTC):** `/v1/health`, `/v1/health/ready` and web `/login` 200 through Front Door.
 
 ## Day 3 (2026-10-07): CI gates of docs/31 s2, stage profile, promotion workflows, cost reading

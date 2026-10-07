@@ -13,6 +13,8 @@ param bundlesContainer string
 param mediaEventsQueue string
 param eventGridTopicName string
 param logAnalyticsId string
+@description('Browser origins allowed to PUT to a write-only SAS URL (web admin uploads; docs/requests/web-admin-asset-upload-csp.md). Exact https origins, never a wildcard; empty = no CORS rule.')
+param uploadOrigins array = []
 
 resource st 'Microsoft.Storage/storageAccounts@2024-01-01' = {
   name: storageName
@@ -49,6 +51,19 @@ resource blobs 'Microsoft.Storage/storageAccounts/blobServices@2024-01-01' = {
   properties: {
     deleteRetentionPolicy: { enabled: true, days: 14 }
     containerDeleteRetentionPolicy: { enabled: true, days: 14 }
+    // Browser uploads: PUT only, the two headers a block-blob upload sends, the web origin(s) only. Phones are not
+    // browsers and need no CORS.
+    cors: {
+      corsRules: empty(uploadOrigins) ? [] : [
+        {
+          allowedOrigins: uploadOrigins
+          allowedMethods: ['PUT']
+          allowedHeaders: ['x-ms-blob-type', 'content-type']
+          exposedHeaders: ['etag']
+          maxAgeInSeconds: 3600
+        }
+      ]
+    }
   }
 }
 
@@ -180,3 +195,5 @@ resource diagQueue 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = 
 output storageId string = st.id
 output storageName string = st.name
 output blobEndpoint string = st.properties.primaryEndpoints.blob
+
+output blobOrigin string = 'https://${st.name}.blob.${environment().suffixes.storage}'

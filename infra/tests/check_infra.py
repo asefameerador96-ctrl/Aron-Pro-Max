@@ -915,7 +915,7 @@ class SupplyChainGates(unittest.TestCase):
         c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
         gates = c[c.index("\n  gates:"):c.index("\n  contract:")]
         for needle in ("for t in gitleaks oasdiff squawk osv-scanner; do", "tools/ci/osv-gate.py", "tools/ci/osv-allow.txt",
-                       'tools/ci/semgrep.sh "${CHECK_BASE}"', "tools/ci/install-scripts-check.py web/package-lock.json",
+                       'tools/ci/semgrep.sh "${base}"', 'base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}"', "tools/ci/install-scripts-check.py web/package-lock.json",
                        "actions/dependency-review-action@", "fail-on-severity: high"):
             self.assertIn(needle, gates)
         self.assertIn("if: github.event_name == 'pull_request'", gates[gates.index("Dependency review"):])
@@ -1040,6 +1040,22 @@ class Drills(unittest.TestCase):
         self.assertLess(d.index("trap cleanup EXIT"), d.index("az postgres flexible-server restore"))
         self.assertIn("--failover Forced", d)
         self.assertIn('die "a deploy holds the lock', d, "never during a deploy")
+
+
+class BrowserUploads(unittest.TestCase):
+    """docs/requests/web-admin-asset-upload-csp.md: CORS for the web origin only, PUT only; web knows the blob origin."""
+
+    def test_cors_and_blob_origin(self):
+        t, bound = module("main.json", "storage")
+        (blobs,) = resources_of(t, "Microsoft.Storage/storageAccounts/blobServices")
+        text = json.dumps(blobs["properties"]["cors"])
+        for needle in ("PUT", "x-ms-blob-type", "content-type", "uploadOrigins"):
+            self.assertIn(needle, text)
+        for bad in ("'*'", '"*"', "GET", "DELETE"):
+            self.assertNotIn(bad, text, "no wildcard origin, PUT only")
+        self.assertIn("endpointHost", json.dumps(bound["uploadOrigins"]))
+        web_env = json.dumps(load("apps.json")["resources"]["web"]["properties"]["template"]["containers"][0]["env"])
+        self.assertIn("ARON_BLOB_ORIGIN", web_env)
 
 
 if __name__ == "__main__":
