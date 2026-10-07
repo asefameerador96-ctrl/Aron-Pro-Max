@@ -139,3 +139,24 @@ class SaleCommitterTest {
         assertEquals(oracle, r.totals)
     }
 }
+
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [36])
+class NumberedSaleTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val db = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()
+    @After fun tearDown() = db.close()
+
+    @Test fun theRepositoryNumbersTheMemoAndTheNumbersFollowTheSpecFormat() = runTest {
+        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
+        val visit = com.aktcl.aron.core.common.ClientIds.newUuid(); val (v, f) = Fx.visit(visit); repo.recordVisitOpen(v, f)
+        val c = SaleCommitter(
+            repo, { _, _ -> error("not used with numbering") }, { _, r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" },
+            findMemo = { db.captureDao().memo(it) }, numbering = com.aktcl.aron.core.database.repo.MemoNumbering("sr334001", 0),
+        )
+        val a = c.commit(SaleDraftOps.setQuantity(Fx.draft(visit), 100, 5, QtyUnit.STICK), Fx.catalog)
+        val b = c.commit(SaleDraftOps.setQuantity(Fx.draft(visit), 100, 6, QtyUnit.STICK), Fx.catalog)
+        assertEquals("sr334001-261005-001", a.memoNo); assertEquals("sr334001-261005-002", b.memoNo)
+        assertEquals(a.memoNo, db.captureDao().memo(a.memoUuid)!!.memoNo)
+    }
+}

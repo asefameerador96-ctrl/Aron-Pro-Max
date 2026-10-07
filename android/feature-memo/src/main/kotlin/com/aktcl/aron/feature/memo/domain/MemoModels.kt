@@ -23,6 +23,10 @@ data class StoredMemo(
     val paidMtk: Long,
     val dueMtk: Long,
     val printedAtIso: String? = null,
+    /** Stored `round_adj_mtk` (never recomputed for printing). */
+    val roundAdjMtk: Long = 0,
+    /** Number of the memo this one replaced, for an edited memo. */
+    val supersedesMemoNo: String? = null,
 )
 
 data class MemoItem(val skuId: Long, val qtyBase: Long, val unitPriceMtk: Long, val grossMtk: Long)

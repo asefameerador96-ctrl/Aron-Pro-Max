@@ -263,6 +263,74 @@ class SecurityDefaults(unittest.TestCase):
 class ReliabilityProperties(unittest.TestCase):
     """The settings N-012 promises, asserted on the compiled resources (not only on the parameter files)."""
 
+    def test_postgres_zones_follow_the_live_server_after_a_failover(self):
+        # Deploy run 37608044223 failed: the forced-failover drill swapped primary (1 -> 2) and standby (2 -> 1), the
+        # template still asked for standby zone 2 and the what-if guard refused. The zones must be parameters that
+        # deploy.sh fills from the live server, with the creation defaults only when no server exists yet.
+        _, bound = module("main.json", "postgres")
+        self.assertEqual(bound["primaryZone"]["value"], "[parameters('postgresPrimaryZone')]")
+        self.assertEqual(bound["standbyZone"]["value"], "[parameters('postgresStandbyZone')]")
+        self.assertEqual(param_default("main.json", "postgresPrimaryZone"), "1")
+        self.assertEqual(param_default("main.json", "postgresStandbyZone"), "2")
+        for prof in ("dev", "dev-lite", "stage", "prod"):
+            src = (ROOT / "infra" / "params" / f"{prof}.bicepparam").read_text(encoding="utf-8")
+            self.assertIn("readEnvironmentVariable('ARON_PG_PRIMARY_ZONE', '')", src, prof)
+            self.assertIn("readEnvironmentVariable('ARON_PG_STANDBY_ZONE', '')", src, prof)
+            p = params(f"{prof}.parameters.json")
+            self.assertEqual((p["postgresPrimaryZone"], p["postgresStandbyZone"]), ("1", "2"),
+                             f"{prof}: without a live server the creation defaults apply")
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8").replace("\r\n", "\n")
+        start, end = d.index("# >>> pg-live-zones"), d.index("# <<< pg-live-zones")
+        # Exported before the parameter comparison (a swap re-runs the infra stage) and before the what-if.
+        self.assertLess(end, d.index("params_unchanged() {"))
+        self.assertLess(end, d.index("az deployment group what-if"))
+        block = d[start:end]
+        g = (ROOT / "infra" / "scripts" / "whatif-guard.py").read_text(encoding="utf-8")
+        self.assertIn('"properties.highavailability"', g, "the guard itself stays strict")
+        # The fake az below ignores --query, so the null guards that keep the tsv fields in place are checked here.
+        self.assertIn("[].[name, availabilityZone || '-', highAvailability.mode || '-', "
+                      "highAvailability.standbyAvailabilityZone || '-']", block)
+        import subprocess
+        harness = ("set -euo pipefail\n"
+                   "die() { echo \"DIE: $*\"; exit 1; }\nnote() { :; }\n"
+                   "az() { [ \"$FAKE_FAIL\" = 1 ] && return 1; printf '%b' \"$FAKE_OUT\"; }\n"
+                   "RG=rg; ENV_NAME=dev\n" + block +
+                   "echo \"P=${ARON_PG_PRIMARY_ZONE:-unset} S=${ARON_PG_STANDBY_ZONE:-unset}\"\n")
+        srv = "psql-aron-dev-7i7g53"
+        cases = [
+            # (name, az tsv output, rollback, az fails, expected)
+            ("after a failover swap (CRLF)", f"{srv}\\t2\\tZoneRedundant\\t1\\r\\n", "", "0", "P=2 S=1"),
+            ("fresh server", f"{srv}\\t1\\tZoneRedundant\\t2\\n", "", "0", "P=1 S=2"),
+            ("no server", "", "", "0", "P=unset S=unset"),
+            ("HA disabled (dev-lite)", f"{srv}\\t1\\tDisabled\\t-\\n", "", "0", "P=1 S=unset"),
+            ("SameZone", f"{srv}\\t2\\tSameZone\\t2\\n", "", "0", "P=2 S=unset"),
+            ("no zone reported", f"{srv}\\t-\\tZoneRedundant\\t1\\n", "", "0", "P=unset S=unset"),
+            ("standby zone missing: never equal to the primary", f"{srv}\\t2\\tZoneRedundant\\t-\\n", "", "0", "P=2 S=1"),
+            ("PITR drill restore and replica are ignored",
+             f"{srv}\\t2\\tZoneRedundant\\t1\\n{srv}-drill-10071200\\t1\\tDisabled\\t-\\n{srv}-r1\\t3\\tDisabled\\t-\\n",
+             "", "0", "P=2 S=1"),
+            ("rollback skips the lookup", f"{srv}\\t2\\tZoneRedundant\\t1\\n", "a" * 40, "1", "P=unset S=unset"),
+            ("az failure stops the deploy", "", "", "1", "DIE: cannot list"),
+            ("two servers of the profile stop the deploy",
+             f"{srv}\\t2\\tZoneRedundant\\t1\\npsql-aron-dev-abc123\\t1\\tDisabled\\t-\\n", "", "0", "DIE: more than one"),
+            ("standby reported in the primary zone is never asked for", f"{srv}\\t2\\tZoneRedundant\\t2\\n", "", "0", "P=2 S=1"),
+            ("given suffix with a hyphen (ARON_NAME_SUFFIX=pilot-2): exact name only",
+             f"psql-aron-dev-pilot-2\\t2\\tZoneRedundant\\t1\\n{srv}\\t1\\tDisabled\\t-\\n"
+             f"psql-aron-dev-pilot-2-drill-1\\t1\\tDisabled\\t-\\n", "", "0", "P=2 S=1", "pilot-2"),
+        ]
+        for name, out, rollback, fail, want, *suffix in cases:
+            env = dict(os.environ, FAKE_OUT=out, FAKE_FAIL=fail, ROLLBACK_SHA=rollback,
+                       ARON_NAME_SUFFIX=(suffix or [""])[0])
+            r = subprocess.run(["bash", "-c", harness], env=env, capture_output=True, text=True, cwd=ROOT)
+            self.assertIn(want, r.stdout, f"{name}: {r.stdout!r} {r.stderr!r}")
+
+    def test_psql_image_is_imported_by_digest_only(self):
+        # Deploy run 37619397240: `az acr import` refused "postgres:16-alpine@sha256:..." (a tag AND a digest).
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        m = re.search(r'^PSQL_SOURCE="([^"]+)"', d, re.M)
+        self.assertIsNotNone(m)
+        self.assertRegex(m.group(1), r"^docker\.io/library/postgres@sha256:[0-9a-f]{64}$")
+
     def test_postgres_ha_backup_and_pooling_follow_the_parameters(self):
         t, bound = module("main.json", "postgres")
         primary = [r for r in resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers") if "createMode" not in r["properties"]]
@@ -1105,25 +1173,6 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertIn("NOT ready", out)
         rc, out = self.run_failover([200, 503, 200], call_s=3, max_s="1")
         self.assertEqual(rc, 0, "a call longer than the wait limit is not a false failure: " + out)
-
-
-class PostgresZonesAfterFailover(unittest.TestCase):
-    """Deploy run 128 (12a823e): after the failover drill the what-if guard refused a standby zone move back to the
-    creation zones. deploy.sh passes the live zones, so a failover never blocks or undoes itself on the next deploy."""
-
-    def test_live_zones_are_resent(self):
-        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn("highAvailability.standbyAvailabilityZone", d)
-        self.assertLess(d.index("export ARON_PG_PRIMARY_ZONE"), d.index('note "what-if of main.bicep"'))
-        m = (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")
-        self.assertIn("primaryZone: empty(postgresPrimaryZone) ? '1' : postgresPrimaryZone", m)
-        self.assertIn("standbyZone: empty(postgresStandbyZone) ? '2' : postgresStandbyZone", m)
-        for f in ("dev", "dev-lite", "stage", "prod"):
-            p = (ROOT / "infra" / "params" / f"{f}.bicepparam").read_text(encoding="utf-8")
-            self.assertIn("readEnvironmentVariable('ARON_PG_PRIMARY_ZONE', '')", p, f)
-            self.assertIn("readEnvironmentVariable('ARON_PG_STANDBY_ZONE', '')", p, f)
-        g = (ROOT / "infra" / "scripts" / "whatif-guard.py").read_text(encoding="utf-8")
-        self.assertIn('"properties.highavailability"', g, "the guard itself stays strict")
 
 
 class AgentDownload(unittest.TestCase):

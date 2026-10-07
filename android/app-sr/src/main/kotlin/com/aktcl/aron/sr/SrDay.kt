@@ -65,6 +65,8 @@ class SrDay(
     fixManager: FixManager,
     val printerManager: com.aktcl.aron.core.printing.bt.PrinterManager,
     private val userName: String,
+    /** The phone's memo numbering (username, bind ordinal, block size) from the login; null only in previews and tests. */
+    val memoNumbering: com.aktcl.aron.core.database.repo.MemoNumbering? = null,
     /** Geo, integrity and DPC wiring (core-sync); null in previews and tests. */
     private val deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime? = null,
     /** F-SYS-092 resume config check; null in previews and tests. */
@@ -100,10 +102,14 @@ class SrDay(
     /** Reloads what device code reads synchronously (cfg.geo.* for fixes, the DPC calendar) from this user's bundle. */
     fun launchDayConfigRefresh() { deviceRuntime?.let { rt -> background.launch { rt.refreshDayConfig(userId, db) } } }
 
+    internal val database: AronDatabase get() = db
+    val userDisplayName: String get() = userName
     private val clock = components.trustedClock
     val capture = CaptureRepository(db) { iso(clock.nowMs()) }
     val reference = ReferenceRepository(db)
     val visitSession = VisitSession()
+    /** Sale, memo, summary and Sales Submit of android-sr-b on this user's database (one per day object). */
+    val sale: SrSaleKit by lazy { SrSaleKit(this, context, scheduler, ::online) }
 
     private val isoMillis = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC)
     fun iso(ms: Long): String = isoMillis.format(Instant.ofEpochMilli(ms))
@@ -180,6 +186,9 @@ class SrDay(
     }
 
     /** After a relaunch or a language switch: a committed visit with no close is the call in progress (R8). */
+    /** Re-arms uploads of photos a killed process left (WorkManager keeps the jobs, this fills gaps). */
+    suspend fun resumeMedia() { runCatching { media?.resume() } }
+
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
         val date = businessDate()
@@ -275,7 +284,33 @@ class SrDay(
     /** True while any stock row of today is not on a printed slip (Sales Submit warns on this). */
     suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
 
+    /** Outlives every screen: a print and its readable-question answer must finish even if the SR leaves Stock. */
+    private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private val _stockAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
+    val stockAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _stockAttempt.asStateFlow()
+
+    /** Today's stock rows not yet on a printed slip, read from Room (survives a kill and relaunch). */
+    suspend fun unprintedStock() = db.captureDao().stockOn(businessDate()).filter { !it.slipPrinted }
+
+    /** Prints one slip for every unprinted stock row of today; the confirmation question is answered by [answerStockPrint]. */
+    fun printUnprintedStock() {
+        printScope.launch {
+            val rows = unprintedStock()
+            if (rows.isEmpty() || _stockAttempt.value != null) return@launch
+            _stockAttempt.value = printing.printStockSlip(rows.minByOrNull { it.skuId }!!.clientUuid, stockSlip(rows))
+        }
+    }
+
+    fun answerStockPrint(a: com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation, readable: Boolean) {
+        printScope.launch { printing.confirm(a, readable); _stockAttempt.value = null }
+    }
+
+    fun closeStockAttempt() { _stockAttempt.value = null }
+
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
+
+    /** Today's day is open on this phone: attendance recorded and no Sales Submit yet (the updater's day gate, F-SYS-020). */
+    suspend fun dayOpen(): Boolean = businessDate().let { d -> db.captureDao().attendanceOn(d).isNotEmpty() && db.captureDao().daySubmitsOn(d).isEmpty() }
 
     fun visitOutlet(o: OutletEntity) = VisitOutlet(
         outletId = o.outletId, routeId = o.routeId, name = o.name, code = o.code, lat = o.lat, lng = o.lng,

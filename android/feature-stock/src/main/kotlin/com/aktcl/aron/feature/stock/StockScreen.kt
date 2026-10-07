@@ -2,6 +2,7 @@ package com.aktcl.aron.feature.stock
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronStepper
@@ -80,9 +82,11 @@ fun StockContent(
                 if (r.entered > softCeiling) AronBanner(stringResource(R.string.stk_high), kind = BannerKind.Warning)
             }
         }
-        Column(Modifier.testTag(StockTags.TOTALS)) {
-            Text(stringResource(R.string.stk_totals), style = MaterialTheme.typography.labelLarge)
-            totals.forEach { Text(stringResource(R.string.stk_total_row, categoryLabel(it.categoryCode), localizedNumber(it.issuedBase))) }
+        AronCard(Modifier.fillMaxWidth().testTag(StockTags.TOTALS)) {
+            Column(Modifier.padding(AronTokens.Space.M)) {
+                Text(stringResource(R.string.stk_totals), style = MaterialTheme.typography.labelLarge)
+                totals.forEach { Text(stringResource(R.string.stk_total_row, categoryLabel(it.categoryCode), localizedNumber(it.issuedBase))) }
+            }
         }
         when (message) {
             StockMessage.SAVED -> AronBanner(stringResource(R.string.stk_saved), Modifier.testTag(StockTags.MESSAGE), BannerKind.Info)
