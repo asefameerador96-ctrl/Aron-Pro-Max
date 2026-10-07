@@ -22,6 +22,7 @@ object TestTokens {
     }
 
     fun web(userId: Long, role: Role, sv: Long = 1, pii: Boolean = false): String {
+        // wall-clock-ok: token validity window against the app guard, which verifies with the system clock
         val now = Instant.now()
         val c = JWTClaimsSet.Builder().issuer("aron").audience("aron-api").subject(userId.toString()).claim("uname", "u$userId")
             .claim("role", role.wire).claim("sv", sv).claim("flv", "web").claim("perm", emptyList<String>()).claim("pii", pii)

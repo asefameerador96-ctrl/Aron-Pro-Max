@@ -30,5 +30,14 @@ UserScopeWrite:
             type: integer
             format: int64
             minimum: 0
+          valid_to:
+            description: 'Optional end of an acting (temporary) scope node: the exclusive end date (Asia/Dhaka business
+              date), as `UserScopeNode.valid_to` and `app.user_scope`; the node is in scope up to the day before
+              and out of scope from this date on (an acting cover whose last day is D sends D + 1). Null or omitted
+              = open-ended. After `valid_from` (400 `ERR_VALIDATION` otherwise). Returned unchanged on the read
+              (docs/24 s14a R20).'
+            oneOf:
+            - $ref: '#/components/schemas/BusinessDate'
+            - type: 'null'
     change_reason:
       $ref: '#/components/schemas/ChangeReason'
