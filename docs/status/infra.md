@@ -27,6 +27,23 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
 
+## Day 3, 14:10 UTC: Front Door health alert, infra-stage skip, recovered alert (lead)
+
+- **Front Door Sev4 alert 13:11 UTC:** fired during deploy run 37624445094, while main.bicep was applying (12:58 to 13:07)
+  and right after. main.bicep re-PUTs the Front Door profile and endpoint (modules/frontdoor.bicep) on EVERY apply, and
+  apps.bicep re-PUTs the api/web origin groups, origins and routes on every apps deploy. An identical PUT still starts
+  a Front Door configuration rollout, the likely cause of a transient Degraded event. Dev answered 200 throughout
+  later probes (lead 13:52).
+- **Infra stage skip fixed:** the skip compared infra/ with the commit live in the api, which never advanced while
+  dblogins failed, so every INT push re-applied main.bicep. main.bicep's deployment now carries the tag
+  `aron-sha=<commit>` and the skip diffs against that commit (fallback: the live api commit). The first apply after
+  this lands still runs once and writes the tag. Test `InfraStageSkip`.
+- **Alert wiring (as built):** action group `ag-aron-dev` (email, common alert schema) <- `aron-dev-resource-health`,
+  an Activity Log alert on category ResourceHealth with status Unavailable or Degraded, scoped to the resource group.
+  Activity-log alerts have no severity field, so the mail shows Azure's default Sev4, and they are stateless: **no
+  "Resolved" mail ever follows.** Added `aron-dev-resource-health-recovered` (Available after Unavailable or Degraded,
+  free) so a transient event is closed in the inbox. Metric alerts (pg-not-alive Sev1, pg-cpu Sev2, ...) do send Resolved.
+
 ## Day 3, 13:30 UTC: dev deploy reaches the database logins job
 
 Deploy run 37624445094 (c13e75d), the first with the zone fix (laptop session, 347687d) and the psql import by digest
