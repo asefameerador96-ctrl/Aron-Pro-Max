@@ -171,12 +171,12 @@ describe("export route", () => {
 });
 
 describe("export jobs (PDF)", () => {
-  it("a PDF request is a job: 303 back to the report on the public host, carrying the job id and the filters", async () => {
+  it("a PDF request is a job: 303 back to the report (relative Location), carrying the job id and the filters", async () => {
     const me = await login("tso334", "tso-pass-1");
     const res = await exportGet(new NextRequest("http://127.0.0.1:3100/api/bff/reports/qc/export?format=pdf&from=2026-10-01&to=2026-10-02", { headers: { cookie: me.cookie, host: "reports.aron.example", "x-forwarded-proto": "https" } }), { params: Promise.resolve({ slug: "qc" }) });
     expect(res.status).toBe(303);
-    const loc = new URL(res.headers.get("location")!);
-    expect(loc.origin).toBe("https://reports.aron.example");
+    const loc = new URL(res.headers.get("location")!, "http://self.invalid");
+    expect(loc.origin).toBe("http://self.invalid"); // relative Location: never follows a forwarded host
     expect(loc.pathname).toBe("/reports/qc");
     expect(loc.searchParams.get("from")).toBe("2026-10-01");
     expect(loc.searchParams.get("job")).toMatch(/^[0-9a-f-]{36}$/);
