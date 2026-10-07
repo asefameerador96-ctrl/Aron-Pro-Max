@@ -62,6 +62,27 @@ class TeamApiTest : ReportFixture() {
     }
 
     @Test
+    fun teamLocationsAreTheLastSyncedUsableFixPerSrWithAgeAndSource() = app {
+        val o = get(11, Role.TSO, "/v1/team/locations?business_date=2026-10-04").obj()
+        val items = o["items"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(2, items.size)                                                       // zone 1: sr001 and sr002 only
+        val sr1 = items.first { it["user_id"]!!.jsonPrimitive.content.toLong() > 0 && it["route_ids"]!!.jsonArray.size == 1 && it["full_name"]!!.jsonPrimitive.content == "SR One" }
+        val fix = sr1["last_fix"]!!.jsonObject
+        assertEquals("visit", fix["source"]!!.jsonPrimitive.content)                      // visit 2 (05:00Z) beats the 03:00Z check-in; the 06:00Z visit is a mock fix and is ignored
+        assertEquals(23.72, fix["lat"]!!.jsonPrimitive.content.toDouble(), 1e-9)
+        assertEquals("2026-10-04T05:00:00.000Z", fix["at"]!!.jsonPrimitive.content)
+        assertEquals(420, fix["age_min"]!!.jsonPrimitive.content.toInt())                 // 12:00Z - 05:00Z
+        // Zone narrowing, and a zone outside the reach is 403 (an unknown one too).
+        assertEquals(1, get(10, Role.ANALYST, "/v1/team/locations?zone_id=$z2&business_date=2026-10-04").obj()["items"]!!.jsonArray.size)
+        assertEquals(HttpStatusCode.Forbidden, get(11, Role.TSO, "/v1/team/locations?zone_id=$z2&business_date=2026-10-04").status)
+        assertEquals(HttpStatusCode.Forbidden, get(11, Role.TSO, "/v1/team/locations?zone_id=987654").status)
+        val z2only = get(14, Role.TSO, "/v1/team/locations?business_date=2026-10-04").obj()["items"]!!.jsonArray.single().jsonObject
+        assertEquals("check_in", z2only["last_fix"]!!.jsonObject["source"]!!.jsonPrimitive.content)
+        // An SR with no synced fix on the date shows no fix, not a stale one from another day.
+        assertNull(get(10, Role.ANALYST, "/v1/team/locations?business_date=2026-10-05").obj()["items"]!!.jsonArray.firstOrNull())
+    }
+
+    @Test
     fun teamStockIsIssuedSoldReturnedAndCurrentWithoutPhoneNumbers() = app {
         val r = get(11, Role.TSO, "/v1/team/stock?business_date=2026-10-04"); assertEquals(HttpStatusCode.OK, r.status)
         val body = r.bodyAsText()
