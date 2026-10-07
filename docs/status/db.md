@@ -97,44 +97,52 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     uuid-once. Answers `backend-core-breadcrumb-partitioning.md`.
   - Tests: `WebEntryPasswordBreadcrumbTest` (6); DbRolesTest, SchemaV1a/b adapted.
 
-## Handoff (session 2 recycled, 2026-10-07 ~11:00 UTC)
+  - `V0042`/`V0043` AUD-DA-02:
+    - Capture rows (visit, memo, due_collection, stock_movement) freeze zone and cluster, and visit and memo also the
+      outlet channel and geo class. They are always stamped on insert; a device can never choose its own context.
+      They are write-once.
+    - `app.route_zone_history`, with `app.route_zone_on(route, date)`.
+    - SCD2 `dw.dim_*_version` tables beside the type-1 dims, kept by the trigger `dw.scd2_track`. `dw.dim_user`.
+      `*_key_on` lookups. Key columns on fact_visit and fact_memo.
+    - Projector part asked of backend-reports: `docs/requests/db-backend-reports-scd2-keys.md`.
+    - Checker round 1: 1 blocker (forged context through the sync writer) and 2 should-fix, all fixed.
+  - `V0044`/`V0045` outlet_location_history bases `none`/`placeholder` without coordinates. Answers
+    `backend-core-location-history-basis.md` (answer in `db-location-history-basis-answer.md`).
+  - `OutboxCommitOrderTest` drains with bounded polls (integrator's flake report, CI run 37613735145).
+  - **Salvage branch `claude/db-s3-salvage`** (an earlier session 3) has V0039-V0045 that collide with these numbers. Its
+    DA-02 (`capture_context_route_zone_history`) is superseded by V0042/V0043 here. Still to port as V0046+ if still
+    needed after review: drop of prefix-duplicate indexes (PERF-08), outlet PII envelope columns + validate (DA-05),
+    `dw` dim_date build (PERF-07?), retention policy + archive manifest + validate (DA-06). Read each one, do not
+    cherry-pick blindly.
 
-**On lane/db (V0023-V0038), green locally on db (190) and every backend suite; Opus checker PASS per batch:**
-- `V0023`: back-office tables, price_batch (status flow + freeze), the V0007 leave fix.
-- `V0024`: R17 reshape of `cfg.sync.reconcile_types` (default, stored, pending); `outlet_fields` server-only;
-  3 print keys.
-- `V0025`/`V0026`: v1.2 device columns (NULL = unknown).
-- `V0027`: system code lists, with backend-admin's fixture clause landed in the same push.
-- `V0028`: restrictive_dir.
-- `V0029`: api_rw grants (DELETE route_planned/user_scope/mfa_secret; void UPDATE on geo_fix and stock_movement).
-- `V0030`: export log, PII budget, `cfg.pii.list_rows_per_hour` / `cfg.pii.export_rows_per_day` (TSO 5000 by role).
-- `V0031`: dw device/activity/consent facts.
-- `V0032`: bundle_snapshot.
-- `V0033`: AUD-DA-01 (outbox tx_id + horizon, dirty-key dead letter, deprecated versions refused).
-- `V0034`: `cfg.support.public_key_spki`.
-- `V0035`: SECURITY DEFINER functions search pg_temp last.
-- `V0036`: rebuild indexes, `dw.agg_daily_route_segment`, 3 catalogue events.
-- `V0037`/`V0038`: `task.route_id`, `task.cancel_reason`. Tell backend-core's session (session_01465rpZSgSrMTU8CACwuEYx)
-  if not yet done.
+## Handoff (session 3 recycled, 2026-10-07 ~13:10 UTC)
 
-The integrator promotes lane/db to INT; if CI on lane/db goes red on db or backend, it is ours.
+**On lane/db (V0039-V0046), green locally on db (200) and every backend suite; Opus checker PASS per batch.**
+INT has V0001-V0038; the integrator promotes the rest.
+- `V0039` web entry tables (backend-admin). `V0040` password_history + 3 keys (backend-core).
+- `V0041` partitioned geo_breadcrumb (backend-core).
+- `V0042`/`V0043` AUD-DA-02 (capture context, route-zone history, SCD2 dimension versions).
+- `V0044`/`V0045` location-history bases none/placeholder (backend-core).
+- `V0046` route_day acting-user index: dayStates plan becomes a BitmapOr, 0.03 ms vs 0.40 ms at 120k route-days.
+  Checker nit: in the final account, build it CONCURRENTLY if route_day already holds history.
 
 **Open asks to other lanes:**
-- `db-backend-core-config-and-device-v12.md`: ScopedConfig shape, device columns, AUD-DA-01 consumer contract.
-- `db-role-ddl-lock.md`: backend FreshDb takes the role-DDL lock.
-- `db-event-tracking-action-note.md`: tracking_action v2.
+- `db-backend-reports-scd2-keys.md` (backend-reports): zone from the capture row, fact keys, dim_user, the rebuild test.
+  This closes AUD-DA-02 point 5.
+- `db-backend-core-config-and-device-v12.md`, `db-role-ddl-lock.md`, `db-event-tracking-action-note.md`, as before.
+- backend-admin: history rows on every basis change (`db-location-history-basis-answer.md`). API notes on web entry
+  (`backend-admin-web-entry-tables.md`).
 
 **Next rows (lead's order):**
-1. The db part of infra's per-app logins, if infra asks (V0029 is the grant base).
-2. `entry_unlock` when backend-admin files it.
-3. AUD-DA-02, DA-05..08, PERF-03/07/08 (`python3 tools/my-rows.py db --todo`); hot-path EXPLAINs at docs/22 volume.
-
-Query-plan candidates:
-- `IngestService.dayStates` ORs `assigned_user_id` and `acting_user_id`; only assigned has an index.
-- `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
-- Check the `outlet_change_request` and `task (assignee_user_id, status)` indexes.
-- Add due_ledger rows to `db/perf/generate.sql`.
-- Plausible, unfixed: `task.route_id` has no index; `cancel_reason` is not tied to `status = 'cancelled'`.
+1. The infra per-app logins, if infra asks (none filed yet; V0029 is the grant base).
+2. The salvage branch `claude/db-s3-salvage` (see above): review and port PERF-08 (prefix-duplicate indexes),
+   DA-05 (outlet PII envelope), PERF-07 (dw dim_date build?) and DA-06 (retention class + archive manifest) as V0047+.
+   Its DA-02 is superseded. Then DA-07 (record the deferred M-61..M-99 objects) and PERF-03.
+3. Query-plan candidates still open:
+   - `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
+   - The `outlet_change_request` and `task (assignee_user_id, status)` indexes.
+   - due_ledger rows in `db/perf/generate.sql`.
+   - `task.route_id` has no index.
 
 **Traps:**
 - Push only to `lane/db` (not `claude/db-wip-v0023`, not INT). A pushed migration is shipped: fix forward only.
