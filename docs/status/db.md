@@ -58,6 +58,82 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     of docs/24 s12.5, JSON Schema each, published versions fixed); insert trigger refuses an uncatalogued type or
     version, a non-object payload or a missing required key. `docs/data-events.md` rendered by `DataEventsTest`.
 
+- **Enterprise-bar audit rows** (2026-10-07; Opus checker per migration):
+  - `V0020` (AUD-DA-03, TP-7, REL-03): roles `auth_rw`, `pii_reader` (outlet contact columns), `support_ro`; `web_ro`
+    and `bi_reader` read only `dw.v_*` (+ `dw.v_outlet_masked`); `app.db_role_limit` + `app.apply_login_limits()` write
+    the docs/18 timeouts onto login identities; tests with real logins (SHOW, DROP refused, 57014 cancel). Checker PASS.
+    Infra and backend asks: `docs/requests/db-runtime-roles.md` (update section).
+  - `V0021` (AUD-PERF-01): set-based client_uuid uniqueness. Measured on the docs/22-volume database (7 trading days:
+    726k outlets, 2.0 M visits, 1.7 M memos, 2.8 M lines, 25 monthly partitions), 200-row batches of visit + memo +
+    2 lines each: **66-79 ms p95 with V0007's per-row trigger, 8-16 ms p95 with V0021** (2.3-2.7 ms with no check);
+    checker independently 37.8 -> 8.5 ms. `db/perf/generate.sql`, `db/perf/ingest_batches.sql`. Checker PASS.
+  - `V0022`: `tracking_action.created` v1 catalogued (the analytics producer was refused); producer asked to drop the
+    free-text note (`docs/requests/db-event-tracking-action-note.md`).
+  - AUD-DA-04 (system code lists): built and checked (PASS after fixes) but **held**: it breaks backend-masterdata's
+    fixture (`docs/requests/db-masterdata-code-list-fixture.md`); ships as the next migration once that is idempotent.
+
+## Handoff (2026-10-07 ~05:40 UTC, session recycled at the lead's request)
+
+**Done and on INT:** V0013–V0018 (data as a product, versioned events), V0020 (roles part 2 and login limits), V0021
+(set-based uniqueness, measured), V0022 (catalogue row tracking_action.created). See "Done" above.
+
+**In progress:**
+- AUD-DA-04 code lists: built and checked, parked in `db/held/code-lists/` (README there says how to ship). Waits on
+  `docs/requests/db-masterdata-code-list-fixture.md`.
+- Hot-path query-plan review: `db/perf/generate.sql` builds the docs/22-volume database (about 8 min, about 7.4 GB:
+  `psql -d aron_perf -v days=7 -f db/perf/generate.sql` as a superuser on a migrated and seeded DB). Ingest is
+  measured (V0021). Bundle, worker and dashboard plans are not EXPLAINed yet. Candidates seen while reading the SQL:
+  - `IngestService.dayStates` filters `(assigned_user_id = :u OR acting_user_id = :u)` but only assigned has an index.
+  - `BundleService.openMemos` joins memo by client_uuid without business_date, so it probes every partition.
+  - The "parent in its own table" fallback (`SELECT count(*) FROM app.memo WHERE client_uuid = ?`) also probes every
+    partition.
+  - The bundle's `outlet_change_request` EXISTS and `task (assignee_user_id, status)` need their indexes checked.
+  - The perf DB has no due_ledger rows yet: add them to the generator before EXPLAINing the dues queries.
+
+**Next three rows (lead's order, 2026-10-07 05:00):**
+1. backend-admin blockers:
+   - `docs/requests/backend-admin-content-tables.md` (tables, plus the V0007 leave trigger bug that blocks every leave
+     decision)
+   - `backend-admin-price-batch-table.md` (`app.price_batch`; price preview and publish return 500 without it)
+   - `backend-admin-restrictive-dir.md`
+2. One config migration:
+   - Reshape `cfg.sync.reconcile_types` default (and any stored cfg_value rows) to a flat object keyed `ROLE.row` with
+     arrays of record types, e.g. `{"SR.outlet":["visit"],"SR.sale":["memo"],"SR.stock":["stock_movement"],
+     "SR.qc":["qc_line"],"SR.promotion":["memo_discount"]}`, keeping every entry.
+   - Set `cfg.bundle.outlet_fields` delivery to `server`.
+   - Add `cfg.print.confirm_after_print` (bool, true, global, device; F-SR-073), `cfg.memo.reprint_watermark`
+     (bool, true, device; F-SR-031/066) and `cfg.sale.require_printer_before_sale` (bool, false, device; F-SR-028),
+     with the same columns and permissions as the neighbouring cfg.print.* rows.
+   - Then tell backend-core in docs/requests (ScopedConfig).
+   - Do NOT add `auth.password_min_len` (lead correction: `cfg.auth.password_min_len` exists).
+3. Contract v1.2 device columns (R18): `app.device.root_hints text[]` NULL = unknown (older phone), `{}` = clean; last
+   integrity-unavailable reason and its time, NULL = never reported. Comment each column.
+
+Then: AUD-DA-01 (outbox commit order: `tx_id xid8`, consumer position `(tx_id, id)`; dirty_key attempts, last_error,
+not_before, dead_at), plus the V0018 checker follow-ups:
+- refuse deprecated event versions;
+- add a BEFORE TRUNCATE guard on `domain_event_type`;
+- make the DataEventsTest heading read "(V0017, V0018)".
+
+After that, DA-02, DA-05..08, PERF-03/07/08 (`python3 tools/my-rows.py db --todo`).
+
+**Traps:**
+- Run Gradle one invocation at a time. Concurrent runs corrupt the test results.
+- Before a full run: `rm -rf db/build/test-results`, then recreate the shared `aron_test` DB if a local migration was
+  edited (Flyway checksum).
+- The local `aron_test` login is not a superuser. Backend tests then hit two problems that CI does not have: the DROP
+  DATABASE FORCE race with autovacuum, and `session_replication_role`. For a CI-like run, use a local superuser test
+  login (`aron_su`, password set at run time, never committed).
+- Always rerun the db and all backend suites AFTER merging INT and BEFORE pushing. Other lanes add outbox producers and
+  fixtures that interact with db changes.
+- Every new migration needs `SET lock_timeout = '5s';` and must pass squawk:
+  `tools/ci/migrations-check.sh origin/<INT> <squawk>`; install squawk with `tools/ci/install-tool.sh squawk <dir>`.
+  Squawk rules: no DROP FUNCTION, no DROP DEFAULT, no VALIDATE in the same transaction.
+- A new event type needs a catalogue row (`app.domain_event_type`) before its producer ships.
+- A new table or column needs `COMMENT ON` with the metadata line, then `tools/data-dictionary/render.sh` (or
+  `-Paron.writeDictionary=true`).
+- A migration that creates a table calls `SELECT app.apply_db_role_grants();`.
+
 ## Lead rulings applied (docs/24 s14a, 2026-10-06)
 
 R1 registry hash partitioning, R2 only the s9.5 keys, R3 scope_id ordinals, R4 `_` in SKU codes: already as built.
@@ -67,7 +143,8 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 
 ## Next
 
-- Index and query-plan review at docs/22 volume (`db/perf/generate.sql`): in progress.
+- Index and query-plan review at docs/22 volume (`db/perf/generate.sql`): ingest measured (V0021); bundle, worker and
+  dashboard plans in progress. Then AUD-DA-01 (outbox commit order, dirty-key dead letter), DA-02, DA-05..08, PERF-03/07/08.
 
 - Back-office tables of docs/24 s12.1 that no db row names (`survey`, `survey_question`, `rubric`, `tutorial`,
   `print_template`, `supervisor_target`, `web_entry_*`, `qc_summary_entry`, `entry_unlock`, `dues_adjustment`,

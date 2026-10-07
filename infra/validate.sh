@@ -75,7 +75,7 @@ done
 # GitHub passes an unset repository variable as an EMPTY string: every optional variable empty must still compile.
 for p in infra/params/*.bicepparam; do
   check env AZURE_LOCATION= ARON_NAME_SUFFIX= ARON_ALERT_EMAILS= ARON_BUDGET_AMOUNT= ARON_BUDGET_START_DATE= \
-    ARON_PG_READ_REPLICA= ARON_BACKEND_IMAGE= ARON_WEB_IMAGE= ARON_DEPLOY_SERVICES= ARON_API_READINESS_PATH= \
+    ARON_PG_READ_REPLICA= ARON_BACKEND_IMAGE= ARON_BUILD_ID= ARON_MIGRATE_IMAGE= ARON_WEB_IMAGE= ARON_DEPLOY_SERVICES= ARON_API_READINESS_PATH= \
     ARON_WORKER_MIN_REPLICAS= "$BICEP" build-params "$p" --stdout >/dev/null
 done
 unset ARON_DB_ADMIN_PASSWORD

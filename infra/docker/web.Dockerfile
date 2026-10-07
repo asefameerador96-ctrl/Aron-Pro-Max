@@ -8,7 +8,8 @@ ARG NODE_IMAGE=node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017
 
 FROM ${NODE_IMAGE} AS build
 WORKDIR /src
-COPY package.json package-lock.json ./
+# .npmrc: ignore-scripts=true (AUD-SEC-05); the audit runs in CI (web job), not in the image build.
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci --no-audit --no-fund
 COPY . .
 RUN mkdir -p public
@@ -18,6 +19,9 @@ ENV NEXT_PUBLIC_MAPS_WEB_KEY=${NEXT_PUBLIC_MAPS_WEB_KEY} NEXT_TELEMETRY_DISABLED
 RUN npm run build
 
 FROM ${NODE_IMAGE}
+# Debian security fixes newer than the pinned base (the Trivy gate in ci.yml fails on a fixable CRITICAL; on
+# 2026-10-07 the newest node:22-bookworm-slim still carried three in perl-base).
+RUN apt-get update && apt-get -y upgrade && apt-get clean && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=build --chown=node:node /src/.next/standalone ./

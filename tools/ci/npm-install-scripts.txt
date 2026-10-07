@@ -1,0 +1,7 @@
+# npm packages with an install script, reviewed (AUD-SEC-05). web/.npmrc sets ignore-scripts=true, so none of these
+# scripts runs; each package was checked to work without it. tools/ci/install-scripts-check.py fails CI when
+# web/package-lock.json gains a package with an install script that is not listed here.
+# <package name>  <reviewed date>  <why it works without its script>
+esbuild        2026-10-07  binary comes from the optional @esbuild/<platform> package; the script only verifies it
+fsevents       2026-10-07  macOS-only optional dependency; never installed on Linux runners or images
+unrs-resolver  2026-10-07  native binding comes from the optional @unrs/resolver-binding-<platform> package

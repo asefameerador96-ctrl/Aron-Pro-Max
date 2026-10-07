@@ -6,7 +6,9 @@
 #   syft      1.54.1  SBOM of the container images (checksum from the release's syft_1.54.1_checksums.txt)
 #   squawk    2.67.0  PostgreSQL migration lint (the release publishes no checksum file: hash of the binary taken
 #                     2026-10-07 and pinned here, so a later swap of the asset fails the install)
-# Usage: tools/ci/install-tool.sh <gitleaks|oasdiff|squawk|syft> [bin-dir, default $RUNNER_TEMP/bin or ./.bin]
+#   osv-scanner 2.6.0 dependency vulnerability scan (checksum from the release's osv-scanner_SHA256SUMS)
+#   trivy     0.75.0  container image vulnerability scan (checksum from the release's trivy_0.75.0_checksums.txt)
+# Usage: tools/ci/install-tool.sh <gitleaks|oasdiff|squawk|syft|osv-scanner|trivy> [bin-dir, default $RUNNER_TEMP/bin]
 # Owner: infra lane.
 set -euo pipefail
 tool="${1:?tool name}"
@@ -27,6 +29,12 @@ case "$tool" in
   squawk)
     url="https://github.com/sbdchd/squawk/releases/download/v2.67.0/squawk-linux-x64"
     sha="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"; kind=bin ;;
+  osv-scanner)
+    url="https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_linux_amd64"
+    sha="ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"; kind=bin ;;
+  trivy)
+    url="https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz"
+    sha="c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"; kind=tgz ;;
   *) echo "::error::unknown tool $tool" >&2; exit 1 ;;
 esac
 

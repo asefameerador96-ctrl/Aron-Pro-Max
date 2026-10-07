@@ -68,6 +68,7 @@ fun HomeContent(
     onTile: (HomeTile) -> Unit,
     modifier: Modifier = Modifier,
     onSettings: (() -> Unit)? = null,
+    banner: String? = null,
 ) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = AronTokens.Space.M)) {
         Column(Modifier.padding(horizontal = AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
@@ -82,6 +83,7 @@ fun HomeContent(
             is BundleFreshness.Expired -> AronBanner(stringResource(R.string.hm_banner_expired, localizedNumber(freshness.ageDays.toLong())), Modifier.testTag(HomeScreenTags.BANNER), BannerKind.Error)
             BundleFreshness.Missing -> AronBanner(stringResource(R.string.hm_banner_missing), Modifier.testTag(HomeScreenTags.BANNER), BannerKind.Error)
         }
+        banner?.let { AronBanner(it, kind = BannerKind.Info) }
         if (offline) AronBanner(stringResource(R.string.hm_banner_offline), kind = BannerKind.Info)
         AronTileGrid(tiles, columns = 4) { rt, mod ->
             val needsSelling = rt.tile in SELLING_TILES
