@@ -34,4 +34,23 @@ class OtpModelTest {
         val s = OtpModel.succeeded(OtpState("1234"))
         assertTrue(s.bound); assertEquals("1234", OtpModel.enter(s, "9999").digits); assertFalse(s.canVerify)
     }
+
+    /** F-SYS-003 (lead #4): the device limit keeps the typed OTP and lets the rep verify again once a phone is freed. */
+    @org.junit.Test
+    fun theDeviceLimitKeepsTheCodeAndAllowsAnotherTry() {
+        val s = OtpModel.enter(OtpState(), "1234")
+        val failed = OtpModel.failed(s, "ERR_DEVICE_LIMIT_REACHED", false)
+        assertEquals(OtpError.DEVICE_LIMIT, failed.error)
+        assertEquals("1234", failed.digits)
+        assertTrue(failed.canVerify)
+    }
+
+    /** Checker (bind round 1, finding 2): an expired bind token sends the rep back to login instead of a retry loop. */
+    @org.junit.Test
+    fun anExpiredBindTokenAsksForANewLogin() {
+        val failed = OtpModel.failed(OtpModel.enter(OtpState(), "1234"), "ERR_TOKEN_EXPIRED", false)
+        assertEquals(OtpError.SIGN_IN_AGAIN, failed.error)
+        assertFalse(failed.canVerify)
+        assertEquals(OtpError.SIGN_IN_AGAIN, OtpModel.errorOf("http_401", false))
+    }
 }
