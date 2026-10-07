@@ -33,4 +33,6 @@ itself returned after 429 s (zone 1 -> 2).
 ## Drill
 
 Actions > **drill** > `mode: failover`, `confirm: lead approved failover drill` (dev is unavailable for about 1 to 2
-minutes; pick a quiet time). The summary gives the failover duration and the time until the api is ready again.
+minutes; pick a quiet time). The script probes `/v1/health/ready` every 5 s from BEFORE the Azure call, so the summary
+gives the user-visible outage (first failed probe to ready again) separately from the Azure call, which returns minutes
+later (429 s on 2026-10-07 for about 30 s of outage).

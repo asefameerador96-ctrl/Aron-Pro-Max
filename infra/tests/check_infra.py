@@ -651,7 +651,7 @@ class Workflows(unittest.TestCase):
 
     def test_repository_gates_run_on_every_push(self):
         c = self.text("ci.yml")
-        block = c[c.index("\n  gates:"):c.index("\n  contract:")]
+        block = c[c.index("\n  gates:"):c.index("\n  jvm:")]
         self.assertNotIn("\n    if:", block, "the gates job runs on every push and pull request")
         for needle in ("tools/ci/install-tool.sh", "tools/ci/test_gates.py", "gitleaks git --no-banner --redact --exit-code 1",
                        "--gitleaks-ignore-path tools/ci/gitleaksignore", "--config tools/ci/gitleaks.toml", "tools/ci/migrations-check.sh",
@@ -691,7 +691,14 @@ class Workflows(unittest.TestCase):
 
     def test_contract_slices_and_web_types_cannot_go_stale(self):
         c = self.text("ci.yml")
-        self.assertIn("python3 tools/slice-contract.py --check", c[c.index("\n  contract:"):c.index("\n  jvm:")])
+        self.assertIn("python3 tools/slice-contract.py --check", c[c.index("\n  gates:"):c.index("\n  jvm:")])
+        self.assertNotIn("\n  contract:", c, "contract lint is folded into the gates job (CI audit s5 item 8)")
+        gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
+        for name in re.findall(r"(?m)^    name: (.+)$", c):
+            if name.strip() != "Detect changed areas":
+                self.assertIn(f"'{name.strip()}'", gov, "every ci job is a required check on main")
+        self.assertNotIn("'Contract lint'", gov, "no required check without a job")
+        self.assertIn("tools/ci/last-green-int.sh", c, "every ci run shows the last green INT run and its age")
         self.assertIn("bash scripts/ci.sh generate", c, "web/src/contract/openapi.d.ts regenerate-and-diff")
 
     def test_data_dictionary_stays_a_required_check(self):
@@ -918,7 +925,7 @@ class SupplyChainGates(unittest.TestCase):
 
     def test_wired_into_ci(self):
         c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
-        gates = c[c.index("\n  gates:"):c.index("\n  contract:")]
+        gates = c[c.index("\n  gates:"):c.index("\n  jvm:")]
         for needle in ("for t in gitleaks oasdiff squawk osv-scanner; do", "tools/ci/osv-gate.py", "tools/ci/osv-allow.txt",
                        'tools/ci/semgrep.sh "${base}"', 'base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}"', "tools/ci/install-scripts-check.py web/package-lock.json",
                        "actions/dependency-review-action@", "fail-on-severity: high"):
@@ -1045,6 +1052,74 @@ class Drills(unittest.TestCase):
         self.assertLess(d.index("trap cleanup EXIT"), d.index("az postgres flexible-server restore"))
         self.assertIn("--failover Forced", d)
         self.assertIn('die "a deploy holds the lock', d, "never during a deploy")
+
+    def run_failover(self, codes, call_s=6, max_s="30"):
+        """Stub az (the failover call takes call_s seconds) and curl (answers the codes in order, then the last one)."""
+        import os, subprocess, tempfile
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "az").write_text(f"""#!/usr/bin/env python3
+import sys, time
+a = ' '.join(sys.argv[1:])
+if 'deployment group show' in a: print('api.example')
+elif 'group show' in a: print('')
+elif 'flexible-server list' in a: print('psql-aron-dev-x')
+elif 'highAvailability.mode' in a: print('ZoneRedundant')
+elif 'availabilityZone' in a: print('2' if 'done' in open('{t}/state').read() else '1')
+elif '--failover Forced' in a:
+    time.sleep({call_s}); open('{t}/state', 'w').write('done')
+""")
+            (Path(t) / "state").write_text("")
+            (Path(t) / "curl").write_text(f"""#!/usr/bin/env python3
+import os, sys
+c = '{t}/n'
+n = int(open(c).read()) if os.path.exists(c) else 0
+open(c, 'w').write(str(n + 1))
+codes = {codes!r}
+sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
+""")
+            for f in ("az", "curl"):
+                (Path(t) / f).chmod(0o755)
+            env = {**os.environ, "PATH": f"{t}:{os.environ['PATH']}", "DRILL_PROBE_S": "0.5", "DRILL_MAX_S": max_s}
+            env.pop("GITHUB_STEP_SUMMARY", None)
+            r = subprocess.run(["bash", str(ROOT / "infra" / "scripts" / "drill.sh"), "rg-x", "failover"],
+                               env=env, capture_output=True, text=True, timeout=120)
+            return r.returncode, r.stdout + r.stderr
+
+    def test_failover_outage_is_measured_from_before_the_call(self):
+        import re
+        rc, out = self.run_failover([200, 503, "000", "000", 200])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("primary zone: 1 -> 2", out)
+        self.assertIn("via api.example", out)
+        self.assertIn("this is NOT the outage", out)
+        m = re.search(r"user-visible outage: about (\d+) s", out)
+        self.assertTrue(m, out)
+        call = int(re.search(r"call returned after (\d+) s", out).group(1))
+        self.assertGreaterEqual(call, 5)
+        self.assertLess(int(m.group(1)), call, "the outage is the failed-probe window, not the Azure call")
+        rc, out = self.run_failover([200])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("no failed probe", out)
+        rc, out = self.run_failover([200, 503], call_s=1, max_s="4")
+        self.assertNotEqual(rc, 0, "never ready again must fail the drill")
+        self.assertIn("NOT ready", out)
+
+
+class DeviceEnrolment(unittest.TestCase):
+    """N-031 (lead #3): the api gets its public base URL and the Android key-attestation roots on every deploy."""
+
+    def test_public_url_and_attestation_roots(self):
+        src = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        self.assertIn("{ name: 'ARON_PUBLIC_API_URL', value: publicApiUrl }", src)
+        self.assertIn("{ name: 'ARON_ATTESTATION_ROOTS', value: join(attestationRootsSha256, ',') }", src)
+        roots = json.loads((ROOT / "infra" / "params" / "attestation-roots.json").read_text(encoding="utf-8"))
+        self.assertTrue(roots["source"].startswith("https://developer.android.com/"))
+        self.assertGreaterEqual(len(roots["sha256"]), 2)
+        for h in roots["sha256"]:
+            self.assertRegex(h, r"^[0-9a-f]{64}$", "the backend keeps only 64-char lower-case hex")
+        for f in ("dev", "dev-lite", "stage", "prod"):
+            p = (ROOT / "infra" / "params" / f"{f}.apps.bicepparam").read_text(encoding="utf-8")
+            self.assertNotIn("attestationRootsSha256 = []", p, "no profile turns the roots off")
 
 
 class BrowserUploads(unittest.TestCase):
