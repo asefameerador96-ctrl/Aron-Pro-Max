@@ -40,6 +40,25 @@ Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pen
 - **Per-ABI APKs, CI side.** `tools/ci/release-apks.py` accepts one APK per app or ABI splits plus the universal APK;
   size gate and signing (ci.yml, release-app.yml) use it, so android-core can enable splits without a CI change.
 
+- **Per-app logins: switch OFF (checker finding).** `api_rw` lacks DELETE on `route_planned`, `mfa_secret`, `user_scope`
+  that admin flows use; `dbPerAppLogins = false` everywhere until `docs/requests/db-runtime-roles-gaps.md` lands. The
+  logins are still created and repaired on every deploy (now with V0020 memberships, `apply_login_limits()`, per-grantor
+  revoke and an exact-membership check; a superuser-made grant stops the job with a clear message).
+- **Azure Blob SAS issuer** (`docs/requests/backend-admin-blob-sas.md`, lead item): `backend/app/.../AzureBlobSasIssuer.kt`,
+  user-delegation SAS via the api managed identity, JDK HTTP client; offline tests; full backend:app suite green.
+  Follow-up for backend-admin in the request (a stored 24 h read URL expires).
+- **SR Maps key** in the release job (lead item). **APK baseline** regenerated after N-041 (SR armeabi-v7a +18 %).
+- **AUD-DG-08**: no manual prod dispatch; governance removes the unused `staging`/`prod` environments; docs/30 s5 item 2.
+- **AUD-REL-04**: alerts api 5xx, restarts, no-replica (only where min replicas > 0), PostgreSQL not alive, Resource
+  Health for the group; Service Health written but off (`docs/requests/infra-service-health-scope.md`). Seeded-failure
+  proof still to run.
+- **AUD-TP-6**: warnings-as-errors mechanism (list empty until `docs/requests/kotlin-warnings-as-errors.md`), flaky e2e
+  reported, SeededDayLoadTest bound 5 s.
+- **AUD-REL-05**: `drill.yml` (failover: phrase "lead approved failover drill"; pitr: "owner approved restore drill",
+  copy deleted in the same run, cost in the summary), runbooks RB-02 and RB-14. Drills not run yet (approvals).
+- **CI red on INT (06:10 UTC), not infra:** `:backend:config:test` `ConfigToolsTest.whatIfCountsVisitsWhoseVerdictWouldChange`
+  (expected 0, was -4) in runs 293, 300 and 309; routed to the lead. The APK size failure in the same runs is fixed above.
+
 **Dev health (05:04 UTC):** `/v1/health`, `/v1/health/ready` and web `/login` 200 through Front Door.
 
 ## Day 3 (2026-10-07): CI gates of docs/31 s2, stage profile, promotion workflows, cost reading
