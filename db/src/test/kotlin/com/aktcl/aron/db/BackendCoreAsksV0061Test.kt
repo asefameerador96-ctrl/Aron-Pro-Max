@@ -16,6 +16,8 @@ import kotlin.test.assertTrue
  * V0061: app.media_upload (docs/requests/backend-core-media-upload-ledger.md, F-API-007).
  * V0062: outlet_confirmed_lat_lng (docs/requests/backend-core-outlet-geo-index.md, F-API-019).
  * V0063/V0064: app.device.last_sync_error (docs/requests/backend-core-device-telemetry-columns.md, F-SYS-050).
+ * V0067: cfg.app.rejected_keep_days (docs/19 s9).
+ * V0065/V0066: route_day.last_bundle_at and bundle_count (docs/requests/backend-core-route-day-downloads.md, F-SYS-025).
  * The database is migrated to V0060, loaded with the dev seed and the slice smoke outlet, then migrated forward: the
  * same path the dev database takes before the 2026-10-08 phone checks.
  */
@@ -70,7 +72,7 @@ class BackendCoreAsksV0061Test {
         assertEquals(outletsBefore, c.scalar(SEED_FINGERPRINT))
         assertEquals("1", c.scalar("SELECT count(*) FROM app.outlet WHERE code = 'SMOKE-SR-001' AND status = 'active' AND location_confirmed"))
         assertEquals("1|", c.scalar("SELECT count(*) || '|' || coalesce(max(last_sync_error), '') FROM app.device WHERE device_uuid = '$DEV_DEVICE'"))
-        assertEquals("64", c.scalar("SELECT max(version::int)::text FROM flyway_schema_history WHERE success"))
+        assertEquals("true", c.scalar("SELECT (bool_and(success) AND max(version::int) >= 66)::text FROM flyway_schema_history WHERE version IS NOT NULL"))
     }
 
     @Test
@@ -127,6 +129,33 @@ class BackendCoreAsksV0061Test {
         }
         assertEquals("true", c.scalar("SELECT has_column_privilege('api_rw', 'app.device', 'last_sync_error', 'UPDATE')::text"))
         assertEquals("t", c.scalar("SELECT convalidated::text::char FROM pg_constraint WHERE conname = 'device_last_sync_error_format'"))
+    }
+
+    @Test
+    fun routeDayCountsFullBundleDownloads() = db.connect().use { c ->
+        c.tx {
+            exec("INSERT INTO app.route_day (route_id, business_date, planned, target_frozen_at) SELECT id, DATE '2026-10-08', true, TIMESTAMPTZ '2026-10-08 08:00+06' FROM app.route WHERE code = 'MIR-SR-D'")
+            val rd = "route_id = (SELECT id FROM app.route WHERE code = 'MIR-SR-D') AND business_date = DATE '2026-10-08'"
+            assertEquals("0|", scalar("SELECT bundle_count || '|' || coalesce(last_bundle_at::text, '') FROM app.route_day WHERE $rd"))
+            // The backend's update: later downloads move the last time forward, an earlier clock never moves it back.
+            val bump = "UPDATE app.route_day SET last_bundle_at = greatest(last_bundle_at, %s), bundle_count = bundle_count + 1 WHERE $rd"
+            exec(bump.format("TIMESTAMPTZ '2026-10-08 08:00+06'"))
+            exec(bump.format("TIMESTAMPTZ '2026-10-08 13:30+06'"))
+            exec(bump.format("TIMESTAMPTZ '2026-10-08 09:00+06'"))
+            exec("SET LOCAL TIME ZONE 'Asia/Dhaka'")
+            assertEquals("3|2026-10-08 08:00:00+06|2026-10-08 13:30:00+06", scalar("SELECT concat_ws('|', bundle_count, target_frozen_at, last_bundle_at) FROM app.route_day WHERE $rd"))
+            assertEquals("23514", refused("UPDATE app.route_day SET bundle_count = -1 WHERE $rd"))
+        }
+        assertEquals("true|true", c.scalar("SELECT has_column_privilege('api_rw', 'app.route_day', 'bundle_count', 'UPDATE')::text || '|' || has_column_privilege('api_rw', 'app.route_day', 'last_bundle_at', 'UPDATE')::text"))
+        assertEquals("t", c.scalar("SELECT convalidated::text::char FROM pg_constraint WHERE conname = 'route_day_bundle_count_nonneg'"))
+    }
+
+    @Test
+    fun rejectedKeepDaysIsRegisteredAsDocs19Says() = db.connect().use { c ->
+        assertEquals(
+            "app|S|int|30|{\"max\": 90, \"min\": 7}|{global}|1|B|device|cfg.edit.ops",
+            c.scalar("SELECT concat_ws('|', area, kind, value_type, default_value::text, bounds::text, scope_levels::text, risk_class, effect, delivery, editor_permission) FROM app.cfg_key WHERE key = 'cfg.app.rejected_keep_days'"),
+        )
     }
 
     private companion object {
