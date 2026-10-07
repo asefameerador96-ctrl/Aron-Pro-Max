@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronPrimaryButton
+import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronStepper
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
@@ -25,11 +26,12 @@ object StockTags {
     const val SAVE = "stk_save"
     const val MESSAGE = "stk_message"
     const val TOTALS = "stk_totals"
+    const val PRINT = "stk_print"
     fun row(skuId: Long) = "stk_row_$skuId"
 }
 
 /** What the last Save said, shown under the list. */
-enum class StockMessage { SAVED, REFUSED_SAME_VALUES, NOTHING_ENTERED }
+enum class StockMessage { SAVED, REFUSED_SAME_VALUES, NOTHING_ENTERED, SAVE_FAILED }
 
 @Composable
 private fun categoryLabel(code: String): String = when (code) {
@@ -54,6 +56,8 @@ fun StockContent(
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
     softCeiling: Long = StockLoad.DEFAULT_SOFT_CEILING,
+    onPrint: (() -> Unit)? = null,
+    printEnabled: Boolean = true,
 ) {
     Column(modifier.fillMaxSize().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         Text(stringResource(R.string.stk_title), style = MaterialTheme.typography.headlineSmall)
@@ -84,9 +88,11 @@ fun StockContent(
             StockMessage.SAVED -> AronBanner(stringResource(R.string.stk_saved), Modifier.testTag(StockTags.MESSAGE), BannerKind.Info)
             StockMessage.REFUSED_SAME_VALUES -> AronBanner(stringResource(R.string.stk_refused), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
             StockMessage.NOTHING_ENTERED -> AronBanner(stringResource(R.string.stk_nothing), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
+            StockMessage.SAVE_FAILED -> AronBanner(stringResource(R.string.stk_save_failed), Modifier.testTag(StockTags.MESSAGE), BannerKind.Error)
             null -> Unit
         }
         if (slipNotPrinted) AronBanner(stringResource(R.string.stk_slip_not_printed), kind = BannerKind.Warning)
         AronPrimaryButton(stringResource(R.string.stk_save), onSave, Modifier.testTag(StockTags.SAVE))
+        if (onPrint != null) AronSecondaryButton(stringResource(R.string.stk_print), onPrint, Modifier.testTag(StockTags.PRINT), enabled = printEnabled)
     }
 }

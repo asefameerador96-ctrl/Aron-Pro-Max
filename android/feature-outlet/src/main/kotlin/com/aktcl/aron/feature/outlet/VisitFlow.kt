@@ -28,6 +28,9 @@ sealed interface VisitUiState {
         val refreshMax: Int,
         val forceSaleAvailable: Boolean,
         val mockWarning: Boolean,
+        /** The phone's position of the last fix, for the on-demand map (N-041); null without a fix. */
+        val phoneLat: Double? = null,
+        val phoneLng: Double? = null,
     ) : VisitUiState
 
     /** The visit row is committed; the sale may continue. */
@@ -61,6 +64,9 @@ class VisitSession {
     private val state = MutableStateFlow<OpenVisit?>(null)
     val current: StateFlow<OpenVisit?> = state.asStateFlow()
     internal fun set(v: OpenVisit?) { state.value = v }
+
+    /** Puts a visit that is already committed in the database (found after a relaunch) back as the call in progress. */
+    fun restore(v: OpenVisit) { state.value = v }
     fun close() { state.value = null }
 }
 
@@ -100,7 +106,11 @@ class VisitFlow(
 
     /** Selecting an outlet: one fix, one verdict, and a committed visit when the verdict is final. */
     suspend fun open(selected: VisitOutlet): VisitUiState = lock.withLock {
-        check(session.current.value == null) { "a visit is already open: close it first" }
+        session.current.value?.let { cur ->
+            // A second tap on the same outlet while its visit is open changes nothing; another outlet needs the first closed.
+            if (cur.outletId == selected.outletId) return@withLock VisitUiState.Open(cur)
+            error("a visit is already open: close it first")
+        }
         outlet = selected
         refreshCount = 0
         fixUuid = null
@@ -167,6 +177,7 @@ class VisitFlow(
                     refreshLeft = refreshCount < policy.refreshMax, refreshMax = policy.refreshMax,
                     forceSaleAvailable = result.action == GeoAction.FORCE_SALE,
                     mockWarning = result.warnRep,
+                    phoneLat = fix.lat.takeIf { fix.isOk }, phoneLng = fix.lng.takeIf { fix.isOk },
                 )
                 ui.value = st
                 st

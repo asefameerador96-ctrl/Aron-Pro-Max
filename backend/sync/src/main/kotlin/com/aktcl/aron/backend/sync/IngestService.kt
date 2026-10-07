@@ -3,8 +3,10 @@ package com.aktcl.aron.backend.sync
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
+import com.aktcl.aron.backend.platform.IngestRecord
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ReachResolver
+import com.aktcl.aron.backend.platform.RecordHandlers
 import com.aktcl.aron.backend.platform.ResponseJson
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.wire
@@ -67,6 +69,8 @@ class IngestService(
     private val reach: ReachResolver,
     private val clock: AronClock = AronClock.SYSTEM,
     private val generation: () -> String = { com.aktcl.aron.backend.platform.NIL_GENERATION },
+    /** Type-specific rules and side effects registered by other modules (the ingest extension point). */
+    private val handlers: RecordHandlers = RecordHandlers.NONE,
 ) {
     private val log = LoggerFactory.getLogger("aron.sync.ingest")
 
@@ -362,23 +366,42 @@ class IngestService(
             }
         }
 
-        // 10. Store.
+        // 10. Visit-kind policy (F-SYS-078): a phone books only its role's kinds; web_entry comes from the web only.
+        if (r.type == "visit") payload.str("visit_kind")?.let { k ->
+            if (k !in (DEVICE_VISIT_KINDS[ctx.up.role] ?: emptySet())) {
+                return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "visit_kind $k is not a ${ctx.up.role.wire} device kind")
+            }
+        }
+        // 11. Ledger rules (an edit names an active memo), registered handlers' own checks, then store.
+        DuesLedger.check(h, r.type, payload)?.let { (code, detail) -> return refuse(h, ctx, r, bd, code, detail) }
+        val hs = handlers.forType(r.type)
+        val ingestRec = if (hs.isEmpty()) null else IngestRecord(
+            r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now,
+        )
+        for (hd in hs) {
+            val refusal = hd.check(h, ingestRec!!) ?: continue
+            return refuse(h, ctx, r, bd, refusal.code, refusal.detail)
+        }
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
+                hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)
             }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
-            is RecordWriter.Result.Refused -> {
-                if (stored.code.status.wire == "quarantined") quarantine(h, ctx, r, bd, stored.code, stored.detail)
-                else if (stored.code.retryable == true) park(h, ctx, r, stored.code, stored.detail)
-                else finalReject(h, ctx, r, stored.code, stored.detail)
-            }
+            is RecordWriter.Result.Refused -> refuse(h, ctx, r, bd, stored.code, stored.detail)
         }
+    }
+
+    /** A refusal by the writer or a handler: the outcome code's status decides quarantine, park or final reject. */
+    private fun refuse(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String): Outcome = when {
+        code.status.wire == "quarantined" -> quarantine(h, ctx, r, bd, code, detail)
+        code.retryable == true -> park(h, ctx, r, code, detail)
+        else -> finalReject(h, ctx, r, code, detail)
     }
 
     /**
@@ -680,6 +703,16 @@ class IngestService(
         fun gunzip(b: ByteArray): ByteArray = GZIPInputStream(b.inputStream()).use { it.readBytes() }
     }
 }
+
+/**
+ * Visit kinds a field phone may upload, by the uploader's role (F-SYS-078). An AMO or TSO may also make an own sale call
+ * (`sr_call`, e.g. covering a route); `web_entry` visits are created by the Web Entry endpoint, never by a phone.
+ */
+internal val DEVICE_VISIT_KINDS: Map<com.aktcl.aron.contract.Role, Set<String>> = mapOf(
+    com.aktcl.aron.contract.Role.SR to setOf("sr_call"),
+    com.aktcl.aron.contract.Role.AMO to setOf("sr_call", "amo_control_call", "amo_joint_call"),
+    com.aktcl.aron.contract.Role.TSO to setOf("sr_call", "tso_visit"),
+)
 
 internal fun JsonObject.str(k: String): String? = (this[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
 internal fun JsonObject.long(k: String): Long? = (this[k] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull

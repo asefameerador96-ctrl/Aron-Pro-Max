@@ -73,6 +73,11 @@ object RecordWriter {
                             ?: return Result.Refused(RecordOutcomeCode.PARENT_MISSING, "visit $visit")
                         doc["qc_entry_id"] = JsonPrimitive(qc)
                     }
+                    "config_ack" -> {
+                        // The payload's config_version is the applied one; the envelope's stays the capture stamp.
+                        doc["acked_config_version"] = payload["config_version"] ?: JsonNull
+                        doc["config_version"] = env["config_version"] ?: JsonNull
+                    }
                     "device_status" -> {
                         doc["source"] = JsonPrimitive("record")
                         doc["report"] = JsonObject(payload.filterKeys { it != "play_integrity" })

@@ -1,6 +1,46 @@
 # Infra lane status
 
-Updated 2026-10-07 (Day 3, morning, Dhaka midday).
+Updated 2026-10-07 (Day 3, afternoon Dhaka; replacement infra session).
+
+## Day 3 afternoon (replacement session): deploy safety, supply-chain gates, per-app database logins
+
+Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pending findings; all fixed or noted):
+
+- **AUD-DG-07, AUD-DG-06, AUD-REL-06, AUD-DG-04 (deploy safety).** `infra/deploy.sh`:
+  - The ordering guard re-reads the live commit (the api's `ARON_BUILD`) right before the migrations and the apps,
+    so a newer live commit makes the run exit 0 "Skipped". A re-run of the live commit always deploys fully, so the
+    health gate runs again.
+  - Each image is pushed once, its tag locked (`--write-enabled false`), and deployed **by digest**. A re-run or a
+    rollback reuses the registry image. `acr-purge.yml` (weekly, `infra/scripts/acr-purge.sh`) keeps the newest 30
+    tagged images per repository, anything younger than 3 days and anything in use; untagged manifests are never touched.
+  - Health gate (`infra/scripts/smoke.sh`): `build` must equal the commit, `/v1/health/ready` 200 (the response is
+    printed when not), web `/login` 200. Behavioural tests with a stub curl (retry while the old build answers).
+  - Rollback: deploy dispatch input `rollback_sha` (own concurrency group): earlier integration commit only, no build,
+    no migrations, no infra stage, migrate job stays on the newest image. Runbooks: `docs/runbooks/` (RB-01 deploy part,
+    RB-14 migration part); dev rollback drill not yet run.
+  - PITR restore point written to the summary before the migrations. `ARON_DEPLOY_FREEZE_DHAKA` (unset until real
+    users) refuses deploys in a Dhaka window, re-checked before migrations and apps, wraps midnight.
+  - api `activeRevisionsMode` is a parameter: Single in dev and dev-lite (unchanged), Multiple in stage and prod, where a
+    failed gate puts traffic back on a serving revision of another build. Proven only in the final account.
+- **AUD-SEC-05 + scanning (lead item 2).** In ci.yml, job names unchanged: OSV-Scanner 2.6.0 on `web/package-lock.json`
+  (high or critical in a production dependency fails; dev-only and unknown severity warn; dated allow file),
+  Semgrep 1.179.0 (image by digest; Kotlin, TypeScript, React, Next.js, Actions, Dockerfile packs; only findings NEW since
+  the gate base fail; test code skipped), `npm audit --omit=dev --audit-level=high`, Trivy 0.75.0 on both images
+  (fixable CRITICAL fails), dependency-review on pull requests, `web/.npmrc ignore-scripts=true` with a reviewed list
+  (`tools/ci/npm-install-scripts.txt`) enforced by a lockfile check, `@redocly/cli` pinned to 2.59.0. The web runtime
+  image now takes Debian security updates (the newest node:22-bookworm-slim carries three fixable perl-base criticals).
+  Existing Semgrep finding routed to web: `docs/requests/web-supply-chain-gates.md` (GCM tag length).
+- **Per-app database logins (`docs/requests/db-runtime-roles.md`).** `infra/sql/runtime-logins.sql` (idempotent,
+  exactly one membership, INHERIT, never superuser/CREATEROLE/BYPASSRLS, passwords via `\getenv`, never echoed),
+  run by the new `dblogins` job (psql image imported into ACR by digest) after the migrations and before the apps.
+  api connects as `app_api` (api_rw), worker as `app_jobs` (jobs_rw ⊇ worker_rw); migrate keeps the admin login.
+  `infra/scripts/db-login-secrets.sh` generates the passwords once and derives the URLs from the Bicep admin URLs.
+  CI image smoke runs the same SQL and boots api/worker on those logins. Proven locally on PostgreSQL 16 with a
+  non-superuser admin (as on Azure); first proof on Azure is the next dev deploy. No PostgreSQL server setting changed.
+- **Per-ABI APKs, CI side.** `tools/ci/release-apks.py` accepts one APK per app or ABI splits plus the universal APK;
+  size gate and signing (ci.yml, release-app.yml) use it, so android-core can enable splits without a CI change.
+
+**Dev health (05:04 UTC):** `/v1/health`, `/v1/health/ready` and web `/login` 200 through Front Door.
 
 ## Day 3 (2026-10-07): CI gates of docs/31 s2, stage profile, promotion workflows, cost reading
 

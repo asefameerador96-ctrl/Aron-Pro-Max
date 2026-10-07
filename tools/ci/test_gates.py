@@ -6,6 +6,11 @@ Each gate is proven to FAIL on a deliberate violation and to pass on a clean inp
   migrations-check.sh   an edited, a deleted, a duplicate and an out-of-order migration fail; a new one passes
   contract-breaking.sh  a breaking change fails; with an info.version bump and a request file it passes (needs oasdiff)
   gitleaks.toml         a token fails anywhere except the generated contract/slices/ (needs gitleaks)
+  osv-gate.py           a high in a production dependency fails; dev-only warns; a dated allow line passes, an
+                        expired one does not; the real web lockfile scanned by osv-scanner (when installed)
+  release-apks.py       one APK per app or per-ABI splits both list correctly; a missing universal APK or an
+                        unknown file name fails
+  install-scripts-check.py  a new package with an install script fails; the reviewed ones pass
 Binaries: OASDIFF and SQUAWK (paths) or on PATH; a test that needs a missing binary is skipped, never faked.
 """
 import json
@@ -242,6 +247,110 @@ paths:
         rc, out = self.check()
         self.assertEqual(rc, 0, out)
         self.assertIn("approved by version bump and request file", out)
+
+
+class OsvGate(unittest.TestCase):
+    def report(self, score, groups=None):
+        return {"results": [{"source": {"path": "web/package-lock.json"}, "packages": [{
+            "package": {"name": "left-pad", "version": "1.0.0", "ecosystem": "npm"},
+            "dependency_groups": groups or [],
+            "groups": [{"ids": ["GHSA-test-0001"], "aliases": ["CVE-2026-0001"], "max_severity": score}]}]}]}
+
+    def run_gate(self, report, allow=""):
+        with tempfile.TemporaryDirectory() as t:
+            r_path, a_path = Path(t) / "osv.json", Path(t) / "allow.txt"
+            r_path.write_text(json.dumps(report))
+            a_path.write_text(allow)
+            r = subprocess.run([sys.executable, str(HERE / "osv-gate.py"), str(r_path), str(a_path)],
+                               capture_output=True, text=True)
+            return r.returncode, r.stdout
+
+    def test_high_in_production_fails(self):
+        rc, out = self.run_gate(self.report("8.1"))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("::error::", out)
+
+    def test_dev_only_and_medium_and_unknown_pass(self):
+        self.assertEqual(self.run_gate(self.report("9.8", ["dev"]))[0], 0)
+        self.assertEqual(self.run_gate(self.report("6.9"))[0], 0)
+        rc, out = self.run_gate(self.report(""))
+        self.assertEqual(rc, 0)
+        self.assertIn("severity unknown", out)
+
+    def test_allow_list_is_dated(self):
+        self.assertEqual(self.run_gate(self.report("9.1"), "CVE-2026-0001 2999-01-01 reviewed, not reachable\n")[0], 0)
+        rc, out = self.run_gate(self.report("9.1"), "GHSA-test-0001 2000-01-01 old review\n")
+        self.assertEqual(rc, 1, "an expired exception no longer counts")
+        self.assertIn("expired", out)
+
+    @unittest.skipUnless(tool("osv-scanner"), "osv-scanner binary not available")
+    def test_real_lockfile(self):
+        r = subprocess.run([tool("osv-scanner"), "scan", "source", "--lockfile", str(ROOT / "web" / "package-lock.json"),
+                            "--format", "json"], capture_output=True, text=True)
+        self.assertIn(r.returncode, (0, 1), r.stderr[-500:])
+        rc, out = self.run_gate(json.loads(r.stdout), (HERE / "osv-allow.txt").read_text())
+        self.assertEqual(rc, 0, out)
+
+
+class InstallScripts(unittest.TestCase):
+    def run_check(self, packages):
+        with tempfile.TemporaryDirectory() as t:
+            lock = Path(t) / "package-lock.json"
+            lock.write_text(json.dumps({"packages": packages}))
+            r = subprocess.run([sys.executable, str(HERE / "install-scripts-check.py"), str(lock),
+                                str(HERE / "npm-install-scripts.txt")], capture_output=True, text=True)
+            return r.returncode, r.stdout
+
+    def test_new_install_script_fails_and_reviewed_pass(self):
+        ok = {"": {}, "node_modules/esbuild": {"hasInstallScript": True}, "node_modules/react": {}}
+        self.assertEqual(self.run_check(ok)[0], 0)
+        rc, out = self.run_check({**ok, "node_modules/evil-pkg": {"hasInstallScript": True}})
+        self.assertEqual(rc, 1)
+        self.assertIn("evil-pkg", out)
+
+    def test_real_lockfile_passes(self):
+        r = subprocess.run([sys.executable, str(HERE / "install-scripts-check.py"), str(ROOT / "web" / "package-lock.json"),
+                            str(HERE / "npm-install-scripts.txt")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("ignore-scripts=true", (ROOT / "web" / ".npmrc").read_text())
+
+
+class ReleaseApks(unittest.TestCase):
+    def run_list(self, files):
+        with tempfile.TemporaryDirectory() as t:
+            for app, names in files.items():
+                d = Path(t) / "android" / f"app-{app}" / "build" / "outputs" / "apk" / "release"
+                d.mkdir(parents=True)
+                for n in names:
+                    (d / n).write_bytes(b"apk")
+            r = subprocess.run([sys.executable, str(HERE / "release-apks.py"), t], capture_output=True, text=True)
+            rows = [l.split("\t")[:4] for l in r.stdout.splitlines()]
+            return r.returncode, rows, r.stderr
+
+    def test_single_apk_per_app(self):
+        rc, rows, err = self.run_list({a: [f"app-{a}-release-unsigned.apk"] for a in ("sr", "amo", "tso")})
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(rows, [[a, "universal", f"{a}-release", f"aron-{a}"] for a in ("sr", "amo", "tso")])
+
+    def test_abi_splits(self):
+        split = lambda a: [f"app-{a}-{v}-release-unsigned.apk" for v in ("universal", "arm64-v8a", "armeabi-v7a")]
+        rc, rows, err = self.run_list({a: split(a) for a in ("sr", "amo", "tso")})
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(rows[:3], [["sr", "universal", "sr-release", "aron-sr"],
+                                    ["sr", "arm64-v8a", "sr-release-arm64-v8a", "aron-sr-arm64-v8a"],
+                                    ["sr", "armeabi-v7a", "sr-release-armeabi-v7a", "aron-sr-armeabi-v7a"]])
+        self.assertEqual(len(rows), 9)
+
+    def test_missing_universal_or_unknown_name_fails(self):
+        files = {a: [f"app-{a}-release-unsigned.apk"] for a in ("sr", "amo", "tso")}
+        files["amo"] = ["app-amo-arm64-v8a-release-unsigned.apk"]
+        rc, _, err = self.run_list(files)
+        self.assertEqual(rc, 1)
+        self.assertIn("amo: no universal", err)
+        files["amo"] = ["app-amo-release-unsigned.apk", "app-amo-mips-release-unsigned.apk"]
+        rc, _, err = self.run_list(files)
+        self.assertEqual(rc, 1)
+        self.assertIn("unexpected release output", err)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,9 @@ data class AttendanceState(
 sealed interface AttendanceResult {
     data class Done(val event: AttendanceEventEntity, val fix: FixReading) : AttendanceResult
     data object Ignored : AttendanceResult
+
+    /** The save failed (database error): nothing was written and the buttons stay as they were. */
+    data object Failed : AttendanceResult
 }
 
 /**
@@ -89,7 +92,13 @@ class AttendanceFlow(
             val meta: CaptureMeta = metaProvider.meta(routeIdOf() ?: 0L).let { if (routeIdOf() == null) it.copy(routeId = null) else it }
             val coords = if (fix.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", fix.lat, fix.lng) else null
             val event = AttendanceEventEntity(eventUuid, meta, kind, fixEntity.clientUuid, coords)
-            committer.commit(event, fixEntity)
+            try {
+                committer.commit(event, fixEntity)
+            } catch (t: kotlinx.coroutines.CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                return AttendanceResult.Failed
+            }
             val at = nowIso()
             val cur = ui.value
             ui.value = recompute(

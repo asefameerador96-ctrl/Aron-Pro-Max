@@ -3,6 +3,7 @@ package com.aktcl.aron.sr
 import android.app.Application
 import androidx.work.Configuration
 import com.aktcl.aron.core.sync.AronWorkerFactory
+import com.aktcl.aron.core.sync.ConnectivityFlush
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -10,6 +11,12 @@ import javax.inject.Inject
 @HiltAndroidApp
 class AronSRApplication : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: AronWorkerFactory
+    @Inject lateinit var connectivityFlush: ConnectivityFlush
+
+    override fun onCreate() {
+        super.onCreate()
+        ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives
+    }
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().setWorkerFactory(workerFactory).build()

@@ -77,14 +77,15 @@ Azure identity. The workflow checks the branch and the settings, signs in with O
 | 1 | OIDC sign-in (`azure/login`, environment `azure-dev`) | No client secret anywhere |
 | 2 | **Scope check** (`scripts/scope-check.sh`) | Acceptance of N-012: a test deployment into `rg-aron-scope-probe` must fail with `AuthorizationFailed`, creating a group must fail, and no other visible group accepts a deployment |
 | 3 | Lock: wait while another `aron-*` deployment runs in the group | One deploy at a time without a GitHub concurrency group (which would cancel pending CI runs) |
-| 4 | Ordering guard: skip when this commit is an ancestor of the deployed one | CI runs finish out of order; an older commit never replaces a newer one, and a commit whose newer sibling did not deploy still deploys |
+| 4 | Ordering guard: skip when this commit is an ancestor of the deployed one (the live commit is the api's `ARON_BUILD`); re-run right before step 8 and step 9 | CI runs finish out of order; an older commit never replaces a newer one, and a commit whose newer sibling did not deploy still deploys. A rollback (`ROLLBACK_SHA`) bypasses it on purpose |
 | 5 | `main.bicep` (skipped when `infra/` and the compiled parameters are unchanged since the deployed commit) | The database password is read back from Key Vault, generated only when the vault or the secret does not exist; the budget start date is read back, or the 1st of the current month |
 | 6 | Seed Key Vault | `aron-jwt-signing-key` (ES256 PKCS#8) and `aron-jwt-kid` once; `aron-web-session-secret` once; `aron-fcm-service-account` from the GitHub secret or `{}` |
-| 7 | Images: `aron-backend:<sha>` (and `aron-web:<sha>`) to ACR | One backend image for api, worker and migrate (D24-27) |
-| 8 | `apps.bicep` with `deployServices=false`, start the migrate job, wait for `Succeeded` | Migrations run **before** any app revision changes; a failure stops the deploy with the old apps serving |
-| 9 | `apps.bicep` with `deployServices=true` | api, worker, web and the Front Door routes (`/v1/*` to api, `/*` to web) |
+| 7 | Images: `aron-backend:<sha>` (and `aron-web:<sha>`) pushed once, tag locked, deployed **by digest** (`repo@sha256:...`) | One backend image for api, worker and migrate (D24-27); a moved tag never changes what runs; a re-run or rollback reuses the image. `acr-purge.yml` keeps the newest 30 per repository plus anything in use |
+| 8 | Summary records the PITR restore point; `apps.bicep` with `deployServices=false`, start the migrate job, wait for `Succeeded` | Migrations run **before** any app revision changes; a failure stops the deploy with the old apps serving |
+| 8b | dblogins job (`infra/sql/runtime-logins.sql`, psql image imported into ACR by digest) | Per-app logins `app_api` (api_rw), `app_worker` (worker_rw), `app_jobs` (jobs_rw), passwords in Key Vault (`scripts/db-login-secrets.sh`), never superuser or CREATEROLE; skipped on a rollback |
+| 9 | `apps.bicep` with `deployServices=true` | api, worker, web and the Front Door routes (`/v1/*` to api, `/*` to web). api connects as `app_api`, worker as `app_jobs` (`dbPerAppLogins`); only the migrate job uses the admin login |
 | 10 | Approve Private Link (Premium) | Until every origin's connection is approved |
-| 11 | Smoke test through Front Door: `GET` and `HEAD /v1/health` 200 with `X-Aron-Api: 1` | The phone's own path; an edge or WAF page has no marker (docs/24 s3.1.6) |
+| 11 | Health gate through Front Door (`scripts/smoke.sh`): `GET` and `HEAD /v1/health` 200 with `X-Aron-Api: 1` and `build` = this commit, `/v1/health/ready` 200, web `/login` 200 | The phone's own path; an edge or WAF page has no marker (docs/24 s3.1.6). In Multiple revision mode (stage, prod) a failed gate puts api traffic back on the previous revision; in dev see `docs/runbooks/rollback-bad-deploy.md` |
 | 12 | Budget exists | Acceptance of N-012 |
 
 The three debug APKs are uploaded by `ci.yml` on every successful Android run (artifact `aron-debug-apks-<sha>`).
@@ -155,9 +156,15 @@ budget API in this subscription type, Event Grid delivery to the queue, and the 
 - Front Door Standard (dev) cannot use Private Link, so the dev apps also answer on their own `*.azurecontainerapps.io`
   address; the backend can reject requests without the `X-Azure-FDID` header equal to `ARON_FRONT_DOOR_ID`
   (requested). Prod uses Private Link and has no public app address.
-- Private endpoints for Key Vault and ACR; the database uses the admin login for the app until the db lane adds
-  per-role logins (api, worker, migrate) and the rotation is designed.
-- Multiple-revision canary deploys (docs/18 s2.5) and a KEDA rule on the worker backlog: need backend metrics.
+- Private endpoints for Key Vault and ACR. Password rotation of the per-app database logins (today: generated once,
+  re-applied every deploy; rotate = delete the `aron-db-pw-*` secret and deploy, then restart the apps).
+- Weighted canary steps (docs/18 s2.5) and a KEDA rule on the worker backlog: need backend metrics. Stage and prod
+  already run the api in Multiple revision mode (previous revision kept active at 0 % for an instant switch back,
+  automatic on a failed health gate); proven only in the final account.
+- Build once, promote: the deploy builds its own images (by commit, then runs them by digest); the CI images job
+  builds, boots and Trivy-scans an image from the same commit and Dockerfiles, but not the same bytes (the web runtime
+  stage applies Debian updates at build time). Promoting the CI-built digest is planned for the final-account move
+  (AUD-DG-06).
 - Cross-region replica and the second-group move rehearsal (reserve days, docs/23 s7).
 - `budgetStartDate` in the parameter files is only a fallback for offline builds; a manual `az deployment group create`
   outside `deploy.sh` must pass `ARON_BUDGET_START_DATE` (the first day of the current month on a new budget).

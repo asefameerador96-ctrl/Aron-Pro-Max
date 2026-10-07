@@ -336,7 +336,8 @@ class SyncEngine(
                 meta.putMeta(SyncMetaEntity(KEY_LAST_SUCCESS, now))
                 // A replay is the stored answer of an earlier send (up to 48 h old): its acks hold, its server state does not.
                 if (!r.replayed) {
-                    meta.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, r.configVersion.toString()))
+                    // The server's current version only tells the phone a delta exists; the held version moves with the delta.
+                    meta.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION_SERVER, r.configVersion.toString()))
                     meta.putMeta(SyncMetaEntity(KEY_GENERATION, r.generation))
                     r.bundleVersionCurrent?.let { meta.putMeta(SyncMetaEntity(KEY_BUNDLE_CURRENT, it)) }
                     for (totals in r.serverTotals) {
@@ -453,6 +454,7 @@ class SyncEngine(
     companion object {
         const val KEY_LAST_ERROR = "sync.last_error"
         const val KEY_CONFIG_VERSION = ReferenceRepository.KEY_CONFIG_VERSION
+        const val KEY_CONFIG_VERSION_SERVER = "sync.config_version_server"
         const val KEY_GENERATION = "sync.server_generation"
         const val KEY_BUNDLE_CURRENT = "sync.bundle_version_current"
         const val KEY_SERVER_TOTALS = "sync.server_totals."

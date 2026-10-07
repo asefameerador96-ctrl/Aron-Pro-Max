@@ -2,4 +2,14 @@
 <resources>
     <string name="sr_visit_open">আপনার ভিজিট চালু আছে। বিক্রয়ের স্ক্রিন এখান থেকে চলবে।</string>
     <string name="sr_visit_close">ভিজিট বন্ধ করুন</string>
+    <string name="sr_bundle_downloading">আজকের রুট ব্যাকগ্রাউন্ডে ডাউনলোড হচ্ছে। আপনি কাজ চালিয়ে যেতে পারেন।</string>
+    <string name="sr_print_confirm_title">প্রিন্ট</string>
+    <string name="sr_yes">হ্যাঁ</string>
+    <string name="sr_no">না</string>
+    <string name="sr_ok">ঠিক আছে</string>
+    <string name="sr_map_title">দোকানের অবস্থান</string>
+    <string name="sr_map_distance">আপনি দোকান থেকে %1$s মিটার দূরে আছেন (অনুমোদিত %2$s মিটার)।</string>
+    <string name="sr_map_offline">মানচিত্রের জন্য নেটওয়ার্ক লাগে। দূরত্ব ঠিকই দেখা যাচ্ছে এবং মানচিত্র ছাড়াই চালিয়ে যেতে পারেন।</string>
+    <string name="sr_map_you">আপনি</string>
+    <string name="sr_map_back">ফিরে যান</string>
 </resources>

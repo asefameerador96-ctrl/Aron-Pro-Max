@@ -21,7 +21,7 @@ class NoPollingLintTest {
         Rule("repeating alarm", Regex("""\bset(Inexact)?Repeating\s*\(""")),
         Rule("exact-alarm permission", Regex("""(SCHEDULE|USE)_EXACT_ALARM""")),
         Rule("alarm", Regex("""\bAlarmManager\b|\bALARM_SERVICE\b"""), allowedIn = listOf("dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/")),
-        Rule("timer", Regex("""\bjava\.util\.Timer\b|\bTimer\s*\(|\bTimerTask\b|\bticker\s*\(""")),
+        Rule("timer", Regex("""\bjava\.util\.Timer\b|\bTimer\s*\(|\bTimerTask\b|\bticker\s*\(|\bfixedRateTimer\s*\(|\btimer\s*\(|\bCountDownTimer\b""")),
         Rule("scheduled executor", Regex("""scheduleAtFixedRate|scheduleWithFixedDelay|ScheduledExecutorService|newScheduledThreadPool""")),
         Rule("delayed handler post", Regex("""\bpostDelayed\s*\(|\bsendMessageDelayed\s*\(""")),
         Rule(
@@ -47,9 +47,11 @@ class NoPollingLintTest {
                 if (!periodicAtLeast15(args)) out += "$path: periodic work not a literal of at least 15 min"
             }
             if (!path.startsWith("core-printing/")) {
-                Regex("""\bwhile\s*\([^)]*\)\s*\{|\bdo\s*\{|\brepeat\s*\([^)]*\)\s*\{|\bfor\s*\([^)]*\)\s*\{""").findAll(code).forEach { m ->
-                    val body = block(code, m.range.last)
-                    if (Regex("""\bdelay\s*\(|\bThread\.sleep\s*\(""").containsMatchIn(body)) out += "$path: polling loop"
+                for (open in loopBodies(code)) {
+                    val body = block(code, open)
+                    // A loop that waits is a timer: allowed only with a literal wait of at least 60 s (F-SYS-011 acceptance).
+                    val waits = Regex("""\b(?:delay|Thread\.sleep)\s*\(\s*([^)]*)\)""").findAll(body).map { it.groupValues[1].replace("_", "").removeSuffix("L").trim() }.toList()
+                    if (waits.any { (it.toLongOrNull() ?: 0L) < 60_000 }) { out += "$path: polling loop under 60 s"; break }
                 }
             }
         }
@@ -68,12 +70,84 @@ class NoPollingLintTest {
         return false
     }
 
-    /** Kotlin source without comments and string literals, so neither can trip (or hide) a rule. */
-    private fun stripKotlin(text: String): String = text
-        .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), " ")
-        .replace(Regex("\"\"\".*?\"\"\"", RegexOption.DOT_MATCHES_ALL), "\"\"")
-        .replace(Regex("\"(?:\\\\.|[^\"\\\\\n])*\""), "\"\"")
-        .lines().joinToString("\n") { it.replace(Regex("//.*$"), "") }
+    /** Offsets of the `{` that opens each loop body: `while (...) {`, `for (...) {`, `repeat(...) {` (balanced parentheses), `do {`. */
+    private fun loopBodies(code: String): List<Int> {
+        val out = ArrayList<Int>()
+        Regex("""\b(while|for|repeat)\s*\(""").findAll(code).forEach { m ->
+            var depth = 0
+            var i = m.range.last
+            while (i < code.length) {
+                when (code[i]) { '(' -> depth++; ')' -> if (--depth == 0) break }
+                i++
+            }
+            var j = i + 1
+            while (j < code.length && code[j].isWhitespace()) j++
+            if (j < code.length && code[j] == '{') out += j
+        }
+        Regex("""\bdo\s*\{""").findAll(code).forEach { out += it.range.last }
+        return out
+    }
+
+    /**
+     * Kotlin source with comments, string and char literals blanked out, read left to right like the compiler does, so a
+     * block-comment opener inside a string or a `'"'` cannot hide code; the code inside `${...}` templates is kept.
+     */
+    internal fun stripKotlin(text: String): String {
+        val out = StringBuilder(text.length)
+        var i = 0
+        fun template(start: Int): Int { // text[start] == '{' after '$'; copies the expression, returns the index after '}'
+            var depth = 0
+            var k = start
+            while (k < text.length) {
+                val c = text[k]
+                if (c == '{') depth++ else if (c == '}') { depth--; if (depth == 0) { out.append(' '); return k + 1 } }
+                if (depth > 0 && k > start) out.append(c)
+                k++
+            }
+            return k
+        }
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                text.startsWith("//", i) -> { while (i < text.length && text[i] != '\n') i++ }
+                text.startsWith("/*", i) -> {
+                    var depth = 0
+                    while (i < text.length) {
+                        if (text.startsWith("/*", i)) { depth++; i += 2 } else if (text.startsWith("*/", i)) { depth--; i += 2; if (depth == 0) break } else i++
+                    }
+                    out.append(' ')
+                }
+                text.startsWith("\"\"\"", i) -> {
+                    i += 3
+                    while (i < text.length && !text.startsWith("\"\"\"", i)) {
+                        if (text.startsWith("\${", i)) i = template(i + 1) else i++
+                    }
+                    i += 3
+                    out.append("\"\"")
+                }
+                c == '"' -> {
+                    i++
+                    while (i < text.length && text[i] != '"' && text[i] != '\n') {
+                        when {
+                            text[i] == '\\' -> i += 2
+                            text.startsWith("\${", i) -> i = template(i + 1)
+                            else -> i++
+                        }
+                    }
+                    i++
+                    out.append("\"\"")
+                }
+                c == '\'' -> {
+                    i++
+                    while (i < text.length && text[i] != '\'' && text[i] != '\n') i += if (text[i] == '\\') 2 else 1
+                    i++
+                    out.append("' '")
+                }
+                else -> { out.append(c); i++ }
+            }
+        }
+        return out.toString()
+    }
 
     /** The text of the brace block that opens at [open]. */
     private fun block(code: String, open: Int): String {
@@ -108,6 +182,7 @@ class NoPollingLintTest {
             "core-printing/src/main/P.kt" to "while (true) { if (ok) break; delay(5) }",
             "dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/H.kt" to "val am: AlarmManager = x",
             "core-sync/src/main/S.kt" to "PeriodicWorkRequestBuilder<W>(15, TimeUnit.MINUTES); while (true) { i++ ; if (i > 3) break }",
+            "feature-y/src/main/U.kt" to "LaunchedEffect(Unit) { while (true) { delay(60_000L); tick() } }",
             "feature-y/src/main/T.kt" to "/* never use AlarmManager or Timer() */ val s = \"startForeground( in a string\" // postDelayed in a comment",
         )
         assertEquals(emptyList<String>(), violations(fine))
