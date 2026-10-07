@@ -23,8 +23,17 @@ AronTheme(language, tier = tier) { GlassSurface { ... }; StatusChip(SyncChipStat
 ```
 `GlassPolicy.resolve(config, GlassSignals)` is pure: battery saver, reduce-transparency, high contrast or a failed frame probe force C; `lite` caps at B; A needs Android 12+, 4 GB+. No blur dependency yet (tier A blur plugs into `GlassSurface` later, needs a request file). Previews: `KitPreviews.kt` (tiers A/B/C, light/dark). `AronPrimaryButton` is now 56 dp and pill-shaped.
 
-## Next slices
-press-and-hold button, dialogs (confirm/info), empty / error states, kit gallery screen + font-scale 1.3 test; then F-SYS-023, F-SYS-030, F-SYS-010, F-SYS-019, F-SYS-022, F-SYS-020, F-SYS-021, F-SYS-037.
+## Outdoor-first (docs/32 s2a), slice 4
+- Tokens are the docs/design/tokens.md v1 values in three themes: `AronMode.Light` (default), `Dark`, `Sunlight`. `AronTheme(language, dark = false, sunlight = false, tier)`; sunlight forces tier C.
+- `AronCard` is the OPAQUE content surface: put every number, status and primary action on it. `GlassSurface` is chrome only (bars, sheets, tile backdrops with a solid label plate).
+- `StatusChip`, banners and tile labels use opaque container roles. `LocalSunlight`, hairline 2 dp in sunlight.
+- Sunlight setting: `SunlightPreference(context, userId).enabled` (per user, SharedPreferences), `SunlightToggle(on, onToggle)` for the top bar, `rememberSunlightSuggestion(sunlightOn)` reads the system brightness once per resume (85 percent or more) and `SunlightSuggestionChip`.
+- `TokenContrastTest` computes WCAG contrast for every pair: key figures 7:1 in every mode (10:1 in sunlight), body 7:1 on tier B surfaces, secondary 4.5:1, 35 percent glare proxy (4.5 key, 3 body).
+- Deviation: docs/32 asks for Bangla body weight 500 in sunlight; only 400 and 700 are bundled, so sunlight sets Bangla body in bold (log for the lead).
+- Not done: screenshot tests of home, sale entry, review and memo (needs a screenshot library and those screens; request file to follow). Battery-saver and reduce-transparency engagement of sunlight mode: tier C is already forced by `GlassPolicy`; the sunlight colours themselves stay a user switch.
+
+## Next
+Scope change (lead, 2026-10-07): F-SYS-023, 030, 010, 037, 019, 022, 020, 021 moved to the Opus lane `android-sys`. This lane keeps N-023 (kit, gallery, overflow tests), the outdoor-first additions, design v1 adoption and tokens. Remaining: Sonnet checker on the outdoor-first slice, screenshot tests (request file), and kit components android-sys asks for (permission rationale, language switch screen).
 
 ## Traps
 - Local Gradle cannot resolve (Maven Central 429): CI is the compiler. Push to `lane/android-core-ui`, merge INT only when green.

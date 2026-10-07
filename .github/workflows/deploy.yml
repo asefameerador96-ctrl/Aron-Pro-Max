@@ -39,9 +39,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Profile (infra/params/<profile>*.bicepparam); dev = rehearsal (existing resources), dev-lite = cheap TEST profile
+        description: Profile (infra/params/<profile>*.bicepparam); dev = rehearsal (existing resources), dev-lite = cheap TEST profile. prod is not offered until the final account exists (it deploys only through promote-prod.yml).
         type: choice
-        options: [dev, dev-lite, prod]
+        options: [dev, dev-lite]
         default: dev
       run_migrations:
         description: Run the database migrations job before the apps (untick only to redeploy apps without a migration)

@@ -1,6 +1,18 @@
 package com.aktcl.aron.core.database.record
 
+import com.aktcl.aron.contract.AttendanceEventPayload
 import com.aktcl.aron.contract.ContractInfo
+import com.aktcl.aron.contract.DeviceGeoVerdict
+import com.aktcl.aron.contract.FixDeviceState
+import com.aktcl.aron.contract.GeoFix
+import com.aktcl.aron.contract.GnssSummary
+import com.aktcl.aron.contract.MemoDiscountPayload
+import com.aktcl.aron.contract.MemoLinePayload
+import com.aktcl.aron.contract.MemoPayload
+import com.aktcl.aron.contract.QcLinePayload
+import com.aktcl.aron.contract.StockMovementPayload
+import com.aktcl.aron.contract.VisitClosePayload
+import com.aktcl.aron.contract.VisitPayload
 import com.aktcl.aron.contract.RecordType
 import com.aktcl.aron.core.database.entity.AttendanceEventEntity
 import com.aktcl.aron.core.database.entity.CaptureMeta
@@ -44,11 +56,20 @@ object RecordMapping {
      */
     val json: Json = Json { encodeDefaults = false; explicitNulls = true }
 
+    /** Reads stored side JSON (the GNSS summary) leniently: a member this build does not know never fails a capture. */
+    private val lenient: Json = Json { ignoreUnknownKeys = true }
+
+    /** A stored quantity or amount as the contract's int32; a value outside it fails the capture before anything is written. */
+    private fun int(value: Long): Int = Math.toIntExact(value)
+
+    /** A duration in ms as int32, saturating (a fix age is evidence, never a reason to refuse a capture). */
+    private fun clampInt(value: Long): Int = value.coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
+
     /** WGS84 degrees with at most 7 decimals (docs/24 s3.1 item 5). */
     fun coord(value: Double?): Double? =
         value?.takeIf { it.isFinite() }?.let { BigDecimal(it).setScale(7, RoundingMode.HALF_EVEN).toDouble() }
 
-    fun fix(e: GeoFixEntity): GeoFixPayload = GeoFixPayload(
+    fun fix(e: GeoFixEntity): GeoFix = GeoFix(
         purpose = e.purpose,
         fixStatus = e.fixStatus,
         lat = coord(e.lat),
@@ -61,15 +82,17 @@ object RecordMapping {
         provider = e.provider,
         fixTime = e.fixTime,
         fixElapsedRealtimeMs = e.fixElapsedRealtimeMs,
-        fixAgeMs = e.fixAgeMs,
-        timeToFixMs = e.timeToFixMs,
+        fixAgeMs = e.fixAgeMs?.let(::clampInt),
+        timeToFixMs = e.timeToFixMs?.let(::clampInt),
         requestPriority = e.requestPriority,
         isMock = e.isMock,
         reused = e.reused,
         refreshCount = e.refreshCount,
-        gnss = e.gnssJson?.let { json.parseToJsonElement(it).jsonObject },
+        // A stored summary that is not a contract GnssSummary is left out rather than failing the sale; the server would
+        // reject the whole record as schema_invalid otherwise.
+        gnss = e.gnssJson?.let { runCatching { lenient.decodeFromString(GnssSummary.serializer(), it) }.getOrNull() },
         radio = e.radioJson?.let { json.parseToJsonElement(it).jsonObject },
-        device = FixDeviceStatePayload(e.deviceOwner, e.devOptionsEnabled, e.adbEnabled, e.autoTimeEnabled, e.mockAppPresent, e.integrityRef),
+        device = FixDeviceState(e.deviceOwner, e.devOptionsEnabled, e.adbEnabled, e.autoTimeEnabled, e.mockAppPresent, e.integrityRef),
     )
 
     fun attendance(e: AttendanceEventEntity, fix: GeoFixEntity, createdAt: String) = outbox(
@@ -80,7 +103,7 @@ object RecordMapping {
     fun stock(e: StockMovementEntity, createdAt: String) = outbox(
         RecordType.STOCK_MOVEMENT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
         StockMovementPayload.serializer(),
-        StockMovementPayload(e.kind, e.skuId, e.qtyEntered, e.unitEntered, e.packFactor, e.qtyBase, e.reasonCode, e.slipPrinted),
+        StockMovementPayload(e.kind, e.skuId, int(e.qtyEntered), e.unitEntered, e.packFactor, int(e.qtyBase), e.reasonCode, e.slipPrinted),
     )
 
     fun visit(e: VisitEntity, fix: GeoFixEntity, createdAt: String) = outbox(
@@ -89,7 +112,7 @@ object RecordMapping {
         VisitPayload(
             visitKind = e.visitKind, outletId = e.outletId, openedAt = e.openedAt, sequenceNo = e.sequenceNo, planned = e.planned,
             assessedUserId = e.assessedUserId, fix = fix(fix),
-            geo = DeviceGeoVerdictPayload(
+            geo = DeviceGeoVerdict(
                 e.geoVerdict, e.geoDistanceM, e.geoRadiusMUsed, e.geoMaxAccuracyMUsed, e.geoLocationBasis,
                 coord(e.geoOutletLat), coord(e.geoOutletLng), e.geoAction, e.geoForceReasonCode, e.geoForcePhotoUuid,
             ),
@@ -109,10 +132,10 @@ object RecordMapping {
             visitClientUuid = e.visitClientUuid, outletId = e.outletId, memoNo = e.memoNo, memoKind = e.memoKind,
             committedAt = e.committedAt, priceListDate = e.priceListDate, priceType = e.priceType, grossMtk = e.grossMtk,
             offerDiscountMtk = e.offerDiscountMtk, drpDiscountMtk = e.drpDiscountMtk, qcDeductionMtk = e.qcDeductionMtk,
-            roundAdjMtk = e.roundAdjMtk, netMtk = e.netMtk, paidMtk = e.paidMtk, dueMtk = e.dueMtk, isCredit = e.isCredit,
+            roundAdjMtk = int(e.roundAdjMtk), netMtk = e.netMtk, paidMtk = e.paidMtk, dueMtk = e.dueMtk, isCredit = e.isCredit,
             outstandingBeforeMtk = e.outstandingBeforeMtk, lineCount = e.lineCount, discountLineCount = e.discountLineCount,
             qcLineCount = e.qcLineCount, supersedesClientUuid = e.supersedesClientUuid, editReasonCode = e.editReasonCode,
-            editFix = editFix?.let(::fix), offerVersionIds = json.decodeFromString(e.offerVersionIdsJson), roundingMode = e.roundingMode,
+            editFix = editFix?.let(::fix), offerVersionIds = json.decodeFromString<List<Long>>(e.offerVersionIdsJson).ifEmpty { null }, roundingMode = e.roundingMode,
         ),
     )
 
@@ -120,7 +143,7 @@ object RecordMapping {
         RecordType.MEMO_LINE, e.clientUuid, familyUuid, 2, e.meta, createdAt,
         MemoLinePayload.serializer(),
         MemoLinePayload(
-            e.memoClientUuid, e.lineNo, e.skuId, e.lineKind, e.qtyEntered, e.unitEntered, e.packFactor, e.qtyBase,
+            e.memoClientUuid, e.lineNo, e.skuId, e.lineKind, int(e.qtyEntered), e.unitEntered, e.packFactor, int(e.qtyBase),
             e.priceType, e.priceValidFrom, e.basePriceMtk, e.pricePerQty, e.grossMtk, e.offerId,
         ),
     )
@@ -128,13 +151,13 @@ object RecordMapping {
     fun memoDiscount(e: MemoDiscountEntity, familyUuid: String, createdAt: String) = outbox(
         RecordType.MEMO_DISCOUNT, e.clientUuid, familyUuid, 2, e.meta, createdAt,
         MemoDiscountPayload.serializer(),
-        MemoDiscountPayload(e.memoClientUuid, e.kind, e.skuId, e.qtyBase, e.valueMtk, e.offerId, e.offerVersionId, e.basisQtyBase, e.lineNo),
+        MemoDiscountPayload(e.memoClientUuid, e.kind, e.skuId, e.qtyBase?.let(::int), e.valueMtk, e.offerId, e.offerVersionId, e.basisQtyBase?.let(::int), e.lineNo),
     )
 
     fun qcLine(e: QcLineEntity, createdAt: String) = outbox(
         RecordType.QC_LINE, e.clientUuid, e.visitClientUuid, 2, e.meta, createdAt,
         QcLinePayload.serializer(),
-        QcLinePayload(e.visitClientUuid, e.memoClientUuid, e.appliedToMemo, e.skuId, e.faultTypeCode, e.faultGroup, e.qtyBase, e.unitPriceMtk, e.settlementMtk),
+        QcLinePayload(e.visitClientUuid, e.memoClientUuid, e.appliedToMemo, e.skuId, e.faultTypeCode, e.faultGroup, int(e.qtyBase), e.unitPriceMtk, e.settlementMtk),
     )
 
     /** A due collection is its own family (rank 0, a signed header record; docs/24 s4.2); its visit is a parent reference. */

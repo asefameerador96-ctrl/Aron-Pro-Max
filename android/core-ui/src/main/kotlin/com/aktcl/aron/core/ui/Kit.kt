@@ -44,6 +44,10 @@ fun AronPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
         enabled = enabled,
         modifier = modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Primary),
         shape = AronTokens.ButtonShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = LocalAronColors.current.accent, contentColor = LocalAronColors.current.textOnAccent,
+            disabledContainerColor = LocalAronColors.current.stateDisabledFill, disabledContentColor = LocalAronColors.current.stateDisabledLabel,
+        ),
         contentPadding = PaddingValues(horizontal = AronTokens.Space.Xl, vertical = AronTokens.Space.M),
     ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge) }
 }
@@ -56,9 +60,16 @@ fun AronSecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = 
         enabled = enabled,
         modifier = modifier.fillMaxWidth().heightIn(min = MinTouch),
         shape = AronTokens.ButtonShape,
-        border = BorderStroke(AronTokens.Hairline, MaterialTheme.colorScheme.primary),
+        border = outlineStroke(enabled),
         contentPadding = PaddingValues(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M),
     ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge) }
+}
+
+/** The outline of secondary and stepper buttons: 1 dp, 2 dp in sunlight; the disabled outline uses the disabled label colour. */
+@Composable
+internal fun outlineStroke(enabled: Boolean = true): BorderStroke {
+    val c = LocalAronColors.current
+    return BorderStroke(if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline, if (enabled) c.accent else c.stateDisabledLabel)
 }
 
 /** A tappable row: title, optional subtitle and trailing text. The row is the touch target and wraps at large fonts. */
@@ -72,7 +83,7 @@ fun AronListRow(
 ) {
     val click = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier
     Row(
-        modifier = modifier.fillMaxWidth().then(click).heightIn(min = MinTouch).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S),
+        modifier = modifier.fillMaxWidth().aronFocusRing(RoundedCornerShape(AronTokens.Radius.Chip)).then(click).heightIn(min = MinTouch).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
@@ -108,19 +119,25 @@ fun AronBanner(text: String, modifier: Modifier = Modifier, kind: BannerKind = B
 fun OfflineBanner(modifier: Modifier = Modifier) =
     AronBanner(androidx.compose.ui.res.stringResource(R.string.core_ui_offline_mode), modifier, BannerKind.Warning)
 
-/** One tile of the home grid: [label] with a [badge] count below it (hidden when 0) on a 48 dp+ target. */
+/**
+ * One tile of the home grid: a glass backdrop (chrome) with a SOLID label plate, so the reading never depends on the
+ * glass (docs/32 s2a item 1). [badge] shows below the label, hidden when 0.
+ */
 @Composable
 fun AronTile(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Int = 0, enabled: Boolean = true) {
+    val c = LocalAronColors.current
     GlassSurface(modifier = modifier.heightIn(min = 88.dp), onClick = onClick, enabled = enabled) {
         Column(
             Modifier.fillMaxWidth().heightIn(min = 88.dp).padding(AronTokens.Space.S),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs, Alignment.CenterVertically),
         ) {
-            Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+            Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = c.surfaceSolid) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = if (enabled) c.textPrimary else c.stateDisabledLabel, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.S, vertical = AronTokens.Space.Xs))
+            }
             if (badge > 0) {
-                Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = MaterialTheme.colorScheme.error) {
-                    Text(localizedNumber(badge.toLong()), color = MaterialTheme.colorScheme.onError, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.S, vertical = AronTokens.Space.Xs))
+                Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = c.dangerContainer) {
+                    Text(localizedNumber(badge.toLong()), color = c.dangerOnContainer, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.S, vertical = AronTokens.Space.Xs))
                 }
             }
         }
@@ -161,6 +178,7 @@ fun AronStepper(
             onClick = { onValueChange((value - step).coerceAtLeast(min)) },
             enabled = value > min,
             modifier = Modifier.sizeIn(minWidth = MinTouch, minHeight = MinTouch).semantics { contentDescription = minusLabel },
+            border = outlineStroke(value > min),
             contentPadding = PaddingValues(0.dp),
         ) { Text("−", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clearAndSetSemantics { }) }
         Text(
@@ -175,6 +193,7 @@ fun AronStepper(
             onClick = { onValueChange((value + step).coerceAtMost(max)) },
             enabled = value < max,
             modifier = Modifier.sizeIn(minWidth = MinTouch, minHeight = MinTouch).semantics { contentDescription = plusLabel },
+            border = outlineStroke(value < max),
             contentPadding = PaddingValues(0.dp),
         ) { Text("+", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clearAndSetSemantics { }) }
     }

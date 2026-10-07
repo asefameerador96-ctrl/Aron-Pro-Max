@@ -23,6 +23,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.database.entity.OutletEntity
+import com.aktcl.aron.core.system.permission.AndroidPermissions
+import com.aktcl.aron.core.system.permission.GatedFeature
+import com.aktcl.aron.core.system.permission.PermissionGate
+import com.aktcl.aron.core.system.permission.PermissionPolicy
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronTokens
@@ -100,9 +104,15 @@ fun SrApp(
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load() }
     }
-    // Once a minute: the 17:00 check-out gate, the business date, the bundle age and new tasks follow the trusted clock.
-    LaunchedEffect(Unit) {
-        while (true) { delay(30_000); day.attendance.tick(); day.reload(); day.taskBoard.load() }
+    // No polling: the day state refreshes on resume and at the real boundaries (17:00 check-out gate, Dhaka midnight).
+    var boundary by remember { mutableStateOf(0) }
+    LaunchedEffect(boundary) {
+        delay(day.millisToNextBoundary())
+        day.attendance.tick(); day.reload(); day.taskBoard.load()
+        boundary++
+    }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        scope.launch { day.attendance.tick(); day.reload(); day.taskBoard.load() }
     }
     // Several routes planned today: the SR picks one before anything else (F-SR-065).
     val planned = data.routes.map { PlannedRoute(it.routeId, it.name, it.plannedToday, it.sequenceNo) }
@@ -145,10 +155,12 @@ fun SrApp(
                 banner = if (data.downloading) stringResource(R.string.sr_bundle_downloading) else null,
             )
         }
-        SrScreen.ATTENDANCE -> AttendanceContent(attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn() } }, onCheckOut = { scope.launch { day.attendance.checkOut() } })
+        SrScreen.ATTENDANCE -> PermissionGate(GatedFeature.ATTENDANCE, onBack = { screen = SrScreen.HOME }) {
+            AttendanceContent(attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn() } }, onCheckOut = { scope.launch { day.attendance.checkOut() } })
+        }
         SrScreen.SETTINGS -> SettingsContent(versionText, onLanguageSelect, onLogout)
         SrScreen.STOCK -> StockHost(day)
-        SrScreen.PICKER -> {
+        SrScreen.PICKER -> PermissionGate(GatedFeature.SALE, onBack = { screen = SrScreen.HOME }) {
             var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
             var opening by remember { mutableStateOf(false) }
             val all = OutletPicker.rows(data.outlets)
@@ -162,7 +174,7 @@ fun SrApp(
                 }
             })
         }
-        SrScreen.VISIT -> {
+        SrScreen.VISIT -> PermissionGate(GatedFeature.SALE, onBack = { screen = SrScreen.HOME }) {
             val st by day.visitFlow.state.collectAsState()
             val open by day.visitSession.current.collectAsState()
             if (open != null) {
@@ -174,7 +186,10 @@ fun SrApp(
             } else {
                 VisitCheckContent(
                     st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { screen = SrScreen.FORCE },
-                    onRetry = { scope.launch { day.visitFlow.retryCommit() } }, onMap = null,
+                    onRetry = { scope.launch { day.visitFlow.retryCommit() } },
+                    onMap = (st as? VisitUiState.NeedsDecision)?.takeIf { it.outlet.lat != null && it.outlet.lng != null }?.let { d ->
+                        { context.startActivity(OutletMapActivity.intent(context, d.outlet.name, d.outlet.lat!!, d.outlet.lng!!, d.outlet.radiusM, d.phoneLat, d.phoneLng)) }
+                    },
                 )
             }
         }
@@ -215,7 +230,9 @@ fun SrApp(
             var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
             OutletPickerContent(OutletPicker.rows(data.outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r -> day.requestOutlet = r.outlet; screen = SrScreen.REQUEST_FORM })
         }
-        SrScreen.REQUEST_FORM -> RequestHost(day, data.outlets, onDone = { screen = SrScreen.OUTLET_MENU })
+        SrScreen.REQUEST_FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = { screen = SrScreen.OUTLET_MENU }) {
+            RequestHost(day, data.outlets, onDone = { screen = SrScreen.OUTLET_MENU })
+        }
     }
 }
 
@@ -285,7 +302,7 @@ private fun StockHost(day: SrDay) {
                 }
             },
             // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03).
-            onPrint = if (lastSaved.isNotEmpty()) ({
+            onPrint = if (lastSaved.isNotEmpty() && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(androidx.compose.ui.platform.LocalContext.current))) ({
                 scope.launch {
                     val first = lastSaved.minByOrNull { it.skuId }!!
                     attempt = day.printing.printStockSlip(first.clientUuid, day.stockSlip(lastSaved))

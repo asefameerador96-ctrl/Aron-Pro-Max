@@ -1,15 +1,19 @@
 package com.aktcl.aron.core.database.reference
 
+import com.aktcl.aron.contract.PagedSection
+import com.aktcl.aron.contract.ResolvedConfigValue
+import com.aktcl.aron.contract.RouteSnapshot
+import com.aktcl.aron.contract.Sku
+import com.aktcl.aron.contract.SkuPrice
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 
-// The reference sections of the day bundle as the contract defines them (Bundle.routes[] RouteSnapshot with Route and
-// BundleOutlet; Bundle.products.skus[] Sku; Bundle.prices[] SkuPrice; Bundle.config ResolvedConfig). REQUEST:
-// docs/requests/android-core-contract-dtos.md. Sections without a table of their own are kept raw (bundle_section).
+// The reference view of the day bundle: Bundle.routes[] (RouteSnapshot with Route and BundleOutlet), Bundle.products.skus[]
+// (Sku) and Bundle.prices[] (SkuPrice) are shared:contract's generated DTOs (N-002). `BundleReference` itself is a
+// projection of the contract `Bundle`, and `ResolvedConfig` and `ConfigDelta` are not generated yet, so those stay here.
+// Sections without a table of their own are kept raw (bundle_section).
 
 @Serializable
 data class BundleReference(
@@ -31,9 +35,6 @@ data class BundleReference(
     )
 
     @Serializable
-    data class PagedSection(val section: String, val pages: Int, val rows: Int = 0)
-
-    @Serializable
     data class Products(val skus: List<Sku>)
 
     companion object {
@@ -43,122 +44,12 @@ data class BundleReference(
     }
 }
 
-/** `SkuPrice` (contract). */
-@Serializable
-data class SkuPrice(
-    val id: Long,
-    @SerialName("sku_id") val skuId: Long,
-    @SerialName("price_type") val priceType: String,
-    @SerialName("amount_mtk") val amountMtk: Long,
-    @SerialName("per_base_qty") val perBaseQty: Int,
-    @SerialName("valid_from") val validFrom: String,
-    @SerialName("valid_to") val validTo: String? = null,
-)
-
-/** `ResolvedConfig` (contract): values in force plus scheduled values within the horizon. */
+/** `ResolvedConfig` (contract): values in force plus scheduled values within the horizon. Not generated in shared:contract. */
 @Serializable
 data class ConfigSection(
     @SerialName("config_version") val configVersion: Long,
-    val values: List<ResolvedValue> = emptyList(),
-    val scheduled: List<ResolvedValue> = emptyList(),
-)
-
-/** `ResolvedConfigValue` (contract). */
-@Serializable
-data class ResolvedValue(
-    val key: String,
-    val value: JsonElement,
-    @SerialName("scope_type") val scopeType: String,
-    @SerialName("scope_id") val scopeId: Long? = null,
-    @SerialName("effective_from") val effectiveFrom: String? = null,
-    @SerialName("effective_to") val effectiveTo: String? = null,
-    @SerialName("config_version") val configVersion: Long? = null,
-    @SerialName("requires_ack") val requiresAck: Boolean = false,
-)
-
-@Serializable
-data class RouteSnapshot(
-    @SerialName("route_id") val routeId: Long,
-    @SerialName("route_snapshot_version") val routeSnapshotVersion: Int,
-    val route: Route,
-    @SerialName("assignment_kind") val assignmentKind: String,
-    @SerialName("acting_for_user_id") val actingForUserId: Long? = null,
-    @SerialName("planned_today") val plannedToday: Boolean,
-    @SerialName("target_outlets") val targetOutlets: Int,
-    val outlets: List<BundleOutlet>,
-    // Sections applied by the bundle row (F-SYS-006, Day 2); kept raw here so the shape stays the contract's.
-    @SerialName("open_memos") val openMemos: JsonArray = JsonArray(emptyList()),
-    @SerialName("sales_plan_sku_ids") val salesPlanSkuIds: List<Long> = emptyList(),
-    val targets: JsonArray = JsonArray(emptyList()),
-    @SerialName("achievement_mtd") val achievementMtd: JsonArray = JsonArray(emptyList()),
-    @SerialName("day_state") val dayState: JsonElement = JsonNull,
-)
-
-@Serializable
-data class Route(
-    val id: Long,
-    val code: String,
-    val name: String,
-    @SerialName("display_label") val displayLabel: String? = null,
-    @SerialName("zone_id") val zoneId: Long,
-    val kind: String,
-    @SerialName("visit_kind") val visitKind: String? = null,
-    @SerialName("visit_days_mask") val visitDaysMask: Int,
-    @SerialName("sequence_no") val sequenceNo: Int? = null,
-    val status: String,
-)
-
-@Serializable
-data class BundleOutlet(
-    @SerialName("outlet_id") val outletId: Long,
-    @SerialName("route_id") val routeId: Long,
-    val code: String,
-    val name: String,
-    @SerialName("name_bn") val nameBn: String? = null,
-    @SerialName("name_sort_key") val nameSortKey: String,
-    @SerialName("owner_name") val ownerName: String,
-    @SerialName("contact_number") val contactNumber: String? = null,
-    val lat: Double? = null,
-    val lng: Double? = null,
-    @SerialName("location_confirmed") val locationConfirmed: Boolean,
-    @SerialName("provisional_lat") val provisionalLat: Double? = null,
-    @SerialName("provisional_lng") val provisionalLng: Double? = null,
-    @SerialName("cluster_id") val clusterId: Long,
-    @SerialName("cluster_name") val clusterName: String,
-    val channel: String,
-    @SerialName("sub_channel_id") val subChannelId: Long? = null,
-    @SerialName("geo_class") val geoClass: String? = null,
-    val status: String,
-    @SerialName("price_type") val priceType: String,
-    @SerialName("outlet_kind") val outletKind: String,
-    @SerialName("radius_m") val radiusM: Int,
-    @SerialName("max_accuracy_m") val maxAccuracyM: Int,
-    @SerialName("visit_sequence") val visitSequence: Int? = null,
-    @SerialName("open_due_mtk") val openDueMtk: Long,
-    @SerialName("open_due_as_of") val openDueAsOf: String? = null,
-    @SerialName("programme_flags") val programmeFlags: List<String>,
-    @SerialName("pending_request") val pendingRequest: Boolean,
-    /** Suggested-quantity hook, empty until the formula is confirmed (cfg.sale.suggested_qty_enabled); not stored yet. */
-    @SerialName("suggested_qty") val suggestedQty: JsonArray = JsonArray(emptyList()),
-)
-
-@Serializable
-data class Sku(
-    val id: Long,
-    val code: String,
-    @SerialName("variant_id") val variantId: Long,
-    @SerialName("category_code") val categoryCode: String,
-    val name: String,
-    @SerialName("short_name") val shortName: String,
-    @SerialName("name_bn") val nameBn: String? = null,
-    @SerialName("base_unit") val baseUnit: String,
-    @SerialName("base_per_pack") val basePerPack: Int,
-    @SerialName("entry_unit_default") val entryUnitDefault: String,
-    @SerialName("report_unit") val reportUnit: String? = null,
-    @SerialName("report_factor") val reportFactor: String,
-    val sort: Int,
-    val status: String,
-    val version: Int? = null,
+    val values: List<ResolvedConfigValue> = emptyList(),
+    val scheduled: List<ResolvedConfigValue> = emptyList(),
 )
 
 /** `ConfigDelta` (contract): resolved values that changed for the caller since a config version. */
@@ -166,8 +57,8 @@ data class Sku(
 data class ConfigDeltaWire(
     @SerialName("from_version") val fromVersion: Long,
     @SerialName("to_version") val toVersion: Long,
-    val values: List<ResolvedValue> = emptyList(),
-    val scheduled: List<ResolvedValue> = emptyList(),
+    val values: List<ResolvedConfigValue> = emptyList(),
+    val scheduled: List<ResolvedConfigValue> = emptyList(),
     @SerialName("removed_keys") val removedKeys: List<String> = emptyList(),
     @SerialName("calendar_changes") val calendarChanges: JsonArray = JsonArray(emptyList()),
     @SerialName("outlet_radius_changes") val outletRadiusChanges: List<RadiusChange> = emptyList(),

@@ -1,21 +1,21 @@
 package com.aktcl.aron.core.database
 
-import com.aktcl.aron.core.database.record.AttendanceEventPayload
-import com.aktcl.aron.core.database.record.DeviceGeoVerdictPayload
-import com.aktcl.aron.core.database.record.FixDeviceStatePayload
-import com.aktcl.aron.core.database.record.GeoFixPayload
-import com.aktcl.aron.core.database.record.MemoDiscountPayload
-import com.aktcl.aron.core.database.record.MemoLinePayload
-import com.aktcl.aron.core.database.record.MemoPayload
-import com.aktcl.aron.core.database.record.QcLinePayload
+import com.aktcl.aron.contract.AttendanceEventPayload
+import com.aktcl.aron.contract.DeviceGeoVerdict
+import com.aktcl.aron.contract.FixDeviceState
+import com.aktcl.aron.contract.GeoFix
+import com.aktcl.aron.contract.MemoDiscountPayload
+import com.aktcl.aron.contract.MemoLinePayload
+import com.aktcl.aron.contract.MemoPayload
+import com.aktcl.aron.contract.QcLinePayload
 import com.aktcl.aron.core.database.record.RecordMapping
-import com.aktcl.aron.core.database.record.StockMovementPayload
-import com.aktcl.aron.core.database.record.VisitClosePayload
-import com.aktcl.aron.core.database.record.VisitPayload
-import com.aktcl.aron.core.database.reference.BundleOutlet
-import com.aktcl.aron.core.database.reference.Route
-import com.aktcl.aron.core.database.reference.RouteSnapshot
-import com.aktcl.aron.core.database.reference.Sku
+import com.aktcl.aron.contract.StockMovementPayload
+import com.aktcl.aron.contract.VisitClosePayload
+import com.aktcl.aron.contract.VisitPayload
+import com.aktcl.aron.contract.BundleOutlet
+import com.aktcl.aron.contract.Route
+import com.aktcl.aron.contract.RouteSnapshot
+import com.aktcl.aron.contract.Sku
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.descriptors.elementNames
 import kotlinx.serialization.json.Json
@@ -35,9 +35,9 @@ class RecordPayloadContractTest {
         if (coverAll) assertEquals("$schema must cover every member", yaml, dto)
     }
 
-    @Test fun geoFix() = check(GeoFixPayload.serializer(), "GeoFix")
-    @Test fun fixDevice() = check(FixDeviceStatePayload.serializer(), "FixDeviceState")
-    @Test fun geoVerdict() = check(DeviceGeoVerdictPayload.serializer(), "DeviceGeoVerdict")
+    @Test fun geoFix() = check(GeoFix.serializer(), "GeoFix")
+    @Test fun fixDevice() = check(FixDeviceState.serializer(), "FixDeviceState")
+    @Test fun geoVerdict() = check(DeviceGeoVerdict.serializer(), "DeviceGeoVerdict")
     @Test fun attendance() = check(AttendanceEventPayload.serializer(), "AttendanceEventPayload")
     @Test fun stock() = check(StockMovementPayload.serializer(), "StockMovementPayload")
     @Test fun visit() = check(VisitPayload.serializer(), "VisitPayload")
@@ -128,5 +128,33 @@ class RecordPayloadContractTest {
             val record = Json.parseToJsonElement(row.payloadJson).jsonObject
             verify(record["payload"]!!.jsonObject, schemaOf.getValue(row.recordType))
         }
+    }
+
+    /** The switch to the shared:contract DTOs keeps the wire as it was: GNSS summary kept, empty offer list left out. */
+    @Test
+    fun contractDtosKeepTheStoredGnssAndLeaveOutAnEmptyOfferList() {
+        val at = "2026-10-05T04:36:00.000Z"
+        val (visit, fix) = TestRows.visit()
+        val payload = { row: com.aktcl.aron.core.database.entity.OutboxEntity -> Json.parseToJsonElement(row.payloadJson).jsonObject["payload"]!!.jsonObject }
+        val gnss = payload(RecordMapping.visit(visit, fix, at))["fix"]!!.jsonObject["gnss"]!!.jsonObject
+        assertEquals(Json.parseToJsonElement(fix.gnssJson!!), gnss)
+        val sale = TestRows.sale(visit.clientUuid)
+        assertTrue("offer_version_ids" !in payload(RecordMapping.memo(sale.memo.copy(offerVersionIdsJson = "[]"), null, at)))
+        assertEquals("[12]", payload(RecordMapping.memo(sale.memo, null, at))["offer_version_ids"].toString())
+    }
+
+    /** A stored GNSS summary that is not a contract GnssSummary never fails the capture; it is left out. */
+    @Test
+    fun anUnreadableGnssSummaryIsLeftOutInsteadOfFailingTheSale() {
+        val (visit, fix) = TestRows.visit()
+        val row = RecordMapping.visit(visit, fix.copy(gnssJson = """{"satellites":"many"}"""), "2026-10-05T04:36:00.000Z")
+        val f = Json.parseToJsonElement(row.payloadJson).jsonObject["payload"]!!.jsonObject["fix"]!!.jsonObject
+        assertTrue("gnss" !in f)
+    }
+
+    /** Quantities are int32 in the contract: a stored value outside it fails before anything is written, never wraps. */
+    @Test(expected = ArithmeticException::class)
+    fun aQuantityOutsideInt32IsRefusedNotWrapped() {
+        RecordMapping.stock(TestRows.stock().copy(qtyEntered = Int.MAX_VALUE + 1L, qtyBase = Int.MAX_VALUE + 1L), "2026-10-05T04:36:00.000Z")
     }
 }

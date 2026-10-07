@@ -1,6 +1,93 @@
 # Infra lane status
 
-Updated 2026-10-07 (Day 3, morning, Dhaka midday).
+Updated 2026-10-07 (Day 3, afternoon Dhaka; replacement infra session).
+
+## Day 3 afternoon (replacement session): deploy safety, supply-chain gates, per-app database logins
+
+Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pending findings; all fixed or noted):
+
+- **AUD-DG-07, AUD-DG-06, AUD-REL-06, AUD-DG-04 (deploy safety).** `infra/deploy.sh`:
+  - The ordering guard re-reads the live commit (the api's `ARON_BUILD`) right before the migrations and the apps,
+    so a newer live commit makes the run exit 0 "Skipped". A re-run of the live commit always deploys fully, so the
+    health gate runs again.
+  - Each image is pushed once, its tag locked (`--write-enabled false`), and deployed **by digest**. A re-run or a
+    rollback reuses the registry image. `acr-purge.yml` (weekly, `infra/scripts/acr-purge.sh`) keeps the newest 30
+    tagged images per repository, anything younger than 3 days and anything in use; untagged manifests are never touched.
+  - Health gate (`infra/scripts/smoke.sh`): `build` must equal the commit, `/v1/health/ready` 200 (the response is
+    printed when not), web `/login` 200. Behavioural tests with a stub curl (retry while the old build answers).
+  - Rollback: deploy dispatch input `rollback_sha` (own concurrency group): earlier integration commit only, no build,
+    no migrations, no infra stage, migrate job stays on the newest image. Runbooks: `docs/runbooks/` (RB-01 deploy part,
+    RB-14 migration part); dev rollback drill not yet run.
+  - PITR restore point written to the summary before the migrations. `ARON_DEPLOY_FREEZE_DHAKA` (unset until real
+    users) refuses deploys in a Dhaka window, re-checked before migrations and apps, wraps midnight.
+  - api `activeRevisionsMode` is a parameter: Single in dev and dev-lite (unchanged), Multiple in stage and prod, where a
+    failed gate puts traffic back on a serving revision of another build. Proven only in the final account.
+- **AUD-SEC-05 + scanning (lead item 2).** In ci.yml, job names unchanged: OSV-Scanner 2.6.0 on `web/package-lock.json`
+  (high or critical in a production dependency fails; dev-only and unknown severity warn; dated allow file),
+  Semgrep 1.179.0 (image by digest; Kotlin, TypeScript, React, Next.js, Actions, Dockerfile packs; only findings NEW since
+  the gate base fail; test code skipped), `npm audit --omit=dev --audit-level=high`, Trivy 0.75.0 on both images
+  (fixable CRITICAL fails), dependency-review on pull requests, `web/.npmrc ignore-scripts=true` with a reviewed list
+  (`tools/ci/npm-install-scripts.txt`) enforced by a lockfile check, `@redocly/cli` pinned to 2.59.0. The web runtime
+  image now takes Debian security updates (the newest node:22-bookworm-slim carries three fixable perl-base criticals).
+  Existing Semgrep finding routed to web: `docs/requests/web-supply-chain-gates.md` (GCM tag length).
+- **Per-app database logins (`docs/requests/db-runtime-roles.md`).** `infra/sql/runtime-logins.sql` (idempotent,
+  exactly one membership, INHERIT, never superuser/CREATEROLE/BYPASSRLS, passwords via `\getenv`, never echoed),
+  run by the new `dblogins` job (psql image imported into ACR by digest) after the migrations and before the apps.
+  api connects as `app_api` (api_rw), worker as `app_jobs` (jobs_rw ⊇ worker_rw); migrate keeps the admin login.
+  `infra/scripts/db-login-secrets.sh` generates the passwords once and derives the URLs from the Bicep admin URLs.
+  CI image smoke runs the same SQL and boots api/worker on those logins. Proven locally on PostgreSQL 16 with a
+  non-superuser admin (as on Azure); first proof on Azure is the next dev deploy. No PostgreSQL server setting changed.
+- **Per-ABI APKs, CI side.** `tools/ci/release-apks.py` accepts one APK per app or ABI splits plus the universal APK;
+  size gate and signing (ci.yml, release-app.yml) use it, so android-core can enable splits without a CI change.
+
+- **Per-app logins: switch OFF (checker finding).** `api_rw` lacks DELETE on `route_planned`, `mfa_secret`, `user_scope`
+  that admin flows use; `dbPerAppLogins = false` everywhere until `docs/requests/db-runtime-roles-gaps.md` lands. The
+  logins are still created and repaired on every deploy (now with V0020 memberships, `apply_login_limits()`, per-grantor
+  revoke and an exact-membership check; a superuser-made grant stops the job with a clear message).
+- **Azure Blob SAS issuer** (`docs/requests/backend-admin-blob-sas.md`, lead item): `backend/app/.../AzureBlobSasIssuer.kt`,
+  user-delegation SAS via the api managed identity, JDK HTTP client; offline tests; full backend:app suite green.
+  Follow-up for backend-admin in the request (a stored 24 h read URL expires).
+- **SR Maps key** in the release job (lead item). **APK baseline** regenerated after N-041 (SR armeabi-v7a +18 %).
+- **AUD-DG-08**: no manual prod dispatch; docs/30 s5 item 2. The governance script stays create-only (lead ruling: it never deletes; `staging`/`prod` do not exist).
+- **AUD-REL-04**: alerts api 5xx, restarts, no-replica (only where min replicas > 0), PostgreSQL not alive, Resource
+  Health for the group; Service Health **deferred to the final account** (lead ruling: no wider deploy identity; listed in docs/28). Seeded-failure
+  proof still to run.
+- **AUD-TP-6**: warnings-as-errors mechanism (list empty until `docs/requests/kotlin-warnings-as-errors.md`), flaky e2e
+  reported, SeededDayLoadTest bound 5 s.
+- **AUD-REL-05**: `drill.yml` (failover: phrase "lead approved failover drill"; pitr: "owner approved restore drill",
+  copy deleted in the same run, cost in the summary), runbooks RB-02 and RB-14. Drills not run yet (approvals).
+- **CI red on INT (06:10 UTC), not infra:** `:backend:config:test` `ConfigToolsTest.whatIfCountsVisitsWhoseVerdictWouldChange`
+  (expected 0, was -4) in runs 293, 300 and 309; routed to the lead. The APK size failure in the same runs is fixed above.
+
+- **Semgrep triage (lead, 06:00 UTC).** The gate fails only on findings NEW since its base (Semgrep diff-aware
+  `--baseline-commit`), ERROR and WARNING only. On a lane branch the base is now the integration commit the lane last
+  merged, so another lane's landed code never counts as new; on the integration branch it is the last green head.
+
+  | Finding | File | Decision | Reason |
+  |---|---|---|---|
+  | react-insecure-request x5 | `web/e2e/config-journeys.spec.ts` | skipped (test code) | Playwright calls the local contract mock over http://127.0.0.1; test code never ships. `.semgrepignore` skips `web/e2e/`, `web/tests/`, `**/src/test/`, `*.test.ts(x)`, `*.spec.ts` (05:47 UTC push) |
+  | gcm-no-tag-length | `web/src/lib/auth/seal.ts:35` | kept, routed | tag is sliced at exactly 16 bytes, so not exploitable as written; `{ authTagLength: 16 }` asked of web (`docs/requests/web-supply-chain-gates.md`) |
+  | workflow-run-target-code-checkout | `.github/workflows/deploy.yml` | `nosemgrep` with reason | the job runs only for a green ci run of a PUSH to the integration branch, never a pull request |
+  | secrets-inherit | `.github/workflows/promote-prod.yml` | `nosemgrep` with reason | same repository; deploy.yml reads only the Azure, FCM and Maps secrets |
+  | parse warning | `.github/workflows/promote-prod.yml:87` | noted | Semgrep's bash parser does not handle that `$(( ... ))` line; a warning, not a finding, and it never fails the gate |
+
+  No rule pack was dropped.
+- **Browser uploads** (`docs/requests/web-admin-asset-upload-csp.md`): storage CORS for the web origin (Front Door
+  endpoint, or the web app address without it), PUT only, headers `x-ms-blob-type` and `content-type`; `ARON_BLOB_ORIGIN`
+  on the web app.
+
+- **Wall-clock reads in tests (lead item):** `tools/ci/wallclock-scan.py`, a step in "Repository gates", REPORT mode
+  until 2026-10-09 (then `--blocking`), escape `// wall-clock-ok: <reason>`, self-tests in `tools/ci/test_gates.py`.
+  First run, 2026-10-07: **14 offenders in 4 modules**, all backend (android, shared and db: none):
+
+  | Owner lane | Module | Reads |
+  |---|---|---|
+  | backend | `backend/analytics` | 2 |
+  | backend | `backend/config` | 4 |
+  | backend | `backend/masterdata` | 6 |
+  | backend | `backend/platform` | 2 |
+
+**Dev health (05:04 UTC):** `/v1/health`, `/v1/health/ready` and web `/login` 200 through Front Door.
 
 ## Day 3 (2026-10-07): CI gates of docs/31 s2, stage profile, promotion workflows, cost reading
 

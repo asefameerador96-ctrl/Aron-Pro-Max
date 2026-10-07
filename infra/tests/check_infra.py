@@ -434,7 +434,9 @@ class SizingParameters(unittest.TestCase):
         self.assertEqual(params("stage.apps.parameters.json")["environmentName"], "stage")
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn('case "$PROFILE" in dev|dev-lite|prod) ;;', d, "deploy.sh must not offer stage yet")
-        self.assertNotIn("stage", self.wf("deploy.yml").split("options:")[1].split("\n")[0])
+        options = self.wf("deploy.yml").split("options:")[1].split("\n")[0]
+        self.assertNotIn("stage", options)
+        self.assertNotIn("prod", options, "AUD-DG-08: no manual prod deploy before the final account (promote-prod only)")
 
     def test_promotion_workflows_are_inert_until_the_final_account(self):
         pp, ra = self.wf("promote-prod.yml"), self.wf("release-app.yml")
@@ -913,7 +915,7 @@ class SupplyChainGates(unittest.TestCase):
         c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
         gates = c[c.index("\n  gates:"):c.index("\n  contract:")]
         for needle in ("for t in gitleaks oasdiff squawk osv-scanner; do", "tools/ci/osv-gate.py", "tools/ci/osv-allow.txt",
-                       'tools/ci/semgrep.sh "${CHECK_BASE}"', "tools/ci/install-scripts-check.py web/package-lock.json",
+                       'tools/ci/semgrep.sh "${base}"', 'base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}"', "tools/ci/install-scripts-check.py web/package-lock.json",
                        "actions/dependency-review-action@", "fail-on-severity: high"):
             self.assertIn(needle, gates)
         self.assertIn("if: github.event_name == 'pull_request'", gates[gates.index("Dependency review"):])
@@ -954,7 +956,8 @@ class PerAppDatabaseLogins(unittest.TestCase):
         mig = secrets("migrate")
         self.assertIn("dbDirectUrl", mig["db-direct-url"], "the migrate job keeps the admin login")
         for f in ("dev", "dev-lite", "stage", "prod"):
-            self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], True, f)
+            # Off until api_rw has the DELETE grants the admin flows use (docs/requests/db-runtime-roles-gaps.md).
+            self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], False, f)
         self.assertIs(param_default("apps.json", "dbPerAppLogins"), False, "off unless a profile turns it on")
 
     def test_dblogins_job_runs_the_checked_in_sql(self):
@@ -972,7 +975,8 @@ class PerAppDatabaseLogins(unittest.TestCase):
         self.assertIn('exec psql "${ARON_DB_URL#jdbc:}"', " ".join(c["command"]), "shell expansion, not a Bicep one")
         for k in ("ARON_PW_APP_API", "ARON_PW_APP_WORKER", "ARON_PW_APP_JOBS", "ARON_DB_URL"):
             self.assertIn("secretRef", env[k], f"{k} must come from Key Vault")
-        for needle in ("GRANT %I TO %I WITH INHERIT TRUE", "REVOKE %I FROM %I", "\\getenv pw_api ARON_PW_APP_API",
+        for needle in ("GRANT %I TO %I WITH INHERIT %s, SET TRUE", "REVOKE %I FROM %I", "\\getenv pw_api ARON_PW_APP_API",
+                       "('app_api', 'pii_reader', false)", "SELECT app.apply_login_limits()", "\\if :{?pw_jobs}",
                        "EXCEPTION WHEN others THEN", "\\gset"):
             self.assertIn(needle, sql)
         role_stmts = [l for l in sql.splitlines() if "ROLE %I LOGIN" in l]
@@ -994,6 +998,64 @@ class PerAppDatabaseLogins(unittest.TestCase):
         smoke = (ROOT / "infra" / "scripts" / "image-smoke.sh").read_text(encoding="utf-8")
         self.assertIn('"ARON_DB_URL=$PG_API"', smoke, "CI runs the api as app_api")
         self.assertIn('"ARON_DB_URL=$PG_JOBS"', smoke, "CI runs the worker as app_jobs")
+
+
+class PlatformAlerts(unittest.TestCase):
+    """AUD-REL-04: application-metric-free alerts, each naming an owner and a runbook."""
+
+    def test_database_and_resource_health(self):
+        t, _ = module("main.json", "alerts")
+        text = json.dumps(t)
+        for needle in ("is_db_alive", "pg-not-alive", "ResourceHealth", "Unavailable", "Degraded", "ServiceHealth"):
+            self.assertIn(needle, text)
+        (rh, sh) = sorted(resources_of(t, "Microsoft.Insights/activityLogAlerts"), key=lambda r: r["name"])
+        self.assertEqual(rh["properties"]["scopes"], ["[resourceGroup().id]"])
+        self.assertIn("Owner:", rh["properties"]["description"])
+        self.assertEqual(sh.get("condition"), "[parameters('enableServiceHealthAlert')]", "off until subscription Reader exists")
+
+    def test_app_alerts(self):
+        apps = load("apps.json")
+        text = json.dumps(apps["variables"]) + json.dumps(apps["resources"]["appMetricAlerts"])
+        for needle in ("api-5xx", "statusCodeCategory", "5xx", "-restarts", "-no-replica", "RestartCount", "Replicas",
+                       "Microsoft.App/containerApps"):
+            self.assertIn(needle, text)
+        self.assertEqual(apps["resources"]["appMetricAlerts"]["condition"], "[parameters('deployServices')]")
+        src = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        block = src[src.index("var appAlerts"):src.index("resource appMetricAlerts")]
+        self.assertEqual(block.count("description:"), block.count("Owner: infra lane"), "every alert names its owner")
+        self.assertEqual(block.count("description:"), block.count("Runbook: RB-"), "every alert names its runbook")
+
+
+class Drills(unittest.TestCase):
+    """AUD-REL-05: the s5a drills are a workflow behind explicit approval phrases; the restore copy never outlives the run."""
+
+    def test_drill_workflow_and_script(self):
+        w = (WORKFLOWS / "drill.yml").read_text(encoding="utf-8")
+        self.assertNotRegex(w, r"(?m)^\s*(push|pull_request|schedule|workflow_call):", "manual dispatch only")
+        self.assertIn('failover) want="lead approved failover drill" ;;', w)
+        self.assertIn('pitr) want="owner approved restore drill" ;;', w)
+        self.assertLess(w.index("Approval phrase"), w.index("azure/login@"), "nothing touches Azure before the phrase")
+        d = (ROOT / "infra" / "scripts" / "drill.sh").read_text(encoding="utf-8")
+        self.assertIn("trap cleanup EXIT", d, "the restored server is deleted on every exit")
+        self.assertLess(d.index("trap cleanup EXIT"), d.index("az postgres flexible-server restore"))
+        self.assertIn("--failover Forced", d)
+        self.assertIn('die "a deploy holds the lock', d, "never during a deploy")
+
+
+class BrowserUploads(unittest.TestCase):
+    """docs/requests/web-admin-asset-upload-csp.md: CORS for the web origin only, PUT only; web knows the blob origin."""
+
+    def test_cors_and_blob_origin(self):
+        t, bound = module("main.json", "storage")
+        (blobs,) = resources_of(t, "Microsoft.Storage/storageAccounts/blobServices")
+        text = json.dumps(blobs["properties"]["cors"])
+        for needle in ("PUT", "x-ms-blob-type", "content-type", "uploadOrigins"):
+            self.assertIn(needle, text)
+        for bad in ("'*'", '"*"', "GET", "DELETE"):
+            self.assertNotIn(bad, text, "no wildcard origin, PUT only")
+        self.assertIn("endpointHost", json.dumps(bound["uploadOrigins"]))
+        web_env = json.dumps(load("apps.json")["resources"]["web"]["properties"]["template"]["containers"][0]["env"])
+        self.assertIn("ARON_BLOB_ORIGIN", web_env)
 
 
 if __name__ == "__main__":

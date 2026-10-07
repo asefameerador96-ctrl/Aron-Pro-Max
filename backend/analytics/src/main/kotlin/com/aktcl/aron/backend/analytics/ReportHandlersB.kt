@@ -6,12 +6,15 @@ import com.aktcl.aron.contract.Role
 
 private const val USER_OF_DAY = "coalesce(rd.acting_user_id, rd.assigned_user_id)"
 
-/** `data-entry-log`: per route-day, when the route's bundle was frozen (first download), the login, first and last upload and the number of uploads. */
+/**
+ * `data-entry-log`: per SR and day, when the bundle was frozen (first download), the login, first and last upload and the number of uploads. One row per user-day
+ * (a user covering two routes has one row listing both): uploads belong to the user, so they are never counted twice.
+ */
 object DataEntryLogReport : ReportHandler {
     override val definition = definition(
-        "data-entry-log", "Data Entry Log", "ops", "route-day",
+        "data-entry-log", "Data Entry Log", "ops", "user x day",
         listOf(
-            col("business_date", "Date", "date"), col("route_code", "Route", "string"), col("username", "SR", "string"), col("bundle_downloaded_at", "Bundle downloaded", "timestamp"),
+            col("business_date", "Date", "date"), col("username", "SR", "string"), col("route_codes", "Routes", "string"), col("bundle_downloaded_at", "Bundle downloaded", "timestamp"),
             col("logged_in_at", "Logged in", "timestamp"), col("in_field_at", "First upload", "timestamp"), col("last_batch_at", "Last upload", "timestamp"), col("synced_at", "Synced", "timestamp"),
             col("uploads", "Uploads", "integer"), col("records", "Records", "integer"),
         ),
@@ -20,11 +23,16 @@ object DataEntryLogReport : ReportHandler {
 
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
-        SELECT rd.business_date, g.route_code, u.username, rd.target_frozen_at AS bundle_downloaded_at, rd.logged_in_at, rd.in_field_at, rd.last_batch_at, rd.synced_at,
-               (SELECT count(*) FROM app.sync_batch sb WHERE sb.user_id = u.id AND (sb.received_at AT TIME ZONE 'Asia/Dhaka')::date = rd.business_date)::int AS uploads,
-               (SELECT coalesce(sum(sb.record_count), 0) FROM app.sync_batch sb WHERE sb.user_id = u.id AND (sb.received_at AT TIME ZONE 'Asia/Dhaka')::date = rd.business_date)::int AS records
-          FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id JOIN app.app_user u ON u.id = $USER_OF_DAY
-         WHERE ${ctx.dateClause("rd.business_date")} AND rd.planned AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("rd.route_id")}
+        WITH days AS (
+          SELECT rd.business_date, u.id AS uid, u.username, string_agg(g.route_code, ', ' ORDER BY g.route_code) AS route_codes, min(rd.target_frozen_at) AS bundle_downloaded_at,
+                 min(rd.logged_in_at) AS logged_in_at, min(rd.in_field_at) AS in_field_at, max(rd.last_batch_at) AS last_batch_at, max(rd.synced_at) AS synced_at
+            FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id JOIN app.app_user u ON u.id = $USER_OF_DAY
+           WHERE ${ctx.dateClause("rd.business_date")} AND rd.planned AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("rd.route_id")}
+           GROUP BY rd.business_date, u.id, u.username)
+        SELECT d.business_date, d.username, d.route_codes, d.bundle_downloaded_at, d.logged_in_at, d.in_field_at, d.last_batch_at, d.synced_at,
+               (SELECT count(*) FROM app.sync_batch sb WHERE sb.user_id = d.uid AND (sb.received_at AT TIME ZONE 'Asia/Dhaka')::date = d.business_date)::int AS uploads,
+               (SELECT coalesce(sum(sb.record_count), 0) FROM app.sync_batch sb WHERE sb.user_id = d.uid AND (sb.received_at AT TIME ZONE 'Asia/Dhaka')::date = d.business_date)::int AS records
+          FROM days d
         """,
         totalColumns = listOf("uploads", "records"),
     )
@@ -77,29 +85,39 @@ object FinalSubmitStatusReport : ReportHandler {
     )
 }
 
-/** `gigo`: attendance check-in and check-out per SR and day with the fix state of each and the hours between them. */
+/**
+ * `gigo`: attendance check-in and check-out per SR and day, with the fix state of each and the hours between them. A check-out the Dhaka clock dates to the next
+ * day (a late shift) is paired with the open check-in of the previous day; a check-out without a route stays on its user-day. The address is the SR's location: personal data.
+ */
 object GigoReport : ReportHandler {
     override val definition = definition(
         "gigo", "GIGO (Attendance)", "field_force", "user x day",
         listOf(
             col("business_date", "Date", "date"), col("username", "SR", "string"), col("route_code", "Route", "string"), col("check_in_at", "Check in", "timestamp"),
             col("check_out_at", "Check out", "timestamp"), col("hours", "Hours", "decimal", unit = "h"), col("check_in_fix", "Check-in fix", "string"), col("check_out_fix", "Check-out fix", "string"),
-            col("any_mock", "Mock fix", "bool"), col("address", "Address", "string"),
+            col("any_mock", "Mock fix", "bool"), col("address", "Address", "string", pii = true),
         ),
         listOf("period", "geo"),
     )
 
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
-        SELECT e.business_date, u.username, g.route_code,
-               min(e.captured_at) FILTER (WHERE e.kind = 'check_in') AS check_in_at, max(e.captured_at) FILTER (WHERE e.kind = 'check_out') AS check_out_at,
-               round(extract(epoch FROM max(e.captured_at) FILTER (WHERE e.kind = 'check_out') - min(e.captured_at) FILTER (WHERE e.kind = 'check_in'))::numeric / 3600, 2) AS hours,
-               (array_agg(e.fix_status ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1] AS check_in_fix,
-               (array_agg(e.fix_status ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out'))[1] AS check_out_fix,
-               bool_or(coalesce(e.fix_is_mock, false)) AS any_mock, (array_agg(e.address_display ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1] AS address
-          FROM app.attendance_event e JOIN app.app_user u ON u.id = e.user_id LEFT JOIN dw.dim_geo g ON g.route_id = e.route_id
-         WHERE e.voided_at IS NULL AND ${ctx.dateClause("e.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("coalesce(e.route_id, -1)")}
-         GROUP BY e.business_date, u.id, u.username, g.route_code
+        WITH ev AS (
+          SELECT e.*, CASE WHEN e.kind = 'check_out'
+                            AND NOT EXISTS (SELECT 1 FROM app.attendance_event i WHERE i.user_id = e.user_id AND i.business_date = e.business_date AND i.kind = 'check_in' AND i.voided_at IS NULL)
+                            AND EXISTS (SELECT 1 FROM app.attendance_event i WHERE i.user_id = e.user_id AND i.business_date = e.business_date - 1 AND i.kind = 'check_in' AND i.voided_at IS NULL)
+                           THEN e.business_date - 1 ELSE e.business_date END AS day
+            FROM app.attendance_event e WHERE e.voided_at IS NULL AND e.business_date BETWEEN CAST(:from AS date) - 1 AND CAST(:to AS date) + 1)
+        SELECT ev.day AS business_date, u.username, (array_agg(g.route_code ORDER BY ev.captured_at) FILTER (WHERE g.route_code IS NOT NULL))[1] AS route_code,
+               min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in') AS check_in_at, max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out') AS check_out_at,
+               round(extract(epoch FROM max(ev.captured_at) FILTER (WHERE ev.kind = 'check_out') - min(ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))::numeric / 3600, 2) AS hours,
+               (array_agg(ev.fix_status ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS check_in_fix,
+               (array_agg(ev.fix_status ORDER BY ev.captured_at DESC) FILTER (WHERE ev.kind = 'check_out'))[1] AS check_out_fix,
+               bool_or(coalesce(ev.fix_is_mock, false)) AS any_mock, (array_agg(ev.address_display ORDER BY ev.captured_at) FILTER (WHERE ev.kind = 'check_in'))[1] AS address
+          FROM ev JOIN app.app_user u ON u.id = ev.user_id LEFT JOIN dw.dim_geo g ON g.route_id = ev.route_id
+         WHERE ev.day BETWEEN :from AND :to
+         GROUP BY ev.day, u.id, u.username
+        HAVING bool_or(coalesce(${ctx.zoneClause("g.zone_id")}, false) AND ${ctx.routeClause("coalesce(ev.route_id, -1)")})
         """,
     )
 }
@@ -123,7 +141,7 @@ object DssReport : ReportHandler {
                sum(a.gross_mtk)::bigint AS gross_mtk, sum(a.net_mtk)::bigint AS net_mtk, sum(a.dues_collected_mtk)::bigint AS dues_collected_mtk
           FROM dw.agg_daily_zone a JOIN (SELECT DISTINCT zone_id, zone_name FROM dw.dim_geo) g ON g.zone_id = a.zone_id
          WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("a.zone_id")}
-         GROUP BY 1, 2
+         GROUP BY a.zone_id, g.zone_name, 2
         """,
         totalColumns = listOf("target_routes", "logged_in_routes", "sales_submitted_routes", "visits", "successful_calls", "memos", "gross_mtk", "net_mtk", "dues_collected_mtk"),
     )
@@ -223,16 +241,21 @@ object LeaderboardReport : ReportHandler {
     )
 
     override fun spec(ctx: ReportContext): SqlSpec {
-        val key = when (ctx.query.location) { "zone" -> "g.zone_name"; "route" -> "g.route_code"; else -> "u.username" }
-        val join = if (ctx.query.location == "zone" || ctx.query.location == "route") "" else "JOIN app.route_day rd ON rd.route_id = a.route_id AND rd.business_date = a.business_date JOIN app.app_user u ON u.id = $USER_OF_DAY"
+        // Entities are grouped by their id, never by their label (zone names are not unique).
+        val (id, label, join) = when (ctx.query.location) {
+            null, "user" -> Triple("u.id", "u.username", "JOIN app.route_day rd ON rd.route_id = a.route_id AND rd.business_date = a.business_date JOIN app.app_user u ON u.id = $USER_OF_DAY")
+            "route" -> Triple("g.route_id", "g.route_code", "")
+            "zone" -> Triple("g.zone_id", "g.zone_name", "")
+            else -> throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_REPORT_INVALID_QUERY, "the leaderboard ranks user, route or zone", errors = listOf(com.aktcl.aron.backend.platform.FieldError("body.location", "not_supported")))
+        }
         return SqlSpec(
             """
-            SELECT rank() OVER (ORDER BY sum(a.net_mtk) DESC)::int AS rank, $key AS name, sum(a.net_mtk)::bigint AS net_mtk, sum(a.active_memo_count)::int AS memos,
+            SELECT rank() OVER (ORDER BY sum(a.net_mtk) DESC)::int AS rank, $label AS name, sum(a.net_mtk)::bigint AS net_mtk, sum(a.active_memo_count)::int AS memos,
                    sum(a.successful_calls)::int AS successful_calls,
-                   round(100.0 * sum(a.successful_calls) / nullif(sum(a.target_outlets) FILTER (WHERE a.planned AND NOT a.exception_approved), 0), 2) AS strike_rate_pct
+                   round(100.0 * sum(a.successful_calls) FILTER (WHERE a.planned AND NOT a.exception_approved) / nullif(sum(a.target_outlets) FILTER (WHERE a.planned AND NOT a.exception_approved), 0), 2) AS strike_rate_pct
               FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id $join
              WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")}
-             GROUP BY $key
+             GROUP BY $id, $label
             """,
         )
     }
@@ -257,7 +280,9 @@ object AmoCallReport : ReportHandler {
           FROM dw.fact_visit v JOIN app.app_user am ON am.id = v.user_id JOIN dw.dim_outlet o ON o.outlet_id = v.outlet_id LEFT JOIN dw.dim_geo g ON g.route_id = v.route_id
           LEFT JOIN app.call_assessment ca ON ca.visit_client_uuid = v.visit_client_uuid AND ca.voided_at IS NULL LEFT JOIN app.app_user sr ON sr.id = ca.assessed_user_id
          WHERE ${ctx.dateClause("v.business_date")} AND v.visit_kind IN ('amo_control_call', 'amo_joint_call') AND NOT v.voided AND ${ctx.zoneClause("v.zone_id")} AND ${ctx.routeClause("coalesce(v.route_id, -1)")}
+           AND :fft <> 'sr'
         """,
+        mapOf("fft" to ctx.query.field_force_type),
     )
 }
 
@@ -301,15 +326,19 @@ object DiscountReport : ReportHandler {
         listOf("period", "geo", "category", "product_type", "products"),
     )
 
-    override fun spec(ctx: ReportContext) = SqlSpec(
+    override fun spec(ctx: ReportContext): SqlSpec {
+        val (prod, binds) = productClause(ctx, "p")
+        val filter = if (prod == "true") "" else "AND EXISTS (SELECT 1 FROM dw.dim_product p WHERE p.sku_id = d.sku_id AND $prod)"
+        return SqlSpec(
         """
         SELECT d.business_date, m.memo_no, g.route_code, d.kind, d.offer_id, s.code AS sku_code, d.qty_base, d.value_mtk
           FROM app.memo_discount d JOIN dw.fact_memo m ON m.memo_client_uuid = d.memo_client_uuid AND m.business_date = d.business_date JOIN dw.dim_geo g ON g.route_id = m.route_id
           LEFT JOIN app.sku s ON s.id = d.sku_id
-         WHERE ${ctx.dateClause("d.business_date")} AND d.voided_at IS NULL AND m.status = 'active' AND m.line_count > 0 AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")}
+         WHERE ${ctx.dateClause("d.business_date")} AND d.voided_at IS NULL AND m.status = 'active' AND m.line_count > 0 AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")} $filter
         """,
-        totalColumns = listOf("qty_base", "value_mtk"),
-    )
+        binds, listOf("qty_base", "value_mtk"),
+        )
+    }
 }
 
 /** `free-sample`: free-sample quantities (line_kind free_sample) by route and SKU. */

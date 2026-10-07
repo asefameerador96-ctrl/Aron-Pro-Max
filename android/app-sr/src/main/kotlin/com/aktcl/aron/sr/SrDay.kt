@@ -75,6 +75,14 @@ class SrDay(
     fun currentMs(): Long = clock.nowMs()
     fun requestSync() = scheduler.requestSync(userId, SyncTrigger.WRITE_DEBOUNCE)
     fun businessDate(): String = BusinessDate.of(clock.nowMs()).toString()
+    /** Milliseconds until the next 17:00 or the next midnight on Dhaka trusted time (at least one second). */
+    fun millisToNextBoundary(): Long {
+        val dayMs = 24L * 3_600_000L
+        val now = (clock.nowMs() + BusinessDate.DHAKA_OFFSET_MS).mod(dayMs)
+        val seventeen = 17L * 3_600_000L
+        val next = if (now < seventeen) seventeen else dayMs
+        return (next - now + 1_000L).coerceAtLeast(1_000L)
+    }
     fun dhakaMinutesNow(): Int = ((clock.nowMs() + BusinessDate.DHAKA_OFFSET_MS) / 60_000L).mod(24 * 60L).toInt()
 
     @Volatile var routeId: Long? = null

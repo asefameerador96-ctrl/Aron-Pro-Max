@@ -4,7 +4,6 @@ import com.aktcl.aron.backend.platform.IngestRecord
 import com.aktcl.aron.backend.platform.RecordHandler
 import com.aktcl.aron.backend.platform.RecordRefusal
 import com.aktcl.aron.contract.RecordOutcomeCode
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import org.jdbi.v3.core.Handle
 
@@ -17,7 +16,7 @@ import org.jdbi.v3.core.Handle
 class ConfigAckHandler : RecordHandler {
     override val types = setOf("config_ack")
 
-    private fun applied(rec: IngestRecord): Long? = rec.payload["config_version"]?.jsonPrimitive?.longOrNull
+    private fun applied(rec: IngestRecord): Long? = (rec.payload["config_version"] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
 
     override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
         val v = applied(rec) ?: return RecordRefusal(RecordOutcomeCode.SCHEMA_INVALID, "config_version missing")

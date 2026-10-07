@@ -25,13 +25,15 @@ export async function handleMasterOp(req: NextRequest): Promise<NextResponse> {
 
   const body: Record<string, unknown> = isObj(input.body) ? { ...input.body } : {};
   const errors: { pointer: string; code: string }[] = [];
-  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  const reason = typeof input.reason === "string" ? input.reason.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim() : ""; // zero-width characters do not count as a reason
   const n = codePoints(reason);
   const max = "reasonMax" in def ? def.reasonMax : 500;
   if (n < REASON_MIN) errors.push({ pointer: "/reason", code: "too_short" });
   else if (n > max) errors.push({ pointer: "/reason", code: "too_long" });
   else body[def.reason] = reason;
-  errors.push(...(await masterOpRules(key, body, isObj(input.params) ? input.params : {}, auth.session.at, role)));
+  errors.push(...(await masterOpRules(key, body, isObj(input.params) ? input.params : {}, auth.session.at, role, auth.session.scope?.nodes ?? [])));
+  if (errors.some((e) => e.code === "forbidden_scope")) return auth.finish(problemResponse(403, "ERR_FORBIDDEN"));
+  if (errors.some((e) => e.code === "unavailable")) return auth.finish(problemResponse(503, "ERR_SERVICE_UNAVAILABLE", { retryable: true }));
   if (errors.some((e) => e.code === "not_found")) return auth.finish(problemResponse(404, "ERR_NOT_FOUND"));
   if (errors.length) return auth.finish(problemResponse(400, "ERR_VALIDATION", { errors }));
 

@@ -34,3 +34,16 @@ Done: F-ADM-076 and F-ADM-028 (checker findings fixed). F-ADM-026 built, checker
 Requests added: web-admin-feedback-filters, web-admin-tutorial-asset-id, web-admin-asset-upload-csp (infra sets ARON_BLOB_ORIGIN and the storage CORS rule).
 Next: F-ADM-065 (SKU image upload, reuses the asset ticket flow), F-ADM-020 (surveys, rubrics, content), F-TSO-023/025, web/QC entry rows.
 Trap: the admin segment streams behind loading.tsx, so notFound() in a page answers 200; the proxy rewrites known 404s instead.
+
+## Update (definitions)
+F-ADM-020 built at /admin/surveys, /admin/rubrics, /admin/content (checker pending). F-ADM-065 parked: contract has no SKU image member (request web-admin-sku-image). Request web-admin-definition-reads: read and write schemas do not round-trip (no keys on read, rubric enum differs, no asset_id).
+Decision: points_per_photo (loyalty) is not exposed (docs/27 deferred).
+Remaining: F-TSO-023, F-TSO-025 (T1 and T2, Day 5), then wait on contract for F-ADM-065.
+
+## Update (F-ADM-020 fixed, F-TSO-023 done, F-TSO-025 built)
+Done: F-ADM-020 and F-TSO-023 after checker rounds. F-TSO-025 built at /admin/radius (checker pending). Request added: web-admin-temp-password-ttl (backend 72 h vs 24 h).
+Open: F-ADM-065 waits on a SKU image member (request filed). Lead may route the contract requests.
+Known trap: a failed lint leaves a stale .next, then e2e shows 403 pages for new routes; always run lint before build.
+
+## Update (prices checker)
+F-ADM-005 Opus (money) checker found 14 (6 in the grid and page, 8 in the mock); all fixed. Not changed: no stale-data guard between two admins (contract has no version on publish), future and pending prices are not listed on the page.

@@ -21,7 +21,7 @@ This page applies the full design of `docs/20` s5 (written for the long plan) to
 
 ## 2. Promotion flow
 
-1. Lane commits on the **integration branch** (`claude/wonderful-thompson-k6ejnf`, "INT"); CI runs on every push.
+1. Lanes push to their own branches `lane/<sublane>` and CI runs on every push; the **integrator** merges ready (green) lane heads into a candidate `lane/train-<time>`, CI runs on the candidate, and only a green candidate fast-forwards the **integration branch** (`claude/wonderful-thompson-k6ejnf`, "INT"). INT is therefore green by construction (docs/26 s3, docs/audit/2026-10-07-ci-audit.md).
 2. CI green on INT automatically deploys **dev** and builds the three debug APKs.
 3. At the end of each day the lead cuts a **daily gate**: all CI green on the INT head, the day's 10-minute check done by the owner, sampled audit done. The head is tagged `gate-dayN-YYYYMMDD` and promoted to `main` by a pull request (merge commit, CI green on the merge).
 4. In the final account: `main` deploys **staging**; a manual `promote-prod` with the release tag and a required approver deploys **prod**; blue/green by traffic weights; rollback by shifting weights back; the database is forward-only (`docs/20` s5.6 expand/contract).
@@ -63,5 +63,5 @@ The repository `asefameerador96-ctrl/Aron-Pro-Max` has been **public** since it 
 ## 5. What is not done yet (tracked, owner in brackets)
 
 1. `main`, protection, baseline tag, environments, CODEOWNERS, Dependabot: **done 2026-10-07** (section 3). Open: the first daily gate pull request and the gate tags (lead), the Actions spending limit before the repository is made private (owner).
-2. `stage.bicepparam` and the promotion workflows `promote-prod.yml` and `release-app.yml`: written by the infra lane, **not deployable** until the final account exists.
+2. What exists for the final account (infra lane, checked 2026-10-07): `infra/params/stage.bicepparam` and `stage.apps.bicepparam` (compiled by `infra/validate.sh`, never deployed), `promote-prod.yml` and `release-app.yml` (inert until the repository variable `ARON_FINAL_ACCOUNT=true`), and the GitHub environments `azure-stage` (branch `main`) and `azure-prod` (owner as required reviewer, tags `server-v*` only) in `tools/github-governance.ps1`. Not there yet: a `stage` profile in `deploy.sh` and `deploy.yml` (so the staging deploy that `promote-prod.yml` checks cannot run), the `azure-stage`/`azure-prod` identities (`infra/bootstrap-azure.ps1 -Environment azure-prod` against the final subscription). The `deploy.yml` manual dispatch offers only `dev` and `dev-lite`. None of it is validated against Azure until the final account exists.
 3. Device-lab protocol file and the 8-hour battery run: QA lane and the owner (Day 6).

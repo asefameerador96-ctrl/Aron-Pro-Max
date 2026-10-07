@@ -22,9 +22,14 @@ export const OUTLET_REQUEST_READ_ROLES = ["TSO", "DMO", "WM", "TOP", "ANALYST", 
 export const OUTLET_REQUEST_ACT_ROLES = ["DMO", "WM", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 
 /** Admin-group paths that roles outside the portal may open (longest prefix wins). Everything else under /admin is portal only. */
+/** Roles that reset a password or unlock an SR or AMO on the team page (docs/24 s8.5); a TSO only for its own zones (server side). */
+export const TEAM_CREDENTIAL_ROLES = ["TSO", "SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
+
 export const ADMIN_PATH_ROLES: readonly { prefix: string; roles: RoleList }[] = [
   { prefix: "/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
   { prefix: "/api/bff/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
+  { prefix: "/admin/team", roles: TEAM_CREDENTIAL_ROLES },
+  { prefix: "/admin/radius", roles: ["TSO"] },
 ];
 
 export function hasRole(role: Role | undefined, allowed: RoleList): boolean {
