@@ -1,8 +1,23 @@
 # Lane sessions (the lead keeps this current; the lane check reads it)
 
+## Restart 2026-10-07 ~15:55 UTC (lead session aron-b3)
+
+Every lane stopped at ~10:39-10:44 UTC (last lane pushes and CI runs) and stayed silent for ~5 hours. The lead
+session was resumed with a fresh context at ~15:46 UTC and could no longer reach the old lane sessions by id,
+so the critical-path lanes were restarted as fresh remote sessions on the same briefs (state from git and
+docs/status, per docs/29 s3). The sessions in the table below are therefore **all retired**; the active lanes
+are now the lead's remote agents: integrator (Sonnet), backend-core (Opus), db (Opus), android-core (Opus),
+android-sr-a (Sonnet), android-sr-b (Sonnet), android-core-ui (Sonnet), android-print (Opus), infra (Opus).
+The integrator verified git fetch/push from the remote environment before the others were started.
+Still on hold (unchanged, see the throttle note and docs/status/hold-notes.md): web-config, web-admin,
+web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-geo-dpc stays finished
+(device halves DEVICE-PENDING). The laptop operator session is untouched.
+
+## Retired registry (pre-restart)
+
 | Sub-lane | Session id | Model | Started | Notes |
 |---|---|---|---|---|
-| db | session_017dmQw2byPhYrFKrGJrEMRj | Opus | 2026-10-07 | recycled 05:35; previous session_01KAjUS8Gz437Nx93fsiVFYX is retired (READY TO RECYCLE 05:33) |
+| db | session_013NHxcKi11ivBpd2B2v3g7D | Opus | 2026-10-07 | recycled 10:51 (third session); previous session_017dmQw2byPhYrFKrGJrEMRj is retired (READY TO RECYCLE 10:50, lane/db 501e466f, V0023 to V0038); earlier session_01KAjUS8Gz437Nx93fsiVFYX retired |
 | shared (first session) | session_01SD55WuhWKuEfeuC6T4A8e2 | Sonnet | 2026-10-05 | finished; blocked by its own permission settings on the contract; do not nudge |
 | shared-2 | session_01QRBncHfaoTvSqTLur5L3ZH | Sonnet | 2026-10-07 | N-002, DTO hosting, web drift |
 | backend-core | session_01465rpZSgSrMTU8CACwuEYx | Opus | 2026-10-07 | recycled 10:25 (fourth session); previous session_01FfFvStuQXyZNg6QM9rndaD is retired (READY TO RECYCLE 10:25, head c59a703d); earlier sessions retired (01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
@@ -19,7 +34,7 @@
 | web-config | session_0146veK2iXvmHGwiPBpbBJ2k | Sonnet | 2026-10-07 | |
 | web-dashboard | session_01RM4v6DRfjmfAbfrDi17Jzo | Sonnet | 2026-10-07 | recycled 05:01; previous session_01Sk9wwEshZ57sQafoEyccP7 is retired (READY TO RECYCLE 04:51) |
 | infra | session_01Th2LZgi7Jg7dxUX3gmwFQ2 | Opus | 2026-10-07 | recycled 06:41 (third session); session_01CDohyiiiYjHVdhw5DSeqPc retired (READY TO RECYCLE 06:41); session_011BobrrmxjEerwAMUs6AzN2 retired earlier |
-| integrator | session_01HMc2Bcq7MRYf8xgj423pKU | Sonnet | 2026-10-07 | integration train conductor (docs/lanes/integrator.md): promotes green lane heads to INT; the only mover of INT besides lead docs-only commits; state in docs/status/train.md |
+| integrator | session_017ASTyJnQ6z71B1uoc447YL | Sonnet | 2026-10-07 | recycled 10:50 (second session; integration train conductor, docs/lanes/integrator.md; recycle at ~300k); session_01HMc2Bcq7MRYf8xgj423pKU retired and archived (READY TO RECYCLE 10:49, 439k context) |
 | laptop operator | session_01UbRHnSorx4s1XARa6aN1Tg | Opus | 2026-10-06 | never nudged; runs only owner-approved laptop tasks |
 
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
