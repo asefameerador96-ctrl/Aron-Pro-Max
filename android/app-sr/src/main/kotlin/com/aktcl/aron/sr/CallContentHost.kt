@@ -137,7 +137,7 @@ private val AnswersSaver = androidx.compose.runtime.saveable.Saver<Map<String, S
 @Composable
 private fun SurveyStep(day: SrDay, visitUuid: String, survey: SurveyEntity, rows: List<SurveyQuestionEntity>, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val bn = androidx.compose.ui.platform.LocalContext.current.resources.configuration.locales[0].language == "bn"
+    val bn = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
     // This screen answers yes/no and photo questions. A required question of another type could never be answered and would
     // block the sale, so it is not shown and counts as optional.
     val supported = setOf(AnswerType.BOOL, AnswerType.PHOTO_ONLY)
