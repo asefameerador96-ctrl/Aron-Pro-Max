@@ -1,6 +1,9 @@
 package com.aktcl.aron.db
 
 import org.flywaydb.core.Flyway
+import org.flywaydb.core.api.callback.Callback
+import org.flywaydb.core.api.callback.Context
+import org.flywaydb.core.api.callback.Event
 import org.testcontainers.postgresql.PostgreSQLContainer
 import java.sql.Connection
 import java.sql.DriverManager
@@ -61,7 +64,59 @@ object TestPostgres {
             .locations(location)
             .cleanDisabled(true)
             .validateOnMigrate(true)
+            .callbacks(RoleDdlLock.Around)
             .load()
+
+    /**
+     * Server-wide mutex for role DDL. The V0014/V0020 roles live in the cluster, not in a database, so two test JVMs that
+     * migrate their throwaway databases at the same time (or a test that changes a role while another migrates) update
+     * the same pg_authid / pg_auth_members tuples and fail with "tuple concurrently updated". Advisory locks are scoped
+     * to one database, so the lock is taken in the shared database the URL names, which every test process connects to;
+     * backend's FreshDb takes the same key (docs/requests/db-role-ddl-lock.md). Re-entrant per JVM; one session holds it.
+     */
+    object RoleDdlLock {
+        const val KEY = 7_204_190_014L                   // fixed; the same number in every harness
+        private val jvm = java.util.concurrent.locks.ReentrantLock()
+        private var holder: Connection? = null
+
+        fun <T> hold(block: () -> T): T {
+            acquire()
+            try { return block() } finally { release() }
+        }
+
+        private fun acquire() {
+            jvm.lock()
+            if (jvm.holdCount > 1) return
+            var c: Connection? = null
+            try {
+                c = connect(server.baseUrl)
+                c.createStatement().use { it.execute("SELECT pg_advisory_lock($KEY)") }
+                holder = c
+            } catch (e: Throwable) {                       // never keep the JVM lock (or a connection) after a failed acquire
+                runCatching { c?.close() }
+                jvm.unlock()
+                throw e
+            }
+        }
+
+        private fun release() {
+            try {
+                if (jvm.holdCount == 1) holder?.use { c -> c.createStatement().use { it.execute("SELECT pg_advisory_unlock($KEY)") } }
+            } finally {
+                if (jvm.holdCount == 1) holder = null
+                jvm.unlock()
+            }
+        }
+
+        /** Every Flyway migrate of the test harness runs under the lock (configurations copied from it keep the callback). */
+        object Around : Callback {
+            override fun supports(event: Event, context: Context?) =
+                event == Event.BEFORE_MIGRATE || event == Event.AFTER_MIGRATE || event == Event.AFTER_MIGRATE_ERROR
+            override fun canHandleInTransaction(event: Event, context: Context?) = true
+            override fun handle(event: Event, context: Context?) = if (event == Event.BEFORE_MIGRATE) acquire() else release()
+            override fun getCallbackName() = "aron-role-ddl-lock"
+        }
+    }
 }
 
 class TestDatabase(val name: String, val url: String, private val drop: () -> Unit) : AutoCloseable {

@@ -1,0 +1,62 @@
+# Database drills on the dev rehearsal server (AUD-REL-05, docs/setup/move-to-final-account.md s5a): a forced HA
+# failover with the time until the api is ready again, or a point-in-time restore into a new server with a row-count
+# comparison, deleted in the same run (infra/scripts/drill.sh). Owner: infra lane.
+#
+# Manual only, integration branch only, environment azure-dev. Each mode needs its exact phrase in "confirm":
+#   failover  "lead approved failover drill"   (dev is unavailable for a minute or two; the lead picks the time)
+#   pitr      "owner approved restore drill"   (a temporary server costs money; the owner decides)
+# The lane never types these phrases on its own. Actions are pinned by commit SHA (release tag in the comment).
+
+name: drill
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: failover (forced HA failover) or pitr (point-in-time restore into a temporary server)
+        type: choice
+        options: [failover, pitr]
+      confirm:
+        description: The approval phrase for the mode (see the top of drill.yml); anything else stops before Azure is touched
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    name: Database drill (${{ inputs.mode }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: azure-dev
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      MODE: ${{ inputs.mode }}
+      CONFIRM_TEXT: ${{ inputs.confirm }}
+    steps:
+      - name: Approval phrase and branch
+        run: |
+          [ "${GITHUB_REF}" = "refs/heads/claude/wonderful-thompson-k6ejnf" ] || { echo "::error::integration branch only"; exit 1; }
+          case "${MODE}" in
+            failover) want="lead approved failover drill" ;;
+            pitr) want="owner approved restore drill" ;;
+            *) echo "::error::unknown mode"; exit 1 ;;
+          esac
+          [ "${CONFIRM_TEXT}" = "${want}" ] || { echo "::error::confirm must be exactly \"${want}\" for ${MODE}"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Sign in to Azure (OIDC, no client secret)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Drill (infra/scripts/drill.sh)
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt core.only_show_errors=true
+          infra/scripts/drill.sh "${AZURE_RESOURCE_GROUP}" "${MODE}"

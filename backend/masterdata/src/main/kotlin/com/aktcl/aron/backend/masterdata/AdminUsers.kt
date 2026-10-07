@@ -27,7 +27,6 @@ private val USERNAME_RE = Regex("^[A-Za-z][A-Za-z0-9._-]{2,39}$")
 private val MEMO_USERNAME_RE = Regex("^[a-z][a-z0-9]{3,31}$")
 private val ROLE_VALUES = Role.entries.map { it.wire }.toSet()
 private val SENIOR = setOf(Role.ADMIN, Role.SUPERADMIN)
-private const val TEMP_PASSWORD_TTL_H = 72L
 
 /** Users in reach: the home zone or a live route assignment lies in a zone of the caller's reach. */
 private val userReach: (Reach, Geo) -> Pred? = { reach, _ ->
@@ -121,7 +120,7 @@ private suspend fun createUser(call: ApplicationCall, d: AdminMasterDeps) {
         HttpStatusCode.Created,
         JsonObject(mapOf(
             "user" to userJson(row, p), "temporary_password" to JsonPrimitive(temp),
-            "temporary_password_expires_at" to jv(ctx.now.plusSeconds(TEMP_PASSWORD_TTL_H * 3600)),
+            "temporary_password_expires_at" to jv(ctx.now.plusSeconds(d.tempPasswordTtlH() * 3600)),
         )),
         (row["version"] as Number).toInt(),
     )
@@ -169,7 +168,7 @@ private suspend fun credentials(call: ApplicationCall, d: AdminMasterDeps) {
             ctx.audit(h, "user", id.toString(), "credentials.$action", null, JsonObject(mapOf("action" to JsonPrimitive(action))), reason)
             JsonObject(buildMap {
                 put("action", JsonPrimitive(action)); put("done_at", jv(ctx.now))
-                if (temp != null) { put("temporary_password", JsonPrimitive(temp)); put("temporary_password_expires_at", jv(ctx.now.plusSeconds(TEMP_PASSWORD_TTL_H * 3600))) }
+                if (temp != null) { put("temporary_password", JsonPrimitive(temp)); put("temporary_password_expires_at", jv(ctx.now.plusSeconds(d.tempPasswordTtlH() * 3600))) }
             })
         }
     }

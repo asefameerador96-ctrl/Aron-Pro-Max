@@ -18,4 +18,13 @@
     <string name="perm_gate_open_settings">সেটিংস খুলুন</string>
     <string name="perm_gate_turn_on_location">লোকেশন চালু করুন</string>
     <string name="perm_gate_back">ফিরে যান</string>
+    <!-- F-SYS-022 logout -->
+    <string name="logout_unsent_title">সব পাঠানো হয়নি</string>
+    <plurals name="logout_unsent_message">
+        <item quantity="one">%1$sটি আইটেম এখনো পাঠানো হয়নি। ইন্টারনেটে যুক্ত হয়ে এখনই সিঙ্ক চাপুন; সংখ্যা শূন্য হলে লগআউট করুন।</item>
+        <item quantity="other">%1$sটি আইটেম এখনো পাঠানো হয়নি। ইন্টারনেটে যুক্ত হয়ে এখনই সিঙ্ক চাপুন; সংখ্যা শূন্য হলে লগআউট করুন।</item>
+    </plurals>
+    <string name="logout_sync_now">এখনই সিঙ্ক</string>
+    <string name="logout_cancel">বাতিল</string>
+    <string name="logout_wipe_incomplete">লগআউট হয়েছে, কিন্তু ফোনের কিছু ফাইল মোছা যায়নি। শেষ করতে আবার লগইন ও লগআউট করুন।</string>
 </resources>
