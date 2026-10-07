@@ -87,9 +87,8 @@ class RefreshService(
             val childRow = store.findToken(childHash) ?: throw invalid()
             return Rotated(child, row.family, childRow.expiresAt, replay = true)
         }
-        store.revokeFamily(row.family.id, now, REASON_REUSE)
-        // Exactly once per reuse: later presentations meet a revoked family and are refused before this point.
-        securityEvents.safely(SecurityEvent(SecurityEventKind.REFRESH_REUSE, now, row.family.userId, detail = mapOf("family" to row.family.id.toString(), "grant" to row.family.grant.name.lowercase())))
+        // Exactly once per reuse: only the replay whose revoke changed the row records it (concurrent replays race here).
+        if (store.revokeFamily(row.family.id, now, REASON_REUSE)) securityEvents.safely(SecurityEvent(SecurityEventKind.REFRESH_REUSE, now, row.family.userId, detail = mapOf("family" to row.family.id.toString(), "grant" to row.family.grant.name.lowercase())))
         throw ApiProblem(ProblemCode.ERR_AUTH_REFRESH_REUSED, "refresh token reused; grant revoked")
     }
 

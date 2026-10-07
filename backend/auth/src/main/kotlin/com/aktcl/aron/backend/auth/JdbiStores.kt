@@ -136,12 +136,11 @@ class JdbiRefreshStore(private val db: Database) : RefreshStore {
         if ((e.cause as? java.sql.SQLException)?.sqlState == "23505") false else throw e
     }
 
-    override fun revokeFamily(familyId: Long, at: Instant, reason: String) {
-        db.jdbi.useHandle<Exception> { h ->
+    override fun revokeFamily(familyId: Long, at: Instant, reason: String): Boolean =
+        db.jdbi.withHandle<Boolean, Exception> { h ->
             h.createUpdate("UPDATE app.refresh_family SET revoked_at = :at, revoke_reason = :r WHERE id = :f AND revoked_at IS NULL")
-                .bind("at", at.odt()).bind("r", reason).bind("f", familyId).execute()
+                .bind("at", at.odt()).bind("r", reason).bind("f", familyId).execute() == 1
         }
-    }
 
     override fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String) {
         if (deviceId == null && deviceUuid == null) return

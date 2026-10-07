@@ -153,9 +153,10 @@ class RequestIsolationTest {
         assertTrue(ms < 3_000, "timeout answered after $ms ms")
         assertEquals("ok", get(port, "/v1/fast").body())
         // A handler blocked in JDBC-like work cannot be interrupted: it answers when the blocking call ends (the timeout
-        // plus one statement), with a 503 if it suspends first, else with its own answer. Never later, never hanging.
+        // plus one statement), and then with a whole 503, never a response cut after its headers.
         val (b, bms) = timed { get(port, "/v1/blocking") }
-        assertTrue(b.statusCode() == 503 || b.body() == "late", "${b.statusCode()} ${b.body()}")
+        assertEquals(503, b.statusCode(), b.body())
+        assertTrue("ERR_SERVICE_UNAVAILABLE" in b.body())
         assertTrue(bms in 900..3_000, "blocking handler answered after $bms ms")
         // A handler's own inner timeout is a server error of that handler, not the request timeout.
         val inner = get(port, "/v1/inner-timeout")

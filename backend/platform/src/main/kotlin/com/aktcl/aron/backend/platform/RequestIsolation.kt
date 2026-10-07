@@ -5,7 +5,10 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.request.path
+import io.ktor.server.response.ApplicationSendPipeline
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -52,10 +55,13 @@ fun serviceUnavailable(detail: String): ApiProblem {
  * holds its admission slot while it waits here. A call still running at the deadline is cancelled and answered 503
  * unless it has already started its response. Cancellation acts at the next suspension point only: a handler inside a
  * JDBC statement answers when that statement ends, so the real bound is the timeout plus one statement (the api role's
- * statement_timeout, 15 s); if it then reaches its respond call before a suspension point, the client gets that real
- * answer instead of the 503. A handler's own inner timeout is its own error, not this one.
+ * statement_timeout, 15 s), and then answers the 503: work it committed after the deadline is not reported, so the
+ * client retries (every write path is idempotent). A handler's own inner timeout is its own error, not this one.
  */
 fun Application.installRequestIsolation(iso: RequestIsolation) {
+    // A call past its deadline must not START a response: cancellation would cut it after the headers (a truncated
+    // body the client cannot tell from a network fault). Refused here, before any byte, it becomes the clean 503 below.
+    sendPipeline.intercept(ApplicationSendPipeline.Before) { currentCoroutineContext().ensureActive() }
     intercept(ApplicationCallPipeline.Plugins) {
         if (RequestIsolation.isProbe(call.request.path())) return@intercept proceed()
         val finished = withTimeoutOrNull(iso.timeoutMs) { withContext(iso.dispatcher) { proceed() }; true }

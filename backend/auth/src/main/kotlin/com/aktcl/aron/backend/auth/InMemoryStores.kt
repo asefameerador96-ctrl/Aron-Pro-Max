@@ -34,8 +34,10 @@ class InMemoryRefreshStore : RefreshStore {
         return true
     }
 
-    override fun revokeFamily(familyId: Long, at: Instant, reason: String) {
-        families.computeIfPresent(familyId) { _, f -> if (f.revokedAt == null) f.copy(revokedAt = at, revokeReason = reason) else f }
+    override fun revokeFamily(familyId: Long, at: Instant, reason: String): Boolean {
+        var changed = false
+        families.computeIfPresent(familyId) { _, f -> if (f.revokedAt == null) { changed = true; f.copy(revokedAt = at, revokeReason = reason) } else f }
+        return changed
     }
 
     override fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String) {

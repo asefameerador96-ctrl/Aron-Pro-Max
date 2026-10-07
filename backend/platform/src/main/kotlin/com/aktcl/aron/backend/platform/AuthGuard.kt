@@ -1,6 +1,5 @@
 package com.aktcl.aron.backend.platform
 
-import io.ktor.server.request.path
 import com.aktcl.aron.contract.ProblemCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
@@ -76,7 +75,8 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
             when (cfg.deps.scopeVersions.deviceStatus(p.deviceId)) {
                 "suspended" -> throw ApiProblem(ProblemCode.ERR_DEVICE_SUSPENDED, "this phone is suspended")
                 "revoked", "replaced" -> throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "this phone is revoked")
-                null -> if (call.request.path().startsWith("/v1/admin")) throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "unknown phone")
+                // A token's `did` existed when the token was issued: a missing row is a deleted phone, refused everywhere.
+                null -> throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "unknown phone")
             }
         }
     }

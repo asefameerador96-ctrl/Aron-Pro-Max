@@ -61,7 +61,7 @@ GET /v1/report-exports -> gap: backend-reports
 GET /v1/report-exports/{export_id} -> gap: backend-reports
 GET /v1/reports -> gap: backend-reports
 GET /v1/routes/{id}/assignments -> case RouteAssignmentsTest#randomisedCallersNeverSeeARouteOutsideTheirReach
-GET /v1/sync/bundle -> gap: backend-core
+GET /v1/sync/bundle -> case BundleAcceptanceTest#theBundleHoldsOnlyTheCallersOwnRoutesAndTheirOutletsWhateverTheQuerySays
 GET /v1/tasks -> case TasksCheckerTest#listScope
 GET /v1/team/locations -> gap: backend-reports
 GET /v1/team/stock -> gap: backend-reports

@@ -322,10 +322,17 @@ class LoginService(
         private val PHONE_ROLE = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
 
         /** IPv4 /24 or IPv6 /48 of the client (the lockout key's IP class); "-" when unknown. */
+        private val IPV6_LITERAL = Regex("^[0-9A-Fa-f:.]{2,45}$")
+
         fun ipClass(ip: String?): String {
             if (ip.isNullOrBlank()) return "-"
             val v = ip.trim().removePrefix("::ffff:").removePrefix("::FFFF:")
-            return if (v.contains(':')) v.split(':').take(3).joinToString(":") + "::/48"
+            // IPv6: expand the literal first ("2001::5:6" must not keep groups from after "::"); never a DNS lookup.
+            return if (v.contains(':')) {
+                if (!IPV6_LITERAL.matches(v)) return "-"
+                val b = runCatching { java.net.InetAddress.getByName(v).address }.getOrNull()?.takeIf { it.size == 16 } ?: return "-"
+                (0 until 3).joinToString(":") { i -> "%x".format(((b[2 * i].toInt() and 0xff) shl 8) or (b[2 * i + 1].toInt() and 0xff)) } + "::/48"
+            }
             else v.split('.').let { if (it.size == 4) "${it[0]}.${it[1]}.${it[2]}.0/24" else "-" }
         }
     }

@@ -278,5 +278,35 @@ class BundleAcceptanceTest {
         assertEquals(HttpStatusCode.Forbidden, client.get("/v1/sync/bundle") { bearerAuth(web) }.status)
     }
 
+    /** AUD-TP-3 scope case for GET /v1/sync/bundle: the bundle holds exactly the caller's assigned routes and their outlets. */
+    @Test
+    @Order(6)
+    fun theBundleHoldsOnlyTheCallersOwnRoutesAndTheirOutletsWhateverTheQuerySays() = testApplication {
+        application { aronApi(wiring) }
+        // The seed assigns every route to sr1001: end the 2F assignment before today so its outlets are out of reach.
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("UPDATE app.route_assignment SET valid_to = DATE '2027-01-03' WHERE route_id = (SELECT id FROM app.route WHERE code = 'MIR-SR-2F')")
+            h.execute("UPDATE app.app_user SET scope_version = scope_version + 1 WHERE username = 'sr1001'")
+        }
+        val t = client.token()
+        val (own, others) = fresh.db.jdbi.withHandle<Pair<Set<Long>, Set<Long>>, Exception> { h ->
+            val mine = h.createQuery(
+                "SELECT o.id FROM app.outlet o JOIN app.route_assignment a ON a.route_id = o.route_id JOIN app.app_user u ON u.id = a.user_id " +
+                    "WHERE u.username = 'sr1001' AND o.status = 'active' AND a.valid_from <= DATE '2027-01-03' AND (a.valid_to IS NULL OR a.valid_to > DATE '2027-01-03')",
+            ).mapTo(Long::class.java).set()
+            mine to h.createQuery("SELECT id FROM app.outlet").mapTo(Long::class.java).set().minus(mine)
+        }
+        assertTrue(others.isNotEmpty(), "the seed must hold outlets of other users' routes for this to mean anything")
+        val otherRoute = fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery("SELECT route_id FROM app.outlet WHERE id = :id").bind("id", others.first()).mapTo(Long::class.java).one()
+        }
+        for (query in listOf("", "?route_id=$otherRoute", "?zone_id=1&route_ids=$otherRoute")) {
+            val r = client.bundle(t, query)
+            if (r.status != HttpStatusCode.OK) { assertEquals(400, r.status.value, "a scope selector is refused, never honoured"); continue }
+            val got = r.gunzipJson()["routes"]!!.jsonArray.flatMap { it.jsonObject["outlets"]!!.jsonArray.map { o -> o.jsonObject["outlet_id"]!!.jsonPrimitive.long } }.toSet()
+            assertEquals(emptySet(), got - own, "outlets outside the caller's routes for '$query'")
+        }
+    }
+
     private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullSafe(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
 }
