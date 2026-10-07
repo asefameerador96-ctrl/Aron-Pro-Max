@@ -114,6 +114,10 @@ class Wiring(
     val admission: com.aktcl.aron.backend.analytics.AdmissionControl? = null,
     /** [generation] without I/O, for the health probes (AUD-REL-01). */
     val cachedGeneration: () -> String = generation,
+    /** Bounded dispatcher and 25 s timeout for every non-probe call (AUD-PERF-02); production always sets it. */
+    val isolation: com.aktcl.aron.backend.platform.RequestIsolation? = null,
+    /** Graceful drain on stop (AUD-REL-07). */
+    val drain: com.aktcl.aron.backend.platform.Drain = com.aktcl.aron.backend.platform.Drain(),
 ) {
     companion object {
         /**
@@ -253,7 +257,8 @@ class Wiring(
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
-            }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached)
+            }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
+                isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }))
         }
     }
 }
