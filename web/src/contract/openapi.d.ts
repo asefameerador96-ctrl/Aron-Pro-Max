@@ -4895,6 +4895,13 @@ export interface components {
             zone_id?: number | null;
             /** Format: int64 */
             territory_id?: number | null;
+            /** @description Policy versions the user accepted (F-SYS-075), earliest acceptance per version. The phone seeds its consent flag from it and does not show the notice again. */
+            consents?: {
+                /** @enum {string} */
+                policy_key: "location_notice";
+                policy_version: number;
+                accepted_at: components["schemas"]["Timestamp"];
+            }[];
         };
         ResolvedConfigValue: {
             key: components["schemas"]["ConfigKeyName"];

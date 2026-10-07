@@ -278,6 +278,7 @@ class IngestService(
         h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", r.clientUuid)
         val prior = h.createQuery("SELECT status, outcome_code, payload_sha256, server_id FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) FOR UPDATE")
             .bind("c", r.clientUuid).map { rs, _ -> Prior(rs.getString(1), rs.getString(2), rs.getBytes(3), rs.getObject(4) as Long?) }.findOne().orElse(null)
+        var released = false
         if (prior != null) {
             if (!prior.hash.contentEquals(r.hash) && !prior.hash.contentEquals(r.fullHash)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.PAYLOAD_CONFLICT, "same client_uuid, different payload", register = false)
             // Registered before the hash left `sig` out: re-key it, so the parked upsert and the stored_at mark match (BC-53).
@@ -287,16 +288,23 @@ class IngestService(
                 "rejected" -> { touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.SCHEMA_INVALID) }
                 // A signature quarantine is released once the mode is no longer enforce: the resend is processed like a
                 // parked row, so a sale held under enforce (or before modes existed) reaches the server (BC-53).
-                "quarantined" -> if (prior.code != RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire || ctx.signatureMode == SignatureMode.ENFORCE) {
+                // Only while its review item is still open: a reviewer's discard or return-to-device stands (android-core
+                // integrity-release item 1).
+                "quarantined" -> if (prior.code != RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire || ctx.signatureMode == SignatureMode.ENFORCE || !openIntegrityItem(h, r)) {
                     touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT)
+                } else {
+                    released = true
                 }
+                // A released row that was parked since (a parent missing, a transient error) keeps its release.
+                "parked" -> released = ctx.signatureMode != SignatureMode.ENFORCE && openIntegrityItem(h, r)
                 // parked: process again (the parent may have arrived)
             }
         }
 
         // 3. Business-date window (s3.8 item 4): too old or in the future is quarantined, never dropped.
         val captured = Instant.parse(env.str("captured_at")!!)
-        if (bd.isBefore(ctx.today.minusDays(ctx.backdateDays)) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
+        // A released signature quarantine was inside the window when first received: it is not too old now (item 2).
+        if ((!released && bd.isBefore(ctx.today.minusDays(ctx.backdateDays))) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, "business_date $bd, today ${ctx.today}")
         }
 
@@ -423,6 +431,12 @@ class IngestService(
         for (hd in hs) {
             val refusal = hd.check(h, ingestRec!!) ?: continue
             return refuse(h, ctx, r, bd, refusal.code, refusal.detail)
+        }
+        // A domain duplicate (the same fact under a new client_uuid): registered as accepted with the first row's id,
+        // so this uuid's resends are duplicates too, and nothing new is stored.
+        for (hd in hs) hd.sameAs(h, ingestRec!!)?.let { first ->
+            register(h, ctx, r, bd, "accepted", null, first, contentFp)
+            return Outcome.duplicate(first)
         }
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
@@ -586,11 +600,28 @@ class IngestService(
         }
     }
 
+    /**
+     * The open `device_integrity_failed` review item of this record, locked (FOR UPDATE re-checks `status` after a
+     * reviewer's concurrent resolve commits, so a discard decided at the same moment stands). Lock order: the uuid
+     * advisory lock, then this row; a reviewer takes only the row.
+     */
+    private fun openIntegrityItem(h: Handle, r: Rec): Boolean = h.createQuery(
+        "SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open' FOR UPDATE",
+    ).bind("c", r.clientUuid).mapTo(Long::class.java).list().isNotEmpty()
+
+    /** A released row that ends rejected for another reason closes its integrity review item (nothing left to review). */
+    private fun closeIntegrityItem(h: Handle, r: Rec, now: Instant) {
+        h.createUpdate("UPDATE app.sync_quarantine SET status = 'discarded', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open'")
+            .bind("now", ts(now)).bind("c", r.clientUuid).execute()
+    }
+
     /** Moves a registry row (and its open rejected/quarantine copies) from the full-envelope hash to the sig-less one. */
     private fun rekey(h: Handle, r: Rec) {
         h.createUpdate("UPDATE app.ingest_registry SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old")
             .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
         h.createUpdate("UPDATE app.sync_rejected SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old AND stored_at IS NULL")
+            .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
+        h.createUpdate("UPDATE app.sync_quarantine SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old AND status = 'open'")
             .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
     }
 
@@ -613,6 +644,7 @@ class IngestService(
 
     private fun finalReject(h: Handle, ctx: Ctx, r: Rec, code: RecordOutcomeCode, detail: String?): Outcome {
         rejectedRow(h, ctx, r, code, detail, retryable = false)
+        if (UUID_V4.matches(r.clientUuid)) closeIntegrityItem(h, r, ctx.now)
         val bd = r.json.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         if (r.type.matches(TYPE_PATTERN)) register(h, ctx, r, bd, "rejected", code, null)
         return Outcome.of(code)
@@ -632,7 +664,9 @@ class IngestService(
             """
             INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, detail, user_id, device_id, route_id, business_date, batch_uuid, received_at)
             VALUES (CAST(:c AS uuid), :t, :code, :h, CAST(:p AS jsonb), :detail, :u, :d, :route, :bd, CAST(:b AS uuid), :now)
-            ON CONFLICT (client_uuid, payload_sha256) DO NOTHING
+            ON CONFLICT (client_uuid, payload_sha256) DO UPDATE SET code = EXCLUDED.code, detail = EXCLUDED.detail
+              WHERE app.sync_quarantine.status = 'open' AND app.sync_quarantine.code = 'device_integrity_failed'
+
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(r.json)).bind("detail", detail?.take(1000))
             .bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid)

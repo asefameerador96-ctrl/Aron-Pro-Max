@@ -276,4 +276,36 @@ class RecordSignatureModeTest {
         assertEquals("accepted", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT status FROM app.ingest_registry WHERE client_uuid = CAST('$cu' AS uuid)").mapTo(String::class.java).one() })
         assertEquals(listOf("duplicate:-"), client.send(listOf(v)).outcomes(), "a third send is a duplicate, never a second insert")
     }
+
+    @Test
+    @Order(8)
+    fun aQuarantineTheReviewerDiscardedIsNotReleased() = testApplication {
+        application { aronApi(wiring) }
+        mode("enforce")
+        val v = visit()
+        val cu = v["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(listOf("quarantined:device_integrity_failed"), client.send(listOf(v)).outcomes())
+        fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.sync_quarantine SET status = 'discarded', resolved_at = now() WHERE client_uuid = '$cu'") }
+        mode("record")
+        assertEquals(listOf("quarantined:device_integrity_failed"), client.send(listOf(v)).outcomes(), "the discard stands")
+        assertEquals(0, count("SELECT count(*) FROM app.visit WHERE client_uuid = '$cu'"))
+    }
+
+    @Test
+    @Order(9)
+    fun aReleasedRowOlderThanTheWindowIsStoredNotQuarantinedAgain() = testApplication {
+        application { aronApi(wiring) }
+        mode("enforce")
+        val v = visit()
+        val cu = v["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(listOf("quarantined:device_integrity_failed"), client.send(listOf(v)).outcomes())
+        // Ten days later (cfg.sync.max_backdate_days is 7) the mode is back to record and the phone releases the row.
+        now.updateAndGet { it.plusSeconds(10L * 86_400) }
+        token = null
+        mode("record")
+        assertEquals(listOf("accepted:-"), client.send(listOf(v)).outcomes())
+        assertEquals(1, count("SELECT count(*) FROM app.visit WHERE client_uuid = '$cu'"))
+        // A row never quarantined, as old, is still out of the window.
+        assertEquals(listOf("quarantined:business_date_out_of_window"), client.send(listOf(visit())).outcomes())
+    }
 }

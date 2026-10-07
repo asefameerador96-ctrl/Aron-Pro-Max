@@ -212,7 +212,7 @@ Source: contract/openapi.yaml, version 1.3.0.
 - `schemas/SyncTotalsResponse.yaml` (385 B)
 - `schemas/ServerGeneration.yaml` (535 B)
 - `schemas/BundleMeta.yaml` (1389 B)
-- `schemas/BundleUser.yaml` (887 B)
+- `schemas/BundleUser.yaml` (1542 B)
 - `schemas/ResolvedConfigValue.yaml` (1112 B)
 - `schemas/ResolvedConfig.yaml` (590 B)
 - `schemas/CodeItem.yaml` (1185 B)

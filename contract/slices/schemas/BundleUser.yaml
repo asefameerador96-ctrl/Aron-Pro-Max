@@ -49,3 +49,25 @@ BundleUser:
       - 'null'
       format: int64
       minimum: 1
+    consents:
+      type: array
+      maxItems: 50
+      description: Policy versions the user accepted (F-SYS-075), earliest acceptance per version. The phone seeds
+        its consent flag from it and does not show the notice again.
+      items:
+        type: object
+        required:
+        - policy_key
+        - policy_version
+        - accepted_at
+        additionalProperties: false
+        properties:
+          policy_key:
+            type: string
+            enum:
+            - location_notice
+          policy_version:
+            type: integer
+            minimum: 1
+          accepted_at:
+            $ref: '#/components/schemas/Timestamp'
