@@ -56,7 +56,11 @@ enum class BundleOutcome {
     NEW_DATE,
 }
 
-data class BundleReport(val outcome: BundleOutcome, val bundleVersion: String? = null, val businessDate: String? = null, val code: String? = null)
+data class BundleReport(
+    val outcome: BundleOutcome, val bundleVersion: String? = null, val businessDate: String? = null, val code: String? = null,
+    /** The HTTP status of a refused request (FAILED, AUTH_REQUIRED, NOT_READY); null otherwise. */
+    val httpStatus: Int? = null,
+)
 
 /**
  * Downloads the day bundle into the user's Room database (docs/24 s4.10; F-SYS-006). The request itself is the day's
@@ -122,7 +126,7 @@ class BundleDownloader(
             is ApiResult.Failure -> when (r.httpStatus) {
                 409 -> BundleReport(BundleOutcome.NEW_DATE, repo.bundleVersion(), held, r.problem.code)
                 410 -> fullOfTheDay(held)
-                else -> BundleReport(failureOutcome(r.httpStatus), code = r.problem.code ?: "http_${r.httpStatus}")
+                else -> BundleReport(failureOutcome(r.httpStatus), code = r.problem.code ?: "http_${r.httpStatus}", httpStatus = r.httpStatus)
             }
             is ApiResult.Success -> {
                 // A delta this phone cannot read (nothing was written) is replaced by the whole snapshot of the day, once:
@@ -152,10 +156,11 @@ class BundleDownloader(
         val held = repo.bundleVersion() ?: return null
         if (ReferenceRepository.compare(current, held) <= 0) return null
         // Once per server version: a delta and its full fallback that still leave the phone behind are not retried after
-        // every sync run (the foreground refresh and the next newer version still try).
+        // every sync run (the foreground refresh and the next newer version still try). Only an answered request spends
+        // the version: offline, 401, 429 and 5xx leave it for the next run (checker: a timeout blocked a price change),
+        // while a refusal or an unreadable answer spends it (a full bundle after every sync would break the data budget).
         if (meta.meta(KEY_DELTA_TRIED_FOR) == current) return null
-        meta.putMeta(SyncMetaEntity(KEY_DELTA_TRIED_FOR, current))
-        return refreshDelta()
+        return refreshDelta().also { if (spendsVersion(it)) meta.putMeta(SyncMetaEntity(KEY_DELTA_TRIED_FOR, current)) }
     }
 
     /**
@@ -200,7 +205,7 @@ class BundleDownloader(
                 if (r.failure == TransportFailure.MALFORMED) BundleOutcome.FAILED else BundleOutcome.OFFLINE,
                 code = r.failure.name.lowercase(),
             )
-            is ApiResult.Failure -> BundleReport(failureOutcome(r.httpStatus), code = r.problem.code ?: "http_${r.httpStatus}")
+            is ApiResult.Failure -> BundleReport(failureOutcome(r.httpStatus), code = r.problem.code ?: "http_${r.httpStatus}", httpStatus = r.httpStatus)
             is ApiResult.Success -> {
                 val download = r.value
                 val version = download.head.meta.bundleVersion
@@ -224,7 +229,7 @@ class BundleDownloader(
                         val text = withContext(Dispatchers.IO) { file.takeIf { it.exists() }?.readText() } ?: when (val p = api.bundlePage(version, paged.section, page)) {
                             is ApiResult.Success -> p.value.also { writeAtomically(file, it) }
                             is ApiResult.Transport -> return BundleReport(BundleOutcome.OFFLINE, version, code = p.failure.name.lowercase())
-                            is ApiResult.Failure -> return BundleReport(failureOutcome(p.httpStatus), version, code = p.problem.code)
+                            is ApiResult.Failure -> return BundleReport(failureOutcome(p.httpStatus), version, code = p.problem.code, httpStatus = p.httpStatus)
                             is ApiResult.NotModified -> return BundleReport(BundleOutcome.FAILED, version, code = "page_not_modified")
                         }
                         val rows = try {
@@ -286,6 +291,12 @@ class BundleDownloader(
         const val KEY_LOGGED_IN = "bundle.logged_in."
         const val KEY_DELTA_FOREGROUND_AT = "bundle.delta_foreground_at"
         const val KEY_DELTA_TRIED_FOR = "bundle.delta_tried_for"
+        /** True when the server answered [r] for good: it spends [KEY_DELTA_TRIED_FOR] for the version. */
+        internal fun spendsVersion(r: BundleReport): Boolean = when (r.outcome) {
+            BundleOutcome.OFFLINE, BundleOutcome.NOT_READY, BundleOutcome.AUTH_REQUIRED -> false
+            BundleOutcome.FAILED -> r.httpStatus.let { it == null || (it != 429 && it < 500) }
+            else -> true
+        }
 
         /** Paged sections whose rows belong inside `routes[]` (matched by `route_id`). */
         private val ROUTE_NESTED = setOf("outlets", "open_memos")

@@ -21,6 +21,10 @@ UserScopeNode:
     valid_from:
       $ref: '#/components/schemas/BusinessDate'
     valid_to:
+      description: Exclusive end date (Asia/Dhaka business date), as every effective-dated `valid_to` here (`RouteAssignment`,
+        `SkuPrice`) and `app.user_scope`; the node is in scope up to the day before and out of scope from this date
+        on. Null = open-ended. Returns the `valid_to` written by `PUT /v1/admin/users/{id}/scope` unchanged (docs/24
+        s14a R20).
       oneOf:
       - $ref: '#/components/schemas/BusinessDate'
       - type: 'null'
