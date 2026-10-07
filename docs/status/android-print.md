@@ -1,4 +1,4 @@
-# Status: lane android-print (Day 3, 2026-10-07)
+# Status: lane android-print (Day 3, 2026-10-07, session #2)
 
 ## Done (builder, then an independent Opus checker, every confirmed defect fixed with a test, re-check clean)
 - **N-018** Bangla memo renderer, `android/core-printing`:
@@ -11,6 +11,9 @@
 - **N-019** Bluetooth printing, `core-printing/bt` and `escpos`:
   - `BluetoothSppTransport` (SPP UUID, secure then insecure RFCOMM), `PrinterManager` (state flow for the icon, hold/release, 120 s idle release, drop detection by the reader with no polling, reconnect backoff 2/5/15 s while held), `GS v 0` in 24-row bands, 512-byte chunks paced against a 3,072-byte / 300-rows-per-second model, DLE EOT 4 paper checks, idempotent job ids.
   - Tested against `SimPrinter` (flags buffer overflow and garbage bytes) and the checker's printer that keeps its parser over a link drop.
+
+- **PrintLedger contract** (persistence half of F-SR-028/073; session #2): `src/testContract/.../PrintLedgerContract.kt` runs the same scenarios against `MemLedger` (core-printing `MemLedgerContractTest`) and android-core's `RoomPrintLedger` (core-database `RoomPrintLedgerContractTest`, Robolectric file DB with real close/reopen, plus a trigger-forced rollback proving event + outbox + job delete + flags are one transaction). Opus checker: 2 blocking + 6 minor; android-print half fixed with tests (void slip / due receipt are not copies: `ReprintPolicy.isCopy`; `MemoPrinting` keeps an in-flight set so `recover()` never closes a live job, released on cancel/failure; sticky `paperOut`; real v4 uuids in flow tests); re-check clean on the fixes. Room half filed: `docs/requests/android-print-ledger-findings.md`.
+- **`MemoPrinting.printDaySummary`** (F-SR-036 print): kind `day_summary`, no limit, no marker (AP-09).
 
 ## Device-pending
 - D-P1 (A06 golden run, `connectedDebugAndroidTest`), D-P2 (MP-58N print, switch-off and paper-out) in `docs/status/device-checks.md`.
@@ -29,6 +32,10 @@
 - **AP-05:** the paired printer is kept in each app's own SharedPreferences (`aron_printer`); each app pairs once with the same MP-58N (F-SYS-044 device part).
 - **AP-06:** Print stays enabled after "paper out" (the link is up) so the seller can retry after changing the roll.
 
+- **AP-09:** the day summary is a report of the moment printed: no reprint limit, no duplicate marker; `ref_client_uuid` = a stable UUID v4 per user and business date.
+- **AP-10:** prints that name a memo but are other papers (`void_slip`, `due_receipt`) never count as copies of it (no `printed_at`, no `print_count`, no marker effect).
+- **AP-11:** one `MemoPrinting` per process; `recover()` skips the jobs that instance has in flight.
+
 ## Feature rows: core-printing part built and checked; BLOCKED on other lanes
 - **F-SR-013, F-SR-028, F-SR-073** (Opus checker: 2 blocking + 4 minor findings, all fixed with tests, re-check clean, commit 2cca990/d918c28):
   - `ui/PrinterUi.kt`: `PrinterIcon` (green / red slashed), `PrinterBanner`, `PrinterPickerDialog` (bonded devices, Bluetooth settings, BLUETOOTH_CONNECT), `HoldPrinter`, `SaveAndPrintDialogs`.
@@ -39,15 +46,17 @@
 - **AP-07:** a rejected print (`failed_user`) does not count; the next print has no marker only while no copy has counted (prevents an unmarked second original).
 - **AP-08:** the printer UI lives in core-printing with Compose (no dependency on core-ui; themed by the host app), so every app reuses one picker and icon.
 
-## In progress
-- Nothing. Every remaining row waits on another lane (above).
+## In progress / waiting
+- Requests open: `docs/requests/android-print-wiring-gaps.md` (sr-a items 1-8, sr-b 9-14, android-core 15; lanes messaged once) and `docs/requests/android-print-ledger-findings.md` (android-core: multi-row slip flag, void/due counted as copies, printed_at millis, history order, sticky paper_out).
+- No SR module calls the printer yet (INT, lane/android-sr-a, lane/android-sr-b checked 2026-10-07).
 
-## Next three rows (when unblocked)
-1. **F-SR-028 + F-SR-073** end to end: once android-core's Room `PrintLedger` and android-sr's Review screen exist, run `PrintFlowTest`'s scenarios against the Room ledger (instrumented), confirm printed_at/print_count/outbox rows, then mark done.
-2. **F-SR-013**: verify the icon/banner/picker inside the SR screens (Stock, Review, Memo, Summary), then D-P2 on the MP-58N.
-3. **F-SR-031/F-SR-066** (after F-SR-030 memo menu), then **F-SR-015** (after F-SR-014 stock screen): wire `MemoPrinting.printMemo` / `printStockSlip`; the policy, marker and goldens already exist.
+## Next three rows
+1. When android-core lands the ledger findings: add multi-row slip, void-slip and sticky-paper_out cases to `PrintLedgerContract` (both ledgers).
+2. **F-SR-015** (after the multi-row fix and sr-a's Save hook): Room-level slip test, then D-P2 slip print.
+3. **F-SR-031/066 + F-SR-028/073** end to end once sr-b wires Review and Memo menu: verify marker/limit on the Room ledger through the screens, then mark done; D-P2 with the owner (message `@parent` when the SR app installs with a print screen).
 
 ## Traps
+- The contract is a shared source dir (`core-printing/src/testContract`) compiled into both modules' unit tests; keep it free of core-printing test-only classes.
 - `HardcodedStringScanTest` (core-ui) scans `core-printing/src/main` too: diagnostics are short codes, test samples live under `src/test/` (shared with androidTest via `src/test/shared/kotlin`).
 - Regenerate goldens only with `-Paron.updateGoldens=true` and look at every changed file.
 - `build/test-results` XML can be stale when two Gradle runs overlap; read failures from the console.

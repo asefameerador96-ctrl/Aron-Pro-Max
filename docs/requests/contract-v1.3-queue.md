@@ -2,6 +2,8 @@
 
 Rule (docs/26 s2): lanes never edit `contract/openapi.yaml`; they file `docs/requests/<lane>-<name>.md`, the lead rules, approved items wait here and are applied together (one regeneration of slices, DTOs and web types, one oasdiff run). Apply the batch when 5 items are queued or a lane is blocked on one, whichever is first. Each item: ruling date, source request, exact shape.
 
+**Batch checklist (lesson of v1.2, lead 2026-10-07):** v1.2 passed `:shared:contract:jvmTest`, lint, oasdiff and the drift checks, and still turned INT's Android job red because a hand-written Android contract test (`AuthDtoContractTest`, `LoginResponse.password_change_token`) was not updated. After regenerating slices, WireDtos and web types the agent MUST also run every dependent suite before pushing: `:shared:contract:jvmTest`, `:android:core-network`, `:android:core-sync`, `:android:core-database`, `:android:core-geo`, `:android:dpc`, `:backend:app`, `:backend:auth`, `:backend:masterdata`, `:backend:config`, `:backend:analytics`, web typecheck and vitest, and fix or request the fix of every test that pins the old shape (grep `android/` and `backend/` for the changed schema names). A DTO type change is a breaking change for dependents even when the YAML is additive. Tell each owning lane in one message listing the changed schemas.
+
 | # | Ruled | Source | Shape (all optional or additive) |
 |---|---|---|---|
 | 1 | 2026-10-07 | web-admin-acting-scope.md | `PUT /v1/admin/users/{id}/scope`: each node entry gets optional `valid_to` (date, Asia/Dhaka business date); returned on read; the server treats the node as out of scope after that date (the `app.user_scope` daterange already supports it). |

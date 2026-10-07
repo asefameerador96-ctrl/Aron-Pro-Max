@@ -31,7 +31,7 @@ Rules:
 
 | Sub-lane | Session model | Why |
 |---|---|---|
-| db, backend-core, android-core, android-geo-dpc, android-print, infra | Opus | all T1 or mostly T1 |
+| db, backend-core, android-core, android-geo-dpc, android-print, android-sys, infra | Opus | all T1 or mostly T1 |
 | backend-reports, backend-admin, android-sr-a, android-sr-b, android-amo, android-tso, web-admin, web-config, web-dashboard, qa, shared | Sonnet | mostly T2; their T1 rows get an Opus checker |
 
 A running session keeps its model. Lane state lives in git and in `docs/status/<lane>.md` and `.csv`, so replacing a session is cheap: the lead starts a fresh one with the same brief (`docs/lanes/`). That is also how contexts stay small.
