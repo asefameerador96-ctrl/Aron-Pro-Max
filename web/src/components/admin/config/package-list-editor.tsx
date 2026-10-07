@@ -9,7 +9,7 @@ import type { MessageKey } from "@/lib/i18n";
 import { inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 
-export function PackageListEditor({ keyName, title, initial, max, canWrite }: { keyName: string; title: string; initial: string[]; max: number; canWrite: boolean }) {
+export function PackageListEditor({ keyName, title, initial, max, canWrite, alsoProtect }: { keyName: string; title: string; initial: string[]; max: number; canWrite: boolean; alsoProtect?: string[] }) {
   const { t, problem } = useI18n();
   const router = useRouter();
   const [list, setList] = useState(initial);
@@ -21,8 +21,9 @@ export function PackageListEditor({ keyName, title, initial, max, canWrite }: { 
   const changed = list.length !== initial.length || list.some((p, i) => p !== initial[i]);
 
   function add() {
-    const v = validatePackage(draft, list, max);
-    if (v) return setErr(t(v === "invalid" ? "ab.invalid" : v === "duplicate" ? "ab.duplicate" : "ab.too_many"));
+    const blockedList = keyName.endsWith("blocked_packages");
+    const v = validatePackage(draft, list, max, blockedList ? (alsoProtect ?? []) : undefined);
+    if (v) return setErr(t(v === "invalid" ? "ab.invalid" : v === "duplicate" ? "ab.duplicate" : v === "protected" ? "ab.protected" : "ab.too_many"));
     setErr(null);
     setList([...list, draft.trim()]);
     setDraft("");

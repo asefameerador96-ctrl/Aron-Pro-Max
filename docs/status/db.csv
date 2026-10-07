@@ -4,3 +4,5 @@ N-006,L,2026-10-05T12:10Z,2026-10-05T12:59Z,49,"5 (round 1: 3, round 2: 1, round
 N-007,M,2026-10-05T12:28Z,2026-10-05T12:59Z,31,"5 (round 1: 5, round 2: 0)","V0010-V0011; audit hash chain on chain_seq"
 N-008,M,2026-10-05T12:33Z,2026-10-05T12:59Z,26,"2 (round 1: 2, round 2: 0)","db/seed + :db:seed; answers docs/requests/backend-seed-login-accounts.md"
 R5-defaults,S,2026-10-06T09:40Z,2026-10-06T09:42Z,2,0 (self-tested; small follow-up of the lead's R5),"V0012 cfg.web.menu_by_role and cfg.app.home_tiles defaults; ConfigDefaultsTest"
+V0013,S,2026-10-06T10:05Z,2026-10-06T10:40Z,35,"1 (round 1: 1, round 2: 0)","refresh_family.device_uuid for backend request"
+db-data-product,L,2026-10-06T11:00Z,2026-10-07T05:10Z,250,"9 (round 1: 2 blockers + 6 should-fix + nits, round 2: 1, round 3: 0)","V0014 roles, V0015 dw views, V0016 dictionary, V0017 event versions; squawk gate clean"

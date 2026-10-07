@@ -38,14 +38,24 @@ environments (GitHub > Settings > Environments) so both accounts can coexist dur
 
 ## 2. Infrastructure in the final account
 
-1. GitHub > Actions > **deploy** > Run workflow: branch `claude/wonderful-thompson-k6ejnf` (or `main` once it is the
-   release branch), environment **prod**. This runs `infra/deploy.sh prod`: `main.bicep` with
+1. Turn the final-account switches on (repository variables): `ARON_FINAL_ACCOUNT=true`, `ARON_PROD_API_BASE_URL`
+   (the https origin phones will use). Until then `promote-prod.yml` and `release-app.yml` do nothing, and deploy.yml
+   refuses prod.
+2. GitHub environments: `azure-prod` (the name deploy.yml and the OIDC subject use) with the owner as required
+   reviewer and a deployment policy for tags `server-v*`; the same for `azure-stage`. Create them BEFORE the first run,
+   otherwise GitHub creates them unprotected (`tools/github-governance.ps1` must use these names).
+3. Staging first (docs/30 s2): the infra lane wires `stage` into `infra/deploy.sh`, deploy.yml and the bootstrap
+   (`infra/params/stage*.bicepparam` exist today as parameter files only), deploys `main` to staging, runs the load,
+   failover and restore drills there, and soaks it.
+4. Tag the soaked `main` commit `server-vX.Y.Z`, then GitHub > Actions > **promote-prod** > Run workflow from that tag,
+   with the staging run's id. It checks tag on main, CI green, a successful `Deploy to stage` of the same commit at least
+   24 h old, waits for the azure-prod approver, then runs `infra/deploy.sh prod`: `main.bicep` with
    `params/prod.bicepparam` (zone-redundant PostgreSQL D8ds_v5 on SSD v2 with geo backup, Front Door Premium + WAF +
    Private Link, private networking), seeds Key Vault, builds and pushes the images, runs migrations on the empty
    database, deploys the apps and smoke-tests through Front Door.
-2. The first prod run sets `ARON_PG_READ_REPLICA=false` (SSD v2 must finish its first backup before a replica can be
+5. The first prod run sets `ARON_PG_READ_REPLICA=false` (SSD v2 must finish its first backup before a replica can be
    created); the next run adds the replica.
-3. Container Apps cores: request the environment quota from `cae-aron-prod` > **Quota** (see the quota document).
+6. Container Apps cores: request the environment quota from `cae-aron-prod` > **Quota** (see the quota document).
 
 ## 3. Data
 
@@ -78,8 +88,8 @@ The final database starts empty; the pilot's data comes over with a dump and res
 
 ## 5. Phones
 
-1. Release APKs built against the final API host (`aron.apiBaseUrl`) and the new Firebase config, signed with the same
-   release key (the provisioning QR pins its certificate digest, `docs/24` D24-49).
+1. Release APKs from `release-app.yml` (tag `app-vX.Y.Z`, release notes in `docs/releases/<tag>.md`): built against the
+   final API host (`ARON_PROD_API_BASE_URL`) and the new Firebase config, signed with the same release key (the provisioning QR pins its certificate digest, `docs/24` D24-49).
 2. Enrolled phones: re-enrol with a new provisioning QR from the final admin portal that carries the final
    `aron.api_base_url` (`docs/24` s10.4). A phone must upload its outbox to the TEST server before it is wiped; the
    Sales Submit screen shows "reconciled" when it is safe.

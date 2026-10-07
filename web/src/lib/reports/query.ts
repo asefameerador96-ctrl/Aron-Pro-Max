@@ -14,18 +14,31 @@ export const PAGE_SIZES = [10, 25, 50, 100, 500] as const;
 
 type Params = Record<string, string | string[] | undefined>;
 
+/** A real calendar date (2026-02-30 is not), by round trip. */
+const validDate = (s: string | undefined): s is string => {
+  if (!s || !DATE.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+};
+const validMonth = (s: string | undefined): s is string => {
+  const m = s ? MONTH.exec(s) : null;
+  return Boolean(m) && Number(s!.slice(5)) >= 1 && Number(s!.slice(5)) <= 12;
+};
 const first = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH = /^\d{4}-\d{2}$/;
 const CODE = /^[A-Za-z0-9_.-]{1,32}$/;
 
 function ids(v: string | string[] | undefined, max: number): number[] | undefined {
-  const raw = (Array.isArray(v) ? v : (v ?? "").split(",")).map((s) => s.trim()).filter(Boolean);
-  const out = [...new Set(raw.filter((s) => /^\d{1,12}$/.test(s)).map(Number))].slice(0, max);
+  // The page passes one string, the export route getAll(): both may carry comma lists, so split either form.
+  const raw = (Array.isArray(v) ? v : [v ?? ""]).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean);
+  const out = [...new Set(raw.filter((s) => /^\d{1,10}$/.test(s)).map(Number).filter((n) => n <= 2_147_483_647))].slice(0, max);
   return out.length ? out : undefined;
 }
 
 const DEPTH: Record<string, number> = { national: 0, wing: 1, division: 2, territory: 3, zone: 4, route: 5 };
+/** An unknown node type fails closed: it is treated as deeper than every level, so every level is locked. */
+const depthOf = (type: string): number => DEPTH[type] ?? 99;
 
 export interface GeoBinding {
   /** Levels the filter shows but cannot change: the server has already fixed them from the token. */
@@ -38,16 +51,16 @@ export interface GeoBinding {
 export function bindGeo(scope: ScopeSummary | null): GeoBinding {
   const nodes = scope?.nodes ?? [];
   if (nodes.length === 0) return { locked: [...GEO_LEVELS], ownIds: {} };
-  const minDepth = Math.min(...nodes.map((n) => DEPTH[n.type] ?? 0));
+  const minDepth = Math.min(...nodes.map((n) => depthOf(n.type)));
   const locked: GeoLevel[] = [];
   const ownIds: GeoBinding["ownIds"] = {};
   for (const lvl of GEO_LEVELS) {
     const d = DEPTH[lvl]!;
     if (d < minDepth) locked.push(lvl);
-    else if (d === minDepth) {
+    else {
       const own = nodes.filter((n) => n.type === lvl).map((n) => n.id);
-      if (own.length === 1) locked.push(lvl);
-      else ownIds[lvl] = own;
+      if (d === minDepth && own.length === 1) locked.push(lvl);
+      else if (own.length > 0) ownIds[lvl] = own; // every level that has own nodes only narrows to them
     }
   }
   return { locked, ownIds };
@@ -82,13 +95,15 @@ export function buildReportQuery(report: WebReport, params: Params, scope: Scope
   const q: ReportQuery = { period: {}, date_grouping: "total", active_status: "all", field_force_type: "all", output: { format, page: 1, page_size: 50 } };
 
   if (has("period")) {
-    const from = first(params.from);
-    const to = first(params.to);
-    const date = first(params.date);
-    const month = first(params.month);
-    if (report.singleDate) q.period = { date: date && DATE.test(date) ? date : today };
-    else if (month && MONTH.test(month)) q.period = { month };
-    else q.period = { from: from && DATE.test(from) ? from : today, to: to && DATE.test(to) ? to : (from && DATE.test(from) ? from : today) };
+    const pick = (k: string) => (validDate(first(params[k])) ? first(params[k]) : undefined);
+    const from = pick("from");
+    const to = pick("to");
+    const date = pick("date");
+    const m = first(params.month);
+    const month = validMonth(m) ? m : undefined;
+    if (report.singleDate) q.period = { date: date ?? today };
+    else if (month) q.period = { month };
+    else q.period = { from: from ?? today, to: to ?? from ?? today };
     if (q.period.from && q.period.to && q.period.from > q.period.to) q.period = { from: q.period.to, to: q.period.from };
   } else {
     q.period = { date: today };
@@ -131,9 +146,9 @@ export function buildReportQuery(report: WebReport, params: Params, scope: Scope
   }
   for (const [key, param] of [["std_criteria", "std"], ["memo_criteria", "memo"]] as const) {
     if (!has(key)) continue;
-    const combined = first(params[param]) ?? `${first(params[`${param}_op`]) ?? ""}${first(params[`${param}_val`]) ?? ""}`;
+    const combined = first(params[param]) || `${first(params[`${param}_op`]) ?? ""}${first(params[`${param}_val`]) ?? ""}`;
     const m = /^(>=|<=|>|<|=)(-?\d+(?:\.\d+)?)$/.exec(combined);
-    if (m) q[key] = { op: m[1] as "<", value: Number(m[2]) };
+    if (m && Number.isFinite(Number(m[2]))) q[key] = { op: m[1] as "<", value: Number(m[2]) };
   }
   if (has("outlet_code")) {
     const c = first(params.outlet_code);

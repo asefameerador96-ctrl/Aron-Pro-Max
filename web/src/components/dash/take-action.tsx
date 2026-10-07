@@ -18,7 +18,7 @@ export function TakeAction({ routeId, businessDate, labels }: { routeId: number;
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const note = String(new FormData(e.currentTarget).get("note") ?? "").trim();
-    if (!note) return;
+    if (note.length < 3) return;
     setState("busy");
     try {
       const res = await fetch("/api/bff/tracking-action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action_uuid: id, route_id: routeId, business_date: businessDate, note }) });
@@ -39,7 +39,7 @@ export function TakeAction({ routeId, businessDate, labels }: { routeId: number;
         </p>
       ) : (
         <form onSubmit={submit} className="mt-1 flex flex-col gap-1">
-          <textarea name="note" required maxLength={500} aria-label={labels.note} className="rounded border border-slate-300 p-1 text-sm" rows={2} />
+          <textarea name="note" required minLength={3} maxLength={500} aria-label={labels.note} className="rounded border border-slate-300 p-1 text-sm" rows={2} />
           <button type="submit" disabled={state === "busy"} className="self-start rounded bg-brand-700 px-3 py-1 text-sm font-semibold text-white disabled:opacity-60">
             {labels.send}
           </button>

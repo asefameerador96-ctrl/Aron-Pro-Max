@@ -16,12 +16,13 @@ export interface RouteLine {
   sr: string | null;
 }
 
-export function joinRoutes(routes: readonly Schemas["Route"][], assignments: readonly Schemas["RouteAssignment"][], names: ReadonlyMap<number, string>): RouteLine[] {
-  const nameOf = (uid: number | undefined): string | null => (uid === undefined ? null : (names.get(uid) ?? `#${uid}`));
+export function joinRoutes(routes: readonly Schemas["Route"][], assignments: readonly Schemas["RouteAssignment"][], names: ReadonlyMap<number, string>, today: string = new Date().toISOString().slice(0, 10)): RouteLine[] {
+  const nameOf = (uid: number | undefined): string | null => (uid === undefined ? null : (names.get(uid) ?? null));
   const primary = new Map<number, number>();
-  for (const a of assignments) if (a.kind === "primary" && !primary.has(a.route_id)) primary.set(a.route_id, a.user_id);
+  // Only a primary assignment valid today counts (valid_to is exclusive), even if the API did not filter.
+  for (const a of assignments) if (a.kind === "primary" && a.valid_from <= today && (!a.valid_to || a.valid_to > today) && !primary.has(a.route_id)) primary.set(a.route_id, a.user_id);
   const amoByZone = new Map<number, string | null>();
-  for (const r of routes) if (r.kind === "amo" && !amoByZone.has(r.zone_id)) amoByZone.set(r.zone_id, nameOf(primary.get(r.id)));
+  for (const r of routes) if (r.kind === "amo" && primary.has(r.id) && !amoByZone.has(r.zone_id)) amoByZone.set(r.zone_id, nameOf(primary.get(r.id)));
   return routes.map((r) => ({
     route_id: r.id,
     code: r.code,

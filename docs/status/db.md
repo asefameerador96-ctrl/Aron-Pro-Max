@@ -37,6 +37,27 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   deferred programme pages left out) and `cfg.app.home_tiles` (SR: the app's tile order without Loyalty Point, Photo
   Capture and Astha). Test: `ConfigDefaultsTest`.
 
+- **V0013** (2026-10-06): `refresh_family.device_uuid`; phone families must be bound or revoked (answers
+  `docs/requests/backend-refresh-family-device-uuid.md`). Checker PASS.
+- **Data as a product, docs/31 s3** (2026-10-07; one Opus checker, three rounds: 2 blockers + 6 should-fix, then 1
+  blocker, then PASS):
+  - `V0014` roles `api_rw`, `worker_rw`, `jobs_rw`, `web_ro`, `bi_reader` (NOLOGIN, NOINHERIT, no special
+    attributes), grants generated from `app.db_role_grant` (table and column grants) by `app.apply_db_role_grants()`;
+    existing roles are reused without ADMIN when correct, repaired with ADMIN, refused when superuser, BYPASSRLS or a
+    member of anything else; global default privileges keep new functions from PUBLIC. `DbRolesTest` (7 tests:
+    matrix both ways, each role under SET ROLE, second migrating login, repair path). Infra asked for the logins:
+    `docs/requests/db-runtime-roles.md`.
+  - `V0015` stable views `dw.v_daily_route`, `v_daily_sr`, `v_daily_outlet`, `v_daily_sku`, `v_collections`,
+    `v_attendance`, `v_geo_integrity` (+ `dw.fact_attendance`); every column documented; `business_date` filters
+    prune partitions (UNION ALL under one GROUP BY, not FULL JOIN); no coordinates or fix accuracy to web/BI.
+  - `V0016` + `tools/data-dictionary/render.sh` + `DataDictionaryTest`: every app/dw table, view and column carries
+    `owner | capture | retention | pii`; `docs/data-dictionary.md` (142 relations) is rendered from the catalogue and
+    the test fails on a missing comment, a stale file or a table PII class below its columns. CI: already enforced by
+    `:db:build`; `docs/requests/db-data-dictionary-ci.md` asks infra to keep it required.
+  - `V0017` versioned domain events: `domain_event.payload_version` + catalogue `app.domain_event_type` (7 v1 events
+    of docs/24 s12.5, JSON Schema each, published versions fixed); insert trigger refuses an uncatalogued type or
+    version, a non-object payload or a missing required key. `docs/data-events.md` rendered by `DataEventsTest`.
+
 ## Lead rulings applied (docs/24 s14a, 2026-10-06)
 
 R1 registry hash partitioning, R2 only the s9.5 keys, R3 scope_id ordinals, R4 `_` in SKU codes: already as built.
@@ -45,6 +66,8 @@ R5: V0012. R6 / docs/27: no programme, target or discount tables or migrations w
 gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 
 ## Next
+
+- Index and query-plan review at docs/22 volume (`db/perf/generate.sql`): in progress.
 
 - Back-office tables of docs/24 s12.1 that no db row names (`survey`, `survey_question`, `rubric`, `tutorial`,
   `print_template`, `supervisor_target`, `web_entry_*`, `qc_summary_entry`, `entry_unlock`, `dues_adjustment`,
@@ -62,6 +85,8 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 - `docs/requests/db-docs19-config-keys.md` (lead): seed the docs/19 keys outside s9.5?
 - `docs/requests/db-config-scope-ids.md` (lead): integer `scope_id` for role and geo_class scopes.
 - `docs/requests/db-sku-code-spaces.md` (lead): catalogue SKU codes contain spaces; contract pattern does not.
+- `docs/requests/db-runtime-roles.md` (infra): runtime logins as members of the V0014 roles.
+- `docs/requests/db-data-dictionary-ci.md` (infra): keep `:db:build` (dictionary gate) required in CI.
 
 ## Decisions taken (to be copied to DECISIONS.md by the lead; the playbook forbids lanes to edit it)
 
@@ -74,8 +99,20 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 | 2026-10-05 | `route` daily requires mask 127, 3f three bits, 2f two bits | contract Route says daily = 127 |
 | 2026-10-05 | Master rows: `version` always moves forward on UPDATE (trigger) | If-Match must never match a stale version |
 | 2026-10-05 | Tables listed in `app.partition_policy` are never the target of a foreign key; children reference parents by `client_uuid` | re-routing default-partition rows detaches the default partition |
+| 2026-10-07 | `worker_rw` gets table-level UPDATE on the worker-owned app tables (route_day, visit, media, ...); the guard triggers limit the columns | column grants would have to be kept in step with every new column; the triggers already enforce it |
+| 2026-10-07 | `worker_rw` reads every app table except credentials and one-time secrets (`mfa_secret`, `device_otp`, `refresh_token`, `enrolment_token`, `app_user.password_hash`); `push_token` stays readable | the worker sends pushes |
+| 2026-10-07 | `jobs_rw` = `worker_rw` + `ensure_partitions`; no rights on `stg` or job bookkeeping yet | no job table exists; added with the first job that needs one |
+| 2026-10-07 | `v_geo_integrity` covers every visit kind of the user; `v_daily_sr` counts SR calls only | integrity is about a person's fixes |
+| 2026-10-07 | Domain-event catalogue enforced by a trigger, not a foreign key; `payload_version` nullable (only pre-V0017 rows) | PG16 cannot add a NOT VALID FK to a partitioned table (squawk gate); the outbox is append-only so it cannot be backfilled |
+| 2026-10-07 | Event payloads carry ids, codes and amounts only, never names, phones, NIDs or coordinates | keeps the outbox pii: none; consumers read personal fields under their own grants |
 
 ## Notes for other lanes
+
+- Backend (outbox producers): only catalogued events (`docs/data-events.md`), `payload_version` explicit (default 1);
+  required keys are enforced per event once `enforce_required` is on (V0018; `docs/requests/db-event-payload-v1.md`);
+  a new event or a breaking payload change is a db migration, ask through docs/requests.
+- Every lane adding a table or column: `COMMENT ON` it in the same migration with the metadata line (V0016 header),
+  then `tools/data-dictionary/render.sh`; a migration that creates a table calls `SELECT app.apply_db_role_grants();`.
 
 - Backend: `app.ensure_partitions()` daily; prune `app.ingest_registry` by `received_at` after
   `cfg.retention.ingest_registry_days`; write the registry row first in the ingest transaction (it is the

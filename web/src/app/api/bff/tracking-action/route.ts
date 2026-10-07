@@ -1,14 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import type { Schemas } from "@/contract/types";
+import { isCalendarDate } from "@/lib/dates";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { rawRequest } from "@/lib/api/raw";
 
 const body = z.object({
   action_uuid: z.string().uuid(),
   route_id: z.number().int().positive(),
-  business_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  note: z.string().trim().min(1).max(500),
+  business_date: z.string().refine(isCalendarDate),
+  note: z.string().trim().min(3).max(500),
 });
 
 /** POST /api/bff/tracking-action: the Daily Tracking "take action" note (F-WEB-039). The server enforces the 17:00 rule, scope and notifications. */

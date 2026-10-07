@@ -27,6 +27,22 @@ class SchemaMigrationTest {
     )
 
     @Test
+    fun version1To2AddsTheReferenceTablesAndKeepsEveryRow() {
+        helper.createDatabase("migration-12", 1).use { db ->
+            db.execSQL(
+                """INSERT INTO outbox (client_uuid, record_type, family_uuid, rank, business_date, payload_json, payload_sha256, state,
+                   attempts, created_at) VALUES ('6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f', 'memo', 'f', 1, '2026-10-05', '{}', 'h', 'pending', 0, 't')""",
+            )
+            db.execSQL("INSERT INTO sync_meta (`key`, value) VALUES ('bundle_version', '2026-10-05:3')")
+        }
+        helper.runMigrationsAndValidate("migration-12", 2, true).use { db ->
+            db.query("SELECT state FROM outbox").use { c -> assertTrue(c.moveToFirst()); assertEquals("pending", c.getString(0)) }
+            db.query("SELECT value FROM sync_meta WHERE `key` = 'bundle_version'").use { c -> assertTrue(c.moveToFirst()) }
+            for (t in listOf("price", "config_value", "bundle_section")) db.query("SELECT COUNT(*) FROM `$t`").use { c -> assertTrue(c.moveToFirst()) }
+        }
+    }
+
+    @Test
     fun version1CreatesEveryTableWithAUniqueClientUuid() {
         helper.createDatabase("migration-test", 1).use { db ->
             val tables = mutableSetOf<String>()
@@ -67,7 +83,7 @@ class SchemaMigrationTest {
     fun theExportedSchemaMatchesTheCompiledEntities() {
         // The file is created from the exported JSON; opening it with the compiled Room database runs Room's identity-hash
         // check, which throws when the entities and the exported schema differ.
-        helper.createDatabase("identity-test", 1).close()
+        helper.createDatabase("identity-test", 2).close()
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         val db = androidx.room.Room.databaseBuilder(context, AronDatabase::class.java, "identity-test").build()
         db.openHelper.writableDatabase

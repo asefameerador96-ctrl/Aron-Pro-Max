@@ -2,7 +2,9 @@ package com.aktcl.aron.core.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
@@ -32,6 +34,16 @@ object AronFonts {
 /** The app language inside Compose; screens use it for digits ([localizedDigits]). */
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.DEFAULT }
 
+private val AronDarkColors = darkColorScheme(
+    primary = Color(0xFF7BD6A4),
+    onPrimary = Color(0xFF00391F),
+    secondary = Color(0xFFFFB4AB),
+    onSecondary = Color(0xFF690005),
+    background = Color(0xFF111412),
+    surface = Color(0xFF1A1D1B),
+    error = Color(0xFFFFB4AB),
+)
+
 private val AronColors = lightColorScheme(
     primary = Color(0xFF0B5D3B),
     onPrimary = Color.White,
@@ -57,9 +69,9 @@ fun aronTypography(language: AppLanguage): Typography {
 }
 
 @Composable
-fun AronTheme(language: AppLanguage, content: @Composable () -> Unit) {
+fun AronTheme(language: AppLanguage, dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalAppLanguage provides language) {
-        MaterialTheme(colorScheme = AronColors, typography = aronTypography(language), content = content)
+        MaterialTheme(colorScheme = if (dark) AronDarkColors else AronColors, typography = aronTypography(language), content = content)
     }
 }
 
