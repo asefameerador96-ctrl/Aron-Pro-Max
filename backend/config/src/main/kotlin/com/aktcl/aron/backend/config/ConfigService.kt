@@ -287,18 +287,8 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
         return BlastRadius(zones, routes, outlets, devices)
     }
 
-    private fun blast(h: Handle, type: String, id: Long): BlastRadius {
-        val zoneFilter = when (type) {
-            "global" -> "TRUE"
-            "wing" -> "z.territory_id IN (SELECT t.id FROM app.territory t JOIN app.division d ON d.id = t.division_id WHERE d.wing_id = :id)"
-            "division" -> "z.territory_id IN (SELECT t.id FROM app.territory t WHERE t.division_id = :id)"
-            "territory" -> "z.territory_id = :id"
-            "zone" -> "z.id = :id"
-            "route" -> "z.id = (SELECT zone_id FROM app.route WHERE id = :id)"
-            "outlet" -> "z.id = (SELECT zone_id FROM app.outlet WHERE id = :id)"
-            "geo_class" -> "z.id IN (SELECT o.zone_id FROM app.outlet o JOIN app.geo_class_def g ON g.geo_class = o.geo_class WHERE g.ordinal = :id)"
-            else -> "FALSE"
-        }
+    internal fun blast(h: Handle, type: String, id: Long): BlastRadius {
+        val zoneFilter = zoneFilterSql(type)
         val z = "SELECT z.id FROM app.zone z WHERE $zoneFilter"
         fun count(sql: String) = h.createQuery(sql).also { if (type != "global") it.bind("id", id) }.mapTo(Int::class.java).one()
         val devicesSql = when (type) {
@@ -317,6 +307,19 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 outlets = count("SELECT count(*) FROM app.outlet o WHERE o.status = 'active' AND o.zone_id IN ($z)"), devices = count(devicesSql),
             )
         }
+    }
+
+    /** SQL predicate on `app.zone z` for the zones a scope node covers (binds :id except for global). */
+    internal fun zoneFilterSql(type: String): String = when (type) {
+        "global" -> "TRUE"
+        "wing" -> "z.territory_id IN (SELECT t.id FROM app.territory t JOIN app.division d ON d.id = t.division_id WHERE d.wing_id = :id)"
+        "division" -> "z.territory_id IN (SELECT t.id FROM app.territory t WHERE t.division_id = :id)"
+        "territory" -> "z.territory_id = :id"
+        "zone" -> "z.id = :id"
+        "route" -> "z.id = (SELECT zone_id FROM app.route WHERE id = :id)"
+        "outlet" -> "z.id = (SELECT zone_id FROM app.outlet WHERE id = :id)"
+        "geo_class" -> "z.id IN (SELECT o.zone_id FROM app.outlet o JOIN app.geo_class_def g ON g.geo_class = o.geo_class WHERE g.ordinal = :id)"
+        else -> "FALSE"
     }
 
     /** Applies the change [changeId] under a new version; requires the change row to be locked or just inserted by this transaction. */

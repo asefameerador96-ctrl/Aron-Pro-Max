@@ -5,6 +5,7 @@ Each gate is proven to FAIL on a deliberate violation and to pass on a clean inp
   apk-size-gate.py      absolute 30 MB per ABI, +15 % fails, +5 % warns, a clean APK passes
   migrations-check.sh   an edited, a deleted, a duplicate and an out-of-order migration fail; a new one passes
   contract-breaking.sh  a breaking change fails; with an info.version bump and a request file it passes (needs oasdiff)
+  gitleaks.toml         a token fails anywhere except the generated contract/slices/ (needs gitleaks)
 Binaries: OASDIFF and SQUAWK (paths) or on PATH; a test that needs a missing binary is skipped, never faked.
 """
 import json
@@ -147,6 +148,34 @@ class MigrationsCheck(unittest.TestCase):
         rc, out = self.check()
         self.assertEqual(rc, 0, out)
         self.assertIn("migrations: ok", out)
+
+
+@unittest.skipUnless(tool("gitleaks"), "gitleaks binary not available")
+class SecretScan(unittest.TestCase):
+    # A planted, made-up GitHub token shape (built at run time so this file itself holds no token).
+    FAKE = "ghp_" + "Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF3hJ6"
+
+    def scan(self, rel_path):
+        repo = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, repo)
+        git = ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false"]
+        subprocess.run(git + ["init", "-q"], cwd=repo, check=True)
+        f = Path(repo, rel_path)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(f"token: {self.FAKE}\n")
+        subprocess.run(git + ["add", "-A"], cwd=repo, check=True)
+        subprocess.run(git + ["commit", "-qm", "x"], cwd=repo, check=True)
+        r = subprocess.run([tool("gitleaks"), "git", "--no-banner", "--redact", "--exit-code", "1",
+                            "--config", str(HERE / "gitleaks.toml"), "--gitleaks-ignore-path", str(HERE / "gitleaksignore"), "."],
+                           cwd=repo, capture_output=True, text=True)
+        return r.returncode
+
+    def test_a_token_anywhere_else_fails(self):
+        self.assertEqual(self.scan("backend/app/src/main/resources/app.yaml"), 1)
+        self.assertEqual(self.scan("contract/openapi.yaml"), 1, "the contract source is scanned")
+
+    def test_only_the_generated_contract_slices_are_skipped(self):
+        self.assertEqual(self.scan("contract/slices/operations/login.yaml"), 0)
 
 
 @unittest.skipUnless(tool("oasdiff"), "oasdiff binary not available")

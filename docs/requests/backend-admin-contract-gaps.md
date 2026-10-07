@@ -19,3 +19,7 @@ Filed by the backend-admin lane, 2026-10-07. The lane built each row against the
    `com.aktcl.aron.backend.config.AuditWriter` (same columns, inside the caller's transaction). When F-SYS-059 lands, replace it by the platform class.
 5. **Device OTP creation at the bind attempt (F-SYS-003, backend-core)** must seal the OTP with `masterdata.OtpCipher`
    (AES-256-GCM, AAD `device_otp:<user_id>`, label `aron-device-otp-v1`) so the TSO panel can show it.
+6. **TSO may issue device OTPs?** The contract (`issueDeviceOtp`) and docs/24 line 1695 say "the TSO for own zones"; the s8.5 matrix gives the TSO view only. Built to the contract (own reach only). Lead: confirm or tell the lane to restrict POST to SUPPORT, ADMIN, SUPERADMIN (one constant, `OTP_ISSUERS`).
+7. **OTP verify value.** `app.device_otp.otp_sha256` holds `OtpCipher.mac(otp, user_id)` (HMAC-SHA256 under the server key), not a bare SHA-256: a bare hash of four digits is recoverable. The bind check (F-SYS-003) must compare with `mac()`; the OTP creation at the bind attempt (F-TSO-019 login half) lives in backend-core and is not built.
+8. **Permission matrix shape.** The seeded `cfg.web.menu_by_role` uses `{menu, page, actions: read|write|...}`; the contract `MenuPermission` is `{menu_id, actions: view|create|edit|approve|export|void}`. The permissions endpoints map between them (lossy for actions outside the contract enum).
+9. **F-API-065 `/admin/flags`** has no contract path; flags are the `cfg.flag.*` keys, edited through `createConfigChange` and delivered in the config delta.

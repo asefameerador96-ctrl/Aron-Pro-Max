@@ -29,7 +29,8 @@ print(m.group(1) if m else "")
 PY
 }
 old_v="$(ver "$tmp/base.yaml")"; new_v="$(ver "$spec")"
-request="$(git diff --name-only "$base" HEAD -- 'docs/requests/contract-*.md' | head -1)"
+# Added or modified only: deleting an old request file is not an approval.
+request="$(git diff --name-only --diff-filter=AM "$base" HEAD -- 'docs/requests/contract-*.md' | head -1)"
 
 python3 - "$tmp/breaking.json" "$old_v" "$new_v" "$request" <<'PY'
 import collections, json, sys

@@ -11,7 +11,7 @@ import { formatBusinessDate, formatDateTime, formatNumber, t, type Locale, type 
 const STATUSES = ["open", "accepted", "accepted_with_fix", "discarded"] as const;
 const ACTIONS = ["accept", "accept_with_fix", "discard", "return_to_device"] as const;
 
-export function QuarantineView({ locale, rows, filters, basePath, nextHref, canWrite, titleKey = "qr.title", selected }: { locale: Locale; rows: QuarantineItem[]; filters: { status: string; code: string; zone_id: string }; basePath: string; nextHref: string | null; canWrite: boolean; titleKey?: "qr.title" | "cfgp14.title"; selected: QuarantineItem | null }) {
+export function QuarantineView({ locale, rows, filters, basePath, nextHref, canWrite, titleKey = "qr.title", selected, cursor }: { locale: Locale; rows: QuarantineItem[]; filters: { status: string; code: string; zone_id: string }; basePath: string; nextHref: string | null; canWrite: boolean; titleKey?: "qr.title" | "cfgp14.title"; selected: QuarantineItem | null; cursor?: string }) {
   const columns: Column<QuarantineItem>[] = [
     { key: "id", header: t(locale, "cfgc.col.id"), render: (q) => formatNumber(locale, q.quarantine_id, { useGrouping: false }) },
     { key: "code", header: t(locale, "qr.col.reason"), render: (q) => q.code },
@@ -20,7 +20,7 @@ export function QuarantineView({ locale, rows, filters, basePath, nextHref, canW
     { key: "date", header: t(locale, "cfgc.col.date"), render: (q) => formatBusinessDate(locale, q.business_date) },
     { key: "recv", header: t(locale, "qr.col.received"), render: (q) => formatDateTime(locale, q.received_at) },
     { key: "st", header: t(locale, "cfgc.col.status"), render: (q) => t(locale, `qr.status.${q.status}` as MessageKey) },
-    { key: "open", header: t(locale, "common.actions"), render: (q) => <Link className="text-brand-700 underline" href={`${basePath}?${new URLSearchParams({ ...(filters.status ? { status: filters.status } : {}), ...(filters.code ? { code: filters.code } : {}), ...(filters.zone_id ? { zone_id: filters.zone_id } : {}), item: String(q.quarantine_id) }).toString()}`}>{t(locale, "qr.review")}</Link> },
+    { key: "open", header: t(locale, "common.actions"), render: (q) => <Link className="text-brand-700 underline" href={`${basePath}?${new URLSearchParams({ ...(filters.status ? { status: filters.status } : {}), ...(filters.code ? { code: filters.code } : {}), ...(filters.zone_id ? { zone_id: filters.zone_id } : {}), ...(cursor ? { cursor } : {}), item: String(q.quarantine_id) }).toString()}`}>{t(locale, "qr.review")}</Link> },
   ];
   const fields: OpFieldDef[] = [
     { name: "action", label: t(locale, "qr.action"), kind: "enum", required: true, options: ACTIONS.map((a) => ({ value: a, label: t(locale, `qr.action.${a}` as MessageKey) })) },

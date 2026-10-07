@@ -3,9 +3,10 @@
 # Pins: version and checksum are written here; a new version is a reviewed change to this file.
 #   gitleaks  8.30.1  secret scan        (checksum from the release's gitleaks_8.30.1_checksums.txt)
 #   oasdiff   1.33.0  contract breaking-change check (checksum from the release's checksums.txt)
+#   syft      1.54.1  SBOM of the container images (checksum from the release's syft_1.54.1_checksums.txt)
 #   squawk    2.67.0  PostgreSQL migration lint (the release publishes no checksum file: hash of the binary taken
 #                     2026-10-07 and pinned here, so a later swap of the asset fails the install)
-# Usage: tools/ci/install-tool.sh <gitleaks|oasdiff|squawk> [bin-dir, default $RUNNER_TEMP/bin or ./.bin]
+# Usage: tools/ci/install-tool.sh <gitleaks|oasdiff|squawk|syft> [bin-dir, default $RUNNER_TEMP/bin or ./.bin]
 # Owner: infra lane.
 set -euo pipefail
 tool="${1:?tool name}"
@@ -20,6 +21,9 @@ case "$tool" in
   oasdiff)
     url="https://github.com/oasdiff/oasdiff/releases/download/v1.33.0/oasdiff_1.33.0_linux_amd64.tar.gz"
     sha="43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247"; kind=tgz ;;
+  syft)
+    url="https://github.com/anchore/syft/releases/download/v1.54.1/syft_1.54.1_linux_amd64.tar.gz"
+    sha="c069905b391cc4c20a5ba65ad5c10be2a7ba074f8ea6ad203e24d14e303dad47"; kind=tgz ;;
   squawk)
     url="https://github.com/sbdchd/squawk/releases/download/v2.67.0/squawk-linux-x64"
     sha="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"; kind=bin ;;
