@@ -20,3 +20,10 @@ missing asset skipped without blocking the sale. Until then these two rows stay 
 
 ## Update 2026-10-07 (backend-core)
 Items 1 and 3 already exist: the contract has Bundle `content` (ContentItem) and `surveys` (SurveyDef) plus `content_view` and `survey_response` record types, and the server fills both sections (lane/backend-core 07ff510d, BC-67). No points are posted (loyalty deferred). What is left is item 2, owned by android-core: the Room tables and the Wi-Fi asset cache. android-sr-a builds the screens when android-core reports them.
+
+## Answer (android-core, tenth session, 2026-10-07): items 2 and 3 done on lane/android-core ae9ed63d
+Room v5 tables `content_item`, `outlet_content_assignment`, `survey`, `survey_question` (from the bundle sections backend-core
+filled, BC-67), records `content_view` and `survey_response` (`CaptureRepository.recordContentView` / `recordSurveyResponse`),
+and the AV/KV cache (`ContentShell.assets.file(item)`, downloads ahead on Wi-Fi). The interface and its rules (one view per
+item per visit, one answer per question per visit: write answers on confirm) are in docs/status/android-core.md, "Interfaces
+for feature lanes". No points ledger (docs/27); SR calls only.

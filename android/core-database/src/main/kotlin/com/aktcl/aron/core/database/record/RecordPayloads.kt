@@ -83,3 +83,31 @@ data class MediaMetaPayload(
     @SerialName("taken_at") val takenAt: String,
     @Serializable(with = GeoFixWire::class) val fix: GeoFix? = null,
 )
+
+// ---- Room v5 records (contract ContentViewPayload, SurveyResponsePayload; F-SR-020/021). ----
+
+@Serializable
+data class ContentViewPayload(
+    @SerialName("visit_client_uuid") val visitClientUuid: String,
+    @SerialName("content_id") val contentId: Long,
+    @SerialName("content_version") val contentVersion: Int,
+    val kind: String,
+    val outcome: String,
+    @SerialName("sequence_no") val sequenceNo: Int,
+    @SerialName("started_at") val startedAt: String? = null,
+    @SerialName("duration_ms") val durationMs: Long? = null,
+)
+
+@Serializable
+data class SurveyResponsePayload(
+    @SerialName("visit_client_uuid") val visitClientUuid: String,
+    @SerialName("survey_id") val surveyId: Long,
+    @SerialName("survey_version") val surveyVersion: Int,
+    @SerialName("question_id") val questionId: Long,
+    @SerialName("answer_type") val answerType: String,
+    @SerialName("answer_bool") val answerBool: Boolean? = null,
+    @SerialName("answer_num") val answerNum: Double? = null,
+    @SerialName("answer_option_code") val answerOptionCode: String? = null,
+    @SerialName("answer_text") val answerText: String? = null,
+    @SerialName("photo_uuid") val photoUuid: String? = null,
+)

@@ -176,6 +176,63 @@ class CaptureRepository(
     }
 
     /**
+     * An AV or KV item shown or skipped during an SR call (F-SR-020): in the visit's family, one per item per visit. A
+     * second view of the same item in the same visit is not recorded again (returns false), so a replay never doubles it.
+     * SR calls only: AMO and TSO visits never carry content (and no points are earned from it here; loyalty is deferred).
+     */
+    suspend fun recordContentView(view: com.aktcl.aron.core.database.entity.ContentViewEntity): Boolean = db.withTransaction {
+        requireUuids(view.clientUuid, view.visitClientUuid)
+        requireRoute(view.meta)
+        require(com.aktcl.aron.contract.ContentKind.entries.any { it.wire == view.kind }) { "kind ${view.kind} is not in the contract" }
+        require(view.outcome in CONTENT_OUTCOMES) { "outcome is one of $CONTENT_OUTCOMES" }
+        require(view.sequenceNo in 1..20) { "sequence_no is 1..20" }
+        require(view.contentVersion >= 1) { "content_version is at least 1" }
+        require(view.durationMs == null || view.durationMs in 0..3_600_000L) { "duration_ms is 0..3600000" }
+        requireOpenRouteDay(view.meta)
+        requireSrCall(view.visitClientUuid)
+        if (capture.contentViewsOf(view.visitClientUuid).any { it.contentId == view.contentId }) return@withTransaction false
+        capture.insertContentView(view)
+        outbox.insert(listOf(RecordMapping.contentView(view, nowIso())))
+        true
+    }
+
+    /**
+     * One survey answer during an SR call (F-SR-021): in the visit's family, one per question per visit (a second answer is
+     * refused with IllegalStateException). Exactly the member of [SurveyResponseEntity.answerType] is set; a `photo_only`
+     * answer carries the photo's media uuid, any other may carry one. SR calls only; no points ledger (docs/27).
+     */
+    suspend fun recordSurveyResponse(answer: com.aktcl.aron.core.database.entity.SurveyResponseEntity) = db.withTransaction {
+        requireUuids(answer.clientUuid, answer.visitClientUuid)
+        answer.photoUuid?.let { requireUuids(it) }
+        requireRoute(answer.meta)
+        require(answer.surveyVersion >= 1) { "survey_version is at least 1" }
+        val set = listOfNotNull(
+            answer.answerBool?.let { "bool" }, answer.answerNum?.let { "num" }, answer.answerOptionCode?.let { "option" }, answer.answerText?.let { "text" },
+        )
+        when (answer.answerType) {
+            "photo_only" -> require(set.isEmpty() && answer.photoUuid != null) { "a photo_only answer is its photo uuid alone" }
+            in ReferenceRepository.ANSWER_TYPES -> require(set == listOf(answer.answerType)) { "exactly answer_${answer.answerType} is set" }
+            else -> throw IllegalArgumentException("answer_type ${answer.answerType} is not in the contract")
+        }
+        answer.answerOptionCode?.let { require(REASON_CODE.matches(it)) { "answer_option_code must match ${REASON_CODE.pattern}" } }
+        answer.answerText?.let { require(it.length <= 1000) { "answer_text is at most 1000 characters" } }
+        answer.answerNum?.let { require(it.isFinite()) { "answer_num is a finite number" } }
+        requireOpenRouteDay(answer.meta)
+        requireSrCall(answer.visitClientUuid)
+        check(capture.surveyResponsesOf(answer.visitClientUuid).none { it.surveyId == answer.surveyId && it.questionId == answer.questionId }) {
+            "question ${answer.questionId} of survey ${answer.surveyId} is already answered in this visit"
+        }
+        capture.insertSurveyResponse(answer)
+        outbox.insert(listOf(RecordMapping.surveyResponse(answer, nowIso())))
+    }
+
+    /** Content and surveys belong to an SR call on this phone (never AMO or TSO, request android-sr-a-av-kv-survey-data). */
+    private suspend fun requireSrCall(visitClientUuid: String) {
+        val visit = checkNotNull(capture.visit(visitClientUuid)) { "the visit is not on this phone" }
+        require(visit.visitKind == com.aktcl.aron.contract.VisitKind.SR_CALL.wire) { "content and surveys are for SR calls only" }
+    }
+
+    /**
      * Sales Submit: the route-day's last record. Nothing of that route-day (visits, sales, closes, skips, dues) is committed
      * after it until the server reopens the day ([reopenRouteDay]); one submit per cycle.
      */
@@ -278,6 +335,7 @@ class CaptureRepository(
 
     private companion object {
         val REASON_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
+        val CONTENT_OUTCOMES = setOf("viewed", "skipped_missing", "skipped_user")
 
         /** RFC 3339 UTC with exactly three fraction digits, as on the wire (docs/24 s3.1 item 5). */
         val ISO_MILLIS: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)

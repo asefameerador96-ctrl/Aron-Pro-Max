@@ -83,6 +83,7 @@ class LocalPurge(private val db: AronDatabase) {
         val CAPTURE_TABLES = listOf(
             "attendance_event", "stock_movement", "visit", "visit_close", "memo", "memo_line", "memo_discount", "qc_line",
             "due_collection", "visit_skip", "day_submit", "outlet_change_request", "task_event", "print_event",
+            "content_view", "survey_response",
         )
     }
 }
