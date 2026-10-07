@@ -102,3 +102,35 @@ data class MemoCounterEntity(
     @PrimaryKey @ColumnInfo(name = "business_date") val businessDate: String,
     @ColumnInfo(name = "last_n") val lastN: Int,
 )
+
+/** A final print outcome (record `print_event`, contract `PrintEventPayload`); immutable once written. */
+@Entity(tableName = "print_event", indices = [Index("memo_client_uuid"), Index("ref_client_uuid")])
+data class PrintEventEntity(
+    @PrimaryKey @ColumnInfo(name = "client_uuid") val clientUuid: String,
+    @Embedded val meta: CaptureMeta,
+    @ColumnInfo(name = "document_kind") val documentKind: String,
+    @ColumnInfo(name = "memo_client_uuid") val memoClientUuid: String?,
+    @ColumnInfo(name = "ref_client_uuid") val refClientUuid: String?,
+    @ColumnInfo(name = "print_count") val printCount: Int,
+    val outcome: String,
+    @ColumnInfo(name = "user_confirmed") val userConfirmed: Boolean?,
+    @ColumnInfo(name = "template_version") val templateVersion: Int,
+    @ColumnInfo(name = "printer_model") val printerModel: String?,
+    @ColumnInfo(name = "at_ms") val atMs: Long,
+)
+
+/** A print job not yet final (docs/17 s9.4), local only, never synced; keyed by the uuid its event will have. */
+@Entity(tableName = "print_job")
+data class PrintJobEntity(
+    @PrimaryKey @ColumnInfo(name = "event_client_uuid") val eventClientUuid: String,
+    @ColumnInfo(name = "document_kind") val documentKind: String,
+    @ColumnInfo(name = "memo_client_uuid") val memoClientUuid: String?,
+    @ColumnInfo(name = "ref_client_uuid") val refClientUuid: String?,
+    @ColumnInfo(name = "print_count") val printCount: Int,
+    val outcome: String,
+    @ColumnInfo(name = "user_confirmed") val userConfirmed: Boolean?,
+    @ColumnInfo(name = "template_version") val templateVersion: Int,
+    @ColumnInfo(name = "printer_model") val printerModel: String?,
+    @ColumnInfo(name = "at_ms") val atMs: Long,
+    @ColumnInfo(name = "paper_out") val paperOut: Boolean,
+)

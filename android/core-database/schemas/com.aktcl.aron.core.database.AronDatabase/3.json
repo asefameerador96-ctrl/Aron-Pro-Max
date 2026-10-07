@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 3,
-    "identityHash": "9c64c4474dcb33c1410d9013cc1c0d75",
+    "identityHash": "d65882b2be03bb6533e669430fd9cd6f",
     "entities": [
       {
         "tableName": "route",
@@ -1189,7 +1189,7 @@
       },
       {
         "tableName": "memo",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `visit_client_uuid` TEXT NOT NULL, `outlet_id` INTEGER NOT NULL, `memo_no` TEXT NOT NULL, `memo_kind` TEXT NOT NULL, `committed_at` TEXT NOT NULL, `price_list_date` TEXT NOT NULL, `price_type` TEXT NOT NULL, `gross_mtk` INTEGER NOT NULL, `offer_discount_mtk` INTEGER NOT NULL, `drp_discount_mtk` INTEGER NOT NULL, `qc_deduction_mtk` INTEGER NOT NULL, `round_adj_mtk` INTEGER NOT NULL, `net_mtk` INTEGER NOT NULL, `paid_mtk` INTEGER NOT NULL, `due_mtk` INTEGER NOT NULL, `is_credit` INTEGER NOT NULL, `outstanding_before_mtk` INTEGER, `line_count` INTEGER NOT NULL, `discount_line_count` INTEGER NOT NULL, `qc_line_count` INTEGER NOT NULL, `supersedes_client_uuid` TEXT, `edit_reason_code` TEXT, `edit_fix_client_uuid` TEXT, `offer_version_ids_json` TEXT NOT NULL, `rounding_mode` TEXT NOT NULL, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `visit_client_uuid` TEXT NOT NULL, `outlet_id` INTEGER NOT NULL, `memo_no` TEXT NOT NULL, `memo_kind` TEXT NOT NULL, `committed_at` TEXT NOT NULL, `price_list_date` TEXT NOT NULL, `price_type` TEXT NOT NULL, `gross_mtk` INTEGER NOT NULL, `offer_discount_mtk` INTEGER NOT NULL, `drp_discount_mtk` INTEGER NOT NULL, `qc_deduction_mtk` INTEGER NOT NULL, `round_adj_mtk` INTEGER NOT NULL, `net_mtk` INTEGER NOT NULL, `paid_mtk` INTEGER NOT NULL, `due_mtk` INTEGER NOT NULL, `is_credit` INTEGER NOT NULL, `outstanding_before_mtk` INTEGER, `line_count` INTEGER NOT NULL, `discount_line_count` INTEGER NOT NULL, `qc_line_count` INTEGER NOT NULL, `supersedes_client_uuid` TEXT, `edit_reason_code` TEXT, `edit_fix_client_uuid` TEXT, `offer_version_ids_json` TEXT NOT NULL, `rounding_mode` TEXT NOT NULL, `printed_at` TEXT, `print_count` INTEGER NOT NULL DEFAULT 0, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
         "fields": [
           {
             "fieldPath": "clientUuid",
@@ -1342,6 +1342,18 @@
             "columnName": "rounding_mode",
             "affinity": "TEXT",
             "notNull": true
+          },
+          {
+            "fieldPath": "printedAt",
+            "columnName": "printed_at",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "printCount",
+            "columnName": "print_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
           },
           {
             "fieldPath": "meta.businessDate",
@@ -3037,11 +3049,235 @@
             "business_date"
           ]
         }
+      },
+      {
+        "tableName": "print_event",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`client_uuid` TEXT NOT NULL, `document_kind` TEXT NOT NULL, `memo_client_uuid` TEXT, `ref_client_uuid` TEXT, `print_count` INTEGER NOT NULL, `outcome` TEXT NOT NULL, `user_confirmed` INTEGER, `template_version` INTEGER NOT NULL, `printer_model` TEXT, `at_ms` INTEGER NOT NULL, `business_date` TEXT NOT NULL, `captured_at` TEXT NOT NULL, `captured_elapsed_ms` INTEGER NOT NULL, `boot_count` INTEGER NOT NULL, `clock_offset_ms` INTEGER, `captured_offline` INTEGER NOT NULL, `route_id` INTEGER, `acting_for_user_id` INTEGER, `bundle_version` TEXT, `bundle_stale` INTEGER NOT NULL, `config_version` INTEGER NOT NULL, PRIMARY KEY(`client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "clientUuid",
+            "columnName": "client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentKind",
+            "columnName": "document_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoClientUuid",
+            "columnName": "memo_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "refClientUuid",
+            "columnName": "ref_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "printCount",
+            "columnName": "print_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userConfirmed",
+            "columnName": "user_confirmed",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "templateVersion",
+            "columnName": "template_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "printerModel",
+            "columnName": "printer_model",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "atMs",
+            "columnName": "at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.businessDate",
+            "columnName": "business_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedAt",
+            "columnName": "captured_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.capturedElapsedMs",
+            "columnName": "captured_elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.bootCount",
+            "columnName": "boot_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.clockOffsetMs",
+            "columnName": "clock_offset_ms",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.capturedOffline",
+            "columnName": "captured_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.routeId",
+            "columnName": "route_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.actingForUserId",
+            "columnName": "acting_for_user_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "meta.bundleVersion",
+            "columnName": "bundle_version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "meta.bundleStale",
+            "columnName": "bundle_stale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meta.configVersion",
+            "columnName": "config_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "client_uuid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_print_event_memo_client_uuid",
+            "unique": false,
+            "columnNames": [
+              "memo_client_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_print_event_memo_client_uuid` ON `${TABLE_NAME}` (`memo_client_uuid`)"
+          },
+          {
+            "name": "index_print_event_ref_client_uuid",
+            "unique": false,
+            "columnNames": [
+              "ref_client_uuid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_print_event_ref_client_uuid` ON `${TABLE_NAME}` (`ref_client_uuid`)"
+          }
+        ]
+      },
+      {
+        "tableName": "print_job",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`event_client_uuid` TEXT NOT NULL, `document_kind` TEXT NOT NULL, `memo_client_uuid` TEXT, `ref_client_uuid` TEXT, `print_count` INTEGER NOT NULL, `outcome` TEXT NOT NULL, `user_confirmed` INTEGER, `template_version` INTEGER NOT NULL, `printer_model` TEXT, `at_ms` INTEGER NOT NULL, `paper_out` INTEGER NOT NULL, PRIMARY KEY(`event_client_uuid`))",
+        "fields": [
+          {
+            "fieldPath": "eventClientUuid",
+            "columnName": "event_client_uuid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentKind",
+            "columnName": "document_kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoClientUuid",
+            "columnName": "memo_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "refClientUuid",
+            "columnName": "ref_client_uuid",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "printCount",
+            "columnName": "print_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userConfirmed",
+            "columnName": "user_confirmed",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "templateVersion",
+            "columnName": "template_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "printerModel",
+            "columnName": "printer_model",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "atMs",
+            "columnName": "at_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paperOut",
+            "columnName": "paper_out",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "event_client_uuid"
+          ]
+        }
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '9c64c4474dcb33c1410d9013cc1c0d75')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd65882b2be03bb6533e669430fd9cd6f')"
     ]
   }
 }

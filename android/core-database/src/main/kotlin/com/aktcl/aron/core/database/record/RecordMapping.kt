@@ -7,6 +7,7 @@ import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.DaySubmitEntity
 import com.aktcl.aron.core.database.entity.DueCollectionEntity
 import com.aktcl.aron.core.database.entity.OutletChangeRequestEntity
+import com.aktcl.aron.core.database.entity.PrintEventEntity
 import com.aktcl.aron.core.database.entity.TaskEventEntity
 import com.aktcl.aron.core.database.entity.VisitSkipEntity
 import com.aktcl.aron.core.database.entity.GeoFixEntity
@@ -175,6 +176,11 @@ object RecordMapping {
     fun taskEvent(e: TaskEventEntity, createdAt: String) = outbox(
         RecordType.TASK_EVENT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
         TaskEventPayload.serializer(), TaskEventPayload(e.taskUuid, e.event, e.note),
+    )
+
+    /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */
+    fun printEvent(e: PrintEventEntity, familyUuid: String, rank: Int, payload: JsonObject, createdAt: String) = outbox(
+        RecordType.PRINT_EVENT, e.clientUuid, familyUuid, rank, e.meta, createdAt, JsonObject.serializer(), payload,
     )
 
     /** The record object of docs/24 s4.3: envelope members, then `payload`. `sig` is added by the signing row (Day 3). */

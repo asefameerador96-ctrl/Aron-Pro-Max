@@ -105,6 +105,9 @@ interface CaptureDao {
     @Query("SELECT * FROM attendance_event WHERE business_date = :businessDate ORDER BY captured_at")
     suspend fun attendanceOn(businessDate: String): List<AttendanceEventEntity>
 
+    @Query("SELECT * FROM stock_movement WHERE client_uuid = :clientUuid")
+    suspend fun stockMovement(clientUuid: String): StockMovementEntity?
+
     @Query("SELECT * FROM stock_movement WHERE business_date = :businessDate ORDER BY captured_at")
     suspend fun stockOn(businessDate: String): List<StockMovementEntity>
 
