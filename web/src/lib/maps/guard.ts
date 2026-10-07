@@ -30,7 +30,7 @@ export function capFromEnv(env: Record<string, string | undefined> = process.env
 }
 
 export function mapsKey(env: Record<string, string | undefined> = process.env): string | null {
-  return env.MAPS_WEB_KEY || env.NEXT_PUBLIC_MAPS_WEB_KEY || null;
+  return env.MAPS_WEB_KEY || null; // server-side only: a NEXT_PUBLIC key would be inlined into public client JS
 }
 
 let shared: MapsGuard | null = null;
