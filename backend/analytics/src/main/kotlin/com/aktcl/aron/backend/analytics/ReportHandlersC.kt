@@ -71,3 +71,75 @@ object SuspiciousLocationReport : ReportHandler {
         mapOf("threshold" to Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD),
     )
 }
+
+private fun qcScope(ctx: ReportContext) = "l.voided_at IS NULL AND ${ctx.dateClause("l.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("coalesce(l.route_id, -1)")}"
+
+/** `qc-report`: quality-control entries by visit, SKU and fault. */
+object QcReport : ReportHandler {
+    override val definition = definition(
+        "qc-report", "QC Report", "sales", "QC line",
+        listOf(
+            col("business_date", "Date", "date"), col("route_code", "Route", "string"), col("username", "SR", "string"), col("outlet_code", "Outlet code", "string"), col("outlet_name", "Outlet", "string"),
+            col("sku_code", "SKU", "string"), col("fault_type_code", "Fault", "string"), col("fault_group", "QC type", "string"), col("qty_base", "Quantity", "integer"),
+            col("unit_price_mtk", "Unit price", "mtk", unit = "mtk"), col("settlement_mtk", "Settlement", "mtk", unit = "mtk"), col("applied_to_memo", "Applied to memo", "bool"),
+        ),
+        listOf("period", "geo", "category", "product_type", "products"),
+    )
+
+    override fun spec(ctx: ReportContext): SqlSpec {
+        val (prod, binds) = productClause(ctx, "p")
+        return SqlSpec(
+            """
+            SELECT l.business_date, g.route_code, u.username, o.outlet_code, o.outlet_name, p.sku_code, l.fault_type_code, l.fault_group, l.qty_base, l.unit_price_mtk, l.settlement_mtk, l.applied_to_memo
+              FROM app.qc_entry_line l JOIN app.qc_entry e ON e.id = l.qc_entry_id JOIN dw.dim_geo g ON g.route_id = l.route_id JOIN app.app_user u ON u.id = l.user_id
+              JOIN dw.dim_outlet o ON o.outlet_id = e.outlet_id JOIN dw.dim_product p ON p.sku_id = l.sku_id
+             WHERE ${qcScope(ctx)} AND $prod
+            """,
+            binds, listOf("qty_base", "settlement_mtk"),
+        )
+    }
+}
+
+/** `settlement`: QC settlements by fault type and SKU. */
+object SettlementReport : ReportHandler {
+    override val definition = definition(
+        "settlement", "QC Settlement", "finance", "fault x SKU",
+        listOf(
+            col("fault_type_code", "Fault", "string"), col("fault_group", "QC type", "string"), col("sku_code", "SKU", "string"), col("sku_name", "SKU name", "string"),
+            col("lines", "Lines", "integer"), col("qty_base", "Quantity", "integer"), col("settlement_mtk", "Settlement", "mtk", unit = "mtk"),
+        ),
+        listOf("period", "geo", "category", "product_type", "products"),
+    )
+
+    override fun spec(ctx: ReportContext): SqlSpec {
+        val (prod, binds) = productClause(ctx, "p")
+        return SqlSpec(
+            """
+            SELECT l.fault_type_code, l.fault_group, p.sku_code, p.short_name AS sku_name, count(*)::int AS lines, sum(l.qty_base)::bigint AS qty_base, sum(l.settlement_mtk)::bigint AS settlement_mtk
+              FROM app.qc_entry_line l JOIN dw.dim_geo g ON g.route_id = l.route_id JOIN dw.dim_product p ON p.sku_id = l.sku_id
+             WHERE ${qcScope(ctx)} AND $prod GROUP BY 1, 2, 3, 4
+            """,
+            binds, listOf("lines", "qty_base", "settlement_mtk"),
+        )
+    }
+}
+
+/** `route-qc`: QC by route and QC type (MFC manufacturing fault, MKT market fault) for the period. */
+object RouteQcReport : ReportHandler {
+    override val definition = definition(
+        "route-qc", "Route-wise QC", "sales", "route x QC type",
+        listOf(
+            col("route_code", "Route", "string"), col("route_name", "Route name", "string"), col("fault_group", "QC type", "string"), col("lines", "Lines", "integer"),
+            col("qty_base", "Quantity", "integer"), col("settlement_mtk", "Settlement", "mtk", unit = "mtk"),
+        ),
+        listOf("period", "geo"),
+    )
+
+    override fun spec(ctx: ReportContext) = SqlSpec(
+        """
+        SELECT g.route_code, g.route_name, l.fault_group, count(*)::int AS lines, sum(l.qty_base)::bigint AS qty_base, sum(l.settlement_mtk)::bigint AS settlement_mtk
+          FROM app.qc_entry_line l JOIN dw.dim_geo g ON g.route_id = l.route_id WHERE ${qcScope(ctx)} GROUP BY 1, 2, 3
+        """,
+        totalColumns = listOf("lines", "qty_base", "settlement_mtk"),
+    )
+}
