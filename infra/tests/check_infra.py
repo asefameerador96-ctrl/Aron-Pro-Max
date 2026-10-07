@@ -285,6 +285,9 @@ class ReliabilityProperties(unittest.TestCase):
         self.assertLess(end, d.index("params_unchanged() {"))
         self.assertLess(end, d.index("az deployment group what-if"))
         block = d[start:end]
+        # The fake az below ignores --query, so the null guards that keep the tsv fields in place are checked here.
+        self.assertIn("[].[name, availabilityZone || '-', highAvailability.mode || '-', "
+                      "highAvailability.standbyAvailabilityZone || '-']", block)
         import subprocess
         harness = ("set -euo pipefail\n"
                    "die() { echo \"DIE: $*\"; exit 1; }\nnote() { :; }\n"
@@ -307,10 +310,15 @@ class ReliabilityProperties(unittest.TestCase):
             ("rollback skips the lookup", f"{srv}\\t2\\tZoneRedundant\\t1\\n", "a" * 40, "1", "P=unset S=unset"),
             ("az failure stops the deploy", "", "", "1", "DIE: cannot list"),
             ("two servers of the profile stop the deploy",
-             f"{srv}\\t2\\tZoneRedundant\\t1\\npsql-aron-dev-other\\t1\\tDisabled\\t-\\n", "", "0", "DIE: more than one"),
+             f"{srv}\\t2\\tZoneRedundant\\t1\\npsql-aron-dev-abc123\\t1\\tDisabled\\t-\\n", "", "0", "DIE: more than one"),
+            ("standby reported in the primary zone is never asked for", f"{srv}\\t2\\tZoneRedundant\\t2\\n", "", "0", "P=2 S=1"),
+            ("given suffix with a hyphen (ARON_NAME_SUFFIX=pilot-2): exact name only",
+             f"psql-aron-dev-pilot-2\\t2\\tZoneRedundant\\t1\\n{srv}\\t1\\tDisabled\\t-\\n"
+             f"psql-aron-dev-pilot-2-drill-1\\t1\\tDisabled\\t-\\n", "", "0", "P=2 S=1", "pilot-2"),
         ]
-        for name, out, rollback, fail, want in cases:
-            env = dict(os.environ, FAKE_OUT=out, FAKE_FAIL=fail, ROLLBACK_SHA=rollback)
+        for name, out, rollback, fail, want, *suffix in cases:
+            env = dict(os.environ, FAKE_OUT=out, FAKE_FAIL=fail, ROLLBACK_SHA=rollback,
+                       ARON_NAME_SUFFIX=(suffix or [""])[0])
             r = subprocess.run(["bash", "-c", harness], env=env, capture_output=True, text=True, cwd=ROOT)
             self.assertIn(want, r.stdout, f"{name}: {r.stdout!r} {r.stderr!r}")
 

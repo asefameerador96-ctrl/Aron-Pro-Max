@@ -1,6 +1,25 @@
 # Infra lane status
 
-Updated 2026-10-07 (Day 3, afternoon Dhaka; replacement infra session).
+Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
+
+## Day 3, 16:30 UTC (fresh session after the team stall): deploy run 37608044223 fixed
+
+- **Failure:** the `deploy` run on INT 107d3a5 (10:32 UTC) stopped at the what-if guard: "psql-aron-dev-7i7g53:
+  protected property properties.highAvailability.standbyAvailabilityZone would change '1' -> '2'". Nothing changed in Azure.
+- **Cause:** the forced-failover drill swapped the server (live now: primary zone 2, standby zone 1, HA healthy). main.bicep
+  never passed zones, so the module defaults (primary 1, standby 2) asked Azure to move the server back.
+- **Fix (lane/infra):** `postgresPrimaryZone` / `postgresStandbyZone` parameters in main.bicep (creation defaults 1/2), read from
+  `ARON_PG_PRIMARY_ZONE` / `ARON_PG_STANDBY_ZONE` in every profile; deploy.sh reads the live zones of the exact profile server
+  (`psql-aron-<env>-<suffix>`; drill restores and the replica are ignored; rollbacks skip the lookup) before the parameter
+  comparison and the what-if. The first deploy after this re-runs the infra stage once (new parameters).
+- **Proof:** read-only what-if against rg-aron-dev with the live zones, then the guard: exit 0 (test account). Test
+  `test_postgres_zones_follow_the_live_server_after_a_failover` runs the deploy.sh block with a fake az over 11 cases.
+  Opus checker: 1 defect confirmed (prefix match caught drill restores), fixed; Opus re-check: a given ARON_NAME_SUFFIX
+  with '-' was missed (now exact-name match) and two test gaps (closed; 8 of 8 mutations of the block caught).
+- **Follow-up (not done):** `infra/scripts/drill.sh` picks its server with `starts_with(name,'psql-aron-') | [0]`, so a
+  leftover `-drill-` restore or a promoted `-r1` could be chosen; apply the same exact-name match before the next drill.
+- **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
+- Restore drill stays blocked until the owner says "owner approved restore drill".
 
 ## Day 3, 10:00 UTC: three CI blockers for the first INT promotion (lead)
 

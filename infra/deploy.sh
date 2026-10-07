@@ -208,7 +208,13 @@ if [ -z "$ROLLBACK_SHA" ]; then
   pg_all="$(az postgres flexible-server list -g "$RG" \
     --query "[].[name, availabilityZone || '-', highAvailability.mode || '-', highAvailability.standbyAvailabilityZone || '-']" \
     -o tsv)" || die "cannot list the PostgreSQL servers of $RG"
-  pg_live="$(printf '%s\n' "$pg_all" | tr -d '\r' | grep -E "^psql-aron-${ENV_NAME}-[a-z0-9]+[[:space:]]" || true)"
+  if [ -n "${ARON_NAME_SUFFIX:-}" ]; then
+    # A given suffix is used as is (it may contain '-'): match that exact name.
+    pg_live="$(printf '%s\n' "$pg_all" | tr -d '\r' | awk -F'\t' -v n="psql-aron-${ENV_NAME}-${ARON_NAME_SUFFIX}" '$1 == n')"
+  else
+    # The default suffix is take(uniqueString(group id), 6): six lowercase letters or digits.
+    pg_live="$(printf '%s\n' "$pg_all" | tr -d '\r' | grep -E "^psql-aron-${ENV_NAME}-[a-z0-9]{6}[[:space:]]" || true)"
+  fi
 fi
 if [ "$(printf '%s\n' "$pg_live" | grep -c .)" -gt 1 ]; then
   die "more than one PostgreSQL server is named psql-aron-${ENV_NAME}-<suffix> in $RG; resolve that first"
