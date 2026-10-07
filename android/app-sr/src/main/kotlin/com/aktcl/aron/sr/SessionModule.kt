@@ -85,7 +85,7 @@ object SessionModule {
         media: MediaShell,
         resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
     ): AronWorkerFactory = AronWorkerFactory(
-        { SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, afterRun = { _, report -> media.afterSync(report) }) }, { scheduler },
+        { SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, afterRun = { _, report -> media.afterSync(report) }, config = resumeConfigCheck) }, { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
         { com.aktcl.aron.core.sync.push.SessionPushPull(push::activeUser, bundles, resumeConfigCheck) },
     )

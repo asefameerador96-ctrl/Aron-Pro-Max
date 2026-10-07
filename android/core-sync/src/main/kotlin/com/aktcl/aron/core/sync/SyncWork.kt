@@ -61,6 +61,8 @@ class SessionSyncRunner(
     private val bundles: BundleDownloaders? = null,
     /** After every run (the media shell asks for a photo upload once records were acked); must never throw. */
     private val afterRun: (userId: Long, report: SyncReport) -> Unit = { _, _ -> },
+    /** F-SYS-053: a config delta when the batch answer's X-Config-Version is newer than the held one; null in tests. */
+    private val config: ResumeConfigCheck? = null,
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
         // A queued run of a user wiped since (TSO logout) must not create an empty database and bring the user back.
@@ -74,6 +76,14 @@ class SessionSyncRunner(
         val active = (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
         if (refreshesBundle(userId, active, report.stop)) {
             try { bundles?.of(userId)?.refreshIfServerNewer() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        }
+        if (config != null && refreshesBundle(userId, active, report.stop)) {
+            try {
+                val meta = db.referenceDao()
+                val held = meta.meta(SyncEngine.KEY_CONFIG_VERSION)?.toLongOrNull()
+                val server = meta.meta(SyncEngine.KEY_CONFIG_VERSION_SERVER)?.toLongOrNull()
+                if (pullsConfig(held, server)) config.pullAfterPush(userId)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         }
         components.session.noteTimePassing() // F-SYS-052: proven uptime for the 7-day offline window
         try { afterRun(userId, report) } catch (_: Exception) { }
@@ -94,6 +104,9 @@ class SessionSyncRunner(
 
     companion object {
         /** A bundle delta after a run: only for the signed-in user, and only after a run the server answered in full. */
+        /** The server said its config is newer than what the phone holds (a portal change since the last delta). */
+        fun pullsConfig(held: Long?, server: Long?): Boolean = held != null && server != null && server > held
+
         fun refreshesBundle(userId: Long, activeUserId: Long?, stop: SyncStop): Boolean =
             userId == activeUserId && (stop == SyncStop.DRAINED || stop == SyncStop.RUN_LIMIT)
     }

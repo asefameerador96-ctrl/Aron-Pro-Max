@@ -14,4 +14,13 @@ class SessionSyncRunnerRulesTest {
         assertFalse(SessionSyncRunner.refreshesBundle(1001, 1001, SyncStop.RETRY_LATER))
         assertFalse(SessionSyncRunner.refreshesBundle(1001, 1001, SyncStop.OFFLINE))
     }
+
+    /** F-SYS-053: a batch answer's newer X-Config-Version makes the signed-in user's run pull the config delta. */
+    @Test fun aNewerServerConfigVersionPullsTheDelta() {
+        assertTrue(SessionSyncRunner.pullsConfig(318, 320))
+        assertFalse(SessionSyncRunner.pullsConfig(320, 320))
+        assertFalse(SessionSyncRunner.pullsConfig(321, 320))
+        assertFalse(SessionSyncRunner.pullsConfig(null, 320)) // no bundle yet: the day's bundle brings config
+        assertFalse(SessionSyncRunner.pullsConfig(318, null))
+    }
 }

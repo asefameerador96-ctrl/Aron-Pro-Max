@@ -104,6 +104,22 @@ class ResumeConfigCheckTest {
         assertEquals(150, db.referenceDao().outlet(outlet)!!.radiusM)
         assertEquals("true", db.referenceDao().meta(ReferenceRepository.KEY_POLICY_REFRESH))
         assertTrue(repo.section("calendar_changes")!!.contains("2026-10-10"))
+        // F-SYS-053: geo.radius_m requires an ack: one config_ack row, own family, for version 320, in the same transaction.
+        val acks = db.outboxDao().nextSendable(100, 99, emptyList()).filter { it.recordType == "config_ack" }
+        assertEquals(1, acks.size)
+        val ack = kotlinx.serialization.json.Json.parseToJsonElement(acks.single().payloadJson).jsonObject
+        val payload = ack["payload"]!!.jsonObject
+        assertEquals("320", payload["config_version"]!!.toString())
+        assertEquals("""["geo.radius_m"]""", payload["keys"]!!.toString())
+        assertEquals(acks.single().clientUuid, acks.single().familyUuid)
+        assertEquals(acks.single().clientUuid, ack["client_uuid"]!!.toString().trim('"'))
+    }
+
+    @Test fun aDeltaWithoutAckKeysQueuesNoAck() = runBlocking {
+        server.enqueue(api(200, """{"from_version":318,"to_version":319,
+            "values":[{"key":"sale.max_lines","value":60,"scope_type":"global","effective_from":null,"requires_ack":false}]}"""))
+        assertEquals(ConfigCheckResult.APPLIED, check.checkOnResume(1))
+        assertTrue(db.outboxDao().nextSendable(100, 99, emptyList()).none { it.recordType == "config_ack" })
     }
 
     @Test fun anOldDeltaNeverMovesConfigBackwards() = runBlocking {

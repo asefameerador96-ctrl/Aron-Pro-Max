@@ -223,6 +223,20 @@ object RecordMapping {
         ),
     )
 
+    /**
+     * `config_ack` (F-SYS-053, docs/24 s9 item 5): the phone applied [configVersion] with these `requires_ack` keys. Its own
+     * family, rank 0, no route; at most 100 keys (contract maxItems).
+     */
+    fun configAck(clientUuid: String, meta: CaptureMeta, configVersion: Long, appliedAt: String, keys: List<String>, createdAt: String) = outbox(
+        RecordType.CONFIG_ACK, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null, configVersion = configVersion), createdAt,
+        JsonObject.serializer(),
+        buildJsonObject {
+            put("config_version", JsonPrimitive(configVersion))
+            put("applied_at", JsonPrimitive(appliedAt))
+            put("keys", kotlinx.serialization.json.JsonArray(keys.distinct().sorted().take(100).map { JsonPrimitive(it) }))
+        },
+    )
+
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */
     fun printEvent(e: PrintEventEntity, familyUuid: String, rank: Int, payload: JsonObject, createdAt: String) = outbox(
         RecordType.PRINT_EVENT, e.clientUuid, familyUuid, rank, e.meta, createdAt, JsonObject.serializer(), payload,

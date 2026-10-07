@@ -5,6 +5,7 @@ import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.reference.ConfigDeltaWire
 import com.aktcl.aron.core.database.repo.DeltaResult
 import com.aktcl.aron.core.database.repo.ReferenceRepository
+import com.aktcl.aron.core.database.repo.ConfigAckStamp
 import kotlinx.coroutines.sync.Mutex
 import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.SyncApi
@@ -79,13 +80,31 @@ class ResumeConfigCheck(
                 } catch (e: IllegalArgumentException) {
                     return ConfigCheckResult.FAILED
                 }
-                when (ReferenceRepository(database).applyConfigDelta(delta)) {
+                val repo = ReferenceRepository(database)
+                when (repo.applyConfigDelta(delta, ackStamp(repo))) {
                     DeltaResult.APPLIED -> ConfigCheckResult.APPLIED
                     DeltaResult.STALE -> ConfigCheckResult.UNCHANGED
                     DeltaResult.GAP -> ConfigCheckResult.NEEDS_BUNDLE
                 }
             }
         }
+    }
+
+    /** Trusted time and a fresh uuid for the `config_ack` a delta with `requires_ack` keys queues (F-SYS-053). */
+    private suspend fun ackStamp(repo: ReferenceRepository): ConfigAckStamp {
+        val now = clock.nowMs()
+        val meta = com.aktcl.aron.core.database.entity.CaptureMeta(
+            businessDate = clock.businessDate().toString(),
+            capturedAt = SyncEngine.iso(now),
+            capturedElapsedMs = clock.elapsedRealtimeMs(),
+            bootCount = clock.bootCountNow(),
+            clockOffsetMs = clock.clockOffsetMs(),
+            capturedOffline = false,
+            routeId = null,
+            bundleVersion = repo.bundleVersion(),
+            configVersion = repo.configVersionHeld(),
+        )
+        return ConfigAckStamp(com.aktcl.aron.core.common.ClientIds.newUuid(), meta, SyncEngine.iso(now))
     }
 
     private val locks = java.util.concurrent.ConcurrentHashMap<Long, Mutex>()
