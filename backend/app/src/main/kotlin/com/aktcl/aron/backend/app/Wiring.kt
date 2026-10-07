@@ -14,6 +14,9 @@ import com.aktcl.aron.backend.auth.authRoutes
 import com.aktcl.aron.backend.config.ConfigDeps
 import com.aktcl.aron.backend.config.ConfigResolver
 import com.aktcl.aron.backend.config.ConfigService
+import com.aktcl.aron.backend.config.ConfigTools
+import com.aktcl.aron.backend.config.ConfigToolsDeps
+import com.aktcl.aron.backend.config.configToolRoutes
 import com.aktcl.aron.backend.config.ConfigDelta
 import com.aktcl.aron.backend.config.ConfigDeltaDeps
 import com.aktcl.aron.backend.config.configAdminRoutes
@@ -65,6 +68,7 @@ class Wiring(
             val configResolver = ConfigResolver(db, clock)
             val configService = ConfigService(db, configResolver, clock)
             val configDeps = ConfigDeps(configService, guard, clock)
+            val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock), guard)
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             // The server generation table arrives with the sync schema (N-006); until then the nil generation is sent.
@@ -74,6 +78,7 @@ class Wiring(
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
+                configToolRoutes(toolsDeps)
             }, frontDoorId = s.frontDoorId)
         }
     }
