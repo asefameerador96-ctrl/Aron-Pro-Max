@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Labels printed on paper (N-018). Keys are referenced from print templates as {@key}. -->
+<resources>
+    <string name="print_company">AKTCL</string>
+    <string name="print_cash_memo">Cash memo</string>
+    <string name="print_credit_memo">Credit memo</string>
+    <string name="print_offer_memo">Offer memo</string>
+    <string name="print_drp_memo">DRP memo</string>
+    <string name="print_zero_memo">Zero memo</string>
+    <string name="print_edited_memo">Edited memo</string>
+    <string name="print_duplicate">DUPLICATE</string>
+    <string name="print_reprint">Reprint</string>
+    <string name="print_supersedes">Supersedes</string>
+    <string name="print_memo_no">Memo no</string>
+    <string name="print_date">Date</string>
+    <string name="print_time">Time</string>
+    <string name="print_outlet">Outlet</string>
+    <string name="print_sr">SR</string>
+    <string name="print_route">Route</string>
+    <string name="print_distributor">Distributor</string>
+    <string name="print_sku">SKU</string>
+    <string name="print_qty">Qty</string>
+    <string name="print_price">Price</string>
+    <string name="print_value">Value</string>
+    <string name="print_total">Total</string>
+    <string name="print_discount">Discount</string>
+    <string name="print_total_discount">Total discount</string>
+    <string name="print_total_qc">Total QC</string>
+    <string name="print_rounding">Rounding</string>
+    <string name="print_grand_total">Grand total</string>
+    <string name="print_paid">Paid</string>
+    <string name="print_due">Due</string>
+    <string name="print_thanks">Thank you</string>
+    <string name="print_stock_slip">Stock slip</string>
+    <string name="print_category">Category</string>
+    <string name="print_day_summary">Day summary</string>
+    <string name="print_memo_count">Memos</string>
+    <string name="print_void_slip">Void slip</string>
+    <string name="print_voided_memo">Voided memo</string>
+    <string name="print_reason">Reason</string>
+    <string name="print_amount">Amount</string>
+    <string name="print_due_receipt">Due receipt</string>
+    <string name="print_due_before">Due before</string>
+    <string name="print_collected">Collected</string>
+    <string name="print_due_after">Due after</string>
+    <string name="print_signature">Signature</string>
+</resources>

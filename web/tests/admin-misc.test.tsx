@@ -24,12 +24,12 @@ describe("entry unlocks", () => {
     expect(m).toContain('data-testid="unlock-form"');
     expect(html(<EntryUnlocksView locale="en" rows={[u(1, "active")]} nextHref={null} canWrite={false} />)).not.toContain("unlock-form");
   });
-  it("create sends scope, dates and the reason; SUPPORT is refused", async () => {
+  it("create sends scope, dates and the reason; SUPPORT may too", async () => {
     h.stub({ method: "POST", path: "/v1/admin/entry-unlocks", fn: () => ({ status: 201, body: u(3, "active") }) });
     const body = { scope_type: "zone", scope_id: 334, from: "2026-10-01", to: "2026-10-03", ttl_h: 24 };
     expect((await op(await admin(), { op: "entry-unlock.create", body, reason: "Phone died on those days" })).status).toBe(201);
     expect(h.calls()[0]?.body).toEqual({ ...body, reason: "Phone died on those days" });
-    expect((await op(await support(), { op: "entry-unlock.create", body, reason: "Phone died on those days" })).status).toBe(403);
+    expect((await op(await support(), { op: "entry-unlock.create", body, reason: "Phone died on those days" })).status).toBe(201); // SUPPORT may (docs/24 s8.5)
   });
 });
 

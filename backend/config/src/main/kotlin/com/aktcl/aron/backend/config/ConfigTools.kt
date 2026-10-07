@@ -40,7 +40,23 @@ data class PendingDevicePage(val items: List<PendingDevice>, val next_cursor: St
  * is under the change's scope; "applied" means `device.config_version_applied >= version`; "acked" means a
  * `config_ack` row at or above the version (written by the sync handler).
  */
-class ConfigTools(private val db: Database, private val service: ConfigService, private val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM) {
+class ConfigTools(private val db: Database, private val service: ConfigService, private val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM, private val nodeReach: NodeReach? = null) {
+    /** Non-national callers (TSO, DMO, WM) see only scopes whose zones are all inside their reach; global is national only. */
+    fun requireReach(p: com.aktcl.aron.backend.platform.AronPrincipal, type: String?, id: Long?) {
+        val nr = nodeReach ?: return
+        if (nr.national(p)) return
+        val (t, i) = checkScope(type, id)
+        if (t == "global") throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "national scope is outside your reach")
+        val zones = db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery("SELECT z.id FROM app.zone z WHERE ${service.zoneFilterSql(t)}").also { q -> q.bind("id", i) }.mapTo(Long::class.java).list() }
+        if (zones.isEmpty() || zones.any { !nr.coversZone(p, it) }) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "scope outside your reach")
+    }
+
+    fun requireZone(p: com.aktcl.aron.backend.platform.AronPrincipal, zone: Long?) {
+        val nr = nodeReach ?: return
+        if (nr.national(p)) return
+        if (zone == null || !nr.coversZone(p, zone)) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "name a zone inside your reach")
+    }
+
 
     private fun checkScope(type: String?, id: Long?): Pair<String, Long> {
         val t = type ?: "global"
@@ -56,7 +72,8 @@ class ConfigTools(private val db: Database, private val service: ConfigService, 
             val b = service.blast(h, t, i)
             val users = when (t) {
                 "user" -> 1
-                "device", "role" -> 0
+                "device" -> h.createQuery("SELECT count(DISTINCT b.user_id) FROM app.device_binding b WHERE b.device_id = :id AND b.status = 'active'").bind("id", i).mapTo(Int::class.java).one()
+                "role" -> h.createQuery("SELECT count(*) FROM app.app_user u JOIN app.role_def r ON r.role = u.role WHERE r.ordinal = :id AND u.status = 'active'").bind("id", i).mapTo(Int::class.java).one()
                 else -> h.createQuery(
                     "SELECT count(*) FROM app.app_user u WHERE u.status = 'active' AND u.role IN ('SR','AMO','TSO') AND (u.home_zone_id IN (SELECT z.id FROM app.zone z WHERE ${service.zoneFilterSql(t)}) OR EXISTS " +
                         "(SELECT 1 FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = u.id AND a.ended_at IS NULL AND (a.valid_to IS NULL OR a.valid_to > current_date) AND r.zone_id IN (SELECT z.id FROM app.zone z WHERE ${service.zoneFilterSql(t)})))",
@@ -70,7 +87,7 @@ class ConfigTools(private val db: Database, private val service: ConfigService, 
     fun whatIf(type: String?, id: Long?, value: Int, days: Int): RadiusWhatIf {
         if (value !in 10..5000 || days !in 1..90) throw ApiProblem(ProblemCode.ERR_VALIDATION, "value 10..5000 and days 1..90")
         val (t, i) = checkScope(type, id)
-        val since = java.time.LocalDate.ofInstant(clock.now(), java.time.ZoneId.of("Asia/Dhaka")).minusDays(days.toLong())
+        val since = java.time.LocalDate.ofInstant(clock.now(), java.time.ZoneId.of("Asia/Dhaka")).minusDays((days - 1).toLong())
         val counts = db.jdbi.withHandle<IntArray, Exception> { h ->
             val scopeSql = when (t) {
                 "outlet" -> "o.id = :id"

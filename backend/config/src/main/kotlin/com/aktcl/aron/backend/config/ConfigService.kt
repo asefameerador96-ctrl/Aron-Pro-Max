@@ -36,7 +36,11 @@ import java.util.UUID
  * under a new monotonic `config_version`, writes the audit row and `NOTIFY cfg_changed`, all in one transaction.
  */
 /** Whether a TSO's reach covers a zone (implemented over the masterdata reach resolver at wiring time). */
-fun interface NodeReach { fun coversZone(p: AronPrincipal, zoneId: Long): Boolean }
+fun interface NodeReach {
+    fun coversZone(p: AronPrincipal, zoneId: Long): Boolean
+    /** National roles see every zone (docs/24 s8.4). */
+    fun national(p: AronPrincipal): Boolean = p.role in setOf(Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+}
 
 class ConfigService(private val db: Database, val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM, private val nodeReach: NodeReach? = null) {
     private val dhaka = ZoneId.of("Asia/Dhaka")
@@ -171,7 +175,7 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 if (!restore) outItems.forEachIndexed { i, pr ->
                     if (!isRestrictive(pr, now)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "break-glass may only restore or restrict", errors = listOf(FieldError("body.changes[$i]", "not_restrictive")))
                 }
-                if (!restore) effItems = outItems.map { pr -> val cap = now.plusSeconds(maxH * 3600L); if (pr.to == null || pr.to.isAfter(cap)) Prepared(pr.def, pr.item, pr.from, cap, pr.old) else pr }
+                if (!restore) effItems = outItems.map { pr -> val cap = now.plusSeconds(maxH * 3600L); if (pr.to == null || pr.to.isAfter(cap)) { if (pr.from != null && !cap.isAfter(pr.from)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "break-glass takes effect now, not later", errors = listOf(FieldError("body.changes", "future_start"))); Prepared(pr.def, pr.item, pr.from, cap, pr.old) } else pr }
             }
             val status = when { req.break_glass -> "applied"; tsoPropose -> "pending_approval"; risk >= 3 -> "pending_approval"; risk == 2 && delayMin > 0 -> "scheduled"; else -> "applied" }
             val applyAt = if (status == "scheduled") now.plusSeconds(delayMin * 60L) else null
@@ -382,17 +386,19 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
         val zoneFilter = zoneFilterSql(type)
         val z = "SELECT z.id FROM app.zone z WHERE $zoneFilter"
         fun count(sql: String) = h.createQuery(sql).also { if (type != "global") it.bind("id", id) }.mapTo(Int::class.java).one()
+        // Devices are counted exactly as the reach view targets them: active bound phones, by device zone, else home zone, else route zone.
+        val devZone = "COALESCE(d.zone_id, u.home_zone_id, (SELECT r.zone_id FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = u.id AND a.ended_at IS NULL AND (a.valid_to IS NULL OR a.valid_to > current_date) ORDER BY a.valid_from DESC LIMIT 1))"
+        val devBase = "SELECT count(DISTINCT d.id) FROM app.device d JOIN app.device_binding b ON b.device_id = d.id AND b.status = 'active' JOIN app.app_user u ON u.id = b.user_id WHERE d.status IN ('enrolled','active')"
         val devicesSql = when (type) {
-            "user" -> "SELECT count(*) FROM app.device_binding b WHERE b.user_id = :id AND b.unbound_at IS NULL"
-            "device" -> "SELECT 1"
-            "role" -> "SELECT count(DISTINCT b.device_id) FROM app.device_binding b JOIN app.app_user u ON u.id = b.user_id JOIN app.role_def r ON r.role = u.role WHERE b.unbound_at IS NULL AND r.ordinal = :id"
-            else -> "SELECT count(DISTINCT b.device_id) FROM app.device_binding b JOIN app.app_user u ON u.id = b.user_id WHERE b.unbound_at IS NULL AND (u.home_zone_id IN ($z) OR EXISTS " +
-                "(SELECT 1 FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = u.id AND a.ended_at IS NULL AND (a.valid_to IS NULL OR a.valid_to > current_date) AND r.zone_id IN ($z)))"
+            "user" -> "$devBase AND u.id = :id"
+            "device" -> "SELECT count(*) FROM app.device d WHERE d.id = :id AND d.status IN ('enrolled','active')"
+            "role" -> "$devBase AND u.role = (SELECT role FROM app.role_def WHERE ordinal = :id)"
+            else -> "$devBase AND $devZone IN ($z)"
         }
         return when (type) {
-            "role" -> BlastRadius(0, 0, 0, count(devicesSql))
-            "user" -> BlastRadius(0, 0, 0, count(devicesSql))
-            "device" -> BlastRadius(0, 0, 0, 1)
+            "role", "user", "device" -> BlastRadius(0, 0, 0, count(devicesSql))
+            "route" -> BlastRadius(1, 1, count("SELECT count(*) FROM app.outlet o WHERE o.status = 'active' AND o.route_id = :id"), count(devicesSql))
+            "outlet" -> BlastRadius(1, count("SELECT count(*) FROM app.outlet o WHERE o.id = :id AND o.route_id IS NOT NULL"), 1, count(devicesSql))
             else -> BlastRadius(
                 zones = count("SELECT count(*) FROM ($z) x"), routes = count("SELECT count(*) FROM app.route r WHERE r.zone_id IN ($z)"),
                 outlets = count("SELECT count(*) FROM app.outlet o WHERE o.status = 'active' AND o.zone_id IN ($z)"), devices = count(devicesSql),
