@@ -70,13 +70,20 @@ BEGIN
     EXCEPTION WHEN others THEN
       RAISE EXCEPTION 'could not create or update login %: % (SQLSTATE %)', l.login, SQLERRM, SQLSTATE;
     END;
-    -- Exactly these memberships, with exactly these options; anything else is revoked.
-    FOR g IN SELECT r.rolname FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid
+    -- Exactly these memberships, with exactly these options; anything else is revoked. A membership row belongs to its
+    -- grantor, so each unwanted row is revoked GRANTED BY that grantor; a row this login may not revoke (granted by a
+    -- superuser) stops the job for a human, like V0014 does.
+    FOR g IN SELECT r.rolname, gr.rolname AS grantor FROM pg_auth_members m
+               JOIN pg_roles r ON r.oid = m.roleid JOIN pg_roles gr ON gr.oid = m.grantor
               WHERE m.member = l.login::regrole
                 AND NOT EXISTS (SELECT 1 FROM memberships x WHERE x.login = l.login AND x.grp = r.rolname
                                    AND x.inherit = m.inherit_option AND m.set_option AND NOT m.admin_option) LOOP
-      EXECUTE format('REVOKE %I FROM %I', g.rolname, l.login);
-      RAISE NOTICE 'revoked % from % (not wanted, or wrong options)', g.rolname, l.login;
+      BEGIN
+        EXECUTE format('REVOKE %I FROM %I GRANTED BY %I', g.rolname, l.login, g.grantor);
+      EXCEPTION WHEN others THEN
+        RAISE EXCEPTION 'cannot revoke % from % (granted by %): %; revoke it by hand as that grantor', g.rolname, l.login, g.grantor, SQLERRM;
+      END;
+      RAISE NOTICE 'revoked % from % (granted by %; not wanted, or wrong options)', g.rolname, l.login, g.grantor;
     END LOOP;
     FOR g IN SELECT x.grp, x.inherit FROM memberships x WHERE x.login = l.login LOOP
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = g.grp) THEN
@@ -88,6 +95,22 @@ BEGIN
     END LOOP;
     EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), l.login);
   END LOOP;
+END $$;
+
+-- Verify: every login holds exactly its wanted memberships, one row each, with the wanted options (a REVOKE that
+-- silently matched nothing, or a duplicate row from another grantor, fails here instead of passing).
+DO $$
+DECLARE bad text;
+BEGIN
+  SELECT string_agg(format('%s/%s', w.login, w.grp), ', ') INTO bad FROM memberships w
+   WHERE (SELECT count(*) FROM pg_auth_members m WHERE m.member = w.login::regrole AND m.roleid = w.grp::regrole
+             AND m.inherit_option = w.inherit AND m.set_option AND NOT m.admin_option) <> 1;
+  IF bad IS NOT NULL THEN RAISE EXCEPTION 'memberships not exactly as wanted: %', bad; END IF;
+  SELECT string_agg(format('%s/%s', u.rolname, r.rolname), ', ') INTO bad
+    FROM (SELECT DISTINCT login FROM memberships) l JOIN pg_roles u ON u.rolname = l.login
+    JOIN pg_auth_members m ON m.member = u.oid JOIN pg_roles r ON r.oid = m.roleid
+   WHERE NOT EXISTS (SELECT 1 FROM memberships w WHERE w.login = l.login AND w.grp = r.rolname);
+  IF bad IS NOT NULL THEN RAISE EXCEPTION 'unwanted memberships remain: %', bad; END IF;
 END $$;
 
 -- Session limits per privilege role (V0020): statement, lock and idle-in-transaction timeouts on each login.

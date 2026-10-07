@@ -106,6 +106,16 @@ $prodBody = @{ wait_timer = 0; reviewers = @(@{ type = 'User'; id = $OwnerId });
 Api PUT "repos/$Repo/environments/azure-prod" $prodBody | Out-Null
 Api POST "repos/$Repo/environments/azure-prod/deployment-branch-policies" (@{ name = 'server-v*'; type = 'tag' } | ConvertTo-Json) | Out-Null
 Write-Host 'environment azure-prod ready (owner is the required reviewer; tags server-v* only)'
+# AUD-DG-08: one set of names. An earlier version of this script created `staging` and `prod`; nothing deploys to them.
+foreach ($old in 'staging', 'prod') {
+  # A 404 (already gone) must not stop the script under ErrorActionPreference=Stop (Windows PowerShell 5.1 turns
+  # native stderr into an error record).
+  $exists = $false
+  try { $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; gh api "repos/$Repo/environments/$old" --silent 2>$null | Out-Null; $exists = ($LASTEXITCODE -eq 0) }
+  catch { $exists = $false }
+  finally { $ErrorActionPreference = $prev }
+  if ($exists) { Api DELETE "repos/$Repo/environments/$old" | Out-Null; Write-Host "unused environment $old removed" }
+}
 
 Step 'Secret scanning and push protection (only where the plan supports it)'
 try {

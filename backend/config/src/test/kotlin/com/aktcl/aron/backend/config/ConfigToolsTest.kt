@@ -33,13 +33,20 @@ class ConfigToolsTest {
     }
     @AfterAll fun tearDown() = env.close()
 
+    /**
+     * The business date of the test clock, not of the wall clock: TestClock jumps to the NEXT day's noon when the Dhaka wall
+     * time is already past noon, so a visit dated by `now()` fell outside a one-day what-if window and CI failed after noon
+     * Dhaka (expected 0, got -4).
+     */
+    private val clockDay: java.time.LocalDate get() = java.time.LocalDate.ofInstant(clock.now(), java.time.ZoneId.of("Asia/Dhaka"))
+
     private fun visit(distance: Double, verdict: String, radius: Int = 100) {
         val sr = env.ids.getValue("sr1001")
         env.fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate(
                 "INSERT INTO app.visit (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, visit_kind, outlet_id, opened_at, sequence_no, planned, verdict, radius_m_used, max_accuracy_m_used, location_basis, geo_action, distance_m) " +
-                    "VALUES (CAST(:u AS uuid), CAST(:f AS uuid), app.dhaka_date(now()), :sr, now(), 0, 'sr_call', :o, now(), 1, true, :v, :r, 100, 'master', 'sale_allowed', :d)",
-            ).bind("u", UUID.randomUUID().toString()).bind("f", UUID.randomUUID().toString()).bind("sr", sr).bind("o", outlet).bind("v", verdict).bind("r", radius).bind("d", distance).execute()
+                    "VALUES (CAST(:u AS uuid), CAST(:f AS uuid), :bd, :sr, now(), 0, 'sr_call', :o, now(), 1, true, :v, :r, 100, 'master', 'sale_allowed', :d)",
+            ).bind("u", UUID.randomUUID().toString()).bind("f", UUID.randomUUID().toString()).bind("bd", clockDay).bind("sr", sr).bind("o", outlet).bind("v", verdict).bind("r", radius).bind("d", distance).execute()
         }
     }
 
@@ -51,6 +58,9 @@ class ConfigToolsTest {
         val tight = tools.whatIf("outlet", outlet, 50, 30)
         assertEquals(2, tight.to_invalid); assertEquals(0, tight.to_valid)
         assertEquals(0, tools.whatIf("global", null, 150, 1).let { it.visits_evaluated - 4 })
+        // The window is anchored on the clock's Dhaka date, whatever time of day the suite runs: wall-clock evening and morning alike.
+        clock.setDhaka(23, 30); assertEquals(4, tools.whatIf("zone", zone, 150, 1).visits_evaluated)
+        clock.setDhaka(0, 30); assertEquals(4, tools.whatIf("zone", zone, 150, 1).visits_evaluated)
         assertFailsWith<ApiProblem> { tools.whatIf("zone", zone, 5, 30) }
         assertFailsWith<ApiProblem> { tools.whatIf("zone", 987654, 100, 30) }
     }

@@ -40,6 +40,42 @@ Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pen
 - **Per-ABI APKs, CI side.** `tools/ci/release-apks.py` accepts one APK per app or ABI splits plus the universal APK;
   size gate and signing (ci.yml, release-app.yml) use it, so android-core can enable splits without a CI change.
 
+- **Per-app logins: switch OFF (checker finding).** `api_rw` lacks DELETE on `route_planned`, `mfa_secret`, `user_scope`
+  that admin flows use; `dbPerAppLogins = false` everywhere until `docs/requests/db-runtime-roles-gaps.md` lands. The
+  logins are still created and repaired on every deploy (now with V0020 memberships, `apply_login_limits()`, per-grantor
+  revoke and an exact-membership check; a superuser-made grant stops the job with a clear message).
+- **Azure Blob SAS issuer** (`docs/requests/backend-admin-blob-sas.md`, lead item): `backend/app/.../AzureBlobSasIssuer.kt`,
+  user-delegation SAS via the api managed identity, JDK HTTP client; offline tests; full backend:app suite green.
+  Follow-up for backend-admin in the request (a stored 24 h read URL expires).
+- **SR Maps key** in the release job (lead item). **APK baseline** regenerated after N-041 (SR armeabi-v7a +18 %).
+- **AUD-DG-08**: no manual prod dispatch; governance removes the unused `staging`/`prod` environments; docs/30 s5 item 2.
+- **AUD-REL-04**: alerts api 5xx, restarts, no-replica (only where min replicas > 0), PostgreSQL not alive, Resource
+  Health for the group; Service Health written but off (`docs/requests/infra-service-health-scope.md`). Seeded-failure
+  proof still to run.
+- **AUD-TP-6**: warnings-as-errors mechanism (list empty until `docs/requests/kotlin-warnings-as-errors.md`), flaky e2e
+  reported, SeededDayLoadTest bound 5 s.
+- **AUD-REL-05**: `drill.yml` (failover: phrase "lead approved failover drill"; pitr: "owner approved restore drill",
+  copy deleted in the same run, cost in the summary), runbooks RB-02 and RB-14. Drills not run yet (approvals).
+- **CI red on INT (06:10 UTC), not infra:** `:backend:config:test` `ConfigToolsTest.whatIfCountsVisitsWhoseVerdictWouldChange`
+  (expected 0, was -4) in runs 293, 300 and 309; routed to the lead. The APK size failure in the same runs is fixed above.
+
+- **Semgrep triage (lead, 06:00 UTC).** The gate fails only on findings NEW since its base (Semgrep diff-aware
+  `--baseline-commit`), ERROR and WARNING only. On a lane branch the base is now the integration commit the lane last
+  merged, so another lane's landed code never counts as new; on the integration branch it is the last green head.
+
+  | Finding | File | Decision | Reason |
+  |---|---|---|---|
+  | react-insecure-request x5 | `web/e2e/config-journeys.spec.ts` | skipped (test code) | Playwright calls the local contract mock over http://127.0.0.1; test code never ships. `.semgrepignore` skips `web/e2e/`, `web/tests/`, `**/src/test/`, `*.test.ts(x)`, `*.spec.ts` (05:47 UTC push) |
+  | gcm-no-tag-length | `web/src/lib/auth/seal.ts:35` | kept, routed | tag is sliced at exactly 16 bytes, so not exploitable as written; `{ authTagLength: 16 }` asked of web (`docs/requests/web-supply-chain-gates.md`) |
+  | workflow-run-target-code-checkout | `.github/workflows/deploy.yml` | `nosemgrep` with reason | the job runs only for a green ci run of a PUSH to the integration branch, never a pull request |
+  | secrets-inherit | `.github/workflows/promote-prod.yml` | `nosemgrep` with reason | same repository; deploy.yml reads only the Azure, FCM and Maps secrets |
+  | parse warning | `.github/workflows/promote-prod.yml:87` | noted | Semgrep's bash parser does not handle that `$(( ... ))` line; a warning, not a finding, and it never fails the gate |
+
+  No rule pack was dropped.
+- **Browser uploads** (`docs/requests/web-admin-asset-upload-csp.md`): storage CORS for the web origin (Front Door
+  endpoint, or the web app address without it), PUT only, headers `x-ms-blob-type` and `content-type`; `ARON_BLOB_ORIGIN`
+  on the web app.
+
 **Dev health (05:04 UTC):** `/v1/health`, `/v1/health/ready` and web `/login` 200 through Front Door.
 
 ## Day 3 (2026-10-07): CI gates of docs/31 s2, stage profile, promotion workflows, cost reading
