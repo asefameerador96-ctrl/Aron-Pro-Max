@@ -2,6 +2,44 @@
 
 The lead posts each check here as soon as the build for it exists, with exact steps (about 10 minutes each). The owner runs them in the evening and replies with what happened. Lanes add rows marked DEVICE-PENDING.
 
+## Device day 2026-10-08: start here (infra, 2026-10-07 23:10 UTC)
+
+**Status: a real phone cannot log in to dev yet.** Dev requires enrolment (`cfg.device.require_enrolled` = true,
+the registry default; integrity off; lockdown as seeded), and an unknown phone is refused at login with
+"this phone is not enrolled" (403 `ERR_DEVICE_NOT_ENROLLED`) before the password is checked. Two ways forward:
+
+- **Path 1: owner's decision, one switch.** The lead asks the owner whether enrolment may be off on dev for the
+  device day. If yes: the phone logs in with sr1001, binds with the 4-digit code (below) and sells. Nothing else
+  changes (integrity stays off, lockdown as seeded, the bind code stays required).
+- **Path 2: enrolment stays on. NOT ready tomorrow.** Needs android-core's enrolment step for a normally installed
+  phone (being built: EnrolmentCoordinator installed in the apps, token entry before login). The server side is
+  ready on dev after the next deploy with infra 09b seed: a published release per app with the CI signing
+  certificate, so an admin can mint an enrolment token (`lockdown_level` dev, flavour sr). The same seed lets the
+  device-owner path (D-04) mint tokens.
+
+**Checks that need NO login, run these first on the A06:** D-P1 (on-phone print goldens), D-PERF-04 (lab
+benchmark), D-DB-VAC (SQLCipher device test), D-UI-01 if it runs on the seeded day without a server login.
+
+**What the owner needs either way**
+- **APK:** GitHub, Actions, the latest green `ci` run on the integration branch, artifact
+  `aron-release-signed-dev-<run>` (use this one, not `aron-debug-apks-*`: enrolment checks the release signing
+  certificate). Unzip, phone on USB with USB debugging on, then `adb install -r aron-sr-0.1.<run>-dev.apk`.
+  The APK talks to the dev API `https://fde-aron-dev-7i7g53-gpgaa3fpgrhmdgaz.z03.azurefd.net` (baked in by CI).
+- **Login:** username `sr1001` and the dev seed password (Key Vault `aron-dev-seed-password`; the laptop session
+  reads it, never paste it in chat). There is no phone-number/SMS login and no fixed dev OTP.
+- **Binding the phone:** the first login on a new phone answers "bind required" and asks for a 4-digit code.
+  Read it in the web dashboard as `tso1001` or `admin1001` on the Device OTP page (`/device-otp`); valid 2 hours.
+  A second phone binds the same way (up to 4 phones per user). sr1001 is the only seeded SR, so both test phones
+  use sr1001.
+- **Route and sale:** sr1001 has routes MIR-SR-D (today's), MIR-SR-3F and MIR-SR-2F; 60 outlets in Mirpur 10 with
+  SKUs and prices in the bundle. The geofence is 100 m, so away from Mirpur use **Force Sale** (pick a reason, take
+  the outlet photo); the sale is saved and flagged "not geo-validated", which is expected.
+- **Server check afterwards** (laptop session or infra): the sale appears once. Web dashboard tile for the day shows
+  it; or in the dev database
+  `SELECT memo_no, count(*) FROM app.memo WHERE business_date = '2026-10-08' GROUP BY memo_no HAVING count(*) > 1;`
+  returns no rows, and `SELECT memo_no, net_mtk, status FROM app.memo WHERE business_date = '2026-10-08' ORDER BY id;`
+  lists each phone sale once. The API-level proof of the same path runs on every dev deploy (slice smoke).
+
 | # | Check | Needs | Status |
 |---|---|---|---|
 | D-01 | Install the SR debug APK from the CI artifact on the Galaxy A06, log in (dev API through Front Door), see Home | A06 + USB debugging, `adb install -r` | waits for android-sr-a first run |

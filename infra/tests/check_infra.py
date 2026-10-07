@@ -202,6 +202,22 @@ class StackIsComplete(unittest.TestCase):
                 or re.search(r"secretNames\.%s\b" % key, (ROOT / "infra" / "modules" / "keyvault.bicep").read_text(encoding="utf-8"))
             self.assertTrue(created, f"apps.bicep references Key Vault secret {name}, which nothing creates")
 
+    def test_play_integrity_secret_is_api_only_and_never_turns_the_gate_on(self):
+        """docs/requests/backend-core-play-integrity-secret.md: the API gets its own optional decode account; the
+        placeholder is one space (read as absent, the API then uses the FCM account); infra never sets the gate."""
+        apps = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        self.assertIn("{ name: 'ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON', secretRef: 'play-integrity-service-account' }", apps)
+        self.assertIn("concat(commonEnv, jwtSecretRefs, appSecretRefs, apiOnlySecretRefs, [", apps)
+        self.assertEqual(apps.count("apiOnlySecretRefs"), 2, "the worker does not get the decode account")
+        seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
+        self.assertIn("printf ' ' > \"$tmp/pi.json\"", seed)
+        self.assertIn("PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON }}",
+                      (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8"))
+        for f in list((ROOT / "infra").rglob("*.sh")) + list((ROOT / "infra").rglob("*.bicep*")) + list((ROOT / "infra").rglob("*.sql")):
+            text = f.read_text(encoding="utf-8")
+            for key in ("require_integrity", "require_enrolled"):
+                self.assertNotRegex(text, key + r"['\"]?\s*,\s*'true'", f"{f} turns {key} on (lead ruling: dev gates stay at their defaults)")
+
     def test_front_door_references_are_conditional(self):
         # An unconditional `existing` node is read at deployment time and fails in the TEST profile (no Front Door).
         res = load("apps.json")["resources"]
@@ -359,6 +375,7 @@ class ReliabilityProperties(unittest.TestCase):
                          "PgBouncer must be on for every tier that has it (all but Burstable)")
         base = {x["name"]: x["value"] for x in t["variables"]["baseSettings"]}
         self.assertIn("BTREE_GIST", base["azure.extensions"], "docs/requests/db-azure-btree-gist.md")
+        self.assertIn("PG_TRGM", base["azure.extensions"].split(","), "db AUD-PERF-07: pg_trgm allow-listed for the migration")
         self.assertEqual(t["variables"]["replicaSettings"],
                          "[if(parameters('pgbouncerEnabled'), variables('pgbouncerSettings'), createArray())]",
                          "the replica must get the PgBouncer settings of the primary")
@@ -1652,6 +1669,16 @@ class SliceSmoke(unittest.TestCase):
         sql = (ROOT / "infra/sql/devseed-smoke-outlet.sql").read_text(encoding="utf-8")
         self.assertIn("'SMOKE-SR-001'", sql)
         self.assertNotIn("cfg_value", sql)
+        # Device day (lead): a published release per flavour so enrolment tokens can be minted, dev seed image only
+        # (inside build_devseed, which runs only with devSeed = true; stage/prod have no devSeed), never a gate change.
+        rel = (ROOT / "infra/sql/devseed-app-release.sql").read_text(encoding="utf-8")
+        build = d[d.index("build_devseed() {"):d.index("publish aron-devseed build_devseed")]
+        self.assertIn('cp infra/sql/devseed-app-release.sql "$ctx/09b_dev_app_release.sql"', build)
+        self.assertEqual(d.count("devseed-app-release.sql"), 1, "loaded by the dev seed image only")
+        self.assertIn("'published'", rel)
+        self.assertIn("ON CONFLICT (flavour, version_code, abi) DO NOTHING", rel, "idempotent")
+        self.assertEqual(sorted(re.findall(r"\('(sr|amo|tso)',\s+'[0-9a-f]{64}'\)", rel)), ["amo", "sr", "tso"])
+        self.assertNotRegex(rel, r"require_enrolled|require_integrity|lockdown|cfg_value", "no gate or config change")
         self.assertIn('echo "::add-mask::${slice_pw}"', d)
         self.assertIn('( publish aron-devseed build_devseed', d, "a failed seed image never stops the deploy")
         for f in ("stage", "prod"):

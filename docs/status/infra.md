@@ -1,6 +1,6 @@
 # Infra lane status
 
-Updated 2026-10-07 22:00 UTC (sixth infra session).
+Updated 2026-10-07 22:55 UTC (sixth infra session).
 
 ## Sixth infra session, 2026-10-07 21:05 UTC (read with the handover below)
 
@@ -28,6 +28,23 @@ Updated 2026-10-07 22:00 UTC (sixth infra session).
   replay, count unchanged (1, 1, 92000), memo read HTTP 200 (report-only in that run), tile 0 -> 1, void. Rows:
   Database logins succeeded (**per-app db logins ON, api healthy**), Worker running 0 restarts after 90 s, Dev seed
   Succeeded, SR slice smoke PASSED. Lead told 21:58 UTC. Steps 7b/8 are hard checks from INT 3ba55547 on.
+- **CI Web job hang fixed** (2fe687b9, lead priority): `npx playwright install --with-deps` stalled in apt-get update
+  (run 37691144739, 18.6 min, job timeout, deploy skipped). Browser cache + tools/ci/playwright-chromium.sh (capped
+  download, apt only when ldd finds a missing library, Chrome fallback via PW_CHROMIUM_PATH), job timeout 30 min.
+  09ba87df was red for one round: the new test stripped /usr/bin from PATH to hide google-chrome and lost bash.
+- **Integrator recycled**: now session_016uXu7QkPQGGTn3FmR92YHu (old session_01UhJZDVYst45zbrskHBMkDd archived).
+  backend-core: session_01Kn9iDxdP1Cjp7N1JgsTsjY.
+- **Lead ruling 22:43 UTC: dev device gates stay at their defaults** (Play Integrity not linked in Play Console yet).
+  Infra sets neither require_integrity nor require_enrolled (test guards it). NOTE told to the lead: the registry
+  default of cfg.device.require_enrolled is TRUE (V0006) and deploy.sh deliberately omits seed 04 (which sets it
+  false), so dev runs enrolment ON; require_integrity defaults false. Changing that is the lead's call.
+- **Play Integrity secret ready, gate untouched** (docs/requests/backend-core-play-integrity-secret.md): Key Vault
+  `aron-play-integrity-service-account` -> API-only env ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON; seeded from the
+  optional GitHub secret PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON, else a one-space placeholder (API reads it as absent and
+  decodes with the FCM account). Owner step first: Play Integrity API enabled on the FCM project and the app linked.
+- **Web job fix proven**: CI run 37695217707 (2fe687b9) green, Web job 4.8 min (browser 1 s from cache, e2e 3.3 min).
+- **pg_trgm allow-listed** (bb221dfe, db AUD-PERF-07): azure.extensions + PG_TRGM; db's migration must not reach INT
+  before it (db session_011K2gmzr1feSNNQxnqWkRt5 is inactive; the lead relays).
 - **Worker check is blocking now** (lane/infra, after its first green run): a failed check ends the deploy with `die`.
   The slice smoke itself stays non-blocking until the lead says otherwise.
 
