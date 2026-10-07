@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 135 | 2428 |
+| `app` | 141 | 2486 |
 | `dw` | 28 | 433 |
 
 ## Index
@@ -62,11 +62,12 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.due_collection`](#appdue_collection) | table | backend:sync | OFFLINE | transaction | personal | Cash collected against an earlier credit memo, with the collecting location fix. |
 | [`app.due_ledger`](#appdue_ledger) | table | backend:sync | SERVER | transaction | none | Append-only ledger of an outlet's outstanding dues: credit memos and opening balances raise it, collections and voids lower it. |
 | [`app.enrolment_token`](#appenrolment_token) | table | backend:auth | ONLINE | session | none | A one-time or limited-use token that lets a phone enrol; only its hash is stored. |
+| [`app.entry_unlock`](#appentry_unlock) | table | backend:masterdata | ONLINE | transaction | none | One row is a time-limited unlock that lets web entry be back-dated for a zone or route over a date range. |
 | [`app.event_consumer`](#appevent_consumer) | table | backend:platform | SERVER | ops | none | Read position of each domain-event consumer. |
 | [`app.feedback`](#appfeedback) | table | backend:masterdata | OFFLINE | transaction | personal | Free-text feedback or problem report sent from the TSO app, with optional photo. |
 | [`app.feedback_status`](#appfeedback_status) | table | backend:masterdata | ONLINE | transaction | none | One row is the support-inbox status of a feedback item; a feedback item without a row is new. |
 | [`app.final_submit`](#appfinal_submit) | table | backend:sync | ONLINE | transaction | none | Final Submit of a zone and business date, made online by the TSO, unless reopened. |
-| [`app.geo_breadcrumb`](#appgeo_breadcrumb) | table | backend:sync | OFFLINE | fix | personal | Batched low-power location points recorded only while breadcrumbs are enabled by config. |
+| [`app.geo_breadcrumb`](#appgeo_breadcrumb) | partitioned table | backend:sync | OFFLINE | fix | personal | Batched low-power location points recorded only while breadcrumbs are enabled by config. |
 | [`app.geo_class_def`](#appgeo_class_def) | table | db | REFERENCE | master | none | Lookup giving each geography class an integer ordinal for config scoping. |
 | [`app.geo_fix`](#appgeo_fix) | partitioned table | backend:sync | OFFLINE | fix | personal | One location fix carried by a record, with accuracy, provider and sensor evidence used for the server re-check and risk rules. |
 | [`app.gift`](#appgift) | table | backend:masterdata | ONLINE | master | none | A gift of a loyalty programme with points cost and tiers. |
@@ -94,6 +95,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.outlet_programme`](#appoutlet_programme) | table | backend:analytics | SERVER | master | none | Programme eligibility of an outlet, shown as dots in the SR app outlet list. |
 | [`app.outlet_request_event`](#appoutlet_request_event) | table | backend:masterdata | SERVER | audit | personal | Trail of create, verify, approve, reject and lapse events on an outlet change request. |
 | [`app.partition_policy`](#apppartition_policy) | table | db | REFERENCE | ops | none | List of range-partitioned parent tables with the key column and months to create ahead. |
+| [`app.password_history`](#apppassword_history) | table | backend:auth | ONLINE | master | secret | One row is a password hash a user replaced, kept to refuse re-use of the last cfg.auth.password_history_depth passwords. |
 | [`app.pii_read_budget`](#apppii_read_budget) | table | backend:analytics | SERVER | ops | none | One row is the number of personal-data rows a user has read in one clock hour (hourly PII read budget). |
 | [`app.price_batch`](#appprice_batch) | table | backend:masterdata | ONLINE | audit | none | One row is a batch of price changes through preview, approval and publish (maker-checker above the change threshold). |
 | [`app.price_compliance_check`](#appprice_compliance_check) | table | backend:sync | OFFLINE | transaction | none | AMO check comparing the observed retail price of a SKU with the reference price. |
@@ -105,6 +107,8 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.push_token`](#apppush_token) | table | backend:notify | ONLINE | ops | secret | FCM push token of a user on a phone. |
 | [`app.qc_entry`](#appqc_entry) | table | backend:sync | SERVER | transaction | none | QC header created by the server for a visit from its QC fault lines. |
 | [`app.qc_entry_line`](#appqc_entry_line) | table | backend:sync | OFFLINE | transaction | none | One QC fault line (faulty units) of a visit, optionally deducted on the memo. |
+| [`app.qc_summary_entry`](#appqc_summary_entry) | table | backend:masterdata | ONLINE | transaction | none | One row is a back-office QC summary entered on the web: market QC for a route or warehouse QC for a zone. |
+| [`app.qc_summary_entry_line`](#appqc_summary_entry_line) | table | backend:masterdata | ONLINE | transaction | none | One row is a faulty quantity of one SKU and fault type in a web QC summary. |
 | [`app.redemption`](#appredemption) | table | backend:sync | OFFLINE | transaction | personal | A loyalty redemption basket confirmed in the field; the server debits the loyalty ledger. |
 | [`app.redemption_line`](#appredemption_line) | table | backend:sync | OFFLINE | transaction | none | One gift of a redemption basket with quantity and points. |
 | [`app.refresh_family`](#apprefresh_family) | table | backend:auth | ONLINE | session | none | A login session: the family of refresh tokens issued from one login, with expiry and revoke state. |
@@ -152,6 +156,8 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.visit_plan`](#appvisit_plan) | table | backend:masterdata | OFFLINE | transaction | none | A TSO visit plan for a date. |
 | [`app.visit_plan_outlet`](#appvisit_plan_outlet) | table | backend:masterdata | OFFLINE | transaction | none | An outlet included in a TSO visit plan. |
 | [`app.visit_skip`](#appvisit_skip) | table | backend:sync | OFFLINE | transaction | none | An outlet of the day's route not visited, with a reason. |
+| [`app.web_entry_line`](#appweb_entry_line) | table | backend:masterdata | ONLINE | transaction | none | One row is the per-SKU quantities of a route-day web entry. |
+| [`app.web_entry_route_day`](#appweb_entry_route_day) | table | backend:masterdata | ONLINE | transaction | none | One row is a back-office web entry of a route-day (issue, return and memos per SKU, successful calls); a re-save is a new row that closes the old one. |
 | [`app.wing`](#appwing) | table | backend:masterdata | ONLINE | master | none | Top level of the sales geography. |
 | [`app.zone`](#appzone) | table | backend:masterdata | ONLINE | master | none | Geography level below a territory; the unit of Final Submit and day rollups. |
 | [`dw.agg_daily_outlet`](#dwagg_daily_outlet) | table | worker | SERVER | event_fact | none | Per outlet and business date: whether visited, geo-valid, and sales totals. |
@@ -1455,6 +1461,31 @@ Keys: `UNIQUE (token_sha256)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (release_id) REFERENCES app.app_release(id)`; `FOREIGN KEY (revoked_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
 
+## app.entry_unlock
+
+One row is a time-limited unlock that lets web entry be back-dated for a zone or route over a date range.
+
+`owner: backend:masterdata | capture: ONLINE | retention: transaction | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key (unlock_id in the contract). |
+| `scope_type` | text | not null |  | What the unlock covers; allowed values are listed under constraints. |
+| `scope_id` | bigint | not null |  | Id of the zone or route the unlock covers (by scope_type). |
+| `from_date` | date | not null |  | First Asia/Dhaka business date that may be entered. |
+| `to_date` | date | not null |  | Last Asia/Dhaka business date that may be entered (at most cfg.web.entry_unlock_max_days after from_date). |
+| `reason` | text | not null |  | Reason the granting user gave (10 to 500 characters). |
+| `expires_at` | timestamp with time zone | not null |  | UTC time the unlock lapses (creation plus the TTL, cfg.web.entry_unlock_ttl_h by default). |
+| `created_by` | bigint | not null |  | User who granted the unlock. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `expired_at` | timestamp with time zone | null |  | UTC time the unlock was expired early (null if it was not); written once. |
+| `expired_by` | bigint | null |  | User who expired the unlock early; written once with expired_at. |
+| `version` | integer | not null |  | Row version for If-Match; the guard trigger moves it on the expiry. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (expired_by) REFERENCES app.app_user(id)`
+
 ## app.event_consumer
 
 Read position of each domain-event consumer.
@@ -1557,7 +1588,7 @@ References: `FOREIGN KEY (reopened_by) REFERENCES app.app_user(id)`; `FOREIGN KE
 
 Batched low-power location points recorded only while breadcrumbs are enabled by config.
 
-`owner: backend:sync | capture: OFFLINE | retention: fix | pii: personal` · table
+`owner: backend:sync | capture: OFFLINE | retention: fix | pii: personal` · partitioned table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -1582,14 +1613,14 @@ Batched low-power location points recorded only while breadcrumbs are enabled by
 | `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
-| `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
+| `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique per business date when set. |
 | `fix_status` | text | null |  | Outcome of the fix request: ok, timeout, permission_denied, location_off or provider_unavailable. |
 | `fix_lat` | double precision | null | personal | Latitude of the user's location fix taken with the record (WGS84 degrees). |
 | `fix_lng` | double precision | null | personal | Longitude of the user's location fix taken with the record (WGS84 degrees). |
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 
-Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
+Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
@@ -2530,6 +2561,23 @@ List of range-partitioned parent tables with the key column and months to create
 
 Keys: `PRIMARY KEY (parent)`
 
+## app.password_history
+
+One row is a password hash a user replaced, kept to refuse re-use of the last cfg.auth.password_history_depth passwords.
+
+`owner: backend:auth | capture: ONLINE | retention: master | pii: secret` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `user_id` | bigint | not null |  | User whose password was replaced. |
+| `password_hash` | text | not null | secret | Argon2id PHC string of the replaced password (never the password itself). |
+| `changed_at` | timestamp with time zone | not null |  | UTC time the password was replaced. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
 ## app.pii_read_budget
 
 One row is the number of personal-data rows a user has read in one clock hour (hourly PII read budget).
@@ -2851,6 +2899,48 @@ One QC fault line (faulty units) of a visit, optionally deducted on the memo.
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (qc_entry_id) REFERENCES app.qc_entry(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (sku_id) REFERENCES app.sku(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.qc_summary_entry
+
+One row is a back-office QC summary entered on the web: market QC for a route or warehouse QC for a zone.
+
+`owner: backend:masterdata | capture: ONLINE | retention: transaction | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `client_uuid` | uuid | not null |  | Browser-generated UUID of the save; the API is idempotent by it. |
+| `qc_source` | text | not null |  | Where the QC was done; allowed values are listed under constraints (source in the contract). |
+| `zone_id` | bigint | not null |  | Zone of the QC. |
+| `route_id` | bigint | null |  | Route of a market QC (required for market, null for warehouse). |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the QC. |
+| `reason` | text | null |  | Reason given (required for warehouse QC). |
+| `source` | text | not null |  | Origin of the entry; always web. |
+| `entered_by` | bigint | not null |  | User who saved the entry. |
+| `entered_at` | timestamp with time zone | not null |  | UTC instant of the save. |
+| `voided_at` | timestamp with time zone | null |  | UTC time a data void voided the entry (tombstone); written once. |
+
+Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (entered_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
+
+## app.qc_summary_entry_line
+
+One row is a faulty quantity of one SKU and fault type in a web QC summary.
+
+`owner: backend:masterdata | capture: ONLINE | retention: transaction | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `entry_client_uuid` | uuid | not null |  | client_uuid of the QC summary the row belongs to. |
+| `sku_id` | bigint | not null |  | SKU of the row. |
+| `fault_type_code` | text | not null |  | Fault type code (code list of QC fault types). |
+| `qty_base` | bigint | not null |  | Faulty quantity in the SKU's base unit (sticks, pieces or dozens). |
+
+Keys: `UNIQUE (entry_client_uuid, sku_id, fault_type_code)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (entry_client_uuid) REFERENCES app.qc_summary_entry(client_uuid)`; `FOREIGN KEY (sku_id) REFERENCES app.sku(id)`
 
 ## app.redemption
 
@@ -4266,6 +4356,58 @@ An outlet of the day's route not visited, with a reason.
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.web_entry_line
+
+One row is the per-SKU quantities of a route-day web entry.
+
+`owner: backend:masterdata | capture: ONLINE | retention: transaction | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `client_uuid` | uuid | not null |  | Server-generated UUID of the line (the browser sends lines without one); data void reports it. |
+| `entry_client_uuid` | uuid | not null |  | client_uuid of the route-day entry the line belongs to. |
+| `route_id` | bigint | not null |  | Route of the entry (equal to the entry's by foreign key). |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the entry (equal to the entry's by foreign key). |
+| `sku_id` | bigint | not null |  | SKU of the line. |
+| `issue_qty_base` | bigint | not null |  | Quantity issued to the SR, in the SKU's base unit (sticks, pieces or dozens). |
+| `return_qty_base` | bigint | not null |  | Quantity returned by the SR, in the base unit; at most the issue (sale = issue minus return). |
+| `memo_count` | integer | not null |  | Number of memos the SKU was sold on. |
+| `class_qty_base` | jsonb | not null |  | Sale split by web-entry class (cfg.web.entry_classes): sub-channel id to base quantity. |
+| `voided_at` | timestamp with time zone | null |  | UTC time a data void voided the line (tombstone); written once. |
+
+Keys: `UNIQUE (client_uuid)`; `UNIQUE (entry_client_uuid, sku_id)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (entry_client_uuid, route_id, business_date) REFERENCES app.web_entry_route_day(client_uuid, route_id, business_date)`; `FOREIGN KEY (sku_id) REFERENCES app.sku(id)`
+
+## app.web_entry_route_day
+
+One row is a back-office web entry of a route-day (issue, return and memos per SKU, successful calls); a re-save is a new row that closes the old one.
+
+`owner: backend:masterdata | capture: ONLINE | retention: transaction | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `client_uuid` | uuid | not null |  | Browser-generated UUID of the save; the API is idempotent by it. |
+| `supersedes_client_uuid` | uuid | null |  | client_uuid of the entry this re-save replaces (null for the first save). |
+| `route_id` | bigint | not null |  | Route of the entered route-day. |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the entered route-day. |
+| `successful_calls` | integer | not null |  | Successful calls entered (at most target_outlets when cfg.web.entry_validate_calls_le_target). |
+| `target_outlets` | integer | not null |  | Target outlets of the route-day at the save, as the server computed them. |
+| `app_overlap` | boolean | not null |  | True when app memos existed for the same route-day at the save (flagged, never added). |
+| `change_reason` | text | null |  | Reason given for a re-save (required when supersedes_client_uuid is set). |
+| `source` | text | not null |  | Origin of the entry; always web. |
+| `entered_by` | bigint | not null |  | User who saved the entry. |
+| `entered_at` | timestamp with time zone | not null |  | UTC instant of the save. |
+| `replaced_at` | timestamp with time zone | null |  | UTC time a re-save replaced this entry (null while it is live); written once. |
+| `replaced_by` | bigint | null |  | User whose re-save replaced this entry; written once with replaced_at. |
+| `voided_at` | timestamp with time zone | null |  | UTC time a data void voided the entry (tombstone); written once. |
+
+Keys: `UNIQUE (client_uuid)`; `UNIQUE (client_uuid, route_id, business_date)`; `UNIQUE (supersedes_client_uuid)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (entered_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (replaced_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (supersedes_client_uuid, route_id, business_date) REFERENCES app.web_entry_route_day(client_uuid, route_id, business_date)`
 
 ## app.wing
 

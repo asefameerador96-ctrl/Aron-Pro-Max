@@ -324,6 +324,13 @@ class ReliabilityProperties(unittest.TestCase):
             r = subprocess.run(["bash", "-c", harness], env=env, capture_output=True, text=True, cwd=ROOT)
             self.assertIn(want, r.stdout, f"{name}: {r.stdout!r} {r.stderr!r}")
 
+    def test_psql_image_is_imported_by_digest_only(self):
+        # Deploy run 37619397240: `az acr import` refused "postgres:16-alpine@sha256:..." (a tag AND a digest).
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        m = re.search(r'^PSQL_SOURCE="([^"]+)"', d, re.M)
+        self.assertIsNotNone(m)
+        self.assertRegex(m.group(1), r"^docker\.io/library/postgres@sha256:[0-9a-f]{64}$")
+
     def test_postgres_ha_backup_and_pooling_follow_the_parameters(self):
         t, bound = module("main.json", "postgres")
         primary = [r for r in resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers") if "createMode" not in r["properties"]]

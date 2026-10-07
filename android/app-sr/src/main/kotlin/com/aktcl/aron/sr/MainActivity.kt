@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck
     @Inject lateinit var mediaShell: MediaShell
     @Inject lateinit var shellLogout: com.aktcl.aron.core.sync.shell.ShellLogout
+    @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     private var dayHolder: SrDayHolder? = null
 
     override fun attachBaseContext(newBase: Context) {
@@ -59,6 +60,20 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         dayHolder?.day?.value?.let { it.launchConfigCheck(); it.launchDeltaRefresh(bundleDownloaders) }
+        lifecycleScope.launch { updateShell.check(atLogin = false) } // F-SYS-020, throttled to 12 h inside
+    }
+
+    /** F-SYS-022: SR keeps its data (it keeps uploading); a failure never crashes the app. */
+    private fun srLogout(userId: Long) {
+        lifecycleScope.launch {
+            try {
+                shellLogout.flow(com.aktcl.aron.core.system.logout.AppRole.SR, userId).logout()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                android.widget.Toast.makeText(this@MainActivity, com.aktcl.aron.core.system.R.string.logout_failed, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -94,7 +109,8 @@ class MainActivity : ComponentActivity() {
                             }
                             val sunlightPref = remember(s.user.userId) { com.aktcl.aron.core.ui.SunlightPreference(applicationContext, s.user.userId.toString()) }
                             LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
-                            day?.let { d ->
+                            // F-SYS-020: an open day (checked in, not submitted) is never interrupted by a required update.
+                            day?.let { d -> UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
                                 SrApp(
                                     day = d,
                                     user = HomeUser(
@@ -104,23 +120,13 @@ class MainActivity : ComponentActivity() {
                                     health = null, versionText = versionName,
                                     onLanguageSelect = onLanguageSelect,
                                     // F-SYS-022: SR keeps its data (it keeps uploading); the flow schedules the upload.
-                                    onLogout = {
-                                        lifecycleScope.launch {
-                                            try {
-                                                shellLogout.flow(com.aktcl.aron.core.system.logout.AppRole.SR, s.user.userId).logout()
-                                            } catch (e: kotlinx.coroutines.CancellationException) {
-                                                throw e
-                                            } catch (_: Exception) {
-                                                android.widget.Toast.makeText(this@MainActivity, com.aktcl.aron.core.system.R.string.logout_failed, android.widget.Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    },
+                                    onLogout = { srLogout(s.user.userId) },
                                     onOtherTile = { },
                                     sunlight = sunlight,
                                     onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                     startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
                                 )
-                            }
+                            } }
                             // Drawn after the screens so the camera covers them while a capture is open (F-SYS-030).
                             day?.media?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
                         }

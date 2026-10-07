@@ -18,6 +18,12 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
   with '-' was missed (now exact-name match) and two test gaps (closed; 8 of 8 mutations of the block caught).
 - **Follow-up (not done):** `infra/scripts/drill.sh` picks its server with `starts_with(name,'psql-aron-') | [0]`, so a
   leftover `-drill-` restore or a promoted `-r1` could be chosen; apply the same exact-name match before the next drill.
+- **Proven on Azure (test account):** INT deploy run 37619397240 logged "PostgreSQL live zones: primary 2, HA ZoneRedundant,
+  standby 1", passed the what-if guard and applied main.bicep. It then failed later, at the psql image import:
+  `az acr import` refused a source with a tag AND a digest. Fixed (digest-only source, test
+  `test_psql_image_is_imported_by_digest_only`, Opus checker: no defect); waits for the next INT deploy to prove it.
+- **Superseded old-session fix:** 93d351f / 58b3068 (old infra session) read the standby zone as empty (az tsv prints a
+  `[0].[a,b]` list one value per line), so INT runs 37613509210 and 37613922726 were refused again; replaced by the block above.
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
 
