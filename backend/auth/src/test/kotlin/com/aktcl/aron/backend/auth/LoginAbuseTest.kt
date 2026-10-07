@@ -50,23 +50,28 @@ class LoginAbuseTest {
         try {
             testApplication {
                 application { f.application(this) }
-                val statuses = (1..121).map { i -> client.login("nobody$i", "wrong password $i", client = "web").status }
+                // 30 per minute per caller IP class (the test client's socket address), then 429 before any hash.
+                val statuses = (1..31).map { i -> client.login("nobody$i", "wrong password $i", client = "web").status }
                 assertEquals(HttpStatusCode.TooManyRequests, statuses.last())
                 assertTrue(statuses.dropLast(1).none { it == HttpStatusCode.TooManyRequests })
             }
         } finally { f.close() }
     }
 
+    /** A real phone's 21st refresh within the hour is 429 (the per-phone budget counts proven refreshes only). */
     @Test
-    fun aRefreshFloodFromOnePhoneIsLimited() {
+    fun aPhoneRefreshingTooOftenIsLimited() {
         val f = AuthFixture()
         try {
             testApplication {
                 application { f.application(this) }
-                val junk = "x".repeat(43)
-                val statuses = (1..21).map { client.refresh(junk, f.srDevice).status }
-                assertTrue(statuses.take(20).none { it == HttpStatusCode.TooManyRequests }, statuses.toString())
-                assertEquals(HttpStatusCode.TooManyRequests, statuses.last())
+                var token = json(client.login("sr334001", "correct horse 1", f.srDevice).bodyAsText())["refresh_token"]!!.toString().trim('"')
+                repeat(20) {
+                    val r = client.refresh(token, f.srDevice)
+                    assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+                    token = json(r.bodyAsText())["refresh_token"]!!.toString().trim('"')
+                }
+                assertEquals(HttpStatusCode.TooManyRequests, client.refresh(token, f.srDevice).status)
             }
         } finally { f.close() }
     }
