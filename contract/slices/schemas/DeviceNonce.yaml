@@ -1,5 +1,8 @@
 DeviceNonce:
   type: object
+  description: Play Integrity nonce. requestHash (standard API) = lower-case hex (64 characters) of SHA-256 over
+    the UTF-8 bytes of `nonce` immediately followed by `device_uuid` (canonical lower-case hyphenated text), no
+    separator.
   required:
   - nonce
   - expires_at

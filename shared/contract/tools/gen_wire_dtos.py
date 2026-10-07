@@ -23,7 +23,8 @@ GROUPS = [
                               "MemoPayload", "MemoLinePayload", "MemoDiscountPayload", "QcLinePayload"]),
     ("Sync batch", ["SyncBatchRequest", "SyncBatchResponse", "RecordAck"]),
 ]
-SECRETS = {"password", "access_token", "refresh_token", "upload_refresh_token", "bind_token", "mfa_token"}
+SECRETS = {"password", "access_token", "refresh_token", "upload_refresh_token", "bind_token", "mfa_token",
+           "password_change_token"}
 NESTED = {("BundleMeta", "paged_sections"): "PagedSection", ("SyncBatchResponse", "summary"): "SyncBatchSummary"}
 ID_ALIASES = {"Id", "Mtk", "MtkNonNegative"}
 RAW = {"RadioEnvironment": "JsonObject", "SyncRecord": "JsonObject"}  # everything else unknown -> JsonElement

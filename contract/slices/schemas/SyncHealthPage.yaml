@@ -38,6 +38,35 @@ SyncHealthPage:
         mismatched_route_days:
           type: integer
           minimum: 0
+        config_ack_pct:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+          maximum: 100
+          description: Devices that acknowledged / devices owing an ack for a `requires_ack` config key (0 to 100
+            with 2 decimals, null when the denominator is 0).
+        pending_photos:
+          type: object
+          description: Photos not yet uploaded.
+          required:
+          - count
+          - oldest_age_s
+          additionalProperties: false
+          properties:
+            count:
+              type: integer
+              minimum: 0
+            oldest_age_s:
+              type:
+              - integer
+              - 'null'
+              minimum: 0
+              description: Age in seconds of the oldest pending photo; null when count is 0.
+        quarantine_backlog:
+          type: integer
+          minimum: 0
+          description: Quarantined records not yet resolved.
     items:
       type: array
       items:
@@ -46,3 +75,54 @@ SyncHealthPage:
       oneOf:
       - $ref: '#/components/schemas/PageCursor'
       - type: 'null'
+    by_zone:
+      type: array
+      description: Per-zone breakdown (F-WEB-045). Percentages as in DashboardKpis (0 to 100 with 2 decimals, null
+        when the denominator is 0); `submit_pct` is the share of logged-in routes that submitted.
+      items:
+        type: object
+        required:
+        - zone_id
+        - login_pct
+        - submit_pct
+        - final_submitted
+        - trickle_p95_s
+        - quarantined
+        - pending_photos
+        - config_ack_pct
+        additionalProperties: false
+        properties:
+          zone_id:
+            $ref: '#/components/schemas/Id'
+          login_pct:
+            type:
+            - number
+            - 'null'
+            minimum: 0
+            maximum: 100
+          submit_pct:
+            type:
+            - number
+            - 'null'
+            minimum: 0
+            maximum: 100
+          final_submitted:
+            type: boolean
+          trickle_p95_s:
+            type:
+            - number
+            - 'null'
+            minimum: 0
+            description: Capture-to-ack latency p95 today of in-day (trickle) uploads, in seconds.
+          quarantined:
+            type: integer
+            minimum: 0
+          pending_photos:
+            type: integer
+            minimum: 0
+          config_ack_pct:
+            type:
+            - number
+            - 'null'
+            minimum: 0
+            maximum: 100

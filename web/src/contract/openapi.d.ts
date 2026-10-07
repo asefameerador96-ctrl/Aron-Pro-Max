@@ -78,6 +78,12 @@ export interface paths {
          *     `mfa_required` with an `mfa_token` for roles in `cfg.auth.mfa_required_roles`. A version below the
          *     flavour's `cfg.release.min_version_code` gets 426. Rate limits: 10 per 15 min per username and 30 per
          *     15 min per device (docs/24 s3.6, s8.1).
+         *     Web, `password_change_required`: `access_token` is null and `password_change_token` (10 min) is the Bearer
+         *     for `POST /v1/auth/change-password`; TOTP, when the role requires it, comes after the password change
+         *     (docs/24 s14a R15).
+         *     Web refresh token: `refresh_token` in the body is null. The web BFF (a server) receives the refresh token
+         *     from the `Set-Cookie: aron_rt` header of the response and nowhere else; it re-issues its own `aron_rt`
+         *     cookie on the web origin and replays it as `Cookie: aron_rt` on `POST /v1/auth/refresh` (docs/24 s14a R15).
          */
         post: operations["login"];
         delete?: never;
@@ -134,7 +140,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Change the caller's password (policy-checked, revokes the user's other full-grant families). */
+        /**
+         * Change the caller's password (policy-checked, revokes the user's other full-grant families).
+         * @description Authorization: Bearer with an access token (success 204), or, after a web login that answered
+         *     `password_change_required`, with that response's `password_change_token` (10 min, accepted only here).
+         *     With the `password_change_token` the success is 200 with a `LoginResponse` that continues the login as for
+         *     a normal password login: `ok` with tokens, or `mfa_required` with an `mfa_token` when the role requires TOTP
+         *     (TOTP comes after the password change; docs/24 s14a R15).
+         */
         post: operations["changePassword"];
         delete?: never;
         options?: never;
@@ -3331,6 +3344,7 @@ export interface components {
             /** @description Required for app clients; must be an enrolled device. */
             device_uuid?: components["schemas"]["Uuid"] | null;
         };
+        /** @description For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15). */
         LoginResponse: {
             /** @enum {string} */
             status: "ok" | "bind_required" | "mfa_required" | "password_change_required";
@@ -3346,6 +3360,8 @@ export interface components {
             bind_token?: string | null;
             /** @description Bearer token (aud aron-mfa, 5 min) for POST /v1/auth/mfa/verify. */
             mfa_token?: string | null;
+            /** @description Bearer token (10 min) accepted only by POST /v1/auth/change-password; set for client web with status password_change_required, else null. */
+            password_change_token?: string | null;
             user: components["schemas"]["UserSummary"];
             scope?: components["schemas"]["ScopeSummary"] | null;
             device?: components["schemas"]["LoginDevice"] | null;
@@ -3447,6 +3463,8 @@ export interface components {
             /** @description Whether the caller may see outlet phone and owner columns. */
             pii?: boolean;
             mfa_enabled?: boolean;
+            /** @description The caller's role row of cfg.web.menu_by_role, resolved now (same mapping as GET /v1/admin/permissions). */
+            menus?: components["schemas"]["MenuPermission"][];
         };
         /** @description Device public key (Android Keystore, EC P-256). */
         JwkEcPublicDevice: {
@@ -3482,6 +3500,8 @@ export interface components {
             key_attestation_chain: string[];
             device_info: components["schemas"]["DeviceInfo"];
             status?: components["schemas"]["DeviceStatusReport"] | null;
+            /** @description Why the enrolment carries no Play Integrity token. When the phone tried Play Integrity exactly one of `play_integrity` (in `status`) and `play_integrity_unavailable` is non-null. */
+            play_integrity_unavailable?: components["schemas"]["PlayIntegrityUnavailable"] | null;
         };
         EnrolDeviceResponse: {
             device_id: components["schemas"]["Id"];
@@ -3492,6 +3512,7 @@ export interface components {
             policy: components["schemas"]["DevicePolicy"];
             server_time: components["schemas"]["Timestamp"];
         };
+        /** @description Play Integrity nonce. requestHash (standard API) = lower-case hex (64 characters) of SHA-256 over the UTF-8 bytes of `nonce` immediately followed by `device_uuid` (canonical lower-case hyphenated text), no separator. */
         DeviceNonce: {
             /** @description Use as the Play Integrity request nonce (classic) or as requestHash input (standard): sha256(nonce + device_uuid). */
             nonce: string;
@@ -3618,6 +3639,10 @@ export interface components {
             mock_location_apps: components["schemas"]["PackageName"][];
             play_services_version?: number | null;
             play_integrity?: components["schemas"]["PlayIntegrityEvidence"] | null;
+            /** @description Why `play_integrity` is null. When the phone tried Play Integrity exactly one of `play_integrity` and `play_integrity_unavailable` is non-null. */
+            play_integrity_unavailable?: components["schemas"]["PlayIntegrityUnavailable"] | null;
+            /** @description Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence; they never block a sale alone (docs/05). */
+            root_hints?: ("su_binary" | "test_keys" | "ro_debuggable" | "ro_secure_off" | "root_app" | "hook_framework" | "root_mount" | "clone_app_installed" | "secondary_user" | "foreign_data_dir")[];
             pending_rows: number;
             pending_media?: number;
             last_sync_at?: components["schemas"]["Timestamp"] | null;
@@ -3633,6 +3658,12 @@ export interface components {
             /** @description Encrypted Play Integrity token; decoded on the server only. */
             token: string;
             nonce: string;
+        };
+        /** @description Explicit "Play Integrity unavailable" marker sent instead of a token when the phone tried and could not get one. */
+        PlayIntegrityUnavailable: {
+            /** @enum {string} */
+            reason: "no_play_services" | "not_configured" | "offline" | "api_error" | "timeout";
+            detail?: string | null;
         };
         DeviceStatusAck: {
             device_id: components["schemas"]["Id"];
@@ -5665,6 +5696,19 @@ export interface components {
             business_date: components["schemas"]["BusinessDate"];
             items: components["schemas"]["DailyTrackingRow"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
+            /** @description Same-time-yesterday comparator (F-WEB-038). Route counts per `bucket` of the previous business day at the same Asia/Dhaka clock time as `as_of`. */
+            comparator?: {
+                business_date: components["schemas"]["BusinessDate"];
+                as_of_time: components["schemas"]["TimeOfDay"];
+                buckets: {
+                    ge_100: number;
+                    from_90: number;
+                    from_80: number;
+                    below_80: number;
+                    exception: number;
+                    not_logged_in: number;
+                };
+            } | null;
         };
         LoginSubmitStatus: {
             as_of: components["schemas"]["Timestamp"];
@@ -5674,6 +5718,11 @@ export interface components {
             logged_in_not_submitted: components["schemas"]["RouteDayState"][];
             submitted: components["schemas"]["RouteDayState"][];
             exceptions?: components["schemas"]["RouteDayState"][];
+            /** @description Final-submit state per zone in the caller's reach (F-WEB-047). */
+            zones?: {
+                zone_id: components["schemas"]["Id"];
+                final_submitted: boolean;
+            }[];
         };
         SyncHealthRow: {
             user_id: components["schemas"]["Id"];
@@ -5704,9 +5753,31 @@ export interface components {
                 rejected: number;
                 quarantined: number;
                 mismatched_route_days: number;
+                /** @description Devices that acknowledged / devices owing an ack for a `requires_ack` config key (0 to 100 with 2 decimals, null when the denominator is 0). */
+                config_ack_pct?: number | null;
+                /** @description Photos not yet uploaded. */
+                pending_photos?: {
+                    count: number;
+                    /** @description Age in seconds of the oldest pending photo; null when count is 0. */
+                    oldest_age_s: number | null;
+                };
+                /** @description Quarantined records not yet resolved. */
+                quarantine_backlog?: number;
             };
             items: components["schemas"]["SyncHealthRow"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
+            /** @description Per-zone breakdown (F-WEB-045). Percentages as in DashboardKpis (0 to 100 with 2 decimals, null when the denominator is 0); `submit_pct` is the share of logged-in routes that submitted. */
+            by_zone?: {
+                zone_id: components["schemas"]["Id"];
+                login_pct: number | null;
+                submit_pct: number | null;
+                final_submitted: boolean;
+                /** @description Capture-to-ack latency p95 today of in-day (trickle) uploads, in seconds. */
+                trickle_p95_s: number | null;
+                quarantined: number;
+                pending_photos: number;
+                config_ack_pct: number | null;
+            }[];
         };
         GeoValidationSummary: {
             as_of: components["schemas"]["Timestamp"];
@@ -6031,6 +6102,13 @@ export interface components {
             visit_days_mask: number;
             sequence_no?: number | null;
             status: components["schemas"]["ActiveStatus"];
+            /** @description Users assigned to the route; returned only by GET /v1/admin/routes with `include=assignees`, absent otherwise. */
+            assignees?: {
+                user_id: components["schemas"]["Id"];
+                full_name: string;
+                role: components["schemas"]["Role"];
+                username: components["schemas"]["Username"];
+            }[];
         };
         RouteWrite: {
             code: string;
@@ -6877,6 +6955,10 @@ export interface components {
             created_at: components["schemas"]["Timestamp"];
             expires_at: components["schemas"]["Timestamp"];
             attempts: number;
+            /** @description Field Force ID (app_user.employee_code). */
+            employee_code?: string | null;
+            zone_code?: string | null;
+            zone_name?: string | null;
         };
         DeviceOtpPage: {
             items: components["schemas"]["DeviceOtp"][];
@@ -8352,6 +8434,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Password changed with a `password_change_token`; the login continues (`ok` or `mfa_required`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
             /** @description Password changed. */
             204: {
                 headers: {
@@ -10458,6 +10549,8 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 /** @description Opaque cursor from `next_cursor` of the previous page. */
                 cursor?: components["parameters"]["Cursor"];
+                /** @description `assignees` adds `assignees` (the users assigned to the route) to every item. */
+                include?: "assignees";
             };
             header?: never;
             path?: never;

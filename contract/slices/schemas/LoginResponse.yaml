@@ -1,5 +1,9 @@
 LoginResponse:
   type: object
+  description: 'For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token`
+    carries a short-lived (10 min) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer).
+    TOTP, when the role requires it, comes after the password change: the change-password success response then
+    continues to the `mfa_required` step as for a normal login (docs/24 s14a R15).'
   required:
   - status
   - user
@@ -54,6 +58,13 @@ LoginResponse:
       - 'null'
       maxLength: 4096
       description: Bearer token (aud aron-mfa, 5 min) for POST /v1/auth/mfa/verify.
+    password_change_token:
+      type:
+      - string
+      - 'null'
+      maxLength: 4096
+      description: Bearer token (10 min) accepted only by POST /v1/auth/change-password; set for client web with
+        status password_change_required, else null.
     user:
       $ref: '#/components/schemas/UserSummary'
     scope:

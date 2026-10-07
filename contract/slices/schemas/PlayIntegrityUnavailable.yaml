@@ -1,0 +1,21 @@
+PlayIntegrityUnavailable:
+  type: object
+  description: Explicit "Play Integrity unavailable" marker sent instead of a token when the phone tried and could
+    not get one.
+  required:
+  - reason
+  additionalProperties: false
+  properties:
+    reason:
+      type: string
+      enum:
+      - no_play_services
+      - not_configured
+      - offline
+      - api_error
+      - timeout
+    detail:
+      type:
+      - string
+      - 'null'
+      maxLength: 80

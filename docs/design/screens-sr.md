@@ -92,7 +92,7 @@ y 704-800  BAR  [ লগইন করুন ]*  rides above the keyboard
 
 ```
 y  28-116  HEADER (collapsing)  <○ 48>  SR - Testing Banani (sr334001)          <⚙ 48>
-                                         Apsis RouteDaily (Mon, Thu), 2026-10-05
+                                         Apsis RouteDaily, 2026-10-05   (3F routes read "Name (Sun, Tue, Thu), date")
 y 116-156  STATUS ROW (FlowRow, wraps to a 2nd line)  (☁ অফলাইন · ৩ অপেক্ষায়) (✓ চেক ইন ০৮:৫২) (Daily)
 y 168-312  HERO CARD   আজকের সর্বমোট                                          ›
                        ৪,৩৯১.০০ ৳                    type.display 34/48
