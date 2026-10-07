@@ -96,6 +96,10 @@ class WorkManagerSyncScheduler(
                 enqueue(userId, trigger, mainName(userId), ExistingWorkPolicy.KEEP, held(userId, debounceS * 1000), expedited = false, failures = 0)
             SyncTrigger.CHECKOUT ->
                 enqueue(userId, trigger, mainName(userId), ExistingWorkPolicy.KEEP, held(userId, random.nextLong(0, checkoutJitterS * 1000L + 1)), expedited = false, failures = 0)
+            // A new signal (network back, app in front) runs under its own name, so a long backoff queued after earlier
+            // failures cannot swallow it; the engine's per-user lock keeps runs from overlapping.
+            SyncTrigger.CONNECTIVITY, SyncTrigger.FOREGROUND ->
+                enqueue(userId, trigger, nowName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
             else -> enqueue(userId, trigger, mainName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
         }
         ensurePeriodic(userId)
@@ -135,8 +139,14 @@ class WorkManagerSyncScheduler(
         }
     }
 
-    /** [delayMs], or longer while a server hold lasts. */
-    private fun held(userId: Long, delayMs: Long): Long = maxOf(delayMs, hold.until(userId) - elapsedMs())
+    /**
+     * [delayMs], or longer while a server hold lasts. A remaining hold longer than any hold can be (900 s × 1.2) comes from
+     * an earlier boot (elapsed realtime restarted) and is ignored.
+     */
+    private fun held(userId: Long, delayMs: Long): Long {
+        val remaining = hold.until(userId) - elapsedMs()
+        return if (remaining in 1..MAX_HOLD_MS) maxOf(delayMs, remaining) else delayMs
+    }
 
     private fun enqueue(userId: Long, trigger: SyncTrigger, name: String, policy: ExistingWorkPolicy, delayMs: Long, expedited: Boolean, failures: Int) {
         val builder = OneTimeWorkRequestBuilder<SyncWorker>()
@@ -168,7 +178,11 @@ class WorkManagerSyncScheduler(
         const val KEY_NAME = "unique_name"
         const val KEY_FAILURES = "failures"
 
+        /** The longest hold a server can ask for: `hold_s` ≤ 900 × U(1.0, 1.2), or Retry-After capped at 900 s × 1.2. */
+        const val MAX_HOLD_MS = 1_080_000L
+
         fun mainName(userId: Long) = "aron-sync-u$userId"
+        fun nowName(userId: Long) = "aron-sync-now-u$userId"
         fun retryName(userId: Long) = "aron-sync-retry-u$userId"
         fun periodicName(userId: Long) = "aron-sync-periodic-u$userId"
 

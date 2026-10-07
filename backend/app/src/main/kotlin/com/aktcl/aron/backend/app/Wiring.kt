@@ -83,6 +83,8 @@ import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.Settings
 import io.ktor.server.routing.Route
 import com.aktcl.aron.backend.masterdata.SqlRoutePlanner
+import com.aktcl.aron.backend.platform.RecordHandler
+import com.aktcl.aron.backend.platform.RecordHandlers
 import com.aktcl.aron.backend.sync.BundleService
 import com.aktcl.aron.backend.sync.IngestService
 import com.aktcl.aron.backend.sync.ServerGeneration
@@ -102,7 +104,17 @@ class Wiring(
     val admission: com.aktcl.aron.backend.analytics.AdmissionControl? = null,
 ) {
     companion object {
-        fun production(s: Settings, clock: AronClock = AronClock.SYSTEM): Wiring {
+        /**
+         * The ingest extension point (docs/24 s4.2): type-specific checks and side effects of device records, one line
+         * per handler, append-only (each module registers its own; see backend/platform RecordHandler.kt).
+         */
+        @Suppress("UNUSED_PARAMETER")
+        fun recordHandlers(db: Database, clock: AronClock): List<RecordHandler> = listOf(
+            com.aktcl.aron.backend.config.ConfigAckHandler(),
+        )
+
+        /** [extraRecordHandlers] are for tests only; production handlers are listed in [recordHandlers]. */
+        fun production(s: Settings, clock: AronClock = AronClock.SYSTEM, extraRecordHandlers: List<RecordHandler> = emptyList()): Wiring {
             val db = Database.fromSettings(s)
             val config = DbServerConfig(db, RegistryDefaults(s.env), clock)
             val keys = JwtKeys.fromSettings(s)
@@ -134,7 +146,7 @@ class Wiring(
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
-            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current), db, config, clock)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + extraRecordHandlers)), db, config, clock)
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
                 ingestCapacity = runCatching { config.int("cfg.api.inflight_batches_per_replica") }.getOrDefault(64),

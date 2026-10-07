@@ -6,6 +6,7 @@ import com.aktcl.aron.core.printing.bt.PrintFailure
 import com.aktcl.aron.core.printing.bt.PrintJob
 import com.aktcl.aron.core.printing.bt.PrintOutcome
 import com.aktcl.aron.core.printing.bt.PrinterManager
+import com.aktcl.aron.core.printing.doc.DaySummaryPrint
 import com.aktcl.aron.core.printing.doc.MemoPrint
 import com.aktcl.aron.core.printing.doc.StockSlipPrint
 import com.aktcl.aron.core.printing.render.PaperTooLongException
@@ -62,7 +63,8 @@ data class PendingPrint(val event: PrintEvent, val paperOut: Boolean)
  * (REQUEST: docs/requests/android-print-integration.md); `PrintFlowTest.MemLedger` is the reference behaviour.
  * - [savePending] upserts the local job by event uuid; with `paperOut` true it also sets the document's printed
  *   flag in the same transaction (`memo.printed_at` if null; `stock_movement.slip_printed`), so a printed paper is
- *   never forgotten, even if the app dies before the seller answers.
+ *   never forgotten, even if the app dies before the seller answers. Once set, `paperOut` stays set.
+ * - Only copies count ([ReprintPolicy.isCopy]): a void slip or due receipt naming a memo never sets its flags.
  * - [record] writes the final `print_event` row and its outbox record and deletes the pending job, in one
  *   transaction; a second record of the same uuid is ignored. A `failed_user` record clears the printed flag
  *   again when no other copy of the document counts (no `printed` event, no other job with paper out).
@@ -102,11 +104,17 @@ sealed interface PrintAttempt {
  * does not count, so the next print carries no marker if no counted print exists yet.
  */
 object ReprintPolicy {
-    fun counted(history: List<PrintEvent>): Int = history.count { it.outcome == PrintEvent.PRINTED }
+    /** Prints that name a memo but are other papers (cancel slip, due receipt): never a copy of the memo. */
+    val NOT_COPIES = setOf("void_slip", "due_receipt")
+
+    /** A printed copy of the document itself (a void slip or due receipt naming the memo is not one). */
+    fun isCopy(e: PrintEvent): Boolean = e.outcome == PrintEvent.PRINTED && e.documentKind !in NOT_COPIES
+
+    fun counted(history: List<PrintEvent>): Int = history.count(::isCopy)
 
     /** Final events plus paper already out but not yet confirmed, which counts as printed until a "না". */
     internal fun effective(history: List<PrintEvent>, pending: List<PendingPrint>): List<PrintEvent> =
-        history + pending.filter { it.paperOut }.map { it.event.copy(outcome = PrintEvent.PRINTED) }
+        history + pending.filter { it.paperOut && it.event.documentKind !in NOT_COPIES }.map { it.event.copy(outcome = PrintEvent.PRINTED) }
 
     /** Reprint ordinal of the next print: 0 = original. */
     fun nextReprintNo(history: List<PrintEvent>): Int = counted(history).let { if (it == 0) 0 else it }
@@ -121,6 +129,7 @@ object ReprintPolicy {
  * Printing of committed documents (F-SR-028, F-SR-031, F-SR-066, F-SR-073, F-SR-015). Callers commit first:
  * nothing here touches the sale, and every failure leaves the document reprintable. Never throws for printer
  * problems.
+ * One instance per process (with the one [PrinterManager]): [recover] skips the jobs this instance has in flight.
  */
 class MemoPrinting(
     private val printer: PrinterManager,
@@ -131,6 +140,9 @@ class MemoPrinting(
     private val reprintMax: () -> Int = { 5 },
     private val confirmAfterPrint: () -> Boolean = { true },
 ) {
+    /** Jobs this process started and has not finished: [recover] leaves them alone (a dialog may still be open). */
+    private val inFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     /** Prints [memo] (the stored memo, [memoClientUuid]) as the original or as the next reprint. */
     suspend fun printMemo(memoClientUuid: String, memo: MemoPrint): PrintAttempt {
         val history = historyOf(memoClientUuid)
@@ -148,6 +160,14 @@ class MemoPrinting(
         return print(stockClientUuid, "stock_slip", null, stockClientUuid, history) { it.stockSlip(slip.copy(reprintNo = reprintNo)) }
     }
 
+    /**
+     * Prints the day summary (F-SR-036) as it stands now. A summary is a report of the moment it was printed, not a
+     * bill, so it has no reprint limit and no duplicate marker (AP-09). [daySummaryUuid] is the caller's stable
+     * UUID v4 for that user's business date, so every print of one day is one document on the server.
+     */
+    suspend fun printDaySummary(daySummaryUuid: String, summary: DaySummaryPrint): PrintAttempt =
+        print(daySummaryUuid, "day_summary", null, daySummaryUuid, historyOf(daySummaryUuid)) { it.daySummary(summary) }
+
     private suspend fun historyOf(uuid: String): List<PrintEvent> = ReprintPolicy.effective(
         ledger.history(uuid),
         ledger.pending().filter { it.event.memoClientUuid == uuid || it.event.refClientUuid == uuid },
@@ -159,6 +179,7 @@ class MemoPrinting(
      */
     suspend fun recover() {
         for (p in ledger.pending()) {
+            if (p.event.clientUuid in inFlight) continue
             ledger.record(if (p.paperOut) p.event.copy(userConfirmed = null) else p.event.copy(outcome = PrintEvent.FAILED))
         }
     }
@@ -193,23 +214,31 @@ class MemoPrinting(
         )
         // The job is saved before the printer is called; each attempt is its own job id, so a retry after a
         // failure is a fresh, whole print.
-        ledger.savePending(PendingPrint(base, paperOut = false))
-        return when (val r = printer.print(PrintJob(eventUuid, paper.bitmap))) {
-            is PrintOutcome.Failed -> {
-                ledger.record(base.copy(outcome = PrintEvent.FAILED))
-                PrintAttempt.Failed(r.reason)
-            }
-            PrintOutcome.Printed, PrintOutcome.AlreadyPrinted -> {
-                // The paper is out whatever storage says next: a failed save here never turns it into a
-                // failure; the confirmation (or the final record) stores it again.
-                markPaperOut(base)
-                if (confirmAfterPrint()) {
-                    PrintAttempt.AwaitingConfirmation(base)
-                } else {
-                    ledger.record(base)
-                    PrintAttempt.Done
+        inFlight.add(eventUuid)
+        var awaiting = false
+        try {
+            ledger.savePending(PendingPrint(base, paperOut = false))
+            return when (val r = printer.print(PrintJob(eventUuid, paper.bitmap))) {
+                is PrintOutcome.Failed -> {
+                    ledger.record(base.copy(outcome = PrintEvent.FAILED))
+                    PrintAttempt.Failed(r.reason)
+                }
+                PrintOutcome.Printed, PrintOutcome.AlreadyPrinted -> {
+                    // The paper is out whatever storage says next: a failed save here never turns it into a
+                    // failure; the confirmation (or the final record) stores it again.
+                    markPaperOut(base)
+                    if (confirmAfterPrint()) {
+                        awaiting = true
+                        PrintAttempt.AwaitingConfirmation(base)
+                    } else {
+                        ledger.record(base)
+                        PrintAttempt.Done
+                    }
                 }
             }
+        } finally {
+            // Cancelled or failed half way: the job is no longer this process's, so recover() may finish it.
+            if (!awaiting) inFlight.remove(eventUuid)
         }
     }
 
@@ -224,6 +253,7 @@ class MemoPrinting(
                 if (readable) attempt.pending.copy(userConfirmed = true)
                 else attempt.pending.copy(outcome = PrintEvent.FAILED_USER, userConfirmed = false),
             )
+            inFlight.remove(attempt.pending.clientUuid)
         } catch (e: Exception) {
             attempt.answered.set(false) // not stored: the seller can answer again
             throw e
