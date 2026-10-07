@@ -147,6 +147,8 @@ class BatchAcceptanceTest {
         priceDelta: Long = 0,
         lat: Double = 23.80,
         dueMtk: Long = 0,
+        provider: String = "fused",
+        gnss: String? = null,
     ): List<JsonObject> {
         val visit = uuid(); val memo = uuid()
         val (s1, p1x) = skus[0]; val (s2, p2x) = skus[1]
@@ -155,7 +157,7 @@ class BatchAcceptanceTest {
         val visitPayload = Json.parseToJsonElement(
             """
             {"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"2027-01-03T03:41:00.120Z","sequence_no":1,"planned":true,
-             "fix":{"purpose":"visit_open","fix_status":"ok","lat":$lat,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+             "fix":{"purpose":"visit_open","fix_status":"ok","lat":$lat,"lng":90.36,"accuracy_m":12.0,"provider":"$provider","is_mock":false,"reused":false,${gnss?.let { "\"gnss\":$it," } ?: ""}
                     "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}},
              "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}
             """.trimIndent(),
@@ -515,6 +517,21 @@ class BatchAcceptanceTest {
         assertEquals(0, count("SELECT count(*) FROM app.risk_signal WHERE subject_id = '${inside[0]["client_uuid"]!!.jsonPrimitive.content}'"))
     }
 
+
+    @Test
+    fun aGpsFixWithAnImpossibleSkyRaisesGnssInconsistentAndTheSaleIsStored() = testApplication {
+        app()
+        val token = client.token()
+        val sky = { used: Int, stddev: Double -> """{"window_ms":4000,"satellites_visible":20,"satellites_used":$used,"constellations_used":["GPS"],"cn0_used_mean_dbhz":31.0,"cn0_used_stddev_dbhz":$stddev}""" }
+        val zero = saleFamily(provider = "gps", gnss = sky(0, 5.0))
+        val even = saleFamily(provider = "gps", gnss = sky(12, 0.1))
+        val normal = saleFamily(provider = "gps", gnss = sky(14, 5.2))
+        // One batch for the three sales (the class shares one device's rate limit under a fixed clock).
+        assertEquals(List(15) { "accepted" }, statuses(json(client.send(token, batch(zero + even + normal)).bodyAsText())))
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'GEO_GNSS_INCONSISTENT' AND subject_type = 'visit' AND subject_id = '${zero[0]["client_uuid"]!!.jsonPrimitive.content}' AND evidence->>'reason' = 'too_few_satellites'"))
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'GEO_GNSS_INCONSISTENT' AND subject_id = '${even[0]["client_uuid"]!!.jsonPrimitive.content}' AND evidence->>'reason' = 'even_signal_strength'"))
+        assertEquals(0, count("SELECT count(*) FROM app.risk_signal WHERE subject_id = '${normal[0]["client_uuid"]!!.jsonPrimitive.content}'"))
+    }
 
     // ---- F-SYS-060 dues ledger -------------------------------------------------------------------------------------
 

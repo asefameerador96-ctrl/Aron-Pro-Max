@@ -491,6 +491,7 @@ class IngestService(
                 hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 hs.forEach { ctx.afterCommit += Triple(r.index, it, ingestRec!!) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
+                gnssConsistency(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)
             }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
@@ -570,6 +571,44 @@ class IngestService(
                 put("record_type", JsonPrimitive(rule.type)); put("client_uuid", JsonPrimitive(r.clientUuid)); put("lat", JsonPrimitive(lat)); put("lng", JsonPrimitive(lng))
             }.toString()).bind("cv", config.configVersion()).execute()
     }
+
+    /**
+     * N-028 GEO_GNSS_INCONSISTENT (docs/24 s11.4, an instant per-fix signal): a `gps` fix whose GNSS summary does not fit a
+     * real sky: fewer than `cfg.geo.gnss_min_satellites_used` satellites used (4), or at least 6 used with a C/N0 standard
+     * deviation below `cfg.geo.gnss_cn0_stddev_min_dbhz` (1.0: every satellite equally strong, as a simulator draws them),
+     * or a C/N0 mean above `cfg.geo.gnss_cn0_mean_max_dbhz` (48). A fix without a summary or without C/N0 values is not
+     * judged on what it lacks. One signal per subject and date; in its own savepoint, so it never decides the record.
+     */
+    private fun gnssConsistency(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
+        for (slot in listOf("fix", "edit_fix")) {
+            val fix = payload[slot] as? JsonObject ?: continue
+            val reason = GnssRule.check(fix, gnssThresholds()) ?: continue
+            val sp = "gnss_${r.index}_$slot"
+            h.savepoint(sp)
+            try {
+                h.createUpdate(
+                    """
+                    INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+                    VALUES ('GEO_GNSS_INCONSISTENT', 3, :bd, :st, :sid, :u, :route, 30, CAST(:ev AS jsonb), :cv)
+                    ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
+                    """.trimIndent(),
+                ).bind("bd", bd).bind("st", if (r.type == "visit") "visit" else "user").bind("sid", if (r.type == "visit") r.clientUuid else ctx.up.userId.toString())
+                    .bind("u", ctx.up.userId).bind("route", routeId)
+                    .bind("ev", JsonObject(reason + mapOf("record_type" to JsonPrimitive(rule.type), "client_uuid" to JsonPrimitive(r.clientUuid), "slot" to JsonPrimitive(slot))).toString())
+                    .bind("cv", config.configVersion()).execute()
+                h.release(sp)
+            } catch (e: Exception) {
+                h.rollbackToSavepoint(sp)
+                log.error("gnss signal failed client_uuid=${r.clientUuid}", e)
+            }
+        }
+    }
+
+    private fun gnssThresholds(): GnssRule.Thresholds = GnssRule.Thresholds(
+        minUsed = runCatching { config.int("cfg.geo.gnss_min_satellites_used") }.getOrDefault(4).coerceIn(3, 12),
+        stddevMin = runCatching { config.value("cfg.geo.gnss_cn0_stddev_min_dbhz").jsonPrimitive.content.toDouble() }.getOrDefault(1.0).coerceIn(0.1, 5.0),
+        meanMax = runCatching { config.value("cfg.geo.gnss_cn0_mean_max_dbhz").jsonPrimitive.content.toDouble() }.getOrDefault(48.0).coerceIn(40.0, 60.0),
+    )
 
     /** Cross-user parent references the protocol allows, each still bounded by the uploader's reach. */
     private fun crossUserParentAllowed(h: Handle, ctx: Ctx, field: String, parent: String, bd: LocalDate): Boolean {
