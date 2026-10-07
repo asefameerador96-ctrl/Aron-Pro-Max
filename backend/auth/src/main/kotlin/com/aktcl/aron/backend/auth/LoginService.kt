@@ -1,5 +1,9 @@
 package com.aktcl.aron.backend.auth
 
+import com.aktcl.aron.backend.platform.SecurityEvent
+import com.aktcl.aron.backend.platform.SecurityEventKind
+import com.aktcl.aron.backend.platform.SecurityEvents
+import com.aktcl.aron.backend.platform.safely
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Audience
@@ -54,6 +58,8 @@ class LoginService(
      * anonymous flood of web logins must never take the hash slots the 07:00 phone wave needs.
      */
     private val webLimiter: HashLimiter = HashLimiter(concurrency = 1, queueMax = 8),
+    /** login_failure, lockout and password_change events (AUD-SEC-03); best effort, never fails the call. */
+    private val securityEvents: SecurityEvents = SecurityEvents.LOG,
 ) {
     private val perUsername = RateLimiter(10, 15 * 60, clock)
     private val perDevice = RateLimiter(30, 15 * 60, clock)
@@ -100,9 +106,12 @@ class LoginService(
         val ok = (if (enrolled) limiter else webLimiter).run { hasher.verify(user?.passwordHash ?: hasher.dummyHash, req.password) } && user?.passwordHash != null
         if (!ok || user == null) {
             val n = lockouts.recordFailure(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_window_min").toLong()))
+            val facts = mapOf("username_hash" to SecurityEvents.usernameHash(username), "client" to if (phone) "phone" else "web", "ip_class" to ipClass(ctx.clientIp))
+            securityEvents.safely(SecurityEvent(SecurityEventKind.LOGIN_FAILURE, now, user?.id, req.device_uuid?.lowercase(), detail = facts))
             if (n >= config.int("cfg.auth.lockout_attempts")) {
                 val base = Duration.ofMinutes(config.int("cfg.auth.lockout_min").toLong())
                 lockouts.lock(lockKey, now, base)
+                securityEvents.safely(SecurityEvent(SecurityEventKind.LOCKOUT, now, user?.id, req.device_uuid?.lowercase(), detail = facts + ("failures" to n.toString())))
             }
             throw ApiProblem(ProblemCode.ERR_AUTH_INVALID_CREDENTIALS, "username or password is wrong")
         }
@@ -147,7 +156,10 @@ class LoginService(
         val ok = state.currentHash != null && limiter.run { hasher.verify(state.currentHash, req.current_password) }
         if (!ok) {
             val n = lockouts.recordFailure(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_window_min").toLong()))
-            if (n >= config.int("cfg.auth.lockout_attempts")) lockouts.lock(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_min").toLong()))
+            if (n >= config.int("cfg.auth.lockout_attempts")) {
+                lockouts.lock(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_min").toLong()))
+                securityEvents.safely(SecurityEvent(SecurityEventKind.LOCKOUT, now, user.id, p.deviceUuid, detail = mapOf("flow" to "change_password", "failures" to n.toString())))
+            }
             throw ApiProblem(ProblemCode.ERR_AUTH_INVALID_CREDENTIALS, "the current password is wrong")
         }
         lockouts.reset(lockKey)
@@ -172,6 +184,7 @@ class LoginService(
             throw ApiProblem(ProblemCode.ERR_CONFLICT, "the password was changed at the same time; try again")
         }
         users.invalidate(user.id)
+        securityEvents.safely(SecurityEvent(SecurityEventKind.PASSWORD_CHANGE, now, user.id, p.deviceUuid, detail = mapOf("client" to if (p.isPhone) "phone" else "web")))
         if (!viaToken) return null
         val fresh = users.findById(user.id) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED)
         return complete(fresh, null, null, "web", minVersionCode("web"), afterPasswordChange = true)
@@ -309,10 +322,17 @@ class LoginService(
         private val PHONE_ROLE = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
 
         /** IPv4 /24 or IPv6 /48 of the client (the lockout key's IP class); "-" when unknown. */
+        private val IPV6_LITERAL = Regex("^[0-9A-Fa-f:.]{2,45}$")
+
         fun ipClass(ip: String?): String {
             if (ip.isNullOrBlank()) return "-"
             val v = ip.trim().removePrefix("::ffff:").removePrefix("::FFFF:")
-            return if (v.contains(':')) v.split(':').take(3).joinToString(":") + "::/48"
+            // IPv6: expand the literal first ("2001::5:6" must not keep groups from after "::"); never a DNS lookup.
+            return if (v.contains(':')) {
+                if (!IPV6_LITERAL.matches(v)) return "-"
+                val b = runCatching { java.net.InetAddress.getByName(v).address }.getOrNull()?.takeIf { it.size == 16 } ?: return "-"
+                (0 until 3).joinToString(":") { i -> "%x".format(((b[2 * i].toInt() and 0xff) shl 8) or (b[2 * i + 1].toInt() and 0xff)) } + "::/48"
+            }
             else v.split('.').let { if (it.size == 4) "${it[0]}.${it[1]}.${it[2]}.0/24" else "-" }
         }
     }

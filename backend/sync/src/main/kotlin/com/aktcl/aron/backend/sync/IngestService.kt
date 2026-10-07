@@ -92,8 +92,15 @@ class IngestService(
         val family: String = (json["family_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: clientUuid
         /** Set when the record cannot be canonicalised (a number outside the double range): a per-record schema error. */
         val canonError: String? = runCatching { Jcs.canonicalize(json); null }.getOrElse { "not canonicalisable: ${it.message?.take(80)}" }
-        val hash: ByteArray = if (canonError == null) Jcs.sha256(json) else sha256(json.toString().toByteArray())
-        val hashHex: String = hash.joinToString("") { "%02x".format(it) }
+        /** The whole envelope: the batch fingerprint (a replayed batch is byte-for-byte the same records). */
+        val fullHash: ByteArray = if (canonError == null) Jcs.sha256(json) else sha256(json.toString().toByteArray())
+        val hashHex: String = fullHash.joinToString("") { "%02x".format(it) }
+        /**
+         * The registry hash leaves `sig` out (android-core request item 4): a row first sent unsigned (before enrolment,
+         * a Keystore miss) and later signed is the same record, never payload_conflict. Rows registered before this
+         * change carry [fullHash], which still matches.
+         */
+        val hash: ByteArray = if ("sig" !in json || canonError != null) fullHash else Jcs.sha256(JsonObject(json.filterKeys { it != "sig" }))
     }
 
     /** Per-batch caches. */
@@ -107,6 +114,8 @@ class IngestService(
         fun reachOn(d: LocalDate): Reach = reaches.getOrPut(d) { reach.reach(up.userId, up.role, up.scopeVersion, d) }
         val backdateDays: Long = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
         val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
+        /** Read once per batch; a missing or unknown value is `record`, which never drops a sale. */
+        val signatureMode: SignatureMode = SignatureMode.of(runCatching { config.string("cfg.sec.record_signature_mode") }.getOrNull())
         /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
         var arith: Map<String, String> = emptyMap()
         /** Memo content fingerprints of the current segment (s4.5: same outlet, lines and minute). */
@@ -270,11 +279,17 @@ class IngestService(
         val prior = h.createQuery("SELECT status, outcome_code, payload_sha256, server_id FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) FOR UPDATE")
             .bind("c", r.clientUuid).map { rs, _ -> Prior(rs.getString(1), rs.getString(2), rs.getBytes(3), rs.getObject(4) as Long?) }.findOne().orElse(null)
         if (prior != null) {
-            if (!prior.hash.contentEquals(r.hash)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.PAYLOAD_CONFLICT, "same client_uuid, different payload", register = false)
+            if (!prior.hash.contentEquals(r.hash) && !prior.hash.contentEquals(r.fullHash)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.PAYLOAD_CONFLICT, "same client_uuid, different payload", register = false)
+            // Registered before the hash left `sig` out: re-key it, so the parked upsert and the stored_at mark match (BC-53).
+            if (!prior.hash.contentEquals(r.hash)) rekey(h, r)
             when (prior.status) {
                 "accepted", "voided" -> { touch(h, r); return Outcome.duplicate(prior.serverId) }
                 "rejected" -> { touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.SCHEMA_INVALID) }
-                "quarantined" -> { touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT) }
+                // A signature quarantine is released once the mode is no longer enforce: the resend is processed like a
+                // parked row, so a sale held under enforce (or before modes existed) reaches the server (BC-53).
+                "quarantined" -> if (prior.code != RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire || ctx.signatureMode == SignatureMode.ENFORCE) {
+                    touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT)
+                }
                 // parked: process again (the parent may have arrived)
             }
         }
@@ -322,13 +337,17 @@ class IngestService(
             if (!actingForValid(h, ctx, routeId, a, bd)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "acting_for_user_id $a without a cover of route $routeId")
         }
 
-        // 6. Record signature on header records when the device has a key (s8.3).
-        if (rule.signedHeader && ctx.up.deviceKey != null) {
+        // 6. Record signature on header records when the device has a key (s8.3), by cfg.sec.record_signature_mode
+        // (docs/19: off < record < enforce; F-SYS-072): off skips, record accepts and flags, only enforce quarantines.
+        if (rule.signedHeader && ctx.up.deviceKey != null && ctx.signatureMode != SignatureMode.OFF) {
             val sig = env.str("sig")
             val unsigned = JsonObject(env.filterKeys { it != "sig" })
             val msg = listOf("aron-sig-v1", r.type, r.clientUuid, sha256Hex(Jcs.canonicalize(unsigned).toByteArray())).joinToString("\n")
             if (sig == null || !com.aktcl.aron.backend.platform.DeviceProof.verify(ctx.up.deviceKey, msg, sig)) {
-                return quarantine(h, ctx, r, bd, RecordOutcomeCode.DEVICE_INTEGRITY_FAILED, "record signature does not verify")
+                if (ctx.signatureMode == SignatureMode.ENFORCE) {
+                    return quarantine(h, ctx, r, bd, RecordOutcomeCode.DEVICE_INTEGRITY_FAILED, "record signature does not verify")
+                }
+                flagSignature(h, ctx, r, bd, routeId, if (sig == null) "record_signature_missing" else "record_signature_invalid")
             }
         }
 
@@ -451,6 +470,36 @@ class IngestService(
         return sha256(("cfp1|" + r.type + "|" + Jcs.canonicalize(strip(r.json))).toByteArray())
     }
 
+    /**
+     * Record mode: the sale is stored and the phone is flagged, one DEVICE_INTEGRITY_FAIL per phone and business date.
+     * In its own savepoint: the flag never decides the sale's outcome (a failure is logged and the record goes on).
+     */
+    private fun flagSignature(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
+        val sp = "sigflag_${r.index}"
+        h.savepoint(sp)
+        try {
+            insertSignatureFlag(h, ctx, r, bd, routeId, reason)
+            h.release(sp)
+        } catch (e: Exception) {
+            h.rollbackToSavepoint(sp)
+            log.error("signature flag failed client_uuid=${r.clientUuid}", e)
+        }
+    }
+
+    private fun insertSignatureFlag(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
+        h.createUpdate(
+            """
+            INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+            VALUES ('DEVICE_INTEGRITY_FAIL', 2, :bd, 'device', :sid, :u, :route, 20, CAST(:ev AS jsonb), :cv)
+            ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
+            """.trimIndent(),
+        ).bind("bd", bd).bind("sid", ctx.up.deviceUuid).bind("u", ctx.up.userId).bind("route", routeId)
+            .bind("ev", kotlinx.serialization.json.buildJsonObject {
+                put("reason", JsonPrimitive(reason)); put("mode", JsonPrimitive("record"))
+                put("record_type", JsonPrimitive(r.type)); put("client_uuid", JsonPrimitive(r.clientUuid))
+            }.toString()).bind("cv", config.configVersion()).execute()
+    }
+
     /** GEO_OUT_OF_BOUNDS (s11.4): a fix outside the Bangladesh box raises a signal; the record itself is stored. */
     private fun outOfBounds(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
         for (slot in listOf("fix", "edit_fix")) (payload[slot] as? JsonObject)?.let { outOfBoundsFix(h, ctx, r, rule, it, bd, routeId) }
@@ -522,7 +571,8 @@ class IngestService(
             VALUES (CAST(:c AS uuid), :t, :h, :fp, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now)
             ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id, content_fp = EXCLUDED.content_fp,
                 last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1
-            WHERE app.ingest_registry.status = 'parked' AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
+            WHERE (app.ingest_registry.status = 'parked' OR (app.ingest_registry.status = 'quarantined' AND app.ingest_registry.outcome_code = 'device_integrity_failed'))
+              AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("fp", contentFp).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
             .bind("s", status).bind("code", code?.wire).bind("sid", serverId).bind("bd", bd).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
@@ -530,7 +580,18 @@ class IngestService(
         if (status == "accepted") {
             h.createUpdate("UPDATE app.sync_rejected SET stored_at = :now WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :h AND stored_at IS NULL")
                 .bind("now", ts(ctx.now)).bind("c", r.clientUuid).bind("h", r.hash).execute()
+            // A released signature quarantine leaves the review queue once the sale is stored.
+            h.createUpdate("UPDATE app.sync_quarantine SET status = 'accepted', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open'")
+                .bind("now", ts(ctx.now)).bind("c", r.clientUuid).execute()
         }
+    }
+
+    /** Moves a registry row (and its open rejected/quarantine copies) from the full-envelope hash to the sig-less one. */
+    private fun rekey(h: Handle, r: Rec) {
+        h.createUpdate("UPDATE app.ingest_registry SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old")
+            .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
+        h.createUpdate("UPDATE app.sync_rejected SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old AND stored_at IS NULL")
+            .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
     }
 
     private fun rejectedRow(h: Handle, ctx: Ctx, r: Rec, code: RecordOutcomeCode, detail: String?, retryable: Boolean) {
@@ -752,3 +813,16 @@ internal fun JsonObject.long(k: String): Long? = (this[k] as? JsonPrimitive)?.ta
 internal fun JsonObject.int(k: String): Int? = (this[k] as? JsonPrimitive)?.takeIf { !it.isString }?.intOrNull
 internal fun JsonObject.bool(k: String): Boolean? = (this[k] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
 internal fun JsonElement.isNullish(): Boolean = this is JsonNull
+
+/** `cfg.sec.record_signature_mode` (docs/19 s9, D-104): off < record < enforce. */
+enum class SignatureMode {
+    OFF, RECORD, ENFORCE;
+
+    companion object {
+        fun of(v: String?): SignatureMode = when (v?.trim()?.lowercase()) {
+            "off" -> OFF
+            "enforce" -> ENFORCE
+            else -> RECORD
+        }
+    }
+}

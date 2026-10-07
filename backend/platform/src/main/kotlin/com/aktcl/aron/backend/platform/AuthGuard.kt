@@ -14,6 +14,9 @@ fun interface ScopeVersionLookup {
 
     /** True while the user still holds a temporary password (only change-password is allowed then). */
     fun mustChangePassword(userId: Long): Boolean = false
+
+    /** `app.device.status` of a token's device (`did`), null when no such device; cached like the scope version. */
+    fun deviceStatus(deviceId: Long): String? = "active"
 }
 
 /** Dependencies of the bearer guard; one instance per application. */
@@ -66,6 +69,16 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
         if (!cfg.allowPasswordChangeRequired && cfg.deps.scopeVersions.mustChangePassword(p.userId)) {
             throw ApiProblem(ProblemCode.ERR_AUTH_PASSWORD_CHANGE_REQUIRED, "change the temporary password first")
         }
+        // AUD-SEC-01: a suspended or revoked phone loses API access within the gate cache (10 s), not at token expiry.
+        // Only where the scope check runs: the upload paths (sync/batch, logout) keep taking captured rows.
+        if (p.audience == Audience.API && p.deviceId != null) {
+            when (cfg.deps.scopeVersions.deviceStatus(p.deviceId)) {
+                "suspended" -> throw ApiProblem(ProblemCode.ERR_DEVICE_SUSPENDED, "this phone is suspended")
+                "revoked", "replaced" -> throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "this phone is revoked")
+                // A token's `did` existed when the token was issued: a missing row is a deleted phone, refused everywhere.
+                null -> throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "unknown phone")
+            }
+        }
     }
     return p
 }
@@ -73,12 +86,25 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
 val ApplicationCall.principal: AronPrincipal
     get() = attributes.getOrNull(PrincipalKey) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED)
 
+/**
+ * The transparent selector of a guarded subtree; the route inventory test finds guarded routes by it and reads
+ * [guard], the guard's settings, so a widened guard (other audiences, no scope check, ...) is visible (AUD-SEC-08).
+ */
+class AuthenticatedRouteSelector(val guard: String = DEFAULT) : RouteSelector() {
+    companion object {
+        val DEFAULT: String = describe(AuthGuardConfig())
+
+        fun describe(c: AuthGuardConfig): String =
+            "aud=${c.audiences.sorted().joinToString(",")};grace=${c.expiredGraceS};sv=${c.checkScopeVersion};pwchange=${c.allowPasswordChangeRequired}"
+    }
+
+    override suspend fun evaluate(context: RoutingResolveContext, segmentIndex: Int) = RouteSelectorEvaluation.Transparent
+    override fun toString() = "(aron-auth)"
+}
+
 /** Wraps [build] in a transparent child route guarded by [AuthGuard]. */
 fun Route.authenticated(deps: AuthGuardDeps, configure: AuthGuardConfig.() -> Unit = {}, build: Route.() -> Unit): Route {
-    val child = createChild(object : RouteSelector() {
-        override suspend fun evaluate(context: RoutingResolveContext, segmentIndex: Int) = RouteSelectorEvaluation.Transparent
-        override fun toString() = "(aron-auth)"
-    })
+    val child = createChild(AuthenticatedRouteSelector(AuthenticatedRouteSelector.describe(AuthGuardConfig().apply(configure))))
     child.install(AuthGuard) { this.deps = deps; configure() }
     child.build()
     return child
