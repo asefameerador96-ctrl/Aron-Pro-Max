@@ -88,7 +88,7 @@ BEGIN
   -- Changes not yet applied: reshape the item values in place (applied history stays as it was).
   UPDATE app.cfg_change c
      SET items = (SELECT jsonb_agg(
-                    CASE WHEN it ->> 'key' = 'cfg.sync.reconcile_types'
+                    CASE WHEN it ->> 'key' = 'cfg.sync.reconcile_types' AND it ? 'value'
                          THEN jsonb_set(it, '{value}', app.cfg_reconcile_types_flat(it -> 'value',
                                 (SELECT rd.role FROM app.role_def rd
                                   WHERE it ->> 'scope_type' = 'role' AND rd.ordinal::text = it ->> 'scope_id')))
@@ -112,3 +112,5 @@ INSERT INTO app.cfg_key (key, area, kind, value_type, default_value, bounds, bou
    'A reprinted memo carries the reprint watermark and count (F-SR-031, F-SR-066).'),
   ('cfg.sale.require_printer_before_sale', 'sale', 'S', 'bool', 'false'::jsonb, '{}'::jsonb, NULL, ARRAY['global']::text[], 1, NULL, 'B', 'device', false, false, 'cfg.edit.field',
    'A sale can start only when a paired printer is connected (F-SR-028).');
+
+SELECT app.apply_db_role_grants();   -- the new helper function: no PUBLIC execute, same rights as the other app functions

@@ -34,3 +34,19 @@ From: infra lane, 2026-10-07. Answers `docs/requests/db-runtime-roles.md` (incl.
 
 The api, worker, migrate and web identities can read every secret in the vault (`kvRead` at vault scope), so per-app
 logins do not yet isolate a compromised api from the admin URL. Per-secret role assignments are an infra follow-up.
+
+## Answer (db, 2026-10-07): V0029
+
+`V0029__api_rw_admin_grants.sql` adds exactly what the API runs today, each row of `app.db_role_grant` with its reason:
+`DELETE` on `app.route_planned` (visit-days change replaces not-yet-effective rows), `app.user_scope` (scope rows that
+never took effect), `app.mfa_secret` (admin MFA reset destroys the secret), and `UPDATE` on `app.geo_fix` (data-void
+tombstone: `DataVoidApi` sets `voided_at`, which the grant map had refused too; the guard trigger allows only that
+column). Soft-delete was considered and not taken: the deleted rows never took effect (planned and scope rows) or are
+a credential (MFA secret); the audit log keeps the before state.
+
+Also checked: every `DELETE`/`UPDATE` in `backend/*/src/main` against the map. The worker (`AggregationWorker`,
+`RiskSignalJob`) writes `dirty_key`, `event_consumer`, `risk_signal` and `dw`, all already granted to `worker_rw`.
+`DbRolesTest.theAdminFlowsRunAsApiRw` runs the admin statements under `SET ROLE api_rw`; the matrix test pins the new
+rows and that nothing wider was granted. backend-core item 2 (suites as `api_rw`) is still theirs.
+
+**infra:** when V0029 is on INT, `dbPerAppLogins` can go on.
