@@ -69,9 +69,13 @@ class SessionSyncRunner(
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         val report = engine(userId, db).run(trigger)
         // Only after a run the server answered in full: never straight after a hold, 429, 503 or a refusal (s4.10, s4.7).
-        if (report.stop == SyncStop.DRAINED || report.stop == SyncStop.RUN_LIMIT) {
+        // The delta goes out under the FULL grant of the signed-in user: a run for another user on a shared phone (A's rows
+        // uploading while B is signed in) must never pull B's day into A's database (F-SYS-052 checker).
+        val active = (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
+        if (refreshesBundle(userId, active, report.stop)) {
             try { bundles?.of(userId)?.refreshIfServerNewer() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         }
+        components.session.noteTimePassing() // F-SYS-052: proven uptime for the 7-day offline window
         try { afterRun(userId, report) } catch (_: Exception) { }
         return report
     }
@@ -86,6 +90,12 @@ class SessionSyncRunner(
         clock = components.clock,
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
     )
+
+    companion object {
+        /** A bundle delta after a run: only for the signed-in user, and only after a run the server answered in full. */
+        fun refreshesBundle(userId: Long, activeUserId: Long?, stop: SyncStop): Boolean =
+            userId == activeUserId && (stop == SyncStop.DRAINED || stop == SyncStop.RUN_LIMIT)
+    }
 
     override suspend fun unsent(userId: Long): Int = if (!databases.exists(userId)) 0 else databases.of(userId).outboxDao().unsentCount()
 }

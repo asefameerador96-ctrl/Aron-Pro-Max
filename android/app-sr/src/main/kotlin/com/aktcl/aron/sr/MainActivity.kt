@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
         dayHolder?.day?.value?.let { it.launchConfigCheck(); it.launchDeltaRefresh(bundleDownloaders) }
         lifecycleScope.launch { updateShell.check(atLogin = false) } // F-SYS-020, throttled to 12 h inside
         pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
+        lifecycleScope.launch { components.session.noteTimePassing() } // F-SYS-052: the offline window counts real uptime
     }
 
     /** F-SYS-022: SR keeps its data (it keeps uploading); a failure never crashes the app. */

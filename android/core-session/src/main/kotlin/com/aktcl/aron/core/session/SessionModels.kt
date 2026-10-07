@@ -28,6 +28,16 @@ data class UserProfile(
      * setting the date back never reopens an expired unlock (docs/24 s8.1, checker finding on N-001).
      */
     val highWaterMs: Long = 0,
+    /**
+     * Real time proven to have passed since the last online login, summed from elapsedRealtime across reboots (F-SYS-052
+     * checker): a reboot plus setting the date back cannot reopen the window, because every stretch of uptime the app saw
+     * still counts. Time while the phone was off cannot be proven offline; the date and [highWaterMs] cover what they can.
+     */
+    val provenAgeMs: Long = 0,
+    /** elapsedRealtime at the last time [provenAgeMs] was brought up to date (0: not yet; then the login's value). */
+    val observedElapsedMs: Long = 0,
+    /** Boot count at that time (0: unknown): a different boot means everything since boot is new uptime. */
+    val observedBootCount: Int = 0,
     val deviceId: Long? = null,
     val bindOrdinal: Int? = null,
     val memoSeqBlockSize: Int? = null,

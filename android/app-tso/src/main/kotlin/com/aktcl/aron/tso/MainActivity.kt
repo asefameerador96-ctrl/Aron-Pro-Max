@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         lifecycleScope.launch { updateShell.check(atLogin = false) }
         pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
+        lifecycleScope.launch { components.session.noteTimePassing() } // F-SYS-052: the offline window counts real uptime
     }
 
     override fun attachBaseContext(newBase: Context) {

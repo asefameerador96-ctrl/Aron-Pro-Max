@@ -152,6 +152,44 @@ class SessionRepositoryTest {
         assertEquals(OfflineRefusal.EXPIRED, (phone.session.login("sr334001", "secret-1") as LoginOutcome.OfflineUnavailable).refusal)
     }
 
+    /**
+     * F-SYS-052 checker: rebooting every morning and setting the date back to just after the last unlock used to keep the
+     * 7-day window open forever. The uptime of each boot now counts, so the window closes after 7 days of use.
+     */
+    @Test
+    fun rebootingAndSettingTheDateBackEveryDayCannotStretchTheOfflineWindow() = runTest {
+        val loginAt = clock.now
+        clock.elapsed = 3_600_000L; clock.boot = 5
+        val phone = Phone()
+        phone.loginOnline("secret-1")
+        phone.logoutOnline()
+        server.close()
+        var outcome: LoginOutcome? = null
+        for (day in 1..9) {
+            clock.boot += 1                         // reboot
+            clock.now = loginAt + day * 60_000L      // the date set back to just after the last unlock
+            clock.elapsed = 20 * 3_600_000L          // a 20-hour field day of uptime before the next unlock
+            outcome = phone.session.login("sr334001", "secret-1")
+            if (outcome is LoginOutcome.OfflineUnavailable) break
+            phone.session.noteTimePassing()
+            phone.session.logout()
+        }
+        // 9 days of 20 h is 180 h > 168 h: refused by day 9 at the latest, never open for good.
+        assertEquals(OfflineRefusal.EXPIRED, (outcome as LoginOutcome.OfflineUnavailable).refusal)
+    }
+
+    @Test
+    fun anHonestDayOfUseWithRebootsStaysInsideTheWindow() = runTest {
+        clock.elapsed = 1_000L; clock.boot = 1
+        val phone = Phone()
+        phone.loginOnline("secret-1")
+        phone.logoutOnline()
+        server.close()
+        // Two days later, after a reboot, with a true clock: still unlocks (uptime and date agree well within 7 days).
+        clock.now += 2 * 86_400_000L; clock.boot = 2; clock.elapsed = 5 * 3_600_000L
+        assertTrue(phone.session.login("sr334001", "secret-1") is LoginOutcome.LoggedIn)
+    }
+
     @Test
     fun tenWrongOfflinePasswordsStartADoublingCooldown() = runTest {
         val phone = Phone()

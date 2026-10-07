@@ -186,6 +186,8 @@ class SessionRepository(
                     lastOnlineLoginMs = clock.wallClockMs(),
                     lastOnlineLoginElapsedMs = clock.elapsedRealtimeMs(),
                     highWaterMs = clock.wallClockMs(),
+                    observedElapsedMs = clock.elapsedRealtimeMs(),
+                    observedBootCount = clock.bootCount(),
                     deviceId = answer.device?.deviceId ?: previous?.deviceId,
                     bindOrdinal = answer.device?.bindOrdinal ?: previous?.bindOrdinal,
                     memoSeqBlockSize = answer.device?.memoSeqBlockSize ?: previous?.memoSeqBlockSize,
@@ -230,14 +232,14 @@ class SessionRepository(
         }
         // Setting the date back never helps: time only moves forward from the highest value seen.
         val now = maxOf(wall, stored.highWaterMs)
-        val profile = stored.copy(highWaterMs = now)
+        val profile = aged(stored.copy(highWaterMs = now), elapsed)
         if (inCooldown(profile, now, elapsed)) {
             store.saveProfile(profile)
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.COOLDOWN, profile.cooldownUntilMs, serverAnswer)
         }
         // Without a reboot since the login, the monotonic clock proves how much real time has passed, whatever the date says.
         val realAge = if (elapsed >= profile.lastOnlineLoginElapsedMs) elapsed - profile.lastOnlineLoginElapsedMs else 0L
-        if (maxOf(now - profile.lastOnlineLoginMs, realAge) > policy.maxDays * DAY_MS) {
+        if (maxOf(now - profile.lastOnlineLoginMs, realAge, profile.provenAgeMs) > policy.maxDays * DAY_MS) {
             store.saveProfile(profile)
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.EXPIRED, serverAnswer = serverAnswer)
         }
@@ -260,6 +262,34 @@ class SessionRepository(
         store.saveProfile(unlocked)
         activate(unlocked, UnlockMode.OFFLINE, store.tokens(unlocked.userId).reauthRequired, updateRequired)
         return LoginOutcome.LoggedIn(unlocked, UnlockMode.OFFLINE, updateRequired)
+    }
+
+    /** Adds the uptime seen since [UserProfile.observedElapsedMs] (after a reboot: everything since boot) to the proven age. */
+    private fun aged(p: UserProfile, elapsed: Long): UserProfile {
+        val boot = clock.bootCount()
+        val base = if (p.observedElapsedMs > 0) p.observedElapsedMs else p.lastOnlineLoginElapsedMs
+        val rebooted = elapsed < base || (boot > 0 && p.observedBootCount > 0 && boot != p.observedBootCount)
+        val passed = if (rebooted) elapsed else elapsed - base
+        return p.copy(provenAgeMs = p.provenAgeMs + passed, observedElapsedMs = elapsed, observedBootCount = boot)
+    }
+
+    /**
+     * Records that time passed for the signed-in user (app in front, a sync run): the date high-water mark and the proven
+     * uptime, so the 7-day offline window cannot be stretched by rebooting and setting the date back. Never throws.
+     */
+    suspend fun noteTimePassing() {
+        loginMutex.withLock { // never interleaved with a login writing the same profile
+            try {
+                val id = (state.value as? SessionState.Active)?.user?.userId ?: return
+                val p = withContext(dispatchers.io) { store.profileByUserId(id) } ?: return
+                withContext(dispatchers.io) {
+                    store.saveProfile(aged(p.copy(highWaterMs = maxOf(p.highWaterMs, clock.wallClockMs())), clock.elapsedRealtimeMs()))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
     }
 
     /**
