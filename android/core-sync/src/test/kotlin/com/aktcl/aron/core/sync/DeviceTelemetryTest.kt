@@ -51,6 +51,8 @@ class DeviceTelemetryTest {
     }
 
     private class FakeProbe : TelemetryProbe {
+        var boot: Int? = null
+        override fun bootCount() = boot
         var bytes: Long? = 1_000
         var cpu = 100L
         override var processToken = "p1"
@@ -97,6 +99,30 @@ class DeviceTelemetryTest {
         assertEquals(100L + 300L + 50L, d["cpu_ms"]!!.jsonPrimitive.long)
         assertEquals(2, d["starts"]!!.jsonPrimitive.int)
         assertEquals(2_500L, d["wake_ms"]!!.jsonPrimitive.long)
+    }
+
+    /** Re-check: a reboot whose new uptime passed the old one is still a reboot, by boot count. */
+    @Test fun aRebootIsSeenByBootCountEvenWhenUptimeGrewPastTheOldSample() = runBlocking {
+        probe.boot = 41; elapsed = 10_000
+        telemetry.sample()
+        probe.boot = 42; elapsed = 900_000; probe.bytes = 5_000; probe.processToken = "p2"
+        telemetry.sample()
+        assertEquals(5_000L, day()["b_mob"]!!.jsonPrimitive.long) // all bytes since the new boot, not 5,000 - 1,000
+    }
+
+    @Test fun onlyARegainAfterALossIsKeptAndOldDaysArePrunedWithoutABatch() = runBlocking {
+        telemetry.onNetworkChange(true) // the callback at registration: not a regain
+        kotlinx.coroutines.delay(200)
+        now = dhaka(10, 0)
+        telemetry.onNetworkChange(false)
+        kotlinx.coroutines.delay(200)
+        now = dhaka(10, 30)
+        telemetry.onNetworkChange(true)
+        kotlinx.coroutines.delay(200)
+        assertEquals("2026-10-05T04:30:00.000Z", day()["regained"]!!.jsonPrimitive.content)
+        now = dhaka(9, 0, 20)
+        telemetry.sample() // day 20: day 5 is past the keep window and goes on this write
+        assertTrue(!file.readText().contains("2026-10-05"))
     }
 
     @Test fun batteryIsTheFirstSampleInEachHalfHourAfterTheSlots() = runBlocking {
@@ -180,12 +206,15 @@ class DeviceTelemetryTest {
             }
             fun engine() = SyncEngine(USER, db, SyncBatchApi(client, null), auth, { DEVICE }, "1.0.3+10003", clock, SyncPolicy(), random = Random(7),
                 telemetry = telemetry.forBatch { null })
-            fake.failBefore += 503
-            assertEquals(SyncStop.RETRY_LATER, engine().run(SyncTrigger.MANUAL).stop)
+            // Re-check: holds and outages are never refusals, however many.
+            repeat(3) {
+                fake.failBefore += 503
+                assertEquals(SyncStop.RETRY_LATER, engine().run(SyncTrigger.MANUAL).stop)
+            }
             assertNotNull(telemetry.pendingDay(true, 1024))
             assertEquals(SyncStop.DRAINED, engine().run(SyncTrigger.MANUAL).stop)
             val carried = fake.requests.mapNotNull { it.body?.get("telemetry")?.jsonObject?.get("d")?.jsonPrimitive?.content }
-            assertEquals(listOf("2026-10-05", "2026-10-05"), carried)
+            assertEquals(List(4) { "2026-10-05" }, carried)
             assertNull(telemetry.pendingDay(true, 1024))
         } finally {
             server.close()

@@ -269,8 +269,11 @@ class SyncEngine(
                                 continue
                             }
                         }
-                        // A refused batch that carried telemetry: counted, so a day the server cannot read is dropped.
-                        telemetryDate?.let { d -> try { telemetry?.failed(d) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { } }
+                        // A batch refused for its envelope (400/422 naming no record) while carrying telemetry: counted, so a
+                        // day the server cannot read is dropped. Holds, 5xx, 413, auth and version answers never count.
+                        val envelopeRefusal = (result.httpStatus == 400 || result.httpStatus == 422) &&
+                            result.problem.errors.none { e -> RECORD_POINTER.containsMatchIn(e.pointer ?: "") }
+                        if (envelopeRefusal) telemetryDate?.let { d -> try { telemetry?.failed(d) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { } }
                         return failure(batchUuid, rows, result)
                     }
                 }

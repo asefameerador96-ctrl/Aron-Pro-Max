@@ -40,6 +40,8 @@ interface TelemetryProbe {
     fun battery(): Pair<Int, Boolean>?
     /** True on a metered (mobile) default network, false on Wi-Fi or other unmetered, null without a network. */
     fun metered(): Boolean?
+    /** `Settings.Global.BOOT_COUNT`, or null when unreadable (then elapsed time going back is the reboot signal). */
+    fun bootCount(): Int? = null
 
     class Android(context: Context) : TelemetryProbe {
         private val app = context.applicationContext
@@ -57,6 +59,9 @@ interface TelemetryProbe {
             val scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
             if (level < 0 || scale <= 0) return null
             (level * 100 / scale) to (i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0)
+        }.getOrNull()
+        override fun bootCount(): Int? = runCatching {
+            android.provider.Settings.Global.getInt(app.contentResolver, android.provider.Settings.Global.BOOT_COUNT)
         }.getOrNull()
         override fun metered(): Boolean? = runCatching {
             val cm = app.getSystemService(ConnectivityManager::class.java)
@@ -85,7 +90,8 @@ interface BatchTelemetry {
  * of whichever user uploads first after the date closes and is kept in [file] until a batch carrying it is answered (a
  * lost answer sends it again: the server keeps one row per device and date). A day refused twice is dropped.
  *
- * Nothing polls. A sample is taken at every save (the scheduler's request), on every default-network change, when the app
+ * On a shared phone, `gps` sums the per-user counts as each user's last sync run left them (only the uploading user's is
+ * fresh). Nothing polls. A sample is taken at every save (the scheduler's request), on every default-network change, when the app
  * comes to the front, and around each sync run. Bytes since the previous sample are billed to the network that was active
  * at that sample (so a sample on every network change splits them correctly); a reboot is seen from elapsed time going
  * back; CPU time is summed across processes and each new process is one start. Battery is the first sample in the 30 min
@@ -100,20 +106,28 @@ class DeviceTelemetry(
     private val lock = kotlinx.coroutines.sync.Mutex()
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
     @Volatile private var lastSampleElapsed = Long.MIN_VALUE
+    /** `<date>#<slot>` of the battery slot this process already filled: no reason left to skip the coalescing. */
+    @Volatile private var filledSlot: String? = null
+    /** The default network was lost in this process: the next arrival is a real regain (not a handover or the start). */
+    @Volatile private var lostSeen = false
 
-    /** A sample off the caller's thread; at most one a minute unless a battery slot is open (saves come in bursts). */
+    /** A sample off the caller's thread; at most one a minute unless a battery slot is open and unfilled (saves come in bursts). */
     fun sampleSoon() {
         val now = clock.elapsedRealtimeMs()
-        if (lastSampleElapsed != Long.MIN_VALUE && now - lastSampleElapsed in 0 until 60_000L && slotIndex(dhakaMinute()) == null) return
+        val slot = slotIndex(dhakaMinute())?.let { "${BusinessDate.of(clock.nowMs())}#$it" }
+        val slotOpen = slot != null && slot != filledSlot
+        if (lastSampleElapsed != Long.MIN_VALUE && now - lastSampleElapsed in 0 until 60_000L && !slotOpen) return
         scope.launch { try { sample() } catch (_: Exception) { } }
     }
 
-    /** The default network came or went: bill the bytes so far to the old network, and keep the regain time. */
+    /** The default network came or went: bill the bytes so far to the old network; a return after a loss is a regain. */
     fun onNetworkChange(available: Boolean) {
+        val regained = available && lostSeen
+        if (!available) lostSeen = true else lostSeen = false
         scope.launch {
             try {
                 sample()
-                if (available) noteConnectivityRegained(com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs()))
+                if (regained) noteConnectivityRegained(com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs()))
             } catch (_: Exception) { }
         }
     }
@@ -125,6 +139,7 @@ class DeviceTelemetry(
         val metered = probe.metered()
         val battery = probe.battery()
         val elapsed = clock.elapsedRealtimeMs()
+        val boot = probe.bootCount()
         val minute = dhakaMinute()
         lastSampleElapsed = elapsed
         update { state, day ->
@@ -132,7 +147,8 @@ class DeviceTelemetry(
             val sameProcess = base?.str("p") == probe.processToken
             if (!sameProcess) day.add("starts", 1)
             day.add("cpu_ms", if (sameProcess) (cpu - (base!!.num("c") ?: cpu)).coerceAtLeast(0) else cpu)
-            val rebooted = base?.num("e")?.let { elapsed < it } ?: false
+            val lastBoot = base?.num("k")
+            val rebooted = if (boot != null && lastBoot != null) boot.toLong() != lastBoot else base?.num("e")?.let { elapsed < it } ?: false
             val last = base?.num("b")
             val byteDelta = when {
                 bytes == null || last == null -> 0L
@@ -144,11 +160,15 @@ class DeviceTelemetry(
             val billedMetered = (base?.get("m") as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: metered
             if (byteDelta > 0) day.add(if (billedMetered == true) "b_mob" else "b_wifi", byteDelta)
             battery?.let { (pct, plugged) ->
-                slotIndex(minute)?.let { i -> if (day["bat$i"] == null) day["bat$i"] = JsonPrimitive(pct) }
+                slotIndex(minute)?.let { i ->
+                    if (day["bat$i"] == null) day["bat$i"] = JsonPrimitive(pct)
+                    filledSlot = "${BusinessDate.of(clock.nowMs())}#$i"
+                }
                 if (plugged && minute >= SLOTS[0]) day["plug"] = JsonPrimitive(1)
             }
             state["base"] = buildJsonObject {
                 put("p", probe.processToken); put("c", cpu); put("e", elapsed)
+                boot?.let { put("k", it) }
                 bytes?.let { put("b", it) }
                 metered?.let { put("m", it.toString()) }
             }
@@ -265,6 +285,9 @@ class DeviceTelemetry(
         val day = (days[date] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
         change(state, day)
         days[date] = JsonObject(day)
+        // Bounded without a batch: days past the keep window go on every write (a phone with nothing to upload).
+        val oldest = java.time.LocalDate.parse(date).minusDays(KEEP_DAYS).toString()
+        days.keys.filter { it < oldest }.forEach { days.remove(it) }
         state["days"] = JsonObject(days)
         write(state)
     }
