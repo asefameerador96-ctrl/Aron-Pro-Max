@@ -5,6 +5,8 @@ import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 
 /**
+ * Framework (plain SQLite) path; production SQLCipher files get the same mode from [SqlCipher.IncrementalVacuumHook],
+ * because SQLCipher enables WAL before `onConfigure`, where this pragma would be ignored on a new file (checker).
  * Makes every NEW user database file `auto_vacuum = INCREMENTAL` (F-SYS-028 follow-up), so `LocalPurge`'s
  * `PRAGMA incremental_vacuum` returns the purged pages to the file system. The pragma runs in `onConfigure`, before Room
  * creates any table, which is the only moment NONE can change without a VACUUM. On an existing NONE file it is a no-op;

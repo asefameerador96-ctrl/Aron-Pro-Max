@@ -89,6 +89,7 @@
   - For android-core-ui (via the lead): add `core-map` to `HardcodedStringScanner`'s module set (core-ui test). Its strings are already in resources (bn + en).
 - **Location notice re-check (handover item) done**: after "Later", each resume re-reads the need; when a config delta has made the notice required (and it is not accepted) it is drawn OVER the day (no teardown: a visit in progress keeps its state; Back is swallowed; only Accept or Logout). A read error keeps "Later". Opus check PASS; its medium (mid-sale teardown) and lows fixed with the test (state survives, error keeps Later, shown_at = reappearance time). Limit: the flip shows at the resume after the delta is applied.
 - **BC-56 follow-up done**: `cfg.sec.record_signature_mode` (db V0053) is read by `SyncEngine`; under enforce the integrity-quarantined rows are held without spending a release round, and record/off releases them (one round per business date as before). Opus check PASS; its scheduled-row test gap added. Accepted low: a phone stuck on a stale enforce holds the rows until the next delta or bundle (no on-screen sign).
+- **F-SYS-028 follow-up (incremental_vacuum) done**: new user files are `auto_vacuum = INCREMENTAL`, so `LocalPurge`'s `PRAGMA incremental_vacuum` gives pages back. SQLCipher (production): a `postKey` hook in `SqlCipher.factory` (after the key, before SQLCipher's WAL switch); framework (tests): `IncrementalVacuumFactory` in `onConfigure`. No file is ever rewritten (no VACUUM): existing NONE files (pilot/dev only) stay until the logout wipe or a reinstall. Opus check FAIL (the onConfigure pragma is ignored under SQLCipher because WAL comes first; reproduced with stock SQLite), fixed by the hook; the production proof is device check D-DB-VAC (`SqlCipherDeviceTest` asserts mode 2). Accepted low: a failed pragma is swallowed (the open never fails for it).
 - Request filed: docs/requests/android-core-sys-media-mobile-bytes.md (android-sys: a sent-bytes callback so `b_mob_media` is counted).
 - Lead note (18:21Z): backend-core built F-API-070, BC-62 (urgent flag) and BC-63 on lane/backend-core 15dba8dd; F-SYS-047/080 start when it is on INT.
   - Accepted lows: before API 33 a timed-out geocode keeps its IO thread until the platform call returns; the offline image shows no capture time.
@@ -107,7 +108,6 @@
   1. F-SYS-047 and F-SYS-080, once backend F-API-070 (`GET /sync/generation`) is on INT. It was not on INT at 17:40Z.
   2. F-SYS-074, once N-053 (the AMO map) is on INT.
   3. Small items:
-     - `incremental_vacuum` needs `auto_vacuum=INCREMENTAL` at file creation: a one-time VACUUM path (T1 migration, careful).
      - LocationNotice re-check when the setting turns required mid-session.
      - The media lane should call `DeviceTelemetry.noteMobileMediaBytes`.
      - Replace the seed `baseline-prof.txt` with the generated profiles once D-PERF-04 runs.

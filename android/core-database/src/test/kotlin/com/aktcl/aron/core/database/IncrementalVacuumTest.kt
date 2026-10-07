@@ -49,8 +49,9 @@ class IncrementalVacuumTest {
         assertTrue("the file shrank: $before -> ${pragma(db, "page_count")}", pragma(db, "page_count") < before)
     }
 
+    /** Only proves that reopening an older file keeps its data; the mode rule is SQLite's (NONE stays, FULL switches). */
     @Test
-    fun aFileCreatedBeforeKeepsItsModeAndItsData() = runBlocking {
+    fun aFileCreatedBeforeKeepsItsData() = runBlocking {
         // A pilot phone's file from before this change: created without the factory wrapper.
         val old = Room.databaseBuilder(context, AronDatabase::class.java, AronDatabase.fileName(902)).build()
         val (visit, fix) = TestRows.visit()
