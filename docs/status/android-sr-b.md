@@ -41,3 +41,10 @@ Review Print drives SaveAndPrint (commit then print), never disabled by the prin
 
 ## Printing mapping (done)
 `feature-memo` `PrintMapping`: `StoredMemo` and `DaySummary` to `MemoPrint` / `DaySummaryPrint` from stored mtk columns (kind by content: cash, credit, offer, drp, zero, edited). Still to do after `PrintLedger` lands: SaveAndPrint in the sale ViewModel, reprint via `MemoPrinting.printMemo` with the confirm dialog, PrinterIcon/PrinterBanner on Review, Memo and Summary.
+
+## Wiring against ports (2026-10-07)
+Built against interfaces, fakes only in test sources, so the swap is one line each:
+- feature-sale: `SaleViewModel`, `SaleRoute` (entry, slide, QC, credit, review, printer icon and banner, `SaveAndPrintDialogs`), `SaleCommitStep` (the SaveAndPrint commit; never depends on the printer), `MemoPrintSource` port.
+- feature-memo: `MemoViewModel` over `MemoStore`, `DueCollectionWriter` (REQUEST core), `MemoReprinter` (production: `MemoPrinting.printMemo`).
+- feature-dayclose: `SalesSubmitViewModel` over `DaySource`, `ServerCounts`, `DaySubmitWriter` (REQUEST core), `SyncScheduler` (MANUAL and DAY_SUBMIT triggers).
+Production implementations of the ports (Room reads, due_collection and day_submit writers, memo counter) are the core request; app-sr shell wiring is android-sr-a's.
