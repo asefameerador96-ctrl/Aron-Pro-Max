@@ -78,6 +78,29 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Handover (READY TO RECYCLE, 2026-10-07 ~18:05Z by the server clock, eighth session)
+- **Done this session.** Every row had a fresh Opus checker, and every FAIL had a re-check. Details are in "Eighth session" below.
+  - Closed: F-SYS-081 phone half (round-4 re-check PASS), F-SYS-073, AUD-PERF-06 and AUD-PERF-04 (in code; the A06 numbers are D-PERF-04).
+  - Follow-ups done: F-SYS-075 consents (BC-55), F-SYS-079 config keys, F-SYS-052 `cfg.auth.offline_unlock_*`, and F-SYS-032 early crash catcher (its checker result is recorded below if it arrived; otherwise re-check b57c3dc5 first).
+- **In progress:** nothing.
+- **Next, in this order:**
+  1. F-SYS-047 and F-SYS-080, once backend F-API-070 (`GET /sync/generation`) is on INT. It was not on INT at 17:40Z.
+  2. F-SYS-074, once N-053 (the AMO map) is on INT.
+  3. Small items:
+     - `incremental_vacuum` needs `auto_vacuum=INCREMENTAL` at file creation: a one-time VACUUM path (T1 migration, careful).
+     - LocationNotice re-check when the setting turns required mid-session.
+     - The media lane should call `DeviceTelemetry.noteMobileMediaBytes`.
+     - Replace the seed `baseline-prof.txt` with the generated profiles once D-PERF-04 runs.
+     - BC-56: read `cfg.sec.record_signature_mode` from config once db registers it with delivery both.
+     - `cfg.app.image_cache_mb`, `local_history_days` and `outbox_keep_days` wait for db rows; the defaults hold.
+- **Open requests (new):** docs/requests/android-core-backend-urgent-push-flag.md, to backend-core (send `urgent` in the config_pull data).
+- **Notes for the lead:** the server never enforces `checkout_too_early` (backend-core, info). Lane decision: `URGENT_RESERVE` = 4 config requests over the daily cap of 24 for urgent pushes.
+- **Device checks:** D-PERF-04 is new (lab A06, laptop session).
+- **Traps found this session:**
+  40. With no Android SDK, the check run fails at configuration ("SDK location not found"). Run `tools/android-sdk.sh`, put `sdk.dir` in `local.properties`, and grep the log for `BUILD FAILED`, not only the exit code.
+  41. A plugin alias with a version fails in a module when AGP is already on the root classpath: use `id("com.android.test")` without a version.
+  42. GitHub can answer a push with 500 for some minutes. Retry with backoff in the background; it went through after about 1 minute.
+
 ## Eighth session (2026-10-07, from ~16:47Z by the server clock)
 - INT merged (no conflicts) and pushed. The container had no Android SDK: `tools/android-sdk.sh` and `sdk.dir` in the git-ignored `local.properties` (trap 40).
 - **F-SYS-081 phone half: done.** Round 4, a fresh Opus re-check of 0a0add38: PASS, no blocking findings. Added the guard test it asked for: `aMultiFamily500NeverChargesTheDay`. Accepted plausibles (telemetry only, never a sale):
