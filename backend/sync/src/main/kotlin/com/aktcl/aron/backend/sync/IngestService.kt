@@ -278,6 +278,7 @@ class IngestService(
         h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", r.clientUuid)
         val prior = h.createQuery("SELECT status, outcome_code, payload_sha256, server_id FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) FOR UPDATE")
             .bind("c", r.clientUuid).map { rs, _ -> Prior(rs.getString(1), rs.getString(2), rs.getBytes(3), rs.getObject(4) as Long?) }.findOne().orElse(null)
+        var released = false
         if (prior != null) {
             if (!prior.hash.contentEquals(r.hash) && !prior.hash.contentEquals(r.fullHash)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.PAYLOAD_CONFLICT, "same client_uuid, different payload", register = false)
             // Registered before the hash left `sig` out: re-key it, so the parked upsert and the stored_at mark match (BC-53).
@@ -287,8 +288,12 @@ class IngestService(
                 "rejected" -> { touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.SCHEMA_INVALID) }
                 // A signature quarantine is released once the mode is no longer enforce: the resend is processed like a
                 // parked row, so a sale held under enforce (or before modes existed) reaches the server (BC-53).
-                "quarantined" -> if (prior.code != RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire || ctx.signatureMode == SignatureMode.ENFORCE) {
+                // Only while its review item is still open: a reviewer's discard or return-to-device stands (android-core
+                // integrity-release item 1).
+                "quarantined" -> if (prior.code != RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire || ctx.signatureMode == SignatureMode.ENFORCE || !openIntegrityItem(h, r)) {
                     touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT)
+                } else {
+                    released = true
                 }
                 // parked: process again (the parent may have arrived)
             }
@@ -296,7 +301,8 @@ class IngestService(
 
         // 3. Business-date window (s3.8 item 4): too old or in the future is quarantined, never dropped.
         val captured = Instant.parse(env.str("captured_at")!!)
-        if (bd.isBefore(ctx.today.minusDays(ctx.backdateDays)) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
+        // A released signature quarantine was inside the window when first received: it is not too old now (item 2).
+        if ((!released && bd.isBefore(ctx.today.minusDays(ctx.backdateDays))) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, "business_date $bd, today ${ctx.today}")
         }
 
@@ -591,6 +597,10 @@ class IngestService(
                 .bind("now", ts(ctx.now)).bind("c", r.clientUuid).execute()
         }
     }
+
+    private fun openIntegrityItem(h: Handle, r: Rec): Boolean = h.createQuery(
+        "SELECT EXISTS (SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open')",
+    ).bind("c", r.clientUuid).mapTo(Boolean::class.java).one()
 
     /** Moves a registry row (and its open rejected/quarantine copies) from the full-envelope hash to the sig-less one. */
     private fun rekey(h: Handle, r: Rec) {
