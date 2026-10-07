@@ -27,7 +27,7 @@ export function ChangesView({ locale, rows, status, nextHref, userId, canDecide,
               <p className="text-xs text-slate-600">
                 {t(locale, "cfgp5.blast")}: {t(locale, "cfgp5.blast.line", { zones: formatNumber(locale, b.zones), routes: formatNumber(locale, b.routes), outlets: formatNumber(locale, b.outlets), devices: formatNumber(locale, b.devices) })}
               </p>
-              {c.risk_class >= 3 ? <p className="text-xs text-amber-700">{t(locale, "cfgp5.two_person")}</p> : null}
+              {c.risk_class >= 3 ? <p className="text-xs text-[var(--warning)]">{t(locale, "cfgp5.two_person")}</p> : null}
               {c.status === "pending_approval" && canDecide && (c.risk_class < 3 || role === "SUPERADMIN" || c.requested_by === userId) ? (
                 c.requested_by === userId ? (
                   <>

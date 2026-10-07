@@ -34,6 +34,7 @@ const pairs = {
   "cfgc.refresh": ["Refresh", "রিফ্রেশ"],
   "cfgc.from": ["From", "থেকে"],
   "cfgc.to": ["To", "পর্যন্ত"],
+  "cfgc.retry": ["Try again", "আবার চেষ্টা করুন"],
   "cfgc.error.load": ["This list could not be loaded.", "এই তালিকা লোড করা যায়নি।"],
 
   "cfgc.error.required": ["Enter a value.", "একটি মান দিন।"],
