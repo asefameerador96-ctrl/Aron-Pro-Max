@@ -7,9 +7,8 @@ import io.ktor.server.application.call
 import io.ktor.server.request.path
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ThreadLocalRandom
 
 /**
@@ -29,8 +28,13 @@ class RequestIsolation(parallelism: Int, val timeoutMs: Long = DEFAULT_TIMEOUT_M
     companion object {
         const val DEFAULT_TIMEOUT_MS = 25_000L
 
-        /** One thread per pooled connection (write plus a separate read pool): more threads would only queue on Hikari. */
-        fun forPools(writePoolMax: Int, readPoolMax: Int?): RequestIsolation = RequestIsolation(writePoolMax + (readPoolMax ?: 0))
+        /**
+         * One thread fewer than the write pool. Some calls hold a connection while they borrow a second one (the ingest
+         * resolves reach inside its family transaction); Hikari cannot deadlock while threads <= pool - 1 for nesting
+         * depth two (checker finding on AUD-PERF-02). The read pool is not counted for the same reason.
+         */
+        @Suppress("UNUSED_PARAMETER")
+        fun forPools(writePoolMax: Int, readPoolMax: Int?): RequestIsolation = RequestIsolation(writePoolMax - 1)
 
         /** Liveness and readiness stay on the call threads: they never block (cached values, readiness pings on IO). */
         fun isProbe(path: String): Boolean = path == "/v1/health" || path == "/v1/health/ready"
@@ -46,16 +50,15 @@ fun serviceUnavailable(detail: String): ApiProblem {
 /**
  * Install after the platform (its StatusPages renders the timeout problem) and after admission control, so the call
  * holds its admission slot while it waits here. A call still running at the deadline is cancelled and answered 503
- * unless it has already started its response; a statement in flight ends at the role's statement_timeout (15 s).
+ * unless it has already started its response. Cancellation acts at the next suspension point only: a handler inside a
+ * JDBC statement answers when that statement ends, so the real bound is the timeout plus one statement (the api role's
+ * statement_timeout, 15 s); if it then reaches its respond call before a suspension point, the client gets that real
+ * answer instead of the 503. A handler's own inner timeout is its own error, not this one.
  */
 fun Application.installRequestIsolation(iso: RequestIsolation) {
     intercept(ApplicationCallPipeline.Plugins) {
         if (RequestIsolation.isProbe(call.request.path())) return@intercept proceed()
-        try {
-            withTimeout(iso.timeoutMs) { withContext(iso.dispatcher) { proceed() } }
-        } catch (e: TimeoutCancellationException) {
-            if (call.response.isCommitted) return@intercept
-            throw serviceUnavailable("the request took too long; retry later")
-        }
+        val finished = withTimeoutOrNull(iso.timeoutMs) { withContext(iso.dispatcher) { proceed() }; true }
+        if (finished == null && !call.response.isCommitted) throw serviceUnavailable("the request took too long; retry later")
     }
 }

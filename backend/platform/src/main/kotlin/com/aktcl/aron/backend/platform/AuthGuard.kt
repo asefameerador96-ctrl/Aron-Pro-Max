@@ -73,12 +73,15 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
 val ApplicationCall.principal: AronPrincipal
     get() = attributes.getOrNull(PrincipalKey) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED)
 
+/** The transparent selector of a guarded subtree; the route inventory test finds guarded routes by it (AUD-SEC-08). */
+class AuthenticatedRouteSelector : RouteSelector() {
+    override suspend fun evaluate(context: RoutingResolveContext, segmentIndex: Int) = RouteSelectorEvaluation.Transparent
+    override fun toString() = "(aron-auth)"
+}
+
 /** Wraps [build] in a transparent child route guarded by [AuthGuard]. */
 fun Route.authenticated(deps: AuthGuardDeps, configure: AuthGuardConfig.() -> Unit = {}, build: Route.() -> Unit): Route {
-    val child = createChild(object : RouteSelector() {
-        override suspend fun evaluate(context: RoutingResolveContext, segmentIndex: Int) = RouteSelectorEvaluation.Transparent
-        override fun toString() = "(aron-auth)"
-    })
+    val child = createChild(AuthenticatedRouteSelector())
     child.install(AuthGuard) { this.deps = deps; configure() }
     child.build()
     return child

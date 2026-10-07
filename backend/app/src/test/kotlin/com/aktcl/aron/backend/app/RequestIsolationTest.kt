@@ -117,9 +117,10 @@ class RequestIsolationTest {
             assertTrue("ERR_SERVICE_UNAVAILABLE" in r.body())
             assertTrue(r.headers().firstValue("Retry-After").get().toInt() in 5..30)
         }
-        // Each waits Hikari's 5 s connection timeout side by side; on the call thread they would queue (4 x 5 s and more).
+        // Each waits Hikari's 5 s side by side (after up to 10 s of cold config and generation loads, which also wait
+        // 5 s each); on the call thread they would queue: 4 x 5 s plus those loads, 30 s and more.
         val allMs = (System.nanoTime() - t0) / 1_000_000
-        assertTrue(allMs < 15_000, "the blocked calls took $allMs ms: they ran one after another")
+        assertTrue(allMs < 24_000, "the blocked calls took $allMs ms: they ran one after another")
     }
 
     @Test
@@ -140,6 +141,8 @@ class RequestIsolationTest {
         val port = start(
             plainWiring(RequestIsolation(4, timeoutMs = 300)) {
                 get("/slow") { delay(5_000); call.respondText("late") }
+                get("/blocking") { Thread.sleep(1_000); call.respondText("late") }
+                get("/inner-timeout") { kotlinx.coroutines.withTimeout(10) { delay(1_000) }; call.respondText("never") }
                 get("/fast") { call.respondText("ok") }
             },
         )
@@ -149,6 +152,14 @@ class RequestIsolationTest {
         assertTrue(r.headers().firstValue("Retry-After").get().toInt() in 5..30)
         assertTrue(ms < 3_000, "timeout answered after $ms ms")
         assertEquals("ok", get(port, "/v1/fast").body())
+        // A handler blocked in JDBC-like work cannot be interrupted: it answers when the blocking call ends (the timeout
+        // plus one statement), with a 503 if it suspends first, else with its own answer. Never later, never hanging.
+        val (b, bms) = timed { get(port, "/v1/blocking") }
+        assertTrue(b.statusCode() == 503 || b.body() == "late", "${b.statusCode()} ${b.body()}")
+        assertTrue(bms in 900..3_000, "blocking handler answered after $bms ms")
+        // A handler's own inner timeout is a server error of that handler, not the request timeout.
+        val inner = get(port, "/v1/inner-timeout")
+        assertEquals(500, inner.statusCode(), inner.body())
     }
 
     @Test
@@ -171,6 +182,7 @@ class RequestIsolationTest {
         val r = inFlight.get()
         assertEquals(200, r.statusCode())
         assertEquals("committed", r.body())
+        assertEquals("close", r.headers().firstValue("Connection").orElse(null), "a response finished while draining closes its connection")
         stopped.get()
         assertEquals(0, drain.callsInFlight)
     }
