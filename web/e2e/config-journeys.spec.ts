@@ -56,7 +56,8 @@ test("change request: a risk 2 change waits for a different SUPERADMIN, then rol
   await page2.getByTestId("approve-1").getByRole("button").first().click();
   await page2.getByTestId("approve-1").locator("textarea").fill(REASON);
   await page2.getByTestId("approve-1").getByRole("button").first().click();
-  await expect(page2.getByTestId("approve-1").getByTestId("form-ok")).toBeVisible();
+  // An approved change leaves the pending list, so its row (and its banner) goes away: that is the visible condition to wait on.
+  await expect(page2.getByTestId("approve-1")).toHaveCount(0);
 
   await page.goto("/admin/config/geofence?level=global&id=0");
   await expect(page.getByTestId("current-radius")).toContainText("150");
