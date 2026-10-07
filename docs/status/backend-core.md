@@ -43,6 +43,8 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - **F-SR-020/021 data** (BC-67, lead 18:55Z): bundle `content` and `surveys` filled from the admin tables; no contract or db change was needed (all already existed). Tell android-core and android-sr-a.
 - **POST /v1/sync/digest** (F-SYS-080 server half, BC-68) and **ServerGeneration `previous_generation` + `?since=` -> `earliest_lost_after_utc`** (F-SYS-047 two-restore gap; additive contract change, slices + WireDtos + web openapi.d.ts regenerated).
 
+- Waiting on INT: db V0056/V0057 `ingest_registry.flags` (lane/db b88b6632, `db-resync-late-flag-answer.md`): then write `resync_late` (merge on the ON CONFLICT path, never assign) and assert it; same for `checkout_too_early` until the quarantine switch (BC-63).
+
 ### Answer to android-core-backend-sync-digest.md (the rule both sides compute; confirmed against docs/24 s4.8)
 - **Per device**: the server counts the rows the calling phone uploaded (user and device from the token; the body `device_uuid` must equal the token's device, else 401 `ERR_DEVICE_PROOF_INVALID`).
 - **Rows counted**: those the server acked as stored, `accepted` or `duplicate` of a stored row (registry `accepted` or `voided`). Do **not** count rows acked `rejected` or `quarantined`, nor parked ones still waiting.
