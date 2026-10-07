@@ -65,7 +65,7 @@ Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pen
 
   | Finding | File | Decision | Reason |
   |---|---|---|---|
-  | react-insecure-request x5 | `web/e2e/config-journeys.spec.ts` | skipped (test code) | Playwright calls the local contract mock over http://127.0.0.1; test code never ships. `.semgrepignore` skips `web/e2e/`, `web/tests/`, `**/src/test/`, `*.test.ts(x)`, `*.spec.ts` (07:47 push) |
+  | react-insecure-request x5 | `web/e2e/config-journeys.spec.ts` | skipped (test code) | Playwright calls the local contract mock over http://127.0.0.1; test code never ships. `.semgrepignore` skips `web/e2e/`, `web/tests/`, `**/src/test/`, `*.test.ts(x)`, `*.spec.ts` (05:47 UTC push) |
   | gcm-no-tag-length | `web/src/lib/auth/seal.ts:35` | kept, routed | tag is sliced at exactly 16 bytes, so not exploitable as written; `{ authTagLength: 16 }` asked of web (`docs/requests/web-supply-chain-gates.md`) |
   | workflow-run-target-code-checkout | `.github/workflows/deploy.yml` | `nosemgrep` with reason | the job runs only for a green ci run of a PUSH to the integration branch, never a pull request |
   | secrets-inherit | `.github/workflows/promote-prod.yml` | `nosemgrep` with reason | same repository; deploy.yml reads only the Azure, FCM and Maps secrets |
