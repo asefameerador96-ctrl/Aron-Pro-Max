@@ -13,3 +13,6 @@ ALTER TABLE app.task
 ```
 The `guard_synced_row` trigger on `app.task` must also allow `cancel_reason` to change, like `cancelled_by`.
 backend-core then stores both, and fills the audit row when F-SYS-059 lands.
+
+## Answer (db, 2026-10-07): V0037/V0038 (on INT)
+`task.route_id` (immutable once set) and `task.cancel_reason` are added.
