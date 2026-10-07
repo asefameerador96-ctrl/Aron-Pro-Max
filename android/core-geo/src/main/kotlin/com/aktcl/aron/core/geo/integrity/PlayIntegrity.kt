@@ -16,7 +16,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Why no Play Integrity token was produced. Sent as the explicit marker (REQUEST: android-geo-dpc-integrity-marker). */
+/** Why no Play Integrity token was produced: contract `PlayIntegrityUnavailable.reason` (v1.2). */
 enum class IntegrityUnavailable(val wire: String) {
     NO_PLAY_SERVICES("no_play_services"),
     NOT_CONFIGURED("not_configured"),
@@ -29,7 +29,10 @@ enum class IntegrityUnavailable(val wire: String) {
 sealed interface IntegrityResult {
     /** Contract `PlayIntegrityEvidence`. */
     data class Evidence(val token: String, val nonce: String) : IntegrityResult
-    data class Unavailable(val reason: IntegrityUnavailable, val detail: String? = null) : IntegrityResult
+    /** Contract `PlayIntegrityUnavailable`; [detail] is cut to the contract's 80 characters. */
+    data class Unavailable(val reason: IntegrityUnavailable, val detail: String? = null) : IntegrityResult {
+        val wireDetail: String? get() = detail?.take(80)
+    }
 }
 
 /** Produces a Play Integrity token bound to [requestHash]. */
