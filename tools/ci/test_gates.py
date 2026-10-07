@@ -8,6 +8,8 @@ Each gate is proven to FAIL on a deliberate violation and to pass on a clean inp
   gitleaks.toml         a token fails anywhere except the generated contract/slices/ (needs gitleaks)
   osv-gate.py           a high in a production dependency fails; dev-only warns; a dated allow line passes, an
                         expired one does not; the real web lockfile scanned by osv-scanner (when installed)
+  release-apks.py       one APK per app or per-ABI splits both list correctly; a missing universal APK or an
+                        unknown file name fails
   install-scripts-check.py  a new package with an install script fails; the reviewed ones pass
 Binaries: OASDIFF and SQUAWK (paths) or on PATH; a test that needs a missing binary is skipped, never faked.
 """
@@ -311,6 +313,44 @@ class InstallScripts(unittest.TestCase):
                             str(HERE / "npm-install-scripts.txt")], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn("ignore-scripts=true", (ROOT / "web" / ".npmrc").read_text())
+
+
+class ReleaseApks(unittest.TestCase):
+    def run_list(self, files):
+        with tempfile.TemporaryDirectory() as t:
+            for app, names in files.items():
+                d = Path(t) / "android" / f"app-{app}" / "build" / "outputs" / "apk" / "release"
+                d.mkdir(parents=True)
+                for n in names:
+                    (d / n).write_bytes(b"apk")
+            r = subprocess.run([sys.executable, str(HERE / "release-apks.py"), t], capture_output=True, text=True)
+            rows = [l.split("\t")[:4] for l in r.stdout.splitlines()]
+            return r.returncode, rows, r.stderr
+
+    def test_single_apk_per_app(self):
+        rc, rows, err = self.run_list({a: [f"app-{a}-release-unsigned.apk"] for a in ("sr", "amo", "tso")})
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(rows, [[a, "universal", f"{a}-release", f"aron-{a}"] for a in ("sr", "amo", "tso")])
+
+    def test_abi_splits(self):
+        split = lambda a: [f"app-{a}-{v}-release-unsigned.apk" for v in ("universal", "arm64-v8a", "armeabi-v7a")]
+        rc, rows, err = self.run_list({a: split(a) for a in ("sr", "amo", "tso")})
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(rows[:3], [["sr", "universal", "sr-release", "aron-sr"],
+                                    ["sr", "arm64-v8a", "sr-release-arm64-v8a", "aron-sr-arm64-v8a"],
+                                    ["sr", "armeabi-v7a", "sr-release-armeabi-v7a", "aron-sr-armeabi-v7a"]])
+        self.assertEqual(len(rows), 9)
+
+    def test_missing_universal_or_unknown_name_fails(self):
+        files = {a: [f"app-{a}-release-unsigned.apk"] for a in ("sr", "amo", "tso")}
+        files["amo"] = ["app-amo-arm64-v8a-release-unsigned.apk"]
+        rc, _, err = self.run_list(files)
+        self.assertEqual(rc, 1)
+        self.assertIn("amo: no universal", err)
+        files["amo"] = ["app-amo-release-unsigned.apk", "app-amo-mips-release-unsigned.apk"]
+        rc, _, err = self.run_list(files)
+        self.assertEqual(rc, 1)
+        self.assertIn("unexpected release output", err)
 
 
 if __name__ == "__main__":
