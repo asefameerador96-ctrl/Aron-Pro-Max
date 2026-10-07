@@ -30,6 +30,12 @@ class DayConfig {
     @Volatile var checkoutEarliestMinutes: Int = DEFAULT_CHECKOUT_MINUTES
         private set
 
+    /** `cfg.auth.offline_unlock_max_days` / `_max_attempts` as configured (null: not set); kept in the session profile. */
+    @Volatile var offlineMaxDays: Int? = null
+        private set
+    @Volatile var offlineMaxAttempts: Int? = null
+        private set
+
     /** `cfg.sync.checkout_jitter_s` (default 90; the scheduler caps it at doc 17 T7's 120). */
     @Volatile var checkoutJitterS: Int = DEFAULT_CHECKOUT_JITTER_S
         private set
@@ -45,6 +51,8 @@ class DayConfig {
             requirePrecise = value("cfg.geo.require_precise")?.booleanOrNull ?: d.requirePrecise,
         )
         checkoutEarliestMinutes = minutesOf(value("cfg.day.checkout_earliest_time")?.contentOrNull) ?: DEFAULT_CHECKOUT_MINUTES
+        offlineMaxDays = value("cfg.auth.offline_unlock_max_days")?.intOrNull
+        offlineMaxAttempts = value("cfg.auth.offline_unlock_max_attempts")?.intOrNull
         checkoutJitterS = value("cfg.sync.checkout_jitter_s")?.intOrNull?.takeIf { it in 0..600 } ?: DEFAULT_CHECKOUT_JITTER_S
         // Emergency off-days arrive only in a config delta (calendar_changes, D-542), so both sections count.
         calendar = runCatching { ref.section("calendar")?.let { Calendar.parse(it, ref.section("calendar_changes")) } }.getOrNull()

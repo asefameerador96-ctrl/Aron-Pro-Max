@@ -127,6 +127,8 @@ class DeviceRuntime(
         } catch (_: Exception) {
             return // keep the previous settings
         }
+        // F-SYS-052: the offline-unlock limits live in the session profile (read before any database is open).
+        runCatching { components.session.noteOfflineUnlockConfig(userId, dayConfig.offlineMaxDays, dayConfig.offlineMaxAttempts) }
         if (reevaluate) runCatching { policy().reevaluateBlocking() }
     }
 

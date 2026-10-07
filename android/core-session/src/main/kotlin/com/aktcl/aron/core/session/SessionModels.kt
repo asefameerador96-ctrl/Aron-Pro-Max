@@ -43,6 +43,10 @@ data class UserProfile(
     val memoSeqBlockSize: Int? = null,
     val configVersion: Long? = null,
     val scopeVersion: Long? = null,
+    /** `cfg.auth.offline_unlock_max_days` from this user's bundle (1..14); null: the default 7 (F-SYS-052). */
+    val offlineMaxDays: Int? = null,
+    /** `cfg.auth.offline_unlock_max_attempts` from this user's bundle (3..20); null: the default 10. */
+    val offlineMaxAttempts: Int? = null,
 ) {
     override fun toString(): String =
         "UserProfile(userId=$userId, username=$username, role=$role, locale=$locale, offlineFailures=$offlineFailures, verifier=***)"

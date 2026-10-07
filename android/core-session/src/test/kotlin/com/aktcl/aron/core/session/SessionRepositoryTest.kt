@@ -210,6 +210,36 @@ class SessionRepositoryTest {
         assertEquals(OfflineRefusal.EXPIRED, (phone.session.login("sr334001", "secret-1") as LoginOutcome.OfflineUnavailable).refusal)
     }
 
+    /** F-SYS-052 follow-up: the user's cfg.auth.offline_unlock_max_days and _max_attempts replace 7 and 10; bad values do not. */
+    @Test
+    fun theUsersConfiguredOfflineLimitsApply() = runTest {
+        val phone = Phone()
+        phone.loginOnline("secret-1")
+        val id = (phone.session.state.value as SessionState.Active).user.userId
+        phone.session.noteOfflineUnlockConfig(id, maxDays = 3, maxAttempts = 3)
+        phone.logoutOnline()
+        server.close()
+        repeat(2) { assertEquals(OfflineRefusal.WRONG_PASSWORD, (phone.session.login("sr334001", "wrong") as LoginOutcome.OfflineUnavailable).refusal) }
+        // The third failure starts the cool-down (default would allow ten).
+        phone.session.login("sr334001", "wrong")
+        assertEquals(OfflineRefusal.COOLDOWN, (phone.session.login("sr334001", "secret-1") as LoginOutcome.OfflineUnavailable).refusal)
+    }
+
+    @Test
+    fun aConfiguredOfflineWindowAppliesAndOutOfBoundsValuesAreIgnored() = runTest {
+        val other = Phone()
+        other.loginOnline("secret-1")
+        val id2 = (other.session.state.value as SessionState.Active).user.userId
+        other.session.noteOfflineUnlockConfig(id2, maxDays = 99, maxAttempts = 1) // outside 1..14 and 3..20: defaults hold
+        other.session.noteOfflineUnlockConfig(id2, maxDays = 3, maxAttempts = null)
+        other.logoutOnline()
+        clock.now += 3 * 86_400_000L
+        assertTrue(other.session.login("sr334001", "secret-1") is LoginOutcome.LoggedIn)
+        other.session.logout()
+        clock.now += 1
+        assertEquals(OfflineRefusal.EXPIRED, (other.session.login("sr334001", "secret-1") as LoginOutcome.OfflineUnavailable).refusal)
+    }
+
     /**
      * F-SYS-052 checker: rebooting every morning and setting the date back to just after the last unlock used to keep the
      * 7-day window open forever. The uptime of each boot now counts, so the window closes after 7 days of use.
