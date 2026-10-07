@@ -58,11 +58,14 @@ fun SrApp(
     val scope = rememberCoroutineScope()
     var outlets by remember { mutableStateOf<List<OutletEntity>>(emptyList()) }
     var tick by remember { mutableStateOf(0) }
+    var loaded by remember { mutableStateOf(false) } // day data read: the home header and banners re-read after this
+    val tasks by day.taskBoard.state.collectAsState()
 
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
     LaunchedEffect(Unit) {
-        day.refreshStamp(); outlets = day.todaysOutlets(); day.nextSequenceFromStore()
+        day.refreshStamp(); outlets = day.todaysOutlets(); day.nextSequenceFromStore(); day.taskBoard.load()
         day.attendance.restore(day.attendanceToday())
+        loaded = true
         permissions.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.CAMERA))
     }
     LaunchedEffect(tick) { day.attendance.tick() }
@@ -70,10 +73,11 @@ fun SrApp(
 
     when (screen) {
         SrScreen.HOME -> {
+            if (!loaded) return
             val header = HomeModel.header(
                 "SR", user.fullName, user.username, day.route?.name, day.route?.visitKind, day.businessDate(),
             )
-            HomeContent(header, HomeTiles.resolve(emptySet(), day.taskBoard.state.value.openCount), day.freshness, user.offline, health, onTile = { t ->
+            HomeContent(header, HomeTiles.resolve(emptySet(), tasks.openCount), day.freshness, user.offline, health, onTile = { t ->
                 when (t) {
                     HomeTile.ATTENDANCE -> screen = SrScreen.ATTENDANCE
                     HomeTile.STOCK -> screen = SrScreen.STOCK
