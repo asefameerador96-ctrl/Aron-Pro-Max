@@ -27,6 +27,10 @@ export const OPS = {
   "device-otp.issue": { method: "POST", path: "/v1/admin/device-otps", roles: SUPPORT_UP, reason: "reason" },
   // F-ADM-013 and every config page: one change request (the registry decides applied, scheduled or pending approval)
   "config.change": { method: "POST", path: "/v1/admin/config/changes", roles: ADMINS, reason: "reason" },
+  // F-ADM-042 P5 approve, reject, cancel, adopt (a note is the contract's reason member here)
+  "config.decide": { method: "POST", path: "/v1/admin/config/changes/{change_id}/decision", roles: ADMINS, reason: "note" },
+  // F-ADM-043 P6 revert or roll back to a version (always creates a NEW version)
+  "config.rollback": { method: "POST", path: "/v1/admin/config/versions/{version}/rollback", roles: ADMINS, reason: "reason" },
 } as const satisfies Record<string, OpDef>;
 
 export type OpKey = keyof typeof OPS;
