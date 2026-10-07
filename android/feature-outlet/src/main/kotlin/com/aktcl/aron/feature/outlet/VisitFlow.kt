@@ -11,6 +11,8 @@ import com.aktcl.aron.rules.OutletGeo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** What the visit screen shows (F-SR-017). */
 sealed interface VisitUiState {
@@ -29,6 +31,12 @@ sealed interface VisitUiState {
 
     /** The visit row is committed; the sale may continue. */
     data class Open(val visit: OpenVisit) : VisitUiState
+
+    /** Location is off or precise location is denied: the visit screen is blocked until fixed; no Force Sale (docs/24 s11.2). */
+    data class LocationBlocked(val reason: String) : VisitUiState
+
+    /** The commit failed (database error): nothing was written; the rep may try again. */
+    data class CommitFailed(val outlet: VisitOutlet) : VisitUiState
 
     /** Mock policy `block_sale`: the visit is recorded and the rep sees "mock location detected". */
     data class Blocked(val visit: OpenVisit) : VisitUiState
@@ -73,46 +81,60 @@ class VisitFlow(
     private val nowIso: () -> String,
     /** The visit's order of the day (1-based), supplied by the sale picker. */
     private val nextSequenceNo: () -> Int,
+    /** Called after a `blocked` visit is committed: the shell writes its `visit_close` with outcome `abandoned` (s11.2). */
+    private val onBlocked: suspend (OpenVisit) -> Unit = {},
 ) {
+    private val lock = Mutex()
+    private var visitUuid: String = ""
+
     private val ui = MutableStateFlow<VisitUiState>(VisitUiState.Idle)
     val state: StateFlow<VisitUiState> = ui.asStateFlow()
 
     private var outlet: VisitOutlet? = null
     private var refreshCount = 0
     private var lastFix: FixReading? = null
+    private var fixUuid: String? = null
 
     /** Selecting an outlet: one fix, one verdict, and a committed visit when the verdict is final. */
-    suspend fun open(selected: VisitOutlet): VisitUiState {
+    suspend fun open(selected: VisitOutlet): VisitUiState = lock.withLock {
+        check(session.current.value == null) { "a visit is already open: close it first" }
         outlet = selected
         refreshCount = 0
-        return evaluate(fixes.readFix(PURPOSE_VISIT))
+        fixUuid = null
+        visitUuid = newUuid() // minted once per open(): a retried commit reuses it and cannot create a second visit
+        ui.value = VisitUiState.ReadingFix
+        evaluate(fixes.readFix(PURPOSE_VISIT))
     }
 
     /** Refresh GPS: re-read one fix and re-evaluate, capped by `cfg.geo.refresh_max` per outlet. */
-    suspend fun refresh(): VisitUiState {
+    suspend fun refresh(): VisitUiState = lock.withLock {
         val cur = ui.value
         check(cur is VisitUiState.NeedsDecision) { "refresh only applies while the geo check is undecided" }
-        if (!cur.refreshLeft) return cur
+        if (!cur.refreshLeft) return@withLock cur
         refreshCount += 1
-        return evaluate(fixes.readFix(PURPOSE_REFRESH))
+        ui.value = VisitUiState.ReadingFix
+        evaluate(fixes.readFix(PURPOSE_REFRESH))
     }
 
     /**
      * Force Sale: allowed only when the geo check says so. [reasonCode] is a `force_reason` code (internet_problem or
      * location_change), [photoUuid] the outlet photo (required when `cfg.sale.force_requires_photo`).
      */
-    suspend fun forceSale(reasonCode: String, photoUuid: String?): VisitUiState {
+    suspend fun forceSale(reasonCode: String, photoUuid: String?): VisitUiState = lock.withLock {
         val cur = ui.value
         check(cur is VisitUiState.NeedsDecision && cur.forceSaleAvailable) { "force sale is not available" }
         require(reasonCode.matches(REASON)) { "reason code shape" }
         require(!settings().forceRequiresPhoto || photoUuid != null) { "an outlet photo is required for a force sale" }
-        return commit(cur.outlet, cur.result, GeoAction.FORCE_SALE, reasonCode, photoUuid)
+        require(photoUuid == null || ClientIds.isUuidV4(photoUuid)) { "photo id must be a client uuid" }
+        commit(cur.outlet, cur.result, GeoAction.FORCE_SALE, reasonCode, photoUuid)
     }
 
     private suspend fun evaluate(fix: FixReading): VisitUiState {
         val o = checkNotNull(outlet)
         lastFix = fix
-        ui.value = VisitUiState.ReadingFix
+        if (fix.status == "permission_denied" || fix.status == "location_off") {
+            return VisitUiState.LocationBlocked(fix.status).also { ui.value = it }
+        }
         val policy = settings().policyBase.copy(refreshCount = refreshCount)
         val result = GeoVerdicts.verdict(
             fix = FixInput(fix.isOk, fix.lat ?: Double.NaN, fix.lng ?: Double.NaN, fix.accuracyM, fix.isMock),
@@ -135,20 +157,43 @@ class VisitFlow(
         }
     }
 
+    /** After [VisitUiState.CommitFailed]: tries the same commit again with the same visit and fix ids. */
+    suspend fun retryCommit(): VisitUiState = lock.withLock {
+        check(ui.value is VisitUiState.CommitFailed) { "nothing to retry" }
+        val a = checkNotNull(pending)
+        commit(a.o, a.result, a.action, a.reason, a.photoUuid)
+    }
+
+    private class Pending(val o: VisitOutlet, val result: GeoVerdictResult, val action: GeoAction, val reason: String?, val photoUuid: String?)
+    private var pending: Pending? = null
+
     private suspend fun commit(o: VisitOutlet, result: GeoVerdictResult, action: GeoAction, reason: String?, photoUuid: String?): VisitUiState {
+        pending = Pending(o, result, action, reason, photoUuid)
         val fix = checkNotNull(lastFix)
-        val visitUuid = newUuid()
-        val purpose = if (action == GeoAction.FORCE_SALE) "force_sale" else PURPOSE_VISIT
-        val fixEntity = fix.toEntity(newUuid(), visitUuid, purpose, refreshCount)
-        val opened = nowIso()
+        val purpose = when {
+            action == GeoAction.FORCE_SALE -> "force_sale"
+            refreshCount > 0 -> PURPOSE_REFRESH
+            else -> PURPOSE_VISIT
+        }
+        val fixEntity = fix.toEntity(fixUuid ?: newUuid().also { fixUuid = it }, visitUuid, purpose, refreshCount)
+        val meta = metaProvider.meta(o.routeId)
+        val opened = meta.capturedAt
         val visit = VisitEntity(
-            clientUuid = visitUuid, meta = metaProvider.meta(o.routeId), visitKind = o.visitKind, outletId = o.outletId,
+            clientUuid = visitUuid, meta = meta, visitKind = o.visitKind, outletId = o.outletId,
             openedAt = opened, sequenceNo = nextSequenceNo(), planned = o.planned, fixClientUuid = fixEntity.clientUuid,
             geoVerdict = result.verdict.wire, geoDistanceM = result.distanceM, geoRadiusMUsed = o.radiusM,
             geoMaxAccuracyMUsed = o.maxAccuracyM, geoLocationBasis = o.locationBasis, geoOutletLat = o.lat, geoOutletLng = o.lng,
             geoAction = action.wire, geoForceReasonCode = reason, geoForcePhotoUuid = photoUuid,
         )
-        committer.commit(visit, fixEntity)
+        try {
+            committer.commit(visit, fixEntity)
+        } catch (t: kotlinx.coroutines.CancellationException) {
+            throw t
+        } catch (t: Throwable) {
+            val st = VisitUiState.CommitFailed(o)
+            ui.value = st
+            return st
+        }
         val open = OpenVisit(
             visitUuid = visitUuid, outletId = o.outletId, routeId = o.routeId, geoVerdict = result.verdict.wire,
             geoAction = action.wire, geoValidated = result.verdict == GeoVerdict.IN_RANGE,
@@ -157,6 +202,7 @@ class VisitFlow(
         val st = if (action == GeoAction.BLOCKED) VisitUiState.Blocked(open) else VisitUiState.Open(open)
         if (action != GeoAction.BLOCKED) session.set(open)
         ui.value = st
+        if (action == GeoAction.BLOCKED) onBlocked(open)
         return st
     }
 

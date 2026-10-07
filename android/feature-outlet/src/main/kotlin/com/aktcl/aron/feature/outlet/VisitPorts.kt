@@ -21,7 +21,7 @@ interface LocationFixSource {
 
 /** The fix and the device-integrity facts read with it; mirrors `GeoFix` and `FixDeviceState` of the contract. */
 data class FixReading(
-    /** `ok`, `timeout`, `denied` or `unavailable`. */
+    /** Contract `FixStatus`: `ok`, `timeout`, `permission_denied`, `location_off` or `provider_unavailable`. */
     val status: String,
     val lat: Double?,
     val lng: Double?,
@@ -32,6 +32,7 @@ data class FixReading(
     val fixElapsedRealtimeMs: Long? = null,
     val fixAgeMs: Long? = null,
     val timeToFixMs: Long? = null,
+    /** `high_accuracy` or `balanced` (contract enum). */
     val requestPriority: String? = "balanced",
     val reused: Boolean = false,
     val gnssJson: String? = null,

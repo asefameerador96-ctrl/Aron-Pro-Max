@@ -4,6 +4,7 @@ import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.VisitEntity
 import com.aktcl.aron.rules.MockPolicy
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -176,5 +177,83 @@ class VisitFlowTest {
         assertEquals(50, v.geoMaxAccuracyMUsed)
         assertEquals("master", v.geoLocationBasis)
         assertEquals(1, v.sequenceNo)
+    }
+
+    @Test fun permissionDeniedAndLocationOffBlockWithNoForceSale() = runTest {
+        listOf("permission_denied", "location_off").forEach { st ->
+            val (f, rec, _) = flow(List(4) { fix(status = st, acc = null) })
+            val r = f.open(outlet)
+            assertTrue(r is VisitUiState.LocationBlocked); assertTrue(rec.visits.isEmpty())
+            assertTrue(runCatching { f.forceSale("internet_problem", UUID.randomUUID().toString()) }.isFailure)
+        }
+    }
+
+    @Test fun readingFixIsShownDuringTheRead() = runTest {
+        val seen = mutableListOf<VisitUiState>()
+        lateinit var fl: VisitFlow
+        val src = object : LocationFixSource { override suspend fun readFix(purpose: String): FixReading { seen += fl.state.value; return fix() } }
+        val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
+        fl = VisitFlow(src, meta, Recorder(), VisitSession(), { GeoSettings.DEFAULT }, { UUID.randomUUID().toString() }, { "x" }, { 1 })
+        fl.open(outlet)
+        assertEquals(VisitUiState.ReadingFix, seen.single())
+    }
+
+    @Test fun concurrentForceSaleCommitsOnce() = runTest {
+        val far = fix(lat = farLat())
+        val (f, rec, _) = flow(List(4) { far })
+        f.open(outlet); repeat(3) { f.refresh() }
+        val photo = UUID.randomUUID().toString()
+        val a = async { runCatching { f.forceSale("location_change", photo) } }
+        val b = async { runCatching { f.forceSale("location_change", photo) } }
+        a.await(); b.await()
+        assertEquals(1, rec.visits.size)
+    }
+
+    @Test fun concurrentRefreshRespectsTheCap() = runTest {
+        val far = fix(lat = farLat())
+        val (f, _, src) = flow(List(10) { far })
+        f.open(outlet); repeat(2) { f.refresh() } // one refresh left
+        val a = async { runCatching { f.refresh() } }
+        val b = async { runCatching { f.refresh() } }
+        a.await(); b.await()
+        assertEquals(4, src.reads)
+    }
+
+    @Test fun photoIdMustBeAUuid() = runTest {
+        val far = fix(lat = farLat())
+        val (f, rec, _) = flow(List(4) { far })
+        f.open(outlet); repeat(3) { f.refresh() }
+        assertTrue(runCatching { f.forceSale("location_change", "photo-1") }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(rec.visits.isEmpty())
+    }
+
+    @Test fun committerFailureIsRecoverableAndRetryReusesTheIds() = runTest {
+        var fail = true
+        val seen = mutableListOf<Pair<VisitEntity, GeoFixEntity>>()
+        val committer = VisitCommitter { v, g -> seen += v to g; if (fail) error("disk") }
+        val src = FakeFixes(ArrayDeque(listOf(fix())))
+        val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
+        val session = VisitSession()
+        val f = VisitFlow(src, meta, committer, session, { GeoSettings.DEFAULT }, { UUID.randomUUID().toString() }, { "x" }, { 1 })
+        assertTrue(f.open(outlet) is VisitUiState.CommitFailed); assertNull(session.current.value)
+        fail = false
+        assertTrue(f.retryCommit() is VisitUiState.Open)
+        assertEquals(seen[0].first.clientUuid, seen[1].first.clientUuid); assertEquals(seen[0].second.clientUuid, seen[1].second.clientUuid)
+    }
+
+    @Test fun blockedVisitIsHandedToTheCloser() = runTest {
+        val s = GeoSettings.DEFAULT.copy(policyBase = GeoSettings.DEFAULT.policyBase.copy(mockPolicy = MockPolicy.BLOCK_SALE))
+        var closed: OpenVisit? = null
+        val src = FakeFixes(ArrayDeque(listOf(fix(mock = true))))
+        val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
+        val f = VisitFlow(src, meta, Recorder(), VisitSession(), { s }, { UUID.randomUUID().toString() }, { "x" }, { 1 }, { closed = it })
+        f.open(outlet)
+        assertEquals("blocked", closed?.geoAction)
+    }
+
+    @Test fun openingASecondOutletWhileOneIsOpenIsRefused() = runTest {
+        val (f, _, _) = flow(listOf(fix(), fix()))
+        f.open(outlet)
+        assertTrue(runCatching { f.open(outlet.copy(outletId = 2)) }.exceptionOrNull() is IllegalStateException)
     }
 }
