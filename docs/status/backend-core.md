@@ -50,7 +50,11 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
    without a home zone (BC-74); digest never asks for a `resync_late` row older than the floor (BC-74).
 5. **Lead note:** a released quarantine must leave the registry row `accepted` (same uuid, user, device) or the digest
    re-sends daily; check it when backend-reports wires the acceptor.
-6. T2 rows after N-027: `python3 tools/my-rows.py backend-core --todo` (F-API-019/055, F-SYS-025/035/050/057/084/091, N-044).
+6. **F-SYS-091** (T2, S) waits on db `backend-core-registry-flags-more.md` (flag storage for `config_stamp_regress` and
+   `checkout_too_early`). Design: at ingest, a row whose `config_version` is below the device's highest
+   `cfg_ack.acked_config_version` applied before its `captured_at` is accepted and flagged; the third flagged row of the
+   device and date raises `CONFIG_STAMP_REGRESS` (s11.4: severity 2, weight 20). Read the device's acks once per batch.
+7. T2 rows after N-027: `python3 tools/my-rows.py backend-core --todo` (F-API-019/055, F-SYS-025/035/050/057/084/091, N-044).
 
 ## Session 8 (2026-10-07, start here)
 - INT already merged at the start (no new commits on INT).
