@@ -171,7 +171,12 @@ class Wiring(
                 System.getenv("ARON_PUBLIC_API_URL") ?: "https://localhost:8080", s.env.name.lowercase(),
                 AttestationTrust(System.getenv("ARON_ATTESTATION_ROOTS").orEmpty().split(',').map { it.trim().lowercase() }.filter { it.length == 64 }.toSet()),
             )
-            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock), reach, guard, clock)
+            // N-027: Play Integrity decode with its own service account, else the FCM one (same Google project); verdicts stay unevaluated without either.
+            val integrityDecoder = (s.playIntegrityServiceAccountJson ?: s.fcmServiceAccountJson)?.let { sa ->
+                runCatching { com.aktcl.aron.backend.notify.GooglePlayIntegrityDecoder(sa) }
+                    .onFailure { org.slf4j.LoggerFactory.getLogger("aron.wiring").error("play integrity service account unreadable (${it.javaClass.simpleName}); verdicts stay unevaluated") }.getOrNull()
+            }
+            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder), reach, guard, clock)
             val ops = OpsDeps(OpsService(db, config, clock), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
             val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)

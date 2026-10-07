@@ -43,12 +43,15 @@ data class Settings(
     val frontDoorId: String? = null,
     /** Firebase service account JSON for FCM (Key Vault `aron-fcm-service-account`); push is off without it. */
     val fcmServiceAccountJson: Secret? = null,
+    /** Google service account allowed to call Play Integrity `decodeIntegrityToken` (N-027); falls back to the FCM one; verdicts stay unevaluated without either. */
+    val playIntegrityServiceAccountJson: Secret? = null,
 ) {
     /** Like the data-class form, with credentials in the database URLs redacted (secrets are never printed). */
     override fun toString(): String =
         "Settings(role=$role, env=$env, port=$port, build=$build, dbUrl=${redactUrl(dbUrl)}, dbUser=$dbUser, dbPassword=$dbPassword, " +
             "dbReadUrl=${dbReadUrl?.let(::redactUrl)}, dbPoolMax=$dbPoolMax, dbReadPoolMax=$dbReadPoolMax, jwtSigningKeyPem=$jwtSigningKeyPem, " +
-            "jwtKid=$jwtKid, jwtNextKid=$jwtNextKid, hashConcurrency=$hashConcurrency, hashQueueMax=$hashQueueMax, frontDoorId=$frontDoorId, fcmServiceAccountJson=$fcmServiceAccountJson)"
+            "jwtKid=$jwtKid, jwtNextKid=$jwtNextKid, hashConcurrency=$hashConcurrency, hashQueueMax=$hashQueueMax, frontDoorId=$frontDoorId, fcmServiceAccountJson=$fcmServiceAccountJson, " +
+            "playIntegrityServiceAccountJson=$playIntegrityServiceAccountJson)"
 
     companion object {
         /** Removes `password=...` parameters and `user:password@` credentials from a JDBC URL. */
@@ -102,6 +105,7 @@ data class Settings(
                 hashQueueMax = src.int("ARON_HASH_QUEUE_MAX", 32),
                 frontDoorId = src.get("ARON_FRONT_DOOR_ID"),
                 fcmServiceAccountJson = src.secret("ARON_FCM_SERVICE_ACCOUNT_JSON"),
+                playIntegrityServiceAccountJson = src.secret("ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON"),
             )
         }
     }

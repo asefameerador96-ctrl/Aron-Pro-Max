@@ -43,6 +43,8 @@ class DeviceEnrolmentTest : ReportFixture() {
     private val now = Instant.parse("2026-10-04T12:00:00Z")
     private lateinit var trustedRoots: MutableSet<String>
     private lateinit var service: DeviceService
+    /** N-027: what the fake Google decode answers (the payload JSON), by token. */
+    private val decoded = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     override val extraSql = """
         INSERT INTO app.app_release (flavour, version_name, version_code, abi, sha256, size_bytes, download_url, signing_cert_sha256, status, created_by, published_at, published_by)
@@ -52,7 +54,8 @@ class DeviceEnrolmentTest : ReportFixture() {
 
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
         trustedRoots = mutableSetOf()
-        service = DeviceService(fresh.db, RegistryDefaults(), TestTokens.keys, EnrolmentSettings("https://api.example.test", "dev", AttestationTrust(trustedRoots)), clock)
+        service = DeviceService(fresh.db, RegistryDefaults(), TestTokens.keys, EnrolmentSettings("https://api.example.test", "dev", AttestationTrust(trustedRoots)), clock,
+            integrity = com.aktcl.aron.backend.platform.PlayIntegrityDecoder { pkg, token -> decoded[token]?.takeIf { pkg == "com.aktcl.aron.sr" } ?: error("refused") })
         r.deviceRoutes(DeviceDeps(service, reach, guard, clock))
     }
 
@@ -351,5 +354,47 @@ class DeviceEnrolmentTest : ReportFixture() {
         assertEquals(HttpStatusCode.OK, client.post("/v1/admin/devices/$id/state") { bearerAuth(TestTokens.web(13, Role.ADMIN)); contentType(ContentType.Application.Json); setBody("""{"action":"revoke","reason":"lost phone, reported by the SR"}""") }.status)
         val again = enrol(enrolBody(secret, phone, chain))
         assertNotEquals(HttpStatusCode.Created, again.status, again.bodyAsText())
+    }
+
+    /** A standard-request payload as Google decodes it, bound to [nonce] and the phone unless told otherwise. */
+    private fun payload(phone: Phone, nonce: String, verdicts: String, pkg: String = "com.aktcl.aron.sr", at: Long = now.toEpochMilli() - 30_000) =
+        """{"requestDetails":{"requestPackageName":"$pkg","requestHash":"${com.aktcl.aron.backend.platform.PlayIntegrityCheck.requestHash(nonce, phone.uuid)}","timestampMillis":"$at"},""" +
+            """"appIntegrity":{"appRecognitionVerdict":"UNRECOGNIZED_VERSION","packageName":"$pkg","certificateSha256Digest":["${Base64.getUrlEncoder().withoutPadding().encodeToString(certDigest)}"]},"deviceIntegrity":{"deviceRecognitionVerdict":[$verdicts]}}"""
+
+    private fun verdictOf(phone: Phone) = fresh.db.jdbi.withHandle<String, Exception> { it.createQuery("SELECT integrity_verdict FROM app.device WHERE device_uuid = CAST(:u AS uuid)").bind("u", phone.uuid).mapTo(String::class.java).one() }
+
+    @Test
+    fun playIntegrityIsDecodedOnTheServerAndOnlyAGenuineVerdictMovesTheDevice() = app {
+        val t = mintToken(maxUses = 2); val secret = t.s("enrolment_token"); val phone = Phone()
+        assertEquals(HttpStatusCode.Created, enrol(enrolBody(secret, phone, goodChain(phone, secret))).status)
+        suspend fun nonce() = Json.parseToJsonElement(devicePost(phone, "/v1/devices/nonce", "").bodyAsText()).jsonObject.s("nonce")
+        suspend fun report(token: String, nonce: String) = devicePost(phone, "/v1/devices/me/status", status(extra = ""","play_integrity":{"token":"$token","nonce":"$nonce"}"""))
+        assertEquals("unevaluated", verdictOf(phone))
+
+        // A token for another nonce (a replay of an older pass) and one Google refuses: unevaluated, nothing moves.
+        val n1 = nonce(); decoded["tok-other"] = payload(phone, "x".repeat(43), "\"MEETS_DEVICE_INTEGRITY\"")
+        assertEquals(HttpStatusCode.OK, report("tok-other", n1).status); assertEquals("unevaluated", verdictOf(phone))
+        assertEquals(HttpStatusCode.OK, report("tok-refused", nonce()).status); assertEquals("unevaluated", verdictOf(phone))
+        // A stale token and one for another package: unevaluated.
+        val n2 = nonce(); decoded["tok-stale"] = payload(phone, n2, "\"MEETS_DEVICE_INTEGRITY\"", at = now.toEpochMilli() - 3_600_000)
+        assertEquals(HttpStatusCode.OK, report("tok-stale", n2).status); assertEquals("unevaluated", verdictOf(phone))
+
+        // A genuine pass: the device passes, and the nonce is spent.
+        val n3 = nonce(); decoded["tok-pass"] = payload(phone, n3, "\"MEETS_BASIC_INTEGRITY\",\"MEETS_DEVICE_INTEGRITY\"")
+        assertEquals(HttpStatusCode.OK, report("tok-pass", n3).status); assertEquals("pass", verdictOf(phone))
+        assertEquals(1, count("SELECT count(*) FROM app.device_status_report WHERE integrity_verdict = 'pass'"))
+        assertEquals(0, count("SELECT count(*) FROM app.device_status_report WHERE report::text LIKE '%tok-pass%'"), "the token is never stored")
+
+        // The same nonce again (a replayed report), even with a failing token: unevaluated, the pass stands.
+        decoded["tok-fail-replay"] = payload(phone, n3, "\"MEETS_BASIC_INTEGRITY\"")
+        assertEquals(HttpStatusCode.OK, report("tok-fail-replay", n3).status); assertEquals("pass", verdictOf(phone))
+
+        // A genuine fail: the device fails and supervisors see DEVICE_INTEGRITY_FAIL (severity 4, weight 30) once a day.
+        val n4 = nonce(); decoded["tok-fail"] = payload(phone, n4, "\"MEETS_BASIC_INTEGRITY\"")
+        assertEquals(HttpStatusCode.OK, report("tok-fail", n4).status); assertEquals("fail", verdictOf(phone))
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'DEVICE_INTEGRITY_FAIL' AND subject_id = '${phone.uuid}' AND severity = 4 AND score = 30"))
+        val n5 = nonce(); decoded["tok-fail2"] = payload(phone, n5, "")
+        assertEquals(HttpStatusCode.OK, report("tok-fail2", n5).status)
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'DEVICE_INTEGRITY_FAIL' AND subject_id = '${phone.uuid}'"))
     }
 }

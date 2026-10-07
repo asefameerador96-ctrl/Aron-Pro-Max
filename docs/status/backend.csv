@@ -74,3 +74,4 @@ N-028,M,2026-10-07T20:25Z,2026-10-07T20:35Z,10,"Opus checker","GEO_GNSS_INCONSIS
 F-SYS-089-FLAG,S,2026-10-07T20:35Z,2026-10-07T20:42Z,7,"Opus checker","resync_late in ingest_registry.flags (BC-73)"
 F-SYS-090,M,2026-10-07T20:42Z,2026-10-07T20:55Z,13,"Opus checker","working-day backdate + digest window (BC-74)"
 F-SYS-063,M,2026-10-07T20:50Z,2026-10-07T21:00Z,10,"Opus checker","retention/partition job (BC-75)"
+N-027,L,2026-10-07T21:05Z,2026-10-07T21:50Z,45,"Opus checker FAIL then fixed","Play Integrity decode + device gate on attendance/sales (BC-76)"
