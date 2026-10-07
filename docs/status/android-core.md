@@ -81,7 +81,12 @@
 ## Handover (READY TO RECYCLE, 2026-10-07 ~18:05Z by the server clock, eighth session)
 - **Done this session.** Every row had a fresh Opus checker, and every FAIL had a re-check. Details are in "Eighth session" below.
   - Closed: F-SYS-081 phone half (round-4 re-check PASS), F-SYS-073, AUD-PERF-06 and AUD-PERF-04 (in code; the A06 numbers are D-PERF-04).
-  - Follow-ups done: F-SYS-075 consents (BC-55), F-SYS-079 config keys, F-SYS-052 `cfg.auth.offline_unlock_*`, and F-SYS-032 early crash catcher (its checker result is recorded below if it arrived; otherwise re-check b57c3dc5 first).
+  - Follow-ups done: F-SYS-075 consents (BC-55), F-SYS-079 config keys, F-SYS-052 `cfg.auth.offline_unlock_*`, and the F-SYS-032 early crash catcher (Opus check PASS).
+  - The catcher's medium finding is fixed with a test: an early crash stamped with a skewed device clock would be quarantined as out of the business-date window. The file now keeps the real boot count, and the drain rebuilds trusted time from the monotonic clock on the same boot.
+  - Accepted lows:
+    - On another boot the device time stays.
+    - A `.u0` file goes to the next user, scrubbed with that user's names.
+    - A handler that a library sets during super.onCreate can double-write one crash.
 - **In progress:** nothing.
 - **Next, in this order:**
   1. F-SYS-047 and F-SYS-080, once backend F-API-070 (`GET /sync/generation`) is on INT. It was not on INT at 17:40Z.

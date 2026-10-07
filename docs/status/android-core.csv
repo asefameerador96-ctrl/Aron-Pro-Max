@@ -40,4 +40,4 @@ AUD-PERF-04,M,2026-10-07T17:12Z,2026-10-07T17:45Z,33,4,checker FAIL: generator o
 F-SYS-075-followup,S,2026-10-07T17:38Z,2026-10-07T17:44Z,6,1,BC-55 user.consents read; Opus check PASS
 F-SYS-079-followup,S,2026-10-07T17:44Z,2026-10-07T17:50Z,6,2,cfg checkout time and jitter from DayConfig; Opus check PASS; guard test added
 F-SYS-052-followup,S,2026-10-07T17:50Z,2026-10-07T17:56Z,6,2,cfg.auth offline unlock limits via session profile; Opus check PASS (medium: login dropped values) fixed with tests
-F-SYS-032-followup,S,2026-10-07T17:56Z,2026-10-07T18:03Z,7,1,early crash catcher before Hilt; Opus check see status
+F-SYS-032-followup,S,2026-10-07T17:56Z,2026-10-07T18:08Z,12,1,early crash catcher before Hilt; Opus check PASS; medium (device-clock time) fixed with test

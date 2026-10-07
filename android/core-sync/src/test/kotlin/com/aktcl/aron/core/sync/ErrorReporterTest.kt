@@ -95,8 +95,10 @@ class ErrorReporterTest {
         var previousCalls = 0
         Thread.setDefaultUncaughtExceptionHandler { _, _ -> previousCalls++ }
         try {
-            ErrorReporter.installEarly(dir, "1.0.3+10003", nowMs = { wall }, elapsedMs = { 42L })
-            ErrorReporter.installEarly(dir, "1.0.3+10003", nowMs = { wall }, elapsedMs = { 42L }) // once
+            // The device clock is 3 hours off; the crash happened 60 s (elapsed) before the drain, on the same boot (41).
+            val deviceClock = wall + 3 * 3_600_000L
+            ErrorReporter.installEarly(dir, "1.0.3+10003", nowMs = { deviceClock }, elapsedMs = { 10_000_000L - 60_000L }, bootCount = { 41 })
+            ErrorReporter.installEarly(dir, "1.0.3+10003", nowMs = { deviceClock }, elapsedMs = { 0L }) // once
             Thread.getDefaultUncaughtExceptionHandler()!!.uncaughtException(Thread.currentThread(), IllegalStateException("hilt graph"))
             assertEquals(1, previousCalls)
             assertEquals(1, dir.listFiles { f -> f.name.endsWith(".u0.json") }!!.size)
@@ -108,6 +110,8 @@ class ErrorReporterTest {
             assertEquals(2, r.drain(7))
             val early = errorRows().map { payload(it) }.single { it["exception_class"]!!.jsonPrimitive.content == "java.lang.IllegalStateException" }
             assertEquals("crash", early["kind"]!!.jsonPrimitive.content)
+            // Rebuilt from the monotonic clock on the same boot: trusted time minus 60 s, not the device clock.
+            assertEquals(com.aktcl.aron.core.sync.SyncEngine.iso(wall - 60_000L), early["occurred_at"]!!.jsonPrimitive.content)
         } finally {
             Thread.setDefaultUncaughtExceptionHandler(before)
         }
