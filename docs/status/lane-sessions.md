@@ -8,7 +8,7 @@
 | backend-core | session_01MJ1SsuGYYncC4RgHdgyMrb | Opus | 2026-10-07 | recycled; previous session_01MBUTbmmLSATv8rnitvbFdL is retired |
 | backend-reports | session_019WhVDAstm1xPBBrp6FPKM9 | Sonnet | 2026-10-07 | |
 | backend-admin | session_01JK4kErf8frNpx25mmoyPAc | Sonnet | 2026-10-07 | |
-| android-core | session_01K8HqGn8ou9sxK5kC5ZgG3j | Opus | 2026-10-05 | context large: recycle soon |
+| android-core | session_01LQJTcDC8axvtsjBBQcJqhW | Opus | 2026-10-07 | recycled; previous session_01K8HqGn8ou9sxK5kC5ZgG3j is retired |
 | android-sr-a | session_01Gyh9KAacFpMFb35wUDq21c | Sonnet | 2026-10-07 | |
 | android-sr-b | session_01DCSzXKooAFuYYEGy9UAMSN | Sonnet | 2026-10-07 | |
 | android-geo-dpc | session_018dVKqTVsFaUht9A1J7XEst | Opus | 2026-10-07 | |
