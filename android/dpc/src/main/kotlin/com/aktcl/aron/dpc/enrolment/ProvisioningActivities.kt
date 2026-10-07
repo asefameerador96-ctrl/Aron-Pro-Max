@@ -36,9 +36,10 @@ fun acceptProvisioningExtras(context: android.content.Context, intent: Intent?):
     @Suppress("DEPRECATION")
     val bundle = intent?.getParcelableExtra<PersistableBundle>(DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE) ?: return false
     val extras = EnrolmentExtras.parse({ bundle.getString(it) }, context.packageName) ?: return false
-    Enrolment.coordinator(context)?.accept(extras) ?: Enrolment.pendingStore(context).savePending(
-        PendingEnrolment(extras, java.util.UUID.randomUUID().toString()),
-    )
+    // Without an installed coordinator, the same store and the same same-token rule apply; a replaced pending key is
+    // cleared by the coordinator's next successful enrolment (deleteAllExcept).
+    Enrolment.coordinator(context)?.accept(extras)
+        ?: Enrolment.pendingStore(context).acceptPending(extras) { java.util.UUID.randomUUID().toString() }
     return true
 }
 

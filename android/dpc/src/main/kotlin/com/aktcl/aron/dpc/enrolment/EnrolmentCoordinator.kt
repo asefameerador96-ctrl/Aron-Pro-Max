@@ -2,6 +2,8 @@ package com.aktcl.aron.dpc.enrolment
 
 import java.io.File
 import java.security.MessageDigest
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 
 /** What the server said to one enrolment call. */
@@ -44,7 +46,9 @@ data class PendingEnrolment(
     val keyAlias: String? = null,
     val publicKey: JwkEcPublic? = null,
     val chain: List<String> = emptyList(),
-)
+) {
+    override fun toString() = "PendingEnrolment(device_uuid=$deviceUuid, key=$keyAlias, $extras)"
+}
 
 sealed interface EnrolmentState {
     data object NotProvisioned : EnrolmentState
@@ -68,16 +72,22 @@ class EnrolmentCoordinator(
     private val newUuid: () -> String,
     private val onEnrolled: suspend (EnrolDeviceResponse, keyAlias: String) -> Unit,
 ) {
+    private val mutex = Mutex()
+
+    /** Stores the provisioning extras; the same token scanned again keeps the UUID and key of the first attempt. */
     fun accept(extras: EnrolmentExtras) {
-        val current = store.pending()
-        // The same QR scanned again keeps the UUID and key of the first attempt.
-        if (current != null && current.extras.enrolmentToken == extras.enrolmentToken) return
-        current?.keyAlias?.let { keys.delete(it) }
-        store.savePending(PendingEnrolment(extras, newUuid()))
+        store.acceptPending(extras, newUuid)?.let { stale -> keys.delete(stale) }
     }
 
-    suspend fun run(): EnrolmentState {
-        store.enrolled()?.let { return it }
+    /** One run at a time (app start and a background retry must never race: a race could delete the enrolled key). */
+    suspend fun run(): EnrolmentState = mutex.withLock { runLocked() }
+
+    private suspend fun runLocked(): EnrolmentState {
+        store.enrolled()?.let { done ->
+            // A post-enrolment step that failed earlier (policy apply, UUID record) is completed before anything else.
+            if (store.postEnrolPending()) store.enrolledResponse()?.let { finish(it, done.keyAlias) }
+            return done
+        }
         var p = store.pending() ?: return store.refused() ?: EnrolmentState.NotProvisioned
         if (p.keyAlias == null || p.publicKey == null || !keys.exists(p.keyAlias!!)) {
             val alias = keys.newAlias()
@@ -86,8 +96,11 @@ class EnrolmentCoordinator(
             } catch (e: Exception) {
                 return EnrolmentState.Waiting("key_create_failed")
             }
-            p = p.copy(keyAlias = alias, publicKey = jwk, chain = chain)
-            store.savePending(p)
+            // Base64 with line wraps would make a retry differ from the first send; store the canonical form.
+            val updated = p.copy(keyAlias = alias, publicKey = jwk, chain = chain.map { c -> c.filterNot { it.isWhitespace() } })
+            // Saved only if no new QR replaced the pending enrolment meanwhile.
+            if (!store.replacePending(p, updated)) { keys.delete(alias); return EnrolmentState.Waiting("superseded") }
+            p = updated
         }
         val request = EnrolDeviceRequest(
             enrolmentToken = p.extras.enrolmentToken,
@@ -102,23 +115,44 @@ class EnrolmentCoordinator(
         )
         return when (val r = try { transport.enrol(p.extras.apiBaseUrl, request) } catch (e: Exception) { EnrolCallResult.Retry("transport") }) {
             is EnrolCallResult.Retry -> EnrolmentState.Waiting(r.reason)
-            is EnrolCallResult.Refused -> {
-                p.keyAlias?.let { keys.delete(it) }
-                store.saveRefused(r.code)
-                EnrolmentState.Refused(r.code)
+            // Only a token refusal is final; any other 4xx (a bad request from an old app build) can be retried later.
+            is EnrolCallResult.Refused -> if (!r.code.startsWith("ERR_ENROLMENT_")) EnrolmentState.Waiting("refused:${r.code}") else {
+                store.enrolled() ?: run {
+                    p.keyAlias?.let { keys.delete(it) }
+                    store.saveRefused(r.code)
+                    EnrolmentState.Refused(r.code)
+                }
             }
             is EnrolCallResult.Enrolled -> {
-                if (r.response.deviceUuid != p.deviceUuid) return EnrolmentState.Waiting("device_uuid_mismatch")
-                onEnrolled(r.response, p.keyAlias!!)
+                if (r.response.deviceUuid != p.deviceUuid) {
+                    p.keyAlias?.let { keys.delete(it) }
+                    store.saveRefused(DEVICE_UUID_MISMATCH)
+                    return EnrolmentState.Refused(DEVICE_UUID_MISMATCH)
+                }
                 val done = EnrolmentState.Enrolled(p.deviceUuid, r.response.deviceId, p.keyAlias!!)
-                store.saveEnrolled(done) // also forgets the token
-                runCatching { keys.deleteAllExcept(p.keyAlias!!) }
+                // The server has enrolled the phone: record that first (and forget the token), then apply the policy.
+                store.saveEnrolled(done, r.response)
+                finish(r.response, done.keyAlias)
+                runCatching { keys.deleteAllExcept(done.keyAlias) }
                 done
             }
         }
     }
 
+    private suspend fun finish(response: EnrolDeviceResponse, alias: String) {
+        try {
+            onEnrolled(response, alias)
+            store.clearPostEnrolPending()
+        } catch (e: Exception) {
+            // Kept pending: the next run() retries the policy apply; the enrolment itself is not lost.
+        }
+    }
+
     private fun sha256(s: String) = MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8))
+
+    companion object {
+        const val DEVICE_UUID_MISMATCH = "device_uuid_mismatch"
+    }
 }
 
 /**
@@ -141,6 +175,25 @@ class EnrolmentStore(private val dir: File) {
         )
     }.getOrNull()
 
+    /**
+     * Stores [extras] as the pending enrolment unless the same token is already pending (then nothing changes). Returns
+     * the key alias of a replaced pending enrolment, which the caller deletes.
+     */
+    @Synchronized fun acceptPending(extras: EnrolmentExtras, newUuid: () -> String): String? {
+        val current = pending()
+        if (current != null && current.extras.enrolmentToken == extras.enrolmentToken) return null
+        savePending(PendingEnrolment(extras, newUuid()))
+        return current?.keyAlias
+    }
+
+    /** Compare-and-set: replaces [expected] with [updated] only if [expected] is still the pending enrolment. */
+    @Synchronized fun replacePending(expected: PendingEnrolment, updated: PendingEnrolment): Boolean {
+        val now = pending() ?: return false
+        if (now.extras.enrolmentToken != expected.extras.enrolmentToken || now.deviceUuid != expected.deviceUuid || now.keyAlias != expected.keyAlias) return false
+        savePending(updated)
+        return true
+    }
+
     @Synchronized fun savePending(p: PendingEnrolment) {
         refusedFile.delete()
         write(pendingFile, mapOf(
@@ -155,9 +208,21 @@ class EnrolmentStore(private val dir: File) {
         EnrolmentState.Enrolled(m.getValue("uuid"), m.getValue("id").toLong(), m.getValue("alias"))
     }.getOrNull()
 
-    @Synchronized fun saveEnrolled(e: EnrolmentState.Enrolled) {
-        write(doneFile, mapOf("uuid" to e.deviceUuid, "id" to e.deviceId.toString(), "alias" to e.keyAlias))
+    @Synchronized fun saveEnrolled(e: EnrolmentState.Enrolled, response: EnrolDeviceResponse) {
+        write(doneFile, mapOf("uuid" to e.deviceUuid, "id" to e.deviceId.toString(), "alias" to e.keyAlias,
+            "post" to "1", "response" to json.encodeToString(EnrolDeviceResponse.serializer(), response)))
         pendingFile.delete()
+    }
+
+    @Synchronized fun postEnrolPending(): Boolean = read(doneFile)?.get("post") == "1"
+
+    @Synchronized fun enrolledResponse(): EnrolDeviceResponse? =
+        runCatching { read(doneFile)?.get("response")?.let { json.decodeFromString(EnrolDeviceResponse.serializer(), it) } }.getOrNull()
+
+    /** Marks the post-enrolment steps done and drops the stored response (the policy store keeps the policy). */
+    @Synchronized fun clearPostEnrolPending() {
+        val m = read(doneFile) ?: return
+        write(doneFile, m - "response" + ("post" to "0"))
     }
 
     @Synchronized fun refused(): EnrolmentState.Refused? = read(refusedFile)?.get("code")?.let { EnrolmentState.Refused(it) }
@@ -167,13 +232,14 @@ class EnrolmentStore(private val dir: File) {
         pendingFile.delete()
     }
 
-    private fun read(f: File): Map<String, String>? = f.takeIf { it.isFile }?.readLines()
+    private fun read(f: File): Map<String, String>? = f.takeIf { it.isFile }?.readText()?.split('\n')
         ?.mapNotNull { l -> l.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }?.toMap()
 
     private fun write(f: File, m: Map<String, String>) {
         dir.mkdirs()
         val tmp = File(dir, f.name + ".tmp")
-        tmp.writeText(m.entries.joinToString("\n") { "${it.key}=${it.value.replace("\n", "")}" })
+        // One record per line: values never contain line breaks (extras are validated; JSON is single-line).
+        tmp.writeText(m.entries.joinToString("\n") { "${it.key}=${it.value.filterNot { c -> c == '\n' || c == '\r' }}" })
         if (!tmp.renameTo(f)) { f.delete(); check(tmp.renameTo(f)) { "cannot store enrolment state" } }
     }
 }

@@ -7,6 +7,7 @@ import android.os.PersistableBundle
 import com.aktcl.aron.dpc.policy.policyFixture
 import java.io.File
 import java.nio.file.Files
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -173,5 +174,100 @@ class EnrolmentTest {
         // The library test package is not com.aktcl.aron.<flavour>, so the flavour check refuses it: nothing stored.
         assertEquals(app.packageName in setOf("com.aktcl.aron.sr", "com.aktcl.aron.amo", "com.aktcl.aron.tso"), accepted)
         assertFalse(acceptProvisioningExtras(app, Intent()))
+    }
+
+    @Test fun twoRunsAtOnceSendOnceAndNeverDeleteTheEnrolledKey() = runTest {
+        val dir = Files.createTempDirectory("enr").toFile()
+        val keys = Keys()
+        var calls = 0
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val c = coordinator(dir, keys, { _, req ->
+            calls++
+            if (calls == 1) { gate.await(); EnrolCallResult.Enrolled(response(req.deviceUuid)) } else EnrolCallResult.Refused("ERR_ENROLMENT_TOKEN_EXHAUSTED")
+        })
+        c.accept(parse(good).first!!)
+        val a = async { c.run() }
+        val b = async { c.run() }
+        kotlinx.coroutines.yield(); gate.complete(Unit)
+        assertTrue(a.await() is EnrolmentState.Enrolled)
+        assertTrue(b.await() is EnrolmentState.Enrolled)
+        assertEquals(1, calls)
+        assertEquals(setOf("aron-device-key-1"), keys.present)
+    }
+
+    @Test fun aFailedPolicyApplyKeepsTheEnrolmentAndIsRetried() = runTest {
+        val dir = Files.createTempDirectory("enr").toFile()
+        var fail = true
+        var applied = 0
+        val c = EnrolmentCoordinator(EnrolmentStore(dir), Keys(), { _, req -> EnrolCallResult.Enrolled(response(req.deviceUuid)) }, facts,
+            { "5b0f3c0e-8d4c-4a51-9c63-1f1f2a8e7d10" }) { _, _ -> if (fail) throw IllegalStateException("policy apply failed"); applied++ }
+        c.accept(parse(good).first!!)
+        assertTrue(c.run() is EnrolmentState.Enrolled)
+        assertNull(EnrolmentStore(dir).pending()) // the token is not sent again
+        fail = false
+        assertTrue(c.run() is EnrolmentState.Enrolled)
+        assertEquals(1, applied)
+        c.run()
+        assertEquals(1, applied)
+    }
+
+    @Test fun hostileExtrasAreRefused() {
+        assertEquals("control_character", parse(good + (EnrolmentExtras.KEY_ZONE to "Z\rapi=http://evil.example")).second)
+        assertEquals("control_character", parse(good + (EnrolmentExtras.KEY_ENV to "dev\nx=y")).second)
+        assertEquals("api_not_https_origin", parse(good + (EnrolmentExtras.KEY_API to "https://api.aron.example#x")).second)
+        assertEquals("api_not_https_origin", parse(good + (EnrolmentExtras.KEY_API to "https://u:p@api.aron.example")).second)
+        assertEquals("env_invalid", parse(good + (EnrolmentExtras.KEY_ENV to "nonsense")).second)
+        assertEquals("zone_invalid", parse(good + (EnrolmentExtras.KEY_ZONE to "Z".repeat(41))).second)
+        assertNotNull(parse(good + (EnrolmentExtras.KEY_ENV to "staging")).first)
+    }
+
+    @Test fun aWrappedChainIsStoredCanonicallySoRetriesAreIdentical() = runTest {
+        val dir = Files.createTempDirectory("enr").toFile()
+        val keys = object : EnrolmentKeys by Keys() {
+            override fun create(alias: String, challenge: ByteArray) = JwkEcPublic(x = "x".repeat(43), y = "y".repeat(43)) to listOf("Y2Vy\r\ndA==")
+            override fun exists(alias: String) = true
+        }
+        val sent = mutableListOf<EnrolDeviceRequest>()
+        val c = EnrolmentCoordinator(EnrolmentStore(dir), keys, { _, r -> sent += r; EnrolCallResult.Retry("t") }, facts, { "u-1" }) { _, _ -> }
+        c.accept(parse(good).first!!)
+        c.run(); c.run()
+        assertEquals(listOf("Y2VydA=="), sent[0].keyAttestationChain)
+        assertEquals(sent[0], sent[1])
+    }
+
+    @Test fun onlyTokenRefusalsAreFinalAndAUuidMismatchEndsTheAttempt() = runTest {
+        val dir = Files.createTempDirectory("enr").toFile()
+        var answer: EnrolCallResult = EnrolCallResult.Refused("ERR_VALIDATION")
+        val c = coordinator(dir, Keys(), { _, _ -> answer })
+        c.accept(parse(good).first!!)
+        assertEquals(EnrolmentState.Waiting("refused:ERR_VALIDATION"), c.run())
+        assertNotNull(EnrolmentStore(dir).pending())
+        answer = EnrolCallResult.Enrolled(response("00000000-0000-4000-8000-000000000000"))
+        assertEquals(EnrolmentState.Refused(EnrolmentCoordinator.DEVICE_UUID_MISMATCH), c.run())
+        assertNull(EnrolmentStore(dir).pending())
+    }
+
+    @Test fun theTokenNeverAppearsInToString() {
+        val e = parse(good).first!!
+        val p = PendingEnrolment(e, "u")
+        val r = EnrolDeviceRequest(token, "u", pkg, "1.0.0+1", "0".repeat(64), true, JwkEcPublic(x = "a", y = "b"), listOf("c"), facts.deviceInfo())
+        listOf(e.toString(), p.toString(), r.toString()).forEach { assertFalse(it, token in it) }
+    }
+
+    @Test fun aNewQrDuringKeyCreationIsNotOverwritten() = runTest {
+        val dir = Files.createTempDirectory("enr").toFile()
+        val store = EnrolmentStore(dir)
+        val newToken = "N" + token.drop(1)
+        lateinit var c: EnrolmentCoordinator
+        val keys = object : EnrolmentKeys by Keys() {
+            override fun create(alias: String, challenge: ByteArray): Pair<JwkEcPublic, List<String>> {
+                store.acceptPending(parse(good + (EnrolmentExtras.KEY_TOKEN to newToken)).first!!) { "u-2" } // a second QR lands now
+                return JwkEcPublic(x = "x".repeat(43), y = "y".repeat(43)) to listOf("Y2VydA==")
+            }
+        }
+        c = EnrolmentCoordinator(store, keys, { _, _ -> error("must not send the old token") }, facts, { "u-1" }) { _, _ -> }
+        c.accept(parse(good).first!!)
+        assertEquals(EnrolmentState.Waiting("superseded"), c.run())
+        assertEquals(newToken, store.pending()!!.extras.enrolmentToken)
     }
 }
