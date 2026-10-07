@@ -126,6 +126,22 @@ class SyncEngineTest {
         assertEquals(all.size, fake.registry.size)
     }
 
+    /** F-SYS-009: after a sync the device's per-type counts equal the server_totals, and the batch carries device_money. */
+    @Test fun afterASyncTheDeviceCountsEqualTheServerTotals() = runBlocking {
+        sale(1)
+        val recon = com.aktcl.aron.core.database.repo.ReconciliationRepository(db) { "2026-10-05T10:00:00.000Z" }
+        val before = recon.reconcile("2026-10-05", "SR")
+        assertTrue(before.rows.all { it.state == com.aktcl.aron.core.database.repo.ReconState.NO_SERVER_YET && it.server == null })
+        engine().run(SyncTrigger.MANUAL)
+        val money = fake.requests.single().body!!["device_money"]!!.jsonObject["2026-10-05"]!!.jsonObject
+        assertEquals("1", money["active_memo_count"]!!.jsonPrimitive.content)
+        val after = recon.reconcile("2026-10-05", "SR")
+        assertTrue(after.rows.joinToString { "${it.key}:${it.device}/${it.server}" }, after.rows.all { it.state == com.aktcl.aron.core.database.repo.ReconState.MATCH })
+        assertEquals(1, after.rows.first { it.key == "sale" }.device)
+        assertEquals(true, after.money.matches)
+        assertEquals("2026-10-05T10:00:00.000Z", after.serverAsOf)
+    }
+
     @Test fun oneSaleUploadsOnceWithTheContractEnvelope() = runBlocking {
         val memo = sale(1)
         val report = engine().run(SyncTrigger.MANUAL)

@@ -343,6 +343,9 @@ class SyncEngine(
                     r.bundleVersionCurrent?.let { meta.putMeta(SyncMetaEntity(KEY_BUNDLE_CURRENT, it)) }
                     for (totals in r.serverTotals) {
                         meta.putMeta(SyncMetaEntity(KEY_SERVER_TOTALS + totals.businessDate, WireJson.requests.encodeToString(ServerTotals.serializer(), totals)))
+                        // Phone time of this answer, the same `now` its acks carry: reconciliation tells rows answered
+                        // later (the figures are older than them) from a real shortfall without comparing two clocks.
+                        meta.putMeta(SyncMetaEntity(com.aktcl.aron.core.database.repo.ReconciliationRepository.KEY_SERVER_TOTALS_AT + totals.businessDate, now))
                     }
                     meta.putMeta(SyncMetaEntity(KEY_DAY_STATES, WireJson.requests.encodeToString(ListSerializer(RouteDayState.serializer()), r.dayStates)))
                 }
@@ -363,24 +366,17 @@ class SyncEngine(
             for (res in delivered) {
                 if (AckRules.resolution(res.resolution) != null) meta.putMeta(SyncMetaEntity(RESOLUTION_PREFIX + res.clientUuid, res.resolution))
             }
-            for (stash in meta.metaWithPrefix(RESOLUTION_PREFIX)) {
-                val uuid = stash.key.removePrefix(RESOLUTION_PREFIX)
-                val t = AckRules.resolution(stash.value) ?: run { meta.deleteMeta(stash.key); null } ?: continue
-                val row = outbox.byClientUuid(uuid)
-                val done = row == null || outbox.applyResolution(uuid, t.state, t.code!!, now) > 0 ||
-                    row.state == OutboxState.ACKED || row.state == OutboxState.REJECTED
-                if (done) meta.deleteMeta(stash.key)
-            }
+            ResolutionStash.drain(db, now)
         }
 
         suspend fun requestJson(batchUuid: String, rows: List<OutboxEntity>): String {
             val today = BusinessDate.of(clock.nowMs()).toString()
             val dates = (rows.map { it.businessDate } + today).toSortedSet()
-            val counts = buildJsonObject {
-                for (date in dates) {
-                    put(date, buildJsonObject { outbox.committedCounts(date).forEach { put(it.recordType, JsonPrimitive(it.count)) } })
-                }
-            }
+            val recon = com.aktcl.aron.core.database.repo.ReconciliationRepository(db) { iso(clock.nowMs()) }
+            val counts = buildJsonObject { for (date in dates) put(date, recon.deviceCountsJson(date)) }
+            // MoneyTotals per date (s4.4, s4.12): every batch carries them for its dates, so day_submit and "at least once
+            // per date" are both covered; a few hundred bytes gzipped.
+            val money = buildJsonObject { for (date in dates) put(date, recon.deviceMoney(date)) }
             val body = buildJsonObject {
                 put("batch_uuid", JsonPrimitive(batchUuid))
                 put("device_uuid", JsonPrimitive(device))
@@ -391,6 +387,7 @@ class SyncEngine(
                 put("pending_rows", JsonPrimitive(outbox.unsentCount()))
                 put("time_anchors", WireJson.requests.encodeToJsonElement(ANCHORS, timeAnchors().takeLast(3)))
                 put("device_counts", counts)
+                put("device_money", money)
                 put("records", JsonArray(rows.map { RECORD_JSON.parseToJsonElement(it.payloadJson) }))
             }
             return body.toString()
@@ -458,11 +455,11 @@ class SyncEngine(
         const val KEY_CONFIG_VERSION_SERVER = "sync.config_version_server"
         const val KEY_GENERATION = "sync.server_generation"
         const val KEY_BUNDLE_CURRENT = "sync.bundle_version_current"
-        const val KEY_SERVER_TOTALS = "sync.server_totals."
+        const val KEY_SERVER_TOTALS = com.aktcl.aron.core.database.repo.ReconciliationRepository.KEY_SERVER_TOTALS
         const val KEY_DAY_STATES = "sync.day_states"
         const val KEY_LAST_SUCCESS = "sync.last_success_at"
         private const val ATTEMPT_PREFIX = "sync.batch_attempt."
-        private const val RESOLUTION_PREFIX = "sync.resolution."
+        internal const val RESOLUTION_PREFIX = ReferenceRepository.KEY_RESOLUTION_PREFIX
 
         private val RECORD_POINTER = Regex("^/records/(\\d+)(?:/|$)")
 

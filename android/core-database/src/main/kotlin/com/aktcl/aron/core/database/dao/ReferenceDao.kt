@@ -24,6 +24,17 @@ interface ReferenceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertOutlets(rows: List<OutletEntity>)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertSkus(rows: List<SkuEntity>)
 
+    // Row deletes of a bundle delta (F-SYS-007).
+    @Query("DELETE FROM outlet WHERE outlet_id IN (:ids)") suspend fun deleteOutlets(ids: List<Long>)
+    @Query("DELETE FROM outlet WHERE route_id = :routeId") suspend fun deleteOutletsOfRoute(routeId: Long)
+    @Query("DELETE FROM route WHERE route_id = :routeId") suspend fun deleteRoute(routeId: Long)
+    @Query("DELETE FROM price WHERE price_id IN (:ids)") suspend fun deletePrices(ids: List<Long>)
+    @Query("DELETE FROM sku WHERE sku_id IN (:ids)") suspend fun deleteSkus(ids: List<Long>)
+    @Query("DELETE FROM task WHERE task_uuid IN (:uuids)") suspend fun deleteTasks(uuids: List<String>)
+    @Query("DELETE FROM bundle_section WHERE name = :name OR substr(name, 1, length(:name) + 1) = :name || '#'") suspend fun deleteSection(name: String)
+    @Query("SELECT * FROM route WHERE route_id = :routeId") suspend fun route(routeId: Long): RouteEntity?
+    @Query("SELECT name FROM bundle_section WHERE name LIKE 'route.%' AND name NOT LIKE '%#%'") suspend fun routeSectionNames(): List<String>
+
     @Query("SELECT * FROM route WHERE business_date = :businessDate ORDER BY planned_today DESC, sequence_no, code")
     suspend fun routesFor(businessDate: String): List<RouteEntity>
 
@@ -34,6 +45,8 @@ interface ReferenceDao {
     @Query("SELECT * FROM outlet WHERE outlet_id = :outletId")
     suspend fun outlet(outletId: Long): OutletEntity?
 
+    /** Every SKU of the bundle, inactive ones too (a memo line of an SKU since withdrawn still has a category). */
+    @Query("SELECT sku_id AS skuId, category_code AS categoryCode FROM sku") suspend fun skuCategories(): List<SkuCategory>
     @Query("SELECT * FROM sku WHERE status = 'active' ORDER BY sort, code")
     suspend fun activeSkus(): List<SkuEntity>
 
@@ -88,3 +101,5 @@ interface ReferenceDao {
     @Query("UPDATE outlet SET radius_m = :radiusM, max_accuracy_m = :maxAccuracyM WHERE outlet_id = :outletId")
     suspend fun updateOutletRadius(outletId: Long, radiusM: Int, maxAccuracyM: Int): Int
 }
+
+data class SkuCategory(val skuId: Long, val categoryCode: String)

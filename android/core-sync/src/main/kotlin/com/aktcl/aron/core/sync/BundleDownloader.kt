@@ -5,6 +5,7 @@ import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.reference.BundleReference
 import com.aktcl.aron.core.database.repo.ApplyResult
+import com.aktcl.aron.core.database.repo.BundleDeltaResult
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.SyncApi
@@ -50,6 +51,9 @@ enum class BundleOutcome {
 
     /** Any other answer, or a body that cannot be read; the stored snapshot stays. */
     FAILED,
+
+    /** A delta for a new business date: the day's bundle is fetched by the day start (it is that day's login), not here. */
+    NEW_DATE,
 }
 
 data class BundleReport(val outcome: BundleOutcome, val bundleVersion: String? = null, val businessDate: String? = null, val code: String? = null)
@@ -74,7 +78,9 @@ class BundleDownloader(
     private val lock = Mutex()
 
     /** Fetches and applies the bundle of [forDate] (default: today's Dhaka business date). Offline it changes nothing. */
-    suspend fun download(forDate: String = BusinessDate.of(clock.nowMs()).toString()): BundleReport = lock.withLock {
+    suspend fun download(forDate: String = BusinessDate.of(clock.nowMs()).toString()): BundleReport = lock.withLock { downloadLocked(forDate) }
+
+    private suspend fun downloadLocked(forDate: String): BundleReport {
         val today = BusinessDate.of(clock.nowMs()).toString()
         val isDay = forDate <= today // a later date is a prefetch: stored aside, never the day's login
         val prefetchEtag = repo.prefetch()?.takeIf { it.first == forDate }?.second
@@ -90,10 +96,90 @@ class BundleDownloader(
         if (isDay && report.outcome !in setOf(BundleOutcome.APPLIED, BundleOutcome.UNCHANGED, BundleOutcome.OLDER_IGNORED) && repo.businessDate() != forDate) {
             // No fresh bundle for a new day: start it on the stored prefetch, if one was fetched for it.
             if (repo.promotePrefetch(forDate) == ApplyResult.APPLIED) {
-                return@withLock BundleReport(BundleOutcome.PREFETCH_PROMOTED, repo.bundleVersion(), repo.businessDate(), report.code)
+                return BundleReport(BundleOutcome.PREFETCH_PROMOTED, repo.bundleVersion(), repo.businessDate(), report.code)
             }
         }
-        report
+        return report
+    }
+
+    /**
+     * Brings the held bundle of today up to date with `GET /v1/sync/delta` (F-SYS-007): only changed rows, applied in one
+     * transaction, never the day's login. A 410 or a cursor gap fetches the full bundle of the SAME date (that day is
+     * already logged in); a delta of a new date ([BundleOutcome.NEW_DATE]) is left to the day start. Resolutions in the
+     * delta are stashed for the sync engine, which applies them by client_uuid.
+     */
+    suspend fun refreshDelta(): BundleReport = lock.withLock {
+        val held = repo.businessDate() ?: return@withLock BundleReport(BundleOutcome.FAILED, code = "no_bundle")
+        val today = BusinessDate.of(clock.nowMs()).toString()
+        if (held != today) return@withLock BundleReport(BundleOutcome.NEW_DATE, repo.bundleVersion(), held)
+        val cursor = meta.meta(ReferenceRepository.KEY_BUNDLE_CURSOR) ?: return@withLock fullOfTheDay(held)
+        val configVersion = meta.meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull()
+        when (val r = api.bundleDelta(cursor, held, configVersion)) {
+            is ApiResult.NotModified -> BundleReport(BundleOutcome.UNCHANGED, repo.bundleVersion(), held)
+            is ApiResult.Transport -> BundleReport(
+                if (r.failure == TransportFailure.MALFORMED) BundleOutcome.FAILED else BundleOutcome.OFFLINE, code = r.failure.name.lowercase(),
+            )
+            is ApiResult.Failure -> when (r.httpStatus) {
+                409 -> BundleReport(BundleOutcome.NEW_DATE, repo.bundleVersion(), held, r.problem.code)
+                410 -> fullOfTheDay(held)
+                else -> BundleReport(failureOutcome(r.httpStatus), code = r.problem.code ?: "http_${r.httpStatus}")
+            }
+            is ApiResult.Success -> {
+                // A delta this phone cannot read (nothing was written) is replaced by the whole snapshot of the day, once:
+                // asking for the same delta after every sync would fail the same way and spend data all day.
+                val result = try {
+                    repo.applyBundleDelta(Json.parseToJsonElement(r.value).jsonObject)
+                } catch (e: IllegalArgumentException) { // SerializationException is one too
+                    return@withLock fullOfTheDay(held)
+                }
+                when (result) {
+                    BundleDeltaResult.APPLIED -> {
+                        // Resolutions were stashed with the cursor; apply them now (an empty outbox sends no batch).
+                        ResolutionStash.drain(db, iso(clock.nowMs()))
+                        BundleReport(BundleOutcome.APPLIED, repo.bundleVersion(), held)
+                    }
+                    BundleDeltaResult.STALE -> BundleReport(BundleOutcome.UNCHANGED, repo.bundleVersion(), held)
+                    BundleDeltaResult.GAP -> fullOfTheDay(held)
+                    BundleDeltaResult.NEW_DATE -> BundleReport(BundleOutcome.NEW_DATE, repo.bundleVersion(), held)
+                }
+            }
+        }
+    }
+
+    /** After a sync run: a delta only when the server said its current bundle is newer than the held one (s4.10). */
+    suspend fun refreshIfServerNewer(): BundleReport? {
+        val current = meta.meta(SyncEngine.KEY_BUNDLE_CURRENT) ?: return null
+        val held = repo.bundleVersion() ?: return null
+        if (ReferenceRepository.compare(current, held) <= 0) return null
+        // Once per server version: a delta and its full fallback that still leave the phone behind are not retried after
+        // every sync run (the foreground refresh and the next newer version still try).
+        if (meta.meta(KEY_DELTA_TRIED_FOR) == current) return null
+        meta.putMeta(SyncMetaEntity(KEY_DELTA_TRIED_FOR, current))
+        return refreshDelta()
+    }
+
+    /**
+     * App in front: a delta at most every [minIntervalMs] (`cfg.bundle.delta_min_interval_min`, 30 min) on trusted time.
+     * The gate is spent only by an answered request, so an offline resume tries again at the next one.
+     */
+    suspend fun refreshOnForeground(minIntervalMs: Long? = null): BundleReport? {
+        val now = clock.nowMs()
+        // cfg.bundle.delta_min_interval_min (30..240), from the held bundle's config.
+        val interval = minIntervalMs ?: ((repo.config("cfg.bundle.delta_min_interval_min", iso(now))?.trim()?.toLongOrNull() ?: 30L).coerceIn(30L, 240L) * 60_000L)
+        val last = meta.meta(KEY_DELTA_FOREGROUND_AT)?.toLongOrNull()
+        if (last != null && now >= last && now - last < interval) return null
+        return refreshDelta().also {
+            if (it.outcome != BundleOutcome.OFFLINE) meta.putMeta(SyncMetaEntity(KEY_DELTA_FOREGROUND_AT, now.toString()))
+        }
+    }
+
+    /**
+     * The whole snapshot of the held day, unconditionally (no If-None-Match: a 304 would leave the cursor where it failed).
+     * The day is already under way on this phone, so this is not a new login for the rep.
+     */
+    private suspend fun fullOfTheDay(date: String): BundleReport {
+        meta.deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG)
+        return downloadLocked(date)
     }
 
     private suspend fun fetch(forDate: String, isDay: Boolean, onPrefetch: Boolean, ifNoneMatch: String?, configVersion: Long?): BundleReport {
@@ -198,6 +284,8 @@ class BundleDownloader(
 
     companion object {
         const val KEY_LOGGED_IN = "bundle.logged_in."
+        const val KEY_DELTA_FOREGROUND_AT = "bundle.delta_foreground_at"
+        const val KEY_DELTA_TRIED_FOR = "bundle.delta_tried_for"
 
         /** Paged sections whose rows belong inside `routes[]` (matched by `route_id`). */
         private val ROUTE_NESTED = setOf("outlets", "open_memos")

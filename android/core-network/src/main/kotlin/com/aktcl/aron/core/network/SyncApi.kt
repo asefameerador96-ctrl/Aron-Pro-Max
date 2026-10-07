@@ -40,6 +40,24 @@ class SyncApi(private val client: AronApiClient) {
         )
     }
 
+    /**
+     * `GET /v1/sync/delta?since=<cursor>&for=<date>` (s4.10 Delta): the raw `BundleDelta`, 304 when nothing changed, 409
+     * `ERR_BUNDLE_NEW_BUSINESS_DATE`, 410 `ERR_BUNDLE_CURSOR_EXPIRED`. Unlike the bundle request it is never the day's login.
+     */
+    suspend fun bundleDelta(since: String, forDate: String, configVersion: Long?): ApiResult<String> {
+        val path = "/v1/sync/delta"
+        return client.call(
+            path = path,
+            auth = CallAuth.Grant(Grant.FULL),
+            build = {
+                url(client.origin.path(path).newBuilder().addQueryParameter("since", since).addQueryParameter("for", forDate).build())
+                if (configVersion != null) header("X-Config-Version", configVersion.toString())
+                get()
+            },
+            decode = { body, _ -> body },
+        )
+    }
+
     /** `GET /v1/config/delta?since=` (s4.10 Config delta): the raw `ConfigDelta`, 304 when unchanged, 410 when too far behind. */
     suspend fun configDelta(since: Long): ApiResult<String> {
         val path = "/v1/config/delta"
