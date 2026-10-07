@@ -19,6 +19,14 @@ class UserDatabases(private val context: Context, private val passphrase: (userI
         open.computeIfAbsent(userId) { id -> AronDatabase.open(context, id, passphrase(id)?.let(SqlCipher::factory)) }
     }
 
+    /**
+     * Closes and forgets the open database of [userId] so its files can be deleted (F-SYS-022 TSO wipe, android-sys). The
+     * next [of] opens it again; callers make sure no sync run is using it.
+     */
+    fun close(userId: Long) {
+        open.remove(userId)?.close()
+    }
+
     /** Users with a database on this phone (`aron-u<id>.db`), signed in or not: their rows still upload (D24-57). */
     fun knownUserIds(): List<Long> =
         context.getDatabasePath("x").parentFile?.list().orEmpty()
