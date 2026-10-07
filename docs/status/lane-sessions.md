@@ -8,7 +8,7 @@
 | backend-core | session_01FfFvStuQXyZNg6QM9rndaD | Opus | 2026-10-07 | recycled 05:19 (third session); previous session_01MJ1SsuGYYncC4RgHdgyMrb is retired (READY TO RECYCLE 05:18; earlier session_01MBUTbmmLSATv8rnitvbFdL retired) |
 | backend-reports | session_019WhVDAstm1xPBBrp6FPKM9 | Sonnet | 2026-10-07 | |
 | backend-admin | session_01TogQKB1R6sgWVTafC9DMYG | Sonnet | 2026-10-07 | recycled 05:02; previous session_01JK4kErf8frNpx25mmoyPAc is retired (READY TO RECYCLE 05:01) |
-| android-core | (starting 2026-10-07 05:46) | Opus | 2026-10-07 | recycled again; session_01LQJTcDC8axvtsjBBQcJqhW retired (READY TO RECYCLE 05:44); earlier session_01K8HqGn8ou9sxK5kC5ZgG3j retired |
+| android-core | session_01EcjRGi19bkvqTfp5RQnJU2 | Opus | 2026-10-07 | recycled again; session_01LQJTcDC8axvtsjBBQcJqhW retired (READY TO RECYCLE 05:44); earlier session_01K8HqGn8ou9sxK5kC5ZgG3j retired |
 | android-core-ui | session_01PompFHeojjtrnV78dsjmsB | Sonnet | 2026-10-07 | N-023 UI kit first, published in slices; split from android-core because 3 lanes wait on it |
 | android-sr-a | session_01Gyh9KAacFpMFb35wUDq21c | Sonnet | 2026-10-07 | |
 | android-sr-b | session_01DCSzXKooAFuYYEGy9UAMSN | Sonnet | 2026-10-07 | |
