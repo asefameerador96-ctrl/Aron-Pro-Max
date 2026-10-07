@@ -35,6 +35,12 @@ class DeviceOwnerPolicy(
     /** True while the managed update (N-034) installs; keeps `no_install_apps` lifted on every apply meanwhile. */
     @Volatile var installingOwnUpdate: Boolean = false
 
+    /** For `ManagedUpdater`: lift `no_install_apps` for our own install only, and put it back. */
+    fun liftForOwnUpdate(lift: Boolean) {
+        installingOwnUpdate = lift
+        runCatching { reapply() }
+    }
+
     /**
      * The app wires its trusted clock (F-SYS-049) and the bundle's working-day calendar at start. They replace whatever
      * an earlier caller (a boot receiver) installed, so the singleton never keeps a weaker clock.

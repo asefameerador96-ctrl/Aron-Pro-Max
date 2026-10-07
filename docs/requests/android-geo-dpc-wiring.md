@@ -15,4 +15,7 @@ android-geo-dpc owns `android/core-geo` and `android/dpc` only. Every part below
 | Enrolment (android-geo-dpc, N-030, after N-031) | `AndroidDeviceKeyStore.create(DeviceKeySpecs.newAlias(), IntegrityCodec.enrolmentChallenge(token))`, send JWK and chain; then `deleteAllExcept(newAlias)` only after the server accepts (also at start, to clear keys orphaned by a crash) | N-026 |
 | `X-Device-Proof` signer (android-core, core-network `DeviceProofSigner`) | `AndroidDeviceKeyStore.sign(alias, proofString.toByteArray())` | N-026 |
 
+| App start and the sync worker (android-core) | `Breadcrumbs.controller = BreadcrumbController(AndroidBreadcrumbClient(ctx), PrefsBreadcrumbStateStore(ctx), sink = write a geo_breadcrumb record (payload {fix}) to the outbox, AndroidDeviceStateReader, clock, settings = cfg.geo.breadcrumbs_enabled / breadcrumb_interval_min)`; call `onCheckIn()` / `onCheckOut()` with the attendance commits and `reconcile(battery, charging)` at start, on config change and on battery broadcasts | N-035 |
+| Update worker (android-core, a WorkManager job after login and daily) | `GET /v1/app/update-check?flavour=&version_code=&abi=` then `ManagedUpdater(noBackupFilesDir/updates, downloader = core-network streaming GET, AndroidSelfInstaller(ctx), unmetered, canInstallNow = no open sale draft and no batch in flight, liftInstallRestriction = DeviceOwnerPolicy.get(ctx)::liftForOwnUpdate).run(check, installedApp)` | N-034 |
+
 Nothing here waits on the network before a sale; integrity calls run after login or in the sync worker.
