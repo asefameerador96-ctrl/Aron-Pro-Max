@@ -58,3 +58,12 @@
 | 2026-10-07 18:50 | infra (session 4) | - | 297 | n/a | seven_day allowed_warning | running (slice smoke, dev seed) |
 | 2026-10-07 18:50 | android-core-ui | - | 196 | n/a | seven_day allowed_warning | nudged (push c84f0f78, last row) |
 | 2026-10-07 18:50 | android-print | - | 319 | n/a | seven_day allowed_warning | nudged (6 rows, wiring done) |
+| 2026-10-07 20:50 | integrator (session 4) | - | 301 | n/a | seven_day allowed_warning | running (zzf in CI) |
+| 2026-10-07 20:50 | backend-core (session 8) | - | 0 | n/a | seven_day allowed_warning | running (contract gaps first) |
+| 2026-10-07 20:50 | db (session 4) | - | 352 | n/a | seven_day allowed_warning | idle, nudged (remaining rows, V0056/V0057) |
+| 2026-10-07 20:50 | android-core (session 10) | - | 0 | n/a | seven_day allowed_warning | running (F-SYS-080, AV/KV/survey Room) |
+| 2026-10-07 20:50 | android-sr-a | - | 272 | n/a | seven_day allowed_warning | waiting on android-core tables |
+| 2026-10-07 20:50 | android-sr-b | - | 398 | n/a | seven_day allowed_warning | idle, 0 rows left |
+| 2026-10-07 20:50 | infra (session 4) | - | 581 | n/a | seven_day allowed_warning | asked to hand over and recycle |
+| 2026-10-07 20:50 | android-core-ui | - | 294 | n/a | seven_day allowed_warning | idle, lint fix e34652dc sent |
+| 2026-10-07 20:50 | android-print | - | 379 | n/a | seven_day allowed_warning | idle (db7b645e on INT; F-SR-015/031 with sr lanes) |
