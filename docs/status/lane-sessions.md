@@ -7,7 +7,7 @@
 | shared-2 | session_01QRBncHfaoTvSqTLur5L3ZH | Sonnet | 2026-10-07 | N-002, DTO hosting, web drift |
 | backend-core | session_01MJ1SsuGYYncC4RgHdgyMrb | Opus | 2026-10-07 | recycled; previous session_01MBUTbmmLSATv8rnitvbFdL is retired |
 | backend-reports | session_019WhVDAstm1xPBBrp6FPKM9 | Sonnet | 2026-10-07 | |
-| backend-admin | session_01JK4kErf8frNpx25mmoyPAc | Sonnet | 2026-10-07 | |
+| backend-admin | session_01TogQKB1R6sgWVTafC9DMYG | Sonnet | 2026-10-07 | recycled 05:02; previous session_01JK4kErf8frNpx25mmoyPAc is retired (READY TO RECYCLE 05:01) |
 | android-core | session_01LQJTcDC8axvtsjBBQcJqhW | Opus | 2026-10-07 | recycled; previous session_01K8HqGn8ou9sxK5kC5ZgG3j is retired |
 | android-core-ui | session_01PompFHeojjtrnV78dsjmsB | Sonnet | 2026-10-07 | N-023 UI kit first, published in slices; split from android-core because 3 lanes wait on it |
 | android-sr-a | session_01Gyh9KAacFpMFb35wUDq21c | Sonnet | 2026-10-07 | |

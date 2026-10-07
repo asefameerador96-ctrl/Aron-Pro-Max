@@ -252,7 +252,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   const user = a.user;
 
   if (path === "/v1/me") {
-    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: hasPii(user.summary.role), mfa_enabled: user.mfa };
+    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: hasPii(user.summary.role), mfa_enabled: user.mfa, ...(user.summary.role === "TSO" ? { menus: [{ menu_id: "dashboard", actions: ["view"] as ("view")[] }] } : {}) };
     return send(res, 200, me);
   }
 

@@ -40,7 +40,7 @@ Reading guide: each screen has Purpose, Wireframe (y in dp on 360 x 800, gesture
 
 ```
 y  28- 76  (বাংলা | EN) language toggle, end-aligned, 48 touch          [no title bar]
-y 120-200  mark 72 dp (accent.container disc, "A" glyph) + "ARON SR" type.title, centred
+y 120-200  mark 72 dp (accent.container disc, redrawn Aron glyph; artwork rule Q-UI-13) + "ARON SR" type.title, centred
 y 264-492  GLASS CARD 328 (radius.card 20, Card recipe, padding 20)
              ইউজারনেম             label type.caption
              [ sr334001                      ]  56 dp, radius.chip, border.input
@@ -125,7 +125,7 @@ y 704-800  DOCK  [ বিক্রয় শুরু করুন ]*
 - **Hero** is the whole-card tap target to Summary; meter track `state.skeleton` (`#0B1B33` 7 percent), fill `accent`, 6 dp high, value also printed. Strike rate is successful calls over the day's target outlets (6 of 60 is 10 percent, UI-SR-09).
 - **Tiles** exactly as `home.md` in order, with deferred ones removed: Attendance, Stock, Sale, Memo, Summary, Sales Submit, Outlet, Tutorial, Task Delegation, Sales Journey, KPI. Sales Journey and KPI open the assumed views (Q-UI-05, F-SR-067/068; KPI shows sales only, no target). Task badge is the open count (cap `৯৯+`). Tiles are shadowless; font scale 1.5 gives 2 columns.
 - **KPI, stock and money cards.** Reference data is kept but the double "total" cards are merged into one money card with canonical words; reference `সর্ব মোট` (gross) is now `মোট` and `মোট টাকা` is now `সর্বমোট`. Sticks sold, pieces and dozens are listed as separate quantity lines under the card title (never added). Zero categories and zero deductions are hidden.
-- **Device line** (F-SR-064) is caption text, no card. Warning (`warning` icon and word) under 20 percent battery or under 500 MB free; **danger only under 200 MB** ("ফোনে জায়গা কম", the one danger case).
+- **Device line** (F-SR-064) is caption text, no card. Warning (`warning` icon and word) under 20 percent battery or under 500 MB free (design defaults); **danger only under 200 MB** ("ফোনে জায়গা কম", the one danger case).
 
 | State | What the user sees | Behaviour |
 |---|---|---|
@@ -215,7 +215,7 @@ y 704-800  BAR  [ প্রিন্ট ]   [ সংরক্ষণ ]*
 
 **Primary action.** "সংরক্ষণ" (60 percent, accent) in the bar, "প্রিন্ট" (40 percent, secondary with the printer state icon). Save is enabled only when an entered increment is non-zero; otherwise disabled with reason "কোনো পরিবর্তন নেই". Print is enabled only when saved and the printer is connected (F-SR-013); otherwise reason "আগে সংরক্ষণ করুন" or "প্রিন্টার কানেক্ট করুন". Save never waits for the printer (Q-UI-03 default).
 
-**Row (flat, 136 dp, no shadow).** Line 1: 48 dp thumbnail (`radius.chip`, decoded at 96 x 96 px) with a 20 dp `accent.container` circle badge at its bottom end showing the **packs equivalent** (quantity over pack size; Q-UI-11 default; TalkBack "৬৫০ প্যাক"); SKU code `type.bodyStrong`; caption "আজ লোড ৪০০ পিস" (read-only total loaded today); at the end the derived stock `type.numeral` over its unit. Line 2: `AronStepper` for the increment: step is the pack size for sticks (10 or 20), 1 for pieces and dozens; tap the value to type; hold accelerates; value 0 after a save. Group headers (সিগারেট, বিড়ি, লাইটার, ম্যাচ) are sticky and carry the unit once. A sheet (`AronBottomSheet`) opens from the category dock with the full table: ক্যাটাগরি, মোট ইস্যু, স্টক per category, each with its unit. A text button "মোট সংশোধন" (F-SR-081) opens a reason sheet and posts a signed adjustment, never an overwrite.
+**Row (flat, 136 dp, no shadow).** Line 1: 48 dp thumbnail (`radius.chip`, decoded at 96 x 96 px) with a 20 dp `accent.container` circle badge at its bottom end showing the **packs equivalent** (quantity over pack size; Q-UI-11 default; TalkBack "৬৫০ প্যাক"); SKU code `type.bodyStrong`; caption "আজ লোড ৪০০ পিস" (read-only total loaded today); at the end the derived stock `type.numeral` over its unit. Line 2: `AronStepper` for the increment: step is the pack size for sticks (10 or 20), 1 for pieces and dozens; tap the value to type; hold accelerates; value 0 after a save. Group headers (সিগারেট, বিড়ি, লাইটার, ম্যাচ) are sticky and carry the unit once. A sheet (`AronBottomSheet`) opens from the category dock with the full table: ক্যাটাগরি, মোট ইস্যু, স্টক per category, each with its unit. A top-bar overflow item "মোট সংশোধন" (F-SR-081) opens a reason sheet and posts a signed adjustment, never an overwrite.
 
 | State | What the user sees | Behaviour |
 |---|---|---|
@@ -332,7 +332,7 @@ y 704-800  BAR  [ ফোর্স সেল ]   [ রিফ্রেশ ]*
 **Purpose.** Enter what the shopkeeper wants, by SKU, in the SKU's own unit, with a running total and a stock warning that never blocks.
 
 ```
-y  28- 92  TOP BAR  <←> বিক্রয় · বনানী স্টোর                            (☁)<🖨>
+y  28- 92  TOP BAR  <←> বিক্রয় · বনানী স্টোর                            (☁)
 y 100-148  [পূর্বের বিক্রয় দেখুন ›]            <🔍>
 y 148-196  CATEGORY CHIPS  (সব) (সিগারেট ২) (বিড়ি) (লাইটার) (ম্যাচ)     jump links, scroll sideways
 y 204-...  ~ GROUP  এই আউটলেটে আগে বিক্রি
@@ -512,7 +512,7 @@ y 452-528  INFO  আজকের সব তথ্য সিঙ্ক হলে �
 y 704-800  BAR  [ ডাটা সিঙ্ক করুন ]   [ বিক্রয় জমা ]*     (disabled: reason caption above)
 ```
 
-**Primary action.** "বিক্রয় জমা" (60 percent). The secondary "ডাটা সিঙ্ক করুন" retries; it is the only red notice of the reference, now a calm `accent` banner and `warning` only when stuck.
+**Primary action.** "বিক্রয় জমা" (60 percent). The secondary "ডাটা সিঙ্ক করুন" retries. The reference's red notice becomes the calm `accent` info line in the wireframe and turns `warning` only when sync is stuck past the config threshold.
 
 **Reconciliation.** Rows compare **record counts per entity** and **money per category in milli-taka** (never unit-less sums, UI-SR-36); the legacy five rows are kept for parity (আউটলেট, বিক্রয়, স্টক, কিউসি, প্রমোশন), where "প্রমোশন" shows only when it has a value (discount programmes are deferred). Each row carries an icon and a word, not colour alone: ✓ "মিলেছে", ⏳ "অপেক্ষায়", ⚠ "মিলছে না". Submit is enabled only when every record is acknowledged and the counts match; dues warn and never block (Q-UI-08 default).
 
@@ -520,7 +520,7 @@ y 704-800  BAR  [ ডাটা সিঙ্ক করুন ]   [ বিক্�
 |---|---|---|
 | Syncing | step ① active, rows update live, bar disabled "সিঙ্ক চলছে… ৩টি বাকি" | polite live region, at most once per 10 s |
 | All matched | step ② done, `success` line "সব তথ্য মিলেছে", bar enabled | |
-| Offline | chip `offline`; primary reads "বিক্রয় জমা (সংযোগ পেলে যাবে)" | the submit queues as the last event of the day (`cfg.day.sales_submit_offline_queue`) and shows "অপেক্ষায়" until the server settles |
+| Offline | chip `offline`; primary stays enabled and reads "বিক্রয় জমা (সংযোগ পেলে যাবে)" | the submit queues as the last event of the day (`cfg.day.sales_submit_offline_queue`) and shows "অপেক্ষায়" until the server settles |
 | Mismatch after full sync | `warning` card "মিলছে না: মেমো ডিভাইসে ৬, সার্ভারে ৫" with "আবার সিঙ্ক" and "সাপোর্টকে ডাটা পাঠান" | submit stays disabled, mismatch never silent |
 | Dues remain | `AronConfirmDialog` "আপনার এখনো ১টি রিটেইলারের কাছে বাকি রয়েছে। আপনি আপনার বিক্রয় জমা দিতে চান?" actions "না, বাকি আদায় করি" (to Memo) and "হ্যাঁ, জমা দিন" | warn, not block |
 | Unprinted stock slip | `warning` caption above the bar | not a block |
@@ -563,7 +563,7 @@ y 704-800  (no primary; the card's own action is the primary)
 | Key | BN | EN |
 |---|---|---|
 | title, segments | টাস্ক; চলমান, সম্পন্ন | Task; Ongoing, Completed |
-| action, date | সমাধান করুন (swipe: Resolve); শেষ তারিখ ৩০ নভেম্বর | Resolve; Completion on 30 Nov |
+| action, date | সমাধান করুন; শেষ তারিখ ৩০ নভেম্বর | Resolve; Completion on 30 Nov |
 | empty | আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেনি। সিঙ্ক হয়েছে ১০:৪২ | Your AMO has not assigned any task. Synced 10:42 |
 
 **Motion.** Swipe follows the finger, the action panel reveals `success.container` with a check; settle 150 ms. **Kit.** `TaskCard` (screen composable on `GlassSurface(Card)`), `AronEmptyState`. Paint: up to 8 shadowed cards visible (cap 8); beyond that cards turn flat.
@@ -577,6 +577,6 @@ y 704-800  (no primary; the card's own action is the primary)
 | Q-SD-03 | Refresh as the primary and Force Sale as the secondary while refreshes remain | Honest path first; reference had them reversed |
 | Q-SD-04 | Hold duration for check-in and check-out | 1,200 ms, the kit default; the reference never states it |
 | Q-SD-05 | Accuracy bands (30 m, 100 m) on Attendance | Design defaults; 100 m is `cfg.geo.max_accuracy_m` |
-| Q-SD-06 | New Bangla strings (about 90) and the skip outcome labels | Need native-reviewer sign-off before string freeze |
-| Q-UI-01, 03, 04, 05, 08, 11 | memo discount rows, printer-blocked Save, check-in gate, Sales Journey and KPI tiles, Sales Submit rule, pack badge | Defaults of `docs/ui-reference/questions.md` are used as written above |
+| Q-SD-06 | The new Bangla strings above (skip outcome labels, hold sheet, banners, tooltips) | Need native-reviewer sign-off before string freeze |
+| Q-UI-01, 03, 04, 05, 08, 10, 11 | memo discount rows, printer-blocked Save, check-in gate, Sales Journey and KPI tiles, Sales Submit rule, Return column acknowledgement (printout only), pack badge | Defaults of `docs/ui-reference/questions.md` are used as written above |
 | Q-SD-07 | Number grouping on money (`12,34,567` or `1,234,567`) | `LocaleDigits` stays the single source (tokens s10 item 1) |

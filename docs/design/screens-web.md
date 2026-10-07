@@ -11,18 +11,18 @@ Status: v1 draft for owner review, 2026-10-07. Two screens only. Inputs: `docs/3
  sidebar 264 | top bar: (টেরিটরি: বনানী) | search Ctrl+K | (● লাইভ) | বাংলা|EN | theme | user
  ------------+---------------------------------------------------------------------------
              | ড্যাশবোর্ড  (text-display)   [আজ|গতকাল|তারিখ]  ডেটা ০৮:৪১ পর্যন্ত  [ফিল্টার ৩] [হালনাগাদ] [রপ্তানি]
-             | info banner (only before first sync of the day, 56)
- A  y 112    | [HERO span 6 (507 x 168)           ][স্ট্রাইক রেট span 3][আউটলেট ভ্রমণ span 3]
+             | info banner (only before the first sync of the day; adds 80 and pushes the rows down)
+ A  y 152    | [HERO span 6 (507 x 168)           ][স্ট্রাইক রেট span 3][আউটলেট ভ্রমণ span 3]
              | [বিক্রয় (সর্বমোট)                   ][ ১০%                ][ ৬/৬০             ]
              | [ ৪,৩৯১.০০ ৳   text-hero 48/56     ][ ▕█░░░░▏ basis     ][ ▕█░░░░▏          ]
              | [ মোট ৪,৮২৮.৫০ ৳ · মেমো ৬  (▲ +২.৩%) ~~sparkline~~ ]
- B  y 304    | [জিও সঠিক %  ][লগইন %     ][সাবমিট %    ][ফাইনাল সাবমিট ৩/৫ জোন]   span 3 each, 128
- C  y 456    | [ বিক্রয়, মাসের শুরু থেকে (line) span 8 (684) ][ চ্যানেল (ranked bars) span 4 (330) ]
+ B  y 344    | [জিও সঠিক %  ][লগইন %     ][সাবমিট %    ][ফাইনাল সাবমিট ৩/৫ জোন]   span 3 each, 128
+ C  y 496    | [ বিক্রয়, মাসের শুরু থেকে (line) span 8 (684) ][ চ্যানেল (ranked bars) span 4 (330) ]
  D           | [ জোন র‍্যাঙ্কিং (ranked bars) span 8          ][ এখনই দেখুন (list) span 4          ]
  E           | [ টিম ম্যাপ span 12, 360 high: poster plus "মানচিত্র দেখান" ]
 ```
 
-**Reading order and weight.** One hero only (`text-hero`, 48 px, the net sales figure; wg s7.3); every other number is `text-display` (34/40, Bangla 34/48). Row C begins about 450 px down, so its first 260 px peek above the fold as the scroll cue. Under 800 px of height the filter cascade (Wing, Division, Territory, House, Zone) collapses to one "ফিল্টার (৩)" button (wg s5), so the header stays one row.
+**Reading order and weight.** One hero only (`text-hero`, 48 px, the net sales figure; wg s7.3); every other number is `text-display` (34/40, Bangla 34/48). Row C begins about 500 px down, so about 270 px of it shows above the fold as the scroll cue. Under 800 px of height the filter cascade (Wing, Division, Territory, House, Zone) collapses to one "ফিল্টার (৩)" button (wg s5), so the header stays one row.
 
 | Block | Span xl / lg / md / xs | Content and source | Form (dataviz) | Drill to |
 |---|---|---|---|---|
@@ -95,7 +95,7 @@ Colour rules on this page: colour is for status only. Deltas show an arrow, a si
 
 **Who and why.** ADMIN and SUPERADMIN apply or request; TSO and DMO propose where `cfg.geo.tso_radius_mode` is `propose`; SUPPORT reads. The page decides how close a rep must be to an outlet to sell. Both extremes cost something and the page says so: too small and every sale becomes a Force Sale; too large and the gate proves "in this market", not "at this shop" (docs/19 `cfg.geo.radius_m`, docs/22 P-10). The page is built so a mistake is visible before it is requested: the map shows the circle, the what-if shows what flips on real fixes, the blast radius shows who is touched, and the risk class states the gate in words.
 
-**Flow, in one panel, three questions.** (1) *কোথায়* (where: scope), (2) *কত দূর* (how far: value with live circle), (3) *নিশ্চিত করুন* (confirm: effect, risk, reason, send). The panel keeps them in this order top to bottom (layout and map styling are wg s9.1; this section adds the decisions).
+**Flow, in one panel, three questions.** (1) *কোথায়* (where: scope), (2) *কত দূর* (how far: the value, the live circle and its effect on real visits), (3) *নিশ্চিত করুন* (confirm: risk, reason, send). The panel keeps them in this order top to bottom (layout and map styling are wg s9.1; this section adds the decisions).
 
 ```
  xl: map fills the content area (1102 x 712)                         | glass-panel 380, inset 16, radius 28
@@ -105,9 +105,9 @@ Colour rules on this page: colour is for status only. Deltas show an arrow, a si
      [+][-] at LEFT_BOTTOM, Google logo never covered                 | ② কত দূর   ১০০ মি (display)  (বিভাগ থেকে)
                                                                       |    ছোট ◂━━━━●━━━━━━━━━━▸ বড়   [ ১৫০ ] মি
      bottom handle 56: ঘনত্ব ও ক্যালিব্রেশন                           |    ২০ থেকে ২,০০০ মি · ১৫০ মি-এর ওপরে দ্বিতীয় অনুমোদন
-                                                                      | ③ প্রভাব   (৭|১৪|৩০ দিন) ১২৪ ভিজিট: ৯ বৈধ হতো, ২ অবৈধ…
+                                                                      |    প্রভাব  (৭|১৪|৩০ দিন) ১২৪ ভিজিট: ৯ বৈধ হতো, ২ অবৈধ…
                                                                       |            ▕████████▒▏  ; ৩টি জোন, ১৮টি রুট, ৪১২টি আউটলেট…
-                                                                      | নিশ্চিত করুন  (C3 দ্বিতীয় অনুমোদন)  কারণ [        ] ০/১০
+                                                                      | ③ নিশ্চিত করুন  (C3 দ্বিতীয় অনুমোদন)  কারণ [      ] ০/১০
                                                                       | [ অনুরোধ করুন ]*  sticky footer
 ```
 
@@ -144,7 +144,7 @@ Colour rules on this page: colour is for status only. Deltas show an arrow, a si
 | Key | BN | EN |
 |---|---|---|
 | title, intro | জিওফেন্সের ব্যাসার্ধ; একজন প্রতিনিধি আউটলেটের কত কাছে থাকলে বিক্রি করতে পারবেন। পরিবর্তন ফোন পরের সিঙ্কে পাবে। | Geofence radius; How close a rep must be to an outlet to sell. Phones receive a change at their next sync. |
-| steps | কোথায়, কত দূর, প্রভাব, নিশ্চিত করুন | Where, How far, Effect, Confirm |
+| steps | কোথায়, কত দূর (সাথে প্রভাব), নিশ্চিত করুন | Where, How far (with Effect), Confirm |
 | current | এখানে কার্যকর ব্যাসার্ধ; বিভাগ থেকে | Radius in force here; from Division |
 | what-if | ব্যাসার্ধ যদি হতো…; ১২৪টি ভিজিট যাচাই: ৯টি বৈধ হতো, ২টি অবৈধ হতো, ১১৩টি অপরিবর্তিত। | What if the radius were…; 124 visits checked: 9 would become valid, 2 would become invalid, 113 unchanged. |
 | bounds error | ২০ থেকে ২,০০০ মিটারের মধ্যে একটি সংখ্যা দিন। | Enter a number from 20 to 2,000 metres. |
