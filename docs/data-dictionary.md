@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 135 | 2426 |
+| `app` | 135 | 2428 |
 | `dw` | 28 | 433 |
 
 ## Index
@@ -3911,10 +3911,12 @@ A task created by a supervisor for a user, optionally tied to an outlet or visit
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `status_changed_at` | timestamp with time zone | null |  | UTC instant of the last status change. |
 | `cancelled_by` | bigint | null |  | Id of the user who cancelled the task. |
+| `route_id` | bigint | null |  | Route the task belongs to (contract Task.route_id); null when the task names none. |
+| `cancel_reason` | text | null |  | Reason given when the task was cancelled (10 to 500 characters); set once, with the cancellation. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (assignee_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (cancelled_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (assignee_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (cancelled_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.task_event
 

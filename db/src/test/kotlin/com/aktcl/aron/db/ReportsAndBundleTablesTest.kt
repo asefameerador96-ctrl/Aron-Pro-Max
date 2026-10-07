@@ -9,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-/** V0030 export log and PII budget, V0031 device/activity/consent facts, V0032 bundle snapshots, V0036 report indexes and events. */
+/** V0030 export log and PII budget, V0031 device/activity/consent facts, V0032 bundle snapshots, V0036 report indexes and events, V0037/V0038 task route and cancel reason. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ReportsAndBundleTablesTest {
     private lateinit var db: TestDatabase
@@ -116,5 +116,20 @@ class ReportsAndBundleTablesTest {
             }
             assertEquals("3", scalar("SELECT count(*) FROM app.domain_event WHERE event_type IN ('due.collected', 'day_exception.decided', 'risk_signal.changed')"))
         }
+    }
+
+    @Test
+    fun aTaskKeepsItsRouteAndItsCancelReasonOnce() = db.connect().use { c ->
+        c.tx {
+            val ins = "INSERT INTO app.task (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, task_type_code, assignee_user_id, title, route_id) " +
+                "VALUES (gen_random_uuid(), gen_random_uuid(), '2026-10-07', $user, now(), 0, 'general', $user, 'Check stock', %s)"
+            assertEquals("23503", refused(ins.format("-1")))                                                       // route must exist
+            exec(ins.format("NULL"))
+            assertEquals("23514", refused("UPDATE app.task SET status = 'cancelled', cancelled_by = $user, cancel_reason = 'too short'"))
+            exec("UPDATE app.task SET status = 'cancelled', status_changed_at = now(), cancelled_by = $user, cancel_reason = 'Outlet closed for renovation'")
+            assertEquals("42501", refused("UPDATE app.task SET cancel_reason = 'Another reason entirely'"))      // write-once
+            assertEquals("42501", refused("UPDATE app.task SET route_id = NULL, title = 'x'"))
+        }
+        assertEquals(listOf("t", "t"), c.column("SELECT convalidated FROM pg_constraint WHERE conname IN ('task_route_id_fkey', 'task_cancel_reason_check')"))
     }
 }
