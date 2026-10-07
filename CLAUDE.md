@@ -23,6 +23,10 @@ These were stated by the sponsor (one human, the owner) and apply to every sessi
 7. **Do the work yourself where you can.** The owner is the only human: do not hand them manual steps that a lane, the laptop session or a script can do. Use the laptop operator session for laptop-only steps; ask the owner only for what needs their account, their approval or their hands (phones, printer, MFA, billing).
 8. **Never print or store secrets.** Signing key, Maps/Firebase keys and Azure identity live in GitHub secrets only.
 9. **Before you ask the owner something, check these rules and the docs.** If a rule above already answers it, apply it.
+10. **Model routing and token budget** (`docs/29`): T1 rows get an Opus checker, T2 rows a Sonnet checker, mechanical sub-tasks go to Haiku; never below Sonnet for money, sync, security, geofence, migrations, infra, Bangla or print. Lanes work autonomously (no go-ahead waiting), keep contexts small and recycle at about 450 k tokens. The goal is to finish inside the Max 20x allowance without lowering quality.
+11. **Environments, Git and release** (`docs/30`): local, CI, dev (test account), device lab (our QA for the apps), then staging and prod/live in the final account. All work is in GitHub on the integration branch `claude/wonderful-thompson-k6ejnf`; `main` is the protected release branch promoted by a daily gate pull request, but **no pull request is opened until the owner has approved the flow**.
+12. **Enterprise bar** (`docs/31`): measurable gates for speed, battery, size, data, security and money correctness; the database is a product (stable `dw` views, domain-event outbox, versioned reference data, data dictionary) so later dashboards and verticals can reuse it.
+13. **Timeline:** Day 1 was 2026-10-05; Day 7 is 2026-10-11; the hard cap, Day 10, is 2026-10-14. The lead checks every lane hourly, nudges idle ones, reports to the owner every evening, and says early when a day will slip.
 
 ## Non-negotiable constraints
 
