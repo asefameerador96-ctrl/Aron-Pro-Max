@@ -27,3 +27,8 @@ Logic plus screens, Bangla and English, offline, wired in `app-sr` (`SrApp`, `Sr
 - F-SR-015 stock-slip print hook: waits for the android-print wiring checklist.
 - `DeviceOwnerPolicy.configure(trustedClock...)` and `reapply()` belong in the Application (android-core); `ConfigCheck` implementation with android-core.
 - Hand-offs: sr-b plugs in through `SrApp(onOtherTile)` and the open `VisitSession`; the placeholder visit end (`SrDay.closeVisitAbandoned`) is theirs to replace.
+
+## Later today
+- Printing wired for the stock slip (PrinterManager singleton, MemoPrinting on RoomPrintLedger, recover at day start, Print after Save, slip warning from Room). Open with android-core: item 15 (slip flag on every row of one Save).
+- N-041 needs a decision: docs/requests/android-sr-a-map-on-tap.md.
+- Owner design rule (docs/32 s2a, outdoor-first): screens use the kit's components and tokens only; numbers, status and actions sit on solid cards, glass only for chrome. When `ContentCard` lands in the kit, swap it in for the plain Columns on Stock, Attendance and Tasks; no hard-coded colours exist in my modules today.

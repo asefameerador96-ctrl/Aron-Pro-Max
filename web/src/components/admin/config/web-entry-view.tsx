@@ -48,7 +48,7 @@ export function WebEntryView({ locale, options, selection, date, today, routes, 
       {entry ? (
         <Card title={`${t(locale, "we.entry_of")} ${formatBusinessDate(locale, date)}`}>
           <p className="text-xs text-slate-600">{t(locale, "we.astha_note")}</p>
-          <WebEntryGrid key={`${entry.route_id}-${date}-${entry.saved_at ?? "new"}`} routeId={entry.route_id} date={date} skus={gridSkus} initialLines={entry.lines} targetOutlets={entry.target_outlets} initialCalls={entry.successful_calls} saved={entry.saved_at !== null} appOverlap={entry.app_overlap} canWrite={canWrite} classes={classes} />
+          <WebEntryGrid key={`${entry.route_id}-${date}-${entry.saved_at ?? "new"}`} routeId={entry.route_id} date={date} skus={gridSkus} initialLines={entry.lines} targetOutlets={entry.target_outlets} initialCalls={entry.successful_calls} saved={entry.saved_at != null} appOverlap={entry.app_overlap} canWrite={canWrite} classes={classes} />
         </Card>
       ) : null}
     </div>

@@ -95,7 +95,7 @@ export function GeofenceView({ locale, key_, level, areaId, current, whatIfValue
         <>
           <div className="relative" data-testid="geo-current">
             <RadiusMap radiusM={whatIfValue ?? radius} />
-            <aside className="mt-3 space-y-2 rounded-[var(--radius-sheet)] border border-[var(--border-hairline)] bg-[var(--surface-glass)] p-5 shadow-[var(--elev-1)] backdrop-blur-xl transition-all duration-[var(--motion-base)] md:absolute md:left-4 md:top-4 md:mt-0 md:w-80" aria-label={t(locale, "geo.current")}>
+            <aside className="mt-3 space-y-2 rounded-[var(--radius-sheet)] border border-[var(--border-hairline)] bg-[var(--surface)] p-5 shadow-[var(--elev-1)] [-webkit-backdrop-filter:var(--glass-blur,none)] [backdrop-filter:var(--glass-blur,none)] transition-all duration-[var(--motion-base)] md:absolute md:left-4 md:top-4 md:mt-0 md:w-80" aria-label={t(locale, "geo.current")}>
               <p className="text-sm text-[var(--text-secondary)]">{t(locale, "geo.current")}</p>
               <p className="text-3xl font-semibold tabular-nums" data-testid="current-radius">{t(locale, "geo.metres", { m: n(radius) })}</p>
               <p className="text-xs text-[var(--text-secondary)]">{current ? t(locale, `cfgk.from.${current.scope_type}` as MessageKey) : t(locale, "cfgk.from.default")}</p>

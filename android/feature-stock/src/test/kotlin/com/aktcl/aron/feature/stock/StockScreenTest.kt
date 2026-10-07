@@ -31,9 +31,9 @@ class StockScreenTest {
     private val rows = listOf(StockRow(sku(1, "lighter", "piece"), 400, 0), StockRow(sku(2, "match", "dozen"), 400, 0))
     private val totals = listOf(CategoryTotal("lighter", 400), CategoryTotal("match", 400))
 
-    private fun show(language: AppLanguage, msg: StockMessage? = null, onIssue: (Long, Int) -> Unit = { _, _ -> }, onSave: () -> Unit = {}) {
+    private fun show(language: AppLanguage, msg: StockMessage? = null, onIssue: (Long, Int) -> Unit = { _, _ -> }, onSave: () -> Unit = {}, onPrint: (() -> Unit)? = null) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
-        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { StockContent(rows, totals, msg, true, onIssue, onSave) } } }
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { StockContent(rows, totals, msg, true, onIssue, onSave, onPrint = onPrint) } } }
         compose.waitForIdle()
     }
 
@@ -54,5 +54,18 @@ class StockScreenTest {
     @Test fun refusedMessageShowsInBangla() {
         show(AppLanguage.BN, StockMessage.REFUSED_SAME_VALUES)
         compose.onNodeWithText("এই মানগুলো এইমাত্র সংরক্ষণ করা হয়েছে। মান বদলান বা কয়েক মিনিট অপেক্ষা করুন।").assertExists()
+    }
+
+    @Test fun printButtonOnlyAfterASaveAndNeverBlocksSave() {
+        var printed = 0; var saved = 0
+        show(AppLanguage.BN, onSave = { saved++ })
+        compose.onNodeWithTag(StockTags.PRINT).assertDoesNotExist()
+        compose.onNodeWithTag(StockTags.SAVE).performClick(); assertEquals(1, saved)
+    }
+
+    @Test fun printButtonCallsBackWhenOffered() {
+        var printed = 0
+        show(AppLanguage.EN, onPrint = { printed++ })
+        compose.onNodeWithTag(StockTags.PRINT).performClick(); assertEquals(1, printed)
     }
 }

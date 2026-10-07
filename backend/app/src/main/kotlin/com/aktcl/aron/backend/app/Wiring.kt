@@ -110,6 +110,7 @@ class Wiring(
          */
         @Suppress("UNUSED_PARAMETER")
         fun recordHandlers(db: Database, clock: AronClock): List<RecordHandler> = listOf(
+            com.aktcl.aron.backend.config.ConfigAckHandler(),
         )
 
         /** [extraRecordHandlers] are for tests only; production handlers are listed in [recordHandlers]. */
