@@ -33,4 +33,26 @@
     <string name="review_problem_paid">Paid must be 0 or more and less than the total, in whole paisa.</string>
     <string name="review_problem_nothing">Nothing to sell.</string>
     <string name="review_problem_other">Please check the sale.</string>
+    <string name="credit_title">Credit (বাকি)</string>
+    <string name="credit_paid_label">Paid now</string>
+    <string name="credit_due_label">Due: %1$s</string>
+    <string name="credit_apply">Apply</string>
+    <string name="slide_title">Slide (empty packets)</string>
+    <string name="slide_reward">%1$s reward packs = %2$s</string>
+    <string name="slide_none">No SKU has an active offer.</string>
+    <string name="qc_title">Product QC</string>
+    <string name="qc_production">Production fault</string>
+    <string name="qc_transport">Transport fault</string>
+    <string name="qc_deduction">Deduction: %1$s</string>
+    <string name="qc_done">QC done</string>
+    <string name="qc_locked">QC is done at this outlet; the sale can no longer be edited.</string>
+    <string name="call_start_title">Start the call?</string>
+    <string name="call_start_message">You are at %1$s. Start the call now?</string>
+    <string name="edit_reason_title">Why are you editing this sale?</string>
+    <string name="edit_reason_wrong_sku">Wrong SKU</string>
+    <string name="edit_reason_wrong_quantity">Wrong quantity</string>
+    <string name="edit_reason_wrong_price_type">Wrong price type</string>
+    <string name="edit_denied_outside">You can edit a sale only at the shop, inside the geofence.</string>
+    <string name="edit_denied_qc">QC is done at this outlet; the sale cannot be edited.</string>
+    <string name="edit_denied_superseded">This memo was already replaced by a newer one.</string>
 </resources>

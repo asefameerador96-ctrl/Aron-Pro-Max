@@ -29,6 +29,9 @@ object DueLedger {
     fun markPaid(memo: StoredMemo, collections: List<StoredCollection>, outstandingBeforeMtk: Long): DueCollectionDraft? {
         val due = remaining(memo, collections)
         if (due < 10) return null
-        return DueCollectionDraft(memo.outletId, memo.memoUuid, memo.memoNo, memo.businessDate, due, true, outstandingBeforeMtk)
+        // The contract's full settlement means the whole outstanding of the outlet (core rule), so a memo paid while other memos
+        // of the outlet are still open is a partial settlement of the outlet.
+        val before = maxOf(outstandingBeforeMtk, due)
+        return DueCollectionDraft(memo.outletId, memo.memoUuid, memo.memoNo, memo.businessDate, due, due == before, before)
     }
 }

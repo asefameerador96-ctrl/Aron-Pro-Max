@@ -115,3 +115,14 @@ class SaleReviewTest {
         assertTrue(ReviewProblem.UnknownSku(999) in review(d).problems); assertFalse(review(d).canCommit)
     }
 }
+
+class PaidInputTest {
+    @org.junit.Test fun twoDecimalsToMilliTakaAndBanglaDigits() {
+        org.junit.Assert.assertEquals(30_000L, PaidInput.parse("30"))
+        org.junit.Assert.assertEquals(30_500L, PaidInput.parse("30.5"))
+        org.junit.Assert.assertEquals(30_050L, PaidInput.parse("30.05"))
+        org.junit.Assert.assertEquals(30_050L, PaidInput.parse("৩০.০৫"))
+        org.junit.Assert.assertEquals(0L, PaidInput.parse("0"))
+        listOf("", "-1", "1.234", "1,000", "abc", "1.", ".5", "12345678901").forEach { org.junit.Assert.assertNull(it, PaidInput.parse(it)) }
+    }
+}
