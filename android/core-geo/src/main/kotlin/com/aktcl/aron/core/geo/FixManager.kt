@@ -230,6 +230,9 @@ class FixManager(
         const val MAX_ACCURACY_M: Double = 100_000.0
         const val MAX_REFRESH_COUNT: Int = 10
         private const val NANOS_PER_MS = 1_000_000L
+        /** `fix_time` form: ISO-8601 UTC with milliseconds. */
+        internal fun isoMillis(epochMs: Long): String = ISO_MILLIS.format(Instant.ofEpochMilli(epochMs))
+
         private val ISO_MILLIS: DateTimeFormatter =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC)
     }

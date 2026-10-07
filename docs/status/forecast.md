@@ -40,3 +40,9 @@ Day 7 holds if: (1) no lane idles more than 2 hours (the lane check runs every 2
 - Critical path now: backend-core (new session, 0 rows logged since recycle), android-core (Room v3, F-SYS-049/006), android-sr-a Compose screens (kit slices 1 to 3 on INT, told to proceed), then the SR slice on dev (login, bundle, visit, sale, memo, sync). Wave 2 (android-amo, android-tso, qa) starts when that slice runs on dev.
 - Recycles requested at the 450k context limit: db (662k), backend-admin (512k), android-print (482k), web-dashboard (483k).
 - Contract v1.2 (additive batch of 8 requests, rulings R10 to R17) is being applied by an Opus agent; lanes told to pull it and wire.
+
+## Update 2026-10-07 10:50 UTC (Day 3, lead lane check)
+- Rows from the backlog: **266 of 490 BUILD rows built and checked (54.3%), 236 on INT (48.2%)**; the 490 is the current backlog (33 deferred, 96 dropped). Web 98 to 100 percent (against mocks), shared 100, SR 79 built but 42 on INT, shared Android core 54, backend 41, db 56, infra 12 (its work is mostly lead tasks without backlog rows), AMO, TSO and QA 0 (wave 2 not started).
+- INT is green again since 10:18 UTC (12a823e, then 903e092). The integration train works: two promotions in 20 minutes. The SR slice end to end waits on lane/android-core 85365484 and lane/android-sr-b reaching INT, then android-sr-a wires the OTP screen and hosts Sale, Memo and Summary.
+- Usage: the seven-day window is at allowed_warning (resets 2026-10-13 18:00 UTC), five-hour is allowed; critical lanes only.
+- Owner moved the USB phone and every device check to 2026-10-08. Schedule risk: all device-only checks (printing, GPS and spoofing, device owner, 8-hour battery, outdoor legibility) now start on Day 4. Day 7 holds only if the owner can do them in one block tomorrow.
