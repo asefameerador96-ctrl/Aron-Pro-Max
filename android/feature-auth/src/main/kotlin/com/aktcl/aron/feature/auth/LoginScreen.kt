@@ -1,7 +1,6 @@
 package com.aktcl.aron.feature.auth
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,13 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -35,6 +31,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aktcl.aron.core.common.AppLanguage
+import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronPrimaryButton
+import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LanguageToggle
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.localizedDigits
@@ -66,7 +65,8 @@ fun LoginScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (state.bindToken != null) {
-        OtpContent(state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify)
+        androidx.activity.compose.BackHandler(onBack = viewModel::onOtpBack)
+        OtpContent(state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify, onBack = viewModel::onOtpBack)
         return
     }
     LoginContent(
@@ -131,26 +131,18 @@ fun LoginContent(
             modifier = Modifier.fillMaxWidth().testTag(LoginTags.PASSWORD),
         )
         Spacer(Modifier.height(20.dp))
-        Button(
+        state.message?.let { message ->
+            // A solid banner (docs/32 s2a): readable in sun, never colour alone.
+            AronBanner(messageText(message), Modifier.testTag(LoginTags.MESSAGE), kind = BannerKind.Error)
+            Spacer(Modifier.height(12.dp))
+        }
+        // The kit's primary button (48 dp+, wraps at large fonts); while busy the label says so and the button is off.
+        AronPrimaryButton(
+            text = stringResource(if (state.busy) R.string.auth_logging_in else R.string.auth_login_button),
             onClick = onSubmit,
             enabled = !state.busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp).testTag(LoginTags.SUBMIT),
-        ) {
-            if (state.busy) {
-                Box(contentAlignment = Alignment.Center) { CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp) }
-            } else {
-                Text(stringResource(R.string.auth_login_button))
-            }
-        }
-        state.message?.let { message ->
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = messageText(message),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.fillMaxWidth().testTag(LoginTags.MESSAGE),
-            )
-        }
+            modifier = Modifier.testTag(LoginTags.SUBMIT),
+        )
         Spacer(Modifier.height(48.dp))
         Text(
             text = localizedDigits(stringResource(R.string.auth_version, versionName)),

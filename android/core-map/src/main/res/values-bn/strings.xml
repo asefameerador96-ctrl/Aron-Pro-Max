@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="map_offline">নেটওয়ার্ক নেই: ম্যাপ লোড হয়নি। তালিকায় সর্বশেষ জানা অবস্থান দেখানো হচ্ছে।</string>
+    <string name="map_unavailable">এই ফোনে ম্যাপ পাওয়া যাচ্ছে না। তালিকায় সর্বশেষ জানা অবস্থান দেখানো হচ্ছে।</string>
+    <string name="map_capped">ম্যাপে প্রথম %1$sটি দেখানো হচ্ছে। সবগুলো তালিকায় আছে।</string>
+    <string name="map_last_seen_image">সর্বশেষ দেখা ম্যাপ</string>
+    <string name="map_list_empty">এখনো দেখানোর কিছু নেই।</string>
+    <string name="map_no_fix">এখনো কোনো অবস্থান নেই</string>
+    <string name="map_last_seen">সর্বশেষ দেখা %1$s (%2$s মিনিট আগে)</string>
+    <string name="map_address_last_known">%1$s (কাছাকাছি: %2$s, সর্বশেষ জানা)</string>
+</resources>

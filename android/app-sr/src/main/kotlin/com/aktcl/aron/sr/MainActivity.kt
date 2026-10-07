@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
+    @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
     private var dayHolder: SrDayHolder? = null
@@ -83,6 +84,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { updateShell.check(atLogin = false) } // F-SYS-020, throttled to 12 h inside
         pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
         lifecycleScope.launch { components.session.noteTimePassing() } // F-SYS-052: the offline window counts real uptime
+        telemetry.sampleSoon() // F-SYS-081: a foreground event is a sample point
         lifecycleScope.launch { // F-SYS-024: today's sampling, then the app-open event
             val id = (components.session.settled() as? SessionState.Active)?.user?.userId ?: return@launch
             activityLog.refreshSampling(id)
@@ -168,6 +170,7 @@ class MainActivity : ComponentActivity() {
                                     ),
                                     health = null, versionText = versionName,
                                     onLanguageSelect = onLanguageSelect,
+                                    updateShell = updateShell, mediaShell = mediaShell,
                                     // F-SYS-022: SR keeps its data (it keeps uploading); the flow schedules the upload.
                                     onLogout = { srLogout(s.user.userId) },
                                     onOtherTile = { },

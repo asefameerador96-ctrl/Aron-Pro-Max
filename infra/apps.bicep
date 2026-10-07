@@ -30,6 +30,8 @@ param webImage string = ''
 param deployServices bool = true
 @description('Client image for the dblogins job (psql 16), imported into the registry by deploy.sh; empty = no job.')
 param psqlImage string = ''
+@description('Dev only (ARON_DEV_SEED=true): the dblogins job also references aron-dev-seed-password, so deploy.sh can run the dev seed image (db/seed) through it. Never true in stage or prod.')
+param devSeed bool = false
 @description('api and worker connect as their own least-privilege logins (app_api, app_jobs) instead of the server admin; needs psqlImage (the dblogins job creates the logins). The migrate job always uses the admin login.')
 param dbPerAppLogins bool = false
 @description('api revisions: Single (dev: the new revision takes all traffic once ready) or Multiple (stage and prod, docs/30 s3: the previous revision stays active at 0 % so deploy.sh can put traffic back on it when the health gate fails).')
@@ -196,23 +198,31 @@ resource dblogins 'Microsoft.App/jobs@2025-07-01' = if (!empty(psqlImage)) {
       replicaRetryLimit: 0
       manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
       registries: [{ server: acr.properties.loginServer, identity: idMigrate.id }]
-      secrets: [
+      secrets: concat([
         kvSecret('db-direct-url', secretNames.dbDirectUrl, kvSecretUrl, idMigrate.id)
         kvSecret('pw-app-api', secretNames.dbPwAppApi, kvSecretUrl, idMigrate.id)
         kvSecret('pw-app-worker', secretNames.dbPwAppWorker, kvSecretUrl, idMigrate.id)
         kvSecret('pw-app-jobs', secretNames.dbPwAppJobs, kvSecretUrl, idMigrate.id)
-      ]
+        // The SQL itself (not a secret): mounted as a file. As a 7 KB env value the replica was never created
+        // ("No replicas found for execution"), while the same job with only the image and the four Key Vault refs
+        // ran (deploy run 37659152959, probes A and B).
+        // Checked-in SQL with no credentials (passwords arrive by \getenv from the Key Vault refs above), so not secure.
+        #disable-next-line use-secure-value-for-secure-inputs
+        { name: 'logins-sql', value: loadTextContent('sql/runtime-logins.sql') }
+      ], devSeed ? [kvSecret('seed-pw', 'aron-dev-seed-password', kvSecretUrl, idMigrate.id)] : [])
     }
     template: {
+      // Only the SQL file is projected (an empty secrets list would mount every secret, the database URL included).
+      volumes: [{ name: 'sql', storageType: 'Secret', secrets: [{ secretRef: 'logins-sql', path: 'runtime-logins.sql' }] }]
       containers: [
         {
           name: 'dblogins'
           image: psqlImage
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
           // The JDBC URL minus its "jdbc:" prefix is a libpq URI (host, port, sslmode, user, password parameters).
-          command: ['/bin/sh', '-c', 'printf "%s" "$ARON_SQL" > /tmp/logins.sql && exec psql "\${ARON_DB_URL#jdbc:}" -X -q -f /tmp/logins.sql']
+          command: ['/bin/sh', '-c', 'exec psql "\${ARON_DB_URL#jdbc:}" -X -q -f /sql/runtime-logins.sql']
+          volumeMounts: [{ volumeName: 'sql', mountPath: '/sql' }]
           env: [
-            { name: 'ARON_SQL', value: loadTextContent('sql/runtime-logins.sql') }
             { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
             { name: 'ARON_PW_APP_API', secretRef: 'pw-app-api' }
             { name: 'ARON_PW_APP_WORKER', secretRef: 'pw-app-worker' }

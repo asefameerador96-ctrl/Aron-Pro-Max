@@ -78,6 +78,179 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Handover (READY TO RECYCLE, 2026-10-07 ~21:10Z by the container clock, tenth session)
+- **Done this session:** F-SYS-080 phone half + F-SYS-047 `?since=` (Opus PASS, mediums fixed); Room v5 content and surveys for android-sr-a (Opus PASS, mediums fixed; android-sr-a told). Head 67b85f1e, tree clean, INT bde7719c merged.
+- **In progress:** nothing. `python3 tools/my-rows.py android-core --todo` lists only N-023, AUD-TP-5 (android-core-ui) and AUD-TP-4 (infra).
+- **Next (all waiting on others):**
+  1. android-sys's answer to android-core-sys-media-mobile-bytes.md, then wire `noteMobileMediaBytes` in the shells.
+  2. android-sys's answer to android-core-sys-update-answered.md (new, low), then the "you're up to date" message.
+  3. Replace seed `baseline-prof.txt` after D-PERF-04; any new request naming android-core.
+- **Traps found this session:**
+  48. Two Gradle test runs at once (a checker agent and you) delete each other's `in-progress-results-generic.bin`: the task fails with NoSuchFileException, not a test failure. Run the full suite when no other run is going.
+  49. Test fixtures that share one body share one sha256: the content cache is keyed by sha, so give each fixture item its own hash.
+
+## Tenth session (2026-10-07, from ~20:20Z by the container clock)
+- INT (bde7719c) merged (fast-forward). Fresh container: `tools/android-sdk.sh` + `sdk.dir` (trap 40). Checks before the push: shared:contract jvmTest, the three app compiles, core-sync (235), core-database (160), app-sr (19), lint on core-sync, core-database, app-sr: green.
+- **F-SYS-080 phone half: done** (T1; Opus check PASS, its two mediums fixed with tests). `POST /v1/sync/digest` (`SyncDigestApi`, local DTOs) with backend-core's confirmed rule (`DigestHash`: bucket = first hex digit, hash = sum of `mostSignificantBits` mod 2^64, 16 hex; per device and calling user; window `cfg.sync.max_backdate_days` 7).
+  - When: after every generation change (`sync.digest_due` = generation), at Sales Submit, once a day after the first run that acked a batch, from a manual run at most every 10 min; only when the run drained with nothing unsent. Items: only (date, type) the phone holds acked rows of, contract record types only, chunks of 200.
+  - Rows of every named bucket go back (`OutboxDao.resendDigestBuckets`, `last_code` digest_resend, sig kept) and go in the same run; a batch of digest put-backs alone is trigger `digest_resend`, mixed with resync put-backs `resync`. After a re-send one confirming digest (`confirm`); a difference that survives it waits for the next daily one (no loop).
+  - Never digested: dates before the highest purge cutoff (`sync.purge_cutoff_max`, raised before the purge runs; before the first purge, today minus `cfg.app.local_history_days`), and the first capture date of a database never synced (`sync.digest_from`; a logout wipe or reinstall cannot hold that day's earlier rows).
+  - D-517 purge hold: a handled restore sets `sync.digest_purge_hold`; `dailyPurge` waits until a clean digest, at most 8 days.
+  - F-SYS-047: `GET /v1/sync/generation?since=<handled>`; re-send from `earliest_lost_after_utc`, else `lost_after_utc` (closes the two-restore gap; still capped by the resync window, the digest is the backstop).
+  - Tests: DigestResendTest (10, mutation-checked: whole-bucket put-back, earliest loss), PurgeConfigTest hold.
+  - Accepted lows (checker): types outside the contract `RecordType` are not digested (the server's TypeRules list equals it today); quarantine resolutions counted as acked assume the future `QuarantineAcceptor` sets registry `accepted` under the same uuid/user/device (note for backend-core below); the fake server reuses `DigestHash` (agreement rests on hand-checked vectors equal to `SyncDigest.kt`).
+- **Room v5 for android-sr-a: done** (docs/requests/android-sr-a-av-kv-survey-data.md; Opus check PASS, its two mediums fixed). Interface in "Interfaces for feature lanes" below. AutoMigration 4 -> 5, schema 5.json, migration test; LocalPurge and DEVICE_TABLES cover the two capture tables. No points ledger (docs/27).
+  - Accepted lows: a sha mismatch is downloaded again after a process restart (in-memory failed set); the delta carries no content/surveys (the next snapshot replaces them); `wifi_preferred` is treated as Wi-Fi only in the pilot.
+- **For backend-core (note, no request file):** the phone counts a quarantine released by a reviewer (`resolutions`, accepted / accepted_with_fix) as acked in the digest; when the quarantine acceptor is wired it must leave the registry row `accepted` under the same client_uuid, user and device, or that bucket is re-sent daily.
+
+## Handover (READY TO RECYCLE, 2026-10-07 ~20:45Z by the container clock, ninth session)
+- **Done this session** (details in "Ninth session" below; every row had a fresh checker, every FAIL a re-check):
+  - N-053 + F-SYS-074: `android/core-map` (lite map, bounded cache, offline list) and the online-only attendance address (Opus FAIL fixed, re-check fixed).
+  - F-SYS-047: server-generation re-sync (Opus FAIL 1 high + 3 medium fixed; re-check PASS; its lows fixed).
+  - Follow-ups: location notice re-check after Later (drawn over the day), BC-56 enforce hold, F-SYS-028 incremental vacuum (SQLCipher postKey hook), Settings slots bound in SrApp, app cfg keys aligned to db V0055.
+- **In progress:** nothing. Head pushed, INT merged (zw), tree clean.
+- **Next, in this order:**
+  1. F-SYS-080 (digest and targeted re-send) once backend-core lands `POST /v1/sync/digest` (docs/requests/android-core-backend-sync-digest.md; confirm the hash byte order first; also asks `previous_generation` for the two-restore gap of F-SYS-047).
+  2. android-sr-a's docs/requests/android-sr-a-av-kv-survey-data.md: Room tables `outlet_content_assignment`, `survey_question`, record types `content_view`, `survey_response`, the Wi-Fi-only AV/KV cache (F-SYS-029); waits for backend-core's contract and bundle sections (backend-core messages when on its head). Room migration + exported schema + migration test. No points ledger (docs/27).
+  3. Small: android-sys's answer to docs/requests/android-core-sys-media-mobile-bytes.md, then wire `noteMobileMediaBytes` in the shells; replace seed `baseline-prof.txt` after D-PERF-04; a "you're up to date" message on the App update row (low).
+- **Open requests (new):** android-core-backend-sync-digest.md (backend-core), android-core-sys-media-mobile-bytes.md (android-sys). For android-core-ui via the lead: add `core-map` to `HardcodedStringScanner`'s module set.
+- **Device checks new:** D-MAP-074 (address now; lite map when AMO/TSO hosts land), D-DB-VAC (`SqlCipherDeviceTest` asserts auto_vacuum 2).
+- **Traps found this session:**
+  43. `pkill -f GradleWrapperMain` also kills your own shell (its command line matches): kill by PID or let the run finish.
+  44. A Gradle run started before you edit sources compiles your half-done edit: start check runs after edits, not during.
+  45. A new library module needs `consumer-rules.pro` (the root build adds it to every library).
+  46. Android's and Robolectric's SQLite default `auto_vacuum` is FULL, SQLCipher's is NONE, and SQLCipher switches to WAL before `onConfigure`: set file-creation pragmas in its `postKey` hook.
+  47. A `values-bn` copy of a `translatable="false"` string is lint ExtraTranslation.
+
+## Ninth session (2026-10-07, from ~17:55Z by the container clock)
+- INT merged (infra only, no conflicts). Checks run: shared:contract jvmTest, the three app compiles, core-sync (209), core-database (150), app-sr (12), core-map (20); lint on core-map and app-sr.
+- **N-053 (lead ruling: assigned to android-core because F-SYS-074 needs it) and F-SYS-074: done** (T1; Opus checker FAIL with one medium privacy finding, fixed with tests; re-check FAIL only on a bn copy of a translatable=false string, removed as it prescribed; lint green). New module `android/core-map` (interface in "Interfaces for feature lanes"):
+  - `LiteMapScreen`: Google lite mode (2D, one static image) only when online, with a key and provider google; the list with "last seen HH:MM (n min ago)" and source, greyed after 120 min, in every mode; offline the last rendered image from `MapTileCache` (LRU, cap `cfg.map.tile_cache_mb`, 5..100, default 20). MapLibre is not bundled: that setting shows the list. No map class loads outside the composable (source-scan test).
+  - `DayConfig` reads `cfg.map.provider` and `cfg.map.tile_cache_mb`; `MapSettings.of` validates them. Honest limit: the hosts that build `MapSettings` from DayConfig are the AMO/TSO screens (F-AMO-016, F-TSO-011/012, F-AMO-028), not built yet.
+  - Attendance address: `AddressResolver` (platform Geocoder, no key, online only, 5 s timeout, after the commit, display only); offline the coordinates, plus the last resolved address when within 300 m (per-user prefs `aron-map-last-address-<id>`, deleted by the logout wipe). Wired in `SrDay`.
+  - `NoAlwaysOnMapTest` (app-sr): only the on-tap N-041 OutletMapActivity references the Maps SDK, started only from a click handler, not exported.
+  - Live lite render, pins and snapshot write: device check D-MAP-074 (address part ready now; map part when the AMO/TSO hosts land).
+  - For android-core-ui (via the lead): add `core-map` to `HardcodedStringScanner`'s module set (core-ui test). Its strings are already in resources (bn + en).
+- **Location notice re-check (handover item) done**: after "Later", each resume re-reads the need; when a config delta has made the notice required (and it is not accepted) it is drawn OVER the day (no teardown: a visit in progress keeps its state; Back is swallowed; only Accept or Logout). A read error keeps "Later". Opus check PASS; its medium (mid-sale teardown) and lows fixed with the test (state survives, error keeps Later, shown_at = reappearance time). Limit: the flip shows at the resume after the delta is applied.
+- **BC-56 follow-up done**: `cfg.sec.record_signature_mode` (db V0053) is read by `SyncEngine`; under enforce the integrity-quarantined rows are held without spending a release round, and record/off releases them (one round per business date as before). Opus check PASS; its scheduled-row test gap added. Accepted low: a phone stuck on a stale enforce holds the rows until the next delta or bundle (no on-screen sign).
+- **F-SYS-028 follow-up (incremental_vacuum) done**: new user files are `auto_vacuum = INCREMENTAL`, so `LocalPurge`'s `PRAGMA incremental_vacuum` gives pages back. SQLCipher (production): a `postKey` hook in `SqlCipher.factory` (after the key, before SQLCipher's WAL switch); framework (tests): `IncrementalVacuumFactory` in `onConfigure`. No file is ever rewritten (no VACUUM): existing NONE files (pilot/dev only) stay until the logout wipe or a reinstall. Opus check FAIL (the onConfigure pragma is ignored under SQLCipher because WAL comes first; reproduced with stock SQLite), fixed by the hook; the production proof is device check D-DB-VAC (`SqlCipherDeviceTest` asserts mode 2). Accepted low: a failed pragma is swallowed (the open never fails for it).
+- **Settings slots bound in SrApp** (docs/requests/android-core-settings-slots.md; slots by android-sr-a): App update row (`UpdateShell.openPage`: shows any available release, a silent one included, one-shot; unthrottled check) and Photos only on Wi-Fi (`MediaShell.setWifiOnly`: process scope, serialized, reschedules the upload job). Sonnet check FAIL twice (silent release no-op; SHOW_ANY could stick), fixed; re-check PASS. Accepted lows: no "you're up to date" message on Current; openPage itself has no unit test (the rule `updateScreen(SHOW_ANY)` is tested).
+- **F-SYS-047 server-generation re-sync: built** (T1; Opus check below). The first generation a database sees is its baseline. A different one (batch answer, or `ServerGenerationHint`: the latest `X-Server-Generation` of any API response in the process) is noted with a due time 0..`cfg.sync.resync_jitter_s` (900) ahead, and the scheduler queues one jittered `resync` job (KEEP; `afterRun` asks for it). That job, or any run after the due time, reads `GET /v1/sync/generation`, puts back every row acked after `lost_after_utc` (at most `cfg.sync.resync_window_h` = 24 h, less a 15 min margin for the two clocks), stores the new generation and drops the note in one transaction. Batches then carry trigger `resync`; the registry dedupes by uuid. Put-back rows keep payload and sig (`last_code` `resync` keeps the signer off). Offline or 503: the note stays; a statement naming the handled generation is a false alarm. Tests: GenerationResyncTest (9, mutation-checked), SyncWorkTest resync jitter.
+  - Opus check FAIL (1 high, 3 medium), fixed: the window runs back from the new generation's `minted_at`, not from the phone's first sync after it (a weekend could lose a day); every batch carrying a put-back row (an unsent row with `acked_at`) goes as `resync` in any later run; a resync run always asks the server (no hint needed) and the worker queues a resync run for every other user database on the phone (signed-out users keep their upload grant); stored generations are compared lowercased; a false alarm's hint is dismissed. Open: two generations minted before the phone handles the first leave a gap (asked backend-core for `previous_generation`, in the digest request; the digest is the backstop). Re-check PASS; its lows N2 (a generation minted more than 2 days ago: only the last window) and N3 (a dismissal lapses after 1 h) fixed. Accepted lows: rows the lost lineage quarantined after the restore point stay quarantined on the phone; a fresh row batched with put-back rows goes as `resync` (the server may accept it late instead of quarantining it); `otherUsers` includes users without an upload grant (one harmless no-token run each).
+- **F-SYS-080 blocked**: no `POST /v1/sync/digest` on the server; request docs/requests/android-core-backend-sync-digest.md (backend-core, via the lead).
+- **App cfg keys aligned to db V0055** (docs/requests/db-app-cfg-keys-answer.md): `cfg.app.local_history_days` 7 (1..30), `cfg.app.outbox_keep_days` 3 (1..14; keep x 24 >= resync window + 24, which the F-SYS-047 stale-generation cut of 2 days respects), `cfg.app.image_cache_mb` 40 (10..70). Tests adjusted.
+- Request filed: docs/requests/android-core-sys-media-mobile-bytes.md (android-sys: a sent-bytes callback so `b_mob_media` is counted).
+- Lead note (18:21Z): backend-core built F-API-070, BC-62 (urgent flag) and BC-63 on lane/backend-core 15dba8dd; F-SYS-047/080 start when it is on INT.
+  - Accepted lows: before API 33 a timed-out geocode keeps its IO thread until the platform call returns; the offline image shows no capture time.
+
+## Handover (READY TO RECYCLE, 2026-10-07 ~18:05Z by the server clock, eighth session)
+- **Done this session.** Every row had a fresh Opus checker, and every FAIL had a re-check. Details are in "Eighth session" below.
+  - Closed: F-SYS-081 phone half (round-4 re-check PASS), F-SYS-073, AUD-PERF-06 and AUD-PERF-04 (in code; the A06 numbers are D-PERF-04).
+  - Follow-ups done: F-SYS-075 consents (BC-55), F-SYS-079 config keys, F-SYS-052 `cfg.auth.offline_unlock_*`, and the F-SYS-032 early crash catcher (Opus check PASS).
+  - The catcher's medium finding is fixed with a test: an early crash stamped with a skewed device clock would be quarantined as out of the business-date window. The file now keeps the real boot count, and the drain rebuilds trusted time from the monotonic clock on the same boot.
+  - Accepted lows:
+    - On another boot the device time stays.
+    - A `.u0` file goes to the next user, scrubbed with that user's names.
+    - A handler that a library sets during super.onCreate can double-write one crash.
+- **In progress:** nothing.
+- **Next, in this order:**
+  1. F-SYS-047 and F-SYS-080, once backend F-API-070 (`GET /sync/generation`) is on INT. It was not on INT at 17:40Z.
+  2. F-SYS-074, once N-053 (the AMO map) is on INT.
+  3. Small items:
+     - LocationNotice re-check when the setting turns required mid-session.
+     - The media lane should call `DeviceTelemetry.noteMobileMediaBytes`.
+     - Replace the seed `baseline-prof.txt` with the generated profiles once D-PERF-04 runs.
+- **Open requests (new):** docs/requests/android-core-backend-urgent-push-flag.md, to backend-core (send `urgent` in the config_pull data).
+- **Notes for the lead:** the server never enforces `checkout_too_early` (backend-core, info). Lane decision: `URGENT_RESERVE` = 4 config requests over the daily cap of 24 for urgent pushes.
+- **Device checks:** D-PERF-04 is new (lab A06, laptop session).
+- **Traps found this session:**
+  40. With no Android SDK, the check run fails at configuration ("SDK location not found"). Run `tools/android-sdk.sh`, put `sdk.dir` in `local.properties`, and grep the log for `BUILD FAILED`, not only the exit code.
+  41. A plugin alias with a version fails in a module when AGP is already on the root classpath: use `id("com.android.test")` without a version.
+  42. GitHub can answer a push with 500 for some minutes. Retry with backoff in the background; it went through after about 1 minute.
+
+## Eighth session (2026-10-07, from ~16:47Z by the server clock)
+- INT merged (no conflicts) and pushed. The container had no Android SDK: `tools/android-sdk.sh` and `sdk.dir` in the git-ignored `local.properties` (trap 40).
+- **F-SYS-081 phone half: done.** Round 4, a fresh Opus re-check of 0a0add38: PASS, no blocking findings. Added the guard test it asked for: `aMultiFamily500NeverChargesTheDay`. Accepted plausibles (telemetry only, never a sale):
+  - Two transient 500s on a batch of a single family drop a valid day.
+  - `metered()` returns null when the read throws, so the start looks offline and one false `regained` is recorded.
+  - Callback order on a Wi-Fi to mobile handover.
+- **F-SYS-073 urgent config push: done** (T1, Opus checker PASS). N-038 already parsed `config_pull` and the docs/19 `{type: cfg}` form, with the jitter and a pull job that never uploads. This row adds:
+  - `PushPullKind.CONFIG_URGENT`: a config push with `urgent=true` (kill switch, `min_version`, blocked versions, `sync_hold_s`, a revert) gets its own job, so an ordinary pull waiting out its 120 s spread never holds it back.
+  - `ResumeConfigCheck.pullForPush(userId, urgent)`:
+    - It waits for a check already running instead of returning NOT_DUE, which lost the push.
+    - An urgent push may make `URGENT_RESERVE` = 4 requests over the daily cap of 24 (lane decision).
+    - The sync-run path (`pullAfterPush`) is unchanged.
+  - Tests:
+    - PushMessageTest: urgent kind.
+    - PushPullWorkTest: an urgent pull is not held behind an ordinary one, plus a 300-message fuzz showing no push ever runs the sync runner or queues an upload job.
+    - ResumeConfigCheckTest: the reserve, and a push that waits behind a running check.
+  - Checker plausible: the server never sends `urgent`, so today every config push is ordinary. Routed in docs/requests/android-core-backend-urgent-push-flag.md. The acceptance holds without it (the server's `pull_after_s` is honoured).
+- **AUD-PERF-06 bundle path at AMO size: done** (T1, Opus checker PASS). The page loop and the delta client already existed. This row adds:
+  - `AronApiClient.callStreaming`: `call` wraps it. `SyncApi.bundle` decodes the tree once with `Json.decodeFromStream` from `response.body.source()`, and reads the head from that tree. `BundleDownload.raw` is a `JsonObject`, so the body is never held as a String and is never parsed twice.
+  - A malformed body is still FAILED `malformed`. A body cut off mid-stream is OFFLINE, and nothing is applied.
+  - `ReferenceRepository` writes the full apply and the delta upserts and tombstones in chunks of 500 (`inChunks`, `CHUNK`), each inside its one transaction.
+  - AmoShapeBundleTest (5 tests): 54 routes and 5,994 outlets with Bangla names, through the real download.
+    - The apply took about 0.7 s against the 1.5 s budget, and the live heap stays under a 128 MB ceiling (a coarse check).
+    - A delta of 1,200 tombstones and 1,200 upserts applies exactly.
+    - A malformed body and a body cut off mid-stream are covered.
+  - Honest limit: the budget is proven on the JVM (Robolectric SQLite). The A06 number comes from the benchmark module (AUD-PERF-04).
+  - Checker nit: `call` now decodes as UTF-8 whatever the Content-Type charset says (the /v1 API is UTF-8).
+- **AUD-PERF-04 phone speed tooling: done in code** (T1; Opus checker FAIL, re-check FAIL, both fixed; re-check 2 PASS). The gate resets compilation, installs the profile through the ProfileInstaller broadcast (`result=1` asserted), and compiles before timing. The generator skips unless the target is the `-profile` build. The A06 numbers are D-PERF-04:
+  - `:android:benchmark` (`com.android.test`, `-Paron.benchmarkApp=sr|amo|tso`, default sr):
+    - `ColdStartBenchmark`: macrobenchmark StartupTimingMetric with and without the profile, plus `coldStartMeetsTheGate`. That test takes the median `am start -W` TotalTime of 5 process-cold launches, after `cmd package compile -m speed-profile` and one warm-up launch, and requires it under 2,500 ms.
+    - `BaselineProfileGenerator` (startup path; Android 13+).
+  - The three apps:
+    - `benchmark` build type: release code, debug-signed, profileable through `src/benchmark`, `-benchmark` suffix.
+    - `benchmarkProfile` build type: the same, plus `android/benchmark/dontobfuscate.pro`, so the generated profile names real classes.
+    - `profileinstaller` in each app.
+    - A narrow seed `src/main/baseline-prof.txt` covering only the app's own shell package. It must be replaced by the generated profile before a field build.
+    - The https guard also covers both new build types.
+  - Measured locally:
+    - Release APK size is unchanged (12,372,516 bytes; profileinstaller was already on the classpath). The seed grows `baseline.prof` from 10.5 KB to 13.5 KB.
+    - CI's task graph does not include the module.
+    - The benchmark libraries come from Google Maven.
+  - Not done here (by the row's own text, or deferred):
+    - The recordSale 300 ms benchmark and JankStats readouts, as those screens land (sale lanes).
+    - A Gradle Managed Device or CI emulator run (infra AUD-TP-4).
+    - The first A06 numbers: device check, laptop session, lab phone only. Debug-signed variants never install over a device-owner field app, and `force-stop` clears its alarms until the next launch.
+- INT merged again (backend-core BC-55 and BC-56, WireDtos `BundleUser.consents`).
+- **F-SYS-075 follow-up (BC-55) done**: `ConsentRepository.acceptedOnServer` reads the bundle's `user.consents` (the raw `user` section, per-user database). `LocationNotice.state` counts it, so a wipe or reinstall does not ask again, while a new policy version still does. A missing or unreadable section fails closed. Opus check: PASS.
+  - Info: a server void reaches the phone only with the next full bundle. Extra local accepts are acked as duplicates.
+- **F-SYS-079 follow-up done**: `DayConfig` reads `cfg.day.checkout_earliest_time` (HH:MM, 12:00..22:00; the server validator sends HH:MM only) and `cfg.sync.checkout_jitter_s` (0..600; the scheduler caps it at 120). The scheduler jitter, the gate and the SR check-out button all read them, with defaults of 17:00 and 90 s. A throwing read falls back to the defaults (tested). Opus check: PASS.
+  - Info for backend-core (via the lead): the server never enforces `checkout_too_early`; `DayStates` accepts any check-out time.
+  - Low: right after a cold start, until DayConfig refreshes (asynchronously), the button uses 17:00.
+- **F-SYS-052 follow-up done**: `cfg.auth.offline_unlock_max_days` (1..14) and `_max_attempts` (3..20) are now read by `DayConfig`. `DeviceRuntime.refreshDayConfig` stores them in the user's session profile (written only while that user is active), because the unlock runs before any database is open. `OfflineUnlockPolicy.forProfile` applies them, falling back to 7 and 10 outside the bounds. An online login keeps the values until the next read. Opus check: PASS. Its medium finding (an online login dropped the values) and three low findings are fixed with tests.
+- Trap 40: a check run without the Android SDK fails at configuration ("SDK location not found"). Grep the log for `BUILD FAILED`, not only the wrapper's exit code.
+
+## Handover (READY TO RECYCLE, 2026-10-07 ~17:30Z by the server clock, seventh session)
+- **Done this session** (head on lane/android-core; INT merged at the start). Each row had a fresh Opus checker and a re-check after every FAIL, and every confirmed finding was fixed with a test:
+  - F-SYS-072 residual (a); (b) and (c) routed to backend-core; the row stays open.
+  - F-SYS-071 done (device-only proof).
+  - F-SYS-079 done.
+  - F-SYS-081 phone half: three checker rounds FAILED, and every confirmed finding is fixed with a test (DeviceTelemetryTest 11).
+    - Round 3 found: a day that makes the server answer 500 was never dropped, so a lone sale family could run out of retries. Now a single-family 500 counts as a refusal. Also fixed: a process that starts offline missed its first regain, and a test used a timing sleep.
+    - **The next session owes one fresh Opus re-check of the last fix commit before closing the row** (this session hit its recycle point).
+- **In progress:** nothing.
+- **Next, in this order:**
+  1. F-SYS-073 urgent config push (S, needs N-038, done).
+  2. AUD-PERF-06 (bundle decode from `body.source()`, a page loop, delta upserts in chunks of 500, an AMO-shape test with 6,000 outlets).
+  3. AUD-PERF-04 (`:android:benchmark` module, a baseline profile, a cold-start macrobenchmark).
+  4. F-SYS-047 and F-SYS-080 once backend F-API-070 (`GET /sync/generation`) is on INT.
+  5. F-SYS-074 once N-053 (the AMO map) is on INT.
+  6. Follow-ups:
+     - LocationNotice reads the bundle's `user.consents` (BC-55) once backend-core 33fd70db is on INT.
+     - Read `cfg.day.checkout_earliest_time` and `cfg.sync.checkout_jitter_s` into the CheckoutGate and the scheduler.
+     - The media lane should call `DeviceTelemetry.noteMobileMediaBytes`.
+     - Earlier small items from the sixth handover (F-SYS-052 `cfg.auth.offline_unlock_*`, the pre-Hilt crash, the `auto_vacuum` creation flag).
+- **Open requests (new this session), all for backend-core:**
+  - android-core-backend-record-sig-vector.md: the shared vector and key rotation.
+  - android-core-backend-telemetry-day.md: fact_device_day ingest, upserted by device and date, parsed leniently.
+- **Device checks:** F-SYS-071 SqlCipherDeviceTest on an emulator or the A06 (CI once infra's AUD-TP-4 lands).
+- **Traps found this session:**
+  37. `date -u` is the real clock. Earlier handover times in this file run about 2.5 h ahead of it; use the server clock in the csv.
+  38. A checker told to review `git diff HEAD` sees nothing once you commit: commit after the checker, or give it the commit id.
+  39. `tools/my-rows.py --todo` lists rows whose dependencies are not built (F-SYS-047/080 need F-API-070, F-SYS-074 needs N-053): check the status csvs first.
+
 ## Seventh session (2026-10-07, from ~15:38Z by the server clock; earlier handover times in this file run ahead of it)
 - INT merged (docs only) and pushed.
 - **F-SYS-072 residuals** (T1; Opus checker FAIL, re-check FAIL, both fixed with tests; RecordSignatureTest 20, RecordSignatureVectorTest 2):
@@ -87,6 +260,29 @@
   - (b) and (c) are routed in docs/requests/android-core-backend-record-sig-vector.md. (c) is a signed vector with non-canonical numbers, Bangla and an escape; the phone verifies it, and backend-core is asked to add it beside JcsTest. (b) key rotation needs backend-core: verify against the previous keys of the lineage, or drop `sig` from the registry hash (ask 4 of the signature-mode request), after which the phone re-signs.
   - **Row stays open** until (b) and (c), and ask 1 of android-core-backend-record-signature-mode.md (no `record_signature_mode` in ingest on INT), are on INT. Until then, unsigned headers sent after the hold are quarantined `device_integrity_failed` on the server: there for review, not accepted.
   - Open plausibles: dpc `EnrolmentStore.write()` deletes the done file before a retried rename, so a read in that gap is NotEnrolled (dpc lane; rare); `DONE_FILE` names a private dpc literal, pinned by a reflection test.
+
+- **F-SYS-071** (T1) per-user encrypted store: already built by earlier rows. Each user has a random 32-byte key, wrapped by the Keystore (`DatabaseKeys`, tested); the per-user SQLCipher file uses a raw key. The three manifests turn backup off, and data-extraction rules exclude every domain.
+  - Added the proof `SqlCipherDeviceTest.noPlaintextReachesAnyFileAndACopyIsUnreadableToAnotherUser`. It has a positive control (the marker is found in a plain database). It shows no plaintext in the db, -wal, -shm or -journal files while the database is open and after close. A copy under another user's name does not open with that user's key and does open with the owner's.
+  - It runs only on a device or emulator: on the A06, or in CI once infra's AUD-TP-4 emulator job lands.
+  - Opus checker: PASS. The positive control it suggested is added. The APK size gate is unchanged (no dependency added).
+- **F-SYS-079** (T1) upload jitter at the 17:00 gate: `CheckoutGate.dhaka(trustedNow)` is true in the first 10 minutes after 17:00 Dhaka (lane decision: "just opened" = 10 min).
+  - Inside that window, check-out and Sales Submit uploads wait U(0, 90 s) under their own unique work name `aron-sync-gate-u<id>`. Submit ignores a server hold, check-out respects it.
+  - Outside the window, Submit is expedited at once and check-out goes at once under the `now` name. Manual is never jittered. A pending debounce or a running upload of earlier rows is never replaced or delayed.
+  - Wired in the SR, AMO and TSO shells (TSO has no caller yet).
+  - Lane decision: 17:00 and 90 s are defaults. `cfg.day.checkout_earliest_time` and `cfg.sync.checkout_jitter_s` (registry bound 0..600; T7 caps the jitter at 120, which is enforced) are not read by the scheduler yet. The SR attendance flow also hardcodes 17:00. Follow-up: pass both from the shell's config cache.
+  - Opus checker FAIL (REPLACE on the main name delayed earlier rows; check-out behind a backoff; key names): fixed with tests. Re-check PASS (SyncWorkTest 14, including its missing-test asks).
+  - Lane decisions to fold into DECISIONS.md (lead): (1) doc 17 T7 names `cfg.sync.checkout_upload_jitter_max_s` (0..120), the registry has `cfg.sync.checkout_jitter_s` (0..600): the phone uses the registry key with T7's 120 cap; (2) every check-out and Submit inside the 10-minute window counts as "only because the gate opened" (the phone cannot tell the reason apart); (3) a Submit in the window replaces a pending or running gate check-out job (idempotent, one extra POST at worst).
+
+- **F-SYS-081** (T1, phone half) daily field telemetry: `DeviceTelemetry` keeps one stream per device, never per user. It is a singleton per process in the SR, AMO and TSO shells, with its state in `noBackupFilesDir/aron/telemetry-day.json` under a mutex, replaced atomically.
+  - Nothing polls. A sample is taken on every scheduler request (each save, check-out or submit, offline too; at most one a minute unless a battery slot is open), on every default-network change (which also records `regained`), on foreground, and at the start and end of each sync run (after the pull and the media hand-off).
+  - Bytes since the previous sample are billed to the network recorded at that sample. A reboot is seen from elapsed time going back. CPU time is summed across processes, and each new process is one start. Wake time is the sync runner's duration.
+  - Battery is the first sample in the half hour after 08:00, 12:00 and 17:00 Dhaka, plus a plugged flag. `gps` is the fixes taken (not reused) per user database, summed.
+  - `b_mob_media` is sent only once the media uploader reports it (no caller yet: the media lane).
+  - The object rides the batch body's `telemetry` member of whichever user uploads first after the date closes. It is dropped once a batch carrying it is answered, or after two refusals, or after 7 days.
+  - Tests: DeviceTelemetryTest (7), covering a shared phone, the network split, a reboot with growth, a 503 resend and a refused day.
+  - Opus checker FAIL: per-user double counting, wrong network billing, media bytes, offline battery, reboot detection. All fixed by this rework; re-check pending.
+  - Backend ingest into fact_device_day: docs/requests/android-core-backend-telemetry-day.md.
+- Lead notice (16:23Z): backend-core answered the consent, integrity-release and cfg-key requests (lane/backend-core 33fd70db). Follow-up once it is on INT: `LocationNotice` reads the bundle's `user.consents` so a wipe or reinstall does not ask again.
 
 ## Handover (READY TO RECYCLE, 2026-10-07 ~18:15Z, sixth session)
 - **Done this session** (each with a fresh Opus checker, re-checked where it failed; every confirmed defect fixed with a test; head 2838c5aa, INT merged at d4d33ac3): AUD-PERF-05 (session restore off the main thread; device check D-PERF-05), F-SYS-075 (location notice and consent), F-SYS-053 **closed** (backend BC-54), F-SYS-072 BC-53 release of `device_integrity_failed` rows (row stays open), F-SYS-028 (local purge), F-SYS-024 (activity log), F-SYS-032 phone half (error reporting; device check D-ERR), F-SYS-029 core part (bounded image cache).
@@ -271,9 +467,20 @@
 - Quarantine resolutions are not applied yet (F-SYS-008).
 
 ## Interfaces for feature lanes (stable, 2026-10-07)
+- **Room v5, AV/KV and POSM survey (android-sr-a, F-SR-020/021):**
+  - Reference (from the bundle's `content` and `surveys`, replaced by every snapshot): `ReferenceDao.contentForOutlet(outletId, businessDate)` (play order: sequence, AV before KV; empty `outlet_ids` = every outlet), `contentFrom(date)`, `surveys()`, `surveyQuestions(surveyId)` (bundle order; `option_codes_json`, `requires_photo`, `question_key`, `show_if_key`, `show_if_bool`).
+  - Files: `ContentShell.assets.file(item)` (SR Hilt singleton `ContentShell`): disk only, null = missing, so log `skipped_missing` and go on. Downloads run ahead in a WorkManager job (Wi-Fi; any network when `cfg.content.download_network_policy` is `any`), sha256-checked, 120 MB LRU of its own.
+  - Records: `CaptureRepository.recordContentView(ContentViewEntity)` returns false for a second view of the same item in the same visit (a skip logged first cannot be followed by `viewed`: log after the item ends). `recordSurveyResponse(SurveyResponseEntity)`: exactly the member of `answer_type` (`photo_only`: the photo uuid alone), one answer per question per visit (a second throws IllegalStateException), so write the answers when the SR confirms the survey, not per tap. Both: SR calls only (`sr_call` visit on this phone), refused after Sales Submit, in the visit family at rank 1.
+  - Reads: `CaptureDao.contentViewsOf(visit)`, `surveyResponsesOf(visit)`.
 
 Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s5.1). Local wire DTOs are marked
 `REQUEST:` and move to `shared:contract` when the shared lane lands them, with the same names.
+
+**core-map** (`com.aktcl.aron.core.map`, N-053, for android-amo and android-tso; add `implementation(project(":android:core-map"))`):
+- `LiteMapScreen(points, settings, online, keyPresent, nowMs, cache, cacheKey)`: the body of a map screen. Host it in an Activity or destination opened ONLY from its tile. Live: Google lite mode (2D, one static image, no gestures), at most `MAX_MARKERS` = 100 pins, the image saved to the bounded cache. Offline / no key / MapLibre: no Maps class loads; the image as last seen (if cached) and the list with "last seen HH:MM (n min ago)" and source, greyed after `staleAfterMin` (pass `cfg.tso.team_location_max_age_min`, default 120). The list always shows.
+- `MapSettings.of(dayConfig.mapProvider, dayConfig.mapTileCacheMb)` (`cfg.map.provider`, `cfg.map.tile_cache_mb` 5..100, default 20); `MapsKey.present(context)` (presence only, never the value); `MapTileCache(File(context.cacheDir, "map"), { settings.tileCacheBytes })`; `cacheKey` = screen plus scope (for example `team-zone-<id>`), so one zone's image never shows for another.
+- `MapPoint(id, label, lat, lng, fixAtMs, source)`: feed it the last synced list (Room or the last API answer) so the screen works offline.
+- `AddressResolver(online, AndroidGeocodeBackend(context), language, PrefsLastAddressStore(context, userId))`: online-only reverse geocode, 5 s timeout, display only; `displayText(context, lat, lng)` is what `AttendanceFlow.addressResolver` takes (the AMO attendance can reuse it).
 
 **core-database** (`com.aktcl.aron.core.database`): one Room database per user. In app code inject `UserDatabases` (Hilt, app module) and call `userDatabases.of(userId)` (suspend; opens once, encrypted). In Robolectric tests use `AronDatabase.open(context, userId, null)` or an in-memory builder.
 - `CaptureRepository(db)`: commits a capture plus its outbox records in ONE transaction. A duplicate client UUID throws `SQLiteConstraintException`. A malformed capture throws `IllegalArgumentException` or `IllegalStateException` before any write. Methods: `recordAttendance(event, fix)`, `recordStock(movements)`, `recordVisitOpen(visit, fix)`, `recordSale(SaleCapture(memo, lines, discounts, qcLines, editFix))`, `recordVisitClose(close)`.

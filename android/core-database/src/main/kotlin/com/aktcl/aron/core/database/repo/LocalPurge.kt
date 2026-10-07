@@ -76,13 +76,14 @@ class LocalPurge(private val db: AronDatabase) {
         const val DEFAULT_HISTORY_DAYS = 7
         const val CFG_HISTORY_DAYS = "cfg.app.local_history_days"
         /** `cfg.app.outbox_keep_days` default: an acked row stays this long after its ack. */
-        const val DEFAULT_KEEP_DAYS = 7
+        const val DEFAULT_KEEP_DAYS = 3
         const val CFG_KEEP_DAYS = "cfg.app.outbox_keep_days"
 
         /** Capture tables with `client_uuid` and the capture envelope's `business_date`. */
         val CAPTURE_TABLES = listOf(
             "attendance_event", "stock_movement", "visit", "visit_close", "memo", "memo_line", "memo_discount", "qc_line",
             "due_collection", "visit_skip", "day_submit", "outlet_change_request", "task_event", "print_event",
+            "content_view", "survey_response",
         )
     }
 }

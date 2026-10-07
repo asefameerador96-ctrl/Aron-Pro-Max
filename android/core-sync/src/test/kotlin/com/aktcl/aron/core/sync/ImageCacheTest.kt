@@ -32,7 +32,7 @@ class ImageCacheTest {
                 if (path == "/portal") return MockResponse.Builder().code(200).addHeader("Content-Type", "text/html").body("<html>login</html>").build()
                 val size = when {
                     path == "/big" -> 300 * 1024 + 1
-                    path.startsWith("/av") -> 2 * mb
+                    path.startsWith("/av") -> 4 * mb
                     else -> 250 * 1024
                 }
                 val type = if (path.startsWith("/av")) "video/mp4" else "image/jpeg"
@@ -47,17 +47,17 @@ class ImageCacheTest {
     private fun url(name: String) = server.url("/$name").toString()
 
     private fun cache(): ImageCache = runBlocking {
-        ImageCache(tmp.newFolder("img"), OkHttpClient(), { wifi }).also { it.setCapMb(5) }
+        ImageCache(tmp.newFolder("img"), OkHttpClient(), { wifi }).also { it.setCapMb(10) } // the registry minimum (db V0055: 10..70)
     }
 
     @Test fun fillingPastTheCapEvictsTheLeastRecentlyUsedFirst() = runBlocking {
         wifi = true
         val c = cache()
-        assertNotNull(c.fetch(url("av-a"), ImageCache.Kind.AV)) // 2 MB each, cap 5 MB
+        assertNotNull(c.fetch(url("av-a"), ImageCache.Kind.AV)) // 4 MB each, cap 10 MB
         assertNotNull(c.fetch(url("av-b"), ImageCache.Kind.AV))
         assertNotNull(c.get(url("av-a"))) // a is used again: b is now the oldest
         assertNotNull(c.fetch(url("av-c"), ImageCache.Kind.AV))
-        assertTrue(c.sizeBytes() <= 5L * mb)
+        assertTrue(c.sizeBytes() <= 10L * mb)
         assertNull("the least recently used went first", c.get(url("av-b")))
         assertNotNull(c.get(url("av-a")))
         assertNotNull(c.get(url("av-c")))

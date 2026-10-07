@@ -35,6 +35,18 @@ AronTheme(language, tier = tier) { GlassSurface { ... }; StatusChip(SyncChipStat
 - Deviation: docs/32 asks for Bangla body weight 500 in sunlight; only 400 and 700 are bundled, so sunlight sets Bangla body in bold (log for the lead).
 - Not done: screenshot tests of home, sale entry, review and memo (needs a screenshot library and those screens; request file to follow). Battery-saver and reduce-transparency engagement of sunlight mode: tier C is already forced by `GlassPolicy`; the sunlight colours themselves stay a user switch.
 
+## N-023 checker round (Opus, 2026-10-07)
+Four gaps fixed: confirm dialog now swept in en and bn at font scale 1.3; gallery uses the default auto tile columns (3 at 360 dp); error-state title is 7:1 `onSurface` (was danger red, 3:1); banners carry a drawn icon (i or !) plus the words. Goldens re-recorded. Open, not blocking: no loading-state component yet (docs/32 s4); a skeleton/spinner state is the next kit addition.
+
+## AUD-TP-5 shared screen check (module `:android:core-ui-testing`, test scope only)
+Every screen row adds `testImplementation(project(":android:core-ui-testing"))` and one test:
+```kotlin
+@RunWith(RobolectricTestRunner::class) @GraphicsMode(GraphicsMode.Mode.NATIVE) @Config(sdk = [34], qualifiers = "w320dp-h640dp")
+class HomeScreenCheckTest { @get:Rule val rule = createComposeRule()
+  @Test fun everyCase() = AronScreenCheck.everyCase(rule, keyTexts = { lang -> listOf(...) }, allowAsciiDigits = setOf("01711")) { HomeScreen(...) } }
+```
+It runs font scale 1.0 and 1.3 x Bangla and English (the Context locale is switched, so `stringResource` follows), asserts the key texts are displayed, no text is clipped, every clickable is 48 dp, and no ASCII digit shows in Bangla (identifiers go in `allowAsciiDigits`). Example and negative case: `AronScreenCheckTest`. `HardcodedStringScanner` now includes `core-map`.
+
 ## Next
 Scope change (lead, 2026-10-07): F-SYS-023, 030, 010, 037, 019, 022, 020, 021 moved to the Opus lane `android-sys`. This lane keeps N-023 (kit, gallery, overflow tests), the outdoor-first additions, design v1 adoption and tokens. Remaining: Sonnet checker on the outdoor-first slice, screenshot tests (request file), and kit components android-sys asks for (permission rationale, language switch screen).
 

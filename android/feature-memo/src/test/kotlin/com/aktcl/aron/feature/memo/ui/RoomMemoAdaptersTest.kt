@@ -51,4 +51,22 @@ class RoomMemoAdaptersTest {
         assertEquals(1, db.captureDao().dueCollectionsOn("2026-10-05").size)
         assertEquals(1, store.history("2026-10-05").size)
     }
+
+    @Test fun storedEditedMemoCarriesTheNumberOfTheMemoItReplaced() = runTest {
+        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
+        val visit = ClientIds.newUuid(); val fixId = ClientIds.newUuid()
+        val fix = GeoFixEntity(fixId, visit, "visit_open", "ok", 23.79, 90.40, 11.5, provider = "fused", isMock = false, reused = false, deviceOwner = true, devOptionsEnabled = false, adbEnabled = false, autoTimeEnabled = true, mockAppPresent = false)
+        repo.recordVisitOpen(VisitEntity(visit, meta(), "sr_call", 1, "2026-10-05T04:31:07.120Z", 1, true, null, fixId, "in_range", 18.4, 100, 50, "master", 23.7, 90.4, "sale_allowed"), fix)
+        val original = ClientIds.newUuid()
+        val first = MemoEntity(original, meta(), visit, 1, "sr334001-261005-001", "sale", "2026-10-05T04:35:00.000Z", "2026-10-05", "outlet", 84_000, 0, 0, 0, 0, 84_000, 84_000, 0, true, null, 1, 0, 0)
+        repo.recordSale(SaleCapture(first, listOf(MemoLineEntity(ClientIds.newUuid(), meta(), original, 1, 105, "sale", 3, "dozen", 1, 3, "outlet", "2026-09-01", 28_000, 1, 84_000))))
+        // the edited memo is read back as stored (inserted directly: the edit rules of recordSale are tested in core-database)
+        val edited = ClientIds.newUuid()
+        db.captureDao().insertMemo(first.copy(clientUuid = edited, memoNo = "sr334001-261005-002", committedAt = "2026-10-05T04:50:00.000Z", supersedesClientUuid = original, editReasonCode = "wrong_quantity"))
+
+        val stored = RoomMemoStore(db).memos("2026-10-05").associateBy { it.memoUuid }
+        assertEquals("sr334001-261005-001", stored.getValue(edited).supersedesMemoNo)
+        assertEquals(original, stored.getValue(edited).supersedesUuid)
+        assertEquals(null, stored.getValue(original).supersedesMemoNo)
+    }
 }

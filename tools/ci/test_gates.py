@@ -8,6 +8,8 @@ Each gate is proven to FAIL on a deliberate violation and to pass on a clean inp
   gitleaks.toml         a token fails anywhere except the generated contract/slices/ (needs gitleaks)
   osv-gate.py           a high in a production dependency fails; dev-only warns; a dated allow line passes, an
                         expired one does not; the real web lockfile scanned by osv-scanner (when installed)
+  playwright-chromium.sh  the Web job's browser step: capped, one retry, apt only when needed, Chrome fallback
+  release-manifest.py   N-064 manifest: AppReleaseWrite entries, one signer, contract ABIs and version pattern
   release-apks.py       one APK per app or per-ABI splits both list correctly; a missing universal APK or an
                         unknown file name fails
   wallclock-scan.py     a wall-clock read in a test source is reported (fails with --blocking); the escape comment
@@ -15,6 +17,7 @@ Each gate is proven to FAIL on a deliberate violation and to pass on a clean inp
   install-scripts-check.py  a new package with an install script fails; the reviewed ones pass
 Binaries: OASDIFF and SQUAWK (paths) or on PATH; a test that needs a missing binary is skipped, never faked.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -315,6 +318,101 @@ class InstallScripts(unittest.TestCase):
                             str(HERE / "npm-install-scripts.txt")], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn("ignore-scripts=true", (ROOT / "web" / ".npmrc").read_text())
+
+
+class PlaywrightChromium(unittest.TestCase):
+    """The Web job's browser step never hangs (run 37691144739 hung in apt-get update): capped download with one
+    retry, apt only when a library is missing, the preinstalled Chrome as the fallback, an error without one."""
+
+    def run_step(self, npx_body, chrome=True):
+        with tempfile.TemporaryDirectory() as t:
+            bin_ = Path(t) / "bin"; bin_.mkdir()
+            (bin_ / "npx").write_text("#!/bin/sh\n" + npx_body + "\n"); (bin_ / "npx").chmod(0o755)
+            if chrome:  # a fake Chrome under a name the runner does not have (its real google-chrome stays on PATH)
+                (bin_ / "aron-fake-chrome").write_text("#!/bin/sh\n"); (bin_ / "aron-fake-chrome").chmod(0o755)
+            env_file = Path(t) / "env"; env_file.write_text("")
+            r = subprocess.run([shutil.which("bash") or "/bin/bash", str(HERE / "playwright-chromium.sh")],
+                               capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, PATH=str(bin_) + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                                        GITHUB_ENV=str(env_file), PW_STEP_TIMEOUT_S="1", PW_CHROME_NAMES="aron-fake-chrome",
+                                        PLAYWRIGHT_BROWSERS_PATH=str(Path(t) / "cache")))
+            return r.returncode, r.stdout + r.stderr, env_file.read_text()
+
+    def test_download_ok_and_no_library_missing(self):
+        rc, out, env = self.run_step("exit 0")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ready (no system library missing)", out)
+        self.assertEqual(env, "")
+
+    def test_a_hanging_download_falls_back_to_chrome(self):
+        rc, out, env = self.run_step("sleep 30")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(out.count("timed out after 1 s"), 2, "two capped attempts")
+        self.assertRegex(env, r"^PW_CHROMIUM_PATH=.*/aron-fake-chrome$")
+
+    def test_no_browser_and_no_chrome_fails(self):
+        rc, out, env = self.run_step("exit 1", chrome=False)
+        self.assertEqual(rc, 1)
+        self.assertIn("::error::no Playwright Chromium", out)
+
+    def test_wired_in_the_web_job(self):
+        c = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        web = c[c.index("\n  web:"):c.index("\n  images:")]
+        self.assertNotIn("playwright install --with-deps", web)
+        self.assertIn("run: bash ../tools/ci/playwright-chromium.sh", web)
+        self.assertIn("path: ~/.cache/ms-playwright", web)
+        self.assertLess(web.index("playwright-chromium.sh"), web.index("bash scripts/ci.sh e2e"))
+        self.assertIn("process.env.PW_CHROMIUM_PATH", (ROOT / "web" / "playwright.config.ts").read_text(encoding="utf-8"))
+
+
+class ReleaseManifest(unittest.TestCase):
+    """N-064: the release manifest of the signed APKs, in the contract's AppReleaseWrite shape."""
+    SHA = "a" * 40
+    CERT = "c" * 64
+
+    def run_manifest(self, names, certs=None, version="0.1.7"):
+        with tempfile.TemporaryDirectory() as t:
+            signed = Path(t) / "signed"; signed.mkdir()
+            for n in names:
+                (signed / n).write_bytes(b"apk-" + n.encode())
+            fake = Path(t) / "apksigner"  # prints FAKE_CERTS; with certs="split" the amo APK gets another key
+            fake.write_text('#!/bin/sh\ncase "$3" in *amo*) [ -n "$FAKE_AMO" ] && { echo "$FAKE_AMO"; exit 0; };; esac\necho "$FAKE_CERTS"\n')
+            fake.chmod(0o755)
+            sig = lambda cs: "\n".join(f"Signer #{i + 1} certificate SHA-256 digest: {c}" for i, c in enumerate(cs))
+            env = dict(os.environ, APKSIGNER=str(fake), FAKE_CERTS=sig([self.CERT] if certs in (None, "split") else certs),
+                       FAKE_AMO=sig(["d" * 64]) if certs == "split" else "")
+            r = subprocess.run([sys.executable, str(HERE / "release-manifest.py"), str(signed), version, "7", self.SHA],
+                               env=env, capture_output=True, text=True)
+            m = signed / "release-manifest.json"
+            return r.returncode, (json.loads(m.read_text()) if m.exists() else None), r.stderr
+
+    def test_three_universal_apks(self):
+        rc, m, err = self.run_manifest([f"aron-{a}-0.1.7-dev.apk" for a in ("sr", "amo", "tso")])
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(m["backend_image"], f"aron-backend:{self.SHA}")
+        self.assertEqual(sorted(i["release"]["flavour"] for i in m["apks"]), ["amo", "sr", "tso"])
+        sr = next(i["release"] for i in m["apks"] if i["release"]["flavour"] == "sr")
+        self.assertEqual(set(sr), {"flavour", "abi", "version_name", "version_code", "sha256", "size_bytes", "signing_cert_sha256"},
+                         "AppReleaseWrite fields only (the upload adds download_url)")
+        self.assertEqual(sr["abi"], "universal")
+        self.assertEqual(sr["version_code"], 7)
+        self.assertEqual(sr["signing_cert_sha256"], self.CERT)
+        self.assertEqual(sr["size_bytes"], len(b"apk-aron-sr-0.1.7-dev.apk"))
+        self.assertEqual(sr["sha256"], hashlib.sha256(b"apk-aron-sr-0.1.7-dev.apk").hexdigest())
+
+    def test_abi_splits_and_failures(self):
+        names = [f"aron-{a}{v}-0.1.7-dev.apk" for a in ("sr", "amo", "tso") for v in ("", "-arm64-v8a")]
+        rc, m, err = self.run_manifest(names)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(len(m["apks"]), 6)
+        rc, m, err = self.run_manifest([f"aron-{a}-0.1.7-dev.apk" for a in ("sr", "amo")])
+        self.assertEqual(rc, 1); self.assertIsNone(m); self.assertIn("tso: no universal APK", err)
+        rc, m, err = self.run_manifest([f"aron-{a}{v}-0.1.7-dev.apk" for a in ("sr", "amo", "tso") for v in ("", "-x86")])
+        self.assertEqual(rc, 1); self.assertIn("ABI x86 is not in the contract", err)
+        rc, m, err = self.run_manifest([f"aron-{a}-0.1.7-dev.apk" for a in ("sr", "amo", "tso")], certs=[self.CERT, "d" * 64])
+        self.assertEqual(rc, 1); self.assertIn("2 signers", err)
+        rc, m, err = self.run_manifest([f"aron-{a}-0.1.7-dev.apk" for a in ("sr", "amo", "tso")], certs="split")
+        self.assertEqual(rc, 1); self.assertIn("different certificates", err)
 
 
 class ReleaseApks(unittest.TestCase):

@@ -2,6 +2,12 @@ package com.aktcl.aron.feature.auth
 
 import android.content.Context
 import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
@@ -59,6 +65,60 @@ class LocationNoticeScreenTest {
         compose.waitForIdle()
         compose.onNodeWithText("DAY").assertIsDisplayed()
         assertEquals(emptyList<Long>(), accepted)
+    }
+
+    /**
+     * Handover item: a config delta that turns the notice required mid-session ends "Later" at the next resume. Checker:
+     * the notice is drawn over the day, so a visit in progress keeps its state; a read error keeps "Later"; the accepted
+     * record carries the time the notice reappeared.
+     */
+    @Test fun laterEndsAtTheNextResumeWhenTheNoticeTurnsRequired() {
+        var need = NoticeNeed(needed = true, required = false)
+        var failLoad = false
+        var clock = 1_000L
+        val owner = object : androidx.lifecycle.LifecycleOwner {
+            val registry = androidx.lifecycle.LifecycleRegistry.createUnsafe(this)
+            override val lifecycle: androidx.lifecycle.Lifecycle get() = registry
+        }
+        owner.registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED
+        fun resume() = compose.runOnIdle {
+            owner.registry.currentState = androidx.lifecycle.Lifecycle.State.STARTED
+            owner.registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED
+        }
+        compose.setContent {
+            CompositionLocalProvider(androidx.lifecycle.compose.LocalLifecycleOwner provides owner) {
+                AronTheme(AppLanguage.EN) {
+                    LocationNoticeGate(7L, load = { if (failLoad) error("db") else need }, accept = { accepted += it }, nowMs = { clock }) {
+                        // Stands for a visit in progress: state that a teardown would lose.
+                        var cart by remember { mutableStateOf(0) }
+                        Text("DAY $cart", Modifier.clickable { cart++ })
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag(LocationNoticeTags.LATER).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("DAY 0").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("DAY 1").assertIsDisplayed()
+        // Still optional at the next resume, and a read error: "Later" holds.
+        resume(); compose.waitForIdle()
+        failLoad = true
+        resume(); compose.waitForIdle()
+        compose.onNodeWithTag(LocationNoticeTags.OVERLAY).assertDoesNotExist()
+        failLoad = false
+        // The delta turned it required: the next resume draws the notice over the day, no way past but Accept.
+        need = NoticeNeed(needed = true, required = true)
+        clock = 5_000L
+        resume(); compose.waitForIdle()
+        compose.onNodeWithTag(LocationNoticeTags.OVERLAY).assertIsDisplayed()
+        compose.onNodeWithTag(LocationNoticeTags.LATER).assertDoesNotExist()
+        compose.onNodeWithTag(LocationNoticeTags.ACCEPT).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(LocationNoticeTags.OVERLAY).assertDoesNotExist()
+        compose.onNodeWithText("DAY 1").assertIsDisplayed() // the visit state survived
+        assertEquals(listOf(5_000L), accepted)
     }
 
     @Test fun acceptedNoticeOpensTheDayAtOnce() {

@@ -7,6 +7,7 @@ the templates deploy into ONE resource group only, carry no hard-coded subscript
 resource the row asks for with the reliability settings the spec fixes, and the workflows deploy only from the
 integration branch with OIDC and pinned actions. What they cannot prove (needs Azure) is listed in infra/README.md.
 """
+import hashlib
 import json
 import os
 import re
@@ -742,6 +743,12 @@ class Workflows(unittest.TestCase):
             self.assertIn(flag, block)
             self.assertIn(flag, c[c.index("\n  android:"):c.index("\n  android-release:")])
         self.assertIn("ARON_VERSION_CODE: ${{ github.run_number }}", c)
+        # N-064: the version name fits the contract pattern for every run number (set before any build step).
+        name_step = 'echo "ARON_VERSION_NAME=0.$((GITHUB_RUN_NUMBER / 1000 + 1)).$((GITHUB_RUN_NUMBER % 1000))" >> "${GITHUB_ENV}"'
+        for job in (block, c[c.index("\n  android:"):c.index("\n  android-release:")]):
+            self.assertLess(job.index(name_step), job.index("-Paron.versionName="))
+        self.assertNotIn("ARON_VERSION_NAME: ", c, "no workflow-level value that the step could fail to override")
+        self.assertIn('release-manifest.py signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}" "${GITHUB_SHA}"', block)
         self.assertIn("python3 tools/ci/apk-size-gate.py", block)
         gate = (ROOT / "tools" / "ci" / "apk-size-gate.py").read_text(encoding="utf-8")
         self.assertIn("ABS_DOWNLOAD_MB, ABS_INSTALLED_MB = 30, 70", gate)
@@ -1035,8 +1042,9 @@ class PerAppDatabaseLogins(unittest.TestCase):
         self.assertIn("workerDbUrlSecret", worker_secrets["db-direct-url"])
         mig = secrets("migrate")
         self.assertIn("dbDirectUrl", mig["db-direct-url"], "the migrate job keeps the admin login")
-        for f in ("dev", "dev-lite", "stage", "prod"):
-            # Off until api_rw has the DELETE grants the admin flows use (docs/requests/db-runtime-roles-gaps.md).
+        # On in dev since the grants gap closed (V0029); off elsewhere until dev has proven it.
+        self.assertIs(params("dev.apps.parameters.json")["dbPerAppLogins"], True)
+        for f in ("dev-lite", "stage", "prod"):
             self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], False, f)
         self.assertIs(param_default("apps.json", "dbPerAppLogins"), False, "off unless a profile turns it on")
 
@@ -1047,12 +1055,27 @@ class PerAppDatabaseLogins(unittest.TestCase):
         env = {e["name"]: e for e in c["env"]}
         sql = (ROOT / "infra" / "sql" / "runtime-logins.sql").read_text(encoding="utf-8")
         compiled = load("apps.json")
-        value = env["ARON_SQL"]["value"]
-        m = re.fullmatch(r"\[variables\('(.+)'\)\]", value)
-        if m:
-            value = compiled["variables"][m.group(1)]
-        self.assertEqual(value.strip(), sql.strip(), "the job runs exactly infra/sql/runtime-logins.sql")
-        self.assertIn('exec psql "${ARON_DB_URL#jdbc:}"', " ".join(c["command"]), "shell expansion, not a Bicep one")
+        # The SQL is a mounted file, never an env value: as a 7 KB env value the replica was never created
+        # (deploy run 37659152959: probes A and B succeeded, the real job did not).
+        self.assertNotIn("ARON_SQL", env)
+        # The secrets compile to one concat(...) expression (the dev seed secret is conditional), so the SQL secret is
+        # checked in the Bicep source (exactly the checked-in file) and its presence in the compiled template.
+        src = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        self.assertIn("{ name: 'logins-sql', value: loadTextContent('sql/runtime-logins.sql') }", src,
+                      "the job runs exactly infra/sql/runtime-logins.sql")
+        secrets = job["properties"]["configuration"]["secrets"]
+        m = re.search(r"'name', 'logins-sql', 'value', variables\('([^']+)'\)", secrets)
+        self.assertTrue(m, secrets[:300])
+        self.assertEqual(compiled["variables"][m.group(1)].strip(), sql.strip(), "the compiled job embeds exactly that file")
+        (vol,) = job["properties"]["template"]["volumes"]
+        self.assertEqual(vol["storageType"], "Secret")
+        self.assertEqual(vol["secrets"], [{"secretRef": "logins-sql", "path": "runtime-logins.sql"}],
+                         "only the SQL is projected; an empty list would mount every secret, the database URL included")
+        self.assertEqual(c["volumeMounts"], [{"volumeName": vol["name"], "mountPath": "/sql"}])
+        cmd = " ".join(c["command"])
+        self.assertIn('exec psql "${ARON_DB_URL#jdbc:}" -X -q -f /sql/runtime-logins.sql', cmd, "shell expansion, not a Bicep one")
+        smoke = (ROOT / "infra" / "scripts" / "image-smoke.sh").read_text(encoding="utf-8")
+        self.assertIn("-f /sql/runtime-logins.sql", smoke, "CI runs the SQL from the same path")
         for k in ("ARON_PW_APP_API", "ARON_PW_APP_WORKER", "ARON_PW_APP_JOBS", "ARON_DB_URL"):
             self.assertIn("secretRef", env[k], f"{k} must come from Key Vault")
         for needle in ("GRANT %I TO %I WITH INHERIT %s, SET TRUE", "REVOKE %I FROM %I", "\\getenv pw_api ARON_PW_APP_API",
@@ -1122,6 +1145,8 @@ class Drills(unittest.TestCase):
         self.assertLess(d.index("trap cleanup EXIT"), d.index("az postgres flexible-server restore"))
         self.assertIn("--failover Forced", d)
         self.assertIn('die "a deploy holds the lock', d, "never during a deploy")
+        self.assertNotIn("starts_with(name", d, "the profile server by exact name, never a drill restore or replica")
+        self.assertIn("-n aron-infra --query properties.outputs.postgresServerName.value", d)
 
     def run_failover(self, codes, call_s=6, max_s="30"):
         """Stub az (the failover call takes call_s seconds) and curl (answers the codes in order, then the last one)."""
@@ -1130,7 +1155,8 @@ class Drills(unittest.TestCase):
             (Path(t) / "az").write_text(f"""#!/usr/bin/env python3
 import sys, time
 a = ' '.join(sys.argv[1:])
-if 'deployment group show' in a: print('api.example')
+if 'postgresServerName' in a: print('psql-aron-dev-x')
+elif 'deployment group show' in a: print('api.example')
 elif 'group show' in a: print('')
 elif 'flexible-server list' in a: print('psql-aron-dev-x')
 elif 'highAvailability.mode' in a: print('ZoneRedundant')
@@ -1161,6 +1187,7 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertEqual(rc, 0, out)
         self.assertIn("primary zone: 1 -> 2", out)
         self.assertIn("via api.example", out)
+        self.assertIn("psql-aron-dev-x", out, "the server named by the aron-infra output")
         self.assertIn("this is NOT the outage", out)
         m = re.search(r"user-visible outage: about (\d+) s", out)
         self.assertTrue(m, out)
@@ -1225,6 +1252,38 @@ class InfraStageSkip(unittest.TestCase):
         self.assertLess(d.index('infra_sha="$(az group show'), d.index('git diff --quiet "$infra_sha"'))
         self.assertIn('infra_sha="$deployed_sha"', d, "falls back to the live commit when untagged")
 
+    def run_params_unchanged(self, now_params, last_params):
+        """Runs deploy.sh's params_unchanged with a fake az; returns (exit code, stderr)."""
+        import subprocess, tempfile
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        fn = d[d.index("params_unchanged() {"):]
+        fn = fn[:fn.index("\n}\n") + 3]
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            (t / "now.json").write_text(json.dumps({"parametersJson": json.dumps({"parameters": now_params})}))
+            (t / "last.json").write_text(json.dumps(last_params))
+            (t / "az").write_text(f"""#!/usr/bin/env bash
+case "$*" in *build-params*) cat "{t}/now.json" ;; *"deployment group show"*) cat "{t}/last.json" ;; *) exit 9 ;; esac
+""")
+            (t / "az").chmod(0o755)
+            env = dict(os.environ, PATH=f"{t}:{os.environ['PATH']}", PROFILE="dev", RG="rg-x")
+            r = subprocess.run(["bash", "-c", fn + "\nparams_unchanged"], env=env, capture_output=True, text=True,
+                               cwd=ROOT, timeout=60)
+            return r.returncode, r.stderr
+
+    def test_parameter_comparison_survives_large_parameters(self):
+        """Deploy run 144: 'python3: Argument list too long' (attestation roots > 128 KiB in one argv string) made every
+        deploy re-apply main.bicep. The comparison reads files now."""
+        big = {"attestationRoots": {"value": "x" * 300_000}, "budgetAmount": {"value": 130}}
+        rc, err = self.run_params_unchanged(big, big)
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("Argument list too long", err)
+        rc, err = self.run_params_unchanged(big, {**big, "budgetAmount": {"value": 140}})
+        self.assertEqual(rc, 1)
+        self.assertIn("infra parameters changed: budgetAmount", err)
+        rc, _ = self.run_params_unchanged(big, {**big, "postgresAdminPassword": {"value": "other"}})
+        self.assertEqual(rc, 0, "the admin password is never compared")
+
     def test_recovered_alert_closes_resource_health(self):
         a = (ROOT / "infra" / "modules" / "alerts.bicep").read_text(encoding="utf-8")
         self.assertIn("-resource-health-recovered'", a)
@@ -1249,6 +1308,38 @@ class AgentDownload(unittest.TestCase):
             self.assertIn('--build-context "agent=', t, script)
             self.assertLess(t.index("fetch-ai-agent.sh"), t.index("-f infra/docker/backend.Dockerfile"), script)
 
+
+    def test_second_source_when_maven_central_refuses(self):
+        """Deploy run 144: Maven Central answered 429 on every attempt. The GitHub release is tried next, same checksum."""
+        import hashlib, subprocess, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "infra" / "scripts").mkdir(parents=True)
+            (d / "infra" / "docker").mkdir(parents=True)
+            (d / "bin").mkdir()
+            jar = b"agent bytes"
+            (d / "infra" / "docker" / "backend.Dockerfile").write_text(
+                f"ARG AI_AGENT_VERSION=3.7.10\nARG AI_AGENT_SHA256={hashlib.sha256(jar).hexdigest()}\n")
+            script = d / "infra" / "scripts" / "fetch-ai-agent.sh"
+            script.write_text((ROOT / "infra" / "scripts" / "fetch-ai-agent.sh").read_text(encoding="utf-8"))
+            (d / "bin" / "curl").write_text("""#!/usr/bin/env python3
+import sys
+a = sys.argv[1:]
+open(sys.argv[0] + '.log', 'a').write(a[-1] + '\\n')
+if 'repo1.maven.org' in a[-1]:
+    sys.exit(22)
+open(a[a.index('-o') + 1], 'wb').write(b'agent bytes')
+""")
+            (d / "bin" / "curl").chmod(0o755)
+            env = dict(os.environ, PATH=f"{d / 'bin'}:{os.environ['PATH']}")
+            r = subprocess.run(["bash", str(script), str(d / "out")], env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual((d / "out" / "agent" / "applicationinsights-agent.jar").read_bytes(), jar)
+            self.assertIn("sha256 ok from github.com (attempt 1)", r.stdout)
+            calls = (d / "bin" / "curl.log").read_text().split()
+            self.assertEqual(calls, [
+                "https://repo1.maven.org/maven2/com/microsoft/azure/applicationinsights-agent/3.7.10/applicationinsights-agent-3.7.10.jar",
+                "https://github.com/microsoft/ApplicationInsights-Java/releases/download/3.7.10/applicationinsights-agent-3.7.10.jar"])
 
 class DeviceEnrolment(unittest.TestCase):
     """N-031 (lead #3): the api gets its public base URL and the Android key-attestation roots on every deploy."""
@@ -1282,6 +1373,371 @@ class BrowserUploads(unittest.TestCase):
         web_env = json.dumps(load("apps.json")["resources"]["web"]["properties"]["template"]["containers"][0]["env"])
         self.assertIn("ARON_BLOB_ORIGIN", web_env)
 
+
+
+class Observability(unittest.TestCase):
+    """N-062: sync-health alerts on the Java agent's logs, the ops workbook, release markers from the deploy."""
+
+    def test_sync_health_alerts(self):
+        t, _ = module("main.json", "alerts")
+        rules = t["variables"]["appRequests"]
+        for key, logger in (("syncErrors", 'startswith "aron.sync"'), ("aggregationStuck", '== "aron.analytics.worker"')):
+            a = rules[key]
+            self.assertEqual(a["frequency"], "PT1M", "evaluated every minute: alert within about 5 minutes")
+            self.assertIn("union traces, exceptions", a["query"], "errors logged with a throwable land in exceptions")
+            self.assertIn(logger, a["query"])
+            self.assertIn('(itemType == "exception" or severityLevel >= 3)', a["query"], "errors only, never warnings")
+            self.assertIn("Owner:", a["description"])
+            self.assertIn("Runbook: RB-", a["description"])
+        self.assertIn("frequency", json.dumps(resources_of(t, "Microsoft.Insights/scheduledQueryRules")))
+
+    def test_workbook(self):
+        t, _ = module("main.json", "monitoring")
+        (wb,) = resources_of(t, "Microsoft.Insights/workbooks")
+        self.assertEqual(wb["kind"], "shared")
+        text = json.dumps(t)
+        for needle in ("Notebook/1.0", "/v1/sync/batch", "aron.analytics.worker"):
+            self.assertIn(needle, text)
+        src = (ROOT / "infra" / "modules" / "monitoring.bicep").read_text(encoding="utf-8")
+        fn = src[src.index("func kql("):src.index("var workbookItems")]
+        content = fn[fn.index("content: {"):]
+        self.assertRegex(content, r"(?m)^    showAnnotations: true$", "a root flag of content, not inside chartSettings")
+        self.assertNotIn("chartSettings", fn)
+
+    def _marker(self, az_exit, kind=None):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            log = Path(d) / "az.log"
+            (Path(d) / "az").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "{log}"\nexit {az_exit}\n')
+            (Path(d) / "az").chmod(0o755)
+            env = dict(os.environ, PATH=f"{d}:{os.environ['PATH']}")
+            r = subprocess.run(["bash", "infra/scripts/release-marker.sh", "/subscriptions/s/resourceGroups/rg-aron-dev",
+                                "dev", "c992c9cf8f6f1c1ce3983606e54b091593896bd0", "https://x/runs/1", *([kind] if kind else [])],
+                               env=env, capture_output=True, text=True, cwd=ROOT)
+            return r, log.read_text().splitlines()
+
+    def test_release_marker_request(self):
+        r, args = self._marker(0)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(args[:4], ["rest", "--method", "put", "--uri"])
+        self.assertEqual(args[4], "/subscriptions/s/resourceGroups/rg-aron-dev/providers/Microsoft.Insights/components/"
+                                  "appi-aron-dev/Annotations?api-version=2015-05-01")
+        body = json.loads(args[args.index("--body") + 1])
+        self.assertEqual(body["Category"], "Deployment", "other categories do not show in the portal (Learn)")
+        self.assertEqual(body["AnnotationName"], "deploy c992c9c")
+        self.assertRegex(body["EventTime"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertEqual(json.loads(body["Properties"])["Commit"], "c992c9cf8f6f1c1ce3983606e54b091593896bd0")
+        _, args = self._marker(0, "rollback")
+        self.assertEqual(json.loads(args[args.index("--body") + 1])["AnnotationName"], "rollback c992c9c")
+
+    def test_release_marker_never_fails_the_deploy(self):
+        r, _ = self._marker(1)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("::warning::release marker not written", r.stdout)
+        src = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        call = src.index("infra/scripts/release-marker.sh")
+        self.assertLess(src.index('infra/scripts/smoke.sh "$API_HOST"'), call, "only after the health gate passed")
+        self.assertIn('|| echo "::warning::release marker step failed"', src[call:call + 400])
+
+
+class SliceSmoke(unittest.TestCase):
+    """Lead request 2026-10-07: the SR slice proof after a dev deploy (infra/scripts/slice-smoke.py), run here against a
+    local stub of the API: it must pass on a correct server, fail on a server that doubles a re-uploaded sale, void
+    its sale on the way out, and never print the password or the token."""
+
+    PW, TOKEN = "seed-pw-Never-Printed-1", "tok-Never-Printed-2"
+
+    def setUp(self):
+        import subprocess, tempfile
+        self.keydir = tempfile.TemporaryDirectory(); self.addCleanup(self.keydir.cleanup)
+        self.key = os.path.join(self.keydir.name, "key.pem"); self.pub = os.path.join(self.keydir.name, "pub.pem")
+        subprocess.run(["openssl", "genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:P-256", "-out", self.key], check=True, capture_output=True)
+        subprocess.run(["openssl", "ec", "-in", self.key, "-pubout", "-out", self.pub], check=True, capture_output=True)
+
+    def verify(self, proof, message):
+        """Raw r||s base64url -> DER, then openssl verify with the public key (what the backend does with JCA)."""
+        import base64, subprocess, tempfile
+        try:
+            raw = base64.urlsafe_b64decode(proof + "=" * (-len(proof) % 4))
+        except ValueError:
+            return False
+        if len(raw) != 64:
+            return False
+        def der_int(b):
+            b = b.lstrip(b"\0") or b"\0"
+            if b[0] & 0x80:
+                b = b"\0" + b
+            return b"\x02" + bytes([len(b)]) + b
+        body = der_int(raw[:32]) + der_int(raw[32:])
+        with tempfile.NamedTemporaryFile() as sig, tempfile.NamedTemporaryFile() as msg:
+            sig.write(b"\x30" + bytes([len(body)]) + body); sig.flush(); msg.write(message.encode()); msg.flush()
+            r = subprocess.run(["openssl", "dgst", "-sha256", "-verify", self.pub, "-signature", sig.name, msg.name], capture_output=True)
+        return r.returncode == 0
+
+    def serve(self, doubles=False, memo_read=True, totals_off=0):
+        import gzip as gz, http.server, threading
+        from urllib.parse import urlparse, parse_qs
+        state = {"records": {}, "batches": {}, "memos": {}, "voided": set(), "calls": []}
+        test = self
+
+        def totals(day):
+            live = [m for m in state["memos"].values() if m["client_uuid"] not in state["voided"]]
+            return {"business_date": day, "as_of": "x",
+                    "by_type": {"memo": {"accepted": len(state["memos"]), "rejected": 0, "quarantined": 0}},
+                    "money": {"active_memo_count": len(live), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in live)}}
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def reply(self, code, body):
+                raw = json.dumps(body).encode()
+                self.send_response(code); self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+
+            def authed(self):
+                return self.headers.get("Authorization") == "Bearer " + test.TOKEN
+
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                raw_gz = body
+                if self.headers.get("Content-Encoding") == "gzip":
+                    body = gz.decompress(body)
+                b = json.loads(body)
+                path = urlparse(self.path).path
+                state["calls"].append(path)
+                if path == "/v1/auth/login":
+                    ok = b == {"username": "sr1001", "password": test.PW, "client": "app_sr",
+                               "device_uuid": "00000000-0000-4000-8000-000000000001"}
+                    return self.reply(200, {"status": "ok", "access_token": test.TOKEN}) if ok else self.reply(401, {"code": "bad"})
+                if path == "/v1/sync/batch" and self.authed():
+                    # As SyncApi: a device with a key must sign the gzip bytes (raw r||s ES256, base64url).
+                    proof = self.headers.get("X-Device-Proof")
+                    if not proof or not test.verify(proof, "\n".join(["aron-proof-v1", "batch", b["device_uuid"],
+                                                                        hashlib.sha256(raw_gz).hexdigest(), b["batch_uuid"],
+                                                                        self.headers.get("X-Batch-Attempt", "1")])):
+                        return self.reply(401, {"code": "ERR_DEVICE_PROOF_INVALID"})
+                    envelope = {"type", "client_uuid", "family_uuid", "rank", "schema_version", "business_date", "captured_at",
+                                "route_id", "bundle_version", "config_version", "payload"}
+                    for r in b["records"]:
+                        if not envelope <= r.keys() or (r["type"] == "memo" and not re.fullmatch(
+                                r"[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}", r["payload"]["memo_no"])):
+                            return self.reply(400, {"code": "ERR_VALIDATION"})
+                    if b["batch_uuid"] in state["batches"]:
+                        return self.reply(200, {**state["batches"][b["batch_uuid"]], "replayed": True})
+                    acks = []
+                    for r in b["records"]:
+                        dup = r["client_uuid"] in state["records"] and not doubles
+                        if not dup:
+                            state["records"][r["client_uuid"] + ("x" if r["client_uuid"] in state["records"] else "")] = r
+                            if r["type"] == "memo":
+                                key = r["client_uuid"] + str(len(state["memos"]))
+                                state["memos"][key] = r
+                            if r["type"] == "memo_void":
+                                state["voided"].add(r["payload"]["memo_client_uuid"])
+                        acks.append({"client_uuid": r["client_uuid"], "type": r["type"], "status": "duplicate" if dup else "accepted"})
+                    resp = {"batch_uuid": b["batch_uuid"], "replayed": False, "acks": acks,
+                            "server_totals": [totals(b["records"][0]["business_date"])]}
+                    state["batches"][b["batch_uuid"]] = resp
+                    return self.reply(200, resp)
+                return self.reply(401, {"code": "unauthorized"})
+
+            def do_GET(self):
+                u = urlparse(self.path); q = parse_qs(u.query)
+                state["calls"].append(u.path)
+                if not self.authed():
+                    return self.reply(401, {"code": "unauthorized"})
+                memos = [m for m in state["memos"].values() if m["client_uuid"] not in state["voided"]]
+                if u.path == "/v1/sync/bundle":
+                    return self.reply(200, {
+                        "meta": {"bundle_version": q["for"][0] + ":1", "config_version": 7},
+                        "products": {"skus": [{"id": 5, "code": "GL-20", "status": "active", "base_unit": "stick"}]},
+                        "prices": [{"sku_id": 5, "price_type": "outlet", "amount_mtk": 14500, "per_base_qty": 1, "valid_from": "2026-01-01"}],
+                        "routes": [{"route_id": 3, "planned_today": True, "sales_plan_sku_ids": [5],
+                                    "outlets": [{"outlet_id": 8, "code": "MIR-D-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100},
+                                                {"outlet_id": 9, "code": "SMOKE-SR-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100}]}]})
+                if u.path == "/v1/app/home":
+                    return self.reply(200, {"kpis": {"active_memo_count": len(memos), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in memos)}})
+                if u.path == "/v1/sync/totals":
+                    t = totals(q["business_date"][0]); t["money"]["gross_mtk"] += totals_off
+                    return self.reply(200, {"totals": t, "day_states": [], "supervisor_day": None})
+                if u.path == "/v1/memos" and memo_read:
+                    return self.reply(200, {"next_cursor": None, "items": [
+                        {"memo_client_uuid": m["client_uuid"], "memo_no": m["payload"]["memo_no"], "status": "active",
+                         "totals": {k: m["payload"][k] for k in ("gross_mtk", "net_mtk", "paid_mtk", "due_mtk")}}
+                        for m in memos if m["payload"]["memo_no"] == q["memo_no"][0]]})
+                return self.reply(404, {"code": "not_found"})
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        return srv, state
+
+    def run_smoke(self, srv):
+        import subprocess, tempfile
+        with tempfile.NamedTemporaryFile("r", suffix=".md") as summary:
+            env = dict(os.environ, SLICE_API_HOST=f"127.0.0.1:{srv.server_address[1]}", SLICE_SCHEME="http",
+                       SLICE_PASSWORD=self.PW, SLICE_DEVICE_KEY=self.key, SLICE_TILE_WAIT_S="2", SLICE_TILE_POLL_S="0.2", GITHUB_STEP_SUMMARY=summary.name)
+            r = subprocess.run([sys.executable, str(ROOT / "infra" / "scripts" / "slice-smoke.py")], env=env,
+                               capture_output=True, text=True, timeout=60)
+            out = r.stdout + r.stderr + summary.read()
+        self.assertNotIn(self.PW, out, "the password is never printed")
+        self.assertNotIn(self.TOKEN, out, "the token is never printed")
+        return r.returncode, out
+
+    def test_passes_on_a_correct_server_and_voids_its_sale(self):
+        srv, state = self.serve()
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 0, out)
+        for line in ("PASS 4 sale uploaded", "PASS 5 re-upload acked duplicate", "PASS 6 batch replay",
+                     "PASS 7 server count unchanged by the re-upload: (1, 1, 145000) -> (1, 1, 145000)",
+                     "PASS 7b GET /v1/sync/totals agrees: (1, 1, 145000)", "PASS 8 memo read",
+                     "PASS 9 dashboard tile shows the sale",
+                     "PASS 10 cleanup: sale voided", "### SR slice smoke: PASSED"):
+            self.assertIn(line, out)
+        (memo,) = state["memos"].values()
+        self.assertIn(memo["client_uuid"], state["voided"], "the smoke sale is voided")
+        self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-9\d{3}$", "contract pattern, clear of phone blocks")
+        self.assertEqual(memo["payload"]["outlet_id"], 9, "the smoke's own outlet, never a tester's")
+
+    def test_fails_when_a_re_upload_doubles_the_sale(self):
+        srv, state = self.serve(doubles=True)
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL 5 re-upload acked duplicate", out)
+        self.assertIn("### SR slice smoke: FAILED", out)
+        self.assertIn("PASS 10 cleanup: sale voided", out, "a failed later step still voids the smoke sale")
+        self.assertTrue(state["voided"])
+
+    def test_fails_when_the_totals_endpoint_disagrees_with_the_batch_answers(self):
+        srv, state = self.serve(totals_off=1)
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL 7b GET /v1/sync/totals agrees: (1, 1, 145001)", out)
+        self.assertIn("PASS 10 cleanup: sale voided", out)
+
+    def test_fails_when_the_memo_read_is_not_served(self):
+        srv, state = self.serve(memo_read=False)
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL 8 memo read: HTTP 404", out)
+        self.assertIn("PASS 10 cleanup: sale voided", out)
+
+    def test_print_jwk_gives_the_public_half_and_its_rfc7638_thumbprint(self):
+        import base64, hashlib, subprocess
+        r = subprocess.run([sys.executable, str(ROOT / "infra" / "scripts" / "slice-smoke.py"), "--print-jwk", self.key],
+                           capture_output=True, text=True, check=True)
+        out = json.loads(r.stdout)
+        jwk = out["jwk"]
+        self.assertEqual((jwk["kty"], jwk["crv"]), ("EC", "P-256"))
+        self.assertNotIn("d", jwk, "never the private scalar")
+        self.assertEqual(len(base64.urlsafe_b64decode(jwk["x"] + "=")), 32)
+        canon = json.dumps({"crv": "P-256", "kty": "EC", "x": jwk["x"], "y": jwk["y"]}, separators=(",", ":"))
+        self.assertEqual(out["thumbprint"], base64.urlsafe_b64encode(hashlib.sha256(canon.encode()).digest()).rstrip(b"=").decode())
+        run = (ROOT / "infra" / "scripts" / "devseed-run.sh").read_text(encoding="utf-8")
+        self.assertIn("AND public_key_thumbprint IN ('seed-dev-device-0001', :'tp')", run, "never replaces another real key")
+
+    def test_wired_after_the_health_gate_for_dev_only(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.rindex("python3 infra/scripts/slice-smoke.py; then"))
+        self.assertLess(d.index('DBLOGINS_JOB="$(az deployment'), d.index("publish aron-devseed build_devseed"))
+        self.assertLess(d.index("publish aron-devseed build_devseed"), d.index('guard_newer_live "before the apps"'))
+        self.assertIn("grep -qx 'param devSeed = true' \"infra/params/${PROFILE}.apps.bicepparam\"", d, "a committed switch")
+        self.assertIn('rm -f "$ctx"/04_*.sql', d, "the global dev relaxations stay off (lead)")
+        self.assertIn("param devSeed = true\n", (ROOT / "infra/params/dev.apps.bicepparam").read_text(encoding="utf-8"))
+        for f in ("dev-lite", "stage", "prod"):
+            self.assertNotIn("param devSeed = true", (ROOT / f"infra/params/{f}.apps.bicepparam").read_text(encoding="utf-8"), f)
+        self.assertNotIn("ARON_DEV_SEED", (WORKFLOWS / "deploy.yml").read_text(encoding="utf-8"), "no repository variable")
+        sql = (ROOT / "infra/sql/devseed-smoke-outlet.sql").read_text(encoding="utf-8")
+        self.assertIn("'SMOKE-SR-001'", sql)
+        self.assertNotIn("cfg_value", sql)
+        self.assertIn('echo "::add-mask::${slice_pw}"', d)
+        self.assertIn('( publish aron-devseed build_devseed', d, "a failed seed image never stops the deploy")
+        for f in ("stage", "prod"):
+            self.assertIs(params(f"{f}.apps.parameters.json").get("devSeed", False), False, f)
+        job = load("apps.json")["resources"]["dblogins"]
+        self.assertIn("seed-pw", json.dumps(job["properties"]["configuration"]["secrets"]))
+        self.assertIn("parameters('devSeed')", json.dumps(job["properties"]["configuration"]["secrets"]))
+        run = (ROOT / "infra" / "scripts" / "devseed-run.sh").read_text(encoding="utf-8")
+        self.assertIn('printf \'%s\' "$ARON_SEED_PASSWORD" | argon2', run, "the password reaches argon2 on stdin only")
+        self.assertIn("\\getenv h ARON_SEED_HASH", run)
+        self.assertIn("-id -t 2 -k 19456 -p 1", run, "the backend's Argon2id parameters")
+
+
+class WorkerCheck(unittest.TestCase):
+    """Lead 2026-10-07: the worker (no HTTP endpoint) is proven up after a deploy: this build's image, a replica Running
+    with 0 restarts, still so after the hold (infra/scripts/worker-check.sh, with a fake az)."""
+
+    IMG = "cr.example/aron-backend@sha256:" + "a" * 64
+
+    def run_check(self, image, first, second):
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            (t / "first.json").write_text(json.dumps(first)); (t / "second.json").write_text(json.dumps(second))
+            (t / "az").write_text(f"""#!/usr/bin/env bash
+case "$*" in
+  *"containerapp show"*) echo rev-2 ;;
+  *"revision show"*) echo {image} ;;
+  *"replica list"*) if [ -f {t}/seen ]; then cat {t}/second.json; else touch {t}/seen; cat {t}/first.json; fi ;;
+  *) exit 9 ;;
+esac
+""")
+            (t / "az").chmod(0o755)
+            env = dict(os.environ, PATH=f"{t}:{os.environ['PATH']}", WORKER_TIMEOUT_S="1", WORKER_HOLD_S="0", WORKER_POLL_S="0")
+            r = subprocess.run(["bash", "infra/scripts/worker-check.sh", "rg", "ca-aron-dev-worker", self.IMG],
+                               env=env, capture_output=True, text=True, cwd=ROOT, timeout=60)
+            return r.returncode, r.stdout + r.stderr
+
+    @staticmethod
+    def replica(state="Running", cstate="Running", restarts=0):
+        return [{"name": "rep-1", "properties": {"runningState": state,
+                 "containers": [{"name": "worker", "runningState": cstate, "restartCount": restarts}]}}]
+
+    def test_running_and_staying_up_passes(self):
+        rc, out = self.run_check(self.IMG, self.replica(), self.replica())
+        self.assertEqual(rc, 0, out)
+        self.assertIn("still running", out)
+
+    def test_old_image_crash_loop_or_restart_fails(self):
+        self.assertEqual(self.run_check("cr.example/aron-backend@sha256:" + "b" * 64, self.replica(), self.replica())[0], 1,
+                         "an older revision is not this deploy's worker")
+        crash = self.replica(cstate="Waiting", restarts=3)
+        rc, out = self.run_check(self.IMG, crash, crash)
+        self.assertEqual(rc, 1, "a crash-looping replica never passes")
+        self.assertIn("no replica of rev-2 running with 0 restarts", out)
+        rc, out = self.run_check(self.IMG, self.replica(), self.replica(restarts=1))
+        self.assertEqual(rc, 1, "a restart during the hold is a crash loop")
+        self.assertIn("did not stay up", out)
+
+    def test_wired_after_the_health_gate(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.index("infra/scripts/worker-check.sh"))
+        self.assertIn('"ca-aron-${ENV_NAME}-worker" "$BACKEND_IMAGE"', d)
+        self.assertIn('summary "| Worker | ${worker_result} |"', d)
+        # Blocking since its first green run: a failed check ends the deploy (die), never a warning only.
+        block = d[d.index("infra/scripts/worker-check.sh"):d.index("infra/scripts/release-marker.sh")]
+        self.assertIn('die "worker check failed', block)
+        self.assertNotIn("::warning::worker check failed", block)
+
+
+class JvmSplit(unittest.TestCase):
+    """Lead 2026-10-07: :backend:app:test (about 14.5 of 26 minutes) runs in its own parallel job; every test still runs
+    exactly once, and both job names are required checks on main."""
+
+    def test_app_tests_run_once_in_their_own_job(self):
+        c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        jvm = c[c.index("\n  jvm:"):c.index("\n  jvm-app:")]
+        app = c[c.index("\n  jvm-app:"):c.index("\n  android:")]
+        self.assertIn(":backend:app:build -x :backend:app:test", jvm)
+        self.assertIn("run: ./gradlew --console=plain :backend:app:test", app)
+        self.assertIn("name: Backend app tests", app)
+        self.assertIn("if: needs.changes.outputs.jvm == 'true'", app, "runs exactly when the jvm job runs")
+        self.assertIn("ARON_TEST_PG_URL", app, "its own PostgreSQL service")
+        gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
+        for name in ("'Shared, db and backend (build and tests)'", "'Backend app tests'"):
+            self.assertIn(name, gov)
 
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():

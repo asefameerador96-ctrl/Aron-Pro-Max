@@ -39,6 +39,14 @@ interface CaptureDao {
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertDaySubmit(row: DaySubmitEntity)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertOutletRequest(row: OutletChangeRequestEntity)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertTaskEvent(row: TaskEventEntity)
+    @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertContentView(row: com.aktcl.aron.core.database.entity.ContentViewEntity)
+    @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertSurveyResponse(row: com.aktcl.aron.core.database.entity.SurveyResponseEntity)
+
+    @Query("SELECT * FROM content_view WHERE visit_client_uuid = :visitClientUuid ORDER BY sequence_no, content_id")
+    suspend fun contentViewsOf(visitClientUuid: String): List<com.aktcl.aron.core.database.entity.ContentViewEntity>
+
+    @Query("SELECT * FROM survey_response WHERE visit_client_uuid = :visitClientUuid ORDER BY survey_id, question_id")
+    suspend fun surveyResponsesOf(visitClientUuid: String): List<com.aktcl.aron.core.database.entity.SurveyResponseEntity>
 
     @Query("SELECT * FROM memo_discount WHERE memo_client_uuid = :memoClientUuid ORDER BY client_uuid")
     suspend fun discountsOf(memoClientUuid: String): List<MemoDiscountEntity>

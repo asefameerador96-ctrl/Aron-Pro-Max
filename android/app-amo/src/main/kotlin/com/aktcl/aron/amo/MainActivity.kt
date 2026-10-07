@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
+    @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { updateShell.check(atLogin = false) }
         pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
         lifecycleScope.launch { components.session.noteTimePassing() } // F-SYS-052: the offline window counts real uptime
+        telemetry.sampleSoon() // F-SYS-081: a foreground event is a sample point
         lifecycleScope.launch { // F-SYS-024: today's sampling, then the app-open event
             val id = (components.session.settled() as? SessionState.Active)?.user?.userId ?: return@launch
             activityLog.refreshSampling(id)

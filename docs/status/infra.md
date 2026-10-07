@@ -1,6 +1,220 @@
 # Infra lane status
 
-Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
+Updated 2026-10-07 22:00 UTC (sixth infra session).
+
+## Sixth infra session, 2026-10-07 21:05 UTC (read with the handover below)
+
+- INT bde7719c merged into lane/infra; infra/validate.sh green. Pushed **5524b051**: slice smoke step 7b (GET
+  /v1/sync/totals must equal the batch answers' (memos accepted, active, gross)) and step 8 (GET /v1/memos?memo_no=
+  returns exactly our memo, `active`, gross = net = ours) are **hard checks** now (backend-core serves both since bde7719c).
+- **N-064 part 1** (51ccd44b + checker follow-ups): `tools/ci/release-manifest.py` runs in the INT signing step and
+  writes `signed/release-manifest.json` (artifact aron-release-signed-dev-<run>): per APK `file` + `release` (contract
+  AppReleaseWrite minus download_url: flavour, abi, version name/code, sha256, size, signing cert), source sha,
+  aron-backend/aron-web image tags. **ARON_VERSION_NAME** is now set by each Android job's first step to
+  `0.<1+run/1000>.<run%1000>` (identical below run 1000; the old 0.1.<run> broke the contract pattern at run 1000, runs
+  are at ~635). Opus checker: no blocking defect; open notes: release-apks.py still lists x86/x86_64 splits that the
+  manifest rejects (android-core has no x86 splits today), step 8 has no retry if a read replica is ever added (dev has
+  none). Left for N-064: release-store upload (POST /v1/admin/releases is contract-only, backend not serving it) and the
+  install/upgrade proof on enrolled phones (owner's hands).
+- **Governance command for the laptop session** (owner's admin rights; run only after 11cd544b is on INT, otherwise
+  pull requests to main wait on a "Backend app tests" check that never runs): from a fresh clone of INT,
+  `gh auth login` (owner account), then `pwsh -NoProfile -File tools/github-governance.ps1` (idempotent; re-applies the
+  main protection with "Repository gates (secrets, migrations, contract)" and "Backend app tests"; touches nothing else).
+- **CI split run 37682155791: green, 9 of 9 jobs, wall 22.3 min** (20:53:00-21:15:17; old jvm job 26 min). "Backend app
+  tests" 8.9 min; "Shared, db and backend" 22.1 min (now the long pole: the next gain is inside it, not more splitting).
+  Reported to lead and integrator 21:20 UTC.
+- **SR SLICE SMOKE PASSED END TO END: deploy run 37687665680** (#151, INT 0e5c3dc4 with ff7579c4, 21:12-21:23 UTC):
+  login with signed device proof, bundle, sale uploaded (sr1001-261008-9803, 92000 mtk), re-upload 4/4 duplicate,
+  replay, count unchanged (1, 1, 92000), memo read HTTP 200 (report-only in that run), tile 0 -> 1, void. Rows:
+  Database logins succeeded (**per-app db logins ON, api healthy**), Worker running 0 restarts after 90 s, Dev seed
+  Succeeded, SR slice smoke PASSED. Lead told 21:58 UTC. Steps 7b/8 are hard checks from INT 3ba55547 on.
+- **Worker check is blocking now** (lane/infra, after its first green run): a failed check ends the deploy with `die`.
+  The slice smoke itself stays non-blocking until the lead says otherwise.
+
+## HANDOVER (fifth infra session -> sixth), 2026-10-07 20:55 UTC: read this first
+
+Session recycled at about 580k tokens (lead). lane/infra head is this commit; every infra/validate.sh run green.
+Lead: session_01MbUQSxrP7AB9tbyANjUTPS. Integrator: session_01UhJZDVYst45zbrskHBMkDd (recycled once today).
+db lane: session_011K2gmzr1feSNNQxnqWkRt5. Nothing of this session is scheduled (all check-ins deleted).
+
+**Proven on dev (test account), with run ids:**
+- 37673797109 (INT b85d81fd): **dblogins succeeded** (root cause was Kubernetes turning `$$` into `$` in env values; the
+  SQL is now a mounted secret file, b8a83d87), **"main.bicep skipped"** (infra-stage skip works since 5f37940 moved the
+  parameter comparison off argv), release marker written, health gate build = INT sha.
+- 37676392733 (zw, 6b42accc): **dev seed succeeded** (image aron-devseed built, db/seed without 04 + SMOKE-SR-001,
+  aron-dev-seed-password created); **slice smoke steps 1 login, 2 bundle (outlet 61 = SMOKE-SR-001, route 1), 3
+  baseline PASSED**; step 4 upload **401 ERR_DEVICE_PROOF_INVALID "device key unknown"** (keyless seed device while
+  cfg.device.require_enrolled is on; the lead keeps it on). No sale was created.
+
+**Waiting for promotion (none of these is on INT at 20:50 UTC):**
+1. **ff7579c4, smoke device key.** Key Vault `aron-dev-smoke-device-key` (P-256 PEM, made by seed-secrets.sh); deploy.sh
+   derives the public JWK + RFC 7638 thumbprint (`slice-smoke.py --print-jwk`) and the seed job sets them on device
+   00000000-0000-4000-8000-000000000001 only over the placeholder; the smoke signs X-Device-Proof. No cfg relaxed.
+   **Read its first run:** deploy log, grep `slice:` (PASS/FAIL per step), summary rows `Dev seed`, `SR slice smoke`,
+   `Worker`, `Database logins`. Step 8 memo read is reported SKIPPED (GET /v1/memos and /v1/sync/totals are in the
+   contract but NOT served; lead was told, backend-core request). The tile (step 9) depends on the aggregation worker.
+   On the first full PASS send the lead the run id (asked for explicitly).
+2. **7051367a, per-app db logins ON in dev** (`dbPerAppLogins = true`; db closed docs/requests/db-runtime-roles-gaps.md,
+   V0029; db confirmed app_jobs covers worker_rw). Check: health gate passes (api as app_api), `Worker` row says
+   "running, 0 restarts after 90 s" (worker as app_jobs). If the api breaks: set it back to false in
+   infra/params/dev.apps.bicepparam, push, and send db the exact error.
+3. **00a4d907, worker check** (`infra/scripts/worker-check.sh`, non-blocking, summary row `Worker`): latest revision runs
+   this build's image, a replica Running with 0 restarts, still so after 90 s. Make it blocking after one green run.
+4. **6fc77f28, CI timeout** "Shared, db and backend" 30 -> 45 min (one-line priority candidate; integrator may cherry-pick).
+5. **11cd544b, CI split** (lead GO): `:backend:app:test` (14.5 of 26 min in CI run 37669413915) runs in the new parallel
+   job "Backend app tests"; the old job keeps its name and runs the rest with `-x :backend:app:test`. Candidate CI run
+   **37682155791** on lane/infra was still QUEUED at 20:50 (no jobs yet). Lead wants both jobs green and the wall time
+   (expected about 17 min) BEFORE it goes onto INT: list its jobs, report started/completed of both, then tell the
+   integrator. NOT doing maxParallelForks (lead: no, until after the wall-clock gate).
+
+**People and gates:**
+- Governance: `tools/github-governance.ps1` now requires "Repository gates (secrets, migrations, contract)" and the new
+  "Backend app tests"; main's live protection still lists "Contract lint". The laptop session (owner's admin rights)
+  re-runs the protection step once, before the first gate pull request, which applies both.
+- Restore drill: only after the lead relays the owner's exact words "owner approved restore drill".
+- Wall-clock gate (2026-10-09, `--blocking`): no infra or workflow script depends on it (checked; offenders are backend).
+
+**Traps (new today):** never pass text with `$` through a Container Apps env value (Kubernetes `$(VAR)`/`$$`
+expansion); never pass >128 KiB through argv (params_unchanged); a deploy run's listed head_sha can differ from the commit
+it deployed (read `== deploying <sha>` in the log); `return` inside `finally` swallows a failure (slice-smoke); the
+lane container has no Docker daemon and no az (image builds and az flags are first proven in the deploy); app/home and
+the batch answers are what the backend serves, the contract has more (check routes before testing an endpoint).
+
+**Rows:** done this session N-062 (seeded proof on dev still to run), N-057 (parameters; load test is final account),
+bookkeeping of the Day 3 rows; left N-064 (Day 7, plan below). Usage is tight: lean context, no fan-out.
+
+## Fifth infra session, 2026-10-07 17:40 UTC: read this first (the fourth session's handover below still applies)
+
+**First slice smoke, deploy run 37676392733 (zw, 19:41 UTC):** dev seed Succeeded (image built, 04 left out,
+aron-dev-seed-password created), smoke steps 1 login, 2 bundle (outlet SMOKE-SR-001 = 61, route 1), 3 baseline PASSED;
+step 4 upload FAILED 401 ERR_DEVICE_PROOF_INVALID "device key unknown" (SyncApi refuses keyless devices while
+cfg.device.require_enrolled is on, kept on per the lead). Fix lane/infra ff7579c4: the seed device gets a REAL P-256 key
+(private in Key Vault aron-dev-smoke-device-key, public JWK + RFC 7638 thumbprint set by the seed job only over the
+placeholder) and the smoke signs X-Device-Proof; nothing relaxed. Same head: dbPerAppLogins = true in dev (db closed the
+grants gap, V0029; db confirmed app_jobs ⊇ worker_rw) and the worker check (image, Running replica, 0 restarts, 90 s).
+
+**Deploy run 37673797109 (INT b85d81fd, 19:21 to 19:31 UTC): ALL GREEN, dblogins FIXED.** "database logins succeeded"
+(first time; SQL as a mounted file), "main.bicep skipped" (infra unchanged since 9941cfe), health gate build = b85d81fd,
+ready 200, web /login 200, release marker written. Worker revision with 9114b63 (no signing key) deployed without error;
+the health gate checks the api only, so the worker's start is not separately proven. Next for per-app logins: switch
+`dbPerAppLogins = true` only after `docs/requests/db-runtime-roles-gaps.md` (api_rw DELETE grants) is closed by db.
+
+**dblogins ROOT CAUSE (deploy run 37669977875, 19:00 UTC):** for the first time the console log arrived:
+`psql:/tmp/logins.sql:47: ERROR: syntax error at or near "$" / LINE 1: DO $`. Container Apps (Kubernetes) expands
+`$(VAR)` in env values and turns `$$` into `$`, so the SQL's `DO $$ ... $$` blocks arrived broken through `ARON_SQL`.
+The fix already on INT (b8a83d87: the SQL as a mounted secret file, no expansion) is right; run 147 deployed f8ba8a16,
+which predates it, so the first deploy with the fix is run 148 (b85d81fd). Also proven in run 147: **"main.bicep
+skipped"** (infra unchanged since 9941cfe) and the release marker. Trap for the future: never pass text containing
+`$` through a Container Apps env value.
+
+**SR slice smoke (lead request 18:27, ruling 18:29), lane/infra 634dbd69, waits for promotion:** after the health gate,
+non-blocking, table in the run summary. `infra/scripts/slice-smoke.py` as `sr1001` on the seeded dev phone through
+Front Door: login, bundle, one sale at its own outlet SMOKE-SR-001 (visit, memo, line, close), the same records in a new
+batch (must be duplicate), the batch replayed, server_totals of the batch answers unchanged by the re-upload, memo read
+(SKIPPED: `GET /v1/memos` is in the contract but not served; neither is `GET /v1/sync/totals`), app/home tile polled up
+to 5 min, then the sale is voided (whenever the memo was accepted). Dev seed: committed `param devSeed = true` in
+`infra/params/dev.apps.bicepparam`; the seed image (psql image + argon2 + db/seed WITHOUT 04, the global dev relaxations,
++ `infra/sql/devseed-smoke-outlet.sql`) runs through the dblogins job by template override; `aron-dev-seed-password` is
+generated in Key Vault and hashed in the job. Not proven here: the image build (no Docker daemon in the lane container).
+If login fails on enrolment: the server reads cfg globally (no user/device-scoped override exists): tell the lead.
+Opus checker: 3 defects (unserved endpoints, void not covering steps 5 to 8, stub inventing endpoints), all fixed.
+
+**Deploy run 145 (INT eaac3ad5 = zl with the probe, 17:27 to 17:51 UTC): SUCCESS.** Health gate through Front Door:
+`/v1/health` 200 with `X-Aron-Api: 1` and build = eaac3ad5 (the INT head), ready 200, web `/login` 200; migrations
+succeeded; images by digest. Still "Argument list too long" there (5f37940 not promoted yet), so main.bicep re-applied.
+**dblogins probe read:** probe A (image only) **Succeeded** (`psql 16.15`), probe B (A + the four Key Vault refs)
+**Succeeded** (all four "set"); the real execution failed again ("No replicas found"). So neither the image nor a secret
+reference: the cause is the job's 7 KB `ARON_SQL` env value. **Fix on lane/infra (this commit):** the SQL is a Container
+Apps secret projected as a file (`storageType: Secret`, only `runtime-logins.sql`, mounted at `/sql`, the same path CI's
+image smoke uses); the command is `psql ... -f /sql/runtime-logins.sql`; no SQL in the environment. `dbPerAppLogins`
+stays false until a dev deploy shows dblogins Succeeded.
+
+**Deploy run 144 (INT 4fd5c4d, 16:49 UTC) failed; dev stays on c992c9c (healthy).** Two infra defects, both fixed on
+lane/infra (needs promotion; until then every INT deploy can fail the same way):
+1. **App Insights agent download:** Maven Central answered HTTP 429 on all 5 attempts at the image build. Fix:
+   `fetch-ai-agent.sh` tries Microsoft's GitHub release of the agent after Maven Central on every attempt (the download
+   Learn documents); the same pinned SHA-256 decides (checked here: the GitHub jar is byte-identical, 93a70c8f...).
+2. **Infra stage never skipped:** `params_unchanged` passed the parameter JSON through argv; with the attestation roots
+   it exceeds the 128 KiB per-argument limit ("/usr/bin/python3: Argument list too long", deploy.sh line 248), so
+   every deploy re-applied main.bicep (and re-PUT Front Door). Fix: files instead of argv; the test reproduces the old
+   error. The first deploy after promotion should log "main.bicep skipped" when infra/ is unchanged.
+
+**Not yet seen:** the dblogins probe (zj, 0cd495f) and the worker without the signing key (9114b63) are NOT on INT yet
+(checked 17:00); run 144 stopped before dblogins. Read probe A/B in the first deploy after they land (guide below).
+
+**Built this session (lane/infra):**
+- **N-062 observability:** log alerts `syncErrors` (aron.sync.* errors) and `aggregationStuck` (3+ aggregation worker
+  errors in 15 min), over `union traces, exceptions` (the Java agent sends errors with a throwable to `exceptions`),
+  evaluated every minute (ingestion 1 to 3 min + 1 min evaluation: inside 5 minutes in practice, not guaranteed);
+  shared ops workbook "Aron operations (appi-aron-dev)" (sync volume/5xx/p95, errors by logger, aggregation failures,
+  slow endpoints, latest errors) with release annotations on its charts; `infra/scripts/release-marker.sh` writes a
+  release annotation (Category Deployment) after the health gate, never fails the deploy. Budget alert: present in
+  code; on dev Azure reports the cost policy off, so no budget exists (warning in every run, owner's billing setting).
+  Opus checker: 1 defect (showAnnotations placement), fixed; notes taken (a stopped worker raises no alert: add a
+  no-telemetry alert later; dev-lite has log alerts off, so the proof runs in the dev profile). **Proof still to run on
+  dev:** a seeded sync error and a seeded aggregation failure, each alerting within 5 minutes and visible in the workbook.
+- **drill.sh** picks the profile server by the `aron-infra` output `postgresServerName` (handover item 6 done).
+- **Bookkeeping:** infra rows built on Day 3 recorded in infra.csv by their backlog ids (proofs still open are named
+  in each note); `tools/my-rows.py infra --todo` now lists only N-062 (proof), N-064 (Day 7).
+- **N-057:** already built as parameters (autoscale, read replica, pools; on only in stage/prod); load-test acceptance
+  is a final-account item.
+
+**Wall-clock gate (task 3):** no infra or workflow script depends on it. The scan reads only Kotlin/Java test sources
+(backend, android, shared, db); infra tests are Python/shell and read no clock to decide pass/fail (date calls in
+infra/scripts are runtime timestamps, lock deadlines and drill names). The flip to `--blocking` on 2026-10-09 is a
+one-line ci.yml edit (`wallclock-scan.py --blocking .`); offenders are backend's.
+
+**Governance:** `tools/github-governance.ps1` already requires "Repository gates (secrets, migrations, contract)"; the
+live protection on main still lists "Contract lint" until someone with admin rights re-runs the protection step
+(laptop session, before the first gate pull request). Not a blocker today.
+
+**N-064 (Day 7) plan:** signed release APKs already come from ci.yml on INT (`aron-release-signed-dev-<run>`);
+release-app.yml stays inert until the final account. Left: a release manifest (versions, SHA-256, api/web digests),
+upload to the admin release store (F-ADM-027) and the install/upgrade proof on enrolled phones (owner's hands).
+
+Restore drill: still only after "owner approved restore drill".
+
+## HANDOVER (fourth cloud infra session -> next), 2026-10-07 16:55 UTC: read this first
+
+**Proven on dev (deploy run 37649162760, c992c9c, first green dev deploy):** what-if guard with live PostgreSQL zones
+(primary 2, standby 1), main.bicep, images built once and deployed by digest, PITR point before migrations, migrations,
+apps + Front Door routes, health gate (build = commit, ready 200, web /login 200), storage CORS by preflight (Front Door
+origin + PUT + `x-ms-blob-type,content-type` only; other origins and methods 403), `aron-dev-resource-health-recovered`
+alert created. Table: "FIRST GREEN DEV DEPLOY" below.
+
+**Open, in order:**
+1. **dblogins** fails on every deploy: execution Failed, "No replicas found for execution", no console or system log =
+   the replica is never created (psql never runs). Does NOT block the apps while `dbPerAppLogins` is false (warning +
+   summary row "Database logins | FAILED"); blocks again once the apps use those logins. Ruled out: wrong-arch image,
+   identity/ACR/Key Vault roles (same identity as the working migrate job), secret names, the 300 s timeout (fails in
+   ~1 min), the compiled command. **Read the probe** (lane/infra 0cd495f, train candidate zj): in the first deploy log
+   after zj, lines `probe A (...)` and `probe B (...)` follow the dblogins warning.
+   - A Failed or "could not start" -> image/registry pull of `tools/postgres@sha256:7218...`.
+   - A Succeeded, B Failed -> a Key Vault secret reference of the job (db-direct-url, pw-app-api/worker/jobs).
+   - Both Succeeded (B prints "ARON_... set") -> the 7 KB `ARON_SQL` env value or the real command: move the SQL out of
+     the env (into the image, or a secret volume).
+   After it passes: `dbPerAppLogins = true` in dev params (db's V0029 grants are on INT).
+2. **lane/infra 9114b63** (worker gets no token signing key; backend change on INT since c992c9c): after its deploy,
+   check the worker revision starts. Caveat: the worker identity still has vault-wide Secrets User; per-secret scoping is
+   a final-account item.
+3. **Infra-stage skip:** run 143 wrote the resource-group tag `aron-infra-sha`; a deploy with no infra change should log
+   "main.bicep skipped" (verify; it also stops the per-apply Front Door rollout behind the 13:11 Sev4 mail).
+4. **Wall-clock gate** flips to `--blocking` on 2026-10-09; 14 offenders (backend) at last count; tell the lead daily.
+5. Rows: N-062, N-057 (prod-only parameters), N-064 (release candidate, Day 7), seeded-failure proof of the REL-04 alerts,
+   support key script (`docs/requests/android-sys-support-key.md`, needs Key Vault write: deploy identity or the owner).
+6. Follow-up from the laptop session (below): `drill.sh` should pick its server by exact name, before the next drill.
+
+**Waits on people:** restore drill only after the lead relays "owner approved restore drill". main's branch protection
+still requires "Contract lint" (folded into Repository gates): re-run the protection step of
+`tools/github-governance.ps1` before the first gate pull request. Nobody but the deploy workflow has `az` now.
+
+**Final-account items:** Service Health alert, per-secret Key Vault scoping per identity, `activeRevisionsMode` Multiple
+(stage, prod), restore drill rehearsal, deploy freeze window.
+
+**Traps:** `az deployment group create` has no `--tags` (broke run 142; check new az flags against the CLI reference,
+there is no az here); `az postgres flexible-server list` tsv prints a list one value per line; `az acr import` takes a
+tag or a digest, never both; a laptop session (owner account, +0600 commits) may push lane/infra: fetch and merge it
+before every push.
 
 ## Day 3, 16:30 UTC (fresh session after the team stall): deploy run 37608044223 fixed
 

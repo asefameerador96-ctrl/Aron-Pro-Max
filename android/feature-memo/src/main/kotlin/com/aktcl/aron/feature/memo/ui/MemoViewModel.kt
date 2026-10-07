@@ -101,7 +101,8 @@ class MemoViewModel(
     fun confirmPrint(readable: Boolean) {
         viewModelScope.launch {
             val a = _state.value.lastPrint as? PrintAttempt.AwaitingConfirmation ?: return@launch
-            reprinter.confirm(a, readable)
+            // A failed ledger write keeps the question open so the SR can answer again; it never escapes the scope.
+            try { reprinter.confirm(a, readable) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { return@launch }
             _state.value = _state.value.copy(lastPrint = null)
             _state.value.selected?.memo?.memoUuid?.let { lock.withLock { reloadLocked(it) } }
         }

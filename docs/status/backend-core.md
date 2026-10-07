@@ -1,6 +1,6 @@
 # backend-core lane status (handoff for a fresh session)
 
-Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
+Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). Last pushed head: see `git log origin/lane/backend-core` (d5d7ca2e is queued with the integrator). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
 
 ## Done this session (pushed to INT)
 - **F-API-005 `GET /v1/sync/bundle`** (`backend/sync/BundleService.kt`, `ScopedConfig.kt`, `ReasonTexts.kt`): Opus checker 5 findings, 4 fixed; growing `snapshot_seq` waits on `docs/requests/backend-bundle-snapshot-table.md` (code ready, test assumption-guarded).
@@ -34,6 +34,98 @@ Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backen
 - **Task columns** (db V0037/V0038 on INT): `Tasks.kt` stores `route_id` (named and in reach, or the outlet's) and `cancel_reason`; tests in `TasksTest`. No checker run on this small follow-up (own tests only); if the sync `task` payload gains `route_id`, scope-check the route.
 - db (11:56Z) on lane/db, not yet on INT: V0040 `app.password_history` + `cfg.auth.password_history_depth`/`password_min_age_h`/`password_denylist_enabled` (un-skip `ChangePasswordTest.noneOfTheLastTenPasswords` and store history once on INT); V0041 partitions `app.geo_breadcrumb` (no code change needed).
 
+## Session 9 (2026-10-07, from 21:05 UTC)
+- **N-027 done** (BC-76, Opus checker FAIL then fixed): Play Integrity decoded server-side (`notify/GooglePlayIntegrityDecoder`,
+  `platform/PlayIntegrityCheck`: nonce, requestHash, package, signing certificate, freshness; only a genuine verdict moves the
+  device; token order; fail raises DEVICE_INTEGRITY_FAIL). Device gate in ingest step 5b on attendance and sales
+  (`device_not_enrolled`, `device_integrity_failed`), flagged when off, release on resend while the item is open.
+  Tests: `DeviceGateTest`, `PlayIntegrityCheckTest`, `DeviceEnrolmentTest` (new case); full backend suite green.
+- Requests: infra `backend-core-play-integrity-secret.md` (credentials; owner's Play Console link), android-core
+  `backend-core-gate-resend-android-core.md` (the phone does not re-send gate quarantines yet).
+- Traps: run tests with `ARON_TEST_PG_URL` in the same shell; after a container restart `service postgresql start` and
+  create role `aron`/`aron` superuser + db `aron_test`.
+
+## Session 8 close-out: next rows (session 9 starts here)
+1. **N-027** (T1, L): server verification of Play Integrity verdicts and key attestation chains; enrolment gate
+   `cfg.device.require_enrolled` on attendance and sales ingest (gate on: parked with a reason and a supervisor flag;
+   off: accepted and flagged). Do not change the dev seed's login device rules. Opus checker.
+2. **Waiting on others:** db keys for F-SYS-090 (`backend-core-working-day-window-keys.md`; until then calendar windows);
+   backend-admin cross-visit GNSS rule (`backend-core-gnss-cross-visit-rule.md`; N-028 stays open until it lands);
+   android-core digest window to 15 days (`backend-core-digest-window-android-core.md`); `checkout_too_early` flag needs
+   a db CHECK change (V0056 allows `resync_late` only).
+3. **Before F-AMO-044 (AMO zone-wide bundle):** cache paged rows per `bundle_version` for a few minutes (BC-71 M2: today
+   every page rebuilds the bundle and syncing sales move the seq, so pages 410); durable fingerprints (bytea on
+   `app.bundle_snapshot`, db request not filed yet) and a byte-bounded fingerprint cache for the fleet.
+4. **Checker items still open:** memo scope test has no positive (national, web) control and no AMO/TSO zone case
+   (BC-66); `resync_late` merge path untested (BC-73); F-SYS-090 untested for zone-scoped holiday, make-up day, user
+   without a home zone (BC-74); digest never asks for a `resync_late` row older than the floor (BC-74).
+5. **Lead note:** a released quarantine must leave the registry row `accepted` (same uuid, user, device) or the digest
+   re-sends daily; check it when backend-reports wires the acceptor.
+6. **F-SYS-091** (T2, S) waits on db `backend-core-registry-flags-more.md` (flag storage for `config_stamp_regress` and
+   `checkout_too_early`). Design: at ingest, a row whose `config_version` is below the device's highest
+   `cfg_ack.acked_config_version` applied before its `captured_at` is accepted and flagged; the third flagged row of the
+   device and date raises `CONFIG_STAMP_REGRESS` (s11.4: severity 2, weight 20). Read the device's acks once per batch.
+7. T2 rows after N-027: `python3 tools/my-rows.py backend-core --todo` (F-API-019/055, F-SYS-025/035/050/057/084/091, N-044).
+
+## Session 8 (2026-10-07, start here)
+- INT already merged at the start (no new commits on INT).
+- **GET /v1/sync/delta** and **GET /v1/sync/bundle/page** served (BC-71, `BundleDelta.kt`, `BundleDeltaTest` 7 cases, scope registry lines). No contract change. Opus checker FAIL on M1 (paging settings outside the digest), fixed; open items in BC-71 (paged AMO download vs moving seq, byte-bounded cache, durable fingerprints for the fleet).
+- **N-028** `GEO_GNSS_INCONSISTENT` per fix at ingest (BC-72, `GnssRule.kt`): Opus checker PASS conditional; cross-visit rule requested from backend-admin (`backend-core-gnss-cross-visit-rule.md`); N-028 stays open until it lands. `outOfBoundsFix` now in its own savepoint. Full sync + app suite green at b5c4b209.
+- **resync_late** stored in `ingest_registry.flags` (BC-73, V0056/V0057 merged from INT). **F-SYS-090** working-day backdate window behind `cfg.calendar.window_unit` (BC-74; db key request `backend-core-working-day-window-keys.md`). **F-SYS-063** retention and partition job in the worker (BC-75). All Opus-checked, findings fixed; full backend suite green at 98e65a84.
+- **Lead note (20:57Z):** when the quarantine acceptor is wired (backend-reports), a released quarantine must leave the ingest registry row `accepted` under the same uuid, user and device, or the digest re-sends that bucket every day. Check it in the BC-5x quarantine path and add a digest test then.
+- **Phone call audit:** every path the Android modules call (core-network, core-sync, core-media, core-system, core-geo, dpc) has a route in `route-inventory.txt`: auth login/refresh/logout/bind-device, sync bundle/page/delta/batch, config/delta, media/sas, devices nonce/enrol/push-token, app/update-check, support/pda-upload, health.
+
+## Session 7 close-out: next rows (session 8 starts here)
+1. **Contract operations with no route (68 at a399e152; compare `backend/app/build/route-inventory.txt` with contract paths).** backend-core's, phone-facing first: **`GET /v1/sync/delta`** (the bundle delta, F-SYS-053 family; only `/v1/config/delta` exists), **`GET /v1/sync/bundle/page`** (paged sections), `GET /v1/media/{media_uuid}/read-url`, `POST /v1/media/upload` (F-API-007 multipart fallback, idempotent by (client_uuid, purpose)), `POST /v1/client-errors`, `POST /v1/auth/mfa/enrol|verify`; day DROP rows (submit-void, reopen, cover, exceptions, route-days) stay dropped unless the lead says otherwise. Not ours: outlet-requests, risk-signals, dashboards geo-validation, web-entry, admin releases/audit/devices policy/sales-plans, outlets/nearby (team); deferred (docs/27): offers, targets, programmes, gifts, dues-adjustments. F-API-010 `GET /outlets` is the contract's `/v1/admin/outlets` (listOutlets), served by backend-admin.
+2. **When db V0056/V0057 reach INT** (lane/db b88b6632): write `resync_late` into `ingest_registry.flags` (merge on the ON CONFLICT path, never assign; `db-resync-late-flag-answer.md`) and assert it; same storage for `checkout_too_early` until the quarantine switch (BC-63).
+3. **T1 rows left** (`my-rows.py backend-core --todo`; many listed rows are done: AUD-REL-01/02, F-API-008/009/039, F-SYS-003/004, F-API-003/004, F-SYS-094, F-API-029 (served by config), F-SYS-054 (BC-69), N-033 server part, F-SYS-086 core share): N-027 Play Integrity verdicts + key attestation (L), N-028 GNSS consistency, F-SYS-063 retention job, F-SYS-090 working-day windows. T2: F-API-019/025(done: /memos)/055, F-SYS-025/035/050/057/084/091, N-044.
+4. **Open from checkers** (BC-66, BC-68): digest has no sync_hold/admission path; memo scope test lacks a positive (national) control and an AMO/TSO zone case; test classes on `Wiring.production` do not close `securityStore`.
+5. **Requests out:** backend-admin `backend-core-dirty-keys-admin-writes.md` (data void, route assignment), `backend-core-survey-option-codes.md`; lead: TSO visit-query model (BC-67).
+6. Infra's `infra/scripts/slice-smoke.py` still marks GET /v1/memos (and /v1/sync/totals) "not served": both are on lane/backend-core since 07ff510d; infra can make them hard checks once promoted.
+
+## Session 7 (2026-10-07, start here)
+- Merged INT (V0055). Lead priority (18:51Z): **GET /v1/sync/totals** and **GET /v1/memos** served as the contract says (BC-66, `SyncReadsTest`, scope registry lines); no contract change.
+- **AUD-SEC-03 sink** (BC-64): `JdbiSecurityEvents` beside the log line, own one-connection pool, bounded queue, plain INSERT (auth_rw-safe), detail capped; `JdbiSecurityEventsTest`.
+- **V0055** keys asserted in `BundleAcceptanceTest` (7/3/40 in `config.values`).
+- **F-SYS-086** backend-core share (BC-65): route-day state moves and the first login mark the tile key; data void and route-assignment writes requested from backend-admin (`backend-core-dirty-keys-admin-writes.md`).
+- **N-033** server part: bundle `device_policy_version` (= config version the policy renders at); the block list rides `config.values`.
+- **F-SR-020/021 data** (BC-67, lead 18:55Z): bundle `content` and `surveys` filled from the admin tables; no contract or db change was needed (all already existed). Tell android-core and android-sr-a.
+- **POST /v1/sync/digest** (F-SYS-080 server half, BC-68) and **ServerGeneration `previous_generation` + `?since=` -> `earliest_lost_after_utc`** (F-SYS-047 two-restore gap; additive contract change, slices + WireDtos + web openapi.d.ts regenerated).
+
+- Waiting on INT: db V0056/V0057 `ingest_registry.flags` (lane/db b88b6632, `db-resync-late-flag-answer.md`): then write `resync_late` (merge on the ON CONFLICT path, never assign) and assert it; same for `checkout_too_early` until the quarantine switch (BC-63).
+
+### Answer to android-core-backend-sync-digest.md (the rule both sides compute; confirmed against docs/24 s4.8)
+- **Per device**: the server counts the rows the calling phone uploaded (user and device from the token; the body `device_uuid` must equal the token's device, else 401 `ERR_DEVICE_PROOF_INVALID`).
+- **Rows counted**: those the server acked as stored, `accepted` or `duplicate` of a stored row (registry `accepted` or `voided`). Do **not** count rows acked `rejected` or `quarantined`, nor parked ones still waiting.
+- **Bucket** = the first hex digit of the lowercase `client_uuid` (0..15); send all 16 buckets for every item.
+- **count** = rows in the bucket. **hash** = the sum of the uuid's first 8 bytes read as a **big-endian unsigned** 64-bit integer (exactly its first 16 hex digits, dashes removed), **modulo 2^64**, written as **16 lowercase hex digits**, zero-padded; an empty bucket is `0000000000000000`. Your byte order is right. In Kotlin: `uuid.mostSignificantBits` summed with ordinary `Long` addition (wraps modulo 2^64), printed with `java.lang.Long.toUnsignedString(h, 16).padStart(16, '0')`.
+- **Shared phones**: count only the rows uploaded under the **calling user** (user and device both from the token); each user's digest is separate.
+- **Window** (updated session 8, `backend-core-digest-window-android-core.md`: send dates back to 15 days; the server window follows ingest's working-day floor when configured): dates from today (Dhaka) back `cfg.sync.max_backdate_days` (7) days, the window in which a re-sent row is still stored (an older one would be quarantined as too old); an item outside it, or in the future, is answered as matching. Send only dates you still hold completely (never one partly purged), and count a quarantined row that a reviewer later released (it arrives in `resolutions`) as acked. At most 200 items per call (400 above). An unknown type, a malformed bucket or a `device_uuid` that is not a lowercase uuid is 400.
+- **Answer**: `resend[]` lists (date, type, bucket indexes) whose count or hash differ; `{"resend":[]}` when all match. Re-send those rows with trigger `digest_resend`.
+- **Generation**: call `GET /v1/sync/generation?since=<the last generation you handled>`; re-send from `earliest_lost_after_utc` when it is not null, else from `lost_after_utc`. `previous_generation` names the one the current replaced.
+- **F-SYS-054** verified (BC-69), **F-API-057** `POST /v1/media/sas` (BC-70, `MediaSasTest`).
+- Opus checkers: sink (PASS, 4 minor fixed), sync reads + dirty keys + N-033 (PASS, 1 major fixed, minors logged in BC-66).
+
+## Session 6 close-out: next rows (session 7 starts here)
+1. **Security event sink** (AUD-SEC-03 rest): V0053/V0054 are on INT now (merged at session 6 end). Build the JDBI sink beside the `aron.security` log sink: bounded queue, off the request path, insert as `auth_rw` (INSERT only, no RETURNING), detail capped at 2000 bytes (`db-security-event-and-signature-mode-answer.md`). Opus checker.
+2. **cfg.app keys** (V0055, lane/db 6f9b6dcf): when on INT, a bundle test that `cfg.app.local_history_days`, `outbox_keep_days`, `image_cache_mb` arrive in `config.values`.
+3. Flags without storage (`resync_late`, `checkout_too_early`): log lines until db answers `backend-core-resync-late-flag.md`; then write the flag and assert it. `checkout_too_early` switches to quarantine when backend-reports wires the OpsApi acceptor (BC-63).
+4. Remaining backend-core rows (`my-rows.py backend-core --todo`, filter what is done): T1 N-027 (Play Integrity verdicts + key attestation, L), N-033 (app-block list via config), F-SYS-054 (check: release gating likely done in SyncApi `holdByVersion`/LoginService), F-SYS-086 (dirty-key triggers on route_day/final_submit/assignment/void: final submit already marks dirty), N-028 (GNSS consistency), F-SYS-063 (retention job), F-SYS-090 (working-day windows); T2 F-API-007, F-API-025, F-SYS-025, F-SYS-035, F-API-010/019/029/055/057, F-SYS-050/057/084/091. Done this session: F-API-070, F-API-008/009/039, F-SYS-089, F-SYS-094 (DataVoidApi barrier, earlier).
+5. Open questions in BC-57..63 (dues warning field on sales-submit, D5 late rows for non-held routes, risk window for swept verdicts, trusted-time anchors in ingest).
+
+## Session 6 (2026-10-07, start here)
+- Merged INT (16c1c0a8; db V0042..V0052). Full backend + db suite green.
+- **F-SYS-012 follow-up** (lead note 17:45Z; BC-57): pin in force at capture from `outlet_location_history` (no history at all: current pin; history only after capture: no location); guard "basis now none/placeholder = no location" stays until backend-admin writes clear rows (`backend-core-outlet-pin-history.md`, filed). `GeoRecheckSweepJob` in the worker (10 min, 7 days, 20 rows per transaction, random order, dirty marks). Salvage `GeoRecheckCheckerTest` ported (+ no-history case); `aPinEditDoesNotEraseThePinInForceBeforeIt` stays disabled until the routed fix.
+- **AUD-REL-02 remainder** (BC-58): family retry on transient DB failures (3 tries / 10 s), `IngestRetryTest` (fault trigger + sequence).
+- **F-API-070** `GET /v1/sync/generation` (BC-59), `SyncGenerationTest`.
+- **F-API-008/009/039** day endpoints (`DayApi.kt`, BC-60), `DayApiTest`; scope registry lines added. Submit void, reopen, cover, exceptions are DROP rows.
+- Requests filed: `backend-core-outlet-pin-history.md`, `backend-core-login-device-proof.md` (contract v1.4); salvage draft `backend-core-web-client-ip.md` discarded (duplicate of `backend-core-bff-client-ip.md`). Salvage branch `claude/bc-s5-salvage`: tests taken; its REL-01/02, SEC-02 work duplicates ours.
+- db answered (lane/db 0a04b6fc, not yet on INT): V0053 `cfg.sec.record_signature_mode`, V0054 `app.security_event` (auth_rw INSERT only, no RETURNING; detail <= 2000 bytes; `db-security-event-and-signature-mode-answer.md`). When on INT: JDBI sink beside the log sink (bounded queue, off the request path).
+- db answered cfg.app keys: V0055 on lane/db 6f9b6dcf (docs/19 values 7/3/40, global; `db-app-cfg-keys-answer.md`). When on INT: bundle test that they arrive in `config.values`.
+- Pushed: lane/backend-core c417270a (sync+app green; full suite green on the merge). Salvage branch delete was refused by the remote (still at 96ec5eae): lead to remove.
+- Later in session 6: **F-SYS-089** re-sync late window (BC-61; `resync`/`digest_resend` after a young failover/restore, bounded by what the lost lineage accepted; flag request `backend-core-resync-late-flag.md`), **F-SYS-073** urgent flag on urgent config_pull push (BC-62, contract description regenerated), **checkout_too_early** accepted and flagged (BC-63: quarantine cannot be released yet; switch when backend-reports wires the OpsApi acceptor). Lead told (18:15Z). Head 6be6370d, sync+app green.
+- Open: D5 late rows only for the uploader's routes; risk job window (today/yesterday) misses late-swept mismatches (backend-admin); partial index for unchecked visits (db, fleet); cfg.app keys still not in db; android-core re-queue of device_integrity_failed rows (lead).
+
 ## Session 5 (2026-10-07)
 - Merged INT twice (DECISIONS.md conflict at the first, kept both sides). V0040 `app.password_history` is on INT: `ChangePasswordTest.noneOfTheLastTenPasswords` now runs (the code already switched on the table).
 - **AUD-PERF-02** (`platform/RequestIsolation.kt`, installed by `aronApi`): every call except `/v1/health` and `/v1/health/ready` runs on `Dispatchers.IO.limitedParallelism(write pool - 1)` under a 25 s timeout (503 + Retry-After 5..30); a call past its deadline never starts a response (send-pipeline guard), so no truncated bodies; header lookups and the readiness ping run on IO; 57014 is 503 (logged ERROR). `RequestIsolationTest` runs a real Netty engine with ONE call thread. Honest bound: a handler inside JDBC answers when its statement ends (25 s + one statement).
@@ -48,6 +140,12 @@ Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backen
 - Touched another lane's test once: `DataVoidCheckerTest` ingest hold 30 s -> 15 s (inside the 25 s request budget; the void waits on that ingest's lock by design).
 
 - **Lead requests after the handoff (all on lane/backend-core 33fd70db, Opus-checked):** F-SYS-072 signature mode (BC-53), config delta `outlet_radius_changes` (BC-54), consent dedupe + `user.consents` (BC-55, `RecordHandler.sameAs`), integrity-release edges (BC-56). Requests filed: `backend-core-record-signature-mode-key.md`, `backend-core-app-cfg-keys.md` (db). When the app keys land on INT, add a bundle test that they arrive in `config.values`.
+
+## Session 5 close-out: open requests and follow-ups (start here)
+- **Waiting on db:** V0044/V0045 (location history basis) -> then `GeoRecheck.kt` reads the basis from the history row only, drop the fallback, with its test (lead 12:55Z). `backend-core-record-signature-mode-key.md` (registry row, delivery `both`, so the phone sees the mode). `backend-core-app-cfg-keys.md` (image_cache_mb, local_history_days, outbox_keep_days) -> then add a bundle test that they arrive in `config.values`. `backend-core-security-event-table.md` -> then a JDBI sink beside the log sink (bounded queue, off the request path).
+- **Waiting on infra:** `infra-worker-no-signing-key.md`; keep the api termination grace >= 30 s (drain 15 s + Netty ~9 s).
+- **android-core (via lead):** re-queue its `device_integrity_failed` rows once (the release is server-side now); consent seeding from `user.consents` is live in the contract.
+- **Open questions (DECISIONS BC-52..56):** consent withdrawal not modelled; registry lookup not tied to user_id (low); separate refresh/OTP derivation keys before any JWT rotation; HMAC for `username_hash` (infra secret); device gate for phones without `did`; change-password failure events; a pre-change accepted row re-signed later is payload_conflict.
 
 ## Decisions taken (session 3)
 - Change-password revokes every full-grant family of the user except the calling phone's own (the contract says "other"; a web caller has no family id in the token, so all web families go and the BFF logs in again).

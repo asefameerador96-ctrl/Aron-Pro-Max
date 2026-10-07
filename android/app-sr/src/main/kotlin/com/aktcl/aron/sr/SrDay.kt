@@ -140,6 +140,7 @@ class SrDay(
 
     /** Re-reads the bundle stamp, the route, the outlets and the freshness from Room; cheap and safe to call every minute. */
     suspend fun reload() {
+        loadPrintConfig()
         val date = businessDate()
         bundleVersion = reference.bundleVersion()
         val bundleDate = reference.businessDate()
@@ -152,6 +153,7 @@ class SrDay(
         routeId = route?.route?.routeId
         val outlets = if (planned.size > 1 && route != null) route.outlets else routes.flatMap { it.outlets }
         data.value = DayData(date, route?.route, routes.map { it.route }, outlets, freshness, data.value.downloading)
+        _loaded.value = true
     }
 
     private val routePrefs = context.getSharedPreferences("aron-route-$userId", Context.MODE_PRIVATE)
@@ -177,15 +179,43 @@ class SrDay(
         visitSession.close(); runCatching { requestSync() }
     }
 
+    private val bundleRunning = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val _loaded = MutableStateFlow(false)
+
+    /** True once the local day has been read once; survives a recreated screen (no first-bundle flash). */
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
+    private val _bundleOutcome = MutableStateFlow<BundleOutcome?>(null)
+
+    /** How the last day-start download ended (null while one runs or none ran); the first-bundle screen reads it. */
+    val bundleOutcome: StateFlow<BundleOutcome?> = _bundleOutcome.asStateFlow()
+
     /** Day start: the first bundle download (resumable, F-SYS-006) in the background; the day never waits for it. */
     suspend fun downloadBundle(downloaders: BundleDownloaders) {
+        // One run at a time, in the day's own scope: a rotation or language switch recreates the screen but never cancels
+        // the download or sends a second request; a caller that leaves only stops waiting.
+        if (!bundleRunning.compareAndSet(false, true)) return
         data.value = data.value.copy(downloading = true)
-        try {
-            runCatching { downloaders.of(userId).download(businessDate()) }
-                .onSuccess { if (it.outcome == BundleOutcome.APPLIED || it.outcome == BundleOutcome.UNCHANGED) { reload(); deviceRuntime?.refreshDayConfig(userId, db) } }
-        } finally {
-            data.value = data.value.copy(downloading = false)
-        }
+        _bundleOutcome.value = null
+        background.launch {
+            try {
+                val outcome = try {
+                    downloaders.of(userId).download(businessDate()).outcome
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    BundleOutcome.FAILED
+                }
+                _bundleOutcome.value = outcome
+                if (outcome == BundleOutcome.APPLIED || outcome == BundleOutcome.UNCHANGED || outcome == BundleOutcome.PREFETCH_PROMOTED) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { reload() }
+                    deviceRuntime?.refreshDayConfig(userId, db)
+                }
+            } finally {
+                data.value = data.value.copy(downloading = false)
+                bundleRunning.set(false)
+            }
+        }.join()
     }
 
     /** After a relaunch or a language switch: a committed visit with no close is the call in progress (R8). */
@@ -225,6 +255,13 @@ class SrDay(
     /** Fix reuse (D-74) is limited to the visit cycle of the day; attendance and requests always take their own fix. */
     val fixSource = FixManagerSource(fixManager) { purpose -> if (purpose == "visit_open") "outlets-" + businessDate() else null }
 
+    private val addressResolver = com.aktcl.aron.core.map.AddressResolver(
+        online = ::online,
+        backend = com.aktcl.aron.core.map.AndroidGeocodeBackend(context),
+        language = { com.aktcl.aron.core.ui.AppLocale.current(context) },
+        last = com.aktcl.aron.core.map.PrefsLastAddressStore(context, userId),
+    )
+
     val attendance = AttendanceFlow(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { e, f ->
@@ -239,6 +276,11 @@ class SrDay(
             runCatching { scheduler.requestSync(userId, if (e.kind == "check_in") SyncTrigger.WRITE_DEBOUNCE else SyncTrigger.CHECKOUT) }
         },
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,
+        // cfg.day.checkout_earliest_time from the user's bundle (DayConfig), 17:00 until it is read.
+        checkoutEarliestMinutes = { deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES },
+        // F-SYS-074: the address resolves online only (platform geocoder, after the commit, display only); offline the
+        // coordinates stay, with the last resolved address when the fix is near it.
+        addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
     )
 
     @Volatile private var nextSequence = 1
@@ -269,11 +311,29 @@ class SrDay(
         com.aktcl.aron.core.printing.flow.MemoPrinting(
             printerManager, { renderer }, com.aktcl.aron.core.database.repo.RoomPrintLedger(db, { base -> base ?: metaProvider.meta(0L) }),
             com.aktcl.aron.core.common.ClientIds::newUuid, clock::nowMs,
+            reprintMax = { printConfig.reprintMax }, confirmAfterPrint = { printConfig.confirmAfterPrint },
+        )
+    }
+
+    /** The last `cfg.memo.reprint_max` and `cfg.print.confirm_after_print` read from the stored config (contract defaults until the first read). */
+    @Volatile private var printConfig = PrintConfig()
+
+    suspend fun loadPrintConfig() {
+        val now = com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs())
+        printConfig = PrintConfig.from(
+            runCatching { reference.config("cfg.memo.reprint_max", now) }.getOrNull(),
+            runCatching { reference.config("cfg.print.confirm_after_print", now) }.getOrNull(),
         )
     }
 
     /** Finishes jobs a killed process left (paper out becomes printed, else failed); once per process, before any print. */
-    suspend fun recoverPrinting() { runCatching { printing.recover() } }
+    private var printingRecovered = false
+
+    suspend fun recoverPrinting() {
+        if (printingRecovered) return
+        printingRecovered = true
+        runCatching { printing.recover() }
+    }
 
     /** The stock slip of one Save, from the stored rows only (quantities as entered in the base unit). */
     suspend fun stockSlip(movements: List<com.aktcl.aron.core.database.entity.StockMovementEntity>): com.aktcl.aron.core.printing.doc.StockSlipPrint {
@@ -298,17 +358,34 @@ class SrDay(
     /** Prints one slip for every unprinted stock row of today; the confirmation question is answered by [answerStockPrint]. */
     fun printUnprintedStock() {
         printScope.launch {
-            val rows = unprintedStock()
-            if (rows.isEmpty() || _stockAttempt.value != null) return@launch
-            _stockAttempt.value = printing.printStockSlip(rows.minByOrNull { it.skuId }!!.clientUuid, stockSlip(rows))
+            if (_stockAttempt.value != null) return@launch
+            // One slip covers exactly one Save (the ledger flips the rows of the named row's Save); the next Save prints on the next tap.
+            val save = StockSlips.oldestUnprintedSave(unprintedStock())
+            if (save.isEmpty()) return@launch
+            runCatching { printing.printStockSlip(StockSlips.slipUuid(save), stockSlip(save)) }.onSuccess { _stockAttempt.value = it }
         }
     }
 
     fun answerStockPrint(a: com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation, readable: Boolean) {
-        printScope.launch { printing.confirm(a, readable); _stockAttempt.value = null }
+        // A ledger error keeps the attempt, so the answer can be given again; it never crashes the app.
+        printScope.launch { runCatching { printing.confirm(a, readable) }.onSuccess { _stockAttempt.value = null } }
     }
 
     fun closeStockAttempt() { _stockAttempt.value = null }
+
+    /** The Summary print result lives here, not in the screen: leaving Summary while "readable?" is open keeps the question. */
+    private val _summaryAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
+    val summaryAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _summaryAttempt.asStateFlow()
+
+    fun printSummary(b: SummaryBundle) {
+        printScope.launch { if (_summaryAttempt.value == null) _summaryAttempt.value = sale.printSummary(b) }
+    }
+
+    fun answerSummaryPrint(a: com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation, readable: Boolean) {
+        printScope.launch { runCatching { printing.confirm(a, readable) }.onSuccess { _summaryAttempt.value = null } }
+    }
+
+    fun closeSummaryAttempt() { _summaryAttempt.value = null }
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
 

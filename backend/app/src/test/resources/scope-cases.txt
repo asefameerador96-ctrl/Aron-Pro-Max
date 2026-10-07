@@ -54,14 +54,23 @@ GET /v1/dashboards/daily-tracking -> gap: backend-reports
 GET /v1/dashboards/login-submit -> case OpsApiTest#v12AdditionsAreScopedAndConsistent
 GET /v1/dashboards/summary -> gap: backend-reports
 GET /v1/dashboards/sync-health -> case OpsApiTest#checker_syncHealthCountsOnlyRowsInsideTheViewersReach
+GET /v1/day/final-submit/preview -> case DayApiTest#zoneDayOutsideReachAndFieldRolesAreRefused
 GET /v1/feedback -> case FeedbackTest#randomisedListsNeverLeakFeedbackOutsideTheCallersReach
 GET /v1/leave -> case LeaveTest#randomisedListsNeverLeakLeaveOutsideTheCallersReach
 GET /v1/me -> exempt: the caller's own account, token or phone only; no geography rows
+GET /v1/memos -> case SyncReadsTest#memosAreReadByNumberOrOutletWithLinesAndNeverOutsideTheCallersReach
+GET /v1/outlets/nearby -> case NearbyOutletsTest#nearbyOutletsAreTheSeededOnesInsideTheCircleAndTheReachNearestFirst
 GET /v1/report-exports -> gap: backend-reports
 GET /v1/report-exports/{export_id} -> gap: backend-reports
 GET /v1/reports -> gap: backend-reports
 GET /v1/routes/{id}/assignments -> case RouteAssignmentsTest#randomisedCallersNeverSeeARouteOutsideTheirReach
 GET /v1/sync/bundle -> case BundleAcceptanceTest#theBundleHoldsOnlyTheCallersOwnRoutesAndTheirOutletsWhateverTheQuerySays
+GET /v1/sync/bundle/page -> exempt: a page of the caller's own bundle (user from the token, rebuilt as GET /v1/sync/bundle); bundle_version names only a date and a seq, never a user or scope (BundleDeltaTest#outletsAboveTheThresholdArePagedAndThePagesHoldEveryRowOnce)
+GET /v1/sync/delta -> exempt: the difference of the caller's own bundle (user from the token); the cursor names only a date, a seq and an instant, and fingerprints are looked up under the token user (BundleDeltaTest#sameSnapshotIs304AndAChangedOutletIsTheOnlyUpsert)
+GET /v1/sync/totals -> exempt: the caller's own records only (user id from the token); no query parameter names another user or scope (SyncReadsTest#syncTotalsEqualTheBatchTotalsAndARepeatedUploadLeavesThemUnchanged)
+GET /v1/sync/generation -> exempt: one company-wide database lineage row, identical for every caller; no scoped data
+POST /v1/media/sas -> exempt: write grants for the calling phone's own photo paths only (the device uuid in the path comes from the token)
+POST /v1/sync/digest -> exempt: the calling phone's own uploads only (user and device from the token; a body device_uuid that differs is refused)
 GET /v1/tasks -> case TasksCheckerTest#listScope
 GET /v1/team/locations -> gap: backend-reports
 GET /v1/team/stock -> gap: backend-reports
@@ -116,6 +125,8 @@ POST /v1/auth/bind-device -> exempt: the caller's own account, token or phone on
 POST /v1/auth/change-password -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/logout -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/dashboards/daily-tracking/actions -> case DailyTrackingTest#checker_sameUuidByAnotherUserIsAConflictAndNeverALeak
+POST /v1/day/final-submit -> case DayApiTest#zoneDayOutsideReachAndFieldRolesAreRefused
+POST /v1/day/sales-submit -> exempt: the caller's own route-day only; ingest re-checks the route against the uploader's assignment (BatchCheckerTest scope cases)
 POST /v1/feedback -> exempt: the caller submits its own feedback record; no other user's rows are read or written
 POST /v1/leave -> exempt: the caller files its own leave request; no other user's rows are read or written
 POST /v1/leave/{leave_uuid}/decision -> case CheckerBackendAdminTest#unknownAndOutOfReachLeaveDecisionLookTheSame

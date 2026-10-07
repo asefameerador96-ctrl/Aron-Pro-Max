@@ -100,6 +100,40 @@ abstract class OutboxDao {
     @Query("UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0 WHERE state = 'quarantined' AND last_code = :code")
     abstract suspend fun releaseQuarantined(code: String): Int
 
+    /**
+     * F-SYS-047: rows acked at or after [since] (phone time of the ack, RFC 3339 UTC) go back to pending with the same
+     * client_uuid, payload and sig after a server restore, so the server's registry answers each by uuid (stored again, or
+     * duplicate) and nothing is stored twice. `last_code` becomes `resync`: the signer never signs a row that already went
+     * out, and every batch carrying such a row goes with trigger `resync` (the server's backdate allowance). Returns the rows put back.
+     */
+    @Query(
+        """UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, last_code = 'resync'
+           WHERE state = 'acked' AND acked_at IS NOT NULL AND acked_at >= :since""",
+    )
+    abstract suspend fun resendAckedSince(since: String): Int
+
+    @Query("SELECT MIN(business_date) FROM outbox")
+    abstract suspend fun earliestBusinessDate(): String?
+
+    /**
+     * F-SYS-080: the acked rows of business dates [from]..[to] (`YYYY-MM-DD`), the phone side of the sync digest. A row the
+     * server answered `accepted` or `duplicate`, or a quarantine a reviewer released, is acked; the server counts the same
+     * (registry `accepted` or `voided`).
+     */
+    @Query("SELECT business_date AS businessDate, record_type AS recordType, client_uuid AS clientUuid FROM outbox WHERE state = 'acked' AND business_date >= :from AND business_date <= :to")
+    abstract suspend fun ackedForDigest(from: String, to: String): List<DigestRow>
+
+    /**
+     * F-SYS-080: the acked rows of ([businessDate], [recordType]) whose client_uuid starts with one of [digits] (lowercase
+     * hex) go back to pending with the same uuid, payload and sig, as [resendAckedSince] does; `last_code` becomes
+     * `digest_resend` (the batch trigger). Returns the rows put back.
+     */
+    @Query(
+        """UPDATE outbox SET state = 'pending', batch_uuid = NULL, attempts = 0, last_code = 'digest_resend'
+           WHERE state = 'acked' AND business_date = :businessDate AND record_type = :recordType AND substr(lower(client_uuid), 1, 1) IN (:digits)""",
+    )
+    abstract suspend fun resendDigestBuckets(businessDate: String, recordType: String, digits: List<String>): Int
+
     @Query("SELECT COUNT(*) FROM outbox WHERE state = 'quarantined' AND last_code = :code")
     abstract suspend fun countQuarantined(code: String): Int
 
@@ -145,3 +179,6 @@ abstract class OutboxDao {
 }
 
 data class TypeCount(val recordType: String, val count: Int)
+
+/** One acked row as the sync digest counts it (F-SYS-080). */
+data class DigestRow(val businessDate: String, val recordType: String, val clientUuid: String)

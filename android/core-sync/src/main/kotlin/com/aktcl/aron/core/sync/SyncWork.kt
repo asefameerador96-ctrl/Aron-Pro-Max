@@ -28,6 +28,9 @@ interface SyncRunner {
 
     /** Rows still unsent now (re-read after the run, so a save during the run is never missed); null to trust the report. */
     suspend fun unsent(userId: Long): Int? = null
+
+    /** F-SYS-047: the other users with a database on this phone (a restore concerns their acked rows too). */
+    fun otherUsers(userId: Long): List<Long> = emptyList()
 }
 
 /**
@@ -65,6 +68,8 @@ class SessionSyncRunner(
     private val config: ResumeConfigCheck? = null,
     /** F-SYS-024: buffered events become one outbox row before the batch is built (they ride this upload). */
     private val activityLog: ActivityLog? = null,
+    /** F-SYS-081: the device's daily telemetry (one per process); null in tests that do not cover it. */
+    private val telemetry: DeviceTelemetry? = null,
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
         // A queued run of a user wiped since (TSO logout) must not create an empty database and bring the user back.
@@ -72,6 +77,11 @@ class SessionSyncRunner(
         val db = databases.of(userId)
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         activityLog?.flush(userId)
+        val started = components.clock.elapsedRealtimeMs()
+        try {
+            telemetry?.sample()
+            telemetry?.noteGps(userId) { date -> DeviceTelemetry.gpsFixes(db, date) }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         val report = engine(userId, db).run(trigger)
         // Only after a run the server answered in full: never straight after a hold, 429, 503 or a refusal (s4.10, s4.7).
         // The delta goes out under the FULL grant of the signed-in user: a run for another user on a shared phone (A's rows
@@ -91,12 +101,17 @@ class SessionSyncRunner(
         dailyPurge(db)
         components.session.noteTimePassing() // F-SYS-052: proven uptime for the 7-day offline window
         try { afterRun(userId, report) } catch (_: Exception) { }
+        // After the pull and the media hand-off, so their bytes are billed to the network they used.
+        try {
+            telemetry?.noteWake(components.clock.elapsedRealtimeMs() - started) // the job's wake lock (WorkManager's)
+            telemetry?.sample()
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         return report
     }
 
     /**
      * F-SYS-028: once per business date (trusted time), after a run, whatever its outcome (the purge only touches whole
-     * acked families). `cfg.app.local_history_days` (default 7, held to 1..90). Never throws.
+     * acked families). `cfg.app.local_history_days` (default 7, 1..30) and `cfg.app.outbox_keep_days` (default 3, 1..14), the registry values of db V0055. Never throws.
      */
     private suspend fun dailyPurge(db: com.aktcl.aron.core.database.AronDatabase) {
         try {
@@ -105,13 +120,19 @@ class SessionSyncRunner(
             val today = clock.businessDate().toString()
             val meta = db.referenceDao()
             if (meta.meta(KEY_PURGE_DATE) == today) return
+            // F-SYS-080 (D-517): after a server restore nothing is purged until a clean digest (at most 8 days).
+            if (purgeHeldByDigest(meta.meta(SyncEngine.KEY_DIGEST_HOLD), clock.nowMs())) return
             val nowIso = SyncEngine.iso(clock.nowMs())
             val ref = com.aktcl.aron.core.database.repo.ReferenceRepository(db)
             suspend fun days(key: String, default: Int) = configInt(ref.config(key, nowIso)) ?: default
+            val historyDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS).coerceIn(1, 30)
+            // The digest never counts a date this purge may touch: the low-water mark is raised before the purge runs.
+            val cutoff = java.time.LocalDate.parse(today).minusDays(historyDays.toLong()).toString()
+            if (cutoff > (meta.meta(SyncEngine.KEY_PURGE_CUTOFF) ?: "")) meta.putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(SyncEngine.KEY_PURGE_CUTOFF, cutoff))
             com.aktcl.aron.core.database.repo.LocalPurge(db).purge(
                 today, nowIso,
-                historyDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS).coerceIn(1, 90),
-                keepDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_KEEP_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_KEEP_DAYS).coerceIn(1, 90),
+                historyDays = historyDays,
+                keepDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_KEEP_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_KEEP_DAYS).coerceIn(1, 14),
             )
             meta.putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(KEY_PURGE_DATE, today))
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -130,6 +151,10 @@ class SessionSyncRunner(
         clock = components.clock,
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
         recordSigner = components.proofSigner, // F-SYS-072: the same enrolled key as X-Device-Proof
+        telemetry = telemetry?.forBatch { key -> com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(key, SyncEngine.iso(components.clock.nowMs())) },
+        generationApi = SyncGenerationApi(components.apiClient), // F-SYS-047
+        generationHint = { com.aktcl.aron.core.network.ServerGenerationHint.latest },
+        digestApi = SyncDigestApi(components.apiClient), // F-SYS-080
     )
 
     companion object {
@@ -149,13 +174,18 @@ class SessionSyncRunner(
     }
 
     override suspend fun unsent(userId: Long): Int = if (!databases.exists(userId)) 0 else databases.of(userId).outboxDao().unsentCount()
+
+    override fun otherUsers(userId: Long): List<Long> = runCatching { databases.knownUserIds() }.getOrDefault(emptyList()).filter { it != userId }
 }
 
 /**
  * WorkManager scheduling of uploads (docs/24 s4.7, s5.4; F-SYS-011). Every job needs a network (`CONNECTED`); nothing polls:
  * - a save asks for one job 5 s later (`cfg.sync.debounce_s`; a burst of saves shares it, AC-14);
  * - Sales Submit and the Sync button run at once (expedited);
- * - check-out waits a random 0 to 90 s (`cfg.sync.checkout_jitter_s`) so the 17:00 wave is spread;
+ * - check-out and Sales Submit go at once (no debounce), except in the minutes just after the 17:00
+ *   gate opens ([CheckoutGate], F-SYS-079, doc 17 T7, D-505): then they wait a random 0 to 90 s
+ *   (`cfg.sync.checkout_jitter_s` from the user's bundle, at most 120) so 8,500 phones do not fire in the same second. Without a gate (tests,
+ *   older wiring) check-out is always jittered;
  * - after a failed send ONE expedited job waits for the network (API 31+, AC-13); further failures back off (2 s doubling to
  *   300 s, jittered, or the server's Retry-After) and are never expedited;
  * - a server `hold_s` pushes every automatic trigger past the hold; the Sync button and Sales Submit ignore it;
@@ -170,21 +200,48 @@ class WorkManagerSyncScheduler(
     private val elapsedMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
     private val policy: SyncPolicy = SyncPolicy(),
     private val debounceS: Long = 5,
-    private val checkoutJitterS: Int = 90,
+    /** `cfg.sync.checkout_jitter_s`, read at each request (the shells pass [com.aktcl.aron.core.sync.device.DayConfig]). */
+    private val checkoutJitterS: () -> Int = { 90 },
+    private val checkoutGate: CheckoutGate? = null,
+    /** `cfg.sync.resync_jitter_s` (default 900), read at each `resync` request. */
+    private val resyncJitterS: () -> Int = { 900 },
+    /** Called on every request (every save, check-out, submit): F-SYS-081 samples there, offline too. Must not block. */
+    private val onRequest: () -> Unit = {},
 ) : SyncScheduler {
 
     override fun requestSync(userId: Long, trigger: SyncTrigger) {
-        when (trigger) {
-            SyncTrigger.DAY_SUBMIT, SyncTrigger.MANUAL ->
+        try { onRequest() } catch (_: Exception) { }
+        // The local state (checked out, submitted_local) is already set at the tap; only the upload waits (doc 17 T7).
+        val gateWave = (trigger == SyncTrigger.CHECKOUT || trigger == SyncTrigger.DAY_SUBMIT) &&
+            (checkoutGate?.let { runCatching { it.justOpened() }.getOrDefault(false) } ?: (trigger == SyncTrigger.CHECKOUT))
+        val jitterMs = if (gateWave) random.nextLong(0, (runCatching { checkoutJitterS() }.getOrDefault(90)).coerceIn(0, MAX_CHECKOUT_JITTER_S) * 1000L + 1) else 0L
+        when {
+            // The jittered upload runs under its own name: a pending debounce or a running upload of earlier rows on the
+            // main name is neither replaced nor delayed (doc 17 T7: rows captured earlier are never delayed). Sales Submit
+            // ignores a server hold (s4.7), also while it waits out the jitter.
+            gateWave && trigger == SyncTrigger.DAY_SUBMIT ->
+                enqueue(userId, trigger, gateName(userId), ExistingWorkPolicy.REPLACE, jitterMs, expedited = false, failures = 0)
+            gateWave ->
+                enqueue(userId, trigger, gateName(userId), ExistingWorkPolicy.KEEP, held(userId, jitterMs), expedited = false, failures = 0)
+            trigger == SyncTrigger.DAY_SUBMIT || trigger == SyncTrigger.MANUAL ->
                 enqueue(userId, trigger, mainName(userId), ExistingWorkPolicy.REPLACE, delayMs = 0, expedited = true, failures = 0)
-            SyncTrigger.WRITE_DEBOUNCE ->
+            // Off the wave, check-out goes at once under the "now" name, so a backoff queued on the main name cannot hold it.
+            trigger == SyncTrigger.CHECKOUT ->
+                enqueue(userId, trigger, nowName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
+            trigger == SyncTrigger.WRITE_DEBOUNCE ->
                 enqueue(userId, trigger, mainName(userId), ExistingWorkPolicy.KEEP, held(userId, debounceS * 1000), expedited = false, failures = 0)
-            SyncTrigger.CHECKOUT ->
-                enqueue(userId, trigger, mainName(userId), ExistingWorkPolicy.KEEP, held(userId, random.nextLong(0, checkoutJitterS * 1000L + 1)), expedited = false, failures = 0)
+        }
+        when (trigger) {
+            SyncTrigger.DAY_SUBMIT, SyncTrigger.MANUAL, SyncTrigger.WRITE_DEBOUNCE, SyncTrigger.CHECKOUT -> Unit
             // A new signal (network back, app in front) runs under its own name, so a long backoff queued after earlier
             // failures cannot swallow it; the engine's per-user lock keeps runs from overlapping.
             SyncTrigger.CONNECTIVITY, SyncTrigger.FOREGROUND ->
                 enqueue(userId, trigger, nowName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
+            // F-SYS-047: after a server restore, spread over 0 to cfg.sync.resync_jitter_s so the fleet does not arrive at once.
+            SyncTrigger.RESYNC -> {
+                val jitterMs = random.nextLong(0, runCatching { resyncJitterS() }.getOrDefault(900).coerceIn(0, 3_600) * 1000L + 1)
+                enqueue(userId, trigger, resyncName(userId), ExistingWorkPolicy.KEEP, held(userId, jitterMs), expedited = false, failures = 0)
+            }
             else -> enqueue(userId, trigger, mainName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
         }
         ensurePeriodic(userId)
@@ -195,6 +252,8 @@ class WorkManagerSyncScheduler(
      * [failures] is how many runs in a row failed before this one.
      */
     fun afterRun(userId: Long, report: SyncReport, ranAs: String, failures: Int = 0) {
+        // F-SYS-047: a new server generation: one re-send run, jittered 0 to cfg.sync.resync_jitter_s (KEEP: the first wins).
+        if (report.resyncRequested) requestSync(userId, SyncTrigger.RESYNC)
         if (report.unsent == 0) {
             workManager().cancelUniqueWork(periodicName(userId))
             return
@@ -268,8 +327,14 @@ class WorkManagerSyncScheduler(
 
         fun mainName(userId: Long) = "aron-sync-u$userId"
         fun nowName(userId: Long) = "aron-sync-now-u$userId"
+        /** F-SYS-079: a check-out or Sales Submit upload jittered at the 17:00 gate. */
+        fun gateName(userId: Long) = "aron-sync-gate-u$userId"
+        /** `cfg.sync.checkout_jitter_s` bound of doc 17 T7 (the registry allows up to 600; T7 caps the wave delay at 120). */
+        const val MAX_CHECKOUT_JITTER_S = 120
         fun retryName(userId: Long) = "aron-sync-retry-u$userId"
         fun periodicName(userId: Long) = "aron-sync-periodic-u$userId"
+        /** F-SYS-047: the jittered re-send run after a server restore. */
+        fun resyncName(userId: Long) = "aron-sync-resync-u$userId"
 
         private fun input(userId: Long, trigger: SyncTrigger, name: String, failures: Int): Data =
             Data.Builder().putLong(KEY_USER, userId).putString(KEY_TRIGGER, trigger.wire).putString(KEY_NAME, name)
@@ -300,6 +365,9 @@ class SyncWorker(
             return if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.success()
         }
         scheduler.afterRun(userId, report, name, failures)
+        // F-SYS-047: a restore concerns every user's acked rows on a shared phone, also one who signed out with nothing
+        // left to upload (the upload grant survives logout): each gets its own jittered resync run.
+        if (report.resyncRequested) runCatching { runner.otherUsers(userId).forEach { scheduler.requestSync(it, SyncTrigger.RESYNC) } }
         return Result.success()
     }
 
@@ -318,11 +386,41 @@ class AronWorkerFactory(
     private val runner: () -> SyncRunner,
     private val scheduler: () -> WorkManagerSyncScheduler,
     private val pushPull: (() -> com.aktcl.aron.core.sync.push.PushPull)? = null,
+    /** F-SR-020: the AV/KV asset download ([ContentShell.prefetch]); null in the AMO and TSO shells. */
+    private val contentPrefetch: (suspend (userId: Long) -> Unit)? = null,
 ) : WorkerFactory() {
     override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? = when (workerClassName) {
         SyncWorker::class.java.name -> SyncWorker(appContext, workerParameters, runner(), scheduler())
         com.aktcl.aron.core.sync.push.PushPullWorker::class.java.name ->
             com.aktcl.aron.core.sync.push.PushPullWorker(appContext, workerParameters, pushPull?.invoke() ?: com.aktcl.aron.core.sync.push.PushPull { false })
+        ContentPrefetchWorker::class.java.name -> ContentPrefetchWorker(appContext, workerParameters, contentPrefetch ?: { _ -> })
         else -> null
     }
+}
+
+/**
+ * F-SYS-079 (doc 17 T7, D-505): true in the first [windowMinutes] after the check-out gate `cfg.day.checkout_earliest_time`
+ * (17:00 Dhaka) opens, when a check-out or Sales Submit is most likely there only because the gate opened. [nowMs] is the
+ * trusted clock; spreading load needs no stronger time than that.
+ */
+fun interface CheckoutGate {
+    fun justOpened(): Boolean
+
+    companion object {
+        const val WINDOW_MINUTES = 10
+
+        fun dhaka(nowMs: () -> Long, gateMinutes: () -> Int = { 17 * 60 }, windowMinutes: Int = WINDOW_MINUTES) = CheckoutGate {
+            val minutes = Math.floorMod(Math.floorDiv(nowMs() + com.aktcl.aron.rules.BusinessDate.DHAKA_OFFSET_MS, 60_000L), 24 * 60L).toInt()
+            minutes - runCatching { gateMinutes() }.getOrDefault(17 * 60) in 0 until windowMinutes
+        }
+    }
+}
+
+/**
+ * F-SYS-080 (D-517): true while a server restore handled at [hold] (phone ms, `sync.digest_purge_hold`) waits for a clean
+ * digest, at most [SyncEngine.DIGEST_HOLD_MAX_MS]; a hold stamped in the future (a clock set back) also holds, for as long.
+ */
+internal fun purgeHeldByDigest(hold: String?, nowMs: Long): Boolean {
+    val at = hold?.toLongOrNull() ?: return false
+    return kotlin.math.abs(nowMs - at) < SyncEngine.DIGEST_HOLD_MAX_MS
 }

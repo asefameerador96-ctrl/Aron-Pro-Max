@@ -87,6 +87,8 @@ class ReferenceRepository(private val db: AronDatabase) {
             c.values.map { configRow(it, scheduled = false) } + c.scheduled.map { configRow(it, scheduled = true) }
         }.orEmpty()
         val tasks = (raw?.get("tasks") as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::taskRow) }
+        val content = (raw?.get("content") as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::contentRows) }
+        val surveys = (raw?.get("surveys") as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::surveyRows) }
         val sections = raw?.let(::rawSections).orEmpty().flatMap { sec ->
             chunks(sec.json).mapIndexed { i, part -> BundleSectionEntity(chunkName(sec.name, i), part) }
         }
@@ -102,15 +104,24 @@ class ReferenceRepository(private val db: AronDatabase) {
             val keepConfig = heldConfig != null && bundleConfig != null && bundleConfig < heldConfig
             if (!keepConfig) dao.clearConfig()
             dao.clearSections()
-            dao.insertRoutes(routes)
-            dao.insertOutlets(outlets)
-            dao.insertSkus(skus)
-            dao.insertPrices(prices)
-            if (!keepConfig) dao.insertConfig(config)
-            dao.insertSections(sections)
+            routes.inChunks { dao.insertRoutes(it) }
+            outlets.inChunks { dao.insertOutlets(it) }
+            skus.inChunks { dao.insertSkus(it) }
+            prices.inChunks { dao.insertPrices(it) }
+            if (!keepConfig) config.inChunks { dao.insertConfig(it) }
+            sections.inChunks { dao.insertSections(it) }
             dao.clearTasks()
-            dao.insertTasks(tasks)
+            tasks.inChunks { dao.insertTasks(it) }
             dao.reapplyLocalResolutions()
+            // v5 (F-SR-020/021): AV/KV items and surveys are replaced by every snapshot (the delta carries neither).
+            dao.clearContentAssignments()
+            dao.clearContentItems()
+            content.map { it.first }.inChunks { dao.insertContentItems(it) }
+            content.flatMap { it.second }.inChunks { dao.insertContentAssignments(it) }
+            dao.clearSurveyQuestions()
+            dao.clearSurveys()
+            surveys.map { it.first }.inChunks { dao.insertSurveys(it) }
+            surveys.flatMap { it.second }.inChunks { dao.insertSurveyQuestions(it) }
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_DATE, date))
             dao.deleteMeta(KEY_BUNDLE_REFRESH) // a whole snapshot answers a gap
@@ -238,17 +249,19 @@ class ReferenceRepository(private val db: AronDatabase) {
             for ((json, snap) in added) {
                 dao.deleteOutletsOfRoute(snap.routeId)
                 dao.insertRoutes(listOf(routeRow(snap, date, version)))
-                dao.insertOutlets(snap.outlets.map(::outletRow))
+                snap.outlets.map(::outletRow).inChunks { dao.insertOutlets(it) }
                 putSection("route.${snap.routeId}", routeExtras(json).toString())
             }
-            deletes("outlets").mapNotNull { it.toLongOrNull() }.takeIf { it.isNotEmpty() }?.let { dao.deleteOutlets(it) }
-            if (outletUps.isNotEmpty()) dao.insertOutlets(outletUps.map(::outletRow))
-            deletes("prices").mapNotNull { it.toLongOrNull() }.takeIf { it.isNotEmpty() }?.let { dao.deletePrices(it) }
-            if (priceUps.isNotEmpty()) dao.insertPrices(priceUps.map(::priceRow))
-            deletes("skus").mapNotNull { it.toLongOrNull() }.takeIf { it.isNotEmpty() }?.let { dao.deleteSkus(it) }
-            if (skuUps.isNotEmpty()) dao.insertSkus(skuUps.map(::skuRow))
-            deletes("tasks").takeIf { it.isNotEmpty() }?.let { dao.deleteTasks(it) }
-            if (taskUps.isNotEmpty()) dao.insertTasks(taskUps)
+            // Upserts and tombstones in chunks of at most CHUNK rows (AUD-PERF-06): one bound list never nears the SQLite
+            // variable limit, and a large AMO delta is written in bounded steps.
+            deletes("outlets").mapNotNull { it.toLongOrNull() }.inChunks { dao.deleteOutlets(it) }
+            outletUps.map(::outletRow).inChunks { dao.insertOutlets(it) }
+            deletes("prices").mapNotNull { it.toLongOrNull() }.inChunks { dao.deletePrices(it) }
+            priceUps.map(::priceRow).inChunks { dao.insertPrices(it) }
+            deletes("skus").mapNotNull { it.toLongOrNull() }.inChunks { dao.deleteSkus(it) }
+            skuUps.map(::skuRow).inChunks { dao.insertSkus(it) }
+            deletes("tasks").inChunks { dao.deleteTasks(it) }
+            taskUps.inChunks { dao.insertTasks(it) }
             dao.reapplyLocalResolutions() // a resolution not yet acked survives a server copy of the task
             if (moveMemos) placeOpenMemos(heldMemos, added.map { it.second }, upserts("open_memos"), deletes("open_memos"))
             for (st in dayStates) {
@@ -439,6 +452,8 @@ class ReferenceRepository(private val db: AronDatabase) {
     }
 
     companion object {
+        /** Rows per write in an apply (AUD-PERF-06). */
+        const val CHUNK = 500
         const val KEY_BUNDLE_VERSION = "bundle_version"
         const val KEY_BUNDLE_DATE = "bundle_business_date"
         const val KEY_BUNDLE_ETAG = "bundle.etag"
@@ -549,6 +564,60 @@ class ReferenceRepository(private val db: AronDatabase) {
             )
         }
 
+        /**
+         * A bundle `ContentItem` and its outlet assignments; null when a required member is missing or out of the contract's
+         * range (the item is left out, the rest of the bundle applies).
+         */
+        internal fun contentRows(o: JsonObject): Pair<com.aktcl.aron.core.database.entity.ContentItemEntity, List<com.aktcl.aron.core.database.entity.OutletContentAssignmentEntity>>? {
+            fun str(k: String) = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            fun num(k: String) = (o[k] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toLongOrNull()
+            val id = num("content_id") ?: return null
+            val kind = str("kind")?.takeIf { k -> com.aktcl.aron.contract.ContentKind.entries.any { it.wire == k } } ?: return null
+            val url = str("asset_url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return null
+            val sha = str("sha256")?.lowercase()?.takeIf { SHA256.matches(it) } ?: return null
+            val bytes = num("bytes")?.takeIf { it in 1..MAX_CONTENT_BYTES } ?: return null
+            val from = str("valid_from")?.takeIf { DATE.matches(it) } ?: return null
+            val to = str("valid_to")?.takeIf { DATE.matches(it) && it >= from } ?: return null
+            // `outlet_ids` is required: absent, or naming outlets none of which parse, never widens to every outlet (checker).
+            val listed = o["outlet_ids"] as? JsonArray ?: return null
+            val outlets = listed.mapNotNull { (it as? JsonPrimitive)?.content?.toLongOrNull() }.distinct()
+            if (listed.isNotEmpty() && outlets.isEmpty()) return null
+            val item = com.aktcl.aron.core.database.entity.ContentItemEntity(
+                contentId = id, version = num("version")?.toInt()?.takeIf { it >= 1 } ?: return null, kind = kind,
+                titleEn = str("title_en") ?: "", titleBn = str("title_bn"), assetUrl = url, sha256 = sha, bytes = bytes,
+                durationS = num("duration_s")?.toInt(), validFrom = from, validTo = to,
+                sequence = num("sequence")?.toInt()?.coerceIn(1, 20) ?: return null, allOutlets = outlets.isEmpty(),
+            )
+            return item to outlets.map { com.aktcl.aron.core.database.entity.OutletContentAssignmentEntity(it, id) }
+        }
+
+        /** A bundle `SurveyDef` and its questions in the bundle's order; null without an id or a version. */
+        internal fun surveyRows(o: JsonObject): Pair<com.aktcl.aron.core.database.entity.SurveyEntity, List<com.aktcl.aron.core.database.entity.SurveyQuestionEntity>>? {
+            fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            fun JsonObject.num(k: String) = (this[k] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toLongOrNull()
+            fun JsonObject.bool(k: String) = (this[k] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toBooleanStrictOrNull()
+            val id = o.num("survey_id") ?: return null
+            val version = o.num("version")?.toInt()?.takeIf { it >= 1 } ?: return null
+            val questions = (o["questions"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.mapIndexedNotNull { i, q ->
+                val qid = q.num("question_id") ?: return@mapIndexedNotNull null
+                val type = q.str("answer_type")?.takeIf { it in ANSWER_TYPES } ?: return@mapIndexedNotNull null
+                com.aktcl.aron.core.database.entity.SurveyQuestionEntity(
+                    surveyId = id, questionId = qid, ordinal = i, answerType = type, labelEn = q.str("label_en") ?: "", labelBn = q.str("label_bn"),
+                    optionCodesJson = JsonArray((q["option_codes"] as? JsonArray).orEmpty().filter { (it as? JsonPrimitive)?.isString == true }).toString(),
+                    requiresPhoto = q.bool("requires_photo") ?: (type == "photo_only"), questionKey = q.str("key"), required = q.bool("required"),
+                    showIfKey = q.str("show_if_key"), showIfBool = q.bool("show_if_bool"),
+                )
+            }.distinctBy { it.questionId }
+            return com.aktcl.aron.core.database.entity.SurveyEntity(id, version, o.str("title_en"), o.str("title_bn")) to questions
+        }
+
+        /** Survey answer types (contract SurveyDef / SurveyResponsePayload `answer_type`). */
+        val ANSWER_TYPES = setOf("bool", "num", "option", "text", "photo_only")
+        /** Contract `ContentItem.bytes` maximum (20 MiB). */
+        const val MAX_CONTENT_BYTES = 20_971_520L
+        private val SHA256 = Regex("^[0-9a-f]{64}$")
+        private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+
         private fun configRow(v: ResolvedConfigValue, scheduled: Boolean) = ConfigValueEntity(
             key = v.key, valueJson = v.value.toString(), scopeType = v.scopeType, scopeId = v.scopeId, effectiveFrom = v.effectiveFrom,
             effectiveTo = v.effectiveTo, configVersion = v.configVersion, requiresAck = v.requiresAck, scheduled = scheduled,
@@ -574,3 +643,13 @@ class ReferenceRepository(private val db: AronDatabase) {
 
 /** What a `config_ack` needs from the caller (trusted time and a fresh client uuid); see [ReferenceRepository.applyConfigDelta]. */
 data class ConfigAckStamp(val clientUuid: String, val meta: com.aktcl.aron.core.database.entity.CaptureMeta, val appliedAt: String)
+
+/** Runs [write] over consecutive slices of at most [ReferenceRepository.CHUNK] rows; nothing for an empty list. */
+internal inline fun <T> List<T>.inChunks(write: (List<T>) -> Unit) {
+    var from = 0
+    while (from < size) {
+        val to = minOf(size, from + ReferenceRepository.CHUNK)
+        write(subList(from, to))
+        from = to
+    }
+}

@@ -37,37 +37,42 @@ class ImageCache(
 
     private val lock = Mutex()
 
-    /** Applies `cfg.app.image_cache_mb` (held to 5..500 MB) and evicts down to it at once. */
+    /** Applies `cfg.app.image_cache_mb` (held to the registry's 10..70 MB, db V0055) and evicts down to it at once. */
     suspend fun setCapMb(mb: Int) {
-        capBytes = mb.coerceIn(5, 500) * MB
+        capBytes = mb.coerceIn(10, 70) * MB
         lock.withLock { withContext(Dispatchers.IO) { evict(null) } }
     }
 
     /** The cached file for [url], touched for LRU, or null. Disk only: never the network. */
-    suspend fun get(url: String): File? = withContext(Dispatchers.IO) {
-        fileFor(url).takeIf { it.isFile }?.also { it.setLastModified(nextStamp()) } // LRU order without the wall clock
+    suspend fun get(url: String, cacheKey: String? = null): File? = withContext(Dispatchers.IO) {
+        fileFor(cacheKey ?: url).takeIf { it.isFile }?.also { it.setLastModified(nextStamp()) } // LRU order without the wall clock
     }
 
     /**
      * Makes [url] available on disk: the cached file, else a download when the network kind allows ([Kind.AV] only on an
-     * unmetered network). Null when it may not or cannot be fetched now. Never throws.
+     * unmetered network unless [allowMetered]). With [sha256] (lowercase hex) a download whose bytes differ is dropped (a
+     * truncated or replaced file is never shown). [cacheKey] stores the file under that key instead of the URL (content is
+     * keyed by its sha256, so a new version at the same path is fetched again). Null when it may not or cannot be fetched
+     * now. Never throws.
      */
-    suspend fun fetch(url: String, kind: Kind): File? = lock.withLock {
+    suspend fun fetch(url: String, kind: Kind, sha256: String? = null, allowMetered: Boolean = false, cacheKey: String? = null): File? = lock.withLock {
         withContext(Dispatchers.IO) {
+            val key = cacheKey ?: url
             try {
-                fileFor(url).takeIf { it.isFile }?.let { return@withContext it }
-                if (kind == Kind.AV && !runCatching(unmetered).getOrDefault(false)) return@withContext null
-                if (keyOf(url) in failed) return@withContext null
+                fileFor(key).takeIf { it.isFile }?.let { return@withContext it }
+                if (kind == Kind.AV && !allowMetered && !runCatching(unmetered).getOrDefault(false)) return@withContext null
+                if (keyOf(key) in failed) return@withContext null
                 http.newCall(Request.Builder().url(url).get().build()).execute().use { r ->
                     val type = r.header("Content-Type").orEmpty().lowercase()
                     val typeOk = if (kind == Kind.AV) type.startsWith("video/") || type.startsWith("image/") || type.startsWith("audio/") else type.startsWith("image/")
-                    if (!r.isSuccessful || !typeOk) { failed += keyOf(url); return@withContext null } // a captive portal page is never an image
+                    if (!r.isSuccessful || !typeOk) { failed += keyOf(key); return@withContext null } // a captive portal page is never an image
                     val body = r.body
                     val limit = if (kind == Kind.AV) capBytes / 2 else minOf(THUMBNAIL_MAX_BYTES, capBytes / 4)
-                    if (body.contentLength() > limit) { failed += keyOf(url); return@withContext null }
+                    if (body.contentLength() > limit) { failed += keyOf(key); return@withContext null }
                     dir.mkdirs()
-                    val tmp = File(dir, fileFor(url).name + ".part")
+                    val tmp = File(dir, fileFor(key).name + ".part")
                     var written = 0L
+                    val digest = MessageDigest.getInstance("SHA-256")
                     tmp.outputStream().use { out ->
                         body.byteStream().use { input ->
                             val buf = ByteArray(16 * 1024)
@@ -75,12 +80,16 @@ class ImageCache(
                                 val n = input.read(buf)
                                 if (n < 0) break
                                 written += n
-                                if (written > limit) { out.close(); tmp.delete(); failed += keyOf(url); return@withContext null }
+                                if (written > limit) { out.close(); tmp.delete(); failed += keyOf(key); return@withContext null }
                                 out.write(buf, 0, n)
+                                digest.update(buf, 0, n)
                             }
                         }
                     }
-                    val target = fileFor(url)
+                    if (sha256 != null && digest.digest().joinToString("") { "%02x".format(it) } != sha256.lowercase()) {
+                        tmp.delete(); failed += keyOf(key); return@withContext null
+                    }
+                    val target = fileFor(key)
                     if (!tmp.renameTo(target)) { tmp.delete(); return@withContext null }
                     target.setLastModified(nextStamp())
                     evict(keep = target)
@@ -123,7 +132,7 @@ class ImageCache(
 
     companion object {
         /** Pilot default (no value in the specs; decision AC-15). */
-        const val DEFAULT_CAP_MB = 50L
+        const val DEFAULT_CAP_MB = 40L
         /** One compressed thumbnail per SKU (docs/15): anything bigger is refused, never stored over mobile data. */
         const val THUMBNAIL_MAX_BYTES = 300L * 1024L
         const val CFG_CAP_MB = "cfg.app.image_cache_mb"

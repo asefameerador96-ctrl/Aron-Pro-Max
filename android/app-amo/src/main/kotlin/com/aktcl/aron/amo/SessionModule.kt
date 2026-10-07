@@ -69,11 +69,25 @@ object SessionModule {
     fun bundleDownloaders(@ApplicationContext context: Context, databases: UserDatabases, components: SessionComponents): BundleDownloaders =
         BundleDownloaders(File(context.noBackupFilesDir, "aron/bundle-staging"), databases, components.syncApi, components.clock)
 
+    /** F-SYS-081: the device's daily telemetry, one per process, kept in a device-level file (never per user). */
+    @Provides
+    @Singleton
+    fun deviceTelemetry(@ApplicationContext context: Context, components: SessionComponents): com.aktcl.aron.core.sync.DeviceTelemetry =
+        com.aktcl.aron.core.sync.DeviceTelemetry(File(context.noBackupFilesDir, "aron/telemetry-day.json"), com.aktcl.aron.core.sync.TelemetryProbe.Android(context), components.clock)
+
     /** Upload scheduling (F-SYS-011): feature code calls `requestSync(userId, trigger)` after every commit. */
     @Provides
     @Singleton
-    fun workManagerSyncScheduler(@ApplicationContext context: Context): WorkManagerSyncScheduler =
-        WorkManagerSyncScheduler({ WorkManager.getInstance(context) }, hold = com.aktcl.aron.core.sync.SyncHold.Prefs(context))
+    fun workManagerSyncScheduler(@ApplicationContext context: Context, components: SessionComponents, telemetry: com.aktcl.aron.core.sync.DeviceTelemetry, runtime: DeviceRuntime): WorkManagerSyncScheduler =
+        WorkManagerSyncScheduler(
+            { WorkManager.getInstance(context) }, hold = com.aktcl.aron.core.sync.SyncHold.Prefs(context),
+            // F-SYS-079: check-out and Sales Submit uploads are jittered only just after the check-out gate opens;
+            // the gate time and the jitter come from the active user's bundle (cfg.day.checkout_earliest_time, cfg.sync.checkout_jitter_s).
+            checkoutJitterS = { runtime.dayConfig.checkoutJitterS },
+            resyncJitterS = { runtime.dayConfig.resyncJitterS }, // F-SYS-047
+            checkoutGate = com.aktcl.aron.core.sync.CheckoutGate.dhaka(components.clock::nowMs, gateMinutes = { runtime.dayConfig.checkoutEarliestMinutes }),
+            onRequest = telemetry::sampleSoon, // F-SYS-081: a sample at every save, offline too
+        )
 
     @Provides
     fun syncScheduler(scheduler: WorkManagerSyncScheduler): SyncScheduler = scheduler
@@ -81,10 +95,11 @@ object SessionModule {
     @Provides
     @Singleton
     fun workerFactory(
+        telemetry: com.aktcl.aron.core.sync.DeviceTelemetry,
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
         resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
         activityLog: com.aktcl.aron.core.sync.ActivityLog,
-    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, config = resumeConfigCheck, activityLog = activityLog) }, { scheduler },
+    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, config = resumeConfigCheck, activityLog = activityLog, telemetry = telemetry) }, { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
         { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
     )
@@ -114,13 +129,14 @@ object SessionModule {
     /** Connectivity trigger (F-SYS-046): uploads for every user on the phone with rows waiting, after a 5 s quiet period. */
     @Provides
     @Singleton
-    fun connectivityFlush(databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler): ConnectivityFlush =
+    fun connectivityFlush(telemetry: com.aktcl.aron.core.sync.DeviceTelemetry, databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler): ConnectivityFlush =
         ConnectivityFlush(
             scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
             healthy = { components.syncApi.healthy() },
             // One unreadable database must not hide the others' rows.
             usersWithPendingRows = { databases.knownUserIds().filter { id -> runCatching { databases.of(id).outboxDao().unsentCount() > 0 }.getOrDefault(false) } },
             scheduler = scheduler,
+            onNetworkChange = telemetry::onNetworkChange, // F-SYS-081: bytes billed to the network that carried them
         )
 
     /** F-SYS-024: one activity log per process (the shells log into it; the sync runner flushes it before each batch). */
@@ -134,7 +150,7 @@ object SessionModule {
     @Singleton
     fun errorReporter(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.ErrorReporter =
         com.aktcl.aron.core.sync.ErrorReporter(
-            File(context.noBackupFilesDir, "errors"), { databases.of(it) }, components.trustedClock, components.appVersion,
+            com.aktcl.aron.core.sync.ErrorReporter.dirOf(context), { databases.of(it) }, components.trustedClock, components.appVersion,
             com.aktcl.aron.core.sync.LocationNotice.offlineProbe(context),
             activeUser = { (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
             currentUser = { (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },

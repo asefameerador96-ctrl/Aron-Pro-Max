@@ -5,6 +5,7 @@
     <string name="auth_password">পাসওয়ার্ড</string>
     <string name="auth_password_show">দেখান</string>
     <string name="auth_password_hide">লুকান</string>
+    <string name="auth_logging_in">লগইন হচ্ছে...</string>
     <string name="auth_login_button">লগইন করুন</string>
     <string name="auth_version">সংস্করণ %1$s</string>
     <string name="auth_error_empty">ইউজারনেম ও পাসওয়ার্ড দিন।</string>
@@ -34,6 +35,7 @@
     <string name="otp_title">এই ফোন যুক্ত করুন</string>
     <string name="otp_hint">আপনার TSO-র কাছ থেকে ৪ সংখ্যার কোড নিয়ে লিখুন।</string>
     <string name="otp_verify">যাচাই করুন</string>
+    <string name="otp_back">লগইনে ফিরে যান</string>
     <string name="otp_invalid">কোডটি ভুল। আবার চেষ্টা করুন।</string>
     <string name="otp_expired">কোডটির মেয়াদ শেষ। TSO-র কাছ থেকে নতুন কোড নিন।</string>
     <string name="otp_attempts">অনেকবার ভুল কোড দেওয়া হয়েছে। TSO-র কাছ থেকে নতুন কোড নিন।</string>

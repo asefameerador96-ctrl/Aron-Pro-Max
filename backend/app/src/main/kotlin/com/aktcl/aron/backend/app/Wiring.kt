@@ -97,6 +97,11 @@ import com.aktcl.aron.backend.sync.IngestService
 import com.aktcl.aron.backend.sync.ServerGeneration
 import com.aktcl.aron.backend.sync.SyncDeps
 import com.aktcl.aron.backend.sync.syncRoutes
+import com.aktcl.aron.backend.sync.dayRoutes
+import com.aktcl.aron.backend.sync.memoRoutes
+import com.aktcl.aron.backend.sync.nearbyRoutes
+import com.aktcl.aron.backend.media.mediaRoutes
+import com.aktcl.aron.backend.media.MediaDeps
 import com.aktcl.aron.backend.sync.taskRoutes
 import com.aktcl.aron.backend.notify.notificationRoutes
 import com.aktcl.aron.backend.notify.pushRoutes
@@ -118,6 +123,10 @@ class Wiring(
     val isolation: com.aktcl.aron.backend.platform.RequestIsolation? = null,
     /** Graceful drain on stop (AUD-REL-07). */
     val drain: com.aktcl.aron.backend.platform.Drain = com.aktcl.aron.backend.platform.Drain(),
+    /** Security events (AUD-SEC-03): the log line, and in production the `app.security_event` writer. */
+    val securityEvents: com.aktcl.aron.backend.platform.SecurityEvents = com.aktcl.aron.backend.platform.SecurityEvents.LOG,
+    /** Closed on stop before the pools: flushes the queued security events. */
+    val securityStore: AutoCloseable? = null,
 ) {
     companion object {
         /**
@@ -147,7 +156,13 @@ class Wiring(
             val geo = GeoRepository(db, clock)
             val reach = SqlReachResolver(db, geo, clock)
             val issuer = TokenIssuer(keys, config, clock)
-            val refresh = RefreshService(JdbiRefreshStore(db), config, keys.derivedSecret("aron-refresh-rotation-v1"), clock)
+            // Its own one-connection pool: the writer never takes a request connection, and never counts as a pool
+            // waiter (admission control sheds reads when the write pool has waiters).
+            val securityDb = Database(Database.pool(s.dbUrl, s.dbUser, s.dbPassword, 1, "aron-security"))
+            val securitySink = com.aktcl.aron.backend.platform.JdbiSecurityEvents(securityDb)
+            val securityStore = AutoCloseable { runCatching { securitySink.close() }; securityDb.close() }
+            val securityEvents = com.aktcl.aron.backend.platform.LogSecurityEvents(then = securitySink)
+            val refresh = RefreshService(JdbiRefreshStore(db), config, keys.derivedSecret("aron-refresh-rotation-v1"), clock, securityEvents = securityEvents)
             val devices = JdbiDeviceStore(db)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
@@ -157,7 +172,12 @@ class Wiring(
                 System.getenv("ARON_PUBLIC_API_URL") ?: "https://localhost:8080", s.env.name.lowercase(),
                 AttestationTrust(System.getenv("ARON_ATTESTATION_ROOTS").orEmpty().split(',').map { it.trim().lowercase() }.filter { it.length == 64 }.toSet()),
             )
-            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock), reach, guard, clock)
+            // N-027: Play Integrity decode with its own service account, else the FCM one (same Google project); verdicts stay unevaluated without either.
+            val integrityDecoder = (s.playIntegrityServiceAccountJson ?: s.fcmServiceAccountJson)?.let { sa ->
+                runCatching { com.aktcl.aron.backend.notify.GooglePlayIntegrityDecoder(sa) }
+                    .onFailure { org.slf4j.LoggerFactory.getLogger("aron.wiring").error("play integrity service account unreadable (${it.javaClass.simpleName}); verdicts stay unevaluated") }.getOrNull()
+            }
+            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder), reach, guard, clock)
             val ops = OpsDeps(OpsService(db, config, clock), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
             val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
@@ -184,7 +204,7 @@ class Wiring(
             val login = LoginService(
                 users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock,
                 passwords = com.aktcl.aron.backend.auth.JdbiPasswordStore(db), minPasswordLen = minPasswordLen,
-                binds = com.aktcl.aron.backend.auth.JdbiBindStore(db), otpSealer = otpSealer,
+                binds = com.aktcl.aron.backend.auth.JdbiBindStore(db), otpSealer = otpSealer, securityEvents = securityEvents,
             )
             val permDeps = ConfigPermissionsDeps(permissions, guard)
             val auth = AuthDeps(
@@ -263,10 +283,15 @@ class Wiring(
                 configPublicRoutes(publicDeps)
                 syncRoutes(sync)
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
+                dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock)))
+                memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
+                nearbyRoutes(com.aktcl.aron.backend.sync.NearbyDeps(db, config, reach, guard, clock))
+                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
-                isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }))
+                isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }),
+                securityEvents = securityEvents, securityStore = securityStore)
         }
     }
 }

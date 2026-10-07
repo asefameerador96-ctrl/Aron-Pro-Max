@@ -56,6 +56,10 @@ check_freeze() { # stage
 check_freeze "at the start"
 export AZURE_LOCATION="${AZURE_LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_SUFFIX="${ARON_NAME_SUFFIX:-}"
+# Dev seed and the SR slice smoke (lead 2026-10-07): switched on by the COMMITTED line "param devSeed = true" in the
+# profile's apps parameter file (dev only; stage and prod never carry it), so nobody has to set a repository variable.
+ARON_DEV_SEED="$([[ "$PROFILE" == dev* ]] && grep -qx 'param devSeed = true' "infra/params/${PROFILE}.apps.bicepparam" && echo true || echo false)"
+export ARON_DEV_SEED
 whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
 lock_tag="aron-deploy-lock"; lock_held=false; hb_pid=""
 lock_me="${GITHUB_RUN_ID:-local}.${GITHUB_RUN_ATTEMPT:-1}.$$"
@@ -240,21 +244,29 @@ fi
 previous="$(az deployment group show -g "$RG" -n aron-infra --query properties.outputs -o json 2>/dev/null || true)"
 # The parameters main.bicep would get now (GitHub variables included), compared with the last successful run, so a
 # changed ARON_ALERT_EMAILS / ARON_BUDGET_AMOUNT / ARON_NAME_SUFFIX / AZURE_LOCATION also re-runs the infra stage.
+# The two documents go through files, never argv: with the attestation roots they exceed Linux's 128 KiB limit for
+# one argument ("python3: Argument list too long", deploy run 144), which made every deploy re-apply main.bicep.
 params_unchanged() {
-  local now last
-  now="$(ARON_DB_ADMIN_PASSWORD=compare-only-not-a-secret-0 ARON_BUDGET_START_DATE=2000-01-01 \
-    az bicep build-params --file "infra/params/${PROFILE}.bicepparam" --stdout 2>/dev/null)" || return 1
-  last="$(az deployment group show -g "$RG" -n aron-infra --query properties.parameters -o json 2>/dev/null)" || return 1
-  python3 - "$now" "$last" <<'PY'
+  local now last rc
+  now="$(mktemp)"; last="$(mktemp)"
+  if ! ARON_DB_ADMIN_PASSWORD=compare-only-not-a-secret-0 ARON_BUDGET_START_DATE=2000-01-01 \
+       az bicep build-params --file "infra/params/${PROFILE}.bicepparam" --stdout > "$now" 2>/dev/null \
+     || ! az deployment group show -g "$RG" -n aron-infra --query properties.parameters -o json > "$last" 2>/dev/null; then
+    rm -f "$now" "$last"; return 1
+  fi
+  rc=0
+  python3 - "$now" "$last" <<'PY' || rc=1
 import json, sys
-now = json.loads(json.loads(sys.argv[1])["parametersJson"])["parameters"]
-last = json.loads(sys.argv[2])
+now = json.loads(json.load(open(sys.argv[1]))["parametersJson"])["parameters"]
+last = json.load(open(sys.argv[2]))
 ignore = {"postgresAdminPassword", "budgetStartDate", "deployerObjectId"}
 diff = [k for k, v in now.items() if k not in ignore and last.get(k, {}).get("value") != v.get("value")]
 if diff:
     print("infra parameters changed: " + ", ".join(sorted(diff)), file=sys.stderr)
 sys.exit(1 if diff else 0)
 PY
+  rm -f "$now" "$last"
+  return "$rc"
 }
 # The commit main.bicep was last applied from (resource-group tag aron-infra-sha, written after a successful apply;
 # `az deployment group create` has no --tags: deploy run 37639072495). The infra stage is skipped when
@@ -320,7 +332,7 @@ PRIVATE_LINK="$(out "$outputs" privateLinkOrigin)"
 BUDGET="$(out "$outputs" budgetName)"
 
 # ------------------------------------------------------------------------------------------------- secrets
-infra/scripts/seed-secrets.sh "$KV"
+PROFILE="$PROFILE" infra/scripts/seed-secrets.sh "$KV"
 # Passwords and URLs of the per-app database logins (created by the dblogins job after the migrations).
 infra/scripts/db-login-secrets.sh "$KV"
 
@@ -523,6 +535,73 @@ if [ -n "$DBLOGINS_JOB" ]; then
   fi
 fi
 
+# ------------------------------------------------------------------------------------------------- dev seed
+# db/seed (sr1001, the bound dev phone, Mirpur outlets and SKUs) for the SR slice smoke. Runs the dev seed image
+# through the dblogins job (template override: its identity, registry and secrets), never blocks the deploy.
+devseed_result="off (no param devSeed = true)"
+# The slice smoke's device key from Key Vault into a private temp folder (key.pem); prints the folder. Never logged.
+smoke_device_key() {
+  local dir; dir="$(mktemp -d)"; chmod 700 "$dir"
+  if az keyvault secret download --vault-name "$KV" --name aron-dev-smoke-device-key --file "$dir/key.pem" --encoding utf-8 -o none 2>/dev/null; then
+    chmod 600 "$dir/key.pem"; printf '%s' "$dir"
+  else
+    rm -rf "$dir"; return 1
+  fi
+}
+if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ] && [ -n "$DBLOGINS_JOB" ]; then
+  build_devseed() {
+    local ctx; ctx="$(mktemp -d)"
+    # db/seed without 04_dev_config_and_codes.sql (lead: its global relaxations of enrolment, integrity and lockdown
+    # stay OFF on dev), plus the smoke's own outlet, loaded last.
+    cp db/seed/0*.sql infra/scripts/devseed-run.sh "$ctx/"
+    rm -f "$ctx"/04_*.sql
+    cp infra/sql/devseed-smoke-outlet.sql "$ctx/09_smoke_outlet.sql"
+    docker build -q --provenance=false --sbom=false --build-arg "PSQL_IMAGE=${ARON_PSQL_IMAGE}" \
+      -f infra/docker/devseed.Dockerfile -t "${REGISTRY}/aron-devseed:${SHA}" "$ctx"
+  }
+  # In a subshell: a failed build (die) costs the seed, never the deploy.
+  seed_ref="$(mktemp)"
+  if ( publish aron-devseed build_devseed && printf '%s' "$IMAGE_REF" > "$seed_ref" ); then DEVSEED_IMAGE="$(cat "$seed_ref")"; else DEVSEED_IMAGE=""; fi
+  rm -f "$seed_ref"
+  # The smoke device's public key (no '$' in a JWK, so safe as an env value): derived from the Key Vault private key.
+  smoke_pub=""
+  if smoke_key_dir="$(smoke_device_key)"; then
+    smoke_pub="$(python3 infra/scripts/slice-smoke.py --print-jwk "$smoke_key_dir/key.pem" 2>/dev/null || true)"
+    rm -rf "$smoke_key_dir"
+  fi
+  [ -n "$smoke_pub" ] || echo "::warning::no smoke device key; the slice smoke upload will be refused (device key unknown)"
+  seed_tpl="$(mktemp --suffix .yaml)"
+  python3 - "$DEVSEED_IMAGE" "$smoke_pub" > "$seed_tpl" <<'PY'
+import json, sys
+env = [{"name": "ARON_DB_URL", "secretRef": "db-direct-url"}, {"name": "ARON_SEED_PASSWORD", "secretRef": "seed-pw"}]
+if sys.argv[2]:
+    pub = json.loads(sys.argv[2])
+    env += [{"name": "ARON_SMOKE_JWK", "value": json.dumps(pub["jwk"], separators=(",", ":"))},
+            {"name": "ARON_SMOKE_THUMB", "value": pub["thumbprint"]}]
+print(json.dumps({"containers": [{"name": "dblogins", "image": sys.argv[1], "resources": {"cpu": 0.25, "memory": "0.5Gi"}, "env": env}]}))
+PY
+  if [ -z "$DEVSEED_IMAGE" ]; then
+    echo "::warning::the dev seed image could not be built"; devseed_result="image build failed"
+  elif seed_exec="$(az containerapp job start -g "$RG" -n "$DBLOGINS_JOB" --yaml "$seed_tpl" --query name -o tsv)"; then
+    note "dev seed started: $seed_exec"
+    seed_status=""
+    for _ in $(seq 1 60); do
+      seed_status="$(az containerapp job execution show -g "$RG" -n "$DBLOGINS_JOB" --job-execution-name "$seed_exec" --query properties.status -o tsv 2>/dev/null || echo unknown)"
+      case "$seed_status" in Succeeded|Failed|Stopped|Degraded) break ;; esac
+      sleep 10
+    done
+    devseed_result="${seed_status:-unknown} ($seed_exec)"
+    if [ "$seed_status" != Succeeded ]; then
+      echo "::warning::dev seed $seed_exec ended ${seed_status:-unknown}; the slice smoke will not find its user"
+      az containerapp job logs show -g "$RG" -n "$DBLOGINS_JOB" --execution "$seed_exec" --container dblogins --tail 40 \
+        --format text 2>&1 | tail -n 40 || true
+    fi
+  else
+    echo "::warning::the dev seed could not start"; devseed_result="could not start"
+  fi
+  rm -f "$seed_tpl"
+fi
+
 # ------------------------------------------------------------------------------------------------------ apps
 guard_newer_live "before the apps"
 check_freeze "before the apps"
@@ -573,6 +652,40 @@ if [ "$api_mode_now" = Multiple ]; then
       || echo "::warning::could not deactivate the old revision $r"
   done
 fi
+# Worker health (lead 2026-10-07): the worker has no HTTP endpoint, so the gate above cannot see it. Its latest
+# revision must run this image, have a replica Running with 0 restarts, and stay so for 90 s. Blocking since its first
+# green run (deploy 37687665680, per-app db logins on): a worker that does not stay up fails the deploy.
+if worker_out="$(infra/scripts/worker-check.sh "$RG" "ca-aron-${ENV_NAME}-worker" "$BACKEND_IMAGE" 2>&1)"; then
+  worker_result="running, 0 restarts after 90 s"
+  printf '%s\n' "$worker_out"
+else
+  printf '%s\n' "$worker_out"
+  die "worker check failed for $SHA: ${worker_out//$'\n'/ | } (docs/runbooks/rollback-bad-deploy.md)"
+fi
+# Release marker on the App Insights charts (N-062); never fails the deploy.
+infra/scripts/release-marker.sh "$rg_id" "$ENV_NAME" "$SHA" \
+  "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-local}" \
+  "$([ -n "$ROLLBACK_SHA" ] && echo rollback || echo deploy)" || echo "::warning::release marker step failed"
+# SR slice smoke (lead request 2026-10-07): login, bundle, one sale uploaded twice (duplicate acked, count +1), memo
+# read, dashboard tile, then the sale is voided. Non-blocking for now; result in the summary.
+slice_result="off (no param devSeed = true)"
+if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ]; then
+  if slice_pw="$(az keyvault secret show --vault-name "$KV" --name aron-dev-seed-password --query value -o tsv 2>/dev/null)" \
+     && [ -n "$slice_pw" ]; then
+    echo "::add-mask::${slice_pw}"
+    slice_key_dir="$(smoke_device_key || true)"
+    if SLICE_API_HOST="$API_HOST" SLICE_PASSWORD="$slice_pw" SLICE_DEVICE_KEY="${slice_key_dir:+$slice_key_dir/key.pem}" \
+       python3 infra/scripts/slice-smoke.py; then
+      slice_result="PASSED"
+    else
+      slice_result="FAILED (see the slice smoke table)"; echo "::warning::SR slice smoke failed (non-blocking)"
+    fi
+  else
+    slice_result="not run (aron-dev-seed-password unreadable)"; echo "::warning::SR slice smoke not run: no seed password"
+  fi
+  unset slice_pw
+  if [ -n "${slice_key_dir:-}" ]; then rm -rf "$slice_key_dir"; fi
+fi
 if [ "$ARON_DEPLOY_BUDGET" = true ]; then
   amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \
     || die "budget $BUDGET not found in $RG"
@@ -590,6 +703,9 @@ summary "| API | https://${API_HOST}/v1/health |"
 summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"
+summary "| Worker | ${worker_result} |"
 summary "| Database logins | ${dblogins_result} |"
+summary "| Dev seed | ${devseed_result} |"
+summary "| SR slice smoke | ${slice_result} |"
 summary "| Migrations | ${RUN_MIGRATIONS} |"
 summary "| Budget | ${budget_line} |"

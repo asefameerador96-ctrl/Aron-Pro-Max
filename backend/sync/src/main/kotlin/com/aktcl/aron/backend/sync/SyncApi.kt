@@ -5,6 +5,7 @@ import com.aktcl.aron.backend.platform.AuthGuardDeps
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.authenticated
 import com.aktcl.aron.backend.platform.principal
+import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.contract.ProblemCode
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -20,6 +21,7 @@ import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.DeviceProof
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.decodeStrict
+import com.aktcl.aron.backend.platform.wire
 import io.ktor.server.request.contentType
 import io.ktor.server.request.receiveChannel
 import io.ktor.server.routing.post
@@ -49,6 +51,39 @@ class SyncDeps(
 fun Route.syncRoutes(d: SyncDeps) {
     authenticated(d.guard) {
         get("/sync/bundle") { getBundle(call, d) }
+        get("/sync/bundle/page") {
+            val p = call.principal
+            if (!p.isPhone) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the bundle is for the field apps")
+            val q = call.request.queryParameters
+            call.respond(withContext(Dispatchers.IO) { d.bundles.page(p, q["bundle_version"], q["section"], q["page"]) })
+        }
+        get("/sync/delta") { getDelta(call, d) }
+        if (d.db != null) get("/sync/generation") { getGeneration(call, d.db) }
+        if (d.db != null) {
+            val digest = SyncDigestService(
+                d.db, d.clock,
+                windowDays = {
+                    d.config?.let { c -> runCatching { c.int("cfg.sync.max_backdate_days").toLong() }.getOrNull() }?.coerceIn(1, 31) ?: SyncDigestService.DEFAULT_WINDOW_DAYS
+                },
+                // The same window ingest applies (F-SYS-090 working days when configured).
+                floor = d.ingest?.let { ingest -> { u: Long, today: java.time.LocalDate -> ingest.backdateFloorFor(u, today) } },
+            )
+            post("/sync/digest") {
+                val req = call.receiveStrict(SyncDigestRequest.serializer())
+                call.respond(withContext(Dispatchers.IO) { digest.compare(call.principal, req) })
+            }
+        }
+        d.ingest?.let { ingest ->
+            get("/sync/totals") {
+                val raw = call.request.queryParameters["business_date"]
+                val date = raw?.takeIf { Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(it) }?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+                    ?: throw com.aktcl.aron.backend.platform.ApiProblem(
+                        com.aktcl.aron.contract.ProblemCode.ERR_VALIDATION, "business_date must be YYYY-MM-DD",
+                        errors = listOf(com.aktcl.aron.backend.platform.FieldError("query.business_date", if (raw == null) "required" else "invalid_value")),
+                    )
+                call.respond(withContext(Dispatchers.IO) { ingest.totals(call.principal.userId, date) })
+            }
+        }
     }
     if (d.ingest != null) {
         // The upload grant may call the batch, an access token expired by at most 60 s is accepted, and a stale scope
@@ -57,6 +92,50 @@ fun Route.syncRoutes(d: SyncDeps) {
             post("/sync/batch") { postBatch(call, d) }
         }
     }
+}
+
+/** Wire form of the current generation (contract `ServerGeneration`, docs/24 s4.8). */
+@kotlinx.serialization.Serializable
+data class ServerGenerationDto(
+    val generation: String, val kind: String, val restore_point_utc: String?, val lost_after_utc: String?, val minted_at: String,
+    /** The generation this one replaced (F-SYS-047: two restores before the phone called). */
+    val previous_generation: String? = null,
+    /** With `?since=`: the earliest loss among the generations minted after it; the phone re-sends from there. */
+    val earliest_lost_after_utc: String? = null,
+)
+
+/**
+ * GET /v1/sync/generation (contract getServerGeneration): the current `app.server_generation` row, for any signed-in
+ * caller. A phone that sees a new `X-Server-Generation` reads it to learn what to re-send (records acked after
+ * `lost_after_utc`). Database kinds map to the wire: created -> initial, failover, pitr_restore -> pitr.
+ */
+private suspend fun getGeneration(call: ApplicationCall, db: Database) {
+    val since = call.request.queryParameters["since"]?.let { raw ->
+        runCatching { java.util.UUID.fromString(raw) }.getOrNull()?.takeIf { it.toString() == raw.lowercase() }
+            ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "since must be a generation uuid", errors = listOf(com.aktcl.aron.backend.platform.FieldError("query.since", "invalid_value")))
+    }
+    val g = withContext(Dispatchers.IO) {
+        db.jdbi.withHandle<ServerGenerationDto?, Exception> { h ->
+            h.createQuery(
+                """
+                SELECT g.generation::text, g.kind, g.restore_point_utc, g.lost_after_utc, g.started_at,
+                       (SELECT p.generation::text FROM app.server_generation p WHERE p.started_at < g.started_at ORDER BY p.started_at DESC LIMIT 1) AS previous,
+                       (SELECT min(a.lost_after_utc) FROM app.server_generation a, app.server_generation s
+                         WHERE s.generation = CAST(:since AS uuid) AND s.generation <> g.generation AND a.started_at > s.started_at) AS earliest
+                FROM app.server_generation g WHERE g.is_current
+                """.trimIndent(),
+            ).bind("since", since?.toString())
+                .map { rs, _ ->
+                    fun ts(c: String) = rs.getObject(c, java.time.OffsetDateTime::class.java)?.toInstant()?.wire()
+                    ServerGenerationDto(
+                        rs.getString("generation"),
+                        when (val k = rs.getString("kind")) { "created" -> "initial"; "pitr_restore" -> "pitr"; else -> k },
+                        ts("restore_point_utc"), ts("lost_after_utc"), ts("started_at")!!, rs.getString("previous"), ts("earliest"),
+                    )
+                }.findOne().orElse(null)
+        }
+    } ?: throw ApiProblem(ProblemCode.ERR_INTERNAL, "no current server generation")
+    call.respond(g)
 }
 
 /**
@@ -105,9 +184,12 @@ private suspend fun postBatch(call: ApplicationCall, d: SyncDeps) {
         val attempt = call.request.headers["X-Batch-Attempt"] ?: "1"
         val msg = listOf("aron-proof-v1", "batch", p.deviceUuid, DeviceProof.sha256Hex(gz), req.batch_uuid, attempt).joinToString("\n")
         if (!DeviceProof.verify(key, msg, proof)) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device proof does not verify")
-    } else if (cfg.boolOr("cfg.device.require_enrolled", true)) {
-        throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device key unknown")
     }
+    // A phone without a usable key cannot prove the batch. Under cfg.device.require_enrolled its records are not refused
+    // (the phone would retry them forever) but held: the ingest gate quarantines every non-telemetry record of it
+    // `device_not_enrolled` (N-027, D24-17); with the gate off they are accepted as before.
+
+    recordTelemetry(d, device.second, call.request.headers["X-Pending-Rows"], call.request.headers["X-App-Version"], req.pending_rows, req.app_version)
 
     if (!d.inflight.tryAcquire()) {
         throw retryLater(ProblemCode.ERR_SERVICE_UNAVAILABLE, "too many batches in flight", Random.nextInt(5, 61))
@@ -122,6 +204,33 @@ private suspend fun postBatch(call: ApplicationCall, d: SyncDeps) {
 }
 
 private val TRIGGERS = com.aktcl.aron.contract.SyncTrigger.entries.map { it.wire }.toSet()
+
+private val APP_VERSION = Regex("^[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[+][0-9]{1,10}$")
+private val telemetryLog = org.slf4j.LoggerFactory.getLogger("aron.sync.telemetry")
+
+/**
+ * F-SYS-050: the batch's telemetry headers (`X-Pending-Rows`, else the body's `pending_rows`; `X-App-Version`, else the
+ * body's) on the device row, at most once per 10 minutes per device (the write is skipped while `last_contact_at` is
+ * younger), so a burst of retries costs one UPDATE. Telemetry only: a bad value is ignored and a failure never changes
+ * the batch outcome (docs/24 s2.4). `X-Last-Sync-Error` has no column yet (docs/requests/backend-core-device-telemetry-columns.md).
+ */
+internal fun recordTelemetry(d: SyncDeps, deviceId: Long, pendingHeader: String?, versionHeader: String?, bodyPending: Int, bodyVersion: String) {
+    val pending = pendingHeader?.trim()?.toIntOrNull()?.takeIf { it in 0..1_000_000 } ?: bodyPending.takeIf { it in 0..1_000_000 }
+    val version = versionHeader?.trim()?.takeIf { APP_VERSION.matches(it) } ?: bodyVersion.takeIf { APP_VERSION.matches(it) }
+    val now = java.time.OffsetDateTime.ofInstant(d.clock.now(), java.time.ZoneOffset.UTC)
+    try {
+        d.db!!.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                """
+                UPDATE app.device SET pending_rows_reported = coalesce(:p, pending_rows_reported), app_version = coalesce(:v, app_version), last_contact_at = :now
+                 WHERE id = :d AND (last_contact_at IS NULL OR last_contact_at <= :now - interval '10 minutes' OR last_contact_at > :now)
+                """.trimIndent(),
+            ).bind("p", pending).bind("v", version).bind("now", now).bind("d", deviceId).execute()
+        }
+    } catch (e: Exception) {
+        telemetryLog.warn("device telemetry not recorded device_id=$deviceId cause=${e.javaClass.simpleName}")
+    }
+}
 
 private fun ServerConfig.intOr(key: String, fallback: Int): Int = runCatching { int(key) }.getOrDefault(fallback)
 private fun ServerConfig.boolOr(key: String, fallback: Boolean): Boolean = runCatching { bool(key) }.getOrDefault(fallback)
@@ -154,6 +263,26 @@ private suspend fun getBundle(call: ApplicationCall, d: SyncDeps) {
         return
     }
     call.respond(r.bundle)
+}
+
+/**
+ * GET /v1/sync/delta (contract getBundleDelta): the changes since the phone's cursor, 304 when there are none
+ * (BundleService.delta). gzip on the wire like the bundle.
+ */
+private suspend fun getDelta(call: ApplicationCall, d: SyncDeps) {
+    val p = call.principal
+    if (!p.isPhone) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the bundle is for the field apps")
+    val forDate = call.request.queryParameters["for"]?.let {
+        runCatching { LocalDate.parse(it) }.getOrNull()?.takeIf { _ -> DATE.matches(it) }
+            ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "for must be YYYY-MM-DD", errors = listOf(FieldError("query.for", "invalid_value")))
+    }
+    val delta = withContext(Dispatchers.IO) { d.bundles.delta(p, call.request.queryParameters["since"], forDate, call.request.headers["X-App-Version"]) }
+    if (delta == null) {
+        call.respond(HttpStatusCode.NotModified)
+        return
+    }
+    call.response.header("X-Bundle-Version-Current", delta.meta.bundle_version)
+    call.respond(delta)
 }
 
 private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")

@@ -9,6 +9,7 @@ import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.RecordHandlers
 import com.aktcl.aron.backend.platform.ResponseJson
 import com.aktcl.aron.backend.platform.ServerConfig
+import com.aktcl.aron.backend.platform.isTransientDbFailure
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.ProblemCode
@@ -32,6 +33,8 @@ import java.security.interfaces.ECPublicKey
 import java.sql.SQLException
 import java.time.Instant
 import java.time.LocalDate
+import com.aktcl.aron.backend.platform.DayPlan
+import kotlinx.serialization.json.jsonArray
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.zip.GZIPInputStream
@@ -47,6 +50,9 @@ data class Uploader(
     /** The device's key for record `sig` checks; null for a phone without a usable key (dev database only). */
     val deviceKey: ECPublicKey?,
 )
+
+/** The uploading device's standing for the N-027 gate, with the two switches, read once per batch. */
+internal data class DeviceGate(val notEnrolled: Boolean, val verdict: String, val requireEnrolled: Boolean, val requireIntegrity: Boolean)
 
 /**
  * Idempotent ingest of one sync batch (F-API-006, docs/24 s3.3, s4.4 to s4.6):
@@ -104,7 +110,7 @@ class IngestService(
     }
 
     /** Per-batch caches. */
-    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant) {
+    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null) {
         /** Handlers' after-commit calls of the current family, by record index (dropped when the record rolls back). */
         val afterCommit = ArrayList<Triple<Int, com.aktcl.aron.backend.platform.RecordHandler, IngestRecord>>()
         /** Route-days this batch touched (F-SYS-016), settled at its end. */
@@ -113,9 +119,13 @@ class IngestService(
         private val reaches = HashMap<LocalDate, Reach>()
         fun reachOn(d: LocalDate): Reach = reaches.getOrPut(d) { reach.reach(up.userId, up.role, up.scopeVersion, d) }
         val backdateDays: Long = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
+        /** The oldest business date inside the backdate window (F-SYS-090: calendar or working days), read once per batch. */
+        val backdateFloor: LocalDate = backdateFloor(up.userId, today, backdateDays)
         val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
         /** Read once per batch; a missing or unknown value is `record`, which never drops a sale. */
         val signatureMode: SignatureMode = SignatureMode.of(runCatching { config.string("cfg.sec.record_signature_mode") }.getOrNull())
+        /** N-027: the device's enrolment and Play Integrity standing and the two gates, read once per batch. */
+        val gate: DeviceGate = deviceGate(up)
         /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
         var arith: Map<String, String> = emptyMap()
         /** Memo content fingerprints of the current segment (s4.5: same outlet, lines and minute). */
@@ -132,7 +142,7 @@ class IngestService(
 
         replayOrClaim(up, req, recs.size, fingerprint, now)?.let { return it }
 
-        val ctx = Ctx(up, req.batch_uuid, now)
+        val ctx = Ctx(up, req.batch_uuid, now, resyncWindow(req.trigger, now))
         val outcomes = arrayOfNulls<Outcome>(recs.size)
         var i = 0
         while (i < recs.size) {
@@ -141,9 +151,23 @@ class IngestService(
             val family = recs.subList(i, j + 1)
             ctx.arith = MemoChecks.familyMismatches(family.map { it.json }) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
             ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
-            ctx.afterCommit.clear()
             try {
-                db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+                // AUD-REL-02: a transient failure (deadlock, serialization, failover, pool timeout) retries the family
+                // in a fresh transaction, at most three tries within 10 s; every record upserts by its client UUID and a
+                // failed try rolls back whole, so a retry can never store a record twice.
+                var attempt = 0
+                val familyStart = clock.now()
+                while (true) {
+                    ctx.afterCommit.clear()
+                    try {
+                        db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+                        break
+                    } catch (e: Exception) {
+                        if (++attempt >= FAMILY_TRIES || !isTransientDbFailure(e) || clock.now().isAfter(familyStart.plusMillis(FAMILY_RETRY_BUDGET_MS))) throw e
+                        log.warn("family retry batch_uuid=${req.batch_uuid} family=${recs[i].family} attempt=$attempt: ${e.javaClass.simpleName}")
+                        Thread.sleep(java.util.concurrent.ThreadLocalRandom.current().nextLong(20, 101))
+                    }
+                }
                 // Committed: only now may a handler reach outside the database.
                 ctx.afterCommit.forEach { (_, hd, rec) -> runCatching { hd.afterCommit(rec) }.onFailure { log.warn("afterCommit failed type=${rec.type}", it) } }
             } catch (e: Exception) {
@@ -234,7 +258,8 @@ class IngestService(
      * One record in its own savepoint (poison-row isolation, F-SYS-048): a value the database refuses (SQLSTATE class
      * 22 or 23) is a final `schema_invalid`; any other failure is `server_error`, retryable and parked, so the phone
      * resends it and skips ahead after `cfg.sync.family_skip_after` tries. The other records of the family and the
-     * batch go on. Only when the savepoint itself cannot be rolled back does the family fail as a whole.
+     * batch go on. A transient database failure, or a savepoint that cannot be rolled back, fails the family as a whole
+     * (retried in a fresh transaction, AUD-REL-02).
      */
     private fun processInSavepoint(h: Handle, ctx: Ctx, r: Rec): Outcome {
         val sp = "rec_${r.index}"
@@ -244,6 +269,8 @@ class IngestService(
         } catch (e: Exception) {
             ctx.afterCommit.removeAll { it.first == r.index }
             if (e is ApiProblem) throw e
+            // A transient failure is not the record's fault: the family is retried whole (AUD-REL-02).
+            if (isTransientDbFailure(e)) throw e
             h.rollbackToSavepoint(sp)
             val state = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()?.sqlState ?: ""
             if (state.startsWith("22") || state.startsWith("23")) {
@@ -290,7 +317,10 @@ class IngestService(
                 // parked row, so a sale held under enforce (or before modes existed) reaches the server (BC-53).
                 // Only while its review item is still open: a reviewer's discard or return-to-device stands (android-core
                 // integrity-release item 1).
-                "quarantined" -> if (prior.code != RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire || ctx.signatureMode == SignatureMode.ENFORCE || !openIntegrityItem(h, r)) {
+                // N-027: a device-gate quarantine (device_not_enrolled, or device_integrity_failed from the gate) is
+                // processed again on every resend while its item is open; the gate and the signature check re-apply,
+                // so under enforce a bad signature is quarantined again with the same outcome.
+                "quarantined" -> if (prior.code !in DEVICE_HOLD_CODES || !openIntegrityItem(h, r)) {
                     touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT)
                 } else {
                     released = true
@@ -304,8 +334,25 @@ class IngestService(
         // 3. Business-date window (s3.8 item 4): too old or in the future is quarantined, never dropped.
         val captured = Instant.parse(env.str("captured_at")!!)
         // A released signature quarantine was inside the window when first received: it is not too old now (item 2).
-        if ((!released && bd.isBefore(ctx.today.minusDays(ctx.backdateDays))) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
+        val tooOld = !released && bd.isBefore(ctx.backdateFloor)
+        // F-SYS-089: after a failover or restore the phone re-sends rows the lost lineage had acknowledged (trigger
+        // `resync`, docs/24 s4.8). One captured before the new lineage started may be older than the window: it is
+        // accepted and flagged `resync_late`, never quarantined (idempotency by client_uuid keeps the re-send safe).
+        val resyncLate = tooOld && ctx.resync?.let { w -> !captured.isAfter(w.startedAt) && !bd.isBefore(w.oldestDate) } == true
+        if ((tooOld && !resyncLate) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, "business_date $bd, today ${ctx.today}")
+        }
+        if (resyncLate) {
+            // Stored in app.ingest_registry.flags on the accepted row (V0056, db-resync-late-flag-answer.md); the log line stays.
+            log.warn("resync_late client_uuid=${r.clientUuid} type=${r.type} business_date=$bd user=${ctx.up.userId} batch_uuid=${ctx.batchUuid}")
+        }
+
+        // 3b. A check-out before cfg.day.checkout_earliest_time on its business date (Dhaka, by the user's role and home
+        // geography) is s4.5 `checkout_too_early`. The spec quarantines it, but no review path can release a quarantined
+        // row yet (OpsApi's acceptor is not wired), so the rep's day would end without a check-out: until it can, the row
+        // is accepted and flagged (BC-63; the phone enforces the same value offline, so only a hooked clock reaches it).
+        if (r.type == "attendance_event" && payload.str("kind") == "check_out" && checkoutTooEarly(h, ctx.up, captured, bd)) {
+            log.warn("checkout_too_early client_uuid=${r.clientUuid} user=${ctx.up.userId} business_date=$bd captured_at=$captured")
         }
 
         // 4. References that must exist (unknown ids are final rejections, s4.5).
@@ -343,6 +390,23 @@ class IngestService(
 
         env.long("acting_for_user_id")?.let { a ->
             if (!actingForValid(h, ctx, routeId, a, bd)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "acting_for_user_id $a without a cover of route $routeId")
+        }
+
+        // 5b. N-027 device gate (s4.5, s10.4, D24-17/18). Attendance and sales (memo, memo_void, due_collection) from a
+        // phone that is not enrolled (no enrolment, or no usable key) are quarantined `device_not_enrolled` while
+        // cfg.device.require_enrolled is on; with it off they are accepted and flagged. A keyless phone cannot prove its
+        // batch, so under the gate every non-telemetry record of it is held. With cfg.device.require_integrity on, an
+        // enrolled phone without a Play Integrity `pass` has its attendance and sales quarantined `device_integrity_failed`;
+        // with it off only a genuine `fail` is flagged. Never rejected: a resend after the phone is fixed is released
+        // while the review item is open (step 2). Children of a held parent are held with it (step 7).
+        val g = ctx.gate
+        val gated = r.type in GATED_TYPES
+        if (g.notEnrolled && (gated || (g.requireEnrolled && ctx.up.deviceKey == null && !rule.telemetry))) {
+            flagDevice(h, ctx, r, bd, routeId, "device_not_enrolled")
+            if (g.requireEnrolled) return quarantine(h, ctx, r, bd, RecordOutcomeCode.DEVICE_NOT_ENROLLED, "device not enrolled")
+        } else if (gated && g.verdict != "pass" && (g.requireIntegrity || g.verdict == "fail")) {
+            flagDevice(h, ctx, r, bd, routeId, "play_integrity_${g.verdict}")
+            if (g.requireIntegrity) return quarantine(h, ctx, r, bd, RecordOutcomeCode.DEVICE_INTEGRITY_FAILED, "play integrity ${g.verdict}")
         }
 
         // 6. Record signature on header records when the device has a key (s8.3), by cfg.sec.record_signature_mode
@@ -441,7 +505,7 @@ class IngestService(
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
-                register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
+                register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp, if (resyncLate) listOf("resync_late") else emptyList())
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
                 // Day states follow the record but never decide its outcome: a failure here is logged, the record stays stored.
@@ -456,6 +520,7 @@ class IngestService(
                 hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 hs.forEach { ctx.afterCommit += Triple(r.index, it, ingestRec!!) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
+                gnssConsistency(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)
             }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
@@ -500,6 +565,46 @@ class IngestService(
         }
     }
 
+    /** N-027 supervisor flag: DEVICE_INTEGRITY_FAIL on the device for the business date (s11.4: severity 4, weight 30), in its own savepoint. */
+    private fun flagDevice(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
+        val sp = "devflag_${r.index}"
+        h.savepoint(sp)
+        try {
+            h.createUpdate(
+                """
+                INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+                VALUES ('DEVICE_INTEGRITY_FAIL', 4, :bd, 'device', :sid, :u, :route, 30, CAST(:ev AS jsonb), :cv)
+                ON CONFLICT (code, subject_type, subject_id, business_date) DO UPDATE SET severity = GREATEST(app.risk_signal.severity, EXCLUDED.severity),
+                    score = GREATEST(app.risk_signal.score, EXCLUDED.score), evidence = app.risk_signal.evidence || EXCLUDED.evidence, updated_at = now()
+                  WHERE app.risk_signal.status = 'open' AND (app.risk_signal.severity < EXCLUDED.severity OR app.risk_signal.evidence ->> 'gate' IS NULL)
+                """.trimIndent(),
+            ).bind("bd", bd).bind("sid", ctx.up.deviceUuid).bind("u", ctx.up.userId).bind("route", routeId)
+                .bind("ev", kotlinx.serialization.json.buildJsonObject {
+                    put("gate", JsonPrimitive(reason)); put("record_type", JsonPrimitive(r.type)); put("client_uuid", JsonPrimitive(r.clientUuid))
+                    put("held", JsonPrimitive(if (reason == "device_not_enrolled") ctx.gate.requireEnrolled else ctx.gate.requireIntegrity))
+                }.toString()).bind("cv", config.configVersion()).execute()
+            h.release(sp)
+        } catch (e: Exception) {
+            h.rollbackToSavepoint(sp)
+            log.error("device flag failed client_uuid=${r.clientUuid}", e)
+        }
+    }
+
+    /** The device row's standing for the N-027 gate; a device row that vanished counts as not enrolled. */
+    private fun deviceGate(up: Uploader): DeviceGate {
+        val row = db.jdbi.withHandle<Pair<Boolean, String>?, Exception> { h ->
+            h.createQuery("SELECT enrolment_token_id IS NOT NULL, integrity_verdict FROM app.device WHERE id = :d").bind("d", up.deviceId)
+                .map { rs, _ -> rs.getBoolean(1) to rs.getString(2) }.findOne().orElse(null)
+        }
+        return DeviceGate(
+            notEnrolled = row == null || !row.first || up.deviceKey == null,
+            verdict = row?.second ?: "unevaluated",
+            // Registry defaults (s9.4): require_enrolled true (the dev database overrides false), require_integrity false.
+            requireEnrolled = runCatching { config.bool("cfg.device.require_enrolled") }.getOrDefault(true),
+            requireIntegrity = runCatching { config.bool("cfg.device.require_integrity") }.getOrDefault(false),
+        )
+    }
+
     private fun insertSignatureFlag(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
         h.createUpdate(
             """
@@ -516,7 +621,18 @@ class IngestService(
 
     /** GEO_OUT_OF_BOUNDS (s11.4): a fix outside the Bangladesh box raises a signal; the record itself is stored. */
     private fun outOfBounds(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
-        for (slot in listOf("fix", "edit_fix")) (payload[slot] as? JsonObject)?.let { outOfBoundsFix(h, ctx, r, rule, it, bd, routeId) }
+        for (slot in listOf("fix", "edit_fix")) (payload[slot] as? JsonObject)?.let { fix ->
+            // In its own savepoint: a failed signal insert never aborts the sale's family transaction.
+            val sp = "oob_${r.index}_$slot"
+            h.savepoint(sp)
+            try {
+                outOfBoundsFix(h, ctx, r, rule, fix, bd, routeId)
+                h.release(sp)
+            } catch (e: Exception) {
+                h.rollbackToSavepoint(sp)
+                log.error("out-of-bounds signal failed client_uuid=${r.clientUuid}", e)
+            }
+        }
     }
 
     private fun outOfBoundsFix(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, fix: JsonObject, bd: LocalDate, routeId: Long?) {
@@ -535,6 +651,45 @@ class IngestService(
                 put("record_type", JsonPrimitive(rule.type)); put("client_uuid", JsonPrimitive(r.clientUuid)); put("lat", JsonPrimitive(lat)); put("lng", JsonPrimitive(lng))
             }.toString()).bind("cv", config.configVersion()).execute()
     }
+
+    /**
+     * N-028 GEO_GNSS_INCONSISTENT (docs/24 s11.4, an instant per-fix signal): a `gps` fix whose GNSS summary does not fit a
+     * real sky: fewer than `cfg.geo.gnss_min_satellites_used` satellites used (4), or at least 6 used with a C/N0 standard
+     * deviation below `cfg.geo.gnss_cn0_stddev_min_dbhz` (1.0: every satellite equally strong, as a simulator draws them),
+     * or a C/N0 mean above `cfg.geo.gnss_cn0_mean_max_dbhz` (48). A fix without a summary or without C/N0 values is not
+     * judged on what it lacks. One signal per subject and date; in its own savepoint, so it never decides the record.
+     */
+    private fun gnssConsistency(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
+        for (slot in listOf("fix", "edit_fix")) {
+            val fix = payload[slot] as? JsonObject ?: continue
+            if ((fix["provider"] as? JsonPrimitive)?.content != "gps") continue // judged only for gps; no config read otherwise
+            val reason = GnssRule.check(fix, gnssThresholds()) ?: continue
+            val sp = "gnss_${r.index}_$slot"
+            h.savepoint(sp)
+            try {
+                h.createUpdate(
+                    """
+                    INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+                    VALUES ('GEO_GNSS_INCONSISTENT', 3, :bd, :st, :sid, :u, :route, 30, CAST(:ev AS jsonb), :cv)
+                    ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
+                    """.trimIndent(),
+                ).bind("bd", bd).bind("st", if (r.type == "visit") "visit" else "user").bind("sid", if (r.type == "visit") r.clientUuid else ctx.up.userId.toString())
+                    .bind("u", ctx.up.userId).bind("route", routeId)
+                    .bind("ev", JsonObject(reason + mapOf("record_type" to JsonPrimitive(rule.type), "client_uuid" to JsonPrimitive(r.clientUuid), "slot" to JsonPrimitive(slot))).toString())
+                    .bind("cv", config.configVersion()).execute()
+                h.release(sp)
+            } catch (e: Exception) {
+                h.rollbackToSavepoint(sp)
+                log.error("gnss signal failed client_uuid=${r.clientUuid}", e)
+            }
+        }
+    }
+
+    private fun gnssThresholds(): GnssRule.Thresholds = GnssRule.Thresholds(
+        minUsed = runCatching { config.int("cfg.geo.gnss_min_satellites_used") }.getOrDefault(4).coerceIn(3, 12),
+        stddevMin = runCatching { config.value("cfg.geo.gnss_cn0_stddev_min_dbhz").jsonPrimitive.content.toDouble() }.getOrDefault(1.0).coerceIn(0.1, 5.0),
+        meanMax = runCatching { config.value("cfg.geo.gnss_cn0_mean_max_dbhz").jsonPrimitive.content.toDouble() }.getOrDefault(48.0).coerceIn(40.0, 60.0),
+    )
 
     /** Cross-user parent references the protocol allows, each still bounded by the uploader's reach. */
     private fun crossUserParentAllowed(h: Handle, ctx: Ctx, field: String, parent: String, bd: LocalDate): Boolean {
@@ -578,24 +733,32 @@ class IngestService(
         h.createUpdate("UPDATE app.ingest_registry SET last_seen_at = now(), seen_count = seen_count + 1 WHERE client_uuid = CAST(:c AS uuid)").bind("c", r.clientUuid).execute()
     }
 
-    private fun register(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?, contentFp: ByteArray? = null) {
+    /**
+     * [flags] (V0056 `ingest_registry.flags`, e.g. `resync_late`) are merged on the conflict path, never assigned: a later
+     * acceptance of a parked or released row never wipes a flag (db-resync-late-flag-answer.md).
+     */
+    private fun register(
+        h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?, contentFp: ByteArray? = null,
+        flags: List<String> = emptyList(),
+    ) {
         h.createUpdate(
             """
-            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, content_fp, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at)
-            VALUES (CAST(:c AS uuid), :t, :h, :fp, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now)
+            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, content_fp, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at, flags)
+            VALUES (CAST(:c AS uuid), :t, :h, :fp, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now, :fl)
             ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id, content_fp = EXCLUDED.content_fp,
-                last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1
-            WHERE (app.ingest_registry.status = 'parked' OR (app.ingest_registry.status = 'quarantined' AND app.ingest_registry.outcome_code = 'device_integrity_failed'))
+                last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1,
+                flags = ARRAY(SELECT DISTINCT f FROM unnest(app.ingest_registry.flags || EXCLUDED.flags) AS f ORDER BY f)
+            WHERE (app.ingest_registry.status = 'parked' OR (app.ingest_registry.status = 'quarantined' AND app.ingest_registry.outcome_code IN ('device_integrity_failed', 'device_not_enrolled')))
               AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("fp", contentFp).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
             .bind("s", status).bind("code", code?.wire).bind("sid", serverId).bind("bd", bd).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
-            .bind("b", ctx.batchUuid).bind("now", ts(ctx.now)).execute()
+            .bind("b", ctx.batchUuid).bind("now", ts(ctx.now)).bindArray("fl", String::class.java, flags).execute()
         if (status == "accepted") {
             h.createUpdate("UPDATE app.sync_rejected SET stored_at = :now WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :h AND stored_at IS NULL")
                 .bind("now", ts(ctx.now)).bind("c", r.clientUuid).bind("h", r.hash).execute()
             // A released signature quarantine leaves the review queue once the sale is stored.
-            h.createUpdate("UPDATE app.sync_quarantine SET status = 'accepted', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open'")
+            h.createUpdate("UPDATE app.sync_quarantine SET status = 'accepted', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code IN ('device_integrity_failed', 'device_not_enrolled') AND status = 'open'")
                 .bind("now", ts(ctx.now)).bind("c", r.clientUuid).execute()
         }
     }
@@ -606,12 +769,12 @@ class IngestService(
      * advisory lock, then this row; a reviewer takes only the row.
      */
     private fun openIntegrityItem(h: Handle, r: Rec): Boolean = h.createQuery(
-        "SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open' FOR UPDATE",
+        "SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND code IN ('device_integrity_failed', 'device_not_enrolled') AND status = 'open' FOR UPDATE",
     ).bind("c", r.clientUuid).mapTo(Long::class.java).list().isNotEmpty()
 
     /** A released row that ends rejected for another reason closes its integrity review item (nothing left to review). */
     private fun closeIntegrityItem(h: Handle, r: Rec, now: Instant) {
-        h.createUpdate("UPDATE app.sync_quarantine SET status = 'discarded', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open'")
+        h.createUpdate("UPDATE app.sync_quarantine SET status = 'discarded', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code IN ('device_integrity_failed', 'device_not_enrolled') AND status = 'open'")
             .bind("now", ts(now)).bind("c", r.clientUuid).execute()
     }
 
@@ -665,7 +828,7 @@ class IngestService(
             INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, detail, user_id, device_id, route_id, business_date, batch_uuid, received_at)
             VALUES (CAST(:c AS uuid), :t, :code, :h, CAST(:p AS jsonb), :detail, :u, :d, :route, :bd, CAST(:b AS uuid), :now)
             ON CONFLICT (client_uuid, payload_sha256) DO UPDATE SET code = EXCLUDED.code, detail = EXCLUDED.detail
-              WHERE app.sync_quarantine.status = 'open' AND app.sync_quarantine.code = 'device_integrity_failed'
+              WHERE app.sync_quarantine.status = 'open' AND app.sync_quarantine.code IN ('device_integrity_failed', 'device_not_enrolled')
 
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(r.json)).bind("detail", detail?.take(1000))
@@ -721,6 +884,16 @@ class IngestService(
 
     // ---------------------------------------------------------------------------------------------------------------
     // Response sections
+
+    /**
+     * GET /v1/sync/totals (F-SYS-005 reconciliation): the same totals and day states a batch response carries, for the
+     * caller's own records on [date] only (user from the token; no scope ids from the client). Read-only, so a repeated
+     * batch, which stores nothing new, leaves it unchanged. On the primary: a lagging replica would show a short count
+     * and keep the phone retrying "Sync data".
+     */
+    fun totals(userId: Long, date: LocalDate): SyncTotalsResponse = db.jdbi.withHandle<SyncTotalsResponse, Exception> { h ->
+        SyncTotalsResponse(serverTotals(h, userId, date, clock.now()), dayStates(h, userId, listOf(date)), supervisorDayState(h, userId, date))
+    }
 
     /** Per type accepted/rejected/quarantined of the user's date from the registry, and the money of the date (s4.12). */
     private fun serverTotals(h: Handle, userId: Long, date: LocalDate, now: Instant): ServerTotals {
@@ -792,9 +965,119 @@ class IngestService(
         Resolution(rs.getString(1), rs.getString(2), rs.getString(3), rs.getObject(4, OffsetDateTime::class.java).toInstant().wire())
     }.list()
 
+    /**
+     * F-SYS-090: the backdate window's floor. `cfg.calendar.window_unit` missing or `calendar` keeps today minus
+     * `cfg.sync.max_backdate_days`; `working_days` counts selling days of the uploader's home zone (global weekend and
+     * the scoped holiday calendar), capped by the registry retention. Read before any family transaction; a read failure
+     * is a retryable 503 for the whole batch.
+     */
+    /**
+     * The backdate floor for [userId] on [today] with the configured `cfg.sync.max_backdate_days` (the digest's window).
+     * On a read failure the calendar floor: never older than the working-day one, so the digest only asks for less.
+     */
+    fun backdateFloorFor(userId: Long, today: LocalDate): LocalDate {
+        val days = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
+        return try {
+            backdateFloor(userId, today, days)
+        } catch (e: ApiProblem) {
+            today.minusDays(days)
+        }
+    }
+
+    private fun backdateFloor(userId: Long, today: LocalDate, days: Long): LocalDate {
+        val unit = runCatching { config.string("cfg.calendar.window_unit") }.getOrDefault(WorkingDays.CALENDAR)
+        if (unit != WorkingDays.WORKING_DAYS) return today.minusDays(days)
+        val registryDays = runCatching { config.int("cfg.retention.ingest_registry_days") }.getOrDefault(45).toLong()
+        val ceiling = WorkingDays.ceiling(registryDays, days)
+        val weekend = runCatching {
+            config.value("cfg.calendar.weekend_days").jsonArray.mapNotNull { it.jsonPrimitive.content.toIntOrNull() }.filter { it in 1..7 }.toSet()
+        }.getOrNull() ?: DayPlan.DEFAULT_WEEKEND
+        return runCatching {
+            db.jdbi.withHandle<LocalDate, Exception> { h ->
+                val zone = h.createQuery(
+                    """
+                    SELECT z.id, z.territory_id, t.division_id, d.wing_id FROM app.app_user u JOIN app.zone z ON z.id = u.home_zone_id
+                    JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id WHERE u.id = :u
+                    """.trimIndent(),
+                ).bind("u", userId).map { rs, _ -> DayPlan.ZoneChain(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }
+                    .findOne().orElse(DayPlan.ZoneChain(-1, -1, -1, -1))
+                val calendar = h.createQuery("SELECT date, scope_type, scope_id, kind, selling_day FROM app.calendar_holiday WHERE date >= :a AND date < :b AND revoked_at IS NULL")
+                    .bind("a", today.minusDays(ceiling)).bind("b", today).map { rs, _ ->
+                        DayPlan.CalendarEntry(rs.getObject(1, LocalDate::class.java), DayPlan.CalendarScope.valueOf(rs.getString(2).uppercase()), rs.getLong(3), rs.getString(4), rs.getBoolean(5))
+                    }.list()
+                WorkingDays.floor(today, days, unit, ceiling) { WorkingDays.isWorking(it, zone, calendar, weekend) }
+            }
+        }.getOrElse { e ->
+            // Not the calendar rule: a row quarantined as too old keeps that answer on every re-send, so a passing read
+            // failure on the first morning after a break would lose the relief for good. The batch is retried instead.
+            log.warn("working-day backdate window unavailable; batch refused as retryable", e)
+            throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "try again shortly", retryAfterS = 30, headers = mapOf("Retry-After" to "30"))
+        }
+    }
+
+    /**
+     * F-SYS-089: the re-send allowance after a failover or restore, for a `resync` or `digest_resend` batch (the digest
+     * re-send can come first, s4.8) while the new generation is young: until `cfg.sync.resync_window_h` +
+     * `cfg.sync.resync_jitter_s` + a day after it started. A row may be as old as the lost lineage could have accepted:
+     * acked at the earliest at max(lost_after_utc, started_at - resync window), then inside `cfg.sync.max_backdate_days`.
+     * Read once per batch, before any family transaction (no second connection inside one).
+     */
+    private fun resyncWindow(trigger: String, now: Instant): ResyncWindow? {
+        if (trigger != "resync" && trigger != "digest_resend") return null
+        val windowH = runCatching { config.int("cfg.sync.resync_window_h") }.getOrDefault(24).coerceIn(1, 72).toLong()
+        val jitterS = runCatching { config.int("cfg.sync.resync_jitter_s") }.getOrDefault(900).coerceIn(0, 3600).toLong()
+        val backdate = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
+        val gen = runCatching {
+            db.jdbi.withHandle<Pair<Instant, Instant?>?, Exception> { h ->
+                h.createQuery("SELECT started_at, lost_after_utc FROM app.server_generation WHERE is_current AND kind <> 'created'")
+                    .map { rs, _ -> rs.getObject(1, OffsetDateTime::class.java).toInstant() to rs.getObject(2, OffsetDateTime::class.java)?.toInstant() }
+                    .findOne().orElse(null)
+            }
+        }.getOrNull() ?: return null
+        val (startedAt, lostAfter) = gen
+        if (now.isAfter(startedAt.plusSeconds(windowH * 3600 + jitterS + 86_400))) return null
+        val earliestAck = maxOf(lostAfter ?: Instant.MIN, startedAt.minusSeconds(windowH * 3600))
+        return ResyncWindow(startedAt, BusinessDate.of(earliestAck.toEpochMilli()).toJavaLocalDate().minusDays(backdate))
+    }
+
+    private data class ResyncWindow(val startedAt: Instant, val oldestDate: LocalDate)
+
+    /**
+     * True when [captured] is before the user's `cfg.day.checkout_earliest_time` on the business date [bd] (Dhaka;
+     * inclusive bound; a check-out after midnight for the previous date is late, not early). A missing or unreadable
+     * value never flags. The role and home geography are the user's at sync (a move in between is judged by the new one).
+     */
+    private fun checkoutTooEarly(h: Handle, up: Uploader, captured: Instant, bd: LocalDate): Boolean {
+        val geo = h.createQuery(
+            """
+            SELECT (SELECT ordinal FROM app.role_def WHERE role = u.role) AS role_ord, z.id AS zone_id, t.id AS territory_id, d.id AS division_id, d.wing_id
+            FROM app.app_user u LEFT JOIN app.zone z ON z.id = u.home_zone_id LEFT JOIN app.territory t ON t.id = z.territory_id
+            LEFT JOIN app.division d ON d.id = t.division_id WHERE u.id = :u
+            """.trimIndent(),
+        ).bind("u", up.userId).mapToMap().findOne().orElse(null) ?: return false
+        fun long(k: String) = (geo[k] as Number?)?.toLong()
+        val chain = ScopedConfig.Chain.of(
+            com.aktcl.aron.contract.ConfigScopeType.ROLE to long("role_ord"), com.aktcl.aron.contract.ConfigScopeType.WING to long("wing_id"),
+            com.aktcl.aron.contract.ConfigScopeType.DIVISION to long("division_id"), com.aktcl.aron.contract.ConfigScopeType.TERRITORY to long("territory_id"),
+            com.aktcl.aron.contract.ConfigScopeType.ZONE to long("zone_id"),
+        )
+        // The value in force at the capture (config changed later never re-judges an earlier check-out).
+        val word = ScopedConfig.load(h, captured, captured, setOf(CHECKOUT_KEY)).value(CHECKOUT_KEY, chain)
+            ?.let { runCatching { it.jsonPrimitive.content }.getOrNull() } ?: return false
+        val earliest = runCatching { java.time.LocalTime.parse(word) }.getOrNull() ?: return false
+        return captured.isBefore(bd.atTime(earliest).atZone(DHAKA).toInstant())
+    }
+
     companion object {
+        private const val FAMILY_TRIES = 3
+        private const val CHECKOUT_KEY = "cfg.day.checkout_earliest_time"
+        private val DHAKA: java.time.ZoneId = java.time.ZoneId.of("Asia/Dhaka")
+        private const val FAMILY_RETRY_BUDGET_MS = 10_000L
         private val UUID_ANY = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")
+        /** N-027: the attendance and sales records the device gate holds (s10.4). */
+        val GATED_TYPES = setOf("attendance_event", "memo", "memo_void", "due_collection")
+        private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")

@@ -62,7 +62,9 @@ fun main() {
             AggregationWorker(workerDb).start()
             com.aktcl.aron.backend.masterdata.RiskSignalJob(com.aktcl.aron.backend.masterdata.RiskSignalEvaluator(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)))).start()
             com.aktcl.aron.backend.sync.RouteDayPlanningJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
-            log.info("aron worker started (aggregation, risk signals, route-day planning)")
+            com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
+            com.aktcl.aron.backend.sync.RetentionJob(workerDb).start()
+            log.info("aron worker started (aggregation, risk signals, route-day planning, geo re-check sweep, retention)")
             Thread.currentThread().join()
         }
     }
@@ -84,7 +86,7 @@ fun apiServer(w: Wiring, port: Int, callThreads: Int? = null) =
         },
     ) {
         aronApi(w)
-        monitor.subscribe(ApplicationStopped) { w.database?.close() }
+        monitor.subscribe(ApplicationStopped) { runCatching { w.securityStore?.close() }; w.database?.close() }
     }
 
 @Serializable
@@ -92,7 +94,7 @@ data class Health(val status: String, val api: String, val server_time: String, 
 
 /** The API: platform plugins, health, then every context's routes under /v1 (docs/24 s3, s6.2). */
 fun Application.aronApi(w: Wiring) {
-    installAronPlatform(PlatformContext(w.clock, w.config, w.generation, w.build, w.frontDoorId, cachedGeneration = w.cachedGeneration))
+    installAronPlatform(PlatformContext(w.clock, w.config, w.generation, w.build, w.frontDoorId, cachedGeneration = w.cachedGeneration, securityEvents = w.securityEvents))
     w.admission?.let { installAdmissionControl(it) }
     installDrain(w.drain)
     w.isolation?.let { installRequestIsolation(it) }

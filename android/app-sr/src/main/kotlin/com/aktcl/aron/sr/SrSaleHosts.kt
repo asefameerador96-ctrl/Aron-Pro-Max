@@ -22,12 +22,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.aktcl.aron.core.printing.flow.PrintAttempt
 import com.aktcl.aron.core.printing.ui.HoldPrinter
 import com.aktcl.aron.core.printing.ui.PrinterBanner
 import com.aktcl.aron.core.printing.ui.PrinterIcon
 import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronInfoDialog
 import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
@@ -153,28 +151,15 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
 fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
     val kit = day.sale
     var bundle by remember { mutableStateOf<SummaryBundle?>(null) }
-    var attempt by remember { mutableStateOf<PrintAttempt?>(null) }
+    val attempt by day.summaryAttempt.collectAsState()
     LaunchedEffect(Unit) { bundle = kit.summary() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         SrChrome(day, sunlight, onSunlight)
-        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printRunner.run({ kit.printSummary(b) }) { attempt = it } }) }
+        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }) }
     }
-    PrintAttemptDialogs(day, attempt) { attempt = null }
-}
-
-@Composable
-fun PrintAttemptDialogs(day: SrDay, attempt: PrintAttempt?, onClear: () -> Unit) {
-    when (val a = attempt) {
-        // A tap outside the dialog or Back never records "not readable": only the two buttons answer (a wrong "no" would unlock a second original).
-        is PrintAttempt.AwaitingConfirmation -> androidx.compose.material3.AlertDialog(
-            onDismissRequest = {}, text = { androidx.compose.material3.Text(stringResource(com.aktcl.aron.core.printing.R.string.ui_print_readable_question)) },
-            confirmButton = { androidx.compose.material3.TextButton({ day.printRunner.run({ day.printing.confirm(a, true) }) { onClear() } }) { androidx.compose.material3.Text(stringResource(R.string.sr_yes)) } },
-            dismissButton = { androidx.compose.material3.TextButton({ day.printRunner.run({ day.printing.confirm(a, false) }) { onClear() } }) { androidx.compose.material3.Text(stringResource(R.string.sr_no)) } },
-        )
-        PrintAttempt.LimitReached -> AronInfoDialog(stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_limit_reached), stringResource(R.string.sr_ok), onClear)
-        is PrintAttempt.Failed, PrintAttempt.TooLong -> AronInfoDialog(stringResource(R.string.sr_print_confirm_title), stringResource(com.aktcl.aron.core.printing.R.string.ui_print_failed), stringResource(R.string.sr_ok), onClear)
-        else -> Unit
-    }
+    com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
+        attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,
+    )
 }
 
 /** Sales Submit with the reconciliation table and the Sync data button (F-SR-034/035). */

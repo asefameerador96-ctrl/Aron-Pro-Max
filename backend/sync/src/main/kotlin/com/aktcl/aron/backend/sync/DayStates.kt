@@ -65,6 +65,14 @@ object DayStates {
         if (routes.isEmpty()) return
         planner.planIn(h, date, routes)
         routes.forEach { touched.routeDays += it to date }
+        // Rule 4: a row stored after the zone-day's Final Submit is accepted and counted as late, never reopening the day
+        // (cfg.day.late_sync_after_final_policy = accept_and_flag). Runs once per stored record, so a replay never counts twice.
+        h.createUpdate(
+            "UPDATE app.route_day SET late_rows_after_final = late_rows_after_final + 1 WHERE route_id = ANY(:r) AND business_date = :d AND final_submitted_at IS NOT NULL",
+        ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).execute()
+        h.createUpdate(
+            "UPDATE app.final_submit f SET late_rows = late_rows + 1 FROM app.route r WHERE r.id = ANY(:r) AND f.zone_id = r.zone_id AND f.business_date = :d AND f.reopened_at IS NULL",
+        ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).execute()
         val set = when (type) {
             "day_open" -> if (p.bool("offline_start") == true) "logged_in_at = COALESCE(logged_in_at, :at)" else null
             "visit" -> "in_field_at = COALESCE(in_field_at, :at)"
@@ -143,9 +151,12 @@ object DayStates {
             .bind("now", ts(now)).bind("mm", !reached).bind("r", route).bind("d", date).execute()
     }
 
-    /** Moves the state forward to the furthest one its timestamps reach; never back. */
+    /**
+     * Moves the state forward to the furthest one its timestamps reach; never back. A move marks the route-day dirty
+     * (F-SYS-086), so a state change without a stored record (the worker's settle timeout) still reaches the tile.
+     */
     fun advance(h: Handle, route: Long, date: LocalDate) {
-        h.createUpdate(
+        val moved = h.createUpdate(
             """
             UPDATE app.route_day SET state = s.next FROM (
               SELECT id, CASE WHEN final_submitted_at IS NOT NULL THEN 'final_submitted'
@@ -161,5 +172,6 @@ object DayStates {
               AND array_position(CAST(:o AS text[]), s.next) > array_position(CAST(:o AS text[]), app.route_day.state)
             """.trimIndent(),
         ).bind("r", route).bind("d", date).bindArray("o", String::class.java, ORDER).execute()
+        if (moved > 0) h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'route_day_state')", route, date)
     }
 }

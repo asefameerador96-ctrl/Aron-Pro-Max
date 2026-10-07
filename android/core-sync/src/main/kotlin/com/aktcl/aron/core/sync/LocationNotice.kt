@@ -31,7 +31,9 @@ class LocationNotice(
 ) {
     suspend fun state(userId: Long): NoticeState {
         val database = db(userId)
-        val accepted = ConsentRepository(database).acceptedAt(POLICY_VERSION) != null
+        val consents = ConsentRepository(database)
+        // Accepted here, or already on the server (bundle user.consents, BC-55: a wipe or reinstall does not ask again).
+        val accepted = consents.acceptedAt(POLICY_VERSION) != null || consents.acceptedOnServer(POLICY_VERSION)
         return NoticeState(needed = !accepted, required = required(ReferenceRepository(database)))
     }
 

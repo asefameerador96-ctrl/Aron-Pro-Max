@@ -29,10 +29,50 @@ class SqlCipherDeviceTest {
         assertFalse("plain SQLite header found", String(bytes, 0, 16, Charsets.ISO_8859_1).startsWith("SQLite format 3"))
         db = AronDatabase.open(context, userId, SqlCipher.factory(key))
         assertEquals(1, db.outboxDao().countInState("pending"))
+        // F-SYS-028 follow-up: a new encrypted file is auto_vacuum INCREMENTAL (2), so the purge gives pages back.
+        assertEquals(2L, db.openHelper.writableDatabase.query("PRAGMA auto_vacuum").use { it.moveToFirst(); it.getLong(0) })
         db.close()
         val wrong = AronDatabase.open(context, userId, SqlCipher.factory(ByteArray(32)))
         assertTrue(runCatching { wrong.openHelper.writableDatabase }.isFailure)
         context.deleteDatabase(AronDatabase.fileName(userId))
+    }
+
+    /**
+     * F-SYS-071: nothing written reaches the disk in clear, in the main file or its WAL, journal and shm side files, while
+     * the database is open and after it closes; a copy of the file under another user's name cannot be opened with that
+     * user's key (each user has an own random key, DatabaseKeysTest).
+     */
+    @Test
+    fun noPlaintextReachesAnyFileAndACopyIsUnreadableToAnotherUser() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val (a, b) = 990002L to 990003L
+        listOf(a, b).forEach { context.deleteDatabase(AronDatabase.fileName(it)) }
+        val marker = "ARON-F071-PLAINTEXT-MARKER-দোকান"
+        // Positive control: without SQLCipher the same write is found, so the search below can find a leak.
+        val plain = AronDatabase.open(context, b, null)
+        plain.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity("f071.marker", marker))
+        plain.close()
+        val plainFile = context.getDatabasePath(AronDatabase.fileName(b)).readBytes()
+        assertTrue("control: plaintext found", String(plainFile, Charsets.UTF_8).contains(marker))
+        context.deleteDatabase(AronDatabase.fileName(b))
+        val db = AronDatabase.open(context, a, SqlCipher.factory(ByteArray(32) { (it + 11).toByte() }))
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity("f071.marker", marker))
+        val needle = marker.toByteArray(Charsets.UTF_8)
+        fun files() = context.getDatabasePath(AronDatabase.fileName(a)).let { f -> f.parentFile!!.listFiles { x -> x.name.startsWith(f.name) }!!.toList() }
+        fun leaks() = files().filter { f -> f.readBytes().let { bytes -> (0..bytes.size - needle.size).any { i -> needle.indices.all { bytes[i + it] == needle[it] } } } }
+        assertTrue("the open database has files", files().isNotEmpty())
+        assertEquals("plaintext while open", emptyList<File>(), leaks())
+        db.close()
+        assertEquals("plaintext after close", emptyList<File>(), leaks())
+        context.getDatabasePath(AronDatabase.fileName(a)).copyTo(context.getDatabasePath(AronDatabase.fileName(b)), overwrite = true)
+        val copy = AronDatabase.open(context, b, SqlCipher.factory(ByteArray(32) { (it + 99).toByte() }))
+        assertTrue(runCatching { copy.openHelper.writableDatabase }.isFailure)
+        runCatching { copy.close() }
+        // And the copy is intact: user A's key opens it and reads the marker back.
+        val again = AronDatabase.open(context, b, SqlCipher.factory(ByteArray(32) { (it + 11).toByte() }))
+        assertEquals(marker, again.referenceDao().meta("f071.marker"))
+        again.close()
+        listOf(a, b).forEach { context.deleteDatabase(AronDatabase.fileName(it)) }
     }
 }
 

@@ -14,4 +14,14 @@ class PurgeConfigTest {
         assertNull(SessionSyncRunner.configInt("{}"))
         assertNull(SessionSyncRunner.configInt(null))
     }
+
+    @Test fun aRestoreHoldsThePurgeUntilACleanDigestForAtMostEightDays() {
+        val at = 1_791_194_400_000L
+        assertEquals(false, purgeHeldByDigest(null, at))
+        assertEquals(false, purgeHeldByDigest("garbage", at))
+        assertEquals(true, purgeHeldByDigest(at.toString(), at))
+        assertEquals(true, purgeHeldByDigest(at.toString(), at + SyncEngine.DIGEST_HOLD_MAX_MS - 1))
+        assertEquals(false, purgeHeldByDigest(at.toString(), at + SyncEngine.DIGEST_HOLD_MAX_MS))
+        assertEquals(true, purgeHeldByDigest(at.toString(), at - 60_000L))
+    }
 }

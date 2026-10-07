@@ -40,7 +40,8 @@ env:
   # so a phone installed from one run upgrades to the next. ARON_DEV_API_BASE_URL overrides the origin.
   ARON_API_BASE_URL: ${{ vars.ARON_DEV_API_BASE_URL || 'https://fde-aron-dev-7i7g53-gpgaa3fpgrhmdgaz.z03.azurefd.net' }}
   ARON_VERSION_CODE: ${{ github.run_number }}
-  ARON_VERSION_NAME: 0.1.${{ github.run_number }}
+  # ARON_VERSION_NAME is set by each Android job's first step: 0.<1 + run / 1000>.<run % 1000> (0.1.635 for run 635,
+  # 0.2.0 for run 1000), so it always fits the contract's version_name pattern (three digits per part; N-064 manifest).
 
 # Lead decision 2026-10-07 (CI throughput): one group per ref. A running push run always finishes; GitHub keeps one
 # pending run per group and a newer push replaces the older PENDING one, so the newest head of each branch always gets
@@ -233,7 +234,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.jvm == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16
@@ -264,7 +265,7 @@ jobs:
           :shared:contract:build :shared:rules:build :db:build
           :backend:platform:build :backend:auth:build :backend:sync:build :backend:masterdata:build
           :backend:config:build :backend:analytics:build :backend:notify:build :backend:media:build
-          :backend:app:build
+          :backend:app:build -x :backend:app:test
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -294,6 +295,50 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  # :backend:app:test is about 14.5 of the 26 minutes above (CI run 37669413915), so it runs in its own job, in
+  # parallel (lead 2026-10-07: wall time about 17 min instead of 26; the job above keeps its required-check name).
+  jvm-app:
+    name: Backend app tests
+    needs: changes
+    if: needs.changes.outputs.jvm == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aron_test
+          POSTGRES_DB: aron_test
+          # Throwaway service container reachable only from this job: trust auth, no password at all.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aron_test -d aron_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      ARON_TEST_PG_URL: jdbc:postgresql://localhost:5432/aron_test?user=aron_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - name: Backend app tests
+        run: ./gradlew --console=plain :backend:app:test
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: jvm-app-test-reports
+          path: |
+            backend/app/build/reports/tests/
+            backend/app/build/test-results/
+          retention-days: 7
+
   android:
     name: Android debug APKs, unit tests and lint
     needs: changes
@@ -304,6 +349,8 @@ jobs:
       MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Version name (contract pattern; see ARON_VERSION_CODE above)
+        run: echo "ARON_VERSION_NAME=0.$((GITHUB_RUN_NUMBER / 1000 + 1)).$((GITHUB_RUN_NUMBER % 1000))" >> "${GITHUB_ENV}"
       - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
         # The runner context is not available in job-level env, so the path is exported here.
         run: |
@@ -376,6 +423,8 @@ jobs:
       MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Version name (contract pattern; see ARON_VERSION_CODE above)
+        run: echo "ARON_VERSION_NAME=0.$((GITHUB_RUN_NUMBER / 1000 + 1)).$((GITHUB_RUN_NUMBER % 1000))" >> "${GITHUB_ENV}"
       - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
         run: |
           echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
@@ -430,6 +479,8 @@ jobs:
             "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app} ${variant}: /"
           done <<< "${list}"
           (cd signed && sha256sum ./*.apk > SHA256SUMS && cat SHA256SUMS)
+          # N-064: release-manifest.json, one contract AppReleaseWrite entry per APK (download_url added by the store upload)
+          APKSIGNER="${signer}" python3 tools/ci/release-manifest.py signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}" "${GITHUB_SHA}"
           echo "signed=true" >> "${GITHUB_OUTPUT}"
       - name: Upload the release-signed dev APKs
         if: steps.sign.outputs.signed == 'true'
@@ -446,7 +497,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: web
@@ -469,7 +520,18 @@ jobs:
         env:
           NEXT_PUBLIC_MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
         run: bash scripts/ci.sh build
-      - run: npx playwright install --with-deps chromium
+      - name: Playwright version (browser cache key)
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "${GITHUB_OUTPUT}"
+      - name: Cache the Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Chromium for e2e (capped download and apt, retry once, preinstalled Chrome as the fallback)
+        # --with-deps hung in apt-get update until the job timeout (run 37691144739): tools/ci/playwright-chromium.sh
+        timeout-minutes: 14
+        run: bash ../tools/ci/playwright-chromium.sh
       - run: bash scripts/ci.sh e2e
       - name: Flaky e2e tests (passed only on retry) are reported, never silent (AUD-TP-6)
         if: always()
