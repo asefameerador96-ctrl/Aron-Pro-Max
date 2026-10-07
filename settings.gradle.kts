@@ -85,6 +85,8 @@ include(":android:feature-tso")
 include(":android:app-sr")
 include(":android:app-amo")
 include(":android:app-tso")
+// Lane android-core (AUD-PERF-04): macrobenchmark cold start and baseline-profile generator; runs on a device or emulator.
+include(":android:benchmark")
 // Lane android-sys: camera, photo pipeline and media queue; permissions, update, support upload, language and logout.
 include(":android:core-system")
 include(":android:core-media")

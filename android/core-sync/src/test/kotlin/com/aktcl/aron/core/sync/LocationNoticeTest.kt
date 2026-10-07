@@ -43,9 +43,10 @@ class LocationNoticeTest {
         return LocationNotice({ db }, clock, scheduler) { offline }
     }
 
-    private fun bundle(configValues: String) = runBlocking {
+    private fun bundle(configValues: String, consents: String? = null) = runBlocking {
         val base = Json.parseToJsonElement(javaClass.getResourceAsStream("/fixtures/sr_day_bundle.json")!!.readBytes().decodeToString()).jsonObject
-        val raw = JsonObject(base + ("config" to Json.parseToJsonElement("""{"config_version":318,"values":[$configValues],"scheduled":[]}""")))
+        var raw = JsonObject(base + ("config" to Json.parseToJsonElement("""{"config_version":318,"values":[$configValues],"scheduled":[]}""")))
+        if (consents != null) raw = JsonObject(raw + ("user" to Json.parseToJsonElement("""{"user_id":7,"consents":$consents}""")))
         ReferenceRepository(db).apply(BundleReference.json.decodeFromJsonElement(BundleReference.serializer(), raw), raw)
     }
 
@@ -57,6 +58,20 @@ class LocationNoticeTest {
         val n = notice()
         assertEquals(NoticeState(needed = true, required = true), n.state(7))
         assertFalse(n.allowsSale(7))
+    }
+
+    /** BC-55: after a wipe or reinstall the bundle carries the server's acceptance: no notice, no second record. */
+    @Test
+    fun anAcceptanceTheServerHoldsIsNotAskedAgainButANewVersionIs() = runBlocking {
+        bundle("", """[{"policy_key":"location_notice","policy_version":${LocationNotice.POLICY_VERSION},"accepted_at":"2026-10-01T03:00:00.000Z"}]""")
+        assertEquals(NoticeState(needed = false, required = true), notice().state(7))
+        assertTrue(notice().allowsSale(7))
+        assertTrue(consentRows().isEmpty())
+        bundle("", """[{"policy_key":"location_notice","policy_version":${LocationNotice.POLICY_VERSION - 1},"accepted_at":"2026-01-01T03:00:00.000Z"},
+            {"policy_key":"other_policy","policy_version":${LocationNotice.POLICY_VERSION},"accepted_at":"2026-10-01T03:00:00.000Z"}]""")
+        assertEquals(NoticeState(needed = true, required = true), notice().state(7))
+        bundle("", "[]")
+        assertTrue(notice().state(7).needed)
     }
 
     @Test

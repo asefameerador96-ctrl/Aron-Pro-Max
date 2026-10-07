@@ -209,11 +209,7 @@ class BundleDownloader(
             is ApiResult.Success -> {
                 val download = r.value
                 val version = download.head.meta.bundleVersion
-                val raw = try {
-                    Json.parseToJsonElement(download.rawJson).jsonObject
-                } catch (e: IllegalArgumentException) { // SerializationException is one too
-                    return BundleReport(BundleOutcome.FAILED, version, code = "malformed")
-                }
+                val raw = download.raw // decoded once from the stream; a malformed body is a MALFORMED transport failure
                 val stage = File(stagingDir, version.replace(Regex("[^0-9A-Za-z._-]"), "_"))
                 withContext(Dispatchers.IO) {
                     // Only an older stage of the same day is stale; a day download and a prefetch keep their own stages.

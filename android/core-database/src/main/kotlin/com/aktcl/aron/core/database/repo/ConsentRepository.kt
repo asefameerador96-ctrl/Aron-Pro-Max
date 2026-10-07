@@ -5,6 +5,13 @@ import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.record.RecordMapping
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
 
 /**
  * The employee-location notice (F-SYS-075, docs/21 s4.7, D-120) in the user's own database. Acceptance is a `sync_meta`
@@ -16,6 +23,19 @@ class ConsentRepository(private val db: AronDatabase) {
 
     /** When the notice of [version] was accepted on this phone (RFC 3339), or null. */
     suspend fun acceptedAt(version: Int, policyKey: String = LOCATION_NOTICE): String? = dao.meta(key(policyKey, version))
+
+    /**
+     * True when the server already holds this user's acceptance of [version] (the bundle's `user.consents`, BC-55): after
+     * a wipe, a reinstall or a new phone the notice is not asked again. Only the exact version counts: a new text is asked.
+     */
+    suspend fun acceptedOnServer(version: Int, policyKey: String = LOCATION_NOTICE): Boolean {
+        val user = ReferenceRepository(db).section("user") ?: return false
+        val consents = runCatching { Json.parseToJsonElement(user).jsonObject["consents"] as? JsonArray }.getOrNull() ?: return false
+        return consents.any { c ->
+            val o = c as? JsonObject ?: return@any false
+            (o["policy_key"] as? JsonPrimitive)?.contentOrNull == policyKey && (o["policy_version"] as? JsonPrimitive)?.intOrNull == version
+        }
+    }
 
     /**
      * Stores the acceptance and queues its record; returns false (nothing written) when [version] was already accepted.

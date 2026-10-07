@@ -170,7 +170,7 @@ class SessionSyncRunner(
  * - Sales Submit and the Sync button run at once (expedited);
  * - check-out and Sales Submit go at once (no debounce), except in the minutes just after the 17:00
  *   gate opens ([CheckoutGate], F-SYS-079, doc 17 T7, D-505): then they wait a random 0 to 90 s
- *   (`cfg.sync.checkout_jitter_s`, at most 120; the shells pass the default until config reaches the scheduler) so 8,500 phones do not fire in the same second. Without a gate (tests,
+ *   (`cfg.sync.checkout_jitter_s` from the user's bundle, at most 120) so 8,500 phones do not fire in the same second. Without a gate (tests,
  *   older wiring) check-out is always jittered;
  * - after a failed send ONE expedited job waits for the network (API 31+, AC-13); further failures back off (2 s doubling to
  *   300 s, jittered, or the server's Retry-After) and are never expedited;
@@ -186,7 +186,8 @@ class WorkManagerSyncScheduler(
     private val elapsedMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
     private val policy: SyncPolicy = SyncPolicy(),
     private val debounceS: Long = 5,
-    private val checkoutJitterS: Int = 90,
+    /** `cfg.sync.checkout_jitter_s`, read at each request (the shells pass [com.aktcl.aron.core.sync.device.DayConfig]). */
+    private val checkoutJitterS: () -> Int = { 90 },
     private val checkoutGate: CheckoutGate? = null,
     /** Called on every request (every save, check-out, submit): F-SYS-081 samples there, offline too. Must not block. */
     private val onRequest: () -> Unit = {},
@@ -197,7 +198,7 @@ class WorkManagerSyncScheduler(
         // The local state (checked out, submitted_local) is already set at the tap; only the upload waits (doc 17 T7).
         val gateWave = (trigger == SyncTrigger.CHECKOUT || trigger == SyncTrigger.DAY_SUBMIT) &&
             (checkoutGate?.let { runCatching { it.justOpened() }.getOrDefault(false) } ?: (trigger == SyncTrigger.CHECKOUT))
-        val jitterMs = if (gateWave) random.nextLong(0, checkoutJitterS.coerceIn(0, MAX_CHECKOUT_JITTER_S) * 1000L + 1) else 0L
+        val jitterMs = if (gateWave) random.nextLong(0, (runCatching { checkoutJitterS() }.getOrDefault(90)).coerceIn(0, MAX_CHECKOUT_JITTER_S) * 1000L + 1) else 0L
         when {
             // The jittered upload runs under its own name: a pending debounce or a running upload of earlier rows on the
             // main name is neither replaced nor delayed (doc 17 T7: rows captured earlier are never delayed). Sales Submit
@@ -379,7 +380,7 @@ fun interface CheckoutGate {
 
         fun dhaka(nowMs: () -> Long, gateMinutes: () -> Int = { 17 * 60 }, windowMinutes: Int = WINDOW_MINUTES) = CheckoutGate {
             val minutes = Math.floorMod(Math.floorDiv(nowMs() + com.aktcl.aron.rules.BusinessDate.DHAKA_OFFSET_MS, 60_000L), 24 * 60L).toInt()
-            minutes - gateMinutes() in 0 until windowMinutes
+            minutes - runCatching { gateMinutes() }.getOrDefault(17 * 60) in 0 until windowMinutes
         }
     }
 }

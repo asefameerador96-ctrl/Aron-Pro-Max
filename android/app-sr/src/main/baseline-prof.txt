@@ -1,0 +1,7 @@
+# Baseline profile (AUD-PERF-04). A narrow SEED until the generator in :android:benchmark has run on a lab phone:
+#   ./gradlew :android:benchmark:connectedBenchmarkProfileAndroidTest -Paron.benchmarkApp=sr \
+#     -Pandroid.testInstrumentationRunnerArguments.class=com.aktcl.aron.benchmark.BaselineProfileGenerator
+# then replace this file with the generated profile before a field build. The seed marks only this app's shell package
+# hot (not all first-party code, which would AOT-compile everything at install on a 2 GB phone) and preloads its classes.
+HSPLcom/aktcl/aron/sr/**;->**(**)**
+Lcom/aktcl/aron/sr/**;

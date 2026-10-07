@@ -27,6 +27,11 @@ class AronTSOApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         com.aktcl.aron.core.common.DebugStrictMode.install(BuildConfig.DEBUG) // before Hilt builds the graph on this thread
+        // F-SYS-032: a crash while Hilt builds the graph is kept too (no file is written until a crash happens).
+        com.aktcl.aron.core.sync.ErrorReporter.installEarly(
+            com.aktcl.aron.core.sync.ErrorReporter.dirOf(this), BuildConfig.VERSION_NAME + "+" + BuildConfig.VERSION_CODE,
+            bootCount = { android.provider.Settings.Global.getInt(contentResolver, android.provider.Settings.Global.BOOT_COUNT, 0) },
+        )
         super.onCreate()
         errorReporter.start(this, CoroutineScope(SupervisorJob() + Dispatchers.Default)) // F-SYS-032, first: crashes from here on are kept
         ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives

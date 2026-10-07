@@ -10,6 +10,7 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okio.BufferedSource
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.ConnectException
@@ -86,6 +87,18 @@ class AronApiClient(
         callTimeoutS: Long? = null,
         build: Request.Builder.() -> Unit,
         decode: (body: String, meta: ResponseMeta) -> T,
+    ): ApiResult<T> = callStreaming(path, auth, callTimeoutS, build) { source, meta -> decode(source.readUtf8(), meta) }
+
+    /**
+     * Like [call], but a 2xx body is decoded straight from the response stream (AUD-PERF-06): a bundle of several MB of
+     * JSON is never held as one String on a 2 GB phone. A connection lost mid-body is a transport failure.
+     */
+    suspend fun <T> callStreaming(
+        path: String,
+        auth: CallAuth,
+        callTimeoutS: Long? = null,
+        build: Request.Builder.() -> Unit,
+        decode: (body: BufferedSource, meta: ResponseMeta) -> T,
     ): ApiResult<T> {
         val (first, sentToken) = attempt(path, auth, callTimeoutS, build, decode)
         if (auth is CallAuth.Grant && tokens != null && first is ApiResult.Failure && first.httpStatus == 401) {
@@ -104,7 +117,7 @@ class AronApiClient(
         auth: CallAuth,
         callTimeoutS: Long?,
         build: Request.Builder.() -> Unit,
-        decode: (String, ResponseMeta) -> T,
+        decode: (BufferedSource, ResponseMeta) -> T,
     ): Pair<ApiResult<T>, String?> {
         val token = when (auth) {
             CallAuth.None -> null
@@ -126,7 +139,7 @@ class AronApiClient(
         return result to token
     }
 
-    private fun <T> read(response: Response, decode: (String, ResponseMeta) -> T): ApiResult<T> {
+    private fun <T> read(response: Response, decode: (BufferedSource, ResponseMeta) -> T): ApiResult<T> {
         if (response.header(HEADER_ARON_API) != "1") return ApiResult.Transport(TransportFailure.EDGE_RESPONSE)
         val meta = ResponseMeta(
             httpStatus = response.code,
@@ -140,16 +153,16 @@ class AronApiClient(
         )
         listener?.onApiResponse(meta)
         if (response.code == 304) return ApiResult.NotModified(meta)
-        val body = response.body.string()
         if (response.isSuccessful) {
             return try {
-                ApiResult.Success(decode(body, meta), meta)
+                ApiResult.Success(decode(response.body.source(), meta), meta)
             } catch (e: SerializationException) {
                 ApiResult.Transport(TransportFailure.MALFORMED, e)
             } catch (e: IllegalArgumentException) {
                 ApiResult.Transport(TransportFailure.MALFORMED, e)
             }
         }
+        val body = response.body.string()
         val problem = runCatching { WireJson.responses.decodeFromString(Problem.serializer(), body) }
             .getOrElse { Problem(status = response.code) }
         return ApiResult.Failure(response.code, problem, meta)

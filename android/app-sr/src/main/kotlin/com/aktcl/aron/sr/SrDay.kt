@@ -239,6 +239,8 @@ class SrDay(
             runCatching { scheduler.requestSync(userId, if (e.kind == "check_in") SyncTrigger.WRITE_DEBOUNCE else SyncTrigger.CHECKOUT) }
         },
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,
+        // cfg.day.checkout_earliest_time from the user's bundle (DayConfig), 17:00 until it is read.
+        checkoutEarliestMinutes = { deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES },
     )
 
     @Volatile private var nextSequence = 1
