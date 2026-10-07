@@ -59,8 +59,12 @@ class SessionSyncRunner(
     private val beforeBatch: suspend (userId: Long, db: com.aktcl.aron.core.database.AronDatabase, trigger: SyncTrigger) -> Unit = { _, _, _ -> },
     /** Bundle deltas after a run when the server's current bundle is newer (F-SYS-007); null in tests. */
     private val bundles: BundleDownloaders? = null,
+    /** After every run (the media shell asks for a photo upload once records were acked); must never throw. */
+    private val afterRun: (userId: Long, report: SyncReport) -> Unit = { _, _ -> },
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
+        // A queued run of a user wiped since (TSO logout) must not create an empty database and bring the user back.
+        if (!databases.exists(userId)) return SyncReport(SyncStop.DRAINED, 0, 0, 0, 0, 0, 0, code = "no_database")
         val db = databases.of(userId)
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         val report = engine(userId, db).run(trigger)
@@ -68,6 +72,7 @@ class SessionSyncRunner(
         if (report.stop == SyncStop.DRAINED || report.stop == SyncStop.RUN_LIMIT) {
             try { bundles?.of(userId)?.refreshIfServerNewer() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         }
+        try { afterRun(userId, report) } catch (_: Exception) { }
         return report
     }
 
@@ -82,7 +87,7 @@ class SessionSyncRunner(
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
     )
 
-    override suspend fun unsent(userId: Long): Int = databases.of(userId).outboxDao().unsentCount()
+    override suspend fun unsent(userId: Long): Int = if (!databases.exists(userId)) 0 else databases.of(userId).outboxDao().unsentCount()
 }
 
 /**

@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.TextLayoutResult
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.performClick
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,7 +37,8 @@ class KitGalleryTest {
 
     /** No text may overflow its box, and every clickable node is at least 48 dp (the two N-023 acceptance clauses). */
     private fun assertNoTruncationAndTouchTargets() {
-        val textNodes = rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult)).fetchSemanticsNodes()
+        // the UNMERGED tree: clickable rows merge their children and keep only the first text's layout, hiding trailing and subtitle texts
+        val textNodes = rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult), useUnmergedTree = true).fetchSemanticsNodes()
         assertTrue(textNodes.size > 20)
         val overflowing = textNodes.mapNotNull { node ->
             val results = mutableListOf<TextLayoutResult>()
@@ -58,6 +60,13 @@ class KitGalleryTest {
         }
     }
 
+    /** Dialogs are separate windows and closed in the gallery: open one and run the same sweeps (its text and its buttons). */
+    private fun openInfoDialogAndSweep(openLabel: String) {
+        rule.onNodeWithText(openLabel).performClick()
+        rule.waitForIdle()
+        assertNoTruncationAndTouchTargets()
+    }
+
     private fun render(language: AppLanguage, sunlight: Boolean = false) = rule.setContent {
         CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 1.3f)) {
             AronTheme(language, dark = false, sunlight = sunlight) { KitGallery() }
@@ -71,6 +80,7 @@ class KitGalleryTest {
         rule.onNodeWithText("বিক্রয় জমা দিতে চেপে ধরুন").assertHeightIsAtLeast(56.dp)
         rule.onNodeWithText("১২").assertExists()
         assertNoTruncationAndTouchTargets()
+        openInfoDialogAndSweep("তথ্য দেখুন")
     }
 
     @Test fun englishInSunlightMode() {
@@ -91,6 +101,7 @@ class KitGalleryTest {
         rule.onNodeWithText("Save").assertHeightIsAtLeast(48.dp)
         rule.onNodeWithText("12").assertExists()
         assertNoTruncationAndTouchTargets()
+        openInfoDialogAndSweep("Show information")
     }
 
     /** The accessibility path (long-click action) confirms without holding; the timed hold is a device check. */

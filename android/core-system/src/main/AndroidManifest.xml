@@ -3,6 +3,8 @@
      requested by any Aron app (F-SYS-023). The updater (F-SYS-020) installs this app's own signed APK on non-enrolled phones. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- PDA to Support (F-SYS-021) checks the active network before uploading. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application>
         <receiver android:name="com.aktcl.aron.core.system.update.InstallStatusReceiver" android:exported="false" />
     </application>

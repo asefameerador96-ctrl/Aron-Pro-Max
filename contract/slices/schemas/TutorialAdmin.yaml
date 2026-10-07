@@ -1,4 +1,6 @@
 TutorialAdmin:
+  description: Admin row of a tutorial. `asset_id` is the current file (the `asset_id` of `TutorialWrite`), so a
+    PATCH can keep it (docs/24 s14a R20).
   allOf:
   - $ref: '#/components/schemas/TutorialItem'
   - type: object
@@ -17,4 +19,6 @@ TutorialAdmin:
       version:
         type: integer
         minimum: 1
+      asset_id:
+        $ref: '#/components/schemas/Uuid'
   unevaluatedProperties: false

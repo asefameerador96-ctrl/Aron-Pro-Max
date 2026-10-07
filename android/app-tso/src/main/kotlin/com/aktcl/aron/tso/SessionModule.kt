@@ -12,6 +12,7 @@ import com.aktcl.aron.core.sync.ResumeConfigCheck
 import com.aktcl.aron.core.sync.SyncScheduler
 import com.aktcl.aron.core.sync.device.DeviceRuntime
 import com.aktcl.aron.core.sync.WorkManagerSyncScheduler
+import com.aktcl.aron.core.sync.shell.ShellLogout
 import java.io.File
 import com.aktcl.aron.core.session.SessionComponents
 import dagger.Module
@@ -82,6 +83,12 @@ object SessionModule {
     fun workerFactory(
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
     ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles) }, { scheduler })
+
+    /** F-SYS-022 logout (docs/requests/android-sys-logout-wiring.md). */
+    @Provides
+    @Singleton
+    fun shellLogout(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases, scheduler: WorkManagerSyncScheduler): ShellLogout =
+        ShellLogout(context, components, databases, scheduler) // no camera in this app yet: no photos to count
 
     /** Connectivity trigger (F-SYS-046): uploads for every user on the phone with rows waiting, after a 5 s quiet period. */
     @Provides

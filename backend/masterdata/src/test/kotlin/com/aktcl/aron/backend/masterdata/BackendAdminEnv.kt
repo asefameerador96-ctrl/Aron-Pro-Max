@@ -105,6 +105,7 @@ class BackendAdminEnv : AutoCloseable {
 
     /** A phone token bound to [device]. */
     fun phone(user: String, device: String): String {
+        // wall-clock-ok: token validity window against the app guard, which verifies with the system clock
         val now = Instant.now()
         val c = JWTClaimsSet.Builder().issuer("aron").audience("aron-api").subject(ids.getValue(user).toString()).claim("uname", user)
             .claim("role", roles.getValue(user).wire).claim("sv", 1L).claim("flv", roles.getValue(user).wire.lowercase()).claim("did", 1L).claim("dvu", device).claim("perm", emptyList<String>())

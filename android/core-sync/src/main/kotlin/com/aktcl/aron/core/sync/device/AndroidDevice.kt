@@ -42,7 +42,12 @@ class AndroidDeviceFacts(context: Context, private val policy: () -> DeviceOwner
         val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
         val plugged = battery?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)
         val lm = app.getSystemService(LocationManager::class.java)
-        val locationOn = runCatching { lm?.isLocationEnabled == true }.getOrDefault(false)
+        // isLocationEnabled is API 28; the 8.x phones (minSdk 26) read the GPS and network providers instead.
+        val locationOn = runCatching {
+            if (lm == null) false
+            else if (android.os.Build.VERSION.SDK_INT >= 28) lm.isLocationEnabled
+            else lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }.getOrDefault(false)
         return DeviceFactsSnapshot(
             deviceInfo = deviceInfo(app),
             deviceOwner = runCatching { app.getSystemService(android.app.admin.DevicePolicyManager::class.java)?.isDeviceOwnerApp(app.packageName) == true }.getOrDefault(false),

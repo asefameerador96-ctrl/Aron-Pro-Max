@@ -2,6 +2,22 @@
 
 Updated 2026-10-07 (Day 3, afternoon Dhaka; replacement infra session).
 
+## Day 3, 10:00 UTC: three CI blockers for the first INT promotion (lead)
+
+- **APK size baseline regenerated (SR armeabi-v7a +16.1 % on lane/android-core 2e34ef7, run 372).** Measured by
+  building SR release locally on INT 97feb99 and on 2e34ef7 and diffing the APKs (apkanalyzer with the R8 mappings):
+  the universal APK grew 0.63 MB: dex +463 KB compressed (+755 KB uncompressed), the new CameraX native library
+  `libimage_processing_util_jni.so` (+24 KB armeabi-v7a, +33 KB arm64-v8a), nothing else above 5 KB. Of the dex growth,
+  `androidx.camera` (camera-core, camera-camera2 with its CameraPipe backend, camera-view; F-SYS-030 still capture) is
+  +658 KB (87 %), `androidx.exifinterface` +34 KB, our own code +93 KB (`core.media` +47 KB, `core.database` +24 KB),
+  the rest under 21 KB each. One CameraX backend artifact is declared (no camera-video, no duplicates); no unshrunk
+  library, no font or asset growth. Explained by approved code, so the baseline is reset to the CI sizes of 2e34ef7
+  (MB to two decimals from the run 372 size table, times 2^20). SR armeabi-v7a is now 4.37 MB against the 30 MB
+  budget (docs/31). The +15 % fail and +5 % warn rules are unchanged.
+- **Container images red on f1db789:** fixed in f9429de (`infra/scripts/fetch-ai-agent.sh`, see the commit).
+- **Web red on 7b0b015, 8afb986, 3828ab0:** flaky e2e in `web/e2e/config-journeys.spec.ts` (lines 26 and 112), no web or
+  contract change on those heads; routed to web-config via the lead.
+
 ## Day 3, 08:45 UTC (fourth infra session): CI audit items 2 to 6, drill polling, enrolment settings
 
 - **Last green INT run (audit item 2):** `tools/ci/last-green-int.sh` prints one line (run number, sha, finish time,
