@@ -427,6 +427,15 @@ job_logs() { # execution
     sleep 30
   done
   echo "(no console log of $1 in Log Analytics after 6 minutes)"
+  # No console output usually means the container never ran (image pull, identity, start command): the platform's
+  # system log for the execution says why (deploy run 37624445094: dblogins Failed with an empty console log).
+  q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
+     | where * has '$1'
+     | extend line = strcat(coalesce(column_ifexists('Reason_s', ''), column_ifexists('Reason', '')), ': ',
+                            coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
+     | order by TimeGenerated asc | project TimeGenerated, line | take 50"
+  out="$(az monitor log-analytics query -w "$ws" --analytics-query "$q" --query "[].[TimeGenerated, line]" -o tsv 2>/dev/null || true)"
+  if [ -n "$out" ]; then echo "---- system log of $1"; echo "$out"; echo "----"; else echo "(no system log of $1 either)"; fi
 }
 if [ "$RUN_MIGRATIONS" = true ]; then
   # One more execution ONLY when the first could not open its first database connection (seen twice on 2026-10-06/07:
