@@ -85,6 +85,40 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   - `V0025`/`V0026` v1.2 device columns `root_hints`, `root_hints_at`, `integrity_unavailable_reason`/`_at` (NULL = unknown).
   - `V0028` restrictive directions (answers `backend-admin-restrictive-dir.md`; ConfigWorkflowTest adapted in step).
 
+## Session 3 (2026-10-07, after the team stall; laptop, local PG 16.10 + JDK 21 in the session scratchpad)
+
+- Answered `backend-core-task-columns.md` (V0037/V0038) and `backend-core-device-integrity-columns.md` (V0025/V0026:
+  typed reason column instead of the asked jsonb; `detail` not stored). `backend-reports-export-tables.md` and
+  `-device-facts-ddl.md` were already answered (V0030, V0031).
+- `V0039` AUD-PERF-08: dropped four prefix duplicates: the audited `memo_no_lookup` and `memo_discount_business_date_idx`,
+  plus `domain_event_id` and `qc_entry_line_business_date_idx` found by the new test;
+  `IndexHygieneTest` fails on any btree that is a leading-prefix duplicate (planted prefix and twin detected; partial,
+  DESC and unique kept). WAL per memo before/after: not measured yet (needs db/perf at docs/22 volume).
+- AUD-PERF-07: trigram migration held in `db/held/outlet_search_trgm.sql` until infra allow-lists PG_TRGM
+  (`docs/requests/db-azure-pg-trgm.md`; also asks backend-admin for q >= 3 and an EXPLAIN test).
+- `V0040`/`V0041` AUD-DA-05: `outlet.nid/tin/trade_license` (empty, unread) replaced by `*_enc bytea` + `pii_key_id`;
+  `app.pii_key` (wrapped DEK, one active key, never deleted, retire one-way); worker/jobs cannot read it; the
+  migration refuses to run if any plaintext value exists. Redaction keys asked of backend-admin
+  (`docs/requests/db-audit-pii-redaction.md`). Export log was V0030.
+- `V0042` AUD-DA-07: `dw.build_dim_date(from, to)` extends the calendar past 2030 (idempotent, max ten years).
+- `V0043` AUD-DA-02: frozen context on capture rows (visit, memo: zone, cluster, channel, geo class; due_collection:
+  zone, cluster; stock_movement: zone) stamped by a BEFORE INSERT trigger, zone as of the business date from the new
+  `app.route_zone_history` (trigger on route.zone_id, SECURITY DEFINER; api_rw has no UPDATE on it); write-once;
+  pilot rows backfilled. Dims stay type 1 (decision below); projector ask in `docs/requests/db-capture-context-projection.md`.
+- `V0044`/`V0045` AUD-DA-06 (uncontested part): retention_class on partition_policy, `app.retention_policy`,
+  `app.archive_manifest` (planned > exported > verified > dropped > restored), `app.archive_candidates()`,
+  `app.default_partition_rows()`. Re-partitioning the nine capture tables waits for `docs/requests/db-partitioning-ruling.md`.
+- AUD-DA-08: delivered by V0016 + `DataDictionaryTest` (fails on any uncommented table, view or column, stronger than a
+  ratchet). `source` is not added blanket (audit says only for mixed-origin tables; none needs it today).
+- AUD-PERF-03: db part delivered by V0014/V0020 (`app.apply_login_limits()` writes the docs/18 statement and lock
+  timeouts on login identities); the server parameters and per-app logins are infra's (`db-runtime-roles.md`).
+- AUD-DA-07 deferrals (decision): dim_user, dim_supervisor_assignment, dim_reason, fact_memo_line, fact_due_ledger,
+  fact_stock_movement, fact_qc_line and snap_* of M-61..M-99 are deferred until a BUILD row or the BOD dashboard needs
+  one (docs/16 s8.2 ratchet, D-558); dw is a projection of append-only app tables, so each can be backfilled later.
+
+Local test trap (Windows laptop): `core.autocrlf=true` checks out `docs/data-events.md` and `docs/data-dictionary.md`
+with CRLF and the byte-compare tests fail; normalise them to LF in the working tree (do not change the shared git config).
+
 ## Handoff (session 2 recycled, 2026-10-07 ~11:00 UTC)
 
 **On lane/db (V0023-V0038), green locally on db (190) and every backend suite; Opus checker PASS per batch:**
@@ -227,4 +261,8 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 
 | 2026-10-07 | New cfg keys `cfg.print.confirm_after_print`, `cfg.memo.reprint_watermark`, `cfg.sale.require_printer_before_sale`: scope global, delivery device, risk 1, effect B, editor `cfg.edit.field` | lead ruling (android-print-integration.md); `cfg.edit.field` as `cfg.memo.reprint_max` and `cfg.print.template_version` |
 | 2026-10-07 | `restrictive_dir` set only where break-glass can compare (numbers, ordered enums); `cfg.release.blocked_version_codes` stays `none` (JSON object) | the backend comparator handles numbers and enum order only |
+| 2026-10-07 | DA-02: dw.dim_geo/dim_outlet/dim_product stay type 1; history is kept by frozen zone/cluster/channel/geo class on the capture rows plus app.route_zone_history | backend-reports reads the dims by natural key in ~40 queries; an SCD2 redefinition before cutover is the bigger risk |
+| 2026-10-07 | DA-02: context stamped by a database trigger, not by backend-core ingest | covers every writer with no cross-lane change; two PK lookups per row |
+| 2026-10-07 | DA-05: nid/tin/trade_license dropped and re-added as *_enc bytea (not renamed), guarded by a refuse-if-any-value check | the columns were empty and unread; no data can be lost |
+| 2026-10-07 | DA-06: app.domain_event is retention class audit; a parent registered without a class defaults to transaction | the outbox is the event history; the default is the longest non-audit window |
 | 2026-10-07 | V0024 rewrites a not-yet-in-force cfg_value row in place (trigger lifted inside the migration only) | a closed stub would still be listed as scheduled by the config delta; nobody ever resolved the row |

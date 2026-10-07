@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 135 | 2428 |
+| `app` | 139 | 2473 |
 | `dw` | 28 | 433 |
 
 ## Index
@@ -25,6 +25,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.app_package`](#appapp_package) | table | backend:config | ONLINE | master | none | Catalogue of Android packages the portal offers when editing the app block and allow lists, with a category and a suggested rule. |
 | [`app.app_release`](#appapp_release) | table | backend:config | ONLINE | master | none | One published or draft build of the field app (version, ABI, download URL, signing certificate, rollout percentage). |
 | [`app.app_user`](#appapp_user) | table | backend:masterdata | ONLINE | master | secret | One person who can log in, field or web, with role, status, locale and Argon2id password hash; never deleted. |
+| [`app.archive_manifest`](#apparchive_manifest) | table | db | SERVER | audit | none | One row per exported month partition: planned, exported, verified, dropped, restored; a partition is dropped only after its row is verified. |
 | [`app.astha_target`](#appastha_target) | table | backend:masterdata | ONLINE | master | none | Astha programme target for a route (optionally an outlet and brand) and month, in standard units and memo count. |
 | [`app.attendance_event`](#appattendance_event) | table | backend:sync | OFFLINE | transaction | personal | One check-in or check-out of a user with its on-demand location fix. |
 | [`app.audit_log`](#appaudit_log) | table | backend:platform | SERVER | audit | personal | Append-only, hash-chained record of web and admin actions with before and after images and the actor. |
@@ -94,6 +95,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.outlet_programme`](#appoutlet_programme) | table | backend:analytics | SERVER | master | none | Programme eligibility of an outlet, shown as dots in the SR app outlet list. |
 | [`app.outlet_request_event`](#appoutlet_request_event) | table | backend:masterdata | SERVER | audit | personal | Trail of create, verify, approve, reject and lapse events on an outlet change request. |
 | [`app.partition_policy`](#apppartition_policy) | table | db | REFERENCE | ops | none | List of range-partitioned parent tables with the key column and months to create ahead. |
+| [`app.pii_key`](#apppii_key) | table | backend:masterdata | SERVER | master | secret | One data-encryption key for outlet NID, TIN and trade licence, stored only wrapped by a Key Vault key (envelope encryption, D-107); never deleted. |
 | [`app.pii_read_budget`](#apppii_read_budget) | table | backend:analytics | SERVER | ops | none | One row is the number of personal-data rows a user has read in one clock hour (hourly PII read budget). |
 | [`app.price_batch`](#appprice_batch) | table | backend:masterdata | ONLINE | audit | none | One row is a batch of price changes through preview, approval and publish (maker-checker above the change threshold). |
 | [`app.price_compliance_check`](#appprice_compliance_check) | table | backend:sync | OFFLINE | transaction | none | AMO check comparing the observed retail price of a SKU with the reference price. |
@@ -110,6 +112,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.refresh_family`](#apprefresh_family) | table | backend:auth | ONLINE | session | none | A login session: the family of refresh tokens issued from one login, with expiry and revoke state. |
 | [`app.refresh_token`](#apprefresh_token) | table | backend:auth | ONLINE | session | secret | One refresh token of a family, stored only as a hash, with rotation links. |
 | [`app.report_export`](#appreport_export) | table | backend:analytics | ONLINE | audit | none | One row is a report export (xlsx, pdf or print), synchronous or a queued job: who ran which report with which filters, how many rows and whether personal data was included. |
+| [`app.retention_policy`](#appretention_policy) | table | db | REFERENCE | master | none | One row per retention class: months a partition stays in the primary database and months its export is kept (docs/16 s13.1, D-371). |
 | [`app.risk_signal`](#apprisk_signal) | table | backend:analytics | SERVER | transaction | none | A risk signal (for example mock location or teleport) computed by the worker for a subject and business date. |
 | [`app.risk_signal_review`](#apprisk_signal_review) | table | backend:analytics | OFFLINE | audit | personal | Review action on a risk signal by an AMO or web user; append-only. |
 | [`app.role_def`](#approle_def) | table | db | REFERENCE | master | none | Lookup giving each role an integer ordinal for config scoping. |
@@ -120,6 +123,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.route_day_event`](#approute_day_event) | table | backend:sync | OFFLINE | transaction | none | A day_open or day_submit record from a phone or the online Sales Submit. |
 | [`app.route_day_void_barrier`](#approute_day_void_barrier) | table | backend:sync | ONLINE | audit | none | Admin data void of a route-day: rows captured before the barrier are voided, later rows accepted. |
 | [`app.route_planned`](#approute_planned) | table | backend:masterdata | ONLINE | master | none | Planned visit days of a route, effective-dated. |
+| [`app.route_zone_history`](#approute_zone_history) | table | db | SERVER | master | none | One row is a period (Asia/Dhaka business dates, end exclusive) during which a route belonged to a zone; written by a trigger on app.route. |
 | [`app.rubric`](#apprubric) | table | backend:masterdata | ONLINE | master | none | One row is a scoring rubric (joint call or retailer questionnaire); its current version is in rubric_version. |
 | [`app.rubric_version`](#apprubric_version) | table | backend:masterdata | ONLINE | master | none | One row is an immutable published version of a rubric: its scored criteria; assessments reference it. |
 | [`app.sale_abort`](#appsale_abort) | table | backend:sync | OFFLINE | transaction | none | A memo number consumed without a memo, explaining gaps in memo numbering. |
@@ -369,6 +373,30 @@ One person who can log in, field or web, with role, status, locale and Argon2id 
 Keys: `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (home_zone_id) REFERENCES app.zone(id)`; `FOREIGN KEY (role) REFERENCES app.role_def(role)`
+
+## app.archive_manifest
+
+One row per exported month partition: planned, exported, verified, dropped, restored; a partition is dropped only after its row is verified.
+
+`owner: db | capture: SERVER | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `parent` | text | not null |  | Partitioned parent table (schema-qualified). |
+| `partition_name` | text | not null |  | Schema-qualified month partition, e.g. app.memo_y2026m10. |
+| `month` | date | not null |  | First day of the partition's month. |
+| `row_count` | bigint | null |  | Rows exported. |
+| `sha256` | text | null |  | SHA-256 of the exported file, lower-case hex. |
+| `blob_url` | text | null |  | Blob location of the export (no SAS token). |
+| `format` | text | null |  | Export format: parquet or sql_gz. |
+| `status` | text | not null |  | planned > exported > verified > dropped > restored; never backwards. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was planned. |
+| `exported_at` | timestamp with time zone | null |  | UTC instant the export finished. |
+| `verified_at` | timestamp with time zone | null |  | UTC instant the export was read back and matched row count and hash. |
+| `dropped_at` | timestamp with time zone | null |  | UTC instant the partition was dropped from the primary. |
+
+Keys: `UNIQUE (partition_name)`; `PRIMARY KEY (id)`
 
 ## app.astha_target
 
@@ -1398,6 +1426,8 @@ Cash collected against an earlier credit memo, with the collecting location fix.
 | `fix_lng` | double precision | null | personal | Longitude of the user's location fix taken with the record (WGS84 degrees). |
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
+| `zone_id` | bigint | null |  | Zone of the route as of the business date (else the outlet's), frozen at ingest. |
+| `cluster_id` | bigint | null |  | Outlet's cluster at ingest, frozen. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2047,6 +2077,10 @@ One sales memo header (or zero-sale record) for an outlet visit, with gross, dis
 | `voided_by_client_uuid` | uuid | null |  | Client UUID of the memo_void record that voided the memo. |
 | `superseded_by_client_uuid` | uuid | null |  | Client UUID of the edited memo that replaced this one. |
 | `server_flags` | text[] | not null |  | JSON flags added by server enrichment, such as a price mismatch. |
+| `zone_id` | bigint | null |  | Zone of the route as of the business date (else the outlet's), frozen at ingest; reports attribute the sale to it. |
+| `cluster_id` | bigint | null |  | Outlet's cluster at ingest, frozen. |
+| `outlet_channel` | text | null |  | Outlet's channel (GT, DCC, ...) at ingest, frozen. |
+| `outlet_geo_class` | text | null |  | Outlet's geo class at ingest, frozen. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
@@ -2316,9 +2350,6 @@ One retail or wholesale outlet with owner, location, route placement and nationa
 | `owner_name` | text | not null | personal | Name of the outlet owner. |
 | `contact_number` | text | null | personal | Phone number of the outlet contact. |
 | `address` | text | null | personal | Postal or street address as entered. |
-| `nid` | text | null | sensitive | National ID number of the outlet owner. |
-| `tin` | text | null | sensitive | Tax identification number of the outlet. |
-| `trade_license` | text | null | sensitive | Trade licence number of the outlet. |
 | `zone_id` | bigint | not null |  | Zone (app.zone). |
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
 | `cluster_id` | bigint | not null |  | Outlet cluster (market group) inside the zone. |
@@ -2345,10 +2376,14 @@ One retail or wholesale outlet with owner, location, route placement and nationa
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `updated_by` | bigint | null |  | User who last updated the row. |
+| `nid_enc` | bytea | null | sensitive | National ID of the outlet owner, envelope-encrypted (key_id + nonce + AES-256-GCM ciphertext + tag); never searched, never in bundles or dw. |
+| `tin_enc` | bytea | null | sensitive | Tax identification number, envelope-encrypted like nid_enc. |
+| `trade_license_enc` | bytea | null | sensitive | Trade licence number, envelope-encrypted like nid_enc. |
+| `pii_key_id` | smallint | null |  | app.pii_key that encrypted this row's *_enc values; null when none is set. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (cluster_id) REFERENCES app.cluster(id)`; `FOREIGN KEY (geo_class) REFERENCES app.geo_class_def(geo_class)`; `FOREIGN KEY (merged_into_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (sub_channel_id) REFERENCES app.sub_channel(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
+References: `FOREIGN KEY (cluster_id) REFERENCES app.cluster(id)`; `FOREIGN KEY (geo_class) REFERENCES app.geo_class_def(geo_class)`; `FOREIGN KEY (merged_into_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (pii_key_id) REFERENCES app.pii_key(key_id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (sub_channel_id) REFERENCES app.sub_channel(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
 
 ## app.outlet_change_request
 
@@ -2527,8 +2562,30 @@ List of range-partitioned parent tables with the key column and months to create
 | `ahead_months` | integer | not null |  | How many months of partitions the worker keeps created ahead. |
 | `last_error` | text | null |  | Error text of the last failed partition run for this parent; the worker raises an alert. |
 | `last_error_at` | timestamp with time zone | null |  | UTC time of the last failed partition run for this parent. |
+| `retention_class` | text | not null |  | Retention class of the parent (app.retention_policy); decides when its month partitions are archived. |
 
 Keys: `PRIMARY KEY (parent)`
+
+References: `FOREIGN KEY (retention_class) REFERENCES app.retention_policy(retention_class)`
+
+## app.pii_key
+
+One data-encryption key for outlet NID, TIN and trade licence, stored only wrapped by a Key Vault key (envelope encryption, D-107); never deleted.
+
+`owner: backend:masterdata | capture: SERVER | retention: master | pii: secret` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `key_id` | smallint | not null |  | Key number; the first two bytes of every ciphertext name it. |
+| `wrapped_dek` | bytea | not null | secret | AES-256 data-encryption key wrapped (encrypted) by the Key Vault key; never stored unwrapped. |
+| `kv_key_name` | text | not null |  | Name of the Key Vault key that wraps the DEK. |
+| `kv_key_version` | text | not null |  | Key Vault key version used for the current wrap; changes when a rotation re-wraps. |
+| `algorithm` | text | not null |  | Cipher of the data key: AES-256-GCM. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the key was created. |
+| `rewrapped_at` | timestamp with time zone | null |  | UTC instant of the last re-wrap by a Key Vault rotation; null if never re-wrapped. |
+| `retired_at` | timestamp with time zone | null |  | UTC instant the key stopped encrypting new values; it still decrypts older ciphertext. Null = the active key. |
+
+Keys: `PRIMARY KEY (key_id)`
 
 ## app.pii_read_budget
 
@@ -3021,6 +3078,22 @@ Keys: `PRIMARY KEY (export_id)`
 
 References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.retention_policy
+
+One row per retention class: months a partition stays in the primary database and months its export is kept (docs/16 s13.1, D-371).
+
+`owner: db | capture: REFERENCE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `retention_class` | text | not null |  | Class name: transaction, fix, telemetry, quarantine, audit or event_fact. |
+| `hot_months` | integer | null |  | Months a month partition stays in the primary database; null = never leaves it. |
+| `keep_months` | integer | null |  | Months the exported partition is kept in the archive; null = for ever. |
+| `note` | text | not null |  | Why the window is what it is. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last change. |
+
+Keys: `PRIMARY KEY (retention_class)`
+
 ## app.risk_signal
 
 A risk signal (for example mock location or teleport) computed by the worker for a subject and business date.
@@ -3310,6 +3383,25 @@ Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`
 
+## app.route_zone_history
+
+One row is a period (Asia/Dhaka business dates, end exclusive) during which a route belonged to a zone; written by a trigger on app.route.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `route_id` | bigint | not null |  | Route (app.route) whose zone is recorded. |
+| `zone_id` | bigint | not null |  | Zone (app.zone) the route belonged to in the period. |
+| `valid_from` | date | not null |  | First Asia/Dhaka business date of the period; -infinity for a route's first zone. |
+| `valid_to` | date | null |  | First business date after the period (exclusive); null while current. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
+
 ## app.rubric
 
 One row is a scoring rubric (joint call or retailer questionnaire); its current version is in rubric_version.
@@ -3524,6 +3616,7 @@ Append-only stock event for one SKU (issue, return, adjustment, damage and other
 | `qty_base` | integer | not null |  | Quantity in the SKU's base unit (sticks, pieces or dozens). |
 | `reason_code` | text | null |  | Reason code from the matching business code list (app.code_list_item). |
 | `slip_printed` | boolean | not null |  | True when a stock slip was printed for the movement. |
+| `zone_id` | bigint | null |  | Zone of the route as of the business date, frozen at ingest. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4150,6 +4243,10 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `call_declined` | boolean | null |  | True when the retailer declined the call. |
 | `ended_at` | timestamp with time zone | null |  | UTC instant the activity ended. |
 | `is_zero_sale` | boolean | null |  | True when the visit ended without a sale. |
+| `zone_id` | bigint | null |  | Zone of the route as of the business date (else the outlet's), frozen at ingest; a later zone move never changes it. |
+| `cluster_id` | bigint | null |  | Outlet's cluster at ingest, frozen. |
+| `outlet_channel` | text | null |  | Outlet's channel (GT, DCC, ...) at ingest, frozen. |
+| `outlet_geo_class` | text | null |  | Outlet's geo class at ingest, frozen. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
