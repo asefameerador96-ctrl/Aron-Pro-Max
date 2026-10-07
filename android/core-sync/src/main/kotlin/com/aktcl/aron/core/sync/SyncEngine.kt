@@ -339,7 +339,8 @@ class SyncEngine(
                 if (!r.replayed) {
                     // The server's current version only tells the phone a delta exists; the held version moves with the delta.
                     meta.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION_SERVER, r.configVersion.toString()))
-                    meta.putMeta(SyncMetaEntity(KEY_GENERATION, r.generation))
+                    // The nil generation means "unknown" (backend-core, android-core-503-and-generation s2): never stored, never compared.
+                    if (r.generation != NIL_GENERATION) meta.putMeta(SyncMetaEntity(KEY_GENERATION, r.generation))
                     r.bundleVersionCurrent?.let { meta.putMeta(SyncMetaEntity(KEY_BUNDLE_CURRENT, it)) }
                     for (totals in r.serverTotals) {
                         meta.putMeta(SyncMetaEntity(KEY_SERVER_TOTALS + totals.businessDate, WireJson.requests.encodeToString(ServerTotals.serializer(), totals)))
@@ -454,6 +455,8 @@ class SyncEngine(
         const val KEY_CONFIG_VERSION = ReferenceRepository.KEY_CONFIG_VERSION
         const val KEY_CONFIG_VERSION_SERVER = "sync.config_version_server"
         const val KEY_GENERATION = "sync.server_generation"
+        /** `X-Server-Generation` of a replica that has not read it yet: unknown, never a reason to re-send (F-SYS-047). */
+        const val NIL_GENERATION = "00000000-0000-4000-8000-000000000000"
         const val KEY_BUNDLE_CURRENT = "sync.bundle_version_current"
         const val KEY_SERVER_TOTALS = com.aktcl.aron.core.database.repo.ReconciliationRepository.KEY_SERVER_TOTALS
         const val KEY_DAY_STATES = "sync.day_states"
