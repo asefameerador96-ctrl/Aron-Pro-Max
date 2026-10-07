@@ -2,6 +2,7 @@ package com.aktcl.aron.feature.attendance
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronInfoDialog
 import com.aktcl.aron.core.ui.AronPressAndHoldButton
 import com.aktcl.aron.core.ui.AronPrimaryButton
@@ -57,19 +59,23 @@ fun AttendanceContent(
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
         Text(stringResource(R.string.att_title), style = MaterialTheme.typography.headlineSmall)
-        Text(stringResource(R.string.att_location), style = MaterialTheme.typography.labelLarge)
-        Text(
-            state.addressText ?: stringResource(R.string.att_location_none),
-            style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag(AttendanceTags.ADDRESS),
-        )
+        AronCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                Text(stringResource(R.string.att_location), style = MaterialTheme.typography.labelLarge)
+                Text(
+                    state.addressText ?: stringResource(R.string.att_location_none),
+                    style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag(AttendanceTags.ADDRESS),
+                )
+                state.checkedInAt?.let {
+                    Text(stringResource(R.string.att_checked_in, localizedDigits(dhakaClock(it))), Modifier.testTag(AttendanceTags.STATUS))
+                }
+                state.checkedOutAt?.let { Text(stringResource(R.string.att_checked_out, localizedDigits(dhakaClock(it)))) }
+            }
+        }
         if (state.lastFixMock) AronBanner(stringResource(R.string.att_mock_warning), kind = BannerKind.Error)
         if (state.showCheckInPrompt) {
             AronBanner(stringResource(R.string.att_prompt_checkin), Modifier.testTag(AttendanceTags.PROMPT), BannerKind.Info)
         }
-        state.checkedInAt?.let {
-            Text(stringResource(R.string.att_checked_in, localizedDigits(dhakaClock(it))), Modifier.testTag(AttendanceTags.STATUS))
-        }
-        state.checkedOutAt?.let { Text(stringResource(R.string.att_checked_out, localizedDigits(dhakaClock(it)))) }
         AronPrimaryButton(
             stringResource(R.string.att_check_in), onCheckIn,
             Modifier.testTag(AttendanceTags.CHECK_IN), enabled = state.checkInEnabled && !state.busy,
