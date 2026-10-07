@@ -552,7 +552,18 @@ class IngestService(
 
     /** GEO_OUT_OF_BOUNDS (s11.4): a fix outside the Bangladesh box raises a signal; the record itself is stored. */
     private fun outOfBounds(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
-        for (slot in listOf("fix", "edit_fix")) (payload[slot] as? JsonObject)?.let { outOfBoundsFix(h, ctx, r, rule, it, bd, routeId) }
+        for (slot in listOf("fix", "edit_fix")) (payload[slot] as? JsonObject)?.let { fix ->
+            // In its own savepoint: a failed signal insert never aborts the sale's family transaction.
+            val sp = "oob_${r.index}_$slot"
+            h.savepoint(sp)
+            try {
+                outOfBoundsFix(h, ctx, r, rule, fix, bd, routeId)
+                h.release(sp)
+            } catch (e: Exception) {
+                h.rollbackToSavepoint(sp)
+                log.error("out-of-bounds signal failed client_uuid=${r.clientUuid}", e)
+            }
+        }
     }
 
     private fun outOfBoundsFix(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, fix: JsonObject, bd: LocalDate, routeId: Long?) {
@@ -582,6 +593,7 @@ class IngestService(
     private fun gnssConsistency(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
         for (slot in listOf("fix", "edit_fix")) {
             val fix = payload[slot] as? JsonObject ?: continue
+            if ((fix["provider"] as? JsonPrimitive)?.content != "gps") continue // judged only for gps; no config read otherwise
             val reason = GnssRule.check(fix, gnssThresholds()) ?: continue
             val sp = "gnss_${r.index}_$slot"
             h.savepoint(sp)

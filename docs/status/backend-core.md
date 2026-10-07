@@ -37,6 +37,7 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 ## Session 8 (2026-10-07, start here)
 - INT already merged at the start (no new commits on INT).
 - **GET /v1/sync/delta** and **GET /v1/sync/bundle/page** served (BC-71, `BundleDelta.kt`, `BundleDeltaTest` 7 cases, scope registry lines). No contract change. Opus checker FAIL on M1 (paging settings outside the digest), fixed; open items in BC-71 (paged AMO download vs moving seq, byte-bounded cache, durable fingerprints for the fleet).
+- **N-028** `GEO_GNSS_INCONSISTENT` per fix at ingest (BC-72, `GnssRule.kt`): Opus checker PASS conditional; cross-visit rule requested from backend-admin (`backend-core-gnss-cross-visit-rule.md`); N-028 stays open until it lands. `outOfBoundsFix` now in its own savepoint. Full sync + app suite green at b5c4b209.
 - **Phone call audit:** every path the Android modules call (core-network, core-sync, core-media, core-system, core-geo, dpc) has a route in `route-inventory.txt`: auth login/refresh/logout/bind-device, sync bundle/page/delta/batch, config/delta, media/sas, devices nonce/enrol/push-token, app/update-check, support/pda-upload, health.
 
 ## Session 7 close-out: next rows (session 8 starts here)
