@@ -5,7 +5,8 @@ Updated 2026-10-07 (session 2 of the lane). Earlier history: `docs/status/backen
 ## Done this session (pushed to INT)
 - **F-API-005 `GET /v1/sync/bundle`** (`backend/sync/BundleService.kt`, `ScopedConfig.kt`, `ReasonTexts.kt`): Opus checker 5 findings, 4 fixed; growing `snapshot_seq` waits on `docs/requests/backend-bundle-snapshot-table.md` (code ready, test assumption-guarded).
 - **F-API-006 `POST /v1/sync/batch`** (`IngestService.kt`, `RecordWriter.kt`, `TypeRules.kt`, generated `PayloadShapes.kt`, `Jcs.kt`): Opus checker 8 findings, all fixed (`BatchCheckerTest`).
-- Built, Opus checker running (combined): **F-SYS-055, F-SYS-048, F-SYS-014, F-SYS-062**. Built, checker pending: **F-SYS-060** (`DuesLedger.kt`), **N-036** (`TeamLocations.kt`), **F-SYS-078**.
+- **F-SYS-055, F-SYS-048, F-SYS-014, F-SYS-062**: Opus checker (combined) 8 findings, all fixed (`IngestRulesCheckerTest`). Open, not a defect of these rows: a worker must turn parked rows final after `cfg.sync.parked_ttl_days` (nothing reads `parked_until` yet); the quarantine review endpoints (`listQuarantine`, `resolveQuarantine`) do not exist yet.
+- Built and pushed, **Opus checker NOT run yet**: **F-SYS-060** (`DuesLedger.kt`: ledger hooks, memo void tombstone, FIFO ageing), **N-036** (breadcrumb ingest; the team-location read is backend-reports' `GET /v1/team/locations`, my duplicate was removed), **F-SYS-078** (multi-visit, visit kinds). First job of the next session: one combined Opus checker for these three.
 - Platform fix: Ktor Compression now compresses responses only (request bodies were decoded twice).
 
 ## Decisions taken (this session)
@@ -20,13 +21,16 @@ Updated 2026-10-07 (session 2 of the lane). Earlier history: `docs/status/backen
 ## Requests filed
 `backend-jcs-canonicaliser.md` (shared), `backend-config-value-shape.md` (lead), `backend-bundle-snapshot-table.md` (db), `backend-core-assignment-ended-at.md` (backend-admin).
 
-## Next rows
+## Next rows (after the checker above)
 F-SYS-056 route-day planning job, F-API-031 logout, F-SYS-016 day state machine (in_field/synced from ingest), F-API-026 tasks, N-037 push, then Day 3 rows (`python3 tools/my-rows.py backend-core --todo`).
 
 ## Traps found
 - Maven 429: `/tmp`-style retry loop around gradle (sleep 60..480 s) works; it can take 20+ min.
 - Fixed clock in tests: login limiter (10/15 min per user) and device limiter never reset; cache one token per test class.
 - Each test sale family needs a distinct `captured_at` (content fingerprint).
+- Content fingerprint: test sale families need a distinct captured_at AND a distinct committed_at minute.
+- `PayloadShapes.kt` is generated (`python3 backend/sync/tools/gen_payload_shapes.py`); `JcsTest` fails when the contract moves: regenerate.
+- backend-reports' `DailyTrackingTest` was red on INT (domain_event type `tracking_action.created` missing in the db registry): not this lane's.
 - INT moves every few minutes: merge, test only if backend/db/shared changed, push, loop.
 - **Maven Central answers HTTP 429** to this container. Using a mirror init script was refused by the session's safety classifier: do NOT add one. Retry with growing backoff (60 s, 120 s, ...); never use `--refresh-dependencies`.
 - **Set `ARON_TEST_PG_URL` in the same shell command** as gradle (shell state does not persist): `export ARON_TEST_PG_URL='jdbc:postgresql://localhost:5432/aron_test?user=aron&password=aron' && ./gradlew ...`. After a container restart: `service postgresql start`. Role `aron`/`aron` is superuser (create it if missing).
