@@ -48,9 +48,9 @@ Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pen
   user-delegation SAS via the api managed identity, JDK HTTP client; offline tests; full backend:app suite green.
   Follow-up for backend-admin in the request (a stored 24 h read URL expires).
 - **SR Maps key** in the release job (lead item). **APK baseline** regenerated after N-041 (SR armeabi-v7a +18 %).
-- **AUD-DG-08**: no manual prod dispatch; governance removes the unused `staging`/`prod` environments; docs/30 s5 item 2.
+- **AUD-DG-08**: no manual prod dispatch; docs/30 s5 item 2. The governance script stays create-only (lead ruling: it never deletes; `staging`/`prod` do not exist).
 - **AUD-REL-04**: alerts api 5xx, restarts, no-replica (only where min replicas > 0), PostgreSQL not alive, Resource
-  Health for the group; Service Health written but off (`docs/requests/infra-service-health-scope.md`). Seeded-failure
+  Health for the group; Service Health **deferred to the final account** (lead ruling: no wider deploy identity; listed in docs/28). Seeded-failure
   proof still to run.
 - **AUD-TP-6**: warnings-as-errors mechanism (list empty until `docs/requests/kotlin-warnings-as-errors.md`), flaky e2e
   reported, SeededDayLoadTest bound 5 s.
@@ -75,6 +75,17 @@ Rows built, each with an independent Opus checker (3 rounds so far: 8, 7 and pen
 - **Browser uploads** (`docs/requests/web-admin-asset-upload-csp.md`): storage CORS for the web origin (Front Door
   endpoint, or the web app address without it), PUT only, headers `x-ms-blob-type` and `content-type`; `ARON_BLOB_ORIGIN`
   on the web app.
+
+- **Wall-clock reads in tests (lead item):** `tools/ci/wallclock-scan.py`, a step in "Repository gates", REPORT mode
+  until 2026-10-09 (then `--blocking`), escape `// wall-clock-ok: <reason>`, self-tests in `tools/ci/test_gates.py`.
+  First run, 2026-10-07: **14 offenders in 4 modules**, all backend (android, shared and db: none):
+
+  | Owner lane | Module | Reads |
+  |---|---|---|
+  | backend | `backend/analytics` | 2 |
+  | backend | `backend/config` | 4 |
+  | backend | `backend/masterdata` | 6 |
+  | backend | `backend/platform` | 2 |
 
 **Dev health (05:04 UTC):** `/v1/health`, `/v1/health/ready` and web `/login` 200 through Front Door.
 

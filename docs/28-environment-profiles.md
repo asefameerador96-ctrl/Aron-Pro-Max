@@ -33,3 +33,12 @@ Rules for this exception:
 3. Budget alert raised to about USD 130 for the week. **Review date: 2026-10-10.** On that date, or the day the final account arrives, the infra lane reports the spend and the owner decides: keep, shrink, or delete.
 4. The deploy scripts must support both profiles: `dev` (what exists now, kept) and `dev-lite` (the cheap TEST profile, used if the sponsor orders the reset).
 5. The 8,500-user proof still waits for the final account.
+
+## Deferred to the final account (infra lane, list kept current)
+
+| Item | Why it waits | Where it is ready |
+|---|---|---|
+| Service Health alert (AUD-REL-04) | subscription-scoped; the test-account deploy identity stays least-privilege on its group (lead ruling 2026-10-07) | `infra/modules/alerts.bicep`, `enableServiceHealthAlert` |
+| Weighted canary and the Multiple-revision fallback (AUD-REL-06) | needs the prod-shaped stage and prod | `infra/params/stage*.apps.bicepparam`, `prod.apps.bicepparam` |
+| Build once and promote the CI-scanned image (AUD-DG-06) | staging and prod make it matter | `infra/README.md`, "Not in this version" |
+| 8,500-user load proof, geo-restore (RB-52) | only the final account has the size | `docs/setup/move-to-final-account.md` |
