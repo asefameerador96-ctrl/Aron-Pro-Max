@@ -40,7 +40,7 @@ val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.DEFAULT }
 private fun AronColorRoles.toMaterial(): ColorScheme {
     val base = if (dark) darkColorScheme() else lightColorScheme()
     return base.copy(
-        primary = accent, onPrimary = textOnAccent, secondary = accent, onSecondary = textOnAccent,
+        primary = accentHi, onPrimary = textOnAccent, secondary = accentText, onSecondary = textOnAccent,
         background = bgSolid, onBackground = textPrimary, surface = surfaceSolid, onSurface = textPrimary,
         surfaceVariant = surfaceSolidRaised, onSurfaceVariant = textSecondary, outline = borderInput, error = danger,
         errorContainer = dangerContainer, onErrorContainer = dangerOnContainer,

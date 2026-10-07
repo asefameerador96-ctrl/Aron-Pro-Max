@@ -36,17 +36,19 @@ class TokenContrastTest {
 
     private fun AronColorRoles.pageStops() = listOf(bgGradientTop, bgGradientMid, bgGradientBottom)
     private fun AronColorRoles.solids() = listOf(surfaceSolid, surfaceSolidRaised)
+    /** The 96 percent field surface over every page stop: every SR/AMO/TSO card, row and input (tokens.md s2.2). */
+    private fun AronColorRoles.fields() = pageStops().map { over(surfaceField, it) }
+    private fun AronColorRoles.fills() = listOf(accentHi, accentFill, accentPressed)
     /** Glass over every page stop (a card on the page, the worst case behind translucent content). */
     private fun AronColorRoles.glassOnPage() = pageStops().map { over(surfaceGlass, it) }
     /** Tier B bar: 92 percent strong glass over the worst backdrop (black or white content scrolling behind). */
     private fun AronColorRoles.barOnBackdrop() = listOf(Color.Black, Color.White).map { over(surfaceGlassStrong, it) }
 
     @Test fun keyFiguresReachAAAEverywhere() = modes.forEach { m ->
-        (m.solids() + m.glassOnPage() + m.barOnBackdrop()).forEach { check(m, "textPrimary", m.textPrimary, it, 7.0) }
-        // the primary button label is a key figure (docs/32 s2a item 3): 7:1 on every fill state
-        check(m, "primary label on accent", m.textOnAccent, m.accent, 7.0)
-        check(m, "primary label on accent.hi", m.textOnAccent, m.accentHi, 7.0)
-        check(m, "primary label on accent.pressed", m.textOnAccent, m.accentPressed, 7.0)
+        (m.solids() + m.fields() + m.glassOnPage() + m.barOnBackdrop()).forEach { check(m, "textPrimary", m.textPrimary, it, 7.0) }
+        // the primary button label is a key figure (docs/32 s2a item 3): 7:1 on every fill state, and on the destructive fill
+        m.fills().forEach { check(m, "primary label on fill", m.textOnAccent, it, 7.0) }
+        check(m, "label on dangerFill", m.textOnAccent, m.dangerFill, 7.0)
     }
 
     @Test fun sunlightKeyFiguresReachTenToOne() {
@@ -55,11 +57,11 @@ class TokenContrastTest {
     }
 
     @Test fun bodyTextIsSevenToOneOnTierBSurfaces() = modes.forEach { m ->
-        (m.glassOnPage() + m.barOnBackdrop() + m.solids()).forEach { check(m, "body (textPrimary)", m.textPrimary, it, 7.0) }
+        (m.glassOnPage() + m.barOnBackdrop() + m.solids() + m.fields()).forEach { check(m, "body (textPrimary)", m.textPrimary, it, 7.0) }
     }
 
     @Test fun secondaryTextIsAtLeastFourPointFive() = modes.forEach { m ->
-        (m.solids() + m.glassOnPage() + m.barOnBackdrop()).forEach { check(m, "textSecondary", m.textSecondary, it, 4.5) }
+        (m.solids() + m.fields() + m.glassOnPage() + m.barOnBackdrop()).forEach { check(m, "textSecondary", m.textSecondary, it, 4.5) }
         check(m, "textSecondary on accentContainer", m.textSecondary, m.accentContainer, 4.5)
     }
 
@@ -83,6 +85,14 @@ class TokenContrastTest {
 
     @Test fun disabledAndPlaceholderTextStaysAboveThree() = modes.forEach { m ->
         m.solids().forEach { check(m, "textDisabled", m.textDisabled, it, 3.0) }
+        m.solids().forEach { check(m, "textPlaceholder", m.textPlaceholder, it, 4.5) }
+    }
+
+    @Test fun accentTextAndIconsHoldTheirGates() = modes.forEach { m ->
+        (m.solids() + m.fields()).forEach {
+            check(m, "accentText", m.accentText, it, 4.5); glareCheck(m, "accentText", m.accentText, it, 3.0)
+            check(m, "accent icon", m.accent, it, 3.0)
+        }
     }
 
     @Test fun inputBordersAndFocusRingAreVisible() = modes.forEach { m ->
@@ -90,13 +100,17 @@ class TokenContrastTest {
     }
 
     @Test fun glareProxyKeyFiguresStayAboveFourPointFive() = modes.forEach { m ->
-        m.solids().forEach { glareCheck(m, "key figure on card", m.textPrimary, it, 4.5) }
+        (m.solids() + m.fields()).forEach { glareCheck(m, "key figure on card", m.textPrimary, it, 4.5) }
+        (m.solids() + m.fields()).forEach { glareCheck(m, "secondary on card", m.textSecondary, it, 3.0) }
         // The ONLY 3:1 glare exception (docs/32 s2a item 4): the primary action label, large bold type (>= 18 sp, see PrimaryLabelRuleTest)
         // on a filled accent. Nothing else may use it; every other text keeps 4.5:1 key figures and 3:1 body under glare.
-        glareCheck(m, "primary label on accent", m.textOnAccent, m.accent, 3.0)
+        m.fills().forEach { glareCheck(m, "primary label on fill", m.textOnAccent, it, 3.0) }
+        // tokens.md s2.7 does better than the exception: the deep fills keep 4.5:1 under glare
+        m.fills().forEach { glareCheck(m, "primary label on fill (ledger)", m.textOnAccent, it, 4.5) }
+        glareCheck(m, "label on dangerFill", m.textOnAccent, m.dangerFill, 4.5)
     }
 
     @Test fun glareProxyBodyTextStaysAboveThree() = modes.forEach { m ->
-        (m.solids() + m.glassOnPage() + m.barOnBackdrop()).forEach { glareCheck(m, "body", m.textPrimary, it, 3.0) }
+        (m.solids() + m.fields() + m.glassOnPage() + m.barOnBackdrop()).forEach { glareCheck(m, "body", m.textPrimary, it, 3.0) }
     }
 }

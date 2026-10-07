@@ -45,7 +45,7 @@ fun AronPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
         modifier = modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Primary),
         shape = AronTokens.ButtonShape,
         colors = ButtonDefaults.buttonColors(
-            containerColor = LocalAronColors.current.accent, contentColor = LocalAronColors.current.textOnAccent,
+            containerColor = LocalAronColors.current.accentHi, contentColor = LocalAronColors.current.textOnAccent,
             disabledContainerColor = LocalAronColors.current.stateDisabledFill, disabledContentColor = LocalAronColors.current.stateDisabledLabel,
         ),
         contentPadding = PaddingValues(horizontal = AronTokens.Space.Xl, vertical = AronTokens.Space.M),
