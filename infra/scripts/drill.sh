@@ -28,6 +28,8 @@ failover)
   # returns minutes after the switch (429 s on 2026-10-07 for about 30 s of outage), so timing from its return, or the
   # call's own duration, overstates what users saw. One line per probe: "<epoch at probe start> <http code>".
   probe_s="${DRILL_PROBE_S:-5}"; max_s="${DRILL_MAX_S:-900}"
+  [[ "$probe_s" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "DRILL_PROBE_S must be a number of seconds"
+  [[ "$max_s" =~ ^[0-9]+$ ]] || die "DRILL_MAX_S must be whole seconds"
   probes="$(mktemp)"
   ( while :; do
       t="$(now)"; code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$ready_url" 2>/dev/null)" || true
@@ -39,12 +41,15 @@ failover)
   t0="$(now)"
   az postgres flexible-server restart -g "$RG" -n "$server" --failover Forced -o none || die "forced failover failed"
   t1="$(now)"
-  # Ready again: a 200 probe that started after the call returned (at most max_s after the start).
+  # Ready again: a 200 probe that started after the call returned (waits at most max_s after the call; the call itself
+  # can take longer than that, so the deadline counts from its return, and the probe log is read once more at the end).
   ready=""
-  while [ "$(( $(now) - t0 ))" -lt "$max_s" ]; do
-    if awk -v t="$t1" '$1 >= t && $2 == 200 { f = 1 } END { exit !f }' "$probes"; then ready=1; break; fi
+  ready_after_call() { awk -v t="$t1" '$1 >= t && $2 == 200 { f = 1 } END { exit !f }' "$probes"; }
+  while [ "$(( $(now) - t1 ))" -lt "$max_s" ]; do
+    if ready_after_call; then ready=1; break; fi
     sleep 1
   done
+  [ -n "$ready" ] || ! ready_after_call || ready=1
   kill "$prober" 2>/dev/null || true; wait "$prober" 2>/dev/null || true
   after="$(az postgres flexible-server show -g "$RG" -n "$server" --query availabilityZone -o tsv)"
   # Outage window: from the first failed probe after the start to the first 200 after the last failed probe.
@@ -56,7 +61,7 @@ failover)
   summary "- Azure failover call returned after $(( t1 - t0 )) s (this is NOT the outage)"
   summary "- readiness probes (GET /v1/health/ready via ${host}, every ${probe_s} s from before the call): ${total}, of them ${failed} not 200"
   if [ -z "$ready" ]; then
-    summary "- api NOT ready $(( max_s / 60 )) minutes after the start: the app does not reconnect (REL-01); restart the api revision (RB-02)"
+    summary "- api NOT ready $(( max_s / 60 )) minutes after the Azure call returned: the app does not reconnect (REL-01); restart the api revision (RB-02)"
     exit 1
   fi
   if [ "$back" = - ] && [ "$first_fail" != - ]; then

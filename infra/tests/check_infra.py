@@ -1103,6 +1103,8 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         rc, out = self.run_failover([200, 503], call_s=1, max_s="4")
         self.assertNotEqual(rc, 0, "never ready again must fail the drill")
         self.assertIn("NOT ready", out)
+        rc, out = self.run_failover([200, 503, 200], call_s=3, max_s="1")
+        self.assertEqual(rc, 0, "a call longer than the wait limit is not a false failure: " + out)
 
 
 class DeviceEnrolment(unittest.TestCase):
