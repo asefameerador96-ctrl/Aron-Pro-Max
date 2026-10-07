@@ -34,6 +34,18 @@ CREATE INDEX report_export_queue ON app.report_export (created_at) WHERE status 
 CREATE TRIGGER report_export_immutable BEFORE UPDATE OR DELETE ON app.report_export
   FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('status', 'row_count', 'pii_included', 'blob_path', 'error',
     'claimed_by', 'claimed_at', 'started_at', 'finished_at', 'expires_at');
+-- A finished export (done or failed) is an audit record: nothing changes again except expires_at (link lifetime).
+CREATE FUNCTION app.report_export_frozen() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD.status IN ('done', 'failed') AND (to_jsonb(NEW) - 'expires_at') IS DISTINCT FROM (to_jsonb(OLD) - 'expires_at') THEN
+    RAISE EXCEPTION 'app.report_export: a % export is history and does not change', OLD.status USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END $$;
+COMMENT ON FUNCTION app.report_export_frozen() IS 'Refuses any change to a finished export except its expiry.';
+CREATE TRIGGER report_export_frozen BEFORE UPDATE ON app.report_export FOR EACH ROW EXECUTE FUNCTION app.report_export_frozen();
 CREATE TRIGGER report_export_status_flow BEFORE UPDATE OF status ON app.report_export
   FOR EACH ROW EXECUTE FUNCTION app.guard_transition('status',
     'queued>running', 'queued>failed', 'running>done', 'running>failed', 'running>queued');

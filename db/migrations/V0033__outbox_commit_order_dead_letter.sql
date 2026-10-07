@@ -3,14 +3,18 @@
 --     COMMIT, so a consumer reading by id can step over a row whose transaction commits later. A consumer reads only rows
 --     with tx_id < app.outbox_horizon() (every older transaction has ended), ordered by (tx_id, id), and stores the pair
 --     in app.event_consumer. A long transaction holds the horizon back: alert on app.outbox_horizon_lag().
---     Rows written before V0033 have tx_id NULL and sort first (consumers read them with coalesce(tx_id, '0')).
+--     Rows written before V0033 have tx_id NULL and sort first: consumers compare
+--     (coalesce(tx_id, '0'), id) > (coalesce(last_tx_id, '0'), last_event_id) while such rows remain, then plain (tx_id, id).
+--     tx_id stays nullable (the outbox is append-only and partitioned; old rows cannot be backfilled).
 --     After a logical dump and restore into another server (the move to the final account, docs/28), new transaction
 --     ids may be lower than the restored ones: reset each consumer to (NULL, its last id) and read by id once.
 -- (b) The aggregate projector recomputes by dirty key (docs/16 s8.6, D-61); last_event_id is informational, never a skip
 --     guard. Domain events are the Phase 2 feed.
 -- (c) app.dirty_key gets attempts, last_error, not_before and dead_at: the worker backs off a failing key and parks it
 --     as dead after cfg-driven attempts (T-1-105: 5); re-marking a key revives it.
--- (d) V0018 checker follow-ups: a deprecated event version is refused on insert; the catalogue cannot be truncated.
+-- (d) V0018 checker follow-ups: a deprecated event version is refused on insert once deprecated_at has passed (set it
+--     only after every producer, old pods included, writes the newer version; it may be future-dated); the catalogue
+--     cannot be truncated.
 
 SET lock_timeout = '5s';
 
@@ -28,14 +32,18 @@ CREATE FUNCTION app.outbox_horizon() RETURNS xid8
 LANGUAGE sql STABLE
 AS $$ SELECT pg_snapshot_xmin(pg_current_snapshot()) $$;
 
--- Age of the oldest transaction still open that holds the horizon back (zero when none); the worker alerts on it.
--- SECURITY DEFINER: other sessions' transaction columns of pg_stat_activity are hidden from the runtime roles.
+-- Age of the oldest transaction still open (or prepared) that holds the horizon back (zero when none); the worker alerts
+-- on it. SECURITY DEFINER: other sessions' transaction columns of pg_stat_activity are hidden from the runtime roles
+-- (on Azure the owning admin needs pg_read_all_stats). Every relation is schema-qualified and pg_temp is searched last,
+-- so a caller's temporary view cannot stand in for a catalog view.
 CREATE FUNCTION app.outbox_horizon_lag() RETURNS interval
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-  SELECT coalesce(now() - min(xact_start), interval '0')
-    FROM pg_stat_activity
-   WHERE backend_xid IS NOT NULL AND pid <> pg_backend_pid()
+  SELECT coalesce(now() - min(t), interval '0') FROM (
+    SELECT a.xact_start AS t FROM pg_catalog.pg_stat_activity a
+     WHERE a.backend_xid IS NOT NULL AND a.pid <> pg_catalog.pg_backend_pid()
+    UNION ALL
+    SELECT p.prepared FROM pg_catalog.pg_prepared_xacts p) x
 $$;
 
 -- ---------- (c) dead letter ----------
@@ -96,6 +104,9 @@ END $$;
 
 CREATE TRIGGER domain_event_type_no_truncate BEFORE TRUNCATE ON app.domain_event_type
   FOR EACH STATEMENT EXECUTE FUNCTION app.deny_mutation();
+
+INSERT INTO app.db_role_grant (role, schema_name, object, privileges, note) VALUES
+  ('support_ro', 'app', 'v_dirty_key_dead', 'SELECT', 'sync health: dead rebuild keys');
 
 -- ---------- data dictionary ----------
 COMMENT ON COLUMN app.domain_event.tx_id IS 'Transaction that wrote the row (pg_current_xact_id()); consumers read below app.outbox_horizon() in (tx_id, id) order. Null on rows written before V0033.';

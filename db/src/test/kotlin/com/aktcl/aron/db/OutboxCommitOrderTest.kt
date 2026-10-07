@@ -89,6 +89,24 @@ class OutboxCommitOrderTest {
         open.rollback()
     }
 
+    /** V0035: every SECURITY DEFINER function searches pg_temp last, so a caller's temporary object cannot shadow a relation. */
+    @Test
+    fun securityDefinerFunctionsSearchPgTempLast() = db.connect().use { c ->
+        assertEquals(
+            emptyList(),
+            c.column("SELECT p.oid::regprocedure::text FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname IN ('app', 'dw') AND p.prosecdef " +
+                "AND NOT EXISTS (SELECT 1 FROM unnest(p.proconfig) cfg WHERE cfg LIKE 'search_path=%' AND cfg LIKE '%, pg_temp')"),
+        )
+        // The reproduction of the V0033 check: a temporary view named like the catalog view is ignored.
+        c.autoCommit = false
+        try {
+            c.exec("CREATE TEMP VIEW pg_stat_activity AS SELECT '1'::xid AS backend_xid, 0 AS pid, now() - interval '999 days' AS xact_start")
+            assertEquals("t", c.scalar("SELECT app.outbox_horizon_lag() < interval '1 day'"))
+        } finally {
+            c.rollback()
+        }
+    }
+
     @Test
     fun dirtyKeysBackOffDieAndReviveWhenMarkedAgain() = db.connect().use { c ->
         c.exec("SELECT app.mark_dirty('route_day_agg', 1, '2026-10-07', 'test')")

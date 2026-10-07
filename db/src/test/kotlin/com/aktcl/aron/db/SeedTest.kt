@@ -165,14 +165,15 @@ class SeedTest {
         other.connect().use { c ->
             c.exec(
                 "INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT v, 'change', id, 'earlier change ' || v " +
-                    "FROM app.app_user, generate_series(2, 3) AS v WHERE username = 'aron.system'",
+                    "FROM app.app_user, generate_series((SELECT max(config_version) + 1 FROM app.cfg_version), (SELECT max(config_version) + 2 FROM app.cfg_version)) AS v WHERE username = 'aron.system'",
             )
+            val next = c.scalar("SELECT max(config_version) + 1 FROM app.cfg_version")!!
             SeedLoader.load(c)
             assertEquals(
-                listOf("4", "4", "4"),
+                listOf(next, next, next),
                 c.column("SELECT config_version FROM app.cfg_value WHERE key LIKE 'cfg.device.%' AND scope_type = 'global' ORDER BY key"),
             )
-            assertEquals("Dev database overrides (docs/24 s9.4, seed)", c.scalar("SELECT summary FROM app.cfg_version WHERE config_version = 4"))
+            assertEquals("Dev database overrides (docs/24 s9.4, seed)", c.scalar("SELECT summary FROM app.cfg_version WHERE config_version = $next"))
         }
     }
 

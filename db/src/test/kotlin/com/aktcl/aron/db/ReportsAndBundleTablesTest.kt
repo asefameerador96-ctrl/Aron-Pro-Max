@@ -45,6 +45,8 @@ class ReportsAndBundleTablesTest {
             assertEquals("23514", refused("UPDATE app.report_export SET status = 'done'"))             // done needs row_count and finished_at
             exec("UPDATE app.report_export SET status = 'done', row_count = 120, pii_included = true, finished_at = now(), blob_path = 'x/1.xlsx'")
             assertEquals("42501", refused("UPDATE app.report_export SET status = 'running'"))
+            assertEquals("42501", refused("UPDATE app.report_export SET row_count = 121"))                // finished: frozen
+            exec("UPDATE app.report_export SET expires_at = now() + interval '1 day'")                          // except its expiry
             assertEquals("42501", refused("UPDATE app.report_export SET filters = '{}'"))
             assertEquals("42501", refused("UPDATE app.report_export SET user_id = user_id + 1"))
             assertEquals("42501", refused("DELETE FROM app.report_export"))
