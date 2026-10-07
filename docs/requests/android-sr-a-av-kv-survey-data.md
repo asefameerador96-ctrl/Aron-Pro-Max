@@ -17,3 +17,6 @@ does not exist on the phone or in the contract:
 What android-sr-a builds once 1 to 3 exist: the AV (landscape player, no autoplay of downloads), KV (image, "বন্ধ করুন"), POSM
 survey (Q1, Q1.1 photo only if yes, the confirmation), in the fixed order AV, KV, survey, sale, each view logged offline, a
 missing asset skipped without blocking the sale. Until then these two rows stay open.
+
+## Update 2026-10-07 (backend-core)
+Items 1 and 3 already exist: the contract has Bundle `content` (ContentItem) and `surveys` (SurveyDef) plus `content_view` and `survey_response` record types, and the server fills both sections (lane/backend-core 07ff510d, BC-67). No points are posted (loyalty deferred). What is left is item 2, owned by android-core: the Room tables and the Wi-Fi asset cache. android-sr-a builds the screens when android-core reports them.
