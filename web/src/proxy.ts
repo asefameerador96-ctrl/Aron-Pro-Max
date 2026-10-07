@@ -34,7 +34,8 @@ export function proxy(req: NextRequest) {
   const writePage = /^\/admin\/([^/]+)\/(new|[0-9]+|[0-9a-f]{8}-[0-9a-f-]{27})(?:\/([^/]+))?\/?$/.exec(decoded);
   const entity = writePage?.[1] ? entityBySlug(writePage[1]) : undefined;
   const actionRoles = writePage?.[3] ? entity?.actions?.find((a) => a.key === writePage[3])?.writeRoles : undefined;
-  if (access === "ok" && session && entity && !(actionRoles ?? entity.writeRoles).includes(session.user.role)) {
+  const noCreate = writePage?.[2] === "new" && entity?.canCreate === false;
+  if (access === "ok" && session && entity && (noCreate || !(actionRoles ?? entity.writeRoles).includes(session.user.role))) {
     const l = req.cookies.get(LOCALE_COOKIE)?.value;
     return forbiddenPage(isLocale(l) ? l : DEFAULT_LOCALE);
   }

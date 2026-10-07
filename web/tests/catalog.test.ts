@@ -62,19 +62,19 @@ describe("SKUs", () => {
 });
 
 describe("code lists", () => {
-  it("registers the 17 contract lists, each with an English label", () => {
-    expect(CODE_LISTS).toHaveLength(17);
+  it("registers the three classification lists (reason tables and QC faults have their own pages), each with an English label", () => {
+    expect(CODE_LISTS.map((l) => l.key)).toEqual(["channel", "sub_channel", "geo_class"]);
     for (const l of CODE_LISTS) expect(en[l.labelKey], l.key).toBeTruthy();
   });
   const list = async (c: Record<string, string>, key: string) => (await (await fetch(`${process.env.ARON_API_BASE_URL}/v1/admin/code-lists`, { headers: { Authorization: `Bearer ${[...mock.state.access.keys()].pop()}` } })).json()).lists.find((l: { list_key: string }) => l.list_key === key).items as Record<string, unknown>[];
   it("adds an item, edits a label, retires with valid_to; the reason is audited", async () => {
     const c = await signIn("madmin1");
-    const items = await list(c, "qc_fault_type");
-    expect(items).toHaveLength(11);
-    const next = [...items.map((i) => (i.code === "wet" ? { ...i, label_bn: "ভেজা মাল", valid_to: "2026-12-31" } : i)), { code: "mould", label_en: "Mould", label_bn: "ছাতা", sort: 12, attrs: { group: "MKT", applies_to: "app" } }];
-    const res = await putList("qc_fault_type", { items: next, reason: REASON }, c);
+    const items = await list(c, "geo_class");
+    expect(items).toHaveLength(4);
+    const next = [...items.map((i) => (i.code === "hill" ? { ...i, label_bn: "পার্বত্য", valid_to: "2026-12-31" } : i)), { code: "char_land", label_en: "River char", label_bn: "চর", sort: 5 }];
+    const res = await putList("geo_class", { items: next, reason: REASON }, c);
     expect(res.status).toBe(200);
-    expect(await list(c, "qc_fault_type")).toHaveLength(12);
+    expect(await list(c, "geo_class")).toHaveLength(5);
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "code_list", reason: REASON });
   });
   it("refuses removing or renaming a saved code, duplicate codes, bad codes, missing labels and a short reason", async () => {

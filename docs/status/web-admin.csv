@@ -1,2 +1,7 @@
 row_id,size,started_utc,finished_utc,minutes,review_findings,notes
 N-011,M,2026-10-05T12:00Z,2026-10-05T12:25Z,25,3,"Checker found cursor truncation, If-Match not validated, write pages 200 not 403; all fixed with tests. Create cannot store the reason until the contract adds it (request filed)"
+F-ADM-001,S,2026-10-07T04:00Z,2026-10-07T05:10Z,70,15,"Geography CRUD (5 levels) + generator extensions (ref selects, path params, pattern); Sonnet checker: 15 findings fixed (ref cursor+failure, filters, digits, dates, 403 encoded paths, one-time panel labels, aria); create reason cannot be stored (request)"
+F-ADM-002,M,2026-10-07T05:10Z,2026-10-07T05:50Z,40,0,"Route CRUD with day mask, label apart from name, effective_from future-only; findings shared with F-ADM-001 batch"
+F-ADM-003,M,2026-10-07T05:10Z,2026-10-07T05:50Z,40,0,"Assignments: create, end action, overlap 409, past dates refused; findings shared with F-ADM-001 batch"
+F-ADM-007,M,2026-10-07T05:50Z,2026-10-07T06:20Z,30,0,"User CRUD, credential actions, one-time password panel, SUPERADMIN-only admin roles; findings shared with F-ADM-001 batch"
+
