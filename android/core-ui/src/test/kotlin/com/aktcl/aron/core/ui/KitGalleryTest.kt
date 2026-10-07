@@ -35,17 +35,19 @@ class KitGalleryTest {
     private fun assertNoTruncationAndTouchTargets() {
         val textNodes = rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult)).fetchSemanticsNodes()
         assertTrue(textNodes.size > 20)
-        textNodes.forEach { node ->
+        val overflowing = textNodes.mapNotNull { node ->
             val results = mutableListOf<TextLayoutResult>()
             node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
-            assertFalse("text overflows: ${node.config.getOrNull(SemanticsProperties.Text)}", results.first().hasVisualOverflow)
+            val r = results.firstOrNull() ?: return@mapNotNull null
+            if (r.hasVisualOverflow) "${node.config.getOrNull(SemanticsProperties.Text)} size=${node.size} lines=${r.lineCount} overflowW=${r.didOverflowWidth} overflowH=${r.didOverflowHeight}" else null
         }
+        assertTrue("text overflows: $overflowing", overflowing.isEmpty())
         val clickable = rule.onAllNodes(hasClickAction() or SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)).fetchSemanticsNodes()
         assertTrue(clickable.size >= 12)
         with(rule.density) {
-            clickable.forEach { n ->
-                assertTrue("touch target ${n.size} too small: ${n.config.getOrNull(SemanticsProperties.Text)}", n.size.height.toDp() >= 47.5.dp && n.size.width.toDp() >= 47.5.dp)
-            }
+            val small = clickable.filter { n -> n.size.height.toDp() < 47.5.dp || n.size.width.toDp() < 47.5.dp }
+                .map { "${it.config.getOrNull(SemanticsProperties.Text)} size=${it.size}" }
+            assertTrue("touch targets too small: $small", small.isEmpty())
         }
     }
 
