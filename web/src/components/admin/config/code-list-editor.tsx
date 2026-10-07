@@ -21,7 +21,9 @@ interface Props {
 export function CodeListEditor({ listKey, initial, attrs, today, canWrite }: Props) {
   const { t, problem } = useI18n();
   const router = useRouter();
-  const [items, setItems] = useState<CodeItem[]>(initial);
+  const [items, setItems] = useState<CodeItem[]>(() =>
+    initial.map((it) => ({ ...it, attrs: attrs.length ? { ...Object.fromEntries(attrs.map((a) => [a.name, a.options[0]?.value ?? ""])), ...(it.attrs ?? {}) } : it.attrs })),
+  );
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
@@ -40,6 +42,7 @@ export function CodeListEditor({ listKey, initial, attrs, today, canWrite }: Pro
     const bad = validateItems(items, attrs.map((a) => ({ name: a.name, options: a.options.map((o) => o.value) })));
     const e: Record<string, string> = {};
     for (const b of bad) e[`${b.index}.${b.field}`] = t(b.code === "duplicate" ? "cl.duplicate" : b.code === "invalid" ? "cl.code_invalid" : "error.field.required");
+    if (items.length === 0) e.items = t("cl.empty");
     if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
     setErrors(e);
     if (Object.keys(e).length) return;
@@ -91,7 +94,7 @@ export function CodeListEditor({ listKey, initial, attrs, today, canWrite }: Pro
                   <input aria-label={t("cal.col.name_bn")} value={it.label_bn ?? ""} disabled={!canWrite} maxLength={120} onChange={(e) => patch(i, { label_bn: e.target.value })} className={inputClass} />
                 </td>
                 <td className={cell}>
-                  <input aria-label={t("cl.sort")} value={String(it.sort)} disabled={!canWrite} inputMode="numeric" onChange={(e) => patch(i, { sort: Number(e.target.value.replace(/\D/g, "")) })} className={`${inputClass} w-20`} />
+                  <input aria-label={t("cl.sort")} value={String(it.sort)} disabled={!canWrite} inputMode="numeric" onChange={(e) => patch(i, { sort: Math.min(Number(e.target.value.replace(/\D/g, "").slice(0, 9)) || 0, 999_999_999) })} className={`${inputClass} w-20`} />
                 </td>
                 {attrs.map((a) => (
                   <td key={a.name} className={cell}>
@@ -103,8 +106,13 @@ export function CodeListEditor({ listKey, initial, attrs, today, canWrite }: Pro
                 ))}
                 <td className={cell}>
                   {it.valid_to ? <span className="text-slate-500">{t("cl.retired")}</span> : <span>{t("cl.active")}</span>}
-                  {canWrite ? (
-                    <button type="button" onClick={() => patch(i, { valid_to: it.valid_to ? null : today })} className="ml-2 rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100">
+                  {canWrite && isNew(i) ? (
+                    <button type="button" onClick={() => setItems((s) => s.filter((_, j) => j !== i))} className="ml-2 rounded border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50">
+                      {t("cl.discard")}
+                    </button>
+                  ) : null}
+                  {canWrite && !isNew(i) ? (
+                    <button type="button" onClick={() => patch(i, { valid_to: it.valid_to ? null : (it.valid_from ?? today) > today ? (it.valid_from ?? today) : today })} className="ml-2 rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100">
                       {t(it.valid_to ? "cl.revive" : "cl.retire")}
                     </button>
                   ) : null}
@@ -118,6 +126,7 @@ export function CodeListEditor({ listKey, initial, attrs, today, canWrite }: Pro
         <>
           <button type="button" onClick={addRow} disabled={items.length >= 100} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">{t("cl.add")}</button>
           <p className="text-xs text-slate-600">{t("cl.hint")}</p>
+          {errors.items ? <p role="alert" className="text-xs font-medium text-red-700">{errors.items}</p> : null}
           <ReasonField value={reason} onChange={setReason} error={errors.reason} id={`reason-${listKey}`} />
           {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{banner.text}</p> : null}
           <button type="button" onClick={save} disabled={busy} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
