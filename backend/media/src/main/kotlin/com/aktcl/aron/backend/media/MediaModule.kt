@@ -83,8 +83,8 @@ internal class MediaSas(private val d: MediaDeps) {
         }
         if (req.items.map { it.media_uuid }.toSet().size != req.items.size) throw invalid("/items", "a media uuid appears twice")
         val stored = d.db.jdbi.withHandle<Map<String, String>, Exception> { h ->
-            h.createQuery("SELECT client_uuid::text, encode(blob_sha256, 'hex') FROM app.media WHERE client_uuid = ANY(:u) AND status = 'stored' AND blob_sha256 IS NOT NULL")
-                .bindArray("u", UUID::class.java, req.items.map { UUID.fromString(it.media_uuid) })
+            h.createQuery("SELECT client_uuid::text, encode(blob_sha256, 'hex') FROM app.media WHERE client_uuid = ANY(:u) AND user_id = :me AND status = 'stored' AND blob_sha256 IS NOT NULL")
+                .bindArray("u", UUID::class.java, req.items.map { UUID.fromString(it.media_uuid) }).bind("me", p.userId)
                 .map { rs, _ -> rs.getString(1) to rs.getString(2) }.list().toMap()
         }
         val expires = d.clock.now().plusSeconds(VALID_S)
