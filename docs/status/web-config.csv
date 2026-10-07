@@ -19,6 +19,23 @@ F-ADM-049,S,2026-10-07T05:30Z,2026-10-07T06:00Z,0,0,
 F-ADM-030,M,2026-10-07T06:00Z,2026-10-07T06:30Z,30,7,checker: PII masking rewritten, paging cursor, fixed-record rules
 F-ADM-051,S,2026-10-07T06:00Z,2026-10-07T06:30Z,0,0,
 F-ADM-050,S,2026-10-07T06:10Z,2026-10-07T06:30Z,0,1,real-date check; ops dashboard (F-WEB-045) does not exist yet: same endpoint only
-F-ADM-039,L,2026-10-07T06:30Z,2026-10-07T07:00Z,30,pending,map is a placeholder without the Maps key
-N-045,L,2026-10-07T06:40Z,2026-10-07T07:10Z,30,pending,QR verified in tests; real phone enrolment is DEVICE-PENDING
-N-046,M,2026-10-07T06:50Z,2026-10-07T07:10Z,0,pending,
+F-ADM-039,L,2026-10-07T06:30Z,2026-10-07T07:00Z,30,10,map is a placeholder without the Maps key
+N-045,L,2026-10-07T06:40Z,2026-10-07T07:10Z,30,8,QR verified in tests; real phone enrolment is DEVICE-PENDING
+N-046,M,2026-10-07T06:50Z,2026-10-07T07:10Z,0,2,
+F-ADM-029,S,2026-10-07T07:30Z,2026-10-07T08:00Z,30,10,checker: void scope web_entry only, DSS advisory always, confirm, truncation
+F-ADM-052,S,2026-10-07T07:30Z,2026-10-07T08:00Z,0,2,checker: failed attendance report shown
+F-WEB-051,M,2026-10-07T07:20Z,2026-10-07T08:00Z,40,6,checker findings fixed
+F-ADM-023,S,2026-10-07T07:40Z,2026-10-07T08:10Z,30,5,checker: discard new row, attrs defaults, retire date, empty list
+F-ADM-060,M,2026-10-07T07:40Z,2026-10-07T08:10Z,0,0,same editor
+F-ADM-064,M,2026-10-07T08:20Z,2026-10-07T08:50Z,30,3,editor done; menu follows matrix for ADMIN roles only (request filed)
+F-ADM-055,S,2026-10-07T08:20Z,2026-10-07T08:50Z,0,3,checker: scheduled values, future-dated
+F-ADM-057,S,2026-10-07T08:00Z,2026-10-07T08:20Z,20,1,SUPPORT may grant (docs/24 s8.5)
+F-ADM-067,M,2026-10-07T08:00Z,2026-10-07T08:20Z,0,1,future-date min
+F-ADM-025,S,2026-10-07T08:00Z,2026-10-07T08:20Z,0,1,add officer
+F-ADM-036,S,2026-10-07T08:00Z,2026-10-07T08:30Z,30,12,DEPENDENCY-WAIT: exact taka parse done; no backend route or ledger yet
+F-WEB-063,S,2026-10-07T08:00Z,2026-10-07T08:20Z,0,1,report key whitelist
+F-WEB-050,L,2026-10-07T08:30Z,2026-10-07T09:10Z,40,5,checker: unlisted SKU lines kept, Bangla digits, stale reason
+F-WEB-052,M,2026-10-07T08:50Z,2026-10-07T09:10Z,0,2,fault order, exclusive valid_to
+F-WEB-060,S,2026-10-07T08:50Z,2026-10-07T09:10Z,0,0,
+F-ADM-024,M,2026-10-07T08:50Z,2026-10-07T09:10Z,0,1,
+F-ADM-046,L,2026-10-07T09:10Z,2026-10-07T09:20Z,10,0,hub from web-admin; calendar link added

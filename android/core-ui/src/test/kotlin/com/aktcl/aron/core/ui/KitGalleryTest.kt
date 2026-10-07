@@ -12,6 +12,15 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasLongClickAction
+import androidx.compose.ui.test.or
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.TextLayoutResult
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,6 +33,24 @@ import org.robolectric.annotation.Config
 class KitGalleryTest {
     @get:Rule val rule = createComposeRule()
 
+    /** No text may overflow its box, and every clickable node is at least 48 dp (the two N-023 acceptance clauses). */
+    private fun assertNoTruncationAndTouchTargets() {
+        val textNodes = rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult)).fetchSemanticsNodes()
+        assertTrue(textNodes.size > 20)
+        textNodes.forEach { node ->
+            val results = mutableListOf<TextLayoutResult>()
+            node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+            assertFalse("text overflows: ${node.config.getOrNull(SemanticsProperties.Text)}", results.first().hasVisualOverflow)
+        }
+        val clickable = rule.onAllNodes(hasClickAction() or hasLongClickAction()).fetchSemanticsNodes()
+        assertTrue(clickable.size >= 12)
+        with(rule.density) {
+            clickable.forEach { n ->
+                assertTrue("touch target ${n.size} too small: ${n.config.getOrNull(SemanticsProperties.Text)}", n.size.height.toDp() >= 47.5.dp && n.size.width.toDp() >= 47.5.dp)
+            }
+        }
+    }
+
     private fun render(language: AppLanguage) = rule.setContent {
         CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 1.3f)) {
             AronTheme(language, dark = false) { KitGallery() }
@@ -34,8 +61,9 @@ class KitGalleryTest {
         render(AppLanguage.BN)
         rule.onNodeWithText("কিট গ্যালারি").assertExists()
         rule.onNodeWithText("সংরক্ষণ").assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithText("বিক্রয় জমা দিতে চেপে ধরুন").assertHeightIsAtLeast(48.dp)
+        rule.onNodeWithText("বিক্রয় জমা দিতে চেপে ধরুন").assertHeightIsAtLeast(56.dp)
         rule.onNodeWithText("১২").assertExists()
+        assertNoTruncationAndTouchTargets()
     }
 
     @Test fun english() {
@@ -43,6 +71,7 @@ class KitGalleryTest {
         rule.onNodeWithText("Kit gallery").assertExists()
         rule.onNodeWithText("Save").assertHeightIsAtLeast(48.dp)
         rule.onNodeWithText("12").assertExists()
+        assertNoTruncationAndTouchTargets()
     }
 
     /** The accessibility path (long-click action) confirms without holding; the timed hold is a device check. */

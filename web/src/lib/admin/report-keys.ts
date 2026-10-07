@@ -1,0 +1,4 @@
+import type { components } from "@/contract/types";
+
+/** The report registry keys of this build (contract ReportKey); a key outside it is not forwarded to the API. */
+export const REPORT_KEYS = ["std-memo", "sr-efficiency", "route-std", "route-memo", "route-bsr-cpr", "data-entry-log", "final-submit-log", "final-submit-status", "by-outlet", "by-outlet-by-day", "gigo", "attendance", "discount", "online-offline", "tso-top-sheet", "daily-tracking", "sr-outlets", "leaderboard", "suspicious-location", "sync-health", "ds-rrs", "dss", "amo-call", "dues-ageing", "settlement", "qc-report", "stock-summary", "memo-number-gaps", "sales-summary", "task-planner", "by-route-geo-capture", "free-sample", "target-allocation", "route-qc", "geofence-calibration", "astha", "astha-gift-choice", "campaign-gift-redemption", "diamond-league", "superstar-campaign", "retailer-list", "sku-list"] as const satisfies readonly components["schemas"]["ReportKey"][];

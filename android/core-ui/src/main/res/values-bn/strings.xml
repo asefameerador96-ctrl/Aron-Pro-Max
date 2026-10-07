@@ -20,4 +20,14 @@
     <string name="core_ui_kit_gallery_tile_stock">স্টক</string>
     <string name="core_ui_kit_gallery_tile_sale">বিক্রয়</string>
     <string name="core_ui_kit_gallery_tile_task">টাস্ক ডেলিগেশন</string>
+    <string name="core_ui_chip_offline">অফলাইন</string>
+    <string name="core_ui_chip_syncing">সিঙ্ক হচ্ছে</string>
+    <string name="core_ui_chip_synced">সিঙ্ক হয়েছে</string>
+    <string name="core_ui_chip_waiting">%1$s টি অপেক্ষায়</string>
+    <string name="core_ui_kit_gallery_info">তথ্য দেখুন</string>
+    <string name="core_ui_kit_gallery_info_title">এই ফোনে সংরক্ষিত</string>
+    <string name="core_ui_kit_gallery_info_msg">নেটওয়ার্ক ফিরলে আপনার বিক্রয় পাঠানো হবে।</string>
+    <string name="core_ui_kit_gallery_ok">ঠিক আছে</string>
+    <string name="core_ui_kit_gallery_empty_action">রুট নামান</string>
+    <string name="core_ui_kit_gallery_disabled">পাওয়া যাচ্ছে না</string>
 </resources>

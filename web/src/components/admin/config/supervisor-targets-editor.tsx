@@ -6,21 +6,33 @@ import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
 import type { SupervisorTarget } from "@/lib/admin/types";
+import { digitsOnly } from "@/lib/admin/taka";
 import { inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 
 const FIELDS = ["total_call_target", "control_call_target", "joint_call_target", "daily_call_target"] as const;
 type F = (typeof FIELDS)[number];
 
-export function SupervisorTargetsEditor({ month, initial, names, canWrite }: { month: string; initial: SupervisorTarget[]; names: Record<string, string>; canWrite: boolean }) {
+export function SupervisorTargetsEditor({ month, initial: stored, names, canWrite }: { month: string; initial: SupervisorTarget[]; names: Record<string, string>; canWrite: boolean }) {
   const { t, problem } = useI18n();
   const router = useRouter();
-  const [rows, setRows] = useState<Record<number, Record<F, string>>>(() => Object.fromEntries(initial.map((r) => [r.user_id, { total_call_target: String(r.total_call_target), control_call_target: String(r.control_call_target), joint_call_target: String(r.joint_call_target), daily_call_target: r.daily_call_target == null ? "" : String(r.daily_call_target) }])));
+  const [initial, setInitial] = useState<SupervisorTarget[]>(stored);
+  const [newId, setNewId] = useState("");
+  const [rows, setRows] = useState<Record<number, Record<F, string>>>(() => Object.fromEntries(stored.map((r) => [r.user_id, { total_call_target: String(r.total_call_target), control_call_target: String(r.control_call_target), joint_call_target: String(r.joint_call_target), daily_call_target: r.daily_call_target == null ? "" : String(r.daily_call_target) }])));
   const [reason, setReason] = useState("");
   const [batch, setBatch] = useState(() => crypto.randomUUID());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+
+  function addOfficer() {
+    if (!/^[1-9]\d{0,14}$/.test(newId) || initial.some((r) => r.user_id === Number(newId))) return setErrors({ add: t("error.field.invalid") });
+    const id = Number(newId);
+    setInitial((s) => [...s, { user_id: id, month, total_call_target: 0, control_call_target: 0, joint_call_target: 0, daily_call_target: null }]);
+    setRows((s) => ({ ...s, [id]: { total_call_target: "0", control_call_target: "0", joint_call_target: "0", daily_call_target: "" } }));
+    setNewId("");
+    setErrors({});
+  }
 
   async function save() {
     const e: Record<string, string> = {};
@@ -79,7 +91,7 @@ export function SupervisorTargetsEditor({ month, initial, names, canWrite }: { m
                 {FIELDS.map((f) => (
                   <td key={f} className={cell}>
                     <input aria-label={t(`st.col.${f}` as "st.col.total_call_target")} value={rows[r.user_id]![f]} disabled={!canWrite} inputMode="numeric" onChange={(ev) => setRows((s) => ({ ...s, [r.user_id]: { ...s[r.user_id]!, [f]: ev.target.value } }))} className={`${inputClass} w-24`} />
-                    {errors[`${r.user_id}.${f}`] ? <p role="alert" className="text-xs text-red-700">{errors[`${r.user_id}.${f}`]}</p> : null}
+                    {errors[`${r.user_id}.${f}`] ? <p role="alert" className="text-xs text-[var(--danger)]">{errors[`${r.user_id}.${f}`]}</p> : null}
                   </td>
                 ))}
               </tr>
@@ -88,10 +100,20 @@ export function SupervisorTargetsEditor({ month, initial, names, canWrite }: { m
         </table>
       </div>
       {canWrite ? (
+        <div className="flex items-end gap-2" data-testid="add-officer">
+          <label className="text-sm">
+            <span className="mb-1 block">{t("st.add_user")}</span>
+            <input aria-label={t("st.add_user")} name="user_id" value={newId} inputMode="numeric" onChange={(e) => setNewId(digitsOnly(e.target.value))} className={`${inputClass} w-32`} />
+          </label>
+          <button type="button" onClick={addOfficer} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">{t("st.add")}</button>
+          {errors.add ? <p role="alert" className="text-xs text-[var(--danger)]">{errors.add}</p> : null}
+        </div>
+      ) : null}
+      {canWrite ? (
         <>
           <ReasonField value={reason} onChange={setReason} error={errors.reason} />
-          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{banner.text}</p> : null}
-          <button type="button" onClick={save} disabled={busy || initial.length === 0} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
+          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>{banner.text}</p> : null}
+          <button type="button" onClick={save} disabled={busy || initial.length === 0} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
         </>
       ) : null}
     </div>
