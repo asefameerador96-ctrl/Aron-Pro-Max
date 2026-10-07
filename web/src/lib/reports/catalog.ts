@@ -29,6 +29,16 @@ export interface WebReport {
   grouping?: "total" | "day";
   /** Exports are allowed. Defaults to true; every export is a server-logged `xlsx` call. */
   excel?: boolean;
+  /** The report offers "Download PDF" (an export job, always 202). */
+  pdf?: boolean;
+  /** Show one table per distinct value of this column (QC: Market and Warehouse apart). */
+  splitBy?: string;
+  /** Link a cell to another report filtered by an id carried in the row (DSS: route to outlet-wise sales). */
+  drill?: { column: string; idColumn: string; to: string; param: "route" | "zone" | "territory" };
+  /** A bar chart over two columns, drawn only when both exist in the result (histograms and trends). */
+  chart?: { label: string; value: string };
+  /** The geo-validation summary strip (mock, suspicious and force-sale counts) above the table. */
+  geoStrip?: boolean;
 }
 
 const RANGE = ["period", "geo"] as const satisfies readonly FilterId[];
@@ -53,15 +63,15 @@ export const WEB_REPORTS: readonly WebReport[] = [
   { row: "F-WEB-027", slug: "tso-top-sheet", key: "tso-top-sheet", titleKey: "report.tso_top_sheet", area: "field_force", filters: RANGE },
   { row: "F-WEB-031", slug: "sr-outlets", key: "sr-outlets", titleKey: "report.sr_outlets", area: "outlet", filters: RANGE },
   { row: "F-WEB-036", slug: "leaderboard", key: "leaderboard", titleKey: "report.leaderboard", area: "field_force", filters: ["period", "geo", "product_type", "location"] },
-  { row: "F-WEB-044", slug: "suspicious-location", key: "suspicious-location", titleKey: "report.suspicious_location", area: "geo", filters: RANGE },
+  { row: "F-WEB-044", slug: "suspicious-location", key: "suspicious-location", titleKey: "report.suspicious_location", area: "geo", filters: [...RANGE, "date_grouping"], grouping: "day", geoStrip: true, chart: { label: "business_date", value: "suspicious" } },
   { row: "F-WEB-053", slug: "ds-rrs", key: "ds-rrs", titleKey: "report.ds_rrs", area: "finance", filters: DAY, singleDate: true, print: true },
   { row: "F-WEB-054", slug: "amo-call", key: "amo-call", titleKey: "report.amo_call", area: "field_force", filters: [...RANGE, "date_grouping"], grouping: "day" },
-  { row: "F-WEB-055", slug: "dss", key: "dss", titleKey: "report.dss", area: "sales", filters: [...RANGE, "category", "products", "sub_channels", "location"] },
+  { row: "F-WEB-055", slug: "dss", key: "dss", titleKey: "report.dss", area: "sales", filters: [...RANGE, "category", "products", "sub_channels", "location"], drill: { column: "route_name", idColumn: "route_id", to: "by-outlet", param: "route" } },
   { row: "F-WEB-056", slug: "route-memo", key: "route-memo", titleKey: "report.route_memo", area: "sales", filters: [...RANGE, "category", "products"] },
-  { row: "F-WEB-061", slug: "qc", key: "qc-report", titleKey: "report.qc", area: "ops", filters: RANGE },
+  { row: "F-WEB-061", slug: "qc", key: "qc-report", titleKey: "report.qc", area: "ops", filters: RANGE, pdf: true, splitBy: "source" },
   { row: "F-WEB-062", slug: "route-qc", key: "route-qc", titleKey: "report.route_qc", area: "ops", filters: RANGE },
   { row: "F-WEB-064", slug: "memo-number-gaps", key: "memo-number-gaps", titleKey: "report.memo_gaps", area: "ops", filters: RANGE },
-  { row: "F-WEB-067", slug: "geofence-calibration", key: "geofence-calibration", titleKey: "report.geofence_calibration", area: "geo", filters: RANGE },
+  { row: "F-WEB-067", slug: "geofence-calibration", key: "geofence-calibration", titleKey: "report.geofence_calibration", area: "geo", filters: RANGE, chart: { label: "distance_band_m", value: "visits" } },
 ];
 
 export function reportBySlug(slug: string): WebReport | undefined {

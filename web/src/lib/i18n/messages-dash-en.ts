@@ -257,4 +257,9 @@ export const dashEn = {
   "routes.col.amo": "AMO",
   "routes.col.sr": "SR",
   "routes.col.visit": "Visit",
+
+  "report.pdf": "Download PDF",
+  "report.chart": "Chart",
+  "report.chart_note": "The same figures are in the table below.",
+  "geo.visits": "Visits",
 } as const;
