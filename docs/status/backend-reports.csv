@@ -13,3 +13,5 @@ N-048,L,2026-10-07T04:45Z,2026-10-07T05:22Z,~90,4 fixed (outlet scope leak, fiel
 F-SYS-026,M,2026-10-07T05:35Z,2026-10-07T05:22Z,~60,"7 found by Opus: 6 fixed, 1 to contract (docs/requests)",sync-health + login-submit
 F-API-028,M,-,-,0,-,quarantine list + discard/return_to_device; accept via hook (request)
 N-056,M,2026-10-07T06:05Z,2026-10-07T05:22Z,~35,pending Opus checker,admission control
+N-051,L,2026-10-07T07:00Z,2026-10-07T05:36Z,~60,pending Opus checker,batch B (12 handlers) + final-submit-status + sales-summary (F-API-017b) + leaderboard (F-API-013)
+N-056,M,2026-10-07T06:05Z,2026-10-07T05:36Z,~50,3 (path normalisation bypass; blocking wait; throwing probe) fixed,admission control

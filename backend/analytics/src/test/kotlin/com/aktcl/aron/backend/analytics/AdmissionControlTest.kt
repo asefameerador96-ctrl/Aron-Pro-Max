@@ -17,6 +17,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.asCoroutineDispatcher
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -87,6 +89,54 @@ class AdmissionControlTest {
         app(control, AtomicInteger()) {
             repeat(5) { assertEquals(HttpStatusCode.OK, client.post("/v1/sync/batch").status) }
             repeat(5) { assertEquals(HttpStatusCode.OK, client.get("/v1/dashboards/summary").status) }
+        }
+    }
+
+    // ---- checker (N-056) ----
+
+    /** A variant spelling of the batch path that Ktor routing still delivers to the batch handler must be admitted as INGEST, not waved through as OTHER. */
+    @Test
+    fun checker_variantBatchPathsReachTheHandlerButBypassIngestAdmission() {
+        val control = AdmissionControl(ingestCapacity = 1, readCapacity = 4, ingestQueueWaitMs = 0)
+        val processed = AtomicInteger()
+        val held = kotlinx.coroutines.runBlocking { control.admit(LoadClass.INGEST) }   // the only ingest slot is busy: every further batch must be refused
+        val bypassed = mutableListOf<String>()
+        app(control, processed) {
+            for (p in listOf("/v1/sync/batch/", "/v1/sync/%62atch", "/v1//sync/batch", "/v1/sync/batch/.", "/v1/sync/./batch")) {
+                val before = processed.get()
+                client.post(p)
+                if (processed.get() > before) bypassed += p
+            }
+        }
+        held()
+        assertTrue(bypassed.isEmpty(), "batch handler ran with no ingest slot free via: $bypassed")
+    }
+
+    /** The ingest buffer wait is a blocking Semaphore.tryAcquire inside a coroutine interceptor: it parks the carrier thread, so every other call on it (health included) stalls. */
+    @Test
+    fun checker_ingestBufferWaitBlocksTheThreadAndStallsHealthOnIt() {
+        val control = AdmissionControl(ingestCapacity = 1, readCapacity = 4, ingestQueueWaitMs = 800)
+        val held = kotlinx.coroutines.runBlocking { control.admit(LoadClass.INGEST) }
+        val single = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val dispatcher = single.asCoroutineDispatcher()
+        try {
+            val healthLatencyMs = kotlinx.coroutines.runBlocking(dispatcher) {
+                val waiter = launch { runCatching { control.admit(LoadClass.INGEST) } }   // a queued batch
+                val t0 = System.nanoTime()
+                val health = async { control.admit(LoadClass.OTHER)(); (System.nanoTime() - t0) / 1_000_000 }
+                val ms = health.await(); waiter.join(); ms
+            }
+            assertTrue(healthLatencyMs < 200, "a /health on the same thread waited $healthLatencyMs ms behind a queued batch")
+        } finally { held(); dispatcher.close() }
+    }
+
+    /** A failing pool probe must not turn the dashboards into 500s; it should fail open or shed with 429. */
+    @Test
+    fun checker_aThrowingDbWaitingProbeTurnsDashboardsInto500() {
+        val control = AdmissionControl(ingestCapacity = 8, readCapacity = 4, dbWaiting = { throw IllegalStateException("pool not started") })
+        app(control, AtomicInteger()) {
+            val s = client.get("/v1/dashboards/summary").status
+            assertTrue(s == HttpStatusCode.OK || s == HttpStatusCode.TooManyRequests, "dashboard answered $s")
         }
     }
 }
