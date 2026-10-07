@@ -21,3 +21,9 @@ Me:
       description: Whether the caller may see outlet phone and owner columns.
     mfa_enabled:
       type: boolean
+    menus:
+      type: array
+      maxItems: 200
+      description: The caller's role row of cfg.web.menu_by_role, resolved now (same mapping as GET /v1/admin/permissions).
+      items:
+        $ref: '#/components/schemas/MenuPermission'

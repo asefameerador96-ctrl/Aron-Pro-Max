@@ -40,3 +40,19 @@ DeviceOtp:
     attempts:
       type: integer
       minimum: 0
+    employee_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+      description: Field Force ID (app_user.employee_code).
+    zone_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    zone_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120

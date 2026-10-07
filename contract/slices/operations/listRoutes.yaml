@@ -13,6 +13,14 @@ operation:
   - $ref: '#/components/parameters/Search'
   - $ref: '#/components/parameters/Limit'
   - $ref: '#/components/parameters/Cursor'
+  - in: query
+    name: include
+    required: false
+    description: '`assignees` adds `assignees` (the users assigned to the route) to every item.'
+    schema:
+      type: string
+      enum:
+      - assignees
   responses:
     '200':
       description: Page of routes.
