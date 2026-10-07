@@ -59,6 +59,7 @@ class BatchAcceptanceTest {
     private var outletId = 0L
     private var otherOutletId = 0L
     private val skus = mutableListOf<Pair<Long, Long>>() // sku id to outlet price
+    private val memoSeq = java.util.concurrent.atomic.AtomicInteger(100)
 
     @BeforeAll
     fun setUp() {
@@ -131,7 +132,7 @@ class BatchAcceptanceTest {
     }
 
     /** A sale family: visit (with fix and verdict), memo with two lines, visit close. */
-    private fun saleFamily(outlet: Long = outletId, memoNo: String = "sr1001-270103-${(100..999).random()}"): List<JsonObject> {
+    private fun saleFamily(outlet: Long = outletId, memoNo: String = "sr1001-270103-${memoSeq.incrementAndGet()}"): List<JsonObject> {
         val visit = uuid(); val memo = uuid()
         val (s1, p1) = skus[0]; val (s2, p2) = skus[1]
         val g1 = 20 * p1; val g2 = 10 * p2; val gross = g1 + g2
@@ -249,6 +250,19 @@ class BatchAcceptanceTest {
         assertEquals("payload_conflict", r["acks"]!!.jsonArray[0].jsonObject["code"]!!.jsonPrimitive.content)
         assertEquals(1, count("SELECT count(*) FROM app.visit WHERE client_uuid = '${visit["client_uuid"]!!.jsonPrimitive.content}' AND sequence_no = 1"))
         assertEquals(1, count("SELECT count(*) FROM app.sync_quarantine WHERE code = 'payload_conflict' AND client_uuid = '${visit["client_uuid"]!!.jsonPrimitive.content}'"))
+    }
+
+    @Test
+    fun aReusedMemoNumberUnderAnotherUuidIsQuarantinedNeverAckedAsDuplicate() = testApplication {
+        app()
+        val token = client.token()
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(saleFamily(memoNo = "sr1001-270103-0999"))).bodyAsText())))
+        val second = saleFamily(memoNo = "sr1001-270103-0999")
+        val r = json(client.send(token, batch(second)).bodyAsText())
+        val memoAck = r["acks"]!!.jsonArray[1].jsonObject
+        assertEquals("quarantined", memoAck["status"]!!.jsonPrimitive.content, r.toString())
+        assertEquals("memo_no_duplicate", memoAck["code"]!!.jsonPrimitive.content)
+        assertEquals(1, count("SELECT count(*) FROM app.sync_quarantine WHERE code = 'memo_no_duplicate' AND client_uuid = '${second[1]["client_uuid"]!!.jsonPrimitive.content}'"))
     }
 
     @Test

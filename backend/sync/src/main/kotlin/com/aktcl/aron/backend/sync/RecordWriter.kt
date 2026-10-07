@@ -88,7 +88,11 @@ object RecordWriter {
         fix["is_mock"]?.let { put("fix_is_mock", it) }
     }
 
-    /** Generic insert over the shared columns; an existing row with this client_uuid is [Result.AlreadyThere]. */
+    /**
+     * Generic insert over the shared columns. Only a conflict on this record's own client_uuid is
+     * [Result.AlreadyThere]; any other unique violation (a reused memo number, a second check-in, a second gift photo)
+     * is never swallowed: the record is refused with its outcome code and kept for review (docs/24 s4.5).
+     */
     private fun insert(h: Handle, table: String, clientUuid: String, doc: Map<String, JsonElement>): Result {
         val cols = columns(h, table).let { tc -> doc.keys.filter { it in tc } }
         require(cols.isNotEmpty()) { "no columns for $table" }
@@ -96,16 +100,25 @@ object RecordWriter {
         val sp = "ins"
         h.savepoint(sp)
         val id = try {
-            h.createQuery(
-                "INSERT INTO app.$table ($list) SELECT $list FROM jsonb_populate_record(NULL::app.$table, CAST(:doc AS jsonb)) ON CONFLICT DO NOTHING RETURNING id",
-            ).bind("doc", JsonObject(doc).toString()).mapTo(Long::class.java).findOne().orElse(null).also { h.release(sp) }
+            h.createQuery("INSERT INTO app.$table ($list) SELECT $list FROM jsonb_populate_record(NULL::app.$table, CAST(:doc AS jsonb)) RETURNING id")
+                .bind("doc", JsonObject(doc).toString()).mapTo(Long::class.java).one().also { h.release(sp) }
         } catch (e: Exception) {
-            val state = (e as? SQLException)?.sqlState ?: (e.cause as? SQLException)?.sqlState
-            // app.client_uuid_once refuses a client_uuid already stored under another business date (partitioned tables).
-            if (state == "23505") { h.rollbackToSavepoint(sp); return Result.AlreadyThere(existingId(h, table, clientUuid)) }
-            throw e
+            val sql = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()
+            if (sql?.sqlState != "23505") throw e
+            h.rollbackToSavepoint(sp)
+            existingId(h, table, clientUuid)?.let { return Result.AlreadyThere(it) }
+            val constraint = Regex("unique constraint \"([^\"]+)\"").find(sql.message.orEmpty())?.groupValues?.get(1) ?: "unknown"
+            return Result.Refused(uniqueCode(table, constraint), "unique violation on $constraint")
         }
-        return if (id != null) Result.Stored(id) else Result.AlreadyThere(existingId(h, table, clientUuid))
+        return Result.Stored(id)
+    }
+
+    /** Outcome code of a unique violation that is not this record's own client_uuid. */
+    internal fun uniqueCode(table: String, constraint: String): RecordOutcomeCode = when {
+        table == "memo" && "memo_no" in constraint -> RecordOutcomeCode.MEMO_NO_DUPLICATE
+        table == "attendance_event" -> RecordOutcomeCode.ATTENDANCE_DUPLICATE
+        table == "gift_photo" -> RecordOutcomeCode.GIFT_PHOTO_EXISTS
+        else -> RecordOutcomeCode.CONTENT_DUPLICATE
     }
 
     private fun existingId(h: Handle, table: String, clientUuid: String): Long? =
