@@ -9,6 +9,7 @@ import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.RecordHandlers
 import com.aktcl.aron.backend.platform.ResponseJson
 import com.aktcl.aron.backend.platform.ServerConfig
+import com.aktcl.aron.backend.platform.isTransientDbFailure
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.ProblemCode
@@ -104,7 +105,7 @@ class IngestService(
     }
 
     /** Per-batch caches. */
-    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant) {
+    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null) {
         /** Handlers' after-commit calls of the current family, by record index (dropped when the record rolls back). */
         val afterCommit = ArrayList<Triple<Int, com.aktcl.aron.backend.platform.RecordHandler, IngestRecord>>()
         /** Route-days this batch touched (F-SYS-016), settled at its end. */
@@ -132,7 +133,7 @@ class IngestService(
 
         replayOrClaim(up, req, recs.size, fingerprint, now)?.let { return it }
 
-        val ctx = Ctx(up, req.batch_uuid, now)
+        val ctx = Ctx(up, req.batch_uuid, now, resyncWindow(req.trigger, now))
         val outcomes = arrayOfNulls<Outcome>(recs.size)
         var i = 0
         while (i < recs.size) {
@@ -141,9 +142,23 @@ class IngestService(
             val family = recs.subList(i, j + 1)
             ctx.arith = MemoChecks.familyMismatches(family.map { it.json }) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
             ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
-            ctx.afterCommit.clear()
             try {
-                db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+                // AUD-REL-02: a transient failure (deadlock, serialization, failover, pool timeout) retries the family
+                // in a fresh transaction, at most three tries within 10 s; every record upserts by its client UUID and a
+                // failed try rolls back whole, so a retry can never store a record twice.
+                var attempt = 0
+                val familyStart = clock.now()
+                while (true) {
+                    ctx.afterCommit.clear()
+                    try {
+                        db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+                        break
+                    } catch (e: Exception) {
+                        if (++attempt >= FAMILY_TRIES || !isTransientDbFailure(e) || clock.now().isAfter(familyStart.plusMillis(FAMILY_RETRY_BUDGET_MS))) throw e
+                        log.warn("family retry batch_uuid=${req.batch_uuid} family=${recs[i].family} attempt=$attempt: ${e.javaClass.simpleName}")
+                        Thread.sleep(java.util.concurrent.ThreadLocalRandom.current().nextLong(20, 101))
+                    }
+                }
                 // Committed: only now may a handler reach outside the database.
                 ctx.afterCommit.forEach { (_, hd, rec) -> runCatching { hd.afterCommit(rec) }.onFailure { log.warn("afterCommit failed type=${rec.type}", it) } }
             } catch (e: Exception) {
@@ -234,7 +249,8 @@ class IngestService(
      * One record in its own savepoint (poison-row isolation, F-SYS-048): a value the database refuses (SQLSTATE class
      * 22 or 23) is a final `schema_invalid`; any other failure is `server_error`, retryable and parked, so the phone
      * resends it and skips ahead after `cfg.sync.family_skip_after` tries. The other records of the family and the
-     * batch go on. Only when the savepoint itself cannot be rolled back does the family fail as a whole.
+     * batch go on. A transient database failure, or a savepoint that cannot be rolled back, fails the family as a whole
+     * (retried in a fresh transaction, AUD-REL-02).
      */
     private fun processInSavepoint(h: Handle, ctx: Ctx, r: Rec): Outcome {
         val sp = "rec_${r.index}"
@@ -244,6 +260,8 @@ class IngestService(
         } catch (e: Exception) {
             ctx.afterCommit.removeAll { it.first == r.index }
             if (e is ApiProblem) throw e
+            // A transient failure is not the record's fault: the family is retried whole (AUD-REL-02).
+            if (isTransientDbFailure(e)) throw e
             h.rollbackToSavepoint(sp)
             val state = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()?.sqlState ?: ""
             if (state.startsWith("22") || state.startsWith("23")) {
@@ -304,8 +322,23 @@ class IngestService(
         // 3. Business-date window (s3.8 item 4): too old or in the future is quarantined, never dropped.
         val captured = Instant.parse(env.str("captured_at")!!)
         // A released signature quarantine was inside the window when first received: it is not too old now (item 2).
-        if ((!released && bd.isBefore(ctx.today.minusDays(ctx.backdateDays))) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
+        val tooOld = !released && bd.isBefore(ctx.today.minusDays(ctx.backdateDays))
+        // F-SYS-089: after a failover or restore the phone re-sends rows the lost lineage had acknowledged (trigger
+        // `resync`, docs/24 s4.8). One captured before the new lineage started may be older than the window: it is
+        // accepted and flagged `resync_late`, never quarantined (idempotency by client_uuid keeps the re-send safe).
+        val resyncLate = tooOld && ctx.resync?.let { w -> !captured.isAfter(w.startedAt) && !bd.isBefore(w.oldestDate) } == true
+        if ((tooOld && !resyncLate) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, "business_date $bd, today ${ctx.today}")
+        }
+        if (resyncLate) {
+            // Until db stores the flag (docs/requests/backend-core-resync-late-flag.md) it is a structured log line.
+            log.warn("resync_late client_uuid=${r.clientUuid} type=${r.type} business_date=$bd user=${ctx.up.userId} batch_uuid=${ctx.batchUuid}")
+        }
+
+        // 3b. A check-out before cfg.day.checkout_earliest_time (Dhaka, by the user's role and home geography) is held
+        // for review, never dropped (s4.5 `checkout_too_early`; the phone enforces the same value offline, the server re-checks).
+        if (r.type == "attendance_event" && payload.str("kind") == "check_out" && checkoutTooEarly(h, ctx.up, captured)) {
+            return quarantine(h, ctx, r, bd, RecordOutcomeCode.CHECKOUT_TOO_EARLY, "check-out at ${captured.atZone(DHAKA).toLocalTime()} Dhaka")
         }
 
         // 4. References that must exist (unknown ids are final rejections, s4.5).
@@ -792,7 +825,60 @@ class IngestService(
         Resolution(rs.getString(1), rs.getString(2), rs.getString(3), rs.getObject(4, OffsetDateTime::class.java).toInstant().wire())
     }.list()
 
+    /**
+     * F-SYS-089: the re-send allowance after a failover or restore, for a `resync` or `digest_resend` batch (the digest
+     * re-send can come first, s4.8) while the new generation is young: until `cfg.sync.resync_window_h` +
+     * `cfg.sync.resync_jitter_s` + a day after it started. A row may be as old as the lost lineage could have accepted:
+     * acked at the earliest at max(lost_after_utc, started_at - resync window), then inside `cfg.sync.max_backdate_days`.
+     * Read once per batch, before any family transaction (no second connection inside one).
+     */
+    private fun resyncWindow(trigger: String, now: Instant): ResyncWindow? {
+        if (trigger != "resync" && trigger != "digest_resend") return null
+        val windowH = runCatching { config.int("cfg.sync.resync_window_h") }.getOrDefault(24).coerceIn(1, 72).toLong()
+        val jitterS = runCatching { config.int("cfg.sync.resync_jitter_s") }.getOrDefault(900).coerceIn(0, 3600).toLong()
+        val backdate = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
+        val gen = runCatching {
+            db.jdbi.withHandle<Pair<Instant, Instant?>?, Exception> { h ->
+                h.createQuery("SELECT started_at, lost_after_utc FROM app.server_generation WHERE is_current AND kind <> 'created'")
+                    .map { rs, _ -> rs.getObject(1, OffsetDateTime::class.java).toInstant() to rs.getObject(2, OffsetDateTime::class.java)?.toInstant() }
+                    .findOne().orElse(null)
+            }
+        }.getOrNull() ?: return null
+        val (startedAt, lostAfter) = gen
+        if (now.isAfter(startedAt.plusSeconds(windowH * 3600 + jitterS + 86_400))) return null
+        val earliestAck = maxOf(lostAfter ?: Instant.MIN, startedAt.minusSeconds(windowH * 3600))
+        return ResyncWindow(startedAt, BusinessDate.of(earliestAck.toEpochMilli()).toJavaLocalDate().minusDays(backdate))
+    }
+
+    private data class ResyncWindow(val startedAt: Instant, val oldestDate: LocalDate)
+
+    /** True when [captured] (Dhaka time of day) is before the user's `cfg.day.checkout_earliest_time` (inclusive bound). */
+    private fun checkoutTooEarly(h: Handle, up: Uploader, captured: Instant): Boolean {
+        val geo = h.createQuery(
+            """
+            SELECT (SELECT ordinal FROM app.role_def WHERE role = u.role) AS role_ord, z.id AS zone_id, t.id AS territory_id, d.id AS division_id, d.wing_id
+            FROM app.app_user u LEFT JOIN app.zone z ON z.id = u.home_zone_id LEFT JOIN app.territory t ON t.id = z.territory_id
+            LEFT JOIN app.division d ON d.id = t.division_id WHERE u.id = :u
+            """.trimIndent(),
+        ).bind("u", up.userId).mapToMap().findOne().orElse(null) ?: return false
+        fun long(k: String) = (geo[k] as Number?)?.toLong()
+        val chain = ScopedConfig.Chain.of(
+            com.aktcl.aron.contract.ConfigScopeType.ROLE to long("role_ord"), com.aktcl.aron.contract.ConfigScopeType.WING to long("wing_id"),
+            com.aktcl.aron.contract.ConfigScopeType.DIVISION to long("division_id"), com.aktcl.aron.contract.ConfigScopeType.TERRITORY to long("territory_id"),
+            com.aktcl.aron.contract.ConfigScopeType.ZONE to long("zone_id"),
+        )
+        // The value in force at the capture (config changed later never re-judges an earlier check-out).
+        val word = ScopedConfig.load(h, captured, captured, setOf(CHECKOUT_KEY)).value(CHECKOUT_KEY, chain)
+            ?.let { runCatching { it.jsonPrimitive.content }.getOrNull() } ?: return false
+        val earliest = runCatching { java.time.LocalTime.parse(word) }.getOrNull() ?: return false
+        return captured.atZone(DHAKA).toLocalTime().isBefore(earliest)
+    }
+
     companion object {
+        private const val FAMILY_TRIES = 3
+        private const val CHECKOUT_KEY = "cfg.day.checkout_earliest_time"
+        private val DHAKA: java.time.ZoneId = java.time.ZoneId.of("Asia/Dhaka")
+        private const val FAMILY_RETRY_BUDGET_MS = 10_000L
         private val UUID_ANY = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
