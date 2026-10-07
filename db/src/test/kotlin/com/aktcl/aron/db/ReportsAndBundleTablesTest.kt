@@ -123,12 +123,17 @@ class ReportsAndBundleTablesTest {
         c.tx {
             val ins = "INSERT INTO app.task (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, task_type_code, assignee_user_id, title, route_id) " +
                 "VALUES (gen_random_uuid(), gen_random_uuid(), '2026-10-07', $user, now(), 0, 'general', $user, 'Check stock', %s)"
+            exec("INSERT INTO app.wing (code, name) VALUES ('W37', 'Wing')")
+            exec("INSERT INTO app.division (code, name, wing_id) SELECT 'D37', 'Division', id FROM app.wing WHERE code = 'W37'")
+            exec("INSERT INTO app.territory (code, name, division_id) SELECT 'T37', 'Territory', id FROM app.division WHERE code = 'D37'")
+            exec("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z37', 'Zone', id FROM app.territory WHERE code = 'T37'")
+            exec("INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) SELECT 'R37', 'Route', id, 'sr', 'daily', 127 FROM app.zone WHERE code = 'Z37'")
             assertEquals("23503", refused(ins.format("-1")))                                                       // route must exist
-            exec(ins.format("NULL"))
+            exec(ins.format("(SELECT id FROM app.route WHERE code = 'R37')"))
+            assertEquals("42501", refused("UPDATE app.task SET route_id = NULL"))                                  // route fixed at creation
             assertEquals("23514", refused("UPDATE app.task SET status = 'cancelled', cancelled_by = $user, cancel_reason = 'too short'"))
             exec("UPDATE app.task SET status = 'cancelled', status_changed_at = now(), cancelled_by = $user, cancel_reason = 'Outlet closed for renovation'")
             assertEquals("42501", refused("UPDATE app.task SET cancel_reason = 'Another reason entirely'"))      // write-once
-            assertEquals("42501", refused("UPDATE app.task SET route_id = NULL, title = 'x'"))
         }
         assertEquals(listOf("t", "t"), c.column("SELECT convalidated FROM pg_constraint WHERE conname IN ('task_route_id_fkey', 'task_cancel_reason_check')"))
     }
