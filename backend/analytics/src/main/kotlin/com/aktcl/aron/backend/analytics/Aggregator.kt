@@ -75,6 +75,17 @@ object Aggregator {
         rebuildAggRouteSku(h, routeId, date, wm)
         rebuildAggRouteBrand(h, routeId, date, wm)
         rebuildAggOutlet(h, routeId, date, wm)
+        rebuildAttendance(h, routeId, date, wm)
+        rebuildGeoFixes(h, routeId, date, wm)
+        // The phones of this route-day's users also changed their device-day (batches, rows, rejects).
+        h.createUpdate(
+            """
+            SELECT app.mark_dirty('device_day_agg', d.device_id, :d, 'route_day_rebuilt')
+              FROM (SELECT DISTINCT sb.device_id FROM app.sync_batch sb
+                     WHERE (sb.received_at AT TIME ZONE 'Asia/Dhaka')::date = :d
+                       AND sb.user_id IN (SELECT coalesce(rd.acting_user_id, rd.assigned_user_id) FROM app.route_day rd WHERE rd.route_id = :r AND rd.business_date = :d)) d
+            """,
+        ).bind("r", routeId).bind("d", date).execute()
         return setOfNotNull(zoneId, previous)
     }
 
@@ -228,6 +239,65 @@ object Aggregator {
               dues_collected_mtk = excluded.dues_collected_mtk, last_event_id = excluded.last_event_id, updated_at = now()
             """,
         ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
+    }
+
+    /** `dw.fact_attendance`: one row per user-day with the first check-in and the last check-out of the users who checked in or out on this route-day. */
+    private fun rebuildAttendance(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
+        h.createUpdate(
+            """
+            INSERT INTO dw.fact_attendance (business_date, user_id, role, zone_id, check_in_at, check_in_lat, check_in_lng, check_in_accuracy_m, check_in_is_mock,
+                                            check_out_at, check_out_lat, check_out_lng, check_out_accuracy_m, check_out_is_mock, last_event_id, updated_at)
+            SELECT e.business_date, e.user_id, u.role, (array_agg(g.zone_id ORDER BY e.captured_at))[1],
+                   min(e.captured_at) FILTER (WHERE e.kind = 'check_in'),
+                   (array_agg(e.fix_lat ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1], (array_agg(e.fix_lng ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1],
+                   (array_agg(e.fix_accuracy_m ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1], (array_agg(e.fix_is_mock ORDER BY e.captured_at) FILTER (WHERE e.kind = 'check_in'))[1],
+                   max(e.captured_at) FILTER (WHERE e.kind = 'check_out'),
+                   (array_agg(e.fix_lat ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out'))[1], (array_agg(e.fix_lng ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out'))[1],
+                   (array_agg(e.fix_accuracy_m ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out'))[1], (array_agg(e.fix_is_mock ORDER BY e.captured_at DESC) FILTER (WHERE e.kind = 'check_out'))[1],
+                   :wm, now()
+              FROM app.attendance_event e JOIN app.app_user u ON u.id = e.user_id LEFT JOIN dw.dim_geo g ON g.route_id = e.route_id
+             WHERE e.business_date = :d AND e.voided_at IS NULL
+               AND e.user_id IN (SELECT user_id FROM app.attendance_event WHERE route_id = :r AND business_date = :d)
+             GROUP BY e.business_date, e.user_id, u.role
+            ON CONFLICT (business_date, user_id) DO UPDATE SET role = excluded.role, zone_id = excluded.zone_id, check_in_at = excluded.check_in_at, check_in_lat = excluded.check_in_lat,
+              check_in_lng = excluded.check_in_lng, check_in_accuracy_m = excluded.check_in_accuracy_m, check_in_is_mock = excluded.check_in_is_mock, check_out_at = excluded.check_out_at,
+              check_out_lat = excluded.check_out_lat, check_out_lng = excluded.check_out_lng, check_out_accuracy_m = excluded.check_out_accuracy_m, check_out_is_mock = excluded.check_out_is_mock,
+              last_event_id = excluded.last_event_id, updated_at = now()
+            """,
+        ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
+    }
+
+    /** `dw.fact_geo_fix`: the fixes the route-day's records carried (the risk rules and the geo dashboards read them here). */
+    private fun rebuildGeoFixes(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
+        h.createUpdate(
+            """
+            INSERT INTO dw.fact_geo_fix (business_date, source_client_uuid, slot, user_id, route_id, purpose, captured_at, lat, lng, accuracy_m, provider, is_mock, satellites_used, last_event_id)
+            SELECT f.business_date, f.source_client_uuid, f.slot, f.user_id, f.route_id, f.purpose, f.captured_at, f.lat, f.lng, f.accuracy_m, f.provider, f.is_mock, f.satellites_used, :wm
+              FROM app.geo_fix f WHERE f.route_id = :r AND f.business_date = :d AND f.voided_at IS NULL
+            ON CONFLICT (source_client_uuid, slot, business_date) DO UPDATE SET user_id = excluded.user_id, route_id = excluded.route_id, purpose = excluded.purpose, captured_at = excluded.captured_at,
+              lat = excluded.lat, lng = excluded.lng, accuracy_m = excluded.accuracy_m, provider = excluded.provider, is_mock = excluded.is_mock, satellites_used = excluded.satellites_used,
+              last_event_id = excluded.last_event_id
+            """,
+        ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
+    }
+
+    /** `dw.fact_device_day`: what one phone did on one business date (batches, rows, rejects, quarantines, the most rows it held back). */
+    fun rebuildDeviceDay(h: Handle, deviceId: Long, date: LocalDate) {
+        val wm = watermark(h)
+        h.createUpdate(
+            """
+            WITH b AS (SELECT sb.* FROM app.sync_batch sb WHERE sb.device_id = :dev AND (sb.received_at AT TIME ZONE 'Asia/Dhaka')::date = :d)
+            INSERT INTO dw.fact_device_day (business_date, device_id, user_id, app_version, first_contact_at, last_contact_at, batches, records, rejected, quarantined, pending_rows_max, battery_pct_min, last_event_id, updated_at)
+            SELECT :d, :dev, (array_agg(b.user_id ORDER BY b.received_at DESC))[1], coalesce((array_agg(b.app_version ORDER BY b.received_at DESC) FILTER (WHERE b.app_version IS NOT NULL))[1], dv.app_version),
+                   min(b.received_at), max(b.received_at), count(*)::int, coalesce(sum(b.record_count), 0)::int,
+                   (SELECT count(*) FROM app.sync_rejected r WHERE r.device_id = :dev AND r.business_date = :d)::int, (SELECT count(*) FROM app.sync_quarantine q WHERE q.device_id = :dev AND q.business_date = :d)::int,
+                   max(b.pending_rows), NULL, :wm, now()
+              FROM b CROSS JOIN app.device dv WHERE dv.id = :dev GROUP BY dv.app_version HAVING count(*) > 0
+            ON CONFLICT (business_date, device_id) DO UPDATE SET user_id = excluded.user_id, app_version = excluded.app_version, first_contact_at = excluded.first_contact_at, last_contact_at = excluded.last_contact_at,
+              batches = excluded.batches, records = excluded.records, rejected = excluded.rejected, quarantined = excluded.quarantined, pending_rows_max = excluded.pending_rows_max,
+              last_event_id = excluded.last_event_id, updated_at = now()
+            """,
+        ).bind("dev", deviceId).bind("d", date).bind("wm", wm).execute()
     }
 
     /** Zone-day rollup from the route-day aggregates (never from the transaction log), plus the Dhaka-hour profile from the facts. */
