@@ -27,6 +27,18 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
 
+## Day 3, 14:30 UTC: dblogins no longer blocks the apps while per-app logins are off
+
+Deploy runs 37630304505 and 37632012265 (with the system-log query) failed like 37624445094: dblogins execution Failed
+within about a minute, and Log Analytics has neither console nor system log for it. The job is checked against the
+working migrate job (same identity, registry, Key Vault, environment; image is a multi-arch index with linux/amd64;
+compiled command correct). Nobody has `az` until the owner runs the two read-only commands sent to the lead.
+Change: a dblogins failure now prints the execution record and the container log stream straight from the platform
+(`az containerapp job execution show`, `az containerapp job logs show`), and it stops the deploy only when the apps
+use the per-app logins (`dbPerAppLogins` output of aron-apps-migrate is not false). With the switch off (today) it is a
+warning plus a "Database logins | FAILED" summary row, so the apps, the health gate, alerts and CORS get deployed and
+proven. Test `DbLoginsGate`. The system-log query now matches with `contains` (hyphenated names).
+
 ## Day 3, 14:10 UTC: Front Door health alert, infra-stage skip, recovered alert (lead)
 
 - **Front Door Sev4 alert 13:11 UTC:** fired during deploy run 37624445094, while main.bicep was applying (12:58 to 13:07)

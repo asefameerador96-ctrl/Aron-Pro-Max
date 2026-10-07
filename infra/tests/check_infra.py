@@ -1177,6 +1177,21 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertEqual(rc, 0, "a call longer than the wait limit is not a false failure: " + out)
 
 
+class DbLoginsGate(unittest.TestCase):
+    """dblogins failed three deploys with no log anywhere while nothing used its logins (dbPerAppLogins off): it blocks
+    the apps only when they use those logins, and a failure prints the platform's own execution record and log."""
+
+    def test_blocks_only_when_the_apps_use_the_logins(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        block = d[d.index("# ------------------------------------------------------------------------------------------------- db logins"):d.index("# ------------------------------------------------------------------------------------------------------ apps")]
+        self.assertIn("properties.outputs.dbPerAppLogins.value", block)
+        self.assertIn('if [ "${per_app,,}" != false ]; then', block, "unknown counts as on: fail closed")
+        self.assertIn('die "database logins $execution ended', block)
+        self.assertIn("az containerapp job logs show", block)
+        self.assertIn("az containerapp job execution show", block)
+        self.assertIn('summary "| Database logins |', d)
+
+
 class InfraStageSkip(unittest.TestCase):
     """2026-10-07: while dblogins failed, the live api commit never advanced, so every INT push re-applied main.bicep
     (and re-PUT Front Door). The skip now diffs against the commit main.bicep was last applied from."""
