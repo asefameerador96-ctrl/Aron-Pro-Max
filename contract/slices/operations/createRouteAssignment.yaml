@@ -1,0 +1,28 @@
+path: /v1/admin/route-assignments
+method: post
+operation:
+  tags:
+  - admin-routes
+  operationId: createRouteAssignment
+  summary: Assign a user to a route from a date (one primary per route-day, enforced by exclusion).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/RouteAssignmentWrite'
+  responses:
+    '201':
+      description: Created; the user's scope_version is bumped.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteAssignment'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

@@ -1,0 +1,35 @@
+AdminAssetUploadRequest:
+  type: object
+  required:
+  - asset_id
+  - purpose
+  - mime
+  - bytes
+  - sha256
+  additionalProperties: false
+  properties:
+    asset_id:
+      $ref: '#/components/schemas/Uuid'
+    purpose:
+      type: string
+      enum:
+      - content_av
+      - content_kv
+      - tutorial_video
+      - tutorial_manual
+      - sku_image
+      - gift_image
+    mime:
+      type: string
+      enum:
+      - video/mp4
+      - image/jpeg
+      - image/png
+      - application/pdf
+    bytes:
+      type: integer
+      minimum: 1
+      maximum: 104857600
+      description: AV and KV at most cfg.content.max_item_mb; images at most 300 KB (stored as one compressed thumbnail).
+    sha256:
+      $ref: '#/components/schemas/Sha256Hex'

@@ -1,0 +1,43 @@
+SkuPatch:
+  type: object
+  minProperties: 1
+  additionalProperties: false
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    short_name:
+      type: string
+      minLength: 1
+      maxLength: 20
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    report_unit:
+      type:
+      - string
+      - 'null'
+      enum:
+      - stick
+      - piece
+      - dozen
+      - box
+      - pack
+      - null
+    report_factor:
+      $ref: '#/components/schemas/Decimal3'
+    sort:
+      type: integer
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    thumbnail_media_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    change_reason:
+      oneOf:
+      - $ref: '#/components/schemas/ChangeReason'
+      - type: 'null'

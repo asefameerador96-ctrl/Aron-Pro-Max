@@ -1,0 +1,5 @@
+MtkNonNegative:
+  type: integer
+  format: int64
+  minimum: 0
+  description: Money in milli-taka, never negative.

@@ -1,0 +1,37 @@
+OutletChangeRequestPayload:
+  type: object
+  required:
+  - request_type
+  - proposed
+  - fix
+  - photo_uuids
+  additionalProperties: false
+  properties:
+    request_type:
+      $ref: '#/components/schemas/OutletRequestType'
+    outlet_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Null only for request_type new.
+    proposed:
+      $ref: '#/components/schemas/OutletProposal'
+    fix:
+      $ref: '#/components/schemas/GeoFix'
+    photo_uuids:
+      type: array
+      maxItems: 4
+      items:
+        $ref: '#/components/schemas/Uuid'
+    origin_visit_client_uuid:
+      description: Set when a force sale at a confirmed outlet raised a location request.
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

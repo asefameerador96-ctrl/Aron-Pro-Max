@@ -1,0 +1,145 @@
+BundleOutlet:
+  type: object
+  description: Outlet as the phone needs it. `radius_m` and `max_accuracy_m` are already resolved for this outlet
+    (outlet > route > zone > geo_class > territory > division > wing > global).
+  required:
+  - outlet_id
+  - route_id
+  - code
+  - name
+  - name_sort_key
+  - owner_name
+  - location_confirmed
+  - cluster_id
+  - cluster_name
+  - channel
+  - status
+  - price_type
+  - outlet_kind
+  - radius_m
+  - max_accuracy_m
+  - open_due_mtk
+  - programme_flags
+  - pending_request
+  additionalProperties: false
+  properties:
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    code:
+      type: string
+      maxLength: 32
+    name:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    name_sort_key:
+      type: string
+      maxLength: 200
+    owner_name:
+      type: string
+      maxLength: 120
+    contact_number:
+      description: Visible to the route's SR and supervisors per cfg.bundle.outlet_fields; null when masked.
+      oneOf:
+      - $ref: '#/components/schemas/PhoneBd'
+      - type: 'null'
+    lat:
+      type:
+      - number
+      - 'null'
+      minimum: -90
+      maximum: 90
+    lng:
+      type:
+      - number
+      - 'null'
+      minimum: -180
+      maximum: 180
+    location_confirmed:
+      type: boolean
+      description: False for missing coordinates and placeholder pins (first visit goes through the correction path).
+    provisional_lat:
+      type:
+      - number
+      - 'null'
+      minimum: -90
+      maximum: 90
+    provisional_lng:
+      type:
+      - number
+      - 'null'
+      minimum: -180
+      maximum: 180
+    cluster_id:
+      $ref: '#/components/schemas/Id'
+    cluster_name:
+      type: string
+      maxLength: 120
+    channel:
+      type: string
+      maxLength: 20
+    sub_channel_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    geo_class:
+      type:
+      - string
+      - 'null'
+      enum:
+      - Hill
+      - Urban
+      - SemiUrban
+      - Rural
+      - null
+    status:
+      $ref: '#/components/schemas/OutletStatus'
+    price_type:
+      $ref: '#/components/schemas/SellingPriceType'
+    outlet_kind:
+      type: string
+      enum:
+      - retail
+      - wholesale
+    radius_m:
+      type: integer
+      minimum: 10
+      maximum: 5000
+    max_accuracy_m:
+      type: integer
+      minimum: 10
+      maximum: 1000
+    visit_sequence:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    open_due_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    open_due_as_of:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    programme_flags:
+      type: array
+      maxItems: 8
+      description: Eligibility dots shown before the outlet (codes and colours from cfg.ui.outlet_badges).
+      items:
+        type: string
+        pattern: ^[a-z][a-z0-9_]{1,30}$
+    pending_request:
+      type: boolean
+    suggested_qty:
+      type: array
+      maxItems: 500
+      description: Suggested order quantity hook; empty until the formula is confirmed (cfg.sale.suggested_qty_enabled).
+      items:
+        $ref: '#/components/schemas/SuggestedQty'

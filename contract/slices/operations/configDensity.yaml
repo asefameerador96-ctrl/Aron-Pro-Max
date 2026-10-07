@@ -1,0 +1,23 @@
+path: /v1/admin/config/density
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: configDensity
+  summary: Outlet density index (neighbours within cfg.geo.density_neighbour_radii_m) for a scope.
+  parameters:
+  - $ref: '#/components/parameters/ScopeTypeQuery'
+  - $ref: '#/components/parameters/ScopeIdQuery'
+  responses:
+    '200':
+      description: Density report.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DensityReport'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

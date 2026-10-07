@@ -1,0 +1,22 @@
+ResolvedConfig:
+  type: object
+  required:
+  - config_version
+  - values
+  - scheduled
+  additionalProperties: false
+  properties:
+    config_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    values:
+      type: array
+      maxItems: 300
+      items:
+        $ref: '#/components/schemas/ResolvedConfigValue'
+    scheduled:
+      type: array
+      maxItems: 300
+      description: Future-dated values within cfg.sys.schedule_horizon_days; applied by the phone at effective_from
+        on trusted time.
+      items:
+        $ref: '#/components/schemas/ResolvedConfigValue'

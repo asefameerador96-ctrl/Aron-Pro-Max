@@ -1,0 +1,33 @@
+PricePreview:
+  type: object
+  required:
+  - batch_uuid
+  - skus_affected
+  - outlets_affected
+  - devices_affected
+  - max_change_pct
+  - approval_required
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    skus_affected:
+      type: integer
+      minimum: 0
+    price_types:
+      type: array
+      items:
+        $ref: '#/components/schemas/PriceType'
+    outlets_affected:
+      type: integer
+      minimum: 0
+    devices_affected:
+      type: integer
+      minimum: 0
+    max_change_pct:
+      type: number
+      minimum: 0
+      description: Largest absolute change against the price in force.
+    approval_required:
+      type: boolean
+      description: True when max_change_pct exceeds cfg.price.max_change_pct (a second approver must decide).

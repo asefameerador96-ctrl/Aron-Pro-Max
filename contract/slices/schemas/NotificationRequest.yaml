@@ -1,0 +1,49 @@
+NotificationRequest:
+  type: object
+  required:
+  - kind
+  - scope_type
+  - scope_id
+  - title_en
+  - body_en
+  additionalProperties: false
+  properties:
+    kind:
+      type: string
+      enum:
+      - announcement
+      - config_pull
+      - bundle_pull
+    scope_type:
+      type: string
+      enum:
+      - global
+      - wing
+      - division
+      - territory
+      - zone
+      - user
+      - device
+    scope_id:
+      type: integer
+      format: int64
+      minimum: 0
+    title_en:
+      type: string
+      maxLength: 80
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 80
+    body_en:
+      type: string
+      maxLength: 300
+    body_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+    urgent:
+      type: boolean
+      description: pull_after_s jitter U(0, 20) when true, U(0, 120) otherwise.

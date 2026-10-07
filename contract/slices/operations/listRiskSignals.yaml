@@ -1,0 +1,46 @@
+path: /v1/risk-signals
+method: get
+operation:
+  tags:
+  - risk
+  operationId: listRiskSignals
+  summary: Risk signals for supervisors (the SR never sees them, except the mock warning on the phone).
+  parameters:
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/RiskSignalStatus'
+  - name: code
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/RiskSignalCode'
+  - name: min_severity
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 4
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - name: user_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of signals.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RiskSignalPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

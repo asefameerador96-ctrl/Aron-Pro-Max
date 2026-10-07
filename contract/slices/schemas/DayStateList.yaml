@@ -1,0 +1,14 @@
+DayStateList:
+  type: object
+  required:
+  - route_days
+  additionalProperties: false
+  properties:
+    route_days:
+      type: array
+      items:
+        $ref: '#/components/schemas/RouteDayState'
+    supervisor_day:
+      oneOf:
+      - $ref: '#/components/schemas/SupervisorDayState'
+      - type: 'null'

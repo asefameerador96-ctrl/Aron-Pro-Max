@@ -1,0 +1,13 @@
+ConsentAcceptRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: consent_accept
+      payload:
+        $ref: '#/components/schemas/ConsentAcceptPayload'
+  unevaluatedProperties: false

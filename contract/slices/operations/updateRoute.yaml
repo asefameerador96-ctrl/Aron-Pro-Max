@@ -1,0 +1,33 @@
+path: /v1/admin/routes/{id}
+method: patch
+operation:
+  tags:
+  - admin-routes
+  operationId: updateRoute
+  summary: Update a route; a visit-days change takes effect from `effective_from` (a future Dhaka date).
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  - $ref: '#/components/parameters/IfMatch'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/RoutePatch'
+  responses:
+    '200':
+      description: Updated.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Route'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '412':
+      $ref: '#/components/responses/PreconditionFailed'

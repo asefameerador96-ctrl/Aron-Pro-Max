@@ -1,0 +1,22 @@
+path: /v1/devices/me/push-token
+method: put
+operation:
+  tags:
+  - notifications
+  operationId: registerPushToken
+  summary: Register or replace the FCM token of this phone for the calling user.
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/PushTokenRegistration'
+  responses:
+    '204':
+      description: Stored.
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'

@@ -1,0 +1,33 @@
+BundlePage:
+  type: object
+  required:
+  - bundle_version
+  - section
+  - page
+  - pages
+  - rows
+  additionalProperties: false
+  properties:
+    bundle_version:
+      $ref: '#/components/schemas/BundleVersion'
+    section:
+      $ref: '#/components/schemas/BundleSectionName'
+    page:
+      type: integer
+      minimum: 1
+    pages:
+      type: integer
+      minimum: 1
+    rows:
+      description: Rows of the section; the element type follows `section`.
+      type: array
+      maxItems: 2000
+      items:
+        oneOf:
+        - $ref: '#/components/schemas/BundleOutlet'
+        - $ref: '#/components/schemas/OpenMemo'
+        - $ref: '#/components/schemas/SkuPrice'
+        - $ref: '#/components/schemas/Offer'
+        - $ref: '#/components/schemas/Task'
+        - $ref: '#/components/schemas/TeamMember'
+        - $ref: '#/components/schemas/OutletRequestSummary'

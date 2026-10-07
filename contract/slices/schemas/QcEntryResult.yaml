@@ -1,0 +1,15 @@
+QcEntryResult:
+  type: object
+  required:
+  - client_uuid
+  - stored_rows
+  - replayed
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    stored_rows:
+      type: integer
+      minimum: 0
+    replayed:
+      type: boolean

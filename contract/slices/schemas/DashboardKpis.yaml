@@ -1,0 +1,107 @@
+DashboardKpis:
+  type: object
+  description: KPI block (definitions in docs/24 s12.4). Percentages are 0 to 100 with 2 decimals, null when the
+    denominator is 0.
+  required:
+  - target_routes
+  - logged_in_routes
+  - login_pct
+  - sales_submitted_routes
+  - submit_pct_of_logged_in
+  - day_completion_pct
+  - target_outlets
+  - visited_outlets
+  - successful_calls
+  - strike_rate_pct
+  - active_memo_count
+  - gross_mtk
+  - net_mtk
+  - geo_valid_pct
+  - force_sale_pct
+  - mock_visits
+  - suspicious_visits
+  additionalProperties: false
+  properties:
+    target_routes:
+      type: integer
+      minimum: 0
+    logged_in_routes:
+      type: integer
+      minimum: 0
+    login_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    sales_submitted_routes:
+      type: integer
+      minimum: 0
+    submit_pct_of_logged_in:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    day_completion_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    target_outlets:
+      type: integer
+      minimum: 0
+    visited_outlets:
+      type: integer
+      minimum: 0
+    successful_calls:
+      type: integer
+      minimum: 0
+    strike_rate_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    active_memo_count:
+      type: integer
+      minimum: 0
+    gross_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'
+    geo_valid_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    force_sale_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    mock_visits:
+      type: integer
+      minimum: 0
+    suspicious_visits:
+      type: integer
+      minimum: 0
+    zones_with_target_routes:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    zones_final_submitted:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    final_submit_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100

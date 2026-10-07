@@ -1,0 +1,68 @@
+User:
+  allOf:
+  - $ref: '#/components/schemas/MasterAudit'
+  - type: object
+    required:
+    - id
+    - username
+    - full_name
+    - role
+    - locale
+    - status
+    - mfa_enabled
+    properties:
+      id:
+        $ref: '#/components/schemas/Id'
+      username:
+        $ref: '#/components/schemas/Username'
+      full_name:
+        type: string
+        maxLength: 120
+      role:
+        $ref: '#/components/schemas/Role'
+      designation:
+        type:
+        - string
+        - 'null'
+        maxLength: 60
+      employee_code:
+        type:
+        - string
+        - 'null'
+        maxLength: 40
+      phone:
+        description: PII; returned only to callers with the pii claim, otherwise null.
+        oneOf:
+        - $ref: '#/components/schemas/PhoneBd'
+        - type: 'null'
+      email:
+        type:
+        - string
+        - 'null'
+        format: email
+        maxLength: 120
+      locale:
+        type: string
+        enum:
+        - bn
+        - en
+      home_zone_id:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        minimum: 1
+      status:
+        type: string
+        enum:
+        - active
+        - disabled
+      mfa_enabled:
+        type: boolean
+      pilot:
+        type: boolean
+      last_login_at:
+        oneOf:
+        - $ref: '#/components/schemas/Timestamp'
+        - type: 'null'
+  unevaluatedProperties: false

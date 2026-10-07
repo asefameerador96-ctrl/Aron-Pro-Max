@@ -1,0 +1,25 @@
+BlastRadius:
+  type: object
+  required:
+  - zones
+  - routes
+  - outlets
+  - users
+  - devices
+  additionalProperties: false
+  properties:
+    zones:
+      type: integer
+      minimum: 0
+    routes:
+      type: integer
+      minimum: 0
+    outlets:
+      type: integer
+      minimum: 0
+    users:
+      type: integer
+      minimum: 0
+    devices:
+      type: integer
+      minimum: 0

@@ -1,0 +1,4 @@
+Sha256Hex:
+  type: string
+  pattern: ^[0-9a-f]{64}$
+  description: SHA-256 as 64 lower-case hex characters.

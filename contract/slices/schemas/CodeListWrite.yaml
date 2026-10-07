@@ -1,0 +1,15 @@
+CodeListWrite:
+  type: object
+  required:
+  - items
+  - change_reason
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      minItems: 1
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/CodeItem'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

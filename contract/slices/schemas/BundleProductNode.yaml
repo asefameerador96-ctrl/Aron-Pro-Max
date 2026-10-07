@@ -1,0 +1,34 @@
+BundleProductNode:
+  type: object
+  required:
+  - id
+  - level
+  - name
+  - sort
+  additionalProperties: false
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    level:
+      $ref: '#/components/schemas/ProductTreeLevel'
+    parent_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    name:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    sort:
+      type: integer

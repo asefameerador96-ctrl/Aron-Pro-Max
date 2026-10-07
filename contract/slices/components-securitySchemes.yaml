@@ -1,0 +1,15 @@
+securitySchemes:
+  bearerAuth:
+    type: http
+    scheme: bearer
+    bearerFormat: JWT
+    description: 'ES256 access token. Phones: 60 min plus or minus 10 min jitter; web: 15 min. `aud` is `aron-api`
+      (full grant)
+
+      or `aron-upload` (upload grant: only POST /v1/sync/batch, POST /v1/media/sas, POST /v1/auth/refresh with
+
+      grant=upload, POST /v1/auth/logout). Claims are listed in docs/24 s8.2. The `bind_token` and `mfa_token` of
+
+      the login response are also Bearer tokens with `aud` `aron-bind` and `aron-mfa`.
+
+      '

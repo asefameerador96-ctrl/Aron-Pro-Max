@@ -1,0 +1,26 @@
+path: /v1/admin/print-templates
+method: post
+operation:
+  tags:
+  - admin-content
+  operationId: createPrintTemplateVersion
+  summary: Publish a new template version (future-dated); phones print it after their next sync.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/PrintTemplateWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PrintTemplate'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

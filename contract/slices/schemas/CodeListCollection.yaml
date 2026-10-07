@@ -1,0 +1,10 @@
+CodeListCollection:
+  type: object
+  required:
+  - lists
+  additionalProperties: false
+  properties:
+    lists:
+      type: array
+      items:
+        $ref: '#/components/schemas/CodeList'

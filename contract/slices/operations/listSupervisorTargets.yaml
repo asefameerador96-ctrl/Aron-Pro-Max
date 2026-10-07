@@ -1,0 +1,26 @@
+path: /v1/admin/supervisor-targets
+method: get
+operation:
+  tags:
+  - admin-targets
+  operationId: listSupervisorTargets
+  summary: AMO call targets (total, control-call, joint-call) by user and month; they feed the AMO home tiles.
+  parameters:
+  - name: month
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Month'
+    description: Target month.
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  responses:
+    '200':
+      description: Targets.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SupervisorTargetList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

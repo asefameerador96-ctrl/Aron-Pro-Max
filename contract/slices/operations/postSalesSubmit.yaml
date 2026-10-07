@@ -1,0 +1,30 @@
+path: /v1/day/sales-submit
+method: post
+operation:
+  tags:
+  - day
+  operationId: postSalesSubmit
+  summary: Online Sales Submit for a route-day or a supervisor-day (the phone normally sends a `day_submit` record).
+  description: Idempotent by `client_uuid`. Settles per docs/24 s4.9 (state `submit_pending_rows` until the server
+    totals reach the device counts, at most `cfg.day.submit_settle_timeout_min`).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SalesSubmitRequest'
+  responses:
+    '200':
+      description: Resulting state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DayStateList'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

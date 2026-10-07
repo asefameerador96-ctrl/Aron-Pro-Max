@@ -1,0 +1,45 @@
+ConfigVersion:
+  type: object
+  required:
+  - version
+  - kind
+  - committed_at
+  - committed_by
+  - summary
+  - max_risk_class
+  additionalProperties: false
+  properties:
+    version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    kind:
+      type: string
+      enum:
+      - change
+      - revert
+      - rollback
+      - schedule_apply
+      - expiry
+      - content
+    committed_at:
+      $ref: '#/components/schemas/Timestamp'
+    committed_by:
+      $ref: '#/components/schemas/Id'
+    summary:
+      type: string
+      maxLength: 500
+    max_risk_class:
+      type: integer
+      minimum: 0
+      maximum: 3
+    is_revert_of:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    change_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1

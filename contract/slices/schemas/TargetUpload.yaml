@@ -1,0 +1,17 @@
+TargetUpload:
+  type: object
+  required:
+  - batch_uuid
+  - month
+  - file
+  - change_reason
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    month:
+      $ref: '#/components/schemas/Month'
+    file:
+      type: string
+      contentMediaType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

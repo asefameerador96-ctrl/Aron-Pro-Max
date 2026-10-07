@@ -1,0 +1,7 @@
+ProductTreeLevel:
+  type: string
+  enum:
+  - category
+  - segment
+  - brand
+  - variant

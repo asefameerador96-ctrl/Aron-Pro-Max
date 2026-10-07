@@ -1,0 +1,9 @@
+StockMovementKind:
+  type: string
+  enum:
+  - issue
+  - return
+  - adjustment
+  - damaged
+  - short
+  - qc_return

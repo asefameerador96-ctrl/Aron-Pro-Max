@@ -1,0 +1,34 @@
+path: /v1/admin/product-nodes/{level}/{id}
+method: patch
+operation:
+  tags:
+  - admin-products
+  operationId: updateProductNode
+  summary: Update a product tree node.
+  parameters:
+  - $ref: '#/components/parameters/ProductLevelPath'
+  - $ref: '#/components/parameters/IdPath'
+  - $ref: '#/components/parameters/IfMatch'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ProductNodePatch'
+  responses:
+    '200':
+      description: Updated.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProductNode'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '412':
+      $ref: '#/components/responses/PreconditionFailed'

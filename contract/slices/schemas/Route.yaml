@@ -1,0 +1,57 @@
+Route:
+  allOf:
+  - $ref: '#/components/schemas/MasterAudit'
+  - type: object
+    required:
+    - id
+    - code
+    - name
+    - zone_id
+    - kind
+    - visit_days_mask
+    - status
+    properties:
+      id:
+        $ref: '#/components/schemas/Id'
+      code:
+        type: string
+        pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$
+      name:
+        type: string
+        maxLength: 120
+      display_label:
+        type:
+        - string
+        - 'null'
+        maxLength: 60
+        description: Printed visit-day text such as "(Sat, Mon, Wed)" or "Daily"; a label, never a key.
+      zone_id:
+        $ref: '#/components/schemas/Id'
+      kind:
+        type: string
+        enum:
+        - sr
+        - amo
+      visit_kind:
+        type:
+        - string
+        - 'null'
+        enum:
+        - daily
+        - 3f
+        - 2f
+        - null
+      visit_days_mask:
+        type: integer
+        minimum: 1
+        maximum: 127
+        description: bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu
+          = 42, Sat/Mon/Wed = 21).
+      sequence_no:
+        type:
+        - integer
+        - 'null'
+        minimum: 1
+      status:
+        $ref: '#/components/schemas/ActiveStatus'
+  unevaluatedProperties: false

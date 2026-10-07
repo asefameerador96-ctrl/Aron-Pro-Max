@@ -1,0 +1,42 @@
+DeviceOtp:
+  type: object
+  required:
+  - user_id
+  - username
+  - full_name
+  - created_at
+  - expires_at
+  - attempts
+  additionalProperties: false
+  properties:
+    user_id:
+      $ref: '#/components/schemas/Id'
+    username:
+      $ref: '#/components/schemas/Username'
+    full_name:
+      type: string
+      maxLength: 120
+    zone_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    otp:
+      type:
+      - string
+      - 'null'
+      pattern: ^[0-9]{4,8}$
+      description: Shown only while unexpired; each page view is audited.
+    device_model:
+      type:
+      - string
+      - 'null'
+      maxLength: 80
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    expires_at:
+      $ref: '#/components/schemas/Timestamp'
+    attempts:
+      type: integer
+      minimum: 0

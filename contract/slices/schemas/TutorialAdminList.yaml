@@ -1,0 +1,11 @@
+TutorialAdminList:
+  type: object
+  required:
+  - items
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/TutorialAdmin'

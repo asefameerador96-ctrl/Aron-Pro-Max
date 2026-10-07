@@ -1,0 +1,97 @@
+ConfigChange:
+  type: object
+  required:
+  - change_id
+  - status
+  - risk_class
+  - changes
+  - reason
+  - requested_by
+  - requested_at
+  - blast_radius
+  additionalProperties: false
+  properties:
+    change_id:
+      $ref: '#/components/schemas/Id'
+    status:
+      $ref: '#/components/schemas/ConfigChangeStatus'
+    risk_class:
+      type: integer
+      minimum: 0
+      maximum: 3
+    changes:
+      type: array
+      items:
+        allOf:
+        - $ref: '#/components/schemas/ConfigChangeItem'
+        - type: object
+          properties:
+            old_value:
+              oneOf:
+              - $ref: '#/components/schemas/ConfigValueJson'
+              - type: 'null'
+        unevaluatedProperties: false
+    reason:
+      type: string
+      maxLength: 500
+    requested_by:
+      $ref: '#/components/schemas/Id'
+    requested_at:
+      $ref: '#/components/schemas/Timestamp'
+    approved_by:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    approved_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    apply_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    config_version:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    is_revert_of:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    blast_radius:
+      type: object
+      required:
+      - zones
+      - routes
+      - outlets
+      - devices
+      additionalProperties: false
+      properties:
+        zones:
+          type: integer
+          minimum: 0
+        routes:
+          type: integer
+          minimum: 0
+        outlets:
+          type: integer
+          minimum: 0
+        devices:
+          type: integer
+          minimum: 0
+        outlets_changed:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        overrides_kept:
+          type:
+          - integer
+          - 'null'
+          minimum: 0

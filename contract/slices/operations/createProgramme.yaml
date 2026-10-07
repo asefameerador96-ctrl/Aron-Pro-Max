@@ -1,0 +1,28 @@
+path: /v1/admin/programmes
+method: post
+operation:
+  tags:
+  - admin-content
+  operationId: createProgramme
+  summary: Create a programme period (for example "Diamond League (October)" or a campaign).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ProgrammeWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Programme'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

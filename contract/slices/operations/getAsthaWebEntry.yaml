@@ -1,0 +1,26 @@
+path: /v1/web-entry/outlet-sku
+method: get
+operation:
+  tags:
+  - web-entry
+  operationId: getAsthaWebEntry
+  summary: Astha Web Entry grid (Astha-channel outlets by SKU) of a route and date.
+  parameters:
+  - name: route_id
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+    description: Route.
+  - $ref: '#/components/parameters/BusinessDateQueryRequired'
+  responses:
+    '200':
+      description: Grid rows with app-memo overlap flags.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AsthaWebEntry'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

@@ -1,0 +1,28 @@
+path: /v1/admin/offers
+method: post
+operation:
+  tags:
+  - admin-products
+  operationId: createOffer
+  summary: Create an offer rule (future-dated `valid_from`).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/OfferWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Offer'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

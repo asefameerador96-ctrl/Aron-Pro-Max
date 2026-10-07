@@ -1,0 +1,7 @@
+OutletStatus:
+  type: string
+  enum:
+  - active
+  - closed
+  - merged
+  - archived

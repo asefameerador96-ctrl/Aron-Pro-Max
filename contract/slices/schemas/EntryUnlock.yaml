@@ -1,0 +1,38 @@
+EntryUnlock:
+  type: object
+  required:
+  - unlock_id
+  - scope_type
+  - scope_id
+  - from
+  - to
+  - reason
+  - expires_at
+  - created_by_user_id
+  - status
+  additionalProperties: false
+  properties:
+    unlock_id:
+      $ref: '#/components/schemas/Id'
+    scope_type:
+      type: string
+      enum:
+      - zone
+      - route
+    scope_id:
+      $ref: '#/components/schemas/Id'
+    from:
+      $ref: '#/components/schemas/BusinessDate'
+    to:
+      $ref: '#/components/schemas/BusinessDate'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'
+    expires_at:
+      $ref: '#/components/schemas/Timestamp'
+    created_by_user_id:
+      $ref: '#/components/schemas/Id'
+    status:
+      type: string
+      enum:
+      - active
+      - expired

@@ -1,0 +1,17 @@
+SalesPlanWrite:
+  type: object
+  required:
+  - valid_from
+  - sku_ids
+  - change_reason
+  additionalProperties: false
+  properties:
+    valid_from:
+      $ref: '#/components/schemas/BusinessDate'
+    sku_ids:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/Id'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

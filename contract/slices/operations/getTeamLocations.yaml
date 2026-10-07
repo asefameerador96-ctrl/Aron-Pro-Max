@@ -1,0 +1,21 @@
+path: /v1/team/locations
+method: get
+operation:
+  tags:
+  - team
+  operationId: getTeamLocations
+  summary: Last synced fix per team member (no live tracking; age and source shown).
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/BusinessDateQuery'
+  responses:
+    '200':
+      description: Team locations.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeamLocationList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

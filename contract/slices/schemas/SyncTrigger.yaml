@@ -1,0 +1,14 @@
+SyncTrigger:
+  type: string
+  enum:
+  - write_debounce
+  - foreground
+  - connectivity
+  - workmanager_connectivity
+  - periodic
+  - manual
+  - day_submit
+  - checkout
+  - resync
+  - digest_resend
+  - directive

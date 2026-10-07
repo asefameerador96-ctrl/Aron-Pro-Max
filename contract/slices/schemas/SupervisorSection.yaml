@@ -1,0 +1,41 @@
+SupervisorSection:
+  type: object
+  description: AMO and TSO only.
+  required:
+  - zone_ids
+  - route_ids
+  - team
+  - pending_outlet_requests
+  additionalProperties: false
+  properties:
+    zone_ids:
+      type: array
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/Id'
+    route_ids:
+      type: array
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/Id'
+    team:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/TeamMember'
+    pending_outlet_requests:
+      type: array
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/OutletRequestSummary'
+    risk_signals:
+      type: array
+      maxItems: 500
+      description: Open risk signals of the zone for the AMO Exceptions screen (reviewed offline with risk_review
+        records).
+      items:
+        $ref: '#/components/schemas/RiskSignal'
+    supervisor_day:
+      oneOf:
+      - $ref: '#/components/schemas/SupervisorDayState'
+      - type: 'null'
