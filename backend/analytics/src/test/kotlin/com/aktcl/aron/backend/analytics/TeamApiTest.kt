@@ -22,7 +22,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** F-API-018 (app home), F-API-023 (team locations), F-API-024 (team stock) on the seeded day. */
+/** F-API-018 (app home) and F-API-024 (team stock) on the seeded day. F-API-023 (team locations) is backend:sync's N-036. */
 class TeamApiTest : ReportFixture() {
     override val extraSql = """
         ALTER TABLE app.visit DISABLE TRIGGER USER;
@@ -34,11 +34,11 @@ class TeamApiTest : ReportFixture() {
             FROM app.app_user u, app.route r WHERE u.username = 'sr003' AND r.code = 'R3';
     """.trimIndent()
 
-    private lateinit var deps: TeamDeps
+    private lateinit var deps: AppTeamDeps
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
         val dash = DashboardService(fresh.db, clock)
-        deps = TeamDeps(TeamService(fresh.db, dash, clock), reach, guard, clock)
-        r.teamRoutes(deps)
+        deps = AppTeamDeps(TeamService(fresh.db, dash, clock), reach, guard, clock)
+        r.appTeamRoutes(deps)
     }
 
     private suspend fun ApplicationTestBuilder.get(uid: Long, role: Role, path: String): HttpResponse = client.get(path) { bearerAuth(TestTokens.web(uid, role)) }
@@ -59,27 +59,6 @@ class TeamApiTest : ReportFixture() {
         assertEquals(3, r1["target_outlets"]!!.jsonPrimitive.content.toInt()); assertEquals(34_000L, r1["net_mtk"]!!.jsonPrimitive.content.toLong())
         assertEquals(HttpStatusCode.Forbidden, get(12, Role.SR, "/v1/app/home").status.let { if (it == HttpStatusCode.Unauthorized) HttpStatusCode.Forbidden else it })
         assertTrue(get(10, Role.ANALYST, "/v1/app/home?business_date=2026-10-04").obj()["team"]!!.jsonArray.size == 3)
-    }
-
-    @Test
-    fun teamLocationsAreTheLastSyncedUsableFixPerSrWithAgeAndSource() = app {
-        val o = get(11, Role.TSO, "/v1/team/locations?business_date=2026-10-04").obj()
-        val items = o["items"]!!.jsonArray.map { it.jsonObject }
-        assertEquals(2, items.size)                                                       // zone 1: sr001 and sr002 only
-        val sr1 = items.first { it["user_id"]!!.jsonPrimitive.content.toLong() > 0 && it["route_ids"]!!.jsonArray.size == 1 && it["full_name"]!!.jsonPrimitive.content == "SR One" }
-        val fix = sr1["last_fix"]!!.jsonObject
-        assertEquals("visit", fix["source"]!!.jsonPrimitive.content)                      // visit 2 (05:00Z) beats the 03:00Z check-in; the 06:00Z visit is a mock fix and is ignored
-        assertEquals(23.72, fix["lat"]!!.jsonPrimitive.content.toDouble(), 1e-9)
-        assertEquals("2026-10-04T05:00:00.000Z", fix["at"]!!.jsonPrimitive.content)
-        assertEquals(420, fix["age_min"]!!.jsonPrimitive.content.toInt())                 // 12:00Z - 05:00Z
-        // Zone narrowing, and a zone outside the reach is 403 (an unknown one too).
-        assertEquals(1, get(10, Role.ANALYST, "/v1/team/locations?zone_id=$z2&business_date=2026-10-04").obj()["items"]!!.jsonArray.size)
-        assertEquals(HttpStatusCode.Forbidden, get(11, Role.TSO, "/v1/team/locations?zone_id=$z2&business_date=2026-10-04").status)
-        assertEquals(HttpStatusCode.Forbidden, get(11, Role.TSO, "/v1/team/locations?zone_id=987654").status)
-        val z2only = get(14, Role.TSO, "/v1/team/locations?business_date=2026-10-04").obj()["items"]!!.jsonArray.single().jsonObject
-        assertEquals("check_in", z2only["last_fix"]!!.jsonObject["source"]!!.jsonPrimitive.content)
-        // An SR with no synced fix on the date shows no fix, not a stale one from another day.
-        assertNull(get(10, Role.ANALYST, "/v1/team/locations?business_date=2026-10-05").obj()["items"]!!.jsonArray.firstOrNull())
     }
 
     @Test
