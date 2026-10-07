@@ -46,7 +46,7 @@ export async function authenticate(req: NextRequest, pathname: string): Promise<
   const rt = req.cookies.get(RT_COOKIE)?.value;
   if (needsRefresh(session)) {
     if (!rt) return problemResponse(401, "ERR_TOKEN_EXPIRED");
-    refreshed = await refreshSession(rt);
+    refreshed = await refreshSession(rt, session.rem === true);
     if (!refreshed.ok && refreshed.status !== 401 && refreshed.status !== 403) {
       // API outage or edge error: keep the cookies so the user is not logged out by a blip; the caller may retry.
       return problemResponse(503, "ERR_SERVICE_UNAVAILABLE", { retryable: true });

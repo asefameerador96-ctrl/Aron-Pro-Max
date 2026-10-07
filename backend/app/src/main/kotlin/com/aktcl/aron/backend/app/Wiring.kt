@@ -41,11 +41,16 @@ import com.aktcl.aron.backend.platform.AuthGuardDeps
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.DbServerConfig
 import com.aktcl.aron.backend.platform.JwtKeys
-import com.aktcl.aron.backend.platform.NIL_GENERATION
 import com.aktcl.aron.backend.platform.RegistryDefaults
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.Settings
 import io.ktor.server.routing.Route
+import com.aktcl.aron.backend.masterdata.SqlRoutePlanner
+import com.aktcl.aron.backend.sync.BundleService
+import com.aktcl.aron.backend.sync.IngestService
+import com.aktcl.aron.backend.sync.ServerGeneration
+import com.aktcl.aron.backend.sync.SyncDeps
+import com.aktcl.aron.backend.sync.syncRoutes
 
 /** The object graph of the API process; tests build their own with throwaway keys and in-memory stores. */
 class Wiring(
@@ -80,8 +85,9 @@ class Wiring(
             val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
-            // The server generation table arrives with the sync schema (N-006); until then the nil generation is sent.
-            return Wiring(clock, config, db, { NIL_GENERATION }, s.build, mount = {
+            val generation = ServerGeneration(db)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current), db, config, clock)
+            return Wiring(clock, config, db, generation::current, s.build, mount = {
                 authRoutes(auth)
                 outletRoutes(outlets)
                 configAdminRoutes(configDeps)
@@ -91,6 +97,7 @@ class Wiring(
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)
+                syncRoutes(sync)
             }, frontDoorId = s.frontDoorId)
         }
     }

@@ -2,7 +2,7 @@ import { AppBlockView } from "@/components/admin/config/app-block-view";
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { Forbidden } from "@/components/forbidden";
 import { canOp } from "@/lib/admin/access";
-import { latestVersion, listKeys, versionDetail } from "@/lib/admin/config-load";
+import { globalValues, latestVersion, listKeys, versionDetail } from "@/lib/admin/config-load";
 import type { ResolvedConfigValue } from "@/lib/admin/types";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
@@ -18,7 +18,7 @@ export default async function AppBlockPage() {
   const values: Record<string, ResolvedConfigValue> = {};
   if (v !== null) {
     const d = await versionDetail(session.at, v);
-    if (d.ok) for (const r of d.data.values) values[r.key] = r;
+    if (d.ok) Object.assign(values, globalValues(d.data));
   }
   return <AppBlockView locale={locale} keys={keys.data.items} values={values} version={v} canWrite={canOp("config.change", session.user.role)} />;
 }
