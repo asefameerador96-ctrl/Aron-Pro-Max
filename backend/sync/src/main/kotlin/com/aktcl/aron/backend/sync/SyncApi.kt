@@ -51,6 +51,13 @@ class SyncDeps(
 fun Route.syncRoutes(d: SyncDeps) {
     authenticated(d.guard) {
         get("/sync/bundle") { getBundle(call, d) }
+        get("/sync/bundle/page") {
+            val p = call.principal
+            if (!p.isPhone) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the bundle is for the field apps")
+            val q = call.request.queryParameters
+            call.respond(withContext(Dispatchers.IO) { d.bundles.page(p, q["bundle_version"], q["section"], q["page"]) })
+        }
+        get("/sync/delta") { getDelta(call, d) }
         if (d.db != null) get("/sync/generation") { getGeneration(call, d.db) }
         if (d.db != null) {
             val digest = SyncDigestService(d.db, d.clock) {
@@ -221,6 +228,26 @@ private suspend fun getBundle(call: ApplicationCall, d: SyncDeps) {
         return
     }
     call.respond(r.bundle)
+}
+
+/**
+ * GET /v1/sync/delta (contract getBundleDelta): the changes since the phone's cursor, 304 when there are none
+ * (BundleService.delta). gzip on the wire like the bundle.
+ */
+private suspend fun getDelta(call: ApplicationCall, d: SyncDeps) {
+    val p = call.principal
+    if (!p.isPhone) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the bundle is for the field apps")
+    val forDate = call.request.queryParameters["for"]?.let {
+        runCatching { LocalDate.parse(it) }.getOrNull()?.takeIf { _ -> DATE.matches(it) }
+            ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "for must be YYYY-MM-DD", errors = listOf(FieldError("query.for", "invalid_value")))
+    }
+    val delta = withContext(Dispatchers.IO) { d.bundles.delta(p, call.request.queryParameters["since"], forDate) }
+    if (delta == null) {
+        call.respond(HttpStatusCode.NotModified)
+        return
+    }
+    call.response.header("X-Bundle-Version-Current", delta.meta.bundle_version)
+    call.respond(delta)
 }
 
 private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
