@@ -363,6 +363,29 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     if (await handleCustom(state.custom, cctx, canW, method, url, req, res)) return;
   }
 
+  const fb = /^\/v1\/feedback(?:\/([0-9a-f-]{36}))?$/.exec(path);
+  if (fb && user.master) {
+    const rows = state.tables.feedback!;
+    if (!(method === "GET" ? ADMIN_READ : ADMIN_WRITE).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    if (method === "GET" && !fb[1]) {
+      const cat = url.searchParams.get("category_code");
+      const st = url.searchParams.get("status");
+      const items = rows.filter((r) => (!cat || r.category_code === cat) && (!st || r.status === st));
+      return send(res, 200, { items, next_cursor: null });
+    }
+    if (method === "PATCH" && fb[1]) {
+      const row = rows.find((r) => r.feedback_uuid === fb[1]);
+      if (!row) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+      const b = (await readJson(req)) as Record<string, unknown> | null;
+      const reason = typeof b?.reason === "string" ? b.reason : "";
+      if (!b || !["new", "in_progress", "resolved", "closed"].includes(String(b.status)) || Array.from(reason).length < 10 || Object.keys(b).some((k) => k !== "status" && k !== "reason")) return send(res, 400, problem(400, "ERR_VALIDATION"));
+      const before = { status: row.status as string };
+      row.status = b.status as string;
+      audit(state, user, "feedback", String(fb[1]), "feedback.status", before, { status: row.status as string }, reason);
+      return send(res, 200, row);
+    }
+  }
+
   if (path.startsWith("/v1/outlet-requests")) {
     const ACT: Role[] = ["DMO", "WM", "ADMIN", "SUPERADMIN"];
     const READ: Role[] = ["TSO", "DMO", "WM", "TOP", "ANALYST", "ADMIN", "SUPERADMIN"];

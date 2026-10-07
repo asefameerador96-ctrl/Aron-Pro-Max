@@ -435,6 +435,16 @@ export const en = {
   "lifecycle.disable.title": "Disable the SR",
   "lifecycle.disable.hint": "Set the user inactive. The phone still uploads what it already holds; nothing is lost.",
   "lifecycle.disable.cta": "SR list",
+  "entity.feedback": "Feedback inbox",
+  "entity.feedback.singular": "feedback",
+  "entity.field.title": "Title",
+  "entity.field.description": "Description",
+  "entity.field.created_at": "Created",
+  "action.feedback_status": "Set status",
+  "feedback.status.new": "New",
+  "feedback.status.in_progress": "In progress",
+  "feedback.status.resolved": "Resolved",
+  "feedback.status.closed": "Closed",
 } as const;
 
 export type MessageKey = keyof typeof en;
