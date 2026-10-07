@@ -32,7 +32,11 @@ import com.aktcl.aron.backend.config.configAdminRoutes
 import com.aktcl.aron.backend.config.configDeltaRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
+import com.aktcl.aron.backend.masterdata.AdminPricesDeps
+import com.aktcl.aron.backend.masterdata.AdminProductsDeps
 import com.aktcl.aron.backend.masterdata.OtpCipher
+import com.aktcl.aron.backend.masterdata.adminPricesRoutes
+import com.aktcl.aron.backend.masterdata.adminProductsRoutes
 import com.aktcl.aron.backend.masterdata.deviceReplaceRoutes
 import com.aktcl.aron.backend.masterdata.deviceOtpRoutes
 import com.aktcl.aron.backend.masterdata.OutletsDeps
@@ -82,9 +86,10 @@ class Wiring(
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboards = DashboardDeps(DashboardService(db, clock), reach, guard, clock)
             val configResolver = ConfigResolver(db, clock)
-            val configService = ConfigService(db, configResolver, clock) { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
+            val toolsReach = com.aktcl.aron.backend.config.NodeReach { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
+            val configService = ConfigService(db, configResolver, clock, toolsReach)
             val configDeps = ConfigDeps(configService, guard, clock)
-            val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
+            val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
             val permDeps = ConfigPermissionsDeps(ConfigPermissions(db, configService, clock), guard)
             val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
@@ -99,6 +104,8 @@ class Wiring(
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
                 deviceReplaceRoutes(otpDeps)
+                adminProductsRoutes(AdminProductsDeps(db, guard, clock))
+                adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)

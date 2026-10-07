@@ -176,6 +176,32 @@ class BundleDownloaderTest {
         assertEquals(200, db.referenceDao().outletCount())
     }
 
+    @Test fun anEveningPrefetchStartsTomorrowOfflineAndNeverReplacesToday() = runBlocking {
+        downloader().download()
+        bundleBody = {
+            val b = Json.parseToJsonElement(fullBundle()).jsonObject
+            val meta = JsonObject(b["meta"]!!.jsonObject + mapOf("bundle_version" to JsonPrimitive("2026-10-06:1"), "valid_for_business_date" to JsonPrimitive("2026-10-06"), "is_prefetch" to JsonPrimitive(true)))
+            val routes = JsonArray(b["routes"]!!.jsonArray.take(1))
+            JsonObject(b + ("meta" to meta) + ("routes" to routes)).toString()
+        }
+        assertEquals(BundleOutcome.PREFETCH_STORED, downloader().download("2026-10-06").outcome)
+        assertEquals("2026-10-06", requests.last().url.queryParameter("for"))
+        assertDayIsInRoom() // today untouched
+        assertFalse(downloader().loggedIn("2026-10-06"))
+
+        server.close() // next morning, no network
+        val tomorrow = object : WallClock {
+            override fun nowMs() = Clock.nowMs() + 86_400_000L
+            override fun elapsedRealtimeMs() = 1L
+        }
+        val ok = OkHttpClient.Builder().callTimeout(2, TimeUnit.SECONDS).build()
+        val client = AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f" })
+        val r = BundleDownloader(db, SyncApi(client), staging, tomorrow).download()
+        assertEquals(BundleOutcome.PREFETCH_PROMOTED, r.outcome)
+        assertEquals("2026-10-06", ReferenceRepository(db).businessDate())
+        assertEquals(1, ReferenceRepository(db).routesOfDay("2026-10-06").size)
+    }
+
     @Test fun anUnreadableBundleKeepsThePreviousDay() = runBlocking {
         downloader().download()
         db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG) // force a 200

@@ -22,7 +22,12 @@ interface SecretCipher {
  */
 class KeystoreSecretCipher(private val alias: String = DEFAULT_ALIAS) : SecretCipher {
 
-    private fun key(): SecretKey {
+    /** The key handle is cached: loading the AndroidKeyStore costs tens of ms per call on low-end TEEs (AUD-PERF-05). */
+    @Volatile private var cached: SecretKey? = null
+
+    private fun key(): SecretKey = cached ?: synchronized(this) { cached ?: loadOrCreate().also { cached = it } }
+
+    private fun loadOrCreate(): SecretKey {
         val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         (ks.getKey(alias, null) as? SecretKey)?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)

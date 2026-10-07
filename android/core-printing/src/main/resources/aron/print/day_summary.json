@@ -1,0 +1,21 @@
+{ "schema": 1, "size": 20, "digits": "latin", "blocks": [
+  { "type": "text", "value": "{@print_company}", "align": "center", "bold": true, "size": 28 },
+  { "type": "text", "value": "{@print_day_summary}", "align": "center", "bold": true },
+  { "type": "rule", "style": "dashed" },
+  { "type": "pair", "left": "{@print_date}: {date}", "right": "{@print_time}: {time}" },
+  { "type": "text", "value": "{@print_sr}: {sr}" },
+  { "type": "text", "value": "{@print_route}: {route}" },
+  { "type": "rule" },
+  { "type": "table", "rows": "lines", "header_bold": true, "columns": [
+    { "header": "{@print_sku}", "value": "{sku}", "width": 34, "align": "left" },
+    { "header": "{@print_memo_count}", "value": "{memos}", "width": 16, "align": "right" },
+    { "header": "{@print_qty}", "value": "{qty}", "width": 22, "align": "right" },
+    { "header": "{@print_value}", "value": "{value}", "width": 28, "align": "right" } ] },
+  { "type": "rule" },
+  { "type": "pair", "left": "{@print_total}", "right": "{gross}" },
+  { "type": "pair", "left": "{@print_total_discount}", "right": "- {total_discount}" },
+  { "type": "pair", "left": "{@print_total_qc}", "right": "- {total_qc}" },
+  { "type": "pair", "left": "{@print_grand_total}", "right": "{grand_total}", "bold": true },
+  { "type": "pair", "left": "{@print_due}", "right": "{due}" },
+  { "type": "pair", "left": "{@print_memo_count}", "right": "{memo_count}" }
+] }
