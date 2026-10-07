@@ -92,9 +92,9 @@ class BackendCoreAsksV0061Test {
             assertEquals("23514", refused("INSERT INTO app.media_upload (media_uuid, purpose, sha256, bytes, user_id, blob_path, business_date) SELECT '6f1c0a52-0c38-4b3e-9a51-2f0f6ad1c005', 'feedback', sha256, 307201, user_id, 'photos/2026-10-08/x/6f1c0a52-0c38-4b3e-9a51-2f0f6ad1c005.jpg', business_date FROM app.media_upload LIMIT 1"))
             assertEquals("23514", refused("INSERT INTO app.media_upload (media_uuid, purpose, sha256, bytes, user_id, blob_path, business_date) SELECT '6f1c0a52-0c38-4b3e-9a51-2f0f6ad1c006', 'feedback', '\\x00'::bytea, bytes, user_id, 'photos/2026-10-08/x/6f1c0a52-0c38-4b3e-9a51-2f0f6ad1c006.jpg', business_date FROM app.media_upload LIMIT 1"))
             // Rows never change.
-            assertTrue(refused("UPDATE app.media_upload SET bytes = 2 WHERE media_uuid = '$uuid'").isNotEmpty())
-            assertTrue(refused("DELETE FROM app.media_upload WHERE media_uuid = '$uuid'").isNotEmpty())
-            assertTrue(refused("TRUNCATE app.media_upload").isNotEmpty())
+            assertEquals(DENIED, refused("UPDATE app.media_upload SET bytes = 2 WHERE media_uuid = '$uuid'"))
+            assertEquals(DENIED, refused("DELETE FROM app.media_upload WHERE media_uuid = '$uuid'"))
+            assertEquals(DENIED, refused("TRUNCATE app.media_upload"))
         }
     }
 
@@ -103,7 +103,9 @@ class BackendCoreAsksV0061Test {
         fun can(role: String, priv: String) = c.scalar("SELECT has_table_privilege('$role', 'app.media_upload', '$priv')::text")
         assertEquals("true|true|false|false", listOf("SELECT", "INSERT", "UPDATE", "DELETE").joinToString("|") { can("api_rw", it)!! })
         assertEquals("true|false", listOf("SELECT", "INSERT").joinToString("|") { can("worker_rw", it)!! })
-        assertEquals("false|false", listOf("web_ro", "bi_reader").joinToString("|") { can(it, "SELECT")!! })
+        val outsiders = listOf("web_ro", "bi_reader", "auth_rw", "pii_reader", "support_ro")
+        assertEquals(outsiders.joinToString("|") { "false|false" }, outsiders.joinToString("|") { can(it, "SELECT") + "|" + can(it, "INSERT") })
+        assertEquals("false", can("jobs_rw", "INSERT"))
     }
 
     @Test
@@ -159,6 +161,7 @@ class BackendCoreAsksV0061Test {
     }
 
     private companion object {
+        const val DENIED = "42501"
         const val DEV_DEVICE = "00000000-0000-4000-8000-000000000001"
         const val SEED_FINGERPRINT =
             "SELECT count(*) || '|' || md5(string_agg(code || ':' || coalesce(lat::text, '') || ':' || coalesce(lng::text, '') || ':' || status, ',' ORDER BY code)) FROM app.outlet"
