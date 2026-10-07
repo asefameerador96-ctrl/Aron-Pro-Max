@@ -38,3 +38,6 @@ Not turned into tests (noted): no soft ceiling on `cfg.sale.max_line_qty_base`; 
 
 ## Plan for printing (from lead): docs/requests/android-print-integration.md s2
 Review Print drives SaveAndPrint (commit then print), never disabled by the printer unless `cfg.sale.require_printer_before_sale`; Memo menu reprint via `MemoPrinting.printMemo` with the confirm dialog; map Room rows to `MemoPrint` from stored mtk columns; PrinterIcon/PrinterBanner on Review, Memo and Summary. To do after wiring.
+
+## Printing mapping (done)
+`feature-memo` `PrintMapping`: `StoredMemo` and `DaySummary` to `MemoPrint` / `DaySummaryPrint` from stored mtk columns (kind by content: cash, credit, offer, drp, zero, edited). Still to do after `PrintLedger` lands: SaveAndPrint in the sale ViewModel, reprint via `MemoPrinting.printMemo` with the confirm dialog, PrinterIcon/PrinterBanner on Review, Memo and Summary.
