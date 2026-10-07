@@ -62,8 +62,8 @@ class GenerationResyncTest {
         server.close()
     }
 
-    private fun engine(seed: Int = 7) = SyncEngine(
-        USER, db, SyncBatchApi(client, null), SyncEngineTest.FakeAuth(), { DEVICE }, "1.0.3+10003", Clock, random = Random(seed),
+    private fun engine(seed: Int = 7, policy: SyncPolicy = SyncPolicy()) = SyncEngine(
+        USER, db, SyncBatchApi(client, null), SyncEngineTest.FakeAuth(), { DEVICE }, "1.0.3+10003", Clock, policy, random = Random(seed),
         generationApi = SyncGenerationApi(client), generationHint = { hint },
     )
 
@@ -119,11 +119,13 @@ class GenerationResyncTest {
         assertEquals("resync", sentTriggers().last())
         assertEquals(NEW_GEN, db.referenceDao().meta(SyncEngine.KEY_GENERATION))
         assertNull(db.referenceDao().meta(SyncEngine.KEY_GENERATION_SEEN))
-        // Handled once: later runs re-send nothing.
+        // Handled once: an ordinary run asks nothing; another resync run asks (it always does) and re-sends nothing.
         val before = fake.requests.size
+        assertFalse(engine().run(SyncTrigger.FOREGROUND).resyncRequested)
+        assertEquals(1, fake.generationReads)
         engine().run(SyncTrigger.RESYNC)
         assertEquals(before, fake.requests.size)
-        assertEquals(1, fake.generationReads)
+        assertEquals(2, fake.generationReads)
     }
 
     @Test
@@ -142,15 +144,69 @@ class GenerationResyncTest {
         assertEquals(total(), countState(OutboxState.ACKED))
     }
 
+    /** Checker: the window runs back from when the new generation started, not from the phone's first sync after it. */
     @Test
-    fun rowsOlderThanTheResyncWindowAreNotReSent() = runBlocking {
+    fun theWindowRunsFromTheRestoreSoALateFirstSyncStillReSends() = runBlocking {
+        val kept = dayThenRestore()
+        Clock.now += 48 * 3_600_000L // the SR's next run is two days later (weekend, nothing to upload)
+        hint = NEW_GEN
+        engine().run(SyncTrigger.RESYNC)
+        assertEquals(total() - kept, fake.requests.last().body!!["records"]!!.let { (it as kotlinx.serialization.json.JsonArray).size })
+        assertEquals(total(), fake.registry.size)
+        assertEquals(total(), countState(OutboxState.ACKED))
+    }
+
+    @Test
+    fun rowsOlderThanTheWindowBeforeTheRestoreAreNotReSent() = runBlocking {
         dayThenRestore()
         fake.lostAfterUtc = "2026-10-01T00:00:00.000Z" // a restore point days back: only cfg.sync.resync_window_h (24 h) counts
-        Clock.now += 40 * 3_600_000L // 2026-10-07 02:00: the 10:00 rows are outside 24 h, the 12:00 rows too
+        fake.mintedAt = "2026-10-06T14:00:00.000Z" // window from 2026-10-05 14:00 (less the margin): the 10:00 and 12:00 rows are older
+        Clock.now += 30 * 3_600_000L
         hint = NEW_GEN
         engine().run(SyncTrigger.RESYNC)
         assertEquals(1, fake.generationReads)
         assertEquals("nothing inside the window", total(), countState(OutboxState.ACKED))
+        assertEquals(NEW_GEN, db.referenceDao().meta(SyncEngine.KEY_GENERATION))
+    }
+
+    /** The phone acks with its own clock: a row acked up to 15 min before `lost_after_utc` still goes again. */
+    @Test
+    fun aRowAckedJustBeforeTheRestorePointIsReSent() = runBlocking {
+        val kept = dayThenRestore() // the 12:00 rows were acked at 12:00
+        fake.lostAfterUtc = "2026-10-05T12:10:00.000Z"
+        Clock.now += 3_600_000L
+        hint = NEW_GEN
+        engine().run(SyncTrigger.RESYNC)
+        assertEquals("only the lost 12:00 rows, inside the margin", total() - kept, fake.requests.last().body!!["records"]!!.let { (it as kotlinx.serialization.json.JsonArray).size })
+        assertEquals(total(), fake.registry.size)
+        assertEquals(total(), countState(OutboxState.ACKED))
+    }
+
+    /** Checker: rows put back still go as `resync` in later runs (run limit), so the server's backdate allowance applies. */
+    @Test
+    fun aReSendSpanningSeveralRunsAlwaysCarriesTheResyncTrigger() = runBlocking {
+        dayThenRestore()
+        Clock.now += 3_600_000L
+        hint = NEW_GEN
+        val small = SyncPolicy(batchMaxRows = 7, maxBatchesPerRun = 1)
+        val before = fake.requests.size
+        assertEquals(SyncStop.RUN_LIMIT, engine(policy = small).run(SyncTrigger.RESYNC).stop)
+        repeat(5) { engine(policy = small).run(SyncTrigger.WRITE_DEBOUNCE) }
+        val sent = fake.requests.drop(before).mapNotNull { it.body?.get("trigger")?.jsonPrimitive?.content }
+        assertTrue(sent.size >= 3)
+        assertTrue("every re-send batch is resync: $sent", sent.all { it == "resync" })
+        assertEquals(total(), fake.registry.size)
+    }
+
+    /** Checker: a resync run with no hint (another user on a shared phone, a new process) still asks the server. */
+    @Test
+    fun aResyncRunWithoutAHintStillAsksAndReSends() = runBlocking {
+        dayThenRestore()
+        Clock.now += 3_600_000L
+        hint = null
+        engine().run(SyncTrigger.RESYNC)
+        assertEquals(1, fake.generationReads)
+        assertEquals(total(), fake.registry.size)
         assertEquals(NEW_GEN, db.referenceDao().meta(SyncEngine.KEY_GENERATION))
     }
 
@@ -169,9 +225,11 @@ class GenerationResyncTest {
         assertNull(db.referenceDao().meta(SyncEngine.KEY_GENERATION_SEEN))
         assertEquals(acked, countState(OutboxState.ACKED))
         assertEquals(fake.generation, db.referenceDao().meta(SyncEngine.KEY_GENERATION))
+        // Checker: the dismissed hint (a replica's cached header) no longer asks for runs.
+        assertFalse(engine().run(SyncTrigger.FOREGROUND).resyncRequested)
         // The nil generation is never a reason.
         hint = SyncEngine.NIL_GENERATION
-        engine().run(SyncTrigger.RESYNC)
+        assertFalse(engine().run(SyncTrigger.FOREGROUND).resyncRequested)
         assertEquals(2, fake.generationReads)
     }
 

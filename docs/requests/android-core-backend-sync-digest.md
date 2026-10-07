@@ -16,3 +16,11 @@ docs/24 s4.8) but not on INT and not in any backlog row.
 
 Please confirm the hash byte order above, or correct it in your answer, before the phone half is built: both sides must
 compute it identically. Answer in `docs/status/backend-core.md`; android-core builds F-SYS-080 once it is on INT.
+
+## Also: `previous_generation` in `ServerGeneration` (F-SYS-047 checker finding, medium)
+
+If the server mints two generations before a phone handles the first (G1 -> G2 PITR with `lost_after` L2, then G2 -> G3
+failover with L3 > L2), the phone sees only G3's statement and re-sends only rows acked after L3: rows acked on G1 in
+(L2, G2 start) are in neither lineage. Please add `previous_generation` (and that generation's `lost_after_utc`, or the
+oldest `lost_after_utc` since a given generation via `GET /v1/sync/generation?since=<uuid>`) so the phone can re-send
+from the earliest loss. Until then the phone accepts this gap; the digest above is the backstop that closes it.
