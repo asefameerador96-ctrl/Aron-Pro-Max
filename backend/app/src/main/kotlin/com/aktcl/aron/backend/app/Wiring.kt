@@ -100,6 +100,7 @@ import com.aktcl.aron.backend.sync.syncRoutes
 import com.aktcl.aron.backend.sync.dayRoutes
 import com.aktcl.aron.backend.sync.memoRoutes
 import com.aktcl.aron.backend.sync.nearbyRoutes
+import com.aktcl.aron.backend.sync.riskSignalRoutes
 import com.aktcl.aron.backend.media.mediaRoutes
 import com.aktcl.aron.backend.media.MediaDeps
 import com.aktcl.aron.backend.sync.taskRoutes
@@ -248,7 +249,7 @@ class Wiring(
                     (configResolver.resolve(key, chain, clock.now()).value as kotlinx.serialization.json.JsonPrimitive).content == "true"
                 }.getOrDefault(false)
             }
-            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + extraRecordHandlers)), db, config, clock)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + extraRecordHandlers)), db, config, clock)
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
                 ingestCapacity = runCatching { config.int("cfg.api.inflight_batches_per_replica") }.getOrDefault(64),
@@ -286,6 +287,7 @@ class Wiring(
                 dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock)))
                 memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
                 nearbyRoutes(com.aktcl.aron.backend.sync.NearbyDeps(db, config, reach, guard, clock))
+                riskSignalRoutes(com.aktcl.aron.backend.sync.RiskSignalDeps(db, config, reach, guard, clock))
                 mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))

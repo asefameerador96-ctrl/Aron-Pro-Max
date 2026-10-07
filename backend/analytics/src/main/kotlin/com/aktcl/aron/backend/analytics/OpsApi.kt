@@ -115,17 +115,19 @@ class OpsService(
                  coalesce(t.lb, (SELECT max(sb.received_at) FROM app.sync_batch sb WHERE sb.device_id = dv.id)) AS last_batch_at, coalesce(dv.pending_rows_reported, 0) AS pending,
                  (SELECT count(*) FROM app.sync_rejected r WHERE r.user_id = u.id AND r.business_date = :d AND r.stored_at IS NULL AND (r.route_id IS NULL OR r.route_id IN (SELECT gz.route_id FROM dw.dim_geo gz WHERE %ZONEGZ%)))::int AS rejected,
                  (SELECT count(*) FROM app.sync_quarantine q WHERE q.user_id = u.id AND q.business_date = :d AND q.status = 'open' AND (q.route_id IS NULL OR q.route_id IN (SELECT gz.route_id FROM dw.dim_geo gz WHERE %ZONEGZ%)))::int AS quarantined,
-                 t.mism, (coalesce(dv.pending_rows_reported, 0) > 0 AND (dv.last_contact_at IS NULL OR dv.last_contact_at < :held_before)) AS held, dv.trust_level,
+                 t.mism, (coalesce(dv.pending_rows_reported, 0) > 0 AND (dv.last_contact_at IS NULL OR dv.last_contact_at < :held_before OR CAST(:past_close AS boolean))) AS held, dv.trust_level,
                  (SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM m.received_at - m.committed_at)) FROM dw.fact_memo m WHERE m.user_id = u.id AND m.business_date = :d)::float8 AS p95
             FROM team t JOIN app.app_user u ON u.id = t.uid JOIN app.device_binding b ON b.user_id = t.uid AND b.status = 'active' JOIN app.device dv ON dv.id = b.device_id)
     """
 
     fun syncHealth(reach: Reach, date: LocalDate, level: String?, nodeId: Long?, onlyProblems: Boolean, limit: Int, after: Pair<Long, Long>?): SyncHealthPage {
         val heldBefore = clock.now().minus(Duration.ofHours(heldHours()))
+        // F-SYS-084: past 17:30 Dhaka on the business date (the day's upload deadline), a phone still reporting pending rows is held too.
+        val pastClose = !clock.now().isBefore(date.atTime(17, 30).atZone(java.time.ZoneId.of("Asia/Dhaka")).toInstant())
         return db.readJdbi.withHandle<SyncHealthPage, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId)
             val base = "WITH " + healthBase.replace("%ZONE%", node.clause("g.zone_id")).replace("%ZONEGZ%", node.clause("gz.zone_id"))
-            fun q(sql: String) = node.bind(h.createQuery(sql).bind("d", date).bind("held_before", OffsetDateTime.ofInstant(heldBefore, java.time.ZoneOffset.UTC)))
+            fun q(sql: String) = node.bind(h.createQuery(sql).bind("d", date).bind("held_before", OffsetDateTime.ofInstant(heldBefore, java.time.ZoneOffset.UTC)).bind("past_close", pastClose))
             val s = q("$base SELECT count(DISTINCT device_id)::int, count(DISTINCT device_id) FILTER (WHERE pending > 0)::int, count(DISTINCT device_id) FILTER (WHERE held)::int, (SELECT coalesce(sum(r), 0) FROM (SELECT DISTINCT user_id, rejected AS r FROM rows) x)::int, (SELECT coalesce(sum(q), 0) FROM (SELECT DISTINCT user_id, quarantined AS q FROM rows) y)::int, (SELECT count(*) FROM days WHERE mism)::int FROM rows")
                 .map { rs, _ -> SyncHealthSummary(rs.getInt(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getInt(5), rs.getInt(6)) }.one()
             val problem = if (onlyProblems) "AND (pending > 0 OR rejected > 0 OR quarantined > 0 OR coalesce(mism, false) OR held)" else ""
