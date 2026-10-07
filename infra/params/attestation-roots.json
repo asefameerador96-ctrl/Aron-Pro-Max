@@ -1,0 +1,11 @@
+{
+  "comment": "Android hardware key-attestation trust anchors for device enrolment (N-031; backend AttestationTrust = SHA-256 of the root certificate DER, lower-case hex). Public data. Source: the root certificates published on the page below, retrieved 2026-10-07 by the infra lane. Kept: the two current roots (RSA, expires 2042; ECDSA 'Key Attestation CA1', signs chains from 2026-02-01, expires 2035) and the two previously issued roots that are still valid (expire 2034 and 2036, older phones may still chain to them). Left out: the previously issued root that expired 2026-05-24 (c1984a3e...). Re-check the page when Google announces a new root.",
+  "source": "https://developer.android.com/privacy-and-security/security-key-attestation#root_certificate",
+  "retrieved": "2026-10-07",
+  "sha256": [
+    "cedb1cb6dc896ae5ec797348bce9286753c2b38ee71ce0fbe34a9a1248800dfc",
+    "6d9db4ce6c5c0b293166d08986e05774a8776ceb525d9e4329520de12ba4bcc0",
+    "1ef1a04b8ba58ab94589ac498c8982a783f24ea7307e0159a0c3a73b377d87cc",
+    "ab6641178a36e179aa0c1cdddf9a16eb45fa20943e2b8cd7c7c05c26cf8b487a"
+  ]
+}

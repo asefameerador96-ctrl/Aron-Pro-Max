@@ -1,7 +1,7 @@
 # CI for the Aron monorepo (docs/24-build-spec.md s13.2). Owner: infra lane.
 #
 # Jobs: changed-area filter -> repository gates (gitleaks on the pushed commits; migration checksum, order and squawk
-# lint; oasdiff breaking-change check on the contract: tools/ci/), contract lint, JVM build and tests (shared, db,
+# lint; oasdiff breaking-change check on the contract: tools/ci/; Redocly lint of the contract), JVM build and tests (shared, db,
 # backend on PostgreSQL 16), web (lint, types, unit tests, build, e2e), three debug APKs plus Android unit tests and
 # lint, the three release APKs (signed on integration pushes) with the APK size gate (F-SYS-036), container images
 # (built, booted against PostgreSQL, SBOM per image), infra validation (Bicep build/lint/checks, actionlint). A green
@@ -116,6 +116,14 @@ jobs:
             echo "base=${base}"
           } | tee -a "${GITHUB_OUTPUT}"
 
+      - name: Last green INT run and its age (summary line; never fails the run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          line="$(tools/ci/last-green-int.sh "${GITHUB_REPOSITORY}" || true)"
+          echo "${line}"
+          echo "${line}" >> "${GITHUB_STEP_SUMMARY}"
+
   gates:
     # Cheap repository gates (tools/ci/, pinned binaries with SHA-256): every push and pull request.
     name: Repository gates (secrets, migrations, contract)
@@ -182,8 +190,12 @@ jobs:
         # already landed on the integration branch never counts as new here. On the integration branch, the gate base.
         run: |
           base="${CHECK_BASE}"
-          if [ "${GITHUB_REF}" != "refs/heads/${INTEGRATION_BRANCH}" ] && git rev-parse -q --verify "origin/${INTEGRATION_BRANCH}" >/dev/null; then
+          # Lane pushes only: pull requests (the daily gate PR) and main keep the gate base, which covers the promotion.
+          if [ "${GITHUB_EVENT_NAME}" = push ] && [ "${GITHUB_REF}" != "refs/heads/main" ] \
+             && [ "${GITHUB_REF}" != "refs/heads/${INTEGRATION_BRANCH}" ] && git rev-parse -q --verify "origin/${INTEGRATION_BRANCH}" >/dev/null; then
             base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}" || echo "${CHECK_BASE}")"
+            # A lane head equal to the integration tip has no own diff: keep the gate base instead of scanning nothing.
+            [ "${base}" != "${GITHUB_SHA}" ] || base="${CHECK_BASE}"
           fi
           echo "semgrep base: ${base}"
           tools/ci/semgrep.sh "${base}"
@@ -198,24 +210,20 @@ jobs:
       - name: Contract breaking-change check (oasdiff)
         if: needs.changes.outputs.contract == 'true'
         run: tools/ci/contract-breaking.sh "${CHECK_BASE}" oasdiff
-
-  contract:
-    name: Contract lint
-    needs: changes
-    if: needs.changes.outputs.contract == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Contract lint lives here since 2026-10-07 (CI audit s5 item 8: the tiny gate jobs folded into one; the required
+      # check "Contract lint" is gone from tools/github-governance.ps1 in the same commit).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.contract == 'true'
         with:
           node-version: "22"
       - name: contract/slices is current (generated from openapi.yaml by tools/slice-contract.py)
+        if: needs.changes.outputs.contract == 'true'
         run: |
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet --user pyyaml==6.0.2
           python3 tools/slice-contract.py --check
       - name: Lint contract/openapi.yaml (Redocly, 0 errors and 0 warnings)
         # Exact version, no install scripts (AUD-SEC-05); a new version is a reviewed change here.
+        if: needs.changes.outputs.contract == 'true'
         env:
           npm_config_ignore_scripts: "true"
         run: npx --yes @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml

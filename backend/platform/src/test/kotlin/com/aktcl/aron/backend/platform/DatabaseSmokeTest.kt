@@ -24,6 +24,19 @@ class DatabaseSmokeTest {
         }
     }
 
+    /** docs/requests/backend-migrate-connect-retries.md: the migrate role waits for its first connection, then fails. */
+    @Test
+    fun migrateRetriesTheFirstConnectionBeforeFailing() {
+        Database.pool("jdbc:postgresql://127.0.0.1:1/none", null, null, 1, "aron-migrate", connectionTimeoutMs = 250).use { ds ->
+            val started = System.nanoTime()
+            val e = runCatching { Migrator.migrate(ds, connectRetries = 2, connectRetriesIntervalS = 1) }.exceptionOrNull()
+            val tookMs = (System.nanoTime() - started) / 1_000_000
+            assertTrue(e is org.flywaydb.core.internal.exception.FlywaySqlException, "a connect failure after the retries: $e")
+            assertTrue(tookMs >= 1_000, "two retries at least 1 s apart took ${tookMs} ms")
+        }
+        assertEquals(30_000L, Migrator.MIGRATE_CONNECTION_TIMEOUT_MS)
+    }
+
     @Test
     fun pingIsFalseWhenTheDatabaseIsDown() {
         Database.pool("jdbc:postgresql://127.0.0.1:1/none", null, null, 1, "down").use { ds -> assertFalse(Database(ds).ping()) }
