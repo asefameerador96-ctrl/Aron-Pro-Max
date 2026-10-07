@@ -51,3 +51,9 @@ EnrolDeviceRequest:
       oneOf:
       - $ref: '#/components/schemas/DeviceStatusReport'
       - type: 'null'
+    play_integrity_unavailable:
+      description: Why the enrolment carries no Play Integrity token. When the phone tried Play Integrity exactly
+        one of `play_integrity` (in `status`) and `play_integrity_unavailable` is non-null.
+      oneOf:
+      - $ref: '#/components/schemas/PlayIntegrityUnavailable'
+      - type: 'null'

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stk_title">Stock</string>
+    <string name="stk_col_sku">SKU</string>
+    <string name="stk_col_issue">Issue</string>
+    <string name="stk_col_loaded">Loaded</string>
+    <string name="stk_less">Less</string>
+    <string name="stk_more">More</string>
+    <string name="stk_totals">Totals by category</string>
+    <string name="stk_total_row">%1$s: %2$s</string>
+    <string name="stk_cat_cigarette">Cigarette</string>
+    <string name="stk_cat_bidi">Bidi</string>
+    <string name="stk_cat_lighter">Lighter</string>
+    <string name="stk_cat_match">Match</string>
+    <string name="stk_save">Save</string>
+    <string name="stk_saved">Saved on this phone.</string>
+    <string name="stk_refused">These values were just saved. Change them or wait a few minutes.</string>
+    <string name="stk_nothing">Enter an Issue quantity first.</string>
+    <string name="stk_high">That is a very large quantity. Check it before you save.</string>
+    <string name="stk_slip_not_printed">The stock slip is not printed yet. Print it before Sales Submit.</string>
+</resources>

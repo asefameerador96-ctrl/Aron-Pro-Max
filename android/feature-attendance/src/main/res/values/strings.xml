@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="att_title">Attendance</string>
+    <string name="att_location">Location</string>
+    <string name="att_location_none">No location yet</string>
+    <string name="att_prompt_checkin">You have not checked in yet. Please check in before you start work.</string>
+    <string name="att_checked_in">Checked in at %1$s</string>
+    <string name="att_checked_out">Checked out at %1$s</string>
+    <string name="att_check_in">Check in</string>
+    <string name="att_check_out">Check out</string>
+    <string name="att_check_out_hold">Press and hold to check out</string>
+    <string name="att_check_out_hint">Check-out opens at %1$s.</string>
+    <string name="att_mock_warning">A mock location was detected. This is recorded.</string>
+    <string name="att_day_complete_title">Day complete</string>
+    <string name="att_day_complete_message">You have checked out. Thank you for today.</string>
+    <string name="att_ok">OK</string>
+    <string name="att_offline_saved">Saved on this phone. It will upload when the network is back.</string>
+</resources>

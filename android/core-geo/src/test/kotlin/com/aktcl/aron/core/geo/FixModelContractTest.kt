@@ -46,4 +46,23 @@ class FixModelContractTest {
         }.toList()
         assertTrue("forbidden location calls: $hits", hits.isEmpty())
     }
+
+    @Suppress("UNCHECKED_CAST")
+    @Test fun integrityMarkerAndRootHintCodesAreTheContractEnums() {
+        assertEquals(enumOf("PlayIntegrityUnavailable", "properties", "reason"),
+            com.aktcl.aron.core.geo.integrity.IntegrityUnavailable.entries.map { it.wire }.toSet())
+        val items = (((schemas["DeviceStatusReport"] as Map<String, Any?>)["properties"] as Map<String, Any?>)["root_hints"] as Map<String, Any?>)["items"] as Map<String, Any?>
+        val allHints = com.aktcl.aron.core.geo.integrity.RootHints.evaluate(object : com.aktcl.aron.core.geo.integrity.RootProbe {
+            override fun exists(path: String) = true
+            override val buildTags = "test-keys"
+            override fun systemProperty(name: String) = if (name == "ro.secure") "0" else "1"
+            override fun installed(packageName: String) = true
+            override fun mounts() = "magisk"
+            override val userId = 10
+            override val dataDir = "/elsewhere"
+        }, "com.aktcl.aron.sr")
+        assertEquals((items["enum"] as List<String>).toSet(), allHints.toSet())
+        assertEquals(80, com.aktcl.aron.core.geo.integrity.IntegrityResult.Unavailable(
+            com.aktcl.aron.core.geo.integrity.IntegrityUnavailable.API_ERROR, "x".repeat(200)).wireDetail!!.length)
+    }
 }

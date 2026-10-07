@@ -8,7 +8,8 @@ import { POST as logoutPost } from "@/app/api/bff/logout/route";
 import { POST as createPost } from "@/app/api/bff/admin/[entity]/route";
 import { PATCH as updatePatch } from "@/app/api/bff/admin/[entity]/[id]/route";
 import { authenticate } from "@/lib/api/guard";
-import { MFA_COOKIE, RT_COOKIE, SESSION_COOKIE, SESSION_PURPOSE } from "@/lib/auth/cookies";
+import { POST as changeLoginPost } from "@/app/api/bff/login/change-password/route";
+import { MFA_COOKIE, PWC_COOKIE, RT_COOKIE, SESSION_COOKIE, SESSION_PURPOSE } from "@/lib/auth/cookies";
 import { seal } from "@/lib/auth/seal";
 import type { SessionData } from "@/lib/auth/session";
 import { createMock } from "../mock/server";
@@ -105,6 +106,7 @@ describe("login", () => {
     const pw = await loginPost(req("/api/bff/login", "POST", { username: "pwchange1", password: "pwchange-pass-1" }));
     expect(await pw.json()).toEqual({ status: "password_change_required" });
     expect(setCookies(pw)[SESSION_COOKIE]).toBeUndefined();
+    expect(setCookies(pw)[PWC_COOKIE]).toBeDefined();
     const sr = await loginPost(req("/api/bff/login", "POST", { username: "sr334001", password: "sr-pass-1" }));
     expect(await sr.json()).toEqual({ status: "no_web_access" });
     expect(setCookies(sr)[SESSION_COOKIE]).toBeUndefined();
@@ -227,5 +229,46 @@ describe("generic CRUD writes", () => {
     const res = await updatePatch(req("/api/bff/admin/clusters/1", "PATCH", { values: { name: "Hacked" }, reason: "valid reason here", version: 1 }, cookies), idParams("clusters", "1"));
     expect(res.status).toBe(403);
     expect(mock.state.clusters[0]!.name).toBe("Banani Market");
+  });
+});
+
+describe("forced password change at login (contract v1.2)", () => {
+  const NEW = "Brand-new-Pass-42";
+  async function start(username: string, password: string) {
+    const r = await loginPost(req("/api/bff/login", "POST", { username, password }));
+    const c = setCookies(r);
+    expect(JSON.stringify(await r.json())).not.toContain("pwc."); // the token never reaches the browser body
+    return { [PWC_COOKIE]: value(c[PWC_COOKIE]!) };
+  }
+  it("the token stays in a sealed cookie; the change signs the user in", async () => {
+    const cookies = await start("pwchange1", "pwchange-pass-1");
+    expect(cookies[PWC_COOKIE]).not.toContain("pwc.");
+    const res = await changeLoginPost(req("/api/bff/login/change-password", "POST", { current_password: "pwchange-pass-1", new_password: NEW }, cookies));
+    expect(await res.json()).toMatchObject({ status: "ok" });
+    const c = setCookies(res);
+    expect(c[SESSION_COOKIE]).toBeDefined();
+    expect(c[RT_COOKIE]).toBeDefined(); // re-issued from the API's Set-Cookie
+    expect(c[PWC_COOKIE]).toMatch(/Max-Age=0|Expires=/);
+    expect((await loginPost(req("/api/bff/login", "POST", { username: "pwchange1", password: NEW }))).status).toBe(200);
+  });
+  it("an MFA role continues to the TOTP step, with no session yet", async () => {
+    const cookies = await start("pwmfa1", "pwmfa-pass-1");
+    const res = await changeLoginPost(req("/api/bff/login/change-password", "POST", { current_password: "pwmfa-pass-1", new_password: NEW }, cookies));
+    expect(await res.json()).toEqual({ status: "mfa_required" });
+    expect(setCookies(res)[SESSION_COOKIE]).toBeUndefined();
+    expect(setCookies(res)[MFA_COOKIE]).toBeDefined();
+  });
+  it("no token cookie, a weak password or a wrong old password are refused", async () => {
+    expect((await changeLoginPost(req("/api/bff/login/change-password", "POST", { current_password: "x", new_password: NEW }))).status).toBe(401);
+    const cookies = await start("pwchange1", "pwchange-pass-1");
+    const weak = await changeLoginPost(req("/api/bff/login/change-password", "POST", { current_password: "pwchange-pass-1", new_password: "short" }, cookies));
+    expect((await weak.json()).code).toBe("ERR_AUTH_PASSWORD_POLICY");
+    const wrong = await changeLoginPost(req("/api/bff/login/change-password", "POST", { current_password: "nope-nope", new_password: NEW }, cookies));
+    expect(wrong.status).toBe(400);
+    expect((await wrong.json()).errors[0].pointer).toBe("/current_password");
+  });
+  it("cross-origin is refused", async () => {
+    const res = await changeLoginPost(req("/api/bff/login/change-password", "POST", { current_password: "a", new_password: NEW }, {}, { origin: "https://evil.example" }));
+    expect(res.status).toBe(403);
   });
 });

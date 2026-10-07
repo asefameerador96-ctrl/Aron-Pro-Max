@@ -2,6 +2,7 @@ package com.aktcl.aron.dpc.enrolment
 
 import java.io.File
 import java.security.MessageDigest
+import com.aktcl.aron.contract.EnrolDeviceRequest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -15,7 +16,10 @@ sealed interface EnrolCallResult {
     data class Retry(val reason: String) : EnrolCallResult
 }
 
-/** `POST /v1/devices/enrol` (unauthenticated: the token is the credential). The app wires it to core-network. */
+/**
+ * `POST /v1/devices/enrol` (unauthenticated: the token is the credential). The app wires it to core-network. Never log
+ * the request: shared:contract's data class prints `enrolment_token` in its toString().
+ */
 fun interface EnrolmentTransport {
     suspend fun enrol(apiBaseUrl: String, request: EnrolDeviceRequest): EnrolCallResult
 }
@@ -109,9 +113,9 @@ class EnrolmentCoordinator(
             appVersion = facts.appVersion,
             appSigningCertSha256 = facts.signingCertSha256Hex,
             deviceOwner = facts.isDeviceOwner(),
-            publicKey = p.publicKey!!,
+            publicKey = json.encodeToJsonElement(JwkEcPublic.serializer(), p.publicKey!!),
             keyAttestationChain = p.chain,
-            deviceInfo = facts.deviceInfo(),
+            deviceInfo = json.encodeToJsonElement(DeviceInfoDto.serializer(), facts.deviceInfo()),
         )
         return when (val r = try { transport.enrol(p.extras.apiBaseUrl, request) } catch (e: Exception) { EnrolCallResult.Retry("transport") }) {
             is EnrolCallResult.Retry -> EnrolmentState.Waiting(r.reason)
@@ -149,6 +153,8 @@ class EnrolmentCoordinator(
     }
 
     private fun sha256(s: String) = MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8))
+
+    private val json = Json { encodeDefaults = true }
 
     companion object {
         const val DEVICE_UUID_MISMATCH = "device_uuid_mismatch"

@@ -11,7 +11,7 @@ import org.junit.Test
 class GeoPhotoCaptureTest {
     private var fixReads = 0
     private var next: FixReading = FixReading("ok", 23.79, 90.40, 11.6, false)
-    private val fixes = object : LocationFixSource { override suspend fun readFix(purpose: String): FixReading { fixReads++; return next } }
+    private val fixes = object : LocationFixSource { override suspend fun readFix(purpose: String, refreshCount: Int): FixReading { fixReads++; return next } }
     private var cancel = false
     private val photos = object : PhotoPipeline {
         val discarded = mutableListOf<String>()
