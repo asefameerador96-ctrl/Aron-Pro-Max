@@ -40,6 +40,10 @@ sealed interface ReviewProblem {
     data class PaidNotPaisa(val paidMtk: Long) : ReviewProblem
     data class NoDrpOffer(val skuId: Long) : ReviewProblem
     data class QcAboveCap(val skuId: Long, val settlementMtk: Long, val capMtk: Long) : ReviewProblem
+    /** `cfg.sale.max_lines_per_memo`: the server rejects a longer memo with `lines_exceed_max`, not retryable (docs/24 s4.5). */
+    data class TooManyLines(val count: Int, val max: Int) : ReviewProblem
+    /** A unit that is neither the SKU's base unit nor `pack` (docs/24 s7.2), or not a known unit at all. */
+    data class UnitNotAllowed(val skuId: Long, val unit: String) : ReviewProblem
 }
 
 data class SaleReview(
@@ -61,13 +65,18 @@ data class SaleReview(
  */
 object SaleReviewCalculator {
     /** Maximum QC deduction per SKU in milli-taka; assumed cap (MQ-03/MQ-04 unknown): no cap when absent. */
-    fun review(draft: SaleDraft, catalog: Map<Long, SaleSku>, qcCapMtkBySku: Map<Long, Long> = emptyMap()): SaleReview {
+    const val DEFAULT_MAX_LINES: Int = 60
+
+    fun review(draft: SaleDraft, catalog: Map<Long, SaleSku>, qcCapMtkBySku: Map<Long, Long> = emptyMap(), maxLines: Int = DEFAULT_MAX_LINES): SaleReview {
         val problems = ArrayList<ReviewProblem>()
         val priceType = PriceType.entries.firstOrNull { it.wire == draft.priceType } ?: PriceType.OUTLET
 
         val lines = draft.lines.mapNotNull { e ->
             val sku = catalog[e.skuId] ?: run { problems += ReviewProblem.UnknownSku(e.skuId); return@mapNotNull null }
-            val unit = QtyUnit.entries.first { it.wire == e.unit }
+            val unit = QtyUnit.entries.firstOrNull { it.wire == e.unit }
+            if (unit == null || (unit != QtyUnit.PACK && unit.wire != sku.baseUnit)) {
+                problems += ReviewProblem.UnitNotAllowed(sku.skuId, e.unit); return@mapNotNull null
+            }
             val base = Quantity.toBase(e.qtyEntered, unit, sku.packFactor.toLong())
             val line = MemoLine.priced(sku.skuId, base, sku.unitPriceMtk, sku.pricePerQty.toLong(), priceType)
             ReviewLine(sku, e, base, line, Quantity.packBadge(base, sku.packFactor.toLong()), sku.stockBase?.let { base > it } ?: false)
@@ -99,7 +108,8 @@ object SaleReviewCalculator {
         val discounts = drp.map { DiscountLine(it.skuId, it.rewardQtyBase, it.valueMtk, DiscountKind.DRP) }
         val totals = MemoMath.totals(lines.map { it.memoLine }, discounts, qc.map { QcLine(it.settlementMtk, true) })
 
-        if (lines.isEmpty() && !draft.zeroSale) problems += ReviewProblem.NothingToSell
+        if (draft.lines.size > maxLines) problems += ReviewProblem.TooManyLines(draft.lines.size, maxLines)
+        if (lines.isEmpty() && !draft.zeroSale && problems.none { it is ReviewProblem.UnitNotAllowed || it is ReviewProblem.UnknownSku }) problems += ReviewProblem.NothingToSell
         val paid = draft.paidMtk ?: totals.netMtk
         if (draft.paidMtk != null) {
             if (paid % Money.MTK_PER_PAISA != 0L) problems += ReviewProblem.PaidNotPaisa(paid)

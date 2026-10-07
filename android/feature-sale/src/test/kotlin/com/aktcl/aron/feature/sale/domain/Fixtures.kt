@@ -5,6 +5,17 @@ import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.VisitEntity
 
+/** Idempotent per memo uuid, like the real counter must be: a retry of one memo gets its number again. */
+class FakeNumbers(private val prefix: String = "sr334001-261005") : com.aktcl.aron.feature.sale.domain.MemoNumbers {
+    private val byMemo = LinkedHashMap<String, String>()
+    var failures = 0
+    val consumed: Int get() = byMemo.size
+    override suspend fun next(businessDate: String, memoUuid: String): String {
+        if (failures > 0) { failures--; error("counter unavailable") }
+        return byMemo.getOrPut(memoUuid) { "$prefix-%03d".format(byMemo.size + 1) }
+    }
+}
+
 object Fx {
     const val DATE = "2026-10-05"
     val maxr = SaleSku(100, "MAXR10", "cigarette", "MaxR 10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400, drp = DrpRule(10))

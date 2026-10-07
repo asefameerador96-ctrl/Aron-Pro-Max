@@ -67,7 +67,9 @@ class SaleFlow(
     suspend fun setQc(entry: QcEntry) = edit { SaleDraftOps.setQc(it, entry) }
     suspend fun setPaid(paidMtk: Long?) = edit { SaleDraftOps.setPaid(it, paidMtk) }
     suspend fun confirmZeroSale() = edit { SaleDraftOps.confirmZeroSale(it) }
-    suspend fun withEdit(edit: EditContext) = edit { it.copy(edit = edit) }
+    suspend fun withEdit(edit: EditContext) = edit { check(!it.qcCompleted) { "a sale cannot be edited after QC" }; it.copy(edit = edit) }
+    /** Completing QC locks the sale at this outlet (F-SR-027). */
+    suspend fun completeQc() = edit { SaleDraftOps.completeQc(it) }
 
     /** Commits the sale; [editFix] is required (and only allowed) for an edit. Returns the same result on a repeat call. */
     suspend fun commit(editFix: GeoFixEntity? = null): CommittedSale = lock.withLock {
@@ -84,8 +86,9 @@ class SaleFlow(
         val s = ui.value
         check(s.committed == null) { "sale already committed" }
         val next = change(checkNotNull(s.draft) { "no sale in progress" })
+        val review = SaleReviewCalculator.review(next, s.catalog, qcCapMtkBySku()) // computed before saving: a failure is never persisted
         store.save(next)
-        publish(s.visit!!, next, s.catalog, null)
+        ui.value = SaleUiState(s.visit, next, s.catalog, review, null)
     }
 
     private fun publish(visit: SaleVisit, draft: SaleDraft, catalog: Map<Long, SaleSku>, committed: CommittedSale?) {

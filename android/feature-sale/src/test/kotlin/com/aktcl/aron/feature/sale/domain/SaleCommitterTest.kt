@@ -27,16 +27,15 @@ class SaleCommitterTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private lateinit var db: AronDatabase
     private lateinit var repo: CaptureRepository
-    private var seq = 0
-    private var numberFailures = 0
-    private val numbers = MemoNumbers { d -> if (numberFailures > 0) { numberFailures--; error("counter unavailable") }; "sr334001-${d.substring(2).replace("-", "")}-%03d".format(++seq) }
+    private val numbers = FakeNumbers()
+    private val seq: Int get() = numbers.consumed
     private lateinit var committer: SaleCommitter
     private lateinit var visitUuid: String
 
     @Before fun setUp() = runTest {
         db = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()
         repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
-        committer = SaleCommitter(repo, numbers, { _, route -> Fx.meta().copy(routeId = route) }, { "2026-10-05T04:35:00.000Z" })
+        committer = SaleCommitter(repo, numbers, { _, route -> Fx.meta().copy(routeId = route) }, { "2026-10-05T04:35:00.000Z" }, findMemo = { db.captureDao().memo(it) })
         visitUuid = com.aktcl.aron.core.common.ClientIds.newUuid()
         val (v, f) = Fx.visit(visitUuid)
         repo.recordVisitOpen(v, f)
@@ -91,7 +90,7 @@ class SaleCommitterTest {
         // A line row with a clashing client uuid (as a corrupt retry would) aborts the whole transaction mid-way.
         var calls = 0
         val clash = com.aktcl.aron.core.common.ClientIds.newUuid()
-        val bad = SaleCommitter(repo, numbers, { _, r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" }, { calls++; if (calls <= 3) clash else com.aktcl.aron.core.common.ClientIds.newUuid() })
+        val bad = SaleCommitter(repo, numbers, { _, r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" }, { calls++; if (calls <= 3) clash else com.aktcl.aron.core.common.ClientIds.newUuid() }, findMemo = { db.captureDao().memo(it) })
         assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { bad.commit(d, Fx.catalog) } }
         assertEquals(0, count("memo")); assertEquals(0, count("memo_line")); assertEquals(0, count("memo_discount")); assertEquals(0, count("qc_line"))
         assertEquals(1, count("outbox")) // only the visit

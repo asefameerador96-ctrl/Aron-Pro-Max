@@ -27,3 +27,11 @@ T2 checker (Sonnet) on F-SR-036/030/032/054/010/069/034/035: 4 confirmed defects
 3. Sales Submit gate blocked forever on a rejected row: rejected and quarantined rows are now notes (carried into the day_submit counts), not blocks. Q-UI-08 stays an open sponsor question.
 Flagged, not a defect: `MemoDetail.canMarkPaid` uses the stored due; the UI must use `DueLedger.markPaid != null`.
 T1 checker (Opus) on the sale rows: pending.
+T1 checker (Opus) on F-SR-023/025/026/027/029/033: 7 confirmed defects, all fixed, its 7 tests kept in `feature-sale/.../CheckerTest.kt`:
+1. A failed commit burned a memo number: `MemoNumbers.next(date, memoUuid)` is now idempotent per memo (a retry gets the same number), and every check that can fail (review, edit rules) runs before the number is taken. The true fix is the counter inside the Room transaction (request item 5).
+2. More than 60 lines is now a review problem (`TooManyLines`).
+3. A unit other than the SKU base unit or pack is a review problem (`UnitNotAllowed`); an unknown unit no longer throws.
+4. No edit after QC (`withEdit`, `commit`); `SaleFlow.completeQc()` added.
+5/6. An edit needs a well-formed reason (a listed one when `editReasons` is passed), its fix, an existing earlier memo of the same outlet and day, and cannot supersede itself.
+7. `SaleFlow.edit` runs the review before saving, so a failure is never persisted.
+Not turned into tests (noted): no soft ceiling on `cfg.sale.max_line_qty_base`; QC cap is per SKU (basis MQ-03/04 unknown); `PaidNegative` unused.
