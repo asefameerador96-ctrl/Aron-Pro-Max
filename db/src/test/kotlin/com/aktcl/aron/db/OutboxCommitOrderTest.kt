@@ -72,7 +72,14 @@ class OutboxCommitOrderTest {
         }
         while (!done.await(5, TimeUnit.MILLISECONDS)) seen += poll()
         pool.shutdown()
-        repeat(3) { seen += poll() }
+        // Drain with a bounded number of polls instead of a fixed three: on a loaded runner another session's open
+        // transaction can hold the horizon back for a while after the writers finish (CI run 37613735145).
+        var polls = 0
+        while (seen.size < writers * perWriter && polls++ < 3000) {
+            seen += poll()
+            if (seen.size < writers * perWriter) Thread.sleep(20)
+        }
+        repeat(2) { seen += poll() }                                       // nothing may arrive twice after the drain
         assertEquals(writers * perWriter, seen.size, "every event once")
         assertEquals(seen.size, seen.toSet().size, "no event twice")
     }

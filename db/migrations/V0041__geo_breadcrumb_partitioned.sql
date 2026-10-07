@@ -12,6 +12,8 @@
 
 SET lock_timeout = '5s';
 
+-- Rename, rebuild and drop run in this one migration transaction: clients only ever see app.geo_breadcrumb.
+-- squawk-ignore renaming-table
 ALTER TABLE app.geo_breadcrumb RENAME TO geo_breadcrumb_v0007;
 
 CREATE TABLE app.geo_breadcrumb (
@@ -71,6 +73,7 @@ BEGIN
 END $$;
 COMMENT ON COLUMN app.geo_breadcrumb.external_ref IS 'Stable external reference for cross-walks with other systems (Apsis, ERP); unique per business date when set.';
 
+-- squawk-ignore ban-drop-table
 DROP TABLE app.geo_breadcrumb_v0007;
 
 -- The new table was created beside the old one, so PostgreSQL suffixed its generated names with 1; give them back the
