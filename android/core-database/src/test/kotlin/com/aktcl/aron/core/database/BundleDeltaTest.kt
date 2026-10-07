@@ -151,4 +151,40 @@ class BundleDeltaTest {
         assertNull(repo.section("route.10232"))
         assertNotNull(repo.section("route.10299"))
     }
+
+    // ---- checker round 1 (F-SYS-007)
+
+    private val memo = """{"memo_client_uuid":"6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f","memo_no":"sr-1","business_date":"2026-10-04","outlet_id":50000,"net_mtk":120000,"due_mtk":120000}"""
+    private suspend fun memos(route: Long) = (Json.parseToJsonElement(repo.section("route.$route")!!).jsonObject["open_memos"] as? JsonArray).orEmpty()
+
+    /** Defect 1: an outlet that moves takes its open memos along, also when its old route is removed. */
+    @Test
+    fun aMovedOutletTakesItsOpenMemosAlong() = runBlocking {
+        assertEquals(BundleDeltaResult.APPLIED, repo.applyBundleDelta(delta(sections = """{"open_memos":{"upsert":[$memo],"delete":[]}}""")))
+        assertEquals(1, memos(10231).size)
+        val moved = delta(base = "c2", cursor = "c3", version = "2026-10-05:5", sections = """{"outlets":{"upsert":[${outlet(50000, 10232, "Moved")}],"delete":[]}}""")
+        assertEquals(BundleDeltaResult.APPLIED, repo.applyBundleDelta(moved))
+        assertEquals(0, memos(10231).size)
+        assertEquals(1, memos(10232).size)
+        val back = delta(base = "c3", cursor = "c4", version = "2026-10-05:6",
+            sections = """{"outlets":{"upsert":[${outlet(50000, 10231, "Back")}],"delete":[]}}""", extra = """{"routes_removed":[10232]}""")
+        assertEquals(BundleDeltaResult.APPLIED, repo.applyBundleDelta(back))
+        assertEquals(1, memos(10231).size) // the due survived its route's removal
+    }
+
+    /** Defect 2: resolutions are stashed in the delta's own transaction (the cursor moves with them). */
+    @Test
+    fun resolutionsAreWrittenInTheDeltaTransaction() = runBlocking {
+        val d = delta(extra = """{"resolutions":[{"client_uuid":"11111111-2222-4333-8444-555555555555","type":"memo","resolution":"accepted","resolved_at":"2026-10-05T05:00:00.000Z"}]}""")
+        assertEquals(BundleDeltaResult.APPLIED, repo.applyBundleDelta(d))
+        assertEquals("accepted", db.referenceDao().meta(ReferenceRepository.KEY_RESOLUTION_PREFIX + "11111111-2222-4333-8444-555555555555"))
+    }
+
+    /** Note e: a delta of the same snapshot that only moves day states (a submit void) has a new cursor and is applied. */
+    @Test
+    fun aDayStateOnlyDeltaOfTheSameSnapshotIsApplied() = runBlocking {
+        val d = delta(version = "2026-10-05:3", extra = """{"day_states":[{"route_id":10231,"business_date":"2026-10-05","state":"open","submit_cycle":2,"submit_voided":true}]}""")
+        assertEquals(BundleDeltaResult.APPLIED, repo.applyBundleDelta(d))
+        assertEquals("true", Json.parseToJsonElement(repo.section("route.10231")!!).jsonObject["day_state"]!!.jsonObject["submit_voided"]!!.jsonPrimitive.content)
+    }
 }

@@ -112,6 +112,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             dao.reapplyLocalResolutions()
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_DATE, date))
+            dao.deleteMeta(KEY_BUNDLE_REFRESH) // a whole snapshot answers a gap
             dao.meta(KEY_PREFETCH_DATE)?.let { if (it <= date) clearPrefetch() } // a prefetch of this day or earlier is spent
             putOrDelete(KEY_BUNDLE_ETAG, etag)
             putOrDelete(KEY_BUNDLE_CURSOR, bundle.meta.cursor)
@@ -195,14 +196,26 @@ class ReferenceRepository(private val db: AronDatabase) {
             .map { it to DELTA_JSON.decodeFromJsonElement(RouteSnapshot.serializer(), it) }
         val removed = (raw["routes_removed"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull() }
         val dayStates = (raw["day_states"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+        val resolutions = (raw["resolutions"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            val uuid = (o["client_uuid"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+            val res = (o["resolution"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+            uuid to res
+        }
+        val moveMemos = outletUps.isNotEmpty() || deletes("outlets").isNotEmpty() || added.isNotEmpty() || removed.isNotEmpty() ||
+            upserts("open_memos").isNotEmpty() || deletes("open_memos").isNotEmpty()
         return db.withTransaction {
             if (dao.meta(KEY_BUNDLE_DATE) != date) return@withTransaction BundleDeltaResult.NEW_DATE
             val held = dao.meta(KEY_BUNDLE_CURSOR)
-            if (held == cursor || compare(version, dao.meta(KEY_BUNDLE_VERSION)) <= 0) return@withTransaction BundleDeltaResult.STALE
+            // Already applied (same cursor) or older than the held bundle. A delta of the same snapshot that only moves day
+            // states (a submit void) has a new cursor and is applied.
+            if (held == cursor || compare(version, dao.meta(KEY_BUNDLE_VERSION)) < 0) return@withTransaction BundleDeltaResult.STALE
             if (base == null || held != base) {
                 dao.putMeta(SyncMetaEntity(KEY_BUNDLE_REFRESH, "true"))
                 return@withTransaction BundleDeltaResult.GAP
             }
+            // Open memos of every route, read before any route goes, so a moved or removed route never loses a due.
+            val heldMemos = if (moveMemos) openMemosByRoute() else emptyMap()
             // Whole routes first, so row upserts of the same delta land on top of them.
             for (id in removed) {
                 dao.deleteOutletsOfRoute(id)
@@ -224,7 +237,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             deletes("tasks").takeIf { it.isNotEmpty() }?.let { dao.deleteTasks(it) }
             if (taskUps.isNotEmpty()) dao.insertTasks(taskUps)
             dao.reapplyLocalResolutions() // a resolution not yet acked survives a server copy of the task
-            applyOpenMemos(upserts("open_memos"), deletes("open_memos"))
+            if (moveMemos) placeOpenMemos(heldMemos, added.map { it.second }, upserts("open_memos"), deletes("open_memos"))
             for (st in dayStates) {
                 val routeId = (st["route_id"] as? JsonPrimitive)?.contentOrNull ?: continue
                 editSection("route.$routeId") { JsonObject(it + ("day_state" to st)) }
@@ -238,23 +251,54 @@ class ReferenceRepository(private val db: AronDatabase) {
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_CURSOR, cursor))
             m("server_time")?.let { dao.putMeta(SyncMetaEntity(KEY_BUNDLE_SERVER_TIME, it)) }
+            // Resolutions are stashed in the same transaction as the cursor move: the server sends each one once.
+            for (res in resolutions) dao.putMeta(SyncMetaEntity(KEY_RESOLUTION_PREFIX + res.first, res.second))
             BundleDeltaResult.APPLIED
         }
     }
 
-    /** Open memos live in their route's section (`route.<id>.open_memos`); a memo is placed by its outlet's route. */
-    private suspend fun applyOpenMemos(upserts: List<JsonObject>, deletes: List<String>) {
-        if (upserts.isEmpty() && deletes.isEmpty()) return
-        fun uuid(o: JsonElement) = ((o as? JsonObject)?.get("memo_client_uuid") as? JsonPrimitive)?.contentOrNull
-        val gone = deletes.toSet() + upserts.mapNotNull(::uuid)
+    /** Every route section's open memos, by route id (read before a delta changes routes). */
+    private suspend fun openMemosByRoute(): Map<Long, List<JsonObject>> =
+        dao.routeSectionNames().mapNotNull { it.removePrefix("route.").toLongOrNull() }.associateWith { id ->
+            section("route.$id")?.let { runCatching { (Json.parseToJsonElement(it) as? JsonObject)?.get("open_memos") as? JsonArray }.getOrNull() }
+                .orEmpty().mapNotNull { it as? JsonObject }
+        }
+
+    /**
+     * Open memos live in their route's section (`route.<id>.open_memos`), placed by their outlet's route as the outlet table
+     * says after the delta: a memo follows an outlet that moved, delta upserts replace by memo_client_uuid, deletes remove,
+     * and an added route's own snapshot memos are kept. A memo whose outlet is in none of the user's routes stays where it
+     * was while that route is held (the due must stay collectable offline).
+     */
+    private suspend fun placeOpenMemos(held: Map<Long, List<JsonObject>>, addedRoutes: List<RouteSnapshot>, upserts: List<JsonObject>, deletes: List<String>) {
+        fun uuid(o: JsonObject) = (o["memo_client_uuid"] as? JsonPrimitive)?.contentOrNull
+        fun outlet(o: JsonObject) = (o["outlet_id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()
+        val gone = deletes.toSet()
+        val pool = LinkedHashMap<String, Pair<JsonObject, Long?>>() // uuid -> memo, route it was in
+        for ((route, memos) in held) for (m in memos) uuid(m)?.let { pool[it] = m to route }
+        for (u in upserts) uuid(u)?.let { pool[it] = u to pool[it]?.second }
+        gone.forEach { pool.remove(it) }
         val routeIds = dao.routeSectionNames().mapNotNull { it.removePrefix("route.").toLongOrNull() }
+        val routeOfOutlet = HashMap<Long, Long>()
+        for (id in routeIds) dao.outletsOf(id).forEach { routeOfOutlet[it.outletId] = id }
+        val placed = routeIds.associateWith { ArrayList<JsonObject>() }
+        val addedIds = addedRoutes.map { it.routeId }.toSet()
+        for ((_, entry) in pool) {
+            val (memo, was) = entry
+            val target = outlet(memo)?.let(routeOfOutlet::get) ?: was?.takeIf { it in placed && it !in addedIds }
+            target?.let { placed.getValue(it) += memo }
+        }
         for (id in routeIds) {
-            val outletIds = dao.outletsOf(id).map { it.outletId }.toSet()
-            editSection("route.$id") { r ->
-                val kept = (r["open_memos"] as? JsonArray).orEmpty().filter { uuid(it) !in gone }
-                val mine = upserts.filter { u -> (u["outlet_id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() in outletIds }
-                JsonObject(r + ("open_memos" to JsonArray(kept + mine)))
+            // An added route keeps the open memos its snapshot carried, plus any that now belong to it.
+            val own = if (id in addedIds) {
+                val fromSnapshot = section("route.$id")?.let { (Json.parseToJsonElement(it) as? JsonObject)?.get("open_memos") as? JsonArray }
+                    .orEmpty().mapNotNull { it as? JsonObject }.filter { uuid(it) !in gone }
+                val have = fromSnapshot.mapNotNull(::uuid).toSet()
+                fromSnapshot + placed.getValue(id).filter { uuid(it) !in have }
+            } else {
+                placed.getValue(id)
             }
+            editSection("route.$id") { r -> JsonObject(r + ("open_memos" to JsonArray(own))) }
         }
     }
 
@@ -393,6 +437,9 @@ class ReferenceRepository(private val db: AronDatabase) {
 
         /** Set when the server answers 410 to a config delta: only a full bundle brings the phone up to date. */
         const val KEY_BUNDLE_REFRESH = "bundle.refresh_needed"
+
+        /** sync_meta prefix of server resolutions waiting for their quarantined row (written by deltas and batch answers). */
+        const val KEY_RESOLUTION_PREFIX = "sync.resolution."
         private const val KEY_PREFETCH_JSON = "prefetch.json"
         private const val KEY_PREFETCH_VERSION = "prefetch.version"
         private const val KEY_PREFETCH_DATE = "prefetch.date"

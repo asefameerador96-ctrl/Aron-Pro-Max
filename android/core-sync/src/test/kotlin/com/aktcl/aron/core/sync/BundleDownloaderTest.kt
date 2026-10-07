@@ -248,7 +248,8 @@ class BundleDownloaderTest {
         assertFalse(downloader().loggedIn("2026-10-05"))
         assertEquals(9500L, ReferenceRepository(db).priceOn(100, "outlet", "2026-10-05")!!.amountMtk)
         assertEquals(200, db.referenceDao().outletCount())
-        assertEquals("accepted", db.referenceDao().meta(SyncEngine.RESOLUTION_PREFIX + "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f"))
+        // The resolution was stashed with the cursor and drained at once (no such row on this phone: nothing left over).
+        assertNull(db.referenceDao().meta(SyncEngine.RESOLUTION_PREFIX + "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f"))
         deltaAnswer = { MockResponse.Builder().code(304).addHeader("X-Aron-Api", "1").build() }
         assertEquals(BundleOutcome.UNCHANGED, downloader().refreshDelta().outcome)
     }
@@ -285,5 +286,19 @@ class BundleDownloaderTest {
         db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(SyncEngine.KEY_BUNDLE_CURRENT, "2026-10-05:7"))
         assertNotNull(downloader().refreshIfServerNewer())
         assertEquals(2, requests.size)
+    }
+
+    /** Checker round 1 (F-SYS-007, defect 3): a delta the phone cannot read falls back to the full day once, not after every sync. */
+    @Test
+    fun aMalformedDeltaFallsBackInsteadOfRefetchingAfterEverySync() = runBlocking {
+        downloader().download()
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(SyncEngine.KEY_BUNDLE_CURRENT, "2026-10-05:4"))
+        deltaAnswer = { api(deltaBody().replace("\"prices\": {", "\"outlets\": {\"upsert\": [{\"outlet_id\": 50000}], \"delete\": []}, \"prices\": {")) }
+        requests.clear()
+        repeat(3) { downloader().refreshIfServerNewer() }
+        assertEquals(1, requests.count { it.url.encodedPath == "/v1/sync/delta" })
+        val full = requests.filter { it.url.encodedPath == "/v1/sync/bundle" }
+        assertEquals(1, full.size)
+        assertNull("the fallback is unconditional", full.single().headers["If-None-Match"])
     }
 }

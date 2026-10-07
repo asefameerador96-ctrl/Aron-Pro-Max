@@ -366,14 +366,7 @@ class SyncEngine(
             for (res in delivered) {
                 if (AckRules.resolution(res.resolution) != null) meta.putMeta(SyncMetaEntity(RESOLUTION_PREFIX + res.clientUuid, res.resolution))
             }
-            for (stash in meta.metaWithPrefix(RESOLUTION_PREFIX)) {
-                val uuid = stash.key.removePrefix(RESOLUTION_PREFIX)
-                val t = AckRules.resolution(stash.value) ?: run { meta.deleteMeta(stash.key); null } ?: continue
-                val row = outbox.byClientUuid(uuid)
-                val done = row == null || outbox.applyResolution(uuid, t.state, t.code!!, now) > 0 ||
-                    row.state == OutboxState.ACKED || row.state == OutboxState.REJECTED
-                if (done) meta.deleteMeta(stash.key)
-            }
+            ResolutionStash.drain(db, now)
         }
 
         suspend fun requestJson(batchUuid: String, rows: List<OutboxEntity>): String {
@@ -466,7 +459,7 @@ class SyncEngine(
         const val KEY_DAY_STATES = "sync.day_states"
         const val KEY_LAST_SUCCESS = "sync.last_success_at"
         private const val ATTEMPT_PREFIX = "sync.batch_attempt."
-        internal const val RESOLUTION_PREFIX = "sync.resolution."
+        internal const val RESOLUTION_PREFIX = ReferenceRepository.KEY_RESOLUTION_PREFIX
 
         private val RECORD_POINTER = Regex("^/records/(\\d+)(?:/|$)")
 

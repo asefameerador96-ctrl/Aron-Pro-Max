@@ -75,7 +75,8 @@ class DayConfig {
                     val m = e as? kotlinx.serialization.json.JsonObject ?: return@forEachIndexed
                     val date = m["date"]?.jsonPrimitive?.contentOrNull ?: return@forEachIndexed
                     val id = m["id"]?.jsonPrimitive?.contentOrNull ?: "#$i"
-                    val scope = SPECIFICITY[m["scope_type"]?.jsonPrimitive?.contentOrNull] ?: 0
+                    // An unknown scope is ignored, as the server's bundle does.
+                    val scope = SPECIFICITY[m["scope_type"]?.jsonPrimitive?.contentOrNull] ?: return@forEachIndexed
                     byId[id] = Entry(date, scope, m["selling_day"]?.jsonPrimitive?.booleanOrNull ?: false)
                 }
                 return Calendar(weekend, byId.values.groupBy { it.date })

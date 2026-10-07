@@ -268,4 +268,13 @@ class DeviceStatusReporterTest {
         background.await()
         assertTrue("Sales Submit waited $waitedMs ms", waitedMs < 500)
     }
+
+    /** Checker round 3 (note C): an entry of an unknown scope is ignored, as the server's bundle does. */
+    @Test
+    fun unknownScopeIsIgnoredAsTheServerDoes() {
+        val c = DayConfig.Calendar.parse("""{"weekend_days":[5],"entries":[
+          {"id":1,"date":"2026-10-09","scope_type":"global","scope_id":0,"kind":"makeup_day","selling_day":true,"name_en":"m"},
+          {"id":2,"date":"2026-10-09","scope_type":"region","scope_id":9,"kind":"holiday","selling_day":false,"name_en":"h"}]}""")
+        assertEquals(true, c.isWorkingDay("2026-10-09"))
+    }
 }

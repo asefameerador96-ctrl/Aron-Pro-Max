@@ -64,7 +64,8 @@ class SessionSyncRunner(
         val db = databases.of(userId)
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         val report = engine(userId, db).run(trigger)
-        if (report.stop != SyncStop.OFFLINE) {
+        // Only after a run the server answered in full: never straight after a hold, 429, 503 or a refusal (s4.10, s4.7).
+        if (report.stop == SyncStop.DRAINED || report.stop == SyncStop.RUN_LIMIT) {
             try { bundles?.of(userId)?.refreshIfServerNewer() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         }
         return report

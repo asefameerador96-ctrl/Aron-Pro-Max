@@ -90,7 +90,7 @@ class ReconciliationRepository(private val db: AronDatabase, private val nowIso:
 
     /** Contract `MoneyTotals` of the date (batch `device_money` and `day_submit.device_money`). */
     suspend fun deviceMoney(businessDate: String): JsonObject {
-        val refused = outbox.refusedUuids().toSet()
+        val refused = outbox.refusedUuids(businessDate).toSet()
         val stored = capture.memosOn(businessDate).filter { it.clientUuid !in refused }
         val superseded = capture.memosBetween(businessDate, MAX_DATE)
             .filter { it.clientUuid !in refused }.mapNotNull { it.supersedesClientUuid }.toSet()
@@ -140,7 +140,8 @@ class ReconciliationRepository(private val db: AronDatabase, private val nowIso:
         val device = deviceCounts(businessDate)
         val unsent = outbox.unsentCounts(businessDate).associate { it.recordType to it.count }
         val totals = serverTotals(businessDate)
-        val totalsAt = db.referenceDao().meta(KEY_SERVER_TOTALS_AT + businessDate)
+        // Figures stored by an older build have no receipt time: their as_of is the best available (two clocks, rare).
+        val totalsAt = db.referenceDao().meta(KEY_SERVER_TOTALS_AT + businessDate) ?: totals?.asOf
         val server = totals?.byType?.mapValues { (_, v) -> outcomeSum(v) }
         val rows = rowsConfig.map { (key, types) ->
             val d = types.sumOf { device[it] ?: 0 }
@@ -169,6 +170,7 @@ class ReconciliationRepository(private val db: AronDatabase, private val nowIso:
             moneyMatches != false -> if (moneyMatches == null && MONEY_TYPES.any { (unsent[it] ?: 0) > 0 }) ReconReason.NOT_SENT else null
             MONEY_TYPES.any { (unsent[it] ?: 0) > 0 } -> ReconReason.NOT_SENT
             answeredAfter(businessDate, MONEY_TYPES, totalsAt) -> ReconReason.AWAITING_SERVER
+            serverHasMore(money, serverMoney!!) -> ReconReason.SERVER_HAS_MORE
             else -> ReconReason.SERVER_HAS_FEWER
         }
         return Reconciliation(businessDate, rows, MoneyCheck(money, serverMoney, moneyMatches, differing, moneyReason), totals?.asOf, now)
@@ -222,6 +224,13 @@ class ReconciliationRepository(private val db: AronDatabase, private val nowIso:
             val o = e.jsonObject
             listOf("accepted", "rejected", "quarantined").sumOf { o[it]?.jsonPrimitive?.intOrNull ?: 0 }
         }.getOrDefault(0)
+
+        /** The server holds more sales than the phone: more active memos, or a higher net with the same count. */
+        private fun serverHasMore(device: JsonObject, server: JsonObject): Boolean {
+            fun n(o: JsonObject, k: String) = (o[k] as? JsonPrimitive)?.longOrNull ?: 0L
+            val dc = n(device, "active_memo_count"); val sc = n(server, "active_memo_count")
+            return sc > dc || (sc == dc && n(server, "net_mtk") > n(device, "net_mtk"))
+        }
 
         /** Numbers compared as integers; objects member by member with absent = 0 (the server leaves out empty keys). */
         private fun normal(e: JsonElement?): Any? = when (e) {

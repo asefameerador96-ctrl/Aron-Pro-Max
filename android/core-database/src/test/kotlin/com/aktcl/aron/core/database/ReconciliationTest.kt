@@ -197,4 +197,26 @@ class ReconciliationTest {
         answer("""{}""", JsonObject(money() + ("gross_mtk" to JsonPrimitive(1))), receivedAt = "2026-10-05T05:30:00.400Z")
         assertEquals(ReconReason.SERVER_HAS_FEWER, recon.reconcile(date, "SR").money.reason)
     }
+
+    // ---- checker round 3
+
+    /** Defect A: a server holding more sales than the phone is not "fewer". */
+    @Test
+    fun serverWithMoreMoneyIsNotLabelledFewer() = runBlocking {
+        ackAll("2026-10-05T05:30:00.400Z")
+        val m = money()
+        val more = JsonObject(m + ("active_memo_count" to JsonPrimitive(m["active_memo_count"]!!.jsonPrimitive.long + 1)) +
+            ("net_mtk" to JsonPrimitive(m["net_mtk"]!!.jsonPrimitive.long + 50_000)))
+        answer("""{}""", more, receivedAt = "2026-10-05T05:30:00.400Z")
+        assertEquals(ReconReason.SERVER_HAS_MORE, recon.reconcile(date, "SR").money.reason)
+    }
+
+    /** Note B: figures stored by an older build (no receipt time) fall back to their as_of. */
+    @Test
+    fun oldInstallWithoutReceiptTime() = runBlocking {
+        ackAll("2026-10-05T05:40:00.000Z")
+        val totals = """{"business_date":"$date","as_of":"2026-10-05T05:30:00.000Z","by_type":{"memo":{"accepted":1,"rejected":0,"quarantined":0}},"money":${money()}}"""
+        db.referenceDao().putMeta(SyncMetaEntity(ReconciliationRepository.KEY_SERVER_TOTALS + date, totals))
+        assertEquals(ReconReason.AWAITING_SERVER, recon.reconcile(date, "SR").rows.first { it.key == "sale" }.reason)
+    }
 }
