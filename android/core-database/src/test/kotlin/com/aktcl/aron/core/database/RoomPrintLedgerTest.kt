@@ -60,7 +60,7 @@ class RoomPrintLedgerTest {
         val row = db.outboxDao().byClientUuid(e.clientUuid)!!
         assertEquals("print_event", row.recordType)
         assertEquals(visit, row.familyUuid)
-        assertEquals(2, row.rank)
+        assertEquals(3, row.rank)
         val payload = Json.parseToJsonElement(row.payloadJson).jsonObject["payload"]!!.jsonObject
         assertEquals(e.payload(), payload)
         assertEquals(JsonNull, payload["printer_model"]) // required nullable members travel as null

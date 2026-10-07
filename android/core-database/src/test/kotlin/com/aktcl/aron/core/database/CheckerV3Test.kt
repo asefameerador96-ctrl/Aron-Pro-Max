@@ -13,6 +13,8 @@ import com.aktcl.aron.core.database.entity.VisitSkipEntity
 import com.aktcl.aron.core.database.reference.BundleReference
 import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.ReferenceRepository
+import com.aktcl.aron.core.database.repo.RoomPrintLedger
+import com.aktcl.aron.core.printing.flow.PrintEvent
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -22,6 +24,7 @@ import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -110,6 +113,56 @@ class CheckerV3Test {
     @Test fun resolvingAnUnknownTaskIsRefused() = runTest {
         val ev = TaskEventEntity(ClientIds.newUuid(), TestRows.meta(routeId = null), ClientIds.newUuid(), "resolved")
         assertThrows(IllegalStateException::class.java) { runBlocking { repo.resolveTask(ev, "2026-10-05T05:00:00.000Z") } }
+    }
+
+    // ---- Round 2: RoomPrintLedger (android-print request s1) ----
+    private val ledger = RoomPrintLedger(db, { base -> base ?: TestRows.meta(routeId = null) }, { "2026-10-05T04:40:00.000Z" })
+
+    private suspend fun memoInVisit(): String {
+        val (visit, fix) = TestRows.visit()
+        repo.recordVisitOpen(visit, fix)
+        val sale = TestRows.sale(visit.clientUuid)
+        repo.recordSale(sale)
+        return sale.memo.clientUuid
+    }
+
+    private fun memoPrint(memo: String, count: Int = 1, template: Int = 3) =
+        PrintEvent(ClientIds.newUuid(), "memo", memo, null, count, PrintEvent.PRINTED, true, template, null, 1_000L)
+
+    // docs/24 s4.2 table: print_event of a memo is in the visit family at rank 3 (the code writes rank 2).
+    @Test fun aMemoPrintIsRankThreeInItsVisitFamily() = runTest {
+        val e = memoPrint(memoInVisit())
+        ledger.record(e)
+        assertEquals(3, db.outboxDao().byClientUuid(e.clientUuid)!!.rank)
+    }
+
+    // Contract PrintEventPayload: print_count 1..100, template_version 1..999; out-of-range values are queued and
+    // would be rejected by the server as schema_invalid.
+    @Test fun printEventValuesOutsideTheContractAreRefused() = runTest {
+        val memo = memoInVisit()
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { ledger.record(memoPrint(memo, count = 0)) } }
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { ledger.record(memoPrint(memo, template = 0)) } }
+    }
+
+    // s4.2 rule 2: day_submit is the last record of its route-day. A memo (re)print after Sales Submit carries the memo's
+    // business_date and route_id and lands in the outbox after the submit.
+    @Test fun aMemoPrintAfterSalesSubmitDoesNotFollowTheSubmit() = runTest {
+        val memo = memoInVisit()
+        repo.recordDaySubmit(submit())
+        val e = memoPrint(memo)
+        val refused = runCatching { ledger.record(e) }.isFailure
+        if (!refused) {
+            // Nothing queued after the day_submit may belong to its route-day (same business date and route).
+            val rows = db.outboxDao().nextPending(1000)
+            val submitAt = rows.indexOfFirst { it.recordType == "day_submit" }
+            val sub = Json.parseToJsonElement(rows[submitAt].payloadJson).jsonObject
+            for (r in rows.drop(submitAt + 1)) {
+                val o = Json.parseToJsonElement(r.payloadJson).jsonObject
+                val sameDay = o["business_date"] == sub["business_date"] && o["route_id"] != null && o["route_id"] == sub["route_id"]
+                assertTrue("${r.recordType} follows the day_submit of its route-day", !sameDay)
+                assertTrue("after submit a print is its own family", r.familyUuid == r.clientUuid)
+            }
+        }
     }
 
     private fun submit(scope: String = "route_day", cycle: Int = 1, pending: Int = 0) = DaySubmitEntity(

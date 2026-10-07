@@ -220,17 +220,12 @@ class CaptureRepository(
      * The server reopened a submitted route-day (a submit void): captures of [businessDate] and [routeId] are allowed again
      * until a submit of a later cycle than [voidedCycle].
      */
-    suspend fun reopenRouteDay(businessDate: String, routeId: Long?, voidedCycle: Int) =
-        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(reopenKey(businessDate, routeId), voidedCycle.toString()))
+    suspend fun reopenRouteDay(businessDate: String, routeId: Long?, voidedCycle: Int) = RouteDayLock.reopen(db, businessDate, routeId, voidedCycle)
 
     /** Refuses a route-day capture after its Sales Submit (docs/24 s4.2 rule 2: day_submit is the route-day's last record). */
     private suspend fun requireOpenRouteDay(meta: CaptureMeta) {
-        val latest = capture.daySubmitsFor(meta.businessDate, meta.routeId).maxOfOrNull { it.submitCycle } ?: return
-        val reopened = db.referenceDao().meta(reopenKey(meta.businessDate, meta.routeId))?.toIntOrNull() ?: 0
-        check(latest <= reopened) { "route-day ${meta.businessDate} is submitted; nothing more can be captured" }
+        check(RouteDayLock.isOpen(db, meta)) { "route-day ${meta.businessDate} is submitted; nothing more can be captured" }
     }
-
-    private fun reopenKey(businessDate: String, routeId: Long?) = "route_day.reopened.$businessDate.${routeId ?: "none"}"
 
     /** Device ids are lower-case UUID v4 (contract `Uuid`); anything else would be rejected on upload as schema_invalid. */
     private fun requireUuids(vararg ids: String) {
