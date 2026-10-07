@@ -41,3 +41,13 @@ strings from resources.
 
 ## android-print (mine, in progress)
 16. Done: `MemoPrinting.printDaySummary(daySummaryUuid, DaySummaryPrint)` (kind `day_summary`, no limit, no marker; `daySummaryUuid` = a stable UUID v4 per user and business date). Next: F-SR-015 / F-SR-031 / F-SR-066 cases on the Room ledger.
+
+## Status 2026-10-07 08:50 UTC (checked `lane/android-sr-b` 37848fe, which contains `lane/android-sr-a` 7128431)
+Landed: items 1, 3, 4 (`SrModule.printerManager`, `SrDay.printing` on `RoomPrintLedger`, renderer, `recoverPrinting()` at start), item 5 for Stock, item 7, item 8 (Stock Print after Save), items 9-12 inside `feature-sale` (`SaleRoute` + `SaveAndPrintDialogs`) and `feature-memo` (`MemoPrintingReprinter`).
+
+Still missing:
+- **sr-a (app-sr):** `SaleRoute`, the Memo menu (`MemoViewModel` + `MemoPrintingReprinter(day.printing)`) and `SummaryScreen` are not hosted in `SrApp` yet, so the sale cannot print from the app (F-SR-028/073/031/066 and the summary print wait on this).
+- **sr-a, Stock dialog (blocking for F-SR-015):** `AronConfirmDialog` sends a tap outside or Back to `onDismiss`, which records "not readable" (`failed_user`), so a stray tap allows an unmarked second slip. Use the new `com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(attempt, onAnswer = { a, ok -> scope.launch { day.printing.confirm(a, ok) } }, onClose = { attempt = null })`: only its Yes/No buttons answer.
+- **sr-a, Stock:** `lastSaved` lives in composition memory only. After leaving the screen, an unprinted Save can never be printed while the banner keeps saying "slip not printed". Offer Print for today's unprinted Saves from Room (group by `captured_at`, the first row by sku_id is the slip uuid). Run print and confirm in a scope that outlives the screen (the SrDay or app scope, not `rememberCoroutineScope`). The slip's `distributor` is empty; fill it from the route's distributor when the bundle carries it.
+- **sr-a, config:** `MemoPrinting(..., reprintMax = { cfg.memo.reprint_max }, confirmAfterPrint = { cfg.print.confirm_after_print })` and `idleDisconnectMs` from `cfg.print.disconnect_idle_s` once ConfigCheck exposes the values (defaults are used today: 5, true, 120 s).
+- **sr-b, feature-memo:** use `PrintAttemptDialogs` for the reprint result too (same rule: no answer on an outside tap); wire `SummaryScreen.onPrint` → `day.printing.printDaySummary(daySummaryUuid, DaySummaryPrint)`, where `daySummaryUuid` is a UUID v4 stored once per user and business date.

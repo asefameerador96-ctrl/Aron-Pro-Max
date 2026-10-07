@@ -47,6 +47,7 @@ import com.aktcl.aron.core.printing.bt.BluetoothSppTransport
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.bt.PrinterState
 import com.aktcl.aron.core.printing.bt.SavedPrinter
+import com.aktcl.aron.core.printing.flow.PrintAttempt
 import com.aktcl.aron.core.printing.flow.SaveAndPrint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -204,6 +205,24 @@ fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (
         is SaveAndPrint.Step.Done -> Info(R.string.sale_saved) {
             if (!finished) { finished = true; onFinished(s.printed) }
         }
+    }
+}
+
+/**
+ * The dialogs after a print of a stored document (memo reprint F-SR-031/066, stock slip F-SR-015, day summary):
+ * "ছাপা ঠিক আছে?" for [PrintAttempt.AwaitingConfirmation], else the limit / failure / too-long message. Only the
+ * Yes and No buttons answer: a tap outside or Back never records "not readable" (a stray `failed_user` would let an
+ * unmarked second original out, docs/requests/android-print-integration.md lead ruling 2). [onAnswer] must call
+ * `MemoPrinting.confirm` from a scope that outlives the screen; [onClose] clears the attempt.
+ */
+@Composable
+fun PrintAttemptDialogs(attempt: PrintAttempt?, onAnswer: (PrintAttempt.AwaitingConfirmation, Boolean) -> Unit, onClose: () -> Unit) {
+    when (attempt) {
+        null, PrintAttempt.Done -> Unit
+        is PrintAttempt.AwaitingConfirmation -> YesNo(null, R.string.ui_print_readable_question, { onAnswer(attempt, it) })
+        PrintAttempt.LimitReached -> Info(R.string.ui_print_limit_reached, onClose)
+        PrintAttempt.TooLong -> Info(R.string.ui_print_too_long, onClose)
+        is PrintAttempt.Failed -> Info(R.string.ui_print_failed, onClose)
     }
 }
 
