@@ -169,7 +169,7 @@ COMMENT ON COLUMN app.attendance_event.fix_lat IS '[pii:personal] Latitude of th
 COMMENT ON COLUMN app.attendance_event.fix_lng IS '[pii:personal] Longitude of the user''s location fix taken with the record (WGS84 degrees).';
 COMMENT ON COLUMN app.attendance_event.fix_accuracy_m IS '[pii:personal] Accuracy in metres of the location fix taken with the record.';
 COMMENT ON COLUMN app.attendance_event.fix_is_mock IS 'True when the phone flagged the fix as coming from a mock location provider.';
-COMMENT ON COLUMN app.attendance_event.address_display IS 'Reverse-geocoded address shown for display only; never used for a decision.';
+COMMENT ON COLUMN app.attendance_event.address_display IS '[pii:personal] Reverse-geocoded address shown for display only; never used for a decision.';
 
 COMMENT ON TABLE app.audit_log IS 'Append-only, hash-chained record of web and admin actions with before and after images and the actor.
 owner: backend:platform | capture: SERVER | retention: audit | pii: personal';
@@ -253,7 +253,7 @@ COMMENT ON COLUMN app.call_assessment.max_score IS 'Maximum score possible for t
 COMMENT ON COLUMN app.call_assessment.delegate_task IS 'True when the assessor delegated a follow-up task.';
 
 COMMENT ON TABLE app.call_assessment_answer IS 'One criterion answer (score, text or yes/no) of a call assessment.
-owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none';
+owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal';
 COMMENT ON COLUMN app.call_assessment_answer.id IS 'Server surrogate key.';
 COMMENT ON COLUMN app.call_assessment_answer.client_uuid IS 'Client-generated UUID v4 of the record; the server upserts by it (idempotency key).';
 COMMENT ON COLUMN app.call_assessment_answer.family_uuid IS 'client_uuid of the family header the record belongs to (equal to client_uuid on a header).';
@@ -280,7 +280,7 @@ COMMENT ON COLUMN app.call_assessment_answer.external_ref IS 'Stable external re
 COMMENT ON COLUMN app.call_assessment_answer.assessment_client_uuid IS 'Client UUID of the call assessment this answer belongs to.';
 COMMENT ON COLUMN app.call_assessment_answer.criterion_id IS 'Id of the rubric criterion answered.';
 COMMENT ON COLUMN app.call_assessment_answer.score IS 'Score awarded for the criterion, when it is scored.';
-COMMENT ON COLUMN app.call_assessment_answer.answer_text IS 'Free-text answer to the criterion.';
+COMMENT ON COLUMN app.call_assessment_answer.answer_text IS '[pii:personal] Free-text answer to the criterion.';
 COMMENT ON COLUMN app.call_assessment_answer.answer_bool IS 'Yes or no answer to the criterion.';
 
 COMMENT ON TABLE app.cfg_ack IS 'Record from a phone saying which config version it applied and which keys changed.
@@ -471,7 +471,7 @@ COMMENT ON COLUMN app.content_view.started_at IS 'UTC time playback started on t
 COMMENT ON COLUMN app.content_view.duration_ms IS 'Milliseconds the item was shown.';
 
 COMMENT ON TABLE app.day_exception IS 'A rain, hartal or other day exception raised from the field for routes and dates, decided by the zone TSO.
-owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none';
+owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal';
 COMMENT ON COLUMN app.day_exception.id IS 'Server surrogate key.';
 COMMENT ON COLUMN app.day_exception.client_uuid IS 'Client-generated UUID v4 of the record; the server upserts by it (idempotency key).';
 COMMENT ON COLUMN app.day_exception.family_uuid IS 'client_uuid of the family header the record belongs to (equal to client_uuid on a header).';
@@ -499,7 +499,7 @@ COMMENT ON COLUMN app.day_exception.reason_code IS 'Reason code from the matchin
 COMMENT ON COLUMN app.day_exception.route_ids IS 'Ids of the routes the exception covers.';
 COMMENT ON COLUMN app.day_exception.from_date IS 'First Dhaka date the exception covers.';
 COMMENT ON COLUMN app.day_exception.to_date IS 'Last Dhaka date the exception covers.';
-COMMENT ON COLUMN app.day_exception.note IS 'Free-text note.';
+COMMENT ON COLUMN app.day_exception.note IS '[pii:personal] Free-text note.';
 COMMENT ON COLUMN app.day_exception.status IS 'Lifecycle status; allowed values are listed under constraints.';
 COMMENT ON COLUMN app.day_exception.decided_by IS 'User who took the decision.';
 COMMENT ON COLUMN app.day_exception.decided_at IS 'UTC instant of the decision.';
@@ -513,6 +513,7 @@ COMMENT ON COLUMN app.db_role_grant.schema_name IS 'Schema the grant applies to:
 COMMENT ON COLUMN app.db_role_grant.object IS 'Table or view name, or a value starting with ''*'' for every table of the schema.';
 COMMENT ON COLUMN app.db_role_grant.privileges IS 'Comma-separated privileges granted: SELECT, INSERT, UPDATE, DELETE.';
 COMMENT ON COLUMN app.db_role_grant.except_tables IS 'Tables a ''*'' row leaves out.';
+COMMENT ON COLUMN app.db_role_grant.except_columns IS 'Columns a single-table row leaves out; the role is then granted the privilege on every other column.';
 COMMENT ON COLUMN app.db_role_grant.note IS 'Free-text note.';
 
 COMMENT ON TABLE app.device IS 'One enrolled phone with its status, trust level, key, integrity verdict and last contact.
@@ -729,7 +730,7 @@ COMMENT ON COLUMN app.division.updated_by IS 'User who last updated the row.';
 COMMENT ON TABLE app.domain_event IS 'Append-only outbox of events written with each change; the projector and later consumers read it in id order.
 owner: backend:platform | capture: SERVER | retention: ops | pii: none';
 COMMENT ON COLUMN app.domain_event.id IS 'Server surrogate key.';
-COMMENT ON COLUMN app.domain_event.event_type IS 'Type of the event, for example memo_committed.';
+COMMENT ON COLUMN app.domain_event.event_type IS 'Type of the event, for example memo.created.';
 COMMENT ON COLUMN app.domain_event.aggregate_type IS 'Type of the thing the event is about, for example memo or visit.';
 COMMENT ON COLUMN app.domain_event.aggregate_id IS 'Server id or client_uuid of the thing the event is about.';
 COMMENT ON COLUMN app.domain_event.business_date IS 'Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it.';
@@ -1117,7 +1118,7 @@ COMMENT ON COLUMN app.leave_application.reason IS '[pii:personal] Reason the TSO
 COMMENT ON COLUMN app.leave_application.status IS 'Lifecycle status; allowed values are listed under constraints.';
 COMMENT ON COLUMN app.leave_application.decided_by IS 'User who took the decision.';
 COMMENT ON COLUMN app.leave_application.decided_at IS 'UTC instant of the decision.';
-COMMENT ON COLUMN app.leave_application.decision_note IS 'Free-text note entered with the decision.';
+COMMENT ON COLUMN app.leave_application.decision_note IS '[pii:personal] Free-text note entered with the decision.';
 
 COMMENT ON TABLE app.loyalty_ledger IS 'Append-only points ledger derived on the server, idempotent per source record.
 owner: backend:analytics | capture: SERVER | retention: transaction | pii: none';
@@ -1343,7 +1344,7 @@ COMMENT ON COLUMN app.memo_void.fix_lng IS '[pii:personal] Longitude of the user
 COMMENT ON COLUMN app.memo_void.fix_accuracy_m IS '[pii:personal] Accuracy in metres of the location fix taken with the record.';
 COMMENT ON COLUMN app.memo_void.fix_is_mock IS 'True when the phone flagged the fix as coming from a mock location provider.';
 COMMENT ON COLUMN app.memo_void.retailer_ack IS 'True when the retailer acknowledged the void.';
-COMMENT ON COLUMN app.memo_void.note IS 'Free-text note.';
+COMMENT ON COLUMN app.memo_void.note IS '[pii:personal] Free-text note.';
 
 COMMENT ON TABLE app.mfa_secret IS 'A user''s TOTP secret (encrypted) and recovery code hashes.
 owner: backend:auth | capture: ONLINE | retention: master | pii: secret';
@@ -1477,7 +1478,7 @@ COMMENT ON COLUMN app.outlet_change_request.fix_accuracy_m IS '[pii:personal] Ac
 COMMENT ON COLUMN app.outlet_change_request.fix_is_mock IS 'True when the phone flagged the fix as coming from a mock location provider.';
 COMMENT ON COLUMN app.outlet_change_request.photo_uuids IS 'UUIDs of the photos attached to the request.';
 COMMENT ON COLUMN app.outlet_change_request.origin_visit_client_uuid IS 'Client UUID of the visit during which the request was raised.';
-COMMENT ON COLUMN app.outlet_change_request.note IS 'Free-text note.';
+COMMENT ON COLUMN app.outlet_change_request.note IS '[pii:personal] Free-text note.';
 COMMENT ON COLUMN app.outlet_change_request.status IS 'Lifecycle status; allowed values are listed under constraints.';
 COMMENT ON COLUMN app.outlet_change_request.status_changed_at IS 'UTC instant of the last status change.';
 COMMENT ON COLUMN app.outlet_change_request.verified_by IS 'Id of the AMO who verified the request.';
@@ -1859,7 +1860,7 @@ COMMENT ON COLUMN app.risk_signal.created_at IS 'UTC instant the row was inserte
 COMMENT ON COLUMN app.risk_signal.updated_at IS 'UTC instant of the last update.';
 
 COMMENT ON TABLE app.risk_signal_review IS 'Review action on a risk signal by an AMO or web user; append-only.
-owner: backend:analytics | capture: OFFLINE | retention: audit | pii: none';
+owner: backend:analytics | capture: OFFLINE | retention: audit | pii: personal';
 COMMENT ON COLUMN app.risk_signal_review.id IS 'Server surrogate key.';
 COMMENT ON COLUMN app.risk_signal_review.client_uuid IS 'Client-generated UUID v4 of the record; the server upserts by it (idempotency key).';
 COMMENT ON COLUMN app.risk_signal_review.family_uuid IS 'client_uuid of the family header the record belongs to (equal to client_uuid on a header).';
@@ -1884,7 +1885,7 @@ COMMENT ON COLUMN app.risk_signal_review.voided_at IS 'UTC time an admin data vo
 COMMENT ON COLUMN app.risk_signal_review.external_ref IS 'Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set.';
 COMMENT ON COLUMN app.risk_signal_review.signal_id IS 'Id of the risk signal reviewed.';
 COMMENT ON COLUMN app.risk_signal_review.action IS 'Review action: reviewed, dismissed or confirmed.';
-COMMENT ON COLUMN app.risk_signal_review.note IS 'Free-text note.';
+COMMENT ON COLUMN app.risk_signal_review.note IS '[pii:personal] Free-text note.';
 COMMENT ON COLUMN app.risk_signal_review.source IS 'Where the row came from; allowed values are listed under constraints.';
 
 COMMENT ON TABLE app.role_def IS 'Lookup giving each role an integer ordinal for config scoping.
@@ -2197,7 +2198,7 @@ COMMENT ON COLUMN app.supervisor_day.updated_at IS 'UTC instant of the last upda
 COMMENT ON COLUMN app.supervisor_day.version IS 'Optimistic-concurrency version; increases by one on every update.';
 
 COMMENT ON TABLE app.survey_response IS 'One answer to an in-visit survey question.
-owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none';
+owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal';
 COMMENT ON COLUMN app.survey_response.id IS 'Server surrogate key.';
 COMMENT ON COLUMN app.survey_response.client_uuid IS 'Client-generated UUID v4 of the record; the server upserts by it (idempotency key).';
 COMMENT ON COLUMN app.survey_response.family_uuid IS 'client_uuid of the family header the record belongs to (equal to client_uuid on a header).';
@@ -2229,7 +2230,7 @@ COMMENT ON COLUMN app.survey_response.answer_type IS 'Answer type: bool, num, op
 COMMENT ON COLUMN app.survey_response.answer_bool IS 'Yes or no answer.';
 COMMENT ON COLUMN app.survey_response.answer_num IS 'Numeric answer.';
 COMMENT ON COLUMN app.survey_response.answer_option_code IS 'Code of the chosen option.';
-COMMENT ON COLUMN app.survey_response.answer_text IS 'Free-text answer.';
+COMMENT ON COLUMN app.survey_response.answer_text IS '[pii:personal] Free-text answer.';
 COMMENT ON COLUMN app.survey_response.photo_uuid IS 'Media uuid (app.media) of the photo attached to the row.';
 
 COMMENT ON TABLE app.sync_batch IS 'Replay store of an uploaded batch with its fingerprint and stored response for the retention window.
@@ -2260,7 +2261,7 @@ COMMENT ON COLUMN app.sync_quarantine.status IS 'Lifecycle status; allowed value
 COMMENT ON COLUMN app.sync_quarantine.payload_sha256 IS 'SHA-256 of the RFC 8785 canonical JSON of the record; same uuid and hash means duplicate.';
 COMMENT ON COLUMN app.sync_quarantine.payload IS '[pii:personal] The SyncRecord as received (JSON); may hold fixes, names and phone numbers.';
 COMMENT ON COLUMN app.sync_quarantine.fixed_payload IS '[pii:personal] The corrected record that was re-ingested on accept_with_fix.';
-COMMENT ON COLUMN app.sync_quarantine.detail IS 'Human-readable detail of why the record was quarantined.';
+COMMENT ON COLUMN app.sync_quarantine.detail IS '[pii:personal] Human-readable detail of why the record was quarantined.';
 COMMENT ON COLUMN app.sync_quarantine.user_id IS 'User (app.app_user); for device records the capturing user from the token.';
 COMMENT ON COLUMN app.sync_quarantine.device_id IS 'Phone (app.device) the row came from, taken from the token, never from the body.';
 COMMENT ON COLUMN app.sync_quarantine.route_id IS 'Route (app.route) being worked.';
@@ -2271,7 +2272,7 @@ COMMENT ON COLUMN app.sync_quarantine.resolution_uuid IS 'UUID of the resolve co
 COMMENT ON COLUMN app.sync_quarantine.resolved_by_user_id IS 'Id of the user who resolved the item.';
 COMMENT ON COLUMN app.sync_quarantine.approved_by_user_id IS 'Id of the second user who approved accept_with_fix for data-entry classes.';
 COMMENT ON COLUMN app.sync_quarantine.resolved_at IS 'UTC time the item was resolved.';
-COMMENT ON COLUMN app.sync_quarantine.resolution_note IS 'Free-text note entered with the resolution.';
+COMMENT ON COLUMN app.sync_quarantine.resolution_note IS '[pii:personal] Free-text note entered with the resolution.';
 
 COMMENT ON TABLE app.sync_rejected IS 'Records rejected or parked at ingest with the payload as received and the reason code.
 owner: backend:sync | capture: SERVER | retention: quarantine | pii: personal';
@@ -2334,7 +2335,7 @@ COMMENT ON COLUMN app.target_set.created_at IS 'UTC instant the row was inserted
 COMMENT ON COLUMN app.target_set.created_by IS 'User who created the row (null for migrations and jobs).';
 
 COMMENT ON TABLE app.task IS 'A task created by a supervisor for a user, optionally tied to an outlet or visit.
-owner: backend:notify | capture: OFFLINE | retention: transaction | pii: none';
+owner: backend:notify | capture: OFFLINE | retention: transaction | pii: personal';
 COMMENT ON COLUMN app.task.id IS 'Server surrogate key.';
 COMMENT ON COLUMN app.task.client_uuid IS 'Client-generated UUID v4 of the record; the server upserts by it (idempotency key).';
 COMMENT ON COLUMN app.task.family_uuid IS 'client_uuid of the family header the record belongs to (equal to client_uuid on a header).';
@@ -2361,7 +2362,7 @@ COMMENT ON COLUMN app.task.task_type_code IS 'Code of the task type from the cod
 COMMENT ON COLUMN app.task.assignee_user_id IS 'Id of the user the task is assigned to.';
 COMMENT ON COLUMN app.task.outlet_id IS 'Outlet (app.outlet).';
 COMMENT ON COLUMN app.task.title IS 'Short title of the task.';
-COMMENT ON COLUMN app.task.description IS 'Free-text description.';
+COMMENT ON COLUMN app.task.description IS '[pii:personal] Free-text description.';
 COMMENT ON COLUMN app.task.due_date IS 'Date the task is due.';
 COMMENT ON COLUMN app.task.source_visit_client_uuid IS 'Client UUID of the visit the task came from.';
 COMMENT ON COLUMN app.task.source IS 'Where the row came from; allowed values are listed under constraints.';
@@ -2370,7 +2371,7 @@ COMMENT ON COLUMN app.task.status_changed_at IS 'UTC instant of the last status 
 COMMENT ON COLUMN app.task.cancelled_by IS 'Id of the user who cancelled the task.';
 
 COMMENT ON TABLE app.task_event IS 'Resolve or reopen of a task by its assignee.
-owner: backend:notify | capture: OFFLINE | retention: transaction | pii: none';
+owner: backend:notify | capture: OFFLINE | retention: transaction | pii: personal';
 COMMENT ON COLUMN app.task_event.id IS 'Server surrogate key.';
 COMMENT ON COLUMN app.task_event.client_uuid IS 'Client-generated UUID v4 of the record; the server upserts by it (idempotency key).';
 COMMENT ON COLUMN app.task_event.family_uuid IS 'client_uuid of the family header the record belongs to (equal to client_uuid on a header).';
@@ -2395,7 +2396,7 @@ COMMENT ON COLUMN app.task_event.voided_at IS 'UTC time an admin data void tombs
 COMMENT ON COLUMN app.task_event.external_ref IS 'Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set.';
 COMMENT ON COLUMN app.task_event.task_uuid IS 'Client UUID of the task the event is about.';
 COMMENT ON COLUMN app.task_event.event IS 'Event: resolved or reopened.';
-COMMENT ON COLUMN app.task_event.note IS 'Free-text note.';
+COMMENT ON COLUMN app.task_event.note IS '[pii:personal] Free-text note.';
 
 COMMENT ON TABLE app.territory IS 'Geography level below a division; groups zones.
 owner: backend:masterdata | capture: ONLINE | retention: master | pii: none';
@@ -2857,7 +2858,7 @@ COMMENT ON COLUMN dw.fact_geo_fix.purpose IS 'Purpose of the fix or photo; allow
 COMMENT ON COLUMN dw.fact_geo_fix.captured_at IS 'UTC instant of capture on the phone, from trusted time when an anchor exists.';
 COMMENT ON COLUMN dw.fact_geo_fix.lat IS '[pii:personal] Latitude of the user''s location fix (WGS84 degrees).';
 COMMENT ON COLUMN dw.fact_geo_fix.lng IS '[pii:personal] Longitude of the user''s location fix (WGS84 degrees).';
-COMMENT ON COLUMN dw.fact_geo_fix.accuracy_m IS 'Horizontal accuracy radius of the location fix in metres.';
+COMMENT ON COLUMN dw.fact_geo_fix.accuracy_m IS '[pii:personal] Horizontal accuracy radius of the location fix in metres.';
 COMMENT ON COLUMN dw.fact_geo_fix.provider IS 'Android location provider of the fix: fused, gps, network, passive or unknown.';
 COMMENT ON COLUMN dw.fact_geo_fix.is_mock IS 'True when the location came from a mock location provider (never geo-valid).';
 COMMENT ON COLUMN dw.fact_geo_fix.satellites_used IS 'Satellites used in the fix.';
@@ -2911,8 +2912,8 @@ COMMENT ON COLUMN dw.fact_visit.voided IS 'True when the visit was voided.';
 COMMENT ON COLUMN dw.fact_visit.last_event_id IS 'Highest app.domain_event id folded into this row by the projector (replays are ignored).';
 COMMENT ON COLUMN dw.fact_visit.updated_at IS 'UTC instant of the last update.';
 
-COMMENT ON VIEW dw.v_attendance IS 'Stable view: per user and business date, check-in and check-out times, hours in field and the location evidence.
-owner: worker | capture: SERVER | retention: event_fact | pii: personal';
+COMMENT ON VIEW dw.v_attendance IS 'Stable view: per user and business date, check-in and check-out times, hours in field and mock-location flags (no coordinates or accuracy).
+owner: worker | capture: SERVER | retention: event_fact | pii: none';
 COMMENT ON COLUMN dw.v_attendance.business_date IS 'Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it.';
 COMMENT ON COLUMN dw.v_attendance.user_id IS 'User (app.app_user); for device records the capturing user from the token.';
 COMMENT ON COLUMN dw.v_attendance.role IS 'User role (contract Role).';
@@ -2920,9 +2921,7 @@ COMMENT ON COLUMN dw.v_attendance.zone_id IS 'Zone (app.zone).';
 COMMENT ON COLUMN dw.v_attendance.check_in_at IS 'UTC instant of the day''s check-in.';
 COMMENT ON COLUMN dw.v_attendance.check_out_at IS 'UTC instant of the day''s check-out.';
 COMMENT ON COLUMN dw.v_attendance.hours_in_field IS 'Hours between check-in and check-out (2 decimals); null until both exist.';
-COMMENT ON COLUMN dw.v_attendance.check_in_accuracy_m IS '[pii:personal] Accuracy in metres of the check-in fix.';
 COMMENT ON COLUMN dw.v_attendance.check_in_is_mock IS 'True when the check-in fix came from a mock location provider.';
-COMMENT ON COLUMN dw.v_attendance.check_out_accuracy_m IS '[pii:personal] Accuracy in metres of the check-out fix.';
 COMMENT ON COLUMN dw.v_attendance.check_out_is_mock IS 'True when the check-out fix came from a mock location provider.';
 COMMENT ON COLUMN dw.v_attendance.updated_at IS 'UTC instant of the last update.';
 

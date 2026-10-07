@@ -44,35 +44,35 @@ SELECT a.business_date, a.route_id, g.route_code, g.route_name, g.visit_kind,
   FROM dw.agg_daily_route a
   LEFT JOIN dw.dim_geo g ON g.route_id = a.route_id;
 
+-- One UNION ALL under one GROUP BY (not a FULL JOIN of two grouped sides), so a filter on business_date or user_id
+-- reaches each fact scan and prunes partitions. Visits are SR calls; memos count when active with lines (s12.4).
 CREATE VIEW dw.v_daily_sr AS
-WITH v AS (
-  SELECT business_date, user_id,
-         count(*) AS visits,
-         count(DISTINCT outlet_id) FILTER (WHERE outcome_code IS DISTINCT FROM 'abandoned' AND call_declined IS NOT TRUE) AS visited_outlets,
-         count(*) FILTER (WHERE server_verdict = 'in_range') AS geo_valid_visits,
-         count(*) FILTER (WHERE geo_action = 'force_sale') AS force_sale_visits,
-         count(*) FILTER (WHERE is_mock) AS mock_visits,
-         array_agg(DISTINCT route_id) FILTER (WHERE route_id IS NOT NULL) AS route_ids,
-         min(opened_at) AS first_visit_at, max(coalesce(ended_at, opened_at)) AS last_visit_end_at
-    FROM dw.fact_visit WHERE NOT voided AND visit_kind = 'sr_call'
-   GROUP BY business_date, user_id),
-m AS (
-  SELECT business_date, user_id,
-         count(*) FILTER (WHERE status = 'active' AND line_count > 0) AS active_memo_count,
-         count(DISTINCT outlet_id) FILTER (WHERE status = 'active' AND line_count > 0) AS successful_calls,
-         coalesce(sum(gross_mtk) FILTER (WHERE status = 'active' AND line_count > 0), 0)::bigint AS gross_mtk,
-         coalesce(sum(net_mtk) FILTER (WHERE status = 'active' AND line_count > 0), 0)::bigint AS net_mtk,
-         coalesce(sum(due_mtk) FILTER (WHERE status = 'active' AND line_count > 0), 0)::bigint AS due_mtk,
-         count(*) FILTER (WHERE status = 'active' AND line_count > 0 AND captured_offline) AS memos_captured_offline
-    FROM dw.fact_memo GROUP BY business_date, user_id)
-SELECT coalesce(v.business_date, m.business_date) AS business_date, coalesce(v.user_id, m.user_id) AS user_id,
-       v.route_ids, coalesce(v.visits, 0) AS visits, coalesce(v.visited_outlets, 0) AS visited_outlets,
-       coalesce(m.successful_calls, 0) AS successful_calls, coalesce(v.geo_valid_visits, 0) AS geo_valid_visits,
-       dw.pct(v.geo_valid_visits, v.visits) AS geo_valid_pct, coalesce(v.force_sale_visits, 0) AS force_sale_visits,
-       coalesce(v.mock_visits, 0) AS mock_visits, coalesce(m.active_memo_count, 0) AS active_memo_count,
-       coalesce(m.gross_mtk, 0) AS gross_mtk, coalesce(m.net_mtk, 0) AS net_mtk, coalesce(m.due_mtk, 0) AS due_mtk,
-       coalesce(m.memos_captured_offline, 0) AS memos_captured_offline, v.first_visit_at, v.last_visit_end_at
-  FROM v FULL JOIN m ON m.business_date = v.business_date AND m.user_id = v.user_id;
+SELECT x.business_date, x.user_id,
+       array_agg(DISTINCT x.route_id) FILTER (WHERE x.k = 'v' AND x.route_id IS NOT NULL) AS route_ids,
+       count(*) FILTER (WHERE x.k = 'v') AS visits,
+       count(DISTINCT x.outlet_id) FILTER (WHERE x.k = 'v' AND x.reached) AS visited_outlets,
+       count(DISTINCT x.outlet_id) FILTER (WHERE x.k = 'm') AS successful_calls,
+       count(*) FILTER (WHERE x.k = 'v' AND x.server_verdict = 'in_range') AS geo_valid_visits,
+       dw.pct(count(*) FILTER (WHERE x.k = 'v' AND x.server_verdict = 'in_range'), count(*) FILTER (WHERE x.k = 'v')) AS geo_valid_pct,
+       count(*) FILTER (WHERE x.k = 'v' AND x.geo_action = 'force_sale') AS force_sale_visits,
+       count(*) FILTER (WHERE x.k = 'v' AND x.is_mock) AS mock_visits,
+       count(*) FILTER (WHERE x.k = 'm') AS active_memo_count,
+       coalesce(sum(x.gross_mtk), 0)::bigint AS gross_mtk,
+       coalesce(sum(x.net_mtk), 0)::bigint AS net_mtk,
+       coalesce(sum(x.due_mtk), 0)::bigint AS due_mtk,
+       count(*) FILTER (WHERE x.k = 'm' AND x.captured_offline) AS memos_captured_offline,
+       min(x.at) FILTER (WHERE x.k = 'v') AS first_visit_at,
+       max(x.end_at) FILTER (WHERE x.k = 'v') AS last_visit_end_at
+  FROM (SELECT 'v'::text AS k, business_date, user_id, route_id, outlet_id,
+               outcome_code IS DISTINCT FROM 'abandoned' AND call_declined IS NOT TRUE AS reached,
+               server_verdict, geo_action, is_mock, NULL::bigint AS gross_mtk, NULL::bigint AS net_mtk,
+               NULL::bigint AS due_mtk, NULL::boolean AS captured_offline, opened_at AS at, coalesce(ended_at, opened_at) AS end_at
+          FROM dw.fact_visit WHERE NOT voided AND visit_kind = 'sr_call'
+        UNION ALL
+        SELECT 'm', business_date, user_id, route_id, outlet_id, NULL, NULL, NULL, NULL, gross_mtk, net_mtk, due_mtk,
+               captured_offline, NULL, NULL
+          FROM dw.fact_memo WHERE status = 'active' AND line_count > 0) x
+ GROUP BY x.business_date, x.user_id;
 
 CREATE VIEW dw.v_daily_outlet AS
 SELECT a.business_date, a.outlet_id, o.outlet_code, o.outlet_name, coalesce(a.route_id, o.route_id) AS route_id,
@@ -96,41 +96,37 @@ SELECT a.business_date, a.outlet_id, o.outlet_code, o.outlet_name, coalesce(a.ro
   LEFT JOIN dw.dim_outlet o ON o.outlet_id = a.outlet_id
  WHERE a.due_mtk <> 0 OR a.dues_collected_mtk <> 0;
 
--- No coordinates: an employee's location is personal data and stays in dw.fact_attendance, which BI cannot read.
+-- No coordinates and no fix accuracy: an employee's location is personal data and stays in dw.fact_attendance, which BI cannot read.
 CREATE VIEW dw.v_attendance AS
 SELECT f.business_date, f.user_id, f.role, f.zone_id, f.check_in_at, f.check_out_at,
        CASE WHEN f.check_in_at IS NOT NULL AND f.check_out_at IS NOT NULL
             THEN round(extract(epoch FROM f.check_out_at - f.check_in_at) / 3600.0, 2) END AS hours_in_field,
-       f.check_in_accuracy_m, f.check_in_is_mock, f.check_out_accuracy_m, f.check_out_is_mock, f.updated_at
+       f.check_in_is_mock, f.check_out_is_mock, f.updated_at
   FROM dw.fact_attendance f;
 
 -- Covers every visit kind of the user (SR, AMO and TSO calls): integrity is about the person's fixes; v_daily_sr counts
--- SR calls only, so their geo_valid_pct differ for a supervisor.
+-- SR calls only, so their geo_valid_pct differ for a supervisor. UNION ALL under one GROUP BY, as v_daily_sr.
 CREATE VIEW dw.v_geo_integrity AS
-WITH v AS (
-  SELECT business_date, user_id,
-         count(*) AS visits,
-         count(*) FILTER (WHERE server_verdict = 'in_range') AS server_in_range,
-         count(*) FILTER (WHERE server_verdict = 'out_of_range') AS server_out_of_range,
-         count(*) FILTER (WHERE device_verdict = 'no_fix') AS no_fix,
-         count(*) FILTER (WHERE device_verdict = 'accuracy_too_low') AS accuracy_too_low,
-         count(*) FILTER (WHERE device_verdict = 'mocked' OR is_mock) AS mocked_visits,
-         count(*) FILTER (WHERE geo_action = 'force_sale') AS force_sale_visits,
-         count(*) FILTER (WHERE geo_action = 'blocked') AS blocked_visits,
-         count(*) FILTER (WHERE server_verdict IS NOT NULL AND server_verdict <> device_verdict) AS device_server_mismatch
-    FROM dw.fact_visit WHERE NOT voided GROUP BY business_date, user_id),
-f AS (
-  SELECT business_date, user_id, count(*) AS fixes, count(*) FILTER (WHERE is_mock) AS mock_fixes,
-         round(avg(accuracy_m)::numeric, 1) AS avg_accuracy_m
-    FROM dw.fact_geo_fix GROUP BY business_date, user_id)
-SELECT coalesce(v.business_date, f.business_date) AS business_date, coalesce(v.user_id, f.user_id) AS user_id,
-       coalesce(v.visits, 0) AS visits, coalesce(v.server_in_range, 0) AS server_in_range,
-       dw.pct(v.server_in_range, v.visits) AS geo_valid_pct, coalesce(v.server_out_of_range, 0) AS server_out_of_range,
-       coalesce(v.no_fix, 0) AS no_fix, coalesce(v.accuracy_too_low, 0) AS accuracy_too_low,
-       coalesce(v.mocked_visits, 0) AS mocked_visits, coalesce(v.force_sale_visits, 0) AS force_sale_visits,
-       coalesce(v.blocked_visits, 0) AS blocked_visits, coalesce(v.device_server_mismatch, 0) AS device_server_mismatch,
-       coalesce(f.fixes, 0) AS fixes, coalesce(f.mock_fixes, 0) AS mock_fixes, f.avg_accuracy_m
-  FROM v FULL JOIN f ON f.business_date = v.business_date AND f.user_id = v.user_id;
+SELECT x.business_date, x.user_id,
+       count(*) FILTER (WHERE x.k = 'v') AS visits,
+       count(*) FILTER (WHERE x.k = 'v' AND x.server_verdict = 'in_range') AS server_in_range,
+       dw.pct(count(*) FILTER (WHERE x.k = 'v' AND x.server_verdict = 'in_range'), count(*) FILTER (WHERE x.k = 'v')) AS geo_valid_pct,
+       count(*) FILTER (WHERE x.k = 'v' AND x.server_verdict = 'out_of_range') AS server_out_of_range,
+       count(*) FILTER (WHERE x.k = 'v' AND x.device_verdict = 'no_fix') AS no_fix,
+       count(*) FILTER (WHERE x.k = 'v' AND x.device_verdict = 'accuracy_too_low') AS accuracy_too_low,
+       count(*) FILTER (WHERE x.k = 'v' AND (x.device_verdict = 'mocked' OR x.is_mock)) AS mocked_visits,
+       count(*) FILTER (WHERE x.k = 'v' AND x.geo_action = 'force_sale') AS force_sale_visits,
+       count(*) FILTER (WHERE x.k = 'v' AND x.geo_action = 'blocked') AS blocked_visits,
+       count(*) FILTER (WHERE x.k = 'v' AND x.server_verdict IS NOT NULL AND x.server_verdict <> x.device_verdict) AS device_server_mismatch,
+       count(*) FILTER (WHERE x.k = 'f') AS fixes,
+       count(*) FILTER (WHERE x.k = 'f' AND x.is_mock) AS mock_fixes,
+       round(avg(x.accuracy_m)::numeric, 1) AS avg_accuracy_m
+  FROM (SELECT 'v'::text AS k, business_date, user_id, server_verdict, device_verdict, geo_action, is_mock,
+               NULL::double precision AS accuracy_m
+          FROM dw.fact_visit WHERE NOT voided
+        UNION ALL
+        SELECT 'f', business_date, user_id, NULL, NULL, NULL, is_mock, accuracy_m FROM dw.fact_geo_fix) x
+ GROUP BY x.business_date, x.user_id;
 
 -- New dw objects get the role grants of the map (V0014).
 GRANT EXECUTE ON FUNCTION dw.pct(numeric, numeric) TO api_rw, worker_rw, web_ro, bi_reader;

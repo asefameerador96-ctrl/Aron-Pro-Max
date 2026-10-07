@@ -11,7 +11,9 @@
 --   key required needs a new version row in a new migration. A published version's schema never changes (guard).
 -- - Producers write the newest version that is not deprecated; consumers handle every version that is not deprecated.
 --   deprecated_at is set once no producer writes that version. Old rows stay readable for their retention.
--- - The insert trigger refuses a payload that is not a JSON object or lacks a key the schema lists as required.
+-- - The insert trigger refuses a payload that is not a JSON object or lacks a key the schema lists as required. It
+--   checks presence only: a required key may hold null where its schema type allows it (from_state), and value types
+--   are the producer's contract test, not the database's.
 
 CREATE TABLE app.domain_event_type (
   event_type       text NOT NULL CHECK (event_type ~ '^[a-z_]+\.[a-z_]+$'),
@@ -31,7 +33,9 @@ CREATE TABLE app.domain_event_type (
 CREATE TRIGGER domain_event_type_fixed BEFORE UPDATE OR DELETE ON app.domain_event_type
   FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('description', '=deprecated_at');
 
+-- Existing rows (none in production yet) are version 1; afterwards every producer names its version explicitly.
 ALTER TABLE app.domain_event ADD COLUMN payload_version smallint NOT NULL DEFAULT 1;
+ALTER TABLE app.domain_event ALTER COLUMN payload_version DROP DEFAULT;
 ALTER TABLE app.domain_event ADD CONSTRAINT domain_event_payload_object CHECK (jsonb_typeof(payload) = 'object');
 
 -- Refuses an event whose payload lacks a required key of its catalogued version (the foreign key below refuses an
@@ -120,7 +124,6 @@ UPDATE app.db_role_grant SET except_tables = except_tables || '{domain_event_typ
  WHERE role = 'api_rw' AND schema_name = 'app' AND object IN ('*', '*/update');
 INSERT INTO app.db_role_grant (role, schema_name, object, privileges, except_tables, note) VALUES
   ('api_rw', 'app', 'domain_event_type', 'SELECT', '{}', 'event catalogue, checked on every outbox insert');
-GRANT EXECUTE ON FUNCTION app.domain_event_check_payload() TO api_rw, worker_rw;
 SELECT app.apply_db_role_grants();
 
 COMMENT ON TABLE app.domain_event_type IS 'Catalogue of domain-event types and payload versions; every outbox row must name one (docs/data-events.md).

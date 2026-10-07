@@ -21,7 +21,7 @@ object DataDictionary {
             """
             SELECT n.nspname, k.relname, k.relkind, obj_description(k.oid, 'pg_class'), k.oid
               FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace
-             WHERE n.nspname IN ('app','dw') AND k.relkind IN ('r','p','v') AND NOT k.relispartition
+             WHERE n.nspname IN ('app','dw') AND k.relkind IN ('r','p','v','m') AND NOT k.relispartition
              ORDER BY 1, 2
             """.trimIndent(),
         ).use { ps -> ps.executeQuery().use { rs -> buildList { while (rs.next()) add(listOf(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getLong(5))) } } }
@@ -40,7 +40,7 @@ object DataDictionary {
                 ps.setLong(1, oid)
                 ps.executeQuery().use { rs -> buildList { while (rs.next()) add(rs.getString(1) to rs.getString(2)) } }
             }
-            Relation(r[0] as String, r[1] as String, if (r[2] == "v") "view" else if (r[2] == "p") "partitioned table" else "table",
+            Relation(r[0] as String, r[1] as String, if (r[2] == "v") "view" else if (r[2] == "m") "materialized view" else if (r[2] == "p") "partitioned table" else "table",
                 r[3] as String?, cols, cons.filter { it.first != "f" }.map { it.second }, cons.filter { it.first == "f" }.map { it.second })
         }
     }

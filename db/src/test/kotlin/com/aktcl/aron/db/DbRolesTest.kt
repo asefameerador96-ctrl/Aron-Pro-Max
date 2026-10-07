@@ -77,8 +77,40 @@ class DbRolesTest {
         assertEquals("0", c.scalar("SELECT count(*) FROM information_schema.role_table_grants g JOIN pg_class k ON k.relname = g.table_name AND k.relispartition WHERE g.grantee IN ('api_rw','worker_rw','web_ro','bi_reader','jobs_rw')"))
         assertEquals(
             emptyList(),
-            c.column("SELECT n.nspname || '.' || k.relname FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace WHERE n.nspname IN ('app','dw') AND k.relkind IN ('r','p','v') AND NOT k.relispartition AND k.relname <> 'db_role_grant' AND NOT has_table_privilege('worker_rw', k.oid, 'SELECT') AND NOT (n.nspname = 'app' AND k.relname = 'partition_policy')"),
+            c.column("SELECT n.nspname || '.' || k.relname FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace WHERE n.nspname IN ('app','dw') AND k.relkind IN ('r','p','v') AND NOT k.relispartition AND k.relname <> 'db_role_grant' AND NOT has_table_privilege('worker_rw', k.oid, 'SELECT') AND NOT (n.nspname = 'app' AND k.relname IN ('partition_policy', 'app_user', 'mfa_secret', 'device_otp', 'refresh_token', 'enrolment_token'))"),
         )
+        // The worker reads users without their password hash and never reads credentials or one-time secrets.
+        assertEquals("t", c.scalar("SELECT has_column_privilege('worker_rw', 'app.app_user', 'username', 'SELECT')"))
+        assertEquals("f", c.scalar("SELECT has_column_privilege('worker_rw', 'app.app_user', 'password_hash', 'SELECT')"))
+        assertEquals(
+            listOf("f", "f", "f", "f"),
+            c.column("SELECT has_table_privilege('worker_rw', t, 'SELECT') FROM unnest(ARRAY['app.mfa_secret','app.device_otp','app.refresh_token','app.enrolment_token']) t"),
+        )
+        assertEquals("t", c.scalar("SELECT has_column_privilege('api_rw', 'app.app_user', 'password_hash', 'SELECT')"))
+    }
+
+    @Test
+    fun anotherLoginMigratesANewDatabaseWhereTheRolesAlreadyExist() {
+        // The roles are server-wide: a second database migrated by a different CREATEROLE login (no ADMIN on the roles)
+        // reuses them unchanged. The password is generated here and dropped with the login.
+        val login = "zz_mig_" + java.util.UUID.randomUUID().toString().take(8)
+        val password = java.util.UUID.randomUUID().toString()
+        db.connect().use { it.exec("CREATE ROLE $login LOGIN CREATEROLE PASSWORD '$password'") }
+        try {
+            TestPostgres.createDatabase().use { other ->
+                other.connect().use { it.exec("GRANT CREATE ON DATABASE ${other.name} TO $login"); it.exec("GRANT CREATE ON SCHEMA public TO $login") }
+                val url = other.url.replace(Regex("[?&](user|password)=[^&]*"), "").let { u -> if ('?' !in u && '&' in u) u.replaceFirst('&', '?') else u }
+                org.flywaydb.core.Flyway.configure().dataSource(url, login, password).locations(other.flyway().configuration.locations.first().toString())
+                    .cleanDisabled(true).load().migrate()
+                other.connect().use { c ->
+                    // By oid: the checking login has no USAGE on the other login's schemas.
+                    assertEquals("t", c.scalar("SELECT has_table_privilege('api_rw', k.oid, 'INSERT') FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace WHERE n.nspname = 'app' AND k.relname = 'memo'"))
+                    assertEquals("f", c.scalar("SELECT has_function_privilege('public', p.oid, 'EXECUTE') FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'app' AND p.proname = 'apply_db_role_grants'"))
+                }
+            }
+        } finally {
+            db.connect().use { it.exec("DROP ROLE $login") }
+        }
     }
 
     @Test
@@ -87,6 +119,8 @@ class DbRolesTest {
         try {
             c.exec("CREATE FUNCTION app.zz_admin() RETURNS int LANGUAGE sql AS 'SELECT 1'")
             c.exec("CREATE TABLE app.zz_serial (id bigserial PRIMARY KEY, note text)")
+            // Before any grant is applied: the global default privileges of the migrating login keep PUBLIC out.
+            assertEquals("f", c.scalar("SELECT has_function_privilege('web_ro', 'app.zz_admin()', 'EXECUTE')"))
             c.exec("SELECT app.apply_db_role_grants()")
             assertEquals("f", c.scalar("SELECT has_function_privilege('web_ro', 'app.zz_admin()', 'EXECUTE')"))
             assertEquals("f", c.scalar("SELECT bool_or(has_function_privilege('public', p.oid, 'EXECUTE')) FROM pg_proc p WHERE p.pronamespace = 'app'::regnamespace AND p.proname = 'zz_admin'"))

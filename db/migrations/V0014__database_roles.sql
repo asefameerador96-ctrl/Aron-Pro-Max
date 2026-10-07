@@ -12,28 +12,50 @@
 
 DO $$
 DECLARE
-  r    text;
-  attr record;
+  r     text;
+  attr  record;
+  fixes text[];
+  f     text;
+  extra text;
 BEGIN
   FOREACH r IN ARRAY ARRAY['api_rw', 'worker_rw', 'jobs_rw', 'web_ro', 'bi_reader'] LOOP
     SELECT * INTO attr FROM pg_roles WHERE rolname = r;
     IF NOT FOUND THEN
       EXECUTE format('CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT', r);
-    ELSE
-      -- A role left on the server by an earlier install gets the intended attributes back. Only a superuser may touch
-      -- SUPERUSER and BYPASSRLS, so a role holding either stops the migration for a human to fix.
-      IF attr.rolsuper OR attr.rolbypassrls THEN
-        RAISE EXCEPTION 'role % is superuser or bypasses RLS; fix it by hand before migrating', r;
+      CONTINUE;
+    END IF;
+    -- A role already on the server (another database of the same server, or an earlier install) is reused when it is
+    -- exactly as intended; nothing below needs ADMIN on it then. Only a superuser may touch SUPERUSER and BYPASSRLS,
+    -- and only a holder of ADMIN may alter the role or its memberships, so anything else stops for a human to fix.
+    IF attr.rolsuper OR attr.rolbypassrls THEN
+      RAISE EXCEPTION 'role % is superuser or bypasses RLS; fix it by hand before migrating', r;
+    END IF;
+    SELECT string_agg(g.rolname, ', ') INTO extra FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid
+     WHERE m.member = attr.oid AND NOT (r = 'jobs_rw' AND g.rolname = 'worker_rw');
+    IF extra IS NOT NULL THEN
+      RAISE EXCEPTION 'role % is a member of % and would inherit their rights; revoke by hand before migrating', r, extra;
+    END IF;
+    fixes := '{}';
+    IF attr.rolcanlogin THEN fixes := fixes || 'NOLOGIN'; END IF;
+    IF attr.rolcreatedb THEN fixes := fixes || 'NOCREATEDB'; END IF;
+    IF attr.rolcreaterole THEN fixes := fixes || 'NOCREATEROLE'; END IF;
+    IF attr.rolinherit THEN fixes := fixes || 'NOINHERIT'; END IF;
+    IF cardinality(fixes) > 0 THEN
+      IF NOT pg_has_role(current_user, r, 'USAGE WITH ADMIN OPTION') THEN
+        RAISE EXCEPTION 'role % needs %; this login lacks ADMIN on it, run ALTER ROLE as its creator', r, array_to_string(fixes, ' ');
       END IF;
-      IF attr.rolcanlogin THEN EXECUTE format('ALTER ROLE %I NOLOGIN', r); END IF;
-      IF attr.rolcreatedb THEN EXECUTE format('ALTER ROLE %I NOCREATEDB', r); END IF;
-      IF attr.rolcreaterole THEN EXECUTE format('ALTER ROLE %I NOCREATEROLE', r); END IF;
-      IF attr.rolinherit THEN EXECUTE format('ALTER ROLE %I NOINHERIT', r); END IF;
+      FOREACH f IN ARRAY fixes LOOP EXECUTE format('ALTER ROLE %I %s', r, f); END LOOP;
     END IF;
   END LOOP;
+  -- PostgreSQL 16 fixes inheritance per grant: jobs_rw inherits everything worker_rw holds.
+  IF NOT EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.roleid = 'worker_rw'::regrole AND m.member = 'jobs_rw'::regrole
+                    AND m.inherit_option) THEN
+    IF NOT pg_has_role(current_user, 'worker_rw', 'USAGE WITH ADMIN OPTION') THEN
+      RAISE EXCEPTION 'jobs_rw must inherit worker_rw; this login lacks ADMIN on worker_rw, grant it as its creator';
+    END IF;
+    GRANT worker_rw TO jobs_rw WITH INHERIT TRUE;
+  END IF;
 END $$;
--- PostgreSQL 16 fixes inheritance per grant: jobs_rw inherits everything worker_rw holds.
-GRANT worker_rw TO jobs_rw WITH INHERIT TRUE;
 
 -- The grant map. object '*' means every table of the schema; except lists the tables a '*' row leaves out.
 CREATE TABLE app.db_role_grant (
@@ -43,6 +65,7 @@ CREATE TABLE app.db_role_grant (
   object      text NOT NULL,                                     -- table name or '*'
   privileges  text NOT NULL CHECK (privileges ~ '^(SELECT|INSERT|UPDATE|DELETE)(, (SELECT|INSERT|UPDATE|DELETE))*$'),
   except_tables text[] NOT NULL DEFAULT '{}',
+  except_columns text[] NOT NULL DEFAULT '{}' CHECK (cardinality(except_columns) = 0 OR object NOT LIKE '*%'),  -- column grant on the rest
   note        text NOT NULL,
   UNIQUE (role, schema_name, object)
 );
@@ -57,7 +80,9 @@ INSERT INTO app.db_role_grant (role, schema_name, object, privileges, except_tab
    'state and lifecycle updates; the guard triggers limit which columns change'),
   ('api_rw', 'app', 'auth_lockout', 'DELETE', '{}', 'a successful login clears the lockout counter (not a transaction table)'),
   ('api_rw', 'dw', '*', 'SELECT', '{}', 'API read path (app home, dashboards)'),
-  ('worker_rw', 'app', '*', 'SELECT', '{}', 'projector and jobs read capture tables'),
+  ('worker_rw', 'app', '*', 'SELECT', '{app_user,mfa_secret,device_otp,refresh_token,enrolment_token}',
+   'projector and jobs read capture tables; never credentials or one-time secrets'),
+  ('worker_rw', 'app', 'app_user', 'SELECT', '{}', 'every column except password_hash (column grant, see except_columns)'),
   ('worker_rw', 'dw', '*', 'SELECT, INSERT, UPDATE, DELETE', '{}', 'aggregates and facts are rebuilt by the worker'),
   ('worker_rw', 'app', 'route_day', 'INSERT, UPDATE', '{}', 'route-day creation and state timestamps'),
   ('worker_rw', 'app', 'supervisor_day', 'INSERT, UPDATE', '{}', 'supervisor-day settle'),
@@ -79,6 +104,8 @@ INSERT INTO app.db_role_grant (role, schema_name, object, privileges, except_tab
   ('web_ro', 'app', 'code_list_item', 'SELECT', '{}', 'labels of business codes'),
   ('bi_reader', 'dw', '*', 'SELECT', '{fact_geo_fix,fact_attendance}', 'stable dw views and tables; no PII facts; nothing in app');
 
+UPDATE app.db_role_grant SET except_columns = '{password_hash}' WHERE role = 'worker_rw' AND object = 'app_user';
+
 -- Revokes everything the five roles hold on app and dw tables and grants exactly the map on tables, partitioned
 -- parents and views (never on single partitions: rows are reached through the parent). Idempotent.
 CREATE FUNCTION app.apply_db_role_grants() RETURNS void
@@ -97,7 +124,15 @@ BEGIN
               WHERE n.nspname = g.schema_name AND c.relkind IN ('r','p','v','m') AND NOT c.relispartition
                 AND (c.relname = g.object OR (g.object LIKE '*%' AND c.relname <> ALL (g.except_tables)))
     LOOP
-      EXECUTE format('GRANT %s ON %I.%I TO %I', g.privileges, g.schema_name, t.relname, g.role);
+      IF cardinality(g.except_columns) = 0 THEN
+        EXECUTE format('GRANT %s ON %I.%I TO %I', g.privileges, g.schema_name, t.relname, g.role);
+      ELSE
+        EXECUTE format('GRANT %s (%s) ON %I.%I TO %I', g.privileges,
+          (SELECT string_agg(quote_ident(a.attname), ', ' ORDER BY a.attnum) FROM pg_attribute a
+            WHERE a.attrelid = format('%I.%I', g.schema_name, t.relname)::regclass AND a.attnum > 0 AND NOT a.attisdropped
+              AND a.attname <> ALL (g.except_columns)),
+          g.schema_name, t.relname, g.role);
+      END IF;
     END LOOP;
   END LOOP;
   -- Sequences behind serial columns (identity columns need none) and functions created by later migrations.
@@ -127,7 +162,8 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO api_rw, worker_rw;
 REVOKE EXECUTE ON FUNCTION app.apply_db_role_grants(), app.ensure_partitions(date, date) FROM api_rw, worker_rw;
 -- Functions a later migration creates are not executable by PUBLIC (SECURITY DEFINER ones included); the migration
 -- calls app.apply_db_role_grants() to give the runtime roles what the map says.
-ALTER DEFAULT PRIVILEGES IN SCHEMA app, dw REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+-- (Per-schema default privileges can only add to the global ones, so the revoke is global, for this login.)
+ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 ALTER FUNCTION app.ensure_partitions(date, date) SECURITY DEFINER SET search_path = pg_catalog, app;
 GRANT EXECUTE ON FUNCTION app.ensure_partitions(date, date) TO jobs_rw;
 

@@ -12,8 +12,8 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 120 | 2286 |
-| `dw` | 22 | 363 |
+| `app` | 120 | 2287 |
+| `dw` | 22 | 361 |
 
 ## Index
 
@@ -30,7 +30,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.auth_lockout`](#appauth_lockout) | table | backend:auth | SERVER | session | none | Failed-login counter and lock state per lock key, shared by every API replica. |
 | [`app.calendar_holiday`](#appcalendar_holiday) | table | backend:masterdata | ONLINE | master | none | One declared holiday or selling-day override for a geography scope and date. |
 | [`app.call_assessment`](#appcall_assessment) | table | backend:sync | OFFLINE | transaction | none | One AMO or TSO joint-call assessment or retailer questionnaire for a visit, with total and maximum score. |
-| [`app.call_assessment_answer`](#appcall_assessment_answer) | table | backend:sync | OFFLINE | transaction | none | One criterion answer (score, text or yes/no) of a call assessment. |
+| [`app.call_assessment_answer`](#appcall_assessment_answer) | table | backend:sync | OFFLINE | transaction | personal | One criterion answer (score, text or yes/no) of a call assessment. |
 | [`app.cfg_ack`](#appcfg_ack) | table | backend:config | OFFLINE | telemetry | none | Record from a phone saying which config version it applied and which keys changed. |
 | [`app.cfg_change`](#appcfg_change) | table | backend:config | ONLINE | audit | none | One config change request with its items, risk class, approvals and apply time; part of the maker-checker trail. |
 | [`app.cfg_key`](#appcfg_key) | table | backend:config | REFERENCE | master | none | Registry of every config key with type, default, bounds, scope levels, risk class and delivery; seeded by migration, never deleted. |
@@ -41,7 +41,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.code_list_item`](#appcode_list_item) | table | backend:masterdata | ONLINE | master | none | One code of a business code list with English and Bangla labels; codes never change, only retire. |
 | [`app.content_item`](#appcontent_item) | table | backend:masterdata | ONLINE | master | none | An audio-visual or key-visual item played during sales calls, with its asset, size and version. |
 | [`app.content_view`](#appcontent_view) | table | backend:sync | OFFLINE | telemetry | none | One showing or skipping of a content item during a call. |
-| [`app.day_exception`](#appday_exception) | table | backend:sync | OFFLINE | transaction | none | A rain, hartal or other day exception raised from the field for routes and dates, decided by the zone TSO. |
+| [`app.day_exception`](#appday_exception) | table | backend:sync | OFFLINE | transaction | personal | A rain, hartal or other day exception raised from the field for routes and dates, decided by the zone TSO. |
 | [`app.db_role_grant`](#appdb_role_grant) | table | db | REFERENCE | master | none | Least-privilege grant map of the database roles; app.apply_db_role_grants() generates every GRANT from it. |
 | [`app.device`](#appdevice) | table | backend:auth | ONLINE | master | none | One enrolled phone with its status, trust level, key, integrity verdict and last contact. |
 | [`app.device_binding`](#appdevice_binding) | table | backend:auth | ONLINE | audit | none | Link of a user to a phone, with the binding ordinal that fixes the memo-number block. |
@@ -103,7 +103,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.refresh_family`](#apprefresh_family) | table | backend:auth | ONLINE | session | none | A login session: the family of refresh tokens issued from one login, with expiry and revoke state. |
 | [`app.refresh_token`](#apprefresh_token) | table | backend:auth | ONLINE | session | secret | One refresh token of a family, stored only as a hash, with rotation links. |
 | [`app.risk_signal`](#apprisk_signal) | table | backend:analytics | SERVER | transaction | none | A risk signal (for example mock location or teleport) computed by the worker for a subject and business date. |
-| [`app.risk_signal_review`](#apprisk_signal_review) | table | backend:analytics | OFFLINE | audit | none | Review action on a risk signal by an AMO or web user; append-only. |
+| [`app.risk_signal_review`](#apprisk_signal_review) | table | backend:analytics | OFFLINE | audit | personal | Review action on a risk signal by an AMO or web user; append-only. |
 | [`app.role_def`](#approle_def) | table | db | REFERENCE | master | none | Lookup giving each role an integer ordinal for config scoping. |
 | [`app.role_grant_map`](#approle_grant_map) | table | backend:auth | REFERENCE | master | none | Admin permission granted to each role, carried as the web permission claim. |
 | [`app.route`](#approute) | table | backend:masterdata | ONLINE | master | none | A sales route in a zone with its code, kind, visit days and label. |
@@ -121,15 +121,15 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.sub_channel`](#appsub_channel) | table | backend:masterdata | ONLINE | master | none | Outlet sub-channel within a channel. |
 | [`app.submit_void_event`](#appsubmit_void_event) | table | backend:sync | ONLINE | audit | none | Append-only record of a Sales Submit being voided by a TSO or above. |
 | [`app.supervisor_day`](#appsupervisor_day) | table | backend:sync | SERVER | transaction | none | Attendance and Sales Submit state of an AMO or TSO for a date outside a route-day. |
-| [`app.survey_response`](#appsurvey_response) | table | backend:sync | OFFLINE | transaction | none | One answer to an in-visit survey question. |
+| [`app.survey_response`](#appsurvey_response) | table | backend:sync | OFFLINE | transaction | personal | One answer to an in-visit survey question. |
 | [`app.sync_batch`](#appsync_batch) | table | backend:sync | SERVER | ops | none | Replay store of an uploaded batch with its fingerprint and stored response for the retention window. |
 | [`app.sync_quarantine`](#appsync_quarantine) | table | backend:sync | SERVER | quarantine | personal | Records held for a human decision with their payload and resolution. |
 | [`app.sync_rejected`](#appsync_rejected) | table | backend:sync | SERVER | quarantine | personal | Records rejected or parked at ingest with the payload as received and the reason code. |
 | [`app.target`](#apptarget) | table | backend:masterdata | ONLINE | master | none | Live target of a route or zone for a product and month; revisions close and replace rows. |
 | [`app.target_revision`](#apptarget_revision) | table | backend:masterdata | ONLINE | audit | none | One revision of a target set, with the change reason and stored result for idempotent replay. |
 | [`app.target_set`](#apptarget_set) | table | backend:masterdata | ONLINE | master | none | Targets of a route or zone for one month. |
-| [`app.task`](#apptask) | table | backend:notify | OFFLINE | transaction | none | A task created by a supervisor for a user, optionally tied to an outlet or visit. |
-| [`app.task_event`](#apptask_event) | table | backend:notify | OFFLINE | transaction | none | Resolve or reopen of a task by its assignee. |
+| [`app.task`](#apptask) | table | backend:notify | OFFLINE | transaction | personal | A task created by a supervisor for a user, optionally tied to an outlet or visit. |
+| [`app.task_event`](#apptask_event) | table | backend:notify | OFFLINE | transaction | personal | Resolve or reopen of a task by its assignee. |
 | [`app.territory`](#appterritory) | table | backend:masterdata | ONLINE | master | none | Geography level below a division; groups zones. |
 | [`app.user_consent`](#appuser_consent) | table | backend:auth | OFFLINE | audit | none | Acceptance of a notice such as the location notice by a user on a phone. |
 | [`app.user_scope`](#appuser_scope) | table | backend:masterdata | ONLINE | master | none | Supervisory reach of a user: a geography node, effective-dated. |
@@ -154,7 +154,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`dw.fact_geo_fix`](#dwfact_geo_fix) | partitioned table | worker | SERVER | event_fact | personal | One row per location fix copied for analysis, with slot and satellite count. |
 | [`dw.fact_memo`](#dwfact_memo) | partitioned table | worker | SERVER | event_fact | none | One row per memo with its money totals, for reports. |
 | [`dw.fact_visit`](#dwfact_visit) | partitioned table | worker | SERVER | event_fact | none | One row per visit with device and server verdicts, distance and void flag. |
-| [`dw.v_attendance`](#dwv_attendance) | view | worker | SERVER | event_fact | personal | Stable view: per user and business date, check-in and check-out times, hours in field and the location evidence. |
+| [`dw.v_attendance`](#dwv_attendance) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, check-in and check-out times, hours in field and mock-location flags (no coordinates or accuracy). |
 | [`dw.v_collections`](#dwv_collections) | view | worker | SERVER | event_fact | none | Stable view: outlet-days with new credit or dues collected (credit and collection movements). |
 | [`dw.v_daily_outlet`](#dwv_daily_outlet) | view | worker | SERVER | event_fact | none | Stable view: per outlet and business date, visit, geo validity, sales and dues, with the outlet's classification. |
 | [`dw.v_daily_route`](#dwv_daily_route) | view | worker | SERVER | event_fact | none | Stable view (contract for BI and other products): KPIs, money and day state per route and business date, with its geography. |
@@ -391,7 +391,7 @@ One check-in or check-out of a user with its on-demand location fix.
 | `fix_lng` | double precision | null | personal | Longitude of the user's location fix taken with the record (WGS84 degrees). |
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
-| `address_display` | text | null |  | Reverse-geocoded address shown for display only; never used for a decision. |
+| `address_display` | text | null | personal | Reverse-geocoded address shown for display only; never used for a decision. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -520,7 +520,7 @@ References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOR
 
 One criterion answer (score, text or yes/no) of a call assessment.
 
-`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none` · table
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -550,7 +550,7 @@ One criterion answer (score, text or yes/no) of a call assessment.
 | `assessment_client_uuid` | uuid | not null |  | Client UUID of the call assessment this answer belongs to. |
 | `criterion_id` | bigint | not null |  | Id of the rubric criterion answered. |
 | `score` | smallint | null |  | Score awarded for the criterion, when it is scored. |
-| `answer_text` | text | null |  | Free-text answer to the criterion. |
+| `answer_text` | text | null | personal | Free-text answer to the criterion. |
 | `answer_bool` | boolean | null |  | Yes or no answer to the criterion. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
@@ -842,7 +842,7 @@ References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOR
 
 A rain, hartal or other day exception raised from the field for routes and dates, decided by the zone TSO.
 
-`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none` · table
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -873,7 +873,7 @@ A rain, hartal or other day exception raised from the field for routes and dates
 | `route_ids` | bigint[] | not null |  | Ids of the routes the exception covers. |
 | `from_date` | date | not null |  | First Dhaka date the exception covers. |
 | `to_date` | date | not null |  | Last Dhaka date the exception covers. |
-| `note` | text | null |  | Free-text note. |
+| `note` | text | null | personal | Free-text note. |
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `decided_by` | bigint | null |  | User who took the decision. |
 | `decided_at` | timestamp with time zone | null |  | UTC instant of the decision. |
@@ -897,6 +897,7 @@ Least-privilege grant map of the database roles; app.apply_db_role_grants() gene
 | `object` | text | not null |  | Table or view name, or a value starting with '*' for every table of the schema. |
 | `privileges` | text | not null |  | Comma-separated privileges granted: SELECT, INSERT, UPDATE, DELETE. |
 | `except_tables` | text[] | not null |  | Tables a '*' row leaves out. |
+| `except_columns` | text[] | not null |  | Columns a single-table row leaves out; the role is then granted the privilege on every other column. |
 | `note` | text | not null |  | Free-text note. |
 
 Keys: `UNIQUE (role, schema_name, object)`; `PRIMARY KEY (id)`
@@ -1229,7 +1230,7 @@ Append-only outbox of events written with each change; the projector and later c
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
-| `event_type` | text | not null |  | Type of the event, for example memo_committed. |
+| `event_type` | text | not null |  | Type of the event, for example memo.created. |
 | `aggregate_type` | text | not null |  | Type of the thing the event is about, for example memo or visit. |
 | `aggregate_id` | text | not null |  | Server id or client_uuid of the thing the event is about. |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
@@ -1794,7 +1795,7 @@ A TSO leave application with dates and reason, decided on the web.
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `decided_by` | bigint | null |  | User who took the decision. |
 | `decided_at` | timestamp with time zone | null |  | UTC instant of the decision. |
-| `decision_note` | text | null |  | Free-text note entered with the decision. |
+| `decision_note` | text | null | personal | Free-text note entered with the decision. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2080,7 +2081,7 @@ Void of a memo, recorded with its reason and location fix; the memo turns voided
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `retailer_ack` | boolean | not null |  | True when the retailer acknowledged the void. |
-| `note` | text | null |  | Free-text note. |
+| `note` | text | null | personal | Free-text note. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2284,7 +2285,7 @@ A request from the field to add, close, edit, move or relocate an outlet, with p
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `photo_uuids` | uuid[] | not null |  | UUIDs of the photos attached to the request. |
 | `origin_visit_client_uuid` | uuid | null |  | Client UUID of the visit during which the request was raised. |
-| `note` | text | null |  | Free-text note. |
+| `note` | text | null | personal | Free-text note. |
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `status_changed_at` | timestamp with time zone | null |  | UTC instant of the last status change. |
 | `verified_by` | bigint | null |  | Id of the AMO who verified the request. |
@@ -2849,7 +2850,7 @@ References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (use
 
 Review action on a risk signal by an AMO or web user; append-only.
 
-`owner: backend:analytics | capture: OFFLINE | retention: audit | pii: none` · table
+`owner: backend:analytics | capture: OFFLINE | retention: audit | pii: personal` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -2877,7 +2878,7 @@ Review action on a risk signal by an AMO or web user; append-only.
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `signal_id` | bigint | not null |  | Id of the risk signal reviewed. |
 | `action` | text | not null |  | Review action: reviewed, dismissed or confirmed. |
-| `note` | text | null |  | Free-text note. |
+| `note` | text | null | personal | Free-text note. |
 | `source` | text | not null |  | Where the row came from; allowed values are listed under constraints. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
@@ -3361,7 +3362,7 @@ References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 One answer to an in-visit survey question.
 
-`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none` · table
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -3396,7 +3397,7 @@ One answer to an in-visit survey question.
 | `answer_bool` | boolean | null |  | Yes or no answer. |
 | `answer_num` | numeric | null |  | Numeric answer. |
 | `answer_option_code` | text | null |  | Code of the chosen option. |
-| `answer_text` | text | null |  | Free-text answer. |
+| `answer_text` | text | null | personal | Free-text answer. |
 | `photo_uuid` | uuid | null |  | Media uuid (app.media) of the photo attached to the row. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
@@ -3447,7 +3448,7 @@ Records held for a human decision with their payload and resolution.
 | `payload_sha256` | bytea | not null |  | SHA-256 of the RFC 8785 canonical JSON of the record; same uuid and hash means duplicate. |
 | `payload` | jsonb | not null | personal | The SyncRecord as received (JSON); may hold fixes, names and phone numbers. |
 | `fixed_payload` | jsonb | null | personal | The corrected record that was re-ingested on accept_with_fix. |
-| `detail` | text | null |  | Human-readable detail of why the record was quarantined. |
+| `detail` | text | null | personal | Human-readable detail of why the record was quarantined. |
 | `user_id` | bigint | not null |  | User (app.app_user); for device records the capturing user from the token. |
 | `device_id` | bigint | null |  | Phone (app.device) the row came from, taken from the token, never from the body. |
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
@@ -3458,7 +3459,7 @@ Records held for a human decision with their payload and resolution.
 | `resolved_by_user_id` | bigint | null |  | Id of the user who resolved the item. |
 | `approved_by_user_id` | bigint | null |  | Id of the second user who approved accept_with_fix for data-entry classes. |
 | `resolved_at` | timestamp with time zone | null |  | UTC time the item was resolved. |
-| `resolution_note` | text | null |  | Free-text note entered with the resolution. |
+| `resolution_note` | text | null | personal | Free-text note entered with the resolution. |
 
 Keys: `UNIQUE (client_uuid, payload_sha256)`; `UNIQUE (resolution_uuid)`; `PRIMARY KEY (id)`
 
@@ -3568,7 +3569,7 @@ References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`
 
 A task created by a supervisor for a user, optionally tied to an outlet or visit.
 
-`owner: backend:notify | capture: OFFLINE | retention: transaction | pii: none` · table
+`owner: backend:notify | capture: OFFLINE | retention: transaction | pii: personal` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -3598,7 +3599,7 @@ A task created by a supervisor for a user, optionally tied to an outlet or visit
 | `assignee_user_id` | bigint | not null |  | Id of the user the task is assigned to. |
 | `outlet_id` | bigint | null |  | Outlet (app.outlet). |
 | `title` | text | not null |  | Short title of the task. |
-| `description` | text | null |  | Free-text description. |
+| `description` | text | null | personal | Free-text description. |
 | `due_date` | date | null |  | Date the task is due. |
 | `source_visit_client_uuid` | uuid | null |  | Client UUID of the visit the task came from. |
 | `source` | text | not null |  | Where the row came from; allowed values are listed under constraints. |
@@ -3614,7 +3615,7 @@ References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOR
 
 Resolve or reopen of a task by its assignee.
 
-`owner: backend:notify | capture: OFFLINE | retention: transaction | pii: none` · table
+`owner: backend:notify | capture: OFFLINE | retention: transaction | pii: personal` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -3642,7 +3643,7 @@ Resolve or reopen of a task by its assignee.
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `task_uuid` | uuid | not null |  | Client UUID of the task the event is about. |
 | `event` | text | not null |  | Event: resolved or reopened. |
-| `note` | text | null |  | Free-text note. |
+| `note` | text | null | personal | Free-text note. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4298,7 +4299,7 @@ One row per location fix copied for analysis, with slot and satellite count.
 | `captured_at` | timestamp with time zone | not null |  | UTC instant of capture on the phone, from trusted time when an anchor exists. |
 | `lat` | double precision | null | personal | Latitude of the user's location fix (WGS84 degrees). |
 | `lng` | double precision | null | personal | Longitude of the user's location fix (WGS84 degrees). |
-| `accuracy_m` | double precision | null |  | Horizontal accuracy radius of the location fix in metres. |
+| `accuracy_m` | double precision | null | personal | Horizontal accuracy radius of the location fix in metres. |
 | `provider` | text | not null |  | Android location provider of the fix: fused, gps, network, passive or unknown. |
 | `is_mock` | boolean | not null |  | True when the location came from a mock location provider (never geo-valid). |
 | `satellites_used` | smallint | null |  | Satellites used in the fix. |
@@ -4372,9 +4373,9 @@ Keys: `PRIMARY KEY (visit_client_uuid, business_date)`
 
 ## dw.v_attendance
 
-Stable view: per user and business date, check-in and check-out times, hours in field and the location evidence.
+Stable view: per user and business date, check-in and check-out times, hours in field and mock-location flags (no coordinates or accuracy).
 
-`owner: worker | capture: SERVER | retention: event_fact | pii: personal` · view
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -4385,9 +4386,7 @@ Stable view: per user and business date, check-in and check-out times, hours in 
 | `check_in_at` | timestamp with time zone | null |  | UTC instant of the day's check-in. |
 | `check_out_at` | timestamp with time zone | null |  | UTC instant of the day's check-out. |
 | `hours_in_field` | numeric | null |  | Hours between check-in and check-out (2 decimals); null until both exist. |
-| `check_in_accuracy_m` | double precision | null | personal | Accuracy in metres of the check-in fix. |
 | `check_in_is_mock` | boolean | null |  | True when the check-in fix came from a mock location provider. |
-| `check_out_accuracy_m` | double precision | null | personal | Accuracy in metres of the check-out fix. |
 | `check_out_is_mock` | boolean | null |  | True when the check-out fix came from a mock location provider. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 
