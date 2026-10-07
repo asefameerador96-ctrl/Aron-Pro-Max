@@ -125,6 +125,8 @@ class SyncEngine(
     /** Trusted-time anchors (F-SYS-049 supplies them); at most 3 are sent. */
     private val timeAnchors: () -> List<TimeAnchor> = { emptyList() },
     private val random: Random = Random.Default,
+    /** The enrolled Keystore key (F-SYS-072); null or a null answer before enrolment: records go without `sig`. */
+    private val recordSigner: com.aktcl.aron.core.network.DeviceProofSigner? = null,
 ) {
     private val outbox = db.outboxDao()
     private val meta = db.referenceDao()
@@ -167,7 +169,11 @@ class SyncEngine(
                 if (candidates.isEmpty()) break
                 val chosen = assemble(candidates, limit)
                 val batchUuid = ClientIds.newUuid()
+                // F-SYS-072: header records are signed once, here, before the batch is persisted; every resend and every
+                // later batch of the row carries the same sig (the server's batch fingerprint includes it).
+                val sigs = signatures(chosen)
                 val marked = db.withTransaction {
+                    sigs.forEach { (seq, sig) -> outbox.setSig(seq, sig) }
                     val n = outbox.markInFlight(batchUuid, chosen.map { it.seq })
                     meta.putMeta(SyncMetaEntity(attemptKey(batchUuid), "0"))
                     n
@@ -389,9 +395,31 @@ class SyncEngine(
                 put("time_anchors", WireJson.requests.encodeToJsonElement(ANCHORS, timeAnchors().takeLast(3)))
                 put("device_counts", counts)
                 put("device_money", money)
-                put("records", JsonArray(rows.map { RECORD_JSON.parseToJsonElement(it.payloadJson) }))
+                put("records", JsonArray(rows.map { recordJson(it) }))
             }
             return body.toString()
+        }
+
+        /** The record as sent: the stored payload plus its `sig` when it has one (F-SYS-072). */
+        fun recordJson(row: OutboxEntity): JsonElement {
+            val payload = RECORD_JSON.parseToJsonElement(row.payloadJson)
+            val sig = row.sig ?: return payload
+            return JsonObject((payload as JsonObject).filterKeys { it != "sig" } + ("sig" to JsonPrimitive(sig)))
+        }
+
+        /** Signs the header records among [rows] that have no sig yet; a missing key or an unreadable payload signs nothing. */
+        fun signatures(rows: List<OutboxEntity>): List<Pair<Long, String>> {
+            val signer = recordSigner ?: return emptyList()
+            return rows.filter { it.sig == null && it.recordType in SIGNED_TYPES }.mapNotNull { row ->
+                try {
+                    val payload = RECORD_JSON.parseToJsonElement(row.payloadJson) as? JsonObject ?: return@mapNotNull null
+                    signer.sign(com.aktcl.aron.core.network.ProofStrings.record(row.recordType, row.clientUuid, payload))?.let { row.seq to it }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+            }
         }
 
         suspend fun release(batchUuid: String, code: String) = db.withTransaction {
@@ -451,6 +479,10 @@ class SyncEngine(
     }
 
     companion object {
+        /** Header records that carry `sig` (contract RecordEnvelope.sig; backend TypeRules.signedHeader). */
+        val SIGNED_TYPES = setOf(
+            "attendance_event", "stock_movement", "visit", "memo", "memo_void", "due_collection", "outlet_change_request", "redemption", "gift_photo",
+        )
         const val KEY_LAST_ERROR = "sync.last_error"
         const val KEY_CONFIG_VERSION = ReferenceRepository.KEY_CONFIG_VERSION
         const val KEY_CONFIG_VERSION_SERVER = "sync.config_version_server"

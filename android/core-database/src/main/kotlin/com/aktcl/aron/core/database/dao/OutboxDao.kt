@@ -66,6 +66,10 @@ abstract class OutboxDao {
     @Query("UPDATE outbox SET state = 'in_flight', batch_uuid = :batchUuid WHERE seq IN (:seqs) AND state = 'pending'")
     abstract suspend fun markInFlight(batchUuid: String, seqs: List<Long>): Int
 
+    /** F-SYS-072: stores a record's `sig` once; a row already signed keeps its first signature (retries must be identical). */
+    @Query("UPDATE outbox SET sig = :sig WHERE seq = :seq AND sig IS NULL")
+    abstract suspend fun setSig(seq: Long, sig: String): Int
+
     @Query("UPDATE outbox SET state = 'pending', batch_uuid = NULL, last_code = :lastCode WHERE batch_uuid = :batchUuid AND state = 'in_flight'")
     abstract suspend fun returnToPending(batchUuid: String, lastCode: String?): Int
 

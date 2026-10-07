@@ -33,6 +33,15 @@ object ProofStrings {
     fun device(deviceUuid: String, methodPath: String, body: ByteArray, trustedEpochMs: Long): String =
         listOf("aron-proof-v1", "device", deviceUuid, methodPath, sha256Hex(body), nonceBucket(trustedEpochMs).toString()).joinToString("\n")
 
+    /**
+     * Record `sig` (F-SYS-072): over the record exactly as sent, without its `sig` member, in RFC 8785 form, so the
+     * server's check (IngestService step 6) hashes the same bytes whatever the key order or number layout.
+     */
+    fun record(type: String, clientUuid: String, record: kotlinx.serialization.json.JsonObject): String {
+        val unsigned = kotlinx.serialization.json.JsonObject(record.filterKeys { it != "sig" })
+        return listOf("aron-sig-v1", type, clientUuid, sha256Hex(Jcs.canonicalize(unsigned).toByteArray(Charsets.UTF_8))).joinToString("\n")
+    }
+
     fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 }

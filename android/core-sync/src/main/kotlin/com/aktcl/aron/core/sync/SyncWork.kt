@@ -89,6 +89,7 @@ class SessionSyncRunner(
         appVersion = components.appVersion,
         clock = components.clock,
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
+        recordSigner = components.proofSigner, // F-SYS-072: the same enrolled key as X-Device-Proof
     )
 
     companion object {

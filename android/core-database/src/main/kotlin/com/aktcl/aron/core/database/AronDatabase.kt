@@ -43,11 +43,12 @@ import com.aktcl.aron.core.database.entity.VisitEntity
  * a Migration with a test, and destructive migration is never enabled.
  */
 @Database(
-    version = 3,
+    version = 4,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // v2 (F-SYS-006): price, config_value, bundle_section
         AutoMigration(from = 2, to = 3), // v3: due_collection, visit_skip, day_submit, outlet_change_request, task_event, task, memo_counter, print_event, print_job, memo.printed_at/print_count
+        AutoMigration(from = 3, to = 4), // v4 (F-SYS-072): outbox.sig, the record signature made once per row
     ],
     entities = [
         RouteEntity::class, OutletEntity::class, SkuEntity::class,
