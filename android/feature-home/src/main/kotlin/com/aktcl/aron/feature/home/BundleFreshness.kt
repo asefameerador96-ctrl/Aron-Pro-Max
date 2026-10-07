@@ -53,7 +53,7 @@ sealed interface BundleFreshness {
         /** [bundleDate] is the bundle's `valid_for_business_date`; [today] the trusted Dhaka business date; limit default 2. */
         fun of(bundleDate: LocalDate?, today: LocalDate, staleMaxDays: Int = 2): BundleFreshness {
             if (bundleDate == null) return Missing
-            val age = today.toEpochDays() - bundleDate.toEpochDays()
+            val age = (today.toEpochDays() - bundleDate.toEpochDays()).toInt()
             return when {
                 age <= 0 -> Fresh // a bundle for today, or a prefetched one for tomorrow opened early
                 age <= staleMaxDays -> Stale(age)
