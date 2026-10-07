@@ -30,3 +30,5 @@ Strings in `values` and `values-bn`; 48 dp rows; Robolectric test that each row 
 android-core then binds them in `app-sr` `SrApp` (SETTINGS branch):
 `onUpdate = updateShell.coordinator::openPage`, `updateAvailable = state.update is UpdateState.Available`,
 `photosWifiOnly = mediaShell.wifiOnly.get()`, and the support page once F-SYS-021 is wired. No other change needed.
+
+**Update (lead, 2026-10-08):** the SettingsContent slots are implemented on lane/android-sr-a (head 08718d91, Robolectric-tested). Only the android-core side remains: bind the update row and the photos-on-Wi-Fi switch in SrApp.
