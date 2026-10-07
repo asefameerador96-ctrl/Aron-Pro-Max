@@ -48,6 +48,8 @@ internal val JSON = Json { encodeDefaults = true; explicitNulls = true; ignoreUn
 class DeviceService(
     private val db: Database, private val config: ServerConfig, private val keys: JwtKeys, private val settings: EnrolmentSettings,
     private val clock: AronClock = AronClock.SYSTEM, private val random: SecureRandom = SecureRandom(),
+    /** Google's Play Integrity decode (N-027); null leaves every verdict `unevaluated`. */
+    private val integrity: com.aktcl.aron.backend.platform.PlayIntegrityDecoder? = null,
 ) {
     private val policy = DevicePolicyRenderer(config) { clock.now() }
     private fun sha256(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b)
@@ -232,8 +234,11 @@ class DeviceService(
     /** A status report from the phone (online path): stored, the device row updated, trust re-derived, pending directives handed back once. */
     fun report(d: DeviceRow, r: DeviceStatusReportDto, userId: Long? = null): DeviceStatusAck {
         val now = clock.now()
+        // N-027: the network decode runs before the transaction, so a slow Google call never holds a connection.
+        val decoded = r.play_integrity?.let { decodeIntegrity(d, it.token) }
         return db.jdbi.inTransaction<DeviceStatusAck, Exception> { h ->
-            storeStatus(h, d.id, userId, r.trigger ?: "periodic", r, now)
+            val verdict = r.play_integrity?.let { pi -> decoded?.let { applyIntegrity(h, d, userId, pi.nonce, it, now) } }
+            storeStatus(h, d.id, userId, r.trigger ?: "periodic", r, now, verdict ?: "unevaluated")
             val trust = deriveTrust(h, d.id)
             if (r.trigger == "directive") h.createUpdate("UPDATE app.device_directive SET acked_at = now() WHERE device_id = :d AND delivered_at IS NOT NULL AND acked_at IS NULL").bind("d", d.id).execute()
             val directives = h.createQuery(
@@ -255,7 +260,61 @@ class DeviceService(
 
     private val TRIGGERS = setOf("enrolment", "policy_applied", "check_in", "check_out", "boot", "integrity_change", "app_update", "periodic", "directive")
 
-    private fun storeStatus(h: Handle, deviceId: Long, userId: Long?, trigger: String, r: DeviceStatusReportDto, now: Instant) {
+    private val log = org.slf4j.LoggerFactory.getLogger(DeviceService::class.java)
+
+    private fun appPackage(deviceId: Long): String? = db.jdbi.withHandle<String?, Exception> { h ->
+        h.createQuery("SELECT app_package FROM app.device WHERE id = :d").bind("d", deviceId).mapTo(String::class.java).findOne().orElse(null)
+    }
+
+    /** The decoded payload, or null when there is no decoder or Google refuses the token (the verdict stays as it was). */
+    private fun decodeIntegrity(d: DeviceRow, token: String): String? {
+        val decoder = integrity ?: return null
+        val pkg = appPackage(d.id) ?: return null
+        return try { decoder.decode(pkg, token) } catch (e: Exception) {
+            log.warn("play integrity decode failed device_id=${d.id} cause=${e.javaClass.simpleName}")   // never the token
+            null
+        }
+    }
+
+    /**
+     * Consumes the single-use nonce (issued to this device, unexpired) and evaluates the payload against it (N-027,
+     * PlayIntegrityCheck). Only a genuine verdict moves the device: `pass` or `fail` with integrity_checked_at; a `fail`
+     * raises DEVICE_INTEGRITY_FAIL (s11.4: severity 4, weight 30). A replayed, foreign or stale token is `unevaluated`.
+     */
+    private fun applyIntegrity(h: Handle, d: DeviceRow, userId: Long?, nonce: String, payload: String, now: Instant): String {
+        val fresh = h.createUpdate(
+            "UPDATE app.device_nonce SET used_at = :now WHERE nonce_sha256 = :h AND device_id = :d AND purpose = 'play_integrity' AND used_at IS NULL AND expires_at > :now",
+        ).bind("now", ts(now)).bind("h", sha256(nonce.toByteArray())).bind("d", d.id).execute() == 1
+        if (!fresh) { log.info("play integrity nonce unknown, used or expired device_id=${d.id}"); return "unevaluated" }
+        val (pkg, cert) = h.createQuery("SELECT app_package, app_signing_cert_sha256 FROM app.device WHERE id = :d").bind("d", d.id).map { rs, _ -> rs.getString(1) to rs.getBytes(2) }.one()
+        val ev = com.aktcl.aron.backend.platform.PlayIntegrityCheck.evaluate(payload, pkg, cert, nonce, d.uuid, now.toEpochMilli())
+        if (ev.verdict == "unevaluated") { log.info("play integrity evidence not bound device_id=${d.id} reason=${ev.reason}"); return ev.verdict }
+        // Verdicts apply in token order: a slower report carrying an older token never overwrites a newer verdict.
+        val at = ts(Instant.ofEpochMilli(ev.atMs!!))
+        val moved = h.createUpdate("UPDATE app.device SET integrity_verdict = :v, integrity_checked_at = :at WHERE id = :d AND (integrity_checked_at IS NULL OR integrity_checked_at <= :at)")
+            .bind("v", ev.verdict).bind("at", at).bind("d", d.id).execute() == 1
+        if (!moved) return "unevaluated"
+        if (ev.verdict == "fail") {
+            val evidence = kotlinx.serialization.json.buildJsonObject {
+                put("reason", kotlinx.serialization.json.JsonPrimitive("play_integrity"))
+                put("device_verdicts", kotlinx.serialization.json.JsonArray(ev.deviceVerdicts.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+                ev.appVerdict?.let { put("app_verdict", kotlinx.serialization.json.JsonPrimitive(it)) }
+            }
+            h.createUpdate(
+                """
+                INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score, evidence, config_version)
+                VALUES ('DEVICE_INTEGRITY_FAIL', 4, :bd, 'device', :sid, :u, 30, CAST(:ev AS jsonb), :cv)
+                ON CONFLICT (code, subject_type, subject_id, business_date) DO UPDATE SET severity = GREATEST(app.risk_signal.severity, EXCLUDED.severity),
+                    score = GREATEST(app.risk_signal.score, EXCLUDED.score), evidence = app.risk_signal.evidence || EXCLUDED.evidence, updated_at = now()
+                  WHERE app.risk_signal.status = 'open'
+                """.trimIndent(),
+            ).bind("bd", now.atZone(java.time.ZoneId.of("Asia/Dhaka")).toLocalDate()).bind("sid", d.uuid).bind("u", userId).bind("ev", evidence.toString())
+                .bind("cv", config.configVersion()).execute()
+        }
+        return ev.verdict
+    }
+
+    private fun storeStatus(h: Handle, deviceId: Long, userId: Long?, trigger: String, r: DeviceStatusReportDto, now: Instant, integrityVerdict: String = "unevaluated") {
         val reportedAt = runCatching { Instant.parse(r.reported_at) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad reported_at", errors = listOf(FieldError("/reported_at", "invalid_value")))
         checkAppVersion(r.app_version, "/app_version")
         if (trigger !in TRIGGERS) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad trigger", errors = listOf(FieldError("/trigger", "invalid_value")))
@@ -263,18 +322,18 @@ class DeviceService(
         if (r.battery_pct !in 0..100 || r.pending_rows < 0) throw ApiProblem(ProblemCode.ERR_VALIDATION, "out of range", errors = listOf(FieldError("/battery_pct", "out_of_range")))
         if (r.play_integrity != null && r.play_integrity_unavailable != null) throw ApiProblem(ProblemCode.ERR_VALIDATION, "play_integrity and play_integrity_unavailable are exclusive", errors = listOf(FieldError("/play_integrity_unavailable", "conflict")))
         val dhaka = now.atZone(java.time.ZoneId.of("Asia/Dhaka")).toLocalDate()
-        // Play Integrity tokens are decoded server-side only; until the Google decoder is wired (docs/requests/backend-reports-play-integrity.md) the verdict stays unevaluated.
+        // Play Integrity tokens are decoded server-side only (report(), N-027); the token itself is never stored.
         val report = JSON.encodeToString(DeviceStatusReportDto.serializer(), r.copy(play_integrity = r.play_integrity?.copy(token = "[redacted]")))
         h.createUpdate(
             """
             INSERT INTO app.device_status_report (source, device_id, user_id, business_date, reported_at, config_version, trigger, app_version, device_owner, lockdown_level_applied, policy_version_applied, blocking_active,
                                                    location_enabled, dev_options_enabled, adb_enabled, auto_time_enabled, mock_location_apps, pending_rows, battery_pct, integrity_verdict, report)
-            VALUES (:src, :d, :u, :bd, :ra, :cv, :tr, :av, :own, :ll, :pv, :ba, :le, :do, :adb, :at, :mock, :pr, :bat, 'unevaluated', CAST(:rep AS jsonb))
+            VALUES (:src, :d, :u, :bd, :ra, :cv, :tr, :av, :own, :ll, :pv, :ba, :le, :do, :adb, :at, :mock, :pr, :bat, :iv, CAST(:rep AS jsonb))
             """,
         ).bind("src", if (trigger == "enrolment") "enrolment" else "online").bind("d", deviceId).bind("u", userId).bind("bd", dhaka).bind("ra", ts(reportedAt)).bind("cv", policy.policyVersion())
             .bind("tr", trigger).bind("av", r.app_version).bind("own", r.device_owner).bind("ll", r.lockdown_level_applied).bind("pv", r.policy_version_applied).bind("ba", r.blocking_active)
             .bind("le", r.location_enabled).bind("do", r.dev_options_enabled).bind("adb", r.adb_enabled).bind("at", r.auto_time_enabled)
-            .bind("mock", r.mock_location_apps.toTypedArray()).bind("pr", r.pending_rows).bind("bat", r.battery_pct.toShort()).bind("rep", report).execute()
+            .bind("mock", r.mock_location_apps.toTypedArray()).bind("pr", r.pending_rows).bind("bat", r.battery_pct.toShort()).bind("iv", integrityVerdict).bind("rep", report).execute()
         h.createUpdate(
             """
             UPDATE app.device SET device_owner = :own, app_version = :av, policy_version_applied = coalesce(:pv, policy_version_applied), pending_rows_reported = :pr, last_contact_at = now(), device_info = CAST(:info AS jsonb)

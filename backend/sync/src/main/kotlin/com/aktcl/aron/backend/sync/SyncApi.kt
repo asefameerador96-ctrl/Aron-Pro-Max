@@ -184,9 +184,10 @@ private suspend fun postBatch(call: ApplicationCall, d: SyncDeps) {
         val attempt = call.request.headers["X-Batch-Attempt"] ?: "1"
         val msg = listOf("aron-proof-v1", "batch", p.deviceUuid, DeviceProof.sha256Hex(gz), req.batch_uuid, attempt).joinToString("\n")
         if (!DeviceProof.verify(key, msg, proof)) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device proof does not verify")
-    } else if (cfg.boolOr("cfg.device.require_enrolled", true)) {
-        throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device key unknown")
     }
+    // A phone without a usable key cannot prove the batch. Under cfg.device.require_enrolled its records are not refused
+    // (the phone would retry them forever) but held: the ingest gate quarantines every non-telemetry record of it
+    // `device_not_enrolled` (N-027, D24-17); with the gate off they are accepted as before.
 
     if (!d.inflight.tryAcquire()) {
         throw retryLater(ProblemCode.ERR_SERVICE_UNAVAILABLE, "too many batches in flight", Random.nextInt(5, 61))

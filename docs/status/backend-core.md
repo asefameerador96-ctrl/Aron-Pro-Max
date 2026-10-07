@@ -34,6 +34,17 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - **Task columns** (db V0037/V0038 on INT): `Tasks.kt` stores `route_id` (named and in reach, or the outlet's) and `cancel_reason`; tests in `TasksTest`. No checker run on this small follow-up (own tests only); if the sync `task` payload gains `route_id`, scope-check the route.
 - db (11:56Z) on lane/db, not yet on INT: V0040 `app.password_history` + `cfg.auth.password_history_depth`/`password_min_age_h`/`password_denylist_enabled` (un-skip `ChangePasswordTest.noneOfTheLastTenPasswords` and store history once on INT); V0041 partitions `app.geo_breadcrumb` (no code change needed).
 
+## Session 9 (2026-10-07, from 21:05 UTC)
+- **N-027 done** (BC-76, Opus checker FAIL then fixed): Play Integrity decoded server-side (`notify/GooglePlayIntegrityDecoder`,
+  `platform/PlayIntegrityCheck`: nonce, requestHash, package, signing certificate, freshness; only a genuine verdict moves the
+  device; token order; fail raises DEVICE_INTEGRITY_FAIL). Device gate in ingest step 5b on attendance and sales
+  (`device_not_enrolled`, `device_integrity_failed`), flagged when off, release on resend while the item is open.
+  Tests: `DeviceGateTest`, `PlayIntegrityCheckTest`, `DeviceEnrolmentTest` (new case); full backend suite green.
+- Requests: infra `backend-core-play-integrity-secret.md` (credentials; owner's Play Console link), android-core
+  `backend-core-gate-resend-android-core.md` (the phone does not re-send gate quarantines yet).
+- Traps: run tests with `ARON_TEST_PG_URL` in the same shell; after a container restart `service postgresql start` and
+  create role `aron`/`aron` superuser + db `aron_test`.
+
 ## Session 8 close-out: next rows (session 9 starts here)
 1. **N-027** (T1, L): server verification of Play Integrity verdicts and key attestation chains; enrolment gate
    `cfg.device.require_enrolled` on attendance and sales ingest (gate on: parked with a reason and a supervisor flag;
