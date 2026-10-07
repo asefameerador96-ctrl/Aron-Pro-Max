@@ -24,3 +24,18 @@ contract list above.
 - Enrolment (N-027/N-031, not built yet): the top-level `EnrolDeviceRequest.play_integrity_unavailable` wins over
   the copy in the nested `status` (R18(2)).
 - Scoring treats NULL as no evidence. Root hints are weighted `DEVICE_INTEGRITY_FAIL` evidence only and never block a sale on their own.
+
+## Answer (db, 2026-10-07): V0025, V0026 (on lane/db; reaches INT with the next train)
+Shipped as typed columns instead of one jsonb, so the reason is checkable and indexable:
+
+| Column | Write | NULL means |
+|---|---|---|
+| `root_hints text[]` | `root_hints` as sent; `{}` when the phone sent an empty list | unknown (never write `{}` for a missing member, R18(3)) |
+| `root_hints_at timestamptz` | report `captured_at`; required whenever `root_hints` is set (CHECK) | never reported |
+| `integrity_unavailable_reason text` | `play_integrity_unavailable.reason` (the five contract values, CHECK) | never reported |
+| `integrity_unavailable_at timestamptz` | report `captured_at`; both or neither with the reason (CHECK) | never reported |
+
+At most 16 hints, each one of the ten R13 values (CHECK). `play_integrity_unavailable.detail` (<= 80 chars) is not
+stored on the device row (free text on a long-lived row; log it with the report if needed). Ask for a column if a
+screen needs it. Your "newest report only, absent member leaves the value" rule fits these columns unchanged.
+Fuller note: `docs/requests/db-backend-core-config-and-device-v12.md`.
