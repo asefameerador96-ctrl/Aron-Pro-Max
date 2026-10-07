@@ -13,8 +13,8 @@ import java.io.IOException
  */
 class SimPrinter(
     private val now: () -> Long,
-    val bufferBytes: Int = 8192,
-    val rowsPerSecond: Int = 400,
+    val bufferBytes: Int = 4096,
+    val rowsPerSecond: Int = 350,
     val bytesPerRow: Int = 48,
 ) {
     var on = true
@@ -46,8 +46,8 @@ class SimPrinter(
         private var open = false
         private val pending = ByteArrayOutputStream()
         private var parsed = 0
-        private var received = 0L
-        private var startMs = 0L
+        private var level = 0L
+        private var lastMs = 0L
         private lateinit var paper: MutableList<ByteArray>
         private val hang = CompletableDeferred<Unit>()
 
@@ -61,7 +61,8 @@ class SimPrinter(
             if (!on) throw IOException("printer off")
             connects++
             open = true
-            startMs = now()
+            lastMs = now()
+            level = 0
             paper = ArrayList()
             sessions.add(paper)
             link = this
@@ -70,14 +71,17 @@ class SimPrinter(
         override suspend fun write(bytes: ByteArray) {
             if (!open || !on) throw IOException("link down")
             if (hangWrites) hang.await()
+            // The buffer drains at print speed only while it holds data: idle time gives no credit.
+            val t = now()
+            level = maxOf(0L, level - (t - lastMs) * rowsPerSecond * bytesPerRow / 1000)
+            lastMs = t
             for (b in bytes) {
                 if (totalBytes >= switchOffAtByte) { switchOff(); throw IOException("printer switched off") }
                 totalBytes++
-                received++
+                level++
                 pending.write(b.toInt())
             }
-            val drained = (now() - startMs) * rowsPerSecond * bytesPerRow / 1000
-            if (received - drained > bufferBytes) overflowed = true
+            if (level > bufferBytes) overflowed = true
             parse()
         }
 
@@ -119,6 +123,7 @@ class SimPrinter(
                         }
                         i += 8 + w * h
                     }
+                    b == 0x00 -> i++ // NUL is ignored by ESC/POS printers
                     b == 0x1B || b == 0x10 || b == 0x1D -> break // incomplete command: wait for more bytes
                     else -> throw AssertionError("garbage byte 0x${b.toString(16)} at $i")
                 }

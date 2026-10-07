@@ -51,6 +51,8 @@ internal object Bengali {
     const val BROKEN_CLUSTER = 4
     const val NON_INDIC_CLUSTER = 5
 
+    private const val MAX_SYLLABLE = 32
+
     fun isBengaliBlock(cp: Int): Boolean = cp in 0x0980..0x09FF
 
     fun category(cp: Int): Int = when (cp) {
@@ -128,7 +130,8 @@ internal object Bengali {
             var bestType = NON_INDIC_CLUSTER
             for ((type, re) in patterns) {
                 val m = re.toPattern().matcher(s)
-                for (end in s.length downTo start + 1) {
+                // No real syllable is longer than a few dozen characters; the cap keeps this linear in the text.
+                for (end in minOf(s.length, start + MAX_SYLLABLE) downTo start + 1) {
                     if (end - start <= bestLen) break
                     m.region(start, end)
                     if (m.matches()) { bestLen = end - start; bestType = type; break }

@@ -58,14 +58,20 @@ sealed interface PrintOutcome {
  * estimated unprinted backlog stays under [bufferBytes].
  */
 data class PrintPacing(
-    val rowsPerSecond: Int = 350,
-    val bufferBytes: Int = 4096,
+    val rowsPerSecond: Int = 300,
+    val bufferBytes: Int = 3072,
     val chunkBytes: Int = 512,
     val bandRows: Int = 24,
     val statusTimeoutMs: Long = 400,
     val writeTimeoutMs: Long = 8_000,
     val connectTimeoutMs: Long = 12_000,
-)
+) {
+    /** Values a bad configuration could give are clamped, so pacing never divides by zero or stalls. */
+    internal val safeRowsPerSecond get() = rowsPerSecond.coerceIn(20, 2_000)
+    internal val safeBufferBytes get() = bufferBytes.coerceIn(256, 1 shl 20)
+    internal val safeChunkBytes get() = chunkBytes.coerceIn(16, safeBufferBytes)
+    internal val safeBandRows get() = bandRows.coerceIn(1, 255)
+}
 
 /**
  * Owns the link to the saved printer (N-019, F-SR-013): connects on demand, keeps the link while a screen holds
@@ -97,6 +103,12 @@ class PrinterManager(
     private var statusSupported: Boolean? = null
     @Volatile private var linkLost = false
     private var holders = 0
+    /**
+     * Bytes a raster command still expected when the link last broke in the middle of it. The printer may have
+     * stayed on (out of range) with its parser waiting for them, so the next job first sends that many zero
+     * bytes: white dots that finish the stranded band, or NULs, which ESC/POS ignores, if the printer was reset.
+     */
+    private var strandedBytes = 0
     private val printed = object : LinkedHashMap<String, Boolean>(64, 0.75f, false) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) = size > 500
     }
@@ -113,6 +125,7 @@ class PrinterManager(
     suspend fun select(printer: SavedPrinter): Boolean {
         lock.withLock {
             closeLink()
+            strandedBytes = 0
             store.save(printer)
             _state.value = PrinterState.Off
         }
@@ -122,6 +135,7 @@ class PrinterManager(
     /** Forgets the printer. */
     suspend fun forget() = lock.withLock {
         closeLink()
+        strandedBytes = 0
         store.save(null)
         _state.value = PrinterState.NoPrinter
     }
@@ -194,7 +208,7 @@ class PrinterManager(
         if (_state.value !is PrinterState.Printing) _state.value = PrinterState.Off
         scope.launch {
             lock.withLock { if (transport === t) closeLink() }
-            if (_state.value == PrinterState.Connected) _state.value = PrinterState.Off
+            if (_state.value == PrinterState.Connected || _state.value == PrinterState.PaperOut) _state.value = PrinterState.Off
             autoReconnect()
         }
     }
@@ -267,18 +281,25 @@ class PrinterManager(
         outcome
     }
 
+    /**
+     * Asks the paper sensor (DLE EOT 4): true = roll out, false = paper present, null = no answer from a printer
+     * that never answers. The first query on a link waits longer (the printer may be waking up). A printer that
+     * answered before and now stays silent is gone: that throws, so the job fails instead of reporting Printed.
+     */
     private suspend fun queryPaper(t: PrinterTransport): Boolean? {
         if (statusSupported == false) return null
         while (statusBytes.tryReceive().isSuccess) Unit
-        t.write(EscPos.statusQuery(4))
-        val b = withTimeoutOrNull(pacing.statusTimeoutMs) {
+        guardedWrite(t, EscPos.statusQuery(4))
+        val wait = if (statusSupported == null) pacing.statusTimeoutMs * 3 else pacing.statusTimeoutMs * 2
+        val b = withTimeoutOrNull(wait) {
             var v: Int
             do { v = statusBytes.receive() } while (!EscPos.isStatusByte(v))
             v
         }
         if (b == null) {
-            // No reply: this printer does not answer DLE EOT (or did not yet); stop asking on this link.
-            if (statusSupported == null) statusSupported = false
+            if (statusSupported == true) throw IOException("printer stopped answering")
+            // Never answered on this link: a printer without DLE EOT; stop asking on this link.
+            statusSupported = false
             return null
         }
         statusSupported = true
@@ -287,7 +308,7 @@ class PrinterManager(
 
     private suspend fun guardedWrite(t: PrinterTransport, bytes: ByteArray) {
         if (linkLost) throw IOException("link lost")
-        val done = withTimeoutOrNull(pacing.writeTimeoutMs) { t.write(bytes); true }
+        val done = withTimeoutOrNull(pacing.writeTimeoutMs.coerceAtLeast(500)) { t.write(bytes); true }
         if (done == null) {
             t.close() // unblocks the stuck write; the reader then reports the drop
             throw IOException("write timed out")
@@ -298,24 +319,33 @@ class PrinterManager(
     private suspend fun send(t: PrinterTransport, job: PrintJob): PrintOutcome {
         _state.value = PrinterState.Printing(job.id, 0)
         if (queryPaper(t) == true) return PrintOutcome.Failed(PrintFailure.PAPER_OUT)
-        val commands = EscPos.job(job.bitmap, pacing.bandRows)
+        val commands = ArrayList<ByteArray>()
+        val padding = strandedBytes > 0
+        if (padding) commands.add(ByteArray(strandedBytes))
+        commands.addAll(EscPos.job(job.bitmap, pacing.safeBandRows))
         val total = commands.sumOf { it.size }.toLong()
-        val bytesPerSecond = pacing.rowsPerSecond.toLong() * job.bitmap.bytesPerRow
+        val bytesPerSecond = pacing.safeRowsPerSecond.toLong() * job.bitmap.bytesPerRow
+        val buffer = pacing.safeBufferBytes
         val start = nowMs()
         var sent = 0L
-        for (cmd in commands) {
+        for ((index, cmd) in commands.withIndex()) {
             var off = 0
+            // Raster commands and the padding before them leave the printer waiting when cut short.
+            val raster = (padding && index == 0) || (cmd.size > 1 && cmd[0].toInt() == 0x1D && cmd[1].toInt() == 0x76)
             while (off < cmd.size) {
-                val n = minOf(pacing.chunkBytes, cmd.size - off)
+                val n = minOf(pacing.safeChunkBytes, cmd.size - off)
                 // Estimated bytes still in the printer's buffer; wait until this chunk fits.
                 while (true) {
                     val drained = (nowMs() - start) * bytesPerSecond / 1000
                     val backlog = sent - drained
-                    if (backlog + n <= pacing.bufferBytes) break
-                    val waitMs = ((backlog + n - pacing.bufferBytes) * 1000 / bytesPerSecond).coerceAtLeast(5)
+                    if (backlog + n <= buffer) break
+                    val waitMs = ((backlog + n - buffer) * 1000 / bytesPerSecond).coerceAtLeast(5)
                     delay(waitMs)
                 }
+                // If this write breaks the link, assume none of it arrived: the printer may still want the rest.
+                strandedBytes = if (raster) cmd.size - off else 0
                 guardedWrite(t, cmd.copyOfRange(off, off + n))
+                strandedBytes = if (raster && off + n < cmd.size) cmd.size - off - n else 0
                 off += n
                 sent += n
                 _state.value = PrinterState.Printing(job.id, (sent * 100 / total).toInt())

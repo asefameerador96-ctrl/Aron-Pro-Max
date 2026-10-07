@@ -48,7 +48,7 @@ class PrintTemplate(
     /** Every `{@label}` key the template uses, for validation against the label set. */
     fun labelKeys(): Set<String> {
         val out = HashSet<String>()
-        fun scan(s: String) = LABEL.findAll(s).forEach { out.add(it.groupValues[1]) }
+        fun scan(s: String) = TOKEN.findAll(s).forEach { if (it.groupValues[1] == "@") out.add(it.groupValues[2]) }
         fun walk(bs: List<Block>) {
             for (b in bs) when (b) {
                 is Block.Text -> scan(b.value)
@@ -64,57 +64,58 @@ class PrintTemplate(
 
     companion object {
         const val SCHEMA = 1
-        private val LABEL = Regex("""\{@([a-z0-9_]{1,60})}""")
+        /** `{field}` or `{@label}`; the renderer fills exactly what this matches. */
+        val TOKEN = Regex("""\{(@?)([^{}]{1,60})}""")
         private const val MAX_DEPTH = 4
         private const val MAX_BLOCKS = 200
 
         /** Parses and validates [json]; throws [InvalidTemplateException] with the first problem. */
         fun parse(json: String, defaultSize: Int = 22): PrintTemplate {
-            if (json.length > 20_000) invalid("template longer than 20000 characters")
+            if (json.length > 20_000) invalid("too_long")
             val root = try {
                 Json.parseToJsonElement(json)
             } catch (e: Exception) {
-                invalid("not JSON: ${e.message}")
-            } as? JsonObject ?: invalid("root must be an object")
-            val schema = root.int("schema") ?: invalid("schema missing")
-            if (schema != SCHEMA) invalid("unsupported schema $schema")
+                invalid("not_json")
+            } as? JsonObject ?: invalid("root_not_object")
+            val schema = root.int("schema") ?: invalid("schema_missing")
+            if (schema != SCHEMA) invalid("schema_unsupported:$schema")
             val size = root.int("size") ?: defaultSize
-            if (size !in 14..40) invalid("size $size outside 14..40")
+            if (size !in 14..40) invalid("size_out_of_range:$size")
             val digits = when (val d = root.str("digits") ?: "latin") {
                 "latin" -> DigitStyle.LATIN
                 "bn" -> DigitStyle.BENGALI
-                else -> invalid("digits '$d'")
+                else -> invalid("digits_unknown:$d")
             }
             var count = 0
             fun blocks(arr: JsonElement?, depth: Int): List<Block> {
-                if (depth > MAX_DEPTH) invalid("conditions nested deeper than $MAX_DEPTH")
-                val a = arr as? JsonArray ?: invalid("blocks must be an array")
+                if (depth > MAX_DEPTH) invalid("nesting_too_deep")
+                val a = arr as? JsonArray ?: invalid("blocks_not_array")
                 return a.map { el ->
-                    if (++count > MAX_BLOCKS) invalid("more than $MAX_BLOCKS blocks")
-                    val o = el as? JsonObject ?: invalid("block must be an object")
-                    val bsize = o.int("size")?.also { if (it !in 14..48) invalid("block size $it outside 14..48") }
+                    if (++count > MAX_BLOCKS) invalid("too_many_blocks")
+                    val o = el as? JsonObject ?: invalid("block_not_object")
+                    val bsize = o.int("size")?.also { if (it !in 14..48) invalid("block_size_out_of_range:$it") }
                     when (val t = o.str("type")) {
-                        "text" -> Block.Text(o.str("value") ?: invalid("text.value missing"), align(o.str("align")), o.bool("bold"), bsize)
+                        "text" -> Block.Text(o.str("value") ?: invalid("text_value_missing"), align(o.str("align")), o.bool("bold"), bsize)
                         "pair" -> Block.Pair(o.str("left") ?: "", o.str("right") ?: "", o.bool("bold"), bsize)
                         "rule" -> Block.Rule(o.str("style") == "dashed")
-                        "space" -> Block.Space((o.int("dots") ?: 8).also { if (it !in 1..200) invalid("space.dots $it") })
+                        "space" -> Block.Space((o.int("dots") ?: 8).also { if (it !in 1..200) invalid("space_dots_out_of_range:$it") })
                         "table" -> {
-                            val cols = (o["columns"] as? JsonArray ?: invalid("table.columns missing")).map { c ->
-                                val co = c as? JsonObject ?: invalid("column must be an object")
-                                Block.Column(co.str("header") ?: "", co.str("value") ?: invalid("column.value missing"),
-                                    co.int("width") ?: invalid("column.width missing"), align(co.str("align")))
+                            val cols = (o["columns"] as? JsonArray ?: invalid("table_columns_missing")).map { c ->
+                                val co = c as? JsonObject ?: invalid("column_not_object")
+                                Block.Column(co.str("header") ?: "", co.str("value") ?: invalid("column_value_missing"),
+                                    co.int("width") ?: invalid("column_width_missing"), align(co.str("align")))
                             }
-                            if (cols.isEmpty() || cols.size > 6) invalid("table needs 1..6 columns")
-                            if (cols.any { it.widthPercent !in 5..100 } || cols.sumOf { it.widthPercent } != 100) invalid("column widths must add up to 100")
-                            Block.Table(o.str("rows") ?: invalid("table.rows missing"), cols, o.bool("header_bold"), bsize)
+                            if (cols.isEmpty() || cols.size > 6) invalid("table_column_count")
+                            if (cols.any { it.widthPercent !in 5..100 } || cols.sumOf { it.widthPercent } != 100) invalid("column_widths_not_100")
+                            Block.Table(o.str("rows") ?: invalid("table_rows_missing"), cols, o.bool("header_bold"), bsize)
                         }
                         "if" -> {
                             val w = o.str("when")
                             val u = o.str("unless")
-                            if ((w == null) == (u == null)) invalid("if needs exactly one of when/unless")
+                            if ((w == null) == (u == null)) invalid("if_needs_when_or_unless")
                             Block.If(w ?: u!!, negate = u != null, blocks(o["blocks"], depth + 1))
                         }
-                        else -> invalid("unknown block type '$t'")
+                        else -> invalid("block_type_unknown:$t")
                     }
                 }
             }
@@ -125,7 +126,7 @@ class PrintTemplate(
             null, "left" -> Align.LEFT
             "center" -> Align.CENTER
             "right" -> Align.RIGHT
-            else -> invalid("align '$s'")
+            else -> invalid("align_unknown:$s")
         }
 
         private fun JsonObject.str(k: String): String? = (this[k] as? JsonPrimitive)?.takeIf { it.isString }?.content

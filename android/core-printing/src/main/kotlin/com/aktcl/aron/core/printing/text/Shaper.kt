@@ -195,8 +195,19 @@ class Shaper(private val font: OpenTypeFont) {
     private fun positions(buf: List<GlyphInfo>): MutableList<GlyphPos> =
         buf.mapTo(ArrayList()) { GlyphPos(font.advance(it.glyph)) }
 
+    /** Composed form (NFC) where the font has the composed letter, as HarfBuzz's normaliser does: e + U+0301 -> é. */
+    private fun composeDefault(text: String): IntArray {
+        val out = ArrayList<Int>()
+        for (cp in java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFC).codePoints().toArray()) {
+            if (font.hasGlyph(cp) || cp < 0x80) { out.add(cp); continue }
+            val d = java.text.Normalizer.normalize(String(Character.toChars(cp)), java.text.Normalizer.Form.NFD).codePoints().toArray()
+            if (d.size > 1 && d.all { font.hasGlyph(it) }) d.forEach { out.add(it) } else out.add(cp)
+        }
+        return out.toIntArray()
+    }
+
     private fun shapeDefault(text: String): Pair<List<GlyphInfo>, List<GlyphPos>> {
-        val cps = text.codePoints().toArray()
+        val cps = composeDefault(text)
         val buf = cps.mapIndexedTo(ArrayList()) { i, cp -> newInfo(cp, i) }
         engine.applyGsub(buf, latinGsub)
         val pos = positions(buf)
@@ -209,8 +220,23 @@ class Shaper(private val font: OpenTypeFont) {
 
     // ---- Bengali -----------------------------------------------------------------------------------------
 
+    /**
+     * HarfBuzz's vowel constraints for Bengali: an independent vowel followed by the sign that would spell another
+     * vowel (A + AA, VOCALIC R + R sign, VOCALIC L + L sign) gets a dotted circle between them, so a misspelt
+     * "অা" prints visibly wrong instead of looking like "আ".
+     */
+    private fun vowelConstraints(cps: IntArray): IntArray {
+        val out = ArrayList<Int>(cps.size + 2)
+        for (i in cps.indices) {
+            out.add(cps[i])
+            val next = cps.getOrNull(i + 1) ?: continue
+            if ((cps[i] == 0x0985 && next == 0x09BE) || (cps[i] == 0x098B && next == 0x09C3) || (cps[i] == 0x098C && next == 0x09E2)) out.add(0x25CC)
+        }
+        return out.toIntArray()
+    }
+
     private fun shapeBengali(text: String): Pair<List<GlyphInfo>, List<GlyphPos>> {
-        val cps = normalize(text.codePoints().toArray())
+        val cps = normalize(vowelConstraints(text.codePoints().toArray()))
         var buf: MutableList<GlyphInfo> = cps.mapIndexedTo(ArrayList()) { i, cp ->
             newInfo(cp, i).also {
                 it.category = Bengali.category(cp)
