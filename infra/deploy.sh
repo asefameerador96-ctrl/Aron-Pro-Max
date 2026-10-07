@@ -653,13 +653,15 @@ if [ "$api_mode_now" = Multiple ]; then
   done
 fi
 # Worker health (lead 2026-10-07): the worker has no HTTP endpoint, so the gate above cannot see it. Its latest
-# revision must run this image, have a replica Running with 0 restarts, and stay so for 90 s. Non-blocking at first.
+# revision must run this image, have a replica Running with 0 restarts, and stay so for 90 s. Blocking since its first
+# green run (deploy 37687665680, per-app db logins on): a worker that does not stay up fails the deploy.
 if worker_out="$(infra/scripts/worker-check.sh "$RG" "ca-aron-${ENV_NAME}-worker" "$BACKEND_IMAGE" 2>&1)"; then
   worker_result="running, 0 restarts after 90 s"
+  printf '%s\n' "$worker_out"
 else
-  worker_result="NOT PROVEN (see the warning)"; echo "::warning::worker check failed: ${worker_out//$'\n'/ | }"
+  printf '%s\n' "$worker_out"
+  die "worker check failed for $SHA: ${worker_out//$'\n'/ | } (docs/runbooks/rollback-bad-deploy.md)"
 fi
-printf '%s\n' "$worker_out"
 # Release marker on the App Insights charts (N-062); never fails the deploy.
 infra/scripts/release-marker.sh "$rg_id" "$ENV_NAME" "$SHA" \
   "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-local}" \

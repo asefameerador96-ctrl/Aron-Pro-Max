@@ -1,6 +1,6 @@
 # Infra lane status
 
-Updated 2026-10-07 21:05 UTC (sixth infra session).
+Updated 2026-10-07 22:00 UTC (sixth infra session).
 
 ## Sixth infra session, 2026-10-07 21:05 UTC (read with the handover below)
 
@@ -23,8 +23,13 @@ Updated 2026-10-07 21:05 UTC (sixth infra session).
 - **CI split run 37682155791: green, 9 of 9 jobs, wall 22.3 min** (20:53:00-21:15:17; old jvm job 26 min). "Backend app
   tests" 8.9 min; "Shared, db and backend" 22.1 min (now the long pole: the next gain is inside it, not more splitting).
   Reported to lead and integrator 21:20 UTC.
-- Deploy 150 (37684685418) deploys INT bde7719c, which predates ff7579c4, so its smoke step 4 will 401 again;
-  the first full smoke is the first deploy after ff7579c4 is promoted.
+- **SR SLICE SMOKE PASSED END TO END: deploy run 37687665680** (#151, INT 0e5c3dc4 with ff7579c4, 21:12-21:23 UTC):
+  login with signed device proof, bundle, sale uploaded (sr1001-261008-9803, 92000 mtk), re-upload 4/4 duplicate,
+  replay, count unchanged (1, 1, 92000), memo read HTTP 200 (report-only in that run), tile 0 -> 1, void. Rows:
+  Database logins succeeded (**per-app db logins ON, api healthy**), Worker running 0 restarts after 90 s, Dev seed
+  Succeeded, SR slice smoke PASSED. Lead told 21:58 UTC. Steps 7b/8 are hard checks from INT 3ba55547 on.
+- **Worker check is blocking now** (lane/infra, after its first green run): a failed check ends the deploy with `die`.
+  The slice smoke itself stays non-blocking until the lead says otherwise.
 
 ## HANDOVER (fifth infra session -> sixth), 2026-10-07 20:55 UTC: read this first
 
