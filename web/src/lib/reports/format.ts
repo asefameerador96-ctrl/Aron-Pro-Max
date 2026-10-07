@@ -7,9 +7,11 @@ export type ReportColumn = Schemas["ReportColumn"];
 export type Cell = string | number | boolean | null | undefined;
 
 /** Integer milli-taka to a decimal string with exactly three decimals, by integer maths (never `n / 1000`). */
-export function mtkToTaka(mtk: number | string): string {
-  const neg = String(mtk).startsWith("-");
-  const digits = String(mtk).replace(/^-/, "").replace(/\D/g, "").padStart(4, "0");
+export function mtkToTaka(mtk: number | string | bigint): string {
+  const raw = typeof mtk === "number" ? (Number.isSafeInteger(mtk) ? String(mtk) : "") : String(mtk);
+  if (!/^-?\d+$/.test(raw)) return "—"; // never show a different amount for a malformed one
+  const neg = raw.startsWith("-");
+  const digits = raw.replace(/^-/, "").padStart(4, "0");
   const whole = digits.slice(0, -3).replace(/^0+(?=\d)/, "");
   return `${neg ? "-" : ""}${whole}.${digits.slice(-3)}`;
 }
@@ -22,8 +24,9 @@ function localiseDecimal(locale: Locale, s: string): string {
 }
 
 /** Money for display: taka with exactly three decimals and locale digit grouping, from integer milli-taka (BigInt, no float). */
-export function formatTaka(locale: Locale, mtk: number | string): string {
+export function formatTaka(locale: Locale, mtk: number | string | bigint): string {
   const plain = mtkToTaka(mtk);
+  if (plain === "—") return plain;
   const neg = plain.startsWith("-");
   const [whole = "0", frac = "000"] = plain.replace("-", "").split(".");
   const grouped = new Intl.NumberFormat(locale === "bn" ? "bn-BD-u-nu-beng" : "en-US", { useGrouping: true }).format(BigInt(whole));

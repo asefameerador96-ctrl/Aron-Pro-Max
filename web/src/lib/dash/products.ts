@@ -47,7 +47,7 @@ export interface TreeNode {
 
 /** All Products > Category > Segment > Brand > Variant > SKU. A SKU sits under its variant. */
 export function buildTree(all: Record<Level, readonly Node[]>, skus: readonly Schemas["Sku"][], rootLabel: string): TreeNode {
-  const kids = (level: Level, parent: number | null): Node[] => all[level].filter((x) => (x.parent_id ?? null) === parent).sort((a, b) => a.sort - b.sort);
+  const kids = (level: Level, parent: number | null): Node[] => all[level].filter((x) => (x.parent_id ?? null) === parent).sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
   const mk = (level: Level, nd: Node): TreeNode => {
     const next = LEVELS[LEVELS.indexOf(level) + 1];
     const children: TreeNode[] = next ? kids(next, nd.id).map((c) => mk(next, c)) : skus.filter((s) => s.variant_id === nd.id).sort((a, b) => a.sort - b.sort).map((s) => ({ key: `sku-${s.id}`, label: s.short_name, level: "sku" as const, status: s.status === "active" ? "active" as const : "inactive" as const, children: [] }));

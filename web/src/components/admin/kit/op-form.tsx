@@ -26,6 +26,10 @@ export interface OpFieldDef {
   scale?: number;
   /** Smallest allowed value after scaling. */
   min?: number;
+  /** An enum whose option values are numbers (sent as numbers). */
+  asNumber?: boolean;
+  /** A text field whose content must be valid JSON but is sent as the text itself (a template definition string). */
+  jsonString?: boolean;
   /** Lower-case the text before checking and sending (a pasted fingerprint). */
   lowercase?: boolean;
   /** Largest allowed value after scaling (a size gate, for example). */
@@ -58,6 +62,8 @@ interface Props {
   resultField?: string;
   /** Clear the form after a success. */
   resetOnSuccess?: boolean;
+  /** Ask this question (a browser confirm) before posting an irreversible action. */
+  confirmText?: string;
   testId?: string;
 }
 
@@ -78,10 +84,11 @@ function toValue(f: OpFieldDef, raw: string): unknown {
       return Symbol.for("invalid-json");
     }
   }
+  if (f.kind === "enum" && f.asNumber) return Number(raw);
   return f.lowercase ? raw.trim().toLowerCase() : raw.trim();
 }
 
-export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, version, submitLabel, noReason, successKey, resultField, resetOnSuccess = true, testId = "op-form" }: Props) {
+export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, version, submitLabel, noReason, successKey, resultField, resetOnSuccess = true, confirmText, testId = "op-form" }: Props) {
   const { t, problem } = useI18n();
   const router = useRouter();
   const initial = Object.fromEntries(fields.map((f) => [f.name, f.initial ?? (f.kind === "checkbox" ? "false" : f.kind === "enum" && f.required ? (f.options?.[0]?.value ?? "") : "")]));
@@ -108,6 +115,13 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
       if (typeof v === "number" && f.min !== undefined && v < f.min) local[f.name] = t("cfgc.error.too_small");
       if (v === Symbol.for("invalid-json")) local[f.name] = t("error.field.invalid");
       if (typeof v === "number" && f.max !== undefined && v > f.max) local[f.name] = t("cfgc.error.too_big");
+      if (f.jsonString && raw.trim() !== "") {
+        try {
+          JSON.parse(raw);
+        } catch {
+          local[f.name] = t("error.field.invalid");
+        }
+      }
       if (f.pattern && raw.trim() !== "" && !new RegExp(f.pattern).test(f.lowercase ? raw.trim().toLowerCase() : raw.trim())) local[f.name] = t("error.field.invalid");
       if (v !== undefined && typeof v !== "symbol") body[f.name] = v;
     }
@@ -116,6 +130,7 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
       setErrors(local);
       return;
     }
+    if (confirmText && !window.confirm(confirmText)) return;
     setBusy(true);
     try {
       const res = await fetch(endpoint ?? "/api/bff/admin-op", {

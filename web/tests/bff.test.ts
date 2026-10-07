@@ -71,7 +71,7 @@ describe("login", () => {
   });
 
   it("admin: password step gives only the mfa cookie; the TOTP step completes the login", async () => {
-    const r1 = await loginPost(req("/api/bff/login", "POST", { username: "admin1", password: "admin-pass-1" }));
+    const r1 = await loginPost(req("/api/bff/login", "POST", { username: "madmin1", password: "admin-pass-1" }));
     expect(await r1.json()).toEqual({ status: "mfa_required" });
     const c1 = setCookies(r1);
     expect(Object.keys(c1)).toEqual([MFA_COOKIE]);
@@ -89,8 +89,8 @@ describe("login", () => {
   });
 
   it("a server that skips MFA for an MFA role is not trusted: no session is created", async () => {
-    mock.state.users.admin1!.mfa = false;
-    const res = await loginPost(req("/api/bff/login", "POST", { username: "admin1", password: "admin-pass-1" }));
+    mock.state.users.madmin1!.mfa = false;
+    const res = await loginPost(req("/api/bff/login", "POST", { username: "madmin1", password: "admin-pass-1" }));
     expect(res.status).toBe(401);
     expect(setCookies(res)[SESSION_COOKIE]).toBeUndefined();
   });
@@ -130,10 +130,10 @@ describe("login", () => {
 
 describe("authenticate (token refresh and role gate)", () => {
   const sealed = (s: SessionData) => seal(s, SESSION_PURPOSE, 600);
-  const user = { user_id: 3001, username: "admin1", full_name: "Salma Akter", role: "ADMIN" as const, designation: null, locale: "bn" as const };
+  const user = { user_id: 3001, username: "madmin1", full_name: "Salma Akter", role: "ADMIN" as const, designation: null, locale: "bn" as const };
 
   it("refreshes an expiring access token once, rotating the refresh cookie", async () => {
-    const { cookies } = await sessionCookie("admin1", "admin-pass-1", "123456");
+    const { cookies } = await sessionCookie("madmin1", "admin-pass-1", "123456");
     const expired = sealed({ at: "stale", atExp: Date.now() + 5_000, user, scope: null });
     const r = req("/api/bff/admin/clusters", "POST", {}, { [SESSION_COOKIE]: expired, [RT_COOKIE]: cookies[RT_COOKIE]! });
     const a = await authenticate(r, "/api/bff/admin/clusters");
@@ -167,7 +167,7 @@ describe("generic CRUD writes", () => {
   const idParams = (entity: string, id: string) => ({ params: Promise.resolve({ entity, id }) });
 
   it("create without a valid reason is refused before any API call", async () => {
-    const { cookies } = await sessionCookie("admin1", "admin-pass-1", "123456");
+    const { cookies } = await sessionCookie("madmin1", "admin-pass-1", "123456");
     for (const reason of [undefined, "", "short", "         ", "x".repeat(501)]) {
       const res = await createPost(req("/api/bff/admin/clusters", "POST", { values: { name: "A", zone_id: 1 }, reason }, cookies), params("clusters"));
       expect(res.status, String(reason)).toBe(400);
@@ -180,7 +180,7 @@ describe("generic CRUD writes", () => {
   });
 
   it("create is strict (unknown member, missing required field) and does not forward the reason (contract has none yet)", async () => {
-    const { cookies } = await sessionCookie("admin1", "admin-pass-1", "123456");
+    const { cookies } = await sessionCookie("madmin1", "admin-pass-1", "123456");
     const reason = "Opening a new market cluster";
     const unknown = await createPost(req("/api/bff/admin/clusters", "POST", { values: { name: "A", zone_id: 1, status: "inactive" }, reason }, cookies), params("clusters"));
     expect(unknown.status).toBe(400);
@@ -195,13 +195,13 @@ describe("generic CRUD writes", () => {
   });
 
   it("update sends If-Match and change_reason; the audit row carries the reason; a stale version is 412", async () => {
-    const { cookies } = await sessionCookie("admin1", "admin-pass-1", "123456");
+    const { cookies } = await sessionCookie("madmin1", "admin-pass-1", "123456");
     const reason = "Zone moved after territory re-draw";
     const ok = await updatePatch(req("/api/bff/admin/clusters/3", "PATCH", { values: { zone_id: 1, status: "inactive" }, reason, version: 1 }, cookies), idParams("clusters", "3"));
     expect(ok.status).toBe(200);
     expect((await ok.json()).row).toMatchObject({ id: 3, zone_id: 1, status: "inactive", version: 2 });
     expect(mock.state.audit).toHaveLength(1);
-    expect(mock.state.audit[0]).toMatchObject({ entity: "cluster", entity_id: "3", action: "cluster.update", reason, actor_username: "admin1" });
+    expect(mock.state.audit[0]).toMatchObject({ entity: "cluster", entity_id: "3", action: "cluster.update", reason, actor_username: "madmin1" });
 
     const stale = await updatePatch(req("/api/bff/admin/clusters/3", "PATCH", { values: { name: "Late" }, reason, version: 1 }, cookies), idParams("clusters", "3"));
     expect(stale.status).toBe(412);
@@ -210,7 +210,7 @@ describe("generic CRUD writes", () => {
   });
 
   it("update refuses: no reason, no changes, no version, bad id, create-only field, unknown entity", async () => {
-    const { cookies } = await sessionCookie("admin1", "admin-pass-1", "123456");
+    const { cookies } = await sessionCookie("madmin1", "admin-pass-1", "123456");
     const call = (id: string, body: unknown) => updatePatch(req(`/api/bff/admin/clusters/${id}`, "PATCH", body, cookies), idParams("clusters", id));
     expect((await call("3", { values: { name: "X" }, reason: "", version: 1 })).status).toBe(400);
     expect((await call("3", { values: {}, reason: "valid reason here", version: 1 })).status).toBe(400);
@@ -223,7 +223,7 @@ describe("generic CRUD writes", () => {
   });
 
   it("support can read but its writes are refused by the BFF", async () => {
-    const { cookies } = await sessionCookie("support1", "support-pass-1", "123456");
+    const { cookies } = await sessionCookie("msupport1", "support-pass-1", "123456");
     const res = await updatePatch(req("/api/bff/admin/clusters/1", "PATCH", { values: { name: "Hacked" }, reason: "valid reason here", version: 1 }, cookies), idParams("clusters", "1"));
     expect(res.status).toBe(403);
     expect(mock.state.clusters[0]!.name).toBe("Banani Market");
