@@ -78,7 +78,7 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
-## Seventh session (2026-10-07, from ~18:20Z)
+## Seventh session (2026-10-07, from ~15:38Z by the server clock; earlier handover times in this file run ahead of it)
 - INT merged (docs only) and pushed.
 - **F-SYS-072 residuals** (T1; Opus checker FAIL, re-check FAIL, both fixed with tests; RecordSignatureTest 20, RecordSignatureVectorTest 2):
   - (a) done. `DeviceProofSigner.attempt()` returns `ProofResult.Signed / NotEnrolled / Failed`, and fun-interface signers map null to NotEnrolled. `KeystoreProofSigner`: no alias is NotEnrolled; an alias read that throws, a done file that exists but cannot be read (dpc `EnrolmentStore.enrolled()` swallows errors), or a Keystore null is Failed.
