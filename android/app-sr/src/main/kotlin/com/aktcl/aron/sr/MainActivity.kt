@@ -50,7 +50,23 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var mediaShell: MediaShell
     @Inject lateinit var shellLogout: com.aktcl.aron.core.sync.shell.ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+    @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     private var dayHolder: SrDayHolder? = null
+    /** N-038: counts taps on a task notification; SrApp opens the task list on each new value. */
+    private val openTasks = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    private fun takePushIntent(intent: android.content.Intent?) {
+        if (!com.aktcl.aron.core.sync.push.PushNotices.opensTasks(intent)) return
+        intent?.removeExtra(com.aktcl.aron.core.sync.push.PushNotices.EXTRA_OPEN) // a recreate must not open it again
+        openTasks.value += 1
+        pushShell.openedTasks()
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takePushIntent(intent)
+    }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
@@ -60,7 +76,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         dayHolder?.day?.value?.let { it.launchConfigCheck(); it.launchDeltaRefresh(bundleDownloaders) }
-        lifecycleScope.launch { updateShell.check(atLogin = false) } // F-SYS-020, throttled to 12 h inside
+        lifecycleScope.launch { updateShell.check(atLogin = false) }
+        pushShell.onResume() // N-038: a token not registered yet is tried again (local check first) // F-SYS-020, throttled to 12 h inside
     }
 
     /** F-SYS-022: SR keeps its data (it keeps uploading); a failure never crashes the app. */
@@ -78,6 +95,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) takePushIntent(intent)
         val language = AppLocale.current(this)
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
@@ -125,6 +143,7 @@ class MainActivity : ComponentActivity() {
                                     sunlight = sunlight,
                                     onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                     startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
+                                    openTasks = openTasks,
                                 )
                             } }
                             // Drawn after the screens so the camera covers them while a capture is open (F-SYS-030).

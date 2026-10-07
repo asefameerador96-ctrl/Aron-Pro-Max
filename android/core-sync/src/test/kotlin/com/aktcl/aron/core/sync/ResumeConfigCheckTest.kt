@@ -77,6 +77,18 @@ class ResumeConfigCheckTest {
         assertEquals(2, server.requestCount)
     }
 
+    /** N-038: a `config_pull` push asks right after a contact (the server said something changed), but within the daily cap. */
+    @Test fun aConfigPullPushSkipsTheGapButNotTheCap() = runBlocking {
+        val capped = ResumeConfigCheck({ db }, SyncApi(AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true),
+            OkHttpClient(), ClientIdentity("1") { null }) { clock.onApiResponse(it) }), clock, dailyCap = 2)
+        repeat(3) { server.enqueue(api(304)) }
+        assertEquals(ConfigCheckResult.UNCHANGED, capped.checkOnResume(1))
+        assertEquals(ConfigCheckResult.NOT_DUE, capped.checkOnResume(1)) // resume: the contact was just now
+        assertEquals(ConfigCheckResult.UNCHANGED, capped.pullAfterPush(1)) // push: asks anyway
+        assertEquals(ConfigCheckResult.CAPPED, capped.pullAfterPush(1))
+        assertEquals(2, server.requestCount)
+    }
+
     @Test fun aDeltaIsAppliedInOneGo() = runBlocking {
         val outlet = ReferenceRepository(db).routesOfDay("2026-10-05").first().outlets.first().outletId
         server.enqueue(api(200, """{"from_version":318,"to_version":320,

@@ -29,22 +29,30 @@ class ResumeConfigCheck(
     private val gapMs: Long = 5 * 60_000L,
     private val dailyCap: Int = 24,
 ) {
-    suspend fun checkOnResume(userId: Long): ConfigCheckResult {
+    suspend fun checkOnResume(userId: Long): ConfigCheckResult = locked(userId) { check(userId, afterPush = false) }
+
+    /**
+     * An FCM `config_pull` (N-038, docs/19 s4.1 stage 7): the same request without the recent-contact gap, since the server
+     * said something changed. It still counts against the daily cap, so a burst of pushes cannot spend the data budget.
+     */
+    suspend fun pullAfterPush(userId: Long): ConfigCheckResult = locked(userId) { check(userId, afterPush = true) }
+
+    private suspend fun locked(userId: Long, body: suspend () -> ConfigCheckResult): ConfigCheckResult {
         val lock = locks.getOrPut(userId) { Mutex() }
         if (!lock.tryLock()) return ConfigCheckResult.NOT_DUE // a check is already running: one request at a time
         try {
-            return check(userId)
+            return body()
         } finally {
             lock.unlock()
         }
     }
 
-    private suspend fun check(userId: Long): ConfigCheckResult {
+    private suspend fun check(userId: Long, afterPush: Boolean): ConfigCheckResult {
         val elapsed = clock.elapsedRealtimeMs()
         val boot = clock.bootCountNow()
         val lastContact = clock.recentAnchors().lastOrNull()
             ?.takeIf { (boot <= 0 || it.bootCount == boot) && it.elapsedMs <= elapsed }?.elapsedMs
-        if (lastContact != null && elapsed - lastContact < gapMs) return ConfigCheckResult.NOT_DUE
+        if (!afterPush && lastContact != null && elapsed - lastContact < gapMs) return ConfigCheckResult.NOT_DUE
         val database = db(userId)
         val meta = database.referenceDao()
         val countKey = KEY_COUNT + clock.businessDate()

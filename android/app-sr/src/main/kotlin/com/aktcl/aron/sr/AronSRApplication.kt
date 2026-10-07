@@ -21,6 +21,7 @@ class AronSRApplication : Application(), Configuration.Provider {
     @Inject lateinit var deviceRuntime: DeviceRuntime
     @Inject lateinit var syncScheduler: WorkManagerSyncScheduler
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+    @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var sessionComponents: com.aktcl.aron.core.session.SessionComponents
     @Inject lateinit var mediaShell: MediaShell
 
@@ -34,6 +35,8 @@ class AronSRApplication : Application(), Configuration.Provider {
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             sessionComponents.session.onlineLogins.collect { updateShell.check(atLogin = true) }
         }
+        // N-038: push nudges (token for the signed-in user, notices, jittered pulls); off without google-services.json.
+        pushShell.install()
         // Photos (F-SYS-010): every user's queue uploads on its own job, whoever is signed in; no network work here.
         mediaShell.install()
     }

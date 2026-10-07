@@ -21,6 +21,7 @@ class AronTSOApplication : Application(), Configuration.Provider {
     @Inject lateinit var deviceRuntime: DeviceRuntime
     @Inject lateinit var syncScheduler: WorkManagerSyncScheduler
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+    @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var sessionComponents: com.aktcl.aron.core.session.SessionComponents
 
     override fun onCreate() {
@@ -33,6 +34,8 @@ class AronTSOApplication : Application(), Configuration.Provider {
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             sessionComponents.session.onlineLogins.collect { updateShell.check(atLogin = true) }
         }
+        // N-038: push nudges (token for the signed-in user, notices, jittered pulls); off without google-services.json.
+        pushShell.install()
     }
 
     override val workManagerConfiguration: Configuration

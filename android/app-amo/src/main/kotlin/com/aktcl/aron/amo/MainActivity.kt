@@ -47,11 +47,13 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var components: SessionComponents
     @Inject lateinit var shellLogout: ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+    @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
     override fun onResume() {
         super.onResume()
         lifecycleScope.launch { updateShell.check(atLogin = false) }
+        pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
     }
 
     override fun attachBaseContext(newBase: Context) {

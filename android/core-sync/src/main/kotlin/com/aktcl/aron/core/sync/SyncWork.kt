@@ -248,8 +248,20 @@ class SyncWorker(
 }
 
 
-/** Builds [SyncWorker] with its dependencies; the app registers it through `Configuration.Provider`. */
-class AronWorkerFactory(private val runner: () -> SyncRunner, private val scheduler: () -> WorkManagerSyncScheduler) : WorkerFactory() {
-    override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? =
-        if (workerClassName == SyncWorker::class.java.name) SyncWorker(appContext, workerParameters, runner(), scheduler()) else null
+/**
+ * Builds [SyncWorker] and the push pull job ([com.aktcl.aron.core.sync.push.PushPullWorker], N-038) with their
+ * dependencies; the app registers it through `Configuration.Provider`. The pull job never gets the [SyncRunner]: a push
+ * cannot cause an upload (docs/24 s4.7).
+ */
+class AronWorkerFactory(
+    private val runner: () -> SyncRunner,
+    private val scheduler: () -> WorkManagerSyncScheduler,
+    private val pushPull: (() -> com.aktcl.aron.core.sync.push.PushPull)? = null,
+) : WorkerFactory() {
+    override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? = when (workerClassName) {
+        SyncWorker::class.java.name -> SyncWorker(appContext, workerParameters, runner(), scheduler())
+        com.aktcl.aron.core.sync.push.PushPullWorker::class.java.name ->
+            com.aktcl.aron.core.sync.push.PushPullWorker(appContext, workerParameters, pushPull?.invoke() ?: com.aktcl.aron.core.sync.push.PushPull { false })
+        else -> null
+    }
 }

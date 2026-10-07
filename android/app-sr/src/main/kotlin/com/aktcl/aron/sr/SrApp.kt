@@ -82,6 +82,8 @@ fun SrApp(
     onLanguageSelect: (AppLanguage) -> Unit, onLogout: () -> Unit, onOtherTile: (HomeTile) -> Unit,
     startBundleDownload: suspend () -> Unit,
     sunlight: Boolean = false, onSunlight: (Boolean) -> Unit = {},
+    /** N-038: a new value means the rep tapped a task notification (android-core wiring). */
+    openTasks: kotlinx.coroutines.flow.StateFlow<Int>? = null,
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -116,6 +118,10 @@ fun SrApp(
         day.attendance.tick(); day.reload(); day.taskBoard.load()
         boundary++
     }
+    // N-038: a task notification opens the task list; a pull a push asked for refreshes it when it lands.
+    val openTasksTap = openTasks?.collectAsState()?.value ?: 0
+    LaunchedEffect(openTasksTap) { if (openTasksTap > 0) { screen = SrScreen.TASKS; day.taskBoard.load() } }
+    LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.taskBoard.load() } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
         scope.launch { day.attendance.tick(); day.reload(); day.taskBoard.load() }
     }

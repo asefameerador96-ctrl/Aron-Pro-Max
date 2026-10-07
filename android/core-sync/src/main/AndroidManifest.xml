@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- core-sync: the connectivity trigger (F-SYS-046) registers a default-network callback. -->
+<!-- core-sync: the connectivity trigger (F-SYS-046) registers a default-network callback; push nudges (N-038). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- API 33+: granted by the device-owner policy on fleet phones (dpc PolicyApplier). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!-- Not exported: FCM delivers through its own receiver inside the app (docs/24 s5.8). -->
+        <service
+            android:name="com.aktcl.aron.core.sync.push.AronMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+    </application>
 </manifest>

@@ -82,7 +82,21 @@ object SessionModule {
     @Singleton
     fun workerFactory(
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
-    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles) }, { scheduler })
+        resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
+    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles) }, { scheduler },
+        // N-038: the pull a push asks for; it never gets the upload runner.
+        { com.aktcl.aron.core.sync.push.SessionPushPull(push::activeUser, bundles, resumeConfigCheck) },
+    )
+
+    /** N-038 push: the FCM token for the signed-in user, the Bangla/English notice and the jittered pull (never an upload). */
+    @Provides
+    @Singleton
+    fun pushShell(@ApplicationContext context: Context, components: SessionComponents): com.aktcl.aron.core.sync.shell.PushShell =
+        com.aktcl.aron.core.sync.shell.PushShell(
+            context, components, com.aktcl.aron.contract.AppFlavour.TSO,
+            localized = { com.aktcl.aron.core.ui.AppLocale.wrap(it) },
+            bangla = { com.aktcl.aron.core.ui.AppLocale.current(it) == com.aktcl.aron.core.common.AppLanguage.BN },
+        )
 
     /** F-SYS-020 updater: update check, download, install (android-sys). */
     @Provides

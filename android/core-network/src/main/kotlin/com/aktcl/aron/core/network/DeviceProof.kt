@@ -29,6 +29,10 @@ object ProofStrings {
     fun batch(deviceUuid: String, gzipBody: ByteArray, batchUuid: String, attempt: Int): String =
         listOf("aron-proof-v1", "batch", deviceUuid, sha256Hex(gzipBody), batchUuid, attempt.toString()).joinToString("\n")
 
+    /** The `devices/me` calls: [methodPath] is `"<METHOD> <path>"`, e.g. `"PUT /v1/devices/me/push-token"`; [body] empty when none. */
+    fun device(deviceUuid: String, methodPath: String, body: ByteArray, trustedEpochMs: Long): String =
+        listOf("aron-proof-v1", "device", deviceUuid, methodPath, sha256Hex(body), nonceBucket(trustedEpochMs).toString()).joinToString("\n")
+
     fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 }
