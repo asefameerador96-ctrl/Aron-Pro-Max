@@ -74,7 +74,7 @@ class SaleCommitterTest {
     @Test fun zeroSaleWritesALinelessMemoThatConsumesANumber() = runTest {
         val out = committer.commit(SaleDraftOps.confirmZeroSale(Fx.draft(visitUuid)), Fx.catalog)
         val m = db.captureDao().memo(out.memoUuid)!!
-        assertEquals(0, m.lineCount); assertEquals(0, count("memo_line")); assertEquals(1, seq)
+        assertEquals(0, m.lineCount); assertEquals(0, count("memo_line")); assertEquals(1, seq); assertEquals("zero_sale", m.memoKind)
         assertEquals(0, m.netMtk)
     }
 

@@ -73,7 +73,7 @@ class SaleCommitter(
         val edit = draft.edit
         val memo = MemoEntity(
             clientUuid = draft.memoUuid, meta = meta, visitClientUuid = draft.visitUuid, outletId = draft.outletId, memoNo = memoNo,
-            memoKind = "sale", committedAt = nowIso(), priceListDate = draft.businessDate, priceType = draft.priceType,
+            memoKind = if (lines.isEmpty()) "zero_sale" else "sale", committedAt = nowIso(), priceListDate = draft.businessDate, priceType = draft.priceType,
             grossMtk = t.grossMtk, offerDiscountMtk = t.offerDiscountMtk, drpDiscountMtk = t.drpDiscountMtk,
             qcDeductionMtk = t.qcDeductionMtk, roundAdjMtk = t.roundAdjMtk, netMtk = t.netMtk, paidMtk = s.paidMtk, dueMtk = s.dueMtk,
             isCredit = s.isCredit, lineCount = lines.size, discountLineCount = discounts.size, qcLineCount = qcLines.size,
