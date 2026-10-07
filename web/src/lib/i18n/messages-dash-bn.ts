@@ -266,4 +266,7 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "geo.visits": "ভিজিট",
 
   "tracking.previous_day": "আগের দিন ({date})",
+
+  "error.page.title": "এই পাতা দেখানো যায়নি",
+  "error.page.retry": "আবার চেষ্টা করুন",
 };

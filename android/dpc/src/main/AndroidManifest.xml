@@ -2,6 +2,9 @@
 <!-- android:dpc. Each field app (SR, AMO, TSO) embeds this library and is its own device owner (docs/24 s10.1).
      The component name in the enrolment QR is <applicationId>/com.aktcl.aron.dpc.AronDeviceAdminReceiver. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- The system prompt that exempts Aron from battery optimisation (docs/24 s10.2 self_protection). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <application>
         <receiver
             android:name="com.aktcl.aron.dpc.AronDeviceAdminReceiver"
@@ -17,5 +20,19 @@
                 <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
             </intent-filter>
         </receiver>
+        <!-- Re-applies the stored policy offline after boot or an update (docs/24 s10.5). System broadcasts reach a
+             non-exported receiver, so it stays off the export allowlist. -->
+        <receiver
+            android:name="com.aktcl.aron.dpc.DpcBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <!-- Releases blocked apps at the hard end time (N-032); only the app's own PendingIntent reaches it. -->
+        <receiver
+            android:name="com.aktcl.aron.dpc.blocking.HardEndReceiver"
+            android:exported="false" />
     </application>
 </manifest>
