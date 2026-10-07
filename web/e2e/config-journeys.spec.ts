@@ -81,6 +81,8 @@ test("geofence: the radius what-if previews the visits that flip before anything
   // Previewing changed nothing: the stored radius is still 100.
   await expect(page.getByTestId("current-radius")).toContainText("100");
   await expect(page.getByTestId("geo-current")).toBeVisible();
+  const state = (await (await fetch("http://127.0.0.1:4010/__mock/state")).json()) as { audit: { action: string }[] };
+  expect(state.audit.filter((a) => a.action.startsWith("config."))).toHaveLength(0); // previewing wrote no change request
 });
 
 test("permission matrix: only a SUPERADMIN edits a role and the edit is a pending C3 request", async ({ page, browser }) => {
@@ -101,6 +103,9 @@ test("permission matrix: only a SUPERADMIN edits a role and the edit is a pendin
   await expect(editor.getByTestId("form-ok")).toBeVisible();
   await page2.goto("/admin/config/changes?status=pending_approval");
   await expect(page2.getByRole("cell", { name: REASON }).first()).toBeVisible();
+  // Pending means pending: the matrix itself is unchanged until a second SUPERADMIN approves.
+  await page2.goto("/admin/permissions?role=TSO");
+  await expect(page2.getByTestId("perm-TSO").getByRole("checkbox", { name: "reports export" })).not.toBeChecked();
   await ctx2.close();
 });
 
@@ -120,7 +125,8 @@ test("web entry: the sale splits across the zone's classes, a wrong split is ref
   await inputs.nth(4).fill("3");
   await page.locator("#calls").fill("2");
   await grid.getByRole("button", { name: "Save" }).click();
-  await expect(grid.getByRole("alert").first()).toBeVisible();
+  await expect(grid.getByRole("alert").filter({ hasText: /class|sale|total|sum/i }).first()).toBeVisible(); // the split error, nothing was sent
+  expect(((await (await fetch("http://127.0.0.1:4010/__mock/state")).json()) as { webEntries: unknown[] }).webEntries).toHaveLength(0);
   await inputs.nth(3).fill("40"); // 50 + 40 = 90
   await grid.getByRole("button", { name: "Save" }).click();
   await expect(grid.getByTestId("form-ok")).toBeVisible();
@@ -130,9 +136,16 @@ test("web entry: the sale splits across the zone's classes, a wrong split is ref
   expect(saved.webEntries[0]!.lines[0]).toMatchObject({ sale_qty_base: 90, class_qty_base: { "11": 50, "12": 40 } });
   await page.reload();
   const again = page.getByTestId("web-entry-grid");
-  await again.locator('[data-testid^="sku-"]').first().locator("input").nth(0).fill("120");
+  const row = again.locator('[data-testid^="sku-"]').first().locator("input");
+  await expect(row.nth(0)).toHaveValue("100"); // the saved entry is reloaded, split intact
+  await row.nth(4).fill("4"); // memo count only: the split stays valid
   await again.getByRole("button", { name: "Save" }).click();
-  await expect(again.getByTestId("form-error").or(again.getByRole("alert")).first()).toBeVisible();
+  await expect(again.getByText("Write at least 10 characters.")).toBeVisible(); // a re-save is refused without a reason
+  await again.locator("textarea").fill(REASON);
+  await again.getByRole("button", { name: "Save" }).click();
+  await expect(again.getByTestId("form-ok")).toBeVisible();
+  const after = (await (await fetch("http://127.0.0.1:4010/__mock/state")).json()) as { webEntries: { lines: { memo_count: number }[] }[] };
+  expect(after.webEntries[0]!.lines[0]!.memo_count).toBe(4);
 });
 
 test("OTP panel: lists the zone's pending OTPs and an admin issues a fresh one with a reason", async ({ page }) => {

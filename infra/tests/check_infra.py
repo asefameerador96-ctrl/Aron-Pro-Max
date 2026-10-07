@@ -189,7 +189,8 @@ class StackIsComplete(unittest.TestCase):
         text = json.dumps(load("apps.json")) + json.dumps(load("main.json"))
         for s in ("aron-jwt-signing-key", "aron-fcm-service-account", "aron-db-url", "aron-db-read-url"):
             self.assertIn(s, text, f"Key Vault secret {s} is not used")
-        seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
+        seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8") \
+            + (ROOT / "infra" / "scripts" / "db-login-secrets.sh").read_text(encoding="utf-8")
         for s in ("aron-jwt-signing-key", "aron-jwt-kid", "aron-fcm-service-account", "aron-web-session-secret"):
             self.assertIn(s, seed, f"apps reference {s} but seed-secrets.sh never creates it")
         apps = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
@@ -756,6 +757,10 @@ class DeploySafety(unittest.TestCase):
         d = self.deploy()
         self.assertIn('--revision-weight "${prev_revision}=100"', d, "a failed gate puts traffic back in Multiple mode")
         self.assertIn('if ! infra/scripts/smoke.sh "$API_HOST" "$SHA" "$WEB_HOST"; then', d)
+        f = d[d.index('prev_revision=""'):d.index("ARON_DEPLOY_SERVICES=true")]
+        self.assertIn('[ "$build" != "$SHA" ]', f, "the fallback runs another build (a re-run's own revision is never it)")
+        self.assertIn("properties.trafficWeight > ", f, "the fallback serves traffic now")
+        self.assertIn('then web_digest="$(digest_of aron-web "$SHA")"; fi', d, "a registry error stops a rollback")
 
     def test_rollback_redeploys_an_existing_image_without_migrations(self):
         full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
@@ -930,6 +935,65 @@ class SupplyChainGates(unittest.TestCase):
         self.assertIn("ignore-scripts=true", (ROOT / "web" / ".npmrc").read_text(encoding="utf-8"))
         df = (ROOT / "infra" / "docker" / "web.Dockerfile").read_text(encoding="utf-8")
         self.assertIn("COPY package.json package-lock.json .npmrc ./", df, "the image build must use web/.npmrc")
+
+
+class PerAppDatabaseLogins(unittest.TestCase):
+    """docs/requests/db-runtime-roles.md: api and worker on least-privilege logins; migrate keeps the admin login."""
+
+    def test_apps_use_their_own_logins(self):
+        res = load("apps.json")["resources"]
+        def secrets(app):  # compiled as __bicep.kvSecret('<name>', <secret expression>, ...) calls
+            return {re.match(r"\[__bicep\.kvSecret\('([\w-]+)'", x).group(1): x
+                    for x in res[app]["properties"]["configuration"]["secrets"]}
+        api_secrets, worker_secrets = secrets("api"), secrets("worker")
+        text = json.dumps(load("apps.json"))
+        for v in ("aron-db-api-url", "aron-db-api-read-url", "aron-db-jobs-direct-url", "aron-db-jobs-read-url"):
+            self.assertIn(v, text)
+        self.assertIn("apiDbUrlSecret", api_secrets["db-url"])
+        self.assertIn("workerDbUrlSecret", worker_secrets["db-direct-url"])
+        mig = secrets("migrate")
+        self.assertIn("dbDirectUrl", mig["db-direct-url"], "the migrate job keeps the admin login")
+        for f in ("dev", "dev-lite", "stage", "prod"):
+            self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], True, f)
+        self.assertIs(param_default("apps.json", "dbPerAppLogins"), False, "off unless a profile turns it on")
+
+    def test_dblogins_job_runs_the_checked_in_sql(self):
+        job = load("apps.json")["resources"]["dblogins"]
+        self.assertEqual(job["condition"], "[not(empty(parameters('psqlImage'))))]".replace("))))", ")))"))
+        c = job["properties"]["template"]["containers"][0]
+        env = {e["name"]: e for e in c["env"]}
+        sql = (ROOT / "infra" / "sql" / "runtime-logins.sql").read_text(encoding="utf-8")
+        compiled = load("apps.json")
+        value = env["ARON_SQL"]["value"]
+        m = re.fullmatch(r"\[variables\('(.+)'\)\]", value)
+        if m:
+            value = compiled["variables"][m.group(1)]
+        self.assertEqual(value.strip(), sql.strip(), "the job runs exactly infra/sql/runtime-logins.sql")
+        self.assertIn('exec psql "${ARON_DB_URL#jdbc:}"', " ".join(c["command"]), "shell expansion, not a Bicep one")
+        for k in ("ARON_PW_APP_API", "ARON_PW_APP_WORKER", "ARON_PW_APP_JOBS", "ARON_DB_URL"):
+            self.assertIn("secretRef", env[k], f"{k} must come from Key Vault")
+        for needle in ("GRANT %I TO %I WITH INHERIT TRUE", "REVOKE %I FROM %I", "\\getenv pw_api ARON_PW_APP_API",
+                       "EXCEPTION WHEN others THEN", "\\gset"):
+            self.assertIn(needle, sql)
+        role_stmts = [l for l in sql.splitlines() if "ROLE %I LOGIN" in l]
+        self.assertEqual(len(role_stmts), 2, "one CREATE and one ALTER")
+        for l in role_stmts:
+            self.assertRegex(l, r"LOGIN INHERIT NOCREATEDB NOCREATEROLE PASSWORD %L")
+
+    def test_deploy_order(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        d = d[d.index("# ---"):]
+        order = ["seed-secrets.sh", "db-login-secrets.sh", "az acr import", "ARON_DEPLOY_SERVICES=false",
+                 'az containerapp job start -g "$RG" -n "$JOB"', 'az containerapp job start -g "$RG" -n "$DBLOGINS_JOB"',
+                 "ARON_DEPLOY_SERVICES=true"]
+        pos = [d.index(x) for x in order]
+        self.assertEqual(pos, sorted(pos), "logins exist (after the migrations) before the apps switch to them")
+        self.assertIn('die "database logins $execution ended', d)
+        s = (ROOT / "infra" / "scripts" / "db-login-secrets.sh").read_text(encoding="utf-8")
+        self.assertIn("die \"cannot read $1 from $kv (not generating a new one)", s, "a failed read never rotates a password")
+        smoke = (ROOT / "infra" / "scripts" / "image-smoke.sh").read_text(encoding="utf-8")
+        self.assertIn('"ARON_DB_URL=$PG_API"', smoke, "CI runs the api as app_api")
+        self.assertIn('"ARON_DB_URL=$PG_JOBS"', smoke, "CI runs the worker as app_jobs")
 
 
 if __name__ == "__main__":

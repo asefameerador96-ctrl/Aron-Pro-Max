@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { loginOk, resetMock } from "./helpers";
 
-export const CONFIG_PAGES: { name: string; path: string; super?: boolean }[] = [
+export const CONFIG_PAGES: { name: string; path: string }[] = [
   { name: "config-home", path: "/admin/config" },
   { name: "keys", path: "/admin/config/keys" },
   { name: "rules", path: "/admin/config/rules" },
@@ -28,7 +28,7 @@ export const CONFIG_PAGES: { name: string; path: string; super?: boolean }[] = [
   { name: "supervisor-targets", path: "/admin/supervisor-targets" },
   { name: "dues", path: "/admin/dues" },
   { name: "export-log", path: "/admin/export-log" },
-  { name: "permissions", path: "/admin/permissions?role=TSO", super: true },
+  { name: "permissions", path: "/admin/permissions?role=TSO" },
   { name: "data-entry", path: "/admin/data-entry" },
   { name: "web-entry", path: "/entry/web?zone=3341&route=10231" },
   { name: "qc-entry", path: "/entry/qc" },
@@ -57,6 +57,10 @@ for (const scheme of ["light", "dark"] as const) {
         continue;
       }
       await page.waitForLoadState("networkidle");
+      if (new URL(page.url()).pathname !== new URL(p.path, "http://x").pathname) {
+        failures.push(`${p.name}: redirected to ${page.url()}`); // a silent redirect to login or an error page must not be scanned as the target
+        continue;
+      }
       const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
       for (const v of r.violations) failures.push(`${p.name}: ${v.id} (${v.impact}) x${v.nodes.length} e.g. ${v.nodes[0]?.target.join(" ")}`);
     }
