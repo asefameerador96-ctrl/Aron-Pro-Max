@@ -125,6 +125,10 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   - `V0053` `cfg.sec.record_signature_mode` (docs/19 s9, enum_order, global) and `V0054` `app.security_event`
     (append-only, api_rw/auth_rw insert, worker reads). Answers backend-core's two requests on lane/backend-core; answer
     in `docs/requests/db-security-event-and-signature-mode-answer.md`. Opus checker PASS (round 3).
+  - `V0055` `cfg.app.local_history_days` (7, 1..30), `cfg.app.outbox_keep_days` (3, 1..14, re-sync rule in bounds_rule),
+    `cfg.app.image_cache_mb` (40, 10..70), global, device: docs/19 values, not the request's draft (answer
+    `docs/requests/db-app-cfg-keys-answer.md`). Sonnet checker PASS. Not yet registered: `cfg.app.rejected_keep_days`
+    (docs/19 line 679; no request).
 
 ## Handoff (session 3 recycled, 2026-10-07 ~13:10 UTC)
 
