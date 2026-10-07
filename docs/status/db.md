@@ -140,7 +140,9 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
 
 ## Session 5 (2026-10-07, from ~23:00 UTC)
 
-**On lane/db: V0061-V0067 on top of the INT merge (f4945a81).** Opus checker on V0061-V0064: PASS (nits applied).
+**Pushed lane/db 59de9f29: V0061-V0068 on top of the INT merge (f4945a81).** db 226, backend 727/0, squawk ok. Opus
+checker per batch: V0061-V0064 PASS (nits applied); V0065-V0068 one blocker (V0067 missing from SchemaV1aTest's ruled
+set) fixed before the push. Integrator and backend-core told.
 - `V0061` `app.media_upload` (answers `backend-core-media-upload-ledger.md`, unblocks F-API-007): as asked, plus
   immutability (UPDATE/DELETE/TRUNCATE refused, 42501), out of api_rw's `*/update` row, and a CHECK that `blob_path`
   ends in `/<media_uuid>.jpg`. Notes for backend-core: (a) the CHECK compares the canonical lowercase uuid text, so
@@ -154,6 +156,8 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   The UPDATE goes through `route_day_touch`, so every counted download also moves `updated_at` and `version`: an
   If-Match on route_day taken before a bundle download goes stale.
 - `V0067` `cfg.app.rejected_keep_days` 30 (7..90), docs/19 s9 (candidate row, no request).
+- `V0068` AUD-PERF-07: pg_trgm GIN on outlet name and code (released from db/held). ORDER: needs lane/infra bb221dfe
+  (PG_TRGM in azure.extensions) in the same or an earlier deploy.
 - Test `BackendCoreAsksV0061Test` migrates to V0060, loads db/seed and `infra/sql/devseed-smoke-outlet.sql`, then
   migrates forward (the dev database's path before the 2026-10-08 phone checks): outlets fingerprint unchanged,
   SMOKE-SR-001 found through the new index.
