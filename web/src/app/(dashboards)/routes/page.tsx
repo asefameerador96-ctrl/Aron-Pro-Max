@@ -1,24 +1,30 @@
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { getDailyTracking, listAssignments, listRoutes } from "@/lib/dash/server";
-import { joinRoutes } from "@/lib/dash/routes";
+import { joinRoutes, linesFromAssignees } from "@/lib/dash/routes";
 import { businessDate, problemMessage, t } from "@/lib/i18n";
 import { n } from "@/components/dash/tiles";
 
-// Route Planning: Browse Routes (F-WEB-010), read-only. Names come from today's primary assignments joined with the day's route rows.
+// Route Planning: Browse Routes (F-WEB-010), read-only. Names come from the route's assignees (one call); older servers fall back to assignment joins.
 export default async function RoutesPage() {
   const [locale, session] = await Promise.all([getLocale(), requireSession()]);
   const today = businessDate();
-  const [routes, assignments, tracking] = await Promise.all([listRoutes(session.at), listAssignments(session.at, today), getDailyTracking(session.at, today)]);
+  const routes = await listRoutes(session.at, { include: "assignees" });
   if (!routes.ok)
     return (
       <p role="alert" className="rounded bg-red-50 p-3 text-red-900">
         {problemMessage(locale, routes.problem.code)}
       </p>
     );
-  const names = new Map<number, string>();
-  if (tracking.ok) for (const r of tracking.data.items) if (r.user_id && r.user_name) names.set(r.user_id, r.user_name);
-  const lines = joinRoutes(routes.data.items, assignments.ok ? assignments.data.items : [], names);
+  // One call with the assignees (contract v1.2). An older server omits `assignees`: then fall back to the assignment and tracking joins.
+  let lines;
+  if (routes.data.items.every((r) => r.assignees !== undefined)) lines = linesFromAssignees(routes.data.items);
+  else {
+    const [assignments, tracking] = await Promise.all([listAssignments(session.at, today), getDailyTracking(session.at, today)]);
+    const names = new Map<number, string>();
+    if (tracking.ok) for (const r of tracking.data.items) if (r.user_id && r.user_name) names.set(r.user_id, r.user_name);
+    lines = joinRoutes(routes.data.items, assignments.ok ? assignments.data.items : [], names);
+  }
   const notSet = t(locale, "routes.not_set");
   return (
     <div className="space-y-4" data-testid="routes">
