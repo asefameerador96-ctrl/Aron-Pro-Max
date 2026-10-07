@@ -65,4 +65,5 @@
     <string name="support_failed">সাপোর্ট ফাইলটি পায়নি। আবার চেষ্টা করতে ডাটা ফাইল পাঠান চাপুন।</string>
     <string name="support_failed_too_large">ডাটা ফাইলটি পাঠানোর জন্য খুব বড়। আপনার সুপারভাইজারকে ফোন করুন।</string>
     <string name="support_failed_no_key">এই ফোনে এখনো সাপোর্টে পাঠানো চালু হয়নি। আপনার সুপারভাইজারকে ফোন করুন।</string>
+    <string name="support_failed_retrying">সাপোর্টে পাঠানো কয়েকবার ব্যর্থ হয়েছে। ফোন চেষ্টা চালিয়ে যাচ্ছে; ইন্টারনেট দেখুন বা আবার ডাটা ফাইল পাঠান চাপুন।</string>
 </resources>

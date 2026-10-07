@@ -65,9 +65,12 @@ object SupportBundle {
     private val json = Json { encodeDefaults = true; explicitNulls = true }
     private val MAGIC = "ARONSUP1".toByteArray(Charsets.US_ASCII)
 
+    /** docs/17 s10.4: at most the last 200 log lines go to support. */
+    const val MAX_LOG_LINES = 200
+
     fun build(input: SupportInput, supportPublicKeySpkiBase64: String, maxBytes: Int, random: SecureRandom = SecureRandom()): ByteArray {
         var acked = input.recentAckedPayloads
-        var log = input.logLines
+        var log = input.logLines.takeLast(MAX_LOG_LINES)
         while (true) {
             val plain = gzip(json.encodeToString(SupportFile.serializer(), file(input, acked, log)).toByteArray())
             val sealed = encrypt(plain, supportPublicKeySpkiBase64, random)

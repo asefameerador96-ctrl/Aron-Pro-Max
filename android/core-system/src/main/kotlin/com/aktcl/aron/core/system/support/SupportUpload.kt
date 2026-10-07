@@ -118,9 +118,20 @@ class SupportUploader(
         when (step) {
             SupportStep.SENT -> queue.update(job.uploadUuid) { it.copy(state = SupportState.SENT, sentAtMs = nowMs(), lastError = null) }
             SupportStep.REFUSED -> queue.update(job.uploadUuid) { it.copy(state = SupportState.FAILED, attempts = it.attempts + 1, lastError = code) }
-            SupportStep.RETRY -> queue.update(job.uploadUuid) { it.copy(attempts = it.attempts + 1, lastError = code) }
+            SupportStep.RETRY -> queue.update(job.uploadUuid) {
+                // Bounded: after [GIVE_UP_AFTER] failed attempts (days, with WorkManager's backoff capped at 5 h) it stops
+                // and shows the failure; the rep can tap Send again to build a fresh file.
+                if (it.attempts + 1 >= GIVE_UP_AFTER) it.copy(state = SupportState.FAILED, attempts = it.attempts + 1, lastError = code)
+                else it.copy(attempts = it.attempts + 1, lastError = code)
+            }
         }
-        return step == SupportStep.RETRY
+        return step == SupportStep.RETRY && (queue.current()?.state == SupportState.QUEUED)
+    }
+
+    companion object {
+        /** From this many failed attempts the screen shows the failure (while it keeps retrying). */
+        const val SHOW_FAILURE_AFTER = 3
+        const val GIVE_UP_AFTER = 30
     }
 }
 
@@ -149,7 +160,8 @@ class SupportWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
         val online = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
         val onWifi = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
-        val retry = uploader.run(onWifi, online, w.wifiOnly())
-        return if (retry && runAttemptCount < 8) Result.retry() else Result.success()
+        // No attempt cap here: the uploader bounds the attempts per file and then marks it FAILED (visible), so a
+        // waiting file is never silently dropped; WorkManager's exponential backoff (max 5 h) keeps this from polling.
+        return if (uploader.run(onWifi, online, w.wifiOnly())) Result.retry() else Result.success()
     }
 }

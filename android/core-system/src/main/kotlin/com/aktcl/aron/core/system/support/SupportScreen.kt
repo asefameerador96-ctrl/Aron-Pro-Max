@@ -29,6 +29,8 @@ sealed interface SupportStatus {
     data class Queued(val online: Boolean, val needsWifi: Boolean) : SupportStatus
     data class Sent(val atText: String) : SupportStatus
     data class Failed(val reason: SupportFailure) : SupportStatus
+    /** Several attempts failed (server, sign-in, network): shown as a failure, still retried in the background. */
+    data object RetryingAfterFailure : SupportStatus
 }
 
 enum class SupportFailure { NO_KEY, TOO_LARGE, REFUSED, BUILD_FAILED }
@@ -73,12 +75,16 @@ class SupportController(
     suspend fun status(online: Boolean, onWifi: Boolean, wifiOnly: Boolean, formatTime: (Long) -> String): SupportStatus {
         val job = queue.current() ?: return SupportStatus.Idle
         return when (job.state) {
-            SupportState.QUEUED -> SupportStatus.Queued(online, needsWifi = online && wifiOnly && !onWifi)
+            SupportState.QUEUED ->
+                if (job.attempts >= SupportUploader.SHOW_FAILURE_AFTER && job.lastError != null) SupportStatus.RetryingAfterFailure
+                else SupportStatus.Queued(online, needsWifi = online && wifiOnly && !onWifi)
             SupportState.SENT -> SupportStatus.Sent(formatTime(job.sentAtMs ?: job.createdAtMs))
-            SupportState.FAILED -> SupportStatus.Failed(if (job.lastError == "http_413") SupportFailure.TOO_LARGE else SupportFailure.REFUSED)
+            SupportState.FAILED -> SupportStatus.Failed(if (job.lastError in TOO_LARGE_CODES) SupportFailure.TOO_LARGE else SupportFailure.REFUSED)
         }
     }
 }
+
+private val TOO_LARGE_CODES = setOf("http_413", "put_413")
 
 object SupportTags {
     const val SEND = "support_send"
@@ -113,6 +119,7 @@ fun SupportContent(status: SupportStatus, appVersion: String, lastSyncText: Stri
                 ),
                 stateMod, kind = BannerKind.Info,
             )
+            SupportStatus.RetryingAfterFailure -> AronBanner(stringResource(R.string.support_failed_retrying), stateMod, kind = BannerKind.Error)
             is SupportStatus.Sent -> AronBanner(localizedDigits(stringResource(R.string.support_sent, status.atText)), stateMod, kind = BannerKind.Info)
             is SupportStatus.Failed -> AronBanner(
                 stringResource(
