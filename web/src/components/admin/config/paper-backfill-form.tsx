@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
+import { digitsOnly, latinDigits } from "@/lib/admin/taka";
 import type { Problem } from "@/contract/types";
 import { takaToMtk } from "@/lib/admin/taka";
 import type { MessageKey } from "@/lib/i18n";
@@ -24,7 +25,7 @@ export function PaperBackfillForm() {
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof v, x: string) => setV((s) => ({ ...s, [k]: x }));
-  const id = (x: string) => /^[1-9]\d{0,14}$/.test(x);
+  const id = (x: string) => /^[1-9]\d{0,14}$/.test(latinDigits(x));
 
   async function save() {
     setBanner(null);
@@ -34,11 +35,11 @@ export function PaperBackfillForm() {
     for (const k of ["user_id", "route_id", "outlet_id"] as const) if (!id(v[k])) e[k] = t("error.field.invalid");
     const paid = takaToMtk(v.paid);
     if (paid === null || paid < 0) e.paid = t("error.field.invalid");
-    const body: Record<string, unknown> = { client_uuid: uuid, memo_no: v.memo_no, business_date: v.business_date, user_id: Number(v.user_id), route_id: Number(v.route_id), outlet_id: Number(v.outlet_id), paid_mtk: paid, lines: [] as unknown[] };
+    const body: Record<string, unknown> = { client_uuid: uuid, memo_no: v.memo_no, business_date: v.business_date, user_id: Number(latinDigits(v.user_id)), route_id: Number(latinDigits(v.route_id)), outlet_id: Number(latinDigits(v.outlet_id)), paid_mtk: paid, lines: [] as unknown[] };
     const out: { sku_id: number; qty_base: number; line_kind: string }[] = [];
     lines.forEach((l, i) => {
       if (!id(l.sku_id) || !/^\d{1,8}$/.test(l.qty) || Number(l.qty) < 1 || Number(l.qty) > 10_000_000) e[`line${i}`] = t("error.field.invalid");
-      else out.push({ sku_id: Number(l.sku_id), qty_base: Number(l.qty), line_kind: l.kind });
+      else out.push({ sku_id: Number(latinDigits(l.sku_id)), qty_base: Number(l.qty), line_kind: l.kind });
     });
     body.lines = out;
     if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
@@ -81,7 +82,7 @@ export function PaperBackfillForm() {
         {lines.map((l, i) => (
           <div key={i} className="flex flex-wrap items-start gap-2">
             <input aria-label={t("de.sku_id")} placeholder={t("de.sku_id")} value={l.sku_id} onChange={(ev) => setLines((s) => s.map((x, j) => (j === i ? { ...x, sku_id: ev.target.value } : x)))} className={`${inputClass} w-28`} />
-            <input aria-label={t("de.qty")} placeholder={t("de.qty")} value={l.qty} inputMode="numeric" onChange={(ev) => setLines((s) => s.map((x, j) => (j === i ? { ...x, qty: ev.target.value.replace(/\D/g, "") } : x)))} className={`${inputClass} w-28`} />
+            <input aria-label={t("de.qty")} placeholder={t("de.qty")} value={l.qty} inputMode="numeric" onChange={(ev) => setLines((s) => s.map((x, j) => (j === i ? { ...x, qty: digitsOnly(ev.target.value) } : x)))} className={`${inputClass} w-28`} />
             <select aria-label={t("cfgc.col.kind")} value={l.kind} onChange={(ev) => setLines((s) => s.map((x, j) => (j === i ? { ...x, kind: ev.target.value as Line["kind"] } : x)))} className={`${inputClass} w-44`}>
               {KINDS.map((k) => (<option key={k} value={k}>{t(`de.kind.${k}` as MessageKey)}</option>))}
             </select>

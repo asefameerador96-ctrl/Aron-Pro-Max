@@ -94,6 +94,21 @@ class BundleApplyTest {
         assertEquals("2026-10-06", repo.businessDate())
     }
 
+    @Test fun chunksNeverSplitASurrogatePairAndRejoinExactly() {
+        val text = "ক" + "\uD83D\uDE00".repeat(5) + "x"
+        for (size in 2..5) {
+            val parts = ReferenceRepository.chunks(text, size)
+            assertEquals(text, parts.joinToString(""))
+            assertTrue(parts.none { Character.isHighSurrogate(it.last()) })
+        }
+    }
+
+    @Test fun aSectionLargerThanACursorWindowIsStoredAndReadBack() = runTest {
+        val big = "ক".repeat(1_500_000)
+        apply(JsonObject(bundle() + ("tutorials" to kotlinx.serialization.json.JsonPrimitive(big))))
+        assertEquals("\"$big\"", repo.section("tutorials"))
+    }
+
     @Test fun versionOrderIsNumericOnTheSnapshotSequence() {
         assertEquals(1, ReferenceRepository.compare("2026-10-05:10", "2026-10-05:9"))
         assertEquals(0, ReferenceRepository.compare("2026-10-05:3", "2026-10-05:3"))

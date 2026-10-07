@@ -1,0 +1,7 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+N-021,M,2026-10-07T03:45Z,2026-10-07T04:45Z,,7,"checker 5 + recheck 2 fixed; device battery trace pending; caller wiring requested"
+N-025,L,2026-10-07T04:25Z,2026-10-07T04:45Z,,1,"raw flag learned per window; device check on A06/A07/Honor pending"
+N-026,M,2026-10-07T04:05Z,2026-10-07T04:45Z,,7,"parts done; wiring pending (docs/requests/android-geo-dpc-wiring.md); marker request filed"
+F-SYS-031,S,2026-10-07T04:15Z,2026-10-07T04:45Z,,3,"parts done; batch hook pending; root_hints request filed"
+N-029,L,2026-10-07T04:10Z,2026-10-07T04:45Z,,3,"DEVICE-PENDING prod-policy checks"
+N-032,L,2026-10-07T04:30Z,2026-10-07T04:45Z,,6,"DPC side; DEVICE-PENDING; check-in call from F-SR-011"
