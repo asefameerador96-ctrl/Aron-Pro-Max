@@ -86,8 +86,15 @@ class UpdateShell(
      * (unthrottled; a tap is the rep's own request).
      */
     fun openPage() {
-        _laterFor.value = SHOW_ANY
-        startCheck()
+        val before = _laterFor.value.takeIf { it != SHOW_ANY }
+        // One-shot: forced only while a release is available, so a later check can never pop a silent release mid-visit.
+        if (_state.value is UpdateState.Available) _laterFor.value = SHOW_ANY
+        work.launch {
+            check(atLogin = true)
+            val now = _laterFor.value
+            // A "Later" tapped while the check ran wins: only our own value (or the untouched one) is replaced.
+            if (now == SHOW_ANY || now == before) _laterFor.value = if (_state.value is UpdateState.Available) SHOW_ANY else before
+        }
     }
 
     fun dayGate(dayOpen: Boolean, serverSaidTooOld: Boolean): DayGate = manager.dayGate(dayOpen, serverSaidTooOld)
