@@ -28,6 +28,12 @@ class AdminUsersRoutesTest {
     private fun uid(name: String) = env.db.ids.getValue(name)
     private fun scopeVersion(u: Long) = env.count("SELECT scope_version FROM app.app_user WHERE id = $u")
 
+    /** docs/19 `cfg.auth.temp_password_ttl_h` defaults to 24 hours (F-TSO-023). */
+    private fun assertTtl24h(at: String) {
+        val h = java.time.Duration.between(java.time.Instant.now(), java.time.Instant.parse(at)).toMinutes()
+        assertTrue(h in 24 * 60 - 2..24 * 60, "temporary password lives 24 h, got $h min")
+    }
+
     private fun userBody(name: String, role: String = "TSO", extra: String = "") =
         """{"username":"$name","full_name":"Created $name","role":"$role","locale":"bn","home_zone_id":${zone("Z-MIR")}$extra}"""
 
@@ -39,6 +45,7 @@ class AdminUsersRoutesTest {
         val temp = o.strA1("temporary_password")!!
         assertTrue(temp.length in 12..32)
         assertNotNull(o.strA1("temporary_password_expires_at"))
+        assertTtl24h(o.strA1("temporary_password_expires_at")!!)
         val user = o["user"] as JsonObject
         assertFalse(user.keys.any { it.contains("password") })
         assertNull(user.strA1("phone"), "PII only with the pii claim")
@@ -171,6 +178,7 @@ class AdminUsersRoutesTest {
         val reset = sendA1(HttpMethod.Post, "/admin/users/$sr/credentials", tso1, """{"action":"reset_password","reason":"Rep forgot the password"}""")
         assertEquals(HttpStatusCode.OK, reset.status)
         val temp = reset.objA1().strA1("temporary_password")!!
+        assertTtl24h(reset.objA1().strA1("temporary_password_expires_at")!!)
         assertEquals("argon2id\$test\$" + temp.reversed(), env.sql("SELECT password_hash FROM app.app_user WHERE id = $sr"))
         assertTrue(hash0 != env.sql("SELECT password_hash FROM app.app_user WHERE id = $sr"))
         assertEquals("true", env.sql("SELECT must_change_password::text FROM app.app_user WHERE id = $sr"))

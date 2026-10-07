@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- F-SYS-030 camera and photo pipeline -->
+    <string name="media_take_photo">Take photo</string>
+    <string name="media_cancel">Cancel</string>
+    <string name="media_camera_unavailable">The camera could not start. Close other camera apps and try again.</string>
+    <string name="media_no_space">No space left for photos. Delete other files on this phone.</string>
+    <string name="media_capture_failed">The photo could not be saved. Take it again.</string>
+    <string name="media_photo_title">Photo</string>
+    <string name="media_ok">OK</string>
+    <!-- F-SYS-037 -->
+    <string name="media_wifi_only_title">Upload photos on Wi-Fi only</string>
+    <string name="media_wifi_only_hint">Saves your data pack. Sales and memos always send on any network. Outlet photos for force sale and requests use mobile data after 6 hours.</string>
+</resources>

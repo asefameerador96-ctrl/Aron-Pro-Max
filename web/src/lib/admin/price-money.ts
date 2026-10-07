@@ -16,9 +16,9 @@ export function parseTakaToMtk(input: string): number | null {
 
 /** 12500 mtk to "12.500" (ASCII) with exactly three decimals. */
 export function mtkToTaka(mtk: number): string {
-  const whole = Math.trunc(mtk / 1000);
-  const frac = String(Math.abs(mtk % 1000)).padStart(3, "0");
-  return `${whole}.${frac}`;
+  const sign = mtk < 0 ? "-" : "";
+  const abs = Math.abs(mtk);
+  return `${sign}${Math.trunc(abs / 1000)}.${String(abs % 1000).padStart(3, "0")}`;
 }
 
 /** Localised: Bengali digits for bn. */
