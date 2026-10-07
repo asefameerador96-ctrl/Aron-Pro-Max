@@ -51,7 +51,15 @@ class CheckerF006Test {
                 "bundle_version" to JsonPrimitive(version), "valid_for_business_date" to JsonPrimitive(date), "is_prefetch" to JsonPrimitive(prefetch),
             ),
         )
-        return JsonObject(base + ("meta" to meta)).toString()
+        val extra = Json.parseToJsonElement(
+            """{
+              "user": {"user_id": 1001, "username": "sr334001", "full_name": "রহিম উদ্দিন", "role": "SR", "locale": "bn", "bind_ordinal": 1, "memo_seq_block_size": 500},
+              "config": {"config_version": 318, "values": [], "scheduled": []},
+              "prices": [], "code_lists": [], "offers": [], "calendar": {}, "templates": [], "tasks": [],
+              "reason_texts": {}
+            }""",
+        ).jsonObject
+        return JsonObject(base + extra + ("meta" to meta)).toString()
     }
 
     @Before fun setUp() {
