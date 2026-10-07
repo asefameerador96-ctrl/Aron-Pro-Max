@@ -105,6 +105,24 @@
     - A malformed body and a body cut off mid-stream are covered.
   - Honest limit: the budget is proven on the JVM (Robolectric SQLite). The A06 number comes from the benchmark module (AUD-PERF-04).
   - Checker nit: `call` now decodes as UTF-8 whatever the Content-Type charset says (the /v1 API is UTF-8).
+- **AUD-PERF-04 phone speed tooling** (T1; Opus checker FAIL, fixed, see the re-check line below):
+  - `:android:benchmark` (`com.android.test`, `-Paron.benchmarkApp=sr|amo|tso`, default sr):
+    - `ColdStartBenchmark`: macrobenchmark StartupTimingMetric with and without the profile, plus `coldStartMeetsTheGate`. That test takes the median `am start -W` TotalTime of 5 process-cold launches, after `cmd package compile -m speed-profile` and one warm-up launch, and requires it under 2,500 ms.
+    - `BaselineProfileGenerator` (startup path; Android 13+).
+  - The three apps:
+    - `benchmark` build type: release code, debug-signed, profileable through `src/benchmark`, `-benchmark` suffix.
+    - `benchmarkProfile` build type: the same, plus `android/benchmark/dontobfuscate.pro`, so the generated profile names real classes.
+    - `profileinstaller` in each app.
+    - A narrow seed `src/main/baseline-prof.txt` covering only the app's own shell package. It must be replaced by the generated profile before a field build.
+    - The https guard also covers both new build types.
+  - Measured locally:
+    - Release APK size is unchanged (12,372,516 bytes; profileinstaller was already on the classpath). The seed grows `baseline.prof` from 10.5 KB to 13.5 KB.
+    - CI's task graph does not include the module.
+    - The benchmark libraries come from Google Maven.
+  - Not done here (by the row's own text, or deferred):
+    - The recordSale 300 ms benchmark and JankStats readouts, as those screens land (sale lanes).
+    - A Gradle Managed Device or CI emulator run (infra AUD-TP-4).
+    - The first A06 numbers: device check, laptop session, lab phone only. Debug-signed variants never install over a device-owner field app, and `force-stop` clears its alarms until the next launch.
 - Trap 40: a check run without the Android SDK fails at configuration ("SDK location not found"). Grep the log for `BUILD FAILED`, not only the wrapper's exit code.
 
 ## Handover (READY TO RECYCLE, 2026-10-07 ~17:30Z by the server clock, seventh session)
