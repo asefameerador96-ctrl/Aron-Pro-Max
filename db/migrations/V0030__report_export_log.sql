@@ -2,7 +2,8 @@
 -- F-SYS-058, F-SYS-064; docs/24 s12.3 "every export is listed with its filters, row count and PII flag"; AUD-DA-05 export
 -- log). The request's shape, plus: the export row is append-only except its job columns (guard trigger) and its status
 -- moves only forward; the worker that runs async exports may update it.
--- The PII budget key (cfg.ops.pii_rows_per_hour) is not in docs/24 s9.5, so it is not added here (R2); see the request.
+-- The budgets are the docs/19 keys (lead ruling 2026-10-07): cfg.pii.list_rows_per_hour (2000, the TSO 5000 by a role
+-- value, docs/21 s4.5 D-72; 429 beyond) and cfg.pii.export_rows_per_day (5000); both restrictive downwards.
 
 SET lock_timeout = '5s';
 
@@ -43,6 +44,23 @@ CREATE TABLE app.pii_read_budget (
   rows_read   integer NOT NULL DEFAULT 0 CHECK (rows_read >= 0),
   PRIMARY KEY (user_id, hour_start)
 );
+
+-- ---------- budget keys (docs/19 s3.2.7, docs/21 s4.5) ----------
+INSERT INTO app.cfg_key (key, area, kind, value_type, default_value, bounds, bounds_rule, scope_levels, risk_class, risk_rule, effect, delivery, requires_ack, future_dated_only, restrictive_dir, editor_permission, description_en) VALUES
+  ('cfg.pii.list_rows_per_hour', 'pii', 'S', 'int', '2000'::jsonb, '{"min": 100, "max": 50000}'::jsonb, NULL, ARRAY['global', 'role']::text[], 2, NULL, 'S', 'server', false, false, 'down', 'cfg.edit.security',
+   'Rows with unmasked personal columns a user may read per clock hour across list endpoints; 429 beyond (docs/21 s4.5).'),
+  ('cfg.pii.export_rows_per_day', 'pii', 'S', 'int', '5000'::jsonb, '{"min": 100, "max": 100000}'::jsonb, NULL, ARRAY['global', 'role']::text[], 2, NULL, 'S', 'server', false, false, 'down', 'cfg.edit.security',
+   'Rows a user may export per day in exports that include personal columns (docs/21 s4.5).');
+
+-- The TSO's hourly budget is 5000 (about twice a 2,500-outlet territory, D-72): a role value in its own config version.
+INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class)
+SELECT (SELECT coalesce(max(config_version), 0) + 1 FROM app.cfg_version), 'change', id,
+       'V0030: TSO hourly PII list budget 5000 (docs/21 s4.5, D-72)', 2
+  FROM app.app_user WHERE username = 'aron.system';
+INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, created_by, reason)
+SELECT 'cfg.pii.list_rows_per_hour', 'role', r.ordinal, '5000'::jsonb, '2026-01-01T00:00:00Z',
+       (SELECT max(config_version) FROM app.cfg_version), u.id, 'docs/21 s4.5 (D-72): TSO budget about twice a territory'
+  FROM app.role_def r, app.app_user u WHERE r.role = 'TSO' AND u.username = 'aron.system';
 
 COMMENT ON TABLE app.report_export IS 'One row is a report export (xlsx, pdf or print), synchronous or a queued job: who ran which report with which filters, how many rows and whether personal data was included.
 owner: backend:analytics | capture: ONLINE | retention: audit | pii: none';

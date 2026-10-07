@@ -57,6 +57,16 @@ class ReportsAndBundleTablesTest {
     }
 
     @Test
+    fun piiBudgetsAreTheDocs19KeysWithTheTsoOverride() = db.connect().use { c ->
+        assertEquals(
+            listOf("cfg.pii.export_rows_per_day|5000|down|server", "cfg.pii.list_rows_per_hour|2000|down|server"),
+            c.column("SELECT concat_ws('|', key, default_value::text, restrictive_dir, delivery) FROM app.cfg_key WHERE key LIKE 'cfg.pii.%rows%' ORDER BY key"),
+        )
+        assertEquals("TSO|5000", c.scalar("SELECT r.role || '|' || v.value::text FROM app.cfg_value v JOIN app.role_def r ON r.ordinal = v.scope_id " +
+            "WHERE v.key = 'cfg.pii.list_rows_per_hour' AND v.scope_type = 'role' AND v.effective_to IS NULL"))
+    }
+
+    @Test
     fun deviceFactsArePartitionedAndTheRollupIsKeyedByDayRoleScreenAction() = db.connect().use { c ->
         assertEquals(
             listOf("dw.fact_activity", "dw.fact_device_integrity"),
