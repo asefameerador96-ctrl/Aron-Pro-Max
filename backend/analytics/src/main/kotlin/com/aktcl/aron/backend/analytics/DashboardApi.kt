@@ -103,7 +103,7 @@ class DashboardService(
         val now = clock.now()
         cache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val v = db.readJdbi.withHandle<DashboardSummary, Exception> { h -> compute(h, reach, scope, node, from, to) }
-        if (cache.size > 2_000) cache.entries.removeIf { Duration.between(it.value.first, now) >= ttl }
+        if (cache.size > 2_000) { cache.entries.removeIf { Duration.between(it.value.first, now) >= ttl }; if (cache.size > 2_000) cache.clear() }
         cache[key] = now to v
         return v
     }
@@ -179,7 +179,7 @@ class DashboardService(
             """
             SELECT b.brand_id, p.brand_name, sum(b.gross_mtk) net, sum(b.sold_qty_base) qty, sum(b.memo_count) memos
               FROM dw.agg_daily_route_brand b JOIN dw.dim_geo g ON g.route_id = b.route_id
-              JOIN LATERAL (SELECT brand_name FROM dw.dim_product WHERE brand_id = b.brand_id LIMIT 1) p ON true
+              JOIN LATERAL (SELECT brand_name FROM dw.dim_product WHERE brand_id = b.brand_id ORDER BY brand_name LIMIT 1) p ON true
              WHERE b.business_date BETWEEN :f AND :t AND ${eff.clause("g.zone_id")} GROUP BY 1, 2 ORDER BY 1
             """,
         ) {
@@ -237,7 +237,7 @@ class DashboardService(
 class DashboardDeps(val service: DashboardService, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
 /** Field phones read their own home strip (`/app/home`); the dashboards are for TSO and above. */
-private val DASHBOARD_ROLES = Role.entries.toSet() - Role.SR - Role.AMO
+private val DASHBOARD_ROLES = Role.entries.toSet() - Role.SR - Role.AMO - Role.SUPPORT   // SUPPORT sees sync health only (docs/24 s8.5)
 
 fun Route.dashboardRoutes(d: DashboardDeps) {
     authenticated(d.guard) {

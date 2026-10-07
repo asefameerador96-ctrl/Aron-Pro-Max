@@ -115,4 +115,22 @@ class DashboardTest {
         DashboardService(fresh.db, AronClock { now }).summary(reach(national = true), null, null, day, day)
         assertTrue((System.nanoTime() - t0) / 1_000_000 < 1_000)
     }
+
+    @Test
+    fun checker_rangeBoundaryAndScopedBreakdowns() {
+        // 92 days after from is allowed, 93 is not.
+        service.summary(reach(national = true), null, null, day, day.plusDays(92))
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { service.summary(reach(national = true), null, null, day, day.plusDays(93)) }.code)
+        // A zone caller's breakdowns never include the other zone's figures.
+        val s = service.summary(reach(z2), null, null, day, day)
+        assertEquals(24_000, s.kpis.gross_mtk)
+        assertEquals(24_000L, s.by_category.sumOf { it.net_mtk }); assertEquals(24_000L, s.by_channel.sumOf { it.net_mtk })
+        assertTrue(s.by_brand.sumOf { it.net_mtk } <= 24_000L)
+        assertEquals(24_000L, s.children.sumOf { it.kpis.net_mtk })
+        // Every percentage stays inside the contract range 0..100.
+        val all = service.summary(reach(national = true), null, null, day, day)
+        for (k in listOf(all.kpis) + all.children.map { it.kpis }) for (v in listOf(k.login_pct, k.submit_pct_of_logged_in, k.day_completion_pct, k.strike_rate_pct, k.geo_valid_pct, k.force_sale_pct, k.final_submit_pct))
+            if (v != null) assertTrue(v in 0.0..100.0)
+        for (b in all.by_brand) assertTrue((b.memo_ratio_pct ?: 0.0) <= 100.0)
+    }
 }
