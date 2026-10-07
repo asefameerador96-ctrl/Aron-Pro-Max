@@ -28,6 +28,8 @@ tasks.withType<Test>().configureEach {
     inputs.dir(seedDir).withPropertyName("seed").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("aron.migrations", migrationsDir)
     systemProperty("aron.seed", seedDir)
+    // tools/data-dictionary/render.sh passes -Paron.writeDictionary=true to regenerate docs/data-dictionary.md.
+    systemProperty("aron.writeDictionary", providers.gradleProperty("aron.writeDictionary").getOrElse("false"))
     // Integration tests need PostgreSQL 16 (docs/24 s2.5): ARON_TEST_PG_URL (CI service container or the local
     // server; the role needs CREATEDB because every test class gets its own throwaway database), else Testcontainers.
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
