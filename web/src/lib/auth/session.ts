@@ -10,6 +10,9 @@ export interface SessionData {
   scope: ScopeSummary | null;
   /** "Remember me" was ticked at sign-in: the cookies outlive the browser session. Off by default, never for admin roles. */
   rem?: boolean;
+  /** Signed in at, and last activity (epoch ms): the absolute and idle limits of lib/auth/limits.ts. */
+  sat?: number;
+  act?: number;
 }
 
 export function readSession(cookieValue: string | undefined): SessionData | null {
