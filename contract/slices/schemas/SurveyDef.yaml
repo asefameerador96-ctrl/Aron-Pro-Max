@@ -56,3 +56,24 @@ SurveyDef:
               pattern: ^[a-z][a-z0-9_]{1,40}$
           requires_photo:
             type: boolean
+          key:
+            type: string
+            pattern: ^[a-z][a-z0-9_]{1,40}$
+            description: Stable key of the question (the `key` of `SurveyWrite`). `key`, `required`, `show_if_key`,
+              `show_if_bool` and `photo` are returned on the admin read (`SurveyAdmin`) as written, so a definition
+              round-trips into `SurveyWrite` (docs/24 s14a R20); the bundle may omit them.
+          required:
+            type: boolean
+          show_if_key:
+            type:
+            - string
+            - 'null'
+            pattern: ^[a-z][a-z0-9_]{1,40}$
+          show_if_bool:
+            type:
+            - boolean
+            - 'null'
+          photo:
+            type: boolean
+            description: The `photo` flag as written; `requires_photo` is true when `photo` is true or the answer
+              type is `photo_only`.

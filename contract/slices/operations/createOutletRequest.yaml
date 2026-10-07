@@ -1,0 +1,48 @@
+path: /v1/outlet-requests
+method: post
+operation:
+  tags:
+  - outlet-requests
+  operationId: createOutletRequest
+  summary: Raise an outlet change request from the web (TSO and DMO; idempotent by request_uuid).
+  description: 'The web source of the request the apps raise with an `outlet_change_request` record: the same service
+    and
+
+    table, the same `OutletProposal` with the members each request type requires, and the same life cycle
+
+    (`pending`, then verification and approval; docs/24 s12.2). Allowed for TSO and DMO on an outlet in their
+
+    reach (403 `ERR_OUT_OF_SCOPE` otherwise); other roles get 403 `ERR_FORBIDDEN`, and ADMIN and SUPERADMIN edit
+
+    the outlet directly with `PATCH /v1/admin/outlets/{id}`. A web request carries no fix and no photos
+
+    (`request_fix` null, `photos` empty). Idempotent by `request_uuid`: a repeat returns the stored request and
+
+    stores nothing; a `request_uuid` already used for a different request (another requester, outlet or type) is
+
+    409 `ERR_CONFLICT` (docs/24 s14a R20).
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/OutletRequestCreateRequest'
+  responses:
+    '201':
+      description: Created (or the stored request when the same `request_uuid` is sent again).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OutletRequest'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

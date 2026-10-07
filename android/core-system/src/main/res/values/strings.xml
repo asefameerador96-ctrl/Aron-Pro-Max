@@ -27,6 +27,7 @@
     <string name="logout_sync_now">Sync now</string>
     <string name="logout_cancel">Cancel</string>
     <string name="logout_wipe_incomplete">Logged out, but some files on this phone could not be removed. Log in and out again to finish.</string>
+    <string name="logout_failed">Logout could not finish. Please try again.</string>
     <!-- F-SYS-020 updater -->
     <string name="update_title">A new version of ARON is ready</string>
     <string name="update_title_required">Update ARON to start a new day</string>
