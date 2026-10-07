@@ -1,2 +1,3 @@
 row_id,size,started_utc,finished_utc,minutes,review_findings,notes
 F-SYS-015,L,2026-10-07T03:50Z,2026-10-07T04:18Z,~80,4 (events lost out of order; suspicious rule; zone move; outlet overwrite) fixed with tests,aggregation worker; worker role wired
+F-API-014,M,2026-10-07T04:10Z,2026-10-07T04:26Z,~35,0 confirmed (9 concerns; 3 fixed: SUPPORT gate, cache bound, brand order),GET /v1/dashboards/summary; by_segment omitted pending dw aggregate (request)
