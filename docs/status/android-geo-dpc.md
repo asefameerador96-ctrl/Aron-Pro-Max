@@ -12,14 +12,14 @@ The build works again (owner-approved Maven mirror in settings.gradle.kts). All 
 | N-029 policy core | built, checked; DEVICE-PENDING | prod-policy checks on an enrolled A06 |
 | N-032 app blocking | built, checked (DPC side); DEVICE-PENDING | check-in/out call from F-SR-011; airplane-mode and reboot check on a phone |
 | N-035 breadcrumbs | built, checked (5 checker findings fixed); DEVICE-PENDING | battery on the A06; wiring (controller install, geo_breadcrumb sink, check-in/out calls) in the wiring request |
-| N-034 managed update | built; Opus checker running at recycle time (see Handoff) | update worker wiring in the wiring request; device check on an enrolled phone |
+| N-034 managed update | built, checked (3 confirmed + 5 plausible checker findings fixed); DEVICE-PENDING | update worker wiring (prompt UI for `AwaitingUser`, unique work) in the wiring request; device check on an enrolled phone |
 | N-030 enrolment by QR | client built, checked; server and wiring pending | needs N-031 (server) and `android-geo-dpc-enrol-replay.md`; Android 12+ activities wait for `android-geo-dpc-provisioning-activities.md`; app start wiring in the wiring request; device check D-04 |
 
 ## Handoff (2026-10-07, READY TO RECYCLE)
 - **Git:** lanes push only to `lane/android-geo-dpc` (docs/26 s3); the integrator promotes green heads. Merge INT before every push.
-- **In progress:** N-034. Commit 62f869cf, plus any fixes from its Opus checker (if this file still says "checker running", re-run the checker on `android/dpc/.../update/` first).
+- **In progress:** nothing; every row of the lane is built and checked.
 - **Next three:**
-  1. Finish N-034 checker findings.
+  1. Watch `docs/status/train.md`: if the integrator reports this lane's head breaking a candidate, fix it.
   2. When android-core lands the wiring call sites, re-run the module tests and flip N-026, F-SYS-031 and N-030 to done.
   3. When android-core answers "allowlisted" (docs/requests/android-geo-dpc-provisioning-activities.md), add the two provisioning activities to android/dpc/src/main/AndroidManifest.xml (exact XML in that request).
 - **Waiting on others:** N-031 enrolment replay (backend, `android-geo-dpc-enrol-replay.md`).

@@ -32,8 +32,14 @@ class DeviceOwnerPolicy(
     /** App blocking from check-in to check-out (N-032); the check-in and check-out commits call it. */
     val blocking = BlockingEngine(suspendGateway, blockingStore, { store.load() }, { trustedNowMs() }, { isWorkingDay(it) })
 
-    /** True while the managed update (N-034) installs; keeps `no_install_apps` lifted on every apply meanwhile. */
+    /**
+     * True while the managed update (N-034) installs; keeps `no_install_apps` lifted on every apply meanwhile. It
+     * expires by itself after [LIFT_MAX_MS] so a lost installer answer can never leave installs open.
+     */
     @Volatile var installingOwnUpdate: Boolean = false
+        get() = field && (liftedAtMs == 0L || trustedNow() - liftedAtMs in 0..LIFT_MAX_MS)
+        set(value) { field = value; liftedAtMs = if (value) trustedNow() else 0L }
+    @Volatile private var liftedAtMs: Long = 0L
 
     /** For `ManagedUpdater`: lift `no_install_apps` for our own install only, and put it back. */
     fun liftForOwnUpdate(lift: Boolean) {
@@ -79,6 +85,8 @@ class DeviceOwnerPolicy(
     fun current(): DevicePolicy? = store.load()
 
     companion object {
+        const val LIFT_MAX_MS = 10 * 60_000L
+
         @Volatile private var instance: DeviceOwnerPolicy? = null
 
         /**

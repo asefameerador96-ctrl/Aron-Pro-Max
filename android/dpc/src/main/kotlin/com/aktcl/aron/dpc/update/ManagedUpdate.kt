@@ -3,6 +3,7 @@ package com.aktcl.aron.dpc.update
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -72,15 +73,18 @@ object UpdatePlanner {
     }
 }
 
-/** Streams the APK to [target]; the app wires it to OkHttp. Returns false on any transport failure. */
+/** Streams the APK to [target], stopping past [maxBytes]; the app wires it to OkHttp. Returns false on any failure. */
 fun interface ApkDownloader {
-    suspend fun download(url: String, target: File): Boolean
+    suspend fun download(url: String, target: File, maxBytes: Long): Boolean
 }
 
 /** Writes the APK into a package-installer session and commits it (Android: [AndroidSelfInstaller]). */
 fun interface SelfInstaller {
-    /** Returns false when the session could not be created or committed. The outcome arrives later (UpdateResultReceiver). */
-    fun install(apk: File, expectedPackage: String): Boolean
+    /**
+     * Streams [apk] into a session, hashing exactly the bytes written; commits only when they hash to [expectedSha256],
+     * else abandons. Returns false when nothing was committed. The outcome arrives later (UpdateResultReceiver).
+     */
+    fun install(apk: File, expectedPackage: String, expectedSha256: String): Boolean
 }
 
 sealed interface UpdateOutcome {
@@ -88,6 +92,8 @@ sealed interface UpdateOutcome {
     data class Deferred(val reason: String) : UpdateOutcome
     data class Refused(val reason: String) : UpdateOutcome
     data class Committed(val versionCode: Long) : UpdateOutcome
+    /** `prompt_policy` prompt / force_after_date: verified and ready; the app asks the rep, then calls run(accepted = true). */
+    data class AwaitingUser(val versionCode: Long, val notesBn: String?, val notesEn: String?) : UpdateOutcome
 }
 
 /**
@@ -104,11 +110,22 @@ class ManagedUpdater(
     private val canInstallNow: () -> Boolean,
     private val liftInstallRestriction: (Boolean) -> Unit,
 ) {
-    suspend fun run(check: UpdateCheckDto, me: InstalledApp): UpdateOutcome {
+    private val mutex = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * One run at a time. [userAccepted]: the rep tapped "update" after an [UpdateOutcome.AwaitingUser]. A blocked
+     * installed build (`check.blocked`) installs without waiting for the rep.
+     */
+    suspend fun run(check: UpdateCheckDto, me: InstalledApp, userAccepted: Boolean = false): UpdateOutcome = mutex.withLock {
+        runLocked(check, me, userAccepted)
+    }
+
+    private suspend fun runLocked(check: UpdateCheckDto, me: InstalledApp, userAccepted: Boolean): UpdateOutcome {
         val plan = UpdatePlanner.plan(check, me)
         val release = when (plan) {
-            UpdatePlan.NoUpdate -> return UpdateOutcome.NothingToDo
-            is UpdatePlan.Refused -> return UpdateOutcome.Refused(plan.reason)
+            // Nothing to install: any downloaded APK (up to 100 MB) is no longer needed on a 2 GB phone.
+            UpdatePlan.NoUpdate -> { dir.listFiles()?.forEach { it.delete() }; return UpdateOutcome.NothingToDo }
+            is UpdatePlan.Refused -> { dir.listFiles()?.forEach { it.delete() }; return UpdateOutcome.Refused(plan.reason) }
             is UpdatePlan.Install -> {
                 if (plan.wifiOnly && !unmetered()) return UpdateOutcome.Deferred("waiting_for_wifi")
                 plan.release
@@ -119,13 +136,15 @@ class ManagedUpdater(
         val apk = File(dir, "${release.versionCode}.apk")
         if (!(apk.isFile && verify(apk, release))) {
             apk.delete()
-            val ok = try { downloader.download(release.downloadUrl, apk) } catch (e: Exception) { false }
+            val ok = try { downloader.download(release.downloadUrl, apk, release.sizeBytes) } catch (e: Exception) { false }
             if (!ok) { apk.delete(); return UpdateOutcome.Deferred("download_failed") }
             if (!verify(apk, release)) { apk.delete(); return UpdateOutcome.Refused(CHECKSUM_MISMATCH) }
         }
+        val needsRep = check.promptPolicy != "silent" && !check.blocked
+        if (needsRep && !userAccepted) return UpdateOutcome.AwaitingUser(release.versionCode, release.notesBn, release.notesEn)
         if (!canInstallNow()) return UpdateOutcome.Deferred("busy") // the verified file is kept for the next try
         liftInstallRestriction(true)
-        val committed = try { installer.install(apk, me.packageName) } catch (e: Exception) { false }
+        val committed = try { installer.install(apk, me.packageName, release.sha256) } catch (e: Exception) { false }
         if (!committed) { liftInstallRestriction(false); return UpdateOutcome.Deferred("install_session_failed") }
         return UpdateOutcome.Committed(release.versionCode)
     }

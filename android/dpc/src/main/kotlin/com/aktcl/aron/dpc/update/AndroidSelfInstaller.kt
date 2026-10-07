@@ -15,17 +15,28 @@ import java.io.File
 class AndroidSelfInstaller(context: Context) : SelfInstaller {
     private val app = context.applicationContext
 
-    override fun install(apk: File, expectedPackage: String): Boolean {
+    override fun install(apk: File, expectedPackage: String, expectedSha256: String): Boolean {
         if (expectedPackage != app.packageName) return false
         val pi = app.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(app.packageName)
             setSize(apk.length())
+            // A device owner installs silently; say so explicitly on API 31+ so no confirmation is ever needed.
+            if (android.os.Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
         }
         val id = pi.createSession(params)
         return try {
             pi.openSession(id).use { s ->
-                apk.inputStream().use { input -> s.openWrite("base.apk", 0, apk.length()).use { out -> input.copyTo(out); s.fsync(out) } }
+                // Hash exactly the bytes written into the session (no window between verifying and installing).
+                val md = java.security.MessageDigest.getInstance("SHA-256")
+                apk.inputStream().use { input ->
+                    s.openWrite("base.apk", 0, apk.length()).use { out ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) { val n = input.read(buf); if (n < 0) break; md.update(buf, 0, n); out.write(buf, 0, n) }
+                        s.fsync(out)
+                    }
+                }
+                if (md.digest().joinToString("") { "%02x".format(it) } != expectedSha256) { s.abandon(); return false }
                 val result = PendingIntent.getBroadcast(
                     app, id, Intent(app, UpdateResultReceiver::class.java),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE, // the installer adds the status extras
@@ -47,9 +58,13 @@ class AndroidSelfInstaller(context: Context) : SelfInstaller {
 class UpdateResultReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) return // never for a device owner; nothing to show
-        val dpc = DeviceOwnerPolicy.get(context)
-        dpc.installingOwnUpdate = false
-        runCatching { dpc.reapply() }
+        // Whatever the answer, the lift ends here: no_install_apps is back on before anything else happens.
+        DeviceOwnerPolicy.get(context).liftForOwnUpdate(false)
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            // Not silent (a dev phone that is not device owner): hand the system's confirmation to the rep.
+            @Suppress("DEPRECATION")
+            val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT) ?: return
+            runCatching { context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }
     }
 }

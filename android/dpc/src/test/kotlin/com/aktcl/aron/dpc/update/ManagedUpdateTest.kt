@@ -23,8 +23,8 @@ class ManagedUpdateTest {
                         flavour: String = "sr", abi: String = "arm64-v8a", status: String = "published") =
         AppReleaseDto(7, flavour, "1.0.4", code, abi, sha256, size, url, signer, status, 100, null, null, "2026-10-07T05:00:00.000Z", null, 1)
 
-    private fun check(r: AppReleaseDto? = release(), available: Boolean = true, wifiOnly: Boolean? = true) =
-        UpdateCheckDto(available, false, 100, r, "silent", wifiOnly)
+    private fun check(r: AppReleaseDto? = release(), available: Boolean = true, wifiOnly: Boolean? = true, policy: String = "silent", blocked: Boolean = false) =
+        UpdateCheckDto(available, blocked, 100, r, policy, wifiOnly)
 
     private class Rig(val dir: File, bytes: ByteArray) {
         var downloads = 0
@@ -35,8 +35,8 @@ class ManagedUpdateTest {
         var quiet = true
         val lifts = mutableListOf<Boolean>()
         val updater = ManagedUpdater(dir,
-            { _, target -> downloads++; target.writeBytes(served); true },
-            { apk, _ -> installs += apk; installOk },
+            { _, target, _ -> downloads++; target.writeBytes(served); true },
+            { apk, _, _ -> installs += apk; installOk },
             { wifi }, { quiet }, { lifts += it })
     }
 
@@ -114,5 +114,56 @@ class ManagedUpdateTest {
         val j = Json { encodeDefaults = true; explicitNulls = true }
         assertEquals(props("AppRelease"), Json.parseToJsonElement(j.encodeToString(AppReleaseDto.serializer(), release())).jsonObject.keys)
         assertEquals(props("UpdateCheck"), Json.parseToJsonElement(j.encodeToString(UpdateCheckDto.serializer(), check())).jsonObject.keys)
+    }
+
+    @Test fun promptPolicyWaitsForTheRepUnlessTheInstalledBuildIsBlocked() = runTest {
+        val r = rig()
+        assertEquals(UpdateOutcome.AwaitingUser(104, null, null), r.updater.run(check(policy = "prompt"), me))
+        assertTrue(r.installs.isEmpty())
+        assertEquals(UpdateOutcome.Committed(104), r.updater.run(check(policy = "prompt"), me, userAccepted = true))
+        assertEquals(1, r.downloads) // verified once, reused
+        val b = rig()
+        assertEquals(UpdateOutcome.Committed(104), b.updater.run(check(policy = "force_after_date", blocked = true), me))
+    }
+
+    @Test fun theDownloadedApkIsDeletedOnceTheUpdateLanded() = runTest {
+        val r = rig()
+        r.updater.run(check(), me)
+        assertEquals(UpdateOutcome.NothingToDo, r.updater.run(check(), me.copy(versionCode = 104)))
+        assertTrue(r.dir.list()!!.isEmpty())
+    }
+
+    @Test fun theDownloaderIsCappedAtThePublishedSize() = runTest {
+        var cap = 0L
+        val u = ManagedUpdater(Files.createTempDirectory("u").toFile(), { _, t, max -> cap = max; t.writeBytes(apkBytes); true },
+            { _, _, _ -> true }, { true }, { true }, { })
+        u.run(check(), me)
+        assertEquals(apkBytes.size.toLong(), cap)
+    }
+}
+
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk = [36])
+class UpdateResultReceiverTest {
+    @Test fun everyInstallerAnswerEndsTheLiftIncludingPendingUserAction() {
+        val ctx = org.robolectric.RuntimeEnvironment.getApplication()
+        val dpc = com.aktcl.aron.dpc.DeviceOwnerPolicy.get(ctx)
+        for (status in listOf(android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION, android.content.pm.PackageInstaller.STATUS_FAILURE,
+            android.content.pm.PackageInstaller.STATUS_SUCCESS)) {
+            dpc.installingOwnUpdate = true
+            UpdateResultReceiver().onReceive(ctx, android.content.Intent().putExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, status))
+            assertFalse("status $status", dpc.installingOwnUpdate)
+        }
+    }
+
+    @Test fun theLiftExpiresByItself() {
+        val ctx = org.robolectric.RuntimeEnvironment.getApplication()
+        val dpc = com.aktcl.aron.dpc.DeviceOwnerPolicy.get(ctx)
+        var now = 1_000_000L
+        dpc.configure({ now }, { null })
+        dpc.installingOwnUpdate = true
+        assertTrue(dpc.installingOwnUpdate)
+        now += com.aktcl.aron.dpc.DeviceOwnerPolicy.LIFT_MAX_MS + 1
+        assertFalse(dpc.installingOwnUpdate)
     }
 }
