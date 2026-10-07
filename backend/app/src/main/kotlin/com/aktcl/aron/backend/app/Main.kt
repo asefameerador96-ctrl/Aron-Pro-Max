@@ -85,7 +85,7 @@ fun apiServer(w: Wiring, port: Int, callThreads: Int? = null) =
         },
     ) {
         aronApi(w)
-        monitor.subscribe(ApplicationStopped) { w.database?.close() }
+        monitor.subscribe(ApplicationStopped) { runCatching { w.securityStore?.close() }; w.database?.close() }
     }
 
 @Serializable
@@ -93,7 +93,7 @@ data class Health(val status: String, val api: String, val server_time: String, 
 
 /** The API: platform plugins, health, then every context's routes under /v1 (docs/24 s3, s6.2). */
 fun Application.aronApi(w: Wiring) {
-    installAronPlatform(PlatformContext(w.clock, w.config, w.generation, w.build, w.frontDoorId, cachedGeneration = w.cachedGeneration))
+    installAronPlatform(PlatformContext(w.clock, w.config, w.generation, w.build, w.frontDoorId, cachedGeneration = w.cachedGeneration, securityEvents = w.securityEvents))
     w.admission?.let { installAdmissionControl(it) }
     installDrain(w.drain)
     w.isolation?.let { installRequestIsolation(it) }

@@ -41,3 +41,9 @@ F-SYS-075-followup,S,2026-10-07T17:38Z,2026-10-07T17:44Z,6,1,BC-55 user.consents
 F-SYS-079-followup,S,2026-10-07T17:44Z,2026-10-07T17:50Z,6,2,cfg checkout time and jitter from DayConfig; Opus check PASS; guard test added
 F-SYS-052-followup,S,2026-10-07T17:50Z,2026-10-07T17:56Z,6,2,cfg.auth offline unlock limits via session profile; Opus check PASS (medium: login dropped values) fixed with tests
 F-SYS-032-followup,S,2026-10-07T17:56Z,2026-10-07T18:08Z,12,1,early crash catcher before Hilt; Opus check PASS; medium (device-clock time) fixed with test
+N-053+F-SYS-074,M+M,2026-10-07T17:55Z,2026-10-07T18:25Z,30,10,core-map lite map + online-only attendance address; Opus FAIL (medium: last address survived logout) fixed with tests; lows fixed
+F-SYS-075-notice-recheck,S,2026-10-07T18:25Z,2026-10-07T18:40Z,15,4,resume re-check after Later; overlay keeps the day composed; Opus PASS (medium teardown) fixed with test
+BC-56-followup,S,2026-10-07T18:40Z,2026-10-07T18:55Z,15,4,enforce mode holds integrity release; Opus PASS; scheduled-row test added
+F-SYS-028-vacuum,S,2026-10-07T18:55Z,2026-10-07T19:20Z,25,3,new files auto_vacuum INCREMENTAL (SQLCipher postKey hook + framework onConfigure); Opus FAIL (WAL before onConfigure) fixed; device check D-DB-VAC
+settings-slots-binding,S,2026-10-07T19:20Z,2026-10-07T19:45Z,25,6,update row + wifi-only switch in SrApp; Sonnet FAIL x2 fixed; PASS
+F-SYS-047,M,2026-10-07T19:45Z,2026-10-07T20:30Z,45,8,generation re-sync; Opus FAIL (window from now; trigger lost; shared users) fixed; previous_generation asked

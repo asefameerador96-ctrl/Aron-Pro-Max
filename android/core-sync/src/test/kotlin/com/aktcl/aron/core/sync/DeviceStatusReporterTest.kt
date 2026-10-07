@@ -191,6 +191,23 @@ class DeviceStatusReporterTest {
         listOf("23:00", "11:59", "17:61", "5pm", "", null).forEach { assertNull(it, DayConfig.minutesOf(it)) }
     }
 
+    /** F-SYS-074: the map provider and the tile-cache cap come from config (validated by core-map's MapSettings). */
+    @Test
+    fun theMapProviderAndCacheCapAreReadFromConfig() = runBlocking {
+        val cfg = DayConfig()
+        cfg.refresh(db, "2026-10-06T03:00:00.000Z")
+        assertNull(cfg.mapProvider)
+        assertNull(cfg.mapTileCacheMb)
+        fun row(key: String, json: String) = com.aktcl.aron.core.database.entity.ConfigValueEntity(
+            key = key, valueJson = json, scopeType = "global", scopeId = null, effectiveFrom = null, effectiveTo = null,
+            configVersion = 1, requiresAck = false, scheduled = false,
+        )
+        db.referenceDao().insertConfig(listOf(row("cfg.map.provider", "\"maplibre\""), row("cfg.map.tile_cache_mb", "35")))
+        cfg.refresh(db, "2026-10-06T03:00:00.000Z")
+        assertEquals("maplibre", cfg.mapProvider)
+        assertEquals(35, cfg.mapTileCacheMb)
+    }
+
     @Test
     fun aThrowingEvidenceSourceStillSendsTheMarkerAndNeverThrows() = runBlocking {
         val r = DeviceStatusReporter({ facts }, { signals }, tracker, { error("boom") }, state, clock, "1")

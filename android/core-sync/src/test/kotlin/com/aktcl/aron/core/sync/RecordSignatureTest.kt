@@ -321,6 +321,48 @@ class RecordSignatureTest {
         assertEquals(1, fake.storedOf("visit").size)
     }
 
+    /** BC-56: while the phone's config says enforce, held rows are not resent and no round is spent; record releases them. */
+    @Test fun enforceInConfigHoldsTheRowsWithoutSpendingARound() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        quarantinedBefore(visitUuid, closeUuid)
+        suspend fun mode(value: String) = db.openHelper.writableDatabase.execSQL("DELETE FROM config_value WHERE `key` = ?", arrayOf(SyncEngine.KEY_SIGNATURE_MODE)).let { db.referenceDao().insertConfig(listOf(com.aktcl.aron.core.database.entity.ConfigValueEntity(
+            key = SyncEngine.KEY_SIGNATURE_MODE, valueJson = value, scopeType = "global", scopeId = null, effectiveFrom = null,
+            effectiveTo = null, configVersion = 1, requiresAck = false, scheduled = false,
+        ))) }
+        mode("\"enforce\"")
+        fake.enforce = true
+        repeat(SyncEngine.INTEGRITY_RELEASE_ROUNDS + 2) { engine(signer).run(SyncTrigger.MANUAL); nextDay() }
+        assertEquals("never resent under enforce", 0, sentCount(visitUuid))
+        assertEquals("quarantined", state(visitUuid))
+        assertEquals("no round spent", null, db.referenceDao().meta(SyncEngine.KEY_INTEGRITY_RELEASE))
+        mode("\"record\"")
+        fake.enforce = false
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals("acked", state(visitUuid))
+        assertEquals(1, fake.storedOf("visit").size)
+        mode("\"nonsense")  // unreadable: not enforce
+        val (v2, c2) = visitWithClose()
+        quarantinedBefore(v2, c2)
+        nextDay() // one release round per business date
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals("acked", state(v2))
+    }
+
+    /** Checker: a scheduled enforce row in effect overrides the unscheduled record row (resolved at the engine's now). */
+    @Test fun aScheduledEnforceInEffectHoldsTheRows() = runBlocking {
+        val (visitUuid, closeUuid) = visitWithClose()
+        quarantinedBefore(visitUuid, closeUuid)
+        fun row(value: String, from: String?, scheduled: Boolean) = com.aktcl.aron.core.database.entity.ConfigValueEntity(
+            key = SyncEngine.KEY_SIGNATURE_MODE, valueJson = value, scopeType = "global", scopeId = null, effectiveFrom = from,
+            effectiveTo = null, configVersion = 2, requiresAck = false, scheduled = scheduled,
+        )
+        db.referenceDao().insertConfig(listOf(row("\"record\"", null, false), row("\"enforce\"", "2000-01-01T00:00:00.000Z", true)))
+        fake.enforce = true
+        engine(signer).run(SyncTrigger.MANUAL)
+        assertEquals(0, sentCount(visitUuid))
+        assertEquals(null, db.referenceDao().meta(SyncEngine.KEY_INTEGRITY_RELEASE))
+    }
+
     /** Rows quarantined after an episode ended start a new one. */
     @Test fun rowsQuarantinedLaterStartANewEpisode() = runBlocking {
         val (visitUuid, closeUuid) = visitWithClose()

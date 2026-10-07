@@ -16,6 +16,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -78,8 +79,8 @@ class SyncGenerationTest {
         json(r.bodyAsText())["access_token"]!!.jsonPrimitive.content.also { token = it }
     }
 
-    private suspend fun HttpClient.generation(): Pair<JsonObject, String?> {
-        val r = get("/v1/sync/generation") { bearerAuth(login()); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9") }
+    private suspend fun HttpClient.generation(query: String = ""): Pair<JsonObject, String?> {
+        val r = get("/v1/sync/generation$query") { bearerAuth(login()); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9") }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
         return json(r.bodyAsText()) to r.headers["X-Server-Generation"]
     }
@@ -90,7 +91,7 @@ class SyncGenerationTest {
         val (g, header) = client.generation()
         assertEquals("initial", g["kind"]!!.jsonPrimitive.content, g.toString())
         assertEquals(header, g["generation"]!!.jsonPrimitive.content)
-        assertEquals(setOf("generation", "kind", "restore_point_utc", "lost_after_utc", "minted_at"), g.keys)
+        assertEquals(setOf("generation", "kind", "restore_point_utc", "lost_after_utc", "minted_at", "previous_generation", "earliest_lost_after_utc"), g.keys)
         val minted = UUID.randomUUID().toString()
         fresh.db.jdbi.useTransaction<Exception> { h ->
             h.execute("UPDATE app.server_generation SET is_current = false WHERE is_current")
@@ -104,6 +105,41 @@ class SyncGenerationTest {
         assertEquals("failover", f["kind"]!!.jsonPrimitive.content)
         assertEquals("2027-01-03T04:59:30.000Z", f["lost_after_utc"]!!.jsonPrimitive.content)
         assertEquals("2027-01-03T05:00:00.000Z", f["minted_at"]!!.jsonPrimitive.content)
+    }
+
+    /** F-SYS-047 gap: two generations minted before the phone called; `since` names the earliest loss of both. */
+    @Test
+    fun sinceAnOlderGenerationTheStatementNamesTheEarliestLoss() = testApplication {
+        application { aronApi(wiring) }
+        val (c, _) = client.generation()
+        val known = c["generation"]!!.jsonPrimitive.content
+        val g1 = UUID.randomUUID().toString(); val g2 = UUID.randomUUID().toString()
+        fresh.db.jdbi.useTransaction<Exception> { h ->
+            h.execute("UPDATE app.server_generation SET is_current = false WHERE is_current")
+            h.execute("INSERT INTO app.server_generation (generation, kind, started_at, restore_point_utc, lost_after_utc, is_current) VALUES (CAST(? AS uuid), 'pitr_restore', TIMESTAMPTZ '2027-01-04 05:00:00+00', TIMESTAMPTZ '2027-01-04 04:50:00+00', TIMESTAMPTZ '2027-01-04 04:50:00+00', false)", g1)
+            h.execute("INSERT INTO app.server_generation (generation, kind, started_at, lost_after_utc) VALUES (CAST(? AS uuid), 'failover', TIMESTAMPTZ '2027-01-04 05:30:00+00', TIMESTAMPTZ '2027-01-04 05:20:00+00')", g2)
+        }
+        try { sinceChecks(known, g1, g2) } finally {
+            // Leave the lineage as found: the other test reads the current row first.
+            fresh.db.jdbi.useTransaction<Exception> { h ->
+                h.execute("UPDATE app.server_generation SET is_current = false WHERE is_current")
+                h.execute("UPDATE app.server_generation SET is_current = true WHERE generation = CAST(? AS uuid)", known)
+            }
+        }
+    }
+
+    private suspend fun io.ktor.server.testing.ApplicationTestBuilder.sinceChecks(known: String, g1: String, g2: String) {
+        val (now, _) = client.generation("?since=$known")
+        assertEquals(g2, now["generation"]!!.jsonPrimitive.content)
+        assertEquals(g1, now["previous_generation"]!!.jsonPrimitive.content)
+        assertEquals("2027-01-04T05:20:00.000Z", now["lost_after_utc"]!!.jsonPrimitive.content, "the current row's own loss")
+        assertEquals("2027-01-04T04:50:00.000Z", now["earliest_lost_after_utc"]!!.jsonPrimitive.content, "re-send from the earlier loss")
+        assertEquals("2027-01-04T05:20:00.000Z", client.generation("?since=$g1").first["earliest_lost_after_utc"]!!.jsonPrimitive.content)
+        for (q in listOf("", "?since=$g2", "?since=${UUID.randomUUID()}")) {
+            assertEquals(JsonNull, client.generation(q).first["earliest_lost_after_utc"], "no earlier loss to name: '$q'")
+        }
+        val bad = client.get("/v1/sync/generation?since=nope") { bearerAuth(client.login()); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9") }
+        assertEquals(HttpStatusCode.BadRequest, bad.status)
     }
 
     @Test

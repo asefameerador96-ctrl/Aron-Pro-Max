@@ -80,6 +80,23 @@ class UpdateShell(
 
     fun later(release: ReleaseInfo) { _laterFor.value = release.versionCode }
 
+    /**
+     * Settings > App update: shows the page for any available release, a silent one included (the row is where a silent
+     * release is offered) and one put off with "Later"; "Later" on that page puts it off again. Also asks the server now
+     * (unthrottled; a tap is the rep's own request).
+     */
+    fun openPage() {
+        val before = _laterFor.value.takeIf { it != SHOW_ANY }
+        // One-shot: forced only while a release is available, so a later check can never pop a silent release mid-visit.
+        if (_state.value is UpdateState.Available) _laterFor.value = SHOW_ANY
+        work.launch {
+            check(atLogin = true)
+            val now = _laterFor.value
+            // A "Later" tapped while the check ran wins: only our own value (or the untouched one) is replaced.
+            if (now == SHOW_ANY || now == before) _laterFor.value = if (_state.value is UpdateState.Available) SHOW_ANY else before
+        }
+    }
+
     fun dayGate(dayOpen: Boolean, serverSaidTooOld: Boolean): DayGate = manager.dayGate(dayOpen, serverSaidTooOld)
 
     fun network(): NetworkStatus {
@@ -157,9 +174,10 @@ sealed interface UpdateScreen {
 /**
  * The updater's screen rule (F-SYS-020, D24-22): a required update blocks only a NEW day; an open day finishes (the update
  * is then offered with "Later"), upload is never blocked. A silent release is shown only in Settings; "Later" hides a
- * release for the rest of the process.
+ * release for the rest of the process. [SHOW_ANY] as `laterFor` (Settings > App update) shows any available release.
  */
 fun updateScreen(state: UpdateState, laterFor: Int?, gate: DayGate): UpdateScreen {
+    val forced = laterFor == SHOW_ANY
     val required = state as? UpdateState.Required
     if (gate == DayGate.BLOCKED_UPDATE_REQUIRED) {
         val release = required?.release ?: (state as? UpdateState.Available)?.release
@@ -167,8 +185,11 @@ fun updateScreen(state: UpdateState, laterFor: Int?, gate: DayGate): UpdateScree
     }
     val release = when (state) {
         is UpdateState.Required -> state.release
-        is UpdateState.Available -> state.release.takeIf { state.prompt }
+        is UpdateState.Available -> state.release.takeIf { state.prompt || forced }
         UpdateState.Current -> null
     } ?: return UpdateScreen.None
     return if (release.versionCode == laterFor) UpdateScreen.None else UpdateScreen.Prompt(release, required = false)
 }
+
+/** `laterFor` value set by [UpdateShell.openPage]: no version is put off and a silent release is shown too. */
+const val SHOW_ANY: Int = Int.MIN_VALUE

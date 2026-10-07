@@ -40,6 +40,18 @@ class DayConfig {
     @Volatile var checkoutJitterS: Int = DEFAULT_CHECKOUT_JITTER_S
         private set
 
+    /** `cfg.sync.resync_jitter_s` (default 900, 0..3600): the spread of the re-send after a server restore (F-SYS-047). */
+    @Volatile var resyncJitterS: Int = 900
+        private set
+
+    /** `cfg.map.provider` as stored (google, maplibre; null: not set). core-map's `MapSettings.of` validates it. */
+    @Volatile var mapProvider: String? = null
+        private set
+
+    /** `cfg.map.tile_cache_mb` as stored (registry bounds 5..100; null: not set, the default 20 holds). */
+    @Volatile var mapTileCacheMb: Int? = null
+        private set
+
     suspend fun refresh(db: AronDatabase, nowIso: String) {
         val ref = ReferenceRepository(db)
         suspend fun value(key: String) = runCatching { ref.config(key, nowIso)?.let { Json.parseToJsonElement(it) as? JsonPrimitive } }.getOrNull()
@@ -54,6 +66,9 @@ class DayConfig {
         offlineMaxDays = value("cfg.auth.offline_unlock_max_days")?.intOrNull
         offlineMaxAttempts = value("cfg.auth.offline_unlock_max_attempts")?.intOrNull
         checkoutJitterS = value("cfg.sync.checkout_jitter_s")?.intOrNull?.takeIf { it in 0..600 } ?: DEFAULT_CHECKOUT_JITTER_S
+        resyncJitterS = value("cfg.sync.resync_jitter_s")?.intOrNull?.takeIf { it in 0..3_600 } ?: 900
+        mapProvider = value("cfg.map.provider")?.takeIf { it.isString }?.contentOrNull
+        mapTileCacheMb = value("cfg.map.tile_cache_mb")?.intOrNull
         // Emergency off-days arrive only in a config delta (calendar_changes, D-542), so both sections count.
         calendar = runCatching { ref.section("calendar")?.let { Calendar.parse(it, ref.section("calendar_changes")) } }.getOrNull()
     }

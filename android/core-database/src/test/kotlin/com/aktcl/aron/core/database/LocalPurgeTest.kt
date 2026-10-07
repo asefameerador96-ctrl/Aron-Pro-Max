@@ -99,8 +99,8 @@ class LocalPurgeTest {
         val v = visitFamily()
         sql("UPDATE outbox SET state = 'acked', acked_at = '2026-10-13T05:00:00.000Z' WHERE family_uuid = ?", familyOf(v))
         assertEquals(0, LocalPurge(db).purge("2026-10-13", "2026-10-13T06:00:00.000Z").total)
-        assertEquals(0, LocalPurge(db).purge("2026-10-19", "2026-10-19T06:00:00.000Z").total)
-        assertEquals(1, LocalPurge(db).purge("2026-10-21", "2026-10-21T06:00:00.000Z").byTable["visit"])
+        assertEquals(0, LocalPurge(db).purge("2026-10-15", "2026-10-15T06:00:00.000Z").total) // default keep 3 days (db V0055)
+        assertEquals(1, LocalPurge(db).purge("2026-10-17", "2026-10-17T06:00:00.000Z").byTable["visit"])
     }
 
     /** A family is as young as its newest row: an old visit whose reprint (or void) is recent stays. */

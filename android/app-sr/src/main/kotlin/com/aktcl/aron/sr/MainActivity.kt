@@ -170,6 +170,7 @@ class MainActivity : ComponentActivity() {
                                     ),
                                     health = null, versionText = versionName,
                                     onLanguageSelect = onLanguageSelect,
+                                    updateShell = updateShell, mediaShell = mediaShell,
                                     // F-SYS-022: SR keeps its data (it keeps uploading); the flow schedules the upload.
                                     onLogout = { srLogout(s.user.userId) },
                                     onOtherTile = { },

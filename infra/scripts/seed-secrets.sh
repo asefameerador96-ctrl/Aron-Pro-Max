@@ -58,3 +58,15 @@ else
   put_file aron-web-session-secret "$tmp/session" text/plain
   note "aron-web-session-secret created"
 fi
+
+# Dev seed accounts (db/seed: sr1001 and the other pilot test accounts) for the SR slice smoke: only when the dev
+# seed is switched on (deploy.sh: param devSeed = true in a dev profile). The devseed job hashes it; the smoke logs in with it.
+if [ "${ARON_DEV_SEED:-false}" = true ] && [[ "${PROFILE:-}" == dev* ]]; then
+  if exists aron-dev-seed-password; then
+    note "aron-dev-seed-password present (kept)"
+  else
+    openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24 > "$tmp/seedpw"
+    put_file aron-dev-seed-password "$tmp/seedpw" text/plain
+    note "aron-dev-seed-password created"
+  fi
+fi

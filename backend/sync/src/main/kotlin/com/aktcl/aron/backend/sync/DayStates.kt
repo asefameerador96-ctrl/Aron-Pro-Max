@@ -151,9 +151,12 @@ object DayStates {
             .bind("now", ts(now)).bind("mm", !reached).bind("r", route).bind("d", date).execute()
     }
 
-    /** Moves the state forward to the furthest one its timestamps reach; never back. */
+    /**
+     * Moves the state forward to the furthest one its timestamps reach; never back. A move marks the route-day dirty
+     * (F-SYS-086), so a state change without a stored record (the worker's settle timeout) still reaches the tile.
+     */
     fun advance(h: Handle, route: Long, date: LocalDate) {
-        h.createUpdate(
+        val moved = h.createUpdate(
             """
             UPDATE app.route_day SET state = s.next FROM (
               SELECT id, CASE WHEN final_submitted_at IS NOT NULL THEN 'final_submitted'
@@ -169,5 +172,6 @@ object DayStates {
               AND array_position(CAST(:o AS text[]), s.next) > array_position(CAST(:o AS text[]), app.route_day.state)
             """.trimIndent(),
         ).bind("r", route).bind("d", date).bindArray("o", String::class.java, ORDER).execute()
+        if (moved > 0) h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'route_day_state')", route, date)
     }
 }

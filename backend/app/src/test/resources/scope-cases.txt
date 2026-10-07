@@ -58,12 +58,16 @@ GET /v1/day/final-submit/preview -> case DayApiTest#zoneDayOutsideReachAndFieldR
 GET /v1/feedback -> case FeedbackTest#randomisedListsNeverLeakFeedbackOutsideTheCallersReach
 GET /v1/leave -> case LeaveTest#randomisedListsNeverLeakLeaveOutsideTheCallersReach
 GET /v1/me -> exempt: the caller's own account, token or phone only; no geography rows
+GET /v1/memos -> case SyncReadsTest#memosAreReadByNumberOrOutletWithLinesAndNeverOutsideTheCallersReach
 GET /v1/report-exports -> gap: backend-reports
 GET /v1/report-exports/{export_id} -> gap: backend-reports
 GET /v1/reports -> gap: backend-reports
 GET /v1/routes/{id}/assignments -> case RouteAssignmentsTest#randomisedCallersNeverSeeARouteOutsideTheirReach
 GET /v1/sync/bundle -> case BundleAcceptanceTest#theBundleHoldsOnlyTheCallersOwnRoutesAndTheirOutletsWhateverTheQuerySays
+GET /v1/sync/totals -> exempt: the caller's own records only (user id from the token); no query parameter names another user or scope (SyncReadsTest#syncTotalsEqualTheBatchTotalsAndARepeatedUploadLeavesThemUnchanged)
 GET /v1/sync/generation -> exempt: one company-wide database lineage row, identical for every caller; no scoped data
+POST /v1/media/sas -> exempt: write grants for the calling phone's own photo paths only (the device uuid in the path comes from the token)
+POST /v1/sync/digest -> exempt: the calling phone's own uploads only (user and device from the token; a body device_uuid that differs is refused)
 GET /v1/tasks -> case TasksCheckerTest#listScope
 GET /v1/team/locations -> gap: backend-reports
 GET /v1/team/stock -> gap: backend-reports

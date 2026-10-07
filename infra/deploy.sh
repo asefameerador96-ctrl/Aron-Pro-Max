@@ -56,6 +56,10 @@ check_freeze() { # stage
 check_freeze "at the start"
 export AZURE_LOCATION="${AZURE_LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_SUFFIX="${ARON_NAME_SUFFIX:-}"
+# Dev seed and the SR slice smoke (lead 2026-10-07): switched on by the COMMITTED line "param devSeed = true" in the
+# profile's apps parameter file (dev only; stage and prod never carry it), so nobody has to set a repository variable.
+ARON_DEV_SEED="$([[ "$PROFILE" == dev* ]] && grep -qx 'param devSeed = true' "infra/params/${PROFILE}.apps.bicepparam" && echo true || echo false)"
+export ARON_DEV_SEED
 whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
 lock_tag="aron-deploy-lock"; lock_held=false; hb_pid=""
 lock_me="${GITHUB_RUN_ID:-local}.${GITHUB_RUN_ATTEMPT:-1}.$$"
@@ -328,7 +332,7 @@ PRIVATE_LINK="$(out "$outputs" privateLinkOrigin)"
 BUDGET="$(out "$outputs" budgetName)"
 
 # ------------------------------------------------------------------------------------------------- secrets
-infra/scripts/seed-secrets.sh "$KV"
+PROFILE="$PROFILE" infra/scripts/seed-secrets.sh "$KV"
 # Passwords and URLs of the per-app database logins (created by the dblogins job after the migrations).
 infra/scripts/db-login-secrets.sh "$KV"
 
@@ -531,6 +535,53 @@ if [ -n "$DBLOGINS_JOB" ]; then
   fi
 fi
 
+# ------------------------------------------------------------------------------------------------- dev seed
+# db/seed (sr1001, the bound dev phone, Mirpur outlets and SKUs) for the SR slice smoke. Runs the dev seed image
+# through the dblogins job (template override: its identity, registry and secrets), never blocks the deploy.
+devseed_result="off (no param devSeed = true)"
+if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ] && [ -n "$DBLOGINS_JOB" ]; then
+  build_devseed() {
+    local ctx; ctx="$(mktemp -d)"
+    # db/seed without 04_dev_config_and_codes.sql (lead: its global relaxations of enrolment, integrity and lockdown
+    # stay OFF on dev), plus the smoke's own outlet, loaded last.
+    cp db/seed/0*.sql infra/scripts/devseed-run.sh "$ctx/"
+    rm -f "$ctx"/04_*.sql
+    cp infra/sql/devseed-smoke-outlet.sql "$ctx/09_smoke_outlet.sql"
+    docker build -q --provenance=false --sbom=false --build-arg "PSQL_IMAGE=${ARON_PSQL_IMAGE}" \
+      -f infra/docker/devseed.Dockerfile -t "${REGISTRY}/aron-devseed:${SHA}" "$ctx"
+  }
+  # In a subshell: a failed build (die) costs the seed, never the deploy.
+  seed_ref="$(mktemp)"
+  if ( publish aron-devseed build_devseed && printf '%s' "$IMAGE_REF" > "$seed_ref" ); then DEVSEED_IMAGE="$(cat "$seed_ref")"; else DEVSEED_IMAGE=""; fi
+  rm -f "$seed_ref"
+  seed_tpl="$(mktemp --suffix .yaml)"
+  python3 - "$DEVSEED_IMAGE" > "$seed_tpl" <<'PY'
+import json, sys
+print(json.dumps({"containers": [{"name": "dblogins", "image": sys.argv[1], "resources": {"cpu": 0.25, "memory": "0.5Gi"},
+    "env": [{"name": "ARON_DB_URL", "secretRef": "db-direct-url"}, {"name": "ARON_SEED_PASSWORD", "secretRef": "seed-pw"}]}]}))
+PY
+  if [ -z "$DEVSEED_IMAGE" ]; then
+    echo "::warning::the dev seed image could not be built"; devseed_result="image build failed"
+  elif seed_exec="$(az containerapp job start -g "$RG" -n "$DBLOGINS_JOB" --yaml "$seed_tpl" --query name -o tsv)"; then
+    note "dev seed started: $seed_exec"
+    seed_status=""
+    for _ in $(seq 1 60); do
+      seed_status="$(az containerapp job execution show -g "$RG" -n "$DBLOGINS_JOB" --job-execution-name "$seed_exec" --query properties.status -o tsv 2>/dev/null || echo unknown)"
+      case "$seed_status" in Succeeded|Failed|Stopped|Degraded) break ;; esac
+      sleep 10
+    done
+    devseed_result="${seed_status:-unknown} ($seed_exec)"
+    if [ "$seed_status" != Succeeded ]; then
+      echo "::warning::dev seed $seed_exec ended ${seed_status:-unknown}; the slice smoke will not find its user"
+      az containerapp job logs show -g "$RG" -n "$DBLOGINS_JOB" --execution "$seed_exec" --container dblogins --tail 40 \
+        --format text 2>&1 | tail -n 40 || true
+    fi
+  else
+    echo "::warning::the dev seed could not start"; devseed_result="could not start"
+  fi
+  rm -f "$seed_tpl"
+fi
+
 # ------------------------------------------------------------------------------------------------------ apps
 guard_newer_live "before the apps"
 check_freeze "before the apps"
@@ -581,10 +632,35 @@ if [ "$api_mode_now" = Multiple ]; then
       || echo "::warning::could not deactivate the old revision $r"
   done
 fi
+# Worker health (lead 2026-10-07): the worker has no HTTP endpoint, so the gate above cannot see it. Its latest
+# revision must run this image, have a replica Running with 0 restarts, and stay so for 90 s. Non-blocking at first.
+if worker_out="$(infra/scripts/worker-check.sh "$RG" "ca-aron-${ENV_NAME}-worker" "$BACKEND_IMAGE" 2>&1)"; then
+  worker_result="running, 0 restarts after 90 s"
+else
+  worker_result="NOT PROVEN (see the warning)"; echo "::warning::worker check failed: ${worker_out//$'\n'/ | }"
+fi
+printf '%s\n' "$worker_out"
 # Release marker on the App Insights charts (N-062); never fails the deploy.
 infra/scripts/release-marker.sh "$rg_id" "$ENV_NAME" "$SHA" \
   "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-local}" \
   "$([ -n "$ROLLBACK_SHA" ] && echo rollback || echo deploy)" || echo "::warning::release marker step failed"
+# SR slice smoke (lead request 2026-10-07): login, bundle, one sale uploaded twice (duplicate acked, count +1), memo
+# read, dashboard tile, then the sale is voided. Non-blocking for now; result in the summary.
+slice_result="off (no param devSeed = true)"
+if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ]; then
+  if slice_pw="$(az keyvault secret show --vault-name "$KV" --name aron-dev-seed-password --query value -o tsv 2>/dev/null)" \
+     && [ -n "$slice_pw" ]; then
+    echo "::add-mask::${slice_pw}"
+    if SLICE_API_HOST="$API_HOST" SLICE_PASSWORD="$slice_pw" python3 infra/scripts/slice-smoke.py; then
+      slice_result="PASSED"
+    else
+      slice_result="FAILED (see the slice smoke table)"; echo "::warning::SR slice smoke failed (non-blocking)"
+    fi
+  else
+    slice_result="not run (aron-dev-seed-password unreadable)"; echo "::warning::SR slice smoke not run: no seed password"
+  fi
+  unset slice_pw
+fi
 if [ "$ARON_DEPLOY_BUDGET" = true ]; then
   amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \
     || die "budget $BUDGET not found in $RG"
@@ -602,6 +678,9 @@ summary "| API | https://${API_HOST}/v1/health |"
 summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"
+summary "| Worker | ${worker_result} |"
 summary "| Database logins | ${dblogins_result} |"
+summary "| Dev seed | ${devseed_result} |"
+summary "| SR slice smoke | ${slice_result} |"
 summary "| Migrations | ${RUN_MIGRATIONS} |"
 summary "| Budget | ${budget_line} |"

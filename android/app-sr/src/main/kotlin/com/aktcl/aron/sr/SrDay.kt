@@ -255,6 +255,13 @@ class SrDay(
     /** Fix reuse (D-74) is limited to the visit cycle of the day; attendance and requests always take their own fix. */
     val fixSource = FixManagerSource(fixManager) { purpose -> if (purpose == "visit_open") "outlets-" + businessDate() else null }
 
+    private val addressResolver = com.aktcl.aron.core.map.AddressResolver(
+        online = ::online,
+        backend = com.aktcl.aron.core.map.AndroidGeocodeBackend(context),
+        language = { com.aktcl.aron.core.ui.AppLocale.current(context) },
+        last = com.aktcl.aron.core.map.PrefsLastAddressStore(context, userId),
+    )
+
     val attendance = AttendanceFlow(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { e, f ->
@@ -271,6 +278,9 @@ class SrDay(
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,
         // cfg.day.checkout_earliest_time from the user's bundle (DayConfig), 17:00 until it is read.
         checkoutEarliestMinutes = { deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: com.aktcl.aron.core.sync.device.DayConfig.DEFAULT_CHECKOUT_MINUTES },
+        // F-SYS-074: the address resolves online only (platform geocoder, after the commit, display only); offline the
+        // coordinates stay, with the last resolved address when the fix is near it.
+        addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
     )
 
     @Volatile private var nextSequence = 1

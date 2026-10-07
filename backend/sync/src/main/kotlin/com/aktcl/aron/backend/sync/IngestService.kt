@@ -335,10 +335,12 @@ class IngestService(
             log.warn("resync_late client_uuid=${r.clientUuid} type=${r.type} business_date=$bd user=${ctx.up.userId} batch_uuid=${ctx.batchUuid}")
         }
 
-        // 3b. A check-out before cfg.day.checkout_earliest_time (Dhaka, by the user's role and home geography) is held
-        // for review, never dropped (s4.5 `checkout_too_early`; the phone enforces the same value offline, the server re-checks).
-        if (r.type == "attendance_event" && payload.str("kind") == "check_out" && checkoutTooEarly(h, ctx.up, captured)) {
-            return quarantine(h, ctx, r, bd, RecordOutcomeCode.CHECKOUT_TOO_EARLY, "check-out at ${captured.atZone(DHAKA).toLocalTime()} Dhaka")
+        // 3b. A check-out before cfg.day.checkout_earliest_time on its business date (Dhaka, by the user's role and home
+        // geography) is s4.5 `checkout_too_early`. The spec quarantines it, but no review path can release a quarantined
+        // row yet (OpsApi's acceptor is not wired), so the rep's day would end without a check-out: until it can, the row
+        // is accepted and flagged (BC-63; the phone enforces the same value offline, so only a hooked clock reaches it).
+        if (r.type == "attendance_event" && payload.str("kind") == "check_out" && checkoutTooEarly(h, ctx.up, captured, bd)) {
+            log.warn("checkout_too_early client_uuid=${r.clientUuid} user=${ctx.up.userId} business_date=$bd captured_at=$captured")
         }
 
         // 4. References that must exist (unknown ids are final rejections, s4.5).
@@ -755,6 +757,16 @@ class IngestService(
     // ---------------------------------------------------------------------------------------------------------------
     // Response sections
 
+    /**
+     * GET /v1/sync/totals (F-SYS-005 reconciliation): the same totals and day states a batch response carries, for the
+     * caller's own records on [date] only (user from the token; no scope ids from the client). Read-only, so a repeated
+     * batch, which stores nothing new, leaves it unchanged. On the primary: a lagging replica would show a short count
+     * and keep the phone retrying "Sync data".
+     */
+    fun totals(userId: Long, date: LocalDate): SyncTotalsResponse = db.jdbi.withHandle<SyncTotalsResponse, Exception> { h ->
+        SyncTotalsResponse(serverTotals(h, userId, date, clock.now()), dayStates(h, userId, listOf(date)), supervisorDayState(h, userId, date))
+    }
+
     /** Per type accepted/rejected/quarantined of the user's date from the registry, and the money of the date (s4.12). */
     private fun serverTotals(h: Handle, userId: Long, date: LocalDate, now: Instant): ServerTotals {
         val byType = h.createQuery(
@@ -852,8 +864,12 @@ class IngestService(
 
     private data class ResyncWindow(val startedAt: Instant, val oldestDate: LocalDate)
 
-    /** True when [captured] (Dhaka time of day) is before the user's `cfg.day.checkout_earliest_time` (inclusive bound). */
-    private fun checkoutTooEarly(h: Handle, up: Uploader, captured: Instant): Boolean {
+    /**
+     * True when [captured] is before the user's `cfg.day.checkout_earliest_time` on the business date [bd] (Dhaka;
+     * inclusive bound; a check-out after midnight for the previous date is late, not early). A missing or unreadable
+     * value never flags. The role and home geography are the user's at sync (a move in between is judged by the new one).
+     */
+    private fun checkoutTooEarly(h: Handle, up: Uploader, captured: Instant, bd: LocalDate): Boolean {
         val geo = h.createQuery(
             """
             SELECT (SELECT ordinal FROM app.role_def WHERE role = u.role) AS role_ord, z.id AS zone_id, t.id AS territory_id, d.id AS division_id, d.wing_id
@@ -871,7 +887,7 @@ class IngestService(
         val word = ScopedConfig.load(h, captured, captured, setOf(CHECKOUT_KEY)).value(CHECKOUT_KEY, chain)
             ?.let { runCatching { it.jsonPrimitive.content }.getOrNull() } ?: return false
         val earliest = runCatching { java.time.LocalTime.parse(word) }.getOrNull() ?: return false
-        return captured.atZone(DHAKA).toLocalTime().isBefore(earliest)
+        return captured.isBefore(bd.atTime(earliest).atZone(DHAKA).toInstant())
     }
 
     companion object {

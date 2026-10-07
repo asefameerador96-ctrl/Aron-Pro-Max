@@ -7,7 +7,7 @@ import kotlinx.serialization.json.JsonObject
 /*
  * Wire shapes of GET /v1/sync/bundle (contract `Bundle` and its members, docs/24 s4.10). Member names are the
  * contract's snake_case names. Optional contract members that this build does not fill yet are not declared at all
- * (rather than sent as null where the schema forbids null): `device_policy_version` and `my_outlet_requests`.
+ * (rather than sent as null where the schema forbids null): `my_outlet_requests`.
  */
 
 @Serializable
@@ -29,6 +29,11 @@ data class Bundle(
     /** AMO and TSO team section (zone-wide data, F-AMO-044); null in this build. */
     val supervisor: JsonObject?,
     val reason_texts: Map<String, ReasonText>,
+    /**
+     * N-033: the `policy_version` that `GET /v1/devices/me/policy` renders now (the config version, `DevicePolicyRenderer`):
+     * a phone whose stored policy is older fetches it at this sync (app-block list, kiosk, permissions).
+     */
+    val device_policy_version: Long,
     /** Deferred programmes (docs/27): null. */
     val programmes: JsonObject?,
     val content: List<JsonObject>,
