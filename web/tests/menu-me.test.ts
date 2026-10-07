@@ -3,7 +3,7 @@ import { allowedFromMenus, loadAllowedMenus } from "@/lib/menu/matrix";
 import { menuFor, type MenuItem } from "@/lib/menu/menu";
 import { admin, setupMock, token, tso } from "./helpers/harness";
 
-const h = setupMock();
+setupMock();
 
 describe("menus from GET /v1/me (cfg.web.menu_by_role)", () => {
   it("view grants only; no menus means no filter", () => {
