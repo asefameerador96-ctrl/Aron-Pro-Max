@@ -40,13 +40,20 @@ data class SyncDigestResponse(val resend: List<DigestResend>)
  * - Bucket = the first hex digit of the client_uuid (0..15). `count` = rows in the bucket. `hash` = the sum, modulo
  *   2^64, of the uuid's first 8 bytes read as a big-endian unsigned integer (its first 16 hex digits), written as 16
  *   lowercase hex digits (an empty bucket is `0000000000000000`).
- * - Dates from today back [WINDOW_DAYS] days (Dhaka); an item outside that window, or of a type the server does not
- *   ingest, is answered as matching (no re-send).
+ * - Dates from today back `cfg.sync.max_backdate_days` (7) days (Dhaka), the window a re-sent row is still stored
+ *   in; an item outside it, or in the future, is answered as matching (no re-send).
+ * - The phone counts only rows it uploaded under the calling user (a shared phone digests each user's rows apart).
  */
-class SyncDigestService(private val db: Database, private val clock: AronClock = AronClock.SYSTEM) {
+class SyncDigestService(
+    private val db: Database,
+    private val clock: AronClock = AronClock.SYSTEM,
+    /** `cfg.sync.max_backdate_days` (7): an older row re-sent would be quarantined as too old, so it is never asked for. */
+    private val windowDays: () -> Long = { DEFAULT_WINDOW_DAYS },
+) {
     fun compare(p: AronPrincipal, req: SyncDigestRequest): SyncDigestResponse {
         val deviceId = p.deviceId ?: throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "a phone token is required")
-        if (req.device_uuid.lowercase() != p.deviceUuid) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device_uuid differs from the token's device")
+        if (!UUID_RE.matches(req.device_uuid)) throw invalid("/device_uuid", "a lowercase uuid")
+        if (req.device_uuid != p.deviceUuid) throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device_uuid differs from the token's device")
         if (req.items.size > MAX_ITEMS) throw invalid("/items", "at most $MAX_ITEMS items")
         val today = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
         val items = req.items.mapIndexed { i, it ->
@@ -59,7 +66,7 @@ class SyncDigestService(private val db: Database, private val clock: AronClock =
             if (it.type !in TypeRules.BY_TYPE.keys) throw invalid("/items/$i/type", "unknown record type")
             Triple(date, it.type, it.buckets)
         }
-        val inWindow = items.filter { (d) -> !d.isAfter(today) && !d.isBefore(today.minusDays(WINDOW_DAYS)) }
+        val inWindow = items.filter { (d) -> !d.isAfter(today) && !d.isBefore(today.minusDays(windowDays())) }
         if (inWindow.isEmpty()) return SyncDigestResponse(emptyList())
         val server = buckets(p.userId, deviceId, inWindow.map { it.first }.distinct(), inWindow.map { it.second }.distinct())
         val resend = inWindow.mapNotNull { (date, type, phone) ->
@@ -93,7 +100,8 @@ class SyncDigestService(private val db: Database, private val clock: AronClock =
 
     companion object {
         const val MAX_ITEMS = 200
-        const val WINDOW_DAYS = 31L
+        const val DEFAULT_WINDOW_DAYS = 7L
+        private val UUID_RE = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val HASH = Regex("^[0-9a-f]{16}$")
         private val EMPTY = List(16) { DigestBucket(0, "0000000000000000") }
