@@ -40,7 +40,8 @@ env:
   # so a phone installed from one run upgrades to the next. ARON_DEV_API_BASE_URL overrides the origin.
   ARON_API_BASE_URL: ${{ vars.ARON_DEV_API_BASE_URL || 'https://fde-aron-dev-7i7g53-gpgaa3fpgrhmdgaz.z03.azurefd.net' }}
   ARON_VERSION_CODE: ${{ github.run_number }}
-  ARON_VERSION_NAME: 0.1.${{ github.run_number }}
+  # ARON_VERSION_NAME is set by each Android job's first step: 0.<1 + run / 1000>.<run % 1000> (0.1.635 for run 635,
+  # 0.2.0 for run 1000), so it always fits the contract's version_name pattern (three digits per part; N-064 manifest).
 
 # Lead decision 2026-10-07 (CI throughput): one group per ref. A running push run always finishes; GitHub keeps one
 # pending run per group and a newer push replaces the older PENDING one, so the newest head of each branch always gets
@@ -348,6 +349,8 @@ jobs:
       MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Version name (contract pattern; see ARON_VERSION_CODE above)
+        run: echo "ARON_VERSION_NAME=0.$((GITHUB_RUN_NUMBER / 1000 + 1)).$((GITHUB_RUN_NUMBER % 1000))" >> "${GITHUB_ENV}"
       - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
         # The runner context is not available in job-level env, so the path is exported here.
         run: |
@@ -420,6 +423,8 @@ jobs:
       MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Version name (contract pattern; see ARON_VERSION_CODE above)
+        run: echo "ARON_VERSION_NAME=0.$((GITHUB_RUN_NUMBER / 1000 + 1)).$((GITHUB_RUN_NUMBER % 1000))" >> "${GITHUB_ENV}"
       - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
         run: |
           echo "ANDROID_HOME=${RUNNER_TEMP}/android-sdk" >> "${GITHUB_ENV}"
@@ -474,6 +479,8 @@ jobs:
             "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app} ${variant}: /"
           done <<< "${list}"
           (cd signed && sha256sum ./*.apk > SHA256SUMS && cat SHA256SUMS)
+          # N-064: release-manifest.json, one contract AppReleaseWrite entry per APK (download_url added by the store upload)
+          APKSIGNER="${signer}" python3 tools/ci/release-manifest.py signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}" "${GITHUB_SHA}"
           echo "signed=true" >> "${GITHUB_OUTPUT}"
       - name: Upload the release-signed dev APKs
         if: steps.sign.outputs.signed == 'true'

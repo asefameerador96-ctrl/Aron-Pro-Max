@@ -11,7 +11,8 @@ through the public address (Front Door), as the seeded SR on the seeded dev phon
   6 the first batch again             POST /v1/sync/batch          replayed: true
   7 server count                      server_totals of the batch answers: memos, active memos and gross the same
                                                                     after the re-upload as after the sale (never doubled)
-  8 memo read                         GET  /v1/memos?memo_no=       reported only: not served by the backend yet
+  7b server count, reconciliation     GET  /v1/sync/totals          the same three numbers as the batch answers
+  8 memo read                         GET  /v1/memos?memo_no=       exactly our memo, active, gross and net ours
   9 dashboard tile                    GET  /v1/app/home             active memos + 1, gross + ours (polled; the
                                                                     aggregation worker is asynchronous)
  10 cleanup                           POST /v1/sync/batch memo_void after ANY step past 4: no money left on dev
@@ -166,7 +167,7 @@ def run():
          else f"route {pick[0]['route_id']}, outlet {pick[1]['outlet_id']}, sku {pick[2]['code']}")
     route, outlet, sku, price = pick
 
-    # 3 baseline (GET /v1/sync/totals is in the contract but not served yet: counts come from the batch answers)
+    # 3 baseline
     s, home0 = call("GET", f"/v1/app/home?business_date={day}", token)
     step("3 baseline tile", s == 200 and isinstance(home0, dict), brief(s, home0) if s != 200 else "")
     k0 = home0["kpis"]
@@ -267,10 +268,20 @@ def after_sale(token, day, memo, gross, k0, records, first, batch, acks, r1):
     t2 = day_totals(r2, day)
     step("7 server count unchanged by the re-upload", t2 is not None and t2 == t1, f"{t1} -> {t2} (memos, active, gross mtk)")
 
-    # 8 memo read: GET /v1/memos is in the contract but not served yet (backend); reported, not failed
-    s, _ = call("GET", f"/v1/memos?memo_no={records[1]['payload']['memo_no']}", token)
-    results.append(("8 memo read", True, f"SKIPPED: GET /v1/memos answers HTTP {s} (not served yet)" if s != 200 else "served (not yet checked)"))
-    print(f"slice: SKIP 8 memo read: HTTP {s}", flush=True)
+    # 7b the same count from GET /v1/sync/totals (reconciliation, F-SYS-005): the Server column equals the batch answers
+    s, tot = call("GET", f"/v1/sync/totals?business_date={day}", token)
+    t3 = day_totals({"server_totals": [tot.get("totals")]}, day) if s == 200 and isinstance(tot, dict) and isinstance(tot.get("totals"), dict) else None
+    step("7b GET /v1/sync/totals agrees", t3 is not None and t3 == t2, f"{t3} (memos, active, gross mtk)" if s == 200 else brief(s, tot))
+
+    # 8 memo read: GET /v1/memos?memo_no= returns exactly the uploaded memo, active, with its totals
+    memo_no = records[1]["payload"]["memo_no"]
+    s, page = call("GET", f"/v1/memos?memo_no={memo_no}", token)
+    items = page.get("items", []) if s == 200 and isinstance(page, dict) else []
+    m = items[0] if len(items) == 1 else {}
+    ok = m.get("memo_client_uuid") == memo and m.get("memo_no") == memo_no and m.get("status") == "active" \
+        and (m.get("totals") or {}).get("gross_mtk") == gross and (m.get("totals") or {}).get("net_mtk") == gross
+    step("8 memo read", ok, f"{memo_no}, {gross} mtk" if ok else (brief(s, page) if s != 200 else
+         f"{len(items)} item(s): " + json.dumps({k: m.get(k) for k in ('memo_no', 'status', 'totals')})[:200]))
 
     # 9 dashboard tile (asynchronous aggregation)
     deadline, k1 = time.time() + TILE_WAIT_S, None

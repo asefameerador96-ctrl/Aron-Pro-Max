@@ -743,6 +743,12 @@ class Workflows(unittest.TestCase):
             self.assertIn(flag, block)
             self.assertIn(flag, c[c.index("\n  android:"):c.index("\n  android-release:")])
         self.assertIn("ARON_VERSION_CODE: ${{ github.run_number }}", c)
+        # N-064: the version name fits the contract pattern for every run number (set before any build step).
+        name_step = 'echo "ARON_VERSION_NAME=0.$((GITHUB_RUN_NUMBER / 1000 + 1)).$((GITHUB_RUN_NUMBER % 1000))" >> "${GITHUB_ENV}"'
+        for job in (block, c[c.index("\n  android:"):c.index("\n  android-release:")]):
+            self.assertLess(job.index(name_step), job.index("-Paron.versionName="))
+        self.assertNotIn("ARON_VERSION_NAME: ", c, "no workflow-level value that the step could fail to override")
+        self.assertIn('release-manifest.py signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}" "${GITHUB_SHA}"', block)
         self.assertIn("python3 tools/ci/apk-size-gate.py", block)
         gate = (ROOT / "tools" / "ci" / "apk-size-gate.py").read_text(encoding="utf-8")
         self.assertIn("ABS_DOWNLOAD_MB, ABS_INSTALLED_MB = 30, 70", gate)
@@ -1469,11 +1475,17 @@ class SliceSmoke(unittest.TestCase):
             r = subprocess.run(["openssl", "dgst", "-sha256", "-verify", self.pub, "-signature", sig.name, msg.name], capture_output=True)
         return r.returncode == 0
 
-    def serve(self, doubles=False):
+    def serve(self, doubles=False, memo_read=True, totals_off=0):
         import gzip as gz, http.server, threading
         from urllib.parse import urlparse, parse_qs
         state = {"records": {}, "batches": {}, "memos": {}, "voided": set(), "calls": []}
         test = self
+
+        def totals(day):
+            live = [m for m in state["memos"].values() if m["client_uuid"] not in state["voided"]]
+            return {"business_date": day, "as_of": "x",
+                    "by_type": {"memo": {"accepted": len(state["memos"]), "rejected": 0, "quarantined": 0}},
+                    "money": {"active_memo_count": len(live), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in live)}}
 
         class H(http.server.BaseHTTPRequestHandler):
             def log_message(self, *a):
@@ -1525,12 +1537,8 @@ class SliceSmoke(unittest.TestCase):
                             if r["type"] == "memo_void":
                                 state["voided"].add(r["payload"]["memo_client_uuid"])
                         acks.append({"client_uuid": r["client_uuid"], "type": r["type"], "status": "duplicate" if dup else "accepted"})
-                    live = [m for m in state["memos"].values() if m["client_uuid"] not in state["voided"]]
-                    day = b["records"][0]["business_date"]
-                    resp = {"batch_uuid": b["batch_uuid"], "replayed": False, "acks": acks, "server_totals": [{
-                        "business_date": day, "as_of": "x",
-                        "by_type": {"memo": {"accepted": len(state["memos"]), "rejected": 0, "quarantined": 0}},
-                        "money": {"active_memo_count": len(live), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in live)}}]}
+                    resp = {"batch_uuid": b["batch_uuid"], "replayed": False, "acks": acks,
+                            "server_totals": [totals(b["records"][0]["business_date"])]}
                     state["batches"][b["batch_uuid"]] = resp
                     return self.reply(200, resp)
                 return self.reply(401, {"code": "unauthorized"})
@@ -1551,6 +1559,14 @@ class SliceSmoke(unittest.TestCase):
                                                 {"outlet_id": 9, "code": "SMOKE-SR-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100}]}]})
                 if u.path == "/v1/app/home":
                     return self.reply(200, {"kpis": {"active_memo_count": len(memos), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in memos)}})
+                if u.path == "/v1/sync/totals":
+                    t = totals(q["business_date"][0]); t["money"]["gross_mtk"] += totals_off
+                    return self.reply(200, {"totals": t, "day_states": [], "supervisor_day": None})
+                if u.path == "/v1/memos" and memo_read:
+                    return self.reply(200, {"next_cursor": None, "items": [
+                        {"memo_client_uuid": m["client_uuid"], "memo_no": m["payload"]["memo_no"], "status": "active",
+                         "totals": {k: m["payload"][k] for k in ("gross_mtk", "net_mtk", "paid_mtk", "due_mtk")}}
+                        for m in memos if m["payload"]["memo_no"] == q["memo_no"][0]]})
                 return self.reply(404, {"code": "not_found"})
 
         srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
@@ -1576,7 +1592,8 @@ class SliceSmoke(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         for line in ("PASS 4 sale uploaded", "PASS 5 re-upload acked duplicate", "PASS 6 batch replay",
                      "PASS 7 server count unchanged by the re-upload: (1, 1, 145000) -> (1, 1, 145000)",
-                     "SKIP 8 memo read: HTTP 404", "PASS 9 dashboard tile shows the sale",
+                     "PASS 7b GET /v1/sync/totals agrees: (1, 1, 145000)", "PASS 8 memo read",
+                     "PASS 9 dashboard tile shows the sale",
                      "PASS 10 cleanup: sale voided", "### SR slice smoke: PASSED"):
             self.assertIn(line, out)
         (memo,) = state["memos"].values()
@@ -1592,6 +1609,20 @@ class SliceSmoke(unittest.TestCase):
         self.assertIn("### SR slice smoke: FAILED", out)
         self.assertIn("PASS 10 cleanup: sale voided", out, "a failed later step still voids the smoke sale")
         self.assertTrue(state["voided"])
+
+    def test_fails_when_the_totals_endpoint_disagrees_with_the_batch_answers(self):
+        srv, state = self.serve(totals_off=1)
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL 7b GET /v1/sync/totals agrees: (1, 1, 145001)", out)
+        self.assertIn("PASS 10 cleanup: sale voided", out)
+
+    def test_fails_when_the_memo_read_is_not_served(self):
+        srv, state = self.serve(memo_read=False)
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL 8 memo read: HTTP 404", out)
+        self.assertIn("PASS 10 cleanup: sale voided", out)
 
     def test_print_jwk_gives_the_public_half_and_its_rfc7638_thumbprint(self):
         import base64, hashlib, subprocess
