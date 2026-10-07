@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 146 | 2540 |
+| `app` | 147 | 2552 |
 | `dw` | 33 | 512 |
 
 ## Index
@@ -80,6 +80,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.leave_application`](#appleave_application) | table | backend:masterdata | OFFLINE | transaction | personal | A TSO leave application with dates and reason, decided on the web. |
 | [`app.loyalty_ledger`](#apployalty_ledger) | table | backend:analytics | SERVER | transaction | none | Append-only points ledger derived on the server, idempotent per source record. |
 | [`app.media`](#appmedia) | table | backend:media | OFFLINE | transaction | personal | Metadata of a photo taken in the field with its location fix and Blob Storage path; the image itself is in Blob Storage. |
+| [`app.media_upload`](#appmedia_upload) | table | backend:media | ONLINE | transaction | none | One row is a photo whose bytes arrived through the multipart fallback POST /v1/media/upload (feedback or support); the idempotency ledger of that endpoint (F-API-007). |
 | [`app.memo`](#appmemo) | partitioned table | backend:sync | OFFLINE | transaction | none | One sales memo header (or zero-sale record) for an outlet visit, with gross, discount, net, paid and due amounts. |
 | [`app.memo_discount`](#appmemo_discount) | table | backend:sync | OFFLINE | transaction | none | One discount component of a memo: offer, DRP or free goods, with SKU, quantity and value. |
 | [`app.memo_line`](#appmemo_line) | partitioned table | backend:sync | OFFLINE | transaction | none | One SKU line of a memo with quantity, base price and gross amount. |
@@ -1066,6 +1067,7 @@ One enrolled phone with its status, trust level, key, integrity verdict and last
 | `root_hints_at` | timestamp with time zone | null |  | UTC time of the status report root_hints came from; NULL when root_hints was never reported. |
 | `integrity_unavailable_reason` | text | null |  | Reason of the last Play Integrity unavailable marker (contract v1.2 play_integrity_unavailable.reason); NULL = never reported. Kept when a later report has a verdict; compare integrity_unavailable_at with integrity_checked_at for the newer one. |
 | `integrity_unavailable_at` | timestamp with time zone | null |  | UTC time of the report that carried the last Play Integrity unavailable marker; NULL = never reported. |
+| `last_sync_error` | text | null |  | Last sync transport or problem code the phone reported (X-Last-Sync-Error); null when none was reported. |
 
 Keys: `UNIQUE (device_uuid)`; `UNIQUE (external_ref)`; `UNIQUE (public_key_thumbprint)`; `PRIMARY KEY (id)`
 
@@ -2053,6 +2055,28 @@ Metadata of a photo taken in the field with its location fix and Blob Storage pa
 Keys: `UNIQUE (blob_path)`; `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.media_upload
+
+One row is a photo whose bytes arrived through the multipart fallback POST /v1/media/upload (feedback or support); the idempotency ledger of that endpoint (F-API-007).
+
+`owner: backend:media | capture: ONLINE | retention: transaction | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `media_uuid` | uuid | not null |  | Client-generated UUID v4 of the photo; with purpose the idempotency key of the upload. |
+| `purpose` | text | not null |  | Why the photo was sent: feedback or support. |
+| `sha256` | bytea | not null |  | SHA-256 of the uploaded bytes (32 bytes). |
+| `bytes` | integer | not null |  | Size of the uploaded file in bytes (at most 300 KiB). |
+| `user_id` | bigint | not null |  | User whose token made the upload (app.app_user). |
+| `device_id` | bigint | null |  | Device of the token that made the upload (app.device); null for a web upload. |
+| `blob_path` | text | not null |  | Blob Storage path photos/{business_date}/{device_uuid}/{media_uuid}.jpg written on the first upload. |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the first upload; fixes the blob path for every retry. |
+| `uploaded_at` | timestamp with time zone | not null |  | UTC time the first upload was stored. |
+
+Keys: `UNIQUE (blob_path)`; `PRIMARY KEY (media_uuid, purpose)`
+
+References: `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.memo
 
@@ -3378,6 +3402,8 @@ One row per route and business date holding the day state and submit timestamps;
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
+| `last_bundle_at` | timestamp with time zone | null |  | UTC time of the last full bundle download that carried this route-day (Data Entry Log DOWNLOAD MAX); null before the first. |
+| `bundle_count` | integer | not null |  | Number of full bundle downloads that carried this route-day (Data Entry Log DOWNLOAD count); 304 answers and delta pages are not counted. |
 
 Keys: `UNIQUE (route_id, business_date)`; `PRIMARY KEY (id)`
 
