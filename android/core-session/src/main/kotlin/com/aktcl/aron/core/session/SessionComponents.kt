@@ -21,14 +21,16 @@ import java.io.File
  */
 class SessionComponents(
     origin: ApiOrigin,
-    appVersion: String,
+    /** `<versionName>+<versionCode>` (`X-App-Version`, batch `app_version`). */
+    val appVersion: String,
     /** `app_sr`, `app_amo` or `app_tso`. */
     client: String,
     storageDir: File,
     cipher: SecretCipher,
     verifier: PasswordVerifier,
     okHttp: OkHttpClient = AronApiClient.defaultOkHttp(),
-    proofSigner: DeviceProofSigner? = null,
+    /** Signs `X-Device-Proof` once the device key exists (enrolment); null before. */
+    val proofSigner: DeviceProofSigner? = null,
     listener: ApiResponseListener? = null,
     /** Overrides the trusted clock (tests); production uses [trustedClock]. */
     clock: WallClock? = null,
