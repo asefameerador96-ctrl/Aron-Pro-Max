@@ -49,7 +49,9 @@ class NoPollingLintTest {
             if (!path.startsWith("core-printing/")) {
                 for (open in loopBodies(code)) {
                     val body = block(code, open)
-                    if (Regex("""\bdelay\s*\(|\bThread\.sleep\s*\(""").containsMatchIn(body)) { out += "$path: polling loop"; break }
+                    // A loop that waits is a timer: allowed only with a literal wait of at least 60 s (F-SYS-011 acceptance).
+                    val waits = Regex("""\b(?:delay|Thread\.sleep)\s*\(\s*([^)]*)\)""").findAll(body).map { it.groupValues[1].replace("_", "").removeSuffix("L").trim() }.toList()
+                    if (waits.any { (it.toLongOrNull() ?: 0L) < 60_000 }) { out += "$path: polling loop under 60 s"; break }
                 }
             }
         }
@@ -180,6 +182,7 @@ class NoPollingLintTest {
             "core-printing/src/main/P.kt" to "while (true) { if (ok) break; delay(5) }",
             "dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/H.kt" to "val am: AlarmManager = x",
             "core-sync/src/main/S.kt" to "PeriodicWorkRequestBuilder<W>(15, TimeUnit.MINUTES); while (true) { i++ ; if (i > 3) break }",
+            "feature-y/src/main/U.kt" to "LaunchedEffect(Unit) { while (true) { delay(60_000L); tick() } }",
             "feature-y/src/main/T.kt" to "/* never use AlarmManager or Timer() */ val s = \"startForeground( in a string\" // postDelayed in a comment",
         )
         assertEquals(emptyList<String>(), violations(fine))
