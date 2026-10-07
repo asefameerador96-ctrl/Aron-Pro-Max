@@ -31,3 +31,17 @@ LoginSubmitStatus:
       type: array
       items:
         $ref: '#/components/schemas/RouteDayState'
+    zones:
+      type: array
+      description: Final-submit state per zone in the caller's reach (F-WEB-047).
+      items:
+        type: object
+        required:
+        - zone_id
+        - final_submitted
+        additionalProperties: false
+        properties:
+          zone_id:
+            $ref: '#/components/schemas/Id'
+          final_submitted:
+            type: boolean

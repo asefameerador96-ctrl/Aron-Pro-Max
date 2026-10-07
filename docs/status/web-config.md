@@ -35,7 +35,7 @@ F-ADM-046: the master-data hub, the generated entities and the code-list pages c
 - F-ADM-036 dues adjustment: DEPENDENCY-WAIT. The page, proxy and tests are done against the contract; the outlet balance changes only when backend-core ships the dues ledger (F-SYS-060) and the dues-adjustment routes.
 
 ## Open items (not web-config's to fix)
-- F-ADM-064: the menu follows the matrix for ADMIN and SUPERADMIN only; other roles need their own menus from the API (docs/requests/web-config-menu-matrix.md).
+- F-ADM-064: contract v1.2 delivers `me.menus`; `loadAllowedMenus` now reads it for every role. The API half (resolving the row) is backend-admin's.
 - F-ADM-036 dues: no backend route or ledger exists yet.
 - Day control lists read report column names (docs/requests/web-config-day-control-columns.md).
 - Web Entry class split is built (sub-channel ids; names need docs/requests/web-config-entry-class-labels.md).
