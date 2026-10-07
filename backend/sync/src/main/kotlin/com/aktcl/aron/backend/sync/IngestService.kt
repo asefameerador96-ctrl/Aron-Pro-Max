@@ -105,7 +105,17 @@ class IngestService(
     }
 
     /** Per-batch caches. */
-    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant) {
+    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val trigger: String = "manual") {
+        /**
+         * F-SYS-089: (started_at) of the current generation when it is a failover or restore, else null; read once per
+         * batch and only for a `resync` batch.
+         */
+        val restoredAt: Instant? by lazy {
+            if (trigger != "resync") null else db.jdbi.withHandle<Instant?, Exception> { h ->
+                h.createQuery("SELECT started_at FROM app.server_generation WHERE is_current AND kind <> 'created'")
+                    .mapTo(OffsetDateTime::class.java).findOne().orElse(null)?.toInstant()
+            }
+        }
         /** Handlers' after-commit calls of the current family, by record index (dropped when the record rolls back). */
         val afterCommit = ArrayList<Triple<Int, com.aktcl.aron.backend.platform.RecordHandler, IngestRecord>>()
         /** Route-days this batch touched (F-SYS-016), settled at its end. */
@@ -133,7 +143,7 @@ class IngestService(
 
         replayOrClaim(up, req, recs.size, fingerprint, now)?.let { return it }
 
-        val ctx = Ctx(up, req.batch_uuid, now)
+        val ctx = Ctx(up, req.batch_uuid, now, req.trigger)
         val outcomes = arrayOfNulls<Outcome>(recs.size)
         var i = 0
         while (i < recs.size) {
@@ -322,8 +332,21 @@ class IngestService(
         // 3. Business-date window (s3.8 item 4): too old or in the future is quarantined, never dropped.
         val captured = Instant.parse(env.str("captured_at")!!)
         // A released signature quarantine was inside the window when first received: it is not too old now (item 2).
-        if ((!released && bd.isBefore(ctx.today.minusDays(ctx.backdateDays))) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
+        val tooOld = !released && bd.isBefore(ctx.today.minusDays(ctx.backdateDays))
+        // F-SYS-089: after a failover or restore the phone re-sends rows the lost lineage had acknowledged (trigger
+        // `resync`, docs/24 s4.8). One captured before the new lineage started may be older than the window: it is
+        // accepted and flagged `resync_late`, never quarantined (idempotency by client_uuid keeps the re-send safe).
+        // Bounded: the lost lineage accepted it, so its business date was inside the window when it was acked, at most
+        // a day before the new lineage started (the phone re-sends what was acked in the last cfg.sync.resync_window_h).
+        val resyncLate = tooOld && ctx.restoredAt?.let { at ->
+            !captured.isAfter(at) && !bd.isBefore(BusinessDate.of(at.toEpochMilli()).toJavaLocalDate().minusDays(ctx.backdateDays + 1))
+        } == true
+        if ((tooOld && !resyncLate) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, "business_date $bd, today ${ctx.today}")
+        }
+        if (resyncLate) {
+            // Until db stores the flag (docs/requests/backend-core-resync-late-flag.md) it is a structured log line.
+            log.warn("resync_late client_uuid=${r.clientUuid} type=${r.type} business_date=$bd user=${ctx.up.userId} batch_uuid=${ctx.batchUuid}")
         }
 
         // 4. References that must exist (unknown ids are final rejections, s4.5).

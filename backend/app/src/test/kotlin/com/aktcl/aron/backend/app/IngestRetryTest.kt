@@ -147,10 +147,10 @@ class IngestRetryTest {
 
     private fun uuidOf(rec: JsonObject) = rec["client_uuid"]!!.jsonPrimitive.content
 
-    private suspend fun HttpClient.send(records: List<JsonObject>, want: String = "accepted"): JsonObject {
+    private suspend fun HttpClient.send(records: List<JsonObject>, want: String = "accepted", trigger: String = "manual"): JsonObject {
         val body = buildJsonObject {
             put("batch_uuid", uuid()); put("device_uuid", devPhone); put("schema_version", 1); put("app_version", "1.0.9+9")
-            put("trigger", "manual"); put("sent_at_device", "2027-01-03T04:00:00.000Z"); put("pending_rows", 0)
+            put("trigger", trigger); put("sent_at_device", "2027-01-03T04:00:00.000Z"); put("pending_rows", 0)
             put("time_anchors", JsonArray(emptyList())); put("device_counts", buildJsonObject {}); put("records", JsonArray(records))
         }.toString()
         val gz = ByteArrayOutputStream().also { o -> GZIPOutputStream(o).use { it.write(body.toByteArray()) } }.toByteArray()
@@ -215,5 +215,30 @@ class IngestRetryTest {
         client.send(listOf(v))
         client.send(listOf(v), want = "duplicate")
         assertEquals(1L, visits(cu))
+    }
+
+    /** The visit dated [date], captured at 05:00Z that day. */
+    private fun oldVisit(outlet: Long, date: String): JsonObject {
+        val v = visit(outlet, 10.0, capturedAt = "${date}T05:00:00.000Z")
+        return JsonObject(v + ("business_date" to kotlinx.serialization.json.JsonPrimitive(date)))
+    }
+
+    /** F-SYS-089: after a failover a re-sent row older than the window is accepted (flag resync_late), never quarantined. */
+    @Test
+    fun aResyncRowOlderThanTheWindowIsAcceptedOnlyAfterARestore() = testApplication {
+        application { aronApi(wiring) }
+        val o = newOutlet("RTY-RSY-1")
+        // 2026-12-26 is 8 days before 2027-01-03: outside cfg.sync.max_backdate_days (7).
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined")
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined", trigger = "resync") // no restore yet
+        fresh.db.jdbi.useTransaction<Exception> { h ->
+            h.execute("UPDATE app.server_generation SET is_current = false WHERE is_current")
+            h.execute("INSERT INTO app.server_generation (generation, kind, started_at, lost_after_utc) VALUES (gen_random_uuid(), 'pitr_restore', TIMESTAMPTZ '2027-01-03 04:00:00+00', TIMESTAMPTZ '2027-01-03 03:00:00+00')")
+        }
+        client.send(listOf(oldVisit(o, "2026-12-26")), want = "quarantined") // not a re-send
+        val late = oldVisit(o, "2026-12-26")
+        client.send(listOf(late), want = "accepted", trigger = "resync")
+        assertEquals(1L, visits(uuidOf(late)))
+        client.send(listOf(oldVisit(o, "2026-12-24")), want = "quarantined", trigger = "resync") // beyond what a lineage accepted
     }
 }
