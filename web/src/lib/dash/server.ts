@@ -26,6 +26,7 @@ export const listSkus = (token: string) => get<Schemas["SkuPage"]>(token, "/v1/a
 
 /** The calendar day before a business date (YYYY-MM-DD), by UTC arithmetic: Dhaka has no DST. */
 export function previousDate(ymd: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd) || Number.isNaN(Date.parse(`${ymd}T00:00:00Z`))) throw new RangeError("not a date");
   const d = new Date(`${ymd}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);

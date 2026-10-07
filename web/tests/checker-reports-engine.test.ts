@@ -31,7 +31,6 @@ async function login(username: string, password: string) {
   const session: SessionData = { at: b.access_token, atExp: Date.now() + 600_000, user: b.user, scope: b.scope };
   return { at: b.access_token, scope: b.scope, cookie: `${SESSION_COOKIE}=${seal(session, SESSION_PURPOSE, 600)}` };
 }
-const terr = (id: number): ScopeSummary => ({ scope_version: 1, nodes: [{ type: "territory", id, code: null, name: null }] });
 const rep = reportBySlug("route-std")!;
 
 describe("F-WEB-040 page vs export query divergence", () => {

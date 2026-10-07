@@ -5,16 +5,16 @@ import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { BUCKETS } from "@/lib/dash/buckets";
 import { getDailyTracking } from "@/lib/dash/server";
+import { isCalendarDate } from "@/lib/dates";
 import { businessDate, problemMessage, t } from "@/lib/i18n";
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // TSO Daily Tracking Dashboard (F-WEB-028): routes of the TSO's territory in the 100, 90 to 100, 80 to 90 and below 80 percent buckets,
 // plus the two non-selling buckets. The scope is the server's; the page never names a territory.
 export default async function TsoDailyTrackingPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const [sp, locale, session] = await Promise.all([searchParams, getLocale(), requireSession()]);
   const today = businessDate();
-  const date = sp.date && DATE.test(sp.date) ? sp.date : today;
+  const date = isCalendarDate(sp.date) ? sp.date : today;
   const r = await getDailyTracking(session.at, date);
   if (!r.ok)
     return (
