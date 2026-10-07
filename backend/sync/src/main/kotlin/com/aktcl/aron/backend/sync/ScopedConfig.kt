@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import org.jdbi.v3.core.Handle
@@ -59,7 +60,7 @@ class ScopedConfig private constructor(
     /** Every key delivered to phones (`delivery` device or both) resolved for [chain]; keys without a value are left out. */
     fun deviceValues(chain: Chain): List<ResolvedConfigValue> = keys.values.filter { it.delivery != "server" }.sortedBy { it.key }.mapNotNull { k ->
         val w = winner(k.key, chain)
-        val v = (w?.value ?: k.default)?.takeUnless { it is JsonNull } ?: return@mapNotNull null
+        val v = (w?.value ?: k.default)?.takeUnless { it is JsonNull }?.takeIf(::fitsContract) ?: return@mapNotNull null
         ResolvedConfigValue(
             key = k.key, value = v, scope_type = w?.scope?.wire ?: "default", scope_id = w?.scopeId,
             effective_from = w?.from?.wire(), effective_to = w?.to?.wire(), config_version = w?.version,
@@ -71,13 +72,31 @@ class ScopedConfig private constructor(
     fun deviceScheduled(chain: Chain, until: Instant): List<ResolvedConfigValue> =
         rows.values.flatten().filter { r ->
             val k = keys[r.key]
-            k != null && k.delivery != "server" && r.from.isAfter(now) && !r.from.isAfter(until) && chain.matches(r) && r.value !is JsonNull
+            k != null && k.delivery != "server" && r.from.isAfter(now) && !r.from.isAfter(until) && chain.matches(r) && r.value !is JsonNull && fitsContract(r.value)
         }.sortedWith(compareBy({ it.from }, { it.key }, { it.scope.precedence })).map { r ->
             val k = keys.getValue(r.key)
             ResolvedConfigValue(r.key, r.value, r.scope.wire, r.scopeId, r.from.wire(), r.to?.wire(), r.version, k.requiresAck, k.bounds.takeIf { it.isNotEmpty() })
         }
 
     companion object {
+        /**
+         * Contract ConfigValueJson: a scalar, an array of scalars or of flat objects, or an object whose members are
+         * scalars, arrays of scalars or flat objects. A value nested deeper (two registry keys today, see
+         * docs/requests/backend-config-value-shape.md) is left out of the bundle rather than break a strict phone decoder;
+         * the phone uses its built-in default for it.
+         */
+        fun fitsContract(v: JsonElement): Boolean {
+            fun scalar(e: JsonElement) = e is JsonPrimitive && e !is JsonNull
+            fun flat(e: JsonElement) = e is JsonObject && e.values.all { scalar(it) || it is JsonNull }
+            return when (v) {
+                is JsonNull -> false
+                is JsonPrimitive -> !v.isString || v.content.length <= 4000
+                is kotlinx.serialization.json.JsonArray -> v.size <= 500 && v.all { scalar(it) || flat(it) }
+                is JsonObject -> v.values.all { x -> scalar(x) || x is JsonNull || (x is kotlinx.serialization.json.JsonArray && x.size <= 200 && x.all { scalar(it) || it is JsonNull }) || flat(x) }
+                else -> false
+            }
+        }
+
         private val ALLOWED_BOUNDS = setOf("min", "max", "enum", "max_items", "dynamic_min", "dynamic_max")
 
         /** Loads the registry and every value row valid at [now] or starting before [until]. */

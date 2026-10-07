@@ -39,9 +39,9 @@ fun AronPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.fillMaxWidth().heightIn(min = MinTouch),
-        shape = RoundedCornerShape(12.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Primary),
+        shape = RoundedCornerShape(50),
+        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
     ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge) }
 }
 
@@ -52,7 +52,7 @@ fun AronSecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = 
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.fillMaxWidth().heightIn(min = MinTouch),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(50),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
     ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge) }
@@ -108,13 +108,10 @@ fun OfflineBanner(modifier: Modifier = Modifier) =
 /** One tile of the home grid: [label] under a [badge] count (hidden when 0) on a 48 dp+ target. */
 @Composable
 fun AronTile(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Int = 0, enabled: Boolean = true) {
-    Surface(
+    GlassSurface(
         modifier = modifier.heightIn(min = 88.dp).clickable(enabled = enabled, role = Role.Button, onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 1.dp,
     ) {
-        Box(Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 88.dp).padding(8.dp), contentAlignment = Alignment.Center) {
             Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 3)
             if (badge > 0) {
                 Surface(

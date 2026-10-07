@@ -35,7 +35,7 @@ class BundleApplyTest {
         val extra = Json.parseToJsonElement(
             """{
               "prices": [
-                {"id": 1, "sku_id": 100, "price_type": "outlet", "amount_mtk": 9000, "per_base_qty": 1, "valid_from": "2026-09-01", "valid_to": "2026-10-05"},
+                {"id": 1, "sku_id": 100, "price_type": "outlet", "amount_mtk": 9000, "per_base_qty": 1, "valid_from": "2026-09-01", "valid_to": "2026-10-06"},
                 {"id": 2, "sku_id": 100, "price_type": "outlet", "amount_mtk": 9500, "per_base_qty": 1, "valid_from": "2026-10-06", "valid_to": null},
                 {"id": 3, "sku_id": 100, "price_type": "cc", "amount_mtk": 8800, "per_base_qty": 1, "valid_from": "2026-09-01"}
               ],
@@ -92,6 +92,21 @@ class BundleApplyTest {
         assertEquals(ApplyResult.OLDER_IGNORED, apply(bundle("2026-10-06:1", "2026-10-06")))
         assertEquals("2026-10-06:2", repo.bundleVersion())
         assertEquals("2026-10-06", repo.businessDate())
+    }
+
+    @Test fun chunksNeverSplitASurrogatePairAndRejoinExactly() {
+        val text = "ক" + "\uD83D\uDE00".repeat(5) + "x"
+        for (size in 2..5) {
+            val parts = ReferenceRepository.chunks(text, size)
+            assertEquals(text, parts.joinToString(""))
+            assertTrue(parts.none { Character.isHighSurrogate(it.last()) })
+        }
+    }
+
+    @Test fun aSectionLargerThanACursorWindowIsStoredAndReadBack() = runTest {
+        val big = "ক".repeat(1_500_000)
+        apply(JsonObject(bundle() + ("tutorials" to kotlinx.serialization.json.JsonPrimitive(big))))
+        assertEquals("\"$big\"", repo.section("tutorials"))
     }
 
     @Test fun versionOrderIsNumericOnTheSnapshotSequence() {

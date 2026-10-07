@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
 import type { SupervisorTarget } from "@/lib/admin/types";
+import { digitsOnly } from "@/lib/admin/taka";
 import { inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 
@@ -102,7 +103,7 @@ export function SupervisorTargetsEditor({ month, initial: stored, names, canWrit
         <div className="flex items-end gap-2" data-testid="add-officer">
           <label className="text-sm">
             <span className="mb-1 block">{t("st.add_user")}</span>
-            <input aria-label={t("st.add_user")} name="user_id" value={newId} inputMode="numeric" onChange={(e) => setNewId(e.target.value.replace(/\D/g, ""))} className={`${inputClass} w-32`} />
+            <input aria-label={t("st.add_user")} name="user_id" value={newId} inputMode="numeric" onChange={(e) => setNewId(digitsOnly(e.target.value))} className={`${inputClass} w-32`} />
           </label>
           <button type="button" onClick={addOfficer} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">{t("st.add")}</button>
           {errors.add ? <p role="alert" className="text-xs text-red-700">{errors.add}</p> : null}

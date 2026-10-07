@@ -21,25 +21,37 @@ import java.io.File
  */
 class SessionComponents(
     origin: ApiOrigin,
-    appVersion: String,
+    /** `<versionName>+<versionCode>` (`X-App-Version`, batch `app_version`). */
+    val appVersion: String,
     /** `app_sr`, `app_amo` or `app_tso`. */
     client: String,
     storageDir: File,
     cipher: SecretCipher,
     verifier: PasswordVerifier,
     okHttp: OkHttpClient = AronApiClient.defaultOkHttp(),
-    proofSigner: DeviceProofSigner? = null,
+    /** Signs `X-Device-Proof` once the device key exists (enrolment); null before. */
+    val proofSigner: DeviceProofSigner? = null,
     listener: ApiResponseListener? = null,
-    /** Trusted time once F-SYS-049 lands (Day 2); proofs and offline-unlock rules read it. */
-    clock: WallClock = WallClock.System,
+    /** Overrides the trusted clock (tests); production uses [trustedClock]. */
+    clock: WallClock? = null,
+    /** `Settings.Global.BOOT_COUNT`; the trusted clock's anchors are valid within one boot. */
+    bootCount: () -> Int = { 0 },
 ) {
     private val tokens = DelegatingTokenSource()
 
+    /** Trusted time (docs/24 s3.8, F-SYS-049): fed by every API response's `X-Server-Time`. */
+    val trustedClock = TrustedClockSource(File(storageDir, "time-anchors"), bootCount)
+    val clock: WallClock = clock ?: trustedClock
+
     val deviceIdentity = DeviceIdentity(storageDir)
-    val apiClient = AronApiClient(origin, okHttp, ClientIdentity(appVersion) { deviceIdentity.deviceUuid }, tokens, listener)
-    val authApi = AuthApi(apiClient, proofSigner, clock::nowMs)
+
+    /** SQLCipher passphrases of the per-user databases, wrapped by the same Keystore cipher as the tokens. */
+    val databaseKeys = DatabaseKeys(File(storageDir, "dbkeys"), cipher)
+    val apiClient = AronApiClient(origin, okHttp, ClientIdentity(appVersion) { deviceIdentity.deviceUuid }, tokens,
+        ApiResponseListener { meta -> trustedClock.onApiResponse(meta); listener?.onApiResponse(meta) })
+    val authApi = AuthApi(apiClient, proofSigner, this.clock::nowMs)
     val syncApi = SyncApi(apiClient)
-    val session = SessionRepository(authApi, SessionStore(File(storageDir, "session"), cipher), verifier, deviceIdentity, client, clock)
+    val session = SessionRepository(authApi, SessionStore(File(storageDir, "session"), cipher), verifier, deviceIdentity, client, this.clock)
 
     init {
         tokens.target = session
@@ -56,6 +68,7 @@ class SessionComponents(
                 cipher = KeystoreSecretCipher(),
                 verifier = Argon2idPasswordVerifier(),
                 proofSigner = proofSigner,
+                bootCount = { android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 0) },
             )
     }
 }
