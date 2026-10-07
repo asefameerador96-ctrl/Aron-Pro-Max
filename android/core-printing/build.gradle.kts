@@ -1,10 +1,13 @@
 // android:core-printing. Lane: android-print. Owner and scope: docs/24-build-spec.md s1.2, s2.1, s5.5.
 plugins {
     alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.aktcl.aron.core.printing"
+    // Printer icon, banner, picker and the sale print dialogs (F-SR-013, F-SR-028); themed by the host app.
+    buildFeatures { compose = true }
     sourceSets {
         // Print samples and the PBM codec are shared by the JVM goldens and the on-phone golden test.
         getByName("test").kotlin.directories.add("src/test/shared/kotlin")
@@ -18,6 +21,8 @@ android {
 dependencies {
     implementation(project(":android:core-common"))
     implementation(libs.kotlinx.serialization.json)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.bundles.compose)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)

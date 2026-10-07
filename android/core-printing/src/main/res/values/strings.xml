@@ -44,4 +44,31 @@
     <string name="print_collected">Collected</string>
     <string name="print_due_after">Due after</string>
     <string name="print_signature">Signature</string>
+    <!-- Printer state, pairing and the sale print dialogs (F-SR-013, F-SR-028, F-SR-073). -->
+    <string name="printer_connected">Printer connected</string>
+    <string name="printer_not_connected">Printer not connected</string>
+    <string name="printer_connecting">Connecting to the printer…</string>
+    <string name="printer_none">No printer added</string>
+    <string name="printer_paper_out">The printer is out of paper</string>
+    <string name="printer_printing">Printing…</string>
+    <string name="printer_icon_description">Printer</string>
+    <string name="printer_pick_title">Choose the printer</string>
+    <string name="printer_pick_empty">No paired printer found. Pair the printer in Bluetooth settings (PIN 0000).</string>
+    <string name="printer_open_bluetooth">Bluetooth settings</string>
+    <string name="printer_forget">Remove printer</string>
+    <string name="dialog_yes">Yes</string>
+    <string name="dialog_no">No</string>
+    <string name="dialog_ok">OK</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="sale_confirm_title">Are you sure?</string>
+    <string name="sale_confirm_text">The sale will be saved</string>
+    <string name="sale_print_question">Do you want to print this sale?</string>
+    <string name="sale_saved">The sale was saved</string>
+    <string name="ui_print_readable_question">Is the print readable?</string>
+    <string name="ui_print_failed">Not printed. The sale is saved and can be printed later.</string>
+    <string name="ui_print_retry">Retry</string>
+    <string name="ui_print_later">Print later</string>
+    <string name="ui_print_limit_reached">No more reprints allowed (limit reached)</string>
+    <string name="ui_print_too_long">This document is too long to print</string>
+    <string name="ui_print_saving">Saving…</string>
 </resources>

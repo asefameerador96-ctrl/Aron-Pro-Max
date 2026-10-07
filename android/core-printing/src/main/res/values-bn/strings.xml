@@ -44,4 +44,31 @@
     <string name="print_collected">আদায়</string>
     <string name="print_due_after">অবশিষ্ট বাকি</string>
     <string name="print_signature">স্বাক্ষর</string>
+    <!-- Printer state, pairing and the sale print dialogs (F-SR-013, F-SR-028, F-SR-073). -->
+    <string name="printer_connected">প্রিন্টার কানেক্ট করা হয়েছে</string>
+    <string name="printer_not_connected">প্রিন্টার কানেক্ট করা নেই</string>
+    <string name="printer_connecting">প্রিন্টার কানেক্ট হচ্ছে…</string>
+    <string name="printer_none">কোনো প্রিন্টার যুক্ত করা নেই</string>
+    <string name="printer_paper_out">প্রিন্টারে কাগজ নেই</string>
+    <string name="printer_printing">প্রিন্ট হচ্ছে…</string>
+    <string name="printer_icon_description">প্রিন্টার</string>
+    <string name="printer_pick_title">প্রিন্টার নির্বাচন করুন</string>
+    <string name="printer_pick_empty">কোনো পেয়ার করা প্রিন্টার পাওয়া যায়নি। ব্লুটুথ সেটিংসে প্রিন্টার পেয়ার করুন (পিন 0000)।</string>
+    <string name="printer_open_bluetooth">ব্লুটুথ সেটিংস</string>
+    <string name="printer_forget">প্রিন্টার মুছুন</string>
+    <string name="dialog_yes">হ্যাঁ</string>
+    <string name="dialog_no">না</string>
+    <string name="dialog_ok">ঠিক আছে</string>
+    <string name="dialog_cancel">বাতিল</string>
+    <string name="sale_confirm_title">আপনি কি নিশ্চিত?</string>
+    <string name="sale_confirm_text">বিক্রয় জমা হবে</string>
+    <string name="sale_print_question">আপনি কি এই বিক্রয়টি প্রিন্ট করতে চান?</string>
+    <string name="sale_saved">বিক্রয় সফল ভাবে জমা হয়েছে</string>
+    <string name="ui_print_readable_question">ছাপা ঠিক আছে?</string>
+    <string name="ui_print_failed">প্রিন্ট হয়নি। বিক্রয় জমা আছে, পরে আবার প্রিন্ট করা যাবে।</string>
+    <string name="ui_print_retry">আবার চেষ্টা</string>
+    <string name="ui_print_later">পরে প্রিন্ট</string>
+    <string name="ui_print_limit_reached">আর পুনঃমুদ্রণ করা যাবে না (সীমা শেষ)</string>
+    <string name="ui_print_too_long">এই কাগজটি প্রিন্টের জন্য অনেক লম্বা</string>
+    <string name="ui_print_saving">জমা হচ্ছে…</string>
 </resources>
