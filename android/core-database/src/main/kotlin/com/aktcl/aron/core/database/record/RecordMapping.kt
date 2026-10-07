@@ -273,6 +273,24 @@ object RecordMapping {
         },
     )
 
+    /**
+     * `app_error` (F-SYS-032): a crash, ANR or handled error, already scrubbed (core-sync `ErrorScrubber`). Its own family,
+     * rank 0, no route; every contract member written (null when absent).
+     */
+    fun appError(clientUuid: String, meta: CaptureMeta, e: AppErrorReport) = outbox(
+        RecordType.APP_ERROR, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null), meta.capturedAt,
+        JsonObject.serializer(),
+        buildJsonObject {
+            put("occurred_at", JsonPrimitive(e.occurredAt))
+            put("kind", JsonPrimitive(e.kind))
+            put("exception_class", JsonPrimitive(e.exceptionClass.take(200)))
+            put("message", e.message?.take(500)?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
+            put("stack", e.stack?.take(16_000)?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
+            put("screen", e.screen?.take(60)?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
+            put("app_version", JsonPrimitive(e.appVersion))
+        },
+    )
+
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */
     fun printEvent(e: PrintEventEntity, familyUuid: String, rank: Int, payload: JsonObject, createdAt: String) = outbox(
         RecordType.PRINT_EVENT, e.clientUuid, familyUuid, rank, e.meta, createdAt, JsonObject.serializer(), payload,
@@ -321,3 +339,15 @@ object RecordMapping {
 
 /** One `activity_log` event (contract ActivityLogPayload.events[]). */
 data class ActivityEvent(val at: String, val screen: String, val action: String, val durationMs: Long? = null)
+
+/** One `app_error` (contract AppErrorPayload); `kind` is crash, anr or handled. */
+@kotlinx.serialization.Serializable
+data class AppErrorReport(
+    val occurredAt: String,
+    val kind: String,
+    val exceptionClass: String,
+    val message: String?,
+    val stack: String?,
+    val screen: String?,
+    val appVersion: String,
+)

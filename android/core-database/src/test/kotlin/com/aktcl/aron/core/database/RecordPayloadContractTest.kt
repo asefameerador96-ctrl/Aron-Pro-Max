@@ -89,6 +89,14 @@ class RecordPayloadContractTest {
         assertEquals(itemProps, payload["events"]!!.jsonArray[0].jsonObject.keys)
     }
 
+    /** F-SYS-032: the encoded app_error payload has exactly the contract's members. */
+    @Test fun appErrorPayload() {
+        val (visit, _) = TestRows.visit()
+        val r = com.aktcl.aron.core.database.record.AppErrorReport("2026-10-05T04:35:00.000Z", "crash", "java.lang.IllegalStateException", null, null, null, "1.0.3+10003")
+        val payload = Json.parseToJsonElement(RecordMapping.appError("6f1c2d3e-0000-4000-8000-000000000032", visit.meta, r).payloadJson).jsonObject["payload"]!!.jsonObject
+        assertEquals(ContractYaml.propertyNames("AppErrorPayload"), payload.keys)
+    }
+
     @Test fun routeSnapshot() = check(RouteSnapshot.serializer(), "RouteSnapshot", coverAll = false)
 
     @Test

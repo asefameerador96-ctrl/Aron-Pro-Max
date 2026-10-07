@@ -17,6 +17,7 @@ import javax.inject.Inject
 @HiltAndroidApp
 class AronTSOApplication : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: AronWorkerFactory
+    @Inject lateinit var errorReporter: com.aktcl.aron.core.sync.ErrorReporter
     @Inject lateinit var connectivityFlush: ConnectivityFlush
     @Inject lateinit var deviceRuntime: DeviceRuntime
     @Inject lateinit var syncScheduler: WorkManagerSyncScheduler
@@ -27,6 +28,7 @@ class AronTSOApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         com.aktcl.aron.core.common.DebugStrictMode.install(BuildConfig.DEBUG) // before Hilt builds the graph on this thread
         super.onCreate()
+        errorReporter.start(this, CoroutineScope(SupervisorJob() + Dispatchers.Default)) // F-SYS-032, first: crashes from here on are kept
         ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives
         // DPC: trusted clock and calendar, re-apply the stored policy; integrity evidence after each online login.
         // Off the main thread; nothing here touches the network or waits for it.

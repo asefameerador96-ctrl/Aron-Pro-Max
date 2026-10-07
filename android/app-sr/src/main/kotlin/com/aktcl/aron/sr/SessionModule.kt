@@ -143,4 +143,15 @@ object SessionModule {
     @Singleton
     fun activityLog(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.ActivityLog =
         com.aktcl.aron.core.sync.ActivityLog({ databases.of(it) }, components.trustedClock, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(context))
+
+    /** F-SYS-032: crash files, ANRs and handled errors as scrubbed app_error records of the signed-in user. */
+    @Provides
+    @Singleton
+    fun errorReporter(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.ErrorReporter =
+        com.aktcl.aron.core.sync.ErrorReporter(
+            File(context.noBackupFilesDir, "errors"), { databases.of(it) }, components.trustedClock, components.appVersion,
+            com.aktcl.aron.core.sync.LocationNotice.offlineProbe(context),
+            activeUser = { (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
+            currentUser = { (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
+        )
 }
