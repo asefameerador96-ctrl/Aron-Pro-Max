@@ -39,7 +39,7 @@ fun main() {
     }
     when (settings.role) {
         ServerRole.MIGRATE -> {
-            val code = Database.pool(settings.dbUrl, settings.dbUser, settings.dbPassword, 2, "aron-migrate").use { ds ->
+            val code = Database.pool(settings.dbUrl, settings.dbUser, settings.dbPassword, 2, "aron-migrate", connectionTimeoutMs = Migrator.MIGRATE_CONNECTION_TIMEOUT_MS).use { ds ->
                 runCatching { Migrator.migrate(ds) }
                     .onSuccess { log.info("migrate: {} migration(s) applied", it) }
                     .onFailure { log.error("migrate failed", it) }
@@ -56,7 +56,8 @@ fun main() {
             val workerDb = Database.fromSettings(settings)
             AggregationWorker(workerDb).start()
             com.aktcl.aron.backend.masterdata.RiskSignalJob(com.aktcl.aron.backend.masterdata.RiskSignalEvaluator(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)))).start()
-            log.info("aron worker started (aggregation, risk signals)")
+            com.aktcl.aron.backend.sync.RouteDayPlanningJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
+            log.info("aron worker started (aggregation, risk signals, route-day planning)")
             Thread.currentThread().join()
         }
     }

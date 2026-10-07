@@ -18,7 +18,9 @@ import com.aktcl.aron.core.database.entity.QcLineEntity
 import com.aktcl.aron.core.database.entity.StockMovementEntity
 import com.aktcl.aron.core.database.entity.VisitCloseEntity
 import com.aktcl.aron.core.database.entity.VisitEntity
+import com.aktcl.aron.contract.MediaPurpose
 import com.aktcl.aron.contract.OutletRequestType
+import com.aktcl.aron.contract.RecordType
 import com.aktcl.aron.core.database.record.RecordMapping
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -217,6 +219,38 @@ class CaptureRepository(
     }
 
     /**
+     * Queues a photo's `media_meta` record (F-SYS-010, android-sys): one outbox row, one transaction. The media worker may
+     * repeat it after a kill, so a media uuid already in the outbox is a no-op that returns false (never a second record).
+     * [MediaMetaCapture.fixClientUuid] names a stored geo_fix row; its payload is built from that row.
+     */
+    suspend fun recordMediaMeta(m: MediaMetaCapture): Boolean {
+        requireUuids(m.mediaUuid, m.refClientUuid)
+        m.fixClientUuid?.let { requireUuids(it) }
+        require(MediaPurpose.entries.any { it.wire == m.purpose }) { "unknown media purpose ${m.purpose}" }
+        require(RecordType.entries.any { it.wire == m.refType }) { "unknown record type ${m.refType}" }
+        require(SHA256.matches(m.sha256)) { "sha256 must be 64 lower-case hex characters" }
+        require(m.phash == null || PHASH.matches(m.phash)) { "phash must be 16 lower-case hex characters" }
+        require(m.bytes in 1..307_200) { "bytes out of range: ${m.bytes}" }
+        require(m.width in 1..4096 && m.height in 1..4096) { "size out of range: ${m.width}x${m.height}" }
+        require(BLOB_PATH.matches(m.blobPath)) { "blob_path is not photos/<date>/<uuid>/<uuid>.jpg: ${m.blobPath}" }
+        return db.withTransaction {
+            if (outbox.byClientUuid(m.mediaUuid) != null) return@withTransaction false
+            val fix = m.fixClientUuid?.let { checkNotNull(capture.fix(it)) { "geo_fix ${m.fixClientUuid} is not stored" } }
+            outbox.insert(listOf(RecordMapping.mediaMeta(m, fix, nowIso())))
+            true
+        }
+    }
+
+    /**
+     * Queues a `device_status` record (F-SYS-031, N-026): one outbox row in one transaction. It belongs to no route-day, so a
+     * Sales Submit never refuses it.
+     */
+    suspend fun recordDeviceStatus(clientUuid: String, meta: CaptureMeta, report: com.aktcl.aron.contract.DeviceStatusReport) = db.withTransaction {
+        requireUuids(clientUuid)
+        outbox.insert(listOf(RecordMapping.deviceStatus(clientUuid, meta, report, nowIso())))
+    }
+
+    /**
      * The server reopened a submitted route-day (a submit void): captures of [businessDate] and [routeId] are allowed again
      * until a submit of a later cycle than [voidedCycle].
      */
@@ -249,3 +283,31 @@ class CaptureRepository(
         val ISO_MILLIS: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
     }
 }
+
+/** A photo's metadata for its `media_meta` record (contract `MediaMetaPayload`); android-sys builds it after the blob upload. */
+data class MediaMetaCapture(
+    /** = the record's client_uuid. */
+    val mediaUuid: String,
+    /** Envelope; `business_date` is the photo's business date. */
+    val meta: CaptureMeta,
+    /** `MediaPurpose`. */
+    val purpose: String,
+    /** `RecordType` of the owning record. */
+    val refType: String,
+    val refClientUuid: String,
+    val sha256: String,
+    val phash: String?,
+    val bytes: Int,
+    val width: Int,
+    val height: Int,
+    /** From the SAS response: `photos/<date>/<user uuid>/<media uuid>.jpg`. */
+    val blobPath: String,
+    /** ISO-8601 UTC. */
+    val takenAt: String,
+    /** The stored geo_fix row of the photo, or null (`fix: null`). */
+    val fixClientUuid: String?,
+)
+
+private val SHA256 = Regex("^[0-9a-f]{64}$")
+private val PHASH = Regex("^[0-9a-f]{16}$")
+private val BLOB_PATH = Regex("^photos/\\d{4}-\\d{2}-\\d{2}/[0-9a-f-]{36}/[0-9a-f-]{36}\\.jpg$")

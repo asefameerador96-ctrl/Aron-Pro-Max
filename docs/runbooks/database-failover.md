@@ -2,8 +2,9 @@
 
 **Trigger:** alert `aron-<env>-pg-not-alive` or `aron-<env>-resource-health` names the PostgreSQL server, or the api
 answers 503 on `/v1/health/ready` while `/v1/health` is 200 (process up, database unreachable).
-**Who:** infra lane or the lead; the owner is told, not asked. **Time:** dev drill not run yet; design figure: Azure
-zone-redundant HA fails over in 60 to 120 s; the api must then reconnect on its own (backend REL-01).
+**Who:** infra lane or the lead; the owner is told, not asked. **Time:** dev drill 2026-10-07 06:27 UTC: about **30 s** of
+user-visible outage (readiness 503, then two timed-out probes), api reconnected by itself; the Azure failover call
+itself returned after 429 s (zone 1 -> 2).
 
 ## What happens by itself
 
@@ -32,4 +33,6 @@ zone-redundant HA fails over in 60 to 120 s; the api must then reconnect on its 
 ## Drill
 
 Actions > **drill** > `mode: failover`, `confirm: lead approved failover drill` (dev is unavailable for about 1 to 2
-minutes; pick a quiet time). The summary gives the failover duration and the time until the api is ready again.
+minutes; pick a quiet time). The script probes `/v1/health/ready` every 5 s from BEFORE the Azure call, so the summary
+gives the user-visible outage (first failed probe to ready again) separately from the Azure call, which returns minutes
+later (429 s on 2026-10-07 for about 30 s of outage).

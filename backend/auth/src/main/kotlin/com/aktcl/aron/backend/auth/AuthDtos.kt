@@ -47,6 +47,8 @@ data class LoginResponse(
     val config_version: Long,
     val server_time: String,
     val min_app_version_code: Int?,
+    /** Web `password_change_required` only (R15): Bearer token for POST /v1/auth/change-password. */
+    val password_change_token: String? = null,
 )
 
 @Serializable
@@ -75,4 +77,37 @@ data class JwkEcPublic(val kty: String, val crv: String, val x: String, val y: S
 data class Jwks(val keys: List<JwkEcPublic>)
 
 @Serializable
-data class Me(val user: UserSummary, val permissions: List<String>, val scope: ScopeSummary, val pii: Boolean, val mfa_enabled: Boolean)
+data class Me(val user: UserSummary, val permissions: List<String>, val scope: ScopeSummary, val pii: Boolean, val mfa_enabled: Boolean, val menus: List<kotlinx.serialization.json.JsonElement>? = null)
+
+/** POST /v1/auth/change-password (contract ChangePasswordRequest; never logged). */
+@Serializable
+data class ChangePasswordRequest(val current_password: String, val new_password: String) {
+    init {
+        require(current_password.length in 1..128) { "/current_password: length" }
+        require(new_password.length in 8..128) { "/new_password: length" }
+    }
+
+    override fun toString() = "ChangePasswordRequest(***)"
+}
+
+/** POST /v1/auth/bind-device (contract BindDeviceRequest; the OTP is never logged). */
+@Serializable
+data class BindDeviceRequest(val device_uuid: String, val otp: String) {
+    init {
+        require(UUID_V4.matches(device_uuid)) { "/device_uuid: pattern" }
+        require(Regex("^[0-9]{4,8}$").matches(otp)) { "/otp: pattern" }
+    }
+
+    override fun toString() = "BindDeviceRequest(device_uuid=$device_uuid, otp=***)"
+}
+
+/** POST /v1/auth/logout (contract LogoutRequest). */
+@Serializable
+data class LogoutRequest(val scope: String, val refresh_token: String? = null) {
+    init {
+        require(scope in setOf("session", "upload", "all")) { "/scope: enum" }
+        require(refresh_token == null || refresh_token.length in 43..64) { "/refresh_token: length" }
+    }
+
+    override fun toString() = "LogoutRequest(scope=$scope)"
+}

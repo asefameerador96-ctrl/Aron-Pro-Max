@@ -16,3 +16,8 @@ Rule (docs/26 s2): lanes never edit `contract/openapi.yaml`; they file `docs/req
 | 8 | 2026-10-07 | web-admin-feedback-filters.md | `listFeedback` gets optional query parameters `category_code` (pattern of `FeedbackPayload.category_code`) and `status` (`FeedbackStatus`); newest first. |
 
 Not queued (decided no contract change): password policy hint (web keeps the contract text, R14 note), F-API-083/037/065 (R16).
+
+## Next batch (v1.4), queued after v1.3 (committed on lane/lead-contract-v1-3)
+| # | Ruled | Source | Shape |
+|---|---|---|---|
+| 9 | 2026-10-07 | backend-core-change-password-statuses.md | `changePassword` documents the responses the server really returns: 403, 409 and 503 in addition to 204/200, 400, 401, 429 (reasons in the request file); additive. Apply with the next batch of 5 items or when a lane is blocked. |

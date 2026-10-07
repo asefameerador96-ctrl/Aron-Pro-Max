@@ -50,6 +50,7 @@ class RecordPayloadContractTest {
     @Test fun visitSkip() = check(com.aktcl.aron.core.database.record.VisitSkipPayload.serializer(), "VisitSkipPayload")
     @Test fun daySubmit() = check(com.aktcl.aron.core.database.record.DaySubmitPayload.serializer(), "DaySubmitPayload")
     @Test fun outletRequest() = check(com.aktcl.aron.core.database.record.OutletChangeRequestPayload.serializer(), "OutletChangeRequestPayload")
+    @Test fun mediaMeta() = check(com.aktcl.aron.core.database.record.MediaMetaPayload.serializer(), "MediaMetaPayload")
     @Test fun taskEvent() = check(com.aktcl.aron.core.database.record.TaskEventPayload.serializer(), "TaskEventPayload")
     @Test fun bundleOutlet() = check(BundleOutlet.serializer(), "BundleOutlet")
     @Test fun sku() = check(Sku.serializer(), "Sku", coverAll = false)
