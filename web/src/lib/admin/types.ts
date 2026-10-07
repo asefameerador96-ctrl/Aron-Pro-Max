@@ -58,3 +58,7 @@ export type ExportLogEntry = S["ExportLogEntry"];
 export type ExportLogPage = S["ExportLogPage"];
 export type PermissionMatrix = S["PermissionMatrix"];
 export type MenuPermission = S["MenuPermission"];
+export type WebEntryRouteDay = S["WebEntryRouteDay"];
+export type WebEntryLine = S["WebEntryLine"];
+export type Sku = S["Sku"];
+export type Route = S["Route"];

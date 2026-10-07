@@ -16,7 +16,8 @@ export function safeNext(raw: string | null | undefined, fallback = "/"): string
   try {
     const u = new URL(raw, "http://self.invalid");
     if (u.origin !== "http://self.invalid") return fallback;
-    return u.pathname + u.search + u.hash;
+    // Dot segments can collapse to "//host": keep exactly one leading slash.
+    return "/" + u.pathname.replace(/^\/+/, "") + u.search + u.hash;
   } catch {
     return fallback;
   }

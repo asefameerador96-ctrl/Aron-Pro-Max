@@ -3,9 +3,12 @@ import { DataTable, type Column } from "@/components/admin/kit/data-table";
 import { OpForm, type OpFieldDef } from "@/components/admin/kit/op-form";
 import { Card, PageHeading } from "@/components/admin/kit/page";
 import type { PrintTemplate } from "@/lib/admin/types";
-import { formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
+import { businessDate, formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
 
 export const TEMPLATE_KINDS = ["cash_memo", "credit_memo", "offer_memo", "drp_memo", "zero_memo", "edited_memo", "stock_slip", "day_summary", "due_receipt", "void_slip"] as const;
+
+/** The first date a new template version may start (a future date, Dhaka). */
+const tomorrow = (): string => new Date(Date.parse(`${businessDate()}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
 export function PrintTemplatesView({ locale, rows, canWrite }: { locale: Locale; rows: PrintTemplate[]; canWrite: boolean }) {
   const columns: Column<PrintTemplate>[] = [
@@ -17,7 +20,7 @@ export function PrintTemplatesView({ locale, rows, canWrite }: { locale: Locale;
   const fields: OpFieldDef[] = [
     { name: "kind", label: t(locale, "cfgc.col.kind"), kind: "enum", required: true, options: TEMPLATE_KINDS.map((k) => ({ value: k, label: t(locale, `pt.kind.${k}` as MessageKey) })) },
     { name: "font_columns", label: t(locale, "pt.columns"), kind: "enum", required: true, asNumber: true, options: [{ value: "32", label: "32" }, { value: "42", label: "42" }], hint: t(locale, "pt.columns.hint") },
-    { name: "effective_from", label: t(locale, "pt.effective"), kind: "date", required: true, hint: t(locale, "pt.effective.hint") },
+    { name: "effective_from", label: t(locale, "pt.effective"), kind: "date", required: true, minDate: tomorrow(), hint: t(locale, "pt.effective.hint") },
     { name: "template_json", label: t(locale, "pt.json"), kind: "textarea", required: true, maxLength: 20000, jsonString: true, hint: t(locale, "pt.json.hint") },
   ];
   return (

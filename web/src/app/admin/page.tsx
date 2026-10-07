@@ -12,13 +12,13 @@ export default async function AdminHome() {
       <h1 className="text-2xl font-bold">{t(locale, "admin.title")}</h1>
       <p className="text-slate-600">{t(locale, "admin.home.intro")}</p>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {visible.map((e) => (
-          <li key={e.slug}>
-            <Link href={`/admin/${e.slug}`} className="block rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:border-brand-600">
-              {t(locale, e.labelKey)}
+        {visible.length > 0 ? (
+          <li>
+            <Link href="/admin/master-data" className="block rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:border-brand-600">
+              {t(locale, "menu.admin.master_data")}
             </Link>
           </li>
-        ))}
+        ) : null}
         <li>
           <Link href="/admin/audit" className="block rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:border-brand-600">
             {t(locale, "menu.admin.audit")}

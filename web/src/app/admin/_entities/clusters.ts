@@ -6,6 +6,7 @@ import { ADMIN_PORTAL_ROLES } from "@/lib/auth/roles";
 
 export const clusters = defineEntity<Cluster, ClusterWrite, ClusterPatch>({
   slug: "clusters",
+  group: "geography",
   labelKey: "entity.clusters",
   singularKey: "entity.clusters.singular",
   api: { collection: "/v1/admin/clusters", item: "/v1/admin/clusters/{id}" },
@@ -14,7 +15,7 @@ export const clusters = defineEntity<Cluster, ClusterWrite, ClusterPatch>({
   fields: [
     { name: "id", labelKey: "entity.field.id", kind: "int", mode: "readonly", column: true },
     { name: "name", labelKey: "entity.field.name", kind: "text", required: true, maxLength: 120, column: true },
-    { name: "zone_id", labelKey: "entity.field.zone_id", kind: "int", required: true, min: 1, column: true },
+    { name: "zone_id", labelKey: "entity.field.zone_id", kind: "ref", required: true, min: 1, ref: { path: "/v1/admin/geo/{level}", params: { level: "zone" }, label: ["code", "name"] }, column: true },
     { name: "cluster_type", labelKey: "entity.field.cluster_type", kind: "text", nullable: true, maxLength: 60, column: true },
     {
       name: "status",
@@ -29,7 +30,7 @@ export const clusters = defineEntity<Cluster, ClusterWrite, ClusterPatch>({
   ],
   filters: [
     { param: "q", kind: "search", labelKey: "common.search" },
-    { param: "zone_id", kind: "int", labelKey: "entity.field.zone_id" },
+    { param: "zone_id", kind: "ref", labelKey: "entity.field.zone_id", ref: { path: "/v1/admin/geo/{level}", params: { level: "zone" }, label: ["code", "name"] } },
     {
       param: "status",
       kind: "enum",
