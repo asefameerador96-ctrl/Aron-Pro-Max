@@ -78,6 +78,17 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Handover (READY TO RECYCLE, 2026-10-07 ~21:10Z by the container clock, tenth session)
+- **Done this session:** F-SYS-080 phone half + F-SYS-047 `?since=` (Opus PASS, mediums fixed); Room v5 content and surveys for android-sr-a (Opus PASS, mediums fixed; android-sr-a told). Head 67b85f1e, tree clean, INT bde7719c merged.
+- **In progress:** nothing. `python3 tools/my-rows.py android-core --todo` lists only N-023, AUD-TP-5 (android-core-ui) and AUD-TP-4 (infra).
+- **Next (all waiting on others):**
+  1. android-sys's answer to android-core-sys-media-mobile-bytes.md, then wire `noteMobileMediaBytes` in the shells.
+  2. android-sys's answer to android-core-sys-update-answered.md (new, low), then the "you're up to date" message.
+  3. Replace seed `baseline-prof.txt` after D-PERF-04; any new request naming android-core.
+- **Traps found this session:**
+  48. Two Gradle test runs at once (a checker agent and you) delete each other's `in-progress-results-generic.bin`: the task fails with NoSuchFileException, not a test failure. Run the full suite when no other run is going.
+  49. Test fixtures that share one body share one sha256: the content cache is keyed by sha, so give each fixture item its own hash.
+
 ## Tenth session (2026-10-07, from ~20:20Z by the container clock)
 - INT (bde7719c) merged (fast-forward). Fresh container: `tools/android-sdk.sh` + `sdk.dir` (trap 40). Checks before the push: shared:contract jvmTest, the three app compiles, core-sync (235), core-database (160), app-sr (19), lint on core-sync, core-database, app-sr: green.
 - **F-SYS-080 phone half: done** (T1; Opus check PASS, its two mediums fixed with tests). `POST /v1/sync/digest` (`SyncDigestApi`, local DTOs) with backend-core's confirmed rule (`DigestHash`: bucket = first hex digit, hash = sum of `mostSignificantBits` mod 2^64, 16 hex; per device and calling user; window `cfg.sync.max_backdate_days` 7).
