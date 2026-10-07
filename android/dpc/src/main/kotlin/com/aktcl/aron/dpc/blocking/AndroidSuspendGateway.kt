@@ -25,7 +25,8 @@ class AndroidSuspendGateway(context: Context) : SuspendGateway {
         val launchable = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
             .map { it.activityInfo.packageName }.toSet()
         return pm.getInstalledApplications(PackageManager.GET_META_DATA).map {
-            InstalledApp(it.packageName, it.flags and ApplicationInfo.FLAG_SYSTEM != 0 && it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0, it.packageName in launchable)
+            // An updated system app (Play Store, Chrome, the OEM clock) keeps FLAG_SYSTEM: it is still a system app.
+            InstalledApp(it.packageName, it.flags and ApplicationInfo.FLAG_SYSTEM != 0, it.packageName in launchable)
         }
     }
 }

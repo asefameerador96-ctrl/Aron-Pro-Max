@@ -24,23 +24,37 @@ class DeviceOwnerPolicy(
     private val applier: PolicyApplier,
     blockingStore: BlockingStore,
     suspendGateway: com.aktcl.aron.dpc.blocking.SuspendGateway,
-    trustedNowMs: () -> Long,
-    isWorkingDay: (String) -> Boolean? = { null },
+    @Volatile private var trustedNowMs: () -> Long,
+    @Volatile private var isWorkingDay: (String) -> Boolean? = { null },
     /** Called with every outcome; the app reports those with `changed` (docs/24 s10.3). */
     private val onBlockingChange: (BlockingOutcome) -> Unit = {},
 ) {
     /** App blocking from check-in to check-out (N-032); the check-in and check-out commits call it. */
-    val blocking = BlockingEngine(suspendGateway, blockingStore, { store.load() }, trustedNowMs, isWorkingDay)
+    val blocking = BlockingEngine(suspendGateway, blockingStore, { store.load() }, { trustedNowMs() }, { isWorkingDay(it) })
+
+    /** True while the managed update (N-034) installs; keeps `no_install_apps` lifted on every apply meanwhile. */
+    @Volatile var installingOwnUpdate: Boolean = false
+
+    /**
+     * The app wires its trusted clock (F-SYS-049) and the bundle's working-day calendar at start. They replace whatever
+     * an earlier caller (a boot receiver) installed, so the singleton never keeps a weaker clock.
+     */
+    fun configure(trustedNowMs: () -> Long, isWorkingDay: (String) -> Boolean?) {
+        this.trustedNowMs = trustedNowMs
+        this.isWorkingDay = isWorkingDay
+    }
+
+    fun trustedNow(): Long = trustedNowMs()
 
     @Volatile var lastReport: ApplyReport? = null
         private set
 
     fun receive(policy: DevicePolicy): ApplyReport = synchronized(this) {
         val inForce = store.save(policy)
-        applier.apply(inForce).also { lastReport = it; reevaluateBlocking() }
+        applier.apply(inForce, installingOwnUpdate).also { lastReport = it; reevaluateBlocking() }
     }
 
-    fun reapply(installingOwnUpdate: Boolean = false): ApplyReport? = synchronized(this) {
+    fun reapply(): ApplyReport? = synchronized(this) {
         val p = store.load()
         val report = p?.let { applier.apply(it, installingOwnUpdate) }?.also { lastReport = it }
         reevaluateBlocking() // also releases apps left suspended when no policy is stored
@@ -48,13 +62,13 @@ class DeviceOwnerPolicy(
     }
 
     /** Call when the check-in `attendance_event` has committed. */
-    fun onCheckInCommitted(): BlockingOutcome = blocking.onCheckIn().also(onBlockingChange)
+    fun onCheckInCommitted(): BlockingOutcome = synchronized(this) { blocking.onCheckIn().also(onBlockingChange) }
 
     /** Call when the check-out `attendance_event` has committed. */
-    fun onCheckOutCommitted(): BlockingOutcome = blocking.onCheckOut().also(onBlockingChange)
+    fun onCheckOutCommitted(): BlockingOutcome = synchronized(this) { blocking.onCheckOut().also(onBlockingChange) }
 
     /** [onBlockingChange] runs after every evaluation (it re-arms the hard-end alarm, which a reboot clears); report only `changed` ones. */
-    fun reevaluateBlocking(): BlockingOutcome = blocking.evaluate().also(onBlockingChange)
+    fun reevaluateBlocking(): BlockingOutcome = synchronized(this) { blocking.evaluate().also(onBlockingChange) }
 
     fun current(): DevicePolicy? = store.load()
 
@@ -62,22 +76,31 @@ class DeviceOwnerPolicy(
         @Volatile private var instance: DeviceOwnerPolicy? = null
 
         /**
-         * The process-wide instance. [trustedNowMs] defaults to the wall clock until the trusted clock (F-SYS-049) is wired
-         * by the app; prod phones enforce automatic time (no_config_date_time), so the wall clock is honest there.
+         * The process-wide instance. Until the app calls [configure] with the trusted clock (F-SYS-049), time is the wall
+         * clock; prod phones enforce automatic time (no_config_date_time), so the wall clock is honest there.
          */
-        fun get(context: Context, trustedNowMs: () -> Long = { WallClock.System.nowMs() }): DeviceOwnerPolicy =
+        fun get(context: Context): DeviceOwnerPolicy =
             instance ?: synchronized(this) {
-                val app = context.applicationContext
-                val dir = File(app.noBackupFilesDir, "dpc")
-                val store = PolicyStore(dir)
-                instance ?: DeviceOwnerPolicy(
-                    store, PolicyApplier(AndroidDpmGateway(app)), BlockingStore(dir), AndroidSuspendGateway(app), trustedNowMs,
-                    onBlockingChange = { outcome ->
-                        val today = com.aktcl.aron.rules.BusinessDate.of(trustedNowMs()).toString()
-                        val end = store.load()?.schedule?.hardEndTime?.let { BlockingEngine.hardEndMs(today, it) }
-                        HardEndAlarm.schedule(app, if (outcome.active) end else null)
-                    },
-                ).also { instance = it }
+                instance ?: run {
+                    val app = context.applicationContext
+                    val dir = File(app.noBackupFilesDir, "dpc")
+                    val store = PolicyStore(dir)
+                    lateinit var created: DeviceOwnerPolicy
+                    created = DeviceOwnerPolicy(
+                        store, PolicyApplier(AndroidDpmGateway(app)), BlockingStore(dir), AndroidSuspendGateway(app),
+                        trustedNowMs = { WallClock.System.nowMs() },
+                        onBlockingChange = { outcome ->
+                            // Re-armed after every evaluation (a reboot clears alarms): the hard end, or midnight when
+                            // the policy has none, so a forgotten check-out never blocks into the next day.
+                            val now = created.trustedNow()
+                            val today = com.aktcl.aron.rules.BusinessDate.of(now).toString()
+                            val end = store.load()?.schedule?.hardEndTime?.let { BlockingEngine.hardEndMs(today, it) }
+                                ?.takeIf { it > now } ?: BlockingEngine.nextBusinessDayStartMs(now)
+                            runCatching { HardEndAlarm.schedule(app, if (outcome.active) end else null) }
+                        },
+                    )
+                    created.also { instance = it }
+                }
             }
     }
 }

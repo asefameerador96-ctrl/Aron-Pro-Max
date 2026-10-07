@@ -38,7 +38,8 @@ class PolicyApplier(private val gw: DpmGateway) {
         }
 
         // 2. Global settings.
-        if (!policy.globalSettings.adbEnabled) attempt("global:adb_enabled") { gw.setGlobalSetting(ADB_ENABLED, "0") }
+        // dev keeps (and restores, after a prod policy) USB debugging; prod turns it off.
+        attempt("global:adb_enabled") { gw.setGlobalSetting(ADB_ENABLED, if (policy.globalSettings.adbEnabled) "1" else "0") }
         if (policy.globalSettings.autoTimeRequired) attempt("global:auto_time_required") { gw.setAutoTimeRequired(true) }
         if (policy.globalSettings.locationModeHighAccuracy || policy.location.requireLocationOn) {
             attempt("global:location_on") { gw.setLocationEnabled(true) }
@@ -69,10 +70,13 @@ class PolicyApplier(private val gw: DpmGateway) {
         }
 
         val present = runCatching { gw.restrictions() }.getOrDefault(emptySet())
-        val applied = policy.userRestrictions.asMap().keys.associateWith { key -> androidKeys(key).first() in present }
-        for ((key, want) in policy.userRestrictions.asMap()) {
-            val expected = if (key == "no_install_apps" && installingOwnUpdate) false else want
-            if (applied[key] != expected && "restriction:$key" !in errors) errors += "restriction:$key"
+        fun wanted(key: String, on: Boolean) = on && !(key == "no_install_apps" && installingOwnUpdate)
+        // A restriction counts as applied only when every Android key behind it is set (two for unknown sources on 29+).
+        val applied = policy.userRestrictions.asMap().keys.associateWith { key -> androidKeys(key).all { it in present } }
+        for ((key, on) in policy.userRestrictions.asMap()) {
+            val keys = androidKeys(key)
+            val ok = if (wanted(key, on)) keys.all { it in present } else keys.none { it in present }
+            if (!ok && "restriction:$key" !in errors) errors += "restriction:$key"
         }
         return ApplyReport(
             policyVersion = policy.policyVersion,

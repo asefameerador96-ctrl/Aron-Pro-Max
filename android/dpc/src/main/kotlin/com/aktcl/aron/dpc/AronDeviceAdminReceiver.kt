@@ -10,7 +10,8 @@ import android.content.Intent
  */
 class AronDeviceAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
-        DeviceOwnerPolicy.get(context).reapply()
+        val pending = goAsync() // file and policy work off the main thread
+        Thread { try { runCatching { DeviceOwnerPolicy.get(context).reapply() } } finally { pending.finish() } }.start()
     }
 
     companion object {

@@ -10,11 +10,12 @@ class DpcBootReceiver : BroadcastReceiver() {
         if (intent.action !in ACTIONS) return
         val pending = goAsync()
         Thread {
-            try { DeviceOwnerPolicy.get(context).reapply() } finally { pending.finish() }
+            try { runCatching { DeviceOwnerPolicy.get(context).reapply() } } finally { pending.finish() }
         }.start()
     }
 
     companion object {
-        val ACTIONS = setOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_LOCKED_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED)
+        // Not LOCKED_BOOT_COMPLETED: the state files are in credential-encrypted storage, readable only after unlock.
+        val ACTIONS = setOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED)
     }
 }

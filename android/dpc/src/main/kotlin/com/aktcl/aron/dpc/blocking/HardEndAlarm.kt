@@ -26,6 +26,6 @@ object HardEndAlarm {
 class HardEndReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
-        Thread { try { DeviceOwnerPolicy.get(context).blocking.evaluate() } finally { pending.finish() } }.start()
+        Thread { try { runCatching { DeviceOwnerPolicy.get(context).reevaluateBlocking() } } finally { pending.finish() } }.start()
     }
 }

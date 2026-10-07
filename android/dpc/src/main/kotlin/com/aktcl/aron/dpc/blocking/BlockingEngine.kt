@@ -74,7 +74,9 @@ class BlockingEngine(
     private val isWorkingDay: (String) -> Boolean? = { null },
 ) {
     @Synchronized
-    fun onCheckIn(): BlockingOutcome {
+    fun onCheckIn(): BlockingOutcome = try { checkIn() } catch (e: Exception) { failure(BlockingState()) }
+
+    private fun checkIn(): BlockingOutcome {
         val now = trustedNowMs()
         val s = store.load()
         val today = BusinessDate.of(now).toString()
@@ -85,31 +87,52 @@ class BlockingEngine(
     }
 
     @Synchronized
-    fun onCheckOut(): BlockingOutcome {
+    fun onCheckOut(): BlockingOutcome = try {
         val s = store.load()
-        store.save(s.copy(checkedOut = true))
-        return evaluate()
+        // Even if the state cannot be saved, release now: evaluate the checked-out state directly.
+        val out = s.copy(checkedOut = true)
+        runCatching { store.save(out) }
+        evaluate(out)
+    } catch (e: Exception) {
+        failure(BlockingState())
     }
 
-    /** Re-applies the rule from stored state: app start, boot, policy change, the hard-end alarm. */
+    /**
+     * Re-applies the rule from stored state: app start, boot, policy change, the hard-end alarm. Never throws: a failure
+     * leaves the phone as it was and is reported in [BlockingOutcome.failed] (code `evaluate_failed`).
+     */
     @Synchronized
     fun evaluate(): BlockingOutcome {
-        val s = store.load()
+        val s = try { store.load() } catch (e: Exception) { return failure(BlockingState()) }
+        return try { evaluate(s) } catch (e: Exception) { failure(s) }
+    }
+
+    private fun failure(s: BlockingState) = BlockingOutcome(s.activeSince != null, s.activeSince, s.suspended, listOf(EVALUATE_FAILED), false)
+
+    private fun evaluate(s: BlockingState): BlockingOutcome {
         val p = policy()
         val now = trustedNowMs()
         if (!gw.isDeviceOwner()) return BlockingOutcome(false, null, s.suspended, emptyList(), false)
         val shouldBlock = p != null && shouldBlock(p, s, now)
         val target = if (shouldBlock) targets(p!!) else emptyList()
         val toRelease = s.suspended.filter { it !in target }
+        // Write-ahead: record every package we may suspend BEFORE suspending it, so a crash or a failed save can never
+        // leave an app suspended that a later check-out does not know to release. If this save fails, nothing changes.
+        val intended = (s.suspended + target).distinct().sorted()
+        if (intended != s.suspended.sorted()) store.save(s.copy(suspended = intended))
         // Every target is re-asserted each time (idempotent): an OEM that dropped a suspension at reboot is repaired.
         val failedRelease = if (toRelease.isNotEmpty()) runCatching { gw.setSuspended(toRelease, false) }.getOrDefault(toRelease) else emptyList()
         val failedSuspend = if (target.isNotEmpty()) runCatching { gw.setSuspended(target, true) }.getOrDefault(target) else emptyList()
-        // Refused releases stay on the list so the next evaluation retries them.
-        val suspendedNow = (target.filter { it !in failedSuspend } + failedRelease).distinct().sorted()
+        // Refused releases stay on the list so the next evaluation retries them. A refused suspend may still have taken
+        // effect on some OEMs, so it is kept as well and released at check-out.
+        val suspendedNow = (target + failedRelease).distinct().sorted()
         val active = shouldBlock
         val since = if (active) s.activeSince ?: now else null
         store.save(s.copy(suspended = suspendedNow, activeSince = since))
-        return BlockingOutcome(active, since, suspendedNow, (failedRelease + failedSuspend).distinct(), suspendedNow != s.suspended.sorted() || (since == null) != (s.activeSince == null))
+        return BlockingOutcome(
+            active, since, suspendedNow, (failedRelease + failedSuspend).distinct(),
+            suspendedNow != s.suspended.sorted() || (since == null) != (s.activeSince == null),
+        )
     }
 
     fun shouldBlock(p: DevicePolicy, s: BlockingState, nowMs: Long): Boolean {
@@ -139,6 +162,14 @@ class BlockingEngine(
     }
 
     companion object {
+        const val EVALUATE_FAILED = "evaluate_failed"
+
+        /** Start of the next Dhaka business date after [nowMs] (releases a block with no hard end at midnight). */
+        fun nextBusinessDayStartMs(nowMs: Long): Long {
+            val day = BusinessDate.of(nowMs).toEpochDays().toLong() + 1
+            return day * 86_400_000L - BusinessDate.DHAKA_OFFSET_MS
+        }
+
         /** `HH:mm` Dhaka on [businessDate] as epoch ms; null when unparseable (then only a check-out releases). */
         fun hardEndMs(businessDate: String, hhmm: String): Long? {
             val m = Regex("""^([01]\d|2[0-3]):([0-5]\d)$""").matchEntire(hhmm) ?: return null
