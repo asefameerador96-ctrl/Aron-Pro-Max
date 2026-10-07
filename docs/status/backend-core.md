@@ -34,6 +34,15 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - **Task columns** (db V0037/V0038 on INT): `Tasks.kt` stores `route_id` (named and in reach, or the outlet's) and `cancel_reason`; tests in `TasksTest`. No checker run on this small follow-up (own tests only); if the sync `task` payload gains `route_id`, scope-check the route.
 - db (11:56Z) on lane/db, not yet on INT: V0040 `app.password_history` + `cfg.auth.password_history_depth`/`password_min_age_h`/`password_denylist_enabled` (un-skip `ChangePasswordTest.noneOfTheLastTenPasswords` and store history once on INT); V0041 partitions `app.geo_breadcrumb` (no code change needed).
 
+## Session 7 (2026-10-07, start here)
+- Merged INT (V0055). Lead priority (18:51Z): **GET /v1/sync/totals** and **GET /v1/memos** served as the contract says (BC-66, `SyncReadsTest`, scope registry lines); no contract change.
+- **AUD-SEC-03 sink** (BC-64): `JdbiSecurityEvents` beside the log line, own one-connection pool, bounded queue, plain INSERT (auth_rw-safe), detail capped; `JdbiSecurityEventsTest`.
+- **V0055** keys asserted in `BundleAcceptanceTest` (7/3/40 in `config.values`).
+- **F-SYS-086** backend-core share (BC-65): route-day state moves and the first login mark the tile key; data void and route-assignment writes requested from backend-admin (`backend-core-dirty-keys-admin-writes.md`).
+- **N-033** server part: bundle `device_policy_version` (= config version the policy renders at); the block list rides `config.values`.
+- **F-SR-020/021 data** (BC-67, lead 18:55Z): bundle `content` and `surveys` filled from the admin tables; no contract or db change was needed (all already existed). Tell android-core and android-sr-a.
+- Opus checkers: sink (PASS, 4 minor fixed), sync reads + dirty keys + N-033 (PASS, 1 major fixed, minors logged in BC-66).
+
 ## Session 6 close-out: next rows (session 7 starts here)
 1. **Security event sink** (AUD-SEC-03 rest): V0053/V0054 are on INT now (merged at session 6 end). Build the JDBI sink beside the `aron.security` log sink: bounded queue, off the request path, insert as `auth_rw` (INSERT only, no RETURNING), detail capped at 2000 bytes (`db-security-event-and-signature-mode-answer.md`). Opus checker.
 2. **cfg.app keys** (V0055, lane/db 6f9b6dcf): when on INT, a bundle test that `cfg.app.local_history_days`, `outbox_keep_days`, `image_cache_mb` arrive in `config.values`.

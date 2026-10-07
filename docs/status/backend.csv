@@ -62,3 +62,8 @@ F-API-008/009/039,M,2026-10-07T17:12Z,2026-10-07T17:26Z,14,"Opus: 7 (6 fixed, 1 
 F-SYS-089,S,2026-10-07T17:50Z,2026-10-07T18:05Z,15,"Opus: 4+2 (4 fixed, 2 logged BC-61)","resync late window"
 F-SYS-073-SRV,S,2026-10-07T18:06Z,2026-10-07T18:10Z,4,"","urgent push flag; contract regen"
 CHECKOUT-TOO-EARLY,S,2026-10-07T18:10Z,2026-10-07T18:15Z,5,"","s4.5 quarantine"
+AUD-SEC-03-SINK,S,2026-10-07T18:50Z,2026-10-07T19:05Z,15,"Opus: PASS, 4 minor (3 fixed, 1 fixed later: own pool)","security_event JDBI sink"
+F-SYS-086-CORE,S,2026-10-07T19:06Z,2026-10-07T19:12Z,6,"Opus: PASS","route-day state dirty keys; admin request"
+N-033-SRV,S,2026-10-07T19:12Z,2026-10-07T19:14Z,2,"Opus: PASS","bundle device_policy_version"
+SYNC-TOTALS+MEMOS,M,2026-10-07T19:07Z,2026-10-07T19:45Z,38,"Opus: PASS, 1 major fixed, 3 minor fixed, 4 logged","GET /sync/totals, GET /memos"
+F-SR-020/021-SRV,S,2026-10-07T19:40Z,2026-10-07T19:50Z,10,"","bundle content + surveys"

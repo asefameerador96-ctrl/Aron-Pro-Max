@@ -94,7 +94,7 @@ class SyncReadsTest {
     }
 
     @AfterAll
-    fun tearDown() { wiring.database?.close(); fresh.close() }
+    fun tearDown() { wiring.securityStore?.close(); wiring.database?.close(); fresh.close() }
 
     private fun json(s: String): JsonObject = Json.parseToJsonElement(s).jsonObject
     private fun uuid() = UUID.randomUUID().toString()
@@ -204,6 +204,7 @@ class SyncReadsTest {
         val token = client.token()
         val family = saleFamily()
         val b = json(client.send(token, batch(family)).bodyAsText())
+        assertEquals(List(5) { "accepted" }, statuses(b))
         val fromBatch = b["server_totals"]!!.jsonArray.map { it.jsonObject }.single { it["business_date"]!!.jsonPrimitive.content == day }
         val r = client.read(token, "/v1/sync/totals?business_date=$day")
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
@@ -211,9 +212,14 @@ class SyncReadsTest {
         assertEquals(fromBatch.sansAsOf(), t["totals"]!!.jsonObject.sansAsOf(), "the Server column equals what the batch answered")
         assertEquals(b["day_states"], t["day_states"])
         assertTrue(t.containsKey("supervisor_day"))
-        // The same rows again (new batch uuid, then the same batch): duplicates, the totals do not move.
-        client.send(token, batch(family))
-        client.send(token, batch(family))
+        // The same rows under a new batch uuid (duplicates), then that batch again (replayed): the totals do not move.
+        val again = batch(family)
+        repeat(2) {
+            val r2 = client.send(token, again)
+            assertEquals(HttpStatusCode.OK, r2.status, r2.bodyAsText())
+            if (it == 0) assertEquals(List(5) { "duplicate" }, statuses(json(r2.bodyAsText())))
+            else assertEquals(true, json(r2.bodyAsText())["replayed"]!!.jsonPrimitive.boolean, "the same batch uuid replays")
+        }
         assertEquals(t["totals"]!!.jsonObject.sansAsOf(), json(client.read(token, "/v1/sync/totals?business_date=$day").bodyAsText())["totals"]!!.jsonObject.sansAsOf())
         // Only the caller's own records: a date with nothing is all zero, and the query cannot name another user.
         val empty = json(client.read(token, "/v1/sync/totals?business_date=2027-01-01&user_id=1").bodyAsText())
@@ -273,6 +279,9 @@ class SyncReadsTest {
             val items = json(client.read(token, "/v1/memos?$q").bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
             assertTrue(items.none { it["memo_no"]!!.jsonPrimitive.content == otherNo }, "out of reach: $q")
         }
+        // An admin data void tombstones the row (voided_at, status untouched): it is listed as void, as the totals leave it out.
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.memo SET voided_at = now() WHERE client_uuid = '$memoCu'") }
+        assertEquals("void", json(client.read(token, "/v1/memos?memo_no=$memoNo").bodyAsText())["items"]!!.jsonArray.single().jsonObject["status"]!!.jsonPrimitive.content)
         // Bad queries are 400, never a silent full scan.
         for (q in listOf("memo_no=SR1001-1", "from=2027-01-03&to=2026-01-01", "from=2026-01-01&to=2027-01-03", "limit=0", "cursor=!!", "outlet_id=-1")) {
             assertEquals(HttpStatusCode.BadRequest, client.read(token, "/v1/memos?$q").status, q)

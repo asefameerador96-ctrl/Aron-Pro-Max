@@ -75,7 +75,7 @@ internal data class MemoQuery(
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val MEMO_NO = Regex("^[a-z][a-z0-9]{3,31}-\\d{6}-\\d{3,4}$")
         private val CURSOR = Regex("^[A-Za-z0-9_-]{1,512}$")
-        const val DEFAULT_LIMIT = 50
+        const val DEFAULT_LIMIT = 100 // the contract's Limit default
         const val DEFAULT_DAYS = 31L
         const val MAX_SPAN_DAYS = 92L
 
@@ -120,7 +120,8 @@ internal data class MemoQuery(
  * reach is derived on the server from the token; a memo is visible when its route is one of the caller's routes, its
  * zone is in the caller's zones (non-field roles), or the caller wrote it. Out-of-reach rows are simply not returned,
  * whatever the filters name. Newest first, keyset-paginated on (business_date, id). Voided and superseded memos are
- * listed with their status (a reprint must show what was printed).
+ * listed with their status (a reprint must show what was printed); a memo tombstoned by an admin data void is `void`
+ * too, as the totals leave it out.
  */
 internal class MemoReader(private val d: MemoDeps) {
     fun page(p: AronPrincipal, q: MemoQuery): MemoPageDto {
@@ -130,7 +131,7 @@ internal class MemoReader(private val d: MemoDeps) {
             val sql = StringBuilder(
                 """
                 SELECT m.id, m.client_uuid::text AS uuid, m.memo_no, m.business_date, m.outlet_id, o.name AS outlet_name, m.route_id, m.user_id,
-                       m.status, s.memo_no AS supersedes_memo_no, m.gross_mtk, m.offer_discount_mtk, m.drp_discount_mtk, m.qc_deduction_mtk,
+                       CASE WHEN m.voided_at IS NOT NULL THEN 'void' WHEN m.status = 'voided' THEN 'void' ELSE m.status END AS status, s.memo_no AS supersedes_memo_no, m.gross_mtk, m.offer_discount_mtk, m.drp_discount_mtk, m.qc_deduction_mtk,
                        m.round_adj_mtk, m.net_mtk, m.paid_mtk, m.due_mtk
                 FROM app.memo m
                 JOIN app.outlet o ON o.id = m.outlet_id
@@ -167,7 +168,7 @@ internal class MemoReader(private val d: MemoDeps) {
                     rs.getLong("id"), date,
                     MemoViewDto(
                         rs.getString("uuid"), rs.getString("memo_no"), date.toString(), rs.getLong("outlet_id"), rs.getString("outlet_name"),
-                        rs.getLong("route_id"), rs.getLong("user_id"), if (rs.getString("status") == "voided") "void" else rs.getString("status"),
+                        rs.getLong("route_id"), rs.getLong("user_id"), rs.getString("status"),
                         rs.getString("supersedes_memo_no"),
                         MemoTotalsDto(
                             rs.getLong("gross_mtk"), rs.getLong("offer_discount_mtk"), rs.getLong("drp_discount_mtk"), rs.getLong("qc_deduction_mtk"),
