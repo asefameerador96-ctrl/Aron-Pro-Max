@@ -95,6 +95,16 @@
     - PushPullWorkTest: an urgent pull is not held behind an ordinary one, plus a 300-message fuzz showing no push ever runs the sync runner or queues an upload job.
     - ResumeConfigCheckTest: the reserve, and a push that waits behind a running check.
   - Checker plausible: the server never sends `urgent`, so today every config push is ordinary. Routed in docs/requests/android-core-backend-urgent-push-flag.md. The acceptance holds without it (the server's `pull_after_s` is honoured).
+- **AUD-PERF-06 bundle path at AMO size: done** (T1, Opus checker PASS). The page loop and the delta client already existed. This row adds:
+  - `AronApiClient.callStreaming`: `call` wraps it. `SyncApi.bundle` decodes the tree once with `Json.decodeFromStream` from `response.body.source()`, and reads the head from that tree. `BundleDownload.raw` is a `JsonObject`, so the body is never held as a String and is never parsed twice.
+  - A malformed body is still FAILED `malformed`. A body cut off mid-stream is OFFLINE, and nothing is applied.
+  - `ReferenceRepository` writes the full apply and the delta upserts and tombstones in chunks of 500 (`inChunks`, `CHUNK`), each inside its one transaction.
+  - AmoShapeBundleTest (5 tests): 54 routes and 5,994 outlets with Bangla names, through the real download.
+    - The apply took about 0.7 s against the 1.5 s budget, and the live heap stays under a 128 MB ceiling (a coarse check).
+    - A delta of 1,200 tombstones and 1,200 upserts applies exactly.
+    - A malformed body and a body cut off mid-stream are covered.
+  - Honest limit: the budget is proven on the JVM (Robolectric SQLite). The A06 number comes from the benchmark module (AUD-PERF-04).
+  - Checker nit: `call` now decodes as UTF-8 whatever the Content-Type charset says (the /v1 API is UTF-8).
 - Trap 40: a check run without the Android SDK fails at configuration ("SDK location not found"). Grep the log for `BUILD FAILED`, not only the wrapper's exit code.
 
 ## Handover (READY TO RECYCLE, 2026-10-07 ~17:30Z by the server clock, seventh session)
