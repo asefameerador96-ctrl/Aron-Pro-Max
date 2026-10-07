@@ -1716,6 +1716,10 @@ esac
         self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.index("infra/scripts/worker-check.sh"))
         self.assertIn('"ca-aron-${ENV_NAME}-worker" "$BACKEND_IMAGE"', d)
         self.assertIn('summary "| Worker | ${worker_result} |"', d)
+        # Blocking since its first green run: a failed check ends the deploy (die), never a warning only.
+        block = d[d.index("infra/scripts/worker-check.sh"):d.index("infra/scripts/release-marker.sh")]
+        self.assertIn('die "worker check failed', block)
+        self.assertNotIn("::warning::worker check failed", block)
 
 
 class JvmSplit(unittest.TestCase):
