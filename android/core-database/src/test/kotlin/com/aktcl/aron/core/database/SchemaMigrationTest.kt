@@ -104,6 +104,26 @@ class SchemaMigrationTest {
         }
     }
 
+    /** v4 (F-SYS-072): outbox.sig is added empty; every row, pending or in flight, is kept and still sends unsigned. */
+    @Test
+    fun version3To4AddsTheRecordSigColumnAndKeepsEveryRow() {
+        helper.createDatabase("migration-34", 3).use { db ->
+            db.execSQL(
+                """INSERT INTO outbox (client_uuid, record_type, family_uuid, rank, business_date, payload_json, payload_sha256, state,
+                   batch_uuid, attempts, created_at) VALUES ('6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f', 'visit', 'f', 0, '2026-10-05', '{}', 'h',
+                   'in_flight', 'b1', 1, 't')""",
+            )
+        }
+        helper.runMigrationsAndValidate("migration-34", 4, true).use { db ->
+            db.query("SELECT state, batch_uuid, sig FROM outbox").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("in_flight", c.getString(0))
+                assertEquals("b1", c.getString(1))
+                assertTrue(c.isNull(2))
+            }
+        }
+    }
+
     @Test
     fun theExportedSchemaMatchesTheCompiledEntities() {
         // The file is created from the exported JSON; opening it with the compiled Room database runs Room's identity-hash

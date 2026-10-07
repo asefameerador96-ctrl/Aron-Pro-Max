@@ -1177,6 +1177,19 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertEqual(rc, 0, "a call longer than the wait limit is not a false failure: " + out)
 
 
+class WorkerWithoutSigningKey(unittest.TestCase):
+    """AUD-SEC-07 (docs/requests/infra-worker-no-signing-key.md): the token signing key reaches api replicas only."""
+
+    def test_signing_key_only_in_the_api(self):
+        src = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        worker = src[src.index("resource worker "):src.index("resource web ") if "resource web " in src else len(src)]
+        api = src[src.index("resource api "):src.index("resource worker ")]
+        for needle in ("jwt-signing-key", "jwtSecretRefs", "jwt-kid"):
+            self.assertNotIn(needle, worker, needle)
+        self.assertIn("kvSecret('jwt-signing-key'", api)
+        self.assertIn("concat(commonEnv, jwtSecretRefs, appSecretRefs", api)
+
+
 class DbLoginsGate(unittest.TestCase):
     """dblogins failed three deploys with no log anywhere while nothing used its logins (dbPerAppLogins off): it blocks
     the apps only when they use those logins, and a failure prints the platform's own execution record and log."""
@@ -1190,6 +1203,10 @@ class DbLoginsGate(unittest.TestCase):
         self.assertIn("az containerapp job logs show", block)
         self.assertIn("az containerapp job execution show", block)
         self.assertIn('summary "| Database logins |', d)
+        self.assertIn("infra/scripts/dblogins-probe.sh", block)
+        p = (ROOT / "infra" / "scripts" / "dblogins-probe.sh").read_text(encoding="utf-8")
+        self.assertIn("--yaml", p, "per-execution override; the job's own template is unchanged")
+        self.assertNotIn('echo "$x"', p, "never prints a secret value")
 
 
 class InfraStageSkip(unittest.TestCase):
@@ -1198,10 +1215,14 @@ class InfraStageSkip(unittest.TestCase):
 
     def test_skip_base_is_the_last_applied_infra_commit(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn('--tags "aron-sha=${SHA}"', d, "main.bicep apply records its commit")
-        self.assertIn('tags."aron-sha"', d)
+        self.assertIn('--tags "aron-infra-sha=${SHA}"', d, "a successful main.bicep apply records its commit")
+        self.assertIn('tags."aron-infra-sha"', d)
+        self.assertLess(d.index("-n aron-infra --template-file infra/main.bicep"), d.index('--tags "aron-infra-sha='))
+        create = d[d.index("az deployment group create -g \"$RG\" -n aron-infra"):]
+        create = create[:create.index(")\"")]
+        self.assertNotIn("--tags", create, "az deployment group create has no --tags (run 37639072495)")
         self.assertIn('git diff --quiet "$infra_sha" "$SHA"', d)
-        self.assertLess(d.index('infra_sha="$(az deployment group show'), d.index('git diff --quiet "$infra_sha"'))
+        self.assertLess(d.index('infra_sha="$(az group show'), d.index('git diff --quiet "$infra_sha"'))
         self.assertIn('infra_sha="$deployed_sha"', d, "falls back to the live commit when untagged")
 
     def test_recovered_alert_closes_resource_health(self):

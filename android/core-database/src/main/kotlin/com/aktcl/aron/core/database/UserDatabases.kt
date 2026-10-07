@@ -27,7 +27,13 @@ class UserDatabases(private val context: Context, private val passphrase: (userI
         return open[userId] ?: withContext(Dispatchers.IO) {
             open.computeIfAbsent(userId) { id ->
                 check(id !in closing) { "database of user $id is being removed" }
-                AronDatabase.open(context, id, passphrase(id)?.let(SqlCipher::factory))
+                val start = android.os.SystemClock.elapsedRealtime()
+                AronDatabase.open(context, id, passphrase(id)?.let(SqlCipher::factory)).also { db ->
+                    // AUD-PERF-05: the SQLCipher keying of the first connection happens here, on IO, not at the first
+                    // query (which may be on a UI path); D-PERF-05 reads this line on the A06.
+                    db.openHelper.writableDatabase
+                    android.util.Log.i("AronPerf", "db_open user_db ms=" + (android.os.SystemClock.elapsedRealtime() - start))
+                }
             }
         }
     }

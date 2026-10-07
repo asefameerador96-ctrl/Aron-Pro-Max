@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="push_channel_tasks">কাজ</string>
+    <string name="push_channel_notices">ঘোষণা</string>
+    <string name="push_task_title">নতুন কাজ</string>
+    <string name="push_task_body">আপনার একটি নতুন কাজ এসেছে। কাজের তালিকা খুলতে চাপুন।</string>
+</resources>

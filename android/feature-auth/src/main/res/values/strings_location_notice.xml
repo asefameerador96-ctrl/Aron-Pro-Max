@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- F-SYS-075 employee-location notice (docs/21 s4.7, D-120). Both languages are shown on one screen whatever the app
+     language, so the texts are not translated per locale. Default text until HR and legal confirm it (D-570); any change to
+     the two bodies must bump LocationNotice.POLICY_VERSION (core-sync). Owner of the text: android-core. -->
+<resources>
+    <string name="location_notice_title_bn" translatable="false">অবস্থান তথ্য সংক্রান্ত নোটিশ</string>
+    <string name="location_notice_title_en" translatable="false">Location notice</string>
+    <string name="location_notice_body_bn" translatable="false">এই অ্যাপ আপনার ফোনের অবস্থান রেকর্ড করে কেবল এই সময়গুলোতে: হাজিরা চেক-ইন ও চেক-আউট, দোকান খোলা, ফোর্স সেল এবং নতুন দোকানের তথ্য নেওয়া। অবস্থান সারাক্ষণ রেকর্ড করা হয় না। এই তথ্য আপনার রুট ও দোকান ভিজিট যাচাই করতে ব্যবহার করা হয় এবং কোম্পানির নিয়ম অনুযায়ী সংরক্ষিত থাকে।</string>
+    <string name="location_notice_body_en" translatable="false">This app records your phone\'s location only at these moments: attendance check-in and check-out, opening an outlet, a force sale and capturing a new outlet. Location is never recorded continuously. It is used to verify your route and outlet visits and is kept under the company\'s retention rules.</string>
+    <string name="location_notice_accept">I have read and accept</string>
+    <string name="location_notice_later">Later</string>
+    <string name="location_notice_required_hint">You can start selling after you accept this notice.</string>
+    <string name="location_notice_failed">Could not save. Tap Accept again.</string>
+    <string name="location_notice_logout">Log out</string>
+</resources>

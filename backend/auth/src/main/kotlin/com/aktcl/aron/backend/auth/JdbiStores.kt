@@ -61,6 +61,20 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
     override fun mustChangePassword(userId: Long): Boolean = gate(userId).mustChange
 
     override fun invalidate(userId: Long) { gateCache.remove(userId) }
+
+    private data class DeviceGate(val status: String?, val at: Long)
+    private val deviceCache = ConcurrentHashMap<Long, DeviceGate>()
+
+    override fun deviceStatus(deviceId: Long): String? {
+        val now = clock.now().toEpochMilli()
+        deviceCache[deviceId]?.let { if (now - it.at < svCacheMs) return it.status }
+        val status = db.jdbi.withHandle<String?, Exception> { h ->
+            h.createQuery("SELECT status FROM app.device WHERE id = :id").bind("id", deviceId).mapTo(String::class.java).findOne().orElse(null)
+        }
+        if (deviceCache.size > 100_000) deviceCache.clear()
+        deviceCache[deviceId] = DeviceGate(status, now)
+        return status
+    }
 }
 
 /** Refresh families and hashed tokens; rotation is atomic (the unused-token update and the child insert commit together). */
@@ -122,12 +136,11 @@ class JdbiRefreshStore(private val db: Database) : RefreshStore {
         if ((e.cause as? java.sql.SQLException)?.sqlState == "23505") false else throw e
     }
 
-    override fun revokeFamily(familyId: Long, at: Instant, reason: String) {
-        db.jdbi.useHandle<Exception> { h ->
+    override fun revokeFamily(familyId: Long, at: Instant, reason: String): Boolean =
+        db.jdbi.withHandle<Boolean, Exception> { h ->
             h.createUpdate("UPDATE app.refresh_family SET revoked_at = :at, revoke_reason = :r WHERE id = :f AND revoked_at IS NULL")
-                .bind("at", at.odt()).bind("r", reason).bind("f", familyId).execute()
+                .bind("at", at.odt()).bind("r", reason).bind("f", familyId).execute() == 1
         }
-    }
 
     override fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String) {
         if (deviceId == null && deviceUuid == null) return

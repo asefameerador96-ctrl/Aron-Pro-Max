@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.app
 
+import kotlinx.serialization.json.long
 import com.aktcl.aron.backend.auth.PasswordHasher
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.FreshDb
@@ -330,6 +331,62 @@ class BatchAcceptanceTest {
         assertTrue(limited != null, "a storm is limited")
         assertTrue((limited.headers["Retry-After"]?.toIntOrNull() ?: 0) > 0)
         assertEquals("ERR_RATE_LIMITED", json(limited.bodyAsText())["code"]!!.jsonPrimitive.content)
+    }
+
+    /**
+     * Opus checker on AUD-PERF-02 asked whether the ingest holds one pooled connection while borrowing a second (reach is
+     * resolved inside the family transaction on a cache miss). It does not: JDBI reuses the thread's open handle for a
+     * nested withHandle. With a write pool of ONE connection a nested borrow would wait Hikari's 5 s and fail the family.
+     */
+    @Test
+    fun aWritePoolOfOneConnectionStillIngestsAFamily() = testApplication {
+        val one = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath, "ARON_DB_POOL_MAX" to "1")), clock)
+        try {
+            application { aronApi(one) }
+            val token = client.login()
+            val t0 = System.nanoTime()
+            // Yesterday: the login resolved today's reach, so this date is a cache miss inside the ingest.
+            val family = saleFamily().map { e ->
+                JsonObject(e + mapOf("business_date" to JsonPrimitive("2027-01-02"), "captured_at" to JsonPrimitive("2027-01-02T09:41:00.120Z")))
+            }
+            val r = client.send(token, batch(family))
+            val ms = (System.nanoTime() - t0) / 1_000_000
+            assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+            assertEquals(List(5) { "accepted" }, statuses(json(r.bodyAsText())), r.bodyAsText())
+            assertTrue(ms < 4_000, "the batch took $ms ms: a second connection was borrowed")
+        } finally {
+            one.database?.close()
+        }
+    }
+
+    /** android-core-backend-consent-seed.md (F-SYS-075): one consent per user, policy, version and answer; the bundle sends it back. */
+    @Test
+    fun aConsentAcceptedAgainUnderANewUuidIsADuplicateAndTheBundleReturnsIt() = testApplication {
+        app()
+        val token = client.token()
+        fun consent(at: String) = uuid().let { cu ->
+            envelope("consent_accept", cu, cu, 0, Json.parseToJsonElement(
+                """{"policy_key":"location_notice","policy_version":1,"accepted":true,"locale":"bn","shown_at":"$at"}""",
+            ).jsonObject, route = null).let { e -> JsonObject(e + ("captured_at" to JsonPrimitive(at))) }
+        }
+        val first = consent("2027-01-03T02:10:00.000Z")
+        val again = consent("2027-01-03T02:50:00.000Z") // after a TSO wipe: asked again, new client_uuid
+        val a1 = json(client.send(token, batch(listOf(first))).bodyAsText())["acks"]!!.jsonArray.single().jsonObject
+        assertEquals("accepted", a1["status"]!!.jsonPrimitive.content, a1.toString())
+        val firstId = a1["server_id"]!!.jsonPrimitive.long
+        repeat(2) {
+            val a2 = json(client.send(token, batch(listOf(again))).bodyAsText())["acks"]!!.jsonArray.single().jsonObject
+            assertEquals("duplicate", a2["status"]!!.jsonPrimitive.content, a2.toString())
+            assertEquals(firstId, a2["server_id"]!!.jsonPrimitive.long)
+        }
+        assertEquals(1, count("SELECT count(*) FROM app.user_consent WHERE user_id = (SELECT id FROM app.app_user WHERE username = 'sr1001')"))
+        val b = client.get("/v1/sync/bundle") { bearerAuth(token); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9") }
+        assertEquals(HttpStatusCode.OK, b.status, b.bodyAsText())
+        val consents = json(b.bodyAsText())["user"]!!.jsonObject["consents"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(1, consents.size, consents.toString())
+        assertEquals("location_notice", consents[0]["policy_key"]!!.jsonPrimitive.content)
+        assertEquals(1, consents[0]["policy_version"]!!.jsonPrimitive.int)
+        assertEquals("2027-01-03T02:10:00.000Z", consents[0]["accepted_at"]!!.jsonPrimitive.content)
     }
 
     // ---- F-SYS-055 batch replay and content fingerprint ---------------------------------------------------------

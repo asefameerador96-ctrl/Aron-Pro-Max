@@ -40,6 +40,10 @@ class JvmPasswordVerifier : PasswordVerifier {
 }
 
 class FakeClock(var now: Long = 1_759_630_364_120L) : WallClock {
+    /** Set to move elapsedRealtime apart from the wall clock (reboots); null keeps them together. */
+    var elapsed: Long? = null
+    var boot: Int = 0
     override fun nowMs() = now
-    override fun elapsedRealtimeMs() = now
+    override fun elapsedRealtimeMs() = elapsed ?: now
+    override fun bootCount() = boot
 }

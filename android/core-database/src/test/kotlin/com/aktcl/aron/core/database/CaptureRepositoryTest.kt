@@ -176,8 +176,8 @@ class CaptureRepositoryTest {
         // A definitive ack moves rows on; acked rows are purged only after the retention window.
         val first = pending.first()
         assertEquals(1, fileDb.outboxDao().applyAck(first.clientUuid, OutboxState.ACKED, null, 77, "2026-10-05T05:00:00.000Z"))
-        assertEquals(0, fileDb.outboxDao().purgeAckedBefore("2026-10-05T05:00:00.000Z"))
-        assertEquals(1, fileDb.outboxDao().purgeAckedBefore("2026-10-12T05:00:00.001Z"))
+        // F-SYS-028: never purged while its family still has unsent rows (LocalPurge).
+        assertEquals(0, kotlinx.coroutines.runBlocking { com.aktcl.aron.core.database.repo.LocalPurge(fileDb).purge("2026-10-30", "2026-10-30T00:00:00.000Z").total })
         assertEquals(2, fileDb.outboxDao().returnToPending(batch, "NETWORK"))
         assertEquals(5, fileDb.outboxDao().countInState(OutboxState.PENDING))
         fileDb.close()

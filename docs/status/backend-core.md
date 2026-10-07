@@ -1,6 +1,6 @@
 # backend-core lane status (handoff for a fresh session)
 
-Updated 2026-10-07 (session 4 of the lane). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
+Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
 
 ## Done this session (pushed to INT)
 - **F-API-005 `GET /v1/sync/bundle`** (`backend/sync/BundleService.kt`, `ScopedConfig.kt`, `ReasonTexts.kt`): Opus checker 5 findings, 4 fixed; growing `snapshot_seq` waits on `docs/requests/backend-bundle-snapshot-table.md` (code ready, test assumption-guarded).
@@ -34,6 +34,21 @@ Updated 2026-10-07 (session 4 of the lane). Earlier history: `docs/status/backen
 - **Task columns** (db V0037/V0038 on INT): `Tasks.kt` stores `route_id` (named and in reach, or the outlet's) and `cancel_reason`; tests in `TasksTest`. No checker run on this small follow-up (own tests only); if the sync `task` payload gains `route_id`, scope-check the route.
 - db (11:56Z) on lane/db, not yet on INT: V0040 `app.password_history` + `cfg.auth.password_history_depth`/`password_min_age_h`/`password_denylist_enabled` (un-skip `ChangePasswordTest.noneOfTheLastTenPasswords` and store history once on INT); V0041 partitions `app.geo_breadcrumb` (no code change needed).
 
+## Session 5 (2026-10-07)
+- Merged INT twice (DECISIONS.md conflict at the first, kept both sides). V0040 `app.password_history` is on INT: `ChangePasswordTest.noneOfTheLastTenPasswords` now runs (the code already switched on the table).
+- **AUD-PERF-02** (`platform/RequestIsolation.kt`, installed by `aronApi`): every call except `/v1/health` and `/v1/health/ready` runs on `Dispatchers.IO.limitedParallelism(write pool - 1)` under a 25 s timeout (503 + Retry-After 5..30); a call past its deadline never starts a response (send-pipeline guard), so no truncated bodies; header lookups and the readiness ping run on IO; 57014 is 503 (logged ERROR). `RequestIsolationTest` runs a real Netty engine with ONE call thread. Honest bound: a handler inside JDBC answers when its statement ends (25 s + one statement).
+- **AUD-REL-07** (`platform/Drain.kt`, `Main.apiServer`): grace 3 s, timeout 25 s; on stop readiness 503 at once, in-flight calls drained up to 15 s, `Connection: close` while draining, pools closed on ApplicationStopped (production only).
+- **AUD-SEC-08 / AUD-TP-3** (`RouteInventoryTest`, `scope-cases.txt`, `scope-gaps-baseline.txt` in app test resources): walks the production routing tree; public set pinned and equal to the contract; four widened guards pinned (selector carries the guard settings); every guarded route 401 without a token; device-proof routes 401 without a proof; scope registry 35 cases / 23 exemptions / 66 gaps (47 backend-admin, 19 backend-reports, 0 backend-core), gap set frozen; `ARON_SCOPE_SEEDS` widens `ScopeLeakTest`. Role-denial matrix not built (contract has no per-op roles).
+- **AUD-SEC-07**: only the api role needs the JWT key (`infra-worker-no-signing-key.md`).
+- **AUD-SEC-03** (`platform/SecurityEvents.kt`): `aron.security` log line per event (login_failure deduped, lockout, refresh_reuse once, password_change, device_proof_invalid, device_state_refused, scope_changed); table requested (`backend-core-security-event-table.md`).
+- **AUD-SEC-01** (backend part): the guard refuses `aron-api` tokens of suspended/revoked/replaced/deleted phones within the 10 s gate; upload paths exempt.
+- **AUD-REL-08** (logging part): logback JsonEncoder; request line has the route template, pseudonymous user/device, app_version, revision (`RequestLogTest`).
+- Bundle scope case: `BundleAcceptanceTest.theBundleHoldsOnlyTheCallersOwnRoutesAndTheirOutletsWhateverTheQuerySays`.
+- Opus checkers: PERF-02/REL-07 (6 findings; 5 fixed, the nested-borrow deadlock disproved: JDBI reuses the thread's handle, pool-of-one test), SEC-08/TP-3 (7, fixed), SEC-01/03/07 (combined: 3 fixed, 4 logged in BC-52).
+- Touched another lane's test once: `DataVoidCheckerTest` ingest hold 30 s -> 15 s (inside the 25 s request budget; the void waits on that ingest's lock by design).
+
+- **Lead requests after the handoff (all on lane/backend-core 33fd70db, Opus-checked):** F-SYS-072 signature mode (BC-53), config delta `outlet_radius_changes` (BC-54), consent dedupe + `user.consents` (BC-55, `RecordHandler.sameAs`), integrity-release edges (BC-56). Requests filed: `backend-core-record-signature-mode-key.md`, `backend-core-app-cfg-keys.md` (db). When the app keys land on INT, add a bundle test that they arrive in `config.values`.
+
 ## Decisions taken (session 3)
 - Change-password revokes every full-grant family of the user except the calling phone's own (the contract says "other"; a web caller has no family id in the token, so all web families go and the BFF logs in again).
 - A phone with a temporary password keeps the 10-minute API token for change-password (R15 covers `client: web` only).
@@ -65,12 +80,18 @@ Updated 2026-10-07 (session 4 of the lane). Earlier history: `docs/status/backen
 ## Requests filed
 `backend-jcs-canonicaliser.md` (shared), `backend-config-value-shape.md` (lead), `backend-bundle-snapshot-table.md` (db), `backend-core-assignment-ended-at.md` (backend-admin).
 
-## Next rows (session 5 starts here; last pushed head on lane/backend-core is in docs/status/backend.csv)
-1. `my-rows.py backend-core --todo` in (day, id) order: AUD-PERF-02, AUD-SEC-01/03/07/08, AUD-REL-07/08, AUD-TP-3; then the open items below.
-2. Open follow-ups: password history once V0040 is on INT; harness model gaps above; AUD-REL-02 remainder (in-request retry of idempotent transactions, 25 s request timeout, docs/18 s4.3); SEC-02 remainder (never lock a bound phone with a valid proof; signed BFF client IP when web-dashboard/infra land `backend-core-bff-client-ip.md`); submit void must reset `submit_received_at`/`settle_deadline_at` (F-SYS-016); `device_status` integrity columns (`backend-core-device-integrity-columns.md`); geo re-check: per-batch config cache before fleet size, and read basis from history once `backend-core-location-history-basis.md` lands.
-3. Watch: `cfg.sync.reconcile_types` reshape (R17), `backend-bundle-snapshot-table`, `backend-jcs-canonicaliser`.
+## Next rows (session 6 starts here; last pushed head on lane/backend-core is in docs/status/backend.csv notes or `git log origin/lane/backend-core`)
+1. backend-core has no scope gaps left (task cancel and bundle cases added); the quarantine routes are backend-reports' (`OpsApi`). Tell the lead the gap lists per lane: 47 backend-admin, 19 backend-reports (scope-cases.txt).
+2. When db V0044/V0045 reach INT (lead, 12:55Z; `db-location-history-basis-answer.md`): `GeoRecheck.kt` reads the basis from the history row alone (none/placeholder rows have null lat/lng) and drops the fallback to the outlet's current basis, with its test. V0042 (zone/cluster stamps by trigger) needs no ingest change.
+3. `my-rows.py backend-core --todo` in (day, id) order; the CSV-based filter does not know rows done before the CSV (F-SYS-003, F-API-003/004 are done).
+4. BC-52 open items: separate refresh/OTP derivation keys before any JWT rotation; HMAC for `username_hash` (needs an infra secret); device gate for phones without `did` (require_enrolled); change-password failure events.
+5. Older open items: AUD-REL-02 in-request retry of idempotent transactions; SEC-02 remainder (never lock a bound phone with a valid proof; BFF client IP); submit void must reset `submit_received_at`/`settle_deadline_at` (F-SYS-016); `device_status` integrity columns; geo re-check per-batch config cache and history basis; parked rows TTL worker; quarantine review endpoints exist now (check owner).
+6. Watch: `cfg.sync.reconcile_types` reshape (R17), `backend-bundle-snapshot-table`, `backend-jcs-canonicaliser`, `backend-core-security-event-table`.
 
 ## Traps found
+- **A contract change regenerates three outputs in the same commit:** `python3 tools/slice-contract.py`, `python3 shared/contract/tools/gen_wire_dtos.py`, and the web types (`openapi-typescript@7.13.0 ../contract/openapi.yaml -o src/contract/openapi.d.ts` from web; install the exact version in the scratchpad, web has no node_modules). Then `slice-contract.py --check`, `gen_wire_dtos.py --check`, `npx @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml`. Missing the web file turned the integrator's candidate red (BC-55, 2026-10-07).
+- **Request timeout 25 s (AUD-PERF-02):** a test that holds a request longer (a latch, a lock) gets a 503; keep holds under ~20 s. Production wiring isolates every non-probe call on the bounded dispatcher.
+- **`pkill`/`kill` loops over `pgrep -f` matches can kill your own shell** (exit 144 this session); kill one checked pid at a time.
 - **Fresh container:** PostgreSQL may lack the `aron` role: `su postgres -c "psql -c \"CREATE ROLE aron LOGIN SUPERUSER PASSWORD 'aron'\""` and `createdb -O aron aron_test`.
 - `--offline` fails (the Android plugin is not cached); run gradle online.
 - DbServerConfig resolves `effective_from/to` with the database's `now()`, not the injected clock: config windows in tests must be set relative to `now()` and the clock moved 31 s to drop the cache.
