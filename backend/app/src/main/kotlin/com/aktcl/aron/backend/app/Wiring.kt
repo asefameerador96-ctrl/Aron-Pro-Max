@@ -2,10 +2,19 @@ package com.aktcl.aron.backend.app
 
 import com.aktcl.aron.backend.analytics.DashboardDeps
 import com.aktcl.aron.backend.analytics.DashboardService
+import com.aktcl.aron.backend.analytics.OpsDeps
+import com.aktcl.aron.backend.analytics.OpsService
 import com.aktcl.aron.backend.analytics.ReportDeps
 import com.aktcl.aron.backend.analytics.ReportEngine
 import com.aktcl.aron.backend.analytics.ReportHandlers
+import com.aktcl.aron.backend.analytics.DailyTrackingDeps
+import com.aktcl.aron.backend.analytics.DailyTrackingService
+import com.aktcl.aron.backend.analytics.AppTeamDeps
+import com.aktcl.aron.backend.analytics.TeamService
+import com.aktcl.aron.backend.analytics.dailyTrackingRoutes
 import com.aktcl.aron.backend.analytics.dashboardRoutes
+import com.aktcl.aron.backend.analytics.appTeamRoutes
+import com.aktcl.aron.backend.analytics.opsRoutes
 import com.aktcl.aron.backend.analytics.reportRoutes
 import com.aktcl.aron.backend.auth.AuthDeps
 import com.aktcl.aron.backend.auth.HashLimiter
@@ -107,7 +116,11 @@ class Wiring(
             val login = LoginService(users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock)
             val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
-            val dashboards = DashboardDeps(DashboardService(db, clock), reach, guard, clock)
+            val dashboardService = DashboardService(db, clock)
+            val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
+            val ops = OpsDeps(OpsService(db, config, clock), dashboardService, reach, guard, clock)
+            val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
+            val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
             val reports = ReportDeps(db, ReportEngine(db, config, clock, ReportHandlers.all), reach, guard, clock)
             val configResolver = ConfigResolver(db, clock)
             val toolsReach = com.aktcl.aron.backend.config.NodeReach { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
@@ -126,6 +139,9 @@ class Wiring(
                 authRoutes(auth)
                 outletRoutes(outlets)
                 dashboardRoutes(dashboards)
+                appTeamRoutes(team)
+                dailyTrackingRoutes(tracking)
+                opsRoutes(ops)
                 reportRoutes(reports)
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)

@@ -27,7 +27,7 @@ function readStore(): number[] {
 }
 
 /** Basket of outlets to mark wholesale (or back to retail): live count, one confirm step, idempotent by batch_uuid. */
-export function WholesaleBasket({ rows }: { rows: BasketRow[] }) {
+export function WholesaleBasket({ rows, total = rows.length }: { rows: BasketRow[]; total?: number }) {
   const { t, number, problem } = useI18n();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [target, setTarget] = useState<"wholesale" | "retail">("wholesale");
@@ -37,6 +37,7 @@ export function WholesaleBasket({ rows }: { rows: BasketRow[] }) {
   const [reasonError, setReasonError] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
   // One batch_uuid per basket content: a retry of the same basket replays instead of repeating (idempotent).
+  const dialog = useRef<HTMLElement | null>(null);
   const batch = useRef<{ key: string; uuid: string } | null>(null);
 
   useEffect(() => {
@@ -51,6 +52,10 @@ export function WholesaleBasket({ rows }: { rows: BasketRow[] }) {
       /* storage may be unavailable; the basket then lives only on this page */
     }
   }, [selected]);
+
+  useEffect(() => {
+    if (confirming) dialog.current?.focus(); // keyboard users land in the confirm step
+  }, [confirming]);
 
   const shownIds = useMemo(() => rows.map((r) => r.id), [rows]);
   const toggle = (id: number) => {
@@ -97,6 +102,7 @@ export function WholesaleBasket({ rows }: { rows: BasketRow[] }) {
       <p aria-live="polite" className="text-sm font-semibold text-slate-800" data-testid="basket-count">
         {t("wholesale.count", { n: count })}
       </p>
+      {count >= MAX ? <p role="status" className="text-sm text-amber-800">{t("wholesale.full", { max: number(MAX) })}</p> : null}
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <caption className="sr-only">{t("wholesale.title")}</caption>
@@ -106,12 +112,13 @@ export function WholesaleBasket({ rows }: { rows: BasketRow[] }) {
                 <input
                   type="checkbox"
                   aria-label={t("wholesale.select_all")}
-                  checked={shownIds.length > 0 && shownIds.every((id) => selected.has(id))}
+                  checked={shownIds.length > 0 && (shownIds.every((id) => selected.has(id)) || selected.size >= MAX)}
                   onChange={(e) => {
                     const next = new Set(selected);
                     for (const id of shownIds) {
-                      if (e.target.checked) next.add(id);
-                      else next.delete(id);
+                      if (e.target.checked) {
+                        if (next.size < MAX) next.add(id); // the 5000 cap holds for select-all too
+                      } else next.delete(id);
                     }
                     setSelected(next);
                     setConfirming(false);
@@ -157,7 +164,7 @@ export function WholesaleBasket({ rows }: { rows: BasketRow[] }) {
       </div>
 
       {confirming ? (
-        <section role="dialog" aria-modal="false" aria-labelledby="confirm-title" data-testid="basket-confirm" className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
+        <section ref={dialog} tabIndex={-1} onKeyDown={(e) => { if (e.key === "Escape") setConfirming(false); }} role="dialog" aria-modal="false" aria-labelledby="confirm-title" data-testid="basket-confirm" className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
           <h2 id="confirm-title" className="font-semibold text-amber-900">
             {t("wholesale.confirm", { n: count, kind: t(target === "wholesale" ? "outlet.kind.wholesale" : "outlet.kind.retail") })}
           </h2>
@@ -177,7 +184,9 @@ export function WholesaleBasket({ rows }: { rows: BasketRow[] }) {
           {banner.text}
         </p>
       ) : null}
-      <p className="text-xs text-slate-500">{t("wholesale.shown", { n: number(rows.length) })}</p>
+      <p className="text-xs text-slate-500" data-testid="shown-note">
+        {total > rows.length ? t("wholesale.truncated", { n: number(rows.length), total: number(total) }) : t("wholesale.shown", { n: number(rows.length) })}
+      </p>
     </div>
   );
 }

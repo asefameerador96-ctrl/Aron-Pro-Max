@@ -38,14 +38,14 @@ internal fun productClause(ctx: ReportContext, p: String): Pair<String, Map<Stri
     return (parts.joinToString(" AND ").ifEmpty { "true" }) to binds
 }
 
-/** `std-memo`: one row per memo (voided and superseded memos are shown with their status; the dashboards count active ones only). */
+/** `std-memo`: one row per active sales memo (status active, at least one line): the same population as every total on the dashboards. Voids and number gaps are in `memo-number-gaps`. */
 object StdMemoReport : ReportHandler {
     override val roles = WEB_ROLES + com.aktcl.aron.contract.Role.AMO   // the AMO app reads it for its zone (F-API-017b)
     override val definition = definition(
         "std-memo", "STD Memo", "sales", "memo",
         listOf(
             col("business_date", "Date", "date"), col("memo_no", "Memo no", "string"), col("status", "Status", "string"), col("route_code", "Route", "string"),
-            col("outlet_code", "Outlet code", "string"), col("outlet_name", "Outlet", "string"), col("committed_at", "Time", "timestamp"), col("line_count", "Lines", "integer"),
+            col("outlet_code", "Outlet code", "string"), col("outlet_name", "Outlet", "string"), col("committed_at", "Time", "timestamp"), col("line_count", "Lines", "integer"), col("lines", "SKU lines", "string"),
             col("gross_mtk", "Gross", "mtk", unit = "mtk"), col("offer_discount_mtk", "Offer discount", "mtk", unit = "mtk"), col("drp_discount_mtk", "DRP discount", "mtk", unit = "mtk"),
             col("qc_deduction_mtk", "QC deduction", "mtk", unit = "mtk"), col("net_mtk", "Net", "mtk", unit = "mtk"), col("paid_mtk", "Paid", "mtk", unit = "mtk"), col("due_mtk", "Due", "mtk", unit = "mtk"),
         ),
@@ -54,11 +54,13 @@ object StdMemoReport : ReportHandler {
 
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
-        SELECT m.business_date, m.memo_no, m.status, g.route_code, o.outlet_code, o.outlet_name, m.committed_at, m.line_count::int AS line_count, m.gross_mtk,
+        SELECT m.business_date, m.memo_no, m.status, g.route_code, o.outlet_code, o.outlet_name, m.committed_at, m.line_count::int AS line_count,
+               (SELECT string_agg(s.code || ' x' || ml.qty_base, ', ' ORDER BY ml.line_no) FROM app.memo_line ml JOIN app.sku s ON s.id = ml.sku_id
+                 WHERE ml.memo_client_uuid = m.memo_client_uuid AND ml.business_date = m.business_date AND ml.voided_at IS NULL) AS lines, m.gross_mtk,
                m.offer_discount_mtk, m.drp_discount_mtk, m.qc_deduction_mtk, m.net_mtk, m.paid_mtk, m.due_mtk
           FROM dw.fact_memo m JOIN dw.dim_outlet o ON o.outlet_id = m.outlet_id LEFT JOIN dw.dim_geo g ON g.route_id = m.route_id
          WHERE ${ctx.dateClause("m.business_date")} AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")}
-           AND (CAST(:ocode AS text) IS NULL OR o.outlet_code = :ocode)
+           AND m.status = 'active' AND m.line_count > 0 AND (CAST(:ocode AS text) IS NULL OR o.outlet_code = :ocode)
         """,
         mapOf("ocode" to ctx.query.outlet_code?.takeIf { it.isNotBlank() }),
         listOf("gross_mtk", "offer_discount_mtk", "drp_discount_mtk", "qc_deduction_mtk", "net_mtk", "paid_mtk", "due_mtk"),
@@ -91,8 +93,10 @@ object SrEfficiencyReport : ReportHandler {
           JOIN app.app_user u ON u.id = coalesce(rd.acting_user_id, rd.assigned_user_id)
           LEFT JOIN hrs ON hrs.route_id = a.route_id AND hrs.business_date = a.business_date
          WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")}
+           AND (:fft = 'all' OR u.role = upper(:fft))
          GROUP BY u.id, u.username, u.full_name, g.route_code
         """,
+        mapOf("fft" to ctx.query.field_force_type),
         totalColumns = listOf("target_outlets", "visited_outlets", "successful_calls", "memos", "net_mtk"),
     )
 }
@@ -136,7 +140,9 @@ object RouteBsrCprReport : ReportHandler {
     )
 
     override fun spec(ctx: ReportContext): SqlSpec {
-        val brandFilter = if (ctx.query.products.isNotEmpty() && ctx.query.product_type == "brand") "AND b.brand_id = ANY(:brands)" else ""
+        val (prod, prodBinds) = productClause(ctx, "pp")
+        // A brand qualifies when it has a product inside the selected categories / products.
+        val brandFilter = if (prod == "true") "" else "AND EXISTS (SELECT 1 FROM dw.dim_product pp WHERE pp.brand_id = b.brand_id AND $prod)"
         return SqlSpec(
             """
             WITH rt AS (SELECT route_id, sum(target_outlets) FILTER (WHERE planned AND NOT exception_approved) AS t, sum(successful_calls) AS sc, sum(active_memo_count) AS memos
@@ -149,7 +155,7 @@ object RouteBsrCprReport : ReportHandler {
               FROM rt JOIN br ON br.route_id = rt.route_id JOIN dw.dim_geo g ON g.route_id = rt.route_id
               JOIN LATERAL (SELECT brand_name FROM dw.dim_product WHERE brand_id = br.brand_id ORDER BY brand_name LIMIT 1) p ON true
             """,
-            if (brandFilter.isEmpty()) emptyMap() else mapOf("brands" to ctx.query.products.toTypedArray()),
+            prodBinds,
         )
     }
 }
@@ -160,18 +166,34 @@ private val OUTLET_COLS = listOf(
     col("dues_collected_mtk", "Dues collected", "mtk", unit = "mtk"),
 )
 
+/**
+ * Outlet rows are built from the records of the routes in the caller's scope (memo and visit facts, the memo lines, the due collections), never from
+ * `dw.agg_daily_outlet`, which is one row per outlet across all routes and would carry the money of routes the caller cannot see.
+ */
 private fun outletSpec(ctx: ReportContext, byDay: Boolean): SqlSpec {
-    val status = if (ctx.query.active_status == "all") "" else "AND o.status = ${if (ctx.query.active_status == "active") "'active'" else "'closed'"}"
+    val status = when (ctx.query.active_status) { "active" -> "AND o.status = 'active'"; "inactive" -> "AND o.status <> 'active'"; else -> "" }
     val sub = if (ctx.query.sub_channels.isEmpty()) "" else "AND o.sub_channel_id = ANY(:subs)"
-    val day = if (byDay) "a.business_date, " else ""
+    val d = if (byDay) "business_date" else "NULL::date"
     return SqlSpec(
         """
-        SELECT ${if (byDay) "a.business_date, " else ""}o.outlet_code, o.outlet_name, g.route_code, o.channel, sum(a.active_memo_count)::int AS memos, sum(a.sold_qty_base)::bigint AS sold_qty_base,
-               sum(a.net_mtk)::bigint AS net_mtk, sum(a.due_mtk)::bigint AS due_mtk, sum(a.dues_collected_mtk)::bigint AS dues_collected_mtk
-          FROM dw.agg_daily_outlet a JOIN dw.dim_outlet o ON o.outlet_id = a.outlet_id LEFT JOIN dw.dim_geo g ON g.route_id = o.route_id
-         WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("o.zone_id")} AND ${ctx.routeClause("coalesce(o.route_id, -1)")}
-           AND (CAST(:ocode AS text) IS NULL OR o.outlet_code = :ocode) $status $sub
-         GROUP BY $day o.outlet_code, o.outlet_name, g.route_code, o.channel
+        WITH memo AS (SELECT m.outlet_id, $d AS d, count(*) AS n, sum(m.net_mtk) AS net, sum(m.due_mtk) AS due FROM dw.fact_memo m
+                       WHERE ${ctx.dateClause("m.business_date")} AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")} AND m.status = 'active' AND m.line_count > 0
+                       GROUP BY 1, 2),
+        qty AS (SELECT m.outlet_id, ${if (byDay) "m.business_date" else "NULL::date"} AS d, sum(ml.qty_base) AS q FROM app.memo_line ml
+                  JOIN dw.fact_memo m ON m.memo_client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
+                 WHERE ${ctx.dateClause("m.business_date")} AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")} AND m.status = 'active' AND m.line_count > 0
+                   AND ml.voided_at IS NULL AND ml.line_kind = 'sale' GROUP BY 1, 2),
+        dues AS (SELECT c.outlet_id, ${if (byDay) "c.business_date" else "NULL::date"} AS d, sum(c.amount_mtk) AS amt FROM app.due_collection c JOIN dw.dim_geo g ON g.route_id = c.route_id
+                  WHERE ${ctx.dateClause("c.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("c.route_id")} AND c.voided_at IS NULL GROUP BY 1, 2),
+        vis AS (SELECT v.outlet_id, ${if (byDay) "v.business_date" else "NULL::date"} AS d FROM dw.fact_visit v
+                 WHERE ${ctx.dateClause("v.business_date")} AND ${ctx.zoneClause("v.zone_id")} AND ${ctx.routeClause("v.route_id")} AND NOT v.voided AND v.visit_kind = 'sr_call' GROUP BY 1, 2),
+        keys AS (SELECT outlet_id, d FROM memo UNION SELECT outlet_id, d FROM dues UNION SELECT outlet_id, d FROM vis)
+        SELECT ${if (byDay) "k.d AS business_date, " else ""}o.outlet_code, o.outlet_name, g.route_code, o.channel, coalesce(m.n, 0)::int AS memos, coalesce(q.q, 0)::bigint AS sold_qty_base,
+               coalesce(m.net, 0)::bigint AS net_mtk, coalesce(m.due, 0)::bigint AS due_mtk, coalesce(u.amt, 0)::bigint AS dues_collected_mtk
+          FROM keys k JOIN dw.dim_outlet o ON o.outlet_id = k.outlet_id LEFT JOIN dw.dim_geo g ON g.route_id = o.route_id
+          LEFT JOIN memo m ON m.outlet_id = k.outlet_id AND m.d IS NOT DISTINCT FROM k.d LEFT JOIN qty q ON q.outlet_id = k.outlet_id AND q.d IS NOT DISTINCT FROM k.d
+          LEFT JOIN dues u ON u.outlet_id = k.outlet_id AND u.d IS NOT DISTINCT FROM k.d
+         WHERE (CAST(:ocode AS text) IS NULL OR o.outlet_code = :ocode) $status $sub
         """,
         mapOf("ocode" to ctx.query.outlet_code?.takeIf { it.isNotBlank() }) + (if (sub.isEmpty()) emptyMap() else mapOf("subs" to ctx.query.sub_channels.toTypedArray())),
         listOf("memos", "sold_qty_base", "net_mtk", "due_mtk", "dues_collected_mtk"),
@@ -252,7 +274,7 @@ object ByRouteGeoCaptureReport : ReportHandler {
     )
 
     override fun spec(ctx: ReportContext): SqlSpec {
-        val status = if (ctx.query.active_status == "all") "" else "AND o.status = ${if (ctx.query.active_status == "active") "'active'" else "'closed'"}"
+        val status = when (ctx.query.active_status) { "active" -> "AND o.status = 'active'"; "inactive" -> "AND o.status <> 'active'"; else -> "" }
         return SqlSpec(
             """
             SELECT g.route_code, g.route_name, count(*)::int AS outlets, count(*) FILTER (WHERE o.location_basis = 'master')::int AS master_location,
@@ -270,5 +292,5 @@ object ByRouteGeoCaptureReport : ReportHandler {
 
 /** Every handler registered in this build; the batch rows append theirs (docs/27: no programme reports). */
 object ReportHandlers {
-    val all: List<ReportHandler> = listOf(RouteMemoReport, StdMemoReport, SrEfficiencyReport, RouteStdReport, RouteBsrCprReport, ByOutletReport, ByOutletByDayReport, OnlineOfflineReport, TaskPlannerReport, ByRouteGeoCaptureReport)
+    val all: List<ReportHandler> = listOf(RouteMemoReport, StdMemoReport, SrEfficiencyReport, RouteStdReport, RouteBsrCprReport, ByOutletReport, ByOutletByDayReport, OnlineOfflineReport, TaskPlannerReport, ByRouteGeoCaptureReport, MemoNumberGapsReport, SuspiciousLocationReport)
 }

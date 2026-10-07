@@ -9,6 +9,11 @@ import android.content.Intent
  * enrolment (N-030) and app blocking (N-032) hook in here too.
  */
 class AronDeviceAdminReceiver : DeviceAdminReceiver() {
+    /** Before Android 12 the admin extras arrive here (docs/24 s10.4); from 12 on, PolicyComplianceActivity gets them. */
+    override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
+        com.aktcl.aron.dpc.enrolment.acceptProvisioningExtras(context, intent)
+    }
+
     override fun onEnabled(context: Context, intent: Intent) {
         val pending = goAsync() // file and policy work off the main thread
         Thread { try { runCatching { DeviceOwnerPolicy.get(context).reapply() } } finally { pending.finish() } }.start()

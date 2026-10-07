@@ -32,11 +32,18 @@
   - Property test: 40 seeds of lost answers, kills before and after the server, 500/503, retryable rejects, tiny batches and replays of old batches by a second path: exactly one memo and one set of lines per sale, every row acked with the server's id.
   - Not in this row: `device_money` (F-SYS-009 reconciliation), time anchors (F-SYS-049 supplies them through `SyncEngine(timeAnchors=)`), scheduling (F-SYS-011).
 
-## In progress (built, tested, on INT; checker re-check running)
-- **F-SYS-006** bundle into Room: Room v2 (`price`, `config_value`, `bundle_section`; auto-migration 1->2 with a test); one-transaction apply that only moves forward per business date; a prefetch of a later day is kept aside and promoted offline when that day starts; `BundleDownloader` stages pages and resumes after a kill; the day's first request is the login (a prefetch never is). Checker round 1: 5 defects (prefetch wiped today, prefetch blocked today's refresh, `valid_to` is exclusive, 304 prefetch marked login, supervisor paged sections) fixed with its tests.
-  - App shells: `UserDatabases` (per-user file, 32-byte Keystore-wrapped key used as a raw SQLCipher key, opened off the main thread) and `BundleDownloaders` in the three SessionModules.
-- **F-SYS-049** trusted clock: `TrustedClockSource` (anchors from every API response's `X-Server-Time`, persisted, per boot); it is `SessionComponents.clock`. Checker running.
-- **AUD-PERF-05** key half done (raw key, cached Keystore key); session restore off the main thread is still open.
+- **F-SYS-006** Day bundle into Room (three Opus checker rounds; `CheckerF006Test`, `CheckerF006DbTest`).
+  - Room v2: `price`, `config_value`, `bundle_section` (auto-migration 1->2 with a test). One-transaction apply that only moves forward within a day; long text chunked under the 2 MB CursorWindow.
+  - A prefetch of a later day is kept aside, the morning request is conditional on it (a 304 promotes it), and offline at day start it is promoted. A prefetch never counts as the day's login.
+  - `BundleDownloader` stages pages per version and resumes after a kill; pages are verified (version, section, page, row total).
+  - App shells: `UserDatabases` (per-user file, Keystore-wrapped 32-byte key used as a raw SQLCipher key, opened off the main thread) and `BundleDownloaders`.
+- **F-SYS-049** Trusted time (`TrustedClockSource`, three Opus checker rounds; `CheckerF049Test`). One estimate per boot from `X-Server-Time`: late replies never step time back, a far reading needs the wall clock or a second reading, in-process anchors survive clock changes, boot identity from BOOT_COUNT, then boot_id, then wall-minus-uptime. The AC-04 offline-unlock guard runs on the raw wall clock (`WallClock.wallClockMs()`).
+- **AUD-PERF-05** key half: raw SQLCipher key, cached Keystore key. Still open: session restore off the main thread.
+
+## In progress
+- **F-SYS-011** constrained background sync: `WorkManagerSyncScheduler`, `SyncWorker`, `AronWorkerFactory` (app `Configuration.Provider`, default initializer removed), `NoPollingLintTest`. Built and green; checker next.
+
+## Next (in this order, per the lead): F-SYS-046, then one Room v3 migration for the routed requests (docs/requests/android-sr-a-task-tables.md, android-sr-a-outlet-request-capture.md, android-sr-b-core-records.md) together with F-SYS-027 (memo counter), then F-SYS-009, F-SYS-007, the AUD rows.
 
 ## Second re-check (independent agent, on the pushed fixes)
 - Found a release-build regression: the https guard broke the configuration cache. Fixed; `assembleRelease` now builds (10.7 MB unsigned with R8) and an http base URL fails. **Ask to infra:** add `:android:app-sr:assembleRelease` to CI so this cannot regress silently.
@@ -166,6 +173,8 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
 - **AC-09:** Bangla mode renders in Noto Sans Bengali, which also covers Basic Latin. English mode renders in subset Noto Sans.
 - **AC-10:** the language preference lives in SharedPreferences, not DataStore. Reason: it must be read synchronously in `attachBaseContext`.
 - **AC-11:** WorkManager's `SystemJobService` and `DiagnosticsReceiver` and profileinstaller's receiver are exported by those libraries behind system-only permissions. They are allowlisted by name. This deviates from the literal list in docs/24 s5.8.
+- **AC-13:** below Android 12 (minSdk 26) an expedited job would run as a foreground service, which docs/24 s5.4 forbids outside printing; there the after-failure and Sales Submit jobs are plain network-constrained jobs. The Galaxy A06 (Android 14) gets expedited jobs.
+- **AC-14:** the save debounce is "5 s after the first save of a burst" (`ExistingWorkPolicy.KEEP`), not "5 s of quiet": REPLACE would cancel a running upload on every save.
 - **AC-12:** ownership. Per the lead's Day-1 notes, android-core owns the three app shells' build wiring. The Day-1 login screen in feature-auth and the home placeholder in feature-home were built here because N-001 needs them and android-sr had no Day-1 rows. android-sr takes them over from Day 2 (F-SR-001, F-SR-008).
 
 ## Requests filed

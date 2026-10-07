@@ -24,9 +24,8 @@ object IntegrityCodec {
     fun enrolmentChallenge(enrolmentToken: String): ByteArray = sha256(enrolmentToken.toByteArray(Charsets.UTF_8))
 
     /**
-     * Play Integrity `requestHash` for a server nonce (contract `DeviceNonce`: sha256(nonce + device_uuid)), as lower-case
-     * hex (64 chars, inside the API's 500-char limit). REQUEST: docs/requests/android-geo-dpc-integrity-marker.md asks
-     * backend to confirm the hex encoding.
+     * Play Integrity `requestHash` for a server nonce: lower-case hex of SHA-256 over UTF-8(nonce + device_uuid), 64
+     * characters (contract v1.2, `DeviceNonce`).
      */
     fun requestHash(nonce: String, deviceUuid: String): String = hex(sha256((nonce + deviceUuid).toByteArray(Charsets.UTF_8)))
 

@@ -33,3 +33,10 @@ Rows done: 26 of 446. Calibration from the Day-1 time logs: S 18 min, M 34 min, 
 
 ## Status of the plan
 Day 7 holds if: (1) no lane idles more than 2 hours (the lane check runs every 2 hours), (2) the owner runs the device checks the evening they are posted, (3) usage limits do not stop work for more than a few hours (docs/29 s6). Day 8 to 10 stay the buffer, not the plan.
+
+## Update 2026-10-07 04:58 UTC (Day 3, lead lane check)
+- Rows time-logged as finished: **175 of 446** (was 26 at 03:50). Per lane: web-dashboard 49, web-config 40, android-sr-a 24, infra 14, android-core 9, backend 8, shared 7, db 7, android-geo-dpc 6, backend-admin 5, backend-reports 3, android-print 2, web-admin 1, android-sr-b 0 logged (its batches are on INT but not in a csv yet; lead asked for the csv).
+- Honest reading: "finished" means built and checked by an independent checker against the contract, mocks and fakes. The web lanes run against mocks, so their count is ahead of the integrated truth; the real risk moves to **integration** (contract v1.2, bundle on a real device, sync end to end on dev) and to **CI throughput** (runs queued 13+ min; infra asked to fix concurrency, CodeQL and Dependabot load at 04:50).
+- Critical path now: backend-core (new session, 0 rows logged since recycle), android-core (Room v3, F-SYS-049/006), android-sr-a Compose screens (kit slices 1 to 3 on INT, told to proceed), then the SR slice on dev (login, bundle, visit, sale, memo, sync). Wave 2 (android-amo, android-tso, qa) starts when that slice runs on dev.
+- Recycles requested at the 450k context limit: db (662k), backend-admin (512k), android-print (482k), web-dashboard (483k).
+- Contract v1.2 (additive batch of 8 requests, rulings R10 to R17) is being applied by an Opus agent; lanes told to pull it and wire.
