@@ -41,3 +41,19 @@ class HomeKpiTest {
         assertEquals(MoneyCategory("match", 280_000, 0, 28_000, 14_000, 238_000), m.categories.single())
     }
 }
+
+class JourneyTest {
+    @org.junit.Test fun statusesAndCountsMatchTheKpiStrip() {
+        val planned = (1L..5L).map { PlannedOutlet(it, "o$it", it.toInt()) }
+        val visits = listOf(JourneyVisit(1, "sold"), JourneyVisit(2, "closed"), JourneyVisit(3, "abandoned"), JourneyVisit(1, "refused"))
+        val j = JourneyBuilder.build(planned, visits)
+        org.junit.Assert.assertEquals(listOf(JourneyStatus.Sold, JourneyStatus.Visited, JourneyStatus.NotVisited, JourneyStatus.NotVisited, JourneyStatus.NotVisited), j.rows.map { it.status })
+        org.junit.Assert.assertEquals(Triple(2, 1, 3), Triple(j.visited, j.sold, j.notVisited))
+        val k = KpiStripBuilder.build(5, j.visited, j.sold, emptyMap(), emptyMap(), emptyMap()) { "" }
+        org.junit.Assert.assertEquals(j.notVisited, k.nonVisitOutlets); org.junit.Assert.assertEquals(j.visited - j.sold, k.noSaleOutlets)
+    }
+    @org.junit.Test fun anOutletOutsideTheRouteIsNotListed() {
+        val j = JourneyBuilder.build(listOf(PlannedOutlet(1, "a", 1)), listOf(JourneyVisit(99, "sold")))
+        org.junit.Assert.assertEquals(JourneyStatus.NotVisited, j.rows.single().status)
+    }
+}

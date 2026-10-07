@@ -13,6 +13,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.BannerKind
@@ -43,30 +44,32 @@ fun SalesSubmitScreen(
     syncing: Boolean = false,
 ) {
     val bn = LocalAppLanguage.current == AppLanguage.BN
-    Column(modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(stringResource(R.string.submit_title), style = MaterialTheme.typography.titleLarge)
-        Text(stringResource(if (online) R.string.submit_status_online else R.string.submit_status_offline))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(""); Text(listOf(stringResource(R.string.submit_col_device), stringResource(R.string.submit_col_server)).joinToString(SEP))
-        }
-        counts.forEach { c ->
+    AronCard(modifier.fillMaxWidth().padding(16.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.submit_title), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(if (online) R.string.submit_status_online else R.string.submit_status_offline))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(typeLabel(c.recordType))
-                Text(listOf(localizedNumber(c.device.toLong()), c.server?.let { localizedNumber(it.toLong()) } ?: stringResource(R.string.submit_server_blank)).joinToString(SEP))
+                Text(""); Text(listOf(stringResource(R.string.submit_col_device), stringResource(R.string.submit_col_server)).joinToString(SEP))
             }
-        }
-        gate.blocks.forEach { b -> AronBanner(blockText(b), kind = BannerKind.Warning) }
-        gate.notes.forEach { n -> AronBanner(blockText(n), kind = BannerKind.Info) }
-        gate.duesWarning?.let { d ->
-            val money = Formats.money(d.outstandingMtk, if (bn) UiLocale.BN else UiLocale.EN)
-            AronBanner(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), kind = BannerKind.Warning)
-        }
-        AronSecondaryButton(stringResource(R.string.submit_sync), onSync, Modifier.fillMaxWidth(), enabled = SalesSubmitRules.syncButtonEnabled(online, syncing))
-        AronPrimaryButton(stringResource(R.string.submit_button), onSubmit, Modifier.fillMaxWidth(), enabled = gate.enabled && progress == SubmitProgress.Idle)
-        when (progress) {
-            SubmitProgress.Queued -> AronBanner(stringResource(R.string.submit_queued))
-            SubmitProgress.Settled -> AronBanner(stringResource(R.string.submit_success))
-            SubmitProgress.Idle -> Unit
+            counts.forEach { c ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(typeLabel(c.recordType))
+                    Text(listOf(localizedNumber(c.device.toLong()), c.server?.let { localizedNumber(it.toLong()) } ?: stringResource(R.string.submit_server_blank)).joinToString(SEP))
+                }
+            }
+            gate.blocks.forEach { b -> AronBanner(blockText(b), kind = BannerKind.Warning) }
+            gate.notes.forEach { n -> AronBanner(blockText(n), kind = BannerKind.Info) }
+            gate.duesWarning?.let { d ->
+                val money = Formats.money(d.outstandingMtk, if (bn) UiLocale.BN else UiLocale.EN)
+                AronBanner(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), kind = BannerKind.Warning)
+            }
+            AronSecondaryButton(stringResource(R.string.submit_sync), onSync, Modifier.fillMaxWidth(), enabled = SalesSubmitRules.syncButtonEnabled(online, syncing))
+            AronPrimaryButton(stringResource(R.string.submit_button), onSubmit, Modifier.fillMaxWidth(), enabled = gate.enabled && progress == SubmitProgress.Idle)
+            when (progress) {
+                SubmitProgress.Queued -> AronBanner(stringResource(R.string.submit_queued))
+                SubmitProgress.Settled -> AronBanner(stringResource(R.string.submit_success))
+                SubmitProgress.Idle -> Unit
+            }
         }
     }
 }

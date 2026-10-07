@@ -18,4 +18,23 @@
     <string name="summary_discount_and_others">Discount and others (-)</string>
     <string name="summary_grand_total">Grand total</string>
     <string name="summary_print">Print</string>
+    <string name="journey_title">Sales journey</string>
+    <string name="journey_counts">Planned %1$s, visited %2$s, sold %3$s, not visited %4$s</string>
+    <string name="journey_not_visited">Not visited</string>
+    <string name="journey_visited">Visited</string>
+    <string name="journey_sold">Sold</string>
+    <string name="kpi_visited">Outlets visited %1$s/%2$s</string>
+    <string name="kpi_strike">Strike rate %1$s%%</string>
+    <string name="kpi_non_visit">Non-visit %1$s</string>
+    <string name="kpi_no_sale">No sale %1$s</string>
+    <string name="kpi_stock_line">%1$s: issue %2$s, stock %3$s %4$s</string>
+    <string name="money_gross">Gross</string>
+    <string name="money_discount">Total discount</string>
+    <string name="money_drp">Slide discount</string>
+    <string name="money_qc">Total QC</string>
+    <string name="money_grand">Grand total</string>
+    <string name="history_title">Sale history</string>
+    <string name="history_offline">No connection: showing the last 7 days from this phone, or the server list when it was loaded.</string>
+    <string name="history_footer">Total</string>
+    <string name="history_empty">No sales for this outlet.</string>
 </resources>

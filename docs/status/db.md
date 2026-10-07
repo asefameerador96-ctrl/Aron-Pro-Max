@@ -69,55 +69,67 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     checker independently 37.8 -> 8.5 ms. `db/perf/generate.sql`, `db/perf/ingest_batches.sql`. Checker PASS.
   - `V0022`: `tracking_action.created` v1 catalogued (the analytics producer was refused); producer asked to drop the
     free-text note (`docs/requests/db-event-tracking-action-note.md`).
-  - AUD-DA-04 (system code lists): built and checked (PASS after fixes) but **held**: it breaks backend-masterdata's
-    fixture (`docs/requests/db-masterdata-code-list-fixture.md`); ships as the next migration once that is idempotent.
+  - `V0027` AUD-DA-04 (system code lists): shipped in step with the one-clause fixture change in backend-masterdata
+    (`docs/requests/db-masterdata-code-list-fixture.md`, answered).
 
-## Handoff (2026-10-07 ~05:40 UTC, session recycled at the lead's request)
+- **Session 2 (2026-10-07, after the recycle; Opus checker per batch):**
+  - CI run 254 role race: `DbRolesTest` repairs inside a rolled-back transaction; harness migrations and role changes
+    under a server-wide advisory lock (`TestPostgres.RoleDdlLock`); backend FreshDb asked (`docs/requests/db-role-ddl-lock.md`).
+  - `V0023` back-office tables (admin_asset, tutorial, survey/rubric + immutable versions, print_template,
+    support_upload, feedback_status, price_batch with status flow and freeze) and the V0007 leave-decision fix
+    (answers `backend-admin-content-tables.md`, `backend-admin-price-batch-table.md`).
+  - `V0024` R17: flat `cfg.sync.reconcile_types` (default, stored and pending values), `cfg.bundle.outlet_fields`
+    server-only, keys `cfg.print.confirm_after_print`, `cfg.memo.reprint_watermark`,
+    `cfg.sale.require_printer_before_sale` (lead ruling in `android-print-integration.md`; SchemaV1aTest allows them).
+    backend-core told: `docs/requests/db-backend-core-config-and-device-v12.md`.
+  - `V0025`/`V0026` v1.2 device columns `root_hints`, `root_hints_at`, `integrity_unavailable_reason`/`_at` (NULL = unknown).
+  - `V0028` restrictive directions (answers `backend-admin-restrictive-dir.md`; ConfigWorkflowTest adapted in step).
 
-**Done and on INT:** V0013–V0018 (data as a product, versioned events), V0020 (roles part 2 and login limits), V0021
-(set-based uniqueness, measured), V0022 (catalogue row tracking_action.created). See "Done" above.
+## Handoff (session 2 recycled, 2026-10-07 ~11:00 UTC)
 
-**In progress:**
-- AUD-DA-04 code lists: built and checked, parked in `db/held/code-lists/` (README there says how to ship). Waits on
-  `docs/requests/db-masterdata-code-list-fixture.md`.
-- Hot-path query-plan review: `db/perf/generate.sql` builds the docs/22-volume database (about 8 min, about 7.4 GB:
-  `psql -d aron_perf -v days=7 -f db/perf/generate.sql` as a superuser on a migrated and seeded DB). Ingest is
-  measured (V0021). Bundle, worker and dashboard plans are not EXPLAINed yet. Candidates seen while reading the SQL:
-  - `IngestService.dayStates` filters `(assigned_user_id = :u OR acting_user_id = :u)` but only assigned has an index.
-  - `BundleService.openMemos` joins memo by client_uuid without business_date, so it probes every partition.
-  - The "parent in its own table" fallback (`SELECT count(*) FROM app.memo WHERE client_uuid = ?`) also probes every
-    partition.
-  - The bundle's `outlet_change_request` EXISTS and `task (assignee_user_id, status)` need their indexes checked.
-  - The perf DB has no due_ledger rows yet: add them to the generator before EXPLAINing the dues queries.
+**On lane/db (V0023-V0038), green locally on db (190) and every backend suite; Opus checker PASS per batch:**
+- `V0023`: back-office tables, price_batch (status flow + freeze), the V0007 leave fix.
+- `V0024`: R17 reshape of `cfg.sync.reconcile_types` (default, stored, pending); `outlet_fields` server-only;
+  3 print keys.
+- `V0025`/`V0026`: v1.2 device columns (NULL = unknown).
+- `V0027`: system code lists, with backend-admin's fixture clause landed in the same push.
+- `V0028`: restrictive_dir.
+- `V0029`: api_rw grants (DELETE route_planned/user_scope/mfa_secret; void UPDATE on geo_fix and stock_movement).
+- `V0030`: export log, PII budget, `cfg.pii.list_rows_per_hour` / `cfg.pii.export_rows_per_day` (TSO 5000 by role).
+- `V0031`: dw device/activity/consent facts.
+- `V0032`: bundle_snapshot.
+- `V0033`: AUD-DA-01 (outbox tx_id + horizon, dirty-key dead letter, deprecated versions refused).
+- `V0034`: `cfg.support.public_key_spki`.
+- `V0035`: SECURITY DEFINER functions search pg_temp last.
+- `V0036`: rebuild indexes, `dw.agg_daily_route_segment`, 3 catalogue events.
+- `V0037`/`V0038`: `task.route_id`, `task.cancel_reason`. Tell backend-core's session (session_01465rpZSgSrMTU8CACwuEYx)
+  if not yet done.
 
-**Next three rows (lead's order, 2026-10-07 05:00):**
-1. backend-admin blockers:
-   - `docs/requests/backend-admin-content-tables.md` (tables, plus the V0007 leave trigger bug that blocks every leave
-     decision)
-   - `backend-admin-price-batch-table.md` (`app.price_batch`; price preview and publish return 500 without it)
-   - `backend-admin-restrictive-dir.md`
-2. One config migration:
-   - Reshape `cfg.sync.reconcile_types` default (and any stored cfg_value rows) to a flat object keyed `ROLE.row` with
-     arrays of record types, e.g. `{"SR.outlet":["visit"],"SR.sale":["memo"],"SR.stock":["stock_movement"],
-     "SR.qc":["qc_line"],"SR.promotion":["memo_discount"]}`, keeping every entry.
-   - Set `cfg.bundle.outlet_fields` delivery to `server`.
-   - Add `cfg.print.confirm_after_print` (bool, true, global, device; F-SR-073), `cfg.memo.reprint_watermark`
-     (bool, true, device; F-SR-031/066) and `cfg.sale.require_printer_before_sale` (bool, false, device; F-SR-028),
-     with the same columns and permissions as the neighbouring cfg.print.* rows.
-   - Then tell backend-core in docs/requests (ScopedConfig).
-   - Do NOT add `auth.password_min_len` (lead correction: `cfg.auth.password_min_len` exists).
-3. Contract v1.2 device columns (R18): `app.device.root_hints text[]` NULL = unknown (older phone), `{}` = clean; last
-   integrity-unavailable reason and its time, NULL = never reported. Comment each column.
+The integrator promotes lane/db to INT; if CI on lane/db goes red on db or backend, it is ours.
 
-Then: AUD-DA-01 (outbox commit order: `tx_id xid8`, consumer position `(tx_id, id)`; dirty_key attempts, last_error,
-not_before, dead_at), plus the V0018 checker follow-ups:
-- refuse deprecated event versions;
-- add a BEFORE TRUNCATE guard on `domain_event_type`;
-- make the DataEventsTest heading read "(V0017, V0018)".
+**Open asks to other lanes:**
+- `db-backend-core-config-and-device-v12.md`: ScopedConfig shape, device columns, AUD-DA-01 consumer contract.
+- `db-role-ddl-lock.md`: backend FreshDb takes the role-DDL lock.
+- `db-event-tracking-action-note.md`: tracking_action v2.
 
-After that, DA-02, DA-05..08, PERF-03/07/08 (`python3 tools/my-rows.py db --todo`).
+**Next rows (lead's order):**
+1. The db part of infra's per-app logins, if infra asks (V0029 is the grant base).
+2. `entry_unlock` when backend-admin files it.
+3. AUD-DA-02, DA-05..08, PERF-03/07/08 (`python3 tools/my-rows.py db --todo`); hot-path EXPLAINs at docs/22 volume.
+
+Query-plan candidates:
+- `IngestService.dayStates` ORs `assigned_user_id` and `acting_user_id`; only assigned has an index.
+- `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
+- Check the `outlet_change_request` and `task (assignee_user_id, status)` indexes.
+- Add due_ledger rows to `db/perf/generate.sql`.
+- Plausible, unfixed: `task.route_id` has no index; `cancel_reason` is not tied to `status = 'cancelled'`.
 
 **Traps:**
+- Push only to `lane/db` (not `claude/db-wip-v0023`, not INT). A pushed migration is shipped: fix forward only.
+- Never `pkill -f "gradlew -q"` from a shell whose own command line contains that string (it kills itself).
+- Two Gradle runs at once delete each other's test results ("0 tests"). Run modules one after another; recreate
+  `aron_test` (DROP ... WITH (FORCE)) when a local migration changed, or platform's smoke test fails on the checksum.
+- Checkers must not run Gradle while the suites run: the shared server hits max_connections ("too many clients").
 - Run Gradle one invocation at a time. Concurrent runs corrupt the test results.
 - Before a full run: `rm -rf db/build/test-results`, then recreate the shared `aron_test` DB if a local migration was
   edited (Flyway checksum).
@@ -153,8 +165,7 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 
 ## Sponsor go-live checklist (db)
 
-- [ ] AKTCL confirms the authored code lists of the code-list migration (V0022, held until
-  `docs/requests/db-masterdata-code-list-fixture.md` is done): `void_reason` (Q43), `stock_variance_reason`,
+- [ ] AKTCL confirms the authored code lists of the code-list migration (V0027): `void_reason` (Q43), `stock_variance_reason`,
   `outlet_close_reason`, `submit_void_reason`, `edit_reason` (two more live-app reasons, MQ-18), `feedback_category`
   (Q-62), and adds codes through the admin code-list page if needed.
 - [ ] AKTCL supplies Bangla labels for every code-list item whose `label_bn` is NULL
@@ -187,7 +198,7 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 | 2026-10-05 | Tables listed in `app.partition_policy` are never the target of a foreign key; children reference parents by `client_uuid` | re-routing default-partition rows detaches the default partition |
 | 2026-10-07 | `worker_rw` gets table-level UPDATE on the worker-owned app tables (route_day, visit, media, ...); the guard triggers limit the columns | column grants would have to be kept in step with every new column; the triggers already enforce it |
 | 2026-10-07 | `worker_rw` reads every app table except credentials and one-time secrets (`mfa_secret`, `device_otp`, `refresh_token`, `enrolment_token`, `app_user.password_hash`); `push_token` stays readable | the worker sends pushes |
-| 2026-10-07 | Code-list migration (V0022, held) `day_exception_reason` codes follow docs/16 (`dh_out_of_stock`, `sick`) plus docs/19's `other`; channel/geo_class codes are lower case with the canonical value in `attrs.value` | docs/16 owns the data model; the code pattern is lower case (request to the lead filed with V0022) |
+| 2026-10-07 | Code-list migration (V0027) `day_exception_reason` codes follow docs/16 (`dh_out_of_stock`, `sick`) plus docs/19's `other`; channel/geo_class codes are lower case with the canonical value in `attrs.value` | docs/16 owns the data model; the code pattern is lower case (request to the lead: `docs/requests/db-code-list-decisions.md`) |
 | 2026-10-07 | `jobs_rw` = `worker_rw` + `ensure_partitions`; no rights on `stg` or job bookkeeping yet | no job table exists; added with the first job that needs one |
 | 2026-10-07 | `v_geo_integrity` covers every visit kind of the user; `v_daily_sr` counts SR calls only | integrity is about a person's fixes |
 | 2026-10-07 | Domain-event catalogue enforced by a trigger, not a foreign key; `payload_version` nullable (only pre-V0017 rows) | PG16 cannot add a NOT VALID FK to a partitioned table (squawk gate); the outbox is append-only so it cannot be backfilled |
@@ -213,3 +224,27 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 - Backend: master updates need no version arithmetic; `UPDATE ... WHERE id = :id AND version = :ifMatch` and the
   trigger sets `version + 1` and `updated_at`.
 - Tests of the db lane need a role with CREATEDB (each test class creates and drops its own database).
+
+| 2026-10-07 | New cfg keys `cfg.print.confirm_after_print`, `cfg.memo.reprint_watermark`, `cfg.sale.require_printer_before_sale`: scope global, delivery device, risk 1, effect B, editor `cfg.edit.field` | lead ruling (android-print-integration.md); `cfg.edit.field` as `cfg.memo.reprint_max` and `cfg.print.template_version` |
+| 2026-10-07 | `restrictive_dir` set only where break-glass can compare (numbers, ordered enums); `cfg.release.blocked_version_codes` stays `none` (JSON object) | the backend comparator handles numbers and enum order only |
+| 2026-10-07 | V0024 rewrites a not-yet-in-force cfg_value row in place (trigger lifted inside the migration only) | a closed stub would still be listed as scheduled by the config delta; nobody ever resolved the row |
+
+## Lead note, 2026-10-07 ~17:10 UTC (for the active db session)
+
+A parallel db session (started during the stall recovery) built V0039-V0045 before your V0039-V0041 landed,
+then stood down under the dedupe rule. Its finished, checked work is on **origin/claude/db-s3-salvage**
+(head 8560bc98): PERF-08 index hygiene, DA-05 PII envelope, DA-02 capture context + route zone history,
+DA-06 retention/archive manifest, DA-07 build_dim_date, PERF-07 trigram (held), 4 request files and answers
+to two backend-core requests (task columns; device integrity columns). Cherry-pick and **renumber to V0042+**
+rather than rebuilding; delete the salvage branch when absorbed.
+
+## Lead ruling addendum (2026-10-07 ~17:20 UTC)
+
+- **D-DB-PART-01:** capture-table partitioning is DEFERRED to a scheduled pre-staging migration batch
+  (after the SR slice runs on dev, before the final-account staging deploy). See DECISIONS.md. Keep
+  `db-partitioning-ruling.md` open with status "scheduled: pre-staging gate".
+- The salvage branch also carries three routable requests (infra PG_TRGM allow-list; backend-admin
+  owner_name/address audit redaction; backend-reports capture-context projection). They route normally
+  once absorbed onto lane/db.
+- DA-02 note stands: dims are NOT SCD2; backend-reports' ~40 queries read them live. The capture-context
+  columns are the bridge. Revisit at the staging gate with the partitioning batch.

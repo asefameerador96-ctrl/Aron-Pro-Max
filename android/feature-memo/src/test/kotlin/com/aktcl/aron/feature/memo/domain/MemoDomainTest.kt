@@ -33,6 +33,12 @@ class MemoDomainTest {
         assertEquals(0, DueLedger.outletOutstanding(listOf(m), emptyList(), 2))
     }
 
+    @Test fun payingOneMemoWhileTheOutletOwesMoreIsAPartialSettlementOfTheOutlet() {
+        val m = memo("a", due = 50_000, net = 80_000)
+        val d = DueLedger.markPaid(m, emptyList(), 120_000)!!
+        assertEquals(50_000, d.amountMtk); assertFalse(d.isFullSettlement); assertEquals(120_000, d.outstandingBeforeMtk)
+    }
+
     @Test fun anEditMovesTheDueToTheNewMemo() {
         val old = memo("a", due = 50_000, net = 80_000); val new = memo("b", due = 40_000, net = 60_000, sup = "a")
         assertEquals(40_000, DueLedger.outletOutstanding(listOf(old, new), emptyList(), 1))
