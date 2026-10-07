@@ -120,12 +120,18 @@ class SessionSyncRunner(
             val today = clock.businessDate().toString()
             val meta = db.referenceDao()
             if (meta.meta(KEY_PURGE_DATE) == today) return
+            // F-SYS-080 (D-517): after a server restore nothing is purged until a clean digest (at most 8 days).
+            if (purgeHeldByDigest(meta.meta(SyncEngine.KEY_DIGEST_HOLD), clock.nowMs())) return
             val nowIso = SyncEngine.iso(clock.nowMs())
             val ref = com.aktcl.aron.core.database.repo.ReferenceRepository(db)
             suspend fun days(key: String, default: Int) = configInt(ref.config(key, nowIso)) ?: default
+            val historyDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS).coerceIn(1, 30)
+            // The digest never counts a date this purge may touch: the low-water mark is raised before the purge runs.
+            val cutoff = java.time.LocalDate.parse(today).minusDays(historyDays.toLong()).toString()
+            if (cutoff > (meta.meta(SyncEngine.KEY_PURGE_CUTOFF) ?: "")) meta.putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(SyncEngine.KEY_PURGE_CUTOFF, cutoff))
             com.aktcl.aron.core.database.repo.LocalPurge(db).purge(
                 today, nowIso,
-                historyDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS).coerceIn(1, 30),
+                historyDays = historyDays,
                 keepDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_KEEP_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_KEEP_DAYS).coerceIn(1, 14),
             )
             meta.putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(KEY_PURGE_DATE, today))
@@ -148,6 +154,7 @@ class SessionSyncRunner(
         telemetry = telemetry?.forBatch { key -> com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(key, SyncEngine.iso(components.clock.nowMs())) },
         generationApi = SyncGenerationApi(components.apiClient), // F-SYS-047
         generationHint = { com.aktcl.aron.core.network.ServerGenerationHint.latest },
+        digestApi = SyncDigestApi(components.apiClient), // F-SYS-080
     )
 
     companion object {
@@ -404,4 +411,13 @@ fun interface CheckoutGate {
             minutes - runCatching { gateMinutes() }.getOrDefault(17 * 60) in 0 until windowMinutes
         }
     }
+}
+
+/**
+ * F-SYS-080 (D-517): true while a server restore handled at [hold] (phone ms, `sync.digest_purge_hold`) waits for a clean
+ * digest, at most [SyncEngine.DIGEST_HOLD_MAX_MS]; a hold stamped in the future (a clock set back) also holds, for as long.
+ */
+internal fun purgeHeldByDigest(hold: String?, nowMs: Long): Boolean {
+    val at = hold?.toLongOrNull() ?: return false
+    return kotlin.math.abs(nowMs - at) < SyncEngine.DIGEST_HOLD_MAX_MS
 }

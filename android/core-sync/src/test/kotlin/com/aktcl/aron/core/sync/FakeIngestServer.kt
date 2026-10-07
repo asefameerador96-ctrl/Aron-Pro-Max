@@ -75,6 +75,17 @@ class FakeIngestServer : Dispatcher() {
     var generationReads = 0
     /** Answers the next N generation reads with 503. */
     var generationFails = 0
+    /** The `since` of each generation read (null without it). */
+    val generationSince = ArrayList<String?>()
+    /** F-SYS-047 `?since=`: generation -> its `lost_after_utc`, in mint order (the lineage history). */
+    val history = LinkedHashMap<String, String?>()
+    var previousGeneration: String? = null
+
+    /** F-SYS-080: the digest bodies received; the next N digests answer this status. */
+    val digests = ArrayList<JsonObject>()
+    val digestFailBefore = ArrayDeque<Int>()
+    /** Server's window: dates older than today - 7 (by the fake's [today]) are answered as matching. */
+    var today = "2026-10-05"
 
     /**
      * A point-in-time restore: the registry keeps its first [keep] records (insertion order), the batch store is gone, and
@@ -84,20 +95,62 @@ class FakeIngestServer : Dispatcher() {
         val kept = registry.entries.take(keep).map { it.key to it.value }
         registry.clear(); kept.forEach { (k, v) -> registry[k] = v }
         batches.clear()
+        if (history.isEmpty()) history[generation] = null
+        previousGeneration = generation
         generation = newGeneration; generationKind = "pitr"; lostAfterUtc = lostAfter
+        history[newGeneration] = lostAfter
+    }
+
+    /** F-SYS-080: drops the given uuids from the registry (rows lost without a new generation; the digest finds them). */
+    fun lose(uuids: Collection<String>) { uuids.forEach { registry.remove(it) } }
+
+    private fun digest(body: JsonObject): JsonObject {
+        val window = java.time.LocalDate.parse(today).minusDays(7)
+        val resend = buildJsonArray {
+            for (item in body["items"]!!.jsonArray.map { it.jsonObject }) {
+                val date = item["business_date"]!!.jsonPrimitive.content
+                val type = item["type"]!!.jsonPrimitive.content
+                val d = java.time.LocalDate.parse(date)
+                if (d.isBefore(window) || d.isAfter(java.time.LocalDate.parse(today))) continue
+                val mine = DigestHash.buckets(registry.filter { (_, v) -> v.type == type && v.record["business_date"]?.jsonPrimitive?.content == date }.keys)
+                val phone = item["buckets"]!!.jsonArray.map { it.jsonObject }
+                val differ = (0 until 16).filter { b ->
+                    phone[b]["count"]!!.jsonPrimitive.content.toLong() != mine[b].count || phone[b]["hash"]!!.jsonPrimitive.content != mine[b].hash
+                }
+                if (differ.isNotEmpty()) add(buildJsonObject {
+                    put("business_date", JsonPrimitive(date)); put("type", JsonPrimitive(type))
+                    put("buckets", JsonArray(differ.map { JsonPrimitive(it) }))
+                })
+            }
+        }
+        return buildJsonObject { put("resend", resend) }
     }
 
     override fun dispatch(request: RecordedRequest): MockResponse {
         if (request.url.encodedPath == "/v1/sync/generation") {
             if (request.headers["Authorization"]?.removePrefix("Bearer ") !in validTokens) return api(401, problem("ERR_TOKEN_EXPIRED", 401))
             generationReads++
+            val since = request.url.queryParameter("since")
+            generationSince += since
             if (generationFails > 0) { generationFails--; return api(503, problem("ERR_SERVICE_UNAVAILABLE", 503)) }
+            // The earliest loss of every generation minted after `since`; null when `since` is current or unknown.
+            val after = history.keys.toList().let { k -> k.indexOf(since).takeIf { it >= 0 }?.let { k.drop(it + 1) } }
+            val earliest = after?.takeIf { it.isNotEmpty() }?.mapNotNull { history[it] }?.minOrNull()
             return api(200, buildJsonObject {
                 put("generation", JsonPrimitive(generation)); put("kind", JsonPrimitive(generationKind))
                 put("restore_point_utc", lostAfterUtc?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("lost_after_utc", lostAfterUtc?.let { JsonPrimitive(it) } ?: JsonNull)
                 put("minted_at", JsonPrimitive(mintedAt))
+                put("previous_generation", previousGeneration?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("earliest_lost_after_utc", earliest?.let { JsonPrimitive(it) } ?: JsonNull)
             }.toString())
+        }
+        if (request.url.encodedPath == "/v1/sync/digest") {
+            if (request.headers["Authorization"]?.removePrefix("Bearer ") !in validTokens) return api(401, problem("ERR_TOKEN_EXPIRED", 401))
+            val body = Json.parseToJsonElement(request.body!!.utf8()).jsonObject
+            digests += body
+            digestFailBefore.removeFirstOrNull()?.let { return api(it, problem("ERR_SERVICE_UNAVAILABLE", it)) }
+            return api(200, digest(body).toString())
         }
         if (request.url.encodedPath != "/v1/sync/batch") return api(404, problem("ERR_NOT_FOUND", 404))
         val gzip = request.headers["Content-Encoding"] == "gzip"
