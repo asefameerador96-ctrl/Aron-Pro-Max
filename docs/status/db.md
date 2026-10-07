@@ -137,7 +137,8 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
 
 **On lane/db: V0039-V0057, green locally (db 217, backend 660 on the INT merge of ~18:00); checker PASS per batch.**
 INT has V0001-V0040; the integrator promotes the rest. Session 4 added V0047-V0057 (see "Session 4" under Done).
-Open: none addressed to db. Candidates if idle: `cfg.app.rejected_keep_days` (docs/19 line 679, no request yet);
+Open: AUD-PERF-07 only, blocked on infra adding PG_TRGM to `azure.extensions` (`docs/requests/db-azure-pg-trgm.md`);
+then release `db/held/outlet_search_trgm.sql` as the next V#### with a plan test. Every other db backlog row is in db.csv. Candidates if idle: `cfg.app.rejected_keep_days` (docs/19 line 679, no request yet);
 due_ledger rows in `db/perf/generate.sql`; `due_ledger.memo_business_date` only if bundle p95 needs it.
 Local test trap added: point `ARON_TEST_PG_URL` at a dedicated `aron_test` database (the platform smoke test migrates
 the URL's database itself) and recreate it after editing an unshipped migration (checksum).
