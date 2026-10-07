@@ -96,3 +96,6 @@ Open / not done:
 - Edit while editing: stock warning counts the old memo's quantity too (old memo is superseded only on commit); warning only, not a block.
 - No end-to-end test of the Compose hosts (needs `SrDay`); device checks (kill mid-commit, edit at the shop, print) are for the device lab.
 - `typeLabel` covers the usual record types; unknown ones show the wire name.
+
+## Session 2026-10-07 11:00 UTC (fresh session)
+F-SR-050 done: `StockTracker` (feature-stock) is the one tracker (issued + adjusted - qc returned - sold on live memos, recomputed from rows, so identical after edit and relaunch); `RoomSaleReads` catalog, summary return and KPI strip use it. `StockTrackerTest` passes locally (includes a random-day model test); `RoomSaleReadsTest` needs JDK 21 for Robolectric (local JDK 17), verified by CI. Time log: 21 finished rows reconstructed in the csv (252 min estimate, from commit times). All 22 rows of this lane are now done at logic and screen level; remaining work is app wiring with android-sr-a.
