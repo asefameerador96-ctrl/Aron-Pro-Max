@@ -57,8 +57,29 @@ class TeamApiTest : ReportFixture() {
         val r1 = team.first { it["route_name"]!!.jsonPrimitive.content == "Route1" }
         assertEquals("sales_submitted", r1["state"]!!.jsonPrimitive.content); assertEquals(2, r1["visited"]!!.jsonPrimitive.content.toInt())
         assertEquals(3, r1["target_outlets"]!!.jsonPrimitive.content.toInt()); assertEquals(34_000L, r1["net_mtk"]!!.jsonPrimitive.content.toLong())
-        assertEquals(HttpStatusCode.Forbidden, get(12, Role.SR, "/v1/app/home").status.let { if (it == HttpStatusCode.Unauthorized) HttpStatusCode.Forbidden else it })
+        // the SR role reads its own strip (see srHome)
         assertTrue(get(10, Role.ANALYST, "/v1/app/home?business_date=2026-10-04").obj()["team"]!!.jsonArray.size == 3)
+    }
+
+    @Test
+    fun teamLocationsAreTheLastSyncedUsableFixPerSrWithAgeAndSource() = app {
+        val o = get(11, Role.TSO, "/v1/team/locations?business_date=2026-10-04").obj()
+        val items = o["items"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(2, items.size)                                                       // zone 1: sr001 and sr002 only
+        val sr1 = items.first { it["user_id"]!!.jsonPrimitive.content.toLong() > 0 && it["route_ids"]!!.jsonArray.size == 1 && it["full_name"]!!.jsonPrimitive.content == "SR One" }
+        val fix = sr1["last_fix"]!!.jsonObject
+        assertEquals("visit", fix["source"]!!.jsonPrimitive.content)                      // visit 2 (05:00Z) beats the 03:00Z check-in; the 06:00Z visit is a mock fix and is ignored
+        assertEquals(23.72, fix["lat"]!!.jsonPrimitive.content.toDouble(), 1e-9)
+        assertEquals("2026-10-04T05:00:00.000Z", fix["at"]!!.jsonPrimitive.content)
+        assertEquals(420, fix["age_min"]!!.jsonPrimitive.content.toInt())                 // 12:00Z - 05:00Z
+        // Zone narrowing, and a zone outside the reach is 403 (an unknown one too).
+        assertEquals(1, get(10, Role.ANALYST, "/v1/team/locations?zone_id=$z2&business_date=2026-10-04").obj()["items"]!!.jsonArray.size)
+        assertEquals(HttpStatusCode.Forbidden, get(11, Role.TSO, "/v1/team/locations?zone_id=$z2&business_date=2026-10-04").status)
+        assertEquals(HttpStatusCode.Forbidden, get(11, Role.TSO, "/v1/team/locations?zone_id=987654").status)
+        val z2only = get(14, Role.TSO, "/v1/team/locations?business_date=2026-10-04").obj()["items"]!!.jsonArray.single().jsonObject
+        assertEquals("check_in", z2only["last_fix"]!!.jsonObject["source"]!!.jsonPrimitive.content)
+        // An SR with no synced fix on the date shows no fix, not a stale one from another day.
+        assertNull(get(10, Role.ANALYST, "/v1/team/locations?business_date=2026-10-05").obj()["items"]!!.jsonArray.firstOrNull())
     }
 
     @Test
@@ -76,5 +97,41 @@ class TeamApiTest : ReportFixture() {
         assertEquals(HttpStatusCode.BadRequest, get(11, Role.TSO, "/v1/team/stock").status)  // the date is required
         assertEquals(HttpStatusCode.Forbidden, get(11, Role.TSO, "/v1/team/stock?business_date=2026-10-04&zone_id=$z2").status)
         assertEquals(1, get(14, Role.TSO, "/v1/team/stock?business_date=2026-10-04").obj()["items"]!!.jsonArray.size)
+    }
+
+    @Test
+    fun checker_homeKpisAndTeamAgreeForAUserWithTwoTopNodes() = app {
+        reaches[11] = com.aktcl.aron.backend.platform.Reach(11, Role.TSO, day, false, setOf(z1, z2), emptySet(), false,
+            listOf(com.aktcl.aron.backend.platform.ReachNode("zone", z1), com.aktcl.aron.backend.platform.ReachNode("zone", z2)))
+        val h = get(11, Role.TSO, "/v1/app/home?business_date=2026-10-04").obj()
+        assertEquals(h["team"]!!.jsonArray.size, h["kpis"]!!.jsonObject["target_routes"]!!.jsonPrimitive.content.toInt())
+    }
+
+    @Test
+    fun stockCurrentNetsFreeLinesAndMovementAdjustments() = app {
+        fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE dw.agg_daily_route_sku SET free_qty_base = 5 WHERE route_id = (SELECT id FROM app.route WHERE code='R1') AND issued_qty_base = 100") }
+        val items = get(11, Role.TSO, "/v1/team/stock?business_date=2026-10-04").obj()["items"]!!.jsonArray.map { it.jsonObject }
+        val sku = items.first { it["full_name"]!!.jsonPrimitive.content == "SR One" }["by_sku"]!!.jsonArray.map { it.jsonObject }.first { it["issued_qty_base"]!!.jsonPrimitive.content == "100" }
+        assertEquals(55, sku["current_qty_base"]!!.jsonPrimitive.content.toInt())
+        // The contract has no free-quantity field: current already nets promo and sample lines (docs/24 s12.4 note), so issued - sold - returned differs by exactly that.
+    }
+
+    @Test
+    fun checker_homeRejectsMalformedDate() = app {
+        assertEquals(HttpStatusCode.BadRequest, get(11, Role.TSO, "/v1/app/home?business_date=2026-13-45").status)
+    }
+
+    @Test
+    fun anSrSeesItsOwnStripWithTheSameDefinitions() = app {
+        val r1 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.route WHERE code = 'R1'").mapTo(Long::class.java).one() }
+        reaches[15] = com.aktcl.aron.backend.platform.Reach(15, Role.SR, day, false, emptySet(), setOf(r1), true, emptyList())
+        fresh.db.jdbi.useHandle<Exception> { it.execute("INSERT INTO app.app_user (id, username, full_name, role, must_change_password) OVERRIDING SYSTEM VALUE VALUES (15, 'sr9999', 'SR Nine', 'SR', false)") }
+        val h = get(15, Role.SR, "/v1/app/home?business_date=2026-10-04").obj()
+        val k = h["kpis"]!!.jsonObject
+        assertEquals(1, k["target_routes"]!!.jsonPrimitive.content.toInt()); assertEquals(3, k["target_outlets"]!!.jsonPrimitive.content.toInt())
+        assertEquals(2, k["successful_calls"]!!.jsonPrimitive.content.toInt()); assertEquals(66.67, k["strike_rate_pct"]!!.jsonPrimitive.content.toDouble())
+        assertEquals(34_000L, k["net_mtk"]!!.jsonPrimitive.content.toLong()); assertEquals("route", h["node"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals(0, h["team"]!!.jsonArray.size)
+        assertEquals(HttpStatusCode.Forbidden, get(15, Role.SR, "/v1/team/stock?business_date=2026-10-04").status)
     }
 }

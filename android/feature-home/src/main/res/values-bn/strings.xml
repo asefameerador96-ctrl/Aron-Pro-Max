@@ -46,4 +46,20 @@
     <string name="set_logout_confirm">লগআউট</string>
     <string name="set_cancel">বাতিল</string>
     <string name="set_open">সেটিংস</string>
+    <string name="perm_title">ARON-এর যা দরকার তার অনুমতি দিন</string>
+    <string name="perm_location_why">সুনির্দিষ্ট অবস্থান: ভিজিট খোলার সময় আপনি দোকানে আছেন কিনা দেখতে। শুধু তখনই অবস্থান নেওয়া হয়, ব্যাকগ্রাউন্ডে কখনো নয়।</string>
+    <string name="perm_camera_why">ক্যামেরা: ফোর্স সেল ও আউটলেটের অনুরোধে দোকানের ছবি তুলতে।</string>
+    <string name="perm_bluetooth_why">ব্লুটুথ: আপনার প্রিন্টারে মেমো ও স্টক স্লিপ প্রিন্ট করতে।</string>
+    <string name="perm_allow">অনুমতি দিন</string>
+    <string name="perm_granted">অনুমতি দেওয়া আছে</string>
+    <string name="perm_open_settings">সেটিংস খুলুন</string>
+    <string name="perm_denied_forever">বন্ধ করা আছে। অনুমতি দিতে সেটিংস খুলুন।</string>
+    <string name="perm_location_needed">সুনির্দিষ্ট অবস্থানের অনুমতি না দেওয়া পর্যন্ত ভিজিট বন্ধ থাকবে।</string>
+    <string name="route_pick_title">আজকের জন্য আপনার রুট বেছে নিন</string>
+    <string name="route_in_use">চলতি রুট: %1$s</string>
+    <string name="route_change">রুট বদলান</string>
+    <string name="tut_title">টিউটোরিয়াল</string>
+    <string name="tut_empty">এখনো কোনো টিউটোরিয়াল ভিডিও নেই।</string>
+    <string name="tut_online_only">ভিডিও শুধু অনলাইনে চলে। দেখতে নেটওয়ার্কে যুক্ত হন।</string>
+    <string name="tut_play">চালান</string>
 </resources>
