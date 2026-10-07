@@ -17,14 +17,39 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
 
 | Event | Version | Aggregate | aggregate_id | Producer | Status | Required keys enforced |
 |---|---|---|---|---|---|---|
+| [`day_exception.decided`](#day_exceptiondecided-v1) | 1 | `day_exception` | `day_exception.client_uuid` | backend:masterdata | current | not yet |
+| [`due.collected`](#duecollected-v1) | 1 | `due_collection` | `due_collection.client_uuid` | backend:sync | current | not yet |
 | [`memo.created`](#memocreated-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current | not yet |
 | [`memo.voided`](#memovoided-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current | not yet |
 | [`outlet.changed`](#outletchanged-v1) | 1 | `outlet` | `outlet.id` | backend:masterdata | current | not yet |
+| [`risk_signal.changed`](#risk_signalchanged-v1) | 1 | `risk_signal` | `risk_signal.id` | backend:masterdata | current | not yet |
 | [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | current | not yet |
 | [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | current | not yet |
 | [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | current | not yet |
 | [`tracking_action.created`](#tracking_actioncreated-v1) | 1 | `tracking_action` | `tracking action uuid (audit_log.entity_id)` | backend:analytics | current | not yet |
 | [`visit.closed`](#visitclosed-v1) | 1 | `visit` | `visit.client_uuid` | backend:sync | current | not yet |
+
+## day_exception.decided v1
+
+A day exception was approved or rejected; one event per affected route. Introduced in V0036; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `from_date` | string (date) | yes |  |
+| `route_id` | integer | yes |  |
+| `status` | string | yes | one of approved, rejected |
+| `to_date` | string (date) | yes |  |
+
+## due.collected v1
+
+A due collection was accepted; the route-day and outlet dues are recomputed. Introduced in V0036; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `amount_mtk` | integer | yes | collected amount, integer milli-taka |
+| `business_date` | string (date) | yes |  |
+| `outlet_id` | integer | yes |  |
+| `route_id` | integer | yes |  |
 
 ## memo.created v1
 
@@ -68,6 +93,17 @@ An outlet was created, edited, moved, merged or closed. Names, phones and coordi
 | `merged_into_id` | integer or null | no |  |
 | `route_id` | integer or null | no |  |
 | `zone_id` | integer or null | no |  |
+
+## risk_signal.changed v1
+
+A risk signal was raised or reviewed; the user's day figures and integrity views are recomputed. Introduced in V0036; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `business_date` | string (date) | yes |  |
+| `signal_code` | string | yes |  |
+| `user_id` | integer | yes |  |
+| `review_state` | string or null | no |  |
 
 ## route_day.state_changed v1
 

@@ -13,7 +13,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 135 | 2426 |
-| `dw` | 27 | 425 |
+| `dw` | 28 | 433 |
 
 ## Index
 
@@ -157,6 +157,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`dw.agg_daily_outlet`](#dwagg_daily_outlet) | table | worker | SERVER | event_fact | none | Per outlet and business date: whether visited, geo-valid, and sales totals. |
 | [`dw.agg_daily_route`](#dwagg_daily_route) | table | worker | SERVER | event_fact | none | Per route and business date: day state, visit counts, sales, discounts, paid and due money. |
 | [`dw.agg_daily_route_brand`](#dwagg_daily_route_brand) | table | worker | SERVER | event_fact | none | Per route, brand and date: memo count containing the brand and its sales. |
+| [`dw.agg_daily_route_segment`](#dwagg_daily_route_segment) | table | backend:analytics | SERVER | event_fact | none | Per route, product segment and date: memo count containing the segment (each memo once) and its sales. |
 | [`dw.agg_daily_route_sku`](#dwagg_daily_route_sku) | table | worker | SERVER | event_fact | none | Per route, SKU and date: sold, free, issued and returned quantities and sales. |
 | [`dw.agg_daily_screen_use`](#dwagg_daily_screen_use) | table | backend:analytics | SERVER | event_fact | none | One row is the use of one screen action by one role on one day, rolled up from fact_activity and kept for ever. |
 | [`dw.agg_daily_zone`](#dwagg_daily_zone) | table | worker | SERVER | event_fact | none | Per zone and business date: route and visit counts, geo and risk counts, and sales totals. |
@@ -4400,6 +4401,25 @@ Per route, brand and date: memo count containing the brand and its sales.
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 
 Keys: `PRIMARY KEY (business_date, route_id, brand_id)`
+
+## dw.agg_daily_route_segment
+
+Per route, product segment and date: memo count containing the segment (each memo once) and its sales.
+
+`owner: backend:analytics | capture: SERVER | retention: event_fact | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
+| `route_id` | bigint | not null |  | Route (app.route) being worked. |
+| `segment_id` | bigint | not null |  | Product segment (app.product_node of level segment). |
+| `memo_count` | integer | not null |  | Active memos with at least one line in the segment, each memo counted once. |
+| `sold_qty_base` | bigint | not null |  | Quantity sold in the segment, in each SKU's base unit (sticks, pieces or dozens). |
+| `gross_mtk` | bigint | not null |  | Gross sales of the segment in integer milli-taka. |
+| `last_event_id` | bigint | not null |  | Last outbox event folded in (informational; the row is recomputed by dirty key). |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last recompute. |
+
+Keys: `PRIMARY KEY (business_date, route_id, segment_id)`
 
 ## dw.agg_daily_route_sku
 

@@ -9,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-/** V0030 export log and PII budget, V0031 device/activity/consent facts, V0032 bundle snapshots. */
+/** V0030 export log and PII budget, V0031 device/activity/consent facts, V0032 bundle snapshots, V0036 report indexes and events. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ReportsAndBundleTablesTest {
     private lateinit var db: TestDatabase
@@ -95,5 +95,26 @@ class ReportsAndBundleTablesTest {
             assertEquals("3", scalar("SELECT max(snapshot_seq) FROM app.bundle_snapshot"))
         }
         assertEquals("t", c.scalar("SELECT has_table_privilege('worker_rw', 'app.bundle_snapshot', 'DELETE')"))
+    }
+
+    @Test
+    fun theRebuildQueriesHaveTheirIndexesAndTheNewEventsAreCatalogued() = db.connect().use { c ->
+        assertEquals(
+            listOf("agg_daily_route_segment_segment", "day_exception_approved_dates", "day_exception_route_ids", "due_collection_route_date",
+                "fact_memo_zone_date", "fact_visit_zone_date", "stock_movement_route_date"),
+            c.column("SELECT relname FROM pg_class WHERE relname IN ('due_collection_route_date', 'stock_movement_route_date', 'day_exception_approved_dates', " +
+                "'day_exception_route_ids', 'fact_visit_zone_date', 'fact_memo_zone_date', 'agg_daily_route_segment_segment') ORDER BY 1"),
+        )
+        c.tx {
+            exec("INSERT INTO dw.agg_daily_route_segment (business_date, route_id, segment_id, memo_count, sold_qty_base, gross_mtk) VALUES ('2026-10-07', 1, 2, 3, 400, 50000)")
+            for ((type, payload) in listOf(
+                "due.collected" to """{"route_id": 1, "business_date": "2026-10-07", "outlet_id": 9, "amount_mtk": 1500000}""",
+                "day_exception.decided" to """{"route_id": 1, "from_date": "2026-10-07", "to_date": "2026-10-08", "status": "approved"}""",
+                "risk_signal.changed" to """{"user_id": 1, "business_date": "2026-10-07", "signal_code": "GEO_MOCK"}""",
+            )) {
+                exec("INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, payload) VALUES ('$type', '${type.substringBefore('.')}', 'x', '2026-10-07', '$payload')")
+            }
+            assertEquals("3", scalar("SELECT count(*) FROM app.domain_event WHERE event_type IN ('due.collected', 'day_exception.decided', 'risk_signal.changed')"))
+        }
     }
 }
