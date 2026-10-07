@@ -19,13 +19,16 @@ through the public address (Front Door), as the seeded SR on the seeded dev phon
 Payload shapes follow backend/app/src/test/.../SyncConvergenceFuzzTest.kt (the server's own accepted records).
 Exit 0 when every step passed, 1 otherwise; one line per step, and with GITHUB_STEP_SUMMARY a table there.
 Environment: SLICE_API_HOST (host only), SLICE_PASSWORD (the seed password; never printed), optional SLICE_USER
-(sr1001), SLICE_DEVICE, SLICE_OUTLET_CODE (SMOKE-SR-001), SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300).
+(sr1001), SLICE_DEVICE, SLICE_DEVICE_KEY (PEM file; signs X-Device-Proof), SLICE_OUTLET_CODE (SMOKE-SR-001), SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300).
 """
 import datetime
+import base64
 import gzip
+import hashlib
 import json
 import os
 import random
+import subprocess
 import sys
 import time
 import urllib.error
@@ -39,6 +42,7 @@ DEVICE = os.environ.get("SLICE_DEVICE", "00000000-0000-4000-8000-000000000001")
 APP_VERSION = os.environ.get("SLICE_APP_VERSION", "1.0.9+9")
 TILE_WAIT_S = int(os.environ.get("SLICE_TILE_WAIT_S", "300"))
 OUTLET_CODE = os.environ.get("SLICE_OUTLET_CODE", "SMOKE-SR-001")  # the smoke's own outlet (infra/sql/devseed-smoke-outlet.sql)
+DEVICE_KEY = os.environ.get("SLICE_DEVICE_KEY", "")  # PEM file of the smoke device's key (Key Vault aron-dev-smoke-device-key)
 TILE_POLL_S = float(os.environ.get("SLICE_TILE_POLL_S", "15"))
 SCHEME = os.environ.get("SLICE_SCHEME", "https")  # http only for the offline test against a local stub
 DHAKA = datetime.timezone(datetime.timedelta(hours=6))
@@ -57,6 +61,32 @@ def step(name, ok, detail=""):
         raise StepFailed(name)
 
 
+def b64u(raw):
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def sign(key_file, message):
+    """ES256 over [message] with the PEM key in [key_file], as raw r||s base64url (what DeviceProof.verify expects)."""
+    der = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key_file], input=message.encode(), capture_output=True,
+                         check=True).stdout
+    # DER: 30 len 02 lr r 02 ls s  ->  r and s as 32-byte big-endian integers
+    i = 2 if der[1] < 0x80 else 3
+    lr = der[i + 1]; r = der[i + 2:i + 2 + lr]; j = i + 2 + lr
+    ls_ = der[j + 1]; s_ = der[j + 2:j + 2 + ls_]
+    return b64u(int.from_bytes(r, "big").to_bytes(32, "big") + int.from_bytes(s_, "big").to_bytes(32, "big"))
+
+
+def public_jwk(key_file):
+    """The P-256 public JWK of the PEM key and its RFC 7638 thumbprint (the device row the backend verifies with)."""
+    der = subprocess.run(["openssl", "ec", "-in", key_file, "-pubout", "-outform", "DER"], capture_output=True, check=True).stdout
+    point = der[-65:]
+    if point[0] != 4:
+        raise ValueError("not an uncompressed P-256 point")
+    x, y = b64u(point[1:33]), b64u(point[33:65])
+    thumb = b64u(hashlib.sha256(f'{{"crv":"P-256","kty":"EC","x":"{x}","y":"{y}"}}'.encode()).digest())
+    return {"kty": "EC", "crv": "P-256", "x": x, "y": y}, thumb
+
+
 def call(method, path, token=None, body=None, gz=False, headers=None):
     """Returns (status, parsed JSON or text). Never logs headers (they carry the token)."""
     h = {"Accept": "application/json", "Accept-Encoding": "gzip", "X-App-Version": APP_VERSION, "X-Device-Id": DEVICE}
@@ -69,6 +99,11 @@ def call(method, path, token=None, body=None, gz=False, headers=None):
         if gz:
             data = gzip.compress(data)
             h["Content-Encoding"] = "gzip"
+            if path == "/v1/sync/batch" and DEVICE_KEY:
+                # X-Device-Proof (docs/24 s8.3) over the gzip bytes as sent, as an enrolled phone signs its batches.
+                msg = "\n".join(["aron-proof-v1", "batch", DEVICE, hashlib.sha256(data).hexdigest(), body["batch_uuid"], "1"])
+                h["X-Device-Proof"] = sign(DEVICE_KEY, msg)
+                h["X-Batch-Attempt"] = "1"
     h.update(headers or {})
     req = urllib.request.Request(f"{SCHEME}://{HOST}{path}", data=data, method=method, headers=h)
     try:
@@ -273,4 +308,8 @@ def main():
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--print-jwk"]:  # deploy.sh: the public half for the dev seed job (never the private key)
+        jwk, thumb = public_jwk(sys.argv[2])
+        print(json.dumps({"jwk": jwk, "thumbprint": thumb}, separators=(",", ":")))
+        sys.exit(0)
     sys.exit(main())

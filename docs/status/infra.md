@@ -1,8 +1,16 @@
 # Infra lane status
 
-Updated 2026-10-07 19:55 UTC (fifth infra session).
+Updated 2026-10-07 20:35 UTC (fifth infra session).
 
 ## Fifth infra session, 2026-10-07 17:40 UTC: read this first (the fourth session's handover below still applies)
+
+**First slice smoke, deploy run 37676392733 (zw, 19:41 UTC):** dev seed Succeeded (image built, 04 left out,
+aron-dev-seed-password created), smoke steps 1 login, 2 bundle (outlet SMOKE-SR-001 = 61, route 1), 3 baseline PASSED;
+step 4 upload FAILED 401 ERR_DEVICE_PROOF_INVALID "device key unknown" (SyncApi refuses keyless devices while
+cfg.device.require_enrolled is on, kept on per the lead). Fix lane/infra ff7579c4: the seed device gets a REAL P-256 key
+(private in Key Vault aron-dev-smoke-device-key, public JWK + RFC 7638 thumbprint set by the seed job only over the
+placeholder) and the smoke signs X-Device-Proof; nothing relaxed. Same head: dbPerAppLogins = true in dev (db closed the
+grants gap, V0029; db confirmed app_jobs ⊇ worker_rw) and the worker check (image, Running replica, 0 restarts, 90 s).
 
 **Deploy run 37673797109 (INT b85d81fd, 19:21 to 19:31 UTC): ALL GREEN, dblogins FIXED.** "database logins succeeded"
 (first time; SQL as a mounted file), "main.bicep skipped" (infra unchanged since 9941cfe), health gate build = b85d81fd,

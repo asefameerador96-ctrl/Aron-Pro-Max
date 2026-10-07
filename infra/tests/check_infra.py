@@ -7,6 +7,7 @@ the templates deploy into ONE resource group only, carry no hard-coded subscript
 resource the row asks for with the reliability settings the spec fixes, and the workflows deploy only from the
 integration branch with OIDC and pinned actions. What they cannot prove (needs Azure) is listed in infra/README.md.
 """
+import hashlib
 import json
 import os
 import re
@@ -1035,8 +1036,9 @@ class PerAppDatabaseLogins(unittest.TestCase):
         self.assertIn("workerDbUrlSecret", worker_secrets["db-direct-url"])
         mig = secrets("migrate")
         self.assertIn("dbDirectUrl", mig["db-direct-url"], "the migrate job keeps the admin login")
-        for f in ("dev", "dev-lite", "stage", "prod"):
-            # Off until api_rw has the DELETE grants the admin flows use (docs/requests/db-runtime-roles-gaps.md).
+        # On in dev since the grants gap closed (V0029); off elsewhere until dev has proven it.
+        self.assertIs(params("dev.apps.parameters.json")["dbPerAppLogins"], True)
+        for f in ("dev-lite", "stage", "prod"):
             self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], False, f)
         self.assertIs(param_default("apps.json", "dbPerAppLogins"), False, "off unless a profile turns it on")
 
@@ -1440,6 +1442,33 @@ class SliceSmoke(unittest.TestCase):
 
     PW, TOKEN = "seed-pw-Never-Printed-1", "tok-Never-Printed-2"
 
+    def setUp(self):
+        import subprocess, tempfile
+        self.keydir = tempfile.TemporaryDirectory(); self.addCleanup(self.keydir.cleanup)
+        self.key = os.path.join(self.keydir.name, "key.pem"); self.pub = os.path.join(self.keydir.name, "pub.pem")
+        subprocess.run(["openssl", "genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:P-256", "-out", self.key], check=True, capture_output=True)
+        subprocess.run(["openssl", "ec", "-in", self.key, "-pubout", "-out", self.pub], check=True, capture_output=True)
+
+    def verify(self, proof, message):
+        """Raw r||s base64url -> DER, then openssl verify with the public key (what the backend does with JCA)."""
+        import base64, subprocess, tempfile
+        try:
+            raw = base64.urlsafe_b64decode(proof + "=" * (-len(proof) % 4))
+        except ValueError:
+            return False
+        if len(raw) != 64:
+            return False
+        def der_int(b):
+            b = b.lstrip(b"\0") or b"\0"
+            if b[0] & 0x80:
+                b = b"\0" + b
+            return b"\x02" + bytes([len(b)]) + b
+        body = der_int(raw[:32]) + der_int(raw[32:])
+        with tempfile.NamedTemporaryFile() as sig, tempfile.NamedTemporaryFile() as msg:
+            sig.write(b"\x30" + bytes([len(body)]) + body); sig.flush(); msg.write(message.encode()); msg.flush()
+            r = subprocess.run(["openssl", "dgst", "-sha256", "-verify", self.pub, "-signature", sig.name, msg.name], capture_output=True)
+        return r.returncode == 0
+
     def serve(self, doubles=False):
         import gzip as gz, http.server, threading
         from urllib.parse import urlparse, parse_qs
@@ -1460,6 +1489,7 @@ class SliceSmoke(unittest.TestCase):
 
             def do_POST(self):
                 body = self.rfile.read(int(self.headers["Content-Length"]))
+                raw_gz = body
                 if self.headers.get("Content-Encoding") == "gzip":
                     body = gz.decompress(body)
                 b = json.loads(body)
@@ -1470,6 +1500,12 @@ class SliceSmoke(unittest.TestCase):
                                "device_uuid": "00000000-0000-4000-8000-000000000001"}
                     return self.reply(200, {"status": "ok", "access_token": test.TOKEN}) if ok else self.reply(401, {"code": "bad"})
                 if path == "/v1/sync/batch" and self.authed():
+                    # As SyncApi: a device with a key must sign the gzip bytes (raw r||s ES256, base64url).
+                    proof = self.headers.get("X-Device-Proof")
+                    if not proof or not test.verify(proof, "\n".join(["aron-proof-v1", "batch", b["device_uuid"],
+                                                                        hashlib.sha256(raw_gz).hexdigest(), b["batch_uuid"],
+                                                                        self.headers.get("X-Batch-Attempt", "1")])):
+                        return self.reply(401, {"code": "ERR_DEVICE_PROOF_INVALID"})
                     envelope = {"type", "client_uuid", "family_uuid", "rank", "schema_version", "business_date", "captured_at",
                                 "route_id", "bundle_version", "config_version", "payload"}
                     for r in b["records"]:
@@ -1526,7 +1562,7 @@ class SliceSmoke(unittest.TestCase):
         import subprocess, tempfile
         with tempfile.NamedTemporaryFile("r", suffix=".md") as summary:
             env = dict(os.environ, SLICE_API_HOST=f"127.0.0.1:{srv.server_address[1]}", SLICE_SCHEME="http",
-                       SLICE_PASSWORD=self.PW, SLICE_TILE_WAIT_S="2", SLICE_TILE_POLL_S="0.2", GITHUB_STEP_SUMMARY=summary.name)
+                       SLICE_PASSWORD=self.PW, SLICE_DEVICE_KEY=self.key, SLICE_TILE_WAIT_S="2", SLICE_TILE_POLL_S="0.2", GITHUB_STEP_SUMMARY=summary.name)
             r = subprocess.run([sys.executable, str(ROOT / "infra" / "scripts" / "slice-smoke.py")], env=env,
                                capture_output=True, text=True, timeout=60)
             out = r.stdout + r.stderr + summary.read()
@@ -1557,9 +1593,23 @@ class SliceSmoke(unittest.TestCase):
         self.assertIn("PASS 10 cleanup: sale voided", out, "a failed later step still voids the smoke sale")
         self.assertTrue(state["voided"])
 
+    def test_print_jwk_gives_the_public_half_and_its_rfc7638_thumbprint(self):
+        import base64, hashlib, subprocess
+        r = subprocess.run([sys.executable, str(ROOT / "infra" / "scripts" / "slice-smoke.py"), "--print-jwk", self.key],
+                           capture_output=True, text=True, check=True)
+        out = json.loads(r.stdout)
+        jwk = out["jwk"]
+        self.assertEqual((jwk["kty"], jwk["crv"]), ("EC", "P-256"))
+        self.assertNotIn("d", jwk, "never the private scalar")
+        self.assertEqual(len(base64.urlsafe_b64decode(jwk["x"] + "=")), 32)
+        canon = json.dumps({"crv": "P-256", "kty": "EC", "x": jwk["x"], "y": jwk["y"]}, separators=(",", ":"))
+        self.assertEqual(out["thumbprint"], base64.urlsafe_b64encode(hashlib.sha256(canon.encode()).digest()).rstrip(b"=").decode())
+        run = (ROOT / "infra" / "scripts" / "devseed-run.sh").read_text(encoding="utf-8")
+        self.assertIn("AND public_key_thumbprint IN ('seed-dev-device-0001', :'tp')", run, "never replaces another real key")
+
     def test_wired_after_the_health_gate_for_dev_only(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.index("infra/scripts/slice-smoke.py"))
+        self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.rindex("python3 infra/scripts/slice-smoke.py; then"))
         self.assertLess(d.index('DBLOGINS_JOB="$(az deployment'), d.index("publish aron-devseed build_devseed"))
         self.assertLess(d.index("publish aron-devseed build_devseed"), d.index('guard_newer_live "before the apps"'))
         self.assertIn("grep -qx 'param devSeed = true' \"infra/params/${PROFILE}.apps.bicepparam\"", d, "a committed switch")

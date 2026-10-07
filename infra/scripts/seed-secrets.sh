@@ -69,4 +69,12 @@ if [ "${ARON_DEV_SEED:-false}" = true ] && [[ "${PROFILE:-}" == dev* ]]; then
     put_file aron-dev-seed-password "$tmp/seedpw" text/plain
     note "aron-dev-seed-password created"
   fi
+  # The slice smoke's device key (ES256, P-256): its public half goes on the seed device, the smoke signs with it.
+  if exists aron-dev-smoke-device-key; then
+    note "aron-dev-smoke-device-key present (kept)"
+  else
+    openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$tmp/smoke.pem"
+    put_file aron-dev-smoke-device-key "$tmp/smoke.pem" application/x-pem-file
+    note "aron-dev-smoke-device-key created"
+  fi
 fi
