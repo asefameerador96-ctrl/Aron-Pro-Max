@@ -7,7 +7,7 @@ import androidx.room.Query
 import com.aktcl.aron.core.database.entity.OutboxEntity
 import com.aktcl.aron.core.database.entity.OutboxState
 
-/** Outbox access (docs/24 s4.5, s4.6). The sync worker loop that drives it is Day-2 work (F-SYS-008). */
+/** Outbox access (docs/24 s4.5, s4.6), driven by core-sync's SyncEngine (F-SYS-008). */
 @Dao
 abstract class OutboxDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
@@ -22,6 +22,31 @@ abstract class OutboxDao {
     /** The next rows to send in commit order (s4.2 rule 1). */
     @Query("SELECT * FROM outbox WHERE state = 'pending' ORDER BY seq LIMIT :limit")
     abstract suspend fun nextPending(limit: Int): List<OutboxEntity>
+
+    /**
+     * The next rows to send (s4.6): commit order, except that a row already sent [skipAfter] times or more moves behind the
+     * others (poison-row skip-ahead), and families in [excludedFamilies] (isolated by a bisect in this run) are left out.
+     */
+    @Query(
+        """SELECT * FROM outbox WHERE state = 'pending' AND family_uuid NOT IN (:excludedFamilies)
+           ORDER BY CASE WHEN attempts >= :skipAfter THEN 1 ELSE 0 END, seq LIMIT :limit""",
+    )
+    abstract suspend fun nextSendable(limit: Int, skipAfter: Int, excludedFamilies: List<String>): List<OutboxEntity>
+
+    /** Rows waiting for an upload: pending or in a batch not yet answered (`X-Pending-Rows`, the periodic-work rule). */
+    @Query("SELECT COUNT(*) FROM outbox WHERE state IN ('pending', 'in_flight')")
+    abstract suspend fun unsentCount(): Int
+
+    /**
+     * Applies a server resolution of a quarantined record (s4.5): [state] is `acked` (accepted, accepted_with_fix) or
+     * `rejected` (discarded). Only a row still quarantined moves.
+     */
+    @Query(
+        """UPDATE outbox SET state = :state, last_code = :code,
+           acked_at = CASE WHEN :state = 'acked' THEN :at ELSE acked_at END
+           WHERE client_uuid = :clientUuid AND state = 'quarantined'""",
+    )
+    abstract suspend fun applyResolution(clientUuid: String, state: String, code: String, at: String): Int
 
     /** Rows of a persisted batch, resent first after a kill (s4.6). */
     @Query("SELECT * FROM outbox WHERE batch_uuid = :batchUuid AND state = 'in_flight' ORDER BY seq")

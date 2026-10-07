@@ -36,4 +36,5 @@ interface ReferenceDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putMeta(row: SyncMetaEntity)
     @Query("SELECT value FROM sync_meta WHERE `key` = :key") suspend fun meta(key: String): String?
+    @Query("DELETE FROM sync_meta WHERE `key` = :key") suspend fun deleteMeta(key: String)
 }
