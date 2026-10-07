@@ -15,6 +15,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
+    implementation(project(":android:core-database"))
+    implementation(libs.kotlinx.serialization.json)
     implementation(project(":android:core-sync"))
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)

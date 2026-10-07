@@ -15,6 +15,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
+    implementation(project(":android:core-database"))
     implementation(project(":android:core-printing"))
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
