@@ -276,6 +276,21 @@ class BundleAcceptanceTest {
         val r = client.bundle(token, "?for=${sunday.plusDays(1)}", version = "1.0.0+1")
         assertEquals(HttpStatusCode.UpgradeRequired, r.status)
         assertEquals("ERR_APP_VERSION_UNSUPPORTED", json(r.bodyAsText())["code"]!!.jsonPrimitive.content)
+        // F-SYS-054: the upload is never gated by the version; a build below the minimum still empties its outbox (one
+        // record whose payload is not valid: acked one by one, the batch itself is 200).
+        val cu = java.util.UUID.randomUUID().toString()
+        val body = """{"batch_uuid":"${java.util.UUID.randomUUID()}","device_uuid":"$devPhone","schema_version":1,"app_version":"1.0.0+1","trigger":"manual",
+            "sent_at_device":"2027-01-03T04:00:00.000Z","pending_rows":0,"time_anchors":[],"device_counts":{},
+            "records":[{"type":"app_error","client_uuid":"$cu","family_uuid":"$cu","rank":0,"schema_version":1,"business_date":"$sunday",
+              "captured_at":"2027-01-03T03:41:00.120Z","captured_elapsed_ms":1000,"boot_count":1,"clock_offset_ms":0,"captured_offline":true,
+              "bundle_stale":false,"config_version":1,"payload":{}}]}"""
+        val gz = java.io.ByteArrayOutputStream().also { o -> java.util.zip.GZIPOutputStream(o).use { it.write(body.toByteArray()) } }.toByteArray()
+        val up = client.post("/v1/sync/batch") {
+            bearerAuth(token); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.0+1"); header("Content-Encoding", "gzip")
+            setBody(io.ktor.http.content.ByteArrayContent(gz, ContentType.Application.Json))
+        }
+        assertEquals(HttpStatusCode.OK, up.status, up.bodyAsText())
+        assertEquals(1, json(up.bodyAsText())["acks"]!!.jsonArray.size)
     }
 
     @Test
