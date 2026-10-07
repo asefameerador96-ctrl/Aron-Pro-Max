@@ -47,7 +47,7 @@ class MediaWorkScheduler(
      * other slot of the pair, so exactly one re-check is ever queued behind a running one (never a growing chain).
      */
     fun afterRun(report: MediaRunReport, runningAs: String? = null) {
-        report.evidenceFallbackAtMs?.let(::armFallback)
+        report.evidenceFallbackAtMs?.let { armFallback(it, runningAs) }
         if (report.waitingForRecord > 0) {
             val network = if (!wifiOnly() || report.evidenceDueOnMobile) NetworkType.CONNECTED else NetworkType.UNMETERED
             val base = "$WORK_RECHECK-" + if (network == NetworkType.CONNECTED) "any" else "wifi"
@@ -60,9 +60,19 @@ class MediaWorkScheduler(
      * One CONNECTED job per hour of fallback time, kept if already there: a run never cancels itself or another
      * photo's fallback, and a day of evidence photos needs at most a few jobs.
      */
-    private fun armFallback(atMs: Long) {
+    private fun armFallback(atMs: Long, runningAs: String? = null) {
+        val now = nowMs()
+        if (atMs <= now) {
+            // Already due (the job that held it may be this very fallback job): a slot pair, so a successor is always queued.
+            val base = "$WORK_FALLBACK-due"
+            val name = if (runningAs == "$base-1") "$base-2" else "$base-1"
+            // A floor, so two slots can never relaunch each other back to back (clock skew between scheduler and uploader).
+            workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, request(NetworkType.CONNECTED, DUE_MIN_DELAY_MS, name))
+            return
+        }
         val bucket = Math.floorDiv(atMs + HOUR_MS - 1, HOUR_MS) // round up: never before the photo's moment
-        workManager.enqueueUniqueWork("$WORK_FALLBACK-$bucket", ExistingWorkPolicy.KEEP, request(NetworkType.CONNECTED, maxOf(0L, bucket * HOUR_MS - nowMs())))
+        val name = "$WORK_FALLBACK-$bucket"
+        workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, request(NetworkType.CONNECTED, maxOf(0L, bucket * HOUR_MS - now), name))
     }
 
     private fun request(network: NetworkType, delayMs: Long, name: String? = null) = OneTimeWorkRequestBuilder<MediaWorker>()
@@ -83,6 +93,7 @@ class MediaWorkScheduler(
         /** Tag prefix carrying a re-check's own unique-work name, so the running job knows its slot. */
         const val NAME_TAG = "aron-media-name:"
         private const val HOUR_MS = 3_600_000L
+        const val DUE_MIN_DELAY_MS = 5 * 60_000L
     }
 }
 

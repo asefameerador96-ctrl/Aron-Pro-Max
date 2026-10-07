@@ -91,6 +91,34 @@ class OpsApiTest : ReportFixture() {
         assertEquals(66.67, svc.configAckPct(7, day)); assertEquals(100.0, svc.configAckPct(5, day))
     }
 
+    /** v1.2 additions: config ack share, pending photos, quarantine backlog, by_zone[] and LoginSubmitStatus.zones[]. */
+    @Test
+    fun v12AdditionsAreScopedAndConsistent() = app {
+        sql(
+            """
+            INSERT INTO app.media (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, received_at, purpose, ref_type, ref_client_uuid, sha256, bytes, width, height, blob_path, taken_at, status)
+              SELECT gen_random_uuid(), gen_random_uuid(), DATE '2026-10-04', u.id, TIMESTAMPTZ '2026-10-04 08:00Z', 1, TIMESTAMPTZ '2026-10-04 09:00Z', 'force_sale', 'visit', gen_random_uuid(), decode(repeat('cd', 32), 'hex'), 100, 100, 100,
+                     'photos/2026-10-04/' || gen_random_uuid() || '/' || gen_random_uuid() || '.jpg', TIMESTAMPTZ '2026-10-04 08:00Z', 'pending_blob'
+                FROM app.app_user u WHERE u.username = 'sr001';
+            """.trimIndent(),
+        )
+        val o = get(10, Role.ANALYST, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()
+        val sum = o["summary"]!!.jsonObject
+        val photos = sum["pending_photos"]!!.jsonObject
+        assertEquals(1, photos.i("count")); assertEquals(10_800, photos.i("oldest_age_s"))                       // received 09:00Z, now 12:00Z
+        assertTrue(sum.i("quarantine_backlog") >= sum.i("quarantined"))
+        assertTrue(sum["config_ack_pct"]!!.jsonPrimitive.content.toDouble() in 0.0..100.0)
+        val zones = o["by_zone"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(2, zones.size); assertEquals(1, zones.sumOf { it.i("pending_photos") })
+        assertEquals(100.0, zones.first { it.s("zone_id").toLong() == z2 }["login_pct"]!!.jsonPrimitive.content.toDouble())
+        // A zone-2 TSO sees only its own zone and no photo of zone 1.
+        val own = get(14, Role.TSO, "/v1/dashboards/sync-health?business_date=2026-10-04").obj()
+        assertEquals(listOf(z2), own["by_zone"]!!.jsonArray.map { it.jsonObject.s("zone_id").toLong() }); assertEquals(0, own["summary"]!!.jsonObject["pending_photos"]!!.jsonObject.i("count"))
+        val ls = get(10, Role.ANALYST, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["zones"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(2, ls.size); assertEquals(mapOf(z2 to "true"), ls.filter { it.s("final_submitted") == "true" }.associate { it.s("zone_id").toLong() to "true" })   // only R3 (zone 2) is final-submitted
+        assertEquals(listOf(z2), get(14, Role.TSO, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["zones"]!!.jsonArray.map { it.jsonObject.s("zone_id").toLong() })
+    }
+
     @Test
     fun quarantineListAndActionsChangeStateAndAreAudited() = app {
         val list = get(13, Role.ADMIN, "/v1/admin/quarantine?status=open").obj()
