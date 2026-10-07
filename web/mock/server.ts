@@ -6,6 +6,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { pathToFileURL } from "node:url";
 import { handleTable, type Ctx, type Row } from "./tables";
 import { seedCodeLists, seedTables, tableDefs } from "./master-seed";
+import { handleCustom, seedCustom, type CustomState } from "./custom";
 import { freshDashStore, handleDash, hasPii, type DashStore } from "./dash";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
@@ -58,6 +59,7 @@ interface State {
   users: Record<string, MockUser>;
   tables: Record<string, Row[]>;
   codeLists: Record<string, unknown[]>;
+  custom: CustomState;
   bulkBatches: Map<string, { batch_uuid: string; updated: number; unchanged: number; replayed: boolean }>;
   /** Alias of tables.clusters (used by tests). */
   clusters: Cluster[];
@@ -89,7 +91,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { stubs: [], calls: [], users: users(), tables, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore() };
+  return { stubs: [], calls: [], users: users(), tables, custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -172,7 +174,8 @@ function authed(state: State, req: IncomingMessage): { user: MockUser } | { erro
   return user ? { user } : { status: 401, error: problem(401, "ERR_UNAUTHENTICATED") };
 }
 
-const ADMIN_READ: Role[] = ["ADMIN", "SUPERADMIN", "SUPPORT", "ANALYST"];
+// docs/24 s8.5: master data is readable by DMO, WM and TOP as well (the approval panel reads zones and users).
+const ADMIN_READ: Role[] = ["ADMIN", "SUPERADMIN", "SUPPORT", "ANALYST", "DMO", "WM", "TOP"];
 const ADMIN_WRITE: Role[] = ["ADMIN", "SUPERADMIN"];
 
 function audit(state: State, user: MockUser, entity: string, entity_id: number | string, action: string, before: AuditEntry["before"], after: AuditEntry["after"], reason: string | null): void {
@@ -191,7 +194,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     reset();
     return send(res, 204, undefined);
   }
-  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, tables: state.tables, exports: state.dash.exports, actions: state.dash.actions, leave: state.dash.leave });
+  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, tables: state.tables, custom: state.custom, exports: state.dash.exports, actions: state.dash.actions, leave: state.dash.leave });
   if (path === "/__mock/now" && method === "POST") {
     state.dash.now = ((await readJson(req)) as { now?: string | null } | undefined)?.now ?? null;
     return send(res, 204, undefined);
@@ -324,6 +327,12 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     const result = { batch_uuid: b.batch_uuid, updated, unchanged, replayed: false };
     state.bulkBatches.set(b.batch_uuid, result);
     return send(res, 200, result);
+  }
+
+  if (path.startsWith("/v1/admin/") && user.master) {
+    const cctx: Ctx = { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) };
+    const canW = ADMIN_WRITE.includes(user.summary.role);
+    if (await handleCustom(state.custom, cctx, canW, method, url, req, res)) return;
   }
 
   if (path.startsWith("/v1/outlet-requests")) {
