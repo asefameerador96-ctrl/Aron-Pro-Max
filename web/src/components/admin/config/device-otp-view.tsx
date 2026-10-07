@@ -29,10 +29,11 @@ export function DeviceOtpView({ locale, action, options, selection, items, q, ne
   const levels: CascadeLevel[] = GEO_LEVELS.map((l) => ({ param: l, label: t(locale, `otp.level.${l}` as MessageKey), value: selection[l] ?? "", options: options[l].map((n) => ({ value: String(n.id), label: label(n, locale) })) }));
   const columns: Column<DeviceOtp & { n: number }>[] = [
     { key: "n", header: t(locale, "otp.col.sr_no"), render: (r) => formatNumber(locale, r.n), align: "right" },
-    { key: "ffid", header: t(locale, "otp.col.field_force_id"), render: (r) => formatNumber(locale, r.user_id, { useGrouping: false }) },
+    { key: "ffid", header: t(locale, "otp.col.field_force_id"), render: (r) => r.employee_code ?? "—" },
     { key: "name", header: t(locale, "otp.col.field_force_name"), render: (r) => r.full_name },
     { key: "user", header: t(locale, "otp.col.username"), render: (r) => r.username },
     { key: "zone_id", header: t(locale, "otp.col.zone_id"), render: (r) => (r.zone_id ? formatNumber(locale, r.zone_id, { useGrouping: false }) : "—") },
+    { key: "zone", header: t(locale, "otp.col.zone"), render: (r) => (r.zone_name ? `${r.zone_name}${r.zone_code ? ` (${r.zone_code})` : ""}` : (r.zone_code ?? "—")) },
     { key: "created", header: t(locale, "otp.col.created"), render: (r) => <time dateTime={r.created_at}>{formatDateTime(locale, r.created_at)}</time> },
     {
       key: "otp",

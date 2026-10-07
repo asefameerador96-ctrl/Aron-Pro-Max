@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="att_title">অ্যাটেনডেন্স</string>
+    <string name="att_location">অবস্থান</string>
+    <string name="att_location_none">এখনো অবস্থান নেওয়া হয়নি</string>
+    <string name="att_prompt_checkin">আপনি এখনো চেক ইন করেননি। কাজ শুরু করার আগে অনুগ্রহ করে চেক ইন করুন।</string>
+    <string name="att_checked_in">চেক ইন করা হয়েছে %1$s</string>
+    <string name="att_checked_out">চেক আউট করা হয়েছে %1$s</string>
+    <string name="att_check_in">চেক ইন</string>
+    <string name="att_check_out">চেক আউট</string>
+    <string name="att_check_out_hold">চেক আউট করতে চেপে ধরে রাখুন</string>
+    <string name="att_check_out_hint">চেক আউট %1$s থেকে চালু হবে।</string>
+    <string name="att_mock_warning">নকল লোকেশন ধরা পড়েছে। এটি রেকর্ড করা হয়েছে।</string>
+    <string name="att_day_complete_title">দিনের কাজ শেষ</string>
+    <string name="att_day_complete_message">আপনি চেক আউট করেছেন। আজকের জন্য ধন্যবাদ।</string>
+    <string name="att_ok">ঠিক আছে</string>
+    <string name="att_offline_saved">ফোনে সংরক্ষিত হয়েছে। নেটওয়ার্ক এলে আপলোড হবে।</string>
+</resources>

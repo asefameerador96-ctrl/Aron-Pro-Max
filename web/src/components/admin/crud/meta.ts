@@ -14,6 +14,8 @@ type Name<T> = Extract<keyof T, string>;
 export interface RefMeta {
   /** List path of the referenced table (typed against the contract). */
   path: ApiPath;
+  /** GET-one path with `{id}` of the referenced table: labels a single value without loading the whole table (summaries). */
+  get?: ApiPath;
   /** Path parameters of that list path, e.g. { level: "zone" }. */
   params?: Record<string, string>;
   /** Member holding the value (default "id"). */
@@ -31,6 +33,10 @@ interface FieldBase {
   /** `mask`: one label per bit, bit 0 first; the value is the sum of the ticked bits. */
   maskBits?: readonly MessageKey[];
   ref?: RefMeta;
+  /** Minimum length in characters (code points), the contract's minLength. */
+  minLength?: number;
+  /** false: show a ref column as its plain id (no lookup of the whole referenced table just to label rows). */
+  refLabels?: boolean;
   /** Regular expression of a valid value (the contract's `pattern`). */
   pattern?: string;
   /** Bengali digits typed by the user are converted to ASCII before validation (phone numbers, codes). */
@@ -124,8 +130,12 @@ export interface EntityMeta<Row, Write, Patch> {
    * hides the options for everyone else.
    */
   restrictedValues?: readonly { field: string; values: readonly string[]; unlessRoles: RoleList }[];
+  /** Members of the loaded row shown (read-only) on the action and edit pages, so a decision is never taken blind. Dotted paths. */
+  detailFields?: readonly { path: string; labelKey: MessageKey }[];
   /** false = no create page (rows come from elsewhere). Default true. */
   canCreate?: boolean;
+  /** Plain links per row to custom pages (user scope...). Shown in the actions column to `roles` (default: the write roles). */
+  links?: readonly { key: string; labelKey: MessageKey; href: (id: string) => string; roles?: RoleList }[];
   /** Extra row operations. */
   actions?: readonly ActionMeta[];
   /** Create returns a wrapper (e.g. { user, temporary_password }): the row is under this member and these members are shown once. */

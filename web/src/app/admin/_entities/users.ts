@@ -70,5 +70,6 @@ export const users = defineEntity<User, UserWrite, UserPatch>({
   reasonOnCreate: null,
   // Create returns { user, temporary_password, temporary_password_expires_at }; the password is shown once.
   createResult: { rowKey: "user", show: RESULT },
+  links: [{ key: "scope", labelKey: "action.user_scope", href: (id) => `/admin/user-scope/${id}`, roles: ["ADMIN", "SUPERADMIN"] }],
   actions: [credential("reset_password", "action.reset_password", true), credential("unlock", "action.unlock", false), credential("force_logout", "action.force_logout", false), credential("reset_mfa", "action.reset_mfa", false)],
 });

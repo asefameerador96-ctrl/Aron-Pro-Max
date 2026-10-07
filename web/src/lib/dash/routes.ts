@@ -35,3 +35,22 @@ export function joinRoutes(routes: readonly Schemas["Route"][], assignments: rea
     sr: r.kind === "amo" ? null : nameOf(primary.get(r.id)),
   }));
 }
+
+/** The same lines from `GET /v1/admin/routes?include=assignees` (contract v1.2): one call, no assignment or tracking joins. A route whose
+ *  `assignees` member is missing (older server) is not covered; use `joinRoutes` then. */
+export function linesFromAssignees(routes: readonly Schemas["Route"][]): RouteLine[] {
+  const first = (r: Schemas["Route"], role: "SR" | "AMO"): string | null => r.assignees?.find((a) => a.role === role)?.full_name ?? null;
+  const amoByZone = new Map<number, string | null>();
+  for (const r of routes) if (r.kind === "amo" && !amoByZone.get(r.zone_id)) amoByZone.set(r.zone_id, first(r, "AMO"));
+  return routes.map((r) => ({
+    route_id: r.id,
+    code: r.code,
+    name: r.display_label ?? r.name,
+    kind: r.kind,
+    visit_kind: r.visit_kind ?? null,
+    zone_id: r.zone_id,
+    status: r.status,
+    amo: r.kind === "amo" ? first(r, "AMO") : (amoByZone.get(r.zone_id) ?? null),
+    sr: r.kind === "amo" ? null : first(r, "SR"),
+  }));
+}
