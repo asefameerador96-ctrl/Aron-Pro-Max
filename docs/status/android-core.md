@@ -409,6 +409,12 @@
 Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s5.1). Local wire DTOs are marked
 `REQUEST:` and move to `shared:contract` when the shared lane lands them, with the same names.
 
+**core-map** (`com.aktcl.aron.core.map`, N-053, for android-amo and android-tso; add `implementation(project(":android:core-map"))`):
+- `LiteMapScreen(points, settings, online, keyPresent, nowMs, cache, cacheKey)`: the body of a map screen. Host it in an Activity or destination opened ONLY from its tile. Live: Google lite mode (2D, one static image, no gestures), at most `MAX_MARKERS` = 100 pins, the image saved to the bounded cache. Offline / no key / MapLibre: no Maps class loads; the image as last seen (if cached) and the list with "last seen HH:MM (n min ago)" and source, greyed after `staleAfterMin` (pass `cfg.tso.team_location_max_age_min`, default 120). The list always shows.
+- `MapSettings.of(dayConfig.mapProvider, dayConfig.mapTileCacheMb)` (`cfg.map.provider`, `cfg.map.tile_cache_mb` 5..100, default 20); `MapsKey.present(context)` (presence only, never the value); `MapTileCache(File(context.cacheDir, "map"), { settings.tileCacheBytes })`; `cacheKey` = screen plus scope (for example `team-zone-<id>`), so one zone's image never shows for another.
+- `MapPoint(id, label, lat, lng, fixAtMs, source)`: feed it the last synced list (Room or the last API answer) so the screen works offline.
+- `AddressResolver(online, AndroidGeocodeBackend(context), language, PrefsLastAddressStore(context, userId))`: online-only reverse geocode, 5 s timeout, display only; `displayText(context, lat, lng)` is what `AttendanceFlow.addressResolver` takes (the AMO attendance can reuse it).
+
 **core-database** (`com.aktcl.aron.core.database`): one Room database per user. In app code inject `UserDatabases` (Hilt, app module) and call `userDatabases.of(userId)` (suspend; opens once, encrypted). In Robolectric tests use `AronDatabase.open(context, userId, null)` or an in-memory builder.
 - `CaptureRepository(db)`: commits a capture plus its outbox records in ONE transaction. A duplicate client UUID throws `SQLiteConstraintException`. A malformed capture throws `IllegalArgumentException` or `IllegalStateException` before any write. Methods: `recordAttendance(event, fix)`, `recordStock(movements)`, `recordVisitOpen(visit, fix)`, `recordSale(SaleCapture(memo, lines, discounts, qcLines, editFix))`, `recordVisitClose(close)`.
   ```kotlin

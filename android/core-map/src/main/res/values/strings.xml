@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="map_offline">No network: the map is not loaded. The list shows the last known positions.</string>
+    <string name="map_unavailable">The map is not available on this phone. The list shows the last known positions.</string>
+    <string name="map_capped">Showing the first %1$s on the map. All are in the list.</string>
+    <string name="map_last_seen_image">Map as last seen</string>
+    <string name="map_list_empty">Nothing to show yet.</string>
+    <string name="map_no_fix">No location yet</string>
+    <string name="map_last_seen">Last seen %1$s (%2$s min ago)</string>
+    <string name="map_address_last_known">%1$s (near: %2$s, last known)</string>
+</resources>
