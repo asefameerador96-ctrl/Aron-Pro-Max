@@ -143,7 +143,14 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
 **On lane/db: V0039-V0060 (head after 2205ff98), green locally (db 218, backend 660 on the INT merge of ~18:00);
 checker PASS per batch.**
 INT has V0001-V0040; the integrator promotes the rest. Session 4 added V0047-V0060 (see "Session 4" under Done).
-Open: AUD-PERF-07 only, blocked on infra adding PG_TRGM to `azure.extensions` (`docs/requests/db-azure-pg-trgm.md`);
+Next rows for session 5 (lead, 22:42 UTC; read on origin/lane/backend-core, T1 first, Opus checker):
+1. `docs/requests/backend-core-media-upload-ledger.md` (unblocks F-API-007).
+2. `docs/requests/backend-core-outlet-geo-index.md`.
+3. `docs/requests/backend-core-device-telemetry-columns.md`.
+4. F-SYS-025 route-day download columns.
+Tell the integrator (session_016uXu7QkPQGGTn3FmR92YHu) the head and backend-core (its current session is in the
+registry) when each lands. Numbering continues at V0061.
+Also open: AUD-PERF-07, blocked on infra adding PG_TRGM to `azure.extensions` (`docs/requests/db-azure-pg-trgm.md`);
 then release `db/held/outlet_search_trgm.sql` as the next V#### with a plan test. Every other db backlog row is in db.csv. Candidates if idle: `cfg.app.rejected_keep_days` (docs/19 line 679, no request yet);
 due_ledger rows in `db/perf/generate.sql`; `due_ledger.memo_business_date` only if bundle p95 needs it.
 Local test trap added: point `ARON_TEST_PG_URL` at a dedicated `aron_test` database (the platform smoke test migrates
