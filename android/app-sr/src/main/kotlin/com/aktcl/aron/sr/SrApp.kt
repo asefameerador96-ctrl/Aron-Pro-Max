@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +45,10 @@ import com.aktcl.aron.feature.home.PermissionOnboardingContent
 import com.aktcl.aron.feature.home.PlannedRoute
 import com.aktcl.aron.feature.home.RoutePicker
 import com.aktcl.aron.feature.home.RoutePickerContent
+import com.aktcl.aron.feature.home.BundleFreshness
+import com.aktcl.aron.feature.home.FirstBundleContent
+import com.aktcl.aron.feature.home.FirstBundleState
+import com.aktcl.aron.core.sync.BundleOutcome
 import com.aktcl.aron.feature.home.SettingsContent
 import com.aktcl.aron.feature.outlet.ClusterOption
 import com.aktcl.aron.feature.outlet.ForceReason
@@ -93,6 +98,8 @@ fun SrApp(
     val context = LocalContext.current
     val activity = context as? Activity
     var screen by rememberSaveable { mutableStateOf(SrScreen.HOME) }
+    var skipFirstBundle by rememberSaveable { mutableStateOf(false) }
+    val loaded by day.loaded.collectAsState() // the local day has been read once (survives recreation; no first-bundle flash)
     val scope = rememberCoroutineScope()
     var editMemo by rememberSaveable { mutableStateOf("") }
     var skipOutlet by remember { mutableStateOf<OutletEntity?>(null) }
@@ -163,7 +170,23 @@ fun SrApp(
             )
         }
         SrScreen.ROUTE_PICK -> RoutePickerContent(planned, RoutePicker.inUse(planned, day.chosenRouteId()), onPick = { r -> scope.launch { day.chooseRoute(r.routeId); screen = SrScreen.HOME } })
-        SrScreen.HOME -> {
+        SrScreen.HOME -> if (!loaded) {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) // neutral until the local day is read
+        } else if (data.freshness is BundleFreshness.Missing && !skipFirstBundle) {
+            // F-SR-001: a phone with no bundle yet shows the first-bundle download (resumable); check-in never waits for it.
+            val outcome by day.bundleOutcome.collectAsState()
+            FirstBundleContent(
+                state = when {
+                    data.downloading -> FirstBundleState.DOWNLOADING
+                    outcome == BundleOutcome.OFFLINE -> FirstBundleState.OFFLINE
+                    outcome == BundleOutcome.AUTH_REQUIRED -> FirstBundleState.AUTH
+                    outcome == null && !data.downloading -> FirstBundleState.DOWNLOADING
+                    else -> FirstBundleState.FAILED
+                },
+                onRetry = { scope.launch { startBundleDownload(); day.taskBoard.load() } },
+                onSkip = { skipFirstBundle = true },
+            )
+        } else {
             val header = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
             HomeContent(
                 header, HomeTiles.resolve(emptySet(), tasks.openCount), data.freshness, user.offline, health,

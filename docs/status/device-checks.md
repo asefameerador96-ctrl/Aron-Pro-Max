@@ -108,3 +108,5 @@ On the Galaxy A06 (or the lab device), release-like build, laptop session with U
 3. Record the release APK size against the 30 MB budget and the INT baseline (+5 percent warn, +15 percent fail).
 4. Write the numbers and the device model in docs/status/android-core.md; a miss is a row for android-core.
 
+### D-SRA-6 First bundle on a new phone (F-SR-001; android-sr-a)
+Host proof: FirstBundleScreenTest, LoginScreenLocaleTest. On a wiped A06 log in online. Pass: "Getting your day ready" with a moving bar; airplane mode half-way shows "no connection"; back online, Try again finishes. Rotate or switch language during the download: no false failure and no second download. Skip: check-in still works. Login version equals Settings version; footer reads (c) AKTCL.
