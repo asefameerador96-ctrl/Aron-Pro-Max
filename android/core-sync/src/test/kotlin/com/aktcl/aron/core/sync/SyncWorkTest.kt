@@ -139,6 +139,47 @@ class SyncWorkTest {
         assertTrue(CheckoutGate.dhaka({ now }, gateMinutes = { 18 * 60 }).justOpened()) // cfg.day.checkout_earliest_time moved
     }
 
+    /** F-SYS-047: the re-send after a server restore is one job per user, spread over cfg.sync.resync_jitter_s; KEEP. */
+    @Test fun theResyncRunIsJitteredFromConfigAndRequestedOnce() {
+        scheduler = WorkManagerSyncScheduler({ wm }, Random(3), sdkInt = 36, resyncJitterS = { 900 })
+        val delays = (1..40).map { u ->
+            scheduler.requestSync(700L + u, SyncTrigger.RESYNC)
+            spec(live(WorkManagerSyncScheduler.resyncName(700L + u)).single()).also { assertFalse(it.expedited) }.initialDelay
+        }
+        assertTrue(delays.all { it in 0L..900_000L })
+        assertTrue("spread, not all at once", delays.toSet().size > 30 && delays.any { it > 450_000L })
+        val first = live(WorkManagerSyncScheduler.resyncName(701)).single().id
+        scheduler.requestSync(701, SyncTrigger.RESYNC) // a second notice keeps the first job (and its delay)
+        assertEquals(first, live(WorkManagerSyncScheduler.resyncName(701)).single().id)
+        // A run that saw a new generation asks for it through afterRun.
+        scheduler.afterRun(799, SyncReport(SyncStop.DRAINED, 1, 1, 0, 0, 0, 0, resyncRequested = true), WorkManagerSyncScheduler.mainName(799))
+        assertEquals(1, live(WorkManagerSyncScheduler.resyncName(799)).size)
+    }
+
+    /** Follow-up of F-SYS-079: the jitter is read from config at each request, and held to T7's 120 s cap. */
+    @Test fun theGateJitterComesFromConfigAndIsCapped() {
+        var jitterS = 5
+        scheduler = WorkManagerSyncScheduler({ wm }, Random(1), sdkInt = 36, checkoutJitterS = { jitterS }, checkoutGate = { true })
+        val small = (1..20).map { u ->
+            scheduler.requestSync(400L + u, SyncTrigger.DAY_SUBMIT)
+            spec(live(WorkManagerSyncScheduler.gateName(400L + u)).single()).initialDelay
+        }
+        assertTrue(small.all { it in 0L..5_000L })
+        jitterS = 600 // registry allows 600; T7 caps the wave delay at 120
+        val capped = (1..40).map { u ->
+            scheduler.requestSync(500L + u, SyncTrigger.DAY_SUBMIT)
+            spec(live(WorkManagerSyncScheduler.gateName(500L + u)).single()).initialDelay
+        }
+        assertTrue(capped.all { it in 0L..120_000L })
+        assertTrue(capped.any { it > 90_000L })
+        // A config read that throws never breaks a tap: the default 90 s holds, and a throwing gate time means 17:00.
+        scheduler = WorkManagerSyncScheduler({ wm }, Random(1), sdkInt = 36, checkoutJitterS = { error("db") }, checkoutGate = { true })
+        scheduler.requestSync(600, SyncTrigger.CHECKOUT)
+        assertTrue(spec(live(WorkManagerSyncScheduler.gateName(600)).single()).initialDelay in 0L..90_000L)
+        val at1703 = 1_791_198_180_000L // 2026-10-05T11:03Z = 17:03 Dhaka
+        assertTrue(CheckoutGate.dhaka({ at1703 }, gateMinutes = { error("db") }).justOpened())
+    }
+
     @Test fun atTheGateCheckOutAndSubmitAreJitteredAndManualIsNot() {
         var open = true
         scheduler = WorkManagerSyncScheduler({ wm }, Random(1), sdkInt = 36, checkoutGate = { open })

@@ -16,7 +16,23 @@ object SqlCipher {
                 if (!loaded) { System.loadLibrary("sqlcipher"); loaded = true }
             }
         }
-        return SupportOpenHelperFactory(rawKey(passphrase))
+        // enableWriteAheadLogging = false as with the one-argument constructor (Room still turns WAL on itself).
+        return SupportOpenHelperFactory(rawKey(passphrase), IncrementalVacuumHook, false)
+    }
+
+    /**
+     * F-SYS-028 follow-up: SQLCipher keys the file and switches it to WAL before any open-helper callback, and after the
+     * WAL switch writes page 1 a NONE file can never change mode (checker). postKey runs right after the key and before
+     * WAL, so a NEW file becomes auto_vacuum INCREMENTAL; on an existing NONE file the pragma is a silent no-op (no rewrite).
+     */
+    internal object IncrementalVacuumHook : net.zetetic.database.sqlcipher.SQLiteDatabaseHook {
+        override fun preKey(connection: net.zetetic.database.sqlcipher.SQLiteConnection) = Unit
+        override fun postKey(connection: net.zetetic.database.sqlcipher.SQLiteConnection) {
+            // Only when not already INCREMENTAL: setting it on an existing file is a write on every connection open (checker).
+            runCatching {
+                if (connection.executeForLong("PRAGMA auto_vacuum", null, null) != 2L) connection.execute("PRAGMA auto_vacuum = INCREMENTAL", null, null)
+            } // never fails the open
+        }
     }
 
     /**

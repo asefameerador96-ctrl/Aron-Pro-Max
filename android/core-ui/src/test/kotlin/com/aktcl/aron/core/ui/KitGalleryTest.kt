@@ -109,5 +109,14 @@ class KitGalleryTest {
         render(AppLanguage.EN)
         rule.onNodeWithText("Hold to submit sales").performSemanticsAction(SemanticsActions.OnLongClick)
         rule.onAllNodesWithText("Submit sales?").assertCountEquals(1)
+        rule.waitForIdle()
+        assertNoTruncationAndTouchTargets()   // the confirm dialog: text and both buttons
+    }
+
+    @Test @Config(sdk = [34], qualifiers = "bn-w360dp-h640dp") fun banglaConfirmDialogHasNoTruncation() {
+        render(AppLanguage.BN)
+        rule.onNodeWithText("বিক্রয় জমা দিতে চেপে ধরুন").performSemanticsAction(SemanticsActions.OnLongClick)
+        rule.waitForIdle()
+        assertNoTruncationAndTouchTargets()
     }
 }

@@ -29,6 +29,8 @@ class SqlCipherDeviceTest {
         assertFalse("plain SQLite header found", String(bytes, 0, 16, Charsets.ISO_8859_1).startsWith("SQLite format 3"))
         db = AronDatabase.open(context, userId, SqlCipher.factory(key))
         assertEquals(1, db.outboxDao().countInState("pending"))
+        // F-SYS-028 follow-up: a new encrypted file is auto_vacuum INCREMENTAL (2), so the purge gives pages back.
+        assertEquals(2L, db.openHelper.writableDatabase.query("PRAGMA auto_vacuum").use { it.moveToFirst(); it.getLong(0) })
         db.close()
         val wrong = AronDatabase.open(context, userId, SqlCipher.factory(ByteArray(32)))
         assertTrue(runCatching { wrong.openHelper.writableDatabase }.isFailure)

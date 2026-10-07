@@ -31,3 +31,5 @@ backend-core-location-history-basis,S,2026-10-07T12:30Z,2026-10-07T12:40Z,10,"in
 query-plan-dayStates,S,2026-10-07T12:50Z,2026-10-07T13:05Z,15,"PASS (1 nit: concurrent build in final account)","V0046"
 salvage-port-V0047-V0052,M,2026-10-07T14:00Z,2026-10-07T16:30Z,90,"round 1 FAIL: 1 blocker + 3 should-fix; fixed","V0047-V0052"
 backend-core-sig-mode-security-event,S,2026-10-07T14:30Z,2026-10-07T16:40Z,40,"PASS (nits: writer RETURNING, detail cap)","V0053 V0054"
+backend-core-app-cfg-keys,S,2026-10-07T17:20Z,2026-10-07T17:50Z,20,"PASS (Sonnet)","V0055"
+backend-core-resync-late-flag,S,2026-10-07T18:40Z,2026-10-07T19:30Z,25,"PASS (Opus round 4; nits applied)","V0056 V0057"

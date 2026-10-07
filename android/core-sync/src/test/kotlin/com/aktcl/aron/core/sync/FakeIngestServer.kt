@@ -3,6 +3,7 @@ package com.aktcl.aron.core.sync
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -66,7 +67,38 @@ class FakeIngestServer : Dispatcher() {
 
     fun storedOf(type: String) = registry.values.filter { it.type == type }
 
+    /** F-SYS-047: the generation every batch answer carries, and the statement GET /v1/sync/generation returns. */
+    var generation = "9b2f6a4e-1c3d-4e5f-8a7b-0c1d2e3f4a5b"
+    var generationKind = "initial"
+    var lostAfterUtc: String? = null
+    var mintedAt = "2026-10-05T12:00:00.000Z"
+    var generationReads = 0
+    /** Answers the next N generation reads with 503. */
+    var generationFails = 0
+
+    /**
+     * A point-in-time restore: the registry keeps its first [keep] records (insertion order), the batch store is gone, and
+     * a new generation is minted with [lostAfter] as `lost_after_utc`.
+     */
+    fun restore(keep: Int, newGeneration: String, lostAfter: String) {
+        val kept = registry.entries.take(keep).map { it.key to it.value }
+        registry.clear(); kept.forEach { (k, v) -> registry[k] = v }
+        batches.clear()
+        generation = newGeneration; generationKind = "pitr"; lostAfterUtc = lostAfter
+    }
+
     override fun dispatch(request: RecordedRequest): MockResponse {
+        if (request.url.encodedPath == "/v1/sync/generation") {
+            if (request.headers["Authorization"]?.removePrefix("Bearer ") !in validTokens) return api(401, problem("ERR_TOKEN_EXPIRED", 401))
+            generationReads++
+            if (generationFails > 0) { generationFails--; return api(503, problem("ERR_SERVICE_UNAVAILABLE", 503)) }
+            return api(200, buildJsonObject {
+                put("generation", JsonPrimitive(generation)); put("kind", JsonPrimitive(generationKind))
+                put("restore_point_utc", lostAfterUtc?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("lost_after_utc", lostAfterUtc?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("minted_at", JsonPrimitive(mintedAt))
+            }.toString())
+        }
         if (request.url.encodedPath != "/v1/sync/batch") return api(404, problem("ERR_NOT_FOUND", 404))
         val gzip = request.headers["Content-Encoding"] == "gzip"
         val raw = request.body?.toByteArray() ?: ByteArray(0)
@@ -155,7 +187,7 @@ class FakeIngestServer : Dispatcher() {
             })
             put("hold_s", JsonPrimitive(holdS))
             put("config_version", JsonPrimitive(318))
-            put("generation", JsonPrimitive("9b2f6a4e-1c3d-4e5f-8a7b-0c1d2e3f4a5b"))
+            put("generation", JsonPrimitive(generation))
             put("unknown_future_member", JsonPrimitive("ignored"))
         }.toString()
         pendingResolutions.clear()

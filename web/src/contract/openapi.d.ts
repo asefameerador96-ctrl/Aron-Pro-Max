@@ -892,7 +892,7 @@ export interface paths {
         put?: never;
         /**
          * Send an FCM data nudge (announcement or config pull) to devices in a scope.
-         * @description Payload carries `pull_after_s` jitter; FCM never triggers an upload (docs/24 s4.7). Refused with 409 `ERR_PUSH_DISABLED` while `cfg.ops.push_enabled` is false.
+         * @description Payload carries `pull_after_s` jitter, and `urgent` = "true" on an urgent `config_pull` (the phone's urgent pull, F-SYS-073); FCM never triggers an upload (docs/24 s4.7). Refused with 409 `ERR_PUSH_DISABLED` while `cfg.ops.push_enabled` is false.
          */
         post: operations["sendNotification"];
         delete?: never;
@@ -4862,6 +4862,10 @@ export interface components {
             restore_point_utc?: components["schemas"]["Timestamp"] | null;
             lost_after_utc?: components["schemas"]["Timestamp"] | null;
             minted_at: components["schemas"]["Timestamp"];
+            /** @description The generation this one replaced; null for the first generation of the lineage. */
+            previous_generation?: components["schemas"]["Uuid"] | null;
+            /** @description With `since`: the earliest `lost_after_utc` of every generation minted after `since`, so a phone that missed a generation re-sends from the earliest loss (two restores before it called). Null without `since`, when `since` is the current generation or is not in this lineage's history (then re-send from `lost_after_utc` and let the digest close the rest). */
+            earliest_lost_after_utc?: components["schemas"]["Timestamp"] | null;
         };
         BundleMeta: {
             bundle_version: components["schemas"]["BundleVersion"];
@@ -9039,7 +9043,10 @@ export interface operations {
     };
     getServerGeneration: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The last generation the phone handled; the answer then carries `earliest_lost_after_utc`. */
+                since?: components["schemas"]["Uuid"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9055,6 +9062,7 @@ export interface operations {
                     "application/json": components["schemas"]["ServerGeneration"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };

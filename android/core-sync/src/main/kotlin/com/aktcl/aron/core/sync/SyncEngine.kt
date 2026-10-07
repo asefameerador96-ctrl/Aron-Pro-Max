@@ -100,6 +100,8 @@ data class SyncReport(
     val unsent: Int,
     val retryAfterMs: Long? = null,
     val code: String? = null,
+    /** F-SYS-047: a new server generation was seen; the scheduler queues one jittered `resync` run. */
+    val resyncRequested: Boolean = false,
 )
 
 /**
@@ -130,6 +132,10 @@ class SyncEngine(
     private val recordSigner: com.aktcl.aron.core.network.DeviceProofSigner? = null,
     /** F-SYS-081: the daily telemetry object of a closed date rides the batch body; null in most tests. */
     private val telemetry: BatchTelemetry? = null,
+    /** F-SYS-047: `GET /v1/sync/generation`; null in tests that do not cover it (a change is then only remembered). */
+    private val generationApi: GenerationApi? = null,
+    /** F-SYS-047: the latest `X-Server-Generation` of any response in this process ([ServerGenerationHint] in production). */
+    private val generationHint: () -> String? = { null },
 ) {
     private val outbox = db.outboxDao()
     private val meta = db.referenceDao()
@@ -138,10 +144,10 @@ class SyncEngine(
 
     /**
      * F-SYS-072 (BC-53): the server quarantines every header without a valid sig as `device_integrity_failed`; BC-53 asks
-     * it to accept them unless `cfg.sec.record_signature_mode` is enforce and to release a resend of such a registry row
-     * (not on INT on 2026-10-07: docs/requests/android-core-backend-record-signature-mode.md; until then rounds re-quarantine).
+     * it to accept them unless `cfg.sec.record_signature_mode` is enforce and to release a resend of such a registry row.
      * The phone treats a quarantine as terminal, so those rows are resent by uuid in rounds: at most one per business date
-     * and [INTEGRITY_RELEASE_ROUNDS] per episode, because the phone cannot see the server's mode (an older server or
+     * and [INTEGRITY_RELEASE_ROUNDS] per episode. The phone now reads the mode from config (db V0053) and holds the rows
+     * while it is enforce; the round limit stays because a delta can lag the server (an older server or
      * enforce answers them quarantined again; a later day's round catches a server upgraded meanwhile). The episode ends
      * only when no row carries the code in any state (released rows keep `last_code` while pending or in flight), so a
      * run that stops before the answer never ends it; rows quarantined later start a new episode. Meta: `<rounds>:<date>`.
@@ -156,12 +162,25 @@ class SyncEngine(
                 outbox.countWithCode(code) == 0 -> if (state != null) meta.deleteMeta(KEY_INTEGRITY_RELEASE)
                 outbox.countQuarantined(code) == 0 -> Unit // released rows still on their way
                 rounds >= INTEGRITY_RELEASE_ROUNDS || state?.substringAfter(':') == today -> Unit
+                // BC-56 (db V0053, delivery both): under enforce a resend is only quarantined again, so hold the rows
+                // without spending a round; a later switch to record or off releases them on the next run.
+                signatureModeEnforced() -> Unit
                 else -> {
                     outbox.releaseQuarantined(code)
                     meta.putMeta(SyncMetaEntity(KEY_INTEGRITY_RELEASE, "${rounds + 1}:$today"))
                 }
             }
         }
+    }
+
+    /** `cfg.sec.record_signature_mode` as the phone's config holds it (default record); an unreadable value is not enforce. */
+    private suspend fun signatureModeEnforced(): Boolean = try {
+        com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(KEY_SIGNATURE_MODE, iso(clock.nowMs()))
+            ?.let { (kotlinx.serialization.json.Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonPrimitive)?.content } == "enforce"
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
     }
 
     private inner class Run(val trigger: SyncTrigger) {
@@ -178,9 +197,14 @@ class SyncEngine(
         /** Families held back for the rest of this run: retryable rejects and isolated 500s. */
         val excludedFamilies = linkedSetOf<String>()
 
+        var resyncRequested = false
+        /** The batch body's `trigger`: `resync` once this run put rows back after a server restore. */
+        var batchTrigger = trigger
+
         suspend fun execute(): SyncReport {
             device = deviceUuid() ?: return report(SyncStop.NO_DEVICE)
             releaseIntegrityQuarantine()
+            handleGeneration()
             if (outbox.unsentCount() == 0) return report(SyncStop.DRAINED)
             token = auth.token(userId) ?: if (auth.refresh(userId, null)) auth.token(userId) else null
             if (token == null) return report(SyncStop.AUTH_REQUIRED)
@@ -394,7 +418,13 @@ class SyncEngine(
                     // The server's current version only tells the phone a delta exists; the held version moves with the delta.
                     meta.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION_SERVER, r.configVersion.toString()))
                     // The nil generation means "unknown" (backend-core, android-core-503-and-generation s2): never stored, never compared.
-                    if (r.generation != NIL_GENERATION) meta.putMeta(SyncMetaEntity(KEY_GENERATION, r.generation))
+                    // F-SYS-047: the first one is the baseline; a different one is noted for the jittered re-send run.
+                    val gen = r.generation.lowercase()
+                    if (gen != NIL_GENERATION) {
+                        val stored = meta.meta(KEY_GENERATION)
+                        if (stored == null) meta.putMeta(SyncMetaEntity(KEY_GENERATION, gen))
+                        else if (gen != stored) noteGeneration(gen, clock.nowMs())
+                    }
                     r.bundleVersionCurrent?.let { meta.putMeta(SyncMetaEntity(KEY_BUNDLE_CURRENT, it)) }
                     for (totals in r.serverTotals) {
                         meta.putMeta(SyncMetaEntity(KEY_SERVER_TOTALS + totals.businessDate, WireJson.requests.encodeToString(ServerTotals.serializer(), totals)))
@@ -437,7 +467,10 @@ class SyncEngine(
                 put("device_uuid", JsonPrimitive(device))
                 put("schema_version", JsonPrimitive(ContractInfo.SCHEMA_VERSION))
                 put("app_version", JsonPrimitive(appVersion))
-                put("trigger", JsonPrimitive(trigger.wire))
+                // Rows put back after a restore always go as `resync` (any later run, a resent persisted batch): the server's
+                // backdate allowance applies only to that trigger (checker). Such a row is the only unsent row with an
+                // `acked_at` (the put-back keeps it; a retryable reject may overwrite `last_code`, never `acked_at`).
+                put("trigger", JsonPrimitive(if (rows.any { it.ackedAt != null }) SyncTrigger.RESYNC.wire else batchTrigger.wire))
                 put("sent_at_device", JsonPrimitive(iso(clock.nowMs())))
                 put("pending_rows", JsonPrimitive(outbox.unsentCount()))
                 put("time_anchors", WireJson.requests.encodeToJsonElement(ANCHORS, timeAnchors().takeLast(3)))
@@ -539,8 +572,95 @@ class SyncEngine(
 
         suspend fun report(stop: SyncStop, code: String? = null, retryAfterMs: Long? = null) = SyncReport(
             stop = stop, batches = batches, acked = acked, rejected = rejected, quarantined = quarantined, deferred = deferred,
-            unsent = outbox.unsentCount(), retryAfterMs = retryAfterMs, code = code,
+            unsent = outbox.unsentCount(), retryAfterMs = retryAfterMs, code = code, resyncRequested = resyncRequested,
         )
+
+        /**
+         * F-SYS-047 (docs/24 s4.8). The generation this database last handled is [KEY_GENERATION] (the first one seen is the
+         * baseline: nothing to re-send). A different one (from a batch answer, or the process-wide header hint) is noted in
+         * [KEY_GENERATION_SEEN] with a due time 0 to `cfg.sync.resync_jitter_s` ahead and the scheduler is asked for a
+         * jittered `resync` run, so 8,500 phones do not hit a restored server at once. That run (or any run once the due time
+         * passed) reads the statement and puts back every row acked after `lost_after_utc` (at most `cfg.sync.resync_window_h`
+         * back, less a margin for the two clocks), stores the new generation and drops the note, all in one transaction.
+         * Offline or refused: the note stays for the next run. A statement naming the generation already handled is a false
+         * alarm (the note goes). Never throws into the run.
+         */
+        suspend fun handleGeneration() {
+            try {
+                val stored = meta.meta(KEY_GENERATION)?.lowercase() // older builds stored it as received
+                // A dismissal holds for an hour (a replica's stale header); after that the same value is asked about again.
+                val dismissed = meta.meta(KEY_GENERATION_DISMISSED)?.split('|')
+                    ?.takeIf { (it.getOrNull(1)?.toLongOrNull() ?: 0L) > clock.nowMs() - DISMISS_TTL_MS }?.first()
+                val hint = generationHint()?.lowercase()?.takeIf { it != NIL_GENERATION && it != dismissed }
+                if (stored == null) {
+                    hint?.let { meta.putMeta(SyncMetaEntity(KEY_GENERATION, it)) }
+                    return
+                }
+                val now = clock.nowMs()
+                val seen = meta.meta(KEY_GENERATION_SEEN)?.split('|')
+                if (seen == null) {
+                    // A resync run always asks the server (it is rare): on a shared phone another user's run, or a new
+                    // process, may have no hint left, and a user with nothing to upload must still get the re-send.
+                    if (trigger != SyncTrigger.RESYNC && (hint == null || hint == stored)) return
+                    if (hint != null && hint != stored) noteGeneration(hint, now)
+                    if (trigger != SyncTrigger.RESYNC) return
+                } else {
+                    val due = seen.getOrNull(1)?.toLongOrNull() ?: 0L
+                    if (trigger != SyncTrigger.RESYNC && now < due) { resyncRequested = true; return }
+                }
+                val api = generationApi ?: return
+                val tok = token ?: (auth.token(userId) ?: if (auth.refresh(userId, null)) auth.token(userId) else null)?.also { token = it } ?: return
+                val g = (api.current(tok) as? com.aktcl.aron.core.network.ApiResult.Success)?.value ?: return
+                val current = g.generation.lowercase()
+                if (current == NIL_GENERATION) return
+                if (current == stored) {
+                    // False alarm (a replica's cached header): forget the note and ignore that hint until a fresh one.
+                    meta.deleteMeta(KEY_GENERATION_SEEN)
+                    hint?.let { meta.putMeta(SyncMetaEntity(KEY_GENERATION_DISMISSED, "$it|$now")) }
+                    return
+                }
+                val windowH = configInt(KEY_RESYNC_WINDOW_H)?.coerceIn(1, 168) ?: DEFAULT_RESYNC_WINDOW_H
+                // The window runs back from when the new generation started, as the server's allowance does (checker): a phone
+                // that first syncs days after the restore still re-sends what the restore lost.
+                val minted = runCatching { java.time.Instant.parse(g.mintedAt).toEpochMilli() }.getOrNull()
+                // Once the server's own allowance for this generation is long over (minted days ago), only the last window.
+                val windowMs = windowH * 3_600_000L
+                val from = minted?.takeIf { now - it <= windowMs + STALE_GENERATION_MS } ?: now
+                val windowStart = from - windowMs
+                val lostAfter = (g.lostAfterUtc ?: g.restorePointUtc)?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+                val since = maxOf(lostAfter ?: windowStart, windowStart) - RESYNC_CLOCK_MARGIN_MS
+                val put = db.withTransaction {
+                    val n = outbox.resendAckedSince(iso(since))
+                    meta.putMeta(SyncMetaEntity(KEY_GENERATION, current))
+                    meta.deleteMeta(KEY_GENERATION_SEEN)
+                    meta.deleteMeta(KEY_GENERATION_DISMISSED)
+                    meta.putMeta(SyncMetaEntity(KEY_RESYNC_LAST, "$current|${g.kind}|$n|${iso(now)}"))
+                    n
+                }
+                if (put > 0) batchTrigger = SyncTrigger.RESYNC
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
+
+        /** Remembers a new generation once (the first due time holds) and asks for the jittered `resync` run. */
+        suspend fun noteGeneration(generation: String, now: Long) {
+            if (meta.meta(KEY_GENERATION_SEEN) == null) {
+                val jitterS = configInt(KEY_RESYNC_JITTER_S)?.coerceIn(0, 3_600) ?: DEFAULT_RESYNC_JITTER_S
+                meta.putMeta(SyncMetaEntity(KEY_GENERATION_SEEN, "$generation|${now + random.nextLong(0, jitterS * 1000L + 1)}"))
+            }
+            resyncRequested = true
+        }
+
+        suspend fun configInt(key: String): Int? = try {
+            com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(key, iso(clock.nowMs()))
+                ?.let { (kotlinx.serialization.json.Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim()?.toIntOrNull() }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
@@ -597,6 +717,24 @@ class SyncEngine(
         const val CODE_KEY_UNAVAILABLE = "device_key_unavailable"
         /** F-SYS-072: rounds of device_integrity_failed releases in this episode (`<rounds>:<business date>`). */
         const val KEY_INTEGRITY_RELEASE = "sync.integrity_release.v1"
+        const val KEY_SIGNATURE_MODE = "cfg.sec.record_signature_mode"
+        /** F-SYS-047: `<generation>|<due ms>` of a new server generation not yet handled. */
+        const val KEY_GENERATION_SEEN = "sync.server_generation_seen"
+        /** F-SYS-047: the last re-send, `<generation>|<kind>|<rows>|<at>` (support file). */
+        const val KEY_RESYNC_LAST = "sync.resync_last"
+        /** F-SYS-047: a header generation the server's statement denied (false alarm); ignored until a fresh one. */
+        const val KEY_GENERATION_DISMISSED = "sync.server_generation_dismissed"
+        /** `last_code` of a row put back after a restore (OutboxDao.resendAckedSince). */
+        const val RESYNC_CODE = "resync"
+        const val DISMISS_TTL_MS = 3_600_000L
+        /** Beyond the jitter and a day of margin the server no longer takes a generation's re-sends as such. */
+        const val STALE_GENERATION_MS = 2 * 24 * 3_600_000L
+        const val KEY_RESYNC_WINDOW_H = "cfg.sync.resync_window_h"
+        const val KEY_RESYNC_JITTER_S = "cfg.sync.resync_jitter_s"
+        const val DEFAULT_RESYNC_WINDOW_H = 24
+        const val DEFAULT_RESYNC_JITTER_S = 900
+        /** The ack time is the phone's, `lost_after_utc` the server's: re-send a little more (idempotent) than the clocks say. */
+        const val RESYNC_CLOCK_MARGIN_MS = 15 * 60_000L
         const val INTEGRITY_RELEASE_ROUNDS = 7
         const val KEY_CONFIG_VERSION = ReferenceRepository.KEY_CONFIG_VERSION
         const val KEY_CONFIG_VERSION_SERVER = "sync.config_version_server"

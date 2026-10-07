@@ -9,6 +9,13 @@ enum class PushPullKind(val wire: String) {
 
     /** `GET /v1/config/delta`. */
     CONFIG("config"),
+
+    /**
+     * `GET /v1/config/delta` for an urgent key (F-SYS-073: kill switch, `min_version`, `blocked_versions`, `sync_hold_s`, a
+     * revert): its own job, so a waiting ordinary pull (up to 120 s) never holds it back, and a small reserve over the
+     * daily cap ([com.aktcl.aron.core.sync.ResumeConfigCheck.URGENT_RESERVE]).
+     */
+    CONFIG_URGENT("config_urgent"),
 }
 
 /** What the phone shows for a push; the push itself carries no business data (N-037). */
@@ -71,7 +78,9 @@ data class PushMessage(
                     if (reason == REASON_TASK_ASSIGNED) PushNotice.TaskAssigned else null, pullAfter, urgent,
                 )
                 KIND_BUNDLE_PULL -> PushMessage(kind, reason, setOf(PushPullKind.BUNDLE), null, pullAfter, urgent)
-                KIND_CONFIG_PULL -> PushMessage(kind, reason, setOf(PushPullKind.CONFIG), null, pullAfter, urgent)
+                KIND_CONFIG_PULL -> PushMessage(
+                    kind, reason, setOf(if (urgent) PushPullKind.CONFIG_URGENT else PushPullKind.CONFIG), null, pullAfter, urgent,
+                )
                 KIND_ANNOUNCEMENT -> {
                     val titleEn = data["title_en"]?.trim()?.take(80)
                     val bodyEn = data["body_en"]?.trim()?.take(300)

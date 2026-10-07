@@ -1,11 +1,17 @@
 package com.aktcl.aron.core.network
 
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromStream
+
 /** `GET /v1/sync/bundle` and its pages, and `HEAD /v1/health` (docs/24 s4.7 T3, s4.10). */
+@OptIn(ExperimentalSerializationApi::class)
 class SyncApi(private val client: AronApiClient) {
 
     suspend fun bundle(forDate: String? = null, ifNoneMatch: String? = null, configVersion: Long? = null): ApiResult<BundleDownload> {
         val path = "/v1/sync/bundle"
-        return client.call(
+        return client.callStreaming(
             path = path,
             auth = CallAuth.Grant(Grant.FULL),
             build = {
@@ -14,8 +20,10 @@ class SyncApi(private val client: AronApiClient) {
                 if (configVersion != null) header("X-Config-Version", configVersion.toString())
                 get()
             },
-            decode = { body, meta ->
-                BundleDownload(WireJson.responses.decodeFromString(BundleHead.serializer(), body), body, meta.etag)
+            // One parse, straight from the stream (AUD-PERF-06): the tree is kept, the head is read from it.
+            decode = { source, meta ->
+                val raw = Json.decodeFromStream(JsonObject.serializer(), source.inputStream())
+                BundleDownload(WireJson.responses.decodeFromJsonElement(BundleHead.serializer(), raw), raw, meta.etag)
             },
         )
     }

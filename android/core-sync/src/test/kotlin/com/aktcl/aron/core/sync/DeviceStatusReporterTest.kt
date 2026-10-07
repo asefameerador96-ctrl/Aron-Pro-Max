@@ -172,6 +172,42 @@ class DeviceStatusReporterTest {
         assertEquals(true, cfg.isWorkingDay("2026-10-07"))
     }
 
+    /** Follow-up of F-SYS-079: the check-out gate time and the jitter come from the user's config, within bounds. */
+    @Test
+    fun theCheckoutGateAndJitterAreReadFromConfig() = runBlocking {
+        val cfg = DayConfig()
+        cfg.refresh(db, "2026-10-06T03:00:00.000Z")
+        assertEquals(17 * 60, cfg.checkoutEarliestMinutes) // nothing configured: the defaults
+        assertEquals(90, cfg.checkoutJitterS)
+        fun row(key: String, json: String) = com.aktcl.aron.core.database.entity.ConfigValueEntity(
+            key = key, valueJson = json, scopeType = "global", scopeId = null, effectiveFrom = null, effectiveTo = null,
+            configVersion = 1, requiresAck = false, scheduled = false,
+        )
+        db.referenceDao().insertConfig(listOf(row("cfg.day.checkout_earliest_time", "\"18:30\""), row("cfg.sync.checkout_jitter_s", "45")))
+        cfg.refresh(db, "2026-10-06T03:00:00.000Z")
+        assertEquals(18 * 60 + 30, cfg.checkoutEarliestMinutes)
+        assertEquals(45, cfg.checkoutJitterS)
+        assertEquals(17 * 60, DayConfig.minutesOf("17:00:00"))
+        listOf("23:00", "11:59", "17:61", "5pm", "", null).forEach { assertNull(it, DayConfig.minutesOf(it)) }
+    }
+
+    /** F-SYS-074: the map provider and the tile-cache cap come from config (validated by core-map's MapSettings). */
+    @Test
+    fun theMapProviderAndCacheCapAreReadFromConfig() = runBlocking {
+        val cfg = DayConfig()
+        cfg.refresh(db, "2026-10-06T03:00:00.000Z")
+        assertNull(cfg.mapProvider)
+        assertNull(cfg.mapTileCacheMb)
+        fun row(key: String, json: String) = com.aktcl.aron.core.database.entity.ConfigValueEntity(
+            key = key, valueJson = json, scopeType = "global", scopeId = null, effectiveFrom = null, effectiveTo = null,
+            configVersion = 1, requiresAck = false, scheduled = false,
+        )
+        db.referenceDao().insertConfig(listOf(row("cfg.map.provider", "\"maplibre\""), row("cfg.map.tile_cache_mb", "35")))
+        cfg.refresh(db, "2026-10-06T03:00:00.000Z")
+        assertEquals("maplibre", cfg.mapProvider)
+        assertEquals(35, cfg.mapTileCacheMb)
+    }
+
     @Test
     fun aThrowingEvidenceSourceStillSendsTheMarkerAndNeverThrows() = runBlocking {
         val r = DeviceStatusReporter({ facts }, { signals }, tracker, { error("boom") }, state, clock, "1")

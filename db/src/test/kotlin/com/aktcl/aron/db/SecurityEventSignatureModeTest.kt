@@ -12,6 +12,8 @@ import kotlin.test.assertFailsWith
 /**
  * V0053: cfg.sec.record_signature_mode (docs/requests/backend-core-record-signature-mode-key.md).
  * V0054: app.security_event (docs/requests/backend-core-security-event-table.md).
+ * V0055: three field-app keys (docs/requests/backend-core-app-cfg-keys.md).
+ * V0056/V0057: ingest_registry.flags (docs/requests/backend-core-resync-late-flag.md).
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SecurityEventSignatureModeTest {
@@ -77,5 +79,41 @@ class SecurityEventSignatureModeTest {
             "SELECT concat_ws('|', has_table_privilege('support_ro', 'app.security_event', 'SELECT'), has_table_privilege('web_ro', 'app.security_event', 'SELECT'), " +
                 "has_table_privilege('auth_rw', 'app.security_event', 'UPDATE'))",
         )?.replace("false", "f")?.replace("true", "t"))
+    }
+
+    @Test
+    fun fieldAppKeysFollowDocs19() = db.connect().use { c ->
+        assertEquals(
+            listOf(
+                "cfg.app.image_cache_mb|40|{\"max\": 70, \"min\": 10}|{global}|device|cfg.edit.ops",
+                "cfg.app.local_history_days|7|{\"max\": 30, \"min\": 1}|{global}|device|cfg.edit.ops",
+                "cfg.app.outbox_keep_days|3|{\"max\": 14, \"min\": 1}|{global}|device|cfg.edit.ops",
+            ),
+            c.column(
+                "SELECT concat_ws('|', key, default_value::text, bounds::text, scope_levels::text, delivery, editor_permission) FROM app.cfg_key " +
+                    "WHERE key IN ('cfg.app.image_cache_mb', 'cfg.app.local_history_days', 'cfg.app.outbox_keep_days') ORDER BY key",
+            ),
+        )
+        // The default pair satisfies docs/17's re-sync rule: keep_days x 24 >= resync_window_h + 24.
+        assertEquals("t", c.scalar("SELECT ((SELECT default_value::int FROM app.cfg_key WHERE key = 'cfg.app.outbox_keep_days') * 24 >= " +
+            "(SELECT default_value::int FROM app.cfg_key WHERE key = 'cfg.sync.resync_window_h') + 24)::text").let { if (it == "true") "t" else it })
+    }
+
+    @Test
+    fun aRegistryRowCarriesOnlyKnownFlagsAndTheApiSetsThem() = db.connect().use { c ->
+        c.tx {
+            exec("INSERT INTO app.app_user (username, full_name, role) VALUES ('sr7001', 'SR', 'SR')")
+            val ins = "INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, status, user_id, first_batch_uuid, business_date%s) " +
+                "SELECT gen_random_uuid(), 'memo', decode(repeat('ab', 32), 'hex'), 'accepted', id, gen_random_uuid(), '2026-10-01'%s FROM app.app_user WHERE username = 'sr7001'"
+            exec("SET LOCAL ROLE api_rw")
+            exec(ins.format("", ""))
+            assertEquals("{}", scalar("SELECT flags::text FROM app.ingest_registry"))
+            exec("UPDATE app.ingest_registry SET flags = '{resync_late}'")
+            exec(ins.format(", flags", ", '{resync_late}'"))
+            assertEquals("2", scalar("SELECT count(*) FROM app.ingest_registry WHERE 'resync_late' = ANY (flags)"))
+            exec("RESET ROLE")
+            assertEquals("23514", refused(ins.format(", flags", ", '{late}'")))
+            assertEquals("23514", refused(ins.format(", flags", ", '{resync_late,resync_late}'")))
+        }
     }
 }

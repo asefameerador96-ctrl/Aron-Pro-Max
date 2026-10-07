@@ -85,9 +85,13 @@ include(":android:feature-tso")
 include(":android:app-sr")
 include(":android:app-amo")
 include(":android:app-tso")
+// Lane android-core (AUD-PERF-04): macrobenchmark cold start and baseline-profile generator; runs on a device or emulator.
+include(":android:benchmark")
 // Lane android-sys: camera, photo pipeline and media queue; permissions, update, support upload, language and logout.
 include(":android:core-system")
 include(":android:core-media")
+// Lane android-core (N-053, F-SYS-074): the shared lite map component and the online-only reverse geocoder.
+include(":android:core-map")
 
 // Lane android-core-ui: Roborazzi screenshot tests of the core screens (test scope only, no APK cost).
 include(":android:ui-screenshots")

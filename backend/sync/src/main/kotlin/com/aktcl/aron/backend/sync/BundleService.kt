@@ -97,6 +97,7 @@ class BundleService(
             loadDayStates(h, plans.map { it.routeId }, date)
         }
 
+        val configVersion = config.configVersion() // one read: config.version and device_policy_version agree
         val bundle = db.jdbi.withHandle<Bundle, Exception> { h ->
             val routes = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal)
             val zones = (plans.map { it.zoneId } + listOfNotNull(user.homeZoneId)).distinct()
@@ -109,7 +110,7 @@ class BundleService(
                     zone_id = user.homeZoneId, territory_id = home?.territoryId,
                     consents = ConsentRecords.accepted(h, user.id),
                 ),
-                config = ResolvedConfig(config.configVersion(), cfg.deviceValues(userChain), cfg.deviceScheduled(userChain, until)),
+                config = ResolvedConfig(configVersion, cfg.deviceValues(userChain), cfg.deviceScheduled(userChain, until)),
                 code_lists = codeLists(h, date),
                 products = products(h),
                 prices = prices(h, date, date.plusDays(horizonDays.toLong())),
@@ -118,12 +119,13 @@ class BundleService(
                 templates = emptyList(),
                 routes = routes,
                 tasks = tasks(h, user.id),
-                surveys = emptyList(),
+                surveys = BundleContent.surveys(h, user.role, date),
                 rubrics = emptyList(),
                 supervisor = null,
                 reason_texts = ReasonTexts.ALL,
+                device_policy_version = configVersion,
                 programmes = null,
-                content = emptyList(),
+                content = BundleContent.content(h, date, date.plusDays(horizonDays.toLong()), routes.flatMap { r -> r.outlets.map { it.outlet_id } }.toSet()),
                 tutorials = emptyList(),
             )
         }
@@ -259,12 +261,16 @@ class BundleService(
             }
         }
         if (!prefetch && plans.isNotEmpty()) {
-            h.createUpdate(
+            h.createQuery(
                 """
                 UPDATE app.route_day SET logged_in_at = :at, state = CASE WHEN state = 'not_started' THEN 'logged_in' ELSE state END
                 WHERE route_id = ANY(:r) AND business_date = :d AND logged_in_at IS NULL
+                RETURNING route_id
                 """.trimIndent(),
-            ).bindArray("r", Long::class.javaObjectType, plans.map { it.routeId }).bind("d", date).bind("at", at).execute()
+            ).bindArray("r", Long::class.javaObjectType, plans.map { it.routeId }).bind("d", date).bind("at", at)
+                .mapTo(Long::class.java).list()
+                // F-SYS-086: the first login of the day moves the tile's state; once per route-day (logged_in_at was null).
+                .forEach { h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'route_day_state')", it, date) }
         }
     }
 

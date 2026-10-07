@@ -64,6 +64,11 @@ testcontainers = "2.0.5"               # fallback only: CI uses a postgres servi
 snakeyaml-engine = "3.2"               # reads contract/openapi.yaml in the contract drift tests
 roborazzi = "1.76.0"                   # android-core-ui lane: screenshot tests (test scope only, Robolectric native graphics)
 
+# AUD-PERF-04 (android-core): macrobenchmark cold start and the baseline-profile generator (:android:benchmark, test
+# scope), and the profile installer that compiles the shipped baseline profile at install (small; counted in the size gate).
+androidx-benchmark = "1.5.0"
+androidx-profileinstaller = "1.4.1"
+
 [libraries]
 # Kotlin
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -149,6 +154,8 @@ snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "s
 # Appended by android-core (F-SYS-018 Compose UI tests under Robolectric); versions from the Compose BOM.
 androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+androidx-benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "androidx-benchmark" }
+androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "androidx-profileinstaller" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-core" }   # android-core: instrumented tests (same 1.7.0 train)
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }

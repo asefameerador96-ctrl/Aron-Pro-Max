@@ -55,3 +55,13 @@ Logic plus screens, Bangla and English, offline, wired in `app-sr` (`SrApp`, `Sr
 - Stock print confirmation (job 1) built: `SrDay.printUnprintedStock/answerStockPrint` run in a SrDay-level scope, unprinted rows read from Room, `PrintAttemptDialogs` hosted at SrApp top (tap outside or Back does not answer). app-sr tests green locally. Merged `lane/android-print` directly (single 19-line PrinterUi.kt delta, identical to what the integrator will promote). Checker (T1, Opus, D-P2a path) still to run.
 - Jobs 2 and 3 wait on lane/android-sr-b and the new core-ui kit reaching INT.
 - F-SR-002 OTP wired (SR only): LoginViewModel.bind (set in SR MainActivity), BindRequired with token shows OtpContent, Verify calls session.bindDevice; Failed -> OtpModel.failed; SIGN_IN_AGAIN -> login with LoginMessage.SignInAgain; PasswordChangeRequired -> login message. Four VM tests. AMO/TSO unchanged (no bind set). Independent checker still to run (security row: T1 Opus). Next: notification-permission request (docs/requests/android-core-sr-notification-permission.md), Wi-Fi-only row, config reads.
+
+## Lead note, 2026-10-08 (for the active android-sr-a session)
+
+The stall-recovery duplicate finished F-SR-001, F-SR-006, F-SR-040 and the SettingsContent slots (head
+08718d91, with INT and your OTP commits merged, no conflicts) and stood down. Next unblocked rows:
+F-SR-020/021 (sr-b's F-SR-060 is promoted, train 29bb4c7a). When merging, KEEP the current StockHost
+(docs/requests/android-print-wiring-gaps.md — sr-b carried a stale copy). F-SR-048 still waits on
+F-API-027. Support sending stays gated on cfg.support.public_key_spki. Device halves D-SRA-1 to D-SRA-6
+are filed in docs/status/device-checks.md.
+- Config reads: reprint_max and confirm_after_print wired (SrDay.loadPrintConfig, PrintConfig + test); disconnect_idle_s needs a setter on PrinterManager (docs/requests/android-sr-a-print-idle-config.md). F-SR-020/021 wait on contract and Room data (docs/requests/android-sr-a-av-kv-survey-data.md); F-SR-048 waits on F-API-027.

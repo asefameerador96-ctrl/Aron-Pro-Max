@@ -20,10 +20,10 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | db | session_011K2gmzr1feSNNQxnqWkRt5 | Opus | 2026-10-07 | recycled 12:58 (fourth session); previous session_013NHxcKi11ivBpd2B2v3g7D is retired (READY TO RECYCLE 12:57, lane/db V0039-V0046); earlier sessions retired (017dmQw2byPhYrFKrGJrEMRj, 01KAjUS8Gz437Nx93fsiVFYX) |
 | shared (first session) | session_01SD55WuhWKuEfeuC6T4A8e2 | Sonnet | 2026-10-05 | finished; blocked by its own permission settings on the contract; do not nudge |
 | shared-2 | session_01QRBncHfaoTvSqTLur5L3ZH | Sonnet | 2026-10-07 | N-002, DTO hosting, web drift |
-| backend-core | session_01WruAjDgzLe2omU4FjfTdki | Opus | 2026-10-07 | recycled 16:48 (sixth session); previous session_01CnjB3beqLff7QFRhoTxN3r is retired (READY TO RECYCLE 16:48, lane/backend-core 7ffbc10d); earlier sessions retired (01465rpZSgSrMTU8CACwuEYx, 01FfFvStuQXyZNg6QM9rndaD, 01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
+| backend-core | session_01KioRPRikGVZzmJ7sdaN3ES | Opus | 2026-10-07 | recycled 18:46 (seventh session); previous session_01WruAjDgzLe2omU4FjfTdki is retired (READY TO RECYCLE 18:46, lane/backend-core 621c9b52); earlier sessions retired (01CnjB3beqLff7QFRhoTxN3r, 01465rpZSgSrMTU8CACwuEYx, 01FfFvStuQXyZNg6QM9rndaD, 01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
 | backend-reports | session_019WhVDAstm1xPBBrp6FPKM9 | Sonnet | 2026-10-07 | |
 | backend-admin | session_01TogQKB1R6sgWVTafC9DMYG | Sonnet | 2026-10-07 | recycled 05:02; previous session_01JK4kErf8frNpx25mmoyPAc is retired (READY TO RECYCLE 05:01) |
-| android-core | session_0151EwtEosnRTmXJejCALwjh | Opus | 2026-10-07 | recycled 16:46 (eighth session); previous session_01CWXeY8AFFirF65WP2Tde88 is retired (READY TO RECYCLE 16:45, lane/android-core 0a0add38; owes one fresh Opus re-check of F-SYS-081 phone half); earlier sessions retired (01FM6jypmkuGy6Hv1kVjnzLN, 01AgFbNVonyMCWNtJqhyXREy, 01Xx4ADUeVGTHNrVSqXU3tjh) |
+| android-core | PARKED (no live session) | Opus | 2026-10-07 | parked 19:40: session_019Wkf6V91ynYvVswgbogVG2 retired (READY TO RECYCLE 19:36, lane/android-core b85e6e40; handover in docs/status/android-core.md). Restart with source_revision lane/android-core when backend-core lands the sync digest (F-SYS-080) and the AV/KV/survey sections (sr-a request); remaining android-core rows are blocked or belong to other lanes (N-023 and AUD-TP-5 android-core-ui, AUD-TP-4 infra). Earlier sessions retired (0151EwtEosnRTmXJejCALwjh, 01CWXeY8AFFirF65WP2Tde88, 01FM6jypmkuGy6Hv1kVjnzLN, 01AgFbNVonyMCWNtJqhyXREy, 01Xx4ADUeVGTHNrVSqXU3tjh) |
 | android-core-ui | session_01F7k2exq6bgrBGdZAmvG9Ey | Sonnet | 2026-10-07 | recycled 08:40; session_01PompFHeojjtrnV78dsjmsB retired (READY TO RECYCLE 08:39) |
 | android-sr-a | session_01TyF3Y1MGEyGN2Ke8EHwZUG | Sonnet | 2026-10-07 | recycled 08:46; session_01Gyh9KAacFpMFb35wUDq21c retired (READY TO RECYCLE 08:46) |
 | android-sr-b | session_019i1dfbm7pSrMDPXskSLY3v | Sonnet | 2026-10-07 | recycled 08:39; session_01DCSzXKooAFuYYEGy9UAMSN retired (READY TO RECYCLE 08:38) |
@@ -34,7 +34,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | web-config | session_0146veK2iXvmHGwiPBpbBJ2k | Sonnet | 2026-10-07 | |
 | web-dashboard | session_01RM4v6DRfjmfAbfrDi17Jzo | Sonnet | 2026-10-07 | recycled 05:01; previous session_01Sk9wwEshZ57sQafoEyccP7 is retired (READY TO RECYCLE 04:51) |
 | infra | session_0173b4rWqnKxPjz1wxkSx1R3 | Opus | 2026-10-07 | recycled 16:49 (fourth session, source lane/infra); previous session_01Th2LZgi7Jg7dxUX3gmwFQ2 is retired (READY TO RECYCLE 16:48, lane/infra 205d1e0); earlier sessions retired (01CDohyiiiYjHVdhw5DSeqPc, 011BobrrmxjEerwAMUs6AzN2) |
-| integrator | session_01Srsa2mi1afseu6PLVGfwzR | Sonnet | 2026-10-07 | recycled 14:49 (third session; recycle at ~300k); session_017ASTyJnQ6z71B1uoc447YL retired and archived (READY TO RECYCLE 14:48 at 555k); session_01HMc2Bcq7MRYf8xgj423pKU retired earlier |
+| integrator | session_01UhJZDVYst45zbrskHBMkDd | Sonnet | 2026-10-07 | recycled 18:48 (fourth session, recycle at ~450k); session_01Srsa2mi1afseu6PLVGfwzR retired and archived (READY TO RECYCLE 18:47 at 534k; handover on branch lane/train-20261007T1856-handover, merge into the next code candidate); session_017ASTyJnQ6z71B1uoc447YL and session_01HMc2Bcq7MRYf8xgj423pKU retired earlier |
 | laptop operator | session_01UbRHnSorx4s1XARa6aN1Tg | Opus | 2026-10-06 | never nudged; runs only owner-approved laptop tasks |
 
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
@@ -75,3 +75,11 @@ reports; hand any pending lead items to this file as a plain list and confine yo
 Rulings D-DB-PART-01 and the dedupe resolutions above stand. If the owner intends the other session to
 lead instead, the owner says so in that session and this one stands down the same way — one lead, either
 way.
+
+## Lead rulings (2026-10-07 18:05 UTC)
+
+- N-053 (map component and geocoding, backlog sublane android-amo) is assigned to android-core now: F-SYS-074 (SR attendance address) needs it and android-amo (wave 2) has not started. Built as a shared module the AMO app reuses later. Map loads only when its screen opens; provider and tile-cache cap come from config; coordinates are the offline fallback; no always-on map; no key is printed or stored.
+- backend-core order: F-API-070 first (blocks android-core F-SYS-047 and F-SYS-080), then the `urgent` flag in config_pull (docs/requests/android-core-backend-urgent-push-flag.md), then the server-side `checkout_too_early` check or a logged decision.
+- Docs from the lead reach INT through the integrator's next code candidate (branch lane/lead-docs), so a docs push never starts a dev deploy of its own.
+
+Leftover branches that cannot be deleted (the remote refuses ref deletions; list for the owner's cleanup when the repository goes private): claude/bc-s5-salvage, lane/lead-pushprobe, lane/lead-contract-v1-3.

@@ -78,11 +78,14 @@ object SessionModule {
     /** Upload scheduling (F-SYS-011): feature code calls `requestSync(userId, trigger)` after every commit. */
     @Provides
     @Singleton
-    fun workManagerSyncScheduler(@ApplicationContext context: Context, components: SessionComponents, telemetry: com.aktcl.aron.core.sync.DeviceTelemetry): WorkManagerSyncScheduler =
+    fun workManagerSyncScheduler(@ApplicationContext context: Context, components: SessionComponents, telemetry: com.aktcl.aron.core.sync.DeviceTelemetry, runtime: DeviceRuntime): WorkManagerSyncScheduler =
         WorkManagerSyncScheduler(
             { WorkManager.getInstance(context) }, hold = com.aktcl.aron.core.sync.SyncHold.Prefs(context),
-            // F-SYS-079: check-out and Sales Submit uploads are jittered only just after the 17:00 gate opens.
-            checkoutGate = com.aktcl.aron.core.sync.CheckoutGate.dhaka(components.clock::nowMs),
+            // F-SYS-079: check-out and Sales Submit uploads are jittered only just after the check-out gate opens;
+            // the gate time and the jitter come from the active user's bundle (cfg.day.checkout_earliest_time, cfg.sync.checkout_jitter_s).
+            checkoutJitterS = { runtime.dayConfig.checkoutJitterS },
+            resyncJitterS = { runtime.dayConfig.resyncJitterS }, // F-SYS-047
+            checkoutGate = com.aktcl.aron.core.sync.CheckoutGate.dhaka(components.clock::nowMs, gateMinutes = { runtime.dayConfig.checkoutEarliestMinutes }),
             onRequest = telemetry::sampleSoon, // F-SYS-081: a sample at every save, offline too
         )
 
@@ -162,7 +165,7 @@ object SessionModule {
     @Singleton
     fun errorReporter(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.ErrorReporter =
         com.aktcl.aron.core.sync.ErrorReporter(
-            File(context.noBackupFilesDir, "errors"), { databases.of(it) }, components.trustedClock, components.appVersion,
+            com.aktcl.aron.core.sync.ErrorReporter.dirOf(context), { databases.of(it) }, components.trustedClock, components.appVersion,
             com.aktcl.aron.core.sync.LocationNotice.offlineProbe(context),
             activeUser = { (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
             currentUser = { (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },

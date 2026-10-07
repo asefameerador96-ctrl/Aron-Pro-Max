@@ -102,14 +102,14 @@ class ReferenceRepository(private val db: AronDatabase) {
             val keepConfig = heldConfig != null && bundleConfig != null && bundleConfig < heldConfig
             if (!keepConfig) dao.clearConfig()
             dao.clearSections()
-            dao.insertRoutes(routes)
-            dao.insertOutlets(outlets)
-            dao.insertSkus(skus)
-            dao.insertPrices(prices)
-            if (!keepConfig) dao.insertConfig(config)
-            dao.insertSections(sections)
+            routes.inChunks { dao.insertRoutes(it) }
+            outlets.inChunks { dao.insertOutlets(it) }
+            skus.inChunks { dao.insertSkus(it) }
+            prices.inChunks { dao.insertPrices(it) }
+            if (!keepConfig) config.inChunks { dao.insertConfig(it) }
+            sections.inChunks { dao.insertSections(it) }
             dao.clearTasks()
-            dao.insertTasks(tasks)
+            tasks.inChunks { dao.insertTasks(it) }
             dao.reapplyLocalResolutions()
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_DATE, date))
@@ -238,17 +238,19 @@ class ReferenceRepository(private val db: AronDatabase) {
             for ((json, snap) in added) {
                 dao.deleteOutletsOfRoute(snap.routeId)
                 dao.insertRoutes(listOf(routeRow(snap, date, version)))
-                dao.insertOutlets(snap.outlets.map(::outletRow))
+                snap.outlets.map(::outletRow).inChunks { dao.insertOutlets(it) }
                 putSection("route.${snap.routeId}", routeExtras(json).toString())
             }
-            deletes("outlets").mapNotNull { it.toLongOrNull() }.takeIf { it.isNotEmpty() }?.let { dao.deleteOutlets(it) }
-            if (outletUps.isNotEmpty()) dao.insertOutlets(outletUps.map(::outletRow))
-            deletes("prices").mapNotNull { it.toLongOrNull() }.takeIf { it.isNotEmpty() }?.let { dao.deletePrices(it) }
-            if (priceUps.isNotEmpty()) dao.insertPrices(priceUps.map(::priceRow))
-            deletes("skus").mapNotNull { it.toLongOrNull() }.takeIf { it.isNotEmpty() }?.let { dao.deleteSkus(it) }
-            if (skuUps.isNotEmpty()) dao.insertSkus(skuUps.map(::skuRow))
-            deletes("tasks").takeIf { it.isNotEmpty() }?.let { dao.deleteTasks(it) }
-            if (taskUps.isNotEmpty()) dao.insertTasks(taskUps)
+            // Upserts and tombstones in chunks of at most CHUNK rows (AUD-PERF-06): one bound list never nears the SQLite
+            // variable limit, and a large AMO delta is written in bounded steps.
+            deletes("outlets").mapNotNull { it.toLongOrNull() }.inChunks { dao.deleteOutlets(it) }
+            outletUps.map(::outletRow).inChunks { dao.insertOutlets(it) }
+            deletes("prices").mapNotNull { it.toLongOrNull() }.inChunks { dao.deletePrices(it) }
+            priceUps.map(::priceRow).inChunks { dao.insertPrices(it) }
+            deletes("skus").mapNotNull { it.toLongOrNull() }.inChunks { dao.deleteSkus(it) }
+            skuUps.map(::skuRow).inChunks { dao.insertSkus(it) }
+            deletes("tasks").inChunks { dao.deleteTasks(it) }
+            taskUps.inChunks { dao.insertTasks(it) }
             dao.reapplyLocalResolutions() // a resolution not yet acked survives a server copy of the task
             if (moveMemos) placeOpenMemos(heldMemos, added.map { it.second }, upserts("open_memos"), deletes("open_memos"))
             for (st in dayStates) {
@@ -439,6 +441,8 @@ class ReferenceRepository(private val db: AronDatabase) {
     }
 
     companion object {
+        /** Rows per write in an apply (AUD-PERF-06). */
+        const val CHUNK = 500
         const val KEY_BUNDLE_VERSION = "bundle_version"
         const val KEY_BUNDLE_DATE = "bundle_business_date"
         const val KEY_BUNDLE_ETAG = "bundle.etag"
@@ -574,3 +578,13 @@ class ReferenceRepository(private val db: AronDatabase) {
 
 /** What a `config_ack` needs from the caller (trusted time and a fresh client uuid); see [ReferenceRepository.applyConfigDelta]. */
 data class ConfigAckStamp(val clientUuid: String, val meta: com.aktcl.aron.core.database.entity.CaptureMeta, val appliedAt: String)
+
+/** Runs [write] over consecutive slices of at most [ReferenceRepository.CHUNK] rows; nothing for an empty list. */
+internal inline fun <T> List<T>.inChunks(write: (List<T>) -> Unit) {
+    var from = 0
+    while (from < size) {
+        val to = minOf(size, from + ReferenceRepository.CHUNK)
+        write(subList(from, to))
+        from = to
+    }
+}
