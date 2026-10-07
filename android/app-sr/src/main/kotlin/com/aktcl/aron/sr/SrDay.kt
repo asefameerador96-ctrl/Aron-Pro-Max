@@ -140,6 +140,7 @@ class SrDay(
 
     /** Re-reads the bundle stamp, the route, the outlets and the freshness from Room; cheap and safe to call every minute. */
     suspend fun reload() {
+        loadPrintConfig()
         val date = businessDate()
         bundleVersion = reference.bundleVersion()
         val bundleDate = reference.businessDate()
@@ -300,6 +301,18 @@ class SrDay(
         com.aktcl.aron.core.printing.flow.MemoPrinting(
             printerManager, { renderer }, com.aktcl.aron.core.database.repo.RoomPrintLedger(db, { base -> base ?: metaProvider.meta(0L) }),
             com.aktcl.aron.core.common.ClientIds::newUuid, clock::nowMs,
+            reprintMax = { printConfig.reprintMax }, confirmAfterPrint = { printConfig.confirmAfterPrint },
+        )
+    }
+
+    /** The last `cfg.memo.reprint_max` and `cfg.print.confirm_after_print` read from the stored config (contract defaults until the first read). */
+    @Volatile private var printConfig = PrintConfig()
+
+    suspend fun loadPrintConfig() {
+        val now = com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs())
+        printConfig = PrintConfig.from(
+            runCatching { reference.config("cfg.memo.reprint_max", now) }.getOrNull(),
+            runCatching { reference.config("cfg.print.confirm_after_print", now) }.getOrNull(),
         )
     }
 
