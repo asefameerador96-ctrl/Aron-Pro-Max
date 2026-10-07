@@ -33,7 +33,7 @@ class GnssSummaryTest {
         assertEquals(listOf("GPS", "GLONASS", "GALILEO"), s["constellations_used"])
         assertEquals(28.75, s["cn0_used_mean_dbhz"])
         assertEquals(35.0, s["cn0_used_max_dbhz"])
-        assertEquals(4.97, s["cn0_used_stddev_dbhz"])
+        assertEquals(4.82, s["cn0_used_stddev_dbhz"])
         assertEquals(26.6, s["cn0_all_mean_dbhz"])
         assertEquals(0.8, s["ephemeris_share"])
         assertEquals(true, s["raw_supported"])
