@@ -177,3 +177,17 @@ class BundleDownloader(
         }
     }
 }
+
+/** One [BundleDownloader] per user (its database and its staging folder under noBackupFilesDir). */
+class BundleDownloaders(
+    private val stagingRoot: File,
+    private val databases: com.aktcl.aron.core.database.UserDatabases,
+    private val api: SyncApi,
+    private val clock: WallClock,
+) {
+    private val byUser = java.util.concurrent.ConcurrentHashMap<Long, BundleDownloader>()
+
+    fun of(userId: Long): BundleDownloader = byUser.computeIfAbsent(userId) {
+        BundleDownloader(databases.of(it), api, File(stagingRoot, "u$it"), clock)
+    }
+}
