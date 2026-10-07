@@ -180,6 +180,9 @@ class SrDay(
     }
 
     /** After a relaunch or a language switch: a committed visit with no close is the call in progress (R8). */
+    /** Re-arms uploads of photos a killed process left (WorkManager keeps the jobs, this fills gaps). */
+    suspend fun resumeMedia() { runCatching { media.resume() } }
+
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
         val date = businessDate()
@@ -234,7 +237,10 @@ class SrDay(
 
     val visitFlow: VisitFlow = VisitFlow(
         fixes = fixSource, metaProvider = metaProvider,
-        committer = { v, f -> capture.recordVisitOpen(v, f); runCatching { requestSync() } },
+        committer = { v, f ->
+            v.geoForcePhotoUuid?.let { attachPhoto(it, "force_sale", "visit", v.clientUuid, f) }
+            capture.recordVisitOpen(v, f); runCatching { requestSync() }
+        },
         session = visitSession, settings = { GeoSettings.DEFAULT }, nowIso = { iso(clock.nowMs()) },
         nextSequenceNo = { nextSequence++ },
         configCheck = com.aktcl.aron.feature.outlet.ConfigCheck { launchConfigCheck() },
@@ -303,13 +309,32 @@ class SrDay(
         committer = { draft ->
             val fix = draft.fix ?: fixSource.readFix("outlet_capture")
             val (entity, fixEntity) = draft.toEntities(metaProvider.meta(0L), fix)
+            draft.photoUuids.forEach { attachPhoto(it, "outlet_capture", "outlet_change_request", entity.clientUuid, fixEntity) }
             capture.recordOutletRequest(entity, fixEntity)
             runCatching { requestSync() }
         },
     )
 
-    /** The camera pipeline of F-SYS-030 plugs in here; until it lands there is no camera and photo steps cannot complete. */
-    @Volatile var photoPipeline: PhotoPipeline = NoCameraPipeline
+    // ---- camera and photos (F-SYS-030, F-SYS-010): compressed on capture, claimed by the record, uploaded after its ack
+    private val wifiOnly = com.aktcl.aron.core.media.WifiOnlySetting(context) { true }
+    private val mediaScheduler = com.aktcl.aron.core.media.MediaWorkScheduler(androidx.work.WorkManager.getInstance(context), wifiOnly::wifiOnly, clock::nowMs)
+    val media = com.aktcl.aron.core.media.MediaComponents(context, userId, clock, { businessDate() }, scheduler = mediaScheduler)
+
+    @Volatile var photoPipeline: PhotoPipeline = object : PhotoPipeline {
+        override suspend fun captureAndCompress(photoUuid: String): CapturedPhoto? =
+            media.capture(photoUuid)?.let { CapturedPhoto(photoUuid, it.thumbnailPath, it.item.bytes.toLong()) }
+        override suspend fun discard(photoUuid: String) { media.discard(photoUuid) }
+    }
+
+    /** Claims a photo for the record about to be committed, with the shutter fix; the photo may already belong to the same visit. */
+    private suspend fun attachPhoto(photoUuid: String, purpose: String, refType: String, recordUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) {
+        val stamp = fix?.let { com.aktcl.aron.core.media.PhotoStamp(it.lat, it.lng, it.accuracyM, it.isMock, it.clientUuid) }
+        try {
+            media.attach(photoUuid, com.aktcl.aron.core.media.MediaRef(purpose, refType, recordUuid), stamp)
+        } catch (e: IllegalStateException) {
+            // Already claimed by another record (a force sale photo also cited by its location request): keep the first owner.
+        }
+    }
 
     fun newCapture(purpose: String) = GeoPhotoCapture(fixSource, object : PhotoPipeline {
         override suspend fun captureAndCompress(photoUuid: String) = photoPipeline.captureAndCompress(photoUuid)
@@ -318,12 +343,6 @@ class SrDay(
 
     fun forceSaleController(capture: GeoPhotoCapture, locationGranted: () -> Boolean) =
         ForceSaleController(visitFlow, capture, outletRequests, locationGranted)
-}
-
-/** Placeholder until F-SYS-030 (photo capture and compression) is on INT: no photo, so photo-gated steps stay incomplete. */
-object NoCameraPipeline : PhotoPipeline {
-    override suspend fun captureAndCompress(photoUuid: String): CapturedPhoto? = null
-    override suspend fun discard(photoUuid: String) = Unit
 }
 
 /** Re-save guard of the stock screen kept across a kill and relaunch. */

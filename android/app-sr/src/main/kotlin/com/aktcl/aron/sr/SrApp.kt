@@ -98,7 +98,7 @@ fun SrApp(
 
     // Start: local data first (never waits), then the bundle in the background, then a refresh of what Home shows.
     LaunchedEffect(Unit) {
-        day.recoverPrinting()
+        day.recoverPrinting(); day.resumeMedia()
         day.reload(); day.nextSequenceFromStore(); day.restoreOpenVisit(); day.taskBoard.load()
         day.attendance.restore(day.attendanceToday())
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
@@ -123,6 +123,8 @@ fun SrApp(
         screen = when (screen) { SrScreen.FORCE -> SrScreen.VISIT; SrScreen.REQUEST_FORM -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU; else -> SrScreen.HOME }
     }
 
+    // The camera draws only while a capture is open (and sits behind the camera permission gate of core-system).
+    com.aktcl.aron.core.media.CameraCaptureOverlay(day.media.camera)
     when (screen) {
         SrScreen.PERMISSIONS -> {
             LaunchedEffect(permissions) { if (permissions.toAsk.isEmpty()) screen = SrScreen.HOME }

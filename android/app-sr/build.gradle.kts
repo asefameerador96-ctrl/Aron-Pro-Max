@@ -75,6 +75,7 @@ dependencies {
     implementation(project(":android:core-geo"))
     implementation(project(":android:core-printing"))
     implementation(project(":android:core-system"))
+    implementation(project(":android:core-media"))
     implementation(project(":android:dpc"))
     implementation(project(":android:feature-auth"))
     implementation(project(":android:feature-home"))
