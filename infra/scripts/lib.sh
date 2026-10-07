@@ -26,3 +26,18 @@ ensure_secrets_officer() { # vault-id vault-name
   done
   return 1
 }
+
+# Deploy freeze (docs/18 selling hours): returns 0 when minute-of-day $2 (default: now in Asia/Dhaka) lies inside the
+# window $1 "HH:MM-HH:MM" (start inclusive, end exclusive; a window past midnight such as 22:00-06:00 wraps).
+# Exits through die on a malformed window, so a typo never silently disables the freeze.
+in_freeze_window() { # window [minute-of-day]
+  [[ "$1" =~ ^([01][0-9]|2[0-3]):([0-5][0-9])-([01][0-9]|2[0-3]):([0-5][0-9])$ ]] \
+    || die "the deploy freeze window must look like 07:00-19:00 (00:00 to 23:59), was '$1'"
+  local from=$(( 10#${BASH_REMATCH[1]} * 60 + 10#${BASH_REMATCH[2]} )) to=$(( 10#${BASH_REMATCH[3]} * 60 + 10#${BASH_REMATCH[4]} ))
+  local now="${2:-$(( 10#$(TZ=Asia/Dhaka date +%H) * 60 + 10#$(TZ=Asia/Dhaka date +%M) ))}"
+  if [ "$from" -le "$to" ]; then
+    [ "$now" -ge "$from" ] && [ "$now" -lt "$to" ]
+  else
+    [ "$now" -ge "$from" ] || [ "$now" -lt "$to" ]
+  fi
+}
