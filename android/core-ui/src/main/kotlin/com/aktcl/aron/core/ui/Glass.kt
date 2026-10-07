@@ -15,6 +15,13 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Brush
@@ -68,6 +75,28 @@ fun rememberGlassTier(config: UiGlassConfig = UiGlassConfig.AUTO): GlassTier {
 }
 
 /**
+ * The focus indicator for keyboard and switch access (docs/32 s2a item 5): a ring of [AronTokens.Stroke.Focus]
+ * (3 dp in sunlight) in `border.focus`, drawn 2 dp outside the shape. Place it BEFORE `clickable`/`toggleable` in the chain
+ * so it observes that node's focus.
+ */
+@Composable
+fun Modifier.aronFocusRing(shape: Shape): Modifier {
+    val c = LocalAronColors.current
+    var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val width = if (c.sunlight) AronTokens.Stroke.SunlightFocus else AronTokens.Stroke.Focus
+    return this
+        .onFocusChanged { focused = it.isFocused }
+        .drawWithContent {
+            drawContent()
+            if (focused) {
+                val gap = 2.dp.toPx(); val w = width.toPx()
+                val outline = shape.createOutline(androidx.compose.ui.geometry.Size(size.width + 2 * gap, size.height + 2 * gap), layoutDirection, this)
+                translate(-gap, -gap) { drawOutline(outline, c.borderFocus, style = androidx.compose.ui.graphics.drawscope.Stroke(w)) }
+            }
+        }
+}
+
+/**
  * The one glass surface, for CHROME only (top bar, bottom bar, sheet scrims, tile backdrops, empty-state backdrops).
  * Anything that carries a number, status or primary action belongs on an [AronCard] (docs/32 s2a item 1).
  * Tier A: stronger tint (a backdrop-blur layer plugs in here later, only for A); B: tinted translucent fill, soft sheen,
@@ -97,7 +126,7 @@ fun GlassSurface(
     val border = if (solid) BorderStroke(stroke, c.borderSolid) else BorderStroke(stroke, Brush.verticalGradient(listOf(c.borderHairlineTop, c.borderHairlineBottom)))
     // clip BEFORE clickable so the ripple follows the rounded corners
     val click = if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier
-    Box(modifier.then(shadow).then(base).border(border, shape).clip(shape).then(click)) { content() }
+    Box(modifier.aronFocusRing(shape).then(shadow).then(base).border(border, shape).clip(shape).then(click)) { content() }
 }
 
 /**
@@ -120,5 +149,5 @@ fun AronCard(
     val stroke = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
     val edge = if (flat) c.borderSolid else c.borderHairlineBottom
     val click = if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier
-    Box(modifier.then(shadow).background(c.surfaceSolid, shape).border(BorderStroke(stroke, edge), shape).clip(shape).then(click)) { content() }
+    Box(modifier.aronFocusRing(shape).then(shadow).background(c.surfaceSolid, shape).border(BorderStroke(stroke, edge), shape).clip(shape).then(click)) { content() }
 }

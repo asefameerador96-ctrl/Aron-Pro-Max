@@ -73,6 +73,8 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
     if (req.route_id < 1) bad("body.route_id")
     val date = AdminSupport.date(req.business_date, "body.business_date")
     if (req.scope !in setOf("web_entry", "app_memos", "all")) bad("body.scope")
+    // docs/24 s8.5 and docs/15 F-ADM-058: voiding app memos needs a role above TSO; a TSO may void web entry only (docs/21 day.void, own scope).
+    if (req.scope != "web_entry" && p.role == Role.TSO) throw AdminSupport.forbidden("voiding app memos needs an administrator")
     AdminSupport.noNul("body.reason", req.reason)
     val reason = req.reason.trim()
     if (req.reason.length > 500 || reason.length < 10) bad("body.reason", "length")
@@ -80,6 +82,9 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
     val reach = AdminSupport.reach(d.reach, call, d.clock)
     val now = AdminSupport.utc(d.clock)
     return d.db.jdbi.inTransaction<DataVoidOut, Exception> { h ->
+        // One void per client_uuid, and no ingest of this route-day in flight while the barrier is written (shared lock in the barrier handler).
+        h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "void:" + req.client_uuid).mapTo(String::class.java).findOne()
+        h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "voidday:${req.route_id}:$date").mapTo(String::class.java).findOne()
         // One void per route at a time: the route row is the lock.
         val zone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r FOR UPDATE").bind("r", req.route_id).mapTo(Long::class.java).findOne().orElse(null)
         if (zone == null || !reach.coversRoute(req.route_id, zone)) throw AdminSupport.outOfScope("route outside your reach")
@@ -140,19 +145,31 @@ private fun pendingRows(h: Handle, routeId: Long): Int? = h.createQuery(
 ).bind("r", routeId).mapTo(Int::class.java).findOne().orElse(null)
 
 /**
- * The dues ledger is append-only: a voided memo or collection is taken off it by one `adjustment` per source record that
- * nets that source's rows to zero (unique per source, so a replay posts nothing twice).
+ * The dues ledger is append-only. A tombstoned memo is taken off it by ONE `adjustment` (source = the memo) that nets every
+ * ledger row of that memo (its due, collections against it, an earlier `memo_void` or supersession), so a memo already
+ * voided elsewhere nets to zero and posts nothing. A tombstoned collection whose memo is not tombstoned in this void is
+ * reversed on its own. `memo_void` and supersession records are not reversed: the memo's status was set by them and stays.
  */
 private fun reverseDues(h: Handle, voided: List<String>, voidUuid: String) {
+    val u = voided.map { java.util.UUID.fromString(it) }
     h.createUpdate(
         """
         INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, memo_client_uuid, memo_no, source_client_uuid, note)
-        SELECT outlet_id, min(business_date), 'adjustment', -sum(amount_mtk), (array_agg(memo_client_uuid))[1], max(memo_no), source_client_uuid, 'data void ' || CAST(:v AS text)
-        FROM app.due_ledger WHERE source_client_uuid IN (<u>) AND entry_kind <> 'adjustment'
-        GROUP BY outlet_id, source_client_uuid HAVING sum(amount_mtk) <> 0
+        SELECT l.outlet_id, min(l.business_date), 'adjustment', -sum(l.amount_mtk), l.memo_client_uuid, max(l.memo_no), l.memo_client_uuid, 'data void ' || CAST(:v AS text)
+        FROM app.due_ledger l WHERE l.memo_client_uuid IN (<u>) AND l.entry_kind <> 'adjustment'
+        GROUP BY l.outlet_id, l.memo_client_uuid HAVING sum(l.amount_mtk) <> 0
         ON CONFLICT (source_client_uuid, entry_kind) DO NOTHING
         """.trimIndent(),
-    ).bind("v", voidUuid).bindList("u", voided.map { java.util.UUID.fromString(it) }).execute()
+    ).bind("v", voidUuid).bindList("u", u).execute()
+    h.createUpdate(
+        """
+        INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, memo_client_uuid, memo_no, source_client_uuid, note)
+        SELECT l.outlet_id, l.business_date, 'adjustment', -l.amount_mtk, l.memo_client_uuid, l.memo_no, l.source_client_uuid, 'data void ' || CAST(:v AS text)
+        FROM app.due_ledger l WHERE l.source_client_uuid IN (<u>) AND l.entry_kind = 'collection'
+          AND (l.memo_client_uuid IS NULL OR l.memo_client_uuid NOT IN (<u>))
+        ON CONFLICT (source_client_uuid, entry_kind) DO NOTHING
+        """.trimIndent(),
+    ).bind("v", voidUuid).bindList("u", u).execute()
 }
 
 /**
@@ -160,10 +177,12 @@ private fun reverseDues(h: Handle, voided: List<String>, voidUuid: String) {
  * the barrier is accepted (D24-45). The phone is told once and drops it (final, not retryable).
  */
 class DataVoidBarrierHandler(override val types: Set<String>) : RecordHandler {
-    override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
+    override fun checkEarly(h: Handle, rec: IngestRecord): RecordRefusal? {
         val route = (rec.envelope["route_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return null
         val captured = (rec.envelope["captured_at"] as? JsonPrimitive)?.content?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null
-        val hit = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.route_day_void_barrier WHERE route_id = :r AND business_date = :d AND :c < barrier_at)")
+        // Shared lock until the record's transaction ends: a void of this route-day waits for in-flight rows, and rows after it see the barrier.
+        h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 0))").bind("k", "voidday:$route:${rec.businessDate}").mapTo(String::class.java).findOne()
+        val hit = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.route_day_void_barrier WHERE route_id = :r AND business_date = :d AND :c < barrier_at AND affected->>'scope' <> 'web_entry')")
             .bind("r", route).bind("d", rec.businessDate).bind("c", OffsetDateTime.ofInstant(captured, ZoneOffset.UTC)).mapTo(Boolean::class.java).one()
         return if (hit) RecordRefusal(RecordOutcomeCode.VOIDED_BY_ADMIN, "route-day voided by an administrator after this row was captured") else null
     }

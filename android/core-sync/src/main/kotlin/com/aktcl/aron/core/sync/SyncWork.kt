@@ -16,6 +16,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import com.aktcl.aron.contract.SyncTrigger
+import com.aktcl.aron.contract.TimeAnchor
 import com.aktcl.aron.core.database.UserDatabases
 import com.aktcl.aron.core.session.SessionComponents
 import java.util.concurrent.TimeUnit
@@ -60,7 +61,7 @@ class SessionSyncRunner(private val databases: UserDatabases, private val compon
         deviceUuid = { components.deviceIdentity.deviceUuid },
         appVersion = components.appVersion,
         clock = components.clock,
-        timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchorDto(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
+        timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
     ).run(trigger)
 
     override suspend fun unsent(userId: Long): Int = databases.of(userId).outboxDao().unsentCount()

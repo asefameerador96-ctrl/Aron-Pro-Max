@@ -38,9 +38,9 @@ object AronTokens {
         AronMode.Light,
         hex(0xD8E7FB), hex(0xE8EFFA), hex(0xF3F5FB), hex(0xE8EFFA),
         hex(0xFFFFFF, 62), hex(0xFFFFFF, 92), hex(0xFFFFFF), hex(0xF2F5FA), hex(0x000000, 32),
-        hex(0xFFFFFF, 75), hex(0x0B1B33, 10), hex(0x0B1B33, 8), hex(0x0B1B33, 30), hex(0x66768F), hex(0x0A58CC),
-        hex(0x0B1B33), hex(0x475569), hex(0x8793A6), hex(0xFFFFFF),
-        hex(0x0A58CC), hex(0x1B68DC), hex(0x0846A8), hex(0xDCE9FD), hex(0x0A3F94),
+        hex(0xFFFFFF, 75), hex(0x0B1B33, 10), hex(0x0B1B33, 8), hex(0x0B1B33, 30), hex(0x66768F), hex(0x0A50BE),
+        hex(0x0B1B33), hex(0x475569), hex(0x77839A), hex(0xFFFFFF),
+        hex(0x0A50BE), hex(0x0A50BE), hex(0x0846A8), hex(0xDCE9FD), hex(0x0A3F94),
         hex(0x0B7A45), hex(0xD6F0E1), hex(0x0A5A33),
         hex(0x9A5200), hex(0xFFE9C7), hex(0x7A4300),
         hex(0xC0182D), hex(0xFDDDE1), hex(0x8E1224),
@@ -92,7 +92,7 @@ object AronTokens {
     object Alpha {
         const val SheenLight = 0.22f; const val SheenDark = 0.06f
         const val Shadow = 0.10f; const val SolidBorder = 0.35f; const val TierABoost = 0.08f
-        const val HoldFill = 0.5f
+        
     }
 
     /** Spacing on a 4 dp grid. */

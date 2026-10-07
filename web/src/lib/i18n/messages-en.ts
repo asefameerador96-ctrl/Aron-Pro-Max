@@ -536,6 +536,16 @@ export const en = {
   "def.node.zone": "Zone",
   "def.node.route": "Route",
   "def.node.outlet": "Outlet",
+  "radius.status.rejected": "rejected",
+  "radius.status.cancelled": "cancelled",
+  "radius.status.expired": "expired",
+  "radius.status.reverted": "reverted",
+  "radius.sent_plain": "Sent.",
+  "error.ERR_CFG_OUT_OF_BOUNDS": "The value is outside the allowed range for this setting.",
+  "error.ERR_CFG_SCOPE_NOT_ALLOWED": "This setting cannot be changed at that level.",
+  "error.ERR_CFG_FREEZE_WINDOW": "Changes are paused right now (freeze window). Try later.",
+  "error.ERR_CFG_REASON_REQUIRED": "A reason is required for this change.",
+  "prices.per_base": "per {n} units",
 } as const;
 
 export type MessageKey = keyof typeof en;

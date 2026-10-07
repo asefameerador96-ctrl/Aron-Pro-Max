@@ -334,6 +334,14 @@ class IngestService(
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.ARITHMETIC_MISMATCH, why)
         }
 
+        // 8b. Handlers' early checks (before parents): a refusal here is final even when the parent is missing.
+        handlers.forType(r.type).let { early ->
+            if (early.isNotEmpty()) {
+                val rec = IngestRecord(r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now)
+                for (hd in early) hd.checkEarly(h, rec)?.let { return refuse(h, ctx, r, bd, it.code, it.detail) }
+            }
+        }
+
         // 9. Parents (s4.2 rule 3): a child whose parent is not stored yet is parked; the child of a content duplicate
         // is a duplicate too.
         for (field in rule.parents) {
