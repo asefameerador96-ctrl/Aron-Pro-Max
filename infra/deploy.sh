@@ -124,6 +124,14 @@ if [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "$deployed_sha" != "$SHA" ]; the
     exit 0
   fi
 fi
+# Nothing that reaches Azure changed since the live commit (docs, Android, tests only): nothing to deploy.
+deploy_paths=(shared db backend web infra build.gradle.kts settings.gradle.kts gradle.properties gradle .github/workflows/deploy.yml)
+if [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "${FORCE_INFRA:-false}" != true ] \
+   && git merge-base --is-ancestor "$deployed_sha" "$SHA" 2>/dev/null \
+   && git diff --quiet "$deployed_sha" "$SHA" -- "${deploy_paths[@]}" 2>/dev/null; then
+  summary "Skipped: nothing deployable changed between the live commit $deployed_sha and $SHA."
+  exit 0
+fi
 note "deploying $SHA (currently deployed: ${deployed_sha:-nothing})"
 
 # Budgets: Azure refuses every budget (even a what-if of one) while the billing account's cost policy is off for

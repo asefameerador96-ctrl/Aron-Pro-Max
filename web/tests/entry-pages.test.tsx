@@ -130,3 +130,24 @@ describe("data entry and paper backfill", () => {
     expect((await op(await tso(), { op: "paper-backfill.create", body, reason: "Phone died in the field" })).status).toBe(403);
   });
 });
+
+describe("web entry class split (cfg.web.entry_classes)", () => {
+  const row = { sku_id: 1, issue: "10", ret: "2", memos: "3" };
+  it("one class: the whole sale goes to it", () => {
+    expect(buildEntry([row], "", 8, [7]).lines[0]?.class_qty_base).toEqual({ "7": 8 });
+  });
+  it("several classes: typed split must add up to the sale; an empty split sends none", () => {
+    expect(buildEntry([{ ...row, cls: { "7": "5", "9": "3" } }], "", 8, [7, 9]).lines[0]?.class_qty_base).toEqual({ "7": 5, "9": 3 });
+    expect(buildEntry([{ ...row, cls: { "7": "5", "9": "2" } }], "", 8, [7, 9]).errors[0]).toMatchObject({ field: "classes", code: "class_sum" });
+    const none = buildEntry([row], "", 8, [7, 9]);
+    expect(none.errors).toEqual([]);
+    expect(none.lines[0]?.class_qty_base).toBeUndefined();
+    expect(buildEntry([{ ...row, cls: { "7": "x" } }], "", 8, [7, 9]).errors[0]).toMatchObject({ code: "invalid" });
+  });
+  it("the grid shows one column per class when there are several", () => {
+    const m = text(html(<WebEntryView {...baseWe} classes={[7, 9]} />));
+    expect(m).toContain("Class 7");
+    expect(m).toContain("Class 9");
+    expect(text(html(<WebEntryView {...baseWe} classes={[7]} />))).not.toContain("Class 7");
+  });
+});
