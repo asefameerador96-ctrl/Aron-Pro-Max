@@ -87,3 +87,7 @@ F-API-003,S,2026-10-07T12:00Z,2026-10-07T12:00Z,0,"Opus checker","backfill: done
 F-API-004,S,2026-10-07T12:00Z,2026-10-07T12:00Z,0,"Opus checker","backfill: done in an earlier session (session 7 handover list)"
 F-SYS-094,S,2026-10-07T12:00Z,2026-10-07T12:00Z,0,"Opus checker","backfill: DataVoidApi barrier, earlier session"
 F-API-029,S,2026-10-07T12:00Z,2026-10-07T12:00Z,0,"-","backfill: served by config (session 7 handover list)"
+N-033,S,2026-10-07T19:30Z,2026-10-07T19:30Z,0,"Opus checker (BC-66)","backfill: server part (bundle device_policy_version, list in config.values, confirm via status policy_version_applied); phone part is android"
+F-SYS-035,S,2026-10-07T21:55Z,2026-10-07T21:55Z,0,"-","backfill: bundle suggested_qty empty by default, asserted in BundleAcceptanceTest"
+F-API-019,S,2026-10-07T21:55Z,2026-10-07T22:15Z,20,"Sonnet checker PASS","GET /v1/outlets/nearby (BC-77)"
+F-SYS-050,S,2026-10-07T22:15Z,2026-10-07T22:30Z,15,"Sonnet checker","batch telemetry on the device row, 10-min throttle (BC-78); last_sync_error waits on db"

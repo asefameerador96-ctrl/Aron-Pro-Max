@@ -310,4 +310,21 @@ class DeviceGateTest {
         assertEquals(List(5) { "accepted:-" }, client.send(sale()))
         assertEquals(Triple(30L, "play_integrity_fail", 4), flag())
     }
+
+    /** F-SYS-050: the batch's telemetry lands on the device row at most once per 10 minutes per device. */
+    @Test
+    @Order(4)
+    fun batchTelemetryIsRecordedAtMostOncePerTenMinutes() = testApplication {
+        application { aronApi(wiring) }
+        fun pending() = count("SELECT coalesce(pending_rows_reported, -1) FROM app.device WHERE device_uuid = '$devPhone'")
+        now.updateAndGet { it.plusSeconds(11 * 60) }
+        fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.device SET pending_rows_reported = 99, app_version = '1.0.0+1' WHERE device_uuid = '$devPhone'") }
+        client.send(listOf(attendance("check_in", "2027-01-01")))
+        assertEquals(0, pending(), "the body's pending_rows (no header) after more than 10 minutes")
+        assertEquals("1.0.9+9", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT app_version FROM app.device WHERE device_uuid = '$devPhone'").mapTo(String::class.java).one() })
+        fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.device SET pending_rows_reported = 99 WHERE device_uuid = '$devPhone'") }
+        now.updateAndGet { it.plusSeconds(9 * 60) }
+        client.send(listOf(attendance("check_out", "2027-01-01")))
+        assertEquals(99, pending(), "within 10 minutes: not written again")
+    }
 }

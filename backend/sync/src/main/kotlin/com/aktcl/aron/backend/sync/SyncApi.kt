@@ -189,6 +189,8 @@ private suspend fun postBatch(call: ApplicationCall, d: SyncDeps) {
     // (the phone would retry them forever) but held: the ingest gate quarantines every non-telemetry record of it
     // `device_not_enrolled` (N-027, D24-17); with the gate off they are accepted as before.
 
+    recordTelemetry(d, device.second, call.request.headers["X-Pending-Rows"], call.request.headers["X-App-Version"], req.pending_rows, req.app_version)
+
     if (!d.inflight.tryAcquire()) {
         throw retryLater(ProblemCode.ERR_SERVICE_UNAVAILABLE, "too many batches in flight", Random.nextInt(5, 61))
     }
@@ -202,6 +204,33 @@ private suspend fun postBatch(call: ApplicationCall, d: SyncDeps) {
 }
 
 private val TRIGGERS = com.aktcl.aron.contract.SyncTrigger.entries.map { it.wire }.toSet()
+
+private val APP_VERSION = Regex("^[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[+][0-9]{1,10}$")
+private val telemetryLog = org.slf4j.LoggerFactory.getLogger("aron.sync.telemetry")
+
+/**
+ * F-SYS-050: the batch's telemetry headers (`X-Pending-Rows`, else the body's `pending_rows`; `X-App-Version`, else the
+ * body's) on the device row, at most once per 10 minutes per device (the write is skipped while `last_contact_at` is
+ * younger), so a burst of retries costs one UPDATE. Telemetry only: a bad value is ignored and a failure never changes
+ * the batch outcome (docs/24 s2.4). `X-Last-Sync-Error` has no column yet (docs/requests/backend-core-device-telemetry-columns.md).
+ */
+internal fun recordTelemetry(d: SyncDeps, deviceId: Long, pendingHeader: String?, versionHeader: String?, bodyPending: Int, bodyVersion: String) {
+    val pending = pendingHeader?.trim()?.toIntOrNull()?.takeIf { it in 0..1_000_000 } ?: bodyPending.takeIf { it in 0..1_000_000 }
+    val version = (versionHeader?.trim() ?: bodyVersion).takeIf { APP_VERSION.matches(it) }
+    val now = java.time.OffsetDateTime.ofInstant(d.clock.now(), java.time.ZoneOffset.UTC)
+    try {
+        d.db!!.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                """
+                UPDATE app.device SET pending_rows_reported = coalesce(:p, pending_rows_reported), app_version = coalesce(:v, app_version), last_contact_at = :now
+                 WHERE id = :d AND (last_contact_at IS NULL OR last_contact_at <= :now - interval '10 minutes' OR last_contact_at > :now)
+                """.trimIndent(),
+            ).bind("p", pending).bind("v", version).bind("now", now).bind("d", deviceId).execute()
+        }
+    } catch (e: Exception) {
+        telemetryLog.warn("device telemetry not recorded device_id=$deviceId cause=${e.javaClass.simpleName}")
+    }
+}
 
 private fun ServerConfig.intOr(key: String, fallback: Int): Int = runCatching { int(key) }.getOrDefault(fallback)
 private fun ServerConfig.boolOr(key: String, fallback: Boolean): Boolean = runCatching { bool(key) }.getOrDefault(fallback)
