@@ -32,4 +32,17 @@
     <string name="review_problem_paid">পরিশোধ ০ বা তার বেশি এবং মোটের কম হতে হবে, পুরো পয়সায়।</string>
     <string name="review_problem_nothing">বিক্রির কিছু নেই।</string>
     <string name="review_problem_other">অনুগ্রহ করে বিক্রয়টি দেখুন।</string>
+    <string name="credit_title">বাকি</string>
+    <string name="credit_paid_label">এখন পরিশোধ</string>
+    <string name="credit_due_label">বাকি: %1$s</string>
+    <string name="credit_apply">প্রয়োগ করুন</string>
+    <string name="slide_title">স্লাইড (খালি প্যাকেট)</string>
+    <string name="slide_reward">%1$s টি পুরস্কার প্যাকেট = %2$s</string>
+    <string name="slide_none">কোনো এসকেইউতে সক্রিয় অফার নেই।</string>
+    <string name="qc_title">পণ্য কিউসি</string>
+    <string name="qc_production">উৎপাদন ত্রুটি</string>
+    <string name="qc_transport">পরিবহন ত্রুটি</string>
+    <string name="qc_deduction">কর্তন: %1$s</string>
+    <string name="qc_done">কিউসি সম্পন্ন</string>
+    <string name="qc_locked">এই আউটলেটে কিউসি সম্পন্ন হয়েছে; বিক্রয় আর সম্পাদনা করা যাবে না।</string>
 </resources>
