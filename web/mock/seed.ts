@@ -92,16 +92,16 @@ export const GEO: SeedNode[] = [
   { id: 3351, level: "zone", name: "Gulshan Zone 1", parent_id: 335 },
 ];
 
-export const PRODUCT_NODES = [
+const BRAND_NAMES = ["Sample", "Basic", "Gold Leaf", "Navy", "Star", "Royal", "Classic", "Premier", "Dhaka", "Padma", "Meghna", "Jamuna", "Surma", "Karnaphuli", "Shapla", "Rupsha", "Teesta"];
+export const PRODUCT_NODES: { id: number; level: "category" | "segment" | "brand" | "variant"; parent_id: number | null; name: string; sort: number; status: "active" | "inactive" }[] = [
   { id: 1, level: "category", parent_id: null, name: "Cigarette", sort: 1, status: "active" },
   { id: 2, level: "category", parent_id: null, name: "Bidi", sort: 2, status: "active" },
   { id: 11, level: "segment", parent_id: 1, name: "Premium", sort: 1, status: "active" },
   { id: 12, level: "segment", parent_id: 1, name: "Low", sort: 2, status: "active" },
-  { id: 21, level: "brand", parent_id: 11, name: "Sample", sort: 1, status: "active" },
-  { id: 22, level: "brand", parent_id: 12, name: "Basic", sort: 2, status: "inactive" },
-  { id: 31, level: "variant", parent_id: 21, name: "King Size", sort: 1, status: "active" },
-  { id: 32, level: "variant", parent_id: 21, name: "Lights", sort: 2, status: "active" },
-] as const;
+  ...BRAND_NAMES.map((name, i) => ({ id: 21 + i, level: "brand" as const, parent_id: i % 2 === 0 ? 11 : 12, name, sort: i + 1, status: i === 1 ? ("inactive" as const) : ("active" as const) })),
+  { id: 61, level: "variant", parent_id: 21, name: "King Size", sort: 1, status: "active" },
+  { id: 62, level: "variant", parent_id: 21, name: "Lights", sort: 2, status: "active" },
+];
 
 /** Scope filter for rows: which seeded routes a set of scope nodes reaches. Server-side only, like the real API. */
 export function routesInScope(nodes: { type: string; id: number }[]): SeedRoute[] {

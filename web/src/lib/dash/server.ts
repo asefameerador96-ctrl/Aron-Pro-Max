@@ -37,3 +37,20 @@ export function dhakaHour(now: Date = new Date()): number {
 }
 
 export const listOutlets = (token: string, q: Q = {}) => get<{ items: Schemas["Outlet"][] }>(token, "/v1/admin/outlets", { limit: 200, ...q });
+
+/** Config acknowledgement of the newest committed config version (needs the admin read permission; null when not allowed). */
+export async function getConfigAck(token: string): Promise<{ version: number; acked: number; targeted: number; pct: number | null } | null> {
+  const v = await get<Schemas["ConfigVersionPage"]>(token, "/v1/admin/config/versions", { limit: 1 });
+  const latest = v.ok ? v.data.items[0] : undefined;
+  if (!latest) return null;
+  const r = await get<Schemas["ConfigReach"]>(token, `/v1/admin/config/reach/${latest.version}`);
+  if (!r.ok) return null;
+  const { devices_acked: acked, devices_targeted: targeted } = r.data;
+  return { version: latest.version, acked, targeted, pct: targeted === 0 ? null : Math.round((acked / targeted) * 1000) / 10 };
+}
+
+/** Photos still on phones, summed from the device-reported `pending_media` (admin read permission; null when not allowed). */
+export async function getPendingPhotos(token: string): Promise<number | null> {
+  const r = await get<Schemas["DevicePage"]>(token, "/v1/admin/devices", { limit: 500 });
+  return r.ok ? r.data.items.reduce((a, d) => a + (d.last_status?.pending_media ?? 0), 0) : null;
+}

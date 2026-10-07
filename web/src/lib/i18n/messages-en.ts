@@ -26,7 +26,7 @@ export const en = {
   "common.language.en": "English",
 
   "auth.title": "Sign in",
-  "auth.username": "Username",
+  "auth.username": "User ID",
   "auth.password": "Password",
   "auth.submit": "Sign in",
   "auth.logout": "Sign out",
@@ -121,7 +121,7 @@ export const en = {
 
   "error.generic": "Something went wrong. Try again.",
   "error.network": "The server cannot be reached. Try again in a moment.",
-  "error.ERR_AUTH_INVALID_CREDENTIALS": "Wrong username or password.",
+  "error.ERR_AUTH_INVALID_CREDENTIALS": "Wrong User ID or password.",
   "error.ERR_AUTH_ACCOUNT_LOCKED": "This account is locked for a while. Try again later.",
   "error.ERR_AUTH_USER_DISABLED": "This account is disabled. Contact support.",
   "error.ERR_AUTH_MFA_INVALID": "That code is not right. Check the code and try again.",

@@ -124,6 +124,7 @@ function inScope(user: DashCtx["user"], q: Schemas["ReportQuery"] | null): SeedR
   return rows;
 }
 
+const ADMIN_READ: Role[] = ["ADMIN", "SUPERADMIN", "SUPPORT", "ANALYST"];
 const PII_ROLES: Role[] = ["ANALYST", "ADMIN", "SUPERADMIN", "SUPPORT"];
 export const hasPii = (role: Role): boolean => PII_ROLES.includes(role);
 
@@ -268,8 +269,8 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     if (!b || typeof b.note !== "string" || !b.note.trim() || !b.route_id) return send(400, problem(400, "ERR_VALIDATION")), true;
     const route = routesInScope(user.scope.nodes).find((r) => r.route_id === b.route_id);
     if (!route) return send(403, problem(403, "ERR_OUT_OF_SCOPE")), true;
-    const dhakaHour = Number(new Date(new Date(nowIso).getTime() + 6 * 3600_000).toISOString().slice(11, 13));
-    if (b.business_date === SEED_DATE && new Date(nowIso).toISOString().slice(0, 10) <= SEED_DATE && dhakaHour < 17) return send(409, problem(409, "ERR_REQUEST_STATE")), true;
+    const dhaka = new Date(new Date(nowIso).getTime() + 6 * 3600_000).toISOString();
+    if (b.business_date > dhaka.slice(0, 10) || (b.business_date === dhaka.slice(0, 10) && Number(dhaka.slice(11, 13)) < 17)) return send(409, problem(409, "ERR_REQUEST_STATE")), true;
     const prior = store.actions.find((a) => a.action_uuid === b.action_uuid);
     if (prior) return send(201, prior), true;
     const action: Schemas["TrackingAction"] = { action_uuid: b.action_uuid, route_id: b.route_id, business_date: b.business_date, note: b.note, created_by_user_id: user.id, created_at: nowIso, notified_user_ids: route.user_id ? [route.user_id, 2001] : [2001] };
@@ -277,15 +278,20 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     return send(201, action), true;
   }
 
+  const LEAVE_TERRITORY: Record<number, number> = { 2001: 334, 2005: 335 };
+  const leaveVisible = (l: Schemas["LeaveApplication"]): boolean => {
+    const terr = LEAVE_TERRITORY[l.user_id];
+    return l.user_id === user.id || (terr !== undefined && routesInScope(user.scope.nodes).some((r) => r.territory_id === terr));
+  };
   if (path === "/v1/leave" && method === "GET") {
     const st = x.url.searchParams.get("status");
-    return send(200, { items: store.leave.filter((l) => !st || l.status === st), next_cursor: null } satisfies Schemas["LeavePage"]), true;
+    return send(200, { items: store.leave.filter((l) => leaveVisible(l) && (!st || l.status === st)), next_cursor: null } satisfies Schemas["LeavePage"]), true;
   }
   const lv = /^\/v1\/leave\/([0-9a-f-]{36})\/decision$/.exec(path);
   if (lv && method === "POST") {
     if (user.role !== "DMO") return send(403, problem(403, "ERR_FORBIDDEN")), true;
     const b = (await x.body()) as Schemas["DecisionRequest"] | undefined;
-    const row = store.leave.find((l) => l.leave_uuid === lv[1]);
+    const row = store.leave.find((l) => l.leave_uuid === lv[1] && leaveVisible(l));
     if (!row) return send(404, problem(404, "ERR_NOT_FOUND")), true;
     if (!b || (b.decision !== "approve" && b.decision !== "reject")) return send(400, problem(400, "ERR_VALIDATION")), true;
     if (row.status !== "pending") return send(409, problem(409, "ERR_REQUEST_STATE")), true;
@@ -306,16 +312,27 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     return send(200, { items }), true;
   }
 
+  const signalsInScope = (): Schemas["RiskSignal"][] =>
+    routesInScope(user.scope.nodes)
+      .filter((r) => r.suspicious > 0 || r.mock_visits > 0)
+      .map((r, i): Schemas["RiskSignal"] => {
+        const id = 900 + i;
+        const decided = store.exceptionDecisions[String(id)];
+        const resampled = !decided && i === 0; // an AMO dismissal the server re-queued to the TSO (cfg.sec.fraud.dismissal_resample_pct)
+        return { signal_id: id, code: "GEO_MOCK", severity: 3, business_date: SEED_DATE, subject_type: "route", subject_id: String(r.route_id), user_id: r.user_id, route_id: r.route_id, zone_id: r.zone_id, score: 80, evidence: { mock_visits: r.mock_visits }, status: decided ?? "open", config_version: 318, created_at: asOf, last_review: resampled ? { action: "dismissed", reviewer_user_id: 1004, note: "ok", at: asOf } : decided ? { action: decided, reviewer_user_id: user.id, at: nowIso } : null };
+      });
   if (path === "/v1/risk-signals") {
-    const sigs: Schemas["RiskSignal"][] = routesInScope(user.scope.nodes).filter((r) => r.suspicious > 0).map((r, i) => ({ signal_id: 900 + i, code: "GEO_MOCK", severity: 3, business_date: SEED_DATE, subject_type: "route", subject_id: String(r.route_id), user_id: r.user_id, route_id: r.route_id, zone_id: r.zone_id, score: 80, evidence: { mock_visits: r.mock_visits }, status: (store.exceptionDecisions[String(900 + i)] ? "dismissed" : "open") as Schemas["RiskSignal"]["status"], config_version: 318, created_at: asOf }));
-    return send(200, { items: sigs, next_cursor: null }), true;
+    const st = x.url.searchParams.get("status");
+    return send(200, { items: signalsInScope().filter((sg) => !st || sg.status === st), next_cursor: null }), true;
   }
   const rs = /^\/v1\/risk-signals\/(\d+)\/review$/.exec(path);
   if (rs && method === "POST") {
-    const b = (await x.body()) as { action?: string } | undefined;
-    if (!b?.action) return send(400, problem(400, "ERR_VALIDATION")), true;
-    store.exceptionDecisions[rs[1]!] = b.action as "dismissed";
-    return send(200, { signal_id: Number(rs[1]), status: b.action }), true;
+    const b = (await x.body()) as { action?: "reviewed" | "dismissed" | "confirmed"; review_uuid?: string } | undefined;
+    if (!b?.action || !b.review_uuid) return send(400, problem(400, "ERR_VALIDATION")), true;
+    const sig = signalsInScope().find((sg) => sg.signal_id === Number(rs[1]));
+    if (!sig) return send(404, problem(404, "ERR_NOT_FOUND")), true;
+    store.exceptionDecisions[rs[1]!] = b.action;
+    return send(200, signalsInScope().find((sg) => sg.signal_id === Number(rs[1]))), true;
   }
   if (path === "/v1/day/exceptions") return send(200, { items: [{ exception_uuid: "33333333-3333-4333-8333-333333333333", raised_by_user_id: 1006, reason_code: "rain", route_ids: [10352], from_date: SEED_DATE, to_date: SEED_DATE, note: "Heavy rain", status: "pending", raised_at: asOf }], next_cursor: null } satisfies Schemas["DayExceptionPage"]), true;
   if (path === "/v1/team/locations") {
@@ -334,7 +351,11 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
   if (path === "/v1/admin/routes" && method === "GET") {
     const zone = x.url.searchParams.get("zone_id");
     const rows = routesInScope(user.scope.nodes).filter((r) => !zone || r.zone_id === Number(zone));
-    return send(200, { items: rows.map((r) => ({ id: r.route_id, code: String(r.route_id), name: r.route_name, display_label: r.route_name, zone_id: r.zone_id, kind: r.kind, visit_kind: "daily", visit_days_mask: 127, status: "active", amo_user_name: r.kind === "sr" ? "Rafiq Amin" : null, sr_user_name: r.kind === "amo" ? null : r.user_name })), next_cursor: null }), true;
+    return send(200, { items: rows.map((r) => ({ id: r.route_id, code: String(r.route_id), name: r.route_name, display_label: r.route_name, zone_id: r.zone_id, kind: r.kind, visit_kind: "daily", visit_days_mask: 127, status: "active" })), next_cursor: null }), true;
+  }
+  if (path === "/v1/admin/route-assignments" && method === "GET") {
+    const items = routesInScope(user.scope.nodes).filter((r) => r.user_id).map((r, i) => ({ id: 700 + i, route_id: r.route_id, user_id: r.user_id!, kind: "primary", valid_from: "2026-10-01", valid_to: null, reason: null, created_at: asOf }));
+    return send(200, { items, next_cursor: null }), true;
   }
   const pn = /^\/v1\/admin\/product-nodes\/(category|segment|brand|variant)$/.exec(path);
   if (pn && method === "GET") {
@@ -347,7 +368,16 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     const items = OUTLETS.filter((o) => reach.has(o.route_id) && (!zone || reach.get(o.route_id)!.zone_id === Number(zone))).map((o) => ({ id: o.outlet_id, code: o.code, name: o.name, owner_name: hasPii(user.role) ? o.owner_name : "", zone_id: reach.get(o.route_id)!.zone_id, route_id: o.route_id, cluster_id: 1, channel: "GT", location_confirmed: o.lat !== null, outlet_kind: "retail", price_type: "retail", status: o.status, lat: o.lat, lng: o.lng }));
     return send(200, { items, next_cursor: null }), true;
   }
-  if (path === "/v1/admin/skus" && method === "GET") return send(200, { items: SKUS.map((s) => ({ id: s.id, code: s.code, variant_id: 31, category_code: "cigarette", name: s.name, short_name: s.name, base_unit: "stick", base_per_pack: 20, entry_unit_default: "stick", report_factor: "1.000", sort: s.id, status: s.status })), next_cursor: null }), true;
+  if (path.startsWith("/v1/admin/config/") || path === "/v1/admin/devices") {
+    if (!ADMIN_READ.includes(user.role)) return send(403, problem(403, "ERR_FORBIDDEN")), true;
+    if (path === "/v1/admin/config/versions") return send(200, { items: [{ version: 318, kind: "change", committed_at: asOf, committed_by: 3001, summary: "Seeded", max_risk_class: 1 }], next_cursor: null }), true;
+    if (/^\/v1\/admin\/config\/reach\/\d+$/.test(path)) return send(200, { version: 318, committed_at: asOf, devices_targeted: 8, devices_applied: 8, devices_acked: 6, devices_pending: 2, p95_reach_min: 14, by_zone: [] }), true;
+    if (path === "/v1/admin/devices") {
+      const items = routesInScope(user.scope.nodes).filter((r) => r.user_id).map((r, i) => ({ device_id: 500 + i, device_uuid: randomUUID(), flavour: "sr", status: "active", device_owner: true, lockdown_level: 1, trust_level: "normal", enrolled_at: asOf, device_info: null, app_version: "1.0.0", bound_users: [], last_status: { pending_media: r.offline_memos, pending_rows: r.offline_memos } }));
+      return send(200, { items, next_cursor: null }), true;
+    }
+  }
+  if (path === "/v1/admin/skus" && method === "GET") return send(200, { items: SKUS.map((s) => ({ id: s.id, code: s.code, variant_id: 61, category_code: "cigarette", name: s.name, short_name: s.name, base_unit: "stick", base_per_pack: 20, entry_unit_default: "stick", report_factor: "1.000", sort: s.id, status: s.status })), next_cursor: null }), true;
 
   if (path === "/v1/auth/change-password" && method === "POST") {
     const b = (await x.body()) as Schemas["ChangePasswordRequest"] | undefined;

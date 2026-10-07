@@ -29,7 +29,7 @@ export const bn: Record<MessageKey, string> = {
   "common.language.en": "English",
 
   "auth.title": "সাইন ইন",
-  "auth.username": "ইউজারনেম",
+  "auth.username": "ইউজার আইডি",
   "auth.password": "পাসওয়ার্ড",
   "auth.submit": "সাইন ইন",
   "auth.logout": "সাইন আউট",
@@ -124,7 +124,7 @@ export const bn: Record<MessageKey, string> = {
 
   "error.generic": "কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।",
   "error.network": "সার্ভারে পৌঁছানো যাচ্ছে না। কিছুক্ষণ পর আবার চেষ্টা করুন।",
-  "error.ERR_AUTH_INVALID_CREDENTIALS": "ইউজারনেম বা পাসওয়ার্ড ভুল।",
+  "error.ERR_AUTH_INVALID_CREDENTIALS": "ইউজার আইডি বা পাসওয়ার্ড ভুল।",
   "error.ERR_AUTH_ACCOUNT_LOCKED": "অ্যাকাউন্টটি কিছুক্ষণের জন্য লক করা আছে। পরে চেষ্টা করুন।",
   "error.ERR_AUTH_USER_DISABLED": "অ্যাকাউন্টটি বন্ধ আছে। সাপোর্টের সাথে যোগাযোগ করুন।",
   "error.ERR_AUTH_MFA_INVALID": "কোডটি সঠিক নয়। কোড দেখে আবার চেষ্টা করুন।",

@@ -32,7 +32,7 @@ test("TSO logs in and sees an empty dashboard scoped by the server, in Bangla th
 
 test("wrong password shows a localised error and no session", async ({ page }) => {
   await login(page, "tso334", "wrong");
-  await expect(page.getByTestId("login-error")).toHaveText("ইউজারনেম বা পাসওয়ার্ড ভুল।");
+  await expect(page.getByTestId("login-error")).toHaveText("ইউজার আইডি বা পাসওয়ার্ড ভুল।");
   await page.goto("/");
   await expect(page).toHaveURL(/\/login/);
 });
