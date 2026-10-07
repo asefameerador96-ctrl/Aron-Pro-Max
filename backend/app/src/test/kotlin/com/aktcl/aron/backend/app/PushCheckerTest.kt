@@ -369,7 +369,7 @@ class PushCheckerTest {
         exec("INSERT INTO app.push_token (device_id, user_id, app_flavour, token, token_sha256) SELECT id, $amo, 'amo', '$fastTok', sha256(convert_to('$fastTok','UTF8')) FROM app.device WHERE device_uuid = '$amoPhone'")
         val got = CopyOnWriteArrayList<Pair<String, Long>>()
         val t0 = System.nanoTime()
-        val n = PushNotifier(fresh.db, RegistryDefaults(), { token, _ -> if (token == slowTok) Thread.sleep(3_000); got += token to (System.nanoTime() - t0) / 1_000_000; true }, clock)
+        val n = PushNotifier(fresh.db, RegistryDefaults(), { token, _ -> if (token == slowTok) Thread.sleep(3_000); got += token to (System.nanoTime() - t0) / 1_000_000; true }, clock) { _, _ -> true }
         n.nudge(sr, "task_assigned")
         n.nudge(amo, "task_assigned")
         Thread.sleep(1_000)
