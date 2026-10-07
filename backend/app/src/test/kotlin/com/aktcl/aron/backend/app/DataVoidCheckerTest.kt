@@ -102,7 +102,9 @@ class DataVoidCheckerTest {
             writeText("-----BEGIN " + "PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(k.encoded) + "\n-----END PRIVATE KEY-----\n")
         }
         wiring = Wiring.production(
-            Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), clock,
+            // The race test holds a batch until its 30 s latch expires (the void waits on the batch's lock), longer than
+            // the 25 s request timeout (AUD-REL-02); this wiring allows 60 s.
+            Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath, "ARON_REQUEST_TIMEOUT_MS" to "60000")), clock,
             extraRecordHandlers = listOf(holder),
         )
     }

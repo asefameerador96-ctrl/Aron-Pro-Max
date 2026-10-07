@@ -156,7 +156,25 @@ class JdbiLockoutStore(private val db: Database) : LockoutStore {
             .bind("k", key).bind("now", now.odt()).map { rs, _ -> rs.instant("locked_until") }.findOne().orElse(null)
     }
 
+    /**
+     * Rows nothing needs any more (AUD-SEC-02 item 5): failure counters whose window ended (one per unknown username
+     * otherwise grows the table without bound) and lock histories idle for a day. Run on about one failure in
+     * [LockoutLimits.PURGE_EVERY]; bounded per run.
+     */
+    fun purgeIdle(now: Instant, window: Duration): Int = db.jdbi.withHandle<Int, Exception> { h ->
+        h.createUpdate(
+            """DELETE FROM app.auth_lockout WHERE ctid IN (
+                 SELECT ctid FROM app.auth_lockout
+                 WHERE (locked_until IS NULL OR locked_until <= :now)
+                   AND ((lock_count = 0 AND updated_at < :w) OR updated_at < :day)
+                 LIMIT 5000)""",
+        ).bind("now", now.odt()).bind("w", now.minus(window).odt()).bind("day", now.minus(Duration.ofDays(1)).odt()).execute()
+    }
+
     override fun recordFailure(key: String, now: Instant, window: Duration): Int = db.jdbi.withHandle<Int, Exception> { h ->
+        if (java.util.concurrent.ThreadLocalRandom.current().nextInt(LockoutLimits.PURGE_EVERY) == 0) {
+            runCatching { purgeIdle(now, window) }
+        }
         h.createQuery(
             """INSERT INTO app.auth_lockout AS l (lock_key, failures, window_started_at, updated_at) VALUES (:k, 1, :now, :now)
                ON CONFLICT (lock_key) DO UPDATE SET
@@ -170,7 +188,7 @@ class JdbiLockoutStore(private val db: Database) : LockoutStore {
     override fun lock(key: String, now: Instant, base: Duration): Instant = db.jdbi.withHandle<Instant, Exception> { h ->
         h.createQuery(
             """UPDATE app.auth_lockout SET
-                 locked_until = :now + make_interval(secs => least(:base * power(2, least(lock_count, 10)), 86400)),
+                 locked_until = :now + make_interval(secs => least(:base * power(2, least(lock_count, 10)), ${LockoutLimits.MAX_LOCK_S})),
                  lock_count = lock_count + 1, failures = 0, updated_at = :now
                WHERE lock_key = :k AND (locked_until IS NULL OR locked_until <= :now) RETURNING locked_until""",
         ).bind("k", key).bind("now", now.odt()).bind("base", base.seconds.toDouble()).map { rs, _ -> rs.instant("locked_until")!! }.findOne()

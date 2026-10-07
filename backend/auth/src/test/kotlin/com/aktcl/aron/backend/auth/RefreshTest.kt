@@ -110,8 +110,11 @@ open class RefreshTest {
             application { f.application(this) }
             val (rt, _) = client.loginTokens(f)
             val got = coroutineScope { (1..20).map { async { client.refresh(rt, f.srDevice) } }.awaitAll() }
-            assertTrue(got.all { it.status == HttpStatusCode.OK }, got.map { it.status }.toString())
-            assertEquals(1, got.map { json(it.bodyAsText())["refresh_token"]!!.jsonPrimitive.content }.toSet().size)
+            // The per-device limit (docs/21 s6.1: burst 5, AUD-SEC-02) answers the rest 429; every 200 carries the one rotation.
+            assertTrue(got.all { it.status == HttpStatusCode.OK || it.status == HttpStatusCode.TooManyRequests }, got.map { it.status }.toString())
+            val ok = got.filter { it.status == HttpStatusCode.OK }
+            assertTrue(ok.isNotEmpty())
+            assertEquals(1, ok.map { json(it.bodyAsText())["refresh_token"]!!.jsonPrimitive.content }.toSet().size)
         }
     }
 

@@ -66,7 +66,7 @@ class InMemoryLockoutStore : LockoutStore {
         val s = states.computeIfAbsent(key) { State() }
         synchronized(s) {
             s.lockedUntil?.let { if (it.isAfter(now)) return it }  // already locked: a burst never locks twice
-            val until = now.plus(minOf(base.multipliedBy(1L shl s.locks.coerceAtMost(10)), Duration.ofHours(24)))
+            val until = now.plus(minOf(base.multipliedBy(1L shl s.locks.coerceAtMost(10)), Duration.ofSeconds(LockoutLimits.MAX_LOCK_S)))
             s.locks++
             s.lockedUntil = until
             s.failures.clear()

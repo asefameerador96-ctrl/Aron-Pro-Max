@@ -10,6 +10,7 @@ import com.aktcl.aron.backend.platform.JwtKeys
 import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.authenticated
+import com.aktcl.aron.backend.platform.toProblem
 import com.aktcl.aron.backend.platform.principal
 import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.backend.platform.wire
@@ -41,7 +42,17 @@ class AuthDeps(
     val trustedFrontDoorId: String? = null,
     /** The caller's role row of `cfg.web.menu_by_role` (contract v1.2 `Me.menus`, R10); wired to ConfigPermissions.menusForRole. */
     val menusForRole: (String) -> List<kotlinx.serialization.json.JsonElement>? = { null },
-)
+) {
+    /** docs/21 s6.1 (AUD-SEC-02 item 4): POST /auth/refresh 20 per hour per device, burst 5 (here: 5 per minute). */
+    val refreshPerHour = com.aktcl.aron.backend.platform.RateLimiter(20, 3_600, clock)
+    val refreshBurst = com.aktcl.aron.backend.platform.RateLimiter(5, 60, clock)
+
+    /** Throws 429 when [key] (a phone's device uuid, or a web family) is over either limit. */
+    fun checkRefreshRate(key: String) {
+        refreshBurst.tryAcquire(key).let { if (!it.allowed) throw it.toProblem("too many token refreshes") }
+        refreshPerHour.tryAcquire(key).let { if (!it.allowed) throw it.toProblem("too many token refreshes") }
+    }
+}
 
 /** Mounts the auth endpoints of this build under /v1 (contract tag `auth`). */
 fun Route.authRoutes(d: AuthDeps) {
@@ -133,8 +144,11 @@ private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps): To
     val token = req.refresh_token ?: call.request.cookies["aron_rt"]
         ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "refresh_token is required", errors = listOf(FieldError("/refresh_token", "required")))
     val grant = if (req.grant == "upload") Grant.UPLOAD else Grant.FULL
+    // Rate limit before any database read: a phone by its X-Device-Id, a web caller by its token's family below.
+    call.request.headers["X-Device-Id"]?.lowercase()?.take(64)?.let { d.checkRefreshRate("d:$it") }
     val row = d.refresh.peek(token) ?: throw ApiProblem(ProblemCode.ERR_AUTH_REFRESH_INVALID, "refresh token invalid or expired")
     val fam = row.family
+    if (call.request.headers["X-Device-Id"] == null) d.checkRefreshRate("f:${fam.id}")
 
     // A phone grant is bound to its device: X-Device-Id must name it and, once the device has a key, prove it.
     var deviceUuid: String? = null

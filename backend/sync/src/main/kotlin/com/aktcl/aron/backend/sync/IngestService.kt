@@ -9,6 +9,7 @@ import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.RecordHandlers
 import com.aktcl.aron.backend.platform.ResponseJson
 import com.aktcl.aron.backend.platform.ServerConfig
+import com.aktcl.aron.backend.platform.retryingTx
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.ProblemCode
@@ -134,11 +135,17 @@ class IngestService(
             ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
             ctx.afterCommit.clear()
             try {
-                db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+                // Transient failures (deadlock, serialization, a dropped connection) retry the whole family, bounded
+                // (AUD-REL-02); every record is idempotent, so a retry repeats nothing.
+                db.retryingTx { h ->
+                    ctx.afterCommit.clear()
+                    family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) }
+                }
                 // Committed: only now may a handler reach outside the database.
                 ctx.afterCommit.forEach { (_, hd, rec) -> runCatching { hd.afterCommit(rec) }.onFailure { log.warn("afterCommit failed type=${rec.type}", it) } }
             } catch (e: Exception) {
                 log.error("family failed batch_uuid=${req.batch_uuid} family=${recs[i].family}", e)
+                // When the database is down the park below fails too and the request is answered 503 (Http.kt).
                 db.jdbi.useTransaction<Exception> { h -> family.forEach { r -> outcomes[r.index] = park(h, ctx, r, RecordOutcomeCode.SERVER_ERROR, e.javaClass.simpleName) } }
             }
             i = j + 1
@@ -185,7 +192,7 @@ class IngestService(
 
     /** Returns the stored response of a completed identical batch, 409 for a reused batch_uuid, or null to process. */
     private fun replayOrClaim(up: Uploader, req: SyncBatchRequest, count: Int, fingerprint: ByteArray, now: Instant): SyncBatchResponse? =
-        db.jdbi.inTransaction<SyncBatchResponse?, Exception> { h ->
+        db.retryingTx { h ->
             val retention = runCatching { config.int("cfg.retention.sync_batch_response_h") }.getOrDefault(48).toLong()
             h.createUpdate(
                 """
@@ -211,7 +218,7 @@ class IngestService(
             if (!row.first.contentEquals(fingerprint) || row.third != up.userId) {
                 throw ApiProblem(ProblemCode.ERR_SYNC_BATCH_UUID_REUSED, "batch_uuid ${req.batch_uuid} was used for another record set")
             }
-            val stored = row.second ?: return@inTransaction null
+            val stored = row.second ?: return@retryingTx null
             h.createUpdate("UPDATE app.sync_batch SET replay_count = replay_count + 1 WHERE device_id = :d AND batch_uuid = CAST(:b AS uuid)")
                 .bind("d", up.deviceId).bind("b", req.batch_uuid).execute()
             val old = ResponseJson.decodeFromString(SyncBatchResponse.serializer(), gunzip(stored).decodeToString())
@@ -235,6 +242,8 @@ class IngestService(
         } catch (e: Exception) {
             ctx.afterCommit.removeAll { it.first == r.index }
             if (e is ApiProblem) throw e
+            // A transient failure is not this record's fault: the family transaction is retried whole (retryingTx).
+            if (com.aktcl.aron.backend.platform.DbErrors.isTransient(e)) throw e
             h.rollbackToSavepoint(sp)
             val state = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()?.sqlState ?: ""
             if (state.startsWith("22") || state.startsWith("23")) {

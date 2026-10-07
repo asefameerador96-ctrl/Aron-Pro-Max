@@ -30,7 +30,10 @@ import java.time.ZoneOffset
  *   territory > division > wing > role > global; `radius_min_m..radius_max_m`; 10..5000), with the cfg rows valid at
  *   the instant; `max_accuracy_m` likewise (10..1000); `accuracy_tolerant` at global scope.
  * - The outlet pin is the newest `outlet_location_history` row valid at the instant. An outlet with no history at all
- *   (seeded or migrated master data) uses its current pin; one whose every history row is later had no pin at capture.
+ *   (seeded or migrated master data) uses its current pin; one whose every history row is later has no recorded pin
+ *   at capture and is judged `no_outlet_location` (conservative: the phone's own outlet coordinates are never trusted;
+ *   the missing pre-edit pin is routed in docs/requests/backend-core-outlet-pin-history.md). A pin cleared (basis none
+ *   or placeholder) before the capture is no usable location.
  * - A visit is never refused for its geo verdict (s11.3): the caller runs this in its own savepoint and a failure
  *   leaves `server_verdict` NULL, which [sweep] fills later.
  */
@@ -91,18 +94,21 @@ object GeoRecheck {
         val o = h.createQuery(
             """
             SELECT o.lat, o.lng, o.provisional_lat, o.provisional_lng, o.location_basis, o.route_id, o.zone_id, z.territory_id, t.division_id, d.wing_id,
-                   g.ordinal AS geo_ord, (SELECT ordinal FROM app.role_def WHERE role = :role) AS role_ord,
+                   g.ordinal AS geo_ord, o.updated_at <= :t AS unchanged_since, (SELECT ordinal FROM app.role_def WHERE role = :role) AS role_ord,
                    (SELECT count(*) FROM app.outlet_location_history x WHERE x.outlet_id = o.id) AS hist_n
             FROM app.outlet o
             JOIN app.zone z ON z.id = o.zone_id JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id
             LEFT JOIN app.geo_class_def g ON g.geo_class = o.geo_class
             WHERE o.id = :o
             """.trimIndent(),
-        ).bind("o", v.outletId).bind("role", v.role).mapToMap().one()
+        ).bind("o", v.outletId).bind("role", v.role).bind("t", OffsetDateTime.ofInstant(at, ZoneOffset.UTC)).mapToMap().one()
         fun long(k: String) = (o[k] as Number?)?.toLong()
         fun dbl(k: String) = (o[k] as Number?)?.toDouble()
 
-        val pin: OutletGeo = if (long("hist_n")!! == 0L) {
+        // A pin cleared (basis none or placeholder) before the capture: no usable location, whatever the history says
+        // (clearing writes no history row; checker finding 2026-10-07). Changed after the capture: history decides.
+        val clearedBefore = o["location_basis"] in setOf("none", "placeholder") && o["unchanged_since"] == true
+        val pin: OutletGeo = if (clearedBefore) OutletGeo(false, 0.0, 0.0) else if (long("hist_n")!! == 0L) {
             // No history: the current pin (a migrated or seeded outlet), by its basis.
             when (o["location_basis"] as String) {
                 "master", "provisional" -> {
@@ -149,14 +155,19 @@ object GeoRecheck {
      */
     fun sweep(h: Handle, today: LocalDate, days: Int, limit: Int, now: Instant): Int {
         val todo = h.createQuery(
-            "SELECT client_uuid::text, business_date FROM app.visit WHERE business_date BETWEEN :from AND :to AND server_verdict IS NULL AND voided_at IS NULL ORDER BY business_date, id LIMIT :n FOR UPDATE SKIP LOCKED",
+            // Random order: a row whose re-check always fails can never fill every batch and starve the rest.
+            "SELECT client_uuid::text, business_date, route_id FROM app.visit WHERE business_date BETWEEN :from AND :to AND server_verdict IS NULL AND voided_at IS NULL ORDER BY random() LIMIT :n FOR UPDATE SKIP LOCKED",
         ).bind("from", today.minusDays(days.toLong())).bind("to", today).bind("n", limit)
-            .map { rs, _ -> rs.getString(1) to rs.getObject(2, LocalDate::class.java) }.list()
+            .map { rs, _ -> Triple(rs.getString(1), rs.getObject(2, LocalDate::class.java), rs.getObject(3) as Long?) }.list()
         var n = 0
-        for ((cu, bd) in todo) {
+        for ((cu, bd, route) in todo) {
             h.savepoint("geo_sweep")
             try {
-                if (recheck(h, cu, bd, now) != null) n++
+                if (recheck(h, cu, bd, now) != null) {
+                    n++
+                    // No domain event comes from a sweep: re-project the route-day so the dashboards see the verdict.
+                    route?.let { h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'geo_recheck')", it, bd) }
+                }
                 h.release("geo_sweep")
             } catch (e: Exception) {
                 h.rollbackToSavepoint("geo_sweep")

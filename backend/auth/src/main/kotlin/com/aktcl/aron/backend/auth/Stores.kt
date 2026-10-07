@@ -88,6 +88,13 @@ interface RefreshStore {
 }
 
 /** Failed-login counters and locks per lockout key (docs/24 s8.1). */
+/** docs/21 s2.4, D-102: a lock doubles from `cfg.auth.lockout_min` up to 2 h, never more (AUD-SEC-02). */
+object LockoutLimits {
+    const val MAX_LOCK_S: Long = 7_200
+    /** About one failure in this many purges idle `auth_lockout` rows. */
+    const val PURGE_EVERY: Int = 100
+}
+
 interface LockoutStore {
     fun lockedUntil(key: String, now: Instant): Instant?
     /** Records a failure; returns the number of failures inside the window ending now. */

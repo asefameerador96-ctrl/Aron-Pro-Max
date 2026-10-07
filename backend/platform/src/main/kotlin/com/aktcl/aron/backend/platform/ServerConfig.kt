@@ -17,6 +17,9 @@ interface ServerConfig {
     /** Current global config_version (X-Config-Version on every response). */
     fun configVersion(): Long
 
+    /** The config_version without ever waiting on the database (response headers, health; AUD-REL-01). */
+    fun peekConfigVersion(): Long = configVersion()
+
     fun int(key: String): Int = value(key).jsonPrimitive.intOrNull ?: error("$key is not an int")
     fun bool(key: String): Boolean = value(key).jsonPrimitive.booleanOrNull ?: error("$key is not a bool")
     fun string(key: String): String = value(key).jsonPrimitive.content

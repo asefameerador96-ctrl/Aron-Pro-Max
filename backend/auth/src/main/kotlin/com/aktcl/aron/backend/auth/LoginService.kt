@@ -52,6 +52,13 @@ class LoginService(
 ) {
     private val perUsername = RateLimiter(10, 15 * 60, clock)
     private val perDevice = RateLimiter(30, 15 * 60, clock)
+    /**
+     * Global (never per IP) bucket in front of every web hash (AUD-SEC-02), the anonymous path: above it the caller gets
+     * 503 with a jittered Retry-After before any Argon2 work. Phones are not counted (in production an unenrolled phone
+     * is refused before hashing, `cfg.device.require_enrolled`); untrusted callers also share only part of the
+     * [HashLimiter]. Real time, not the injected clock: it is an operational guard, not a business rule.
+     */
+    private val untrustedPerSecond = RateLimiter(UNTRUSTED_LOGINS_PER_S, 1, AronClock.SYSTEM)
 
     suspend fun login(req: LoginRequest, ctx: LoginContext): LoginResponse {
         val now = clock.now()
@@ -78,12 +85,23 @@ class LoginService(
         req.device_uuid?.let { d -> perDevice.tryAcquire("d:$d").let { if (!it.allowed) throw it.toProblem("too many logins from this device") } }
 
         val device = if (phone) checkDevice(req.device_uuid!!) else null
+        val trusted = device != null
+        if (!phone && !untrustedPerSecond.tryAcquire("all").allowed) {
+            val s = (2..10).random()
+            throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "login capacity reached; retry later", retryAfterS = s, headers = mapOf("Retry-After" to s.toString()))
+        }
 
         val user = users.findByUsername(username)
-        val ok = limiter.run { hasher.verify(user?.passwordHash ?: hasher.dummyHash, req.password) } && user?.passwordHash != null
+        val ok = limiter.run(trusted) { hasher.verify(user?.passwordHash ?: hasher.dummyHash, req.password) } && user?.passwordHash != null
         if (!ok || user == null) {
             val n = lockouts.recordFailure(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_window_min").toLong()))
-            if (n >= config.int("cfg.auth.lockout_attempts")) {
+            if (!phone) {
+                // The BFF forwards no verified browser address, so every web login shares one key class: a hard lock
+                // would let anyone lock out an administrator (AUD-SEC-02 item 3). Web failures stay throttled by the
+                // per-username limit and are logged for the alert; the lock waits for a signed client-IP header
+                // (docs/requests/backend-core-web-client-ip.md).
+                if (n >= config.int("cfg.auth.lockout_attempts")) log.warn("web login failures above the lockout threshold username_hash=${username.hashCode()} failures=$n")
+            } else if (n >= config.int("cfg.auth.lockout_attempts")) {
                 val base = Duration.ofMinutes(config.int("cfg.auth.lockout_min").toLong())
                 lockouts.lock(lockKey, now, base)
             }
@@ -281,14 +299,24 @@ class LoginService(
     private fun minVersionCode(flavour: String): Int? =
         runCatching { config.value("cfg.release.min_version_code").jsonObject[flavour]?.jsonPrimitive?.intOrNull }.getOrNull()
 
+    /**
+     * The lockout key. docs/21 s2.4 and D-102 (binding over docs/24 s8.1's IP-class key, AUD-SEC-02): failures lock the
+     * (username, device) pair; the IP class only feeds step-up and alerts, never a lock, so the third mode keys like
+     * `username_device`. Web logins (no device) key as `username|web`.
+     */
+    @Suppress("UNUSED_PARAMETER")
     private fun lockoutKey(username: String, deviceUuid: String?, ip: String?): String =
         when (config.string("cfg.auth.lockout_key_mode")) {
             "username" -> username
-            "username_device" -> "$username|${deviceUuid ?: "-"}"
-            else -> "$username|${deviceUuid ?: "-"}|${ipClass(ip)}"
+            else -> "$username|${deviceUuid ?: "web"}"
         }
 
     companion object {
+        private val log = org.slf4j.LoggerFactory.getLogger("aron.auth")
+
+        /** Web logins per second per replica before any hashing (AUD-SEC-02). */
+        const val UNTRUSTED_LOGINS_PER_S = 20
+
         private val PHONE_ROLE = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
 
         /** IPv4 /24 or IPv6 /48 of the client (the lockout key's IP class); "-" when unknown. */

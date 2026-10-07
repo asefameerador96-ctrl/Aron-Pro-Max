@@ -56,7 +56,30 @@ class HashLimiter(
     /** Highest number of hashes observed running at once (tests and metrics). */
     val peakConcurrent: Int get() = peak.get()
 
-    suspend fun <T> run(block: () -> T): T {
+    /**
+     * Untrusted callers (web, and phones whose device is not enrolled) share at most [untrustedConcurrency] of the
+     * slots and [untrustedQueueMax] places in the queue (AUD-SEC-02): an anonymous flood can never take the capacity
+     * that enrolled phones need on the 07:00 wave.
+     */
+    val untrustedConcurrency: Int = (concurrency / 2).coerceAtLeast(1)
+    val untrustedQueueMax: Int = (queueMax / 4).coerceAtLeast(1)
+    private val untrustedSemaphore = Semaphore(untrustedConcurrency)
+    private val untrustedWaiting = AtomicInteger(0)
+
+    suspend fun <T> run(block: () -> T): T = run(trusted = true, block)
+
+    suspend fun <T> run(trusted: Boolean, block: () -> T): T {
+        if (trusted) return runIn(block)
+        if (untrustedWaiting.incrementAndGet() > untrustedQueueMax + untrustedConcurrency) {
+            untrustedWaiting.decrementAndGet()
+            throw busy()
+        }
+        val acquired = try { withTimeoutOrNull(maxWaitMs) { untrustedSemaphore.acquire(); true } ?: false } finally { untrustedWaiting.decrementAndGet() }
+        if (!acquired) throw busy()
+        try { return runIn(block) } finally { untrustedSemaphore.release() }
+    }
+
+    private suspend fun <T> runIn(block: () -> T): T {
         if (waiting.incrementAndGet() > queueMax + concurrency) {
             waiting.decrementAndGet()
             throw busy()

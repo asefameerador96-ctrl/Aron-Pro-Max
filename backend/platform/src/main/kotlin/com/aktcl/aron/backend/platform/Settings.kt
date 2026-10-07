@@ -43,6 +43,8 @@ data class Settings(
     val frontDoorId: String? = null,
     /** Firebase service account JSON for FCM (Key Vault `aron-fcm-service-account`); push is off without it. */
     val fcmServiceAccountJson: Secret? = null,
+    /** Whole-request timeout answered 503 (docs/18 s4.3: 25 s; AUD-REL-02). */
+    val requestTimeoutMs: Long = 25_000,
 ) {
     /** Like the data-class form, with credentials in the database URLs redacted (secrets are never printed). */
     override fun toString(): String =
@@ -100,6 +102,7 @@ data class Settings(
                 hashQueueMax = src.int("ARON_HASH_QUEUE_MAX", 32),
                 frontDoorId = src.get("ARON_FRONT_DOOR_ID"),
                 fcmServiceAccountJson = src.secret("ARON_FCM_SERVICE_ACCOUNT_JSON"),
+                requestTimeoutMs = src.int("ARON_REQUEST_TIMEOUT_MS", 25_000).toLong().coerceIn(1_000, 120_000),
             )
         }
     }

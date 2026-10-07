@@ -43,6 +43,10 @@ class PlatformContext(
     val build: String = "dev",
     /** When set, a request whose `X-Azure-FDID` differs is 403: the API is reachable only through our Front Door (WAF). */
     val frontDoorId: String? = null,
+    /** [generation] without waiting on the database (health). */
+    val peekGeneration: () -> String = generation,
+    /** Whole-request timeout (docs/18 s4.3: 25 s), answered 503. */
+    val requestTimeoutMs: Long = 25_000,
 )
 
 /** JSON for responses: every member present (required-nullable members as `null`), snake_case DTO names. */
@@ -79,9 +83,12 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
             h.append("X-Aron-Api", "1")
             h.append("X-Request-Id", id)
             h.append("X-Server-Time", ctx.clock.now().wire())
-            h.append("X-Config-Version", runCatching { ctx.config.configVersion() }.getOrDefault(0).toString())
-            h.append("X-Server-Generation", runCatching { ctx.generation() }.getOrDefault(NIL_GENERATION))
             val path = call.request.path()
+            // Health never waits on PostgreSQL (AUD-REL-01): the probes read the last known values only.
+            val health = path.startsWith("/v1/health")
+            val version = runCatching { if (health) ctx.config.peekConfigVersion() else ctx.config.configVersion() }.getOrDefault(0)
+            h.append("X-Config-Version", version.toString())
+            h.append("X-Server-Generation", runCatching { if (health) ctx.peekGeneration() else ctx.generation() }.getOrDefault(NIL_GENERATION))
             // Container Apps probes reach the replica directly, so health is exempt from the Front Door gate.
             if (ctx.frontDoorId != null && !path.startsWith("/v1/health") && call.request.headers["X-Azure-FDID"] != ctx.frontDoorId) {
                 throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "requests must come through the Aron Front Door")
@@ -103,6 +110,18 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
             requestLog.info(line.toString())
         }
     })
+    // Request timeout (AUD-REL-02, docs/18 s4.3): a call still running after [PlatformContext.requestTimeoutMs] is
+    // answered 503 with Retry-After. Blocking SQL is bounded in the database itself (role statement_timeout and
+    // lock_timeout, V0020) and by the pool's 5 s connection timeout; this bounds every suspending wait.
+    intercept(io.ktor.server.application.ApplicationCallPipeline.Call) {
+        try {
+            kotlinx.coroutines.withTimeout(ctx.requestTimeoutMs) { proceed() }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            val call = context
+            errorLog.warn("request timeout request_id=${call.attributes.getOrNull(RequestIdKey)} after ${ctx.requestTimeoutMs} ms")
+            if (!call.response.isCommitted) call.respondProblem(DbErrors.unavailable("the request took too long, retry later"), ctx.clock)
+        }
+    }
     install(ContentNegotiation) {
         json(ResponseJson)
         // Answer JSON whatever the Accept header says (a proxy or captive portal may rewrite it); never a bare 406.
@@ -130,6 +149,13 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
                     ApiProblem(ProblemCode.ERR_VALIDATION, "a text value holds a character that cannot be stored", errors = listOf(FieldError("", "invalid_character"))),
                     ctx.clock,
                 )
+            }
+            // A database or dependency outage is never a 500 (AUD-REL-02): 503 with a jittered Retry-After, one WARN line
+            // without a stack trace (an outage would otherwise flood the log).
+            if (DbErrors.isTransient(e)) {
+                val root = e.rootCause()
+                errorLog.warn("service unavailable request_id=${call.attributes.getOrNull(RequestIdKey)} ${root.javaClass.simpleName} sqlstate=${state ?: "-"}")
+                return@exception call.respondProblem(DbErrors.unavailable(), ctx.clock)
             }
             errorLog.error("unhandled error request_id=${call.attributes.getOrNull(RequestIdKey)}", e)
             call.respondProblem(ApiProblem(ProblemCode.ERR_INTERNAL, "unexpected server error"), ctx.clock)

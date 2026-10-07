@@ -111,6 +111,9 @@ class Wiring(
     val frontDoorId: String? = null,
     /** Admission control and backpressure (N-056); null in tests that do not exercise it. */
     val admission: com.aktcl.aron.backend.analytics.AdmissionControl? = null,
+    /** [generation] without waiting on the database: health and its headers (AUD-REL-01). */
+    val peekGeneration: () -> String = generation,
+    val requestTimeoutMs: Long = 25_000,
 ) {
     companion object {
         /**
@@ -246,7 +249,7 @@ class Wiring(
                 syncRoutes(sync)
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
-            }, frontDoorId = s.frontDoorId, admission = admission)
+            }, frontDoorId = s.frontDoorId, admission = admission, peekGeneration = generation::peek, requestTimeoutMs = s.requestTimeoutMs)
         }
     }
 }
