@@ -85,6 +85,8 @@ jobs:
       ARON_ALERT_EMAILS: ${{ vars.ARON_ALERT_EMAILS }}
       ARON_BUDGET_AMOUNT: ${{ vars.ARON_BUDGET_AMOUNT }}
       ARON_NAME_SUFFIX: ${{ vars.ARON_NAME_SUFFIX }}
+      # Dev seed + SR slice smoke (deploy script): only on dev profiles, only when this variable is true.
+      ARON_DEV_SEED: ${{ vars.ARON_DEV_SEED }}
       # Migrations run unless a person unticks run_migrations on a manual dispatch. Under workflow_run the inputs are
       # null, and null == false is TRUE in GitHub expressions, so the event is tested first.
       RUN_MIGRATIONS: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_migrations == false) && 'false' || 'true' }}
