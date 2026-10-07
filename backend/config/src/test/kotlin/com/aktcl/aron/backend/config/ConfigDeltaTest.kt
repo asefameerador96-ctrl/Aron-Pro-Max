@@ -84,7 +84,8 @@ class ConfigDeltaTest {
         val sr = env.ids.getValue("sr1001")
         val since = svc.currentVersion()
         svc.create(env.principal("admin1001", Role.ADMIN), ConfigChangeRequestIn("Hide the credit screen for now", false, listOf(ConfigChangeItemIn("cfg.flag.credit_ui", "global", 0, JsonPrimitive(false)))), null, null)
-        clock.advance(2)
+        clock.advance(11 * 60) // a flag is class C2: scheduled for cfg.sys.c2_delay_min, then applied by the tick
+        svc.applyDue()
         val flag = assertIs<DeltaOutcome.Changes>(delta.delta(sr, null, since, null)).body.values.single { it.key == "cfg.flag.credit_ui" }
         assertEquals("false", flag.value.toString())
     }
