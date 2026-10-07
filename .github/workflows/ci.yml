@@ -173,6 +173,8 @@ jobs:
           # 0 = nothing found, 1 = vulnerabilities found (the gate decides); anything else is a scanner failure.
           [ "${rc}" -le 1 ] || { echo "::error::osv-scanner failed (exit ${rc})"; exit 1; }
           python3 tools/ci/osv-gate.py "${RUNNER_TEMP}/osv.json" tools/ci/osv-allow.txt
+      - name: Wall-clock reads in tests (report only until 2026-10-09, then blocking; escape comment wall-clock-ok)
+        run: python3 tools/ci/wallclock-scan.py .
       - name: npm install scripts reviewed (web/.npmrc ignore-scripts; tools/ci/npm-install-scripts.txt)
         run: python3 tools/ci/install-scripts-check.py web/package-lock.json tools/ci/npm-install-scripts.txt
       - name: Static analysis (Semgrep, pinned image; findings new since the base fail)
