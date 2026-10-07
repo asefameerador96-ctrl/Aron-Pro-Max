@@ -18,8 +18,63 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
   with '-' was missed (now exact-name match) and two test gaps (closed; 8 of 8 mutations of the block caught).
 - **Follow-up (not done):** `infra/scripts/drill.sh` picks its server with `starts_with(name,'psql-aron-') | [0]`, so a
   leftover `-drill-` restore or a promoted `-r1` could be chosen; apply the same exact-name match before the next drill.
+- **Proven on Azure (test account):** INT deploy run 37619397240 logged "PostgreSQL live zones: primary 2, HA ZoneRedundant,
+  standby 1", passed the what-if guard and applied main.bicep. It then failed later, at the psql image import:
+  `az acr import` refused a source with a tag AND a digest. Fixed (digest-only source, test
+  `test_psql_image_is_imported_by_digest_only`, Opus checker: no defect); waits for the next INT deploy to prove it.
+- **Superseded old-session fix:** 93d351f / 58b3068 (old infra session) read the standby zone as empty (az tsv prints a
+  `[0].[a,b]` list one value per line), so INT runs 37613509210 and 37613922726 were refused again; replaced by the block above.
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
+
+## Day 3, 15:20 UTC: my regression fixed (deploy run 37639072495)
+
+Deploy run 142 (62ee65f) failed at `az deployment group create ... --tags aron-sha=...`: "unrecognized arguments"
+(`az deployment group create` has no `--tags`; my 14:00 change, not caught locally because no az here). Nothing was
+changed in Azure (the error is argument parsing, before any request). Fix: the commit is recorded after a successful
+apply as the resource-group tag `aron-infra-sha` (`az tag update --operation Merge`, the same call and right the
+deploy lock already uses) and read with `az group show`. The test now also asserts the create call carries no `--tags`.
+Lesson: every new az flag gets checked against the CLI reference before push (no az in lane containers).
+
+## Day 3, 14:30 UTC: dblogins no longer blocks the apps while per-app logins are off
+
+Deploy runs 37630304505 and 37632012265 (with the system-log query) failed like 37624445094: dblogins execution Failed
+within about a minute, and Log Analytics has neither console nor system log for it. The job is checked against the
+working migrate job (same identity, registry, Key Vault, environment; image is a multi-arch index with linux/amd64;
+compiled command correct). Nobody has `az` until the owner runs the two read-only commands sent to the lead.
+Change: a dblogins failure now prints the execution record and the container log stream straight from the platform
+(`az containerapp job execution show`, `az containerapp job logs show`), and it stops the deploy only when the apps
+use the per-app logins (`dbPerAppLogins` output of aron-apps-migrate is not false). With the switch off (today) it is a
+warning plus a "Database logins | FAILED" summary row, so the apps, the health gate, alerts and CORS get deployed and
+proven. Test `DbLoginsGate`. The system-log query now matches with `contains` (hyphenated names).
+
+## Day 3, 14:10 UTC: Front Door health alert, infra-stage skip, recovered alert (lead)
+
+- **Front Door Sev4 alert 13:11 UTC:** fired during deploy run 37624445094, while main.bicep was applying (12:58 to 13:07)
+  and right after. main.bicep re-PUTs the Front Door profile and endpoint (modules/frontdoor.bicep) on EVERY apply, and
+  apps.bicep re-PUTs the api/web origin groups, origins and routes on every apps deploy. An identical PUT still starts
+  a Front Door configuration rollout, the likely cause of a transient Degraded event. Dev answered 200 throughout
+  later probes (lead 13:52).
+- **Infra stage skip fixed:** the skip compared infra/ with the commit live in the api, which never advanced while
+  dblogins failed, so every INT push re-applied main.bicep. main.bicep's deployment now carries the tag
+  `aron-sha=<commit>` and the skip diffs against that commit (fallback: the live api commit). The first apply after
+  this lands still runs once and writes the tag. Test `InfraStageSkip`.
+- **Alert wiring (as built):** action group `ag-aron-dev` (email, common alert schema) <- `aron-dev-resource-health`,
+  an Activity Log alert on category ResourceHealth with status Unavailable or Degraded, scoped to the resource group.
+  Activity-log alerts have no severity field, so the mail shows Azure's default Sev4, and they are stateless: **no
+  "Resolved" mail ever follows.** Added `aron-dev-resource-health-recovered` (Available after Unavailable or Degraded,
+  free) so a transient event is closed in the inbox. Metric alerts (pg-not-alive Sev1, pg-cpu Sev2, ...) do send Resolved.
+
+## Day 3, 13:30 UTC: dev deploy reaches the database logins job
+
+Deploy run 37624445094 (c13e75d), the first with the zone fix (laptop session, 347687d) and the psql import by digest
+(laptop session, ac9e44a): **proven on Azure:** what-if guard passes with the live zones (primary 2, standby 1),
+main.bicep applied, the psql image imported into ACR by digest, both app images built once and run **by digest**
+(`aron-backend@sha256:b3c0e071...`), migrations succeeded. **Failed:** the dblogins job execution
+`caj-aron-dev-dblogins-gf9ulpy` ended Failed with NO console log in Log Analytics (6 min), so the apps were not
+updated (the old revision keeps serving). Not yet proven: health gate, alerts, storage CORS (all after dblogins).
+deploy.sh now also prints the Container Apps system log of a failed execution (image pull / start errors). The
+console log of gf9ulpy is needed from a session with az (asked via the lead). Zone block in deploy.sh: not touched.
 
 ## Day 3, 11:00 UTC: first green INT deploy blocked by the failover drill (fixed on lane/infra)
 

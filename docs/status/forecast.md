@@ -46,3 +46,12 @@ Day 7 holds if: (1) no lane idles more than 2 hours (the lane check runs every 2
 - INT is green again since 10:18 UTC (12a823e, then 903e092). The integration train works: two promotions in 20 minutes. The SR slice end to end waits on lane/android-core 85365484 and lane/android-sr-b reaching INT, then android-sr-a wires the OTP screen and hosts Sale, Memo and Summary.
 - Usage: the seven-day window is at allowed_warning (resets 2026-10-13 18:00 UTC), five-hour is allowed; critical lanes only.
 - Owner moved the USB phone and every device check to 2026-10-08. Schedule risk: all device-only checks (printing, GPS and spoofing, device owner, 8-hour battery, outdoor legibility) now start on Day 4. Day 7 holds only if the owner can do them in one block tomorrow.
+
+## Update 2026-10-07 16:50 UTC (Day 3, lead lane check)
+- Rows built (time-logged on any lane head or INT): **301 of 490 BUILD rows (61.4%)**; 298 already on INT (60.8%). Was 266 / 236 at 10:50.
+- INT is moving: 4fd5c4d5 at 16:33 (db afe03d1, android-core 414087e, android-sr-a 6f3b7ab). Four more candidates are in CI (infra 0cd495f, backend-core d5d7ca2e, android-core 0a0add38, others).
+- **First green dev deploy: run 143 (c992c9c), 2026-10-07 16:04 to about 16:30**: what-if guard, images by digest, migrations, apps, health gate (build=c992c9c, ready 200, web /login 200), storage CORS preflight proven, recovered alert created. dblogins job still fails (non-blocking, per-app logins off); a probe on lane/infra 0cd495f will say image, secret ref or SQL.
+- SR slice end to end on dev is still to be proven (login, bundle, visit, sale, memo, sync); wave 2 (android-amo, android-tso, qa) waits for it and for usage `allowed` (now `allowed_warning`).
+- Recycles: android-core to session 8 (16:46). Asked to hand over and recycle: backend-core (583k), infra (599k).
+- Device checks all moved to 2026-10-08 (owner has no phone for USB debugging today); Day 7 holds only if they run in one block tomorrow.
+- Risk to watch: wall-clock tests (gate blocks CI 2026-10-09; RequestIsolationTest now deterministic on lane/backend-core).

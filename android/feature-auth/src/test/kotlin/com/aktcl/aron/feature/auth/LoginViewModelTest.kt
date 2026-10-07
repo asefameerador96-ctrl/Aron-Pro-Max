@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.auth
 
+import com.aktcl.aron.core.session.BindOutcome
 import com.aktcl.aron.core.session.LoginOutcome
 import com.aktcl.aron.core.session.OfflineRefusal
 import com.aktcl.aron.core.session.UnlockMode
@@ -67,5 +68,85 @@ class LoginViewModelTest {
         vm.onUsernameChange("sr334001"); vm.onPasswordChange("pw"); vm.onSubmit()
         assertFalse(vm.state.value.busy)
         assertEquals(LoginMessage.Refused(null), vm.state.value.message)
+    }
+
+    private fun bindVm(answer: BindOutcome, sent: MutableList<Triple<String, String, String>> = mutableListOf()): LoginViewModel {
+        val vm = LoginViewModel { _, _ -> LoginOutcome.BindRequired("tok") }
+        vm.bind = { t, o, p -> sent += Triple(t, o, p); answer }
+        vm.onUsernameChange("sr334001"); vm.onPasswordChange("pw"); vm.onSubmit()
+        return vm
+    }
+
+    @Test
+    fun bindRequiredShowsTheOtpStepAndVerifyBindsWithTokenCodeAndPassword() {
+        val sent = mutableListOf<Triple<String, String, String>>()
+        val vm = bindVm(BindOutcome.Bound(LoginOutcome.LoggedIn(profile, UnlockMode.ONLINE)), sent)
+        assertEquals("tok", vm.state.value.bindToken)
+        vm.onOtpDigits("১২৩৪")
+        vm.onOtpVerify()
+        assertEquals(listOf(Triple("tok", "1234", "pw")), sent)
+        assertEquals(null, vm.state.value.bindToken)
+        assertEquals("", vm.state.value.password)
+        assertEquals(true, vm.state.value.otp.bound)
+    }
+
+    @Test
+    fun wrongOtpStaysOnTheOtpStepAndClearsTheDigits() {
+        val vm = bindVm(BindOutcome.Failed("ERR_AUTH_OTP_INVALID"))
+        vm.onOtpDigits("1234"); vm.onOtpVerify()
+        assertEquals(OtpError.INVALID, vm.state.value.otp.error)
+        assertEquals("", vm.state.value.otp.digits)
+        assertEquals("tok", vm.state.value.bindToken)
+    }
+
+    @Test
+    fun expiredBindTokenGoesBackToLoginWithAMessage() {
+        val vm = bindVm(BindOutcome.Failed("ERR_TOKEN_EXPIRED"))
+        vm.onOtpDigits("1234"); vm.onOtpVerify()
+        assertEquals(null, vm.state.value.bindToken)
+        assertEquals(LoginMessage.SignInAgain, vm.state.value.message)
+    }
+
+    @Test
+    fun temporaryPasswordAfterBindGoesToThePasswordChangeMessage() {
+        val vm = bindVm(BindOutcome.PasswordChangeRequired)
+        vm.onOtpDigits("1234"); vm.onOtpVerify()
+        assertEquals(LoginMessage.PasswordChangeRequired, vm.state.value.message)
+        assertEquals(null, vm.state.value.bindToken)
+    }
+
+    @Test
+    fun tooManyWrongCodesStillLeavesWayBackAndDropsThePassword() {
+        val vm = bindVm(BindOutcome.Failed("ERR_AUTH_OTP_ATTEMPTS_EXCEEDED"))
+        vm.onOtpDigits("1234"); vm.onOtpVerify()
+        assertFalse(vm.state.value.otp.canVerify)
+        vm.onOtpBack()
+        assertEquals(null, vm.state.value.bindToken)
+        assertEquals("", vm.state.value.password)
+    }
+
+    @Test
+    fun deviceLimitKeepsTheDigitsSoVerifyCanBeRetried() {
+        val vm = bindVm(BindOutcome.Failed("ERR_DEVICE_LIMIT_REACHED"))
+        vm.onOtpDigits("1234"); vm.onOtpVerify()
+        assertEquals("1234", vm.state.value.otp.digits)
+        assertEquals(true, vm.state.value.otp.canVerify)
+    }
+
+    @Test
+    fun aThrowingBindIsAnOtherErrorNotACrash() {
+        val vm = LoginViewModel { _, _ -> LoginOutcome.BindRequired("tok") }
+        vm.bind = { _, _, _ -> error("boom") }
+        vm.onUsernameChange("sr334001"); vm.onPasswordChange("pw"); vm.onSubmit()
+        vm.onOtpDigits("1234"); vm.onOtpVerify()
+        assertEquals(OtpError.OTHER, vm.state.value.otp.error)
+    }
+
+    @Test
+    fun withoutABindStepBindRequiredIsOnlyAMessage() {
+        val vm = LoginViewModel { _, _ -> LoginOutcome.BindRequired("tok") }
+        vm.onUsernameChange("sr334001"); vm.onPasswordChange("pw"); vm.onSubmit()
+        assertEquals(null, vm.state.value.bindToken)
+        assertEquals(LoginMessage.BindRequired, vm.state.value.message)
     }
 }

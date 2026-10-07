@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 // Member names are the wire names. When shared:contract publishes these DTOs, this file is replaced by them.
 
 private val USERNAME = Regex("^[A-Za-z][A-Za-z0-9._-]{2,39}$")
-private val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+internal val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
 @Serializable
 data class LoginRequest(val username: String, val password: String, val client: String, val device_uuid: String? = null) {

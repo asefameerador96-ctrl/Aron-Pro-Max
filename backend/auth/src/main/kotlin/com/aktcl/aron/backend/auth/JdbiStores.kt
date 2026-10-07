@@ -61,6 +61,20 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
     override fun mustChangePassword(userId: Long): Boolean = gate(userId).mustChange
 
     override fun invalidate(userId: Long) { gateCache.remove(userId) }
+
+    private data class DeviceGate(val status: String?, val at: Long)
+    private val deviceCache = ConcurrentHashMap<Long, DeviceGate>()
+
+    override fun deviceStatus(deviceId: Long): String? {
+        val now = clock.now().toEpochMilli()
+        deviceCache[deviceId]?.let { if (now - it.at < svCacheMs) return it.status }
+        val status = db.jdbi.withHandle<String?, Exception> { h ->
+            h.createQuery("SELECT status FROM app.device WHERE id = :id").bind("id", deviceId).mapTo(String::class.java).findOne().orElse(null)
+        }
+        if (deviceCache.size > 100_000) deviceCache.clear()
+        deviceCache[deviceId] = DeviceGate(status, now)
+        return status
+    }
 }
 
 /** Refresh families and hashed tokens; rotation is atomic (the unused-token update and the child insert commit together). */
@@ -122,12 +136,11 @@ class JdbiRefreshStore(private val db: Database) : RefreshStore {
         if ((e.cause as? java.sql.SQLException)?.sqlState == "23505") false else throw e
     }
 
-    override fun revokeFamily(familyId: Long, at: Instant, reason: String) {
-        db.jdbi.useHandle<Exception> { h ->
+    override fun revokeFamily(familyId: Long, at: Instant, reason: String): Boolean =
+        db.jdbi.withHandle<Boolean, Exception> { h ->
             h.createUpdate("UPDATE app.refresh_family SET revoked_at = :at, revoke_reason = :r WHERE id = :f AND revoked_at IS NULL")
-                .bind("at", at.odt()).bind("r", reason).bind("f", familyId).execute()
+                .bind("at", at.odt()).bind("r", reason).bind("f", familyId).execute() == 1
         }
-    }
 
     override fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String) {
         if (deviceId == null && deviceUuid == null) return
@@ -157,6 +170,11 @@ class JdbiLockoutStore(private val db: Database) : LockoutStore {
     }
 
     override fun recordFailure(key: String, now: Instant, window: Duration): Int = db.jdbi.withHandle<Int, Exception> { h ->
+        // Keeps the table bounded (AUD-SEC-02): rows idle for a day and not locked are dropped, a few per failure.
+        h.createUpdate(
+            """DELETE FROM app.auth_lockout WHERE lock_key IN (SELECT lock_key FROM app.auth_lockout
+                 WHERE updated_at < :idle AND (locked_until IS NULL OR locked_until <= :now) LIMIT 20)""",
+        ).bind("idle", now.minus(Duration.ofDays(1)).odt()).bind("now", now.odt()).execute()
         h.createQuery(
             """INSERT INTO app.auth_lockout AS l (lock_key, failures, window_started_at, updated_at) VALUES (:k, 1, :now, :now)
                ON CONFLICT (lock_key) DO UPDATE SET
@@ -170,7 +188,7 @@ class JdbiLockoutStore(private val db: Database) : LockoutStore {
     override fun lock(key: String, now: Instant, base: Duration): Instant = db.jdbi.withHandle<Instant, Exception> { h ->
         h.createQuery(
             """UPDATE app.auth_lockout SET
-                 locked_until = :now + make_interval(secs => least(:base * power(2, least(lock_count, 10)), 86400)),
+                 locked_until = :now + make_interval(secs => least(:base * power(2, least(lock_count, 10)), 7200)),
                  lock_count = lock_count + 1, failures = 0, updated_at = :now
                WHERE lock_key = :k AND (locked_until IS NULL OR locked_until <= :now) RETURNING locked_until""",
         ).bind("k", key).bind("now", now.odt()).bind("base", base.seconds.toDouble()).map { rs, _ -> rs.instant("locked_until")!! }.findOne()

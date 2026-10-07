@@ -34,8 +34,10 @@ class InMemoryRefreshStore : RefreshStore {
         return true
     }
 
-    override fun revokeFamily(familyId: Long, at: Instant, reason: String) {
-        families.computeIfPresent(familyId) { _, f -> if (f.revokedAt == null) f.copy(revokedAt = at, revokeReason = reason) else f }
+    override fun revokeFamily(familyId: Long, at: Instant, reason: String): Boolean {
+        var changed = false
+        families.computeIfPresent(familyId) { _, f -> if (f.revokedAt == null) { changed = true; f.copy(revokedAt = at, revokeReason = reason) } else f }
+        return changed
     }
 
     override fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String) {
@@ -66,7 +68,7 @@ class InMemoryLockoutStore : LockoutStore {
         val s = states.computeIfAbsent(key) { State() }
         synchronized(s) {
             s.lockedUntil?.let { if (it.isAfter(now)) return it }  // already locked: a burst never locks twice
-            val until = now.plus(minOf(base.multipliedBy(1L shl s.locks.coerceAtMost(10)), Duration.ofHours(24)))
+            val until = now.plus(minOf(base.multipliedBy(1L shl s.locks.coerceAtMost(10)), Duration.ofHours(2)))
             s.locks++
             s.lockedUntil = until
             s.failures.clear()

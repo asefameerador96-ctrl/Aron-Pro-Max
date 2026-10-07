@@ -4,6 +4,7 @@ import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.core.common.ClientIds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -108,7 +109,8 @@ class AronApiClient(
         val token = when (auth) {
             CallAuth.None -> null
             is CallAuth.Bearer -> auth.token
-            is CallAuth.Grant -> tokens?.currentAccessToken(auth.grant)
+            // The token source may unwrap tokens with the Keystore (and settle the session restore): never on the caller's thread.
+            is CallAuth.Grant -> tokens?.let { t -> withContext(Dispatchers.IO) { t.currentAccessToken(auth.grant) } }
         }
         val builder = Request.Builder().url(origin.path(path)).apply(build)
         if (token != null) builder.header("Authorization", "Bearer $token")

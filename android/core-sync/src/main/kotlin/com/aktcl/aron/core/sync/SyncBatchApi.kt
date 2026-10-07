@@ -6,6 +6,7 @@ import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.AronApiClient
 import com.aktcl.aron.core.network.CallAuth
 import com.aktcl.aron.core.network.DeviceProofSigner
+import com.aktcl.aron.core.network.ProofResult
 import com.aktcl.aron.core.network.ProofStrings
 import com.aktcl.aron.core.network.WireJson
 import okhttp3.MediaType.Companion.toMediaType
@@ -33,7 +34,11 @@ data class BatchHeaders(
 class SyncBatchApi(private val client: AronApiClient, private val signer: DeviceProofSigner?) : BatchSender {
 
     override suspend fun send(token: String, deviceUuid: String, batchUuid: String, gzipBody: ByteArray, headers: BatchHeaders): ApiResult<SyncBatchResponse> {
-        val proof = signer?.sign(ProofStrings.batch(deviceUuid, gzipBody, batchUuid, headers.attempt))
+        // A Keystore miss on an enrolled device gets one more try; an unsigned batch is never final (the server rejects
+        // it under require_enrolled and the identical batch is resent signed later), unlike an unsigned record.
+        val proofString = ProofStrings.batch(deviceUuid, gzipBody, batchUuid, headers.attempt)
+        val proof = signer?.let { s -> s.attempt(proofString).let { if (it is ProofResult.Failed) s.attempt(proofString) else it } }
+            ?.let { (it as? ProofResult.Signed)?.value }
         return client.call(
             path = PATH,
             auth = CallAuth.Bearer(token),

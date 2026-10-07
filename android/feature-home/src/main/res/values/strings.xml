@@ -61,6 +61,7 @@
     <string name="perm_title">Allow what ARON needs</string>
     <string name="perm_location_why">Precise location: to check you are at the shop when you open a visit. It is read only at that moment, never in the background.</string>
     <string name="perm_camera_why">Camera: to take the shop photo for Force Sale and outlet requests.</string>
+    <string name="perm_notifications_why">Notifications: to tell you when a new task arrives.</string>
     <string name="perm_bluetooth_why">Bluetooth: to print the memo and stock slip on your printer.</string>
     <string name="perm_allow">Allow</string>
     <string name="perm_granted">Allowed</string>

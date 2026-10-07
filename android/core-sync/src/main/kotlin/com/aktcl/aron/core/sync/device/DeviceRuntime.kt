@@ -91,7 +91,8 @@ class DeviceRuntime(
         }
     }
 
-    private fun activeUserId(): Long? = (components.session.state.value as? SessionState.Active)?.user?.userId
+    /** Waits for the cold-start restore (AUD-PERF-05): read too early, a Friday cold start would re-block apps. */
+    private suspend fun activeUserId(): Long? = (components.session.settled() as? SessionState.Active)?.user?.userId
 
     /**
      * Application.onCreate: [onAppCreate], then every completed online login asks for fresh evidence and one upload (the

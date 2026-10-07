@@ -99,9 +99,14 @@ class ScopedConfig private constructor(
 
         private val ALLOWED_BOUNDS = setOf("min", "max", "enum", "max_items", "dynamic_min", "dynamic_max")
 
-        /** Loads the registry and every value row valid at [now] or starting before [until]. */
-        fun load(h: Handle, now: Instant, until: Instant): ScopedConfig {
-            val keys = h.createQuery("SELECT key, default_value::text AS dv, bounds::text AS b, delivery, requires_ack FROM app.cfg_key WHERE retired_at IS NULL")
+        /**
+         * Loads the registry and every value row valid at [now] or starting before [until]; with [only], just those keys
+         * (the ingest geo re-check loads a handful of keys as of a record's capture).
+         */
+        fun load(h: Handle, now: Instant, until: Instant, only: Set<String>? = null): ScopedConfig {
+            val keyFilter = if (only == null) "" else " AND key = ANY(:only)"
+            val keys = h.createQuery("SELECT key, default_value::text AS dv, bounds::text AS b, delivery, requires_ack FROM app.cfg_key WHERE retired_at IS NULL$keyFilter")
+                .also { q -> only?.let { q.bindArray("only", String::class.java, it.toList()) } }
                 .map { rs, _ ->
                     val bounds = Json.parseToJsonElement(rs.getString("b")) as? JsonObject ?: JsonObject(emptyMap())
                     KeyDef(
@@ -113,9 +118,9 @@ class ScopedConfig private constructor(
                 """
                 SELECT key, scope_type, scope_id, value::text AS v, effective_from, effective_to, config_version
                 FROM app.cfg_value
-                WHERE (effective_to IS NULL OR effective_to > :now) AND effective_from <= :until
+                WHERE (effective_to IS NULL OR effective_to > :now) AND effective_from <= :until$keyFilter
                 """.trimIndent(),
-            ).bind("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC)).bind("until", OffsetDateTime.ofInstant(until, java.time.ZoneOffset.UTC))
+            ).also { q -> only?.let { q.bindArray("only", String::class.java, it.toList()) } }.bind("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC)).bind("until", OffsetDateTime.ofInstant(until, java.time.ZoneOffset.UTC))
                 .map { rs, _ ->
                     ValueRow(
                         rs.getString("key"), ConfigScopeType.entries.first { it.wire == rs.getString("scope_type") }, rs.getLong("scope_id"),

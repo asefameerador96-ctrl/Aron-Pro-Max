@@ -324,6 +324,13 @@ class ReliabilityProperties(unittest.TestCase):
             r = subprocess.run(["bash", "-c", harness], env=env, capture_output=True, text=True, cwd=ROOT)
             self.assertIn(want, r.stdout, f"{name}: {r.stdout!r} {r.stderr!r}")
 
+    def test_psql_image_is_imported_by_digest_only(self):
+        # Deploy run 37619397240: `az acr import` refused "postgres:16-alpine@sha256:..." (a tag AND a digest).
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        m = re.search(r'^PSQL_SOURCE="([^"]+)"', d, re.M)
+        self.assertIsNotNone(m)
+        self.assertRegex(m.group(1), r"^docker\.io/library/postgres@sha256:[0-9a-f]{64}$")
+
     def test_postgres_ha_backup_and_pooling_follow_the_parameters(self):
         t, bound = module("main.json", "postgres")
         primary = [r for r in resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers") if "createMode" not in r["properties"]]
@@ -1081,9 +1088,11 @@ class PlatformAlerts(unittest.TestCase):
         text = json.dumps(t)
         for needle in ("is_db_alive", "pg-not-alive", "ResourceHealth", "Unavailable", "Degraded", "ServiceHealth"):
             self.assertIn(needle, text)
-        (rh, sh) = sorted(resources_of(t, "Microsoft.Insights/activityLogAlerts"), key=lambda r: r["name"])
-        self.assertEqual(rh["properties"]["scopes"], ["[resourceGroup().id]"])
-        self.assertIn("Owner:", rh["properties"]["description"])
+        (rh, rec, sh) = sorted(resources_of(t, "Microsoft.Insights/activityLogAlerts"), key=lambda r: r["name"])
+        for a in (rh, rec):
+            self.assertEqual(a["properties"]["scopes"], ["[resourceGroup().id]"])
+            self.assertIn("Owner:", a["properties"]["description"])
+        self.assertIn("recovered", rec["name"])
         self.assertEqual(sh.get("condition"), "[parameters('enableServiceHealthAlert')]", "off until subscription Reader exists")
 
     def test_app_alerts(self):
@@ -1166,6 +1175,43 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertIn("NOT ready", out)
         rc, out = self.run_failover([200, 503, 200], call_s=3, max_s="1")
         self.assertEqual(rc, 0, "a call longer than the wait limit is not a false failure: " + out)
+
+
+class DbLoginsGate(unittest.TestCase):
+    """dblogins failed three deploys with no log anywhere while nothing used its logins (dbPerAppLogins off): it blocks
+    the apps only when they use those logins, and a failure prints the platform's own execution record and log."""
+
+    def test_blocks_only_when_the_apps_use_the_logins(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        block = d[d.index("# ------------------------------------------------------------------------------------------------- db logins"):d.index("# ------------------------------------------------------------------------------------------------------ apps")]
+        self.assertIn("properties.outputs.dbPerAppLogins.value", block)
+        self.assertIn('if [ "${per_app,,}" != false ]; then', block, "unknown counts as on: fail closed")
+        self.assertIn('die "database logins $execution ended', block)
+        self.assertIn("az containerapp job logs show", block)
+        self.assertIn("az containerapp job execution show", block)
+        self.assertIn('summary "| Database logins |', d)
+
+
+class InfraStageSkip(unittest.TestCase):
+    """2026-10-07: while dblogins failed, the live api commit never advanced, so every INT push re-applied main.bicep
+    (and re-PUT Front Door). The skip now diffs against the commit main.bicep was last applied from."""
+
+    def test_skip_base_is_the_last_applied_infra_commit(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('--tags "aron-infra-sha=${SHA}"', d, "a successful main.bicep apply records its commit")
+        self.assertIn('tags."aron-infra-sha"', d)
+        self.assertLess(d.index("-n aron-infra --template-file infra/main.bicep"), d.index('--tags "aron-infra-sha='))
+        create = d[d.index("az deployment group create -g \"$RG\" -n aron-infra"):]
+        create = create[:create.index(")\"")]
+        self.assertNotIn("--tags", create, "az deployment group create has no --tags (run 37639072495)")
+        self.assertIn('git diff --quiet "$infra_sha" "$SHA"', d)
+        self.assertLess(d.index('infra_sha="$(az group show'), d.index('git diff --quiet "$infra_sha"'))
+        self.assertIn('infra_sha="$deployed_sha"', d, "falls back to the live commit when untagged")
+
+    def test_recovered_alert_closes_resource_health(self):
+        a = (ROOT / "infra" / "modules" / "alerts.bicep").read_text(encoding="utf-8")
+        self.assertIn("-resource-health-recovered'", a)
+        self.assertIn("'properties.previousHealthStatus', equals: 'Unavailable'", a)
 
 
 class AgentDownload(unittest.TestCase):

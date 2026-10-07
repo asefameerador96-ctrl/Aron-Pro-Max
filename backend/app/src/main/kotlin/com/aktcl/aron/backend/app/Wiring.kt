@@ -98,6 +98,7 @@ import com.aktcl.aron.backend.sync.ServerGeneration
 import com.aktcl.aron.backend.sync.SyncDeps
 import com.aktcl.aron.backend.sync.syncRoutes
 import com.aktcl.aron.backend.sync.taskRoutes
+import com.aktcl.aron.backend.notify.notificationRoutes
 import com.aktcl.aron.backend.notify.pushRoutes
 
 /** The object graph of the API process; tests build their own with throwaway keys and in-memory stores. */
@@ -111,6 +112,12 @@ class Wiring(
     val frontDoorId: String? = null,
     /** Admission control and backpressure (N-056); null in tests that do not exercise it. */
     val admission: com.aktcl.aron.backend.analytics.AdmissionControl? = null,
+    /** [generation] without I/O, for the health probes (AUD-REL-01). */
+    val cachedGeneration: () -> String = generation,
+    /** Bounded dispatcher and 25 s timeout for every non-probe call (AUD-PERF-02); production always sets it. */
+    val isolation: com.aktcl.aron.backend.platform.RequestIsolation? = null,
+    /** Graceful drain on stop (AUD-REL-07). */
+    val drain: com.aktcl.aron.backend.platform.Drain = com.aktcl.aron.backend.platform.Drain(),
 ) {
     companion object {
         /**
@@ -122,6 +129,7 @@ class Wiring(
             com.aktcl.aron.backend.config.ConfigAckHandler(),
             com.aktcl.aron.backend.masterdata.DomainEventProducer(),
             com.aktcl.aron.backend.masterdata.DataVoidBarrierHandler(com.aktcl.aron.backend.sync.TypeRules.BY_TYPE.keys),
+            com.aktcl.aron.backend.sync.GeoRecheckHandler(),
         )
 
         /** [extraRecordHandlers] and [pushSender] are for tests only; production handlers are listed in [recordHandlers]. */
@@ -187,8 +195,17 @@ class Wiring(
             // (docs/requests/backend-admin-blob-sas.md).
             val blob: BlobSasIssuer = AzureBlobSasIssuer.fromEnvironment() ?: com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
             val otpDeps = DeviceOtpDeps(db, reach, otpCipher, config, guard, clock)
-            val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
+            // F-SYS-053: the delta re-resolves outlet radius with the bundle's own resolution.
+            val radiusBundle = BundleService(db, config, SqlRoutePlanner(db, geo, config), clock)
+            val deltaDeps = ConfigDeltaDeps(
+                ConfigDelta(db, configResolver, clock) { user, since ->
+                    radiusBundle.outletRadiusChanges(user, since)?.map { (o, r, a) -> com.aktcl.aron.backend.config.OutletRadiusChangeDto(o, r, a) }
+                },
+                configService, guard,
+            )
             val generation = ServerGeneration(db)
+            // Warm both caches off the request path, so the first requests of a new replica do not wait (AUD-REL-01).
+            Thread({ runCatching { config.configVersion() }; runCatching { generation.current() } }, "aron-warm").apply { isDaemon = true }.start()
             // N-037: FCM nudges; off without the service account (dev, tests), and switched by cfg.ops/cfg.notify.
             val push = com.aktcl.aron.backend.notify.PushNotifier(db, config, pushSender ?: s.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) }, clock) { userId, key ->
                 // The switch as it applies to the user: zone, territory, division, wing, then global (s9.5 scopes G W D T Z).
@@ -246,7 +263,9 @@ class Wiring(
                 syncRoutes(sync)
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
-            }, frontDoorId = s.frontDoorId, admission = admission)
+                notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
+            }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
+                isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }))
         }
     }
 }

@@ -24,3 +24,6 @@ contract list above.
 - Enrolment (N-027/N-031, not built yet): the top-level `EnrolDeviceRequest.play_integrity_unavailable` wins over
   the copy in the nested `status` (R18(2)).
 - Scoring treats NULL as no evidence. Root hints are weighted `DEVICE_INTEGRITY_FAIL` evidence only and never block a sale on their own.
+
+## Answer (db, 2026-10-07): V0025/V0026 (on INT)
+`root_hints`, `root_hints_at`, `integrity_unavailable_reason` and `integrity_unavailable_at` are on `app.device`; NULL = unknown. See `docs/requests/db-backend-core-config-and-device-v12.md`.

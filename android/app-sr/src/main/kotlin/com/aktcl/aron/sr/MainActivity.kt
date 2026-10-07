@@ -51,7 +51,26 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var systemShell: SystemShell
     @Inject lateinit var shellLogout: com.aktcl.aron.core.sync.shell.ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+    @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
+    @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
+    @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
+    private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
     private var dayHolder: SrDayHolder? = null
+    /** N-038: counts taps on a task notification; SrApp opens the task list on each new value. */
+    private val openTasks = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    private fun takePushIntent(intent: android.content.Intent?) {
+        if (!com.aktcl.aron.core.sync.push.PushNotices.opensTasks(intent)) return
+        intent?.removeExtra(com.aktcl.aron.core.sync.push.PushNotices.EXTRA_OPEN) // a recreate must not open it again
+        openTasks.value += 1
+        pushShell.openedTasks()
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takePushIntent(intent)
+    }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
@@ -62,6 +81,26 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         dayHolder?.day?.value?.let { it.launchConfigCheck(); it.launchDeltaRefresh(bundleDownloaders) }
         lifecycleScope.launch { updateShell.check(atLogin = false) } // F-SYS-020, throttled to 12 h inside
+        pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
+        lifecycleScope.launch { components.session.noteTimePassing() } // F-SYS-052: the offline window counts real uptime
+        lifecycleScope.launch { // F-SYS-024: today's sampling, then the app-open event
+            val id = (components.session.settled() as? SessionState.Active)?.user?.userId ?: return@launch
+            activityLog.refreshSampling(id)
+            activityLog.log(id, "app", "open")
+            // F-SYS-029: the cache cap from the user's bundle (cfg.app.image_cache_mb)
+            runCatching {
+                val db = databases.of(id)
+                com.aktcl.aron.core.sync.SessionSyncRunner.configInt(com.aktcl.aron.core.database.repo.ReferenceRepository(db).config(com.aktcl.aron.core.sync.ImageCache.CFG_CAP_MB, com.aktcl.aron.core.sync.SyncEngine.iso(components.trustedClock.nowMs())))
+            }.getOrNull()?.let { imageCache.setCapMb(it) }
+        }
+    }
+
+    /** F-SYS-024: the buffered events become one outbox row when the app leaves the screen (they ride the next upload). */
+    override fun onStop() {
+        super.onStop()
+        val id = (components.session.state.value as? SessionState.Active)?.user?.userId ?: return
+        activityLog.log(id, "app", "close")
+        activityLog.flushSoon(id) // the log's own scope: onDestroy right after must not cancel the write
     }
 
     /** F-SYS-022: SR keeps its data (it keeps uploading); a failure never crashes the app. */
@@ -79,6 +118,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) takePushIntent(intent)
         val language = AppLocale.current(this)
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
@@ -88,8 +128,9 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
+                        SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore
                         SessionState.LoggedOut -> {
-                            val vm = viewModel { LoginViewModel(components.session::login) }
+                            val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect)
                         }
                         is SessionState.Active -> {
@@ -111,7 +152,14 @@ class MainActivity : ComponentActivity() {
                             val sunlightPref = remember(s.user.userId) { com.aktcl.aron.core.ui.SunlightPreference(applicationContext, s.user.userId.toString()) }
                             LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
                             // F-SYS-020: an open day (checked in, not submitted) is never interrupted by a required update.
-                            day?.let { d -> UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
+                            // F-SYS-075: the location notice before anything else of the day (no sale before acceptance when required).
+                            day?.let { d -> com.aktcl.aron.feature.auth.LocationNoticeGate(
+                                key = s.user.userId,
+                                load = { locationNotice.state(s.user.userId).let { com.aktcl.aron.feature.auth.NoticeNeed(it.needed, it.required) } },
+                                accept = { shownAt -> locationNotice.accept(s.user.userId, language.tag, shownAt) },
+                                nowMs = components.trustedClock::nowMs,
+                                onLogout = { srLogout(s.user.userId) },
+                            ) { UpdateHost(updateShell, dayOpen = { d.dayOpen() }, serverSaidTooOld = s.updateRequired, onLogout = { srLogout(s.user.userId) }) {
                                 SrApp(
                                     day = d,
                                     user = HomeUser(
@@ -126,9 +174,10 @@ class MainActivity : ComponentActivity() {
                                     sunlight = sunlight,
                                     onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                     startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
+                                    openTasks = openTasks,
                                     shell = systemShell,
                                 )
-                            } }
+                            } } }
                             // Drawn after the screens so the camera covers them while a capture is open (F-SYS-030).
                             day?.media?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
                         }

@@ -223,6 +223,74 @@ object RecordMapping {
         ),
     )
 
+    /**
+     * `config_ack` (F-SYS-053, docs/24 s9 item 5): the phone applied [configVersion] with these `requires_ack` keys. Its own
+     * family, rank 0, no route; at most 100 keys (contract maxItems).
+     */
+    fun configAck(clientUuid: String, meta: CaptureMeta, configVersion: Long, appliedAt: String, keys: List<String>, createdAt: String) = outbox(
+        RecordType.CONFIG_ACK, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null, configVersion = configVersion), createdAt,
+        JsonObject.serializer(),
+        buildJsonObject {
+            put("config_version", JsonPrimitive(configVersion))
+            put("applied_at", JsonPrimitive(appliedAt))
+            put("keys", kotlinx.serialization.json.JsonArray(keys.distinct().sorted().take(100).map { JsonPrimitive(it) }))
+        },
+    )
+
+    /**
+     * `consent_accept` (F-SYS-075): acceptance of the employee-location notice. Its own family, rank 0, no route; once per
+     * user and policy version ([com.aktcl.aron.core.database.repo.ConsentRepository]).
+     */
+    fun consentAccept(clientUuid: String, meta: CaptureMeta, policyKey: String, policyVersion: Int, locale: String, shownAt: String) = outbox(
+        RecordType.CONSENT_ACCEPT, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null), meta.capturedAt,
+        JsonObject.serializer(),
+        buildJsonObject {
+            put("policy_key", JsonPrimitive(policyKey))
+            put("policy_version", JsonPrimitive(policyVersion))
+            put("accepted", JsonPrimitive(true))
+            put("locale", JsonPrimitive(locale))
+            put("shown_at", JsonPrimitive(shownAt))
+        },
+    )
+
+    /**
+     * `activity_log` (F-SYS-024): sampled screen and action events, telemetry. Its own family, rank 0, no route; 1..200
+     * events (contract), each `{at, screen, action, duration_ms}`.
+     */
+    fun activityLog(clientUuid: String, meta: CaptureMeta, events: List<ActivityEvent>) = outbox(
+        RecordType.ACTIVITY_LOG, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null), meta.capturedAt,
+        JsonObject.serializer(),
+        buildJsonObject {
+            require(events.size in 1..200) { "activity_log carries 1..200 events" }
+            put("events", kotlinx.serialization.json.JsonArray(events.map { e ->
+                buildJsonObject {
+                    put("at", JsonPrimitive(e.at))
+                    put("screen", JsonPrimitive(e.screen))
+                    put("action", JsonPrimitive(e.action))
+                    put("duration_ms", e.durationMs?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
+                }
+            }))
+        },
+    )
+
+    /**
+     * `app_error` (F-SYS-032): a crash, ANR or handled error, already scrubbed (core-sync `ErrorScrubber`). Its own family,
+     * rank 0, no route; every contract member written (null when absent).
+     */
+    fun appError(clientUuid: String, meta: CaptureMeta, e: AppErrorReport) = outbox(
+        RecordType.APP_ERROR, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null), meta.capturedAt,
+        JsonObject.serializer(),
+        buildJsonObject {
+            put("occurred_at", JsonPrimitive(e.occurredAt))
+            put("kind", JsonPrimitive(e.kind))
+            put("exception_class", JsonPrimitive(e.exceptionClass.take(200)))
+            put("message", e.message?.take(500)?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
+            put("stack", e.stack?.take(16_000)?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
+            put("screen", e.screen?.take(60)?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
+            put("app_version", JsonPrimitive(e.appVersion))
+        },
+    )
+
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */
     fun printEvent(e: PrintEventEntity, familyUuid: String, rank: Int, payload: JsonObject, createdAt: String) = outbox(
         RecordType.PRINT_EVENT, e.clientUuid, familyUuid, rank, e.meta, createdAt, JsonObject.serializer(), payload,
@@ -268,3 +336,18 @@ object RecordMapping {
     fun sha256Hex(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 }
+
+/** One `activity_log` event (contract ActivityLogPayload.events[]). */
+data class ActivityEvent(val at: String, val screen: String, val action: String, val durationMs: Long? = null)
+
+/** One `app_error` (contract AppErrorPayload); `kind` is crash, anr or handled. */
+@kotlinx.serialization.Serializable
+data class AppErrorReport(
+    val occurredAt: String,
+    val kind: String,
+    val exceptionClass: String,
+    val message: String?,
+    val stack: String?,
+    val screen: String?,
+    val appVersion: String,
+)

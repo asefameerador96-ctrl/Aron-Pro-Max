@@ -57,7 +57,7 @@ class TrustedClockSource(
     /** Trusted minus wall clock, or null when no anchor of this boot exists. */
     fun clockOffsetMs(): Long? = trusted().second
 
-    fun bootCountNow(): Int = bootCount()
+    fun bootCountNow(): Int = this.bootCount.invoke()
 
     /** Today's Dhaka business date on trusted time. */
     fun businessDate(cutoffMinutes: Int = 0): LocalDate = BusinessDate.of(nowMs(), cutoffMinutes)
@@ -71,7 +71,7 @@ class TrustedClockSource(
 
     override fun onApiResponse(meta: ResponseMeta) {
         val serverMs = meta.serverTime?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: return
-        record(TimeAnchor(bootCount(), serverMs, elapsedRealtime()))
+        record(TimeAnchor(this.bootCount.invoke(), serverMs, elapsedRealtime()))
     }
 
     /**
@@ -110,7 +110,7 @@ class TrustedClockSource(
     private fun valid(est: Est): Boolean {
         val elapsed = elapsedRealtime()
         if (est.elapsedMs > elapsed) return false // uptime went backwards: a reboot
-        val boot = bootCount()
+        val boot = this.bootCount.invoke()
         if (boot > 0) return est.bootCount == boot
         if (est.inProcess) return true
         val id = bootIdOnce
@@ -118,6 +118,8 @@ class TrustedClockSource(
         val wallBoot = wallClock() - elapsed
         return est.bootWallMs != null && kotlin.math.abs(wallBoot - est.bootWallMs) <= SAME_BOOT_TOLERANCE_MS
     }
+
+    override fun bootCount(): Int = this.bootCount.invoke().coerceAtLeast(0)
 
     private fun trusted(): Pair<Long, Long?> {
         val wall = wallClock()

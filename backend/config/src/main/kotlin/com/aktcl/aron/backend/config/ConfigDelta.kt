@@ -11,12 +11,17 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
-/** Contract `ConfigDelta` (docs/24 s9.3 item 3). `calendar_changes` and `outlet_radius_changes` are carried by the bundle service. */
+/** Contract `ConfigDelta` (docs/24 s9.3 item 3). `calendar_changes` is carried by the bundle service. */
 @Serializable
 data class ConfigDeltaDto(
     val from_version: Long, val to_version: Long, val values: List<ResolvedConfigValue>, val scheduled: List<ResolvedConfigValue>,
     val removed_keys: List<String>, val calendar_changes: List<kotlinx.serialization.json.JsonObject> = emptyList(), val policy_changed: Boolean = false,
+    /** Outlets of the caller's routes with their resolved radius and accuracy, when a radius row changed (F-SYS-053). */
+    val outlet_radius_changes: List<OutletRadiusChangeDto> = emptyList(),
 )
+
+@Serializable
+data class OutletRadiusChangeDto(val outlet_id: Long, val radius_m: Int, val max_accuracy_m: Int)
 
 /** What a delta call decided: 304 (nothing relevant changed or inside the minimum gap) or the body. */
 sealed interface DeltaOutcome {
@@ -30,7 +35,13 @@ sealed interface DeltaOutcome {
  * version" is rebuilt from `config_version` and `superseded_in_version`, so history is never edited. A phone further
  * behind than `cfg.sys.config_delta_max_age_versions` gets 410 and refetches the bundle.
  */
-class ConfigDelta(private val db: Database, private val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM) {
+class ConfigDelta(
+    private val db: Database,
+    private val resolver: ConfigResolver,
+    private val clock: AronClock = AronClock.SYSTEM,
+    /** (user, since) -> outlets with re-resolved radius, or null when no radius row changed; wired to the bundle service. */
+    private val radiusChanges: ((Long, Long) -> List<OutletRadiusChangeDto>?)? = null,
+) {
     fun etag(version: Long) = "\"cfg-$version\""
 
     fun delta(userId: Long, deviceId: Long?, since: Long, ifNoneMatch: String?, applyDue: () -> Unit = {}): DeltaOutcome {
@@ -47,8 +58,10 @@ class ConfigDelta(private val db: Database, private val resolver: ConfigResolver
         val older = resolveAsOf(chain, now, since, deviceKeys)
         val changed = newer.values.filter { n -> older[n.key.key]?.let { sameValue(it, n) } != true }.map { it.toDto() }
         val scheduled = scheduled(chain, now, deviceKeys)
-        if (changed.isEmpty() && scheduled.isEmpty()) return DeltaOutcome.NotModified(current)
-        return DeltaOutcome.Changes(ConfigDeltaDto(since, current, changed, scheduled, emptyList()))
+        // An outlet- or route-scoped radius is outside the caller's chain, so it shows only here (F-SYS-053).
+        val radius = radiusChanges?.invoke(userId, since).orEmpty()
+        if (changed.isEmpty() && scheduled.isEmpty() && radius.isEmpty()) return DeltaOutcome.NotModified(current)
+        return DeltaOutcome.Changes(ConfigDeltaDto(since, current, changed, scheduled, emptyList(), outlet_radius_changes = radius))
     }
 
     private fun sameValue(a: Resolved, b: Resolved) = a.value == b.value && a.scopeType == b.scopeType && a.scopeId == b.scopeId && a.effectiveFrom == b.effectiveFrom

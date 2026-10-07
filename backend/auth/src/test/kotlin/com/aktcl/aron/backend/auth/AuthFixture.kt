@@ -68,6 +68,8 @@ class AuthFixture(
     val keys = throwawayKeys()
     val hasher = PasswordHasher(memoryKiB = 19 * 1024)
     val limiter = HashLimiter(hashConcurrency, hashQueue)
+    /** Web logins hash here, apart from the phones' [limiter] (AUD-SEC-02). */
+    val webLimiter = HashLimiter(maxOf(1, hashConcurrency / 4), hashQueue / 4)
     private val fakeUsers = FakeUsers()
     private val jdbiUsers = fresh?.let { JdbiUserStore(it.db, clock, svCacheMs = 0) }
     val users: UserStore = jdbiUsers ?: fakeUsers
@@ -77,11 +79,14 @@ class AuthFixture(
     val lockouts: LockoutStore = fresh?.let { JdbiLockoutStore(it.db) } ?: InMemoryLockoutStore()
     val refreshStore: RefreshStore = fresh?.let { JdbiRefreshStore(it.db) } ?: InMemoryRefreshStore()
     val issuer = TokenIssuer(keys, config, clock)
-    val refresh = RefreshService(refreshStore, config, keys.derivedSecret("aron-refresh-rotation-v1"), clock)
+    /** Every `aron.security` line written while the fixture runs (AUD-SEC-03). */
+    val securityLog: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+    val securityEvents = com.aktcl.aron.backend.platform.LogSecurityEvents { securityLog += it }
+    val refresh = RefreshService(refreshStore, config, keys.derivedSecret("aron-refresh-rotation-v1"), clock, securityEvents = securityEvents)
     val reach = ReachResolver { userId, role, _, date ->
         Reach(userId, role, date, false, setOf(5012L), setOf(10231L), role == Role.SR, listOf(ReachNode("route", 10231, "R-334-01", "Banani Daily")))
     }
-    val login = LoginService(users, devices, hasher, limiter, lockouts, issuer, refresh, reach, config, clock)
+    val login = LoginService(users, devices, hasher, limiter, lockouts, issuer, refresh, reach, config, clock, webLimiter = webLimiter, securityEvents = securityEvents)
     val verifier = AccessTokenVerifier(keys, clock)
     val guard = AuthGuardDeps(verifier, scopeVersions, config, clock)
     val deps = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = "fd-test")
@@ -138,13 +143,13 @@ class AuthFixture(
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.device_binding SET status = 'revoked', unbound_at = now() WHERE status = 'active'") }
     }
 
-    fun close() { limiter.close(); fresh?.close() }
+    fun close() { limiter.close(); webLimiter.close(); fresh?.close() }
 
     fun user(id: Long, username: String, role: Role, status: String = "active") =
         UserRecord(id, username, "Test $username", role, status, "bn", role.wire, passwordHash, 7, false)
 
     fun application(app: Application) {
-        app.installAronPlatform(PlatformContext(clock, config, { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }))
+        app.installAronPlatform(PlatformContext(clock, config, { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }, securityEvents = securityEvents))
         app.routing { route("/v1") { authRoutes(deps) } }
     }
 

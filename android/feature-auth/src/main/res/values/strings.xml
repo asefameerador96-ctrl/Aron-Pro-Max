@@ -36,6 +36,7 @@
     <string name="otp_title">Bind this phone</string>
     <string name="otp_hint">Enter the 4-digit code from your TSO.</string>
     <string name="otp_verify">Verify</string>
+    <string name="otp_back">Back to login</string>
     <string name="otp_invalid">That code is wrong. Try again.</string>
     <string name="otp_expired">That code has expired. Ask your TSO for a new one.</string>
     <string name="otp_attempts">Too many wrong codes. Ask your TSO for a new one.</string>

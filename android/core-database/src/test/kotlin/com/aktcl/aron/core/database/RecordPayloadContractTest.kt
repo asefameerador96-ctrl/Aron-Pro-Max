@@ -55,6 +55,48 @@ class RecordPayloadContractTest {
     @Test fun bundleOutlet() = check(BundleOutlet.serializer(), "BundleOutlet")
     @Test fun sku() = check(Sku.serializer(), "Sku", coverAll = false)
     @Test fun route() = check(Route.serializer(), "Route", coverAll = false)
+    /** F-SYS-053: the phone reads every ConfigDelta member, `outlet_radius_changes` (backend BC-54) included. */
+    @Test fun configDelta() = check(com.aktcl.aron.core.database.reference.ConfigDeltaWire.serializer(), "ConfigDelta")
+
+    @Suppress("UNCHECKED_CAST")
+    @Test fun outletRadiusChangeItemMatchesTheContract() {
+        val props = ContractYaml.schema("ConfigDelta")["properties"] as Map<String, Any?>
+        val items = (props["outlet_radius_changes"] as Map<String, Any?>)["items"] as Map<String, Any?>
+        val yaml = (items["properties"] as Map<String, Any?>).keys
+        val dto = com.aktcl.aron.core.database.reference.ConfigDeltaWire.RadiusChange.serializer().descriptor.elementNames.toSet()
+        assertEquals(yaml, dto)
+        assertEquals((items["required"] as List<String>).toSet(), dto)
+    }
+
+    /** F-SYS-075: the encoded consent_accept payload has exactly the contract's members. */
+    @Test fun consentAcceptPayload() {
+        val (visit, _) = TestRows.visit()
+        val row = RecordMapping.consentAccept("6f1c2d3e-0000-4000-8000-000000000075", visit.meta, "location_notice", 1, "bn", "2026-10-05T04:35:00.000Z")
+        val payload = Json.parseToJsonElement(row.payloadJson).jsonObject["payload"]!!.jsonObject
+        assertEquals(ContractYaml.propertyNames("ConsentAcceptPayload"), payload.keys)
+        assertEquals(ContractYaml.requiredNames("ConsentAcceptPayload"), payload.keys)
+    }
+
+    /** F-SYS-024: the encoded activity_log payload and its events use exactly the contract's members. */
+    @Suppress("UNCHECKED_CAST")
+    @Test fun activityLogPayload() {
+        val (visit, _) = TestRows.visit()
+        val row = RecordMapping.activityLog("6f1c2d3e-0000-4000-8000-000000000024", visit.meta, listOf(com.aktcl.aron.core.database.record.ActivityEvent("2026-10-05T04:35:00.000Z", "home", "open")))
+        val payload = Json.parseToJsonElement(row.payloadJson).jsonObject["payload"]!!.jsonObject
+        assertEquals(ContractYaml.propertyNames("ActivityLogPayload"), payload.keys)
+        val items = (ContractYaml.schema("ActivityLogPayload")["properties"] as Map<String, Any?>)["events"] as Map<String, Any?>
+        val itemProps = ((items["items"] as Map<String, Any?>)["properties"] as Map<String, Any?>).keys
+        assertEquals(itemProps, payload["events"]!!.jsonArray[0].jsonObject.keys)
+    }
+
+    /** F-SYS-032: the encoded app_error payload has exactly the contract's members. */
+    @Test fun appErrorPayload() {
+        val (visit, _) = TestRows.visit()
+        val r = com.aktcl.aron.core.database.record.AppErrorReport("2026-10-05T04:35:00.000Z", "crash", "java.lang.IllegalStateException", null, null, null, "1.0.3+10003")
+        val payload = Json.parseToJsonElement(RecordMapping.appError("6f1c2d3e-0000-4000-8000-000000000032", visit.meta, r).payloadJson).jsonObject["payload"]!!.jsonObject
+        assertEquals(ContractYaml.propertyNames("AppErrorPayload"), payload.keys)
+    }
+
     @Test fun routeSnapshot() = check(RouteSnapshot.serializer(), "RouteSnapshot", coverAll = false)
 
     @Test

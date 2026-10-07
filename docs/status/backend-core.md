@@ -1,6 +1,6 @@
 # backend-core lane status (handoff for a fresh session)
 
-Updated 2026-10-07 (session 3 of the lane). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
+Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
 
 ## Done this session (pushed to INT)
 - **F-API-005 `GET /v1/sync/bundle`** (`backend/sync/BundleService.kt`, `ScopedConfig.kt`, `ReasonTexts.kt`): Opus checker 5 findings, 4 fixed; growing `snapshot_seq` waits on `docs/requests/backend-bundle-snapshot-table.md` (code ready, test assumption-guarded).
@@ -22,7 +22,32 @@ Updated 2026-10-07 (session 3 of the lane). Earlier history: `docs/status/backen
   - **F-SYS-003, F-API-003 bind-device**: at `bind_required` the login creates one OTP per live window (sealed with `OtpCipher`, `otp_sha256` = `OtpCipher.mac`); `POST /v1/auth/bind-device` needs the bind token, X-Device-Proof (`bind`, hex sha256(otp), bucket), is single use, expires after 120 min, and refuses everything after 5 wrong tries; it binds with the next free ordinal (0 to 3) and continues the login. Opus checker: 2 findings, both fixed: a fifth phone answers 409 `ERR_DEVICE_LIMIT_REACHED` (docs/24 s7.5; android-core should map it, the app maps only `ERR_AUTH_BIND_LOCKED` today), and is refused before the OTP is spent. OTP creation now takes the same user-row lock as the TSO panel. Docs note for the lead: an OTP locked after 5 tries stays locked (hidden on the panel) until it expires or the TSO re-issues it; docs/24 says it "expires".
   - Not mine, red on INT: backend-admin's `ConfigToolsTest.whatIfCountsVisitsWhoseVerdictWouldChange` (expected 0, was -4).
 
-## Decisions taken (this session)
+## Session 4 (2026-10-07)
+- Merged INT 107d3a5a. Fresh container: PostgreSQL role `aron`/`aron` (superuser) and database `aron_test` had to be created.
+- **F-SYS-012 server geo re-check** (`sync/GeoRecheck.kt`, `GeoRecheckHandler` registered in `Wiring.recordHandlers`; `GeoRecheckTest`): shared `GeoVerdicts.verdict` against the outlet location of the history row valid at `max(captured_at, received_at - cfg.sys.config_accept_window_h)` and the bundle's radius chain and clamps; stores `server_verdict`, `server_distance_m`, `server_radius_m`, `server_max_accuracy_m`, `server_checked_at`; own savepoint, never refuses a visit. Request: `backend-core-location-history-basis.md` (cleared pins and placeholder basis are not in the history). Open: every visit loads the cfg rows of 7 keys (fine at pilot size; cache per batch before fleet size); `GEO_DEVICE_SERVER_MISMATCH` belongs to the risk-signal worker (F-SYS-057).
+- **N-037 `POST /v1/admin/notifications`** (`notify/Notifications.kt`, `PushNotifier.liveTokens/broadcast`; `AdminNotificationTest`): web ADMIN, SUPERADMIN, TOP, WM, DMO, TSO; target inside the caller's reach (403 geography, 404 user/device; a shared phone through every bound user in reach); 409 ERR_PUSH_DISABLED; `AuditLog.write`; data-only message (keys in `docs/requests/android-core-503-and-generation.md`); broadcasts on their own bounded pool.
+- **DeviceService** audit rows through `AuditLog.write` (lead ruling 2).
+- **AUD-REL-01/02** (`DbServerConfig`, `ServerGeneration`, `Http.kt isTransientDbFailure`; `DatabaseOutageTest`): single-flight refresh with back-off, cold callers wait for the one load, caches warmed at startup, `/v1/health*` use cached values only; transient DB failures answer 503 with Retry-After 5..30. Not built: in-request retry of idempotent transactions and the 25 s request timeout (docs/18 s4.3).
+- Opus checker on the three rows: 9 findings, all fixed (`GeoNotifyOutageCheckerTest`).
+- **AUD-SEC-02** (auth: `LoginService`, `JdbiStores`, `AuthModule`; `LoginAbuseTest`): separate hash pool for web and unknown phones, per-IP-class web bucket and backstops, 2 h lock cap, lockout row purge, refresh limiter by the proven device. Request: `backend-core-bff-client-ip.md`. Opus checker: 5 findings, all fixed (`LoginAbuseCheckerTest`).
+- **AUD-TP-1 sync convergence harness** (`SyncConvergenceFuzzTest`, `ARON_FUZZ_SEED` / `ARON_FUZZ_RUNS`, forwarded by `backend/app/build.gradle.kts`): random days of work under hostile schedules (shuffled, children first, splits, replays, lost responses, duplicates, the same batch twice in flight, a dropped tail, a full-day resend, payload_conflict, batch_uuid reuse); oracle: stored once, memo balances, `server_totals`. Opus mutation checker: 3 of 6 mutants survived the first version; its hardened version (adopted) kills all 6. 12 runs ~10 s, 40 runs ~23 s. Open: memo edits (`supersedes_client_uuid`) and 0..2 collections per memo (incl. after a void) are not in the model; the commit-then-crash path needs a unit test with a hook in IngestService.
+- **Task columns** (db V0037/V0038 on INT): `Tasks.kt` stores `route_id` (named and in reach, or the outlet's) and `cancel_reason`; tests in `TasksTest`. No checker run on this small follow-up (own tests only); if the sync `task` payload gains `route_id`, scope-check the route.
+- db (11:56Z) on lane/db, not yet on INT: V0040 `app.password_history` + `cfg.auth.password_history_depth`/`password_min_age_h`/`password_denylist_enabled` (un-skip `ChangePasswordTest.noneOfTheLastTenPasswords` and store history once on INT); V0041 partitions `app.geo_breadcrumb` (no code change needed).
+
+## Session 5 (2026-10-07)
+- Merged INT twice (DECISIONS.md conflict at the first, kept both sides). V0040 `app.password_history` is on INT: `ChangePasswordTest.noneOfTheLastTenPasswords` now runs (the code already switched on the table).
+- **AUD-PERF-02** (`platform/RequestIsolation.kt`, installed by `aronApi`): every call except `/v1/health` and `/v1/health/ready` runs on `Dispatchers.IO.limitedParallelism(write pool - 1)` under a 25 s timeout (503 + Retry-After 5..30); a call past its deadline never starts a response (send-pipeline guard), so no truncated bodies; header lookups and the readiness ping run on IO; 57014 is 503 (logged ERROR). `RequestIsolationTest` runs a real Netty engine with ONE call thread. Honest bound: a handler inside JDBC answers when its statement ends (25 s + one statement).
+- **AUD-REL-07** (`platform/Drain.kt`, `Main.apiServer`): grace 3 s, timeout 25 s; on stop readiness 503 at once, in-flight calls drained up to 15 s, `Connection: close` while draining, pools closed on ApplicationStopped (production only).
+- **AUD-SEC-08 / AUD-TP-3** (`RouteInventoryTest`, `scope-cases.txt`, `scope-gaps-baseline.txt` in app test resources): walks the production routing tree; public set pinned and equal to the contract; four widened guards pinned (selector carries the guard settings); every guarded route 401 without a token; device-proof routes 401 without a proof; scope registry 35 cases / 23 exemptions / 66 gaps (47 backend-admin, 19 backend-reports, 0 backend-core), gap set frozen; `ARON_SCOPE_SEEDS` widens `ScopeLeakTest`. Role-denial matrix not built (contract has no per-op roles).
+- **AUD-SEC-07**: only the api role needs the JWT key (`infra-worker-no-signing-key.md`).
+- **AUD-SEC-03** (`platform/SecurityEvents.kt`): `aron.security` log line per event (login_failure deduped, lockout, refresh_reuse once, password_change, device_proof_invalid, device_state_refused, scope_changed); table requested (`backend-core-security-event-table.md`).
+- **AUD-SEC-01** (backend part): the guard refuses `aron-api` tokens of suspended/revoked/replaced/deleted phones within the 10 s gate; upload paths exempt.
+- **AUD-REL-08** (logging part): logback JsonEncoder; request line has the route template, pseudonymous user/device, app_version, revision (`RequestLogTest`).
+- Bundle scope case: `BundleAcceptanceTest.theBundleHoldsOnlyTheCallersOwnRoutesAndTheirOutletsWhateverTheQuerySays`.
+- Opus checkers: PERF-02/REL-07 (6 findings; 5 fixed, the nested-borrow deadlock disproved: JDBI reuses the thread's handle, pool-of-one test), SEC-08/TP-3 (7, fixed), SEC-01/03/07 (combined: 3 fixed, 4 logged in BC-52).
+- Touched another lane's test once: `DataVoidCheckerTest` ingest hold 30 s -> 15 s (inside the 25 s request budget; the void waits on that ingest's lock by design).
+
+## Decisions taken (session 3)
 - Change-password revokes every full-grant family of the user except the calling phone's own (the contract says "other"; a web caller has no family id in the token, so all web families go and the BFF logs in again).
 - A phone with a temporary password keeps the 10-minute API token for change-password (R15 covers `client: web` only).
 - The bind OTP is created at the first `bind_required` login and reused while it is live; a new one only after expiry, consumption or a TSO re-issue. Wrong tries count per OTP (5), so a TSO re-issue resets them.
@@ -53,12 +78,22 @@ Updated 2026-10-07 (session 3 of the lane). Earlier history: `docs/status/backen
 ## Requests filed
 `backend-jcs-canonicaliser.md` (shared), `backend-config-value-shape.md` (lead), `backend-bundle-snapshot-table.md` (db), `backend-core-assignment-ended-at.md` (backend-admin).
 
-## Next rows (session 4 starts here; pushed head adaa2d06 on lane/backend-core)
-1. **F-SYS-012** (`my-rows.py backend-core --full`), then **AUD-REL-01/02** (DB outage: health without the DB, 503 with Retry-After for pool/connection/transient SQLSTATE), **AUD-SEC-02**, **AUD-TP-1** (sync fuzz harness), then `--todo` in (day, id) order.
-2. Open follow-ups of this session's rows: `POST /v1/admin/notifications` (asked the lead whether it belongs to N-037); submit void must reset `submit_received_at` and `settle_deadline_at` (F-SYS-016 note); `device_status` must update `app.device.root_hints`/`play_integrity_unavailable` once db adds the columns (`backend-core-device-integrity-columns.md`); store task `route_id`/`cancel_reason` once db adds them; password history once `app.password_history` exists (the test is assumption-guarded).
-3. Watch: `cfg.sync.reconcile_types` reshape by db (R17), `backend-bundle-snapshot-table`, `backend-jcs-canonicaliser`.
+## Next rows (session 6 starts here; last pushed head on lane/backend-core is in docs/status/backend.csv notes or `git log origin/lane/backend-core`)
+1. backend-core has no scope gaps left (task cancel and bundle cases added); the quarantine routes are backend-reports' (`OpsApi`). Tell the lead the gap lists per lane: 47 backend-admin, 19 backend-reports (scope-cases.txt).
+2. When db V0044/V0045 reach INT (lead, 12:55Z; `db-location-history-basis-answer.md`): `GeoRecheck.kt` reads the basis from the history row alone (none/placeholder rows have null lat/lng) and drops the fallback to the outlet's current basis, with its test. V0042 (zone/cluster stamps by trigger) needs no ingest change.
+3. `my-rows.py backend-core --todo` in (day, id) order; the CSV-based filter does not know rows done before the CSV (F-SYS-003, F-API-003/004 are done).
+4. BC-52 open items: separate refresh/OTP derivation keys before any JWT rotation; HMAC for `username_hash` (needs an infra secret); device gate for phones without `did` (require_enrolled); change-password failure events.
+5. Older open items: AUD-REL-02 in-request retry of idempotent transactions; SEC-02 remainder (never lock a bound phone with a valid proof; BFF client IP); submit void must reset `submit_received_at`/`settle_deadline_at` (F-SYS-016); `device_status` integrity columns; geo re-check per-batch config cache and history basis; parked rows TTL worker; quarantine review endpoints exist now (check owner).
+6. Watch: `cfg.sync.reconcile_types` reshape (R17), `backend-bundle-snapshot-table`, `backend-jcs-canonicaliser`, `backend-core-security-event-table`.
 
 ## Traps found
+- **Request timeout 25 s (AUD-PERF-02):** a test that holds a request longer (a latch, a lock) gets a 503; keep holds under ~20 s. Production wiring isolates every non-probe call on the bounded dispatcher.
+- **`pkill`/`kill` loops over `pgrep -f` matches can kill your own shell** (exit 144 this session); kill one checked pid at a time.
+- **Fresh container:** PostgreSQL may lack the `aron` role: `su postgres -c "psql -c \"CREATE ROLE aron LOGIN SUPERUSER PASSWORD 'aron'\""` and `createdb -O aron aron_test`.
+- `--offline` fails (the Android plugin is not cached); run gradle online.
+- DbServerConfig resolves `effective_from/to` with the database's `now()`, not the injected clock: config windows in tests must be set relative to `now()` and the clock moved 31 s to drop the cache.
+- Web logins in tests are limited per IP class (30/min) and per username (10/15 min) under a fixed clock; MFA roles (ADMIN...) need `cfg.auth.mfa_required_roles = []` in the test DB for a password-only login; phone tokens need `X-Device-Id`.
+- A full backend + db suite takes ~40 min; run it in the background and push the pinned tested commit.
 - **Push only to `lane/backend-core`** (docs/26 s3, since 2026-10-07); the integrator promotes green heads to INT. A background test-and-push job must push a pinned commit (`git push origin <sha>:refs/heads/lane/backend-core`) so later local commits never ride along untested.
 - `scratchpad/gt.sh`-style wrapper: grep on gradle output hides gradle's exit code; keep the exit code (`./gradlew ... > log; rc=$?`).
 - `DbServerConfig` caches by the injected clock: with a fixed test clock it never expires; move the clock past 30 s.
@@ -81,3 +116,19 @@ Updated 2026-10-07 (session 3 of the lane). Earlier history: `docs/status/backen
 - No session state on connections (api pool behind PgBouncer): no `SET`, no session advisory locks in api code.
 - Reviewer worktrees under `.claude/worktrees/` are excluded locally (`.git/info/exclude`); never commit them.
 - Requests open: `docs/requests/backend-refresh-family-device-uuid.md` (db). Phones without a device row get no refresh grant until it lands.
+
+## Lead note, 2026-10-07 ~17:45 UTC (for the active backend-core session)
+
+A parallel backend-core session (stall-recovery duplicate) stood down after building F-SYS-012 to the
+acceptance. Before stopping, its fresh Opus checker confirmed four defects in ITS geo re-check; verify your
+implementation against each, since the designs are close:
+1. a pin cleared by an admin is still used by the re-check;
+2. an outlet's first web pin edit erases the pin in force before it (AdminOutlets writes history only for
+   the new pin);
+3. verdicts filled by the sweep are never marked dirty for the dashboards;
+4. failing rows can block the sweep.
+Its checker tests (GeoRecheckCheckerTest.kt) and work are on **origin/claude/bc-s5-salvage** (96ec5eae);
+take the tests even if your code differs. The branch also carries three request drafts possibly not yet
+filed: backend-core-outlet-pin-history.md (backend-admin + db), backend-core-web-client-ip.md
+(web-dashboard + infra), backend-core-login-device-proof.md (contract v1.4: no X-Device-Proof on login).
+File or discard them explicitly, then delete the salvage branch.
