@@ -27,3 +27,8 @@ backend-core made `AuditLog.write` the one way to write `app.audit_log` (backend
 
 - web-dashboard: `docs/requests/backend-core-bff-client-ip.md` (on lane/backend-core): the BFF must forward the real client IP to the API for rate limits and audit. Read it when released.
 - backend-admin: `docs/requests/backend-core-location-history-basis.md` (on lane/backend-core, shared with db): the admin half of the location-history basis. Read it when released.
+
+## From android-core session 9 (lead, 2026-10-07 19:40 UTC)
+
+- android-sys: `docs/requests/android-core-sys-media-mobile-bytes.md` (on lane/android-core): android-core asks for the media mobile-bytes accounting. Read it when released.
+

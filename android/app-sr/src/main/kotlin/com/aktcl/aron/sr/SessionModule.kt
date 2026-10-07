@@ -84,6 +84,7 @@ object SessionModule {
             // F-SYS-079: check-out and Sales Submit uploads are jittered only just after the check-out gate opens;
             // the gate time and the jitter come from the active user's bundle (cfg.day.checkout_earliest_time, cfg.sync.checkout_jitter_s).
             checkoutJitterS = { runtime.dayConfig.checkoutJitterS },
+            resyncJitterS = { runtime.dayConfig.resyncJitterS }, // F-SYS-047
             checkoutGate = com.aktcl.aron.core.sync.CheckoutGate.dhaka(components.clock::nowMs, gateMinutes = { runtime.dayConfig.checkoutEarliestMinutes }),
             onRequest = telemetry::sampleSoon, // F-SYS-081: a sample at every save, offline too
         )

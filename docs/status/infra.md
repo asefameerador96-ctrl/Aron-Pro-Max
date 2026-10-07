@@ -1,8 +1,22 @@
 # Infra lane status
 
-Updated 2026-10-07 17:40 UTC (fifth infra session).
+Updated 2026-10-07 19:55 UTC (fifth infra session).
 
 ## Fifth infra session, 2026-10-07 17:40 UTC: read this first (the fourth session's handover below still applies)
+
+**Deploy run 37673797109 (INT b85d81fd, 19:21 to 19:31 UTC): ALL GREEN, dblogins FIXED.** "database logins succeeded"
+(first time; SQL as a mounted file), "main.bicep skipped" (infra unchanged since 9941cfe), health gate build = b85d81fd,
+ready 200, web /login 200, release marker written. Worker revision with 9114b63 (no signing key) deployed without error;
+the health gate checks the api only, so the worker's start is not separately proven. Next for per-app logins: switch
+`dbPerAppLogins = true` only after `docs/requests/db-runtime-roles-gaps.md` (api_rw DELETE grants) is closed by db.
+
+**dblogins ROOT CAUSE (deploy run 37669977875, 19:00 UTC):** for the first time the console log arrived:
+`psql:/tmp/logins.sql:47: ERROR: syntax error at or near "$" / LINE 1: DO $`. Container Apps (Kubernetes) expands
+`$(VAR)` in env values and turns `$$` into `$`, so the SQL's `DO $$ ... $$` blocks arrived broken through `ARON_SQL`.
+The fix already on INT (b8a83d87: the SQL as a mounted secret file, no expansion) is right; run 147 deployed f8ba8a16,
+which predates it, so the first deploy with the fix is run 148 (b85d81fd). Also proven in run 147: **"main.bicep
+skipped"** (infra unchanged since 9941cfe) and the release marker. Trap for the future: never pass text containing
+`$` through a Container Apps env value.
 
 **SR slice smoke (lead request 18:27, ruling 18:29), lane/infra 634dbd69, waits for promotion:** after the health gate,
 non-blocking, table in the run summary. `infra/scripts/slice-smoke.py` as `sr1001` on the seeded dev phone through
