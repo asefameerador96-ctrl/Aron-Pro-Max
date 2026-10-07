@@ -1583,6 +1583,59 @@ class SliceSmoke(unittest.TestCase):
         self.assertIn("\\getenv h ARON_SEED_HASH", run)
         self.assertIn("-id -t 2 -k 19456 -p 1", run, "the backend's Argon2id parameters")
 
+
+class WorkerCheck(unittest.TestCase):
+    """Lead 2026-10-07: the worker (no HTTP endpoint) is proven up after a deploy: this build's image, a replica Running
+    with 0 restarts, still so after the hold (infra/scripts/worker-check.sh, with a fake az)."""
+
+    IMG = "cr.example/aron-backend@sha256:" + "a" * 64
+
+    def run_check(self, image, first, second):
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            (t / "first.json").write_text(json.dumps(first)); (t / "second.json").write_text(json.dumps(second))
+            (t / "az").write_text(f"""#!/usr/bin/env bash
+case "$*" in
+  *"containerapp show"*) echo rev-2 ;;
+  *"revision show"*) echo {image} ;;
+  *"replica list"*) if [ -f {t}/seen ]; then cat {t}/second.json; else touch {t}/seen; cat {t}/first.json; fi ;;
+  *) exit 9 ;;
+esac
+""")
+            (t / "az").chmod(0o755)
+            env = dict(os.environ, PATH=f"{t}:{os.environ['PATH']}", WORKER_TIMEOUT_S="1", WORKER_HOLD_S="0", WORKER_POLL_S="0")
+            r = subprocess.run(["bash", "infra/scripts/worker-check.sh", "rg", "ca-aron-dev-worker", self.IMG],
+                               env=env, capture_output=True, text=True, cwd=ROOT, timeout=60)
+            return r.returncode, r.stdout + r.stderr
+
+    @staticmethod
+    def replica(state="Running", cstate="Running", restarts=0):
+        return [{"name": "rep-1", "properties": {"runningState": state,
+                 "containers": [{"name": "worker", "runningState": cstate, "restartCount": restarts}]}}]
+
+    def test_running_and_staying_up_passes(self):
+        rc, out = self.run_check(self.IMG, self.replica(), self.replica())
+        self.assertEqual(rc, 0, out)
+        self.assertIn("still running", out)
+
+    def test_old_image_crash_loop_or_restart_fails(self):
+        self.assertEqual(self.run_check("cr.example/aron-backend@sha256:" + "b" * 64, self.replica(), self.replica())[0], 1,
+                         "an older revision is not this deploy's worker")
+        crash = self.replica(cstate="Waiting", restarts=3)
+        rc, out = self.run_check(self.IMG, crash, crash)
+        self.assertEqual(rc, 1, "a crash-looping replica never passes")
+        self.assertIn("no replica of rev-2 running with 0 restarts", out)
+        rc, out = self.run_check(self.IMG, self.replica(), self.replica(restarts=1))
+        self.assertEqual(rc, 1, "a restart during the hold is a crash loop")
+        self.assertIn("did not stay up", out)
+
+    def test_wired_after_the_health_gate(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.index("infra/scripts/worker-check.sh"))
+        self.assertIn('"ca-aron-${ENV_NAME}-worker" "$BACKEND_IMAGE"', d)
+        self.assertIn('summary "| Worker | ${worker_result} |"', d)
+
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():
         sys.exit(f"compiled templates not found in {COMPILED}; run infra/validate.sh")

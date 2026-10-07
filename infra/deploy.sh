@@ -632,6 +632,14 @@ if [ "$api_mode_now" = Multiple ]; then
       || echo "::warning::could not deactivate the old revision $r"
   done
 fi
+# Worker health (lead 2026-10-07): the worker has no HTTP endpoint, so the gate above cannot see it. Its latest
+# revision must run this image, have a replica Running with 0 restarts, and stay so for 90 s. Non-blocking at first.
+if worker_out="$(infra/scripts/worker-check.sh "$RG" "ca-aron-${ENV_NAME}-worker" "$BACKEND_IMAGE" 2>&1)"; then
+  worker_result="running, 0 restarts after 90 s"
+else
+  worker_result="NOT PROVEN (see the warning)"; echo "::warning::worker check failed: ${worker_out//$'\n'/ | }"
+fi
+printf '%s\n' "$worker_out"
 # Release marker on the App Insights charts (N-062); never fails the deploy.
 infra/scripts/release-marker.sh "$rg_id" "$ENV_NAME" "$SHA" \
   "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-local}" \
@@ -670,6 +678,7 @@ summary "| API | https://${API_HOST}/v1/health |"
 summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"
+summary "| Worker | ${worker_result} |"
 summary "| Database logins | ${dblogins_result} |"
 summary "| Dev seed | ${devseed_result} |"
 summary "| SR slice smoke | ${slice_result} |"
