@@ -24,9 +24,9 @@ class WorkingDaysTest {
         val today = LocalDate.parse("2027-01-20")
         val breakDays = (1L..9L).map { today.minusDays(it) }.toSet() // 11..19 off
         val floor = WorkingDays.floor(today, 7, WorkingDays.WORKING_DAYS, 15, working(breakDays))
-        // The last working day before the break (Sun 10) is 10 calendar days old: outside the calendar rule, inside this one.
-        assertEquals(true, !LocalDate.parse("2027-01-10").isBefore(floor))
-        assertEquals(true, LocalDate.parse("2027-01-10").isBefore(today.minusDays(7)))
+        // Seven working days back from Wed 20 would reach Sun 3 (Fri 8 and the break skipped); the 15-day ceiling stops at
+        // Tue 5. The last working day before the break (Sun 10, 10 calendar days old) is inside; the calendar rule refuses it.
+        assertEquals(LocalDate.parse("2027-01-05"), floor)
     }
 
     @Test

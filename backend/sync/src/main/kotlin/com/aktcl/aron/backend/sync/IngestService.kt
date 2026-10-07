@@ -903,7 +903,8 @@ class IngestService(
     /**
      * F-SYS-090: the backdate window's floor. `cfg.calendar.window_unit` missing or `calendar` keeps today minus
      * `cfg.sync.max_backdate_days`; `working_days` counts selling days of the uploader's home zone (global weekend and
-     * the scoped holiday calendar), capped by the registry retention. Read before any family transaction.
+     * the scoped holiday calendar), capped by the registry retention. Read before any family transaction; a read failure
+     * is a retryable 503 for the whole batch.
      */
     private fun backdateFloor(up: Uploader, today: LocalDate, days: Long): LocalDate {
         val unit = runCatching { config.string("cfg.calendar.window_unit") }.getOrDefault(WorkingDays.CALENDAR)
@@ -929,9 +930,10 @@ class IngestService(
                 WorkingDays.floor(today, days, unit, ceiling) { WorkingDays.isWorking(it, zone, calendar, weekend) }
             }
         }.getOrElse { e ->
-            // The wider window is a relief, never a requirement: on a read failure the calendar rule holds.
-            log.warn("working-day backdate window unavailable; calendar window used", e)
-            today.minusDays(days)
+            // Not the calendar rule: a row quarantined as too old keeps that answer on every re-send, so a passing read
+            // failure on the first morning after a break would lose the relief for good. The batch is retried instead.
+            log.warn("working-day backdate window unavailable; batch refused as retryable", e)
+            throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "try again shortly", retryAfterS = 30, headers = mapOf("Retry-After" to "30"))
         }
     }
 

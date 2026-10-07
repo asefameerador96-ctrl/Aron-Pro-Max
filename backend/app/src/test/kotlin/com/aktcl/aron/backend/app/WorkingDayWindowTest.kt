@@ -75,6 +75,7 @@ class WorkingDayWindowTest {
                                          effect, delivery, requires_ack, future_dated_only, editor_permission, description_en)
                 VALUES ('cfg.calendar.window_unit', 'calendar', 'S', 'enum', '"calendar"'::jsonb, '{"enum": ["calendar", "working_days"]}'::jsonb, NULL,
                         ARRAY['global']::text[], 2, NULL, 'B', 'both', false, false, 'cfg.edit.ops', 'Working-day windows (F-SYS-090)')
+                ON CONFLICT (key) DO NOTHING
                 """.trimIndent(),
             )
             h.execute(
@@ -160,6 +161,8 @@ class WorkingDayWindowTest {
         application { aronApi(wiring) }
         // 2026-12-23 is 11 calendar days back (outside the 7-day calendar rule) but 1 working day back.
         assertEquals("accepted", client.status(visitOn("2026-12-23")))
+        // 2026-12-19 is the ceiling itself (today - 15): inside.
+        assertEquals("accepted", client.status(visitOn("2026-12-19")))
         // 2026-12-18 is 16 calendar days back: beyond the ceiling (15), quarantined as before.
         assertEquals("quarantined:business_date_out_of_window", client.status(visitOn("2026-12-18")))
     }
