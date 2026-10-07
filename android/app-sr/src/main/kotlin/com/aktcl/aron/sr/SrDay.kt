@@ -75,6 +75,9 @@ class SrDay(
     /** Work started from the day that nobody waits for (the resume config check, settings reloads). */
     private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
 
+    /** Prints and print confirms run here, so leaving a screen never cuts a receipt short (see [PrintRunner]). */
+    val printRunner = PrintRunner(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main))
+
     /**
      * R9: launches the conditional config check and returns at once; a visit or a sale never waits for it. Also bound as
      * the VisitFlow's [com.aktcl.aron.feature.outlet.ConfigCheck], so even an awaiting caller only pays a launch.
