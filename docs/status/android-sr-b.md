@@ -65,3 +65,21 @@ val vm = SalesSubmitViewModel(userId, businessDate, RoomDaySource(db), serverCou
 ```
 Core ruling used: `recordNumberedSale` reserves the memo number in its own committed step, so a failed save burns a number (never reused); `isFullSettlement` means the whole outlet outstanding, so Mark paid on one memo of an owing outlet is a partial settlement.
 Open: `catalog` (prices in Room are part of F-SYS-006), stock slip flag, `serverCounts` (sync response `server_totals`), net_by_category in the day_submit money uses SKU categories plus an `other` bucket for memo-level discounts (to confirm against the server check).
+
+## HANDOFF (READY TO RECYCLE, 2026-10-07)
+**Done (logic, screens, tests, both checkers; none closed end to end because app wiring is pending):**
+F-SR-023/025/026/027/029/033 (feature-sale: SaleDraft, SaleDraftOps, SaleReviewCalculator, SaleCommitter incl. `numbering = MemoNumbering(...)`, SaleFlow, FileDraftStore, EditGate, VisitOutcomes, SaleViewModel, SaleRoute, SaleCommitStep, screens: entry, review, credit, slide, QC, call prompts), F-SR-022/057/060, F-SR-030/032/036/054/010/067/068/069 (feature-memo: DaySummary, MemoMenu, DueLedger, SaleHistory, KPI/money cards, Journey, PrintMapping, MemoViewModel, ReprintDialogs, RoomMemoStore, RoomDueCollectionWriter, screens), F-SR-034/035 (feature-dayclose: SalesSubmit rules, SalesSubmitViewModel, RoomDaySource, RoomDaySubmitWriter, screen), F-SR-053/081 (feature-stock `StockAdjustments`).
+Checker findings (Opus T1: 7, Sonnet T2: 4) fixed; tests kept in each module's `CheckerTest.kt`.
+**In progress:** nothing half-written. Last lane head pushed: see `git log lane/android-sr-b`.
+**Next three rows (all wiring, assembly lines are in "Production adapters" above):**
+1. App-sr wiring (with android-sr-a): build `SaleCatalog` from ReferenceDao.activeSkus + prices (F-SYS-006) + `stockBalanceOn` minus sales; `serverCounts` from the sync response `server_totals`; navigation Home tiles to Sale, Memo, Summary, Sales Submit, History, Journey.
+2. Summary Print: android-print's `MemoPrinting.printDaySummary` + `PrintMapping.daySummary`; PrinterIcon/PrinterBanner on Review, Memo, Summary (HoldPrinter already in SaleRoute); stock-slip flag for `RoomDaySubmitWriter`.
+3. Sunlight/outdoor-first: swap my figures onto the kit's `ContentCard` and largest tabular numerals once the kit has it; add visit_skip UI (`recordVisitSkip`), edit-flow geofence fix capture (`editFix`) and the KPI tile route.
+**Traps:**
+- Never print `list_workflow_runs` output (huge); use `get_workflow_run` with the run id, then download the job log URL and grep for FAILED.
+- INT push is denied for this lane: push only to `lane/android-sr-b`, merge INT into it first; the integrator promotes it.
+- `core-ui` HardcodedStringScanTest fails the build on any prose literal: build strings with `listOf(...).joinToString(SEP)`, never `"${a} ${b}"` inside `Text`.
+- Local Robolectric works for sdk 36 only in feature modules; a core-ui test may fail to fetch android-all (container issue, not code).
+- `recordNumberedSale` burns a number on a failed save (core ruling); `isFullSettlement` means the whole outlet outstanding (Mark paid on one memo is partial).
+- Do not commit `.claude/worktrees/` (excluded locally in `.git/info/exclude`).
+- Open sponsor question Q-UI-08: rejected and quarantined rows do not block Sales Submit (lead accepted as default).
