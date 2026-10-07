@@ -138,6 +138,30 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     for the regress count. Answer `docs/requests/db-working-day-keys-and-flags-answer.md`; break-override item checks asked
     of backend-admin (`db-break-overrides-validation.md`). Opus checker PASS (round 5; should-fix applied).
 
+## Session 5 (2026-10-07, from ~23:00 UTC)
+
+**Pushed lane/db 59de9f29: V0061-V0068 on top of the INT merge (f4945a81).** db 226, backend 727/0, squawk ok. Opus
+checker per batch: V0061-V0064 PASS (nits applied); V0065-V0068 one blocker (V0067 missing from SchemaV1aTest's ruled
+set) fixed before the push. Integrator and backend-core told.
+- `V0061` `app.media_upload` (answers `backend-core-media-upload-ledger.md`, unblocks F-API-007): as asked, plus
+  immutability (UPDATE/DELETE/TRUNCATE refused, 42501), out of api_rw's `*/update` row, and a CHECK that `blob_path`
+  ends in `/<media_uuid>.jpg`. Notes for backend-core: (a) the CHECK compares the canonical lowercase uuid text, so
+  build the path from `UUID.fromString(x).toString()` (an uppercase uuid in the path is a 23514, map it to 400, not
+  500); (b) `blob_path` is UNIQUE and has no purpose in it, so one media_uuid uploaded as feedback and then as support
+  conflicts on blob_path: keep the conflict target explicit `ON CONFLICT (media_uuid, purpose) DO NOTHING` and map a
+  remaining 23505 to 409 (or decide that one uuid has one purpose).
+- `V0062` `outlet_confirmed_lat_lng` partial index (answers `backend-core-outlet-geo-index.md`); plan test uses it.
+- `V0063`/`V0064` `app.device.last_sync_error` with the format CHECK (answers `backend-core-device-telemetry-columns.md`).
+- `V0065`/`V0066` `route_day.last_bundle_at`, `bundle_count` (answers `backend-core-route-day-downloads.md`, F-SYS-025).
+  The UPDATE goes through `route_day_touch`, so every counted download also moves `updated_at` and `version`: an
+  If-Match on route_day taken before a bundle download goes stale.
+- `V0067` `cfg.app.rejected_keep_days` 30 (7..90), docs/19 s9 (candidate row, no request).
+- `V0068` AUD-PERF-07: pg_trgm GIN on outlet name and code (released from db/held). ORDER: needs lane/infra bb221dfe
+  (PG_TRGM in azure.extensions) in the same or an earlier deploy.
+- Test `BackendCoreAsksV0061Test` migrates to V0060, loads db/seed and `infra/sql/devseed-smoke-outlet.sql`, then
+  migrates forward (the dev database's path before the 2026-10-08 phone checks): outlets fingerprint unchanged,
+  SMOKE-SR-001 found through the new index.
+
 ## Handoff (session 4, 2026-10-07 ~19:40 UTC)
 
 **On lane/db: V0039-V0060 (head after 2205ff98), green locally (db 218, backend 660 on the INT merge of ~18:00);

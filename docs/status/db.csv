@@ -40,3 +40,5 @@ AUD-DA-07,L,2026-10-07T12:20Z,2026-10-07T17:10Z,20,"part of DA-02 checker rounds
 AUD-DA-08,M,2026-10-07T08:00Z,2026-10-07T09:30Z,0,"Opus PASS (session 1, data-as-a-product batch)","V0016 comments on every app/dw table and column + tools/data-dictionary/render.sh + DataDictionaryTest (fails on any missing comment, stale dictionary or PII class below its columns)"
 AUD-PERF-03,M,2026-10-07T09:00Z,2026-10-07T19:55Z,10,"Opus PASS (V0020); re-audit 19:55","db side: V0020 db_role_limit + apply_login_limits (docs/18 timeouts per login), V0029 grants; infra switched dbPerAppLogins on in dev (20:02)"
 backend-core-working-day-keys-and-flags,S,2026-10-07T21:05Z,2026-10-07T22:10Z,40,"PASS (Opus round 5; should-fix + nit applied)","V0058 V0059 V0060"
+AUD-PERF-07,S,2026-10-07T22:58Z,2026-10-08T00:30Z,30,"checker round 2: 0 blockers on V0068 (1 blocker on V0067 fixed in the same batch)","V0068 pg_trgm GIN on outlet name/code; plan test BitmapOr; needs infra bb221dfe first"
+F-SYS-025,S,2026-10-07T23:20Z,2026-10-08T00:30Z,20,"checker PASS","db side: V0065/V0066 route_day.last_bundle_at, bundle_count (backend-core request)"
