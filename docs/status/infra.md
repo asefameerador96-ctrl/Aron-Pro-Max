@@ -27,6 +27,15 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
 
+## Day 3, 16:10 UTC: worker without the token signing key (backend-core request, AUD-SEC-07)
+
+`docs/requests/infra-worker-no-signing-key.md`: the backend change (worker and migrate start without
+`ARON_JWT_SIGNING_KEY`, `SettingsTest`) is on INT since c992c9c, so the worker container no longer gets the
+`jwt-signing-key` / `jwt-kid` Key Vault references; only api replicas do (test `WorkerWithoutSigningKey`). Note: the
+worker identity still has Key Vault Secrets User on the whole vault (identities.bicep), so this removes the key from the
+worker's environment, not its ability to read it; per-secret role scoping is a final-account item (logged here, not built).
+The api's ~24 s drain fits Container Apps' default 30 s termination grace; nothing here lowers it.
+
 ## Day 3, 15:20 UTC: my regression fixed (deploy run 37639072495)
 
 Deploy run 142 (62ee65f) failed at `az deployment group create ... --tags aron-sha=...`: "unrecognized arguments"
