@@ -269,6 +269,8 @@ class SyncEngine(
                                 continue
                             }
                         }
+                        // A refused batch that carried telemetry: counted, so a day the server cannot read is dropped.
+                        telemetryDate?.let { d -> try { telemetry?.failed(d) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { } }
                         return failure(batchUuid, rows, result)
                     }
                 }

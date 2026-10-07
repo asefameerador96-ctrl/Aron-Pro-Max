@@ -65,8 +65,8 @@ class SessionSyncRunner(
     private val config: ResumeConfigCheck? = null,
     /** F-SYS-024: buffered events become one outbox row before the batch is built (they ride this upload). */
     private val activityLog: ActivityLog? = null,
-    /** F-SYS-081: platform reads for the daily telemetry; null in tests that do not cover it. */
-    private val telemetryProbe: TelemetryProbe? = null,
+    /** F-SYS-081: the device's daily telemetry (one per process); null in tests that do not cover it. */
+    private val telemetry: DeviceTelemetry? = null,
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
         // A queued run of a user wiped since (TSO logout) must not create an empty database and bring the user back.
@@ -74,14 +74,12 @@ class SessionSyncRunner(
         val db = databases.of(userId)
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         activityLog?.flush(userId)
-        val telemetry = telemetryProbe?.let { DeviceTelemetry(db, it, components.clock) }
-        try { telemetry?.sample() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         val started = components.clock.elapsedRealtimeMs()
-        val report = engine(userId, db, telemetry).run(trigger)
         try {
-            telemetry?.noteWake(components.clock.elapsedRealtimeMs() - started) // the job's wake lock (WorkManager's)
             telemetry?.sample()
+            telemetry?.noteGps(userId) { date -> DeviceTelemetry.gpsFixes(db, date) }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        val report = engine(userId, db).run(trigger)
         // Only after a run the server answered in full: never straight after a hold, 429, 503 or a refusal (s4.10, s4.7).
         // The delta goes out under the FULL grant of the signed-in user: a run for another user on a shared phone (A's rows
         // uploading while B is signed in) must never pull B's day into A's database (F-SYS-052 checker).
@@ -100,6 +98,11 @@ class SessionSyncRunner(
         dailyPurge(db)
         components.session.noteTimePassing() // F-SYS-052: proven uptime for the 7-day offline window
         try { afterRun(userId, report) } catch (_: Exception) { }
+        // After the pull and the media hand-off, so their bytes are billed to the network they used.
+        try {
+            telemetry?.noteWake(components.clock.elapsedRealtimeMs() - started) // the job's wake lock (WorkManager's)
+            telemetry?.sample()
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         return report
     }
 
@@ -129,7 +132,7 @@ class SessionSyncRunner(
         }
     }
 
-    private fun engine(userId: Long, db: com.aktcl.aron.core.database.AronDatabase, telemetry: DeviceTelemetry? = null) = SyncEngine(
+    private fun engine(userId: Long, db: com.aktcl.aron.core.database.AronDatabase) = SyncEngine(
         userId = userId,
         db = db,
         api = SyncBatchApi(components.apiClient, components.proofSigner),
@@ -185,9 +188,12 @@ class WorkManagerSyncScheduler(
     private val debounceS: Long = 5,
     private val checkoutJitterS: Int = 90,
     private val checkoutGate: CheckoutGate? = null,
+    /** Called on every request (every save, check-out, submit): F-SYS-081 samples there, offline too. Must not block. */
+    private val onRequest: () -> Unit = {},
 ) : SyncScheduler {
 
     override fun requestSync(userId: Long, trigger: SyncTrigger) {
+        try { onRequest() } catch (_: Exception) { }
         // The local state (checked out, submitted_local) is already set at the tap; only the upload waits (doc 17 T7).
         val gateWave = (trigger == SyncTrigger.CHECKOUT || trigger == SyncTrigger.DAY_SUBMIT) &&
             (checkoutGate?.let { runCatching { it.justOpened() }.getOrDefault(false) } ?: (trigger == SyncTrigger.CHECKOUT))

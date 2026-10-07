@@ -39,13 +39,15 @@ import kotlin.random.Random
 class DeviceTelemetryTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private lateinit var db: AronDatabase
+    private val file get() = java.io.File(context.noBackupFilesDir, "aron/telemetry-test.json")
 
     /** 2026-10-05 in Dhaka at [hh]:[mm] (UTC+6). */
     private fun dhaka(hh: Int, mm: Int, day: Int = 5) = 1_791_158_400_000L + (day - 5) * 86_400_000L + ((hh - 6) * 3600L + mm * 60L) * 1000L
     private var now = dhaka(7, 0)
+    private var elapsed = 5_000_000L
     private val clock = object : WallClock {
         override fun nowMs(): Long = now
-        override fun elapsedRealtimeMs(): Long = 1_000_000L
+        override fun elapsedRealtimeMs(): Long = elapsed
     }
 
     private class FakeProbe : TelemetryProbe {
@@ -60,36 +62,38 @@ class DeviceTelemetryTest {
         override fun metered() = metered
     }
     private val probe = FakeProbe()
-    private val telemetry get() = DeviceTelemetry(db, probe, clock)
+    /** One per process in the app; a new instance here reads the same file, as a new process would. */
+    private val telemetry by lazy { DeviceTelemetry(file, probe, clock) }
 
     @Before fun setUp() {
+        file.delete()
         context.deleteDatabase(AronDatabase.fileName(USER))
         db = AronDatabase.open(context, USER, null)
     }
 
-    @After fun tearDown() { db.close() }
+    @After fun tearDown() { db.close(); file.delete() }
 
     private suspend fun day(day: Int = 6): JsonObject {
         now = dhaka(9, 0, day)
         return telemetry.pendingDay(true, 1024)!!.second.jsonObject
     }
 
-    @Test fun bytesCpuAndStartsAreDeltasAcrossProcessesAndReboots() = runBlocking {
-        telemetry.sample() // first sample: a baseline only for bytes; this process's CPU so far counts
-        probe.bytes = 5_000; probe.cpu = 400
-        telemetry.sample() // +4,000 on mobile, +300 ms
-        probe.metered = false; probe.bytes = 6_000
+    @Test fun bytesAreBilledToTheNetworkOfThePreviousSampleAndRebootsAreSeenFromElapsedTime() = runBlocking {
+        telemetry.sample() // baseline on mobile; this process's CPU so far counts
+        probe.bytes = 5_000; probe.cpu = 400; elapsed += 60_000
+        probe.metered = false // Wi-Fi now: the 4,000 bytes moved before the change were on mobile
+        telemetry.sample()
+        probe.bytes = 6_000; elapsed += 60_000
         telemetry.sample() // +1,000 on Wi-Fi
-        probe.processToken = "p2"; probe.cpu = 50; probe.bytes = 800 // a new process after a reboot
-        probe.metered = true
-        telemetry.sample() // CPU of the new process counts whole; the uid counters restarted: +800 on mobile
-        telemetry.noteMobileMediaBytes(300)
+        // Reboot, then more than the old total moved: elapsed time went back, so all 9,000 bytes since boot count.
+        probe.processToken = "p2"; probe.cpu = 50; probe.bytes = 9_000; elapsed = 120_000
+        telemetry.sample()
         telemetry.noteWake(2_500)
         val d = day()
         assertEquals("2026-10-05", d["d"]!!.jsonPrimitive.content)
-        assertEquals(4_800L - 300L, d["b_mob"]!!.jsonPrimitive.long)
-        assertEquals(300L, d["b_mob_media"]!!.jsonPrimitive.long)
-        assertEquals(1_000L, d["b_wifi"]!!.jsonPrimitive.long)
+        assertEquals(4_000L, d["b_mob"]!!.jsonPrimitive.long)
+        assertEquals(1_000L + 9_000L, d["b_wifi"]!!.jsonPrimitive.long)
+        assertNull("not reported: absent, not zero", d["b_mob_media"])
         assertEquals(100L + 300L + 50L, d["cpu_ms"]!!.jsonPrimitive.long)
         assertEquals(2, d["starts"]!!.jsonPrimitive.int)
         assertEquals(2_500L, d["wake_ms"]!!.jsonPrimitive.long)
@@ -110,7 +114,8 @@ class DeviceTelemetryTest {
         telemetry.sample()
         now = dhaka(23, 59)
         assertNull("today is still open", telemetry.pendingDay(true, 1024))
-        val (date, obj) = run { now = dhaka(0, 5, 6); telemetry.pendingDay(true, 1024)!! }
+        now = dhaka(0, 5, 6)
+        val (date, obj) = telemetry.pendingDay(true, 1024)!!
         assertEquals("2026-10-05", date)
         assertTrue(obj.toString().toByteArray().size <= 1024)
         assertTrue(telemetry.pendingDay(true, 64)!!.second.toString().toByteArray().size <= 64) // the guard trims
@@ -118,23 +123,43 @@ class DeviceTelemetryTest {
         assertNull(telemetry.pendingDay(true, 1024))
     }
 
-    @Test fun disabledDropsTheKeptDaysAndOldDaysExpire() = runBlocking {
+    @Test fun disabledOldAndTwiceRefusedDaysAreDropped() = runBlocking {
         telemetry.sample()
         now = dhaka(9, 0, 6); telemetry.sample()
         now = dhaka(9, 0, 7)
         assertNull(telemetry.pendingDay(false, 1024))
-        assertTrue(db.referenceDao().metaWithPrefix(DeviceTelemetry.DAY_PREFIX).isEmpty())
-        now = dhaka(9, 0, 7); telemetry.sample()
+        assertNull(telemetry.pendingDay(true, 1024))
+        telemetry.sample() // day 7
         now = dhaka(9, 0, 16)
         assertNull("older than 7 days: dropped unsent", telemetry.pendingDay(true, 1024))
+        telemetry.sample() // day 16
+        now = dhaka(9, 0, 17)
+        telemetry.markFailed("2026-10-16")
+        assertNotNull(telemetry.pendingDay(true, 1024))
+        telemetry.markFailed("2026-10-16")
+        assertNull("refused twice: never holds back a batch again", telemetry.pendingDay(true, 1024))
     }
 
-    @Test fun gpsCountsTheFixesTakenForThatDatesCaptures() = runBlocking {
-        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
-        TestRows.visit(outletId = 50001L, seq = 1).let { (v, f) -> repo.recordVisitOpen(v, f) }
-        TestRows.visit(outletId = 50002L, seq = 2).let { (v, f) -> repo.recordVisitOpen(v, f.copy(reused = true)) }
-        telemetry.sample() // 2026-10-05
-        assertEquals(1, day()["gps"]!!.jsonPrimitive.int)
+    /** Shared phone: one device stream; gps is summed over the users' databases, bytes are never counted per user. */
+    @Test fun aSharedPhoneKeepsOneStreamAndSumsGpsOverUsers() = runBlocking {
+        val other = AronDatabase.open(context, USER + 1, null)
+        try {
+            TestRows.visit(outletId = 50001L, seq = 1).let { (v, f) -> CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }.recordVisitOpen(v, f) }
+            TestRows.visit(outletId = 50002L, seq = 2).let { (v, f) -> CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }.recordVisitOpen(v, f.copy(reused = true)) }
+            TestRows.visit(outletId = 50003L, seq = 3).let { (v, f) -> CaptureRepository(other) { "2026-10-05T04:36:00.000Z" }.recordVisitOpen(v, f) }
+            telemetry.sample() // user A's run
+            probe.bytes = 3_000; elapsed += 60_000
+            telemetry.sample() // user B's run: +2,000, once
+            telemetry.noteGps(USER) { d -> DeviceTelemetry.gpsFixes(db, d) }
+            telemetry.noteGps(USER + 1) { d -> DeviceTelemetry.gpsFixes(other, d) }
+            telemetry.noteGps(USER) { d -> DeviceTelemetry.gpsFixes(db, d) } // a second run recounts, never adds
+            val d = day()
+            assertEquals(2, d["gps"]!!.jsonPrimitive.int)
+            assertEquals(2_000L, d["b_mob"]!!.jsonPrimitive.long)
+        } finally {
+            other.close()
+            context.deleteDatabase(AronDatabase.fileName(USER + 1))
+        }
     }
 
     /** The object rides the next batch, is kept through a 503 and sent again, and is dropped once a batch is answered. */
@@ -146,8 +171,7 @@ class DeviceTelemetryTest {
         try {
             telemetry.sample()
             now = dhaka(9, 0, 6)
-            val repo = CaptureRepository(db) { "2026-10-06T03:00:00.000Z" }
-            TestRows.visit(outletId = 50001L, seq = 1).let { (v, f) -> repo.recordVisitOpen(v, f) }
+            TestRows.visit(outletId = 50001L, seq = 1).let { (v, f) -> CaptureRepository(db) { "2026-10-06T03:00:00.000Z" }.recordVisitOpen(v, f) }
             val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
             val client = AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { DEVICE })
             val auth = object : UploadAuth {
@@ -158,11 +182,41 @@ class DeviceTelemetryTest {
                 telemetry = telemetry.forBatch { null })
             fake.failBefore += 503
             assertEquals(SyncStop.RETRY_LATER, engine().run(SyncTrigger.MANUAL).stop)
-            assertNotNull(db.referenceDao().meta(DeviceTelemetry.DAY_PREFIX + "2026-10-05"))
+            assertNotNull(telemetry.pendingDay(true, 1024))
             assertEquals(SyncStop.DRAINED, engine().run(SyncTrigger.MANUAL).stop)
             val carried = fake.requests.mapNotNull { it.body?.get("telemetry")?.jsonObject?.get("d")?.jsonPrimitive?.content }
             assertEquals(listOf("2026-10-05", "2026-10-05"), carried)
-            assertNull(db.referenceDao().meta(DeviceTelemetry.DAY_PREFIX + "2026-10-05"))
+            assertNull(telemetry.pendingDay(true, 1024))
+        } finally {
+            server.close()
+        }
+    }
+
+    /** A batch the server refuses (400) twice while carrying the day stops carrying it; the records go on alone. */
+    @Test fun aRefusedDayStopsRidingAfterTwoRefusals() = runBlocking {
+        val server = MockWebServer()
+        val fake = FakeIngestServer()
+        server.dispatcher = fake
+        server.start()
+        try {
+            telemetry.sample()
+            now = dhaka(9, 0, 6)
+            TestRows.visit(outletId = 50001L, seq = 1).let { (v, f) -> CaptureRepository(db) { "2026-10-06T03:00:00.000Z" }.recordVisitOpen(v, f) }
+            val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
+            val client = AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { DEVICE })
+            val auth = object : UploadAuth {
+                override suspend fun token(userId: Long): String? = "upload-1"
+                override suspend fun refresh(userId: Long, rejected: String?): Boolean = false
+            }
+            fun engine() = SyncEngine(USER, db, SyncBatchApi(client, null), auth, { DEVICE }, "1.0.3+10003", clock, SyncPolicy(), random = Random(7),
+                telemetry = telemetry.forBatch { null })
+            fake.failBefore += 400
+            fake.failBefore += 400
+            engine().run(SyncTrigger.MANUAL)
+            engine().run(SyncTrigger.MANUAL)
+            assertNull(telemetry.pendingDay(true, 1024))
+            assertEquals(SyncStop.DRAINED, engine().run(SyncTrigger.MANUAL).stop)
+            assertNull(fake.requests.last().body?.get("telemetry"))
         } finally {
             server.close()
         }
