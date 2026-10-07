@@ -163,6 +163,18 @@ class MemoPrinting(
         }
     }
 
+    private suspend fun markPaperOut(event: PrintEvent) {
+        repeat(3) {
+            try {
+                ledger.savePending(PendingPrint(event, paperOut = true))
+                return
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     private suspend fun print(
         documentUuid: String, kind: String, memoUuid: String?, refUuid: String?, history: List<PrintEvent>,
         render: (PaperRenderer) -> RenderedPaper,
@@ -188,7 +200,9 @@ class MemoPrinting(
                 PrintAttempt.Failed(r.reason)
             }
             PrintOutcome.Printed, PrintOutcome.AlreadyPrinted -> {
-                ledger.savePending(PendingPrint(base, paperOut = true))
+                // The paper is out whatever storage says next: a failed save here never turns it into a
+                // failure; the confirmation (or the final record) stores it again.
+                markPaperOut(base)
                 if (confirmAfterPrint()) {
                     PrintAttempt.AwaitingConfirmation(base)
                 } else {
