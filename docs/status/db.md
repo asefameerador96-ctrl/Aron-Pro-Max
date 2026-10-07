@@ -85,31 +85,51 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   - `V0025`/`V0026` v1.2 device columns `root_hints`, `root_hints_at`, `integrity_unavailable_reason`/`_at` (NULL = unknown).
   - `V0028` restrictive directions (answers `backend-admin-restrictive-dir.md`; ConfigWorkflowTest adapted in step).
 
-## Now (session 2, 2026-10-07)
+## Handoff (session 2 recycled, 2026-10-07 ~11:00 UTC)
 
-On lane/db (green locally on db and every backend suite; Opus checker PASS per batch):
-- `V0023`-`V0029` (see Done);
-- `V0030`: export log, PII read budget, `cfg.pii.*` budget keys (lead ruling, TSO 5000 role value);
-- `V0031`: dw device/activity/consent facts (M-123 to M-125);
-- `V0032`: `bundle_snapshot`;
-- `V0033`: AUD-DA-01 (outbox `tx_id` + horizon, dirty-key dead letter, deprecated versions refused, TRUNCATE guard);
-- `V0034`: `cfg.support.public_key_spki`;
-- `V0035`: SECURITY DEFINER functions search `pg_temp` last (`ensure_partitions` could be hijacked by a `jobs_rw` temp view).
+**On lane/db (V0023-V0038), green locally on db (190) and every backend suite; Opus checker PASS per batch:**
+- `V0023`: back-office tables, price_batch (status flow + freeze), the V0007 leave fix.
+- `V0024`: R17 reshape of `cfg.sync.reconcile_types` (default, stored, pending); `outlet_fields` server-only;
+  3 print keys.
+- `V0025`/`V0026`: v1.2 device columns (NULL = unknown).
+- `V0027`: system code lists, with backend-admin's fixture clause landed in the same push.
+- `V0028`: restrictive_dir.
+- `V0029`: api_rw grants (DELETE route_planned/user_scope/mfa_secret; void UPDATE on geo_fix and stock_movement).
+- `V0030`: export log, PII budget, `cfg.pii.list_rows_per_hour` / `cfg.pii.export_rows_per_day` (TSO 5000 by role).
+- `V0031`: dw device/activity/consent facts.
+- `V0032`: bundle_snapshot.
+- `V0033`: AUD-DA-01 (outbox tx_id + horizon, dirty-key dead letter, deprecated versions refused).
+- `V0034`: `cfg.support.public_key_spki`.
+- `V0035`: SECURITY DEFINER functions search pg_temp last.
+- `V0036`: rebuild indexes, `dw.agg_daily_route_segment`, 3 catalogue events.
+- `V0037`/`V0038`: `task.route_id`, `task.cancel_reason`. Tell backend-core's session (session_01465rpZSgSrMTU8CACwuEYx)
+  if not yet done.
 
-Next:
-1. `entry_unlock` (when backend-admin files it).
-2. `backend-reports-db-indexes-and-events.md`: indexes (due_collection, stock_movement, day_exception, dw facts by zone),
-   `dw.agg_daily_route_segment`, catalogue rows `due.collected`, `day_exception.decided`, `risk_signal.changed`.
-3. AUD-DA-02, DA-05..08, PERF-03/07/08; hot-path EXPLAINs at docs/22 volume.
+The integrator promotes lane/db to INT; if CI on lane/db goes red on db or backend, it is ours.
 
-Query-plan candidates (from the previous session):
-- `IngestService.dayStates` filters `(assigned_user_id = :u OR acting_user_id = :u)`; only assigned has an index.
-- `BundleService.openMemos` joins memo by client_uuid without business_date (probes every partition); same for the
-  "parent in its own table" fallback.
-- Check the bundle's `outlet_change_request` EXISTS and `task (assignee_user_id, status)` indexes; add due_ledger rows
-  to `db/perf/generate.sql` before EXPLAINing the dues queries.
+**Open asks to other lanes:**
+- `db-backend-core-config-and-device-v12.md`: ScopedConfig shape, device columns, AUD-DA-01 consumer contract.
+- `db-role-ddl-lock.md`: backend FreshDb takes the role-DDL lock.
+- `db-event-tracking-action-note.md`: tracking_action v2.
+
+**Next rows (lead's order):**
+1. The db part of infra's per-app logins, if infra asks (V0029 is the grant base).
+2. `entry_unlock` when backend-admin files it.
+3. AUD-DA-02, DA-05..08, PERF-03/07/08 (`python3 tools/my-rows.py db --todo`); hot-path EXPLAINs at docs/22 volume.
+
+Query-plan candidates:
+- `IngestService.dayStates` ORs `assigned_user_id` and `acting_user_id`; only assigned has an index.
+- `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
+- Check the `outlet_change_request` and `task (assignee_user_id, status)` indexes.
+- Add due_ledger rows to `db/perf/generate.sql`.
+- Plausible, unfixed: `task.route_id` has no index; `cancel_reason` is not tied to `status = 'cancelled'`.
 
 **Traps:**
+- Push only to `lane/db` (not `claude/db-wip-v0023`, not INT). A pushed migration is shipped: fix forward only.
+- Never `pkill -f "gradlew -q"` from a shell whose own command line contains that string (it kills itself).
+- Two Gradle runs at once delete each other's test results ("0 tests"). Run modules one after another; recreate
+  `aron_test` (DROP ... WITH (FORCE)) when a local migration changed, or platform's smoke test fails on the checksum.
+- Checkers must not run Gradle while the suites run: the shared server hits max_connections ("too many clients").
 - Run Gradle one invocation at a time. Concurrent runs corrupt the test results.
 - Before a full run: `rm -rf db/build/test-results`, then recreate the shared `aron_test` DB if a local migration was
   edited (Flyway checksum).
