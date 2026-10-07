@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
 import { buildEntry, saleOf, type EntryRow } from "@/lib/admin/web-entry";
+import { digitsOnly } from "@/lib/admin/taka";
 import { inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 
@@ -13,8 +14,10 @@ export interface GridSku {
   label: string;
 }
 
-export function WebEntryGrid({ routeId, date, skus, initialLines, targetOutlets, initialCalls, saved, appOverlap, canWrite }: { routeId: number; date: string; skus: GridSku[]; initialLines: { sku_id: number; issue_qty_base: number; return_qty_base: number; memo_count: number }[]; targetOutlets: number; initialCalls: number; saved: boolean; appOverlap: boolean; canWrite: boolean }) {
+export function WebEntryGrid({ routeId, date, skus: listed, initialLines, targetOutlets, initialCalls, saved, appOverlap, canWrite }: { routeId: number; date: string; skus: GridSku[]; initialLines: { sku_id: number; issue_qty_base: number; return_qty_base: number; memo_count: number }[]; targetOutlets: number; initialCalls: number; saved: boolean; appOverlap: boolean; canWrite: boolean }) {
   const { t, problem, number } = useI18n();
+  // Stored lines of a SKU that is not in the list (made inactive, or beyond the list limit) stay in the grid: a re-save replaces the whole entry and must not drop them.
+  const skus: GridSku[] = [...listed, ...initialLines.filter((l) => !listed.some((s) => s.id === l.sku_id)).map((l) => ({ id: l.sku_id, label: `#${l.sku_id}` }))];
   const router = useRouter();
   const [rows, setRows] = useState<EntryRow[]>(() => skus.map((s) => {
     const l = initialLines.find((x) => x.sku_id === s.id);
@@ -26,28 +29,33 @@ export function WebEntryGrid({ routeId, date, skus, initialLines, targetOutlets,
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [needReason, setNeedReason] = useState(false);
 
-  const set = (i: number, k: "issue" | "ret" | "memos", v: string) => setRows((s) => s.map((r, j) => (j === i ? { ...r, [k]: v.replace(/\D/g, "").slice(0, 8) } : r)));
+  const set = (i: number, k: "issue" | "ret" | "memos", v: string) => setRows((s) => s.map((r, j) => (j === i ? { ...r, [k]: digitsOnly(v).slice(0, 8) } : r)));
 
   async function save() {
     setBanner(null);
     const { lines, errors: errs } = buildEntry(rows, calls, targetOutlets);
     const e: Record<string, string> = {};
     for (const x of errs) e[`${x.row ?? "c"}.${x.field}`] = t(x.code === "return_exceeds_issue" ? "we.return_exceeds" : x.code === "too_big" ? "cfgc.error.too_big" : "error.field.invalid");
-    if (saved && Array.from(reason.trim()).length < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
+    if ((saved || needReason) && Array.from(reason.trim()).length < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
     if (lines.length === 0 && Number(calls || "0") === 0 && !saved) e.empty = t("we.nothing");
     setErrors(e);
     if (Object.keys(e).length) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/bff/team-op", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ op: "web-entry.save", body: { client_uuid: uuid, route_id: routeId, business_date: date, lines, successful_calls: Number(calls || "0") }, ...(saved ? { reason: reason.trim() } : {}) }) });
+      const res = await fetch("/api/bff/team-op", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ op: "web-entry.save", body: { client_uuid: uuid, route_id: routeId, business_date: date, lines, successful_calls: Number(calls || "0") }, ...(saved || needReason ? { reason: reason.trim() } : {}) }) });
       const data = (await res.json().catch(() => ({}))) as Partial<Problem>;
       if (res.ok) {
         setBanner({ ok: true, text: t("we.saved") });
         setUuid(crypto.randomUUID());
         setReason("");
         router.refresh();
-      } else setBanner({ ok: false, text: problem(data.code) });
+      } else {
+        // Someone saved this route-day after the page loaded: the API wants the reason of a re-save, so ask for it.
+        if (data.errors?.some((x) => x.pointer.includes("change_reason")) || data.code === "ERR_CFG_REASON_REQUIRED") setNeedReason(true);
+        setBanner({ ok: false, text: problem(data.code) });
+      }
     } catch {
       setBanner({ ok: false, text: t("error.network") });
     } finally {
@@ -90,15 +98,15 @@ export function WebEntryGrid({ routeId, date, skus, initialLines, targetOutlets,
       </div>
       <div className="max-w-xs">
         <label htmlFor="calls" className="block text-sm font-medium">{t("we.calls")}</label>
-        <input id="calls" value={calls} disabled={!canWrite} inputMode="numeric" onChange={(e) => setCalls(e.target.value.replace(/\D/g, "").slice(0, 6))} className={inputClass} />
+        <input id="calls" value={calls} disabled={!canWrite} inputMode="numeric" onChange={(e) => setCalls(digitsOnly(e.target.value).slice(0, 6))} className={inputClass} />
         <p className="text-xs text-slate-500">{t("we.calls.hint", { n: number(targetOutlets) })}</p>
         {err("c.calls")}
       </div>
       {errors.empty ? <p role="alert" className="text-xs text-red-700">{errors.empty}</p> : null}
       {canWrite ? (
         <>
-          {saved ? <p className="text-xs text-amber-700">{t("we.resave")}</p> : null}
-          {saved ? <ReasonField value={reason} onChange={setReason} error={errors.reason} /> : null}
+          {saved || needReason ? <p className="text-xs text-amber-700">{t("we.resave")}</p> : null}
+          {saved || needReason ? <ReasonField value={reason} onChange={setReason} error={errors.reason} /> : null}
           {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{banner.text}</p> : null}
           <button type="button" disabled={busy} onClick={save} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
         </>

@@ -23,9 +23,9 @@ export function buildQcRows(cells: Record<string, string>): { rows: QcCell[]; er
   return { rows, errors };
 }
 
-/** Fault types in use: not retired, ordered by `sort`, MFC group before MKT. */
+/** Fault types in use: not retired (valid_to is exclusive: a code retired today is gone today), ordered by `sort`, MFC group before MKT. */
 export function activeFaults(items: readonly CodeItem[], today: string): CodeItem[] {
   return items
-    .filter((i) => (i.valid_to === null || i.valid_to === undefined || i.valid_to >= today) && (i.valid_from ?? "0000-00-00") <= today)
-    .sort((a, b) => String(a.attrs?.group ?? "").localeCompare(String(b.attrs?.group ?? "")) * -1 || a.sort - b.sort);
+    .filter((i) => (i.valid_to === null || i.valid_to === undefined || i.valid_to > today) && (i.valid_from ?? "0000-00-00") <= today)
+    .sort((a, b) => String(a.attrs?.group ?? "").localeCompare(String(b.attrs?.group ?? "")) || a.sort - b.sort);
 }
