@@ -67,7 +67,7 @@ import com.aktcl.aron.feature.tasks.TaskContent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, OUTLET_MENU, REQUEST_OUTLET, REQUEST_FORM }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, OUTLET_MENU, REQUEST_OUTLET, REQUEST_FORM, NO_SALE, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI }
 
 /**
  * The SR day host: Home, Attendance, Stock, the Sale picker with the geo check and Force Sale, Tasks, the Outlet menu and
@@ -80,11 +80,13 @@ fun SrApp(
     day: SrDay, user: HomeUser, health: DeviceHealth?, versionText: String,
     onLanguageSelect: (AppLanguage) -> Unit, onLogout: () -> Unit, onOtherTile: (HomeTile) -> Unit,
     startBundleDownload: suspend () -> Unit,
+    sunlight: Boolean = false, onSunlight: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
     var screen by rememberSaveable { mutableStateOf(SrScreen.HOME) }
     val scope = rememberCoroutineScope()
+    var editMemo by rememberSaveable { mutableStateOf("") }
     val data by day.dayData.collectAsState()
     val tasks by day.taskBoard.state.collectAsState()
     val attendance by day.attendance.state.collectAsState()
@@ -120,7 +122,7 @@ fun SrApp(
         if (screen == SrScreen.HOME && RoutePicker.needsChoice(planned, day.chosenRouteId())) screen = SrScreen.ROUTE_PICK
     }
     BackHandler(enabled = screen != SrScreen.HOME && screen != SrScreen.PERMISSIONS) {
-        screen = when (screen) { SrScreen.FORCE -> SrScreen.VISIT; SrScreen.REQUEST_FORM -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU; else -> SrScreen.HOME }
+        screen = when (screen) { SrScreen.FORCE -> SrScreen.VISIT; SrScreen.NO_SALE -> SrScreen.VISIT; SrScreen.EDIT -> SrScreen.MEMO; SrScreen.REQUEST_FORM -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU; else -> SrScreen.HOME }
     }
 
     when (screen) {
@@ -148,6 +150,11 @@ fun SrApp(
                         HomeTile.SALE -> screen = if (day.visitSession.current.value != null) SrScreen.VISIT else SrScreen.PICKER
                         HomeTile.TASKS -> screen = SrScreen.TASKS
                         HomeTile.OUTLET -> screen = SrScreen.OUTLET_MENU
+                        HomeTile.MEMO -> screen = SrScreen.MEMO
+                        HomeTile.SUMMARY -> screen = SrScreen.SUMMARY
+                        HomeTile.SALES_SUBMIT -> screen = SrScreen.SUBMIT
+                        HomeTile.SALES_JOURNEY -> screen = SrScreen.JOURNEY
+                        HomeTile.KPI -> screen = SrScreen.KPI
                         else -> onOtherTile(t)
                     }
                 },
@@ -178,11 +185,7 @@ fun SrApp(
             val st by day.visitFlow.state.collectAsState()
             val open by day.visitSession.current.collectAsState()
             if (open != null) {
-                Column(Modifier.padding(AronTokens.Space.L)) {
-                    AronBanner(stringResource(R.string.sr_visit_open), kind = BannerKind.Info)
-                    // Placeholder until the sale screens (android-sr-b) own the visit end: no sale yet, so the call is abandoned.
-                    AronPrimaryButton(stringResource(R.string.sr_visit_close), { scope.launch { day.closeVisitAbandoned(); screen = SrScreen.HOME } })
-                }
+                SaleHost(day, sunlight, onSunlight, onNoSale = { screen = SrScreen.NO_SALE }, onDone = { screen = SrScreen.HOME })
             } else {
                 VisitCheckContent(
                     st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { screen = SrScreen.FORCE },
@@ -193,6 +196,13 @@ fun SrApp(
                 )
             }
         }
+        SrScreen.NO_SALE -> NoSaleHost(day, onDone = { screen = SrScreen.HOME })
+        SrScreen.MEMO -> MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT })
+        SrScreen.EDIT -> EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO })
+        SrScreen.SUMMARY -> SummaryHost(day, sunlight, onSunlight)
+        SrScreen.SUBMIT -> SubmitHost(day)
+        SrScreen.JOURNEY -> JourneyHost(day)
+        SrScreen.KPI -> KpiHost(day)
         SrScreen.FORCE -> {
             val st by day.visitFlow.state.collectAsState()
             val capture = remember { day.newCapture("outlet_capture") }

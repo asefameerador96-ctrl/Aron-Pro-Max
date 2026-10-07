@@ -65,7 +65,8 @@ class MainActivity : ComponentActivity() {
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
         setContent {
-            AronTheme(language) {
+            var sunlight by remember { mutableStateOf(false) }
+            AronTheme(language, sunlight = sunlight) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
@@ -80,10 +81,13 @@ class MainActivity : ComponentActivity() {
                                 if (holder.day.value == null) {
                                     holder.day.value = SrDay(
                                         s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
+                                        runCatching { com.aktcl.aron.core.database.repo.MemoNumbering(s.user.username, s.user.bindOrdinal ?: 0, s.user.memoSeqBlockSize ?: 500) }.getOrNull(),
                                         deviceRuntime, resumeConfigCheck,
                                     ).also { it.launchDayConfigRefresh() }
                                 }
                             }
+                            val sunlightPref = remember(s.user.userId) { com.aktcl.aron.core.ui.SunlightPreference(applicationContext, s.user.userId.toString()) }
+                            LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
                             day?.let { d ->
                                 SrApp(
                                     day = d,
@@ -95,6 +99,8 @@ class MainActivity : ComponentActivity() {
                                     onLanguageSelect = onLanguageSelect,
                                     onLogout = { lifecycleScope.launch { components.session.logout() } },
                                     onOtherTile = { },
+                                    sunlight = sunlight,
+                                    onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                     startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
                                 )
                             }
