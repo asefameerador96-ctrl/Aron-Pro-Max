@@ -1,0 +1,6 @@
+Month:
+  type: string
+  pattern: ^\d{4}-(0[1-9]|1[0-2])$
+  description: Calendar month `YYYY-MM`.
+  examples:
+  - 2026-10

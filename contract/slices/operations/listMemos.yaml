@@ -1,0 +1,40 @@
+path: /v1/memos
+method: get
+operation:
+  tags:
+  - memos
+  operationId: listMemos
+  summary: Memo history for an outlet beyond the phone's 7-day local window (online fallback), or for the web.
+  parameters:
+  - name: outlet_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: route_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: memo_no
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/MemoNo'
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of memos with lines and discount lines.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MemoPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

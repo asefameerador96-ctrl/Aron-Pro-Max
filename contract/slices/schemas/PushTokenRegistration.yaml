@@ -1,0 +1,17 @@
+PushTokenRegistration:
+  type: object
+  required:
+  - provider
+  - token
+  - app_flavour
+  additionalProperties: false
+  properties:
+    provider:
+      type: string
+      const: fcm
+    token:
+      type: string
+      minLength: 20
+      maxLength: 4096
+    app_flavour:
+      $ref: '#/components/schemas/AppFlavour'

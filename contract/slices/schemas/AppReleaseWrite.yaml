@@ -1,0 +1,46 @@
+AppReleaseWrite:
+  type: object
+  required:
+  - flavour
+  - version_name
+  - version_code
+  - abi
+  - sha256
+  - size_bytes
+  - download_url
+  - signing_cert_sha256
+  additionalProperties: false
+  properties:
+    flavour:
+      $ref: '#/components/schemas/AppFlavour'
+    version_name:
+      type: string
+      pattern: ^\d{1,3}\.\d{1,3}\.\d{1,3}$
+    version_code:
+      type: integer
+      minimum: 1
+      maximum: 2100000000
+    abi:
+      $ref: '#/components/schemas/Abi'
+    sha256:
+      $ref: '#/components/schemas/Sha256Hex'
+    size_bytes:
+      type: integer
+      minimum: 1
+      maximum: 104857600
+    download_url:
+      type: string
+      format: uri
+      maxLength: 1000
+    signing_cert_sha256:
+      $ref: '#/components/schemas/Sha256Hex'
+    notes_en:
+      type:
+      - string
+      - 'null'
+      maxLength: 2000
+    notes_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 2000

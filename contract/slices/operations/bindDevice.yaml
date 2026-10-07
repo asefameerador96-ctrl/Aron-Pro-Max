@@ -1,0 +1,35 @@
+path: /v1/auth/bind-device
+method: post
+operation:
+  tags:
+  - auth
+  operationId: bindDevice
+  summary: Bind the user to this enrolled phone with the 4-digit OTP the TSO reads on the web.
+  description: Authorised with the `bind_token` from login (Bearer). Assigns the memo-number bind ordinal (docs/24
+    s7.5).
+  parameters:
+  - $ref: '#/components/parameters/XDeviceId'
+  - $ref: '#/components/parameters/XDeviceProof'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/BindDeviceRequest'
+  responses:
+    '200':
+      description: Bound; tokens issued.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginResponse'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

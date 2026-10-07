@@ -1,0 +1,21 @@
+path: /v1/admin/config/versions
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: listConfigVersions
+  summary: Committed config versions.
+  parameters:
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of versions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigVersionPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

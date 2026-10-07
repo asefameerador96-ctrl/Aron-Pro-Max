@@ -1,0 +1,13 @@
+VisitSkipPayload:
+  type: object
+  required:
+  - outlet_id
+  - reason_code
+  additionalProperties: false
+  properties:
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    reason_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: Code list skip_reason (default not_reached).

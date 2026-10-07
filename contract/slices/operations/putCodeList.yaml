@@ -1,0 +1,34 @@
+path: /v1/admin/code-lists/{list_key}
+method: put
+operation:
+  tags:
+  - admin-calendar
+  operationId: putCodeList
+  summary: Add items or edit labels; codes are immutable and retired by valid_to, never deleted.
+  parameters:
+  - name: list_key
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/CodeListKey'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/CodeListWrite'
+  responses:
+    '200':
+      description: The list after the change; a content config version is bumped.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CodeList'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

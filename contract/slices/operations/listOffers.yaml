@@ -1,0 +1,27 @@
+path: /v1/admin/offers
+method: get
+operation:
+  tags:
+  - admin-products
+  operationId: listOffers
+  summary: Offer and promotion rules (data, not code).
+  parameters:
+  - $ref: '#/components/parameters/StatusQuery'
+  - name: valid_on
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of offers.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OfferPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

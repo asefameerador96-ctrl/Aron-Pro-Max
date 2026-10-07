@@ -1,0 +1,13 @@
+DeviceStatusRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: device_status
+      payload:
+        $ref: '#/components/schemas/DeviceStatusReport'
+  unevaluatedProperties: false

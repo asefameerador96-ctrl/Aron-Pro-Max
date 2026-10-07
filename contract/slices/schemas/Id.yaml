@@ -1,0 +1,5 @@
+Id:
+  type: integer
+  format: int64
+  minimum: 1
+  description: Server surrogate key (bigint identity).

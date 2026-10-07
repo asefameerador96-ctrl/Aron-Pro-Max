@@ -1,0 +1,12 @@
+DayState:
+  type: string
+  enum:
+  - not_started
+  - logged_in
+  - in_field
+  - synced
+  - submit_pending_rows
+  - sales_submitted
+  - final_submitted
+  description: Route-day state (docs/24 s4.9). Derived from timestamps on the server, so a retry never moves a route-day
+    backwards.

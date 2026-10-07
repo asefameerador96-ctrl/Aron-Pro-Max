@@ -1,0 +1,102 @@
+RiskSignal:
+  type: object
+  required:
+  - signal_id
+  - code
+  - severity
+  - business_date
+  - subject_type
+  - subject_id
+  - score
+  - evidence
+  - status
+  - config_version
+  - created_at
+  additionalProperties: false
+  properties:
+    signal_id:
+      $ref: '#/components/schemas/Id'
+    code:
+      $ref: '#/components/schemas/RiskSignalCode'
+    severity:
+      type: integer
+      minimum: 1
+      maximum: 4
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    subject_type:
+      type: string
+      enum:
+      - user
+      - device
+      - visit
+      - outlet
+      - route
+      - memo
+    subject_id:
+      type: string
+      maxLength: 64
+      description: Id or client_uuid of the subject.
+    user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    zone_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    score:
+      type: number
+      minimum: 0
+      maximum: 300
+    evidence:
+      type: object
+      description: The numbers that fired it (distances, speeds, counts, thresholds used).
+      additionalProperties:
+        oneOf:
+        - $ref: '#/components/schemas/JsonScalar'
+        - type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/JsonScalar'
+    status:
+      $ref: '#/components/schemas/RiskSignalStatus'
+    config_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    last_review:
+      type:
+      - object
+      - 'null'
+      required:
+      - action
+      - reviewer_user_id
+      - at
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum:
+          - reviewed
+          - dismissed
+          - confirmed
+        reviewer_user_id:
+          $ref: '#/components/schemas/Id'
+        note:
+          type:
+          - string
+          - 'null'
+          maxLength: 500
+        at:
+          $ref: '#/components/schemas/Timestamp'

@@ -1,0 +1,75 @@
+LoginResponse:
+  type: object
+  required:
+  - status
+  - user
+  - config_version
+  - server_time
+  additionalProperties: false
+  properties:
+    status:
+      type: string
+      enum:
+      - ok
+      - bind_required
+      - mfa_required
+      - password_change_required
+    access_token:
+      type:
+      - string
+      - 'null'
+      maxLength: 4096
+    access_expires_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    refresh_token:
+      type:
+      - string
+      - 'null'
+      minLength: 43
+      maxLength: 64
+      description: Opaque 256-bit token (base64url). Null on the web (set as the aron_rt cookie).
+    refresh_expires_at:
+      description: Absolute expiry of the refresh family (90 days plus or minus 15, drawn per family).
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    upload_refresh_token:
+      type:
+      - string
+      - 'null'
+      minLength: 43
+      maxLength: 64
+      description: Upload-only grant (phones only).
+    bind_token:
+      type:
+      - string
+      - 'null'
+      maxLength: 4096
+      description: Bearer token (aud aron-bind, 10 min) for POST /v1/auth/bind-device.
+    mfa_token:
+      type:
+      - string
+      - 'null'
+      maxLength: 4096
+      description: Bearer token (aud aron-mfa, 5 min) for POST /v1/auth/mfa/verify.
+    user:
+      $ref: '#/components/schemas/UserSummary'
+    scope:
+      oneOf:
+      - $ref: '#/components/schemas/ScopeSummary'
+      - type: 'null'
+    device:
+      oneOf:
+      - $ref: '#/components/schemas/LoginDevice'
+      - type: 'null'
+    config_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    server_time:
+      $ref: '#/components/schemas/Timestamp'
+    min_app_version_code:
+      type:
+      - integer
+      - 'null'
+      minimum: 1

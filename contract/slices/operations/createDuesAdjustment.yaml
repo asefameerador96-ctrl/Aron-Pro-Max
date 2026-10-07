@@ -1,0 +1,26 @@
+path: /v1/admin/dues-adjustments
+method: post
+operation:
+  tags:
+  - admin-finance
+  operationId: createDuesAdjustment
+  summary: Propose a correction or write-off of an outlet due (pending until a different person approves).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DuesAdjustmentWrite'
+  responses:
+    '201':
+      description: Created as pending.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DuesAdjustment'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

@@ -1,0 +1,26 @@
+path: /v1/admin/supervisor-targets
+method: put
+operation:
+  tags:
+  - admin-targets
+  operationId: putSupervisorTargets
+  summary: Upsert AMO call targets for a month (all-or-nothing, never negative).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SupervisorTargetWrite'
+  responses:
+    '200':
+      description: Stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetBatchResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

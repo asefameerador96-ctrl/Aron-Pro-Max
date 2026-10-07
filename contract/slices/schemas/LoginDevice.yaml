@@ -1,0 +1,21 @@
+LoginDevice:
+  type: object
+  required:
+  - device_id
+  - bind_ordinal
+  - memo_seq_block_size
+  additionalProperties: false
+  properties:
+    device_id:
+      $ref: '#/components/schemas/Id'
+    bind_ordinal:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      maximum: 3
+      description: Memo-number block of this user on this device (null until bound).
+    memo_seq_block_size:
+      type: integer
+      minimum: 100
+      maximum: 999

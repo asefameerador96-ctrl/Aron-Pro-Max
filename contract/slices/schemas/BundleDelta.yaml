@@ -1,0 +1,89 @@
+BundleDelta:
+  type: object
+  description: Changes since `base_cursor`; applied in one local transaction (old or new, never a mix).
+  required:
+  - meta
+  - sections
+  - routes_added
+  - routes_removed
+  - day_states
+  additionalProperties: false
+  properties:
+    meta:
+      type: object
+      required:
+      - bundle_version
+      - base_cursor
+      - cursor
+      - valid_for_business_date
+      - config_version
+      - server_time
+      additionalProperties: false
+      properties:
+        bundle_version:
+          $ref: '#/components/schemas/BundleVersion'
+        base_cursor:
+          $ref: '#/components/schemas/DeltaCursor'
+        cursor:
+          $ref: '#/components/schemas/DeltaCursor'
+        valid_for_business_date:
+          $ref: '#/components/schemas/BusinessDate'
+        config_version:
+          $ref: '#/components/schemas/ConfigVersionNumber'
+        server_time:
+          $ref: '#/components/schemas/Timestamp'
+    sections:
+      type: object
+      additionalProperties: false
+      properties:
+        outlets:
+          $ref: '#/components/schemas/SectionDelta'
+        open_memos:
+          $ref: '#/components/schemas/SectionDelta'
+        prices:
+          $ref: '#/components/schemas/SectionDelta'
+        offers:
+          $ref: '#/components/schemas/SectionDelta'
+        tasks:
+          $ref: '#/components/schemas/SectionDelta'
+        skus:
+          $ref: '#/components/schemas/SectionDelta'
+        targets:
+          $ref: '#/components/schemas/SectionDelta'
+        achievement_mtd:
+          $ref: '#/components/schemas/SectionDelta'
+        team:
+          $ref: '#/components/schemas/SectionDelta'
+        pending_outlet_requests:
+          $ref: '#/components/schemas/SectionDelta'
+    code_lists:
+      type: array
+      maxItems: 30
+      description: Lists that changed, replaced whole.
+      items:
+        $ref: '#/components/schemas/CodeList'
+    templates:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/PrintTemplate'
+    routes_added:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/RouteSnapshot'
+    routes_removed:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/Id'
+    day_states:
+      type: array
+      maxItems: 40
+      items:
+        $ref: '#/components/schemas/RouteDayState'
+    resolutions:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/Resolution'

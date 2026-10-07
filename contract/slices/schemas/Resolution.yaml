@@ -1,0 +1,21 @@
+Resolution:
+  type: object
+  required:
+  - client_uuid
+  - type
+  - resolution
+  - resolved_at
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    type:
+      $ref: '#/components/schemas/RecordType'
+    resolution:
+      type: string
+      enum:
+      - accepted
+      - accepted_with_fix
+      - discarded
+    resolved_at:
+      $ref: '#/components/schemas/Timestamp'

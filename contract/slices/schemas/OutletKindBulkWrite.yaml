@@ -1,0 +1,24 @@
+OutletKindBulkWrite:
+  type: object
+  required:
+  - batch_uuid
+  - outlet_kind
+  - outlet_ids
+  - reason
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    outlet_kind:
+      type: string
+      enum:
+      - retail
+      - wholesale
+    outlet_ids:
+      type: array
+      minItems: 1
+      maxItems: 5000
+      items:
+        $ref: '#/components/schemas/Id'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

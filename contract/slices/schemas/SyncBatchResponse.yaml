@@ -1,0 +1,89 @@
+SyncBatchResponse:
+  type: object
+  required:
+  - batch_uuid
+  - replayed
+  - received_at
+  - acks
+  - summary
+  - server_totals
+  - day_states
+  - resolutions
+  - hold_s
+  - config_version
+  - generation
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    replayed:
+      type: boolean
+      description: True when this is the stored response of an already-processed batch_uuid.
+    received_at:
+      $ref: '#/components/schemas/Timestamp'
+    acks:
+      type: array
+      description: Exactly one acknowledgement per request record, in request order (partition invariant).
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/RecordAck'
+    summary:
+      type: object
+      required:
+      - accepted
+      - duplicate
+      - rejected
+      - quarantined
+      additionalProperties: false
+      properties:
+        accepted:
+          type: integer
+          minimum: 0
+        duplicate:
+          type: integer
+          minimum: 0
+        rejected:
+          type: integer
+          minimum: 0
+        quarantined:
+          type: integer
+          minimum: 0
+    server_totals:
+      type: array
+      maxItems: 10
+      description: For every business date present in the batch, plus today.
+      items:
+        $ref: '#/components/schemas/ServerTotals'
+    day_states:
+      type: array
+      maxItems: 40
+      items:
+        $ref: '#/components/schemas/RouteDayState'
+    supervisor_day:
+      oneOf:
+      - $ref: '#/components/schemas/SupervisorDayState'
+      - type: 'null'
+    resolutions:
+      type: array
+      maxItems: 200
+      description: Server decisions on this user's quarantined records not yet delivered.
+      items:
+        $ref: '#/components/schemas/Resolution'
+    hold_s:
+      type: integer
+      minimum: 0
+      maximum: 900
+      description: '> 0 asks the phone to pause automatic sync for this many seconds (plus jitter).'
+    config_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    bundle_version_current:
+      oneOf:
+      - $ref: '#/components/schemas/BundleVersion'
+      - type: 'null'
+    generation:
+      $ref: '#/components/schemas/Uuid'
+    directives:
+      type: array
+      maxItems: 5
+      items:
+        $ref: '#/components/schemas/Directive'

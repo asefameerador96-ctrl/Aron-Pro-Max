@@ -1,0 +1,8 @@
+LocationProvider:
+  type: string
+  enum:
+  - fused
+  - gps
+  - network
+  - passive
+  - unknown

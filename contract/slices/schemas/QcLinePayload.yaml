@@ -1,0 +1,41 @@
+QcLinePayload:
+  type: object
+  required:
+  - visit_client_uuid
+  - applied_to_memo
+  - sku_id
+  - fault_type_code
+  - fault_group
+  - qty_base
+  - unit_price_mtk
+  - settlement_mtk
+  additionalProperties: false
+  properties:
+    visit_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    memo_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    applied_to_memo:
+      type: boolean
+      description: True when committed in the memo transaction and deducted; false when saved after the memo (reported,
+        never deducted).
+    sku_id:
+      $ref: '#/components/schemas/Id'
+    fault_type_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    fault_group:
+      type: string
+      enum:
+      - MFC
+      - MKT
+    qty_base:
+      type: integer
+      minimum: 1
+      maximum: 100000
+    unit_price_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    settlement_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'

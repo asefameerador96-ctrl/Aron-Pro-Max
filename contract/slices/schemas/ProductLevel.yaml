@@ -1,0 +1,7 @@
+ProductLevel:
+  type: string
+  enum:
+  - category
+  - brand
+  - variant
+  - sku

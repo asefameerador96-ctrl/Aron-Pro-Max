@@ -1,0 +1,52 @@
+EnrolmentToken:
+  type: object
+  required:
+  - token_id
+  - token_prefix
+  - flavour
+  - lockdown_level
+  - max_uses
+  - used_count
+  - expires_at
+  - created_by
+  - created_at
+  additionalProperties: false
+  properties:
+    token_id:
+      $ref: '#/components/schemas/Id'
+    token_prefix:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{6}$
+      description: First 6 characters, for identification only.
+    flavour:
+      $ref: '#/components/schemas/AppFlavour'
+    lockdown_level:
+      $ref: '#/components/schemas/LockdownLevel'
+    max_uses:
+      type: integer
+      minimum: 1
+      maximum: 500
+    used_count:
+      type: integer
+      minimum: 0
+    zone_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    expires_at:
+      $ref: '#/components/schemas/Timestamp'
+    created_by:
+      $ref: '#/components/schemas/Id'
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    revoked_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 300

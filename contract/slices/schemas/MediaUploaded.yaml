@@ -1,0 +1,11 @@
+MediaUploaded:
+  type: object
+  required:
+  - media_uuid
+  - replayed
+  additionalProperties: false
+  properties:
+    media_uuid:
+      $ref: '#/components/schemas/Uuid'
+    replayed:
+      type: boolean

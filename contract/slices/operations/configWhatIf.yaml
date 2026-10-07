@@ -1,0 +1,40 @@
+path: /v1/admin/config/whatif
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: configWhatIf
+  summary: Re-evaluate stored fixes under a candidate radius and count visits whose verdict would change.
+  parameters:
+  - $ref: '#/components/parameters/ScopeTypeQuery'
+  - $ref: '#/components/parameters/ScopeIdQuery'
+  - name: value
+    in: query
+    required: true
+    schema:
+      type: integer
+      minimum: 10
+      maximum: 5000
+    description: Candidate radius in metres.
+  - name: days
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 90
+      default: 30
+    description: Look-back in business days.
+  responses:
+    '200':
+      description: What-if result.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RadiusWhatIf'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

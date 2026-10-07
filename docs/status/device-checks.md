@@ -1,8 +1,20 @@
-# Device checks (DEVICE-PENDING rows)
+# Device checks (owner's phones and printer)
 
-Rows whose acceptance needs a real phone. Everything that can run without one is automated in the module tests; each entry says exactly what to do on the phone. Setup: `docs/setup/device-owner-test-phone.md`.
+The lead posts each check here as soon as the build for it exists, with exact steps (about 10 minutes each). The owner runs them in the evening and replies with what happened. Lanes add rows marked DEVICE-PENDING.
 
-## N-021 location fix manager (android-geo-dpc)
+| # | Check | Needs | Status |
+|---|---|---|---|
+| D-01 | Install the SR debug APK from the CI artifact on the Galaxy A06, log in (dev API through Front Door), see Home | A06 + USB debugging, `adb install -r` | waits for android-sr-a first run |
+| D-02 | Airplane mode: check in, open a visit, sell, review, save; network on; the sale appears once on the server | A06 | waits for SR slice |
+| D-03 | Print a memo and a stock slip on the MP-58N from the SR app; compare with the photos of the current printout | A06 + MP-58N, photos of a real printout (owner to supply) | waits for android-print |
+| D-04 | Factory-reset test phone: enrol as device owner (adb command from docs/setup), install SR, check in suspends the chosen apps, check out releases them | a reset phone (A07 or Honor X5c Plus) | waits for android-geo-dpc |
+| D-05 | Five mock-location apps and one cloning tool refused or flagged | same phone | waits for android-geo-dpc |
+| D-06 | 8-hour scripted battery and data run | A06 | Day 6 |
+
+## android-geo-dpc details (steps for D-04, D-05 and the rows below)
+
+
+### N-021 location fix manager (android-geo-dpc)
 Host proof: `ScriptedSrDayTest` (60-outlet day: 68 provider requests, at most 80; every fix stored with its mock flag).
 On the Galaxy A06, with the SR app:
 1. `adb shell dumpsys batterystats --reset`, then run a 60-outlet scripted day (check-in, 60 outlet opens, check-out).
@@ -10,11 +22,11 @@ On the Galaxy A06, with the SR app:
 3. Pass: at most 80 location requests by `com.aktcl.aron.sr`, no request still active after each outlet, GPS time at most 15 min; `geo_fix.is_mock` set on every row (export the day's records from the outbox).
 4. Repeat steps with a mock-location app selected (dev phone): every fix has `is_mock = 1`.
 
-## N-026 key attestation and Play Integrity (android-geo-dpc)
+### N-026 key attestation and Play Integrity (android-geo-dpc)
 Host proof: `IntegrityCodecTest`, `IntegrityEvidenceServiceTest`, `DeviceKeySpecTest`.
 On each test phone: `./gradlew :android:core-geo:connectedDebugAndroidTest --tests '*DeviceKeyStoreDeviceTest'` (key created, attestation extension present, signature verifies with the sent JWK). Play Integrity needs the Google Cloud project number in the build; on a phone without Google services the status report carries no token and the reason `no_play_services`.
 
-## N-029 device-owner policy core (android-geo-dpc)
+### N-029 device-owner policy core (android-geo-dpc)
 Host proof: `PolicyApplierTest`, `DevicePolicyContractTest`, `AndroidDpmGatewayTest`.
 On an enrolled Galaxy A06 with the **prod** policy applied (last check: see the warning in the setup page):
 1. Settings > About phone > tap Build number seven times: developer options do not turn on.

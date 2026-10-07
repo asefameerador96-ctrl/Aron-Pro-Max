@@ -1,0 +1,13 @@
+TaskEventRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: task_event
+      payload:
+        $ref: '#/components/schemas/TaskEventPayload'
+  unevaluatedProperties: false

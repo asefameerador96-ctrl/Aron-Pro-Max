@@ -1,0 +1,13 @@
+PrintEventRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: print_event
+      payload:
+        $ref: '#/components/schemas/PrintEventPayload'
+  unevaluatedProperties: false

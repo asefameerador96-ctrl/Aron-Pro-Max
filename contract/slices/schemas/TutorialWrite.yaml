@@ -1,0 +1,38 @@
+TutorialWrite:
+  type: object
+  required:
+  - kind
+  - title_en
+  - asset_id
+  - roles
+  - sort
+  - change_reason
+  additionalProperties: false
+  properties:
+    kind:
+      type: string
+      enum:
+      - video
+      - manual
+    title_en:
+      type: string
+      maxLength: 120
+    title_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    asset_id:
+      $ref: '#/components/schemas/Uuid'
+    roles:
+      type: array
+      minItems: 1
+      items:
+        $ref: '#/components/schemas/Role'
+    sort:
+      type: integer
+      minimum: 0
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

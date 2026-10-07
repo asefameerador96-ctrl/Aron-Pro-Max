@@ -5,3 +5,4 @@ F-SYS-017,S,,2026-10-05T12:20Z,,0,checker found nothing; start time not recorded
 F-SYS-045,M,,2026-10-06T09:50Z,,0,checker verified; start time not recorded
 F-SYS-051,S,,2026-10-06T09:50Z,,1,checker: Formats.integer overflow fixed; start time not recorded
 F-SYS-070,M,,2026-10-06T09:50Z,,3,checker: Bangla NFC; all format chars stripped; +880 0 trunk phone; 013-019 prefix; start time not recorded
+N-002,L,2026-10-07T00:00Z,2026-10-07T03:55Z,,pending,Kotlin wire DTOs + drift test + web drift script; checker running

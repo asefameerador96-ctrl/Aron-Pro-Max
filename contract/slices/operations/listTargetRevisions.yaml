@@ -1,0 +1,33 @@
+path: /v1/admin/target-revisions
+method: get
+operation:
+  tags:
+  - admin-targets
+  operationId: listTargetRevisions
+  summary: Target revise list (approval queue) with month and status filters.
+  parameters:
+  - name: month
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Month'
+    description: Target month.
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/TargetRevisionStatus'
+    description: Revision status.
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of revisions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetRevisionPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

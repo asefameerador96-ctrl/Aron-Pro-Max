@@ -1,0 +1,13 @@
+SkuPriceList:
+  type: object
+  required:
+  - items
+  - price_list_version
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/SkuPrice'
+    price_list_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'

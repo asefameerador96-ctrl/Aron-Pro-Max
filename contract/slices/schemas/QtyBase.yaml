@@ -1,0 +1,6 @@
+QtyBase:
+  type: integer
+  format: int32
+  minimum: 0
+  maximum: 10000000
+  description: Quantity in the SKU's base unit (stick, piece or dozen).

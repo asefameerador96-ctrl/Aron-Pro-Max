@@ -1,0 +1,13 @@
+OutletChangeRequestRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: outlet_change_request
+      payload:
+        $ref: '#/components/schemas/OutletChangeRequestPayload'
+  unevaluatedProperties: false

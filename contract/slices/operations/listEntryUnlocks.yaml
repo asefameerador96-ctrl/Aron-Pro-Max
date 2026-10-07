@@ -1,0 +1,28 @@
+path: /v1/admin/entry-unlocks
+method: get
+operation:
+  tags:
+  - web-entry
+  operationId: listEntryUnlocks
+  summary: Entry unlock grants (zone or route, date range, reason, expiry).
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - name: active
+    in: query
+    required: false
+    schema:
+      type: boolean
+    description: Only grants not yet expired.
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of grants.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EntryUnlockPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

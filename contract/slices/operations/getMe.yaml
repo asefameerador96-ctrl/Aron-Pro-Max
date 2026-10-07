@@ -1,0 +1,16 @@
+path: /v1/me
+method: get
+operation:
+  tags:
+  - auth
+  operationId: getMe
+  summary: The caller's identity, role, permissions and scope summary.
+  responses:
+    '200':
+      description: Principal.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Me'
+    '401':
+      $ref: '#/components/responses/Unauthorized'

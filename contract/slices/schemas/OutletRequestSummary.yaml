@@ -1,0 +1,48 @@
+OutletRequestSummary:
+  type: object
+  required:
+  - request_uuid
+  - request_type
+  - status
+  - requested_by_user_id
+  - requested_at
+  additionalProperties: false
+  properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
+    request_type:
+      $ref: '#/components/schemas/OutletRequestType'
+    status:
+      $ref: '#/components/schemas/OutletRequestStatus'
+    outlet_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    outlet_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    cluster_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    requested_by_user_id:
+      $ref: '#/components/schemas/Id'
+    requested_at:
+      $ref: '#/components/schemas/Timestamp'
+    rejection_reason:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

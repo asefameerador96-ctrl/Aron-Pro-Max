@@ -1,0 +1,41 @@
+path: /v1/sync/bundle/page
+method: get
+operation:
+  tags:
+  - sync
+  operationId: getBundlePage
+  summary: One page of a paged bundle section (AMO zone-wide outlet lists).
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  - name: bundle_version
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/BundleVersion'
+  - name: section
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/BundleSectionName'
+  - name: page
+    in: query
+    required: true
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 1000
+  responses:
+    '200':
+      description: The page.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BundlePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '410':
+      $ref: '#/components/responses/Gone'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

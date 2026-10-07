@@ -1,0 +1,22 @@
+path: /v1/admin/releases
+method: get
+operation:
+  tags:
+  - admin-releases
+  operationId: listReleases
+  summary: App releases by flavour.
+  parameters:
+  - $ref: '#/components/parameters/FlavourQueryOptional'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of releases.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppReleasePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

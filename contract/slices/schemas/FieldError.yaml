@@ -1,0 +1,23 @@
+FieldError:
+  type: object
+  required:
+  - pointer
+  - code
+  additionalProperties: false
+  properties:
+    pointer:
+      type: string
+      maxLength: 300
+      description: JSON Pointer (RFC 6901) into the request body, or `query.<name>`.
+    code:
+      type: string
+      pattern: ^[a-z_]{2,60}$
+      examples:
+      - required
+      - too_long
+      - out_of_range
+      - pattern
+      - unknown_member
+    message:
+      type: string
+      maxLength: 300

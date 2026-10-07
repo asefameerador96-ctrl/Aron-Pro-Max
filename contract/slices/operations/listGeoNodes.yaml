@@ -1,0 +1,30 @@
+path: /v1/admin/geo/{level}
+method: get
+operation:
+  tags:
+  - admin-geography
+  operationId: listGeoNodes
+  summary: List wings, divisions, territories, houses or zones in reach.
+  parameters:
+  - $ref: '#/components/parameters/GeoLevelPath'
+  - name: parent_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/StatusQuery'
+  - $ref: '#/components/parameters/UpdatedSince'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of nodes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GeoNodePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

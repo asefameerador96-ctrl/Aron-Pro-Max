@@ -1,0 +1,13 @@
+GeoBreadcrumbRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: geo_breadcrumb
+      payload:
+        $ref: '#/components/schemas/GeoBreadcrumbPayload'
+  unevaluatedProperties: false

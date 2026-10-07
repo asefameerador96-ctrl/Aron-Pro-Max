@@ -1,0 +1,24 @@
+NodeRef:
+  type: object
+  required:
+  - type
+  - id
+  additionalProperties: false
+  properties:
+    type:
+      $ref: '#/components/schemas/ReachLevel'
+    id:
+      type: integer
+      format: int64
+      minimum: 0
+      description: 0 for national.
+    code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120

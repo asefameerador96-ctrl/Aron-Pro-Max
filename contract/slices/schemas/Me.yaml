@@ -1,0 +1,23 @@
+Me:
+  type: object
+  required:
+  - user
+  - permissions
+  - scope
+  additionalProperties: false
+  properties:
+    user:
+      $ref: '#/components/schemas/UserSummary'
+    permissions:
+      type: array
+      maxItems: 200
+      items:
+        type: string
+        pattern: ^[a-z_]+(\.[a-z_]+)*$
+    scope:
+      $ref: '#/components/schemas/ScopeSummary'
+    pii:
+      type: boolean
+      description: Whether the caller may see outlet phone and owner columns.
+    mfa_enabled:
+      type: boolean

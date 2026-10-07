@@ -1,0 +1,27 @@
+path: /v1/devices/nonce
+method: post
+operation:
+  tags:
+  - devices
+  operationId: createDeviceNonce
+  summary: Single-use nonce for a Play Integrity request or a key re-attestation.
+  description: Callable with a device proof alone (no user token) so an unbound enrolled phone can attest.
+  security:
+  - bearerAuth: []
+  - {}
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  - $ref: '#/components/parameters/XDeviceProof'
+  responses:
+    '200':
+      description: Nonce valid for 10 minutes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeviceNonce'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

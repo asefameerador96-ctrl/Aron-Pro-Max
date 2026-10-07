@@ -1,0 +1,13 @@
+MemoVoidRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: memo_void
+      payload:
+        $ref: '#/components/schemas/MemoVoidPayload'
+  unevaluatedProperties: false

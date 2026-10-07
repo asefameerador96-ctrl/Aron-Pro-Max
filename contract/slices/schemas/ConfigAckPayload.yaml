@@ -1,0 +1,18 @@
+ConfigAckPayload:
+  type: object
+  required:
+  - config_version
+  - applied_at
+  - keys
+  additionalProperties: false
+  properties:
+    config_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    applied_at:
+      $ref: '#/components/schemas/Timestamp'
+    keys:
+      type: array
+      maxItems: 100
+      description: Keys with requires_ack that changed in this version.
+      items:
+        $ref: '#/components/schemas/ConfigKeyName'

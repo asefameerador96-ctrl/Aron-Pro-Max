@@ -1,0 +1,26 @@
+path: /v1/admin/routes
+method: get
+operation:
+  tags:
+  - admin-routes
+  operationId: listRoutes
+  summary: Routes with kind, visit kind and visit days.
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/TerritoryIdQuery'
+  - $ref: '#/components/parameters/StatusQuery'
+  - $ref: '#/components/parameters/UpdatedSince'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of routes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoutePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

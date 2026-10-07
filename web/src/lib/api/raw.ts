@@ -4,7 +4,7 @@ import type { Problem } from "@/contract/types";
 import { apiBase, transportProblem, type ApiOutcome } from "./client";
 
 export interface RawRequest {
-  method: "GET" | "POST" | "PATCH" | "PUT";
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   path: string; // already filled, e.g. /v1/admin/clusters/12
   token: string;
   query?: Record<string, string | number | undefined>;

@@ -1,0 +1,27 @@
+path: /v1/admin/sales-plans/{zone_id}
+method: get
+operation:
+  tags:
+  - admin-products
+  operationId: getSalesPlan
+  summary: SKUs enabled for a zone on a date.
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdPath'
+  - name: valid_on
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  responses:
+    '200':
+      description: Sales plan.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SalesPlan'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

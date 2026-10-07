@@ -1,0 +1,17 @@
+UserCreated:
+  type: object
+  required:
+  - user
+  - temporary_password
+  - temporary_password_expires_at
+  additionalProperties: false
+  properties:
+    user:
+      $ref: '#/components/schemas/User'
+    temporary_password:
+      type: string
+      minLength: 12
+      maxLength: 32
+      description: Shown once; never stored in clear.
+    temporary_password_expires_at:
+      $ref: '#/components/schemas/Timestamp'

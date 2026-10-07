@@ -1,0 +1,47 @@
+RecordType:
+  type: string
+  enum:
+  - geo_breadcrumb
+  - attendance_event
+  - day_open
+  - day_submit
+  - day_exception
+  - stock_movement
+  - visit
+  - visit_close
+  - visit_skip
+  - memo
+  - memo_line
+  - memo_discount
+  - qc_line
+  - print_event
+  - memo_void
+  - due_collection
+  - survey_response
+  - outlet_change_request
+  - outlet_request_verification
+  - distribution_check
+  - distribution_check_line
+  - call_assessment
+  - call_assessment_answer
+  - task
+  - task_event
+  - visit_plan
+  - visit_plan_outlet
+  - leave_application
+  - feedback
+  - media_meta
+  - device_status
+  - config_ack
+  - content_view
+  - redemption
+  - redemption_line
+  - gift_photo
+  - price_compliance_check
+  - risk_review
+  - activity_log
+  - app_error
+  - sale_abort
+  - consent_accept
+  description: Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except
+    where docs/24 s12 says otherwise.

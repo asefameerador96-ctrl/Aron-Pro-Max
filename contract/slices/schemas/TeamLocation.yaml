@@ -1,0 +1,54 @@
+TeamLocation:
+  type: object
+  required:
+  - user_id
+  - full_name
+  - route_ids
+  - last_fix
+  additionalProperties: false
+  properties:
+    user_id:
+      $ref: '#/components/schemas/Id'
+    full_name:
+      type: string
+      maxLength: 120
+    route_ids:
+      type: array
+      items:
+        $ref: '#/components/schemas/Id'
+    last_fix:
+      type:
+      - object
+      - 'null'
+      required:
+      - lat
+      - lng
+      - at
+      - source
+      additionalProperties: false
+      properties:
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        accuracy_m:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        source:
+          type: string
+          enum:
+          - check_in
+          - visit
+          - check_out
+          - breadcrumb
+        age_min:
+          type: integer
+          minimum: 0

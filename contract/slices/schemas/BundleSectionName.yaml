@@ -1,0 +1,12 @@
+BundleSectionName:
+  type: string
+  enum:
+  - outlets
+  - open_memos
+  - prices
+  - offers
+  - tasks
+  - team
+  - pending_outlet_requests
+  - programmes
+  - content
