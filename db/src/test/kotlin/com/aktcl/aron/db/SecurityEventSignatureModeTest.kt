@@ -13,7 +13,8 @@ import kotlin.test.assertFailsWith
  * V0053: cfg.sec.record_signature_mode (docs/requests/backend-core-record-signature-mode-key.md).
  * V0054: app.security_event (docs/requests/backend-core-security-event-table.md).
  * V0055: three field-app keys (docs/requests/backend-core-app-cfg-keys.md).
- * V0056/V0057: ingest_registry.flags (docs/requests/backend-core-resync-late-flag.md).
+ * V0056/V0057: ingest_registry.flags (docs/requests/backend-core-resync-late-flag.md); V0059/V0060 two more flags.
+ * V0058: working-day window keys (docs/requests/backend-core-working-day-window-keys.md).
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SecurityEventSignatureModeTest {
@@ -113,7 +114,27 @@ class SecurityEventSignatureModeTest {
             assertEquals("2", scalar("SELECT count(*) FROM app.ingest_registry WHERE 'resync_late' = ANY (flags)"))
             exec("RESET ROLE")
             assertEquals("23514", refused(ins.format(", flags", ", '{late}'")))
+            exec(ins.format(", flags", ", '{resync_late,config_stamp_regress,checkout_too_early}'"))      // V0059
+            assertEquals("23514", refused(ins.format(", flags", ", '{resync_late,config_stamp_regress,checkout_too_early,resync_late}'")))
             assertEquals("23514", refused(ins.format(", flags", ", '{resync_late,resync_late}'")))
         }
+    }
+
+    @Test
+    fun workingDayWindowKeysAreRegistered() = db.connect().use { c ->
+        assertEquals(
+            listOf(
+                "cfg.bundle.stale_max_cal_days_ceiling|7|{\"max\": 14, \"min\": 3}|device|2",
+                "cfg.calendar.break_overrides|[]|{\"max_items\": 20}|both|2",
+                "cfg.calendar.prefetch_next_working_day|true|{}|both|1",
+                "cfg.calendar.window_unit|\"calendar\"|{\"enum\": [\"calendar\", \"working_days\"]}|both|3",
+            ),
+            c.column(
+                "SELECT concat_ws('|', key, default_value::text, bounds::text, delivery, risk_class) FROM app.cfg_key " +
+                    "WHERE key IN ('cfg.calendar.window_unit', 'cfg.bundle.stale_max_cal_days_ceiling', 'cfg.calendar.break_overrides', 'cfg.calendar.prefetch_next_working_day') ORDER BY key",
+            ),
+        )
+        // backend-core counts config_stamp_regress rows per device and business date through this partial index.
+        assertEquals("1", c.scalar("SELECT count(*) FROM pg_indexes WHERE schemaname = 'app' AND indexname = 'ingest_registry_config_stamp_regress'"))
     }
 }

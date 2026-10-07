@@ -39,3 +39,4 @@ AUD-DA-06,L,2026-10-07T14:00Z,2026-10-07T16:30Z,40,"Opus PASS (rounds 1-2)","V00
 AUD-DA-07,L,2026-10-07T12:20Z,2026-10-07T17:10Z,20,"part of DA-02 checker rounds","dim_user + SCD2 dims (V0043), dw.build_dim_date (V0048), deferred M-61..M-99 objects recorded in db.md"
 AUD-DA-08,M,2026-10-07T08:00Z,2026-10-07T09:30Z,0,"Opus PASS (session 1, data-as-a-product batch)","V0016 comments on every app/dw table and column + tools/data-dictionary/render.sh + DataDictionaryTest (fails on any missing comment, stale dictionary or PII class below its columns)"
 AUD-PERF-03,M,2026-10-07T09:00Z,2026-10-07T19:55Z,10,"Opus PASS (V0020); re-audit 19:55","db side: V0020 db_role_limit + apply_login_limits (docs/18 timeouts per login), V0029 grants; infra switched dbPerAppLogins on in dev (20:02)"
+backend-core-working-day-keys-and-flags,S,2026-10-07T21:05Z,2026-10-07T22:10Z,40,"PASS (Opus round 5; should-fix + nit applied)","V0058 V0059 V0060"

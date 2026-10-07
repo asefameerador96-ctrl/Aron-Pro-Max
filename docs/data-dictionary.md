@@ -1926,7 +1926,7 @@ Global register of every device record's client_uuid and payload hash; the uniqu
 | `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
 | `last_seen_at` | timestamp with time zone | not null |  | UTC time the same client_uuid was last received. |
 | `seen_count` | integer | not null |  | Number of times the client_uuid was received. |
-| `flags` | text[] | not null |  | Flags on the accepted record: resync_late = re-sent after a failover or restore and accepted past cfg.sync.max_backdate_days (F-SYS-089); empty when none. |
+| `flags` | text[] | not null |  | Flags on the accepted record: resync_late (re-sent after a failover or restore, accepted past cfg.sync.max_backdate_days, F-SYS-089), config_stamp_regress (stamped with an older config_version than the device had applied, F-SYS-091), checkout_too_early (check-out before cfg.day.checkout_earliest_time, BC-63); empty when none. |
 
 Keys: `PRIMARY KEY (client_uuid)`
 
