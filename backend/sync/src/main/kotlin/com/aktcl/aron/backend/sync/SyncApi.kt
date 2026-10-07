@@ -20,6 +20,7 @@ import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.DeviceProof
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.decodeStrict
+import com.aktcl.aron.backend.platform.wire
 import io.ktor.server.request.contentType
 import io.ktor.server.request.receiveChannel
 import io.ktor.server.routing.post
@@ -49,6 +50,7 @@ class SyncDeps(
 fun Route.syncRoutes(d: SyncDeps) {
     authenticated(d.guard) {
         get("/sync/bundle") { getBundle(call, d) }
+        if (d.db != null) get("/sync/generation") { getGeneration(call, d.db) }
     }
     if (d.ingest != null) {
         // The upload grant may call the batch, an access token expired by at most 60 s is accepted, and a stale scope
@@ -57,6 +59,34 @@ fun Route.syncRoutes(d: SyncDeps) {
             post("/sync/batch") { postBatch(call, d) }
         }
     }
+}
+
+/** Wire form of the current generation (contract `ServerGeneration`, docs/24 s4.8). */
+@kotlinx.serialization.Serializable
+data class ServerGenerationDto(
+    val generation: String, val kind: String, val restore_point_utc: String?, val lost_after_utc: String?, val minted_at: String,
+)
+
+/**
+ * GET /v1/sync/generation (contract getServerGeneration): the current `app.server_generation` row, for any signed-in
+ * caller. A phone that sees a new `X-Server-Generation` reads it to learn what to re-send (records acked after
+ * `lost_after_utc`). Database kinds map to the wire: created -> initial, failover, pitr_restore -> pitr.
+ */
+private suspend fun getGeneration(call: ApplicationCall, db: Database) {
+    val g = withContext(Dispatchers.IO) {
+        db.jdbi.withHandle<ServerGenerationDto?, Exception> { h ->
+            h.createQuery("SELECT generation::text, kind, restore_point_utc, lost_after_utc, started_at FROM app.server_generation WHERE is_current")
+                .map { rs, _ ->
+                    fun ts(c: String) = rs.getObject(c, java.time.OffsetDateTime::class.java)?.toInstant()?.wire()
+                    ServerGenerationDto(
+                        rs.getString("generation"),
+                        when (val k = rs.getString("kind")) { "created" -> "initial"; "pitr_restore" -> "pitr"; else -> k },
+                        ts("restore_point_utc"), ts("lost_after_utc"), ts("started_at")!!,
+                    )
+                }.findOne().orElse(null)
+        }
+    } ?: throw ApiProblem(ProblemCode.ERR_INTERNAL, "no current server generation")
+    call.respond(g)
 }
 
 /**

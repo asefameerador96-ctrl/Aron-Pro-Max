@@ -9,6 +9,7 @@ import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.RecordHandlers
 import com.aktcl.aron.backend.platform.ResponseJson
 import com.aktcl.aron.backend.platform.ServerConfig
+import com.aktcl.aron.backend.platform.isTransientDbFailure
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.ProblemCode
@@ -141,9 +142,23 @@ class IngestService(
             val family = recs.subList(i, j + 1)
             ctx.arith = MemoChecks.familyMismatches(family.map { it.json }) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
             ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
-            ctx.afterCommit.clear()
             try {
-                db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+                // AUD-REL-02: a transient failure (deadlock, serialization, failover, pool timeout) retries the family
+                // in a fresh transaction, at most three tries within 10 s; every record upserts by its client UUID and a
+                // failed try rolls back whole, so a retry can never store a record twice.
+                var attempt = 0
+                val familyStart = clock.now()
+                while (true) {
+                    ctx.afterCommit.clear()
+                    try {
+                        db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+                        break
+                    } catch (e: Exception) {
+                        if (++attempt >= FAMILY_TRIES || !isTransientDbFailure(e) || clock.now().isAfter(familyStart.plusMillis(FAMILY_RETRY_BUDGET_MS))) throw e
+                        log.warn("family retry batch_uuid=${req.batch_uuid} family=${recs[i].family} attempt=$attempt: ${e.javaClass.simpleName}")
+                        Thread.sleep(java.util.concurrent.ThreadLocalRandom.current().nextLong(20, 101))
+                    }
+                }
                 // Committed: only now may a handler reach outside the database.
                 ctx.afterCommit.forEach { (_, hd, rec) -> runCatching { hd.afterCommit(rec) }.onFailure { log.warn("afterCommit failed type=${rec.type}", it) } }
             } catch (e: Exception) {
@@ -234,7 +249,8 @@ class IngestService(
      * One record in its own savepoint (poison-row isolation, F-SYS-048): a value the database refuses (SQLSTATE class
      * 22 or 23) is a final `schema_invalid`; any other failure is `server_error`, retryable and parked, so the phone
      * resends it and skips ahead after `cfg.sync.family_skip_after` tries. The other records of the family and the
-     * batch go on. Only when the savepoint itself cannot be rolled back does the family fail as a whole.
+     * batch go on. A transient database failure, or a savepoint that cannot be rolled back, fails the family as a whole
+     * (retried in a fresh transaction, AUD-REL-02).
      */
     private fun processInSavepoint(h: Handle, ctx: Ctx, r: Rec): Outcome {
         val sp = "rec_${r.index}"
@@ -244,6 +260,8 @@ class IngestService(
         } catch (e: Exception) {
             ctx.afterCommit.removeAll { it.first == r.index }
             if (e is ApiProblem) throw e
+            // A transient failure is not the record's fault: the family is retried whole (AUD-REL-02).
+            if (isTransientDbFailure(e)) throw e
             h.rollbackToSavepoint(sp)
             val state = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()?.sqlState ?: ""
             if (state.startsWith("22") || state.startsWith("23")) {
@@ -793,6 +811,8 @@ class IngestService(
     }.list()
 
     companion object {
+        private const val FAMILY_TRIES = 3
+        private const val FAMILY_RETRY_BUDGET_MS = 10_000L
         private val UUID_ANY = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
