@@ -25,6 +25,7 @@ fun KitGallery(modifier: Modifier = Modifier) {
     var qty by remember { mutableIntStateOf(12) }
     var confirm by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf(false) }
+    var sun by remember { mutableStateOf(false) }
     var big by remember { mutableIntStateOf(100000) }
     val tiles = remember {
         listOf(
@@ -38,6 +39,14 @@ fun KitGallery(modifier: Modifier = Modifier) {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
                 StatusChip(SyncChipState.Offline); StatusChip(SyncChipState.Syncing); StatusChip(SyncChipState.Synced); StatusChip(SyncChipState.Waiting(7))
             }
+            AronCard(Modifier.padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S)) {
+                Column(Modifier.padding(AronTokens.Space.L)) {
+                    Text(stringResource(R.string.core_ui_kit_gallery_card_title), style = MaterialTheme.typography.titleMedium)
+                    Text(localizedNumber(1250000), style = MaterialTheme.typography.displayLarge)
+                }
+            }
+            SunlightToggle(sun, { sun = it }, Modifier.padding(horizontal = AronTokens.Space.L))
+            SunlightSuggestionChip(onSwitch = { sun = true }, onDismiss = {}, modifier = Modifier.padding(AronTokens.Space.L))
             OfflineBanner()
             AronTileGrid(tiles, columns = 2) { t, m -> AronTile(stringResource(t.label), onClick = {}, modifier = m, badge = t.badge) }
             LanguageToggle(LocalAppLanguage.current, onSelect = {}, modifier = Modifier.padding(horizontal = AronTokens.Space.L))

@@ -17,3 +17,5 @@ F-SYS-060,M,2026-10-07T06:00Z,2026-10-07T06:20Z,20,"checker pending","ledger hoo
 N-036,S,2026-10-07T06:20Z,2026-10-07T06:35Z,15,"checker pending","GET /v1/team/locations"
 F-SYS-078,S,2026-10-07T06:20Z,2026-10-07T06:35Z,10,"checker pending","multi-visit + visit kinds"
 F-SYS-055/048/014/062-FIX,M,2026-10-07T07:10Z,2026-10-07T07:40Z,30,"8 confirmed (QC header, NUL 500, replay key, line over-count, unknown-SKU half memo, quarantined-parent children, s4.5 memo fingerprint, re-mint race); all fixed",""
+F-API-006-REGISTRY,S,2026-10-07T05:10Z,2026-10-07T05:35Z,25,"own test found config_ack refused by the DB (payload config_version vs envelope); fixed","RecordHandler registry"
+F-SYS-060/N-036/F-SYS-078-FIX,M,2026-10-07T05:20Z,2026-10-07T06:10Z,50,"9 found: 6 dues fixed (late collection after void/edit, double edit, edit of voided, collection outlet, FIFO void ageing), over-collection = policy (booked, outlet credit), breadcrumb partitioning routed to db, SR visit-kind policy fixed",""
