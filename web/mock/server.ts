@@ -6,6 +6,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { pathToFileURL } from "node:url";
 import { handleTable, type Ctx, type Row } from "./tables";
 import { seedCodeLists, seedTables, tableDefs } from "./master-seed";
+import { freshConfigStore, handleConfig, type ConfigStore } from "./config";
 import { freshDashStore, handleDash, hasPii, type DashStore } from "./dash";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
@@ -40,6 +41,7 @@ function users(): Record<string, MockUser> {
     msupport1: { ...u(3102, "msupport1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true), master: true },
     mtso1: { ...u(3103, "mtso1", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 6, code: "T-334", name: "Banani" }] }), master: true },
     admin1: u(3001, "admin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true),
+    super1: u(3003, "super1", "Rafiq Chowdhury", "SUPERADMIN", "super-pass-1", nationalScope, true),
     support1: u(3002, "support1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true),
     sr334001: u(1001, "sr334001", "Testing Banani", "SR", "sr-pass-1", { scope_version: 7, nodes: [{ type: "route", id: 10231, code: "R-334-01", name: "RouteDaily" }] }),
     locked1: u(4001, "locked1", "Locked User", "TSO", "locked-pass-1", nationalScope, false, "locked"),
@@ -69,6 +71,7 @@ interface State {
   nextId: number;
   accessTtlS: number;
   dash: DashStore;
+  cfg: ConfigStore;
 }
 
 export interface MockOptions {
@@ -89,7 +92,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { stubs: [], calls: [], users: users(), tables, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore() };
+  return { stubs: [], calls: [], users: users(), tables, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -191,7 +194,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     reset();
     return send(res, 204, undefined);
   }
-  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, tables: state.tables, exports: state.dash.exports, actions: state.dash.actions, leave: state.dash.leave });
+  if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, tables: state.tables, webEntries: [...state.cfg.entries.values()], otps: state.cfg.otps, exports: state.dash.exports, actions: state.dash.actions, leave: state.dash.leave });
   if (path === "/__mock/now" && method === "POST") {
     state.dash.now = ((await readJson(req)) as { now?: string | null } | undefined)?.now ?? null;
     return send(res, 204, undefined);
@@ -265,6 +268,14 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     const r = await stub.fn(call, match as RegExpMatchArray);
     return send(res, r.status, r.body, r.headers);
   }
+
+  if (await handleConfig({
+    method, path, url, role: user.summary.role, userId: user.summary.user_id, store: state.cfg,
+    body: () => readJson(req),
+    send: (status, body) => send(res, status, body),
+    problem,
+    audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason),
+  })) return;
 
   if (!user.master && await handleDash({
     user: { role: user.summary.role, scope: user.scope, id: user.summary.user_id, name: user.summary.full_name, password: state.dash.passwords[user.summary.user_id] ?? user.password },
