@@ -6,6 +6,7 @@ import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.Settings
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -510,6 +511,45 @@ class BatchAcceptanceTest {
         assertEquals(listOf(40_000L, 30_000L, 15_000L, 0L), listOf(a.d0to7, a.d8to30, a.d31to60, a.d61plus))
         assertEquals(85_000L, a.balance)
         assertEquals(a.balance, a.d0to7 + a.d8to30 + a.d31to60 + a.d61plus + a.credit)
+    }
+
+
+    // ---- N-036 breadcrumbs and team location; F-SYS-078 multi-visit and visit kinds --------------------------------
+
+    @Test
+    fun breadcrumbsAreStoredOnceAndTheTeamReadShowsTheLastPointWithItsAge() = testApplication {
+        app()
+        val token = client.token()
+        fun crumb(at: String, lat: Double): JsonObject {
+            val cu = uuid()
+            return JsonObject(envelope("geo_breadcrumb", cu, cu, 0, Json.parseToJsonElement("""{"fix":${fixJson.replace("PURPOSE", "breadcrumb").replace("23.80", "$lat")}}""").jsonObject, route = null) + ("captured_at" to JsonPrimitive(at)))
+        }
+        val crumbs = listOf(crumb("2027-01-03T03:50:00.000Z", 23.81), crumb("2027-01-03T03:55:00.000Z", 23.82))
+        assertEquals(listOf("accepted", "accepted"), statuses(json(client.send(token, batch(crumbs)).bodyAsText())))
+        assertEquals(listOf("duplicate", "duplicate"), statuses(json(client.send(token, batch(crumbs)).bodyAsText())))
+        assertEquals(1, count("SELECT count(*) FROM app.geo_breadcrumb WHERE client_uuid = '${crumbs[1]["client_uuid"]!!.jsonPrimitive.content}'"))
+        val tso = json(client.post("/v1/auth/login") { contentType(ContentType.Application.Json); setBody("""{"username":"tso1001","password":"$password","client":"web"}""") }.bodyAsText())["access_token"]!!.jsonPrimitive.content
+        val r = client.get("/v1/team/locations") { bearerAuth(tso) }
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        val sr = json(r.bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }.single { it["full_name"]!!.jsonPrimitive.content.contains("Test SR") }
+        val fix = sr["last_fix"]!!.jsonObject
+        assertTrue(fix["at"]!!.jsonPrimitive.content >= "2027-01-03T03:55:00.000Z", fix.toString())
+        assertTrue(fix["age_min"]!!.jsonPrimitive.int <= 10)
+        // An SR is not a supervisor.
+        assertEquals(HttpStatusCode.Forbidden, client.get("/v1/team/locations") { bearerAuth(token); header("X-Device-Id", devPhone) }.status)
+    }
+
+    @Test
+    fun aSecondVisitAfterAZeroSaleIsAcceptedAndEveryVisitKindIsStored() = testApplication {
+        app()
+        val token = client.token()
+        val first = saleFamily().let { f -> listOf(f[0], JsonObject(f[4] + ("payload" to JsonObject(f[4]["payload"]!!.jsonObject + mapOf("outcome_code" to JsonPrimitive("zero_sale_stock_ok"), "is_zero_sale" to JsonPrimitive(true)))))) }
+        assertEquals(listOf("accepted", "accepted"), statuses(json(client.send(token, batch(first)).bodyAsText())))
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(saleFamily())).bodyAsText())), "the same outlet again the same day")
+        val kinds = listOf("sr_call", "amo_control_call", "amo_joint_call", "tso_visit", "web_entry")
+        val visits = kinds.map { k -> saleFamily().first().let { v -> JsonObject(v + ("payload" to JsonObject(v["payload"]!!.jsonObject + ("visit_kind" to JsonPrimitive(k))))) } }
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(visits)).bodyAsText())))
+        assertEquals(5, count("SELECT count(DISTINCT visit_kind) FROM app.visit WHERE client_uuid IN (${visits.joinToString { "'" + it["client_uuid"]!!.jsonPrimitive.content + "'" }})"))
     }
 
     private fun JsonPrimitive.contentOrNull(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
