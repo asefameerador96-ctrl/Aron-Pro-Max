@@ -4,6 +4,7 @@ import type { Problem } from "@/contract/types";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { rawRequest } from "@/lib/api/raw";
 import { codePoints, REASON_MAX, REASON_MIN } from "@/components/admin/crud/validation";
+import { opRules } from "./op-rules";
 import { fillPath, isOpKey, OPS, type OpDef } from "./ops";
 
 interface OpRequest {
@@ -29,6 +30,7 @@ export async function handleOp(req: NextRequest): Promise<NextResponse> {
   if (path === null) return auth.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/params", code: "invalid" }] }));
 
   const body: Record<string, unknown> = isPlainObject(input.body) ? { ...input.body } : {};
+  if (def.forbid && typeof body[def.forbid.member] === "string" && def.forbid.values.includes(body[def.forbid.member] as string)) return auth.finish(problemResponse(403, "ERR_FORBIDDEN"));
   const errors: { pointer: string; code: string }[] = [];
   if (def.reason !== null) {
     const reason = typeof input.reason === "string" ? input.reason.trim() : "";
@@ -44,9 +46,10 @@ export async function handleOp(req: NextRequest): Promise<NextResponse> {
     if (typeof v !== "number" || !Number.isInteger(v) || v < 1 || v > 9_999_999_999) errors.push({ pointer: "/version", code: v === undefined ? "required" : "invalid" });
     else ifMatch = `"${v}"`;
   }
+  errors.push(...opRules(input.op, body));
   if (errors.length) return auth.finish(problemResponse(400, "ERR_VALIDATION", { errors }));
 
-  const r = await rawRequest<unknown>({ method: def.method, path, token: auth.session.at, body: def.method === "DELETE" ? undefined : body, ifMatch });
+  const r = await rawRequest<unknown>({ method: def.method, path, token: auth.session.at, body: def.method === "DELETE" || def.noBody ? undefined : body, ifMatch });
   if (!r.ok) return auth.finish(NextResponse.json(r.problem as Problem, { status: r.status, headers: { "Content-Type": "application/problem+json" } }));
   return auth.finish(NextResponse.json({ data: r.data ?? null }, { status: r.status === 204 ? 200 : r.status }));
 }

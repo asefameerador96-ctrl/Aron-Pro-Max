@@ -18,6 +18,14 @@ export function DeviceReplaceView({ locale, device }: { locale: Locale; device: 
     },
     { name: "new_device_user_id", label: t(locale, "dev.replace.user"), kind: "int", nullable: true, hint: t(locale, "dev.replace.user.hint"), initial: "" },
   ];
+  if (device.status !== "active" && device.status !== "suspended") {
+    return (
+      <div className="space-y-4">
+        <PageHeading title={t(locale, "dev.replace.title")} />
+        <p role="alert" className="rounded bg-amber-50 p-3 text-sm text-amber-900" data-testid="replace-not-allowed">{t(locale, "dev.replace.not_allowed")}</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-4">
       <PageHeading title={t(locale, "dev.replace.title")} intro={t(locale, "dev.replace.intro")} />

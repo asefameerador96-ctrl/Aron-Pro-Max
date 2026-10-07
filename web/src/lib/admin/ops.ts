@@ -15,6 +15,10 @@ export interface OpDef {
   reason: string | null;
   /** The operation needs If-Match (the row `version`). */
   ifMatch?: boolean;
+  /** The operation takes no request body (sent empty). */
+  noBody?: boolean;
+  /** Body members whose listed values need a stronger role than `roles` (the proxy answers 403). */
+  forbid?: { member: string; values: readonly string[] };
 }
 
 const ADMINS = ["ADMIN", "SUPERADMIN"] as const;
@@ -40,10 +44,13 @@ export const OPS = {
   "device.replace": { method: "POST", path: "/v1/admin/devices/{device_id}/replace", roles: SUPPORT_UP, reason: "reason" },
   // F-ADM-027 / P12 releases: register a CI-built APK (draft), change rollout, block or retire; only a SUPERADMIN publishes (docs/24 s8.5)
   "release.create": { method: "POST", path: "/v1/admin/releases", roles: ADMINS, reason: null },
-  "release.update": { method: "PATCH", path: "/v1/admin/releases/{release_id}", roles: ADMINS, reason: "change_reason", ifMatch: true },
+  "release.update": { method: "PATCH", path: "/v1/admin/releases/{release_id}", roles: ADMINS, reason: "change_reason", ifMatch: true, forbid: { member: "status", values: ["published"] } },
   "release.publish": { method: "PATCH", path: "/v1/admin/releases/{release_id}", roles: SUPERS, reason: "change_reason", ifMatch: true },
   // F-ADM-030 / P14 quarantine review: accept, accept with fix (re-map), discard, return to device
   "quarantine.resolve": { method: "POST", path: "/v1/admin/quarantine/{quarantine_id}/resolve", roles: ADMINS, reason: "reason" },
+  // N-045 enrolment QR: tokens carry a note, not a reason; the secret is shown once
+  "enrolment.create": { method: "POST", path: "/v1/admin/enrolment-tokens", roles: SUPPORT_UP, reason: null },
+  "enrolment.revoke": { method: "POST", path: "/v1/admin/enrolment-tokens/{token_id}/revoke", roles: SUPPORT_UP, reason: null, noBody: true },
 } as const satisfies Record<string, OpDef>;
 
 export type OpKey = keyof typeof OPS;

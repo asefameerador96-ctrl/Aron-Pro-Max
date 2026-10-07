@@ -20,7 +20,7 @@ export function deviceActions(locale: Locale, d: Device, canWrite: boolean) {
         {t(locale, "dev.action.details")}
       </Link>
       {canWrite && d.status === "active" ? <OpInline op="device.state" params={params} body={{ action: "suspend" }} label={t(locale, "dev.action.suspend")} successKey="dev.action.done" testId={`suspend-${d.device_id}`} /> : null}
-      {canWrite && (d.status === "active" || d.status === "suspended" || d.status === "enrolled") ? <OpInline op="device.state" params={params} body={{ action: "revoke" }} label={t(locale, "dev.action.revoke")} danger successKey="dev.action.done" testId={`revoke-${d.device_id}`} /> : null}
+      {canWrite && (d.status === "active" || d.status === "suspended") ? <OpInline op="device.state" params={params} body={{ action: "revoke" }} label={t(locale, "dev.action.revoke")} danger successKey="dev.action.done" testId={`revoke-${d.device_id}`} /> : null}
       {canWrite && d.status === "suspended" ? <OpInline op="device.state" params={params} body={{ action: "reactivate" }} label={t(locale, "dev.action.reactivate")} successKey="dev.action.done" testId={`reactivate-${d.device_id}`} /> : null}
       {canWrite && (d.status === "active" || d.status === "suspended") ? (
         <Link href={`/admin/devices/${d.device_id}/replace`} className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100">
