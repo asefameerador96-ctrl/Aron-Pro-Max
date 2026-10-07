@@ -1,0 +1,2 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+F-SYS-015,L,2026-10-07T03:50Z,2026-10-07T04:18Z,~80,4 (events lost out of order; suspicious rule; zone move; outlet overwrite) fixed with tests,aggregation worker; worker role wired

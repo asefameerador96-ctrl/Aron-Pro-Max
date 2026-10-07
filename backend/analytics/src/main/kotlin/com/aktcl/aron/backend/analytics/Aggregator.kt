@@ -60,18 +60,26 @@ object Aggregator {
         )
     }
 
-    /** Facts, then the route-day aggregates (route, sku, brand, outlet). Returns the route's zone id, or null for an unknown route. */
-    fun rebuildRouteDay(h: Handle, routeId: Long, date: LocalDate): Long? {
+    /**
+     * Facts, then the route-day aggregates (route, sku, brand, outlet). Returns the zones whose zone-day must be rebuilt: the
+     * route's current zone and, when the route moved zones since its last rebuild, the zone it was counted in before. Empty for an unknown route.
+     */
+    fun rebuildRouteDay(h: Handle, routeId: Long, date: LocalDate, suspiciousThreshold: Int = DEFAULT_SUSPICIOUS_THRESHOLD): Set<Long> {
         val zoneId = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", routeId).mapTo(Long::class.java).findOne().orElse(null)
-            ?: return null
+            ?: return emptySet()
+        val previous = h.createQuery("SELECT zone_id FROM dw.agg_daily_route WHERE route_id = :r AND business_date = :d").bind("r", routeId).bind("d", date)
+            .mapTo(Long::class.java).findOne().orElse(null)
         val wm = watermark(h)
         rebuildFacts(h, routeId, zoneId, date, wm)
-        rebuildAggRoute(h, routeId, zoneId, date, wm)
+        rebuildAggRoute(h, routeId, zoneId, date, wm, suspiciousThreshold)
         rebuildAggRouteSku(h, routeId, date, wm)
         rebuildAggRouteBrand(h, routeId, date, wm)
         rebuildAggOutlet(h, routeId, date, wm)
-        return zoneId
+        return setOfNotNull(zoneId, previous)
     }
+
+    /** cfg.geo.suspicious_score_threshold default (docs/24 s9.5, s11.4). */
+    const val DEFAULT_SUSPICIOUS_THRESHOLD = 50
 
     private fun rebuildFacts(h: Handle, routeId: Long, zoneId: Long, date: LocalDate, wm: Long) {
         h.createUpdate(
@@ -109,14 +117,15 @@ object Aggregator {
         ).bind("r", routeId).bind("z", zoneId).bind("d", date).bind("wm", wm).execute()
     }
 
-    private fun rebuildAggRoute(h: Handle, routeId: Long, zoneId: Long, date: LocalDate, wm: Long) {
+    private fun rebuildAggRoute(h: Handle, routeId: Long, zoneId: Long, date: LocalDate, wm: Long, threshold: Int) {
         h.createUpdate(
             """
             WITH rd AS (SELECT * FROM app.route_day WHERE route_id = :r AND business_date = :d),
             ex AS (SELECT EXISTS (SELECT 1 FROM app.day_exception e WHERE e.status = 'approved' AND e.voided_at IS NULL
                                     AND :r = ANY (e.route_ids) AND :d BETWEEN e.from_date AND e.to_date) AS approved),
             vis AS (SELECT v.* FROM app.visit v WHERE v.route_id = :r AND v.business_date = :d AND v.visit_kind = 'sr_call' AND v.voided_at IS NULL),
-            susp AS (SELECT DISTINCT user_id FROM app.risk_signal WHERE business_date = :d AND status IN ('open','confirmed') AND user_id IS NOT NULL),
+            susp AS (SELECT user_id FROM app.risk_signal WHERE business_date = :d AND status IN ('open','confirmed') AND user_id IS NOT NULL
+                      GROUP BY user_id HAVING sum(score) >= :thr),
             memo AS (SELECT m.* FROM app.memo m WHERE m.route_id = :r AND m.business_date = :d AND $ACTIVE_MEMO),
             dues AS (SELECT coalesce(sum(amount_mtk), 0) AS amt FROM app.due_collection WHERE route_id = :r AND business_date = :d AND voided_at IS NULL)
             INSERT INTO dw.agg_daily_route (business_date, route_id, zone_id, planned, exception_approved, day_state, logged_in_at, sales_submitted_at,
@@ -148,7 +157,7 @@ object Aggregator {
               net_mtk = excluded.net_mtk, paid_mtk = excluded.paid_mtk, due_mtk = excluded.due_mtk, dues_collected_mtk = excluded.dues_collected_mtk,
               late_rows_after_final = excluded.late_rows_after_final, last_event_id = excluded.last_event_id, updated_at = now()
             """,
-        ).bind("r", routeId).bind("z", zoneId).bind("d", date).bind("wm", wm).execute()
+        ).bind("r", routeId).bind("z", zoneId).bind("d", date).bind("wm", wm).bind("thr", threshold).execute()
     }
 
     private fun rebuildAggRouteSku(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
@@ -190,26 +199,30 @@ object Aggregator {
         ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
     }
 
+    /**
+     * One row per (date, outlet) across ALL routes (the key has no route): the outlets touched on this route-day are recomputed
+     * from every route's records, so two routes selling to one outlet never overwrite each other. `route_id` is the outlet's own route.
+     */
     private fun rebuildAggOutlet(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
-        h.createUpdate("DELETE FROM dw.agg_daily_outlet WHERE route_id = :r AND business_date = :d").bind("r", routeId).bind("d", date).execute()
         h.createUpdate(
             """
-            WITH vis AS (SELECT outlet_id,
-                                bool_or(outcome_code IS DISTINCT FROM 'abandoned') AS visited,
-                                bool_or(coalesce(server_verdict, verdict) = 'in_range') AS geo_valid
-                           FROM app.visit WHERE route_id = :r AND business_date = :d AND visit_kind = 'sr_call' AND voided_at IS NULL GROUP BY outlet_id),
+            WITH keys AS (SELECT outlet_id FROM app.visit WHERE route_id = :r AND business_date = :d
+                          UNION SELECT outlet_id FROM app.memo WHERE route_id = :r AND business_date = :d
+                          UNION SELECT outlet_id FROM app.due_collection WHERE route_id = :r AND business_date = :d),
+            vis AS (SELECT outlet_id, bool_or(outcome_code IS DISTINCT FROM 'abandoned') AS visited, bool_or(coalesce(server_verdict, verdict) = 'in_range') AS geo_valid
+                      FROM app.visit WHERE business_date = :d AND visit_kind = 'sr_call' AND voided_at IS NULL AND outlet_id IN (SELECT outlet_id FROM keys) GROUP BY outlet_id),
             memo AS (SELECT m.outlet_id, count(*) AS n, coalesce(sum(m.net_mtk), 0) AS net, coalesce(sum(m.due_mtk), 0) AS due
-                       FROM app.memo m WHERE m.route_id = :r AND m.business_date = :d AND $ACTIVE_MEMO GROUP BY m.outlet_id),
+                       FROM app.memo m WHERE m.business_date = :d AND $ACTIVE_MEMO AND m.outlet_id IN (SELECT outlet_id FROM keys) GROUP BY m.outlet_id),
             qty AS (SELECT m.outlet_id, sum(ml.qty_base) AS q
                       FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
-                     WHERE m.route_id = :r AND m.business_date = :d AND $ACTIVE_MEMO AND ml.voided_at IS NULL AND ml.line_kind = 'sale' GROUP BY m.outlet_id),
-            dues AS (SELECT outlet_id, sum(amount_mtk) AS amt FROM app.due_collection WHERE route_id = :r AND business_date = :d AND voided_at IS NULL GROUP BY outlet_id),
-            keys AS (SELECT outlet_id FROM vis UNION SELECT outlet_id FROM memo UNION SELECT outlet_id FROM dues)
+                     WHERE m.business_date = :d AND $ACTIVE_MEMO AND ml.voided_at IS NULL AND ml.line_kind = 'sale' AND m.outlet_id IN (SELECT outlet_id FROM keys) GROUP BY m.outlet_id),
+            dues AS (SELECT outlet_id, sum(amount_mtk) AS amt FROM app.due_collection WHERE business_date = :d AND voided_at IS NULL AND outlet_id IN (SELECT outlet_id FROM keys) GROUP BY outlet_id)
             INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, route_id, visited, geo_valid, active_memo_count, sold_qty_base, net_mtk, due_mtk,
                                              dues_collected_mtk, last_event_id, updated_at)
-            SELECT :d, k.outlet_id, :r, coalesce(v.visited, false), coalesce(v.geo_valid, false), coalesce(m.n, 0), coalesce(q.q, 0),
+            SELECT :d, k.outlet_id, o.route_id, coalesce(v.visited, false), coalesce(v.geo_valid, false), coalesce(m.n, 0), coalesce(q.q, 0),
                    coalesce(m.net, 0), coalesce(m.due, 0), coalesce(d.amt, 0), :wm, now()
-              FROM keys k LEFT JOIN vis v USING (outlet_id) LEFT JOIN memo m USING (outlet_id) LEFT JOIN qty q USING (outlet_id) LEFT JOIN dues d USING (outlet_id)
+              FROM keys k JOIN app.outlet o ON o.id = k.outlet_id LEFT JOIN vis v USING (outlet_id) LEFT JOIN memo m USING (outlet_id)
+              LEFT JOIN qty q USING (outlet_id) LEFT JOIN dues d USING (outlet_id)
             ON CONFLICT (business_date, outlet_id) DO UPDATE SET route_id = excluded.route_id, visited = excluded.visited, geo_valid = excluded.geo_valid,
               active_memo_count = excluded.active_memo_count, sold_qty_base = excluded.sold_qty_base, net_mtk = excluded.net_mtk, due_mtk = excluded.due_mtk,
               dues_collected_mtk = excluded.dues_collected_mtk, last_event_id = excluded.last_event_id, updated_at = now()
@@ -218,14 +231,15 @@ object Aggregator {
     }
 
     /** Zone-day rollup from the route-day aggregates (never from the transaction log), plus the Dhaka-hour profile from the facts. */
-    fun rebuildZoneDay(h: Handle, zoneId: Long, date: LocalDate) {
+    fun rebuildZoneDay(h: Handle, zoneId: Long, date: LocalDate, suspiciousThreshold: Int = DEFAULT_SUSPICIOUS_THRESHOLD) {
         val wm = watermark(h)
         h.createUpdate(
             """
             WITH r AS (SELECT * FROM dw.agg_daily_route WHERE zone_id = :z AND business_date = :d),
             tgt AS (SELECT * FROM r WHERE planned AND NOT exception_approved),
-            susp AS (SELECT count(DISTINCT user_id) AS n FROM app.risk_signal s
-                      WHERE s.business_date = :d AND s.zone_id = :z AND s.status IN ('open','confirmed') AND s.user_id IS NOT NULL)
+            susp AS (SELECT count(*) AS n FROM (SELECT user_id FROM app.risk_signal WHERE business_date = :d AND status IN ('open','confirmed') AND user_id IS NOT NULL
+                                                   GROUP BY user_id HAVING sum(score) >= :thr) s
+                      WHERE s.user_id IN (SELECT user_id FROM dw.fact_visit WHERE zone_id = :z AND business_date = :d))
             INSERT INTO dw.agg_daily_zone (business_date, zone_id, territory_id, target_routes, logged_in_routes, sales_submitted_routes, final_submitted,
                 target_outlets, visited_outlets, successful_calls, visits, geo_valid_visits, force_sale_visits, mock_visits, suspicious_visits,
                 suspicious_user_days, active_memo_count, gross_mtk, net_mtk, dues_collected_mtk, last_event_id, updated_at)
@@ -249,7 +263,7 @@ object Aggregator {
               suspicious_user_days = excluded.suspicious_user_days, active_memo_count = excluded.active_memo_count, gross_mtk = excluded.gross_mtk,
               net_mtk = excluded.net_mtk, dues_collected_mtk = excluded.dues_collected_mtk, last_event_id = excluded.last_event_id, updated_at = now()
             """,
-        ).bind("z", zoneId).bind("d", date).bind("wm", wm).execute()
+        ).bind("z", zoneId).bind("d", date).bind("wm", wm).bind("thr", suspiciousThreshold).execute()
 
         h.createUpdate("DELETE FROM dw.agg_hourly_zone WHERE zone_id = :z AND business_date = :d").bind("z", zoneId).bind("d", date).execute()
         h.createUpdate(

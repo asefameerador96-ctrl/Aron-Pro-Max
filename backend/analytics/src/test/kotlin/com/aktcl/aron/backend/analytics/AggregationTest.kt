@@ -178,4 +178,71 @@ class AggregationTest {
         w.runUntilIdle()
         assertEquals(34_000, route("R1", "net_mtk"))
     }
+
+    // ---------- checker (F-SYS-015 refutation) ----------
+
+    /** Outbox gap: an event whose id was allocated before a later one but committed after it is skipped for good. */
+    @Test
+    fun checker_anEventCommittedOutOfIdOrderIsNotLost() {
+        val w = worker()
+        w.runUntilIdle()
+        conn.createStatement().use {
+            it.execute(
+                "SELECT pg_temp.memo('00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-000000000004', 'sr002', 'R2', 'O4', 'sr002-261004-009', TIMESTAMPTZ '2026-10-04 09:00Z', 3000, 3000, 1, 'active');" +
+                    "SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c1', 1, 'SKU2', 3, 1000, 'sale')",
+            )
+        }
+        // Ingest transaction A takes an event id but has not committed yet; transaction B takes a higher id and commits.
+        val slow = fresh.dataSource.connection
+        slow.autoCommit = false
+        slow.prepareStatement(
+            "INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, source_client_uuid) VALUES ('memo.created','memo','c1','2026-10-04','00000000-0000-4000-8000-0000000000c1')",
+        ).use { it.executeUpdate() }
+        event("visit.closed", "00000000-0000-4000-8000-000000000005")   // R3, higher id, committed first
+        w.runUntilIdle()
+        slow.commit(); slow.close()
+        w.runUntilIdle()
+        assertEquals(8_000, route("R2", "net_mtk"), "the memo of the slower ingest transaction never reached agg_daily_route")
+    }
+
+    /** s11.4: a user-day is suspicious only when its signal weights sum to >= cfg.geo.suspicious_score_threshold (50). */
+    @Test
+    fun checker_aSingleLowWeightSignalDoesNotMakeTheUserDaySuspicious() {
+        conn.createStatement().use {
+            it.execute(
+                "INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, zone_id, score, config_version) " +
+                    "SELECT 'GEO_PERFECT_ACCURACY', 2, DATE '2026-10-04', 'user', u.id::text, u.id, r.id, r.zone_id, 20, 1 " +
+                    "FROM app.app_user u, app.route r WHERE u.username = 'sr001' AND r.code = 'R1'",
+            )
+        }
+        worker().runUntilIdle()
+        assertEquals(0, route("R1", "suspicious_visits"), "score 20 < threshold 50, yet all 3 R1 visits are counted suspicious")
+        assertEquals(0, zone("Z1", "suspicious_user_days"))
+    }
+
+    /** A route moved to another zone: a re-aggregated past day lands in the new zone but stays in the old zone too. */
+    @Test
+    fun checker_aRouteMovedBetweenZonesIsNotCountedTwice() {
+        val w = worker()
+        w.runUntilIdle()
+        conn.createStatement().use { it.execute("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE code = 'R2'") }
+        event("memo.created", "00000000-0000-4000-8000-0000000000a4")   // any late record of R2 for 2026-10-04
+        w.runUntilIdle()
+        val total = long("SELECT sum(gross_mtk) FROM dw.agg_daily_route WHERE business_date = '2026-10-04'")
+        assertEquals(total, long("SELECT sum(gross_mtk) FROM dw.agg_daily_zone WHERE business_date = '2026-10-04'"), "zone totals double-count R2")
+    }
+
+    /** An outlet with records on two routes the same day: agg_daily_outlet keeps only the route rebuilt last. */
+    @Test
+    fun checker_anOutletSoldFromTwoRoutesKeepsBothRoutesNumbers() {
+        conn.createStatement().use {
+            it.execute(
+                "SELECT pg_temp.memo('00000000-0000-4000-8000-0000000000c2', '00000000-0000-4000-8000-000000000001', 'sr001', 'R1', 'O4', 'sr001-261004-009', TIMESTAMPTZ '2026-10-04 08:30Z', 2000, 2000, 1, 'active');" +
+                    "SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c2', 1, 'SKU2', 2, 1000, 'sale')",
+            )
+        }
+        event("memo.created", "00000000-0000-4000-8000-0000000000c2")
+        worker().runUntilIdle()
+        assertEquals(7_000, long("SELECT net_mtk FROM dw.agg_daily_outlet a JOIN app.outlet o ON o.id = a.outlet_id WHERE o.code = 'O4'"))
+    }
 }
