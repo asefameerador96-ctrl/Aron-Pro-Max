@@ -21,4 +21,7 @@ export const MASTER_LINKS: readonly MasterLink[] = [
   { id: "print-templates", href: "/admin/print-templates", labelKey: "menu.config.print_templates", group: "lists", roles: ADMIN_PORTAL_ROLES },
   { id: "sr-lifecycle", href: "/admin/sr-lifecycle", labelKey: "menu.admin.sr_lifecycle", group: "routes", roles: ["ADMIN", "SUPERADMIN"] },
   { id: "tutorials", href: "/admin/tutorials", labelKey: "menu.admin.tutorials", group: "lists", roles: ADMIN_PORTAL_ROLES },
+  { id: "surveys", href: "/admin/surveys", labelKey: "def.surveys.title", group: "lists", roles: ADMIN_PORTAL_ROLES },
+  { id: "rubrics", href: "/admin/rubrics", labelKey: "def.rubrics.title", group: "lists", roles: ADMIN_PORTAL_ROLES },
+  { id: "content", href: "/admin/content", labelKey: "def.content.title", group: "lists", roles: ADMIN_PORTAL_ROLES },
 ];

@@ -237,9 +237,15 @@ object HardcodedStringScanner {
     fun allNames(source: String): Set<String> =
         resourceTag.findAll(source).mapNotNull { nameAttr.find(it.groupValues[2])?.groupValues?.get(1) }.toSet()
 
-    /** The source sets that ship (main, debug, release, flavours); tests may hold any literal they like. */
+    /**
+     * The source sets that ship (main, debug, release, flavours). Anything that is a test source set never ships and may
+     * hold any literal: test, testDebug, testContract, testFixtures, androidTest, sharedTest, ...
+     */
+    fun isTestSourceSet(name: String): Boolean =
+        name.startsWith("test") || name.startsWith("androidTest") || name.startsWith("sharedTest") || name.endsWith("Test") || name.endsWith("Fixtures")
+
     private fun shippedSourceSets(module: File): List<File> =
-        File(module, "src").listFiles().orEmpty().filter { it.isDirectory && it.name !in setOf("test", "androidTest", "testFixtures") }
+        File(module, "src").listFiles().orEmpty().filter { it.isDirectory && !isTestSourceSet(it.name) }
 
     /** The modules whose code can show text to a field user. */
     fun isScannedModule(name: String): Boolean =

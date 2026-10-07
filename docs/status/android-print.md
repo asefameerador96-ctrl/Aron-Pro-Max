@@ -12,7 +12,7 @@
   - `BluetoothSppTransport` (SPP UUID, secure then insecure RFCOMM), `PrinterManager` (state flow for the icon, hold/release, 120 s idle release, drop detection by the reader with no polling, reconnect backoff 2/5/15 s while held), `GS v 0` in 24-row bands, 512-byte chunks paced against a 3,072-byte / 300-rows-per-second model, DLE EOT 4 paper checks, idempotent job ids.
   - Tested against `SimPrinter` (flags buffer overflow and garbage bytes) and the checker's printer that keeps its parser over a link drop.
 
-- **PrintLedger contract** (persistence half of F-SR-028/073; session #2): `src/testContract/.../PrintLedgerContract.kt` runs the same scenarios against `MemLedger` (core-printing `MemLedgerContractTest`) and android-core's `RoomPrintLedger` (core-database `RoomPrintLedgerContractTest`, Robolectric file DB with real close/reopen, plus a trigger-forced rollback proving event + outbox + job delete + flags are one transaction). Opus checker: 2 blocking + 6 minor; android-print half fixed with tests (void slip / due receipt are not copies: `ReprintPolicy.isCopy`; `MemoPrinting` keeps an in-flight set so `recover()` never closes a live job, released on cancel/failure; sticky `paperOut`; real v4 uuids in flow tests); re-check clean on the fixes. Room half filed: `docs/requests/android-print-ledger-findings.md`.
+- **PrintLedger contract** (persistence half of F-SR-028/073; session #2): `src/testContract/.../PrintLedgerContract.kt` runs the same scenarios against `MemLedger` (core-printing `MemLedgerContractTest`) and android-core's `RoomPrintLedger` (core-database `RoomPrintLedgerContractTest`, Robolectric file DB with real close/reopen, plus a trigger-forced rollback proving event + outbox + job delete + flags are one transaction). Opus checker: 2 blocking + 6 minor; android-print half fixed with tests (void slip / due receipt are not copies: `ReprintPolicy.isCopy`; `MemoPrinting` keeps an in-flight set so `recover()` never closes a live job, released on cancel/failure; sticky `paperOut`; real v4 uuids in flow tests); re-check clean on the fixes. Room half filed (`docs/requests/android-print-ledger-findings.md`) and fixed by android-core (0b29181, d0a14b9); the contract now also holds both ledgers to: a slip flags every row of its Save and no other Save, void slip / due receipt never a copy, history in recorded order, paper_out never taken back, printed_at with milliseconds (Room 14/14, reference 12/12).
 - **`MemoPrinting.printDaySummary`** (F-SR-036 print): kind `day_summary`, no limit, no marker (AP-09).
 
 ## Device-pending
@@ -47,13 +47,12 @@
 - **AP-08:** the printer UI lives in core-printing with Compose (no dependency on core-ui; themed by the host app), so every app reuses one picker and icon.
 
 ## In progress / waiting
-- Requests open: `docs/requests/android-print-wiring-gaps.md` (sr-a items 1-8, sr-b 9-14, android-core 15; lanes messaged once) and `docs/requests/android-print-ledger-findings.md` (android-core: multi-row slip flag, void/due counted as copies, printed_at millis, history order, sticky paper_out).
+- Requests open: `docs/requests/android-print-wiring-gaps.md` (sr-a items 1-8, sr-b 9-14, android-core 15; lanes messaged once) and `docs/requests/android-print-ledger-findings.md` (android-core: all five fixed and in the contract).
 - No SR module calls the printer yet (INT, lane/android-sr-a, lane/android-sr-b checked 2026-10-07).
 
 ## Next three rows
-1. When android-core lands the ledger findings: add multi-row slip, void-slip and sticky-paper_out cases to `PrintLedgerContract` (both ledgers).
-2. **F-SR-015** (after the multi-row fix and sr-a's Save hook): Room-level slip test, then D-P2 slip print.
-3. **F-SR-031/066 + F-SR-028/073** end to end once sr-b wires Review and Memo menu: verify marker/limit on the Room ledger through the screens, then mark done; D-P2 with the owner (message `@parent` when the SR app installs with a print screen).
+1. **F-SR-015** (multi-row flag is in; waits for sr-a's Save hook): Room-level slip test, then D-P2 slip print.
+2. **F-SR-031/066 + F-SR-028/073** end to end once sr-b wires Review and Memo menu: verify marker/limit on the Room ledger through the screens, then mark done; D-P2 with the owner (message `@parent` when the SR app installs with a print screen).
 
 ## Traps
 - The contract is a shared source dir (`core-printing/src/testContract`) compiled into both modules' unit tests; keep it free of core-printing test-only classes.

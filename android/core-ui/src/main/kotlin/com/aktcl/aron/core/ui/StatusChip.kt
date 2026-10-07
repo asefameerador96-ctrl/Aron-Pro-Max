@@ -32,17 +32,22 @@ sealed interface SyncChipState {
 @Composable
 fun StatusChip(state: SyncChipState, modifier: Modifier = Modifier) {
     val c = LocalAronColors.current
-    val (dot, label) = when (state) {
-        SyncChipState.Offline -> c.offline to stringResource(R.string.core_ui_chip_offline)
-        SyncChipState.Syncing -> c.accent to stringResource(R.string.core_ui_chip_syncing)
-        SyncChipState.Synced -> c.success to stringResource(R.string.core_ui_chip_synced)
-        is SyncChipState.Waiting -> c.warning to stringResource(R.string.core_ui_chip_waiting, localizedNumber(state.count.toLong()))
+    // opaque container colours (docs/design/tokens.md s2.5): contrast never depends on what is behind the chip
+    val (dot, bg, fg, label) = when (state) {
+        SyncChipState.Offline -> ChipLook(c.offline, c.offlineContainer, c.offlineOnContainer, stringResource(R.string.core_ui_chip_offline))
+        SyncChipState.Syncing -> ChipLook(c.accent, c.accentContainer, c.accentOnContainer, stringResource(R.string.core_ui_chip_syncing))
+        SyncChipState.Synced -> ChipLook(c.success, c.successContainer, c.successOnContainer, stringResource(R.string.core_ui_chip_synced))
+        is SyncChipState.Waiting -> ChipLook(c.warning, c.warningContainer, c.warningOnContainer, stringResource(R.string.core_ui_chip_waiting, localizedNumber(state.count.toLong())))
     }
-    GlassSurface(modifier.semantics(mergeDescendants = true) { contentDescription = label }, RoundedCornerShape(AronTokens.Radius.Chip), elevation = AronTokens.Elevation.Page) {
-        Row(Modifier.heightIn(min = 32.dp).padding(horizontal = AronTokens.Space.M, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.size(AronTokens.Space.S).background(dot, CircleShape))
-            Spacer(Modifier.width(AronTokens.Space.S))
-            Text(label, style = MaterialTheme.typography.labelMedium, color = c.textPrimary)
-        }
+    Row(
+        modifier.semantics(mergeDescendants = true) { contentDescription = label }.background(bg, RoundedCornerShape(AronTokens.Radius.Chip))
+            .heightIn(min = 32.dp).padding(horizontal = AronTokens.Space.M, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Spacer(Modifier.size(AronTokens.Space.S).background(dot, CircleShape))
+        Spacer(Modifier.width(AronTokens.Space.S))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = fg)
     }
 }
+
+private data class ChipLook(val dot: androidx.compose.ui.graphics.Color, val bg: androidx.compose.ui.graphics.Color, val fg: androidx.compose.ui.graphics.Color, val label: String)

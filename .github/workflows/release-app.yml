@@ -118,16 +118,21 @@ jobs:
           printf '%s' "${KS}" | base64 -d > "${ks}"
           signer="${ANDROID_HOME}/build-tools/36.0.0/apksigner"
           mkdir -p out
-          for app in sr amo tso; do
-            src="$(ls android/app-${app}/build/outputs/apk/release/*-release-unsigned.apk)"
-            dst="out/aron-${app}-${VERSION_NAME}.apk"
+          # Universal APK per app (the provisioning file) plus per-ABI splits when the build makes them.
+          list="$(python3 tools/ci/release-apks.py)"
+          : > gate-args.txt
+          while IFS=$'\t' read -r app variant gate stem src; do
+            dst="out/${stem}-${VERSION_NAME}.apk"
             "${signer}" sign --ks "${ks}" --ks-pass env:KSP --ks-key-alias "${ALIAS}" --key-pass env:KP --out "${dst}" "${src}"
-            "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app}: /"
-          done
+            "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app} ${variant}: /"
+            echo "${gate}=${dst}" >> gate-args.txt
+          done <<< "${list}"
           (cd out && sha256sum ./*.apk > SHA256SUMS)
           cat out/SHA256SUMS
       - name: APK size gate
-        run: python3 tools/ci/apk-size-gate.py "sr-release=out/aron-sr-${VERSION_NAME}.apk" "amo-release=out/aron-amo-${VERSION_NAME}.apk" "tso-release=out/aron-tso-${VERSION_NAME}.apk"
+        run: |
+          mapfile -t gate_args < gate-args.txt
+          python3 tools/ci/apk-size-gate.py "${gate_args[@]}"
       - name: Publish the GitHub Release (notes from docs/releases/<tag>.md, Bangla and English)
         env:
           GH_TOKEN: ${{ github.token }}

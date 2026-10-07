@@ -8,6 +8,7 @@ import com.aktcl.aron.rules.GeoVerdict
 import com.aktcl.aron.rules.GeoVerdictResult
 import com.aktcl.aron.rules.GeoVerdicts
 import com.aktcl.aron.rules.OutletGeo
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,9 @@ sealed interface VisitUiState {
         val refreshMax: Int,
         val forceSaleAvailable: Boolean,
         val mockWarning: Boolean,
+        /** The phone's position of the last fix, for the on-demand map (N-041); null without a fix. */
+        val phoneLat: Double? = null,
+        val phoneLng: Double? = null,
     ) : VisitUiState
 
     /** The visit row is committed; the sale may continue. */
@@ -89,6 +93,8 @@ class VisitFlow(
     private val onBlocked: suspend (OpenVisit) -> Unit = {},
     private val openStore: OpenVisitStore = OpenVisitStore.None,
     private val configCheck: ConfigCheck = ConfigCheck.None,
+    /** The config check runs here, never awaited: the network is not in the critical path of a visit (R9). */
+    private val background: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
 ) {
     private val lock = Mutex()
     private var visitUuid: String = ""
@@ -135,7 +141,7 @@ class VisitFlow(
         check(cur is VisitUiState.NeedsDecision) { "refresh only applies while the geo check is undecided" }
         if (!cur.refreshLeft) return@withLock cur
         refreshCount += 1
-        runCatching { configCheck.checkOnResume() } // F-SYS-092: never blocks, never throws into the flow
+        background.launch { runCatching { configCheck.checkOnResume() } } // F-SYS-092: launched, never awaited, never throws into the flow
         ui.value = VisitUiState.ReadingFix
         evaluate(fixes.readFix(PURPOSE_VISIT, refreshCount))
     }
@@ -174,6 +180,7 @@ class VisitFlow(
                     refreshLeft = refreshCount < policy.refreshMax, refreshMax = policy.refreshMax,
                     forceSaleAvailable = result.action == GeoAction.FORCE_SALE,
                     mockWarning = result.warnRep,
+                    phoneLat = fix.lat.takeIf { fix.isOk }, phoneLng = fix.lng.takeIf { fix.isOk },
                 )
                 ui.value = st
                 st

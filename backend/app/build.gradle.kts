@@ -23,6 +23,10 @@ dependencies {
     implementation(project(":backend:media"))
     runtimeOnly(project(":db"))
     implementation(libs.logback.classic)
+    // Azure Blob user-delegation SAS through the api's managed identity (docs/requests/backend-admin-blob-sas.md; infra).
+    implementation(platform(libs.azure.sdk.bom))
+    implementation(libs.azure.storage.blob)
+    implementation(libs.azure.identity)
 
     testImplementation(testFixtures(project(":backend:platform")))
     testImplementation(platform(libs.junit.bom))
