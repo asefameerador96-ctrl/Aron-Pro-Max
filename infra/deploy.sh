@@ -415,9 +415,10 @@ fi
 
 # ------------------------------------------------------------------------------------------------- db logins
 # Per-app least-privilege logins (infra/sql/runtime-logins.sql) must exist with the Key Vault passwords before the
-# apps switch to them. Needs the V0014 roles, so after the migrations; a rollback changes no database state.
+# apps switch to them. Needs the V0014/V0020 roles, so after the migrations. Runs in a rollback too (idempotent, no
+# schema change), because the apps template of the current commit may point the apps at these logins.
 DBLOGINS_JOB="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbLoginsJobName.value -o tsv)"
-if [ -z "$ROLLBACK_SHA" ] && [ -n "$DBLOGINS_JOB" ]; then
+if [ -n "$DBLOGINS_JOB" ]; then
   execution="$(az containerapp job start -g "$RG" -n "$DBLOGINS_JOB" --query name -o tsv)"
   note "database logins started: $execution"
   status=""

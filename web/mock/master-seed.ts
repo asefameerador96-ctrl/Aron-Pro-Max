@@ -72,6 +72,15 @@ export function seedTables(): Record<string, Row[]> {
       row(4, { code: "DHK-335-004", name: "Wrongly Closed Tea Stall", name_bn: null, owner_name: "Salam Mia", contact_number: null, address: null, zone_id: 15, route_id: 4, cluster_id: 3, channel: "GT", sub_channel_id: 11, geo_class: "SemiUrban", lat: null, lng: null, location_confirmed: false, outlet_kind: "retail", price_type: "regular", status: "closed", visit_sequence: null, external_ref: null }),
       row(5, { code: "DHK-335-005", name: "Uttara Pan Shop", name_bn: null, owner_name: "Kamal Hossain", contact_number: null, address: null, zone_id: 15, route_id: null, cluster_id: 4, channel: "GT", sub_channel_id: null, geo_class: null, lat: null, lng: null, location_confirmed: false, outlet_kind: "retail", price_type: "regular", status: "active", visit_sequence: null, external_ref: null }),
     ],
+    surveys: [
+      { survey_id: 1, version: 1, kind: "posm", title_en: "POSM check", title_bn: "পসম যাচাই", status: "active", valid_from: "2026-10-01", valid_to: null, points_per_photo: null, questions: [{ question_id: 1, answer_type: "bool", label_en: "Is the POSM displayed?", label_bn: null, option_codes: [], requires_photo: true }] },
+    ] as unknown as Row[],
+    rubrics: [
+      { rubric_id: 1, version: 1, kind: "joint_call", status: "active", criteria: [{ criterion_id: 1, label_en: "Greets the retailer", label_bn: null, answer_type: "score_1_5", enabled: true }] },
+    ] as unknown as Row[],
+    content: [
+      { content_id: 1, version: 1, kind: "av", title_en: "Brand film", title_bn: null, asset_url: "https://blob.example/av/film.mp4", sha256: "a".repeat(64), bytes: 5_000_000, duration_s: 30, valid_from: "2026-10-01", valid_to: "2026-12-31", sequence: 1, outlet_ids: [], status: "active", assigned_scope: [], updated_at: "2026-10-01T04:00:00.000Z" },
+    ] as unknown as Row[],
     tutorials: [
       { tutorial_id: 1, kind: "video", title_en: "Taking a first order", title_bn: "প্রথম অর্ডার নেওয়া", url: "https://blob.example/tutorials/first-order.mp4", bytes: 5_000_000, duration_s: 120, sort: 1, roles: ["SR"], status: "active", version: 1 },
       { tutorial_id: 2, kind: "manual", title_en: "SR manual", title_bn: null, url: "https://blob.example/tutorials/sr-manual.pdf", bytes: 800_000, duration_s: null, sort: 2, roles: ["SR", "AMO"], status: "active", version: 1 },

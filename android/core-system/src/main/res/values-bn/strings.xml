@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- F-SYS-023: runtime-permission gate -->
+    <string name="perm_gate_title_attendance">হাজিরার জন্য লোকেশন দরকার</string>
+    <string name="perm_gate_title_sale">বিক্রির জন্য লোকেশন দরকার</string>
+    <string name="perm_gate_title_outlet">দোকানের অনুরোধের জন্য লোকেশন দরকার</string>
+    <string name="perm_gate_title_photo">ছবির জন্য ক্যামেরা দরকার</string>
+    <string name="perm_gate_title_print">প্রিন্টের জন্য ব্লুটুথ দরকার</string>
+    <string name="perm_gate_location_why">হাজিরা ও প্রতিটি বিক্রির আগে ARON দেখে নেয় আপনি দোকানে আছেন কিনা। লোকেশনের অনুমতি ছাড়া এগুলো শুরু করা যাবে না। বিক্রি ও মেমো এই ফোনেই থাকে; আর কিছুতে প্রভাব পড়বে না।</string>
+    <string name="perm_gate_location_off">এই ফোনে লোকেশন বন্ধ আছে। হাজিরা ও বিক্রির জন্য লোকেশন চালু করুন।</string>
+    <string name="perm_gate_camera_why">শাটার চাপলে শুধু দোকানের ছবি তুলতে ক্যামেরা ব্যবহার হয়। পেছনে কখনো চালু থাকে না।</string>
+    <string name="perm_gate_bluetooth_why">ব্লুটুথ শুধু মেমো প্রিন্টারের সাথে যুক্ত হতে ব্যবহার হয়। এটি ছাড়াও বিক্রি সেভ হবে; মেমো পরে প্রিন্ট করা যাবে।</string>
+    <string name="perm_gate_settings_steps_location">সেটিংস খুলুন, পারমিশন চাপুন, লোকেশন \"শুধু অ্যাপ ব্যবহারের সময় অনুমতি দিন\" করুন এবং সঠিক লোকেশন চালু রাখুন। তারপর ARON-এ ফিরে আসুন।</string>
+    <string name="perm_gate_settings_steps_camera">সেটিংস খুলুন, পারমিশন চাপুন, ক্যামেরা \"শুধু অ্যাপ ব্যবহারের সময় অনুমতি দিন\" করুন। তারপর ARON-এ ফিরে আসুন।</string>
+    <string name="perm_gate_settings_steps_bluetooth">সেটিংস খুলুন, পারমিশন চাপুন এবং কাছাকাছি থাকা ডিভাইসের অনুমতি দিন। তারপর ARON-এ ফিরে আসুন।</string>
+    <string name="perm_gate_precise_needed">আপনি দোকানে আছেন কিনা দেখতে ARON-এর সঠিক লোকেশন দরকার। আনুমানিক লোকেশন যথেষ্ট নয়: সঠিক লোকেশনের অনুমতি দিন।</string>
+    <string name="perm_gate_allow">অনুমতি দিন</string>
+    <string name="perm_gate_open_settings">সেটিংস খুলুন</string>
+    <string name="perm_gate_turn_on_location">লোকেশন চালু করুন</string>
+    <string name="perm_gate_back">ফিরে যান</string>
+</resources>

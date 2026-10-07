@@ -9,7 +9,7 @@
 # Budget: under 15 minutes wall time for a full run (docs/31 s2); the jobs run in parallel and path-filtered.
 #
 # Secrets (never committed; set them in GitHub > Settings > Secrets and variables > Actions, docs/24 s13.6):
-#   MAPS_ANDROID_KEY          Google Maps SDK for Android key (AMO and TSO apps); manifest placeholder mapsApiKey
+#   MAPS_ANDROID_KEY          Google Maps SDK for Android key (SR, AMO and TSO apps); manifest placeholder mapsApiKey
 #   MAPS_WEB_KEY              Google Maps JavaScript API key for web/ (NEXT_PUBLIC_MAPS_WEB_KEY at next build)
 #   GOOGLE_SERVICES_JSON      Firebase google-services.json content, written into android/app-{sr,amo,tso}/
 #   FCM_SERVICE_ACCOUNT_JSON  Firebase service account for the backend FCM sender; copied to Key Vault by the deploy
@@ -352,6 +352,10 @@ jobs:
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # Manifest placeholder mapsApiKey of all three apps (root build.gradle.kts; SR has the on-tap map since docs/24
+      # s14a R19). Optional: without the secret the APKs build and the map shows no tiles.
+      MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder

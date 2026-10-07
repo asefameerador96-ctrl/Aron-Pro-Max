@@ -19,7 +19,8 @@ param buildId = readEnvironmentVariable('ARON_BUILD_ID', '')
 param migrateImage = readEnvironmentVariable('ARON_MIGRATE_IMAGE', '')
 // Per-app database logins (docs/requests/db-runtime-roles.md); deploy.sh imports the psql image and sets it.
 param psqlImage = readEnvironmentVariable('ARON_PSQL_IMAGE', '')
-param dbPerAppLogins = true
+// OFF until api_rw has the DELETE grants the admin flows need (docs/requests/db-runtime-roles-gaps.md); the logins are still created.
+param dbPerAppLogins = false
 param deployServices = empty(envServices) ? true : bool(envServices)
 param frontDoorPrivateLink = false
 param frontDoorEnabled = false
