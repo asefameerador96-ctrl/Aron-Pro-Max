@@ -1,6 +1,5 @@
 package com.aktcl.aron.feature.memo.domain
 
-import com.aktcl.aron.rules.MemoMath
 
 /** One memo of the day as the summary needs it; built from stored memo rows (never from the screen). */
 data class SummaryMemo(
