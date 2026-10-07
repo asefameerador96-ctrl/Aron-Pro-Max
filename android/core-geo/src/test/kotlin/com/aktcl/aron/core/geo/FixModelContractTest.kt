@@ -37,8 +37,9 @@ class FixModelContractTest {
 
     @Test fun noStreamAndNoLastKnownLocationInCoreGeo() {
         val forbidden = Regex("""requestLocationUpdates|getLastLocation|lastLocation|getLastKnownLocation|lastKnownLocation|requestSingleUpdate""")
-        // The platform fallback below API 30 needs one single update and removes its listener on return.
-        val allowed = mapOf("AndroidLocation.kt" to setOf("requestSingleUpdate"))
+        // The platform fallback below API 30 needs one single update and removes its listener on return; breadcrumbs
+        // (N-035, off by default) are the one batched request, removed whenever they are off.
+        val allowed = mapOf("AndroidLocation.kt" to setOf("requestSingleUpdate"), "AndroidBreadcrumbs.kt" to setOf("requestLocationUpdates"))
         val hits = File(System.getProperty("aron.coreGeoSrc")!!).walkTopDown().filter { it.extension == "kt" }.flatMap { f ->
             f.readLines().filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
                 .flatMap { line -> forbidden.findAll(line).map { it.value }.toList() }

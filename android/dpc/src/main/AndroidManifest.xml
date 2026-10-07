@@ -3,6 +3,10 @@
      The component name in the enrolment QR is <applicationId>/com.aktcl.aron.dpc.AronDeviceAdminReceiver. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Managed self-update (N-034): a package-installer session for our own package; silent as device owner, and
+         API 31+ self-updates without user action. No unknown-sources path is used. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- The system prompt that exempts Aron from battery optimisation (docs/24 s10.2 self_protection). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <application>
@@ -30,6 +34,10 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- Result of our own managed update (N-034); only the installer's use of our PendingIntent reaches it. -->
+        <receiver
+            android:name="com.aktcl.aron.dpc.update.UpdateResultReceiver"
+            android:exported="false" />
         <!-- Releases blocked apps at the hard end time (N-032); only the app's own PendingIntent reaches it. -->
         <receiver
             android:name="com.aktcl.aron.dpc.blocking.HardEndReceiver"
