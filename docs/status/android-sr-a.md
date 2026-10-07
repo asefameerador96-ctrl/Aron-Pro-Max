@@ -16,8 +16,7 @@ Package `com.aktcl.aron.feature.outlet`:
 F-SR-002, 003, 065 (model only, not yet checker-reviewed), F-SR-017, 019 (T1: Opus checker found 6 defects, all fixed with tests), F-SR-014, 016, 074, 011, 012, 046, 047, 063, 008, 009, 064, 072, 079, 049, 037, 038, 039, 076, N-040 (T2: Sonnet checker found defects, fixed with tests). "Done" here means the domain logic and its acceptance tests; each row's screen is still to do and each row is not fully closed until its screen lands.
 
 ## Open items from the checkers (need a lead or owner ruling)
-- F-SR-017 says "opens the visit row at once"; SRA-01 commits when the verdict is final. Refresh fixes are not stored (contract has FixPurpose.refresh). Ruling wanted.
-- F-SR-019 mentions the conditional config check F-SYS-092 before a refresh when online: no hook yet.
+- RULED R8/R9 (lead): local OPEN row at once (OpenVisitStore, no outbox), outbox record at the final verdict; refresh fixes not stored; ConfigCheck hook (no-op default). Request: docs/requests/android-sr-a-open-visit-row.md.
 - Close form for outlet requests: docs/15 says new/info have no confirm, F-SR-039 requires a confirm for info; built per F-SR-039.
 - Requests filed: docs/requests/android-sr-a-task-tables.md, android-sr-a-outlet-request-capture.md.
 

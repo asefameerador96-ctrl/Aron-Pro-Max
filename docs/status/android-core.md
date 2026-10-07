@@ -1,4 +1,4 @@
-# Status: lane android-core (Day 1)
+# Status: lane android-core (Day 2)
 
 ## Done (builder, then an independent checker per row; every confirmed defect fixed with a test)
 - **N-001** Native build and the three app shells. `:android:app-{sr,amo,tso}:assembleDebug` gives `com.aktcl.aron.sr/.amo/.tso`.
@@ -22,6 +22,18 @@
   - Captures write domain rows plus outbox records in one transaction. Payloads are built from the stored row and checked against the contract (encoded JSON, required members, nested GeoFix).
   - Tests: migration from the exported schema plus an identity-hash check; duplicate-uuid rejection in every table; kill and relaunch with a persisted in-flight batch; a seeded SR day (200 outlets, 60 SKUs) loads in about 0.2 s on the host.
   - A per-user database file (`aron-u<id>.db`) with a SQLCipher factory.
+
+- **F-SYS-008** Idempotent batch upload (`core-sync` `SyncEngine`). Two Opus checker rounds; every finding is a test (`CheckerF008Test`).
+  - Persisted in-flight batches are resent first with the same `batch_uuid` and `X-Batch-Attempt` + 1 (kill or lost answer ends in `replayed`).
+  - New batches: commit order, at most 200 rows and 256 KiB raw, families kept whole where they fit, membership persisted in the transaction that marks them in flight; gzip, batch proof, acks applied in one transaction.
+  - `outbox.attempts` now counts definitive failures only (retryable reject, isolated family, unreadable answer), never re-batches; skip-ahead after 5, `retry_exhausted` after 10.
+  - 500 and 413 bisect to the failing family, which is held back for the run; a 400/422 counts only against the families its `errors[].pointer` names; 401 refreshes once; 403/426/429/503/transport keep the batch for an identical resend.
+  - Replayed answers apply acks only; quarantine resolutions are stashed until the row is quarantined.
+  - Property test: 40 seeds of lost answers, kills before and after the server, 500/503, retryable rejects, tiny batches and replays of old batches by a second path: exactly one memo and one set of lines per sale, every row acked with the server's id.
+  - Not in this row: `device_money` (F-SYS-009 reconciliation), time anchors (F-SYS-049 supplies them through `SyncEngine(timeAnchors=)`), scheduling (F-SYS-011).
+
+## In progress
+- **F-SYS-006** bundle into Room: built and tested (Room v2 with `price`, `config_value`, `bundle_section`, auto-migration 1->2 with a test; forward-only apply; `BundleDownloader` with staged pages that resume after a kill). Checker pending; app-shell wiring of `AronDatabase.open` with a Keystore-wrapped SQLCipher passphrase still to do in this row.
 
 ## Second re-check (independent agent, on the pushed fixes)
 - Found a release-build regression: the https guard broke the configuration cache. Fixed; `assembleRelease` now builds (10.7 MB unsigned with R8) and an http base URL fails. **Ask to infra:** add `:android:app-sr:assembleRelease` to CI so this cannot regress silently.
@@ -66,6 +78,7 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
   - a memo's outlet is its visit's outlet.
 - `ReferenceRepository(db)`: `apply(BundleReference)` replaces routes, outlets and SKUs in one transaction. Reads: `routesOfDay(businessDate): List<RouteDay(route, outlets)>` (planned route first, outlets in visit order), `skus()`, `bundleVersion()`.
 - DAOs for reads: `db.captureDao()` (`visitsOn`, `memosOn`, `linesOf`, `attendanceOn`, `stockOn`, `stockBalanceOn`, `memo`, `visit`, `fix`), `db.referenceDao()`, `db.outboxDao()`.
+- `ReferenceRepository` (F-SYS-006) also reads: `businessDate()`, `priceOn(skuId, priceType, businessDate)`, `config(key, nowIso)` (JSON text, scheduled values on trusted time), `section(name)` (raw JSON of `user`, `code_lists`, `calendar`, `templates`, `reason_texts`, `offers`, `tasks`, `supervisor`, `programmes`, `content`, ... and `route.<id>` for open memos, plan, targets, day state). `apply` returns `ApplyResult` and never rolls back to an older snapshot.
 - Outbox API (sync engine only):
   - `nextPending(limit)`, `markInFlight(batchUuid, seqs)`, `inFlight(batchUuid)`, `inFlightBatches()`
   - `applyAck(clientUuid, state, code, serverId, at)`: the state is one of `OutboxState.ACKED`, `REJECTED`, `QUARANTINED` or `PENDING`; anything else throws.
@@ -76,6 +89,7 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
 - `SyncScheduler.requestSync(userId, trigger = SyncTrigger.WRITE_DEBOUNCE)`. Call it after every commit; it only schedules.
 - Use `SyncTrigger.DAY_SUBMIT` for Sales Submit, `CHECKOUT` after check-out and `MANUAL` for the Sync button.
 - `SyncScheduler.None` is for previews and tests. Batch build and ack handling stay inside core-sync (F-SYS-008); feature code never calls them.
+- `SyncEngine(userId, db, SyncBatchApi(client, signer), SessionUploadAuth(session), deviceUuid, appVersion, clock).run(trigger): SyncReport` and `BundleDownloader(db, syncApi, stagingDir, clock).download()` are for the scheduler (F-SYS-011) and the login flow; feature code does not call them.
 
 **core-network** (`com.aktcl.aron.core.network`):
 - `AronApiClient.call(path, CallAuth.Grant(Grant.FULL), build = { get() }, decode = { body, meta -> ... }): ApiResult<T>`.
@@ -108,7 +122,12 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
 - Every string goes in `res/values` + `res/values-bn` of your module. The build fails otherwise: `HardcodedStringScanTest`. Opt a line out only with `// i18n-ignore: <reason>`.
 - The component kit (tiles, stepper, press-and-hold, dialogs, empty/error/offline states) is N-023, my next UI row.
 
-## Handover (READY TO RECYCLE, 2026-10-07)
+## Traps found (Day 2 session)
+7. A checker subagent running Gradle on the same module at the same time breaks `test-results` (`in-progress-results-generic.bin`). Wait for it or run other modules.
+8. `markInFlight` no longer increments `attempts`; use `countFailure` for a definitive failure.
+9. N-023 (UI kit) moved to the android-core-ui sublane.
+
+## Handover (READY TO RECYCLE, 2026-10-07, previous session)
 - **Done:** N-001, F-SYS-033, F-SYS-044 (device part pending), F-SYS-018, N-016. All checker findings are fixed, and a second re-check is fixed too. The interfaces above are published, and the `SyncScheduler` interface is in core-sync.
 - **In progress:** nothing.
 - **Next three rows** (`python3 tools/my-rows.py android-core --todo`):

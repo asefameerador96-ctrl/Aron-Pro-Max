@@ -85,3 +85,44 @@ data class SkuEntity(
     val status: String,
     val version: Int?,
 )
+
+/** A selling price of the bundle (`SkuPrice`, docs/24 s4.10): today's prices plus scheduled ones within the horizon. */
+@Entity(tableName = "price", indices = [Index(value = ["sku_id", "price_type", "valid_from"])])
+data class PriceEntity(
+    @PrimaryKey @ColumnInfo(name = "price_id") val priceId: Long,
+    @ColumnInfo(name = "sku_id") val skuId: Long,
+    @ColumnInfo(name = "price_type") val priceType: String,
+    @ColumnInfo(name = "amount_mtk") val amountMtk: Long,
+    @ColumnInfo(name = "per_base_qty") val perBaseQty: Int,
+    @ColumnInfo(name = "valid_from") val validFrom: String,
+    @ColumnInfo(name = "valid_to") val validTo: String?,
+)
+
+/**
+ * A resolved config value of the bundle (`ResolvedConfigValue`): [scheduled] rows take effect at [effectiveFrom] on trusted
+ * time (docs/24 s9.3). [valueJson] is the value as JSON text.
+ */
+@Entity(tableName = "config_value", indices = [Index("key")])
+data class ConfigValueEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val key: String,
+    @ColumnInfo(name = "value_json") val valueJson: String,
+    @ColumnInfo(name = "scope_type") val scopeType: String,
+    @ColumnInfo(name = "scope_id") val scopeId: Long?,
+    @ColumnInfo(name = "effective_from") val effectiveFrom: String?,
+    @ColumnInfo(name = "effective_to") val effectiveTo: String?,
+    @ColumnInfo(name = "config_version") val configVersion: Long?,
+    @ColumnInfo(name = "requires_ack") val requiresAck: Boolean,
+    val scheduled: Boolean,
+)
+
+/**
+ * A bundle section kept as the server sent it (user, code_lists, calendar, templates, reason_texts, offers, tasks,
+ * supervisor, programmes, content, ...; and `route.<id>` for a route's open memos, plan, targets and day state), so the
+ * feature lanes read it offline without a schema change per section.
+ */
+@Entity(tableName = "bundle_section")
+data class BundleSectionEntity(
+    @PrimaryKey val name: String,
+    val json: String,
+)

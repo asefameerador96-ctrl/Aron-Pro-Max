@@ -101,3 +101,29 @@ fun interface CaptureMetaProvider {
 fun interface VisitCommitter {
     suspend fun commit(visit: VisitEntity, fix: GeoFixEntity)
 }
+
+/** Local, outbox-free record of the call in progress (R8): lets a kill and relaunch resume the visit. */
+interface OpenVisitStore {
+    /** Writes the OPEN row (client uuid, outlet, trusted start time) at once; no outbox record. Idempotent per uuid. */
+    suspend fun begin(visitUuid: String, outletId: Long, routeId: Long, startedAtIso: String)
+
+    /** The visit still OPEN on this phone for [businessDate], if any. */
+    suspend fun findOpen(businessDate: String): OpenVisitRow?
+
+    /** Removes the OPEN row when the visit was committed (the outbox record now owns it) or abandoned before a verdict. */
+    suspend fun clear(visitUuid: String)
+
+    companion object { val None = object : OpenVisitStore {
+        override suspend fun begin(visitUuid: String, outletId: Long, routeId: Long, startedAtIso: String) = Unit
+        override suspend fun findOpen(businessDate: String): OpenVisitRow? = null
+        override suspend fun clear(visitUuid: String) = Unit
+    } }
+}
+
+data class OpenVisitRow(val visitUuid: String, val outletId: Long, val routeId: Long, val startedAtIso: String)
+
+/** F-SYS-092 (android-core implements): conditional config check on resume. Never blocks a visit; does nothing offline. */
+fun interface ConfigCheck {
+    suspend fun checkOnResume()
+    companion object { val None = ConfigCheck { } }
+}

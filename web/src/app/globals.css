@@ -12,8 +12,71 @@
 }
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
+  /* "Calm Glass" tokens v0 (docs/32 s3). Pages use the token names, never raw values; docs/design/ v1 replaces the values only. */
+  --bg-gradient: linear-gradient(160deg, #eaf2ff 0%, #f6f8fc 45%, #eef3fb 100%);
+  --surface-glass: rgb(255 255 255 / 0.62);
+  --surface-solid: #ffffff;
+  --border-hairline: rgb(255 255 255 / 0.45);
+  --border-line: rgb(15 23 42 / 0.1);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --accent: #1d5fd1;
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --radius-chip: 12px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
+  --elev-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.05);
+  --motion-fast: 150ms;
+  --motion-base: 220ms;
+  --surface: var(--surface-solid);
 }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-gradient: linear-gradient(160deg, #0b1220 0%, #101a2e 50%, #0d1526 100%);
+    --surface-glass: rgb(255 255 255 / 0.12);
+    --surface-solid: #16213a;
+    --border-hairline: rgb(255 255 255 / 0.14);
+    --border-line: rgb(255 255 255 / 0.12);
+    --text-primary: #f1f5f9;
+    --text-secondary: #b6c2d4;
+    --accent: #6ea8ff;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --elev-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);
+  }
+}
+/* Tier C (solid) is the default; tier A glass is for desktop browsers that support it and have not asked for less transparency. */
+:root { --surface: var(--surface-solid); }
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-transparency: no-preference) {
+  @supports (backdrop-filter: blur(1px)) {
+    :root { --surface: var(--surface-glass); --glass-blur: blur(16px) saturate(1.4); }
+  }
+}
+@media (prefers-reduced-transparency: reduce) { :root { --surface: var(--surface-solid); --glass-blur: none; } }
+
+body {
+  background: var(--bg-gradient) fixed;
+  color: var(--text-primary);
+}
+
+/* The shared kit's existing utility classes now resolve through the tokens, so every page (dashboards, admin, config) shares one look. */
+.bg-white, .bg-slate-50 { background-color: var(--surface); -webkit-backdrop-filter: var(--glass-blur, none); backdrop-filter: var(--glass-blur, none); }
+.min-h-screen.bg-slate-50 { background-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.bg-slate-100 { background-color: color-mix(in srgb, var(--surface) 70%, transparent); }
+.border-slate-200, .border-slate-300, .divide-slate-200 > * + *, .divide-slate-100 > * + * { border-color: var(--border-line); }
+.rounded-lg { border-radius: var(--radius-card); }
+.rounded { border-radius: var(--radius-chip); }
+.shadow-sm { box-shadow: var(--elev-1); }
+.text-slate-500, .text-slate-600 { color: var(--text-secondary); }
+.text-slate-700, .text-slate-800, .text-slate-900 { color: var(--text-primary); }
+.text-brand-700 { color: var(--accent); }
+.bg-brand-700, .bg-brand-600 { background-color: var(--accent); }
+a, button, summary, select, input { transition: background-color var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out, box-shadow var(--motion-base) ease-out; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
 body {
   font-family: var(--font-sans);

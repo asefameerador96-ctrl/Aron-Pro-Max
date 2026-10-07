@@ -106,7 +106,7 @@ describe("formatting", () => {
     const col = { key: "x", label_en: "x", type: "mtk" as const };
     expect(formatCell("bn", col, 7935, { yes: "", no: "" })).toBe("৭.৯৩৫");
     expect(formatCell("en", col, 7935, { yes: "", no: "" })).toBe("7.935");
-    expect(formatCell("en", { key: "p", label_en: "p", type: "pct" }, 2.33, { yes: "", no: "" })).toBe("2.3%");
+    expect(formatCell("en", { key: "p", label_en: "p", type: "pct" }, 2.33, { yes: "", no: "" })).toBe("2.33%");
     expect(formatTaka("en", 543_435_000)).toBe("543,435.000");
     expect(formatTaka("bn", 12_345_678_900)).toBe("১,২৩,৪৫,৬৭৮.৯০০");
     expect(formatTaka("en", -5)).toBe("-0.005");
@@ -167,5 +167,24 @@ describe("export route", () => {
     expect(ok.headers.get("content-security-policy")).toContain("sandbox");
     const other = await call(me.cookie, "/api/bff/reports/route-std/export?format=print");
     expect(other.headers.get("content-type")).toContain("spreadsheetml");
+  });
+});
+
+describe("export jobs (PDF)", () => {
+  it("a PDF request is a job: 303 back to the report (relative Location), carrying the job id and the filters", async () => {
+    const me = await login("tso334", "tso-pass-1");
+    const res = await exportGet(new NextRequest("http://127.0.0.1:3100/api/bff/reports/qc/export?format=pdf&from=2026-10-01&to=2026-10-02", { headers: { cookie: me.cookie, host: "reports.aron.example", "x-forwarded-proto": "https" } }), { params: Promise.resolve({ slug: "qc" }) });
+    expect(res.status).toBe(303);
+    const loc = new URL(res.headers.get("location")!, "http://self.invalid");
+    expect(loc.origin).toBe("http://self.invalid"); // relative Location: never follows a forwarded host
+    expect(loc.pathname).toBe("/reports/qc");
+    expect(loc.searchParams.get("from")).toBe("2026-10-01");
+    expect(loc.searchParams.get("job")).toMatch(/^[0-9a-f-]{36}$/);
+    expect(loc.searchParams.get("format")).toBeNull();
+  });
+  it("PDF is refused for a report that does not offer it", async () => {
+    const me = await login("tso334", "tso-pass-1");
+    const res = await exportGet(new NextRequest("http://localhost:3000/api/bff/reports/route-std/export?format=pdf", { headers: { cookie: me.cookie, host: "localhost:3000" } }), { params: Promise.resolve({ slug: "route-std" }) });
+    expect(res.headers.get("content-type")).toContain("spreadsheetml"); // falls back to Excel, never to an unsupported format
   });
 });

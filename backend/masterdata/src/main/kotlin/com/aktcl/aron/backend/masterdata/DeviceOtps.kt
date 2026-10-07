@@ -154,12 +154,16 @@ private suspend fun issue(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpDto
     if (req.user_id < 1) bad("body.user_id")
     if (req.reason.length > 500 || req.reason.trim().length < 10) throw ApiProblem(ProblemCode.ERR_VALIDATION, "a reason of 10 to 500 characters is required", errors = listOf(FieldError("body.reason", "length")))
     val (national, zones) = reachZones(d, call)
+    return d.db.jdbi.inTransaction<DeviceOtpDto, Exception> { h -> issueOtp(h, d, p, req, national, zones, call.requestId) }
+}
+
+/** Issues (or replays) an OTP inside the caller's transaction; also used by the replace-device wizard. Reach is checked by the caller's [national] and [zones]. */
+internal fun issueOtp(h: Handle, d: DeviceOtpDeps, p: com.aktcl.aron.backend.platform.AronPrincipal, req: DeviceOtpIssueIn, national: Boolean, zones: Set<Long>, requestId: String?): DeviceOtpDto {
     val length = d.config.int("cfg.auth.otp_length")
     val ttlMin = d.config.int("cfg.auth.otp_ttl_min")
     val now = d.clock.now()
     val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
     val maxAttempts = d.config.int("cfg.auth.otp_max_attempts")
-    return d.db.jdbi.inTransaction<DeviceOtpDto, Exception> { h ->
         val u = h.createQuery("SELECT u.id, u.username, u.full_name, u.role, u.status, $USER_ZONE AS zone_id FROM app.app_user u WHERE u.id = :u FOR UPDATE OF u").bind("u", req.user_id).bind("today", today)
             .map { rs, _ -> arrayOf<Any?>(rs.getString("username"), rs.getString("full_name"), rs.getString("role"), rs.getString("status"), rs.getObject("zone_id") as Long?) }.findOne().orElse(null)
         // An unknown user and one outside the caller's reach are the same answer (no existence leak).
@@ -170,7 +174,7 @@ private suspend fun issue(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpDto
                 "AND expires_at > :now AND attempts < :maxAtt AND created_at > :since ORDER BY created_at DESC LIMIT 1",
         ).bind("u", req.user_id).bind("by", p.userId).bind("r", req.reason.trim()).bind("maxAtt", maxAttempts).bind("now", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("since", OffsetDateTime.ofInstant(now.minusSeconds(REPLAY_WINDOW_S), ZoneOffset.UTC))
             .map { rs, _ -> dto(req.user_id, u, rs.getBytes(1), rs.getString(2), rs.getObject(3, OffsetDateTime::class.java), rs.getObject(4, OffsetDateTime::class.java), rs.getInt(5), d) }.findOne().orElse(null)
-        if (replay != null) return@inTransaction replay
+        if (replay != null) return replay
         val lastHour = h.createQuery("SELECT count(*) FROM app.device_otp WHERE user_id = :u AND issued_by IS NOT NULL AND created_at > :since").bind("u", req.user_id)
             .bind("since", OffsetDateTime.ofInstant(now.minusSeconds(3600), ZoneOffset.UTC)).mapTo(Int::class.java).one()
         if (lastHour >= 10) throw ApiProblem(ProblemCode.ERR_RATE_LIMITED, "at most 10 device OTPs per user per hour", retryAfterS = 600)
@@ -181,9 +185,8 @@ private suspend fun issue(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpDto
         h.createUpdate("INSERT INTO app.device_otp (user_id, otp_cipher, otp_sha256, issued_by, reason, created_at, expires_at) VALUES (:u, :c, :h, :by, :r, :at, :exp)")
             .bind("u", req.user_id).bind("c", d.cipher.seal(otp, req.user_id)).bind("h", d.cipher.mac(otp, req.user_id))
             .bind("by", p.userId).bind("r", req.reason.trim()).bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("exp", OffsetDateTime.ofInstant(expires, ZoneOffset.UTC)).execute()
-        AuditWriter.write(h, p, "device_otp", req.user_id.toString(), "issue", null, buildJsonObject { put("expires_at", expires.wire()) }, req.reason, call.requestId)
-        DeviceOtpDto(req.user_id, u[0] as String, u[1] as String, u[4] as Long?, otp, null, now.wire(), expires.wire(), 0)
-    }
+        AuditWriter.write(h, p, "device_otp", req.user_id.toString(), "issue", null, buildJsonObject { put("expires_at", expires.wire()) }, req.reason, requestId)
+    return DeviceOtpDto(req.user_id, u[0] as String, u[1] as String, u[4] as Long?, otp, null, now.wire(), expires.wire(), 0)
 }
 
 private fun dto(userId: Long, u: Array<Any?>, cipher: ByteArray, model: String?, created: OffsetDateTime, expires: OffsetDateTime, attempts: Int, d: DeviceOtpDeps) =

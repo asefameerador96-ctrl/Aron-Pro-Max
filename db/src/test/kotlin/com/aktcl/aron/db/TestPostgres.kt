@@ -42,7 +42,16 @@ object TestPostgres {
         val name = "aron_db_test_" + UUID.randomUUID().toString().replace("-", "").take(16)
         connect(server.baseUrl).use { c -> c.createStatement().use { it.execute("CREATE DATABASE $name") } }
         return TestDatabase(name, urlFor(name)) {
-            connect(server.baseUrl).use { c -> c.createStatement().use { it.execute("DROP DATABASE IF EXISTS $name WITH (FORCE)") } }
+            // FORCE cannot terminate an autovacuum worker of another role (42501); it ends within moments, so retry.
+            for (attempt in 1..20) {
+                try {
+                    connect(server.baseUrl).use { c -> c.createStatement().use { it.execute("DROP DATABASE IF EXISTS $name WITH (FORCE)") } }
+                    break
+                } catch (e: java.sql.SQLException) {
+                    if (e.sqlState != "42501" || attempt == 20) throw e
+                    Thread.sleep(250)
+                }
+            }
         }
     }
 

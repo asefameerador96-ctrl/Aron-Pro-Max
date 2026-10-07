@@ -8,9 +8,10 @@
 #   1. the ref is a server-vX.Y.Z tag and its commit is on main (no release from an unmerged commit);
 #   2. ci.yml succeeded on that exact commit;
 #   3. a staging deploy of that exact commit succeeded and soaked (the input names the staging run; docs/30 s2);
-# then calls deploy.yml with environment prod. The GitHub environment azure-prod carries the required approver
-# (tools/github-governance.ps1), so the deploy job waits for a recorded human approval; deploy.yml itself refuses
-# prod from anything but a server-v* tag. Rollback: shift Container Apps traffic to the previous revision (docs/30 s4).
+# then calls deploy.yml with environment prod. The required approver lives on the GitHub environment azure-prod
+# (deploy.yml uses that name; it must exist with the owner as reviewer and a tag policy server-v* BEFORE the first
+# promotion, or GitHub creates it unprotected); deploy.yml itself refuses prod outside promote-prod, outside the final
+# account, and from anything but a server-v* tag. Rollback: shift Container Apps traffic to the previous revision (docs/30 s4).
 # Actions are pinned by commit SHA (release tag in the comment).
 
 name: promote-prod
@@ -76,9 +77,14 @@ jobs:
           ci="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=1" --jq .total_count)"
           [ "${ci}" -gt 0 ] || { echo "::error::ci.yml has no successful run on ${GITHUB_SHA}"; exit 1; }
           [[ "${STAGING_RUN}" =~ ^[0-9]+$ ]] || { echo "::error::staging_run_id must be a run id"; exit 1; }
-          read -r sha concl done_at < <(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_RUN}" --jq '[.head_sha, .conclusion, .updated_at] | @tsv')
+          read -r sha concl path < <(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_RUN}" --jq '[.head_sha, .conclusion, .path] | @tsv')
           [ "${sha}" = "${GITHUB_SHA}" ] || { echo "::error::staging run ${STAGING_RUN} deployed ${sha}, not ${GITHUB_SHA}"; exit 1; }
           [ "${concl}" = success ] || { echo "::error::staging run ${STAGING_RUN} ended ${concl}"; exit 1; }
+          [ "${path}" = .github/workflows/deploy.yml ] || { echo "::error::run ${STAGING_RUN} is ${path}, not a deploy"; exit 1; }
+          # It must be a STAGING deploy (job "Deploy to stage"), not a dev deploy or a CI run of the same commit.
+          done_at="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_RUN}/jobs" \
+            --jq '[.jobs[] | select(.name == "Deploy to stage" and .conclusion == "success") | .completed_at][0] // ""')"
+          [ -n "${done_at}" ] || { echo "::error::run ${STAGING_RUN} has no successful 'Deploy to stage' job"; exit 1; }
           age_h=$(( ( $(date -u +%s) - $(date -u -d "${done_at}" +%s) ) / 3600 ))
           [ "${age_h}" -ge "${SOAK_HOURS}" ] || { echo "::error::staging soak is ${age_h} h, needs ${SOAK_HOURS} h"; exit 1; }
           {
