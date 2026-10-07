@@ -103,4 +103,5 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     with:
       environment: prod
-    secrets: inherit
+    # Same repository, and deploy.yml reads only the Azure, FCM and Maps secrets.
+    secrets: inherit # nosemgrep: secrets-inherit
