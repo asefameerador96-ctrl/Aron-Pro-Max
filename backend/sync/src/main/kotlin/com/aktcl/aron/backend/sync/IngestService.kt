@@ -295,6 +295,8 @@ class IngestService(
                 } else {
                     released = true
                 }
+                // A released row that was parked since (a parent missing, a transient error) keeps its release.
+                "parked" -> released = ctx.signatureMode != SignatureMode.ENFORCE && openIntegrityItem(h, r)
                 // parked: process again (the parent may have arrived)
             }
         }
@@ -598,15 +600,28 @@ class IngestService(
         }
     }
 
+    /**
+     * The open `device_integrity_failed` review item of this record, locked (FOR UPDATE re-checks `status` after a
+     * reviewer's concurrent resolve commits, so a discard decided at the same moment stands). Lock order: the uuid
+     * advisory lock, then this row; a reviewer takes only the row.
+     */
     private fun openIntegrityItem(h: Handle, r: Rec): Boolean = h.createQuery(
-        "SELECT EXISTS (SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open')",
-    ).bind("c", r.clientUuid).mapTo(Boolean::class.java).one()
+        "SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open' FOR UPDATE",
+    ).bind("c", r.clientUuid).mapTo(Long::class.java).list().isNotEmpty()
+
+    /** A released row that ends rejected for another reason closes its integrity review item (nothing left to review). */
+    private fun closeIntegrityItem(h: Handle, r: Rec, now: Instant) {
+        h.createUpdate("UPDATE app.sync_quarantine SET status = 'discarded', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open'")
+            .bind("now", ts(now)).bind("c", r.clientUuid).execute()
+    }
 
     /** Moves a registry row (and its open rejected/quarantine copies) from the full-envelope hash to the sig-less one. */
     private fun rekey(h: Handle, r: Rec) {
         h.createUpdate("UPDATE app.ingest_registry SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old")
             .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
         h.createUpdate("UPDATE app.sync_rejected SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old AND stored_at IS NULL")
+            .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
+        h.createUpdate("UPDATE app.sync_quarantine SET payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :old AND status = 'open'")
             .bind("h", r.hash).bind("old", r.fullHash).bind("c", r.clientUuid).execute()
     }
 
@@ -629,6 +644,7 @@ class IngestService(
 
     private fun finalReject(h: Handle, ctx: Ctx, r: Rec, code: RecordOutcomeCode, detail: String?): Outcome {
         rejectedRow(h, ctx, r, code, detail, retryable = false)
+        if (UUID_V4.matches(r.clientUuid)) closeIntegrityItem(h, r, ctx.now)
         val bd = r.json.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         if (r.type.matches(TYPE_PATTERN)) register(h, ctx, r, bd, "rejected", code, null)
         return Outcome.of(code)
@@ -648,7 +664,9 @@ class IngestService(
             """
             INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, detail, user_id, device_id, route_id, business_date, batch_uuid, received_at)
             VALUES (CAST(:c AS uuid), :t, :code, :h, CAST(:p AS jsonb), :detail, :u, :d, :route, :bd, CAST(:b AS uuid), :now)
-            ON CONFLICT (client_uuid, payload_sha256) DO NOTHING
+            ON CONFLICT (client_uuid, payload_sha256) DO UPDATE SET code = EXCLUDED.code, detail = EXCLUDED.detail
+              WHERE app.sync_quarantine.status = 'open' AND app.sync_quarantine.code = 'device_integrity_failed'
+
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(r.json)).bind("detail", detail?.take(1000))
             .bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid)
