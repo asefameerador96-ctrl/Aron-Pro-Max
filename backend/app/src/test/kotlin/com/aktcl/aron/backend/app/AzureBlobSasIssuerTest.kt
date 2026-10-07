@@ -23,6 +23,7 @@ class AzureBlobSasIssuerTest {
     private var keyCalls = 0
 
     private fun issuer(): AzureBlobSasIssuer {
+        // wall-clock-ok: a fake token expiry the SDK never checks in these offline tests
         val noToken = TokenCredential { Mono.just(AccessToken("unused", OffsetDateTime.now().plusHours(1))) }
         val service = BlobServiceClientBuilder().endpoint("https://staronx.blob.core.windows.net").credential(noToken).buildClient()
         return AzureBlobSasIssuer(service, "media", { start, expiry ->
