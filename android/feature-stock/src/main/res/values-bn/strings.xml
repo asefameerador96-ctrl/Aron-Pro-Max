@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stk_title">স্টক</string>
+    <string name="stk_col_sku">এসকেইউ</string>
+    <string name="stk_col_issue">ইস্যু</string>
+    <string name="stk_col_loaded">স্টক</string>
+    <string name="stk_less">কম</string>
+    <string name="stk_more">বেশি</string>
+    <string name="stk_totals">ক্যাটাগরি অনুযায়ী মোট</string>
+    <string name="stk_total_row">%1$s: %2$s</string>
+    <string name="stk_cat_cigarette">সিগারেট</string>
+    <string name="stk_cat_bidi">বিড়ি</string>
+    <string name="stk_cat_lighter">লাইটার</string>
+    <string name="stk_cat_match">ম্যাচ</string>
+    <string name="stk_save">সংরক্ষণ</string>
+    <string name="stk_saved">ফোনে সংরক্ষিত হয়েছে।</string>
+    <string name="stk_refused">এই মানগুলো এইমাত্র সংরক্ষণ করা হয়েছে। মান বদলান বা কয়েক মিনিট অপেক্ষা করুন।</string>
+    <string name="stk_nothing">আগে ইস্যুর পরিমাণ দিন।</string>
+    <string name="stk_high">পরিমাণটি অনেক বড়। সংরক্ষণের আগে দেখে নিন।</string>
+    <string name="stk_slip_not_printed">স্টক স্লিপ এখনো প্রিন্ট হয়নি। বিক্রয় জমার আগে প্রিন্ট করুন।</string>
+    <string name="stk_save_failed">সংরক্ষণ করা যায়নি। কিছু বদলায়নি। আবার চেষ্টা করুন।</string>
+</resources>

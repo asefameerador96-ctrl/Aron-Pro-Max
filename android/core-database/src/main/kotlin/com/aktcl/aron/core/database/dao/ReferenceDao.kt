@@ -6,7 +6,9 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.aktcl.aron.core.database.entity.BundleSectionEntity
 import com.aktcl.aron.core.database.entity.ConfigValueEntity
+import com.aktcl.aron.core.database.entity.MemoCounterEntity
 import com.aktcl.aron.core.database.entity.OutletEntity
+import com.aktcl.aron.core.database.entity.TaskEntity
 import com.aktcl.aron.core.database.entity.PriceEntity
 import com.aktcl.aron.core.database.entity.RouteEntity
 import com.aktcl.aron.core.database.entity.SkuEntity
@@ -62,4 +64,22 @@ interface ReferenceDao {
     suspend fun configRows(key: String): List<ConfigValueEntity>
 
     @Query("SELECT json FROM bundle_section WHERE name = :name") suspend fun section(name: String): String?
+
+    @Query("SELECT last_n FROM memo_counter WHERE business_date = :businessDate") suspend fun memoCounter(businessDate: String): Int?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putMemoCounter(row: MemoCounterEntity)
+
+    @Query("DELETE FROM task") suspend fun clearTasks()
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertTasks(rows: List<TaskEntity>)
+    @Query("UPDATE task SET status = 'completed', resolved_at = :resolvedAt WHERE task_uuid = :taskUuid") suspend fun completeTask(taskUuid: String, resolvedAt: String): Int
+    @Query("SELECT * FROM task ORDER BY due_date IS NULL, due_date, title") suspend fun tasks(): List<TaskEntity>
+    @Query("SELECT * FROM task WHERE task_uuid = :taskUuid") suspend fun task(taskUuid: String): TaskEntity?
+
+    /** A bundle replaces tasks; the phone's own resolutions not yet acked by the server are kept (after the ack the server's status wins). */
+    @Query(
+        """UPDATE task SET status = 'completed',
+           resolved_at = COALESCE(resolved_at, (SELECT MAX(e.captured_at) FROM task_event e WHERE e.task_uuid = task.task_uuid AND e.event = 'resolved'))
+           WHERE task_uuid IN (SELECT e.task_uuid FROM task_event e JOIN outbox o ON o.client_uuid = e.client_uuid
+                               WHERE e.event = 'resolved' AND o.state != 'acked')""",
+    )
+    suspend fun reapplyLocalResolutions()
 }

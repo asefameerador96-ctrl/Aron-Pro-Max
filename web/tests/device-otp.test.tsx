@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {}, push() {} 
 const h = setupMock();
 
 const node = (id: number, level: GeoNode["level"], name: string, parent_id: number | null): GeoNode => ({ id, level, code: `${level}${id}`, name, name_bn: null, status: "active", parent_id, created_at: "2026-10-01T00:00:00.000Z", updated_at: "2026-10-01T00:00:00.000Z", version: 1 } as unknown as GeoNode);
-const otp = (user_id: number, over: Partial<DeviceOtp> = {}): DeviceOtp => ({ user_id, username: `sr${user_id}`, full_name: `SR ${user_id}`, created_at: "2026-10-06T04:00:00.000Z", expires_at: "2099-01-01T00:00:00.000Z", attempts: 1, otp: "6818", zone_id: 334, device_model: "Redmi 9", ...over });
+const otp = (user_id: number, over: Partial<DeviceOtp> = {}): DeviceOtp => ({ user_id, employee_code: `E${user_id}`, zone_code: "Z334", zone_name: "Banani", username: `sr${user_id}`, full_name: `SR ${user_id}`, created_at: "2026-10-06T04:00:00.000Z", expires_at: "2099-01-01T00:00:00.000Z", attempts: 1, otp: "6818", zone_id: 334, device_model: "Redmi 9", ...over });
 const empty = { wing: [], division: [], territory: [], house: [], zone: [] };
 const base = { locale: "en" as const, action: "/device-otp", options: empty, selection: { zone: "334" }, q: "", nextHref: null, canIssue: false, titleKey: "otp.panel.title" as const, nowMs: Date.parse("2026-10-06T05:00:00Z") };
 
@@ -24,6 +24,12 @@ describe("DeviceOtpView (TSO panel)", () => {
   it("shows 'No Data' for an empty zone and a prompt before a zone is chosen", () => {
     expect(text(html(<DeviceOtpView {...base} items={[]} />))).toContain("No Data");
     expect(text(html(<DeviceOtpView {...base} items={null} selection={{}} />))).toContain("Choose a zone");
+  });
+  it("shows the Field Force ID (employee code) and the zone name, not the stand-ins", () => {
+    const m = text(html(<DeviceOtpView {...base} items={[otp(1), otp(2, { employee_code: null, zone_name: null, zone_code: null })]} />));
+    expect(m).toContain("E1");
+    expect(m).toContain("Banani (Z334)");
+    expect(m).toContain("Zone");
   });
   it("is view only: no issue button, no log columns", () => {
     const m = html(<DeviceOtpView {...base} items={[otp(1)]} />);

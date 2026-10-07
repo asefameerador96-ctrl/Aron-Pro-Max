@@ -20,30 +20,9 @@ export interface CodeListMeta {
 
 const L = (key: CodeListKey, group: MasterGroup, attrs?: readonly AttrSpec[]): CodeListMeta => ({ key, labelKey: `codelist.${key}` as MessageKey, group, attrs });
 
-export const CODE_LISTS: readonly CodeListMeta[] = [
-  L("channel", "outlets"),
-  L("sub_channel", "outlets"),
-  L("geo_class", "outlets"),
-  // ASSUMED attrs.roles (comma-separated role codes allowed to assign the type): docs/status/web-admin.md, to be confirmed.
-  L("task_type", "lists", [{ key: "roles", labelKey: "codelist.attr.roles" }]),
-  // 11 codes; group MFC or MKT, applies_to app or web (F-ADM-023).
-  L("qc_fault_type", "lists", [
-    { key: "group", labelKey: "codelist.attr.group", options: ["MFC", "MKT"] },
-    { key: "applies_to", labelKey: "codelist.attr.applies_to", options: ["app", "web"] },
-  ]),
-  L("force_reason", "lists"),
-  L("edit_reason", "lists"),
-  L("void_reason", "lists"),
-  L("visit_outcome", "lists"),
-  L("skip_reason", "lists"),
-  L("day_exception_reason", "lists"),
-  L("stock_variance_reason", "lists"),
-  L("leave_type", "lists"),
-  L("feedback_category", "lists"),
-  L("payment_mode", "lists"),
-  L("outlet_close_reason", "lists"),
-  L("submit_void_reason", "lists"),
-];
+// Only the classification lists live here (F-ADM-011). The reason-code tables and task types (F-ADM-060, F-ADM-021) are
+// edited on /admin/code-lists and the QC fault types on /admin/qc-faults (web-config lane), so no list has two editors.
+export const CODE_LISTS: readonly CodeListMeta[] = [L("channel", "outlets"), L("sub_channel", "outlets"), L("geo_class", "outlets")];
 
 export function codeListByKey(key: string): CodeListMeta | undefined {
   return CODE_LISTS.find((l) => l.key === key);

@@ -2,6 +2,7 @@ package com.aktcl.aron.dpc.enrolment
 
 import java.io.File
 import java.security.MessageDigest
+import com.aktcl.aron.contract.EnrolDeviceRequest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -15,7 +16,10 @@ sealed interface EnrolCallResult {
     data class Retry(val reason: String) : EnrolCallResult
 }
 
-/** `POST /v1/devices/enrol` (unauthenticated: the token is the credential). The app wires it to core-network. */
+/**
+ * `POST /v1/devices/enrol` (unauthenticated: the token is the credential). The app wires it to core-network. Never log
+ * the request: shared:contract's data class prints `enrolment_token` in its toString().
+ */
 fun interface EnrolmentTransport {
     suspend fun enrol(apiBaseUrl: String, request: EnrolDeviceRequest): EnrolCallResult
 }

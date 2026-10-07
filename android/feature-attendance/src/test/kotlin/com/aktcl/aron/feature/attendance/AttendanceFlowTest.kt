@@ -19,7 +19,7 @@ class AttendanceFlowTest {
     private var n = 0
     private val committed = mutableListOf<Pair<AttendanceEventEntity, GeoFixEntity>>()
     private var fixResult = FixReading("ok", 23.793812, 90.404112, 9.0, false)
-    private val fixes = object : LocationFixSource { override suspend fun readFix(purpose: String) = fixResult }
+    private val fixes = object : LocationFixSource { override suspend fun readFix(purpose: String, refreshCount: Int) = fixResult }
     private val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 1, 0, true, r, null, "2026-10-07:1", false, 5) }
 
     private fun flow(resolver: suspend (Double, Double) -> String? = { _, _ -> null }) = AttendanceFlow(
@@ -84,5 +84,11 @@ class AttendanceFlowTest {
         minutes = 18 * 60; g.tick(); assertTrue(g.state.value.checkOutEnabled)
         g.restore(stored + committed.map { it.first.copy(kind = "check_out", meta = it.first.meta.copy(capturedAt = "2026-10-07T12:00:00.000Z")) })
         assertFalse(g.state.value.checkOutEnabled)
+    }
+
+    @Test fun aFailedSaveReportsFailedAndLeavesTheButtonsAlone() = runTest {
+        val f = AttendanceFlow(fixes, meta, { _, _ -> error("disk full") }, { null }, { "t" }, { minutes }, newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
+        assertEquals(AttendanceResult.Failed, f.checkIn())
+        assertTrue(f.state.value.checkInEnabled); assertFalse(f.state.value.busy); assertNull(f.state.value.checkedInAt)
     }
 }

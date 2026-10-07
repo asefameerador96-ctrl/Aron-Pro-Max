@@ -2,6 +2,8 @@ package com.aktcl.aron.backend.app
 
 import com.aktcl.aron.backend.analytics.DashboardDeps
 import com.aktcl.aron.backend.analytics.DashboardService
+import com.aktcl.aron.backend.analytics.OpsDeps
+import com.aktcl.aron.backend.analytics.OpsService
 import com.aktcl.aron.backend.analytics.ReportDeps
 import com.aktcl.aron.backend.analytics.ReportEngine
 import com.aktcl.aron.backend.analytics.ReportHandlers
@@ -12,6 +14,7 @@ import com.aktcl.aron.backend.analytics.TeamService
 import com.aktcl.aron.backend.analytics.dailyTrackingRoutes
 import com.aktcl.aron.backend.analytics.dashboardRoutes
 import com.aktcl.aron.backend.analytics.appTeamRoutes
+import com.aktcl.aron.backend.analytics.opsRoutes
 import com.aktcl.aron.backend.analytics.reportRoutes
 import com.aktcl.aron.backend.auth.AuthDeps
 import com.aktcl.aron.backend.auth.HashLimiter
@@ -85,8 +88,6 @@ import com.aktcl.aron.backend.sync.IngestService
 import com.aktcl.aron.backend.sync.ServerGeneration
 import com.aktcl.aron.backend.sync.SyncDeps
 import com.aktcl.aron.backend.sync.syncRoutes
-import com.aktcl.aron.backend.sync.TeamDeps
-import com.aktcl.aron.backend.sync.teamRoutes
 
 /** The object graph of the API process; tests build their own with throwaway keys and in-memory stores. */
 class Wiring(
@@ -97,6 +98,8 @@ class Wiring(
     val build: String,
     val mount: Route.() -> Unit,
     val frontDoorId: String? = null,
+    /** Admission control and backpressure (N-056); null in tests that do not exercise it. */
+    val admission: com.aktcl.aron.backend.analytics.AdmissionControl? = null,
 ) {
     companion object {
         fun production(s: Settings, clock: AronClock = AronClock.SYSTEM): Wiring {
@@ -115,6 +118,7 @@ class Wiring(
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
+            val ops = OpsDeps(OpsService(db, config, clock), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
             val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
             val reports = ReportDeps(db, ReportEngine(db, config, clock, ReportHandlers.all), reach, guard, clock)
@@ -131,12 +135,18 @@ class Wiring(
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
             val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current), db, config, clock)
+            val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
+            val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
+                ingestCapacity = runCatching { config.int("cfg.api.inflight_batches_per_replica") }.getOrDefault(64),
+                dbWaiting = { hikari?.hikariPoolMXBean?.threadsAwaitingConnection ?: 0 },
+            )
             return Wiring(clock, config, db, generation::current, s.build, mount = {
                 authRoutes(auth)
                 outletRoutes(outlets)
                 dashboardRoutes(dashboards)
                 appTeamRoutes(team)
                 dailyTrackingRoutes(tracking)
+                opsRoutes(ops)
                 reportRoutes(reports)
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
@@ -156,8 +166,7 @@ class Wiring(
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)
                 syncRoutes(sync)
-                teamRoutes(TeamDeps(db, reach, guard, clock))
-            }, frontDoorId = s.frontDoorId)
+            }, frontDoorId = s.frontDoorId, admission = admission)
         }
     }
 }

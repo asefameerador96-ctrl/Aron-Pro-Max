@@ -54,4 +54,26 @@ Route:
         minimum: 1
       status:
         $ref: '#/components/schemas/ActiveStatus'
+      assignees:
+        type: array
+        description: Users assigned to the route; returned only by GET /v1/admin/routes with `include=assignees`,
+          absent otherwise.
+        items:
+          type: object
+          required:
+          - user_id
+          - full_name
+          - role
+          - username
+          additionalProperties: false
+          properties:
+            user_id:
+              $ref: '#/components/schemas/Id'
+            full_name:
+              type: string
+              maxLength: 120
+            role:
+              $ref: '#/components/schemas/Role'
+            username:
+              $ref: '#/components/schemas/Username'
   unevaluatedProperties: false

@@ -11,3 +11,5 @@ from the static role lists. Needed: the user's own menus and actions from the AP
 `cfg.web.menu_by_role` row of the caller, `[{menu_id, actions}]`). When it exists, `loadAllowedMenus` calls it for every role.
 The dashboard lane's menu items need a `menuId` (the page-registry id of docs/19 s5.3) to follow the matrix.
 // REQUEST: web-config-menu-matrix
+
+**RESOLVED 2026-10-07:** contract v1.2 added the fields; web-config adopted them (see docs/status/web-config.md).

@@ -13,7 +13,7 @@ data class IntegritySignals(
     val autoTimeEnabled: Boolean,
     val deviceOwner: Boolean,
     val mockLocationApps: List<String>,
-    /** Stable codes from [RootHints]; REQUEST: docs/requests/android-geo-dpc-root-hints.md (no contract member yet). */
+    /** Contract `DeviceStatusReport.root_hints` (v1.2): codes from [RootHints], at most 16, empty on a clean phone. */
     val rootHints: List<String>,
 )
 
