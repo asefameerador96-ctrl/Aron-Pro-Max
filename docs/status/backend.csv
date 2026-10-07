@@ -28,3 +28,4 @@ F-API-004-FIX,S,2026-10-07T07:30Z,2026-10-07T07:50Z,20,"4 found (MFA bypass via 
 F-SYS-003/F-API-003-FIX,S,2026-10-07T09:20Z,2026-10-07T09:30Z,10,"2 found (409 ERR_DEVICE_LIMIT_REACHED, OTP burnt on a refused fifth phone); fixed",""
 F-API-031,S,2026-10-07T08:50Z,2026-10-07T09:05Z,15,"checker running",""
 F-SYS-056,M,2026-10-07T09:05Z,2026-10-07T09:20Z,15,"checker pending",""
+F-SYS-016,M,2026-10-07T09:35Z,2026-10-07T10:05Z,30,"own test found day_submit refused (map shape); fixed; checker running",""
