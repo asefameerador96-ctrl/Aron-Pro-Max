@@ -38,7 +38,7 @@ F-ADM-046: the master-data hub, the generated entities and the code-list pages c
 - F-ADM-064: the menu follows the matrix for ADMIN and SUPERADMIN only; other roles need their own menus from the API (docs/requests/web-config-menu-matrix.md).
 - F-ADM-036 dues: no backend route or ledger exists yet.
 - Day control lists read report column names (docs/requests/web-config-day-control-columns.md).
-- Web Entry has no class split (`class_qty_base`, cfg.web.entry_classes): the classification selection is not built; request when the classes are defined.
+- Web Entry class split is built (sub-channel ids; names need docs/requests/web-config-entry-class-labels.md).
 - No ops dashboard (F-WEB-045) existed when P13 was built; both read `/v1/dashboards/sync-health`.
 
 ## Device-pending

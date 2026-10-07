@@ -99,9 +99,13 @@ class BundleDownloader(
     private suspend fun fetch(forDate: String, isDay: Boolean, onPrefetch: Boolean, ifNoneMatch: String?, configVersion: Long?): BundleReport {
         return when (val r = api.bundle(forDate, ifNoneMatch, configVersion)) {
             is ApiResult.NotModified -> {
-                if (onPrefetch && repo.promotePrefetch(forDate) == ApplyResult.APPLIED) {
-                    markLoggedIn(forDate)
-                    return BundleReport(BundleOutcome.PREFETCH_PROMOTED, repo.bundleVersion(), repo.businessDate())
+                if (onPrefetch) {
+                    if (repo.promotePrefetch(forDate) == ApplyResult.APPLIED) {
+                        markLoggedIn(forDate)
+                        return BundleReport(BundleOutcome.PREFETCH_PROMOTED, repo.bundleVersion(), repo.businessDate())
+                    }
+                    // The stored prefetch could not be used: ask again without a condition, never report a stale day as current.
+                    return fetch(forDate, isDay, onPrefetch = false, ifNoneMatch = null, configVersion = configVersion)
                 }
                 if (isDay) markLoggedIn(forDate)
                 BundleReport(BundleOutcome.UNCHANGED, if (isDay) repo.bundleVersion() else repo.prefetch()?.first, forDate)

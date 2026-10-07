@@ -114,6 +114,7 @@ private suspend fun submit(call: ApplicationCall, d: FeedbackDeps): Pair<Boolean
     val req = call.receiveStrict(FeedbackIn.serializer())
     val id = AdminSupport.uuid(req.feedback_uuid, "body.feedback_uuid")
     if (!AdminSupport.CODE.matches(req.category_code)) bad("body.category_code")
+    AdminSupport.noNul("body", req.title, req.description)
     val title = req.title.trim(); val desc = req.description.trim()
     if (title.isEmpty() || req.title.length > 120) bad("body.title", "length")
     if (desc.isEmpty() || req.description.length > 2000) bad("body.description", "length")

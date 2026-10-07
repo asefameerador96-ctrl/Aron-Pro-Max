@@ -14,14 +14,14 @@ export interface GridSku {
   label: string;
 }
 
-export function WebEntryGrid({ routeId, date, skus: listed, initialLines, targetOutlets, initialCalls, saved, appOverlap, canWrite }: { routeId: number; date: string; skus: GridSku[]; initialLines: { sku_id: number; issue_qty_base: number; return_qty_base: number; memo_count: number }[]; targetOutlets: number; initialCalls: number; saved: boolean; appOverlap: boolean; canWrite: boolean }) {
+export function WebEntryGrid({ routeId, date, skus: listed, initialLines, targetOutlets, initialCalls, saved, appOverlap, canWrite, classes = [] }: { routeId: number; date: string; skus: GridSku[]; initialLines: { sku_id: number; issue_qty_base: number; return_qty_base: number; memo_count: number; class_qty_base?: Record<string, number> }[]; classes?: number[]; targetOutlets: number; initialCalls: number; saved: boolean; appOverlap: boolean; canWrite: boolean }) {
   const { t, problem, number } = useI18n();
   // Stored lines of a SKU that is not in the list (made inactive, or beyond the list limit) stay in the grid: a re-save replaces the whole entry and must not drop them.
   const skus: GridSku[] = [...listed, ...initialLines.filter((l) => !listed.some((s) => s.id === l.sku_id)).map((l) => ({ id: l.sku_id, label: `#${l.sku_id}` }))];
   const router = useRouter();
   const [rows, setRows] = useState<EntryRow[]>(() => skus.map((s) => {
     const l = initialLines.find((x) => x.sku_id === s.id);
-    return { sku_id: s.id, issue: l ? String(l.issue_qty_base) : "", ret: l ? String(l.return_qty_base) : "", memos: l ? String(l.memo_count) : "" };
+    return { sku_id: s.id, issue: l ? String(l.issue_qty_base) : "", ret: l ? String(l.return_qty_base) : "", memos: l ? String(l.memo_count) : "", cls: Object.fromEntries(classes.map((c) => [String(c), l?.class_qty_base?.[String(c)] !== undefined ? String(l.class_qty_base[String(c)]) : ""])) };
   }));
   const [calls, setCalls] = useState(String(initialCalls));
   const [reason, setReason] = useState("");
@@ -31,13 +31,14 @@ export function WebEntryGrid({ routeId, date, skus: listed, initialLines, target
   const [busy, setBusy] = useState(false);
   const [needReason, setNeedReason] = useState(false);
 
+  const setClass = (i: number, c: number, v: string) => setRows((s) => s.map((r, j) => (j === i ? { ...r, cls: { ...r.cls, [String(c)]: digitsOnly(v).slice(0, 8) } } : r)));
   const set = (i: number, k: "issue" | "ret" | "memos", v: string) => setRows((s) => s.map((r, j) => (j === i ? { ...r, [k]: digitsOnly(v).slice(0, 8) } : r)));
 
   async function save() {
     setBanner(null);
-    const { lines, errors: errs } = buildEntry(rows, calls, targetOutlets);
+    const { lines, errors: errs } = buildEntry(rows, calls, targetOutlets, classes);
     const e: Record<string, string> = {};
-    for (const x of errs) e[`${x.row ?? "c"}.${x.field}`] = t(x.code === "return_exceeds_issue" ? "we.return_exceeds" : x.code === "too_big" ? "cfgc.error.too_big" : "error.field.invalid");
+    for (const x of errs) e[`${x.row ?? "c"}.${x.field}`] = t(x.code === "class_sum" ? "we.class_sum" : x.code === "return_exceeds_issue" ? "we.return_exceeds" : x.code === "too_big" ? "cfgc.error.too_big" : "error.field.invalid");
     if ((saved || needReason) && Array.from(reason.trim()).length < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
     if (lines.length === 0 && Number(calls || "0") === 0 && !saved) e.empty = t("we.nothing");
     setErrors(e);
@@ -77,6 +78,7 @@ export function WebEntryGrid({ routeId, date, skus: listed, initialLines, target
               <th className={`${cell} text-right`}>{t("we.col.issue")}</th>
               <th className={`${cell} text-right`}>{t("we.col.return")}</th>
               <th className={`${cell} text-right`}>{t("we.col.sale")}</th>
+              {classes.length > 1 ? classes.map((c) => <th key={c} className={`${cell} text-right`}>{t("we.col.class", { id: number(c) })}</th>) : null}
               <th className={`${cell} text-right`}>{t("we.col.memos")}</th>
             </tr>
           </thead>
@@ -89,7 +91,8 @@ export function WebEntryGrid({ routeId, date, skus: listed, initialLines, target
                   <td className={cell}><input aria-label={`${s.label} ${t("we.col.issue")}`} value={rows[i]!.issue} disabled={!canWrite} inputMode="numeric" onChange={(ev) => set(i, "issue", ev.target.value)} className={num} />{err(`${i}.issue`)}</td>
                   <td className={cell}><input aria-label={`${s.label} ${t("we.col.return")}`} value={rows[i]!.ret} disabled={!canWrite} inputMode="numeric" onChange={(ev) => set(i, "ret", ev.target.value)} className={num} />{err(`${i}.ret`)}</td>
                   <td className={`${cell} text-right`} data-testid={`sale-${s.id}`}>{sale === null ? "—" : number(sale)}</td>
-                  <td className={cell}><input aria-label={`${s.label} ${t("we.col.memos")}`} value={rows[i]!.memos} disabled={!canWrite} inputMode="numeric" onChange={(ev) => set(i, "memos", ev.target.value)} className={num} />{err(`${i}.memos`)}</td>
+                  {classes.length > 1 ? classes.map((c) => <td key={c} className={cell}><input aria-label={`${s.label} ${t("we.col.class", { id: number(c) })}`} value={rows[i]!.cls?.[String(c)] ?? ""} disabled={!canWrite} inputMode="numeric" onChange={(ev) => setClass(i, c, ev.target.value)} className={num} /></td>) : null}
+                  <td className={cell}><input aria-label={`${s.label} ${t("we.col.memos")}`} value={rows[i]!.memos} disabled={!canWrite} inputMode="numeric" onChange={(ev) => set(i, "memos", ev.target.value)} className={num} />{err(`${i}.memos`)}{err(`${i}.classes`)}</td>
                 </tr>
               );
             })}

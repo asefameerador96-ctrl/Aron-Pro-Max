@@ -68,7 +68,7 @@ private fun listPlans(call: ApplicationCall, d: VisitPlanDeps): VisitPlanPageDto
     val limit = AdminSupport.limit(call)
     val (from, to) = AdminSupport.window(call)
     val planner = AdminSupport.queryId(call, "planner_user_id")
-    val cursor = AdminSupport.decodeCursor(call, 2)?.let { (a, b) -> (runCatching { LocalDate.parse(a) }.getOrNull() ?: bad("query.cursor")) to (b.toLongOrNull() ?: bad("query.cursor")) }
+    val cursor = AdminSupport.decodeCursor(call, 2)?.let { (a, b) -> AdminSupport.date(a, "query.cursor") to (b.toLongOrNull() ?: bad("query.cursor")) }
     val today = AdminSupport.today(d.clock)
     val reach = AdminSupport.reach(d.reach, call, d.clock)
     return d.db.jdbi.withHandle<VisitPlanPageDto, Exception> { h ->
@@ -147,9 +147,14 @@ private suspend fun savePlan(call: ApplicationCall, d: VisitPlanDeps): Pair<Bool
 
         val existing = h.createQuery("SELECT user_id, plan_date FROM app.visit_plan WHERE client_uuid = :u").bind("u", planUuid)
             .map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.findOne().orElse(null)
+        // A new plan is for today or later (a replay of a stored plan is not re-judged).
+        if (existing == null && planDate.isBefore(AdminSupport.today(d.clock))) bad("body.plan_date", "in_past")
         val target: UUID = when {
             existing != null -> {
                 if (existing.first != p.userId || existing.second != planDate) throw ApiProblem(ProblemCode.ERR_CONFLICT, "plan_uuid already stores a different plan")
+                // A plan is for one route: the outlets it already holds must be on the posted route.
+                val other = h.createQuery("SELECT count(*) FROM app.visit_plan_outlet po JOIN app.outlet o ON o.id = po.outlet_id WHERE po.plan_client_uuid = :u AND o.route_id IS DISTINCT FROM :r").bind("u", planUuid).bind("r", req.route_id).mapTo(Int::class.java).one()
+                if (other > 0) throw ApiProblem(ProblemCode.ERR_CONFLICT, "plan_uuid already stores a plan for another route")
                 planUuid
             }
             else -> h.createQuery(

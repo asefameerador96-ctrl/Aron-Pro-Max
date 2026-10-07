@@ -229,6 +229,7 @@ class ReferenceRepository(private val db: AronDatabase) {
 
         /** Splits [text] into chunks, never between the two halves of a surrogate pair (SQLite stores UTF-8). */
         internal fun chunks(text: String, size: Int = CHUNK_CHARS): List<String> {
+            require(size >= 2) { "a chunk must hold a surrogate pair" }
             if (text.length <= size) return listOf(text)
             val out = ArrayList<String>()
             var start = 0
