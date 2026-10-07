@@ -67,7 +67,7 @@ import com.aktcl.aron.feature.tasks.TaskContent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, OUTLET_MENU, REQUEST_OUTLET, REQUEST_FORM }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, OUTLET_MENU, REQUEST_OUTLET, REQUEST_FORM }
 
 /**
  * The SR day host: Home, Attendance, Stock, the Sale picker with the geo check and Force Sale, Tasks, the Outlet menu and
@@ -80,6 +80,8 @@ fun SrApp(
     day: SrDay, user: HomeUser, health: DeviceHealth?, versionText: String,
     onLanguageSelect: (AppLanguage) -> Unit, onLogout: () -> Unit, onOtherTile: (HomeTile) -> Unit,
     startBundleDownload: suspend () -> Unit,
+    /** PDA to Support (F-SR-006); null in previews and tests (the tile is hidden). */
+    shell: SystemShell? = null,
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -121,7 +123,7 @@ fun SrApp(
         if (screen == SrScreen.HOME && RoutePicker.needsChoice(planned, day.chosenRouteId())) screen = SrScreen.ROUTE_PICK
     }
     BackHandler(enabled = screen != SrScreen.HOME && screen != SrScreen.PERMISSIONS) {
-        screen = when (screen) { SrScreen.FORCE -> SrScreen.VISIT; SrScreen.REQUEST_FORM -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU; else -> SrScreen.HOME }
+        screen = when (screen) { SrScreen.FORCE -> SrScreen.VISIT; SrScreen.SUPPORT -> SrScreen.SETTINGS; SrScreen.REQUEST_FORM -> SrScreen.OUTLET_MENU; SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU; else -> SrScreen.HOME }
     }
 
     // The camera draws only while a capture is open (and sits behind the camera permission gate of core-system).
@@ -161,7 +163,8 @@ fun SrApp(
         SrScreen.ATTENDANCE -> PermissionGate(GatedFeature.ATTENDANCE, onBack = { screen = SrScreen.HOME }) {
             AttendanceContent(attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn() } }, onCheckOut = { scope.launch { day.attendance.checkOut() } })
         }
-        SrScreen.SETTINGS -> SettingsContent(versionText, onLanguageSelect, onLogout)
+        SrScreen.SETTINGS -> SettingsContent(versionText, onLanguageSelect, onLogout, onSupport = shell?.let { { screen = SrScreen.SUPPORT } })
+        SrScreen.SUPPORT -> shell?.let { SupportHost(it, day.userId, versionText) }
         SrScreen.STOCK -> StockHost(day)
         SrScreen.PICKER -> PermissionGate(GatedFeature.SALE, onBack = { screen = SrScreen.HOME }) {
             var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }

@@ -107,6 +107,22 @@ abstract class OutboxDao {
     @Query("DELETE FROM outbox WHERE state = 'acked' AND acked_at IS NOT NULL AND acked_at < :before")
     abstract suspend fun purgeAckedBefore(before: String): Int
 
+    /** Rows per state, for the support file (F-SYS-021 / F-SR-006). */
+    @Query("SELECT state AS recordType, COUNT(*) AS count FROM outbox GROUP BY state")
+    abstract suspend fun countsByState(): List<TypeCount>
+
+    /** Payloads of rows the server has not accepted (pending, in flight, rejected, quarantined), oldest first, exactly as stored. */
+    @Query("SELECT payload_json FROM outbox WHERE state <> 'acked' ORDER BY seq LIMIT :limit")
+    abstract suspend fun unsentPayloads(limit: Int): List<String>
+
+    /** Payloads of rows acked since [since] (ISO), newest first: the re-sync window of the support file. */
+    @Query("SELECT payload_json FROM outbox WHERE state = 'acked' AND acked_at >= :since ORDER BY seq DESC LIMIT :limit")
+    abstract suspend fun recentAckedPayloads(since: String, limit: Int): List<String>
+
+    /** The newest ack of any row: "last sync" in the support file and the screen. */
+    @Query("SELECT MAX(acked_at) FROM outbox WHERE acked_at IS NOT NULL")
+    abstract suspend fun lastAckedAtAny(): String?
+
     private companion object {
         val ACK_TARGETS = setOf(OutboxState.ACKED, OutboxState.REJECTED, OutboxState.QUARANTINED, OutboxState.PENDING)
     }

@@ -93,6 +93,12 @@ object SessionModule {
     fun mediaShell(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): MediaShell =
         MediaShell(context, components, databases)
 
+    /** Update prompt and PDA to Support (android-sys F-SYS-020/021; docs/requests/android-sys-app-wiring.md items 4 and 5). */
+    @Provides
+    @Singleton
+    fun systemShell(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): SystemShell =
+        SystemShell(context, components, databases)
+
     /** F-SYS-022 logout (docs/requests/android-sys-logout-wiring.md). */
     @Provides
     @Singleton
