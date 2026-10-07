@@ -10,7 +10,7 @@
 | backend-admin | session_01TogQKB1R6sgWVTafC9DMYG | Sonnet | 2026-10-07 | recycled 05:02; previous session_01JK4kErf8frNpx25mmoyPAc is retired (READY TO RECYCLE 05:01) |
 | android-core | session_01Xx4ADUeVGTHNrVSqXU3tjh | Opus | 2026-10-07 | recycled 08:39 (fourth session); session_01EcjRGi19bkvqTfp5RQnJU2 retired (READY TO RECYCLE 08:39) |
 | android-core-ui | session_01F7k2exq6bgrBGdZAmvG9Ey | Sonnet | 2026-10-07 | recycled 08:40; session_01PompFHeojjtrnV78dsjmsB retired (READY TO RECYCLE 08:39) |
-| android-sr-a | session_01Gyh9KAacFpMFb35wUDq21c | Sonnet | 2026-10-07 | |
+| android-sr-a | session_01TyF3Y1MGEyGN2Ke8EHwZUG | Sonnet | 2026-10-07 | recycled 08:46; session_01Gyh9KAacFpMFb35wUDq21c retired (READY TO RECYCLE 08:46) |
 | android-sr-b | session_019i1dfbm7pSrMDPXskSLY3v | Sonnet | 2026-10-07 | recycled 08:39; session_01DCSzXKooAFuYYEGy9UAMSN retired (READY TO RECYCLE 08:38) |
 | android-sys | session_01GXvRHr1e5rHuj8p68xW15F | Opus | 2026-10-07 | camera and photo pipeline, media queue, location permission UX, update check, PDA support, language switch, logout: 8 T1 rows moved from android-core-ui |
 | android-geo-dpc | session_018dVKqTVsFaUht9A1J7XEst | Opus | 2026-10-07 | |
