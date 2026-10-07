@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- core-system declares no permission of its own: location, camera and Bluetooth come from core-geo, core-media and
+     core-printing. The microphone is never requested by any Aron app (F-SYS-023). -->
+<manifest />
