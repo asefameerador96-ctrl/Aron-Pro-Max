@@ -136,6 +136,8 @@ class SyncEngine(
     private val generationApi: GenerationApi? = null,
     /** F-SYS-047: the latest `X-Server-Generation` of any response in this process ([ServerGenerationHint] in production). */
     private val generationHint: () -> String? = { null },
+    /** F-SYS-080: `POST /v1/sync/digest`; null in tests that do not cover it (no digest is sent). */
+    private val digestApi: DigestApi? = null,
 ) {
     private val outbox = db.outboxDao()
     private val meta = db.referenceDao()
@@ -203,8 +205,17 @@ class SyncEngine(
 
         suspend fun execute(): SyncReport {
             device = deviceUuid() ?: return report(SyncStop.NO_DEVICE)
+            noteDigestFrom()
             releaseIntegrityQuarantine()
             handleGeneration()
+            val first = upload()
+            // F-SYS-080: a drained run may send the digest; rows it puts back go in this same run (trigger digest_resend).
+            // Only with nothing unsent: a pending row the server holds would differ from the acked rows (checker).
+            if (first.stop != SyncStop.DRAINED || outbox.unsentCount() > 0 || !digestDue()) return first
+            return if (digest() > 0) upload() else first
+        }
+
+        suspend fun upload(): SyncReport {
             if (outbox.unsentCount() == 0) return report(SyncStop.DRAINED)
             token = auth.token(userId) ?: if (auth.refresh(userId, null)) auth.token(userId) else null
             if (token == null) return report(SyncStop.AUTH_REQUIRED)
@@ -470,7 +481,7 @@ class SyncEngine(
                 // Rows put back after a restore always go as `resync` (any later run, a resent persisted batch): the server's
                 // backdate allowance applies only to that trigger (checker). Such a row is the only unsent row with an
                 // `acked_at` (the put-back keeps it; a retryable reject may overwrite `last_code`, never `acked_at`).
-                put("trigger", JsonPrimitive(if (rows.any { it.ackedAt != null }) SyncTrigger.RESYNC.wire else batchTrigger.wire))
+                put("trigger", JsonPrimitive(triggerOf(rows)))
                 put("sent_at_device", JsonPrimitive(iso(clock.nowMs())))
                 put("pending_rows", JsonPrimitive(outbox.unsentCount()))
                 put("time_anchors", WireJson.requests.encodeToJsonElement(ANCHORS, timeAnchors().takeLast(3)))
@@ -482,6 +493,20 @@ class SyncEngine(
                 put("records", JsonArray(rows.map { recordJson(it) }))
             }
             return body.toString()
+        }
+
+        /**
+         * Rows put back after a restore (F-SYS-047) or by the digest (F-SYS-080) are the only unsent rows with `acked_at`;
+         * a batch of digest put-backs alone goes as `digest_resend`, any other with such a row as `resync` (the server gives
+         * both the same allowance).
+         */
+        fun triggerOf(rows: List<OutboxEntity>): String {
+            val back = rows.filter { it.ackedAt != null }
+            return when {
+                back.isEmpty() -> batchTrigger.wire
+                back.all { it.lastCode == DIGEST_CODE } -> SyncTrigger.DIGEST_RESEND.wire
+                else -> SyncTrigger.RESYNC.wire
+            }
         }
 
         /** The record as sent: the stored payload plus its `sig` when it has one (F-SYS-072). */
@@ -610,7 +635,7 @@ class SyncEngine(
                 }
                 val api = generationApi ?: return
                 val tok = token ?: (auth.token(userId) ?: if (auth.refresh(userId, null)) auth.token(userId) else null)?.also { token = it } ?: return
-                val g = (api.current(tok) as? com.aktcl.aron.core.network.ApiResult.Success)?.value ?: return
+                val g = (api.current(tok, stored) as? com.aktcl.aron.core.network.ApiResult.Success)?.value ?: return
                 val current = g.generation.lowercase()
                 if (current == NIL_GENERATION) return
                 if (current == stored) {
@@ -627,7 +652,10 @@ class SyncEngine(
                 val windowMs = windowH * 3_600_000L
                 val from = minted?.takeIf { now - it <= windowMs + STALE_GENERATION_MS } ?: now
                 val windowStart = from - windowMs
-                val lostAfter = (g.lostAfterUtc ?: g.restorePointUtc)?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+                // Asked with `?since=` the stored generation: two restores before this phone called re-send from the earliest
+                // loss (BC-68); null when the server cannot say (then this generation's own loss, and the digest closes the rest).
+                fun ms(v: String?) = v?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+                val lostAfter = ms(g.earliestLostAfterUtc) ?: ms(g.lostAfterUtc) ?: ms(g.restorePointUtc)
                 val since = maxOf(lostAfter ?: windowStart, windowStart) - RESYNC_CLOCK_MARGIN_MS
                 val put = db.withTransaction {
                     val n = outbox.resendAckedSince(iso(since))
@@ -635,12 +663,108 @@ class SyncEngine(
                     meta.deleteMeta(KEY_GENERATION_SEEN)
                     meta.deleteMeta(KEY_GENERATION_DISMISSED)
                     meta.putMeta(SyncMetaEntity(KEY_RESYNC_LAST, "$current|${g.kind}|$n|${iso(now)}"))
+                    // F-SYS-080 (D-517): a digest follows every generation change, and the local purge waits for a clean one.
+                    meta.putMeta(SyncMetaEntity(KEY_DIGEST_DUE, DIGEST_DUE_GENERATION))
+                    meta.putMeta(SyncMetaEntity(KEY_DIGEST_HOLD, now.toString()))
                     n
                 }
                 if (put > 0) batchTrigger = SyncTrigger.RESYNC
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
+            }
+        }
+
+        /**
+         * F-SYS-080: a database never synced before (a fresh install, or a sign-in after the logout wipe) cannot hold the rows
+         * this user uploaded from this phone earlier that day, so its first date is never digested (it would be re-sent at
+         * every digest); a database that already synced (an app upgrade) is complete from the start.
+         */
+        suspend fun noteDigestFrom() {
+            if (meta.meta(KEY_DIGEST_FROM) != null) return
+            val used = meta.meta(KEY_LAST_SUCCESS) != null || outbox.countInState(OutboxState.ACKED) > 0
+            // A database that first runs days after its first capture (offline since the wipe): its earliest date (checker).
+            val today = BusinessDate.of(clock.nowMs()).toString()
+            val first = if (used) "" else listOfNotNull(today, outbox.earliestBusinessDate()).min()
+            meta.putMeta(SyncMetaEntity(KEY_DIGEST_FROM, first))
+        }
+
+        /**
+         * F-SYS-080 (docs/24 s4.8): after every generation change; at Sales Submit; once a day after the first run that
+         * acked a batch; from a manual run (the reconciliation screen) at most every [DIGEST_MANUAL_MIN_MS].
+         */
+        suspend fun digestDue(): Boolean {
+            if (digestApi == null) return false
+            if (meta.meta(KEY_DIGEST_DUE) != null) return true
+            val now = clock.nowMs()
+            val last = meta.meta(KEY_DIGEST_LAST)?.toLongOrNull()
+            return when {
+                trigger == SyncTrigger.DAY_SUBMIT -> true
+                trigger == SyncTrigger.MANUAL -> last == null || now - last >= DIGEST_MANUAL_MIN_MS || now < last
+                else -> acked > 0 && meta.meta(KEY_DIGEST_DATE) != BusinessDate.of(now).toString()
+            }
+        }
+
+        /**
+         * F-SYS-080: sends the 16-bucket digest of every (business date, type) the phone holds acked rows of, for the dates
+         * it holds completely inside the server's window (`cfg.sync.max_backdate_days`, 7: an older re-send would be
+         * quarantined as too old), and puts back the rows of every bucket the server names. Returns the rows put back.
+         * Offline, refused or unreadable: nothing changes and the digest stays due. Never throws into the run.
+         */
+        suspend fun digest(): Int {
+            try {
+                val api = digestApi ?: return 0
+                val tok = token ?: (auth.token(userId) ?: if (auth.refresh(userId, null)) auth.token(userId) else null)?.also { token = it } ?: return 0
+                val now = clock.nowMs()
+                val today = java.time.LocalDate.parse(BusinessDate.of(now).toString())
+                val days = configInt(KEY_MAX_BACKDATE_DAYS)?.coerceIn(1, 30) ?: DEFAULT_MAX_BACKDATE_DAYS
+                // Before the first purge records its cutoff (an upgrade day), the purge's own reach from config.
+                val history = configInt(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS)?.coerceIn(1, 30) ?: com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS
+                // Dates the local purge may have touched are partial: never digested (they would be re-sent every time).
+                val from = listOfNotNull(
+                    today.minusDays(days.toLong()).toString(),
+                    today.minusDays(history.toLong()).toString(),
+                    meta.meta(KEY_PURGE_CUTOFF)?.takeIf { it.isNotEmpty() },
+                    meta.meta(KEY_DIGEST_FROM)?.takeIf { it.isNotEmpty() }?.let { java.time.LocalDate.parse(it).plusDays(1).toString() },
+                ).max()
+                val known = com.aktcl.aron.contract.RecordType.entries.map { it.wire }.toSet()
+                val items = outbox.ackedForDigest(from, today.toString())
+                    .filter { it.recordType in known } // an unknown type would be a 400 for the whole call
+                    .groupBy({ it.businessDate to it.recordType }, { it.clientUuid.lowercase() })
+                    .toSortedMap(compareBy<Pair<String, String>> { it.first }.thenBy { it.second })
+                    .map { (k, uuids) -> DigestItem(k.first, k.second, DigestHash.buckets(uuids)) }
+                val resend = ArrayList<DigestResend>()
+                for (chunk in items.chunked(DIGEST_MAX_ITEMS)) {
+                    val r = api.compare(tok, DigestRequest(device, chunk)) as? com.aktcl.aron.core.network.ApiResult.Success ?: return 0
+                    resend += r.value.resend
+                }
+                val asked = items.map { it.businessDate to it.type }.toSet()
+                val confirm = meta.meta(KEY_DIGEST_DUE) == DIGEST_DUE_CONFIRM
+                return db.withTransaction {
+                    var n = 0
+                    for (r in resend) {
+                        // Only what was asked about; bucket indexes the contract allows.
+                        if ((r.businessDate to r.type) !in asked) continue
+                        val digits = r.buckets.filter { it in 0..15 }.distinct().map { it.toString(16) }
+                        if (digits.isNotEmpty()) n += outbox.resendDigestBuckets(r.businessDate, r.type, digits)
+                    }
+                    meta.putMeta(SyncMetaEntity(KEY_DIGEST_DATE, today.toString()))
+                    meta.putMeta(SyncMetaEntity(KEY_DIGEST_LAST, now.toString()))
+                    meta.putMeta(SyncMetaEntity(KEY_DIGEST_LAST_RESULT, "${items.size}|$n|${iso(now)}"))
+                    when {
+                        // A clean reconcile ends the purge hold (D-517).
+                        n == 0 -> { meta.deleteMeta(KEY_DIGEST_DUE); meta.deleteMeta(KEY_DIGEST_HOLD) }
+                        // One confirming digest after a re-send; a difference that survives it (rows the server holds that
+                        // this database never had) waits for the next daily one, so a run never loops on it.
+                        confirm -> meta.deleteMeta(KEY_DIGEST_DUE)
+                        else -> meta.putMeta(SyncMetaEntity(KEY_DIGEST_DUE, DIGEST_DUE_CONFIRM))
+                    }
+                    n
+                } // the put-back rows go as digest_resend by triggerOf; fresh rows keep the run's own trigger
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                return 0
             }
         }
 
@@ -724,6 +848,28 @@ class SyncEngine(
         const val KEY_RESYNC_LAST = "sync.resync_last"
         /** F-SYS-047: a header generation the server's statement denied (false alarm); ignored until a fresh one. */
         const val KEY_GENERATION_DISMISSED = "sync.server_generation_dismissed"
+        /** F-SYS-080: a digest is owed: `generation` (after a generation change) or `confirm` (after a re-send). */
+        const val KEY_DIGEST_DUE = "sync.digest_due"
+        const val DIGEST_DUE_GENERATION = "generation"
+        const val DIGEST_DUE_CONFIRM = "confirm"
+        /** F-SYS-080: the business date of the last answered digest (the daily one). */
+        const val KEY_DIGEST_DATE = "sync.digest_date"
+        /** F-SYS-080: phone ms of the last answered digest (the manual rate limit). */
+        const val KEY_DIGEST_LAST = "sync.digest_last_ms"
+        /** F-SYS-080: `<items>|<rows put back>|<at>` of the last answered digest (support file). */
+        const val KEY_DIGEST_LAST_RESULT = "sync.digest_last"
+        /** F-SYS-080 (D-517): phone ms a restore was handled; the local purge waits for a clean digest (at most [DIGEST_HOLD_MAX_MS]). */
+        const val KEY_DIGEST_HOLD = "sync.digest_purge_hold"
+        const val DIGEST_HOLD_MAX_MS = 8 * 24 * 3_600_000L
+        /** F-SYS-080: the business date a database was first used empty ("" when it held rows); that date is never digested. */
+        const val KEY_DIGEST_FROM = "sync.digest_from"
+        /** F-SYS-028/080: the highest purge cutoff ever used; dates before it may be partial and are never digested. */
+        const val KEY_PURGE_CUTOFF = "sync.purge_cutoff_max"
+        const val DIGEST_CODE = "digest_resend"
+        const val DIGEST_MAX_ITEMS = 200
+        const val DIGEST_MANUAL_MIN_MS = 10 * 60_000L
+        const val KEY_MAX_BACKDATE_DAYS = "cfg.sync.max_backdate_days"
+        const val DEFAULT_MAX_BACKDATE_DAYS = 7
         /** `last_code` of a row put back after a restore (OutboxDao.resendAckedSince). */
         const val RESYNC_CODE = "resync"
         const val DISMISS_TTL_MS = 3_600_000L

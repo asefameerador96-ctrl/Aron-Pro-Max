@@ -81,6 +81,32 @@ interface ReferenceDao {
     @Query("SELECT last_n FROM memo_counter WHERE business_date = :businessDate") suspend fun memoCounter(businessDate: String): Int?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putMemoCounter(row: MemoCounterEntity)
 
+    // ---- v5: AV/KV content and surveys (F-SR-020/021), replaced by every snapshot ----
+    @Query("DELETE FROM content_item") suspend fun clearContentItems()
+    @Query("DELETE FROM outlet_content_assignment") suspend fun clearContentAssignments()
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertContentItems(rows: List<com.aktcl.aron.core.database.entity.ContentItemEntity>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertContentAssignments(rows: List<com.aktcl.aron.core.database.entity.OutletContentAssignmentEntity>)
+    @Query("DELETE FROM survey") suspend fun clearSurveys()
+    @Query("DELETE FROM survey_question") suspend fun clearSurveyQuestions()
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertSurveys(rows: List<com.aktcl.aron.core.database.entity.SurveyEntity>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertSurveyQuestions(rows: List<com.aktcl.aron.core.database.entity.SurveyQuestionEntity>)
+
+    /** The items to show at [outletId] on [businessDate], in play order (sequence; AV before KV on a tie). */
+    @Query(
+        """SELECT * FROM content_item WHERE valid_from <= :businessDate AND valid_to >= :businessDate
+           AND (all_outlets = 1 OR content_id IN (SELECT content_id FROM outlet_content_assignment WHERE outlet_id = :outletId))
+           ORDER BY sequence, kind, content_id""",
+    )
+    suspend fun contentForOutlet(outletId: Long, businessDate: String): List<com.aktcl.aron.core.database.entity.ContentItemEntity>
+
+    /** Every item valid on [businessDate] or later (the asset prefetch). */
+    @Query("SELECT * FROM content_item WHERE valid_to >= :businessDate ORDER BY valid_from, sequence, kind, content_id")
+    suspend fun contentFrom(businessDate: String): List<com.aktcl.aron.core.database.entity.ContentItemEntity>
+
+    @Query("SELECT * FROM survey ORDER BY survey_id") suspend fun surveys(): List<com.aktcl.aron.core.database.entity.SurveyEntity>
+    @Query("SELECT * FROM survey_question WHERE survey_id = :surveyId ORDER BY ordinal")
+    suspend fun surveyQuestions(surveyId: Long): List<com.aktcl.aron.core.database.entity.SurveyQuestionEntity>
+
     @Query("DELETE FROM task") suspend fun clearTasks()
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertTasks(rows: List<TaskEntity>)
     @Query("UPDATE task SET status = 'completed', resolved_at = :resolvedAt WHERE task_uuid = :taskUuid") suspend fun completeTask(taskUuid: String, resolvedAt: String): Int

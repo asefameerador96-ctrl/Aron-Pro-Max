@@ -1,6 +1,30 @@
 # Infra lane status
 
-Updated 2026-10-07 20:55 UTC (fifth infra session, handover).
+Updated 2026-10-07 21:05 UTC (sixth infra session).
+
+## Sixth infra session, 2026-10-07 21:05 UTC (read with the handover below)
+
+- INT bde7719c merged into lane/infra; infra/validate.sh green. Pushed **5524b051**: slice smoke step 7b (GET
+  /v1/sync/totals must equal the batch answers' (memos accepted, active, gross)) and step 8 (GET /v1/memos?memo_no=
+  returns exactly our memo, `active`, gross = net = ours) are **hard checks** now (backend-core serves both since bde7719c).
+- **N-064 part 1** (51ccd44b + checker follow-ups): `tools/ci/release-manifest.py` runs in the INT signing step and
+  writes `signed/release-manifest.json` (artifact aron-release-signed-dev-<run>): per APK `file` + `release` (contract
+  AppReleaseWrite minus download_url: flavour, abi, version name/code, sha256, size, signing cert), source sha,
+  aron-backend/aron-web image tags. **ARON_VERSION_NAME** is now set by each Android job's first step to
+  `0.<1+run/1000>.<run%1000>` (identical below run 1000; the old 0.1.<run> broke the contract pattern at run 1000, runs
+  are at ~635). Opus checker: no blocking defect; open notes: release-apks.py still lists x86/x86_64 splits that the
+  manifest rejects (android-core has no x86 splits today), step 8 has no retry if a read replica is ever added (dev has
+  none). Left for N-064: release-store upload (POST /v1/admin/releases is contract-only, backend not serving it) and the
+  install/upgrade proof on enrolled phones (owner's hands).
+- **Governance command for the laptop session** (owner's admin rights; run only after 11cd544b is on INT, otherwise
+  pull requests to main wait on a "Backend app tests" check that never runs): from a fresh clone of INT,
+  `gh auth login` (owner account), then `pwsh -NoProfile -File tools/github-governance.ps1` (idempotent; re-applies the
+  main protection with "Repository gates (secrets, migrations, contract)" and "Backend app tests"; touches nothing else).
+- **CI split run 37682155791: green, 9 of 9 jobs, wall 22.3 min** (20:53:00-21:15:17; old jvm job 26 min). "Backend app
+  tests" 8.9 min; "Shared, db and backend" 22.1 min (now the long pole: the next gain is inside it, not more splitting).
+  Reported to lead and integrator 21:20 UTC.
+- Deploy 150 (37684685418) deploys INT bde7719c, which predates ff7579c4, so its smoke step 4 will 401 again;
+  the first full smoke is the first deploy after ff7579c4 is promoted.
 
 ## HANDOVER (fifth infra session -> sixth), 2026-10-07 20:55 UTC: read this first
 
