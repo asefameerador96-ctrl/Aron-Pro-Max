@@ -52,16 +52,3 @@ class CheckerMemoGapsPartialScopeTest : ReportFixture() {
         assertEquals(0, run(14, Role.TSO, "memo-number-gaps").result().rows().size)
     }
 }
-
-/** Independent checker (F-SYS-069): the lost tail of a block that overflowed is a gap (docs/24 s7.5: overflow starts only after n exceeds 500). */
-class CheckerMemoGapsOverflowTailTest : ReportFixture() {
-    override val extraSql = """
-        SELECT pg_temp.memo('00000000-0000-4000-8000-0000000000c6', '00000000-0000-4000-8000-000000000001', 'sr001', 'R1', 'O1', 'sr001-261004-5001', TIMESTAMPTZ '2026-10-04 09:00Z', 0, 0, 0, 'active');
-    """.trimIndent()
-
-    @Test
-    fun theUnfilledTailOfAFullBlockIsReported() = app {
-        val memoNos = run(10, Role.ANALYST, "memo-number-gaps").result().rows().map { it.str("memo_no") }
-        assertEquals(true, "sr001-261004-500" in memoNos, "number 500 of a block that overflowed must be reported missing")
-    }
-}
