@@ -376,12 +376,12 @@ jobs:
           -Paron.apiBaseUrl="${ARON_API_BASE_URL}" -Paron.versionCode="${ARON_VERSION_CODE}" -Paron.versionName="${ARON_VERSION_NAME}"
           :android:app-sr:assembleRelease :android:app-amo:assembleRelease :android:app-tso:assembleRelease
       - name: APK size gate (30 MB per ABI, installed 70 MB, warn +5 %, fail +15 % against the baseline)
+        # One universal APK per app today; per-ABI splits too once android-core enables them (tools/ci/release-apks.py
+        # accepts both layouts and requires the universal provisioning APK).
         run: |
+          list="$(python3 tools/ci/release-apks.py)"
           apks=()
-          for app in sr amo tso; do
-            for f in "android/app-${app}/build/outputs/apk/release/"*.apk; do apks+=("${app}-release=$f"); done
-          done
-          [ "${#apks[@]}" -eq 3 ] || { echo "::error::expected 3 release APKs, found ${#apks[@]}"; exit 1; }
+          while IFS=$'\t' read -r _app _variant gate _stem path; do apks+=("${gate}=${path}"); done <<< "${list}"
           python3 tools/ci/apk-size-gate.py "${apks[@]}"
       - name: Sign with the release key (integration branch pushes only, when the ANDROID_SIGNING_* secrets exist)
         # AUD-DG-03: the owner's device-owner phones are installed ONCE with a release-signed build (changing the signer
@@ -401,12 +401,12 @@ jobs:
           printf '%s' "${KS}" | base64 -d > "${ks}"
           signer="${ANDROID_HOME}/build-tools/36.0.0/apksigner"
           mkdir -p signed
-          for app in sr amo tso; do
-            src="$(ls android/app-${app}/build/outputs/apk/release/*-release-unsigned.apk)"
-            dst="signed/aron-${app}-${ARON_VERSION_NAME}-dev.apk"
+          list="$(python3 tools/ci/release-apks.py)"
+          while IFS=$'\t' read -r app variant _gate stem src; do
+            dst="signed/${stem}-${ARON_VERSION_NAME}-dev.apk"
             "${signer}" sign --ks "${ks}" --ks-pass env:KSP --ks-key-alias "${ALIAS}" --key-pass env:KP --out "${dst}" "${src}"
-            "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app}: /"
-          done
+            "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app} ${variant}: /"
+          done <<< "${list}"
           (cd signed && sha256sum ./*.apk > SHA256SUMS && cat SHA256SUMS)
           echo "signed=true" >> "${GITHUB_OUTPUT}"
       - name: Upload the release-signed dev APKs
