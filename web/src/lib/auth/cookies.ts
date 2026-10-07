@@ -6,9 +6,12 @@
 export const RT_COOKIE = "aron_rt";
 export const SESSION_COOKIE = "aron_sess";
 export const MFA_COOKIE = "aron_mfa";
+/** Sealed `password_change_token` (10 min) between the login step that demanded a change and the change itself; never readable by the browser. */
+export const PWC_COOKIE = "aron_pwc";
 
 export const SESSION_PURPOSE = "session";
 export const MFA_PURPOSE = "mfa";
+export const PWC_PURPOSE = "pwchange";
 
 /** `ARON_COOKIE_INSECURE=1` drops `Secure` for plain-http localhost (dev and the Playwright run); never set in production. */
 export function secureCookies(): boolean {
@@ -32,3 +35,4 @@ export function cookieOptions(maxAgeSeconds: number, persistent = true): CookieO
 /** Access tokens of the web live 15 minutes (docs/24 s8.1); refresh a little early. */
 export const REFRESH_SKEW_MS = 60_000;
 export const MFA_TTL_S = 5 * 60;
+export const PWC_TTL_S = 10 * 60;

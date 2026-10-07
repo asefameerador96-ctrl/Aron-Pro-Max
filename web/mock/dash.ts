@@ -248,21 +248,22 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
       return p >= 100 ? "ge_100" : p >= 90 ? "from_90" : p >= 80 ? "from_80" : "below_80";
     };
     const items: Schemas["DailyTrackingRow"][] = rows.map((r) => ({ route_id: r.route_id, route_name: r.route_name, zone_id: r.zone_id, user_id: r.user_id, user_name: r.user_name, state: r.state === "not_started" ? "not_started" : r.state === "final_submitted" ? "final_submitted" : r.state === "sales_submitted" ? "sales_submitted" : "in_field", target_outlets: r.target_outlets, visited_outlets: r.visited, successful_calls: r.successful, active_memo_count: r.memos, net_mtk: r.net_mtk, tilldate_target_achievement_pct: pct(r.visited, r.target_outlets), bucket: bucket(r) }));
-    const body: Schemas["DailyTrackingPage"] & { yesterday_same_time?: Record<string, number> } = { as_of: asOf, business_date: x.url.searchParams.get("business_date") ?? SEED_DATE, items, next_cursor: null };
+    const cnt = (b: Schemas["DailyTrackingRow"]["bucket"]) => items.filter((i) => i.bucket === b).length;
+    const body: Schemas["DailyTrackingPage"] = { as_of: asOf, business_date: x.url.searchParams.get("business_date") ?? SEED_DATE, items, next_cursor: null, comparator: { business_date: "2026-10-06", as_of_time: "17:00", buckets: { ge_100: cnt("ge_100") + 1, from_90: cnt("from_90"), from_80: cnt("from_80"), below_80: cnt("below_80"), exception: cnt("exception"), not_logged_in: cnt("not_logged_in") } } };
     return send(200, body), true;
   }
 
   if (path === "/v1/dashboards/login-submit") {
     const rows = routesInScope(user.scope.nodes);
     const rd = (r: SeedRoute): Schemas["RouteDayState"] => ({ route_id: r.route_id, business_date: SEED_DATE, state: r.state === "not_started" ? "not_started" : r.state === "final_submitted" ? "final_submitted" : r.state === "sales_submitted" ? "sales_submitted" : "in_field", submit_cycle: 1, submit_voided: false, route_code: String(r.route_id), route_name: r.route_name, logged_in_at: r.logged_in_at, sales_submitted_at: r.submitted_at, final_submitted_at: r.state === "final_submitted" ? r.submitted_at : null });
-    const body: Schemas["LoginSubmitStatus"] = { as_of: asOf, business_date: SEED_DATE, kpis: kp(rows), not_logged_in: rows.filter((r) => r.state === "not_started").map(rd), logged_in_not_submitted: rows.filter((r) => r.state === "logged_in" || r.state === "in_field").map(rd), submitted: rows.filter((r) => r.state === "sales_submitted" || r.state === "final_submitted").map(rd), exceptions: rows.filter((r) => r.exception).map(rd) };
+    const body: Schemas["LoginSubmitStatus"] = { as_of: asOf, business_date: SEED_DATE, kpis: kp(rows), not_logged_in: rows.filter((r) => r.state === "not_started").map(rd), logged_in_not_submitted: rows.filter((r) => r.state === "logged_in" || r.state === "in_field").map(rd), submitted: rows.filter((r) => r.state === "sales_submitted" || r.state === "final_submitted").map(rd), exceptions: rows.filter((r) => r.exception).map(rd), zones: [...new Set(rows.map((r) => r.zone_id))].map((z) => ({ zone_id: z, final_submitted: rows.filter((r) => r.zone_id === z).every((r) => r.state === "final_submitted") })) };
     return send(200, body), true;
   }
 
   if (path === "/v1/dashboards/sync-health") {
     const rows = routesInScope(user.scope.nodes);
     const items: Schemas["SyncHealthRow"][] = rows.filter((r) => r.user_id).map((r, i) => ({ user_id: r.user_id!, username: `sr${r.user_id}`, route_ids: [r.route_id], device_id: 500 + i, device_model: "Redmi 9A", app_version: "1.0.0", last_contact_at: asOf, last_batch_at: asOf, pending_rows_reported: r.offline_memos, rejected_count: 0, quarantined_count: r.suspicious, held_rows_alert: false, submit_count_mismatch: false, trust_level: "normal", sync_p95_s: 12 + i }));
-    const body: Schemas["SyncHealthPage"] = { as_of: asOf, summary: { devices: items.length, devices_with_pending: items.filter((i) => i.pending_rows_reported > 0).length, held_rows_alerts: 0, rejected: 0, quarantined: sum(items, (i) => i.quarantined_count), mismatched_route_days: 0 }, items, next_cursor: null };
+    const body: Schemas["SyncHealthPage"] = { as_of: asOf, summary: { devices: items.length, devices_with_pending: items.filter((i) => i.pending_rows_reported > 0).length, held_rows_alerts: 0, rejected: 0, quarantined: sum(items, (i) => i.quarantined_count), mismatched_route_days: 0, ...(user.role === "TSO" ? {} : { config_ack_pct: 87.5, pending_photos: { count: 4, oldest_age_s: 5400 } }), quarantine_backlog: sum(items, (i) => i.quarantined_count) }, items, next_cursor: null, by_zone: [...new Set(rows.map((r) => r.zone_id))].map((z) => { const zr = rows.filter((r) => r.zone_id === z); const lg = zr.filter((r) => r.state !== "not_started").length; const sb = zr.filter((r) => r.state === "sales_submitted" || r.state === "final_submitted").length; return { zone_id: z, login_pct: pct(lg, zr.length), submit_pct: pct(sb, lg), final_submitted: zr.every((r) => r.state === "final_submitted"), trickle_p95_s: 15, quarantined: sum(zr, (r) => r.suspicious), pending_photos: 1, config_ack_pct: 87.5 }; }) };
     return send(200, body), true;
   }
 
@@ -360,7 +361,8 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
   if (path === "/v1/admin/routes" && method === "GET") {
     const zone = x.url.searchParams.get("zone_id");
     const rows = routesInScope(user.scope.nodes).filter((r) => !zone || r.zone_id === Number(zone));
-    return send(200, { items: rows.map((r) => ({ id: r.route_id, code: String(r.route_id), name: r.route_name, display_label: r.route_name, zone_id: r.zone_id, kind: r.kind, visit_kind: "daily", visit_days_mask: 127, status: "active" })), next_cursor: null }), true;
+    const withUsers = x.url.searchParams.get("include") === "assignees";
+    return send(200, { items: rows.map((r) => ({ id: r.route_id, code: String(r.route_id), name: r.route_name, display_label: r.route_name, zone_id: r.zone_id, kind: r.kind, visit_kind: "daily", visit_days_mask: 127, status: "active", ...(withUsers ? { assignees: r.user_id ? [{ user_id: r.user_id, full_name: r.user_name ?? `User ${r.user_id}`, role: r.kind === "amo" ? "AMO" : "SR", username: `u${r.user_id}` }] : [] } : {}) })), next_cursor: null }), true;
   }
   if (path === "/v1/admin/route-assignments" && method === "GET") {
     const items = routesInScope(user.scope.nodes).filter((r) => r.user_id).map((r, i) => ({ id: 700 + i, route_id: r.route_id, user_id: r.user_id!, kind: "primary", valid_from: "2026-10-01", valid_to: null, reason: null, created_at: asOf }));
