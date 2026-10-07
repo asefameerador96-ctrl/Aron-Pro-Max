@@ -85,6 +85,18 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   - `V0025`/`V0026` v1.2 device columns `root_hints`, `root_hints_at`, `integrity_unavailable_reason`/`_at` (NULL = unknown).
   - `V0028` restrictive directions (answers `backend-admin-restrictive-dir.md`; ConfigWorkflowTest adapted in step).
 
+- **Session 3 (2026-10-07; Opus checker, two rounds: 1 blocker (stale dictionary) + 1 should-fix (suffixed names), fixed):**
+  - `V0039` web entry for backend-admin: `entry_unlock` (expiry written once, version moves), `web_entry_route_day`
+    (re-save = new row with supersedes_client_uuid, old row closed by replaced_at/replaced_by; one live entry per
+    route-day), `web_entry_line` (composite FK keeps route/date equal to the entry), `qc_summary_entry` + `_line`.
+    Data void's statement works on all three. Answers `backend-admin-web-entry-tables.md` (the entry_unlock row).
+  - `V0040` `password_history` (append-only, auth path may prune; worker cannot read) and keys
+    `cfg.auth.password_history_depth`, `password_min_age_h`, `password_denylist_enabled` (docs/21 s4). Answers
+    `backend-core-password-history.md` (asks 1, 2; the 10k list is not added, it needs a source the owner approves).
+  - `V0041` `geo_breadcrumb` range-partitioned (rename, copy with ids, drop; house names restored), statement-level
+    uuid-once. Answers `backend-core-breadcrumb-partitioning.md`.
+  - Tests: `WebEntryPasswordBreadcrumbTest` (6); DbRolesTest, SchemaV1a/b adapted.
+
 ## Handoff (session 2 recycled, 2026-10-07 ~11:00 UTC)
 
 **On lane/db (V0023-V0038), green locally on db (190) and every backend suite; Opus checker PASS per batch:**

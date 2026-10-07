@@ -101,13 +101,13 @@ class WebEntryPasswordBreadcrumbTest {
             assertEquals("23514", refused(entry(e2, supersedes = e1)))                         // a re-save needs a reason
             exec("UPDATE app.web_entry_route_day SET replaced_at = now(), replaced_by = ${uid("adm9001")} WHERE client_uuid = '$e1'")
             exec(entry(e2, supersedes = e1, reason = "corrected the return quantity"))
+            assertEquals("23503", refused(line(e2, date = "2026-10-05")))                     // the line's day is the entry's
             exec(line(e2))
             assertEquals("$e2", scalar("SELECT client_uuid FROM app.web_entry_route_day WHERE replaced_at IS NULL AND voided_at IS NULL"))
-            assertEquals("42501", refused("UPDATE app.web_entry_route_day SET replaced_at = now() WHERE client_uuid = '$e1'"))
+            assertEquals("42501", refused("UPDATE app.web_entry_route_day SET replaced_at = replaced_at + interval '1 hour' WHERE client_uuid = '$e1'"))
             assertEquals("42501", refused("UPDATE app.web_entry_route_day SET successful_calls = 31 WHERE client_uuid = '$e2'"))
             assertEquals("42501", refused("DELETE FROM app.web_entry_route_day"))
             assertEquals("23505", refused(line(e2)))                                           // one line per SKU
-            assertEquals("23503", refused(line(e2, date = "2026-10-05")))                     // the line's day is the entry's
             assertEquals("23514", refused(line(e2, issue = 10, ret = 20)))                     // return above issue
             assertEquals("42501", refused("UPDATE app.web_entry_line SET issue_qty_base = 1"))
         }
