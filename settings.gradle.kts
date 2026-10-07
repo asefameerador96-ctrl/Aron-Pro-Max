@@ -95,3 +95,5 @@ include(":android:core-map")
 
 // Lane android-core-ui: Roborazzi screenshot tests of the core screens (test scope only, no APK cost).
 include(":android:ui-screenshots")
+// Lane android-core-ui: the shared Robolectric Compose screen check (AUD-TP-5), test scope only.
+include(":android:core-ui-testing")
