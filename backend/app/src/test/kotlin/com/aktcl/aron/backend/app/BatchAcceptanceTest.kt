@@ -332,6 +332,32 @@ class BatchAcceptanceTest {
         assertEquals("ERR_RATE_LIMITED", json(limited.bodyAsText())["code"]!!.jsonPrimitive.content)
     }
 
+    /**
+     * Opus checker on AUD-PERF-02 asked whether the ingest holds one pooled connection while borrowing a second (reach is
+     * resolved inside the family transaction on a cache miss). It does not: JDBI reuses the thread's open handle for a
+     * nested withHandle. With a write pool of ONE connection a nested borrow would wait Hikari's 5 s and fail the family.
+     */
+    @Test
+    fun aWritePoolOfOneConnectionStillIngestsAFamily() = testApplication {
+        val one = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath, "ARON_DB_POOL_MAX" to "1")), clock)
+        try {
+            application { aronApi(one) }
+            val token = client.login()
+            val t0 = System.nanoTime()
+            // Yesterday: the login resolved today's reach, so this date is a cache miss inside the ingest.
+            val family = saleFamily().map { e ->
+                JsonObject(e + mapOf("business_date" to JsonPrimitive("2027-01-02"), "captured_at" to JsonPrimitive("2027-01-02T09:41:00.120Z")))
+            }
+            val r = client.send(token, batch(family))
+            val ms = (System.nanoTime() - t0) / 1_000_000
+            assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+            assertEquals(List(5) { "accepted" }, statuses(json(r.bodyAsText())), r.bodyAsText())
+            assertTrue(ms < 4_000, "the batch took $ms ms: a second connection was borrowed")
+        } finally {
+            one.database?.close()
+        }
+    }
+
     // ---- F-SYS-055 batch replay and content fingerprint ---------------------------------------------------------
 
     /** The same family with every uuid re-minted (a phone that lost its outbox ids and resends). */

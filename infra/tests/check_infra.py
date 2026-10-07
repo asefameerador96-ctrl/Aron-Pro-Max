@@ -1198,10 +1198,14 @@ class InfraStageSkip(unittest.TestCase):
 
     def test_skip_base_is_the_last_applied_infra_commit(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn('--tags "aron-sha=${SHA}"', d, "main.bicep apply records its commit")
-        self.assertIn('tags."aron-sha"', d)
+        self.assertIn('--tags "aron-infra-sha=${SHA}"', d, "a successful main.bicep apply records its commit")
+        self.assertIn('tags."aron-infra-sha"', d)
+        self.assertLess(d.index("-n aron-infra --template-file infra/main.bicep"), d.index('--tags "aron-infra-sha='))
+        create = d[d.index("az deployment group create -g \"$RG\" -n aron-infra"):]
+        create = create[:create.index(")\"")]
+        self.assertNotIn("--tags", create, "az deployment group create has no --tags (run 37639072495)")
         self.assertIn('git diff --quiet "$infra_sha" "$SHA"', d)
-        self.assertLess(d.index('infra_sha="$(az deployment group show'), d.index('git diff --quiet "$infra_sha"'))
+        self.assertLess(d.index('infra_sha="$(az group show'), d.index('git diff --quiet "$infra_sha"'))
         self.assertIn('infra_sha="$deployed_sha"', d, "falls back to the live commit when untagged")
 
     def test_recovered_alert_closes_resource_health(self):

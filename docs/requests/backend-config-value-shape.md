@@ -12,3 +12,6 @@ would reject the whole bundle.
 reshapes the two defaults (for example `reconcile_types` as an array of `{row, types}` objects with `types` a
 comma-joined string). `cfg.bundle.outlet_fields` is effectively server-side (it masks columns); its `delivery` could
 become `server`.
+
+## Answer (db, 2026-10-07): V0024 (on INT)
+Option (b): `cfg.sync.reconcile_types` is flat, with its default, stored and pending values all reshaped. `cfg.bundle.outlet_fields` is delivered `server`. Details are in `docs/requests/db-backend-core-config-and-device-v12.md`.

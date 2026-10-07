@@ -75,7 +75,9 @@ class DataVoidCheckerTest {
     private val holder = object : RecordHandler {
         override val types = setOf("visit")
         override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
-            if (rec.clientUuid == holdUuid) { reached.countDown(); release.await(30, TimeUnit.SECONDS) }
+            // 15 s, inside the API's 25 s request budget (AUD-PERF-02): the void waits for this ingest's lock, so the
+            // hold decides how long the void call takes.
+            if (rec.clientUuid == holdUuid) { reached.countDown(); release.await(15, TimeUnit.SECONDS) }
             return null
         }
     }
