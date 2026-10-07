@@ -1,0 +1,22 @@
+path: /v1/admin/devices/{device_id}/directives
+method: get
+operation:
+  tags:
+  - admin-devices
+  operationId: listDeviceDirectives
+  summary: Remote directives sent to a device and their acknowledgement.
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  responses:
+    '200':
+      description: Directives.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DirectiveList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

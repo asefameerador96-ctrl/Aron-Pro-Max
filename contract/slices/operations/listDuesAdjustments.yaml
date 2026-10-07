@@ -1,0 +1,33 @@
+path: /v1/admin/dues-adjustments
+method: get
+operation:
+  tags:
+  - admin-finance
+  operationId: listDuesAdjustments
+  summary: Dues adjustments and write-offs with their maker-checker state.
+  parameters:
+  - name: outlet_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+    description: One outlet.
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/DecisionStatus'
+    description: Decision status.
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of adjustments.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DuesAdjustmentPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

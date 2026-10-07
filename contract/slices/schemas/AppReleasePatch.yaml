@@ -1,0 +1,29 @@
+AppReleasePatch:
+  type: object
+  minProperties: 1
+  additionalProperties: false
+  properties:
+    status:
+      type: string
+      enum:
+      - published
+      - blocked
+      - retired
+    rollout_pct:
+      type: integer
+      minimum: 0
+      maximum: 100
+    notes_en:
+      type:
+      - string
+      - 'null'
+      maxLength: 2000
+    notes_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 2000
+    change_reason:
+      oneOf:
+      - $ref: '#/components/schemas/ChangeReason'
+      - type: 'null'

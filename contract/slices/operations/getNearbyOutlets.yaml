@@ -1,0 +1,58 @@
+path: /v1/outlets/nearby
+method: get
+operation:
+  tags:
+  - team
+  operationId: getNearbyOutlets
+  summary: Outlets within a radius of a point (TSO Retailer radius map), capped and scoped.
+  description: 'Served from a geo index on confirmed outlet coordinates within the caller''s reach. `radius_m` must
+    be one
+
+    of `cfg.tso.periphery_radius_options_m` (50, 100, 300); at most `cfg.tso.periphery_max_markers` (300)
+
+    outlets are returned, nearest first, with `truncated` set when more exist. Contact numbers only with the
+
+    `pii` claim.
+
+    '
+  parameters:
+  - name: lat
+    in: query
+    required: true
+    schema:
+      type: number
+      minimum: 20.0
+      maximum: 27.0
+    description: Latitude of the centre (Bangladesh bounds).
+  - name: lng
+    in: query
+    required: true
+    schema:
+      type: number
+      minimum: 88.0
+      maximum: 93.0
+    description: Longitude of the centre (Bangladesh bounds).
+  - name: radius_m
+    in: query
+    required: true
+    schema:
+      type: integer
+      minimum: 10
+      maximum: 5000
+    description: Radius in metres; one of cfg.tso.periphery_radius_options_m.
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  responses:
+    '200':
+      description: Outlets inside the circle.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NearbyOutlets'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

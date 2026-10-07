@@ -1,0 +1,56 @@
+ResolvedConfigValue:
+  type: object
+  required:
+  - key
+  - value
+  - scope_type
+  - effective_from
+  - requires_ack
+  additionalProperties: false
+  properties:
+    key:
+      $ref: '#/components/schemas/ConfigKeyName'
+    value:
+      $ref: '#/components/schemas/ConfigValueJson'
+    scope_type:
+      type: string
+      enum:
+      - default
+      - global
+      - role
+      - wing
+      - division
+      - territory
+      - geo_class
+      - zone
+      - route
+      - outlet
+      - user
+      - device
+      description: Scope of the winning row (`default` = registry default).
+    scope_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    effective_from:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    effective_to:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    config_version:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+    requires_ack:
+      type: boolean
+    bounds:
+      oneOf:
+      - $ref: '#/components/schemas/ConfigBounds'
+      - type: 'null'

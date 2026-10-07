@@ -1,0 +1,33 @@
+path: /v1/admin/permissions/roles/{role}
+method: put
+operation:
+  tags:
+  - admin-users
+  operationId: putRolePermissions
+  summary: Change one role's menus and actions; creates a C3 config change request (never an immediate grant).
+  parameters:
+  - name: role
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Role'
+    description: Role to change.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/RolePermissionsWrite'
+  responses:
+    '202':
+      description: Pending change request created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigChange'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

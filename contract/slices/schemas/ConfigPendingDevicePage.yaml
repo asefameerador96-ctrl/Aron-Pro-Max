@@ -1,0 +1,38 @@
+ConfigPendingDevicePage:
+  type: object
+  required:
+  - items
+  - next_cursor
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      items:
+        type: object
+        required:
+        - device_id
+        - user_id
+        - zone_id
+        - applied_version
+        - lag_min
+        additionalProperties: false
+        properties:
+          device_id:
+            $ref: '#/components/schemas/Id'
+          user_id:
+            $ref: '#/components/schemas/Id'
+          zone_id:
+            $ref: '#/components/schemas/Id'
+          applied_version:
+            $ref: '#/components/schemas/ConfigVersionNumber'
+          last_contact_at:
+            oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+          lag_min:
+            type: integer
+            minimum: 0
+    next_cursor:
+      oneOf:
+      - $ref: '#/components/schemas/PageCursor'
+      - type: 'null'

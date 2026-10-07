@@ -1,0 +1,34 @@
+path: /v1/tasks
+method: get
+operation:
+  tags:
+  - tasks
+  operationId: listTasks
+  summary: Tasks in the caller's reach.
+  parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/TaskStatus'
+  - name: assignee_user_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of tasks.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TaskPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

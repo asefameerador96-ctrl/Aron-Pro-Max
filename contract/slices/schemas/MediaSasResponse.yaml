@@ -1,0 +1,50 @@
+MediaSasResponse:
+  type: object
+  required:
+  - items
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      maxItems: 10
+      items:
+        type: object
+        required:
+        - media_uuid
+        - method
+        - upload_url
+        - blob_path
+        - required_headers
+        - expires_at
+        additionalProperties: false
+        properties:
+          media_uuid:
+            $ref: '#/components/schemas/Uuid'
+          method:
+            type: string
+            const: PUT
+          upload_url:
+            type: string
+            format: uri
+            maxLength: 2000
+          blob_path:
+            type: string
+            maxLength: 200
+          required_headers:
+            type: object
+            required:
+            - x-ms-blob-type
+            - Content-Type
+            additionalProperties: false
+            properties:
+              x-ms-blob-type:
+                type: string
+                const: BlockBlob
+              Content-Type:
+                type: string
+                const: image/jpeg
+          expires_at:
+            $ref: '#/components/schemas/Timestamp'
+          already_uploaded:
+            type: boolean
+            description: True when a blob with the same sha256 already exists (skip the PUT, send media_meta).

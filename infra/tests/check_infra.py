@@ -552,14 +552,63 @@ class Workflows(unittest.TestCase):
         m = re.search(r"if: >-\n((?:\s{6}.*\n)+)", block)
         self.assertTrue(m, "deploy job has no if:")
         self.assertEqual(" ".join(m.group(1).split()), expected_if)
-        self.assertIn("needs: [changes, contract, jvm, web, android, images, infra]", block)
+        self.assertIn("needs: [changes, gates, contract, jvm, web, android, android-release, images, infra]", block)
         self.assertIn("secrets: inherit", block)
 
     def test_push_runs_are_never_cancelled(self):
+        # 14 lanes push to the integration branch: every workflow a push triggers groups by ref AND commit, and only
+        # pull requests cancel their predecessor. The deploy itself is serialised in Azure (deploy.sh lock), not here.
+        for wf in WORKFLOWS.glob("*.yml"):
+            c = self.text(wf.name)
+            if not re.search(r"(?m)^  push:", c):
+                continue
+            self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c, wf.name)
+            self.assertIn("github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha)", c, wf.name)
+            self.assertEqual(c.count("cancel-in-progress"), 1, wf.name)
+        self.assertNotRegex(self.text("deploy.yml"), r"(?m)^\s*concurrency:", "deploy serialises with the Azure-side lock in deploy.sh")
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn("waiting until no other deployment runs in", d)
+        self.assertIn("merge-base --is-ancestor", d)
+
+    def test_repository_gates_run_on_every_push(self):
         c = self.text("ci.yml")
-        self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c)
-        self.assertIn("github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha)", c)
-        self.assertEqual(c.count("cancel-in-progress"), 1)
+        block = c[c.index("\n  gates:"):c.index("\n  contract:")]
+        self.assertNotIn("\n    if:", block, "the gates job runs on every push and pull request")
+        for needle in ("tools/ci/install-tool.sh", "tools/ci/test_gates.py", "gitleaks git --no-banner --redact --exit-code 1",
+                       "--gitleaks-ignore-path tools/ci/gitleaksignore", "tools/ci/migrations-check.sh",
+                       "tools/ci/contract-breaking.sh", "fetch-depth: 0"):
+            self.assertIn(needle, block)
+        tools = (ROOT / "tools" / "ci" / "install-tool.sh").read_text(encoding="utf-8")
+        self.assertEqual(len(re.findall(r'sha="[0-9a-f]{64}"', tools)), 3, "every gate binary is checksum-pinned")
+        self.assertIn("sha256sum -c", tools)
+
+    def test_release_apk_and_size_gate(self):
+        c = self.text("ci.yml")
+        block = c[c.index("\n  android-release:"):c.index("\n  web:")]
+        self.assertIn(":android:app-sr:assembleRelease", block)
+        self.assertIn("python3 tools/ci/apk-size-gate.py", block)
+        gate = (ROOT / "tools" / "ci" / "apk-size-gate.py").read_text(encoding="utf-8")
+        self.assertIn("ABS_DOWNLOAD_MB, ABS_INSTALLED_MB = 30, 70", gate)
+        self.assertIn("WARN_PCT, FAIL_PCT = 5, 15", gate)
+        base = json.loads((ROOT / "tools" / "ci" / "apk-size-baseline.json").read_text(encoding="utf-8"))
+        self.assertIn("arm64-v8a", base["sr-release"])
+
+    def test_images_get_an_sbom(self):
+        c = self.text("ci.yml")
+        block = c[c.index("\n  images:"):c.index("\n  infra:")]
+        self.assertEqual(block.count("anchore/sbom-action@"), 2)
+        for img in ("aron-backend", "aron-web"):
+            self.assertIn(f"image: {img}:${{{{ github.sha }}}}", block)
+        self.assertIn("format: spdx-json", block)
+
+    def test_codeql_covers_kotlin_and_typescript(self):
+        q = self.text("codeql.yml")
+        self.assertIn("language: java-kotlin", q)
+        self.assertIn("language: javascript-typescript", q)
+        self.assertIn("security-events: write", q)
+        self.assertIn("--no-build-cache", q, "CodeQL must see a real Kotlin compile")
+        for app in ("app-sr", "app-amo", "app-tso"):
+            self.assertIn(f":android:{app}:compileDebugKotlin", q)
 
     def test_apks_are_uploaded_on_every_successful_android_run(self):
         c = self.text("ci.yml")

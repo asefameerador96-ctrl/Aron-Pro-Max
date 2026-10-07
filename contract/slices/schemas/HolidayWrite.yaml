@@ -1,0 +1,42 @@
+HolidayWrite:
+  type: object
+  required:
+  - date
+  - scope_type
+  - scope_id
+  - kind
+  - name_en
+  - reason
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    scope_type:
+      type: string
+      enum:
+      - global
+      - wing
+      - division
+      - territory
+      - zone
+    scope_id:
+      type: integer
+      format: int64
+      minimum: 0
+    kind:
+      type: string
+      enum:
+      - holiday
+      - makeup_day
+      - emergency_off
+    name_en:
+      type: string
+      minLength: 2
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

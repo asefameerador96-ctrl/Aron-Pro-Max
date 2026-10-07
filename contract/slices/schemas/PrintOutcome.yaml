@@ -1,0 +1,6 @@
+PrintOutcome:
+  type: string
+  enum:
+  - printed
+  - failed
+  - failed_user

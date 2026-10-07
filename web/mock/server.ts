@@ -36,7 +36,14 @@ function users(): Record<string, MockUser> {
   };
 }
 
+/** A test-registered endpoint (tests/helpers): answers before the built-in handlers, records every call. */
+export interface StubCall { method: string; path: string; query: Record<string, string>; body: unknown; headers: IncomingMessage["headers"]; role: Role }
+export interface StubResult { status: number; body?: unknown; headers?: Record<string, string> }
+export interface Stub { method: string; path: string | RegExp; fn: (call: StubCall, match: RegExpMatchArray | null) => StubResult | Promise<StubResult> }
+
 interface State {
+  stubs: Stub[];
+  calls: StubCall[];
   users: Record<string, MockUser>;
   clusters: Cluster[];
   audit: AuditEntry[];
@@ -71,7 +78,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 }
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
-  return { users: users(), clusters: seedClusters(), audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
+  return { stubs: [], calls: [], users: users(), clusters: seedClusters(), audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -228,6 +235,16 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   if (path === "/v1/me") {
     const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: false, mfa_enabled: user.mfa };
     return send(res, 200, me);
+  }
+
+  for (const stub of state.stubs) {
+    const match = typeof stub.path === "string" ? (stub.path === path ? [] : null) : path.match(stub.path);
+    if (stub.method !== method || !match) continue;
+    const body = method === "GET" ? undefined : await readJson(req);
+    const call: StubCall = { method, path, query: Object.fromEntries(url.searchParams), body, headers: req.headers, role: user.summary.role };
+    state.calls.push(call);
+    const r = await stub.fn(call, match as RegExpMatchArray);
+    return send(res, r.status, r.body, r.headers);
   }
 
   if (path.startsWith("/v1/admin/")) {

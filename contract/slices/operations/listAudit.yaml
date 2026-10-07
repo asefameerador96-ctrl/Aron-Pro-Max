@@ -1,0 +1,46 @@
+path: /v1/admin/audit
+method: get
+operation:
+  tags:
+  - admin-audit
+  operationId: listAudit
+  summary: Append-only, hash-chained audit log.
+  parameters:
+  - name: entity
+    in: query
+    required: false
+    schema:
+      type: string
+      pattern: ^[a-z_]{2,40}$
+  - name: entity_id
+    in: query
+    required: false
+    schema:
+      type: string
+      maxLength: 64
+  - name: actor_user_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: action
+    in: query
+    required: false
+    schema:
+      type: string
+      pattern: ^[a-z_.]{2,60}$
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of audit entries.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuditPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

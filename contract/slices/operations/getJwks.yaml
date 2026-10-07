@@ -1,0 +1,19 @@
+path: /v1/auth/jwks
+method: get
+operation:
+  tags:
+  - auth
+  operationId: getJwks
+  summary: Public signing keys (JWKS) for access-token verification.
+  security: []
+  responses:
+    '200':
+      description: JSON Web Key Set (ES256 public keys; two during rotation).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Jwks'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

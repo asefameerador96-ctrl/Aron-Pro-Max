@@ -1,0 +1,29 @@
+path: /v1/day/exceptions
+method: get
+operation:
+  tags:
+  - day
+  operationId: listDayExceptions
+  summary: Day exceptions (rain, hartal, ...) raised in the caller's reach.
+  parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/DecisionStatus'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of exceptions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DayExceptionPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

@@ -1,0 +1,16 @@
+path: /v1/tutorials
+method: get
+operation:
+  tags:
+  - app
+  operationId: listTutorials
+  summary: Tutorial videos and manuals for the caller's role (also in the bundle; playback is online only).
+  responses:
+    '200':
+      description: Tutorial list.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TutorialList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'

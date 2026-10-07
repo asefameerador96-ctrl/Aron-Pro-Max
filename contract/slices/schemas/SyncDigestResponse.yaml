@@ -1,0 +1,27 @@
+SyncDigestResponse:
+  type: object
+  required:
+  - resend
+  additionalProperties: false
+  properties:
+    resend:
+      type: array
+      items:
+        type: object
+        required:
+        - business_date
+        - type
+        - buckets
+        additionalProperties: false
+        properties:
+          business_date:
+            $ref: '#/components/schemas/BusinessDate'
+          type:
+            $ref: '#/components/schemas/RecordType'
+          buckets:
+            type: array
+            maxItems: 16
+            items:
+              type: integer
+              minimum: 0
+              maximum: 15

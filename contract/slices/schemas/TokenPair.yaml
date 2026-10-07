@@ -1,0 +1,28 @@
+TokenPair:
+  type: object
+  required:
+  - access_token
+  - access_expires_at
+  - refresh_expires_at
+  - scope_version
+  - server_time
+  additionalProperties: false
+  properties:
+    access_token:
+      type: string
+      maxLength: 4096
+    access_expires_at:
+      $ref: '#/components/schemas/Timestamp'
+    refresh_token:
+      type:
+      - string
+      - 'null'
+      minLength: 43
+      maxLength: 64
+    refresh_expires_at:
+      $ref: '#/components/schemas/Timestamp'
+    scope_version:
+      type: integer
+      minimum: 0
+    server_time:
+      $ref: '#/components/schemas/Timestamp'

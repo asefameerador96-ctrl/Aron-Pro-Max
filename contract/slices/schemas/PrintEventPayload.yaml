@@ -1,0 +1,39 @@
+PrintEventPayload:
+  type: object
+  required:
+  - document_kind
+  - print_count
+  - outcome
+  - template_version
+  additionalProperties: false
+  properties:
+    document_kind:
+      $ref: '#/components/schemas/PrintDocumentKind'
+    memo_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    ref_client_uuid:
+      description: For stock slips the stock family uuid; for due receipts the due_collection uuid.
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    print_count:
+      type: integer
+      minimum: 1
+      maximum: 100
+    outcome:
+      $ref: '#/components/schemas/PrintOutcome'
+    user_confirmed:
+      type:
+      - boolean
+      - 'null'
+    template_version:
+      type: integer
+      minimum: 1
+      maximum: 999
+    printer_model:
+      type:
+      - string
+      - 'null'
+      maxLength: 40

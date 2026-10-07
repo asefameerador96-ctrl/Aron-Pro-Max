@@ -1,0 +1,13 @@
+MemoLineRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: memo_line
+      payload:
+        $ref: '#/components/schemas/MemoLinePayload'
+  unevaluatedProperties: false

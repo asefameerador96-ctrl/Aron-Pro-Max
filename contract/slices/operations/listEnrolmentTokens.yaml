@@ -1,0 +1,27 @@
+path: /v1/admin/enrolment-tokens
+method: get
+operation:
+  tags:
+  - admin-devices
+  operationId: listEnrolmentTokens
+  summary: Enrolment tokens (never the secret value after creation).
+  parameters:
+  - name: active_only
+    in: query
+    required: false
+    schema:
+      type: boolean
+      default: true
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of tokens.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnrolmentTokenPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

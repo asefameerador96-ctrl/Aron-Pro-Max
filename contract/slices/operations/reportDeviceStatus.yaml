@@ -1,0 +1,35 @@
+path: /v1/devices/me/status
+method: post
+operation:
+  tags:
+  - devices
+  operationId: reportDeviceStatus
+  summary: Report policy, integrity and health status now (online path; the same object also rides the batch as
+    `device_status`).
+  security:
+  - bearerAuth: []
+  - {}
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  - $ref: '#/components/parameters/XDeviceProof'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DeviceStatusReport'
+  responses:
+    '200':
+      description: Server view of the device's trust and the current policy version.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeviceStatusAck'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

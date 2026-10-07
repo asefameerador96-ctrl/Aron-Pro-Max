@@ -1,0 +1,31 @@
+path: /v1/web-entry/qc
+method: post
+operation:
+  tags:
+  - web-entry
+  operationId: saveQcEntry
+  summary: Market or Warehouse QC entry (SKU by fault type) stored as a separate web source, never added to app
+    QC.
+  description: Idempotent by `client_uuid`. Warehouse entries need a reason and the warehouse QC permission (403
+    otherwise); each save writes an audit row.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/QcEntryWrite'
+  responses:
+    '200':
+      description: Stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QcEntryResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

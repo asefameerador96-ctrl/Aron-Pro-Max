@@ -1,0 +1,16 @@
+DeviceNonce:
+  type: object
+  required:
+  - nonce
+  - expires_at
+  additionalProperties: false
+  properties:
+    nonce:
+      type: string
+      minLength: 43
+      maxLength: 64
+      pattern: ^[A-Za-z0-9_-]+$
+      description: 'Use as the Play Integrity request nonce (classic) or as requestHash input (standard): sha256(nonce
+        + device_uuid).'
+    expires_at:
+      $ref: '#/components/schemas/Timestamp'

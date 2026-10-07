@@ -1,0 +1,52 @@
+Gift:
+  type: object
+  required:
+  - gift_id
+  - programme_id
+  - code
+  - name_en
+  - points_cost
+  - status
+  - version
+  additionalProperties: false
+  properties:
+    gift_id:
+      $ref: '#/components/schemas/Id'
+    programme_id:
+      $ref: '#/components/schemas/Id'
+    code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    name_en:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    points_cost:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 100000
+      description: Null for Astha gifts (chosen, not redeemed).
+    tier_codes:
+      type: array
+      maxItems: 10
+      items:
+        type: string
+        pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: Astha tiers the gift is offered to.
+    image_url:
+      type:
+      - string
+      - 'null'
+      format: uri
+      maxLength: 1000
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    version:
+      type: integer
+      minimum: 1

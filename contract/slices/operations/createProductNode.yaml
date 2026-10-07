@@ -1,0 +1,30 @@
+path: /v1/admin/product-nodes/{level}
+method: post
+operation:
+  tags:
+  - admin-products
+  operationId: createProductNode
+  summary: Create a product tree node.
+  parameters:
+  - $ref: '#/components/parameters/ProductLevelPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ProductNodeWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProductNode'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

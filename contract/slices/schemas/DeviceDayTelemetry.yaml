@@ -1,0 +1,66 @@
+DeviceDayTelemetry:
+  type: object
+  description: At most one per business date (the whole telemetry object stays under 1,024 bytes).
+  required:
+  - d
+  - b_mob
+  - b_mob_media
+  - b_wifi
+  - cpu_ms
+  - wake_ms
+  - starts
+  - gps
+  additionalProperties: false
+  properties:
+    d:
+      $ref: '#/components/schemas/BusinessDate'
+    b_mob:
+      type: integer
+      format: int64
+      minimum: 0
+    b_mob_media:
+      type: integer
+      format: int64
+      minimum: 0
+    b_wifi:
+      type: integer
+      format: int64
+      minimum: 0
+    cpu_ms:
+      type: integer
+      format: int64
+      minimum: 0
+    wake_ms:
+      type: integer
+      format: int64
+      minimum: 0
+    starts:
+      type: integer
+      minimum: 0
+    gps:
+      type: integer
+      minimum: 0
+      description: Fixes taken.
+    gps_ms:
+      type: integer
+      format: int64
+      minimum: 0
+    bat:
+      type: array
+      maxItems: 3
+      description: Battery percent at 08:00, 12:00 and 17:00 Dhaka.
+      items:
+        type:
+        - integer
+        - 'null'
+        minimum: 0
+        maximum: 100
+    plug:
+      type: integer
+      enum:
+      - 0
+      - 1
+    regained:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

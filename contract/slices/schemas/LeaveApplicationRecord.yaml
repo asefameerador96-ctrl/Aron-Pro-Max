@@ -1,0 +1,13 @@
+LeaveApplicationRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: leave_application
+      payload:
+        $ref: '#/components/schemas/LeaveApplicationPayload'
+  unevaluatedProperties: false

@@ -1,0 +1,17 @@
+AttendanceEventPayload:
+  type: object
+  required:
+  - kind
+  - fix
+  additionalProperties: false
+  properties:
+    kind:
+      $ref: '#/components/schemas/AttendanceKind'
+    fix:
+      $ref: '#/components/schemas/GeoFix'
+    address_display:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+      description: Reverse-geocoded text shown on screen; display only, never used for a decision.

@@ -1,0 +1,34 @@
+path: /v1/tasks/{task_uuid}/cancel
+method: post
+operation:
+  tags:
+  - tasks
+  operationId: cancelTask
+  summary: Cancel an ongoing task (creator, the zone's TSO or an admin).
+  parameters:
+  - name: task_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ReasonRequest'
+  responses:
+    '200':
+      description: Cancelled.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Task'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

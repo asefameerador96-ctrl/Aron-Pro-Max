@@ -1,0 +1,39 @@
+path: /v1/admin/config/resolve
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: resolveConfig
+  summary: Effective value of a key at a node and instant, with provenance (which scope row won).
+  parameters:
+  - $ref: '#/components/parameters/ConfigKeyQueryRequired'
+  - name: node_type
+    in: query
+    required: true
+    schema:
+      $ref: '#/components/schemas/ConfigScopeType'
+  - name: node_id
+    in: query
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 0
+  - name: at
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Timestamp'
+  responses:
+    '200':
+      description: Resolved value.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResolvedConfigValue'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

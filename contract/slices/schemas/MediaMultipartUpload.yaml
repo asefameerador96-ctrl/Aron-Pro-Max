@@ -1,0 +1,21 @@
+MediaMultipartUpload:
+  type: object
+  required:
+  - media_uuid
+  - purpose
+  - sha256
+  - file
+  properties:
+    media_uuid:
+      $ref: '#/components/schemas/Uuid'
+    purpose:
+      type: string
+      enum:
+      - feedback
+      - support
+    sha256:
+      $ref: '#/components/schemas/Sha256Hex'
+    file:
+      type: string
+      contentMediaType: image/jpeg
+      maxLength: 307200

@@ -1,0 +1,72 @@
+OutletDetail:
+  allOf:
+  - $ref: '#/components/schemas/Outlet'
+  - type: object
+    required:
+    - placement_history
+    - location_history
+    properties:
+      placement_history:
+        type: array
+        items:
+          type: object
+          required:
+          - route_id
+          - cluster_id
+          - valid_from
+          additionalProperties: false
+          properties:
+            route_id:
+              type:
+              - integer
+              - 'null'
+              format: int64
+              minimum: 1
+            cluster_id:
+              type:
+              - integer
+              - 'null'
+              format: int64
+              minimum: 1
+            valid_from:
+              $ref: '#/components/schemas/BusinessDate'
+            valid_to:
+              oneOf:
+              - $ref: '#/components/schemas/BusinessDate'
+              - type: 'null'
+      location_history:
+        type: array
+        items:
+          type: object
+          required:
+          - lat
+          - lng
+          - source
+          - valid_from
+          additionalProperties: false
+          properties:
+            lat:
+              type: number
+              minimum: -90
+              maximum: 90
+            lng:
+              type: number
+              minimum: -180
+              maximum: 180
+            accuracy_m:
+              type:
+              - number
+              - 'null'
+              minimum: 0
+            source:
+              type: string
+              enum:
+              - migration
+              - capture
+              - force_sale
+              - base_update
+              - web_edit
+              - verification
+            valid_from:
+              $ref: '#/components/schemas/Timestamp'
+  unevaluatedProperties: false

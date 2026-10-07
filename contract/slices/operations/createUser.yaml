@@ -1,0 +1,28 @@
+path: /v1/admin/users
+method: post
+operation:
+  tags:
+  - admin-users
+  operationId: createUser
+  summary: Create a user with a temporary password (shown once, must be changed at first login).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/UserWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserCreated'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

@@ -1,0 +1,23 @@
+OutletRequestVerifyRequest:
+  type: object
+  required:
+  - sub_channel_id
+  additionalProperties: false
+  properties:
+    sub_channel_id:
+      $ref: '#/components/schemas/Id'
+    geo_class:
+      type:
+      - string
+      - 'null'
+      enum:
+      - Hill
+      - Urban
+      - SemiUrban
+      - Rural
+      - null
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

@@ -1,0 +1,53 @@
+ConfigReach:
+  type: object
+  required:
+  - version
+  - committed_at
+  - devices_targeted
+  - devices_applied
+  - devices_acked
+  - devices_pending
+  additionalProperties: false
+  properties:
+    version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    committed_at:
+      $ref: '#/components/schemas/Timestamp'
+    devices_targeted:
+      type: integer
+      minimum: 0
+    devices_applied:
+      type: integer
+      minimum: 0
+      description: Devices whose request header carried this version or newer.
+    devices_acked:
+      type: integer
+      minimum: 0
+      description: Devices that sent a config_ack for a requires_ack key.
+    devices_pending:
+      type: integer
+      minimum: 0
+    p95_reach_min:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: 95th percentile minutes from commit to applied, selling devices only.
+    by_zone:
+      type: array
+      items:
+        type: object
+        required:
+        - zone_id
+        - targeted
+        - applied
+        additionalProperties: false
+        properties:
+          zone_id:
+            $ref: '#/components/schemas/Id'
+          targeted:
+            type: integer
+            minimum: 0
+          applied:
+            type: integer
+            minimum: 0

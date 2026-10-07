@@ -1,0 +1,18 @@
+PaperBackfillResult:
+  type: object
+  required:
+  - memo_client_uuid
+  - status
+  - net_mtk
+  additionalProperties: false
+  properties:
+    memo_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    status:
+      type: string
+      enum:
+      - created
+      - replayed
+      - duplicate_memo_no
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'

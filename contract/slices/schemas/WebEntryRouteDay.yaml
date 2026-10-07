@@ -1,0 +1,48 @@
+WebEntryRouteDay:
+  type: object
+  required:
+  - route_id
+  - business_date
+  - lines
+  - successful_calls
+  - target_outlets
+  - app_overlap
+  - source
+  additionalProperties: false
+  properties:
+    client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    lines:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/WebEntryLine'
+    successful_calls:
+      type: integer
+      minimum: 0
+    target_outlets:
+      type: integer
+      minimum: 0
+    app_overlap:
+      type: boolean
+      description: True when app memos exist for the same route-day (flagged, never added).
+    source:
+      type: string
+      enum:
+      - web_entry
+    saved_by_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    saved_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

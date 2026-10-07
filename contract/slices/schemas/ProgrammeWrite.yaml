@@ -1,0 +1,41 @@
+ProgrammeWrite:
+  type: object
+  required:
+  - kind
+  - code
+  - name_en
+  - active_from
+  - active_to
+  - change_reason
+  additionalProperties: false
+  properties:
+    kind:
+      $ref: '#/components/schemas/ProgrammeKind'
+    code:
+      type: string
+      pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$
+    name_en:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    period_label:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    active_from:
+      $ref: '#/components/schemas/BusinessDate'
+    active_to:
+      $ref: '#/components/schemas/BusinessDate'
+    rules:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

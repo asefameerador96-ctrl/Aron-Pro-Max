@@ -1,0 +1,36 @@
+PrintTemplate:
+  type: object
+  required:
+  - kind
+  - version
+  - font_columns
+  - template_json
+  additionalProperties: false
+  properties:
+    kind:
+      type: string
+      enum:
+      - cash_memo
+      - credit_memo
+      - offer_memo
+      - drp_memo
+      - zero_memo
+      - edited_memo
+      - stock_slip
+      - day_summary
+      - due_receipt
+      - void_slip
+    version:
+      type: integer
+      minimum: 1
+      maximum: 999
+    font_columns:
+      type: integer
+      enum:
+      - 32
+      - 42
+    template_json:
+      type: string
+      maxLength: 20000
+      description: Template definition as a JSON string validated by the phone against its embedded schema; the
+        phone falls back to its embedded default.

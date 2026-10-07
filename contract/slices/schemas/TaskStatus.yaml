@@ -1,0 +1,6 @@
+TaskStatus:
+  type: string
+  enum:
+  - ongoing
+  - completed
+  - cancelled

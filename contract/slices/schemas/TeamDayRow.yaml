@@ -1,0 +1,39 @@
+TeamDayRow:
+  type: object
+  required:
+  - user_id
+  - full_name
+  - route_id
+  - state
+  - visited
+  - successful_calls
+  - net_mtk
+  additionalProperties: false
+  properties:
+    user_id:
+      $ref: '#/components/schemas/Id'
+    full_name:
+      type: string
+      maxLength: 120
+    route_id:
+      $ref: '#/components/schemas/Id'
+    route_name:
+      type: string
+      maxLength: 120
+    state:
+      $ref: '#/components/schemas/DayState'
+    visited:
+      type: integer
+      minimum: 0
+    target_outlets:
+      type: integer
+      minimum: 0
+    successful_calls:
+      type: integer
+      minimum: 0
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'
+    last_sync_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

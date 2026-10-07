@@ -1,0 +1,38 @@
+path: /v1/support/pda-upload
+method: post
+operation:
+  tags:
+  - support
+  operationId: createSupportUpload
+  summary: Write-only SAS for one "PDA to Support" data file (encrypted zip, size-capped).
+  description: 'Idempotent by `upload_uuid` (a repeat returns the same blob path with a fresh SAS). The file is
+    at most
+
+    `cfg.support.max_upload_mb` (20 MB); on mobile data the phone waits for Wi-Fi when
+
+    `cfg.support.pda_upload_wifi_only` is true. The zip is encrypted on the phone with the support public key.
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SupportUploadRequest'
+  responses:
+    '200':
+      description: Upload URL.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SupportUpload'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '413':
+      $ref: '#/components/responses/PayloadTooLarge'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

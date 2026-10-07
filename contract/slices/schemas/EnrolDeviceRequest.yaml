@@ -1,0 +1,53 @@
+EnrolDeviceRequest:
+  type: object
+  required:
+  - enrolment_token
+  - device_uuid
+  - app_package
+  - app_version
+  - app_signing_cert_sha256
+  - device_owner
+  - public_key
+  - key_attestation_chain
+  - device_info
+  additionalProperties: false
+  properties:
+    enrolment_token:
+      type: string
+      minLength: 43
+      maxLength: 64
+      pattern: ^[A-Za-z0-9_-]+$
+      writeOnly: true
+    device_uuid:
+      $ref: '#/components/schemas/Uuid'
+    app_package:
+      type: string
+      enum:
+      - com.aktcl.aron.sr
+      - com.aktcl.aron.amo
+      - com.aktcl.aron.tso
+    app_version:
+      $ref: '#/components/schemas/AppVersionString'
+    app_signing_cert_sha256:
+      $ref: '#/components/schemas/Sha256Hex'
+    device_owner:
+      type: boolean
+      description: DevicePolicyManager.isDeviceOwnerApp(app_package) at the time of the call.
+    public_key:
+      $ref: '#/components/schemas/JwkEcPublicDevice'
+    key_attestation_chain:
+      type: array
+      minItems: 1
+      maxItems: 6
+      description: DER certificates, base64 (standard alphabet), leaf first, of the Keystore attestation of `public_key`
+        with the challenge = sha256(enrolment_token).
+      items:
+        type: string
+        maxLength: 8000
+        contentEncoding: base64
+    device_info:
+      $ref: '#/components/schemas/DeviceInfo'
+    status:
+      oneOf:
+      - $ref: '#/components/schemas/DeviceStatusReport'
+      - type: 'null'

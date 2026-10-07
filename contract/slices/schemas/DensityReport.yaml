@@ -1,0 +1,45 @@
+DensityReport:
+  type: object
+  required:
+  - as_of
+  - radii_m
+  - rows
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    radii_m:
+      type: array
+      maxItems: 8
+      items:
+        type: integer
+        minimum: 10
+        maximum: 1000
+    rows:
+      type: array
+      maxItems: 5000
+      items:
+        type: object
+        required:
+        - node
+        - outlets
+        - median_neighbours
+        additionalProperties: false
+        properties:
+          node:
+            $ref: '#/components/schemas/NodeRef'
+          outlets:
+            type: integer
+            minimum: 0
+          median_neighbours:
+            type: array
+            maxItems: 8
+            items:
+              type: number
+              minimum: 0
+          density_index_pct:
+            type:
+            - number
+            - 'null'
+            minimum: 0
+            maximum: 100

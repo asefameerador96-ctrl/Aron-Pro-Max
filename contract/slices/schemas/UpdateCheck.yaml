@@ -1,0 +1,28 @@
+UpdateCheck:
+  type: object
+  required:
+  - update_available
+  - blocked
+  - min_version_code
+  additionalProperties: false
+  properties:
+    update_available:
+      type: boolean
+    blocked:
+      type: boolean
+      description: The installed version is in cfg.release.blocked_version_codes (no new captures; upload continues).
+    min_version_code:
+      type: integer
+      minimum: 1
+    latest:
+      oneOf:
+      - $ref: '#/components/schemas/AppRelease'
+      - type: 'null'
+    prompt_policy:
+      type: string
+      enum:
+      - silent
+      - prompt
+      - force_after_date
+    wifi_only:
+      type: boolean

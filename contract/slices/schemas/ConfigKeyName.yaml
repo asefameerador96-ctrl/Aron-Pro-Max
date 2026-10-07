@@ -1,0 +1,6 @@
+ConfigKeyName:
+  type: string
+  pattern: ^cfg\.[a-z]+\.[a-z0-9_]+(\.[a-z0-9_]+)?$
+  maxLength: 80
+  examples:
+  - cfg.geo.radius_m

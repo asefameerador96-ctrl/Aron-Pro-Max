@@ -1,0 +1,13 @@
+AppErrorRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: app_error
+      payload:
+        $ref: '#/components/schemas/AppErrorPayload'
+  unevaluatedProperties: false

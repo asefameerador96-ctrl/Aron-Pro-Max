@@ -1,0 +1,22 @@
+path: /v1/admin/surveys
+method: get
+operation:
+  tags:
+  - admin-content
+  operationId: listSurveys
+  summary: Survey and questionnaire definitions (POSM, AMO survey, TSO visit query) with validity and assignment.
+  parameters:
+  - $ref: '#/components/parameters/StatusQuery'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of surveys.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SurveyPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

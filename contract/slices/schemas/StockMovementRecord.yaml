@@ -1,0 +1,13 @@
+StockMovementRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: stock_movement
+      payload:
+        $ref: '#/components/schemas/StockMovementPayload'
+  unevaluatedProperties: false

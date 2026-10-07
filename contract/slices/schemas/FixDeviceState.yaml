@@ -1,0 +1,26 @@
+FixDeviceState:
+  type: object
+  description: Device integrity facts read at the moment of the fix.
+  required:
+  - device_owner
+  - dev_options_enabled
+  - adb_enabled
+  - auto_time_enabled
+  - mock_app_present
+  additionalProperties: false
+  properties:
+    device_owner:
+      type: boolean
+    dev_options_enabled:
+      type: boolean
+    adb_enabled:
+      type: boolean
+    auto_time_enabled:
+      type: boolean
+    mock_app_present:
+      type: boolean
+    integrity_ref:
+      description: client_uuid of the latest device_status record that carried a Play Integrity token.
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'

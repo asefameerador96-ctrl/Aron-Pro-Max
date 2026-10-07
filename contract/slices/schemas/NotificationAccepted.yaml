@@ -1,0 +1,12 @@
+NotificationAccepted:
+  type: object
+  required:
+  - notification_id
+  - devices_targeted
+  additionalProperties: false
+  properties:
+    notification_id:
+      $ref: '#/components/schemas/Uuid'
+    devices_targeted:
+      type: integer
+      minimum: 0

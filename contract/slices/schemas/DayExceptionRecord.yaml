@@ -1,0 +1,13 @@
+DayExceptionRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: day_exception
+      payload:
+        $ref: '#/components/schemas/DayExceptionPayload'
+  unevaluatedProperties: false

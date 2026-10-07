@@ -1,0 +1,25 @@
+path: /v1/admin/config/reach/{version}/pending
+method: get
+operation:
+  tags:
+  - admin-config
+  operationId: listConfigReachPending
+  summary: Devices targeted by a version that have not applied it yet, with their lag.
+  parameters:
+  - $ref: '#/components/parameters/ConfigVersionPath'
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of pending devices.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigPendingDevicePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

@@ -1,0 +1,34 @@
+path: /v1/admin/devices/{device_id}/replace
+method: post
+operation:
+  tags:
+  - admin-devices
+  operationId: replaceDevice
+  summary: Replace-device wizard - upload-first or revoke-now for the old phone, and an OTP for the new one.
+  description: '`upload_first` keeps the old device active until its outbox is empty (state `replaced` afterwards);
+    `revoke_now` revokes it with the usual upload grace. Either way a device OTP is issued for the user.'
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DeviceReplaceRequest'
+  responses:
+    '200':
+      description: Result.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeviceReplaceResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

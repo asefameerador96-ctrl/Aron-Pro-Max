@@ -1,0 +1,37 @@
+Directive:
+  type: object
+  description: Signed, idempotent instruction to one device, acted on at the next foreground contact; acknowledged
+    by a device_status record with trigger directive.
+  required:
+  - directive_id
+  - type
+  - created_at
+  - expires_at
+  - sig
+  additionalProperties: false
+  properties:
+    directive_id:
+      $ref: '#/components/schemas/Uuid'
+    type:
+      type: string
+      enum:
+      - send_status
+      - redownload_bundle
+      - upload_support_bundle
+      - resend_from
+    params:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    expires_at:
+      $ref: '#/components/schemas/Timestamp'
+    acked_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    sig:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{86}$
+      description: ES256 by the server signing key over the canonical directive without sig.

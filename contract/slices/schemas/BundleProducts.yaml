@@ -1,0 +1,17 @@
+BundleProducts:
+  type: object
+  required:
+  - nodes
+  - skus
+  additionalProperties: false
+  properties:
+    nodes:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/BundleProductNode'
+    skus:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/Sku'

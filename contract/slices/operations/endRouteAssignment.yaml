@@ -1,0 +1,30 @@
+path: /v1/admin/route-assignments/{id}/end
+method: post
+operation:
+  tags:
+  - admin-routes
+  operationId: endRouteAssignment
+  summary: End an assignment at a date (never deleted).
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/EndAssignmentRequest'
+  responses:
+    '200':
+      description: Ended.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteAssignment'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

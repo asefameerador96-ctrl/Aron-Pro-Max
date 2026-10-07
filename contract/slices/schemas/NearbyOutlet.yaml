@@ -1,0 +1,47 @@
+NearbyOutlet:
+  type: object
+  required:
+  - outlet_id
+  - code
+  - name
+  - lat
+  - lng
+  - distance_m
+  - route_id
+  additionalProperties: false
+  properties:
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    code:
+      type: string
+      maxLength: 32
+    name:
+      type: string
+      maxLength: 120
+    lat:
+      type: number
+      minimum: -90
+      maximum: 90
+    lng:
+      type: number
+      minimum: -180
+      maximum: 180
+    distance_m:
+      type: number
+      minimum: 0
+    route_id:
+      $ref: '#/components/schemas/Id'
+    cluster_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    channel:
+      type:
+      - string
+      - 'null'
+      maxLength: 20
+    contact_number:
+      oneOf:
+      - $ref: '#/components/schemas/PhoneBd'
+      - type: 'null'

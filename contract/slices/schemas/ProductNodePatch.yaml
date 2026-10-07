@@ -1,0 +1,22 @@
+ProductNodePatch:
+  type: object
+  minProperties: 1
+  additionalProperties: false
+  properties:
+    parent_id:
+      type: integer
+      format: int64
+      minimum: 1
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    sort:
+      type: integer
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
