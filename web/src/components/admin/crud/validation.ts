@@ -46,8 +46,12 @@ function fieldSchema(f: AnyField): z.ZodType {
     return z.preprocess(asciiDigits, z.coerce.number().int().min(1).max(2 ** bits - 1));
   }
   if (f.kind === "int" || f.kind === "ref") {
-    let base = z.preprocess(asciiDigits, z.coerce.number().int().min(f.min ?? 0)) as unknown as z.ZodNumber;
-    if (f.max !== undefined) base = z.preprocess(asciiDigits, z.coerce.number().int().min(f.min ?? 0).max(f.max)) as unknown as z.ZodNumber;
+    // Only a non-empty string or a number is a number: "", null, true and [] must not coerce to 0 or 1.
+    const strict = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? asciiDigits(v.trim()) : Number.NaN);
+    let num = z.coerce.number().int();
+    if (f.min !== undefined) num = num.min(f.min);
+    if (f.max !== undefined) num = num.max(f.max);
+    const base = z.preprocess(strict, num) as unknown as z.ZodNumber;
     return f.nullable ? z.preprocess((v) => (v === "" || v === null ? null : v), base.nullable()) : base;
   }
   if (f.kind === "enum") {
@@ -59,6 +63,8 @@ function fieldSchema(f: AnyField): z.ZodType {
   const max = f.maxLength;
   if (max) s = s.refine((v) => codePoints(v) <= max, { message: "too_big" });
   if (f.required && !f.nullable) s = s.refine((v) => v.length >= 1, { message: "too_small" });
+  const minLen = f.minLength;
+  if (minLen) s = s.refine((v) => codePoints(v) >= minLen, { message: "too_small" });
   if (f.pattern) {
     const re = new RegExp(f.pattern);
     s = s.refine((v) => v === "" || re.test(v), { message: "invalid" });

@@ -8,8 +8,8 @@ import type { MessageKey } from "@/lib/i18n";
 export const WEEK_BITS: readonly MessageKey[] = ["day.sat", "day.sun", "day.mon", "day.tue", "day.wed", "day.thu", "day.fri"];
 const ZONE_REF = { path: "/v1/admin/geo/{level}", params: { level: "zone" }, label: ["code", "name"] } as const;
 const TERRITORY_REF = { path: "/v1/admin/geo/{level}", params: { level: "territory" }, label: ["code", "name"] } as const;
-export const ROUTE_REF = { path: "/v1/admin/routes", label: ["code", "name"] } as const;
-export const USER_REF = { path: "/v1/admin/users", label: ["username", "full_name"] } as const;
+export const ROUTE_REF = { path: "/v1/admin/routes", get: "/v1/admin/routes/{id}", label: ["code", "name"] } as const;
+export const USER_REF = { path: "/v1/admin/users", get: "/v1/admin/users/{id}", label: ["username", "full_name"] } as const;
 const WRITE = ["ADMIN", "SUPERADMIN"] as const;
 
 export const routes = defineEntity<Route, RouteWrite, RoutePatch>({

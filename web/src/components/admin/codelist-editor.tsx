@@ -5,6 +5,7 @@ import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
 import { inputClass } from "./kit/field";
+import { asciiDigits, isRealDate } from "./crud/validation";
 import { ReasonField, REASON_MIN_LENGTH } from "./kit/reason-field";
 
 export interface EditorItem {
@@ -15,6 +16,8 @@ export interface EditorItem {
   valid_from: string;
   valid_to: string;
   attrs: Record<string, string>;
+  /** Attributes the server holds, of any scalar type: sent back unchanged (the editor only edits the spec'd ones as text). */
+  rawAttrs: Record<string, unknown>;
   /** Saved items have an immutable code. */
   saved: boolean;
 }
@@ -33,6 +36,7 @@ interface Props {
 }
 
 const CODE_RE = /^[a-z][a-z0-9_]{1,40}$/;
+const MAX_ITEMS = 100;
 
 /** Whole-list editor: existing codes are locked, labels and attributes editable, items retired by a date, new rows added. */
 export function CodeListEditor({ listKey, items: initial, attrs, canWrite }: Props) {
@@ -57,7 +61,8 @@ export function CodeListEditor({ listKey, items: initial, attrs, canWrite }: Pro
     }
     const errs: Record<number, string> = {};
     items.forEach((it, i) => {
-      if (!CODE_RE.test(it.code) || !it.label_en.trim() || !/^-?\d+$/.test(it.sort.trim())) errs[i] = t("codelist.row_error", { n: i + 1 });
+      const field = !CODE_RE.test(it.code) ? "code" : !it.label_en.trim() ? "label_en" : !/^-?\d+$/.test(String(asciiDigits(it.sort.trim()))) ? "sort" : it.valid_to && (!isRealDate(it.valid_to) || (it.valid_from && it.valid_to < it.valid_from)) ? "valid_to" : null;
+      if (field) errs[i] = t(`codelist.row_error.${field}` as MessageKey, { n: i + 1 });
     });
     if (Object.keys(errs).length) {
       setRowErrors(errs);
@@ -71,10 +76,10 @@ export function CodeListEditor({ listKey, items: initial, attrs, canWrite }: Pro
           code: it.code,
           label_en: it.label_en.trim(),
           label_bn: it.label_bn.trim() === "" ? null : it.label_bn.trim(),
-          sort: Number(it.sort),
+          sort: Number(asciiDigits(it.sort.trim())),
           ...(it.valid_from ? { valid_from: it.valid_from } : {}),
           valid_to: it.valid_to === "" ? null : it.valid_to,
-          attrs: Object.fromEntries(Object.entries(it.attrs).filter(([, v]) => v !== "")),
+          attrs: { ...it.rawAttrs, ...Object.fromEntries(Object.entries(it.attrs).filter(([, v]) => v !== "")) },
         })),
       };
       const res = await fetch(`/api/bff/admin/code-lists/${listKey}`, { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
@@ -82,13 +87,14 @@ export function CodeListEditor({ listKey, items: initial, attrs, canWrite }: Pro
       if (res.ok) {
         setReason("");
         setBanner({ ok: true, text: t("codelist.saved") });
+        setItems(items.map((it) => ({ ...it, saved: true }))); // saved codes lock at once
         router.refresh();
         return;
       }
       const e2: Record<number, string> = {};
       for (const e of data.errors ?? []) {
         const m = /^\/items\/(\d+)/.exec(e.pointer);
-        if (m) e2[Number(m[1])] = t("codelist.row_error", { n: Number(m[1]) + 1 });
+        if (m) e2[Number(m[1])] = t("codelist.row_error.code", { n: Number(m[1]) + 1 });
       }
       setRowErrors(e2);
       const removed = (data.errors ?? []).some((e) => e.code === "code_removed");
@@ -122,7 +128,7 @@ export function CodeListEditor({ listKey, items: initial, attrs, canWrite }: Pro
           </thead>
           <tbody className="divide-y divide-slate-100">
             {items.map((it, i) => (
-              <tr key={i} data-testid="codelist-row" aria-invalid={rowErrors[i] ? true : undefined} className={rowErrors[i] ? "bg-red-50" : undefined}>
+              <tr key={i} data-testid="codelist-row" className={rowErrors[i] ? "bg-red-50" : undefined}>
                 <td className="px-2 py-1">
                   <input aria-label={t("codelist.col.code")} value={it.code} readOnly={it.saved || !canWrite} title={it.saved ? t("codelist.code_locked") : undefined} onChange={(e) => patch(i, { code: e.target.value })} className={`${inputClass} font-mono ${it.saved ? "bg-slate-100" : ""}`} />
                 </td>
@@ -153,6 +159,11 @@ export function CodeListEditor({ listKey, items: initial, attrs, canWrite }: Pro
                 ))}
                 <td className="px-2 py-1">
                   <input aria-label={t("codelist.col.valid_to")} type="date" value={it.valid_to} readOnly={!canWrite} onChange={(e) => patch(i, { valid_to: e.target.value })} className={inputClass} />
+                  {!it.saved && canWrite ? (
+                    <button type="button" data-testid="codelist-remove" aria-label={`${t("common.clear")} ${i + 1}`} onClick={() => setItems(items.filter((_, k) => k !== i))} className="mt-1 text-xs text-red-700 underline">
+                      {t("common.clear")}
+                    </button>
+                  ) : null}
                   {rowErrors[i] ? (
                     <p role="alert" className="text-xs text-red-700">
                       {rowErrors[i]}
@@ -166,7 +177,7 @@ export function CodeListEditor({ listKey, items: initial, attrs, canWrite }: Pro
       </div>
       {canWrite ? (
         <>
-          <button type="button" data-testid="codelist-add" onClick={() => setItems([...items, { code: "", label_en: "", label_bn: "", sort: String((items.reduce((m, x) => Math.max(m, Number(x.sort) || 0), 0)) + 1), valid_from: "", valid_to: "", attrs: {}, saved: false }])} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">
+          <button type="button" data-testid="codelist-add" disabled={items.length >= MAX_ITEMS} onClick={() => setItems([...items, { code: "", label_en: "", label_bn: "", sort: String((items.reduce((m, x) => Math.max(m, Number(asciiDigits(x.sort)) || 0), 0)) + 1), valid_from: "", valid_to: "", attrs: {}, rawAttrs: {}, saved: false }])} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">
             {t("codelist.add")}
           </button>
           <ReasonField value={reason} onChange={setReason} error={reasonError} />

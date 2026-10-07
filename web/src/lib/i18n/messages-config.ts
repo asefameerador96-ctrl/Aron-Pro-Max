@@ -697,6 +697,7 @@ const pairs = {
   "otp.col.field_force_name": ["Field Force Name", "ফিল্ড ফোর্সের নাম"],
   "otp.col.username": ["Username", "ইউজারনেম"],
   "otp.col.zone_id": ["Zone ID", "জোন আইডি"],
+  "otp.col.zone": ["Zone", "জোন"],
   "otp.col.created": ["Create Time", "তৈরির সময়"],
   "otp.col.otp": ["OTP", "ওটিপি"],
   "otp.col.expires": ["Expires", "মেয়াদ"],
