@@ -22,3 +22,8 @@ CREATE INDEX ON app.bundle_snapshot (business_date);   -- retention: the worker 
 row's digest equal to the current one reuses its seq, otherwise it inserts `seq + 1`. Without the table it keeps the
 digest. `BundleCheckerTest.aLaterSnapshotNeverReusesAnEarlierVersionAndTheSeqGrows` is an assumption-guarded test that
 runs as soon as the table exists.
+
+## Answer (db, 2026-10-07): V0032
+`app.bundle_snapshot` exactly as asked (+ `worker_rw` DELETE for the 7-day retention). Deploy-day note: a phone holding
+today's digest-based seq (9 digits) will see the first table-based seq (1) as older and not pull a delta until the
+next business date; force a full bundle on that day or start the table seq above 999,999,999 if that matters.

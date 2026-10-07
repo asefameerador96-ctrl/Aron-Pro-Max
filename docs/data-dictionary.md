@@ -12,14 +12,15 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 121 | 2294 |
-| `dw` | 23 | 377 |
+| `app` | 135 | 2428 |
+| `dw` | 28 | 433 |
 
 ## Index
 
 | Relation | Kind | Owner | Capture | Retention | PII | Description |
 |---|---|---|---|---|---|---|
 | [`app.activity_log`](#appactivity_log) | table | backend:platform | OFFLINE | telemetry | none | One row is a batch of sampled screen and action events from a phone, kept for support and usage analysis. |
+| [`app.admin_asset`](#appadmin_asset) | table | backend:masterdata | ONLINE | master | none | One row is a file an admin uploaded (content video or image, tutorial, SKU or gift image), stored in Blob. |
 | [`app.app_error`](#appapp_error) | table | backend:platform | OFFLINE | telemetry | none | One row is a scrubbed crash, ANR or handled-error report sent by a phone. |
 | [`app.app_package`](#appapp_package) | table | backend:config | ONLINE | master | none | Catalogue of Android packages the portal offers when editing the app block and allow lists, with a category and a suggested rule. |
 | [`app.app_release`](#appapp_release) | table | backend:config | ONLINE | master | none | One published or draft build of the field app (version, ABI, download URL, signing certificate, rollout percentage). |
@@ -28,6 +29,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.attendance_event`](#appattendance_event) | table | backend:sync | OFFLINE | transaction | personal | One check-in or check-out of a user with its on-demand location fix. |
 | [`app.audit_log`](#appaudit_log) | table | backend:platform | SERVER | audit | personal | Append-only, hash-chained record of web and admin actions with before and after images and the actor. |
 | [`app.auth_lockout`](#appauth_lockout) | table | backend:auth | SERVER | session | none | Failed-login counter and lock state per lock key, shared by every API replica. |
+| [`app.bundle_snapshot`](#appbundle_snapshot) | table | backend:sync | SERVER | ops | none | One row is a distinct day-bundle content the server generated for a user and business date, numbered in order. |
 | [`app.calendar_holiday`](#appcalendar_holiday) | table | backend:masterdata | ONLINE | master | none | One declared holiday or selling-day override for a geography scope and date. |
 | [`app.call_assessment`](#appcall_assessment) | table | backend:sync | OFFLINE | transaction | none | One AMO or TSO joint-call assessment or retailer questionnaire for a visit, with total and maximum score. |
 | [`app.call_assessment_answer`](#appcall_assessment_answer) | table | backend:sync | OFFLINE | transaction | personal | One criterion answer (score, text or yes/no) of a call assessment. |
@@ -62,6 +64,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.enrolment_token`](#appenrolment_token) | table | backend:auth | ONLINE | session | none | A one-time or limited-use token that lets a phone enrol; only its hash is stored. |
 | [`app.event_consumer`](#appevent_consumer) | table | backend:platform | SERVER | ops | none | Read position of each domain-event consumer. |
 | [`app.feedback`](#appfeedback) | table | backend:masterdata | OFFLINE | transaction | personal | Free-text feedback or problem report sent from the TSO app, with optional photo. |
+| [`app.feedback_status`](#appfeedback_status) | table | backend:masterdata | ONLINE | transaction | none | One row is the support-inbox status of a feedback item; a feedback item without a row is new. |
 | [`app.final_submit`](#appfinal_submit) | table | backend:sync | ONLINE | transaction | none | Final Submit of a zone and business date, made online by the TSO, unless reopened. |
 | [`app.geo_breadcrumb`](#appgeo_breadcrumb) | table | backend:sync | OFFLINE | fix | personal | Batched low-power location points recorded only while breadcrumbs are enabled by config. |
 | [`app.geo_class_def`](#appgeo_class_def) | table | db | REFERENCE | master | none | Lookup giving each geography class an integer ordinal for config scoping. |
@@ -91,8 +94,11 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.outlet_programme`](#appoutlet_programme) | table | backend:analytics | SERVER | master | none | Programme eligibility of an outlet, shown as dots in the SR app outlet list. |
 | [`app.outlet_request_event`](#appoutlet_request_event) | table | backend:masterdata | SERVER | audit | personal | Trail of create, verify, approve, reject and lapse events on an outlet change request. |
 | [`app.partition_policy`](#apppartition_policy) | table | db | REFERENCE | ops | none | List of range-partitioned parent tables with the key column and months to create ahead. |
+| [`app.pii_read_budget`](#apppii_read_budget) | table | backend:analytics | SERVER | ops | none | One row is the number of personal-data rows a user has read in one clock hour (hourly PII read budget). |
+| [`app.price_batch`](#appprice_batch) | table | backend:masterdata | ONLINE | audit | none | One row is a batch of price changes through preview, approval and publish (maker-checker above the change threshold). |
 | [`app.price_compliance_check`](#appprice_compliance_check) | table | backend:sync | OFFLINE | transaction | none | AMO check comparing the observed retail price of a SKU with the reference price. |
 | [`app.print_event`](#appprint_event) | table | backend:sync | OFFLINE | transaction | none | One print attempt of a memo, reprint, stock slip, day summary, void slip or due receipt. |
+| [`app.print_template`](#appprint_template) | table | backend:masterdata | ONLINE | master | none | One row is an immutable version of a thermal-print template for one slip kind, in force from effective_from. |
 | [`app.product_node`](#appproduct_node) | table | backend:masterdata | ONLINE | master | none | One node of the product tree (category, segment, brand or variant). |
 | [`app.programme`](#appprogramme) | table | backend:masterdata | ONLINE | master | none | A loyalty or incentive programme (Diamond League, Astha, campaign, Superstar) with period and rules. |
 | [`app.programme_enrolment`](#appprogramme_enrolment) | table | backend:masterdata | ONLINE | master | none | Enrolment of an outlet in a programme for a period, with league, tier and base target. |
@@ -103,6 +109,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.redemption_line`](#appredemption_line) | table | backend:sync | OFFLINE | transaction | none | One gift of a redemption basket with quantity and points. |
 | [`app.refresh_family`](#apprefresh_family) | table | backend:auth | ONLINE | session | none | A login session: the family of refresh tokens issued from one login, with expiry and revoke state. |
 | [`app.refresh_token`](#apprefresh_token) | table | backend:auth | ONLINE | session | secret | One refresh token of a family, stored only as a hash, with rotation links. |
+| [`app.report_export`](#appreport_export) | table | backend:analytics | ONLINE | audit | none | One row is a report export (xlsx, pdf or print), synchronous or a queued job: who ran which report with which filters, how many rows and whether personal data was included. |
 | [`app.risk_signal`](#apprisk_signal) | table | backend:analytics | SERVER | transaction | none | A risk signal (for example mock location or teleport) computed by the worker for a subject and business date. |
 | [`app.risk_signal_review`](#apprisk_signal_review) | table | backend:analytics | OFFLINE | audit | personal | Review action on a risk signal by an AMO or web user; append-only. |
 | [`app.role_def`](#approle_def) | table | db | REFERENCE | master | none | Lookup giving each role an integer ordinal for config scoping. |
@@ -113,6 +120,8 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.route_day_event`](#approute_day_event) | table | backend:sync | OFFLINE | transaction | none | A day_open or day_submit record from a phone or the online Sales Submit. |
 | [`app.route_day_void_barrier`](#approute_day_void_barrier) | table | backend:sync | ONLINE | audit | none | Admin data void of a route-day: rows captured before the barrier are voided, later rows accepted. |
 | [`app.route_planned`](#approute_planned) | table | backend:masterdata | ONLINE | master | none | Planned visit days of a route, effective-dated. |
+| [`app.rubric`](#apprubric) | table | backend:masterdata | ONLINE | master | none | One row is a scoring rubric (joint call or retailer questionnaire); its current version is in rubric_version. |
+| [`app.rubric_version`](#apprubric_version) | table | backend:masterdata | ONLINE | master | none | One row is an immutable published version of a rubric: its scored criteria; assessments reference it. |
 | [`app.sale_abort`](#appsale_abort) | table | backend:sync | OFFLINE | transaction | none | A memo number consumed without a memo, explaining gaps in memo numbering. |
 | [`app.sales_plan`](#appsales_plan) | table | backend:masterdata | ONLINE | master | none | SKU enabled for a zone for a date range. |
 | [`app.server_generation`](#appserver_generation) | table | backend:sync | SERVER | ops | none | Database lineage: one row per new generation after creation, failover or restore. |
@@ -122,7 +131,10 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.sub_channel`](#appsub_channel) | table | backend:masterdata | ONLINE | master | none | Outlet sub-channel within a channel. |
 | [`app.submit_void_event`](#appsubmit_void_event) | table | backend:sync | ONLINE | audit | none | Append-only record of a Sales Submit being voided by a TSO or above. |
 | [`app.supervisor_day`](#appsupervisor_day) | table | backend:sync | SERVER | transaction | none | Attendance and Sales Submit state of an AMO or TSO for a date outside a route-day. |
+| [`app.support_upload`](#appsupport_upload) | table | backend:masterdata | OFFLINE | ops | none | One row is a phone database export a field user sent to Support (PDA to Support); the file is in Blob. |
+| [`app.survey`](#appsurvey) | table | backend:masterdata | ONLINE | master | none | One row is a survey (POSM, AMO survey or TSO visit query); its current published version is in survey_version. |
 | [`app.survey_response`](#appsurvey_response) | table | backend:sync | OFFLINE | transaction | personal | One answer to an in-visit survey question. |
+| [`app.survey_version`](#appsurvey_version) | table | backend:masterdata | ONLINE | master | none | One row is an immutable published version of a survey: titles and questions; answers reference it. |
 | [`app.sync_batch`](#appsync_batch) | table | backend:sync | SERVER | ops | none | Replay store of an uploaded batch with its fingerprint and stored response for the retention window. |
 | [`app.sync_quarantine`](#appsync_quarantine) | table | backend:sync | SERVER | quarantine | personal | Records held for a human decision with their payload and resolution. |
 | [`app.sync_rejected`](#appsync_rejected) | table | backend:sync | SERVER | quarantine | personal | Records rejected or parked at ingest with the payload as received and the reason code. |
@@ -132,8 +144,10 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.task`](#apptask) | table | backend:notify | OFFLINE | transaction | personal | A task created by a supervisor for a user, optionally tied to an outlet or visit. |
 | [`app.task_event`](#apptask_event) | table | backend:notify | OFFLINE | transaction | personal | Resolve or reopen of a task by its assignee. |
 | [`app.territory`](#appterritory) | table | backend:masterdata | ONLINE | master | none | Geography level below a division; groups zones. |
+| [`app.tutorial`](#apptutorial) | table | backend:masterdata | ONLINE | master | none | One row is a tutorial video or manual shown to the listed roles in the apps and on the web. |
 | [`app.user_consent`](#appuser_consent) | table | backend:auth | OFFLINE | audit | none | Acceptance of a notice such as the location notice by a user on a phone. |
 | [`app.user_scope`](#appuser_scope) | table | backend:masterdata | ONLINE | master | none | Supervisory reach of a user: a geography node, effective-dated. |
+| [`app.v_dirty_key_dead`](#appv_dirty_key_dead) | view | db | SERVER | ops | none | Dead rebuild keys per kind, for the sync-health page and alerting. |
 | [`app.visit`](#appvisit) | partitioned table | backend:sync | OFFLINE | transaction | personal | One outlet visit with the phone's and the server's geo verdicts, distance, outcome and close data. |
 | [`app.visit_plan`](#appvisit_plan) | table | backend:masterdata | OFFLINE | transaction | none | A TSO visit plan for a date. |
 | [`app.visit_plan_outlet`](#appvisit_plan_outlet) | table | backend:masterdata | OFFLINE | transaction | none | An outlet included in a TSO visit plan. |
@@ -143,15 +157,20 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`dw.agg_daily_outlet`](#dwagg_daily_outlet) | table | worker | SERVER | event_fact | none | Per outlet and business date: whether visited, geo-valid, and sales totals. |
 | [`dw.agg_daily_route`](#dwagg_daily_route) | table | worker | SERVER | event_fact | none | Per route and business date: day state, visit counts, sales, discounts, paid and due money. |
 | [`dw.agg_daily_route_brand`](#dwagg_daily_route_brand) | table | worker | SERVER | event_fact | none | Per route, brand and date: memo count containing the brand and its sales. |
+| [`dw.agg_daily_route_segment`](#dwagg_daily_route_segment) | table | backend:analytics | SERVER | event_fact | none | Per route, product segment and date: memo count containing the segment (each memo once) and its sales. |
 | [`dw.agg_daily_route_sku`](#dwagg_daily_route_sku) | table | worker | SERVER | event_fact | none | Per route, SKU and date: sold, free, issued and returned quantities and sales. |
+| [`dw.agg_daily_screen_use`](#dwagg_daily_screen_use) | table | backend:analytics | SERVER | event_fact | none | One row is the use of one screen action by one role on one day, rolled up from fact_activity and kept for ever. |
 | [`dw.agg_daily_zone`](#dwagg_daily_zone) | table | worker | SERVER | event_fact | none | Per zone and business date: route and visit counts, geo and risk counts, and sales totals. |
 | [`dw.agg_hourly_zone`](#dwagg_hourly_zone) | table | worker | SERVER | event_fact | none | Per zone and hour: records received and sales, for the live dashboard. |
 | [`dw.dim_date`](#dwdim_date) | table | db | REFERENCE | master | none | Calendar dimension keyed by date with week, month, quarter and holiday attributes. |
 | [`dw.dim_geo`](#dwdim_geo) | table | worker | SERVER | master | none | Route-level geography dimension flattened through zone, territory, division and wing. |
 | [`dw.dim_outlet`](#dwdim_outlet) | table | worker | SERVER | master | none | Outlet dimension for reports. |
 | [`dw.dim_product`](#dwdim_product) | table | worker | SERVER | master | none | SKU dimension flattened through variant, brand, segment and category. |
+| [`dw.fact_activity`](#dwfact_activity) | partitioned table | backend:analytics | SERVER | telemetry | none | One row is one screen or action event from a phone's activity log. |
 | [`dw.fact_attendance`](#dwfact_attendance) | table | worker | SERVER | event_fact | personal | One row per user and business date with the day's check-in and check-out and their fixes, filled by the worker from attendance_event. |
+| [`dw.fact_consent`](#dwfact_consent) | table | backend:analytics | SERVER | audit | none | One row is a user's acceptance of a policy version (employee-location notice and other policies). |
 | [`dw.fact_device_day`](#dwfact_device_day) | table | worker | SERVER | event_fact | none | Per device and business date: contact times, batch and record counts, rejects and battery low point. |
+| [`dw.fact_device_integrity`](#dwfact_device_integrity) | partitioned table | backend:analytics | SERVER | event_fact | none | One row is a phone's integrity and readiness state observed at a login or bundle download. |
 | [`dw.fact_geo_fix`](#dwfact_geo_fix) | partitioned table | worker | SERVER | event_fact | personal | One row per location fix copied for analysis, with slot and satellite count. |
 | [`dw.fact_memo`](#dwfact_memo) | partitioned table | worker | SERVER | event_fact | none | One row per memo with its money totals, for reports. |
 | [`dw.fact_visit`](#dwfact_visit) | partitioned table | worker | SERVER | event_fact | none | One row per visit with device and server verdicts, distance and void flag. |
@@ -199,6 +218,27 @@ One row is a batch of sampled screen and action events from a phone, kept for su
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.admin_asset
+
+One row is a file an admin uploaded (content video or image, tutorial, SKU or gift image), stored in Blob.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `asset_id` | uuid | not null |  | Client-generated UUID of the upload; the API is idempotent by it. |
+| `purpose` | text | not null |  | What the asset is for; allowed values are listed under constraints. |
+| `mime` | text | not null |  | MIME type of the file; allowed values are listed under constraints. |
+| `bytes` | bigint | not null |  | Size of the file in bytes (at most 100 MiB). |
+| `sha256` | bytea | not null |  | SHA-256 of the file content (32 bytes). |
+| `blob_path` | text | not null |  | Path of the file in the asset Blob container. |
+| `uploaded_by` | bigint | null |  | User who uploaded the file. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (asset_id)`
+
+References: `FOREIGN KEY (uploaded_by) REFERENCES app.app_user(id)`
 
 ## app.app_error
 
@@ -446,6 +486,24 @@ Failed-login counter and lock state per lock key, shared by every API replica.
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 
 Keys: `PRIMARY KEY (lock_key)`
+
+## app.bundle_snapshot
+
+One row is a distinct day-bundle content the server generated for a user and business date, numbered in order.
+
+`owner: backend:sync | capture: SERVER | retention: ops | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_id` | bigint | not null |  | User the bundle was generated for. |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the bundle. |
+| `snapshot_seq` | integer | not null |  | Order of the content within the user and date, from 1; the <seq> of bundle_version <date>:<seq>. |
+| `content_sha256` | bytea | not null |  | SHA-256 of the bundle content; equal to the latest row means the seq is reused. |
+| `generated_at` | timestamp with time zone | not null |  | UTC instant the snapshot was first generated. |
+
+Keys: `PRIMARY KEY (user_id, business_date, snapshot_seq)`
+
+References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.calendar_holiday
 
@@ -793,8 +851,12 @@ An audio-visual or key-visual item played during sales calls, with its asset, si
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
+| `asset_id` | uuid | null |  | Uploaded admin asset that holds the file (null for items created before V0023). |
+| `assigned_scope` | jsonb | not null |  | Geography nodes the item is assigned to, as an array of {scope_type, scope_id}; expanded to outlet_ids on every write. |
 
 Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (asset_id) REFERENCES app.admin_asset(asset_id)`
 
 ## app.content_view
 
@@ -960,6 +1022,10 @@ One enrolled phone with its status, trust level, key, integrity verdict and last
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
+| `root_hints` | text[] | null |  | Root and tamper hints of the last status report (contract v1.2 DeviceStatusReport.root_hints): NULL = unknown (the phone is older than v1.2 or never reported), empty array = checked and clean. Hints are evidence only, never a reason to block a sale alone. |
+| `root_hints_at` | timestamp with time zone | null |  | UTC time of the status report root_hints came from; NULL when root_hints was never reported. |
+| `integrity_unavailable_reason` | text | null |  | Reason of the last Play Integrity unavailable marker (contract v1.2 play_integrity_unavailable.reason); NULL = never reported. Kept when a later report has a verdict; compare integrity_unavailable_at with integrity_checked_at for the newer one. |
+| `integrity_unavailable_at` | timestamp with time zone | null |  | UTC time of the report that carried the last Play Integrity unavailable marker; NULL = never reported. |
 
 Keys: `UNIQUE (device_uuid)`; `UNIQUE (external_ref)`; `UNIQUE (public_key_thumbprint)`; `PRIMARY KEY (id)`
 
@@ -1130,6 +1196,10 @@ Work queue entry naming a bundle snapshot or aggregate row that the worker must 
 | `reason` | text | null |  | Reason given for the change or action (free text). |
 | `claimed_at` | timestamp with time zone | null |  | UTC time a worker claimed the key; null when unclaimed. |
 | `claimed_by` | text | null |  | Name of the worker holding the claim. |
+| `attempts` | smallint | not null |  | Failed rebuild attempts since the key was last marked dirty. |
+| `last_error` | text | null |  | Error text of the last failed rebuild (no personal data). |
+| `not_before` | timestamp with time zone | null |  | UTC time before which the worker does not retry the key (back-off); null means at once. |
+| `dead_at` | timestamp with time zone | null |  | UTC time the key was parked as dead after too many attempts; null while live. Marking the key again revives it. |
 
 Keys: `PRIMARY KEY (kind, subject_id, business_date)`
 
@@ -1257,6 +1327,7 @@ Append-only outbox of events written with each change; the projector and later c
 | `source_client_uuid` | uuid | null |  | Client UUID of the device record that caused the event, if any. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `payload_version` | smallint | null |  | Version of the payload shape, a row of app.domain_event_type with event_type; defaults to 1; null only on rows written before V0017. |
+| `tx_id` | xid8 | null |  | Transaction that wrote the row (pg_current_xact_id()); consumers read below app.outbox_horizon() in (tx_id, id) order. Null on rows written before V0033. |
 
 Keys: `PRIMARY KEY (id, business_date)`
 
@@ -1393,8 +1464,9 @@ Read position of each domain-event consumer.
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `consumer` | text | not null |  | Name of the consumer, for example the aggregate projector. |
-| `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
+| `last_event_id` | bigint | not null |  | id of the last row the consumer processed; informational for the aggregate projector (it recomputes by dirty key), part of the position for feed consumers. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `last_tx_id` | xid8 | null |  | tx_id of the last row the consumer processed; with last_event_id it is the consumer's position in (tx_id, id) order. Null before the first V0033-era row. |
 
 Keys: `PRIMARY KEY (consumer)`
 
@@ -1436,6 +1508,23 @@ Free-text feedback or problem report sent from the TSO app, with optional photo.
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.feedback_status
+
+One row is the support-inbox status of a feedback item; a feedback item without a row is new.
+
+`owner: backend:masterdata | capture: ONLINE | retention: transaction | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `feedback_client_uuid` | uuid | not null |  | client_uuid of the feedback item. |
+| `status` | text | not null |  | Inbox status; allowed values are listed under constraints. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `updated_by` | bigint | null |  | User who last set the status. |
+
+Keys: `PRIMARY KEY (feedback_client_uuid)`
+
+References: `FOREIGN KEY (feedback_client_uuid) REFERENCES app.feedback(client_uuid)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
 
 ## app.final_submit
 
@@ -2441,6 +2530,53 @@ List of range-partitioned parent tables with the key column and months to create
 
 Keys: `PRIMARY KEY (parent)`
 
+## app.pii_read_budget
+
+One row is the number of personal-data rows a user has read in one clock hour (hourly PII read budget).
+
+`owner: backend:analytics | capture: SERVER | retention: ops | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_id` | bigint | not null |  | User whose reads are counted. |
+| `hour_start` | timestamp with time zone | not null |  | Start of the UTC clock hour counted (truncated to the hour). |
+| `rows_read` | integer | not null |  | Rows with unmasked personal columns read in that hour. |
+
+Keys: `PRIMARY KEY (user_id, hour_start)`
+
+References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.price_batch
+
+One row is a batch of price changes through preview, approval and publish (maker-checker above the change threshold).
+
+`owner: backend:masterdata | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `batch_uuid` | uuid | not null |  | Client-generated UUID of the batch; preview, publish and decision are idempotent by it. |
+| `status` | text | not null |  | Batch state; allowed values and moves are listed under constraints and the status-flow trigger. |
+| `valid_from` | date | not null |  | First Asia/Dhaka business date the new prices are in force. |
+| `fingerprint` | text | not null |  | Lower-case hex SHA-256 of the canonical price rows, so a publish matches what was previewed. |
+| `price_rows` | jsonb | not null |  | The price rows of the batch (sku_id, price_type, amount_mtk in integer milli-taka, per_base_qty). |
+| `row_count` | integer | not null |  | Number of price rows in the batch (1 to 1000). |
+| `change_reason` | text | null |  | Reason the maker gave for the change. |
+| `backdate` | boolean | not null |  | True when valid_from is before the business date of the publish. |
+| `max_change_pct` | numeric(12,2) | null |  | Largest per-row price move in percent, two decimals; display only, the threshold decision is exact integer arithmetic. |
+| `previewed_by` | bigint | null |  | User who previewed the batch. |
+| `submitted_by` | bigint | null |  | User who submitted the batch for publish (the maker). |
+| `submitted_at` | timestamp with time zone | null |  | UTC time of the submission. |
+| `decided_by` | bigint | null |  | User who approved or rejected the batch (the checker; never the maker). |
+| `decided_at` | timestamp with time zone | null |  | UTC time of the decision. |
+| `decision_note` | text | null |  | Note the checker gave with the decision. |
+| `price_list_version` | bigint | null |  | Price-list version the publish produced (null until published). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+
+Keys: `PRIMARY KEY (batch_uuid)`
+
+References: `FOREIGN KEY (decided_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (previewed_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (submitted_by) REFERENCES app.app_user(id)`
+
 ## app.price_compliance_check
 
 AMO check comparing the observed retail price of a SKU with the reference price.
@@ -2527,6 +2663,25 @@ One print attempt of a memo, reprint, stock slip, day summary, void slip or due 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.print_template
+
+One row is an immutable version of a thermal-print template for one slip kind, in force from effective_from.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `kind` | text | not null |  | Slip the template prints; allowed values are listed under constraints. |
+| `version` | integer | not null |  | Template version per kind (cfg.print.template_version selects it). |
+| `font_columns` | integer | not null |  | Characters per line of the 58 mm printer font (32 or 42). |
+| `template_json` | text | not null |  | Template definition as JSON text (at most 20000 characters). |
+| `effective_from` | date | not null |  | First Asia/Dhaka business date the version is in force. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `created_by` | bigint | null |  | User who created the version. |
+
+Keys: `UNIQUE (kind, version)`; `PRIMARY KEY (id)`
 
 ## app.product_node
 
@@ -2836,6 +2991,36 @@ Keys: `UNIQUE (token_sha256)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (family_id) REFERENCES app.refresh_family(id)`; `FOREIGN KEY (replaced_by_id) REFERENCES app.refresh_token(id)`
 
+## app.report_export
+
+One row is a report export (xlsx, pdf or print), synchronous or a queued job: who ran which report with which filters, how many rows and whether personal data was included.
+
+`owner: backend:analytics | capture: ONLINE | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `export_id` | uuid | not null |  | Client- or server-generated UUID of the export; the API is idempotent by it. |
+| `report_key` | text | not null |  | Key of the report in the report registry. |
+| `user_id` | bigint | not null |  | User who requested the export, from the token. |
+| `format` | text | not null |  | Output format; allowed values are listed under constraints. |
+| `status` | text | not null |  | Job state; queued, running, done or failed; moves only forward (a lapsed lease may re-queue). |
+| `filters` | jsonb | not null |  | The report query as run (scalar filters only; scope comes from the token, never from the client). |
+| `scope_hash` | text | not null |  | Hash of the caller's reach at request time, so a later change of scope is visible. |
+| `row_count` | integer | null |  | Number of data rows in the export; set when done. |
+| `pii_included` | boolean | not null |  | True when the export contains personal columns (unmasked). |
+| `blob_path` | text | null |  | Path of the finished file in the export Blob container. |
+| `error` | text | null |  | Short error text of a failed export (no personal data). |
+| `claimed_by` | text | null |  | Worker instance holding the job lease. |
+| `claimed_at` | timestamp with time zone | null |  | UTC time the lease was taken. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `started_at` | timestamp with time zone | null |  | UTC time the export started running. |
+| `finished_at` | timestamp with time zone | null |  | UTC time the export finished (done or failed). |
+| `expires_at` | timestamp with time zone | null |  | UTC time the download link and the file expire. |
+
+Keys: `PRIMARY KEY (export_id)`
+
+References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
 ## app.risk_signal
 
 A risk signal (for example mock location or teleport) computed by the worker for a subject and business date.
@@ -3125,6 +3310,43 @@ Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`
 
+## app.rubric
+
+One row is a scoring rubric (joint call or retailer questionnaire); its current version is in rubric_version.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. |
+| `version` | integer | not null |  | Current published version (rubric_version.version); also the ETag. |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
+| `updated_by` | bigint | null |  | User who last updated the row. |
+
+Keys: `PRIMARY KEY (id)`
+
+## app.rubric_version
+
+One row is an immutable published version of a rubric: its scored criteria; assessments reference it.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `rubric_id` | bigint | not null |  | Rubric the version belongs to. |
+| `version` | integer | not null |  | Version number, from 1 upwards per rubric. |
+| `criteria` | jsonb | not null |  | Array of criteria (id, English and Bangla text, maximum score). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `created_by` | bigint | null |  | User who published the version. |
+
+Keys: `PRIMARY KEY (rubric_id, version)`
+
+References: `FOREIGN KEY (rubric_id) REFERENCES app.rubric(id)`
+
 ## app.sale_abort
 
 A memo number consumed without a memo, explaining gaps in memo numbering.
@@ -3376,6 +3598,51 @@ Keys: `UNIQUE (user_id, business_date)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.support_upload
+
+One row is a phone database export a field user sent to Support (PDA to Support); the file is in Blob.
+
+`owner: backend:masterdata | capture: OFFLINE | retention: ops | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `upload_uuid` | uuid | not null |  | Client-generated UUID of the upload; the API is idempotent by it. |
+| `user_id` | bigint | not null |  | Database id of the user who sent the export, from the token. |
+| `device_uuid` | uuid | not null |  | device_uuid of the phone that sent the export. |
+| `bytes` | bigint | not null |  | Size of the export in bytes (at most 100 MiB). |
+| `sha256` | bytea | not null |  | SHA-256 of the export file (32 bytes). |
+| `app_version` | text | not null |  | App version name on the phone at export. |
+| `last_sync_at` | timestamp with time zone | null |  | UTC time of the phone's last successful sync, as reported by the phone. |
+| `pending_rows` | integer | null |  | Number of rows still in the phone's outbox at export. |
+| `blob_path` | text | not null |  | Path of the export in the support Blob container (access restricted to Support). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (upload_uuid)`
+
+References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.survey
+
+One row is a survey (POSM, AMO survey or TSO visit query); its current published version is in survey_version.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. |
+| `version` | integer | not null |  | Current published version (survey_version.version); also the ETag. |
+| `valid_from` | date | not null |  | First day the row is in effect. |
+| `valid_to` | date | null |  | Last day the survey is in effect (inclusive); null means open-ended. |
+| `points_per_photo` | integer | null |  | Points per accepted photo (deferred programme hook, docs/27; null when not used). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
+| `updated_by` | bigint | null |  | User who last updated the row. |
+
+Keys: `PRIMARY KEY (id)`
+
 ## app.survey_response
 
 One answer to an in-visit survey question.
@@ -3421,6 +3688,26 @@ One answer to an in-visit survey question.
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.survey_version
+
+One row is an immutable published version of a survey: titles and questions; answers reference it.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `survey_id` | bigint | not null |  | Survey the version belongs to. |
+| `version` | integer | not null |  | Version number, from 1 upwards per survey. |
+| `title_en` | text | not null |  | English title. |
+| `title_bn` | text | null |  | Bangla title. |
+| `questions` | jsonb | not null |  | Array of questions (id, type, English and Bangla text, options). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `created_by` | bigint | null |  | User who published the version. |
+
+Keys: `PRIMARY KEY (survey_id, version)`
+
+References: `FOREIGN KEY (survey_id) REFERENCES app.survey(id)`
 
 ## app.sync_batch
 
@@ -3624,10 +3911,12 @@ A task created by a supervisor for a user, optionally tied to an outlet or visit
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `status_changed_at` | timestamp with time zone | null |  | UTC instant of the last status change. |
 | `cancelled_by` | bigint | null |  | Id of the user who cancelled the task. |
+| `route_id` | bigint | null |  | Route the task belongs to (contract Task.route_id); null when the task names none. |
+| `cancel_reason` | text | null |  | Reason given when the task was cancelled (10 to 500 characters); set once, with the cancellation. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (assignee_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (cancelled_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (assignee_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (cancelled_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.task_event
 
@@ -3695,6 +3984,32 @@ Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (division_id) REFERENCES app.division(id)`
 
+## app.tutorial
+
+One row is a tutorial video or manual shown to the listed roles in the apps and on the web.
+
+`owner: backend:masterdata | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `version` | integer | not null |  | Optimistic-concurrency version (ETag); the API raises it by one on every update. |
+| `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. |
+| `title_en` | text | not null |  | English title. |
+| `title_bn` | text | null |  | Bangla title. |
+| `asset_id` | uuid | not null |  | Uploaded admin asset holding the video or PDF. |
+| `roles` | text[] | not null |  | Roles that see the tutorial. |
+| `sort` | integer | not null |  | Display order among the tutorials. |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
+| `updated_by` | bigint | null |  | User who last updated the row. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (asset_id) REFERENCES app.admin_asset(asset_id)`
+
 ## app.user_consent
 
 Acceptance of a notice such as the location notice by a user on a phone.
@@ -3756,6 +4071,18 @@ Supervisory reach of a user: a geography node, effective-dated.
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.v_dirty_key_dead
+
+Dead rebuild keys per kind, for the sync-health page and alerting.
+
+`owner: db | capture: SERVER | retention: ops | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `kind` | text | null |  | Kind of the rebuild key. |
+| `dead_keys` | bigint | null |  | Number of dead keys of the kind. |
+| `oldest_dead_at` | timestamp with time zone | null |  | UTC time the oldest of them was parked. |
 
 ## app.visit
 
@@ -4077,6 +4404,25 @@ Per route, brand and date: memo count containing the brand and its sales.
 
 Keys: `PRIMARY KEY (business_date, route_id, brand_id)`
 
+## dw.agg_daily_route_segment
+
+Per route, product segment and date: memo count containing the segment (each memo once) and its sales.
+
+`owner: backend:analytics | capture: SERVER | retention: event_fact | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
+| `route_id` | bigint | not null |  | Route (app.route) being worked. |
+| `segment_id` | bigint | not null |  | Product segment (app.product_node of level segment). |
+| `memo_count` | integer | not null |  | Active memos with at least one line in the segment, each memo counted once. |
+| `sold_qty_base` | bigint | not null |  | Quantity sold in the segment, in each SKU's base unit (sticks, pieces or dozens). |
+| `gross_mtk` | bigint | not null |  | Gross sales of the segment in integer milli-taka. |
+| `last_event_id` | bigint | not null |  | Last outbox event folded in (informational; the row is recomputed by dirty key). |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last recompute. |
+
+Keys: `PRIMARY KEY (business_date, route_id, segment_id)`
+
 ## dw.agg_daily_route_sku
 
 Per route, SKU and date: sold, free, issued and returned quantities and sales.
@@ -4098,6 +4444,23 @@ Per route, SKU and date: sold, free, issued and returned quantities and sales.
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 
 Keys: `PRIMARY KEY (business_date, route_id, sku_id)`
+
+## dw.agg_daily_screen_use
+
+One row is the use of one screen action by one role on one day, rolled up from fact_activity and kept for ever.
+
+`owner: backend:analytics | capture: SERVER | retention: event_fact | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | not null |  | Asia/Dhaka business date. |
+| `role` | text | not null |  | Role of the users counted. |
+| `screen` | text | not null |  | Screen key. |
+| `action` | text | not null |  | Action key. |
+| `users` | integer | not null |  | Distinct users with at least one such event that day. |
+| `events` | integer | not null |  | Number of such events that day (duplicates removed). |
+
+Keys: `PRIMARY KEY (business_date, role, screen, action)`
 
 ## dw.agg_daily_zone
 
@@ -4248,6 +4611,26 @@ SKU dimension flattened through variant, brand, segment and category.
 
 Keys: `PRIMARY KEY (sku_id)`
 
+## dw.fact_activity
+
+One row is one screen or action event from a phone's activity log.
+
+`owner: backend:analytics | capture: SERVER | retention: telemetry | pii: none` · partitioned table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_key` | bigint | not null |  | User of the event (app.app_user.id; no user dimension table). |
+| `device_key` | bigint | not null |  | Phone of the event (app.device.id; no device dimension table). |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the event. |
+| `occurred_at` | timestamp with time zone | not null |  | UTC time of the event on the phone. |
+| `role` | text | not null |  | Role of the user at the event. |
+| `screen` | text | not null |  | Screen key of the event. |
+| `action` | text | not null |  | Action key of the event. |
+| `seq` | integer | not null |  | Position of the event in the source activity_log row's event array. |
+| `source_uuid` | uuid | not null |  | client_uuid of the source app.activity_log row. |
+
+Keys: `PRIMARY KEY (user_key, business_date, occurred_at, seq)`
+
 ## dw.fact_attendance
 
 One row per user and business date with the day's check-in and check-out and their fixes, filled by the worker from attendance_event.
@@ -4275,6 +4658,24 @@ One row per user and business date with the day's check-in and check-out and the
 
 Keys: `PRIMARY KEY (business_date, user_id)`
 
+## dw.fact_consent
+
+One row is a user's acceptance of a policy version (employee-location notice and other policies).
+
+`owner: backend:analytics | capture: SERVER | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_key` | bigint | not null |  | User who accepted (app.app_user.id; no user dimension table). |
+| `policy_version` | text | not null |  | Policy key and version accepted. |
+| `accepted_at` | timestamp with time zone | not null |  | UTC time of the acceptance. |
+| `device_key` | bigint | null |  | Phone the acceptance was made on (app.device.id); null on the web. |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the acceptance. |
+| `text_sha256` | bytea | null |  | SHA-256 of the policy text shown. |
+| `source_uuid` | uuid | not null |  | client_uuid of the source app.user_consent row. |
+
+Keys: `PRIMARY KEY (user_key, policy_version, accepted_at)`
+
 ## dw.fact_device_day
 
 Per device and business date: contact times, batch and record counts, rejects and battery low point.
@@ -4299,6 +4700,43 @@ Per device and business date: contact times, batch and record counts, rejects an
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 
 Keys: `PRIMARY KEY (business_date, device_id)`
+
+## dw.fact_device_integrity
+
+One row is a phone's integrity and readiness state observed at a login or bundle download.
+
+`owner: backend:analytics | capture: SERVER | retention: event_fact | pii: none` · partitioned table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `device_key` | bigint | not null |  | Phone (app.device.id; no device dimension table). |
+| `user_key` | bigint | not null |  | User logged in on the phone (app.app_user.id; no user dimension table). |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the observation. |
+| `observed_at` | timestamp with time zone | not null |  | UTC time of the login or bundle download the state was taken from. |
+| `app_version` | text | null |  | App version on the phone. |
+| `os_version` | text | null |  | Android version of the phone. |
+| `device_model` | text | null |  | Manufacturer and model of the phone. |
+| `battery_capacity_mah` | integer | null |  | Battery design capacity in mAh, when the phone reports it. |
+| `mock_app_present` | boolean | null |  | True when a mock-location app was installed; null = not reported. |
+| `developer_options` | boolean | null |  | True when developer options were on; null = not reported. |
+| `rooted_hint` | boolean | null |  | True when any root hint was reported; false when the hint list was empty; null = unknown (older phone). |
+| `play_integrity_verdict` | text | null |  | Play Integrity verdict of the observation; null when unavailable. |
+| `attestation_level` | text | null |  | Key attestation security level of the phone's key. |
+| `trust_level` | smallint | null |  | Server trust level of the phone at the observation (ordinal). |
+| `time_skew_s` | integer | null |  | Phone clock minus server time, in seconds. |
+| `clock_changed_count` | smallint | null |  | Number of manual clock changes reported since the previous observation. |
+| `ready_bound` | boolean | null |  | Readiness: the phone is bound to the user. |
+| `ready_bundle_next_day` | boolean | null |  | Readiness: the next day's bundle is on the phone. |
+| `ready_printer_paired` | boolean | null |  | Readiness: a printer is paired. |
+| `ready_test_print` | boolean | null |  | Readiness: a test print succeeded. |
+| `ready_permissions` | boolean | null |  | Readiness: every required permission is granted. |
+| `free_storage_mb` | integer | null |  | Free storage on the phone in MB. |
+| `battery_pct` | smallint | null |  | Battery charge in percent at the observation. |
+| `source_uuid` | uuid | not null |  | client_uuid of the source record (status report or bundle download). |
+| `source` | text | not null |  | Origin of the row: native (this system) or an import. |
+| `import_run_id` | bigint | null |  | Import run that loaded the row; null for native rows. |
+
+Keys: `PRIMARY KEY (device_key, business_date, observed_at)`
 
 ## dw.fact_geo_fix
 
