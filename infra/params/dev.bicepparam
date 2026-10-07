@@ -50,6 +50,9 @@ param postgresStorageSizeGb = 128
 param postgresStorageIops = 3000
 param postgresStorageThroughputMBps = 125
 param postgresHaMode = 'ZoneRedundant'
+// Live zones of an existing server, read by deploy.sh (a failover swaps them); empty for a new server.
+param postgresPrimaryZone = readEnvironmentVariable('ARON_PG_PRIMARY_ZONE', '')
+param postgresStandbyZone = readEnvironmentVariable('ARON_PG_STANDBY_ZONE', '')
 param postgresBackupRetentionDays = 7
 param postgresGeoRedundantBackup = true
 param postgresReadReplica = false

@@ -41,5 +41,7 @@
     <string name="otp_locked">This phone is locked for binding. Contact support.</string>
     <string name="otp_offline">You need a network connection once to bind this phone.</string>
     <string name="otp_other">Something went wrong. Try again.</string>
+    <string name="otp_device_limit">This account is already on the most phones allowed. Ask your TSO to remove one, then tap Verify again: your code stays valid.</string>
+    <string name="otp_sign_in_again">This step timed out. Log in again; the code from your TSO stays valid.</string>
     <string name="otp_bound">This phone is now bound to your account.</string>
 </resources>

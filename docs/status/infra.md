@@ -2,6 +2,17 @@
 
 Updated 2026-10-07 (Day 3, afternoon Dhaka; replacement infra session).
 
+## Day 3, 11:00 UTC: first green INT deploy blocked by the failover drill (fixed on lane/infra)
+
+- **Deploy run 128 (12a823e, first green INT head) failed safely in the what-if guard:** `psql-aron-dev-7i7g53`
+  `properties.highAvailability.standbyAvailabilityZone would change`. The 06:27 failover drill moved the primary to
+  zone 2 (standby now 1), and main.bicep re-sent the creation zones 1/2, i.e. asked Azure to move the standby. Nothing
+  was changed (the guard stops before any write). Fix: deploy.sh reads the server's live primary and standby zones
+  before the what-if and passes them (`ARON_PG_PRIMARY_ZONE`, `ARON_PG_STANDBY_ZONE` -> `postgresPrimaryZone`,
+  `postgresStandbyZone`; empty for a new server = 1/2) in every profile. The guard itself is unchanged and still refuses
+  any HA or zone change. Test `PostgresZonesAfterFailover`. The digest deploy, dblogins, health gate, alerts and storage
+  CORS are still unproven on Azure: they run after the infra stage, on the first deploy that gets past it.
+
 ## Day 3, 10:00 UTC: three CI blockers for the first INT promotion (lead)
 
 - **APK size baseline regenerated (SR armeabi-v7a +16.1 % on lane/android-core 2e34ef7, run 372).** Measured by

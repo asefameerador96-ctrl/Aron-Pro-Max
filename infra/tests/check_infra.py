@@ -1107,6 +1107,25 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertEqual(rc, 0, "a call longer than the wait limit is not a false failure: " + out)
 
 
+class PostgresZonesAfterFailover(unittest.TestCase):
+    """Deploy run 128 (12a823e): after the failover drill the what-if guard refused a standby zone move back to the
+    creation zones. deploy.sh passes the live zones, so a failover never blocks or undoes itself on the next deploy."""
+
+    def test_live_zones_are_resent(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn("highAvailability.standbyAvailabilityZone", d)
+        self.assertLess(d.index("export ARON_PG_PRIMARY_ZONE"), d.index('note "what-if of main.bicep"'))
+        m = (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")
+        self.assertIn("primaryZone: empty(postgresPrimaryZone) ? '1' : postgresPrimaryZone", m)
+        self.assertIn("standbyZone: empty(postgresStandbyZone) ? '2' : postgresStandbyZone", m)
+        for f in ("dev", "dev-lite", "stage", "prod"):
+            p = (ROOT / "infra" / "params" / f"{f}.bicepparam").read_text(encoding="utf-8")
+            self.assertIn("readEnvironmentVariable('ARON_PG_PRIMARY_ZONE', '')", p, f)
+            self.assertIn("readEnvironmentVariable('ARON_PG_STANDBY_ZONE', '')", p, f)
+        g = (ROOT / "infra" / "scripts" / "whatif-guard.py").read_text(encoding="utf-8")
+        self.assertIn('"properties.highavailability"', g, "the guard itself stays strict")
+
+
 class AgentDownload(unittest.TestCase):
     """CI run 361: BuildKit's single ADD request got other bytes from Maven Central (digest mismatch). Both image builds
     fetch the pinned agent with retries and a checksum, and pass it as the named build context replacing the ADD stage."""

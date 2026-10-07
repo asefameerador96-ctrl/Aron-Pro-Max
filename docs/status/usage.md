@@ -21,3 +21,13 @@
 | 2026-10-07 04:55 | backend | nitvbFdL | 630 | 38.9 | allowed | idle |
 | 2026-10-07 04:55 | shared | C6T4A8e2 | 281 | 7.6 | allowed | idle |
 | 2026-10-07 04:55 | db | 3fsiVFYX | 662 | 38.8 | allowed | running |
+| 2026-10-07 10:50 | integrator | - | 419 | n/a | seven_day allowed_warning | idle |
+| 2026-10-07 10:50 | backend-core (session 4) | - | 0 | n/a | seven_day allowed_warning | running |
+| 2026-10-07 10:50 | android-core | - | 370 | n/a | seven_day allowed_warning | idle |
+| 2026-10-07 10:50 | android-sr-a | - | 161 | n/a | seven_day allowed_warning | blocked on sr-b and android-core heads |
+| 2026-10-07 10:50 | android-sr-b | - | 330 | n/a | seven_day allowed_warning | running |
+| 2026-10-07 10:50 | db | - | 527 | n/a | seven_day allowed_warning | idle, asked to recycle |
+| 2026-10-07 10:50 | infra | - | 284 | n/a | seven_day allowed_warning | idle, asked to verify dev deploy |
+| 2026-10-07 10:50 | android-core-ui | - | 145 | n/a | seven_day allowed_warning | idle (not nudged, critical path only) |
+| 2026-10-07 10:50 | android-print | - | 319 | n/a | seven_day allowed_warning | idle (not nudged) |
+| 2026-10-07 10:50 | backend-reports | - | 257 | n/a | seven_day allowed_warning | on hold |
