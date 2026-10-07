@@ -97,7 +97,7 @@ azure-identity = { module = "com.azure:azure-identity" }
 azure-core-http-jdk-httpclient = { module = "com.azure:azure-core-http-jdk-httpclient" }
 firebase-admin = { module = "com.google.firebase:firebase-admin", version.ref = "firebase-admin" }
 fastexcel = { module = "org.dhatim:fastexcel", version.ref = "fastexcel" }
-bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.80" }   # tests only: builds key-attestation chains
+bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.86" }   # tests only: builds key-attestation chains
 
 # Android
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
