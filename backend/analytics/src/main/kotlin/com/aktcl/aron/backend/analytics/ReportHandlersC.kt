@@ -21,13 +21,16 @@ object MemoNumberGapsReport : ReportHandler {
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
         WITH seen AS (
-          SELECT m.user_id, m.business_date, split_part(m.memo_no, '-', 3)::int AS seq, 'memo' AS src, NULL::text AS reason FROM app.memo m JOIN dw.dim_geo g ON g.route_id = m.route_id
-           WHERE ${ctx.dateClause("m.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("m.route_id")} AND m.voided_at IS NULL
+          SELECT m.user_id, m.business_date, split_part(m.memo_no, '-', 3)::int AS seq, 'memo' AS src, NULL::text AS reason,
+                 (${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("m.route_id")}) AS in_scope
+            FROM app.memo m LEFT JOIN dw.dim_geo g ON g.route_id = m.route_id WHERE ${ctx.dateClause("m.business_date")}
           UNION ALL
-          SELECT a.user_id, a.business_date, split_part(a.memo_no, '-', 3)::int, 'abort', a.reason FROM app.sale_abort a JOIN dw.dim_geo g ON g.route_id = a.route_id
-           WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("a.route_id")} AND a.voided_at IS NULL AND a.memo_no IS NOT NULL),
+          SELECT a.user_id, a.business_date, split_part(a.memo_no, '-', 3)::int, 'abort', a.reason,
+                 (${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("a.route_id")})
+            FROM app.sale_abort a LEFT JOIN dw.dim_geo g ON g.route_id = a.route_id WHERE ${ctx.dateClause("a.business_date")} AND a.memo_no IS NOT NULL),
+        vis AS (SELECT DISTINCT user_id, business_date FROM seen WHERE in_scope),
         blocked AS (SELECT *, CASE WHEN seq <= 5000 THEN ((seq - 1) / 500) * 500 ELSE 5000 + ((seq - 5001) / 1000) * 1000 END AS base FROM seen),
-        tops AS (SELECT user_id, business_date, base, max(seq) AS top FROM blocked GROUP BY 1, 2, 3),
+        tops AS (SELECT b.user_id, b.business_date, b.base, max(b.seq) AS top FROM blocked b JOIN vis v ON v.user_id = b.user_id AND v.business_date = b.business_date GROUP BY 1, 2, 3),
         wanted AS (SELECT t.user_id, t.business_date, t.base, s AS seq FROM tops t CROSS JOIN LATERAL generate_series(t.base + 1, t.top) AS s)
         SELECT u.username, w.business_date, CASE WHEN w.base < 5000 THEN w.base / 500 ELSE (w.base - 5000) / 1000 END AS device_ordinal, w.seq,
                u.username || '-' || to_char(w.business_date, 'YYMMDD') || '-' || lpad(w.seq::text, 3, '0') AS memo_no,
@@ -68,7 +71,7 @@ object SuspiciousLocationReport : ReportHandler {
           LEFT JOIN LATERAL (SELECT r.action, r.note, r.captured_at FROM app.risk_signal_review r WHERE r.signal_id = s.id AND r.voided_at IS NULL ORDER BY r.captured_at DESC, r.id DESC LIMIT 1) lr ON true
          WHERE ${ctx.zoneClause("coalesce(s.zone_id, g.zone_id)")} AND ${ctx.routeClause("coalesce(s.route_id, -1)")}
         """,
-        mapOf("threshold" to Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD),
+        mapOf("threshold" to ctx.suspiciousThreshold),
     )
 }
 

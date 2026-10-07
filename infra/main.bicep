@@ -71,6 +71,10 @@ param postgresStorageThroughputMBps int
 @allowed(['ZoneRedundant', 'SameZone', 'Disabled'])
 param postgresHaMode string = 'ZoneRedundant'
 param postgresBackupRetentionDays int
+// The live zones of an EXISTING server (deploy.sh reads them): a failover swaps primary and standby, and a template that
+// re-sent the creation zones would ask Azure to move the standby back (the what-if guard refuses that). Empty = 1 and 2.
+param postgresPrimaryZone string = ''
+param postgresStandbyZone string = ''
 param postgresGeoRedundantBackup bool = true
 param postgresReadReplica bool
 param postgresAdminLogin string = 'aronadmin'
@@ -158,6 +162,8 @@ module postgres 'modules/postgres.bicep' = {
     storageIops: postgresStorageIops
     storageThroughputMBps: postgresStorageThroughputMBps
     haMode: postgresHaMode
+    primaryZone: empty(postgresPrimaryZone) ? '1' : postgresPrimaryZone
+    standbyZone: empty(postgresStandbyZone) ? '2' : postgresStandbyZone
     backupRetentionDays: postgresBackupRetentionDays
     geoRedundantBackup: postgresGeoRedundantBackup
     enableReadReplica: postgresReadReplica

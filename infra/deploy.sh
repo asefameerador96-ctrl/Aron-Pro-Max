@@ -248,6 +248,15 @@ else
   [ -n "$ARON_BUDGET_START_DATE" ] || ARON_BUDGET_START_DATE="$(date -u +%Y-%m-01)"
   # What-if first: the infra stage must never recreate or reconfigure a PostgreSQL server (the rehearsal profile
   # adopts the existing one; tier, storage, HA, backup and network are fixed at creation or must not change by accident).
+  # The server's live zones (a failover, planned or not, swaps primary and standby): main.bicep re-sends them as they are.
+  pg_name="psql-aron-${ENV_NAME}-"
+  read -r pg_primary pg_standby < <(az postgres flexible-server list -g "$RG" \
+    --query "[?starts_with(name, '${pg_name}') && !ends_with(name, '-r1')] | [0].[availabilityZone, highAvailability.standbyAvailabilityZone]" \
+    -o tsv 2>/dev/null || true) || true
+  [ "${pg_primary:-None}" = None ] && pg_primary=""
+  [ "${pg_standby:-None}" = None ] && pg_standby=""
+  export ARON_PG_PRIMARY_ZONE="${pg_primary:-}" ARON_PG_STANDBY_ZONE="${pg_standby:-}"
+  note "PostgreSQL zones: primary ${ARON_PG_PRIMARY_ZONE:-new server}, standby ${ARON_PG_STANDBY_ZONE:-new server}"
   note "what-if of main.bicep"
   az deployment group what-if -g "$RG" --template-file infra/main.bicep \
     --parameters "infra/params/${PROFILE}.bicepparam" --no-pretty-print -o json > "$whatif_file" \

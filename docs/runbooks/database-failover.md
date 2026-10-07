@@ -36,3 +36,6 @@ Actions > **drill** > `mode: failover`, `confirm: lead approved failover drill` 
 minutes; pick a quiet time). The script probes `/v1/health/ready` every 5 s from BEFORE the Azure call, so the summary
 gives the user-visible outage (first failed probe to ready again) separately from the Azure call, which returns minutes
 later (429 s on 2026-10-07 for about 30 s of outage).
+
+After any failover (drill or real) the next deploy keeps the new zones: `infra/deploy.sh` reads the live primary and
+standby zones and passes them to main.bicep (deploy run 128 on 2026-10-07 was refused by the what-if guard before this).
