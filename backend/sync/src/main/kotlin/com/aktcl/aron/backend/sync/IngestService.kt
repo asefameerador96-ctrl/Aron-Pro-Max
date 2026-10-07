@@ -51,6 +51,9 @@ data class Uploader(
     val deviceKey: ECPublicKey?,
 )
 
+/** The uploading device's standing for the N-027 gate, with the two switches, read once per batch. */
+internal data class DeviceGate(val notEnrolled: Boolean, val verdict: String, val requireEnrolled: Boolean, val requireIntegrity: Boolean)
+
 /**
  * Idempotent ingest of one sync batch (F-API-006, docs/24 s3.3, s4.4 to s4.6):
  *
@@ -121,6 +124,8 @@ class IngestService(
         val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
         /** Read once per batch; a missing or unknown value is `record`, which never drops a sale. */
         val signatureMode: SignatureMode = SignatureMode.of(runCatching { config.string("cfg.sec.record_signature_mode") }.getOrNull())
+        /** N-027: the device's enrolment and Play Integrity standing and the two gates, read once per batch. */
+        val gate: DeviceGate = deviceGate(up)
         /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
         var arith: Map<String, String> = emptyMap()
         /** Memo content fingerprints of the current segment (s4.5: same outlet, lines and minute). */
@@ -312,7 +317,10 @@ class IngestService(
                 // parked row, so a sale held under enforce (or before modes existed) reaches the server (BC-53).
                 // Only while its review item is still open: a reviewer's discard or return-to-device stands (android-core
                 // integrity-release item 1).
-                "quarantined" -> if (prior.code != RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire || ctx.signatureMode == SignatureMode.ENFORCE || !openIntegrityItem(h, r)) {
+                // N-027: a device-gate quarantine (device_not_enrolled, or device_integrity_failed from the gate) is
+                // processed again on every resend while its item is open; the gate and the signature check re-apply,
+                // so under enforce a bad signature is quarantined again with the same outcome.
+                "quarantined" -> if (prior.code !in DEVICE_HOLD_CODES || !openIntegrityItem(h, r)) {
                     touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT)
                 } else {
                     released = true
@@ -382,6 +390,23 @@ class IngestService(
 
         env.long("acting_for_user_id")?.let { a ->
             if (!actingForValid(h, ctx, routeId, a, bd)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "acting_for_user_id $a without a cover of route $routeId")
+        }
+
+        // 5b. N-027 device gate (s4.5, s10.4, D24-17/18). Attendance and sales (memo, memo_void, due_collection) from a
+        // phone that is not enrolled (no enrolment, or no usable key) are quarantined `device_not_enrolled` while
+        // cfg.device.require_enrolled is on; with it off they are accepted and flagged. A keyless phone cannot prove its
+        // batch, so under the gate every non-telemetry record of it is held. With cfg.device.require_integrity on, an
+        // enrolled phone without a Play Integrity `pass` has its attendance and sales quarantined `device_integrity_failed`;
+        // with it off only a genuine `fail` is flagged. Never rejected: a resend after the phone is fixed is released
+        // while the review item is open (step 2). Children of a held parent are held with it (step 7).
+        val g = ctx.gate
+        val gated = r.type in GATED_TYPES
+        if (g.notEnrolled && (gated || (g.requireEnrolled && ctx.up.deviceKey == null && !rule.telemetry))) {
+            flagDevice(h, ctx, r, bd, routeId, "device_not_enrolled")
+            if (g.requireEnrolled) return quarantine(h, ctx, r, bd, RecordOutcomeCode.DEVICE_NOT_ENROLLED, "device not enrolled")
+        } else if (gated && g.verdict != "pass" && (g.requireIntegrity || g.verdict == "fail")) {
+            flagDevice(h, ctx, r, bd, routeId, "play_integrity_${g.verdict}")
+            if (g.requireIntegrity) return quarantine(h, ctx, r, bd, RecordOutcomeCode.DEVICE_INTEGRITY_FAILED, "play integrity ${g.verdict}")
         }
 
         // 6. Record signature on header records when the device has a key (s8.3), by cfg.sec.record_signature_mode
@@ -540,6 +565,46 @@ class IngestService(
         }
     }
 
+    /** N-027 supervisor flag: DEVICE_INTEGRITY_FAIL on the device for the business date (s11.4: severity 4, weight 30), in its own savepoint. */
+    private fun flagDevice(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
+        val sp = "devflag_${r.index}"
+        h.savepoint(sp)
+        try {
+            h.createUpdate(
+                """
+                INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+                VALUES ('DEVICE_INTEGRITY_FAIL', 4, :bd, 'device', :sid, :u, :route, 30, CAST(:ev AS jsonb), :cv)
+                ON CONFLICT (code, subject_type, subject_id, business_date) DO UPDATE SET severity = GREATEST(app.risk_signal.severity, EXCLUDED.severity),
+                    score = GREATEST(app.risk_signal.score, EXCLUDED.score), evidence = app.risk_signal.evidence || EXCLUDED.evidence, updated_at = now()
+                  WHERE app.risk_signal.status = 'open' AND (app.risk_signal.severity < EXCLUDED.severity OR app.risk_signal.evidence ->> 'gate' IS NULL)
+                """.trimIndent(),
+            ).bind("bd", bd).bind("sid", ctx.up.deviceUuid).bind("u", ctx.up.userId).bind("route", routeId)
+                .bind("ev", kotlinx.serialization.json.buildJsonObject {
+                    put("gate", JsonPrimitive(reason)); put("record_type", JsonPrimitive(r.type)); put("client_uuid", JsonPrimitive(r.clientUuid))
+                    put("held", JsonPrimitive(if (reason == "device_not_enrolled") ctx.gate.requireEnrolled else ctx.gate.requireIntegrity))
+                }.toString()).bind("cv", config.configVersion()).execute()
+            h.release(sp)
+        } catch (e: Exception) {
+            h.rollbackToSavepoint(sp)
+            log.error("device flag failed client_uuid=${r.clientUuid}", e)
+        }
+    }
+
+    /** The device row's standing for the N-027 gate; a device row that vanished counts as not enrolled. */
+    private fun deviceGate(up: Uploader): DeviceGate {
+        val row = db.jdbi.withHandle<Pair<Boolean, String>?, Exception> { h ->
+            h.createQuery("SELECT enrolment_token_id IS NOT NULL, integrity_verdict FROM app.device WHERE id = :d").bind("d", up.deviceId)
+                .map { rs, _ -> rs.getBoolean(1) to rs.getString(2) }.findOne().orElse(null)
+        }
+        return DeviceGate(
+            notEnrolled = row == null || !row.first || up.deviceKey == null,
+            verdict = row?.second ?: "unevaluated",
+            // Registry defaults (s9.4): require_enrolled true (the dev database overrides false), require_integrity false.
+            requireEnrolled = runCatching { config.bool("cfg.device.require_enrolled") }.getOrDefault(true),
+            requireIntegrity = runCatching { config.bool("cfg.device.require_integrity") }.getOrDefault(false),
+        )
+    }
+
     private fun insertSignatureFlag(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
         h.createUpdate(
             """
@@ -683,7 +748,7 @@ class IngestService(
             ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id, content_fp = EXCLUDED.content_fp,
                 last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1,
                 flags = ARRAY(SELECT DISTINCT f FROM unnest(app.ingest_registry.flags || EXCLUDED.flags) AS f ORDER BY f)
-            WHERE (app.ingest_registry.status = 'parked' OR (app.ingest_registry.status = 'quarantined' AND app.ingest_registry.outcome_code = 'device_integrity_failed'))
+            WHERE (app.ingest_registry.status = 'parked' OR (app.ingest_registry.status = 'quarantined' AND app.ingest_registry.outcome_code IN ('device_integrity_failed', 'device_not_enrolled')))
               AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("fp", contentFp).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
@@ -693,7 +758,7 @@ class IngestService(
             h.createUpdate("UPDATE app.sync_rejected SET stored_at = :now WHERE client_uuid = CAST(:c AS uuid) AND payload_sha256 = :h AND stored_at IS NULL")
                 .bind("now", ts(ctx.now)).bind("c", r.clientUuid).bind("h", r.hash).execute()
             // A released signature quarantine leaves the review queue once the sale is stored.
-            h.createUpdate("UPDATE app.sync_quarantine SET status = 'accepted', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open'")
+            h.createUpdate("UPDATE app.sync_quarantine SET status = 'accepted', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code IN ('device_integrity_failed', 'device_not_enrolled') AND status = 'open'")
                 .bind("now", ts(ctx.now)).bind("c", r.clientUuid).execute()
         }
     }
@@ -704,12 +769,12 @@ class IngestService(
      * advisory lock, then this row; a reviewer takes only the row.
      */
     private fun openIntegrityItem(h: Handle, r: Rec): Boolean = h.createQuery(
-        "SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open' FOR UPDATE",
+        "SELECT id FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND code IN ('device_integrity_failed', 'device_not_enrolled') AND status = 'open' FOR UPDATE",
     ).bind("c", r.clientUuid).mapTo(Long::class.java).list().isNotEmpty()
 
     /** A released row that ends rejected for another reason closes its integrity review item (nothing left to review). */
     private fun closeIntegrityItem(h: Handle, r: Rec, now: Instant) {
-        h.createUpdate("UPDATE app.sync_quarantine SET status = 'discarded', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code = 'device_integrity_failed' AND status = 'open'")
+        h.createUpdate("UPDATE app.sync_quarantine SET status = 'discarded', resolved_at = :now WHERE client_uuid = CAST(:c AS uuid) AND code IN ('device_integrity_failed', 'device_not_enrolled') AND status = 'open'")
             .bind("now", ts(now)).bind("c", r.clientUuid).execute()
     }
 
@@ -763,7 +828,7 @@ class IngestService(
             INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, detail, user_id, device_id, route_id, business_date, batch_uuid, received_at)
             VALUES (CAST(:c AS uuid), :t, :code, :h, CAST(:p AS jsonb), :detail, :u, :d, :route, :bd, CAST(:b AS uuid), :now)
             ON CONFLICT (client_uuid, payload_sha256) DO UPDATE SET code = EXCLUDED.code, detail = EXCLUDED.detail
-              WHERE app.sync_quarantine.status = 'open' AND app.sync_quarantine.code = 'device_integrity_failed'
+              WHERE app.sync_quarantine.status = 'open' AND app.sync_quarantine.code IN ('device_integrity_failed', 'device_not_enrolled')
 
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(r.json)).bind("detail", detail?.take(1000))
@@ -1010,6 +1075,9 @@ class IngestService(
         private const val FAMILY_RETRY_BUDGET_MS = 10_000L
         private val UUID_ANY = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")
+        /** N-027: the attendance and sales records the device gate holds (s10.4). */
+        val GATED_TYPES = setOf("attendance_event", "memo", "memo_void", "due_collection")
+        private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")
