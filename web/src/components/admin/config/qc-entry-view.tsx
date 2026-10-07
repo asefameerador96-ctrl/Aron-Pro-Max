@@ -46,7 +46,7 @@ export function QcEntryView({ locale, source, options, selection, date, today, r
       {!ready ? (
         <p className="rounded border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600">{t(locale, source === "market" ? "qcg.choose_route" : "otp.choose_zone")}</p>
       ) : faultItems === null ? (
-        <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-800" data-testid="faults-unavailable">{t(locale, "qcg.faults_unavailable")}</p>
+        <p role="alert" className="rounded bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-[var(--danger)]" data-testid="faults-unavailable">{t(locale, "qcg.faults_unavailable")}</p>
       ) : (
         <Card title={formatBusinessDate(locale, date)}>
           <p className="text-xs text-slate-600">{t(locale, "qcg.separate")}</p>

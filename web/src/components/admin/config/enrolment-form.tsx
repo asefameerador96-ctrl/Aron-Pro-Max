@@ -83,14 +83,14 @@ export function EnrolmentForm() {
           <input id="e-wpw" type="password" value={v.wifi_password} onChange={(e) => set("wifi_password", e.target.value)} maxLength={63} autoComplete="new-password" className={inputClass} />
         </Field>
         <div className="sm:col-span-2">
-          <button type="submit" disabled={busy} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+          <button type="submit" disabled={busy} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
             {t("enr.create")}
           </button>
         </div>
-        {error ? <p role="alert" data-testid="form-error" className="rounded bg-red-50 p-3 text-sm text-red-800 sm:col-span-2">{error}</p> : null}
+        {error ? <p role="alert" data-testid="form-error" className="rounded bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-[var(--danger)] sm:col-span-2">{error}</p> : null}
       </form>
       {created ? (
-        <section className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4" data-testid="qr-result">
+        <section className="space-y-2 rounded-lg border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] p-4" data-testid="qr-result">
           <h2 className="text-lg font-semibold">{t("enr.qr.title")}</h2>
           <p className="text-sm">{t("enr.qr.once")}</p>
           <QrCode text={created.qr_text} label={t("enr.qr.title")} />
