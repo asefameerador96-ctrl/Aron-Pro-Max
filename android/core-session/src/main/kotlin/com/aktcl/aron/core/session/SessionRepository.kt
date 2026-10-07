@@ -133,9 +133,9 @@ class SessionRepository(
                     designation = answer.user.designation,
                     locale = answer.user.locale,
                     verifier = verifier.create(password),
-                    lastOnlineLoginMs = clock.nowMs(),
+                    lastOnlineLoginMs = clock.wallClockMs(),
                     lastOnlineLoginElapsedMs = clock.elapsedRealtimeMs(),
-                    highWaterMs = clock.nowMs(),
+                    highWaterMs = clock.wallClockMs(),
                     deviceId = answer.device?.deviceId ?: previous?.deviceId,
                     bindOrdinal = answer.device?.bindOrdinal ?: previous?.bindOrdinal,
                     memoSeqBlockSize = answer.device?.memoSeqBlockSize ?: previous?.memoSeqBlockSize,
@@ -172,7 +172,7 @@ class SessionRepository(
     private fun offlineUnlock(username: String, password: String, serverAnswer: Int?, updateRequired: Boolean): LoginOutcome {
         val stored = store.profileByUsername(username)
             ?: return LoginOutcome.OfflineUnavailable(OfflineRefusal.NEVER_ONLINE_ON_THIS_PHONE, serverAnswer = serverAnswer)
-        val wall = clock.nowMs()
+        val wall = clock.wallClockMs()
         val elapsed = clock.elapsedRealtimeMs()
         if (wall < stored.lastOnlineLoginMs - CLOCK_TOLERANCE_MS) {
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.CLOCK_INCONSISTENT, serverAnswer = serverAnswer)
