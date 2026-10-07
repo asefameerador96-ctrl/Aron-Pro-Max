@@ -38,8 +38,12 @@ media.attach(photoUuid, MediaRef(purpose = "force_sale" /* or "outlet_capture" *
 - **F-SYS-019** done: `LanguageSwitch` (select = commit then recreate; `localized(context)` for text built outside an activity). Opus checker PASS. DEVICE-PENDING D-S3.
 - **F-SYS-022** done in core-system, **wiring pending** in the shells: `LogoutFlow(AppRole, ports)`, `DatabaseLogoutPorts`, `UnsentItemsDialog`. SR/AMO never wipe and schedule an upload; TSO refused with "N items not yet sent" (Sync now, Cancel) while any row is pending, in flight, quarantined or rejected or any photo is unsent; recount after the session ends; wipe only that user's database files, media and per-user prefs. Request: `docs/requests/android-sys-logout-wiring.md`.
 
+- **F-SYS-037** done: `WifiOnlySetting(context) { cfg.media.wifi_only_default }` (per phone, committed) and `WifiOnlyPhotosRow(on, onChange, evidenceFallbackHours)`. Wi-Fi-only holds photos on mobile data; evidence photos get a CONNECTED job at capture + `evidence_mobile_fallback_h` (0 = never); a run that loses the network retries; an overdue fallback always leaves a successor (slot pair, 5 min floor). **Wiring:** Settings shows the row and calls `mediaScheduler.requestUpload()` in `onChange`; the uploader and scheduler take `wifiOnlySetting::wifiOnly`; scheduler `nowMs` must be the same trusted clock as the uploader's.
+
+- **F-SYS-020** done in core-system (package `update`), **app wiring and phone run pending** (D-S4). `UpdateManager(UpdateApi(apiClient), PrefsUpdateMemory(ctx), flavour, BuildConfig.VERSION_CODE, Build.SUPPORTED_ABIS.toList(), clock::nowMs)`: `check(atLogin)` at login and on resume (12 h throttle, cached offline, minimum only rises); `dayGate(dayOpen, session.updateRequired)` before a new day; `UpdateContent` / `DayGateBanner` screens; `ApkDownloader(okHttp, File(filesDir, "updates"))` (Range resume, SHA-256, 2x space, https only, only its own files); `AndroidUpdater(ctx).install(apk, release, syncIdleFlow)` (unknown-sources guidance, archive package/version/signer checks incl. key rotation, never mid-batch: waits at most 60 s). Room migrations keep pending rows (android-core's migration tests); the updater never touches the database.
+
 ## In progress
-- F-SYS-037 Wi-Fi-only switch (`WifiOnlySetting`, `WifiOnlyPhotosRow`): built and tested, checker next. F-SYS-020 updater: in progress. Then F-SYS-021.
+- F-SYS-021 PDA to Support: in progress.
 
 ## Requests filed
 - `docs/requests/android-sys-media-meta.md` (android-core): `recordMediaMeta` and the `media_meta` record mapping.

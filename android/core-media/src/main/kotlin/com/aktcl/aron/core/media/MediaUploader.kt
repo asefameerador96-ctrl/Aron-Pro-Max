@@ -158,7 +158,9 @@ class MediaUploader(
         }
 
         var uploaded = 0
-        if (network == NetworkKind.NONE && ready.isNotEmpty()) retry = true // the validated network went away: try again
+        // The job started on a network that is gone (or not validated): photos that could go are held; try again with
+        // backoff under the job's own constraint, so a fallback or any-network job is never lost to a dropped signal.
+        if (network == NetworkKind.NONE && held > 0) retry = true
         if (network != NetworkKind.NONE) {
             for (chunk in ready.chunked(SAS_BATCH)) {
                 val stop = uploadChunk(chunk) { ok -> if (ok) uploaded++ else failed++ }

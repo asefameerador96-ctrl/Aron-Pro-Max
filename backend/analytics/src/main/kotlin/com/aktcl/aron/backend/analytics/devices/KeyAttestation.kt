@@ -50,6 +50,7 @@ class AttestationTrust(val trustedRootSha256: Set<String>)
  * the leaf certifies [expectedPublicKey], and the extension carries the challenge, the package and the signing-certificate digest. Parsing only; nothing is fetched.
  */
 object KeyAttestation {
+    const val MAX_CHAIN = 6
     private const val OID = "1.3.6.1.4.1.11129.2.1.17"
 
     fun sha256Hex(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
@@ -60,11 +61,15 @@ object KeyAttestation {
             chainBase64.map { cf.generateCertificate(ByteArrayInputStream(Base64.getDecoder().decode(it))) as X509Certificate }
         } catch (e: Exception) { throw AttestationFailed("certificate chain is not valid X.509") }
         if (chain.isEmpty()) throw AttestationFailed("empty chain")
+        if (chain.size > MAX_CHAIN) throw AttestationFailed("chain has more than $MAX_CHAIN certificates")
         val leaf = chain.first()
         if (leaf.publicKey.encoded.contentEquals(expectedPublicKey.encoded).not()) throw AttestationFailed("the attested key is not the enrolment key")
         for (i in chain.indices) {
             val c = chain[i]
             try { c.checkValidity(java.util.Date(nowMs)) } catch (e: Exception) { throw AttestationFailed("certificate $i is not valid now") }
+            // Every issuer must be a CA and only the leaf may carry the attestation extension: otherwise an attested non-CA key could sign a forged leaf.
+            if (i >= 1 && c.basicConstraints < 0) throw AttestationFailed("certificate $i is not a CA")
+            if (i >= 1 && c.getExtensionValue(OID) != null) throw AttestationFailed("certificate $i carries an attestation extension")
             val issuerKey = if (i + 1 < chain.size) chain[i + 1].publicKey else c.publicKey   // the last one must be self-signed
             try { c.verify(issuerKey) } catch (e: Exception) { throw AttestationFailed("certificate $i is not signed by certificate ${if (i + 1 < chain.size) i + 1 else i}") }
         }
@@ -83,10 +88,11 @@ object KeyAttestation {
         val level = kd[1].content.fold(0) { a, x -> (a shl 8) or (x.toInt() and 0xff) }
         val keyMintLevel = kd[3].content.fold(0) { a, x -> (a shl 8) or (x.toInt() and 0xff) }
         val challenge = kd[4].content
-        val lists = listOf(kd[6], kd[7])
+        val lists = listOf(kd[6], kd[7])   // the root of trust is only taken from the TEE-enforced list (kd[7])
         var pkg: String? = null; val digests = mutableSetOf<String>(); var bootState: Int? = null; var locked: Boolean? = null
         for (list in lists) for (item in list.children()) {
             if (item.tagClass != 2) continue
+            if (item.tag == 704 && list !== lists[1]) continue
             when (item.tag) {
                 709 -> {   // attestationApplicationId: [709] EXPLICIT OCTET STRING { SEQUENCE { SET of package infos, SET of signature digests } }
                     val octets = item.children().first().content
@@ -101,6 +107,6 @@ object KeyAttestation {
                 }
             }
         }
-        return AttestationFacts(challenge, maxOf(level, keyMintLevel), pkg, digests, bootState, locked, rootHash, chainLen)
+        return AttestationFacts(challenge, minOf(level, keyMintLevel), pkg, digests, bootState, locked, rootHash, chainLen)
     }
 }
