@@ -33,11 +33,17 @@ media.attach(photoUuid, MediaRef(purpose = "force_sale" /* or "outlet_capture" *
 
 - **F-SYS-030** done (on INT): Opus checker 2 defects fixed with tests; 28 core-media tests green locally (Robolectric native graphics for the real Bitmap codec, all 8 EXIF orientations). DEVICE-PENDING D-S2 (camera released, size on the phone, 1.5 s CPU).
 
+- **F-SYS-010** done: media upload (`MediaUploader`, `MediaHttpApi`, `MediaWorkScheduler`, `MediaWorker`, `MediaRuntime`). Three Opus checker rounds, 9 defects fixed with tests. Order: record acked, SAS (per-user upload grant, works after logout), PUT (SHA-256 re-checked, no Aron header, no redirect, https only), then `media_meta` through `MediaMetaSink` (android-core request). Wi-Fi first; evidence photos arm a CONNECTED job at capture + 6 h; per-user run lock; FAILED after 3 refusals; one re-check slot pair while photos wait for their record (no chain, no polling).
+  - **App wiring (android-core / app shells):** in `Application.onCreate` set `MediaRuntime.wiring = MediaRuntime.Wiring(users = { userDatabases.knownUserIds() }, uploader = { id -> MediaUploader(MediaStore.forUser(filesDir, id), MediaHttpApi(apiClient, okHttp, uploadAuthOf(id)), OutboxRecordProbe({ db(id).outboxDao().byClientUuid(it)?.state }, { recordExists(id, it) }), metaSinkOf(id), clock, cfg, wifiOnlySetting::wifiOnly) }, scheduler = { mediaScheduler })`; pass `scheduler = mediaScheduler` to `MediaComponents`; call `media.resume()` at start and `mediaScheduler.requestUpload()` after a sync run that acked rows.
+- **F-SYS-019** done: `LanguageSwitch` (select = commit then recreate; `localized(context)` for text built outside an activity). Opus checker PASS. DEVICE-PENDING D-S3.
+- **F-SYS-022** done in core-system, **wiring pending** in the shells: `LogoutFlow(AppRole, ports)`, `DatabaseLogoutPorts`, `UnsentItemsDialog`. SR/AMO never wipe and schedule an upload; TSO refused with "N items not yet sent" (Sync now, Cancel) while any row is pending, in flight, quarantined or rejected or any photo is unsent; recount after the session ends; wipe only that user's database files, media and per-user prefs. Request: `docs/requests/android-sys-logout-wiring.md`.
+
 ## In progress
-- F-SYS-010 media upload and F-SYS-037 Wi-Fi-only switch: built (55 core-media tests green), checker next.
+- F-SYS-037 Wi-Fi-only switch (`WifiOnlySetting`, `WifiOnlyPhotosRow`): built and tested, checker next. F-SYS-020 updater: in progress. Then F-SYS-021.
 
 ## Requests filed
 - `docs/requests/android-sys-media-meta.md` (android-core): `recordMediaMeta` and the `media_meta` record mapping.
+- `docs/requests/android-sys-logout-wiring.md` (app-tso owner, android-sr-a, android-core): wire `LogoutFlow`; `UserDatabases.close`, `SessionRepository.forgetUser`.
 - `docs/requests/android-sys-string-scan.md` (android-core-ui): add core-system and core-media to `HardcodedStringScanner`.
 
 ## Traps

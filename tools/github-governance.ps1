@@ -106,6 +106,9 @@ $prodBody = @{ wait_timer = 0; reviewers = @(@{ type = 'User'; id = $OwnerId });
 Api PUT "repos/$Repo/environments/azure-prod" $prodBody | Out-Null
 Api POST "repos/$Repo/environments/azure-prod/deployment-branch-policies" (@{ name = 'server-v*'; type = 'tag' } | ConvertTo-Json) | Out-Null
 Write-Host 'environment azure-prod ready (owner is the required reviewer; tags server-v* only)'
+# AUD-DG-08: one set of names (azure-dev, azure-stage, azure-prod). This script only creates and updates; it never
+# deletes. An unexpected environment is reported to the lead, not removed here.
+}
 
 Step 'Secret scanning and push protection (only where the plan supports it)'
 try {

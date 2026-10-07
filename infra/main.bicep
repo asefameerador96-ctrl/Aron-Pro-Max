@@ -205,6 +205,8 @@ module storage 'modules/storage.bicep' = {
     mediaEventsQueue: 'media-events'
     eventGridTopicName: n.eventGridTopic
     logAnalyticsId: monitoring.outputs.logAnalyticsId
+    // The address browsers load the web app from: Front Door, or the web app's own address without it.
+    uploadOrigins: [deployFrontDoor ? 'https://${frontDoor!.outputs.endpointHost}' : 'https://${n.webApp}.${containerEnv.outputs.defaultDomain}']
   }
 }
 

@@ -3,6 +3,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -22,6 +23,9 @@ android {
 dependencies {
     api(project(":android:core-common"))
     implementation(project(":android:core-ui"))
+    implementation(project(":android:core-network"))
+    implementation(project(":android:core-database"))
+    implementation(libs.kotlinx.serialization.json)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)
     testImplementation(platform(libs.androidx.compose.bom))
@@ -32,4 +36,6 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(platform(libs.okhttp.bom))
+    testImplementation(libs.okhttp.mockwebserver)
 }
