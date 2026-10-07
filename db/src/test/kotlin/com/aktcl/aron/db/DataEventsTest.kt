@@ -48,12 +48,16 @@ class DataEventsTest {
                     """{"memo_uuid":"6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10","route_id":1,"voided_at":"2026-10-07T10:00:00Z","extra":1}""",
                 ),
             )
-            assertEquals("1", c.scalar("SELECT payload_version FROM app.domain_event"))
+            assertEquals("1", c.scalar("SELECT payload_version FROM app.domain_event WHERE aggregate_id = 'x'"))
             assertEquals("23503", refused(c, event("memo.voided", 2, "{}")))                  // no such version
             assertEquals("23503", refused(c, event("memo.renamed", 1, "{}")))                 // no such type
             assertEquals("23503", refused(c, event("memo.voided", 1, "{}").replace(", 1, 'memo'", ", NULL, 'memo'")))  // no version
-            assertEquals("23514", refused(c, event("memo.voided", 1, """{"memo_uuid":"x"}""")))  // required keys missing
             assertEquals("23514", refused(c, event("memo.voided", 1, "[]")))                  // not an object
+            // V0018: thin events (no version, empty payload) are accepted until the version enforces its required keys.
+            c.exec("INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date) VALUES ('memo.voided', 'memo', 'y', DATE '2026-10-07')")
+            assertEquals("1", c.scalar("SELECT payload_version FROM app.domain_event WHERE aggregate_id = 'y'"))
+            c.exec("UPDATE app.domain_event_type SET enforce_required = true WHERE event_type = 'memo.voided'")
+            assertEquals("23514", refused(c, event("memo.voided", 1, """{"memo_uuid":"x"}""")))  // required keys missing
         } finally {
             c.rollback()
         }
@@ -113,22 +117,25 @@ class DataEventsTest {
         appendLine()
         appendLine("## Versioning rules (V0017)")
         appendLine()
-        appendLine("- Every outbox row names `event_type` and `payload_version`; the insert trigger refuses a pair that is not a")
-        appendLine("  catalogue row, a payload that is not a JSON object and one that lacks a required key (presence only).")
+        appendLine("- Every outbox row has `event_type` and `payload_version` (default 1); the insert trigger refuses a pair that is")
+        appendLine("  not a catalogue row and a payload that is not a JSON object. A version's required keys are enforced once its")
+        appendLine("  `enforce_required` is on (a db migration after the producer sends them, V0018); until then the schema is the")
+        appendLine("  target shape and consumers read the source row through `source_client_uuid`.")
         appendLine("- Payloads carry ids, codes, counts and amounts, never names, phone numbers, NIDs or coordinates.")
         appendLine("- Adding an optional key keeps the version. Removing or renaming a key, changing its type or meaning, or making")
         appendLine("  a key required adds a new version (a db migration; ask through docs/requests). A published schema never changes.")
         appendLine("- Producers write the newest version that is not deprecated; consumers handle every version that is not")
         appendLine("  deprecated and ignore keys they do not know.")
         appendLine()
-        appendLine("| Event | Version | Aggregate | aggregate_id | Producer | Status |")
-        appendLine("|---|---|---|---|---|---|")
+        appendLine("| Event | Version | Aggregate | aggregate_id | Producer | Status | Required keys enforced |")
+        appendLine("|---|---|---|---|---|---|---|")
         val types = c.column(
             "SELECT concat_ws(E'\\t', event_type, payload_version, aggregate_type, aggregate_id_is, producer, " +
-                "CASE WHEN deprecated_at IS NULL THEN 'current' ELSE 'deprecated' END, introduced_in, description) " +
+                "CASE WHEN deprecated_at IS NULL THEN 'current' ELSE 'deprecated' END, introduced_in, description, " +
+                "CASE WHEN enforce_required THEN 'yes' ELSE 'not yet' END) " +
                 "FROM app.domain_event_type ORDER BY event_type, payload_version",
         ).map { it!!.split('\t') }
-        types.forEach { t -> appendLine("| [`${t[0]}`](#${anchor(t[0], t[1])}) | ${t[1]} | `${t[2]}` | `${t[3]}` | ${t[4]} | ${t[5]} |") }
+        types.forEach { t -> appendLine("| [`${t[0]}`](#${anchor(t[0], t[1])}) | ${t[1]} | `${t[2]}` | `${t[3]}` | ${t[4]} | ${t[5]} | ${t[8]} |") }
         types.forEach { t ->
             appendLine()
             appendLine("## ${t[0]} v${t[1]}")
