@@ -63,6 +63,16 @@ fun Route.authRoutes(d: AuthDeps) {
             }))
         }
     }
+    // An access token (204) or a web login's password_change_token (200 LoginResponse, R15); a temporary password may call it.
+    authenticated(d.guard, { audiences = setOf(Audience.API, Audience.PWCHANGE); allowPasswordChangeRequired = true }) {
+        post("/auth/change-password") {
+            val req = call.receiveStrict(ChangePasswordRequest.serializer())
+            val p = call.principal
+            val res = withContext(Dispatchers.IO) { d.login.changePassword(p, req) }
+            if (res == null) call.respond(io.ktor.http.HttpStatusCode.NoContent)
+            else call.respond(call.webCookie(res.refresh_token, res.refresh_expires_at).let { res.copy(refresh_token = null) })
+        }
+    }
     authenticated(d.guard) {
         get("/me") {
             val p = call.principal

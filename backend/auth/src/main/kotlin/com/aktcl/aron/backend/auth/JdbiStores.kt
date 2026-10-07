@@ -59,6 +59,8 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
     override fun current(userId: Long): Long? = gate(userId).sv
 
     override fun mustChangePassword(userId: Long): Boolean = gate(userId).mustChange
+
+    override fun invalidate(userId: Long) { gateCache.remove(userId) }
 }
 
 /** Refresh families and hashed tokens; rotation is atomic (the unused-token update and the child insert commit together). */

@@ -32,6 +32,8 @@ interface UserStore {
     /** Case-insensitive lookup. */
     fun findByUsername(username: String): UserRecord?
     fun findById(id: Long): UserRecord?
+    /** Drops any per-replica cache of this user's gate (scope version, temporary password) after a change. */
+    fun invalidate(userId: Long) {}
 }
 
 interface DeviceStore {

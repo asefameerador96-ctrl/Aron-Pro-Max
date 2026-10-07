@@ -47,6 +47,8 @@ data class LoginResponse(
     val config_version: Long,
     val server_time: String,
     val min_app_version_code: Int?,
+    /** Web `password_change_required` only (R15): Bearer token for POST /v1/auth/change-password. */
+    val password_change_token: String? = null,
 )
 
 @Serializable
@@ -76,3 +78,14 @@ data class Jwks(val keys: List<JwkEcPublic>)
 
 @Serializable
 data class Me(val user: UserSummary, val permissions: List<String>, val scope: ScopeSummary, val pii: Boolean, val mfa_enabled: Boolean, val menus: List<kotlinx.serialization.json.JsonElement>? = null)
+
+/** POST /v1/auth/change-password (contract ChangePasswordRequest; never logged). */
+@Serializable
+data class ChangePasswordRequest(val current_password: String, val new_password: String) {
+    init {
+        require(current_password.length in 1..128) { "/current_password: length" }
+        require(new_password.length in 8..128) { "/new_password: length" }
+    }
+
+    override fun toString() = "ChangePasswordRequest(***)"
+}

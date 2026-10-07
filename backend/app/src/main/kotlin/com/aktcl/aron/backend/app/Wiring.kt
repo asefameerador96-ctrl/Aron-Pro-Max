@@ -125,7 +125,6 @@ class Wiring(
             val issuer = TokenIssuer(keys, config, clock)
             val refresh = RefreshService(JdbiRefreshStore(db), config, keys.derivedSecret("aron-refresh-rotation-v1"), clock)
             val devices = JdbiDeviceStore(db)
-            val login = LoginService(users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
@@ -139,6 +138,16 @@ class Wiring(
             val configDeps = ConfigDeps(configService, guard, clock)
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
             val permissions = ConfigPermissions(db, configService, clock)
+            // cfg.auth.password_min_len is role-scoped (12 for web roles, s9.5): resolved by the role's ordinal.
+            val minPasswordLen: (com.aktcl.aron.contract.Role) -> Int = { role ->
+                val ordinal = db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT ordinal FROM app.role_def WHERE role = :r").bind("r", role.wire).mapTo(Long::class.java).findOne().orElse(null) }
+                val chain = listOfNotNull(ordinal?.let { com.aktcl.aron.backend.config.ScopeNode("role", it) }, com.aktcl.aron.backend.config.ScopeNode("global", 0))
+                (configResolver.resolve("cfg.auth.password_min_len", chain, clock.now()).value as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 12
+            }
+            val login = LoginService(
+                users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock,
+                passwords = com.aktcl.aron.backend.auth.JdbiPasswordStore(db), minPasswordLen = minPasswordLen,
+            )
             val permDeps = ConfigPermissionsDeps(permissions, guard)
             val auth = AuthDeps(
                 login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId,
