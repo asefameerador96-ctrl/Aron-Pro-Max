@@ -98,6 +98,7 @@ import com.aktcl.aron.backend.sync.ServerGeneration
 import com.aktcl.aron.backend.sync.SyncDeps
 import com.aktcl.aron.backend.sync.syncRoutes
 import com.aktcl.aron.backend.sync.taskRoutes
+import com.aktcl.aron.backend.notify.pushRoutes
 
 /** The object graph of the API process; tests build their own with throwaway keys and in-memory stores. */
 class Wiring(
@@ -123,8 +124,12 @@ class Wiring(
             com.aktcl.aron.backend.masterdata.DataVoidBarrierHandler(com.aktcl.aron.backend.sync.TypeRules.BY_TYPE.keys),
         )
 
-        /** [extraRecordHandlers] are for tests only; production handlers are listed in [recordHandlers]. */
-        fun production(s: Settings, clock: AronClock = AronClock.SYSTEM, extraRecordHandlers: List<RecordHandler> = emptyList()): Wiring {
+        /** [extraRecordHandlers] and [pushSender] are for tests only; production handlers are listed in [recordHandlers]. */
+        fun production(
+            s: Settings, clock: AronClock = AronClock.SYSTEM, extraRecordHandlers: List<RecordHandler> = emptyList(),
+            /** Tests only: a push sender in place of FCM. */
+            pushSender: com.aktcl.aron.backend.notify.PushSender? = null,
+        ): Wiring {
             val db = Database.fromSettings(s)
             val config = DbServerConfig(db, RegistryDefaults(s.env), clock)
             val keys = JwtKeys.fromSettings(s)
@@ -184,7 +189,9 @@ class Wiring(
             val otpDeps = DeviceOtpDeps(db, reach, otpCipher, config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             val generation = ServerGeneration(db)
-            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach) + extraRecordHandlers)), db, config, clock)
+            // N-037: FCM nudges; off without the service account (dev, tests), and switched by cfg.ops/cfg.notify.
+            val push = com.aktcl.aron.backend.notify.PushNotifier(db, config, pushSender ?: s.fcmServiceAccountJson?.let { com.aktcl.aron.backend.notify.FcmPushSender(it) }, clock)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + extraRecordHandlers)), db, config, clock)
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
                 ingestCapacity = runCatching { config.int("cfg.api.inflight_batches_per_replica") }.getOrDefault(64),
@@ -218,7 +225,8 @@ class Wiring(
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)
                 syncRoutes(sync)
-                taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock), guard))
+                taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
+                pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission)
         }
     }

@@ -66,3 +66,15 @@ class RecordHandlers(handlers: List<RecordHandler>) {
         val NONE = RecordHandlers(emptyList())
     }
 }
+
+/**
+ * A data-only push nudge to a user's phones (N-037, D24-23): it tells the phone to sync now and carries no business
+ * data (the task itself arrives with the next sync). Best effort and asynchronous; implemented by backend:notify.
+ */
+fun interface Nudger {
+    fun nudge(userId: Long, reason: String)
+
+    companion object {
+        val NONE = Nudger { _, _ -> }
+    }
+}
