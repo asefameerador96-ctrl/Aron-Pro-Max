@@ -434,7 +434,9 @@ class SizingParameters(unittest.TestCase):
         self.assertEqual(params("stage.apps.parameters.json")["environmentName"], "stage")
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn('case "$PROFILE" in dev|dev-lite|prod) ;;', d, "deploy.sh must not offer stage yet")
-        self.assertNotIn("stage", self.wf("deploy.yml").split("options:")[1].split("\n")[0])
+        options = self.wf("deploy.yml").split("options:")[1].split("\n")[0]
+        self.assertNotIn("stage", options)
+        self.assertNotIn("prod", options, "AUD-DG-08: no manual prod deploy before the final account (promote-prod only)")
 
     def test_promotion_workflows_are_inert_until_the_final_account(self):
         pp, ra = self.wf("promote-prod.yml"), self.wf("release-app.yml")

@@ -106,6 +106,11 @@ $prodBody = @{ wait_timer = 0; reviewers = @(@{ type = 'User'; id = $OwnerId });
 Api PUT "repos/$Repo/environments/azure-prod" $prodBody | Out-Null
 Api POST "repos/$Repo/environments/azure-prod/deployment-branch-policies" (@{ name = 'server-v*'; type = 'tag' } | ConvertTo-Json) | Out-Null
 Write-Host 'environment azure-prod ready (owner is the required reviewer; tags server-v* only)'
+# AUD-DG-08: one set of names. An earlier version of this script created `staging` and `prod`; nothing deploys to them.
+foreach ($old in 'staging', 'prod') {
+  gh api "repos/$Repo/environments/$old" --silent 2>$null
+  if ($LASTEXITCODE -eq 0) { Api DELETE "repos/$Repo/environments/$old" | Out-Null; Write-Host "unused environment $old removed" }
+}
 
 Step 'Secret scanning and push protection (only where the plan supports it)'
 try {
