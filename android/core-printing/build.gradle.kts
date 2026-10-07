@@ -12,6 +12,8 @@ android {
         // Print samples and the PBM codec are shared by the JVM goldens and the on-phone golden test.
         getByName("test").kotlin.directories.add("src/test/shared/kotlin")
         getByName("androidTest").kotlin.directories.add("src/test/shared/kotlin")
+        // The PrintLedger contract; core-database runs the same scenarios against RoomPrintLedger.
+        getByName("test").kotlin.directories.add("src/testContract/kotlin")
         // The phone test reads the same golden files and the fonts the app ships (core-ui), as assets.
         getByName("androidTest").assets.directories.add("src/test/resources/goldens")
         getByName("androidTest").assets.directories.add("../core-ui/src/main/res/font")

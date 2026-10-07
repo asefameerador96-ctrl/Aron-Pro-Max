@@ -185,4 +185,20 @@ class PrintFlowTest {
         assertEquals(setOf("document_kind", "memo_client_uuid", "ref_client_uuid", "print_count", "outcome", "user_confirmed", "template_version", "printer_model"), p.keys)
         assertFalse(e.sim.overflowed)
     }
+
+    @Test fun daySummaryIsAReportWithoutLimitOrMarker() = runTest {
+        val e = env(reprintMax = 0)
+        val day = "44444444-4444-4444-8444-444444444444"
+        repeat(3) {
+            val a = e.printing.printDaySummary(day, com.aktcl.aron.core.printing.PrintSamples.daySummary) as PrintAttempt.AwaitingConfirmation
+            e.printing.confirm(a, true)
+        }
+        assertEquals(listOf("day_summary", "day_summary", "day_summary"), e.ledger.events.map { it.documentKind })
+        assertEquals(listOf(day, day, day), e.ledger.events.map { it.refClientUuid })
+        assertTrue(e.ledger.events.all { it.memoClientUuid == null })
+        assertEquals(listOf(1, 2, 3), e.ledger.events.map { it.printCount })
+        // Every copy is the same paper: no duplicate marker on a report.
+        val one = lastInk(Fixtures.renderer().daySummary(com.aktcl.aron.core.printing.PrintSamples.daySummary).bitmap) + 1
+        assertEquals(3 * one, e.sim.sessions.flatten().size)
+    }
 }
