@@ -6,10 +6,13 @@ enum class OtpError {
 
     /** 409: the account is already bound to its maximum of phones. The OTP stays valid: Verify again once one is freed. */
     DEVICE_LIMIT,
+
+    /** 401: the 10-minute bind token ran out (the OTP lasts longer). Retrying cannot work: log in again, keep the code. */
+    SIGN_IN_AGAIN,
 }
 
 data class OtpState(val digits: String = "", val error: OtpError? = null, val busy: Boolean = false, val bound: Boolean = false) {
-    val canVerify: Boolean get() = digits.length == LENGTH && !busy && !bound && error != OtpError.ATTEMPTS_EXCEEDED && error != OtpError.LOCKED
+    val canVerify: Boolean get() = digits.length == LENGTH && !busy && !bound && error != OtpError.ATTEMPTS_EXCEEDED && error != OtpError.LOCKED && error != OtpError.SIGN_IN_AGAIN
     companion object { const val LENGTH = 4 }
 }
 
@@ -29,6 +32,7 @@ object OtpModel {
         problemCode == "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" -> OtpError.ATTEMPTS_EXCEEDED
         problemCode == "ERR_AUTH_BIND_LOCKED" -> OtpError.LOCKED
         problemCode == "ERR_DEVICE_LIMIT_REACHED" -> OtpError.DEVICE_LIMIT
+        problemCode == "ERR_TOKEN_EXPIRED" || problemCode == "ERR_UNAUTHENTICATED" || problemCode == "http_401" -> OtpError.SIGN_IN_AGAIN
         else -> OtpError.OTHER
     }
 

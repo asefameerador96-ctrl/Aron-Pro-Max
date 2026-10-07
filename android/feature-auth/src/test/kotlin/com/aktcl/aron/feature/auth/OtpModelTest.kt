@@ -44,4 +44,13 @@ class OtpModelTest {
         assertEquals("1234", failed.digits)
         assertTrue(failed.canVerify)
     }
+
+    /** Checker (bind round 1, finding 2): an expired bind token sends the rep back to login instead of a retry loop. */
+    @org.junit.Test
+    fun anExpiredBindTokenAsksForANewLogin() {
+        val failed = OtpModel.failed(OtpModel.enter(OtpState(), "1234"), "ERR_TOKEN_EXPIRED", false)
+        assertEquals(OtpError.SIGN_IN_AGAIN, failed.error)
+        assertFalse(failed.canVerify)
+        assertEquals(OtpError.SIGN_IN_AGAIN, OtpModel.errorOf("http_401", false))
+    }
 }

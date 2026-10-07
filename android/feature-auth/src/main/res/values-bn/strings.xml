@@ -41,5 +41,6 @@
     <string name="otp_offline">এই ফোন যুক্ত করতে একবার নেটওয়ার্ক লাগবে।</string>
     <string name="otp_other">কিছু ভুল হয়েছে। আবার চেষ্টা করুন।</string>
     <string name="otp_device_limit">এই অ্যাকাউন্ট ইতিমধ্যে সর্বোচ্চ সংখ্যক ফোনে আছে। আপনার TSO-কে একটি ফোন সরাতে বলুন, তারপর আবার যাচাই করুন চাপুন: আপনার কোড এখনও বৈধ।</string>
+    <string name="otp_sign_in_again">এই ধাপের সময় শেষ। আবার লগইন করুন; আপনার TSO-এর দেওয়া কোড এখনও বৈধ।</string>
     <string name="otp_bound">এই ফোন এখন আপনার অ্যাকাউন্টের সাথে যুক্ত।</string>
 </resources>

@@ -346,8 +346,37 @@ class SessionRepositoryTest {
         server.enqueue(api(200, loginOk))
         val bound = phone.session.bindDevice("bind.jwt", "1234", "x")
         assertTrue(bound is BindOutcome.Bound)
-        assertTrue(phone.session.state.value is SessionState.Active)
+        val active = phone.session.state.value as SessionState.Active
+        assertEquals(contractAccessToken, phone.session.currentAccessToken(Grant.FULL)) // tokens stored as at login
+        val expectedOrdinal = Json.parseToJsonElement(loginOk).jsonObject["device"]?.jsonObject?.get("bind_ordinal")?.jsonPrimitive?.content?.toIntOrNull()
+        assertEquals(expectedOrdinal, active.user.bindOrdinal)
         server.close()
         assertEquals(BindOutcome.Failed(null, offline = true), Phone().session.bindDevice("bind.jwt", "1234", "x"))
+    }
+
+    /** Checker (bind round 1, finding 1): a temporary-password rep is bound by the 200; the screen must not say "failed". */
+    @Test
+    fun aBindAnsweredWithPasswordChangeIsNotAFailure() = runTest {
+        val phone = Phone()
+        val answer = Json.parseToJsonElement(loginOk).jsonObject.toMutableMap().apply {
+            put("status", Json.parseToJsonElement("\"password_change_required\""))
+            put("access_token", Json.parseToJsonElement("null")); put("refresh_token", Json.parseToJsonElement("null"))
+        }
+        server.enqueue(api(200, kotlinx.serialization.json.JsonObject(answer).toString()))
+        assertEquals(BindOutcome.PasswordChangeRequired, phone.session.bindDevice("bind.jwt", "1234", "x"))
+    }
+
+    /** Checker (bind round 1): X-Device-Proof is signed over the s8.3 bind string of the normalised OTP. */
+    @Test
+    fun theBindCarriesTheDeviceProofOverTheNormalisedOtp() = runTest {
+        val identity = DeviceIdentity(tmp.root)
+        val signed = mutableListOf<String>()
+        val client = AronApiClient(ApiOrigin.parse(server.url("/").toString(), true), AronApiClient.defaultOkHttp(), ClientIdentity("0.1.0+1") { identity.deviceUuid }, Holder())
+        val now = 1_791_000_000_000L
+        val auth = AuthApi(client, { str -> signed += str; "p".repeat(86) }) { now }
+        server.enqueue(api(409, problem(409, "ERR_DEVICE_LIMIT_REACHED")))
+        auth.bindDevice("bind.jwt", "1234")
+        assertEquals(listOf(com.aktcl.aron.core.network.ProofStrings.bind(identity.deviceUuid, "1234", now)), signed)
+        assertEquals("p".repeat(86), server.takeRequest().headers["X-Device-Proof"])
     }
 }

@@ -53,6 +53,9 @@ enum class OfflineRefusal {
 sealed interface BindOutcome {
     data class Bound(val login: LoginOutcome.LoggedIn) : BindOutcome
     data class Failed(val code: String?, val offline: Boolean = false, val retryAfterS: Int? = null) : BindOutcome
+
+    /** Bound (the OTP is spent), but the password is temporary: the screen goes to the password change, as after login. */
+    data object PasswordChangeRequired : BindOutcome
 }
 
 /** What the login screen shows after a tap. */
@@ -146,9 +149,16 @@ class SessionRepository(
     suspend fun bindDevice(bindToken: String, otp: String, password: String): BindOutcome = loginMutex.withLock {
         withContext(dispatchers.io) {
             val digits = otp.map { if (it in '\u09E6'..'\u09EF') '0' + (it - '\u09E6') else it }.joinToString("")
-            when (val r = authApi.bindDevice(bindToken, digits)) {
+            val answer = try {
+                authApi.bindDevice(bindToken, digits)
+            } catch (_: IllegalStateException) {
+                return@withContext BindOutcome.Failed(null) // no device uuid: nothing to bind (never a crash)
+            }
+            when (val r = answer) {
                 is ApiResult.Success -> when (val o = onLoginAnswer(r.value, password)) {
                     is LoginOutcome.LoggedIn -> BindOutcome.Bound(o)
+                    // The server binds before its temporary-password check: the phone IS bound and the OTP is spent.
+                    LoginOutcome.PasswordChangeRequired -> BindOutcome.PasswordChangeRequired
                     else -> BindOutcome.Failed(null)
                 }
                 is ApiResult.Transport, is ApiResult.NotModified -> BindOutcome.Failed(null, offline = true)
