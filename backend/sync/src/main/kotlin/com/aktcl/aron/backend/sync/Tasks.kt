@@ -145,14 +145,16 @@ class TaskService(
                 .bind("type", req.task_type_code).bind("assignee", req.assignee_user_id).bind("outlet", req.outlet_id).bind("title", req.title)
                 .bind("desc", req.description).bind("due", req.due_date).execute()
             created = true
-            byUuid(h, uuid)!!
+            byUuid(h, uuid)!!.also { t ->
+                com.aktcl.aron.backend.platform.AuditLog.write(h, p, "task", uuid, "create", null, ResponseJsonTask.encode(t), null, null, if (p.isPhone) "api" else "web")
+            }
         }
         // After the commit, once per task (a replay sends nothing); never the task data, only a nudge to sync.
         if (created && req.assignee_user_id != p.userId) nudger.nudge(req.assignee_user_id, "task_assigned")
         return dto
     }
 
-    fun cancel(p: AronPrincipal, uuidRaw: String, @Suppress("UNUSED_PARAMETER") reason: String): TaskApiDto {
+    fun cancel(p: AronPrincipal, uuidRaw: String, reason: String): TaskApiDto {
         val uuid = uuidRaw.lowercase()
         if (!UUID_V4.matches(uuid)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "task_uuid is not a UUID", errors = listOf(FieldError("path.task_uuid", "invalid_value")))
         val r = reachOf(p)
@@ -164,8 +166,13 @@ class TaskService(
             if (!allowed) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only the creator, the zone's TSO or an admin cancels a task")
             when (t.third) {
                 "cancelled" -> Unit // idempotent
-                "ongoing" -> h.createUpdate("UPDATE app.task SET status = 'cancelled', status_changed_at = :now, cancelled_by = :by WHERE client_uuid = CAST(:u AS uuid)")
-                    .bind("now", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)).bind("by", p.userId).bind("u", uuid).execute()
+                "ongoing" -> {
+                    val before = byUuid(h, uuid)!!
+                    h.createUpdate("UPDATE app.task SET status = 'cancelled', status_changed_at = :now, cancelled_by = :by WHERE client_uuid = CAST(:u AS uuid)")
+                        .bind("now", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)).bind("by", p.userId).bind("u", uuid).execute()
+                    // The reason lives in the audit row until app.task has a column (docs/requests/backend-core-task-columns.md).
+                    com.aktcl.aron.backend.platform.AuditLog.write(h, p, "task", uuid, "cancel", ResponseJsonTask.encode(before), ResponseJsonTask.encode(byUuid(h, uuid)!!), reason, null, if (p.isPhone) "api" else "web")
+                }
                 else -> throw ApiProblem(ProblemCode.ERR_CONFLICT, "a completed task cannot be cancelled")
             }
             byUuid(h, uuid)!!
@@ -250,6 +257,10 @@ class TaskRecords(
         h.createUpdate("UPDATE app.task SET status = :s, status_changed_at = :now WHERE client_uuid = CAST(:t AS uuid) AND status <> 'cancelled' AND status <> :s")
             .bind("s", want).bind("now", OffsetDateTime.ofInstant(rec.receivedAt, ZoneOffset.UTC)).bind("t", task).execute()
     }
+}
+
+private object ResponseJsonTask {
+    fun encode(t: TaskApiDto) = com.aktcl.aron.backend.platform.ResponseJson.encodeToJsonElement(TaskApiDto.serializer(), t)
 }
 
 class TaskDeps(val service: TaskService, val guard: AuthGuardDeps)

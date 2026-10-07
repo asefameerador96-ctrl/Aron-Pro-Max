@@ -183,6 +183,13 @@ class TasksTest {
         assertEquals(HttpStatusCode.OK, c.status, c.bodyAsText())
         assertEquals("cancelled", json(c.bodyAsText())["status"]!!.jsonPrimitive.content)
         assertEquals(HttpStatusCode.OK, cancel(amo).status, "idempotent")
+        // F-SYS-059: the create and the cancel each added a hash-chained audit row with actor, before and after.
+        val audit = fresh.db.jdbi.withHandle<List<String>, Exception> { h ->
+            h.createQuery("SELECT action || ':' || actor_username || ':' || COALESCE(before->>'status', '-') || ':' || (after->>'status') || ':' || COALESCE(reason, '-') FROM app.audit_log WHERE entity = 'task' AND entity_id = '$t' ORDER BY chain_seq")
+                .mapTo(String::class.java).list()
+        }
+        assertEquals(listOf("create:amo1001:-:ongoing:-", "cancel:tso1001:ongoing:cancelled:the outlet closed for good"), audit)
+        assertEquals(null, fresh.db.jdbi.withHandle<Long?, Exception> { h -> com.aktcl.aron.backend.platform.AuditLog.verify(h) })
         // A late resolve from the phone is stored but the task stays cancelled.
         assertEquals(listOf("accepted"), client.send(srToken, listOf(event(t, "resolved"))))
         assertEquals("cancelled", client.list(tso).single { it["task_uuid"]!!.jsonPrimitive.content == t }["status"]!!.jsonPrimitive.content)
