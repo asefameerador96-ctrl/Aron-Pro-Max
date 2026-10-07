@@ -6,6 +6,12 @@ import { hydrated, loginOk, MOCK, resetMock } from "./helpers";
 interface MockState { webEntries: { lines: { sale_qty_base: number; memo_count: number; class_qty_base: Record<string, number> }[] }[]; otps: unknown[]; audit: { action: string }[] }
 const mockState = async (): Promise<MockState> => (await fetch(`${MOCK}/__mock/state`)).json() as Promise<MockState>;
 
+/** Click and wait for the BFF write to answer (not for a toast): the response is the event the journey depends on. */
+async function sendOp(page: Page, click: () => Promise<void>): Promise<void> {
+  const [res] = await Promise.all([page.waitForResponse((r) => r.url().includes("/api/bff/admin-op") && r.request().method() === "POST"), click()]);
+  expect(res.status()).toBeLessThan(300);
+}
+
 const REASON = "Quality bar journey: documented reason";
 
 test.beforeEach(async () => {
@@ -34,8 +40,7 @@ test("change request: a risk 2 change waits for a different SUPERADMIN, then rol
   await hydrated(form.getByRole("button"));
   await form.locator("input").first().fill("150");
   await form.locator("textarea").fill(REASON);
-  await form.getByRole("button").click();
-  await expect(page.getByTestId("form-ok")).toBeVisible();
+  await sendOp(page, () => form.getByRole("button").click());
 
   // Still 100 m: the change is pending approval, not applied.
   await page.reload();
@@ -55,7 +60,7 @@ test("change request: a risk 2 change waits for a different SUPERADMIN, then rol
   await hydrated(page2.getByTestId("approve-1").getByRole("button").first());
   await page2.getByTestId("approve-1").getByRole("button").first().click();
   await page2.getByTestId("approve-1").locator("textarea").fill(REASON);
-  await page2.getByTestId("approve-1").getByRole("button").first().click();
+  await sendOp(page2, () => page2.getByTestId("approve-1").getByRole("button").first().click());
   // An approved change leaves the pending list, so its row (and its banner) goes away: that is the visible condition to wait on.
   await expect(page2.getByTestId("approve-1")).toHaveCount(0);
 
@@ -68,8 +73,7 @@ test("change request: a risk 2 change waits for a different SUPERADMIN, then rol
   await hydrated(page.getByTestId("rollback-318").getByRole("button").first());
   await page.getByTestId("rollback-318").getByRole("button").first().click();
   await page.getByTestId("rollback-318").locator("textarea").fill(REASON);
-  await page.getByTestId("rollback-318").getByRole("button").first().click();
-  await expect(page.getByTestId("rollback-318").getByTestId("form-ok")).toBeVisible();
+  await sendOp(page, () => page.getByTestId("rollback-318").getByRole("button").first().click());
   await page.reload();
   await expect(page.getByTestId("version-320")).toBeVisible();
   await expect(page.getByTestId("version-319")).toBeVisible();
@@ -107,8 +111,7 @@ test("permission matrix: only a SUPERADMIN edits a role and the edit is a pendin
   await hydrated(editor.getByRole("button", { name: "Request this change" }));
   await box.check();
   await editor.locator("textarea").fill(REASON);
-  await editor.getByRole("button", { name: "Request this change" }).click();
-  await expect(editor.getByTestId("form-ok")).toBeVisible();
+  await sendOp(page2, () => editor.getByRole("button", { name: "Request this change" }).click());
   await page2.goto("/admin/config/changes?status=pending_approval");
   await expect(page2.getByRole("cell", { name: REASON }).first()).toBeVisible();
   // Pending means pending: the matrix itself is unchanged until a second SUPERADMIN approves.
@@ -164,8 +167,7 @@ test("OTP panel: lists the zone's pending OTPs and an admin issues a fresh one w
   await hydrated(issue.getByRole("button").first());
   await issue.getByRole("button").first().click();
   await issue.locator("textarea").fill(REASON);
-  await issue.getByRole("button").first().click();
-  await expect(issue.getByTestId("form-ok")).toBeVisible();
+  await sendOp(page, () => issue.getByRole("button").first().click());
   await expect.poll(async () => (await mockState()).otps.length).toBe(2);
   await page.goto("/admin/device-otps");
   await expect(page.getByTestId("choose-zone")).toBeVisible();
