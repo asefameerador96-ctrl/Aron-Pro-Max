@@ -244,6 +244,11 @@ class DbRolesTest {
             c.exec("DELETE FROM app.mfa_secret WHERE user_id = -1")                                                       // AdminUsers MFA reset
             c.exec("DELETE FROM app.auth_lockout WHERE lower(lock_key) = 'x'")
             c.exec("UPDATE app.geo_fix SET voided_at = now() WHERE route_id = -1 AND business_date = DATE '2026-10-07' AND voided_at IS NULL") // DataVoidApi
+            // DataVoidApi tombstones by table name at run time: every app table with voided_at takes the void update.
+            val voidable = c.column("SELECT c.relname FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace " +
+                "WHERE n.nspname = 'app' AND a.attname = 'voided_at' AND c.relkind IN ('r', 'p') AND NOT c.relispartition ORDER BY 1").filterNotNull()
+            assertTrue(voidable.size >= 25, "voidable tables: $voidable")
+            voidable.forEach { t -> c.exec("UPDATE app.$t SET voided_at = now() WHERE false") }
             // Still refused: deletes nobody runs, and updates of append-only trails.
             for (sql in listOf("DELETE FROM app.memo WHERE false", "DELETE FROM app.route WHERE false", "UPDATE app.audit_log SET via = via WHERE false", "DELETE FROM app.geo_fix WHERE false")) {
                 c.exec("SAVEPOINT s")
