@@ -244,13 +244,18 @@ class DbRolesTest {
             c.exec("DELETE FROM app.mfa_secret WHERE user_id = -1")                                                       // AdminUsers MFA reset
             c.exec("DELETE FROM app.auth_lockout WHERE lower(lock_key) = 'x'")
             c.exec("UPDATE app.geo_fix SET voided_at = now() WHERE route_id = -1 AND business_date = DATE '2026-10-07' AND voided_at IS NULL") // DataVoidApi
-            // DataVoidApi tombstones by table name at run time: every app table with voided_at takes the void update.
-            val voidable = c.column("SELECT c.relname FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace " +
-                "WHERE n.nspname = 'app' AND a.attname = 'voided_at' AND c.relkind IN ('r', 'p') AND NOT c.relispartition ORDER BY 1").filterNotNull()
-            assertTrue(voidable.size >= 25, "voidable tables: $voidable")
+            // DataVoidApi tombstones by table name at run time: its APP_VOID_TABLES (mirrored here; keep in step) plus geo_fix
+            // each take the void update as api_rw. Append-only trails no void covers (indent_movement, submit_void_event, ...)
+            // stay refused.
+            val voidable = listOf(
+                "attendance_event", "route_day_event", "day_exception", "stock_movement", "visit", "visit_skip", "memo", "memo_line", "memo_discount",
+                "qc_entry_line", "print_event", "memo_void", "due_collection", "survey_response", "distribution_check", "distribution_check_line",
+                "call_assessment", "call_assessment_answer", "outlet_change_request", "content_view", "redemption", "redemption_line", "gift_photo",
+                "price_compliance_check", "sale_abort", "geo_fix",
+            )
             voidable.forEach { t -> c.exec("UPDATE app.$t SET voided_at = now() WHERE false") }
             // Still refused: deletes nobody runs, and updates of append-only trails.
-            for (sql in listOf("DELETE FROM app.memo WHERE false", "DELETE FROM app.route WHERE false", "UPDATE app.audit_log SET via = via WHERE false", "DELETE FROM app.geo_fix WHERE false")) {
+            for (sql in listOf("UPDATE app.indent_movement SET voided_at = now() WHERE false", "DELETE FROM app.memo WHERE false", "DELETE FROM app.route WHERE false", "UPDATE app.audit_log SET via = via WHERE false", "DELETE FROM app.geo_fix WHERE false")) {
                 c.exec("SAVEPOINT s")
                 assertEquals("42501", assertFailsWith<SQLException>(sql) { c.exec(sql) }.sqlState, sql)
                 c.exec("ROLLBACK TO SAVEPOINT s")

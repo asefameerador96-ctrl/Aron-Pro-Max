@@ -46,7 +46,7 @@ a credential (MFA secret); the audit log keeps the before state.
 
 Also checked: every `DELETE`/`UPDATE` in `backend/*/src/main` against the map. The worker (`AggregationWorker`,
 `RiskSignalJob`) writes `dirty_key`, `event_consumer`, `risk_signal` and `dw`, all already granted to `worker_rw`.
-`DbRolesTest.theAdminFlowsRunAsApiRw` runs the admin statements, and the void update on every table with `voided_at`, under `SET ROLE api_rw`; the matrix test pins the new
+`DbRolesTest.theAdminFlowsRunAsApiRw` runs the admin statements, and the void update on every `DataVoidApi` table, under `SET ROLE api_rw`; the matrix test pins the new
 rows and that nothing wider was granted. backend-core item 2 (suites as `api_rw`) is still theirs.
 
 **infra:** when V0029 is on INT, `dbPerAppLogins` can go on.

@@ -8,8 +8,8 @@
 --                             tombstoned; the reset is in the audit log).
 --   UPDATE app.geo_fix,       DataVoidApi: a data void tombstones every synced table it covers (voided_at only;
 --          app.stock_movement guard_synced_row refuses every other column); these two append-only trails were the ones
---                             left out of api_rw's UPDATE. DbRolesTest checks the void update on every table with
---                             voided_at, so a table added later cannot miss it silently.
+--                             left out of api_rw's UPDATE. DbRolesTest runs the void update on every DataVoidApi
+--                             table as api_rw (the list is mirrored in the test).
 
 SET lock_timeout = '5s';
 
