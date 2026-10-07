@@ -13,3 +13,8 @@ AUD-DA-03,M,2026-10-07T05:20Z,2026-10-07T06:30Z,0,see AUD-DA-03+TP-7+REL-03,"V00
 AUD-TP-7,M,2026-10-07T05:20Z,2026-10-07T06:30Z,0,see AUD-DA-03+TP-7+REL-03,"V0020 (combined row above)"
 AUD-REL-03,M,2026-10-07T05:20Z,2026-10-07T06:30Z,0,see AUD-DA-03+TP-7+REL-03,"V0020 (combined row above)"
 CI-254-role-race,S,2026-10-07T06:05Z,2026-10-07T06:30Z,25,"1 should-fix (lock leak on failed acquire), fixed","DbRolesTest rolled-back repair + RoleDdlLock; backend FreshDb asked"
+backend-admin-blockers,M,2026-10-07T05:45Z,2026-10-07T09:10Z,120,"round 1: 1 confirmed + 6 plausible (fixed); round 2: PASS + 2 nits (fixed)","V0023 content+price_batch+leave fix, V0028 restrictive_dir"
+R17-config-keys,S,2026-10-07T05:50Z,2026-10-07T09:10Z,40,"see backend-admin-blockers (same checker)","V0024 reconcile_types reshape, outlet_fields server, 3 print keys"
+v1.2-device-columns,S,2026-10-07T05:55Z,2026-10-07T09:10Z,15,"0","V0025/V0026"
+AUD-DA-04,S,2026-10-07T05:10Z,2026-10-07T09:10Z,20,"shipped in step with the fixture change","V0027 system code lists"
+runtime-roles-gaps,S,2026-10-07T07:00Z,2026-10-07T09:10Z,30,"1 confirmed (stock_movement void), fixed","V0029 api_rw grants"
