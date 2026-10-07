@@ -213,15 +213,18 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
   if (path === "/v1/dashboards/summary") {
     const rows = routesInScope(user.scope.nodes);
     const kpis = kp(rows);
-    const byTerritory = [...new Set(rows.map((r) => r.territory_id))].map((t) => ({ node: { type: "territory" as const, id: t, name: GEO.find((g) => g.id === t)?.name ?? null }, kpis: kp(rows.filter((r) => r.territory_id === t)) }));
     const top = user.scope.nodes[0] ?? { type: "national" as const, id: 0 };
+    const childLevel = ({ national: "wing", wing: "division", division: "territory", territory: "zone", zone: "route", route: "route" } as const)[top.type];
+    const key = (r: SeedRoute): number => (childLevel === "wing" ? r.wing_id : childLevel === "division" ? r.division_id : childLevel === "territory" ? r.territory_id : childLevel === "zone" ? r.zone_id : r.route_id);
+    const nodeName = (id: number): string | null => GEO.find((g) => g.id === id)?.name ?? rows.find((r) => r.route_id === id)?.route_name ?? null;
+    const byChild = [...new Set(rows.map(key))].map((id) => ({ node: { type: childLevel, id, name: nodeName(id) }, kpis: kp(rows.filter((r) => key(r) === id)) }));
     const body: Schemas["DashboardSummary"] = {
       as_of: asOf, from: x.url.searchParams.get("from") ?? SEED_DATE, to: x.url.searchParams.get("to") ?? SEED_DATE, node: { type: top.type, id: top.id, name: "name" in top ? (top.name ?? null) : null }, kpis,
       by_category: [{ category_code: "cigarette", base_unit: "stick", qty_base: 20_000, net_mtk: kpis.net_mtk }],
       by_channel: [{ code: "grocery", name: "Grocery", net_mtk: Math.round(kpis.net_mtk * 0.7), memo_count: kpis.active_memo_count, successful_calls: kpis.successful_calls, memo_ratio_pct: 100 }, { code: "pan", name: "Pan", net_mtk: Math.round(kpis.net_mtk * 0.3), memo_count: 0, successful_calls: 0, memo_ratio_pct: null }],
       by_segment: [{ code: "premium", name: "Premium", net_mtk: kpis.net_mtk, memo_count: kpis.active_memo_count, successful_calls: kpis.successful_calls }],
       by_brand: [{ code: "sample", name: "Sample", net_mtk: kpis.net_mtk, memo_count: kpis.active_memo_count, successful_calls: kpis.successful_calls, memo_ratio_pct: 100 }],
-      children: byTerritory,
+      children: byChild,
     };
     return send(200, body), true;
   }
@@ -337,6 +340,12 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
   if (pn && method === "GET") {
     const parent = x.url.searchParams.get("parent_id");
     return send(200, { items: PRODUCT_NODES.filter((n) => n.level === pn[1] && (!parent || n.parent_id === Number(parent))), next_cursor: null }), true;
+  }
+  if (path === "/v1/admin/outlets" && method === "GET") {
+    const zone = x.url.searchParams.get("zone_id");
+    const reach = new Map(routesInScope(user.scope.nodes).map((r) => [r.route_id, r]));
+    const items = OUTLETS.filter((o) => reach.has(o.route_id) && (!zone || reach.get(o.route_id)!.zone_id === Number(zone))).map((o) => ({ id: o.outlet_id, code: o.code, name: o.name, owner_name: hasPii(user.role) ? o.owner_name : "", zone_id: reach.get(o.route_id)!.zone_id, route_id: o.route_id, cluster_id: 1, channel: "GT", location_confirmed: o.lat !== null, outlet_kind: "retail", price_type: "retail", status: o.status, lat: o.lat, lng: o.lng }));
+    return send(200, { items, next_cursor: null }), true;
   }
   if (path === "/v1/admin/skus" && method === "GET") return send(200, { items: SKUS.map((s) => ({ id: s.id, code: s.code, variant_id: 31, category_code: "cigarette", name: s.name, short_name: s.name, base_unit: "stick", base_per_pack: 20, entry_unit_default: "stick", report_factor: "1.000", sort: s.id, status: s.status })), next_cursor: null }), true;
 

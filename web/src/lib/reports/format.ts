@@ -21,19 +21,28 @@ function localiseDecimal(locale: Locale, s: string): string {
   return s.replace(/\d/g, (d) => map[Number(d)] ?? d);
 }
 
+/** Money for display: taka with exactly three decimals and locale digit grouping, from integer milli-taka (BigInt, no float). */
+export function formatTaka(locale: Locale, mtk: number | string): string {
+  const plain = mtkToTaka(mtk);
+  const neg = plain.startsWith("-");
+  const [whole = "0", frac = "000"] = plain.replace("-", "").split(".");
+  const grouped = new Intl.NumberFormat(locale === "bn" ? "bn-BD-u-nu-beng" : "en-US", { useGrouping: true }).format(BigInt(whole));
+  return `${neg ? "-" : ""}${grouped}.${localiseDecimal(locale, frac)}`;
+}
+
 export const PII_MASK = "••••";
 
 export function formatCell(locale: Locale, col: ReportColumn, v: Cell, labels: { yes: string; no: string }): string {
   if (v === null || v === undefined || v === "") return "—";
   switch (col.type) {
     case "mtk":
-      return localiseDecimal(locale, mtkToTaka(v as number | string));
+      return formatTaka(locale, v as number | string);
     case "integer":
       return typeof v === "number" ? formatNumber(locale, v, { maximumFractionDigits: 0 }) : String(v);
     case "decimal":
       return typeof v === "number" ? formatNumber(locale, v, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : String(v);
     case "pct":
-      return typeof v === "number" ? `${formatNumber(locale, v, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%` : String(v);
+      return typeof v === "number" ? `${formatNumber(locale, v, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : String(v);
     case "date":
       return typeof v === "string" ? formatBusinessDate(locale, v) : String(v);
     case "timestamp":

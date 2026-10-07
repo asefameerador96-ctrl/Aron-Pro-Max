@@ -19,7 +19,7 @@ test("TSO logs in and sees an empty dashboard scoped by the server, in Bangla th
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "ড্যাশবোর্ড", level: 1 })).toBeVisible();
   await expect(page.getByTestId("scope-node")).toContainText("Banani");
-  await expect(page.getByTestId("dashboard-empty")).toBeVisible();
+  await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
   // Bengali digits in the business date (Dhaka).
   await expect(page.getByTestId("business-date")).toHaveText(/[০-৯]/);
   // The TSO has no admin menu.
