@@ -28,6 +28,24 @@ class RefreshFamilyBindingTest {
             (deviceUuid?.let { "'$it'" } ?: "NULL") + " FROM app.app_user WHERE username = 'sr0001'"
 
     @Test
+    fun aLegacyUnboundPhoneFamilyIsRevokedByTheMigrationAndStaysUpdatable() = TestPostgres.createDatabase().use { old ->
+        org.flywaydb.core.Flyway.configure().configuration(old.flyway().configuration).target("12").load().migrate()
+        old.connect().use { c ->
+            c.exec("INSERT INTO app.app_user (username, full_name, role) VALUES ('sr0002', 'SR', 'SR')")
+            c.exec(
+                "INSERT INTO app.refresh_family (user_id, client, grant_kind, sliding_expires_at, absolute_expires_at) " +
+                    "SELECT id, 'app_sr', 'full', now() + interval '30 days', now() + interval '90 days' FROM app.app_user WHERE username = 'sr0002'",
+            )
+        }
+        old.flyway().migrate()
+        old.connect().use { c ->
+            assertEquals("device_revoked", c.scalar("SELECT revoke_reason FROM app.refresh_family"))
+            c.exec("UPDATE app.refresh_family SET last_used_at = now()")               // still updatable
+            assertEquals("t", c.scalar("SELECT convalidated FROM pg_constraint WHERE conname = 'refresh_family_phone_bound'"))
+        }
+    }
+
+    @Test
     fun anUnboundPhoneFamilyIsRefused() = db.connect().use { c ->
         c.autoCommit = false
         try {
