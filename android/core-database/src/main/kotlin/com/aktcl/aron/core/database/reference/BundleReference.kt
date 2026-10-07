@@ -160,3 +160,23 @@ data class Sku(
     val status: String,
     val version: Int? = null,
 )
+
+/** `ConfigDelta` (contract): resolved values that changed for the caller since a config version. */
+@Serializable
+data class ConfigDeltaWire(
+    @SerialName("from_version") val fromVersion: Long,
+    @SerialName("to_version") val toVersion: Long,
+    val values: List<ResolvedValue> = emptyList(),
+    val scheduled: List<ResolvedValue> = emptyList(),
+    @SerialName("removed_keys") val removedKeys: List<String> = emptyList(),
+    @SerialName("calendar_changes") val calendarChanges: JsonArray = JsonArray(emptyList()),
+    @SerialName("outlet_radius_changes") val outletRadiusChanges: List<RadiusChange> = emptyList(),
+    @SerialName("policy_changed") val policyChanged: Boolean = false,
+) {
+    @Serializable
+    data class RadiusChange(
+        @SerialName("outlet_id") val outletId: Long,
+        @SerialName("radius_m") val radiusM: Int,
+        @SerialName("max_accuracy_m") val maxAccuracyM: Int,
+    )
+}

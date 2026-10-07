@@ -6,6 +6,7 @@ import com.aktcl.aron.core.network.ApiOrigin
 import androidx.work.WorkManager
 import com.aktcl.aron.core.sync.AronWorkerFactory
 import com.aktcl.aron.core.sync.BundleDownloaders
+import com.aktcl.aron.core.sync.ConnectivityFlush
 import com.aktcl.aron.core.sync.SessionSyncRunner
 import com.aktcl.aron.core.sync.SyncScheduler
 import com.aktcl.aron.core.sync.WorkManagerSyncScheduler
@@ -60,4 +61,15 @@ object SessionModule {
     @Singleton
     fun workerFactory(databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler): AronWorkerFactory =
         AronWorkerFactory({ SessionSyncRunner(databases, components) }, { scheduler })
+
+    /** Connectivity trigger (F-SYS-046): uploads for every user on the phone with rows waiting, after a 5 s quiet period. */
+    @Provides
+    @Singleton
+    fun connectivityFlush(databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler): ConnectivityFlush =
+        ConnectivityFlush(
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
+            healthy = { components.syncApi.healthy() },
+            usersWithPendingRows = { databases.knownUserIds().filter { databases.of(it).outboxDao().unsentCount() > 0 } },
+            scheduler = scheduler,
+        )
 }
