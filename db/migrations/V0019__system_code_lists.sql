@@ -7,6 +7,9 @@
 -- groups. Lists authored with AKTCL ship only the codes the specs name, or one minimal evidence-based code where the
 -- specs name none and a reason is required (stock_variance_reason, outlet_close_reason, submit_void_reason); the
 -- sponsor go-live checklist (docs/status/db.md) asks AKTCL to confirm them and to supply the missing Bangla labels.
+-- Bangla labels are set only where the docs or the evidence manuals give them; the rest are NULL until AKTCL supplies
+-- them (the apps fall back to label_en). attrs.system marks a code the server assigns (never offered in a picker);
+-- attrs.roles limits a code to the listed roles.
 -- channel and geo_class: the code pattern is lower case, so the canonical value (the CHECK, contract enum and
 -- geo_class_def value) is attrs.value; geo_class carries its config ordinal. sub_channel: the nine rows of D-258 are
 -- master rows of app.sub_channel (mixed-case code); the code-list items label them, attrs.value = app.sub_channel.code.
@@ -15,16 +18,16 @@ SET lock_timeout = '5s';
 
 INSERT INTO app.code_list_item (list_key, code, label_en, label_bn, sort, attrs) VALUES
   -- visit_outcome (closed; D-38, CHECK on app.visit.outcome_code)
-  ('visit_outcome', 'sold', 'Sold', 'বিক্রি হয়েছে', 1, '{}'),
-  ('visit_outcome', 'zero_sale_stock_ok', 'No sale, stock available', 'বিক্রি নেই, স্টক আছে', 2, '{}'),
-  ('visit_outcome', 'closed', 'Outlet closed', 'দোকান বন্ধ', 3, '{}'),
-  ('visit_outcome', 'owner_absent', 'Owner absent', 'মালিক অনুপস্থিত', 4, '{}'),
+  ('visit_outcome', 'sold', 'Sold', NULL, 1, '{}'),
+  ('visit_outcome', 'zero_sale_stock_ok', 'No sale, stock available', NULL, 2, '{}'),
+  ('visit_outcome', 'closed', 'Outlet closed', NULL, 3, '{}'),
+  ('visit_outcome', 'owner_absent', 'Owner absent', NULL, 4, '{}'),
   ('visit_outcome', 'refused', 'Refused', NULL, 5, '{}'),
   ('visit_outcome', 'competitor_exclusive', 'Competitor exclusive', NULL, 6, '{}'),
-  ('visit_outcome', 'not_reached', 'Not reached', 'পৌঁছানো যায়নি', 7, '{}'),
+  ('visit_outcome', 'not_reached', 'Not reached', NULL, 7, '{}'),
   ('visit_outcome', 'abandoned', 'Abandoned', NULL, 8, '{}'),
   -- skip_reason (contract default)
-  ('skip_reason', 'not_reached', 'Not reached', 'পৌঁছানো যায়নি', 1, '{}'),
+  ('skip_reason', 'not_reached', 'Not reached', NULL, 1, '{}'),
   -- force_reason (docs/05, docs/16 s3.6, D-95); no_outlet_location is set by the geo rule, manual_override by the AMO
   ('force_reason', 'internet_problem', 'Internet problem', 'ইন্টারনেট সমস্যা', 1, '{}'),
   ('force_reason', 'location_change', 'Location change', 'লোকেশন চেঞ্জ', 2, '{}'),
@@ -33,13 +36,13 @@ INSERT INTO app.code_list_item (list_key, code, label_en, label_bn, sort, attrs)
   -- edit_reason (D-200; two more live-app reasons pending MQ-18)
   ('edit_reason', 'wrong_sku', 'Wrong SKU selected', 'ভুল SKU নির্বাচিত।', 1, '{}'),
   -- void_reason (docs/19 cfg.memo.void_reasons, Q43 pending)
-  ('void_reason', 'retailer_cancelled', 'Retailer cancelled', 'দোকানদার বাতিল করেছেন', 1, '{}'),
+  ('void_reason', 'retailer_cancelled', 'Retailer cancelled', NULL, 1, '{}'),
   ('void_reason', 'wrong_outlet', 'Wrong outlet', NULL, 2, '{}'),
   ('void_reason', 'duplicate_entry', 'Duplicate entry', NULL, 3, '{}'),
   ('void_reason', 'other', 'Other', NULL, 4, '{}'),
   -- day_exception_reason (D-39 as docs/16 s3.6 codes it, plus docs/19's other)
   ('day_exception_reason', 'rain_flood', 'Rain or flood', NULL, 1, '{}'),
-  ('day_exception_reason', 'hartal', 'Hartal', 'হরতাল', 2, '{}'),
+  ('day_exception_reason', 'hartal', 'Hartal', NULL, 2, '{}'),
   ('day_exception_reason', 'market_closed', 'Market closed', NULL, 3, '{}'),
   ('day_exception_reason', 'dh_out_of_stock', 'Distribution house out of stock', NULL, 4, '{}'),
   ('day_exception_reason', 'breakdown', 'Breakdown', NULL, 5, '{}'),

@@ -74,6 +74,14 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
   `price_batch`, `tracking_action`, `report_export_log`, `client_error`): added only when a docs/25 row of another lane
   needs one (`python3 tools/my-rows.py db` lists no db row after Day 1).
 
+## Sponsor go-live checklist (db)
+
+- [ ] AKTCL confirms the authored code lists shipped in V0019: `void_reason` (Q43), `stock_variance_reason`,
+  `outlet_close_reason`, `submit_void_reason`, `edit_reason` (two more live-app reasons, MQ-18), `feedback_category`
+  (Q-62), and adds codes through the admin code-list page if needed.
+- [ ] AKTCL supplies Bangla labels for every code-list item whose `label_bn` is NULL
+  (`SELECT list_key, code, label_en FROM app.code_list_item WHERE label_bn IS NULL AND valid_to IS NULL`).
+
 ## Not verified here
 
 - N-005 "applies on the Azure dev database": not reachable from this container; it needs
@@ -101,6 +109,7 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 | 2026-10-05 | Tables listed in `app.partition_policy` are never the target of a foreign key; children reference parents by `client_uuid` | re-routing default-partition rows detaches the default partition |
 | 2026-10-07 | `worker_rw` gets table-level UPDATE on the worker-owned app tables (route_day, visit, media, ...); the guard triggers limit the columns | column grants would have to be kept in step with every new column; the triggers already enforce it |
 | 2026-10-07 | `worker_rw` reads every app table except credentials and one-time secrets (`mfa_secret`, `device_otp`, `refresh_token`, `enrolment_token`, `app_user.password_hash`); `push_token` stays readable | the worker sends pushes |
+| 2026-10-07 | V0019 `day_exception_reason` codes follow docs/16 (`dh_out_of_stock`, `sick`) plus docs/19's `other`; channel/geo_class codes are lower case with the canonical value in `attrs.value` | docs/16 owns the data model; the code pattern is lower case (`docs/requests/db-code-list-decisions.md`) |
 | 2026-10-07 | `jobs_rw` = `worker_rw` + `ensure_partitions`; no rights on `stg` or job bookkeeping yet | no job table exists; added with the first job that needs one |
 | 2026-10-07 | `v_geo_integrity` covers every visit kind of the user; `v_daily_sr` counts SR calls only | integrity is about a person's fixes |
 | 2026-10-07 | Domain-event catalogue enforced by a trigger, not a foreign key; `payload_version` nullable (only pre-V0017 rows) | PG16 cannot add a NOT VALID FK to a partitioned table (squawk gate); the outbox is append-only so it cannot be backfilled |

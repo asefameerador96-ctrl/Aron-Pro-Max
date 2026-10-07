@@ -182,7 +182,20 @@ class SeedTest {
         assertEquals("false", c.scalar(sql, "cfg.device.require_enrolled"))
         assertEquals("\"dev\"", c.scalar(sql, "cfg.device.lockdown_level"))
         assertEquals("false", c.scalar(sql, "cfg.device.require_integrity"))
-        assertTrue(c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'force_reason'")!!.toInt() >= 2)
+        assertTrue(c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'force_reason' AND valid_to IS NULL")!!.toInt() >= 2)
+    }
+
+    @Test
+    fun aDevDatabaseSeededBeforeV0019LosesTheInventedCodesAndLabels() = TestPostgres.createDatabase().migrated().use { other ->
+        other.connect().use { c ->
+            // What the pre-V0019 seed left behind: an invented code and a wrong label on a V0019 code.
+            c.exec("INSERT INTO app.code_list_item (list_key, code, label_en) VALUES ('force_reason', 'gps_not_found', 'GPS not found')")
+            c.exec("UPDATE app.code_list_item SET label_en = 'Wrong product', label_bn = 'ভুল পণ্য' WHERE list_key = 'edit_reason' AND code = 'wrong_sku'")
+            SeedLoader.load(c)
+            assertEquals("2026-10-07", c.scalar("SELECT valid_to::text FROM app.code_list_item WHERE list_key = 'force_reason' AND code = 'gps_not_found'"))
+            assertEquals("ভুল SKU নির্বাচিত।", c.scalar("SELECT label_bn FROM app.code_list_item WHERE list_key = 'edit_reason' AND code = 'wrong_sku'"))
+            assertEquals("4", c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'force_reason' AND valid_to IS NULL"))
+        }
     }
 
     @Test

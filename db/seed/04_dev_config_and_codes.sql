@@ -19,7 +19,19 @@ INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, con
      AND NOT EXISTS (SELECT 1 FROM app.cfg_value x WHERE x.key = v.key AND x.scope_type = 'global'
                        AND x.effective_to IS NULL AND x.value = v.value);
 
--- Business code lists are system reference data and ship in migration V0019 (every environment), not here.
+-- Business code lists are system reference data and ship in migration V0019 (every environment), not here. A dev
+-- database seeded before V0019 still holds the old seed's invented codes and labels: retire those codes and restore the
+-- evidenced labels (idempotent; codes are never deleted).
+UPDATE app.code_list_item SET valid_to = DATE '2026-10-07'
+ WHERE valid_to IS NULL AND (list_key, code) IN (
+   ('force_reason','gps_not_found'), ('skip_reason','outlet_closed'), ('edit_reason','wrong_quantity'),
+   ('void_reason','duplicate_memo'), ('stock_variance_reason','counting_error'), ('stock_variance_reason','damaged_in_transit'),
+   ('qc_fault_type','loose_tobacco'), ('qc_fault_type','torn_pack'), ('day_exception_reason','rain'),
+   ('outlet_close_reason','shop_closed_permanently'), ('submit_void_reason','late_sale_entry'));
+UPDATE app.code_list_item i SET label_en = v.en, label_bn = v.bn
+  FROM (VALUES ('edit_reason', 'wrong_sku', 'Wrong SKU selected', 'ভুল SKU নির্বাচিত।'),
+               ('force_reason', 'location_change', 'Location change', 'লোকেশন চেঞ্জ')) AS v(list_key, code, en, bn)
+ WHERE i.list_key = v.list_key AND i.code = v.code AND (i.label_en, i.label_bn) IS DISTINCT FROM (v.en, v.bn);
 
 
 -- A national holiday for the calendar tests (Victory Day); the test Sunday and Friday stay free.

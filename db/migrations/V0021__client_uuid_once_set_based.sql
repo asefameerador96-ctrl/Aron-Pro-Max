@@ -7,6 +7,9 @@
 -- Error code and message are unchanged (23505, "<table>_client_uuid_once"). As before, two concurrent transactions
 -- with the same uuid under different dates are separated by app.ingest_registry's primary key, which the ingest path
 -- writes first in the same transaction.
+-- Rows reach these tables through the parent only: a statement trigger is not cloned onto partitions (the old row
+-- trigger was), and no runtime role holds any grant on a partition (V0014, DbRolesTest), so only the owning migrator
+-- could insert into a partition directly; partition maintenance (ensure_partitions) re-routes rows through the parent.
 
 SET lock_timeout = '5s';
 

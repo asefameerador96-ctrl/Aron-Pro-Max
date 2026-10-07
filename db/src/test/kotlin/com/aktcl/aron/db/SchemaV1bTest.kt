@@ -222,6 +222,19 @@ class SchemaV1bTest {
     }
 
     @Test
+    fun noRuntimeRoleCanWriteIntoAPartitionDirectly() = db.connect().use { c ->
+        // V0021's statement trigger guards inserts through the parent; partitions carry no grants at all.
+        assertEquals(
+            emptyList(),
+            c.column(
+                "SELECT r || ' ' || k.relname FROM pg_class k, unnest(ARRAY['api_rw','worker_rw','jobs_rw','auth_rw']) r " +
+                    "WHERE k.relispartition AND k.relnamespace = 'app'::regnamespace AND k.relname ~ '^(visit|memo|memo_line)_' " +
+                    "AND has_table_privilege(r, k.oid, 'INSERT')",
+            ),
+        )
+    }
+
+    @Test
     fun oneStatementCarryingTheSameUuidUnderTwoDatesIsRefused() = tx { c ->
         val id = UUID.randomUUID()
         val first = insertSql(c, "visit", id)

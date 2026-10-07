@@ -168,7 +168,7 @@ BEGIN
       JOIN pg_auth_members m ON m.member = u.oid
       JOIN pg_roles g ON g.oid = m.roleid
       JOIN app.db_role_limit lim ON lim.role = g.rolname
-     WHERE u.rolcanlogin
+     WHERE u.rolcanlogin AND (m.inherit_option OR m.set_option)   -- an ADMIN-only grant is not a membership in use
      GROUP BY u.rolname
   LOOP
     IF l.roles > 1 THEN
