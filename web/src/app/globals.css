@@ -63,7 +63,7 @@
     :root { --surface: var(--surface-glass); --glass-blur: blur(16px) saturate(1.4); }
   }
 }
-@media (prefers-reduced-transparency: reduce) { :root { --surface: var(--surface-solid); --glass-blur: none; } }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { :root { --surface: var(--surface-solid); --glass-blur: none; } }
 /* Tier B (glass-lite, docs/design/web-glass.md s3): the glass fills stay, the blur goes; tier C ("off") is solid. The tier is stamped on <html data-glass>. */
 :root[data-glass="lite"] { --surface: var(--surface-glass); --glass-blur: none; }
 :root[data-glass="off"] { --surface: var(--surface-solid); --glass-blur: none; }
