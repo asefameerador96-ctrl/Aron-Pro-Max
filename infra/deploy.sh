@@ -435,7 +435,7 @@ job_logs() { # execution
   # No console output usually means the container never ran (image pull, identity, start command): the platform's
   # system log for the execution says why (deploy run 37624445094: dblogins Failed with an empty console log).
   q="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppSystemLogs
-     | where * has '$1'
+     | where * contains '$1'
      | extend line = strcat(coalesce(column_ifexists('Reason_s', ''), column_ifexists('Reason', '')), ': ',
                             coalesce(column_ifexists('Log_s', ''), column_ifexists('Log', '')))
      | order by TimeGenerated asc | project TimeGenerated, line | take 50"
@@ -479,6 +479,7 @@ fi
 # Per-app least-privilege logins (infra/sql/runtime-logins.sql) must exist with the Key Vault passwords before the
 # apps switch to them. Needs the V0014/V0020 roles, so after the migrations. Runs in a rollback too (idempotent, no
 # schema change), because the apps template of the current commit may point the apps at these logins.
+dblogins_result="not run (no psql image)"
 DBLOGINS_JOB="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbLoginsJobName.value -o tsv)"
 if [ -n "$DBLOGINS_JOB" ]; then
   execution="$(az containerapp job start -g "$RG" -n "$DBLOGINS_JOB" --query name -o tsv)"
@@ -491,9 +492,30 @@ if [ -n "$DBLOGINS_JOB" ]; then
   done
   if [ "$status" != Succeeded ]; then
     job_logs "$execution"
-    die "database logins $execution ended ${status:-unknown}; the apps were NOT updated"
+    # Straight from the platform (Log Analytics had nothing for runs 37624445094, 37630304505, 37632012265): the
+    # execution record (status, start and end, replica states; env values are secret references, never values) and
+    # the container's own log stream.
+    echo "---- execution record of $execution"
+    az containerapp job execution show -g "$RG" -n "$DBLOGINS_JOB" --job-execution-name "$execution" \
+      --query "{status: properties.status, start: properties.startTime, end: properties.endTime, template: properties.template.containers[0].{image: image, command: command}}" \
+      -o jsonc 2>&1 || true
+    echo "---- container log of $execution"
+    az containerapp job logs show -g "$RG" -n "$DBLOGINS_JOB" --execution "$execution" --container dblogins --tail 100 \
+      --format text 2>&1 | tail -n 100 || true
+    echo "----"
+    per_app="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbPerAppLogins.value -o tsv 2>/dev/null || echo unknown)"
+    # tsv prints a JSON boolean as True or true depending on the CLI version; anything but false counts as on.
+    if [ "${per_app,,}" != false ]; then
+      die "database logins $execution ended ${status:-unknown}; the apps use these logins, so they were NOT updated"
+    fi
+    # dbPerAppLogins is off: the apps still connect as the admin login and never use these logins, so a failure here
+    # must not hold back the apps. It stays visible (warning, summary row) until the job passes.
+    echo "::warning::database logins $execution ended ${status:-unknown}; per-app logins are OFF, so the apps deploy anyway"
+    dblogins_result="FAILED (${status:-unknown}; per-app logins off, apps not affected)"
+  else
+    note "database logins succeeded"
+    dblogins_result="succeeded"
   fi
-  note "database logins succeeded"
 fi
 
 # ------------------------------------------------------------------------------------------------------ apps
@@ -563,5 +585,6 @@ summary "| API | https://${API_HOST}/v1/health |"
 summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"
+summary "| Database logins | ${dblogins_result} |"
 summary "| Migrations | ${RUN_MIGRATIONS} |"
 summary "| Budget | ${budget_line} |"
