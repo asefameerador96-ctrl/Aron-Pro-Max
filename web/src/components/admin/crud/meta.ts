@@ -25,10 +25,14 @@ export interface RefMeta {
 interface FieldBase {
   labelKey: MessageKey;
   /** `ref` stores an integer id and shows a select (see `ref`). `bool` is a yes/no select. */
-  kind: "text" | "int" | "enum" | "timestamp" | "ref" | "bool";
+  kind: "text" | "int" | "enum" | "timestamp" | "ref" | "bool" | "date" | "mask";
+  /** `mask`: one label per bit, bit 0 first; the value is the sum of the ticked bits. */
+  maskBits?: readonly MessageKey[];
   ref?: RefMeta;
   /** Regular expression of a valid value (the contract's `pattern`). */
   pattern?: string;
+  /** Bengali digits typed by the user are converted to ASCII before validation (phone numbers, codes). */
+  normalizeDigits?: boolean;
   /** Required when creating. */
   required?: boolean;
   /** Empty input is sent as null. */
@@ -44,17 +48,43 @@ interface FieldBase {
 export type FieldMeta<Row, Write, Patch> =
   | (FieldBase & { mode?: "rw"; name: Name<Row> & Name<Write> & Name<Patch> })
   | (FieldBase & { mode: "create-only"; name: Name<Row> & Name<Write> })
-  | (FieldBase & { mode: "update-only"; name: Name<Row> & Name<Patch> })
+  | (FieldBase & { mode: "update-only"; name: Name<Patch> })
   | (FieldBase & { mode: "readonly"; name: Name<Row> });
 
 export interface FilterMeta {
   /** Query parameter of the list operation (must exist in the contract; typed by the entity's list path). */
   param: string;
-  kind: "int" | "enum" | "search" | "ref";
+  kind: "int" | "enum" | "search" | "ref" | "date";
   ref?: RefMeta;
   labelKey: MessageKey;
   options?: readonly string[];
   optionKeys?: Record<string, MessageKey>;
+}
+
+/** An extra operation on one row (end an assignment, approve a request...): a POST with its own small form and reason. */
+export interface ActionMeta {
+  key: string;
+  labelKey: MessageKey;
+  /** Path with `{id}` (and the entity's params). */
+  path: ApiPath;
+  method?: "POST" | "PUT";
+  /** Inputs of the action body (names typed against the action's request schema by defineAction). */
+  fields: readonly (FieldBase & { name: string })[];
+  /** Body member carrying the mandatory reason, or null when the action body has none. */
+  reasonMember: string | null;
+  reasonMax?: number;
+  /** Members merged into the body as constants (e.g. { action: "unlock" } on a shared endpoint). */
+  fixed?: Record<string, string>;
+  /** Response members shown ONCE after success (a temporary password); the page stays open until the user closes it. */
+  resultFields?: readonly string[];
+  writeRoles?: RoleList;
+  /** Show the action only for rows where this is true (server-evaluated). */
+  when?: (row: Record<string, unknown>) => boolean;
+}
+
+/** Type-checks an action's field names against its request schema `Body`. */
+export function defineAction<Body>(a: Omit<ActionMeta, "fields" | "reasonMember"> & { fields: readonly (FieldBase & { name: Name<Body> })[]; reasonMember: Name<Body> | null }): ActionMeta {
+  return a as unknown as ActionMeta;
 }
 
 export interface EntityMeta<Row, Write, Patch> {
@@ -68,8 +98,8 @@ export interface EntityMeta<Row, Write, Patch> {
   params?: Record<string, string>;
   api: {
     collection: ApiPath;
-    /** Item path with an `{id}` placeholder (PATCH). */
-    item: ApiPath;
+    /** Item path with an `{id}` placeholder (PATCH). Omit for tables with no edit (assignments, holidays). */
+    item?: ApiPath;
     /** GET one row, when the contract has it; otherwise the row is read through the list operation. */
     get?: ApiPath;
   };
@@ -80,11 +110,19 @@ export interface EntityMeta<Row, Write, Patch> {
   filters: readonly FilterMeta[];
   readRoles: RoleList;
   writeRoles: RoleList;
+  /** false = no create page (rows come from elsewhere). Default true. */
+  canCreate?: boolean;
+  /** Extra row operations. */
+  actions?: readonly ActionMeta[];
+  /** Create returns a wrapper (e.g. { user, temporary_password }): the row is under this member and these members are shown once. */
+  createResult?: { rowKey: string; show: readonly string[] };
+  /** Maximum reason length where the contract is stricter than ChangeReason's 500 (e.g. 300). */
+  reasonMax?: number;
   /**
    * Body member that carries the mandatory reason on UPDATE (the contract's `change_reason`).
    * The portal always demands a reason; this says where the contract takes it.
    */
-  reasonOnUpdate: Name<Patch>;
+  reasonOnUpdate: Name<Patch> | null;
   /**
    * Body member that carries the reason on CREATE, or null while the contract has none.
    * The reason is still required in the UI and by the BFF; with null it cannot be stored yet (a docs/requests/ item).
@@ -100,6 +138,10 @@ export function defineEntity<Row, Write, Patch>(meta: EntityMeta<Row, Write, Pat
 /** The erased form the generic engine works with (rows are plain records at runtime). */
 export type AnyEntity = EntityMeta<Record<string, unknown>, Record<string, unknown>, Record<string, unknown>>;
 export type AnyField = AnyEntity["fields"][number];
+
+export function entityCanEdit(meta: AnyEntity): boolean {
+  return Boolean(meta.api.item) && meta.fields.some((f) => isWritable(f, "update")) && meta.reasonOnUpdate !== null;
+}
 
 export function isWritable(f: AnyField, mode: "create" | "update"): boolean {
   const m = f.mode ?? "rw";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { clusters } from "@/app/admin/_entities/clusters";
 import { ENTITIES, entityBySlug } from "@/app/admin/_entities/registry";
-import { isWritable } from "@/components/admin/crud/meta";
+import { entityCanEdit, isWritable } from "@/components/admin/crud/meta";
 import { reasonSchema, valuesSchema } from "@/components/admin/crud/validation";
 import { en } from "@/lib/i18n/messages-en";
 
@@ -41,12 +41,18 @@ describe("entity metadata → validation", () => {
     for (const e of ENTITIES) {
       expect(en[e.labelKey], e.slug).toBeTruthy();
       expect(en[e.singularKey], e.slug).toBeTruthy();
-      expect(e.reasonOnUpdate).toBeTruthy();
+      if (entityCanEdit(e)) expect(e.reasonOnUpdate, e.slug).toBeTruthy();
+      for (const a of e.actions ?? []) {
+        expect(en[a.labelKey], `${e.slug}.${a.key}`).toBeTruthy();
+        expect(e.api.get || a.path.includes("{id}")).toBeTruthy();
+        for (const f of a.fields) expect(en[f.labelKey]).toBeTruthy();
+      }
+      expect(e.group).toBeTruthy();
       for (const f of e.fields) {
         expect(en[f.labelKey], `${e.slug}.${f.name}`).toBeTruthy();
         for (const k of Object.values(f.optionKeys ?? {})) expect(en[k]).toBeTruthy();
       }
-      expect(e.fields.some((f) => isWritable(f, "update"))).toBe(true);
+      expect(e.fields.some((f) => isWritable(f, "update")) || e.api.item === undefined, e.slug).toBe(true);
       expect(e.writeRoles.every((r) => e.readRoles.includes(r))).toBe(true);
     }
     expect(entityBySlug("clusters")).toBe(clusters);

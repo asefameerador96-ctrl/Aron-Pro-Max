@@ -2,8 +2,10 @@
 import type { AnyEntity } from "@/components/admin/crud/meta";
 import { clusters } from "./clusters";
 import { geoEntities } from "./geo";
+import { routeAssignments, routes } from "./routes";
+import { users } from "./users";
 
-export const ENTITIES: readonly AnyEntity[] = [...geoEntities, clusters];
+export const ENTITIES: readonly AnyEntity[] = [...geoEntities, clusters, routes, routeAssignments, users];
 
 export function entityBySlug(slug: string): AnyEntity | undefined {
   return ENTITIES.find((e) => e.slug === slug);

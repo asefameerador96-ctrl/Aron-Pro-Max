@@ -14,6 +14,14 @@ function fieldSchema(f: AnyField): z.ZodType {
     const b = z.preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean());
     return f.nullable ? z.preprocess((v) => (v === "" ? null : v), b.nullable()) : b;
   }
+  if (f.kind === "date") {
+    const d = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "invalid");
+    return f.nullable ? z.preprocess((v) => (v === "" ? null : v), d.nullable()) : d;
+  }
+  if (f.kind === "mask") {
+    const bits = f.maskBits?.length ?? 7;
+    return z.coerce.number().int().min(1).max(2 ** bits - 1);
+  }
   if (f.kind === "int" || f.kind === "ref") {
     const base = z.coerce.number().int().min(f.min ?? 0);
     return f.nullable ? z.preprocess((v) => (v === "" || v === null ? null : v), base.nullable()) : base;
@@ -22,7 +30,9 @@ function fieldSchema(f: AnyField): z.ZodType {
     const e = z.enum((f.options ?? []) as [string, ...string[]]);
     return f.nullable ? z.preprocess((v) => (v === "" ? null : v), e.nullable()) : e;
   }
-  let s: z.ZodType<string> = z.string().trim();
+  const BN = "০১২৩৪৫৬৭৮৯";
+  const ascii = (v: unknown) => (f.normalizeDigits && typeof v === "string" ? v.replace(/[০-৯]/g, (d) => String(BN.indexOf(d))) : v);
+  let s: z.ZodType<string> = z.preprocess(ascii, z.string().trim()) as unknown as z.ZodType<string>;
   const max = f.maxLength;
   if (max) s = s.refine((v) => codePoints(v) <= max, { message: "too_big" });
   if (f.required && !f.nullable) s = s.refine((v) => v.length >= 1, { message: "too_small" });
@@ -43,11 +53,21 @@ export function valuesSchema(meta: AnyEntity, mode: "create" | "update") {
   return z.object(shape).strict();
 }
 
-export const reasonSchema = z
-  .string()
-  .trim()
-  .refine((v) => codePoints(v) >= REASON_MIN, { message: "too_short" })
-  .refine((v) => codePoints(v) <= REASON_MAX, { message: "too_long" });
+/** Body schema of a row action (all fields required unless `required` is false... every action input is required by default). */
+export function actionSchema(fields: readonly AnyField[]) {
+  const shape: Record<string, z.ZodType> = {};
+  for (const f of fields) shape[f.name] = f.required === false ? fieldSchema(f).optional() : fieldSchema(f);
+  return z.object(shape).strict();
+}
+
+export function reasonSchemaFor(max = REASON_MAX) {
+  return z
+    .string()
+    .trim()
+    .refine((v) => codePoints(v) >= REASON_MIN, { message: "too_short" })
+    .refine((v) => codePoints(v) <= max, { message: "too_long" });
+}
+export const reasonSchema = reasonSchemaFor();
 
 export function toFieldErrors(err: z.ZodError, prefix: string): FieldError[] {
   return err.issues.map((i) => ({

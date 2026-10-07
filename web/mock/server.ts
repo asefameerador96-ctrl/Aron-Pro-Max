@@ -231,7 +231,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
 
   if (path.startsWith("/v1/admin/")) {
     const write = method !== "GET";
-    if (!(write ? ADMIN_WRITE : ADMIN_READ).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    if (!(write ? (path.endsWith("/credentials") ? [...ADMIN_WRITE, "SUPPORT" as Role] : ADMIN_WRITE) : ADMIN_READ).includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
   }
 
   if (path.startsWith("/v1/admin/")) {
@@ -241,7 +241,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
       readJson,
       audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason),
     };
-    if (await handleTable(tableDefs(state), ctx, method, url, req, res, ADMIN_WRITE.includes(user.summary.role))) return;
+    if (await handleTable(tableDefs(state), ctx, method, url, req, res, ADMIN_WRITE.includes(user.summary.role), user.summary.role)) return;
   }
 
   if (path === "/v1/admin/audit" && method === "GET") {

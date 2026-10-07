@@ -21,7 +21,7 @@ export interface TableDef {
   /** Members stamped on a created row from the path (e.g. level). */
   stamp?: (pathParams: string[]) => Record<string, unknown>;
   rows: () => Row[];
-  create: { allowed: string[]; required: string[]; reason: boolean };
+  create: { allowed: string[]; required: string[]; reason: boolean; /** Body member carrying the reason when it is not change_reason. */ reasonMember?: string };
   patch: { allowed: string[] };
   unique?: string[][];
   maxLength?: Record<string, number>;
@@ -32,6 +32,12 @@ export interface TableDef {
   /** Nullable members set to null when absent on create. */
   nullables?: string[];
   nextId: () => number;
+  /** Extra checks on create (overlaps...): return a problem to refuse. */
+  validateCreate?: (b: Record<string, unknown>, rows: Row[]) => { status: number; code: ProblemCode } | null;
+  /** Wrap the created row in the response (e.g. { user, temporary_password }). */
+  createResponse?: (row: Row) => unknown;
+  /** Row actions: POST <item path>/<suffix>. */
+  actions?: { roles?: string[]; path: RegExp; allowed: string[]; run: (row: Row, body: Record<string, unknown>) => { status: number; body: unknown; code?: ProblemCode; mutate?: Record<string, unknown> } }[];
 }
 
 function fieldErrors(def: TableDef, b: Record<string, unknown>, allowed: string[], required: string[]): NonNullable<Problem["errors"]> {
@@ -41,6 +47,8 @@ function fieldErrors(def: TableDef, b: Record<string, unknown>, allowed: string[
   for (const [k, max] of Object.entries(def.maxLength ?? {})) if (typeof b[k] === "string" && (b[k] as string).length > max) errors.push({ pointer: `/${k}`, code: "too_long" });
   for (const [k, re] of Object.entries(def.patterns ?? {})) if (typeof b[k] === "string" && !re.test(b[k] as string)) errors.push({ pointer: `/${k}`, code: "pattern" });
   const r = b.change_reason;
+  const rmax = def.maxLength?.change_reason ?? 500;
+  if (typeof r === "string" && Array.from(r).length > rmax) errors.push({ pointer: "/change_reason", code: "too_long" });
   if (r !== undefined && r !== null && (typeof r !== "string" || Array.from(r).length < 10 || Array.from(r).length > 500)) errors.push({ pointer: "/change_reason", code: "too_short" });
   return errors;
 }
@@ -48,8 +56,26 @@ function fieldErrors(def: TableDef, b: Record<string, unknown>, allowed: string[
 const scalar = (row: Row, keys: string[]): Record<string, string | number | boolean | null> => Object.fromEntries(keys.map((k) => [k, (row[k] ?? null) as string | number | boolean | null]));
 
 /** Returns true when the request was handled. */
-export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, url: URL, req: IncomingMessage, res: ServerResponse, write: boolean): Promise<boolean> {
+export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, url: URL, req: IncomingMessage, res: ServerResponse, write: boolean, role = ""): Promise<boolean> {
   for (const def of defs) {
+    for (const a of def.actions ?? []) {
+      const m = a.path.exec(url.pathname);
+      if (!m || method !== "POST") continue;
+      if (!(a.roles ? a.roles.includes(role) : write)) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
+      const row = def.rows().find((r) => r.id === Number(m[m.length - 1]));
+      if (!row) return ctx.send(res, 404, ctx.problem(404, "ERR_NOT_FOUND")), true;
+      const b = (await ctx.readJson(req)) as Record<string, unknown> | undefined;
+      if (!b || typeof b !== "object") return ctx.send(res, 400, ctx.problem(400, "ERR_MALFORMED_JSON")), true;
+      const errors = fieldErrors(def, { ...b, change_reason: b.reason }, [...a.allowed, "change_reason"], a.allowed);
+      if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors })), true;
+      const out = a.run(row, b);
+      if (out.code) return ctx.send(res, out.status, ctx.problem(out.status, out.code)), true;
+      const before = scalar(row, Object.keys(out.mutate ?? {}));
+      Object.assign(row, out.mutate ?? {});
+      row.version++;
+      ctx.audit(def.auditEntity, row.id, `${def.auditEntity}.${String(b.action ?? "action")}`, before, scalar(row, Object.keys(out.mutate ?? {})), (b.reason as string) ?? null);
+      return ctx.send(res, out.status, out.body), true;
+    }
     const c = def.collection.exec(url.pathname);
     const it = def.item?.exec(url.pathname);
     if (!c && !it) continue;
@@ -81,14 +107,16 @@ export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, ur
       const errors = fieldErrors(def, b, allowed, def.create.required);
       if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors })), true;
       const existing = def.rows().filter(inScope);
+      const bad = def.validateCreate?.(b, existing);
+      if (bad) return ctx.send(res, bad.status, ctx.problem(bad.status, bad.code)), true;
       for (const keys of def.unique ?? []) {
         if (existing.some((r) => keys.every((k) => r[k] === b[k]))) return ctx.send(res, 409, ctx.problem(409, "ERR_MASTER_DUPLICATE_CODE")), true;
       }
       const now = new Date().toISOString();
       const row: Row = { ...(def.defaults ?? {}), ...Object.fromEntries((def.nullables ?? []).map((k) => [k, null])), ...def.stamp?.(pathParams), ...Object.fromEntries(Object.entries(b).filter(([k]) => k !== "change_reason")), id: def.nextId(), version: 1, created_at: now, updated_at: now };
       def.rows().push(row);
-      ctx.audit(def.auditEntity, row.id, `${def.auditEntity}.create`, {}, scalar(row, Object.keys(b).filter((k) => k !== "change_reason")), def.create.reason ? ((b.change_reason as string | null | undefined) ?? null) : null);
-      return ctx.send(res, 201, row, { ETag: `"1"` }), true;
+      ctx.audit(def.auditEntity, row.id, `${def.auditEntity}.create`, {}, scalar(row, Object.keys(b).filter((k) => k !== "change_reason")), def.create.reason ? ((b.change_reason as string | null | undefined) ?? null) : def.create.reasonMember ? ((b[def.create.reasonMember] as string | null | undefined) ?? null) : null);
+      return ctx.send(res, 201, def.createResponse ? def.createResponse(row) : row, { ETag: `"1"` }), true;
     }
     if (it && method === "PATCH") {
       const row = def.rows().find((r) => r.id === Number(it[it.length - 1]) && inScope(r));

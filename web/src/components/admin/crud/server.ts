@@ -5,9 +5,9 @@ import type { AuditPage, Problem } from "@/contract/types";
 import { apiClient, outcome, type ApiOutcome } from "@/lib/api/client";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { rawRequest } from "@/lib/api/raw";
-import { isWritable, canWrite, resolvePath, type AnyEntity, type RefMeta } from "./meta";
+import { entityCanEdit, isWritable, canWrite, resolvePath, type AnyEntity, type RefMeta } from "./meta";
 import type { WriteRequest } from "./types";
-import { reasonSchema, toFieldErrors, valuesSchema } from "./validation";
+import { actionSchema, reasonSchemaFor, toFieldErrors, valuesSchema } from "./validation";
 
 export const PAGE_SIZE = 25;
 
@@ -17,7 +17,7 @@ export interface RowPage {
 }
 
 export function fillItemPath(meta: AnyEntity, id: string, kind: "item" | "get" = "item"): string {
-  const template = (kind === "get" ? meta.api.get : meta.api.item) ?? meta.api.item;
+  const template = (kind === "get" ? meta.api.get : meta.api.item) ?? meta.api.item ?? "";
   return resolvePath(String(template), { ...meta.params, id });
 }
 
@@ -93,10 +93,11 @@ export async function handleCreate(req: NextRequest, meta: AnyEntity): Promise<N
   const auth = await authenticate(req, req.nextUrl.pathname);
   if (auth instanceof NextResponse) return auth;
   if (!canWrite(meta, auth.session.user.role)) return problemResponse(403, "ERR_FORBIDDEN");
+  if (meta.canCreate === false) return problemResponse(404, "ERR_NOT_FOUND");
   const body = await readWrite(req);
   if (!body) return problemResponse(400, "ERR_MALFORMED_JSON");
 
-  const reason = reasonSchema.safeParse(body.reason);
+  const reason = reasonSchemaFor(meta.reasonMax).safeParse(body.reason);
   const values = valuesSchema(meta, "create").safeParse(body.values);
   const errors = [...(reason.success ? [] : toFieldErrors(reason.error, "/reason")), ...(values.success ? [] : toFieldErrors(values.error, "/values"))];
   if (errors.length || !values.success || !reason.success) return validationProblem(errors);
@@ -108,7 +109,10 @@ export async function handleCreate(req: NextRequest, meta: AnyEntity): Promise<N
 
   const r = await rawRequest<Record<string, unknown>>({ method: "POST", path: collectionPath(meta), token: auth.session.at, body: payload });
   if (!r.ok) return auth.finish(passThrough(r));
-  return auth.finish(NextResponse.json({ row: r.data }, { status: 201 }));
+  const cr = meta.createResult;
+  const row = cr ? (r.data[cr.rowKey] as Record<string, unknown>) : r.data;
+  const shown = cr ? Object.fromEntries(cr.show.map((k) => [k, r.data[k] ?? null])) : undefined;
+  return auth.finish(NextResponse.json({ row, shown }, { status: 201 }));
 }
 
 /** PATCH /api/bff/admin/<entity>/<id>: update with If-Match. */
@@ -116,6 +120,7 @@ export async function handleUpdate(req: NextRequest, meta: AnyEntity, id: string
   const auth = await authenticate(req, req.nextUrl.pathname);
   if (auth instanceof NextResponse) return auth;
   if (!canWrite(meta, auth.session.user.role)) return problemResponse(403, "ERR_FORBIDDEN");
+  if (!entityCanEdit(meta)) return problemResponse(404, "ERR_NOT_FOUND");
   if (!/^[0-9]{1,15}$/.test(id)) return problemResponse(404, "ERR_NOT_FOUND");
   const body = await readWrite(req);
   if (!body) return problemResponse(400, "ERR_MALFORMED_JSON");
@@ -124,7 +129,7 @@ export async function handleUpdate(req: NextRequest, meta: AnyEntity, id: string
     return validationProblem([{ pointer: "/version", code: body.version === undefined ? "required" : "invalid" }]);
   }
 
-  const reason = reasonSchema.safeParse(body.reason);
+  const reason = reasonSchemaFor(meta.reasonMax).safeParse(body.reason);
   const values = valuesSchema(meta, "update").safeParse(body.values);
   const errors = [...(reason.success ? [] : toFieldErrors(reason.error, "/reason")), ...(values.success ? [] : toFieldErrors(values.error, "/values"))];
   if (errors.length || !values.success || !reason.success) return validationProblem(errors);
@@ -133,9 +138,33 @@ export async function handleUpdate(req: NextRequest, meta: AnyEntity, id: string
   const writable = new Set(meta.fields.filter((f) => isWritable(f, "update")).map((f) => f.name));
   const payload: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(values.data)) if (writable.has(k)) payload[k] = v;
-  payload[meta.reasonOnUpdate] = reason.data;
+  if (meta.reasonOnUpdate) payload[meta.reasonOnUpdate] = reason.data;
 
   const r = await rawRequest<Record<string, unknown>>({ method: "PATCH", path: fillItemPath(meta, id), token: auth.session.at, body: payload, ifMatch: `"${body.version}"` });
   if (!r.ok) return auth.finish(passThrough(r));
   return auth.finish(NextResponse.json({ row: r.data }));
+}
+
+/** POST /api/bff/admin/<entity>/<id>/<action>: a row action with its own small body and the mandatory reason. */
+export async function handleAction(req: NextRequest, meta: AnyEntity, id: string, actionKey: string): Promise<NextResponse> {
+  const auth = await authenticate(req, req.nextUrl.pathname);
+  if (auth instanceof NextResponse) return auth;
+  const action = meta.actions?.find((a) => a.key === actionKey);
+  if (!action) return problemResponse(404, "ERR_NOT_FOUND");
+  if (!(action.writeRoles ?? meta.writeRoles).includes(auth.session.user.role)) return problemResponse(403, "ERR_FORBIDDEN");
+  if (!/^[0-9]{1,15}$/.test(id)) return problemResponse(404, "ERR_NOT_FOUND");
+  const body = await readWrite(req);
+  if (!body) return problemResponse(400, "ERR_MALFORMED_JSON");
+
+  const reason = reasonSchemaFor(action.reasonMax ?? meta.reasonMax).safeParse(body.reason);
+  const values = actionSchema(action.fields as never).safeParse(body.values);
+  const errors = [...(reason.success ? [] : toFieldErrors(reason.error, "/reason")), ...(values.success ? [] : toFieldErrors(values.error, "/values"))];
+  if (errors.length || !values.success || !reason.success) return validationProblem(errors);
+
+  const payload: Record<string, unknown> = { ...action.fixed, ...values.data };
+  if (action.reasonMember) payload[action.reasonMember] = reason.data;
+  const r = await rawRequest<Record<string, unknown>>({ method: action.method ?? "POST", path: resolvePath(String(action.path), { ...meta.params, id }), token: auth.session.at, body: payload });
+  if (!r.ok) return auth.finish(passThrough(r));
+  const shown = action.resultFields ? Object.fromEntries(action.resultFields.map((k) => [k, (r.data ?? {})[k] ?? null])) : undefined;
+  return auth.finish(NextResponse.json({ row: r.data ?? null, shown }, { status: r.status === 204 ? 200 : r.status }));
 }

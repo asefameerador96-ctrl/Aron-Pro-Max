@@ -24,9 +24,10 @@ export function proxy(req: NextRequest) {
   const isApi = pathname.startsWith("/api/");
 
   // Write pages of an entity (create, edit) need its write roles: a read-only portal role gets a real 403 there too.
-  const writePage = /^\/admin\/([^/]+)\/(new|[0-9]+)\/?$/.exec(pathname);
+  const writePage = /^\/admin\/([^/]+)\/(new|[0-9]+)(?:\/([^/]+))?\/?$/.exec(pathname);
   const entity = writePage?.[1] ? entityBySlug(writePage[1]) : undefined;
-  if (access === "ok" && session && entity && !entity.writeRoles.includes(session.user.role)) {
+  const actionRoles = writePage?.[3] ? entity?.actions?.find((a) => a.key === writePage[3])?.writeRoles : undefined;
+  if (access === "ok" && session && entity && !(actionRoles ?? entity.writeRoles).includes(session.user.role)) {
     const l = req.cookies.get(LOCALE_COOKIE)?.value;
     return forbiddenPage(isLocale(l) ? l : DEFAULT_LOCALE);
   }
