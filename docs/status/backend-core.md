@@ -80,10 +80,11 @@ Updated 2026-10-07 (session 5 of the lane). Earlier history: `docs/status/backen
 
 ## Next rows (session 6 starts here; last pushed head on lane/backend-core is in docs/status/backend.csv notes or `git log origin/lane/backend-core`)
 1. backend-core has no scope gaps left (task cancel and bundle cases added); the quarantine routes are backend-reports' (`OpsApi`). Tell the lead the gap lists per lane: 47 backend-admin, 19 backend-reports (scope-cases.txt).
-2. `my-rows.py backend-core --todo` in (day, id) order; the CSV-based filter does not know rows done before the CSV (F-SYS-003, F-API-003/004 are done).
-3. BC-52 open items: separate refresh/OTP derivation keys before any JWT rotation; HMAC for `username_hash` (needs an infra secret); device gate for phones without `did` (require_enrolled); change-password failure events.
-4. Older open items: AUD-REL-02 in-request retry of idempotent transactions; SEC-02 remainder (never lock a bound phone with a valid proof; BFF client IP); submit void must reset `submit_received_at`/`settle_deadline_at` (F-SYS-016); `device_status` integrity columns; geo re-check per-batch config cache and history basis; parked rows TTL worker; quarantine review endpoints exist now (check owner).
-5. Watch: `cfg.sync.reconcile_types` reshape (R17), `backend-bundle-snapshot-table`, `backend-jcs-canonicaliser`, `backend-core-security-event-table`.
+2. When db V0044/V0045 reach INT (lead, 12:55Z; `db-location-history-basis-answer.md`): `GeoRecheck.kt` reads the basis from the history row alone (none/placeholder rows have null lat/lng) and drops the fallback to the outlet's current basis, with its test. V0042 (zone/cluster stamps by trigger) needs no ingest change.
+3. `my-rows.py backend-core --todo` in (day, id) order; the CSV-based filter does not know rows done before the CSV (F-SYS-003, F-API-003/004 are done).
+4. BC-52 open items: separate refresh/OTP derivation keys before any JWT rotation; HMAC for `username_hash` (needs an infra secret); device gate for phones without `did` (require_enrolled); change-password failure events.
+5. Older open items: AUD-REL-02 in-request retry of idempotent transactions; SEC-02 remainder (never lock a bound phone with a valid proof; BFF client IP); submit void must reset `submit_received_at`/`settle_deadline_at` (F-SYS-016); `device_status` integrity columns; geo re-check per-batch config cache and history basis; parked rows TTL worker; quarantine review endpoints exist now (check owner).
+6. Watch: `cfg.sync.reconcile_types` reshape (R17), `backend-bundle-snapshot-table`, `backend-jcs-canonicaliser`, `backend-core-security-event-table`.
 
 ## Traps found
 - **Request timeout 25 s (AUD-PERF-02):** a test that holds a request longer (a latch, a lock) gets a 503; keep holds under ~20 s. Production wiring isolates every non-probe call on the bounded dispatcher.
