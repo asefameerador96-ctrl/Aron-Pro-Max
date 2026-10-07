@@ -25,7 +25,7 @@ export default async function ReleasesPage() {
   const values: Record<string, ResolvedConfigValue> = {};
   if (ver.ok && ver.data) {
     const d = await versionDetail(session.at, ver.data.version);
-    if (d.ok) for (const v of d.data.values) values[v.key] = v;
+    if (d.ok) Object.assign(values, globalValues(d.data));
   }
   const apkDefault = keys.ok ? keys.data.items.find((k) => k.key === "cfg.release.apk_max_mb")?.default_value : undefined;
   const apkMax = Number(values["cfg.release.apk_max_mb"]?.value ?? apkDefault ?? 30);

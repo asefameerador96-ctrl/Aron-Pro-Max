@@ -12,10 +12,16 @@ Package `com.aktcl.aron.feature.outlet`:
 - Stock (F-SR-014): `StockLoad` in `feature-stock`; the day's loaded total per SKU comes from `captureDao().stockBalanceOn(businessDate)`; sr-b's sale stock column subtracts sales from that.
 - Picker (F-SR-016/074): `OutletPicker.rows(...)` over `OutletEntity`.
 
-## Done (CI green on lane branch)
-Nothing is marked done yet; waiting for the first green CI run.
+## Done (logic, tests green locally and in CI; Compose screens pending N-023)
+F-SR-002, 003, 065 (model only, not yet checker-reviewed), F-SR-017, 019 (T1: Opus checker found 6 defects, all fixed with tests), F-SR-014, 016, 074, 011, 012, 046, 047, 063, 008, 009, 064, 072, 079, 049, 037, 038, 039, 076, N-040 (T2: Sonnet checker found defects, fixed with tests). "Done" here means the domain logic and its acceptance tests; each row's screen is still to do and each row is not fully closed until its screen lands.
 
-## Built, awaiting CI (logic and tests; screens pending N-023)
+## Open items from the checkers (need a lead or owner ruling)
+- F-SR-017 says "opens the visit row at once"; SRA-01 commits when the verdict is final. Refresh fixes are not stored (contract has FixPurpose.refresh). Ruling wanted.
+- F-SR-019 mentions the conditional config check F-SYS-092 before a refresh when online: no hook yet.
+- Close form for outlet requests: docs/15 says new/info have no confirm, F-SR-039 requires a confirm for info; built per F-SR-039.
+- Requests filed: docs/requests/android-sr-a-task-tables.md, android-sr-a-outlet-request-capture.md.
+
+## Built (logic and tests; screens pending N-023)
 - F-SR-017, F-SR-019: `VisitFlow` + `VisitFlowTest` (13 cases: in range, out of range, refresh cap, force sale, mocked, blocked, no fix, no outlet location).
 - F-SR-016, F-SR-074 logic: `OutletPicker` + `OutletPickerTest`.
 - F-SR-014 logic: `StockLoad` + `StockLoadTest`.
@@ -31,3 +37,7 @@ Compose screens: N-023 kit. Real fix source: N-021. Bundle into Room and app wir
 
 ## Next
 F-SR-011/012 attendance logic, F-SR-046/047 tasks logic (needs F-API-026 DTO), F-SR-079 capture component state, F-SR-063 stale-bundle rules.
+
+## Not started (needs another lane or the UI kit)
+F-SR-001 (login and first bundle, needs F-SYS-006), F-SR-004/005/006/007 (need F-SYS-019/020/021/022), F-SR-018 (force-sale screen: logic is in VisitFlow, needs F-SYS-010 media queue), F-SR-020/021 (need F-SR-060 from sr-b), F-SR-048 (needs F-API-027), N-041 (map on tap, needs Maps wiring). All Compose screens wait for the N-023 kit slices.
+Local note: Robolectric tests (`LoginScreenLocaleTest`, `HomePlaceholderTest`) fail in this container only because the Robolectric android-all artifact cannot be fetched; CI runs them.

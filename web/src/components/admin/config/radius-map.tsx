@@ -18,7 +18,6 @@ export function RadiusMap({ radiusM }: { radiusM: number }) {
   const host = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
   const radiusRef = useRef(radiusM);
-  radiusRef.current = radiusM;
   const circle = useRef<{ setCenter: (c: object) => void; setRadius: (r: number) => void } | null>(null);
 
   useEffect(() => {
@@ -49,10 +48,10 @@ export function RadiusMap({ radiusM }: { radiusM: number }) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the map is created once; the radius effect below updates the circle
   }, [key]);
 
   useEffect(() => {
+    radiusRef.current = radiusM;
     circle.current?.setRadius(radiusM);
   }, [radiusM]);
 

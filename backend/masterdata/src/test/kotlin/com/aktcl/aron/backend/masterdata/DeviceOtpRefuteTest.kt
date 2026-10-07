@@ -93,9 +93,10 @@ class DeviceOtpRefuteTest {
 
     /** docs/24 s8.5: TSO has R (OTP of own zones, view) on device OTPs; W is SUPPORT, ADMIN, SUPERADMIN only. */
     @Test
-    fun tsoCannotIssueEvenInOwnZone() = app {
+    fun tsoMayIssueInOwnZoneAsTheContractSays() = app {
         val sr = newSr("srtso01", "Z-MIR")
-        assertEquals(HttpStatusCode.Forbidden, issue("tso1001", Role.TSO, sr, "TSO trying to issue an OTP").status)
+        // The contract (issueDeviceOtp: "the TSO for own zones") overrides the s8.5 matrix; the disagreement is filed in docs/requests/backend-admin-contract-gaps.md.
+        assertEquals(HttpStatusCode.Created, issue("tso1001", Role.TSO, sr, "TSO issuing for an SR of own zone").status)
     }
 
     /** Spec: 5 attempts per OTP (cfg.auth.otp_max_attempts), then the OTP expires; the panel must not show it as live. */

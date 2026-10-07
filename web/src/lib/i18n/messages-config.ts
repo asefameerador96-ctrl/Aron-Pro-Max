@@ -113,7 +113,7 @@ const pairs = {
   "fs.submit.hint": ["This closes the zone for the day. A reopen needs an administrator.", "এতে জোনের দিন বন্ধ হয়। আবার খুলতে অ্যাডমিন লাগবে।"],
   "fs.submit": ["Final Submit", "ফাইনাল সাবমিট করুন"],
   "fs.submit.done": ["Final Submit done.", "ফাইনাল সাবমিট সম্পন্ন।"],
-  "menu.main.final_submit": ["Final Submit", "ফাইনাল সাবমিট"],
+  "menu.main.final_submit": ["Submit the day", "দিন সাবমিট করুন"],
   // --- code lists (F-ADM-023, F-ADM-060) ---
   "cl.list.force_reason": ["Force-sale reasons", "জোর করে বিক্রির কারণ"],
   "cl.list.edit_reason": ["Edit reasons", "সম্পাদনার কারণ"],

@@ -1,22 +1,16 @@
 // A QR code drawn as an SVG of squares (no HTML injection, no network, works offline). The text never leaves the page.
-import qrcode from "qrcode-generator";
+import { makeQr } from "@/lib/admin/qr";
 
 export function QrCode({ text, label, size = 280 }: { text: string; label: string; size?: number }) {
-  qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"] ?? qrcode.stringToBytes; // byte-exact for Bangla and accented text
-  let qr = qrcode(0, "M");
-  try {
-    qr.addData(text, "Byte");
-    qr.make();
-  } catch {
-    try {
-      qr = qrcode(0, "L"); // longest payloads fit only at the lowest error correction
-      qr.addData(text, "Byte");
-      qr.make();
-    } catch {
-      return <p role="alert" data-testid="qr-too-long" className="rounded bg-red-50 p-3 text-sm text-red-800">{label}</p>;
-    }
+  const qr = makeQr(text);
+  if (!qr) {
+    return (
+      <p role="alert" data-testid="qr-too-long" className="rounded bg-red-50 p-3 text-sm text-red-800">
+        {label}
+      </p>
+    );
   }
-  const n = qr.getModuleCount();
+  const n = qr.size;
   const quiet = 4;
   const rects: React.ReactNode[] = [];
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) rects.push(<rect key={`${r}-${c}`} x={c + quiet} y={r + quiet} width="1.02" height="1.02" />);

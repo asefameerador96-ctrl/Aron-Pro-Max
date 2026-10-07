@@ -1,0 +1,100 @@
+# Promote a server release to prod (docs/30 s2 step 4). Owner: infra lane.
+#
+# INERT until the final account exists: without the repository variable ARON_FINAL_ACCOUNT = true the run only says
+# so and stops (green, nothing touched). The test account never has a prod environment (docs/28).
+#
+# How it is used (final account): tag the main commit `server-vX.Y.Z`, then GitHub > Actions > promote-prod > Run
+# workflow, "Use workflow from" = that tag. The run checks, in order:
+#   1. the ref is a server-vX.Y.Z tag and its commit is on main (no release from an unmerged commit);
+#   2. ci.yml succeeded on that exact commit;
+#   3. a staging deploy of that exact commit succeeded and soaked (the input names the staging run; docs/30 s2);
+# then calls deploy.yml with environment prod. The GitHub environment azure-prod carries the required approver
+# (tools/github-governance.ps1), so the deploy job waits for a recorded human approval; deploy.yml itself refuses
+# prod from anything but a server-v* tag. Rollback: shift Container Apps traffic to the previous revision (docs/30 s4).
+# Actions are pinned by commit SHA (release tag in the comment).
+
+name: promote-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_run_id:
+        description: Run id of the successful staging deploy of this same commit (the soak it passed)
+        type: string
+        required: true
+      soak_hours:
+        description: Minimum hours between that staging deploy and this promotion
+        type: string
+        default: "24"
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Final account and release checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      go: ${{ steps.final.outputs.go == 'true' && steps.checks.outcome == 'success' }}
+    steps:
+      - name: Inert until the final account exists
+        id: final
+        env:
+          FINAL: ${{ vars.ARON_FINAL_ACCOUNT }}
+        run: |
+          if [ "${FINAL}" != "true" ]; then
+            echo "::notice title=promote-prod is inert::The final Azure account does not exist yet (repository variable ARON_FINAL_ACCOUNT is not true). Nothing was checked or deployed (docs/28, docs/30 s5)."
+            echo "go=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "go=true" >> "${GITHUB_OUTPUT}"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.final.outputs.go == 'true'
+        with:
+          fetch-depth: 0
+      - name: Tag on main, CI green, staging soaked
+        id: checks
+        if: steps.final.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.ref }}
+          STAGING_RUN: ${{ inputs.staging_run_id }}
+          SOAK_HOURS: ${{ inputs.soak_hours }}
+        run: |
+          set -euo pipefail
+          case "${REF}" in
+            refs/tags/server-v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::run this workflow from a server-vX.Y.Z tag (Use workflow from), not ${REF}"; exit 1 ;;
+          esac
+          git fetch -q origin main
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main \
+            || { echo "::error::${REF#refs/tags/} (${GITHUB_SHA}) is not on main; promote only what the daily gate merged"; exit 1; }
+          ci="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=1" --jq .total_count)"
+          [ "${ci}" -gt 0 ] || { echo "::error::ci.yml has no successful run on ${GITHUB_SHA}"; exit 1; }
+          [[ "${STAGING_RUN}" =~ ^[0-9]+$ ]] || { echo "::error::staging_run_id must be a run id"; exit 1; }
+          read -r sha concl done_at < <(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STAGING_RUN}" --jq '[.head_sha, .conclusion, .updated_at] | @tsv')
+          [ "${sha}" = "${GITHUB_SHA}" ] || { echo "::error::staging run ${STAGING_RUN} deployed ${sha}, not ${GITHUB_SHA}"; exit 1; }
+          [ "${concl}" = success ] || { echo "::error::staging run ${STAGING_RUN} ended ${concl}"; exit 1; }
+          age_h=$(( ( $(date -u +%s) - $(date -u -d "${done_at}" +%s) ) / 3600 ))
+          [ "${age_h}" -ge "${SOAK_HOURS}" ] || { echo "::error::staging soak is ${age_h} h, needs ${SOAK_HOURS} h"; exit 1; }
+          {
+            echo "### Promotion checks for ${REF#refs/tags/}"
+            echo "- commit ${GITHUB_SHA} is on main; ci.yml green on it"
+            echo "- staging run ${STAGING_RUN} deployed it ${age_h} h ago (soak at least ${SOAK_HOURS} h)"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  deploy:
+    name: Deploy prod (waits for the azure-prod approver)
+    needs: guard
+    if: needs.guard.outputs.go == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: prod
+    secrets: inherit

@@ -23,6 +23,6 @@ export const CONFIG_MENU: readonly MenuItem[] = [
   { id: "cfg-calendar", labelKey: "menu.config.calendar", href: "/admin/calendar", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-device-otps", labelKey: "menu.config.device_otp", href: "/admin/device-otps", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-audit", labelKey: "cfgp.audit.title", href: "/admin/config/audit", roles: ADMIN_PORTAL_ROLES, group: "config" },
-  { id: "tso-final-submit", labelKey: "menu.main.final_submit", href: "/final-submit", roles: ["TSO", "DMO", "ADMIN", "SUPERADMIN"], group: "main" },
+  { id: "tso-final-submit", labelKey: "menu.main.final_submit", href: "/final-submit/submit", roles: ["TSO", "DMO", "ADMIN", "SUPERADMIN"], group: "main" },
   { id: "tso-device-otp", labelKey: "menu.main.device_otp", href: "/device-otp", roles: ["TSO"], group: "main" },
 ];

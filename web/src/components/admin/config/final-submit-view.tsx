@@ -47,7 +47,7 @@ export function FinalSubmitView({ locale, options, selection, date, today, previ
   return (
     <div className="space-y-4">
       <PageHeading title={t(locale, "fs.title")} intro={t(locale, "fs.intro")} />
-      <GeoCascade levels={levels} viewLabel={t(locale, "fs.get")} allLabel={t(locale, "common.all")} action="/final-submit" extra={[{ name: "date", value: date, label: t(locale, "cfgc.col.date"), type: "date" }]} />
+      <GeoCascade levels={levels} viewLabel={t(locale, "fs.get")} allLabel={t(locale, "common.all")} action="/final-submit/submit" extra={[{ name: "date", value: date, label: t(locale, "cfgc.col.date"), type: "date" }]} />
       {backdated ? (
         <p role="status" data-testid="backdate-banner" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           {t(locale, "fs.backdate", { date: formatBusinessDate(locale, date) })}
@@ -83,7 +83,7 @@ export function FinalSubmitView({ locale, options, selection, date, today, previ
             </Card>
           ) : null}
           <p className="text-xs text-slate-500">
-            <Link href="/final-submit" className="underline">{t(locale, "common.clear")}</Link>
+            <Link href="/final-submit/submit" className="underline">{t(locale, "common.clear")}</Link>
           </p>
         </>
       )}
