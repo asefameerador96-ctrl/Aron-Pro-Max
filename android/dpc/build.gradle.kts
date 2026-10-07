@@ -22,4 +22,5 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.snakeyaml.engine)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

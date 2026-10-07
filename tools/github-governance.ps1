@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   One-time GitHub governance for Aron (docs/30 s3): creates `main`, protects it, tags the first green deploy, creates the
-  `staging` and `prod` environments, and turns on secret scanning where the plan allows it.
+  `azure-stage` and `azure-prod` environments, and turns on secret scanning where the plan allows it.
   Run by the laptop operator, with the owner's approval, after `gh auth login`. Idempotent; it never deletes anything,
   never force-pushes, and never changes the default branch; on the integration branch it only blocks force-push and deletion.
 
@@ -53,9 +53,11 @@ $protection = @{
   required_status_checks = @{
     strict = $true
     contexts = @(
+      'Repository gates (secrets, migrations, contract)',
       'Contract lint',
       'Shared, db and backend (build and tests)',
       'Android debug APKs, unit tests and lint',
+      'Release APKs and APK size gate',
       'Web (lint, types, tests, build, e2e)',
       'Container images (build and runtime smoke)',
       'Infra validation (Bicep, workflows)'
@@ -84,14 +86,17 @@ $intProtection = @{
 Api PUT "repos/$Repo/branches/$Int/protection" $intProtection | Out-Null
 Write-Host "$Int: force-push and deletion blocked"
 
-Step 'Environments: staging and prod (prod needs the owner as reviewer; deploys only from main). azure-dev is left alone.'
-foreach ($e in @('staging', 'prod')) {
-  $body = @{ wait_timer = 0; reviewers = @(@{ type = 'User'; id = $OwnerId }); deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true } } | ConvertTo-Json -Depth 5
-  if ($e -eq 'staging') { $body = @{ deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true } } | ConvertTo-Json -Depth 5 }
-  Api PUT "repos/$Repo/environments/$e" $body | Out-Null
-  Api POST "repos/$Repo/environments/$e/deployment-branch-policies" (@{ name = 'main'; type = 'branch' } | ConvertTo-Json) | Out-Null
-  Write-Host "environment $e ready (branch main only)"
-}
+Step 'Environments for the final account: azure-stage (from main) and azure-prod (owner approves, release tags server-v* only). azure-dev is left alone.'
+# Names match deploy.yml, promote-prod.yml and the OIDC federated subjects (infra lane). A job that the changes filter skips
+# reports success, so no required check stays pending.
+$stageBody = @{ deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true } } | ConvertTo-Json -Depth 5
+Api PUT "repos/$Repo/environments/azure-stage" $stageBody | Out-Null
+Api POST "repos/$Repo/environments/azure-stage/deployment-branch-policies" (@{ name = 'main'; type = 'branch' } | ConvertTo-Json) | Out-Null
+Write-Host 'environment azure-stage ready (branch main only)'
+$prodBody = @{ wait_timer = 0; reviewers = @(@{ type = 'User'; id = $OwnerId }); deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true } } | ConvertTo-Json -Depth 5
+Api PUT "repos/$Repo/environments/azure-prod" $prodBody | Out-Null
+Api POST "repos/$Repo/environments/azure-prod/deployment-branch-policies" (@{ name = 'server-v*'; type = 'tag' } | ConvertTo-Json) | Out-Null
+Write-Host 'environment azure-prod ready (owner is the required reviewer; tags server-v* only)'
 
 Step 'Secret scanning and push protection (only where the plan supports it)'
 try {

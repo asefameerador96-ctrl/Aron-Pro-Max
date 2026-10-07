@@ -93,6 +93,19 @@ This is about USD 2.5 a day above the 15.5 reported before the apps went live. F
   job names exactly. Two required checks should be added there: `Repository gates (secrets, migrations, contract)`
   and `Release APKs and APK size gate`. On pull requests the workflow-level path filter does not apply. A job skipped
   by the changes filter reports success, so no required check stays pending.
+- **Queue time, before and after (lead item 5):**
+  - Before, per the lead's evidence: run 145's jobs waited about 13 minutes in the queue to run 3 minutes, and
+    runs 172 to 181 were all queued. Every push had its own group, so nothing was ever superseded.
+  - After the change (05:00 UTC): new-configuration runs 190 to 195 started their first job with no queue wait
+    (0.0 min). There is one group per ref; a running run finishes and the older pending one is replaced.
+  - 21 queued runs from before the change were superseded commits already contained in the head; I cancelled them
+    once (queued only, never started). One more had already completed.
+  - CodeQL now runs nightly plus on pull requests to main. Dependabot opens grouped weekly PRs, at most 3 per
+    ecosystem. Dependabot PR #1 (eslint 10) was already closed.
+- **Run 145 (0a947b7) "Shared, db and backend" failure:** not flaky. `AggregationTest >
+  aCrashedWorkersClaimIsTakenOverAfterTheLease` inserted a `memo.created` event with a NULL version, which the db
+  lane's `app.domain_event_type` registry rejects. That is a backend and db mismatch, fixed by a later commit.
+  No infra action.
 - **Next three rows (handoff):**
   1. AUD-DG-07, REL-06, DG-06 deploy safety: Container Apps revision traffic split with a health gate, and deploy
      the tested image by digest. The whole-deploy lock is done.

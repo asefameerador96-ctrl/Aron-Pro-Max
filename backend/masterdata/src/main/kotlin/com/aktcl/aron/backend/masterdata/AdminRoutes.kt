@@ -77,8 +77,12 @@ internal val ROUTE = MasterEntity(
         }
     },
     derive = { h, ctx, merged, cur, changes, f ->
+        // A change of visit days is also a body that names them equal to the route's columns while a different schedule is still pending in route_planned (reverting a pending change).
+        val pendingDiffers = cur != null && f != null && f.has("effective_from") && (f.has("visit_kind") || f.has("visit_days_mask")) && h.createQuery(
+            "SELECT visit_kind IS DISTINCT FROM :k OR visit_days_mask <> :m FROM app.route_planned WHERE route_id = :r ORDER BY valid_from DESC LIMIT 1",
+        ).bind("r", cur["id"]).bindAny("k", merged["visit_kind"]).bind("m", (merged["visit_days_mask"] as Number).toInt()).mapTo(Boolean::class.java).findOne().orElse(false)
         if (cur == null) emptyMap()
-        else if ("visit_kind" in changes || "visit_days_mask" in changes) {
+        else if ("visit_kind" in changes || "visit_days_mask" in changes || pendingDiffers) {
             // A visit-days change is effective-dated: the history stays in route_planned, the planner reads it from there (docs/24 s12.1).
             if (f == null || !f.has("effective_from")) admBad("body.effective_from", "required", "a visit-days change needs effective_from (a future Dhaka date)")
             val eff = parseDate("body.effective_from", f.obj["effective_from"]) ?: admBad("body.effective_from")

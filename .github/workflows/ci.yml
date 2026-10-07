@@ -42,13 +42,14 @@ env:
   ARON_VERSION_CODE: ${{ github.run_number }}
   ARON_VERSION_NAME: 0.1.${{ github.run_number }}
 
-# Lead decision 2026-10-07 (CI throughput): one run per ref; a newer push cancels the older run of the same ref. The
-# integration branch is linear (merge-first), so the newer head contains every older commit, and its run compares
-# with the LAST GREEN head (changes job), so nothing of a cancelled run goes untested. The Azure deploy is a separate
-# workflow (deploy.yml, on ci completed) that this never cancels.
+# Lead decision 2026-10-07 (CI throughput): one group per ref. A running push run always finishes; GitHub keeps one
+# pending run per group and a newer push replaces the older PENDING one, so the newest head of each branch always gets
+# a verdict and intermediate merge commits are skipped. The newer head contains every older commit and compares with
+# the LAST GREEN head (changes job), so nothing of a skipped run goes untested. Pull requests cancel their older run.
+# The Azure deploy is a separate workflow (deploy.yml, on ci completed).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
