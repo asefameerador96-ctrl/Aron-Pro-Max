@@ -26,7 +26,7 @@ Rows done: 26 of 446. Calibration from the Day-1 time logs: S 18 min, M 34 min, 
 | **total** | 420 | 186.7 | 466.8 | |
 
 ## Reading
-- With the 8 lanes started on 2026-10-07 and the 6 existing lanes working continuously, the longest pessimistic chain is backend-core (about 3 lane-days) and the SR app lanes; the rest run in parallel. That fits inside Day 7 (2026-10-11) **if lanes never idle again**. Overnight on 2026-10-06 to 07 two critical lanes (backend-core, android-core) sat idle for about 15 hours waiting for a go-ahead: that cost roughly one lane-day each and is the main reason Day 2 is not finished.
+- With the 8 lanes started on 2026-10-07 and the 6 existing lanes working continuously, the longest pessimistic chain is backend-core (about 4 lane-days) and the SR app lanes; the rest run in parallel. That fits inside Day 7 (2026-10-11) **if lanes never idle again**. Overnight on 2026-10-06 to 07 two critical lanes (backend-core, android-core) sat idle for about 15 hours waiting for a go-ahead: that cost roughly one lane-day each and is the main reason Day 2 is not finished.
 - Not parallelisable by adding lanes: the owner's device checks (printing on the MP-58N, GPS and spoofing apps on the phones, device-owner enrolment on a factory-reset phone, the 8-hour battery run) and integration of the SR slice end to end. These need the owner's hands; they are listed in docs/status/device-checks.md. Schedule risk is concentrated there.
 - Wave 2 lanes (android-amo, android-tso, qa) start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev, expected within Day 3 to Day 4.
 - The full 8,500-user proof depends on the final Azure account (docs/28); until then the claim is designed and tested small.
