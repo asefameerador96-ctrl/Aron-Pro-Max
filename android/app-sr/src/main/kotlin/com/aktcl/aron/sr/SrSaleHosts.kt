@@ -22,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.aktcl.aron.core.printing.flow.PrintAttempt
 import com.aktcl.aron.core.printing.ui.HoldPrinter
 import com.aktcl.aron.core.printing.ui.PrinterBanner
 import com.aktcl.aron.core.printing.ui.PrinterIcon
@@ -152,14 +151,14 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
 fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
     val kit = day.sale
     var bundle by remember { mutableStateOf<SummaryBundle?>(null) }
-    var attempt by remember { mutableStateOf<PrintAttempt?>(null) }
+    val attempt by day.summaryAttempt.collectAsState()
     LaunchedEffect(Unit) { bundle = kit.summary() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         SrChrome(day, sunlight, onSunlight)
-        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printRunner.run({ kit.printSummary(b) }) { attempt = it } }) }
+        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }) }
     }
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
-        attempt, onAnswer = { a, readable -> day.printRunner.run({ day.printing.confirm(a, readable) }) { attempt = null } }, onClose = { attempt = null },
+        attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,
     )
 }
 
