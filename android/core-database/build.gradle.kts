@@ -9,6 +9,10 @@ plugins {
 
 android {
     namespace = "com.aktcl.aron.core.database"
+    // core-printing's PrintLedger contract runs against RoomPrintLedger (RoomPrintLedgerContractTest; lane android-print).
+    sourceSets {
+        getByName("test").kotlin.directories.add("../core-printing/src/testContract/kotlin")
+    }
     testOptions {
         unitTests.all {
             it.systemProperty("aron.openapi", rootProject.layout.projectDirectory.file("contract/openapi.yaml").asFile.absolutePath)
