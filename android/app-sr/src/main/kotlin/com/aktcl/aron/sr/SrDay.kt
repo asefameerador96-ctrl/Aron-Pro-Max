@@ -180,6 +180,9 @@ class SrDay(
     }
 
     /** After a relaunch or a language switch: a committed visit with no close is the call in progress (R8). */
+    /** Re-arms uploads of photos a killed process left (WorkManager keeps the jobs, this fills gaps). */
+    suspend fun resumeMedia() { runCatching { media?.resume() } }
+
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
         val date = businessDate()
@@ -274,6 +277,29 @@ class SrDay(
 
     /** True while any stock row of today is not on a printed slip (Sales Submit warns on this). */
     suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
+
+    /** Outlives every screen: a print and its readable-question answer must finish even if the SR leaves Stock. */
+    private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private val _stockAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
+    val stockAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _stockAttempt.asStateFlow()
+
+    /** Today's stock rows not yet on a printed slip, read from Room (survives a kill and relaunch). */
+    suspend fun unprintedStock() = db.captureDao().stockOn(businessDate()).filter { !it.slipPrinted }
+
+    /** Prints one slip for every unprinted stock row of today; the confirmation question is answered by [answerStockPrint]. */
+    fun printUnprintedStock() {
+        printScope.launch {
+            val rows = unprintedStock()
+            if (rows.isEmpty() || _stockAttempt.value != null) return@launch
+            _stockAttempt.value = printing.printStockSlip(rows.minByOrNull { it.skuId }!!.clientUuid, stockSlip(rows))
+        }
+    }
+
+    fun answerStockPrint(a: com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation, readable: Boolean) {
+        printScope.launch { printing.confirm(a, readable); _stockAttempt.value = null }
+    }
+
+    fun closeStockAttempt() { _stockAttempt.value = null }
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())
 
