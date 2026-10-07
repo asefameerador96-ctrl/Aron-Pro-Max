@@ -78,6 +78,25 @@
   - A memo print is in the visit family at rank 3 while the route-day is open. Otherwise (a reprint after Sales Submit) it is its own family without a `route_id`.
   - Tables: `print_event` (outbox `print_event`), local `print_job`, and `memo.printed_at` / `print_count`. A stock slip flips `slip_printed` on the `stock_movement` named by `ref_client_uuid`, which is one row per SKU: tell android-core if a slip must cover several rows.
 
+## Eighth session (2026-10-07, from ~16:47Z by the server clock)
+- INT merged (no conflicts) and pushed. The container had no Android SDK: `tools/android-sdk.sh` and `sdk.dir` in the git-ignored `local.properties` (trap 40).
+- **F-SYS-081 phone half: done.** Round 4, a fresh Opus re-check of 0a0add38: PASS, no blocking findings. Added the guard test it asked for: `aMultiFamily500NeverChargesTheDay`. Accepted plausibles (telemetry only, never a sale):
+  - Two transient 500s on a batch of a single family drop a valid day.
+  - `metered()` returns null when the read throws, so the start looks offline and one false `regained` is recorded.
+  - Callback order on a Wi-Fi to mobile handover.
+- **F-SYS-073 urgent config push: done** (T1, Opus checker PASS). N-038 already parsed `config_pull` and the docs/19 `{type: cfg}` form, with the jitter and a pull job that never uploads. This row adds:
+  - `PushPullKind.CONFIG_URGENT`: a config push with `urgent=true` (kill switch, `min_version`, blocked versions, `sync_hold_s`, a revert) gets its own job, so an ordinary pull waiting out its 120 s spread never holds it back.
+  - `ResumeConfigCheck.pullForPush(userId, urgent)`:
+    - It waits for a check already running instead of returning NOT_DUE, which lost the push.
+    - An urgent push may make `URGENT_RESERVE` = 4 requests over the daily cap of 24 (lane decision).
+    - The sync-run path (`pullAfterPush`) is unchanged.
+  - Tests:
+    - PushMessageTest: urgent kind.
+    - PushPullWorkTest: an urgent pull is not held behind an ordinary one, plus a 300-message fuzz showing no push ever runs the sync runner or queues an upload job.
+    - ResumeConfigCheckTest: the reserve, and a push that waits behind a running check.
+  - Checker plausible: the server never sends `urgent`, so today every config push is ordinary. Routed in docs/requests/android-core-backend-urgent-push-flag.md. The acceptance holds without it (the server's `pull_after_s` is honoured).
+- Trap 40: a check run without the Android SDK fails at configuration ("SDK location not found"). Grep the log for `BUILD FAILED`, not only the wrapper's exit code.
+
 ## Handover (READY TO RECYCLE, 2026-10-07 ~17:30Z by the server clock, seventh session)
 - **Done this session** (head on lane/android-core; INT merged at the start). Each row had a fresh Opus checker and a re-check after every FAIL, and every confirmed finding was fixed with a test:
   - F-SYS-072 residual (a); (b) and (c) routed to backend-core; the row stays open.

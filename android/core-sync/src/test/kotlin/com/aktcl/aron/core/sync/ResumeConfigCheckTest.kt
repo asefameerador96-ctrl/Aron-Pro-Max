@@ -12,6 +12,7 @@ import com.aktcl.aron.core.network.AronApiClient
 import com.aktcl.aron.core.network.ClientIdentity
 import com.aktcl.aron.core.network.SyncApi
 import com.aktcl.aron.core.session.TrustedClockSource
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -86,6 +87,44 @@ class ResumeConfigCheckTest {
         assertEquals(ConfigCheckResult.NOT_DUE, capped.checkOnResume(1)) // resume: the contact was just now
         assertEquals(ConfigCheckResult.UNCHANGED, capped.pullAfterPush(1)) // push: asks anyway
         assertEquals(ConfigCheckResult.CAPPED, capped.pullAfterPush(1))
+        assertEquals(2, server.requestCount)
+    }
+
+    /** F-SYS-073: an urgent push (kill switch, min_version) may go a small reserve over the cap; an ordinary one may not. */
+    @Test fun anUrgentPushHasAReserveOverTheDailyCap() = runBlocking {
+        val capped = ResumeConfigCheck({ db }, SyncApi(AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true),
+            OkHttpClient(), ClientIdentity("1") { null })), clock, dailyCap = 1)
+        repeat(1 + ResumeConfigCheck.URGENT_RESERVE) { server.enqueue(api(304)) }
+        assertEquals(ConfigCheckResult.UNCHANGED, capped.pullForPush(1, urgent = false))
+        assertEquals(ConfigCheckResult.CAPPED, capped.pullForPush(1, urgent = false))
+        repeat(ResumeConfigCheck.URGENT_RESERVE) { assertEquals(ConfigCheckResult.UNCHANGED, capped.pullForPush(1, urgent = true)) }
+        assertEquals(ConfigCheckResult.CAPPED, capped.pullForPush(1, urgent = true))
+        assertEquals(1 + ResumeConfigCheck.URGENT_RESERVE, server.requestCount)
+    }
+
+    /**
+     * F-SYS-073: a push landing while a resume check is in flight (it may have fetched before the change) waits for it and
+     * asks again, instead of being dropped as NOT_DUE: the push job is never retried.
+     */
+    @Test fun aPushDuringARunningCheckWaitsAndAsksAgain() = runBlocking {
+        val inFlight = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        server.dispatcher = object : mockwebserver3.Dispatcher() {
+            override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse {
+                if (inFlight.count > 0) { inFlight.countDown(); release.await(5, TimeUnit.SECONDS) }
+                return api(304)
+            }
+        }
+        val resume = async(kotlinx.coroutines.Dispatchers.IO) { check.checkOnResume(1) }
+        assertTrue(inFlight.await(5, TimeUnit.SECONDS))
+        assertEquals(ConfigCheckResult.NOT_DUE, check.pullAfterPush(1)) // the sync-run path still skips
+        // UNDISPATCHED: the push runs on this thread up to its first suspension, which is the lock held by the resume check,
+        // so it is provably waiting before the check is released (the old tryLock would have returned NOT_DUE here).
+        val push = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { check.pullForPush(1, urgent = true) }
+        assertTrue(push.isActive)
+        release.countDown()
+        assertEquals(ConfigCheckResult.UNCHANGED, resume.await())
+        assertEquals(ConfigCheckResult.UNCHANGED, push.await())
         assertEquals(2, server.requestCount)
     }
 

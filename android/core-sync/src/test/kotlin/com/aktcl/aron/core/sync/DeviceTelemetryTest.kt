@@ -296,6 +296,37 @@ class DeviceTelemetryTest {
         }
     }
 
+    /** Re-check guard: a 500 on a batch of several families only splits it; the day is not charged with a refusal. */
+    @Test fun aMultiFamily500NeverChargesTheDay() = runBlocking {
+        val server = MockWebServer()
+        val fake = FakeIngestServer()
+        server.dispatcher = fake
+        server.start()
+        try {
+            telemetry.sample()
+            now = dhaka(9, 0, 6)
+            val capture = CaptureRepository(db) { "2026-10-06T03:00:00.000Z" }
+            listOf(50001L, 50002L).forEachIndexed { i, outlet -> TestRows.visit(outletId = outlet, seq = i + 1).let { (v, f) -> capture.recordVisitOpen(v, f) } }
+            val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
+            val client = AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { DEVICE })
+            val auth = object : UploadAuth {
+                override suspend fun token(userId: Long): String? = "upload-1"
+                override suspend fun refresh(userId: Long, rejected: String?): Boolean = false
+            }
+            val inner = telemetry.forBatch { null }
+            var charged = 0
+            val counting = object : BatchTelemetry by inner {
+                override suspend fun failed(date: String) { charged++; inner.failed(date) }
+            }
+            fake.failBefore += 500
+            SyncEngine(USER, db, SyncBatchApi(client, null), auth, { DEVICE }, "1.0.3+10003", clock, SyncPolicy(), random = Random(7),
+                telemetry = counting).run(SyncTrigger.MANUAL)
+            assertEquals(0, charged)
+        } finally {
+            server.close()
+        }
+    }
+
     private companion object {
         const val USER = 334081L
         const val DEVICE = "6f1c2d3e-4b5a-4c6d-8e7f-9a0b1c2d3e4f"
