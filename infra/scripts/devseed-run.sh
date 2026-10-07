@@ -20,6 +20,23 @@ if [ -n "${ARON_SMOKE_JWK:-}" ] && [ -n "${ARON_SMOKE_THUMB:-}" ]; then
 UPDATE app.device SET public_key_jwk = CAST(:'jwk' AS jsonb), public_key_thumbprint = :'tp'
  WHERE device_uuid = '00000000-0000-4000-8000-000000000001'
    AND public_key_thumbprint IN ('seed-dev-device-0001', :'tp');
+-- N-027 gate (backend-core 2026-10-07): "enrolled" means the device row names its enrolment token. The smoke device is
+-- recorded as enrolled through a single-use dev token (already used, random hash, never shown) for the seeded sr
+-- release, ONLY when it carries the real smoke key above; no other device, no gate or config value is touched.
+WITH dev AS (
+  SELECT id FROM app.device WHERE device_uuid = '00000000-0000-4000-8000-000000000001'
+     AND public_key_thumbprint = :'tp' AND enrolment_token_id IS NULL
+), tok AS (
+  INSERT INTO app.enrolment_token (token_sha256, token_prefix, flavour, lockdown_level, max_uses, used_count, release_id,
+                                   expires_at, created_by, note)
+  SELECT sha256(convert_to(gen_random_uuid()::text, 'UTF8')), 'smoke0', 'sr', 'dev', 1, 1,
+         (SELECT id FROM app.app_release WHERE flavour = 'sr' AND status = 'published' ORDER BY version_code DESC LIMIT 1),
+         now() + interval '1 hour', (SELECT id FROM app.app_user WHERE username = 'admin1001'),
+         'dev slice-smoke device, enrolled by the dev seed (its private key is in Key Vault aron-dev-smoke-device-key)'
+    FROM dev
+  RETURNING id
+)
+UPDATE app.device d SET enrolment_token_id = tok.id FROM tok, dev WHERE d.id = dev.id;
 SQL
   echo "seed: smoke device key set"
 fi
