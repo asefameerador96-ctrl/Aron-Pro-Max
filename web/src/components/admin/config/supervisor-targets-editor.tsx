@@ -12,15 +12,26 @@ import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 const FIELDS = ["total_call_target", "control_call_target", "joint_call_target", "daily_call_target"] as const;
 type F = (typeof FIELDS)[number];
 
-export function SupervisorTargetsEditor({ month, initial, names, canWrite }: { month: string; initial: SupervisorTarget[]; names: Record<string, string>; canWrite: boolean }) {
+export function SupervisorTargetsEditor({ month, initial: stored, names, canWrite }: { month: string; initial: SupervisorTarget[]; names: Record<string, string>; canWrite: boolean }) {
   const { t, problem } = useI18n();
   const router = useRouter();
-  const [rows, setRows] = useState<Record<number, Record<F, string>>>(() => Object.fromEntries(initial.map((r) => [r.user_id, { total_call_target: String(r.total_call_target), control_call_target: String(r.control_call_target), joint_call_target: String(r.joint_call_target), daily_call_target: r.daily_call_target == null ? "" : String(r.daily_call_target) }])));
+  const [initial, setInitial] = useState<SupervisorTarget[]>(stored);
+  const [newId, setNewId] = useState("");
+  const [rows, setRows] = useState<Record<number, Record<F, string>>>(() => Object.fromEntries(stored.map((r) => [r.user_id, { total_call_target: String(r.total_call_target), control_call_target: String(r.control_call_target), joint_call_target: String(r.joint_call_target), daily_call_target: r.daily_call_target == null ? "" : String(r.daily_call_target) }])));
   const [reason, setReason] = useState("");
   const [batch, setBatch] = useState(() => crypto.randomUUID());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+
+  function addOfficer() {
+    if (!/^[1-9]\d{0,14}$/.test(newId) || initial.some((r) => r.user_id === Number(newId))) return setErrors({ add: t("error.field.invalid") });
+    const id = Number(newId);
+    setInitial((s) => [...s, { user_id: id, month, total_call_target: 0, control_call_target: 0, joint_call_target: 0, daily_call_target: null }]);
+    setRows((s) => ({ ...s, [id]: { total_call_target: "0", control_call_target: "0", joint_call_target: "0", daily_call_target: "" } }));
+    setNewId("");
+    setErrors({});
+  }
 
   async function save() {
     const e: Record<string, string> = {};
@@ -87,6 +98,16 @@ export function SupervisorTargetsEditor({ month, initial, names, canWrite }: { m
           </tbody>
         </table>
       </div>
+      {canWrite ? (
+        <div className="flex items-end gap-2" data-testid="add-officer">
+          <label className="text-sm">
+            <span className="mb-1 block">{t("st.add_user")}</span>
+            <input aria-label={t("st.add_user")} name="user_id" value={newId} inputMode="numeric" onChange={(e) => setNewId(e.target.value.replace(/\D/g, ""))} className={`${inputClass} w-32`} />
+          </label>
+          <button type="button" onClick={addOfficer} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">{t("st.add")}</button>
+          {errors.add ? <p role="alert" className="text-xs text-red-700">{errors.add}</p> : null}
+        </div>
+      ) : null}
       {canWrite ? (
         <>
           <ReasonField value={reason} onChange={setReason} error={errors.reason} />

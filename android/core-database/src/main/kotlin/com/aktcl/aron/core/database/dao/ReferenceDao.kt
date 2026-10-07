@@ -49,10 +49,10 @@ interface ReferenceDao {
     @Insert suspend fun insertConfig(rows: List<ConfigValueEntity>)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertSections(rows: List<BundleSectionEntity>)
 
-    /** The price of [skuId] and [priceType] in force on [businessDate] (valid_to inclusive); the latest start wins. */
+    /** The price of [skuId] and [priceType] in force on [businessDate] (`valid_to` exclusive, as the contract says); the latest start wins. */
     @Query(
         """SELECT * FROM price WHERE sku_id = :skuId AND price_type = :priceType AND valid_from <= :businessDate
-           AND (valid_to IS NULL OR valid_to >= :businessDate) ORDER BY valid_from DESC, price_id DESC LIMIT 1""",
+           AND (valid_to IS NULL OR valid_to > :businessDate) ORDER BY valid_from DESC, price_id DESC LIMIT 1""",
     )
     suspend fun priceOn(skuId: Long, priceType: String, businessDate: String): PriceEntity?
 

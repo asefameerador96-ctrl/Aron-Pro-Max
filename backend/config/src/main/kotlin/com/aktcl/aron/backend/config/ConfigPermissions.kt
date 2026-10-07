@@ -40,8 +40,9 @@ import kotlinx.serialization.json.put
  */
 class ConfigPermissions(private val db: Database, private val service: ConfigService, private val clock: AronClock = AronClock.SYSTEM) {
     private val key = "cfg.web.menu_by_role"
-    private val toContract = mapOf("read" to listOf("view"), "write" to listOf("create", "edit"), "export" to listOf("export"), "approve" to listOf("approve"), "submit_void" to listOf("void"), "void" to listOf("void"))
-    private val toStored = mapOf("view" to "read", "create" to "write", "edit" to "write", "approve" to "approve", "export" to "export", "void" to "submit_void")
+    // The seeded vocabulary says `write` for "may change"; read back it means create and edit. Written values keep create and edit apart.
+    private val toContract = mapOf("read" to listOf("view"), "view" to listOf("view"), "write" to listOf("create", "edit"), "create" to listOf("create"), "edit" to listOf("edit"), "export" to listOf("export"), "approve" to listOf("approve"), "submit_void" to listOf("void"), "void" to listOf("void"))
+    private val toStored = mapOf("view" to "read", "create" to "create", "edit" to "edit", "approve" to "approve", "export" to "export", "void" to "void")
     private val menuId = Regex("^[a-z][a-z0-9_.]{1,60}$")
 
     fun matrix(): PermissionMatrixDto {
