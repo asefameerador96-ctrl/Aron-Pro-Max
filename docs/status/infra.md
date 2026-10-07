@@ -20,8 +20,9 @@ Updated 2026-10-07 21:05 UTC (sixth infra session).
   pull requests to main wait on a "Backend app tests" check that never runs): from a fresh clone of INT,
   `gh auth login` (owner account), then `pwsh -NoProfile -File tools/github-governance.ps1` (idempotent; re-applies the
   main protection with "Repository gates (secrets, migrations, contract)" and "Backend app tests"; touches nothing else).
-- CI split run 37682155791 began running about 20:53 UTC (it had been pending behind the 6fc77f28 run); jobs and wall
-  time to be reported to the lead and integrator.
+- **CI split run 37682155791: green, 9 of 9 jobs, wall 22.3 min** (20:53:00-21:15:17; old jvm job 26 min). "Backend app
+  tests" 8.9 min; "Shared, db and backend" 22.1 min (now the long pole: the next gain is inside it, not more splitting).
+  Reported to lead and integrator 21:20 UTC.
 - Deploy 150 (37684685418) deploys INT bde7719c, which predates ff7579c4, so its smoke step 4 will 401 again;
   the first full smoke is the first deploy after ff7579c4 is promoted.
 
