@@ -34,6 +34,7 @@
     <string name="fb_downloading">Downloading your route and outlets. Keep the app open. If the connection drops, it continues from where it stopped.</string>
     <string name="fb_offline">No connection. Connect once to download your route. What was downloaded is kept.</string>
     <string name="fb_failed">The download did not finish. Try again; it continues from where it stopped.</string>
+    <string name="fb_auth">Your sign-in has ended. Log out and log in again with internet to download your route.</string>
     <string name="fb_retry">Try again</string>
     <string name="fb_skip">Continue without the route (check-in still works)</string>
     <string name="hm_banner_missing">No route bundle on this phone yet. Connect once to download it.</string>

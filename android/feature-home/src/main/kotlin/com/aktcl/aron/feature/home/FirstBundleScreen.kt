@@ -19,7 +19,7 @@ import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 
 /** Where the first bundle download stands (F-SR-001). */
-enum class FirstBundleState { DOWNLOADING, OFFLINE, FAILED }
+enum class FirstBundleState { DOWNLOADING, OFFLINE, FAILED, AUTH }
 
 object FirstBundleTags {
     const val SCREEN = "fb_screen"
@@ -49,6 +49,7 @@ fun FirstBundleContent(state: FirstBundleState, onRetry: () -> Unit, onSkip: () 
                 AronBanner(stringResource(R.string.fb_offline), kind = BannerKind.Warning)
                 AronPrimaryButton(stringResource(R.string.fb_retry), onRetry, Modifier.testTag(FirstBundleTags.RETRY))
             }
+            FirstBundleState.AUTH -> AronBanner(stringResource(R.string.fb_auth), kind = BannerKind.Error)
             FirstBundleState.FAILED -> {
                 AronBanner(stringResource(R.string.fb_failed), kind = BannerKind.Error)
                 AronPrimaryButton(stringResource(R.string.fb_retry), onRetry, Modifier.testTag(FirstBundleTags.RETRY))

@@ -149,6 +149,7 @@ class SrDay(
         routeId = route?.route?.routeId
         val outlets = if (planned.size > 1 && route != null) route.outlets else routes.flatMap { it.outlets }
         data.value = DayData(date, route?.route, routes.map { it.route }, outlets, freshness, data.value.downloading)
+        _loaded.value = true
     }
 
     private val routePrefs = context.getSharedPreferences("aron-route-$userId", Context.MODE_PRIVATE)
@@ -174,6 +175,12 @@ class SrDay(
         visitSession.close(); runCatching { requestSync() }
     }
 
+    private val bundleRunning = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val _loaded = MutableStateFlow(false)
+
+    /** True once the local day has been read once; survives a recreated screen (no first-bundle flash). */
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
     private val _bundleOutcome = MutableStateFlow<BundleOutcome?>(null)
 
     /** How the last day-start download ended (null while one runs or none ran); the first-bundle screen reads it. */
@@ -181,18 +188,30 @@ class SrDay(
 
     /** Day start: the first bundle download (resumable, F-SYS-006) in the background; the day never waits for it. */
     suspend fun downloadBundle(downloaders: BundleDownloaders) {
+        // One run at a time, in the day's own scope: a rotation or language switch recreates the screen but never cancels
+        // the download or sends a second request; a caller that leaves only stops waiting.
+        if (!bundleRunning.compareAndSet(false, true)) return
         data.value = data.value.copy(downloading = true)
         _bundleOutcome.value = null
-        try {
-            runCatching { downloaders.of(userId).download(businessDate()) }
-                .onSuccess {
-                    _bundleOutcome.value = it.outcome
-                    if (it.outcome == BundleOutcome.APPLIED || it.outcome == BundleOutcome.UNCHANGED) { reload(); deviceRuntime?.refreshDayConfig(userId, db) }
+        background.launch {
+            try {
+                val outcome = try {
+                    downloaders.of(userId).download(businessDate()).outcome
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    BundleOutcome.FAILED
                 }
-                .onFailure { _bundleOutcome.value = BundleOutcome.FAILED }
-        } finally {
-            data.value = data.value.copy(downloading = false)
-        }
+                _bundleOutcome.value = outcome
+                if (outcome == BundleOutcome.APPLIED || outcome == BundleOutcome.UNCHANGED || outcome == BundleOutcome.PREFETCH_PROMOTED) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { reload() }
+                    deviceRuntime?.refreshDayConfig(userId, db)
+                }
+            } finally {
+                data.value = data.value.copy(downloading = false)
+                bundleRunning.set(false)
+            }
+        }.join()
     }
 
     /** After a relaunch or a language switch: a committed visit with no close is the call in progress (R8). */

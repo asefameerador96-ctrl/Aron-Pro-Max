@@ -93,3 +93,6 @@ After the Maps key restriction includes the SR package: out of range at an outle
 
 ### D-SRA-5 My requests (F-SR-040; android-sr-a)
 Host proof: `OwnRequestsTest` (merge, statuses, reason, Bangla, empty). On the A06: Outlet, send one new-outlet request offline. Pass: My requests shows it as "Saved on this phone, waiting to be sent". Go online, sync, refresh the bundle (open the app next morning or pull a delta). Pass: it shows Pending, then Verified/Approved/Rejected as the office decides; a rejected one shows "Reason: ...". Kill and relaunch: the list is unchanged. Repeat in Bangla.
+
+### D-SRA-6 First bundle on a new phone (F-SR-001; android-sr-a)
+Host proof: FirstBundleScreenTest, LoginScreenLocaleTest. On a wiped A06 log in online. Pass: "Getting your day ready" with a moving bar; airplane mode half-way shows "no connection"; back online, Try again finishes. Rotate or switch language during the download: no false failure and no second download. Skip: check-in still works. Login version equals Settings version; footer reads (c) AKTCL.
