@@ -98,6 +98,8 @@ class IngestService(
 
     /** Per-batch caches. */
     private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant) {
+        /** Handlers' after-commit calls of the current family, by record index (dropped when the record rolls back). */
+        val afterCommit = ArrayList<Triple<Int, com.aktcl.aron.backend.platform.RecordHandler, IngestRecord>>()
         /** Route-days this batch touched (F-SYS-016), settled at its end. */
         val touched = DayStates.Touched()
         val today: LocalDate = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
@@ -130,8 +132,11 @@ class IngestService(
             val family = recs.subList(i, j + 1)
             ctx.arith = MemoChecks.familyMismatches(family.map { it.json }) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
             ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
+            ctx.afterCommit.clear()
             try {
                 db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
+                // Committed: only now may a handler reach outside the database.
+                ctx.afterCommit.forEach { (_, hd, rec) -> runCatching { hd.afterCommit(rec) }.onFailure { log.warn("afterCommit failed type=${rec.type}", it) } }
             } catch (e: Exception) {
                 log.error("family failed batch_uuid=${req.batch_uuid} family=${recs[i].family}", e)
                 db.jdbi.useTransaction<Exception> { h -> family.forEach { r -> outcomes[r.index] = park(h, ctx, r, RecordOutcomeCode.SERVER_ERROR, e.javaClass.simpleName) } }
@@ -228,6 +233,7 @@ class IngestService(
         return try {
             process(h, ctx, r).also { h.release(sp) }
         } catch (e: Exception) {
+            ctx.afterCommit.removeAll { it.first == r.index }
             if (e is ApiProblem) throw e
             h.rollbackToSavepoint(sp)
             val state = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()?.sqlState ?: ""
@@ -415,6 +421,7 @@ class IngestService(
                     log.error("day state update failed client_uuid=${r.clientUuid} type=${r.type}", e)
                 }
                 hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
+                hs.forEach { ctx.afterCommit += Triple(r.index, it, ingestRec!!) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)
             }

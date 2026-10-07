@@ -18,3 +18,7 @@ Lanes on hold are not woken (docs/status/lane-sessions.md, throttle list). The l
 
 ## laptop operator (before the first daily gate pull request INT to main)
 - infra folded the "Contract lint" job into "Repository gates" (2026-10-07 08:48 UTC). `main`'s live protection still lists "Contract lint" as a required check, which will never report again and would block the gate PR. Pull INT in C:\Users\User\Aron and re-run `tools/github-governance.ps1` (create-only, idempotent; the protection step replaces the required list with the new one: 7 checks). Needs the owner's usual approval prompt. Do it before the lead opens the first gate PR.
+
+## backend-reports: audit writes (lead, 2026-10-07 10:27 UTC)
+
+backend-core made `AuditLog.write` the one way to write `app.audit_log` (backend-admin's AuditWriter now delegates to it). When you are released, replace the raw INSERTs into `app.audit_log` in `DailyTrackingApi.kt:190`, `ReportEngine.kt:211` and `OpsApi.kt:288` with `AuditLog.write` calls, with a test that the row is written once and carries the actor and scope.
