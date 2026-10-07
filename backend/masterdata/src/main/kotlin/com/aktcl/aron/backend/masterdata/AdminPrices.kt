@@ -153,6 +153,9 @@ private const val LIST_VERSION_KEY = "cfg.price.list_version"
 /** Header of the publish answer: the contract returns 201 SkuPriceList for both outcomes, so the state travels in a header. */
 const val BATCH_STATUS_HEADER = "X-Aron-Price-Batch-Status"
 
+/** The stored percent column is numeric(12,2); a larger (contract-valid) move still needs approval, only the shown figure is capped. */
+private val PCT_CAP = BigDecimal("9999999999.99")
+
 private data class Analysis(val rows: List<PriceRowIn>, val skus: Int, val types: List<String>, val outlets: Int, val devices: Int, val maxPct: BigDecimal, val approval: Boolean)
 
 private class StoredBatch(val status: String, val fingerprint: String, val validFrom: LocalDate, val rows: List<PriceRowIn>, val reason: String?, val backdate: Boolean, val submittedBy: Long?,
@@ -215,7 +218,7 @@ private fun parseRequest(call: ApplicationCall, text: String): Pair<PricePublish
     }
     if (!UUID_V4.matches(req.batch_uuid)) adminBad("body.batch_uuid", "not_a_uuid")
     val from = runCatching { LocalDate.parse(req.valid_from) }.getOrNull() ?: adminBad("body.valid_from")
-    if (req.change_reason.length !in 10..500 || req.change_reason.isBlank()) adminBad("body.change_reason", "length")
+    if (req.change_reason.length > 500 || req.change_reason.trim().length < 10) adminBad("body.change_reason", "length")
     if (req.prices.isEmpty() || req.prices.size > 1000) adminBad("body.prices", "out_of_range")
     val seen = HashSet<Pair<Long, String>>()
     req.prices.forEachIndexed { i, r ->
@@ -264,7 +267,7 @@ private fun analyse(h: Handle, rows: List<PriceRowIn>, from: LocalDate, d: Admin
     return Analysis(rows, ids.size, types, outlets, devices, max, approval)
 }
 
-private fun previewOf(batch: String, a: Analysis) = PricePreviewOut(batch, a.skus, a.types, a.outlets, a.devices, JsonPrimitive(a.maxPct), a.approval)
+private fun previewOf(batch: String, a: Analysis) = PricePreviewOut(batch, a.skus, a.types, a.outlets, a.devices, JsonPrimitive(a.maxPct.min(PCT_CAP)), a.approval)
 
 private fun rowsJson(rows: List<PriceRowIn>): String = ResponseJson.encodeToString(kotlinx.serialization.builtins.ListSerializer(PriceRowIn.serializer()), rows)
 
@@ -293,7 +296,7 @@ private suspend fun preview(call: ApplicationCall, d: AdminPricesDeps): PricePre
             h.createUpdate(
                 "INSERT INTO app.price_batch (batch_uuid, status, valid_from, fingerprint, price_rows, row_count, max_change_pct, previewed_by) VALUES (:b, 'previewed', :f, :fp, CAST(:r AS jsonb), :n, :m, :by) " +
                     "ON CONFLICT (batch_uuid) DO UPDATE SET valid_from = :f, fingerprint = :fp, price_rows = CAST(:r AS jsonb), row_count = :n, max_change_pct = :m, previewed_by = :by, updated_at = now() WHERE app.price_batch.status = 'previewed'",
-            ).bind("b", uuid).bind("f", from).bind("fp", fp).bind("r", rowsJson(req.prices)).bind("n", req.prices.size).bind("m", a.maxPct).bind("by", p.userId).execute()
+            ).bind("b", uuid).bind("f", from).bind("fp", fp).bind("r", rowsJson(req.prices)).bind("n", req.prices.size).bind("m", a.maxPct.min(PCT_CAP)).bind("by", p.userId).execute()
         }
         previewOf(req.batch_uuid, a)
     }
@@ -327,7 +330,7 @@ private fun applyRows(h: Handle, actor: AronPrincipal, call: ApplicationCall, uu
 
 /** +1 on the global `cfg.price.list_version` marker in the same transaction (docs/24 s9.5): a new cfg_version commit, the open value closed, a new one opened. */
 private fun bumpListVersion(h: Handle, actor: AronPrincipal, d: AdminPricesDeps, batch: UUID, reason: String): Long {
-    h.execute("SELECT pg_advisory_xact_lock(7210001)")
+    h.execute("SELECT pg_advisory_xact_lock(7242001)")
     val now = OffsetDateTime.ofInstant(d.clock.now(), ZoneOffset.UTC)
     data class Open(val id: Long, val from: OffsetDateTime, val value: Long)
     val open = h.createQuery("SELECT id, effective_from, value::text FROM app.cfg_value WHERE key = :k AND scope_type = 'global' AND effective_to IS NULL FOR UPDATE").bind("k", LIST_VERSION_KEY)
@@ -376,7 +379,7 @@ private suspend fun publish(call: ApplicationCall, d: AdminPricesDeps) {
                 "VALUES (:b, :st, :f, :fp, CAST(:r AS jsonb), :n, :why, :bd, :m, :by, now()) ON CONFLICT (batch_uuid) DO UPDATE SET status = :st, valid_from = :f, fingerprint = :fp, price_rows = CAST(:r AS jsonb), row_count = :n, " +
                 "change_reason = :why, backdate = :bd, max_change_pct = :m, submitted_by = :by, submitted_at = now(), updated_at = now()"
             fun store(status: String) = h.createUpdate(upsert).bind("b", uuid).bind("st", status).bind("f", from).bind("fp", fp).bind("r", rowsJson(req.prices)).bind("n", req.prices.size)
-                .bind("why", reason).bind("bd", backdated).bind("m", a.maxPct).bind("by", p.userId).execute()
+                .bind("why", reason).bind("bd", backdated).bind("m", a.maxPct.min(PCT_CAP)).bind("by", p.userId).execute()
             if (a.approval) {
                 store("pending_approval")
                 AuditWriter.write(h, p, "price_batch", uuid.toString(), "submit_pending", null, auditObj("status" to "pending_approval", "valid_from" to from, "rows" to req.prices.size, "max_change_pct" to a.maxPct.toPlainString()), reason, call.requestId)

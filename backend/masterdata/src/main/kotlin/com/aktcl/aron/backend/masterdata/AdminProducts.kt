@@ -140,6 +140,7 @@ internal fun JsonObject.enum(k: String, allowed: Set<String>, required: Boolean,
 internal fun <T> mapDb(block: () -> T): T = try { block() } catch (e: UnableToExecuteStatementException) {
     when ((e.cause as? java.sql.SQLException)?.sqlState) {
         "23505" -> throw ApiProblem(ProblemCode.ERR_MASTER_DUPLICATE_CODE, "a row with this code or name already exists")
+        "22003" -> throw ApiProblem(ProblemCode.ERR_VALIDATION, "a number is out of range", errors = listOf(FieldError("body", "out_of_range")))
         "23P01" -> throw ApiProblem(ProblemCode.ERR_MASTER_OVERLAP, "the dates overlap an existing row")
         "23514", "23503" -> throw ApiProblem(ProblemCode.ERR_VALIDATION, "the values violate a data rule", errors = listOf(FieldError("body", "constraint")))
         else -> throw e
