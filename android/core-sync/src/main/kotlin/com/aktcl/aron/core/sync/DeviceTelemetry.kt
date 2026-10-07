@@ -109,7 +109,7 @@ class DeviceTelemetry(
     /** `<date>#<slot>` of the battery slot this process already filled: no reason left to skip the coalescing. */
     @Volatile private var filledSlot: String? = null
     /** The default network was lost in this process: the next arrival is a real regain (not a handover or the start). */
-    @Volatile private var lostSeen = false
+    @Volatile private var lostSeen = runCatching { probe.metered() == null }.getOrDefault(false) // started offline: no lost callback comes
 
     /** A sample off the caller's thread; at most one a minute unless a battery slot is open and unfilled (saves come in bursts). */
     fun sampleSoon() {
@@ -122,12 +122,12 @@ class DeviceTelemetry(
 
     /** The default network came or went: bill the bytes so far to the old network; a return after a loss is a regain. */
     fun onNetworkChange(available: Boolean) {
-        val regained = available && lostSeen
-        if (!available) lostSeen = true else lostSeen = false
+        val regainedAt = if (available && lostSeen) com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs()) else null
+        lostSeen = !available
         scope.launch {
             try {
                 sample()
-                if (regained) noteConnectivityRegained(com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs()))
+                regainedAt?.let { noteConnectivityRegained(it) }
             } catch (_: Exception) { }
         }
     }

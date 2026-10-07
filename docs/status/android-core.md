@@ -83,7 +83,9 @@
   - F-SYS-072 residual (a); (b) and (c) routed to backend-core; the row stays open.
   - F-SYS-071 done (device-only proof).
   - F-SYS-079 done.
-  - F-SYS-081 phone half: two FAILs fixed, third check result is below.
+  - F-SYS-081 phone half: three checker rounds FAILED, and every confirmed finding is fixed with a test (DeviceTelemetryTest 11).
+    - Round 3 found: a day that makes the server answer 500 was never dropped, so a lone sale family could run out of retries. Now a single-family 500 counts as a refusal. Also fixed: a process that starts offline missed its first regain, and a test used a timing sleep.
+    - **The next session owes one fresh Opus re-check of the last fix commit before closing the row** (this session hit its recycle point).
 - **In progress:** nothing.
 - **Next, in this order:**
   1. F-SYS-073 urgent config push (S, needs N-038, done).

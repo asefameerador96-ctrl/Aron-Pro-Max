@@ -271,8 +271,11 @@ class SyncEngine(
                         }
                         // A batch refused for its envelope (400/422 naming no record) while carrying telemetry: counted, so a
                         // day the server cannot read is dropped. Holds, 5xx, 413, auth and version answers never count.
-                        val envelopeRefusal = (result.httpStatus == 400 || result.httpStatus == 422) &&
-                            result.problem.errors.none { e -> RECORD_POINTER.containsMatchIn(e.pointer ?: "") }
+                        // A 500 at single-family size also counts: the bisect has ruled the other families out, and a day
+                        // the server chokes on must be dropped before the family's own rows run out of retries.
+                        val envelopeRefusal = ((result.httpStatus == 400 || result.httpStatus == 422) &&
+                            result.problem.errors.none { e -> RECORD_POINTER.containsMatchIn(e.pointer ?: "") }) ||
+                            (result.httpStatus == 500 && rows.map { it.familyUuid }.distinct().size == 1)
                         if (envelopeRefusal) telemetryDate?.let { d -> try { telemetry?.failed(d) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { } }
                         return failure(batchUuid, rows, result)
                     }

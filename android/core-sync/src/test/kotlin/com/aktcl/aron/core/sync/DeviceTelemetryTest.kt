@@ -110,19 +110,33 @@ class DeviceTelemetryTest {
         assertEquals(5_000L, day()["b_mob"]!!.jsonPrimitive.long) // all bytes since the new boot, not 5,000 - 1,000
     }
 
+    /** Waits for the background write by reading the file, never on a fixed sleep. */
+    private suspend fun awaitFile(contains: String) {
+        kotlinx.coroutines.withTimeout(10_000) { while (!(file.isFile && file.readText().contains(contains))) kotlinx.coroutines.yield() }
+    }
+
     @Test fun onlyARegainAfterALossIsKeptAndOldDaysArePrunedWithoutABatch() = runBlocking {
-        telemetry.onNetworkChange(true) // the callback at registration: not a regain
-        kotlinx.coroutines.delay(200)
+        telemetry.onNetworkChange(true) // the callback at registration (online at start): not a regain
         now = dhaka(10, 0)
         telemetry.onNetworkChange(false)
-        kotlinx.coroutines.delay(200)
         now = dhaka(10, 30)
-        telemetry.onNetworkChange(true)
-        kotlinx.coroutines.delay(200)
+        telemetry.onNetworkChange(true) // the time is taken at the callback, not when the write runs
+        now = dhaka(11, 0)
+        awaitFile("regained")
         assertEquals("2026-10-05T04:30:00.000Z", day()["regained"]!!.jsonPrimitive.content)
         now = dhaka(9, 0, 20)
         telemetry.sample() // day 20: day 5 is past the keep window and goes on this write
         assertTrue(!file.readText().contains("2026-10-05"))
+    }
+
+    /** Re-check: a process that starts offline gets no "lost" callback; its first connection is still a regain. */
+    @Test fun aProcessStartedOfflineRecordsItsFirstConnectionAsARegain() = runBlocking {
+        probe.metered = null
+        val t = telemetry
+        now = dhaka(9, 15)
+        t.onNetworkChange(true)
+        awaitFile("regained")
+        assertEquals("2026-10-05T03:15:00.000Z", day()["regained"]!!.jsonPrimitive.content)
     }
 
     @Test fun batteryIsTheFirstSampleInEachHalfHourAfterTheSlots() = runBlocking {
@@ -240,12 +254,43 @@ class DeviceTelemetryTest {
             fun engine() = SyncEngine(USER, db, SyncBatchApi(client, null), auth, { DEVICE }, "1.0.3+10003", clock, SyncPolicy(), random = Random(7),
                 telemetry = telemetry.forBatch { null })
             fake.failBefore += 400
-            fake.failBefore += 400
+            fake.failBefore += 400 // envelope refusals; a single-family 500 counts the same way
             engine().run(SyncTrigger.MANUAL)
             engine().run(SyncTrigger.MANUAL)
             assertNull(telemetry.pendingDay(true, 1024))
             assertEquals(SyncStop.DRAINED, engine().run(SyncTrigger.MANUAL).stop)
             assertNull(fake.requests.last().body?.get("telemetry"))
+        } finally {
+            server.close()
+        }
+    }
+
+    /** Round 3: a day the server answers with 500 is dropped before a lone sale family runs out of retries. */
+    @Test fun aDayThatMakesTheServerFailIsDroppedBeforeTheSaleRunsOutOfRetries() = runBlocking {
+        val server = MockWebServer()
+        val fake = FakeIngestServer()
+        server.dispatcher = fake
+        server.start()
+        try {
+            telemetry.sample()
+            now = dhaka(9, 0, 6)
+            val (visit, fix) = TestRows.visit(outletId = 50001L, seq = 1)
+            CaptureRepository(db) { "2026-10-06T03:00:00.000Z" }.recordVisitOpen(visit, fix)
+            val ok = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
+            val client = AronApiClient(ApiOrigin.parse(server.url("/").toString().trimEnd('/'), allowCleartextLoopback = true), ok, ClientIdentity("1.0.3+10003") { DEVICE })
+            val auth = object : UploadAuth {
+                override suspend fun token(userId: Long): String? = "upload-1"
+                override suspend fun refresh(userId: Long, rejected: String?): Boolean = false
+            }
+            fun engine() = SyncEngine(USER, db, SyncBatchApi(client, null), auth, { DEVICE }, "1.0.3+10003", clock, SyncPolicy(), random = Random(7),
+                telemetry = telemetry.forBatch { null })
+            fake.failBefore += 500
+            fake.failBefore += 500
+            engine().run(SyncTrigger.MANUAL)
+            engine().run(SyncTrigger.MANUAL)
+            assertNull(telemetry.pendingDay(true, 1024))
+            assertEquals(SyncStop.DRAINED, engine().run(SyncTrigger.MANUAL).stop)
+            assertEquals("acked", db.outboxDao().byClientUuid(visit.clientUuid)!!.state)
         } finally {
             server.close()
         }
