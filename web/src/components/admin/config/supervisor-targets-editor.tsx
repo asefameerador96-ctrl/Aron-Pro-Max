@@ -91,7 +91,7 @@ export function SupervisorTargetsEditor({ month, initial: stored, names, canWrit
                 {FIELDS.map((f) => (
                   <td key={f} className={cell}>
                     <input aria-label={t(`st.col.${f}` as "st.col.total_call_target")} value={rows[r.user_id]![f]} disabled={!canWrite} inputMode="numeric" onChange={(ev) => setRows((s) => ({ ...s, [r.user_id]: { ...s[r.user_id]!, [f]: ev.target.value } }))} className={`${inputClass} w-24`} />
-                    {errors[`${r.user_id}.${f}`] ? <p role="alert" className="text-xs text-red-700">{errors[`${r.user_id}.${f}`]}</p> : null}
+                    {errors[`${r.user_id}.${f}`] ? <p role="alert" className="text-xs text-[var(--danger)]">{errors[`${r.user_id}.${f}`]}</p> : null}
                   </td>
                 ))}
               </tr>
@@ -106,14 +106,14 @@ export function SupervisorTargetsEditor({ month, initial: stored, names, canWrit
             <input aria-label={t("st.add_user")} name="user_id" value={newId} inputMode="numeric" onChange={(e) => setNewId(digitsOnly(e.target.value))} className={`${inputClass} w-32`} />
           </label>
           <button type="button" onClick={addOfficer} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">{t("st.add")}</button>
-          {errors.add ? <p role="alert" className="text-xs text-red-700">{errors.add}</p> : null}
+          {errors.add ? <p role="alert" className="text-xs text-[var(--danger)]">{errors.add}</p> : null}
         </div>
       ) : null}
       {canWrite ? (
         <>
           <ReasonField value={reason} onChange={setReason} error={errors.reason} />
-          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{banner.text}</p> : null}
-          <button type="button" onClick={save} disabled={busy || initial.length === 0} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
+          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>{banner.text}</p> : null}
+          <button type="button" onClick={save} disabled={busy || initial.length === 0} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
         </>
       ) : null}
     </div>

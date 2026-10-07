@@ -88,3 +88,21 @@ class ConfigPublicPermissionsTest {
         assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { perms.write(sa, "TSO", RolePermissionsWrite(listOf(MenuPermissionDto("reports.reports", listOf("fly"))), "Unknown action in this write"), null) }.code)
     }
 }
+
+/** Ruling 7: every action in the seeded matrix is either mapped to a contract action or listed as dropped; a new one fails here. */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class PermissionMappingTest {
+    @Test
+    fun noSeededActionIsDroppedSilently() {
+        val env = SeededConfigDb()
+        try {
+            val clock = TestClock()
+            val r = ConfigResolver(env.fresh.db, clock)
+            val perms = ConfigPermissions(env.fresh.db, ConfigService(env.fresh.db, r, clock), clock)
+            val def = r.registry().getValue("cfg.web.menu_by_role").default as kotlinx.serialization.json.JsonObject
+            val seeded = def.values.flatMap { (it as kotlinx.serialization.json.JsonArray) }.flatMap { ((it as kotlinx.serialization.json.JsonObject)["actions"] as kotlinx.serialization.json.JsonArray) }.map { (it as JsonPrimitive).content }.toSet()
+            val unknown = seeded - perms.mappedActions - perms.droppedActions
+            assertTrue(unknown.isEmpty(), "seeded actions with no mapping and not listed as dropped: $unknown")
+        } finally { env.close() }
+    }
+}

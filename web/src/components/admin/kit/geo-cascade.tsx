@@ -49,7 +49,7 @@ export function GeoCascade({ levels, viewLabel, allLabel, action, extra }: { lev
           <input name={x.name} type={x.type ?? "text"} defaultValue={x.value} className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm" />
         </label>
       ))}
-      <button type="submit" className="rounded bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700">
+      <button type="submit" className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
         {viewLabel}
       </button>
     </form>
