@@ -64,6 +64,8 @@ GET /v1/report-exports/{export_id} -> gap: backend-reports
 GET /v1/reports -> gap: backend-reports
 GET /v1/routes/{id}/assignments -> case RouteAssignmentsTest#randomisedCallersNeverSeeARouteOutsideTheirReach
 GET /v1/sync/bundle -> case BundleAcceptanceTest#theBundleHoldsOnlyTheCallersOwnRoutesAndTheirOutletsWhateverTheQuerySays
+GET /v1/sync/bundle/page -> exempt: a page of the caller's own bundle (user from the token, rebuilt as GET /v1/sync/bundle); bundle_version names only a date and a seq, never a user or scope (BundleDeltaTest#outletsAboveTheThresholdArePagedAndThePagesHoldEveryRowOnce)
+GET /v1/sync/delta -> exempt: the difference of the caller's own bundle (user from the token); the cursor names only a date, a seq and an instant, and fingerprints are looked up under the token user (BundleDeltaTest#sameSnapshotIs304AndAChangedOutletIsTheOnlyUpsert)
 GET /v1/sync/totals -> exempt: the caller's own records only (user id from the token); no query parameter names another user or scope (SyncReadsTest#syncTotalsEqualTheBatchTotalsAndARepeatedUploadLeavesThemUnchanged)
 GET /v1/sync/generation -> exempt: one company-wide database lineage row, identical for every caller; no scoped data
 POST /v1/media/sas -> exempt: write grants for the calling phone's own photo paths only (the device uuid in the path comes from the token)

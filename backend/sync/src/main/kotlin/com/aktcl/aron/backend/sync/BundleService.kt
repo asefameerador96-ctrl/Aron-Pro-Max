@@ -51,8 +51,10 @@ class BundleService(
     private val config: ServerConfig,
     private val planner: RoutePlanner,
     private val clock: AronClock = AronClock.SYSTEM,
+    private val fingerprints: FingerprintCache = FingerprintCache(),
 ) {
-    data class Result(val bundle: Bundle, val version: String)
+    /** [bundle] is what the wire carries (paged sections emptied); [full] holds every row (pages, delta). */
+    data class Result(val bundle: Bundle, val version: String, val full: Bundle = bundle, val seq: Long = 0)
 
     private data class UserRow(
         val id: Long, val username: String, val fullName: String, val role: String, val designation: String?, val locale: String,
@@ -131,13 +133,82 @@ class BundleService(
         }
         val seq = snapshotSeq(user.id, date, bundle)
         val version = "$date:$seq"
+        fingerprints.putIfAbsent(user.id, date, seq) { BundleFingerprint.of(bundle) }
+        val paged = BundlePaging.paged(bundle, pageThreshold(), pageRows())
         val meta = BundleMeta(
             bundle_version = version, valid_for_business_date = date.toString(), generated_at = now.wire(), server_time = clock.now().wire(),
             user_id = user.id, role = user.role, config_version = bundle.config.config_version, schema_version = ContractInfo.SCHEMA_VERSION,
-            cursor = cursor(date, seq, now), is_prefetch = prefetch, paged_sections = emptyList(),
+            cursor = cursor(date, seq, now), is_prefetch = prefetch, paged_sections = paged,
         )
-        return Result(bundle.copy(meta = meta), version)
+        return Result(BundlePaging.strip(bundle, paged).copy(meta = meta), version, bundle.copy(meta = meta), seq)
     }
+
+    private fun pageThreshold(): Int = runCatching { config.int("cfg.bundle.page_threshold_rows") }.getOrDefault(2000).coerceIn(500, 10_000)
+
+    /** `cfg.bundle.page_rows` (200..5000), at most the 2000 rows a `BundlePage` may carry. */
+    private fun pageRows(): Int = runCatching { config.int("cfg.bundle.page_rows") }.getOrDefault(1000).coerceIn(200, 2000)
+
+    /**
+     * GET /v1/sync/delta (F-API-005, F-SYS-007): the change from the snapshot the cursor names to the bundle of now, for
+     * the cursor's business date. A delta is a bundle request of that date (s4.9: it marks `logged_in` like 200 and 304).
+     * Null means 304 (same snapshot, no new resolutions). 409 for a cursor of another date than `for` (default today),
+     * 410 for one older than `cfg.bundle.delta_max_age_h` or whose snapshot this replica cannot diff against.
+     */
+    fun delta(p: AronPrincipal, sinceRaw: String?, forDate: LocalDate?, appVersion: String? = null): BundleDeltaDto? {
+        val since = DeltaCursor.parse(sinceRaw)
+        val now = clock.now()
+        val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
+        val date = forDate ?: today
+        if (since.date != date || since.date.isBefore(today)) {
+            throw ApiProblem(ProblemCode.ERR_BUNDLE_NEW_BUSINESS_DATE, "the cursor is for ${since.date}; fetch the bundle for $date")
+        }
+        val maxAgeH = runCatching { config.int("cfg.bundle.delta_max_age_h") }.getOrDefault(72).coerceIn(24, 168).toLong()
+        if (since.at.isBefore(now.minusSeconds(maxAgeH * 3600))) throw expired("the cursor is older than $maxAgeH h")
+        val r = bundle(p, date, appVersion) // the version gate of a new date applies as to the bundle
+        val resolutions = db.jdbi.withHandle<List<Resolution>, Exception> { h -> resolutionsAfter(h, p.userId, since.at, now) }
+        if (r.seq == since.seq && resolutions.isEmpty()) return null
+        val body = if (r.seq == since.seq) DeltaDiff.Body(emptyMap(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        else fingerprints.get(p.userId, date, since.seq)?.let { DeltaDiff.diff(it, r.full) } ?: throw expired("fetch the full bundle")
+        return BundleDeltaDto(
+            meta = DeltaMeta(r.version, sinceRaw!!, r.bundle.meta.cursor, date.toString(), r.bundle.meta.config_version, clock.now().wire()),
+            sections = body.sections, code_lists = body.codeLists, templates = body.templates,
+            routes_added = body.routesAdded, routes_removed = body.routesRemoved, day_states = body.dayStates, resolutions = resolutions,
+        )
+    }
+
+    /**
+     * GET /v1/sync/bundle/page: one page of a section the bundle listed in `meta.paged_sections`. The snapshot is rebuilt;
+     * when its content moved on (another `bundle_version`) the page is 410 and the phone restarts with the bundle.
+     */
+    fun page(p: AronPrincipal, versionRaw: String?, section: String?, pageRaw: String?): BundlePageDto {
+        val (date, _) = BundlePaging.parseVersion(versionRaw)
+            ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bundle_version must be <date>:<seq>", errors = listOf(FieldError("query.bundle_version", if (versionRaw == null) "required" else "invalid_value")))
+        if (section == null || section !in SECTION_NAMES) {
+            throw ApiProblem(ProblemCode.ERR_VALIDATION, "unknown section", errors = listOf(FieldError("query.section", if (section == null) "required" else "invalid_value")))
+        }
+        val page = pageRaw?.toIntOrNull()?.takeIf { it in 1..1000 }
+            ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "page must be 1..1000", errors = listOf(FieldError("query.page", if (pageRaw == null) "required" else "out_of_range")))
+        val today = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
+        if (date.isBefore(today)) throw expired("the snapshot of $date is gone")
+        val r = bundle(p, date, null)
+        if (r.version != versionRaw) throw expired("the bundle changed; fetch it again")
+        val paged = r.bundle.meta.paged_sections.firstOrNull { it.section == section }
+            ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "section $section is not paged in this bundle")
+        if (page > paged.pages) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "section $section has ${paged.pages} pages")
+        return BundlePageDto(r.version, section, page, paged.pages, BundlePaging.page(BundlePaging.rows(r.full, section), page, pageRows()))
+    }
+
+    private fun expired(why: String) = ApiProblem(ProblemCode.ERR_BUNDLE_CURSOR_EXPIRED, why)
+
+    /** Decisions on the user's quarantined records since the cursor (the same rows the batch response carries). */
+    private fun resolutionsAfter(h: Handle, userId: Long, after: Instant, now: Instant): List<Resolution> = h.createQuery(
+        """
+        SELECT client_uuid, record_type, status, resolved_at FROM app.sync_quarantine
+        WHERE user_id = :u AND status <> 'open' AND resolved_at > :since AND code <> 'payload_conflict' ORDER BY resolved_at DESC LIMIT 200
+        """.trimIndent(),
+    ).bind("u", userId).bind("since", OffsetDateTime.ofInstant(maxOf(after, now.minusSeconds(7 * 86_400)), ZoneOffset.UTC)).map { rs, _ ->
+        Resolution(rs.getString(1), rs.getString(2), rs.getString(3), rs.getObject(4, OffsetDateTime::class.java).toInstant().wire())
+    }.list()
 
     /**
      * `cfg.calendar.weekend_days` is scoped (global, wing, division): `planned_today` and the target follow the weekend
@@ -172,7 +243,11 @@ class BundleService(
      * digest. Either way equal content gives an equal version (ETag) on every replica.
      */
     private fun snapshotSeq(userId: Long, date: LocalDate, b: Bundle): Long {
-        val digest = contentDigest(b)
+        // The paging settings are server keys outside the content: a change must move the seq, so staged pages of the
+        // old size are never mixed with pages of the new size under one bundle_version (BC-71 checker M1).
+        val digest = MessageDigest.getInstance("SHA-256").apply {
+            update(contentDigest(b)); update("|${pageThreshold()}|${pageRows()}".toByteArray())
+        }.digest()
         return db.jdbi.inTransaction<Long, Exception> { h ->
             val hasTable = h.createQuery("SELECT to_regclass('app.bundle_snapshot') IS NOT NULL").mapTo(Boolean::class.java).one()
             if (!hasTable) return@inTransaction contentSeq(b)
@@ -499,6 +574,8 @@ class BundleService(
 
     companion object {
         private val RADIUS_KEYS = arrayOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m")
+
+        private val SECTION_NAMES = setOf("outlets", "open_memos", "prices", "offers", "tasks", "team", "pending_outlet_requests", "programmes", "content")
 
         private val PHONE_BD = Regex("^01[3-9]\\d{8}$")
 
