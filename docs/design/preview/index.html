@@ -140,11 +140,11 @@ html{-webkit-text-size-adjust:100%}
 body{margin:0;font-family:var(--ff);color:var(--text-primary);background:var(--bg-solid);font-size:16px;line-height:1.5;letter-spacing:0;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit;letter-spacing:0}
 button{cursor:pointer}
-.t-hero{font-size:calc(48px*var(--fs));line-height:calc(var(--lh-hero)*var(--fs));font-weight:700}
-.t-display{font-size:calc(34px*var(--fs));line-height:calc(var(--lh-display)*var(--fs));font-weight:700}
-.t-numeral{font-size:calc(var(--fs-num)*var(--fs));line-height:calc(var(--lh-num)*var(--fs));font-weight:700}
-.t-title{font-size:calc(22px*var(--fs));line-height:calc(var(--lh-title)*var(--fs));font-weight:700}
-.t-heading{font-size:calc(18px*var(--fs));line-height:calc(26px*var(--fs));font-weight:var(--w-semi)}
+.t-hero{font-size:calc(48px*min(var(--fs),1.5));line-height:calc(var(--lh-hero)*min(var(--fs),1.5));font-weight:700}
+.t-display{font-size:calc(34px*min(var(--fs),1.5));line-height:calc(var(--lh-display)*min(var(--fs),1.5));font-weight:700}
+.t-numeral{font-size:calc(var(--fs-num)*min(var(--fs),1.5));line-height:calc(var(--lh-num)*min(var(--fs),1.5));font-weight:700}
+.t-title{font-size:calc(22px*min(var(--fs),1.5));line-height:calc(var(--lh-title)*min(var(--fs),1.5));font-weight:700}
+.t-heading{font-size:calc(18px*min(var(--fs),1.5));line-height:calc(26px*min(var(--fs),1.5));font-weight:var(--w-semi)}
 .t-body{font-size:calc(var(--fs-body)*var(--fs));line-height:calc(var(--lh-body)*var(--fs));font-weight:400}
 .t-bodyS{font-size:calc(var(--fs-body)*var(--fs));line-height:calc(var(--lh-body)*var(--fs));font-weight:var(--w-semi)}
 .t-cap{font-size:calc(var(--fs-cap)*var(--fs));line-height:calc(var(--lh-cap)*var(--fs));font-weight:400}
@@ -261,7 +261,7 @@ html[data-fs="150"] .seg.stack>button[aria-pressed="true"],html[data-fs="200"] .
 .sw[aria-checked="true"]{background:var(--accent);box-shadow:none}
 .sw[aria-checked="true"] i{transform:translateX(20px);background:var(--surface-solid);color:var(--accent)}
 .sw[aria-checked="true"] i svg{opacity:1}
-.meter{height:6px;border-radius:3px;background:var(--skeleton);overflow:hidden;flex:1}
+.meter{display:block;height:6px;border-radius:3px;background:var(--skeleton);overflow:hidden;flex:1}
 :root[data-theme="sunlight"] .meter{height:8px;box-shadow:inset 0 0 0 1.5px var(--text-primary);background:var(--surface-solid)}
 .wc .meter{flex:none;width:100%}
 .meter b{display:block;height:100%;border-radius:3px;background:var(--accent)}
@@ -302,7 +302,7 @@ html[data-fs="150"] .seg.stack>button[aria-pressed="true"],html[data-fs="200"] .
 :root[data-tier="C"] .tb{box-shadow:none;border-bottom:var(--card-bw) solid var(--border-solid)}
 .tb-row{display:flex;align-items:center;gap:2px;min-height:64px;padding:0 8px 0 4px}
 .tb-title{flex:1;min-width:0;padding:0 4px}
-.tb-title.long{font-size:calc(18px*var(--fs));line-height:calc(26px*var(--fs))}
+.tb-title.long{font-size:calc(18px*min(var(--fs),1.5));line-height:calc(26px*min(var(--fs),1.5))}
 .tb-sub{padding:0 12px 6px 56px;margin-top:-6px;color:var(--text-secondary)}
 .tb-end{display:flex;align-items:center;flex:none}
 html[data-fs="130"] .tb .chip,html[data-fs="150"] .tb .chip,html[data-fs="200"] .tb .chip{width:28px;padding:0;justify-content:center;border-radius:50%}
@@ -340,6 +340,18 @@ html[data-h="640"] .screen .hide-c{display:none}
 .dockbar{display:flex;align-items:center;gap:0;padding:0 8px;background:var(--field-flat);border-radius:20px 20px 0 0;box-shadow:inset 0 1px 0 var(--hl-top),0 -1px 0 var(--bar-edge)}
 .dockbar .hscroll{flex:1}
 
+html[data-fs="130"] .avatar,html[data-fs="150"] .avatar,html[data-fs="200"] .avatar{display:none}
+
+html[data-h="640"]{--ph:660px;--sh:640px}
+.tb-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.infilter{display:none}
+html[data-fs="130"] .infilter,html[data-fs="150"] .infilter,html[data-fs="200"] .infilter{display:block}
+html[data-fs="130"] .fdock.pin,html[data-fs="150"] .fdock.pin,html[data-fs="200"] .fdock.pin{display:none}
+.c-only{display:none}
+html[data-h="640"] .screen .c-only{display:inline}
+html[data-h="640"] .screen .srow.stock .r,html[data-h="640"] .screen .srow .unit{display:none}
+html[data-h="640"] .screen .srow.stock .stepline{flex:none}
+
 /* ---- Home ---- */
 .hero{display:flex;flex-direction:column;gap:6px;padding:16px;text-align:start;border:0;width:100%;color:inherit}
 .hero-top{display:flex;align-items:center;justify-content:space-between;color:var(--text-secondary)}
@@ -365,6 +377,11 @@ html[data-fs="200"] .tile .plate{flex:1;align-self:stretch;margin-top:0;place-it
 html[data-fs="130"] .kv.stackable,html[data-fs="150"] .kv.stackable,html[data-fs="200"] .kv.stackable{flex-direction:column;align-items:flex-start;gap:0}
 .stk{display:grid;grid-template-columns:1fr auto auto;gap:6px 18px;align-items:baseline}
 .stk .h{color:var(--text-secondary)}
+html[data-fs="150"] .stk,html[data-fs="200"] .stk{grid-template-columns:1fr;gap:2px}
+html[data-fs="150"] .stk .h,html[data-fs="200"] .stk .h,html[data-fs="150"] .stk>span:empty,html[data-fs="200"] .stk>span:empty{display:none}
+html[data-fs="150"] .stk b,html[data-fs="200"] .stk b{text-align:start}
+html[data-fs="150"] .stk b::before,html[data-fs="200"] .stk b::before{content:attr(data-l) " ";font-weight:400;color:var(--text-secondary)}
+html[data-fs="150"] .stk>.t-body,html[data-fs="200"] .stk>.t-body{margin-top:8px;font-weight:700}
 .r{text-align:end}
 .dline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--text-secondary);padding:0 4px}
 .hr{height:1px;background:var(--border-divider);margin:8px 0}
@@ -395,7 +412,9 @@ html[data-fs="150"] .stepline,html[data-fs="200"] .stepline{flex-direction:colum
 html[data-fs="150"] .srow.idle,html[data-fs="200"] .srow.idle{flex-wrap:wrap}
 .warnline{display:flex;gap:6px;align-items:flex-start;color:var(--warning-on-container);background:var(--warning-container);border-radius:12px;padding:6px 10px}
 html[data-h="640"] .screen .srow{flex-direction:row;align-items:center;flex-wrap:wrap}
-html[data-h="640"] .screen .srow .top{flex:1;min-width:140px}
+html[data-h="640"] .screen .srow .top{flex:1;min-width:110px}
+html[data-h="640"] .screen .stp{gap:4px}
+html[data-h="640"] .screen .stp .well{min-width:52px}
 html[data-h="640"] .screen .srow .thumb{display:none}
 html[data-h="640"] .screen .srow .warnline{display:none}
 
@@ -438,11 +457,11 @@ html[data-h="640"] .screen .srow .warnline{display:none}
 .scrim{position:absolute;inset:0;background:var(--surface-scrim);opacity:0;transition:opacity var(--motion-base) var(--ease-out)}
 .ov.open .scrim{opacity:1}
 .sheet{position:absolute;left:0;right:0;bottom:0;max-height:85%;overflow:auto;scrollbar-width:none;border-radius:28px 28px 0 0;padding:8px 16px 28px;
-  background:var(--field-flat);box-shadow:var(--elev-sheet);transform:translateY(106%);transition:transform var(--motion-sheet) var(--ease-spring);display:flex;flex-direction:column;gap:12px}
+  background:var(--surface-solid);box-shadow:var(--elev-sheet);transform:translateY(106%);transition:transform var(--motion-sheet) var(--ease-spring);display:flex;flex-direction:column;gap:12px}
 :root[data-tier="C"] .sheet{border:var(--card-bw) solid var(--border-solid);border-bottom:0}
 .ov.open .sheet{transform:none}
 .sheet .handle{align-self:center;width:36px;height:4px;border-radius:2px;background:var(--text-secondary);opacity:.7;margin:4px 0 4px}
-.dlg{position:absolute;left:24px;right:24px;top:50%;padding:24px;border-radius:28px;background:var(--field-flat);box-shadow:var(--elev-dialog);display:flex;flex-direction:column;gap:12px;
+.dlg{position:absolute;left:24px;right:24px;top:50%;padding:24px;border-radius:28px;background:var(--surface-solid);box-shadow:var(--elev-dialog);display:flex;flex-direction:column;gap:12px;
   transform:translateY(-50%) scale(.94);opacity:0;transition:transform var(--motion-base) var(--ease-out),opacity var(--motion-base) var(--ease-out)}
 :root[data-tier="C"] .dlg{border:var(--card-bw) solid var(--border-solid)}
 .ov.open .dlg{transform:translateY(-50%);opacity:1}
@@ -461,7 +480,8 @@ html[data-fs="130"] .dlg-act,html[data-fs="150"] .dlg-act,html[data-fs="200"] .d
 .holdbtn.holding .fill{width:100%;transition:width 1.2s linear}
 .holdbtn .lab{position:relative;z-index:1;padding:0 12px;text-align:center}
 .steps{display:flex;align-items:center;gap:8px}
-.steps .st{display:flex;align-items:center;gap:6px;color:var(--text-secondary);flex:none}
+.steps .st{display:flex;align-items:center;gap:6px;color:var(--text-secondary);flex:none;font-size:calc(var(--fs-cap)*var(--fs));line-height:calc(var(--lh-cap)*var(--fs))}
+html[data-fs="150"] .steps .st:not(.on) .stl,html[data-fs="200"] .steps .st:not(.on) .stl{display:none}
 .steps .st b{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--surface-raised);box-shadow:inset 0 0 0 1px var(--border-input);font-size:14px;line-height:1;flex:none}
 .steps .st.on{color:var(--accent-on-container)}
 .steps .st.on b{background:var(--accent-container);box-shadow:inset 0 0 0 1.5px var(--accent)}
@@ -649,6 +669,8 @@ html[dir="rtl"] .sel{background-position:left 12px center}
 }
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root[data-tier="A"]{--strong-a:.92;--scrim-k:1;--bf-bar:none;--bf-sheet:none}}
 @media print{.ctl{display:none}}
+
+.content>.empty:only-child{margin-block:auto}
 .gf{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
 .gf>div{display:flex;flex-direction:column}
 html[data-fs="150"] .gf,html[data-fs="200"] .gf{grid-template-columns:1fr}
@@ -840,14 +862,14 @@ const syncLabel=full=>st.off?(full?t('অফলাইন · 3 অপেক্ষ
 const syncChip=full=>st.off?chip('c-off','cloudOff',syncLabel(full)):chip('c-quiet','check',syncLabel(full));
 /* accessible name = the visible label (WCAG 2.5.3); the action goes in title/onClickLabel */
 const chipBtn=full=>`<button class="chipbtn" data-act="sync" aria-label="${syncLabel(full)}" title="${t('সিঙ্কের অবস্থা দেখুন','Show sync status')}">${syncChip(full)}</button>`;
-const printerKind=d=>st.state==='printer'?'need':d;
+const printerKind=d=>st.state==='printer'&&d==='ok'?'off':d;
 const printerBtn=kind=>{kind=printerKind(kind);return `<button class="ib" data-act="noop" aria-label="${kind==='ok'?t('প্রিন্টার কানেক্টেড','Printer connected'):t('প্রিন্টার কানেক্ট করুন','Connect printer')}"><span class="printer ${kind==='need'?'need':''}">${ic(kind==='ok'?'printer':'printerOff',20)}</span></button>`;};
 const sunBtn=()=>`<button class="ib sun" role="switch" aria-checked="${st.theme==='sunlight'}" data-act="sun" aria-label="${t('রোদ মোড','Sunlight mode')}" title="${st.theme==='sunlight'?t('রোদ মোড চালু','Sunlight mode on'):t('রোদ মোড বন্ধ','Sunlight mode off')}">${ic('sun')}</button>`;
 const topbar=(title,o={})=>`<header class="bar tb"><div class="tb-row">
   ${o.back===false?'<span style="width:12px"></span>':`<button class="ib" data-act="noop" aria-label="${t('পেছনে','Back')}">${ic('back')}</button>`}
   <h2 class="tb-title t-title ${o.long?'long':''}">${title}</h2>
   <div class="tb-end">${o.end||''}${o.printer!==undefined?printerBtn(o.printer):''}${chipBtn(false)}</div></div>${o.sub?`<p class="tb-sub t-cap">${o.sub}</p>`:''}</header>`;
-const bbar=(inner,reason,dock)=>`<div class="slotc">${dock?`<div class="fdock">${dock}</div>`:''}<footer class="bb">${reason?`<p class="cap-reason t-cap">${ic('info',16)}<span>${reason}</span></p>`:''}<div class="bb-row">${inner}</div></footer></div>`;
+const bbar=(inner,reason,dock)=>`<div class="slotc">${dock?`<div class="fdock pin">${dock}</div>`:''}<footer class="bb">${reason?`<p class="cap-reason t-cap">${ic('info',16)}<span>${reason}</span></p>`:''}<div class="bb-row">${inner}</div></footer></div>`;
 const pri=(label,act,o={})=>`<button class="btn pri ${o.cls||''}" data-act="${act}" ${o.d?'aria-disabled="true"':''} ${o.attrs||''}>${o.icon?ic(o.icon,22):''}${label}</button>`;
 const sec=(label,act,o={})=>`<button class="btn sec ${o.cls||''}" data-act="${act}" ${o.d?'aria-disabled="true"':''} ${o.attrs||''}>${o.icon?ic(o.icon,22):''}${label}</button>`;
 const txt=(label,act,o={})=>`<button class="btn txt ${o.cls||''}" data-act="${act}" ${o.attrs||''}>${label}${o.icon?ic(o.icon,20):''}</button>`;
@@ -860,7 +882,7 @@ const sheet=inner=>`<div class="scrim" data-act="close"></div><div class="sheet"
 const dialog=inner=>`<div class="scrim" data-act="close"></div><div class="dlg" role="alertdialog" aria-modal="true">${inner}</div>`;
 const banner=(kind,icon,title,body,o={})=>`<section class="banner b-${kind}" role="${kind==='dng'?'alert':'status'}">${ic(icon,24)}<div class="tx">${title?`<b class="t-bodyS">${title}</b>`:''}${body?`<span class="t-cap">${body}</span>`:''}${o.action?txt(o.action,o.act||'noop'):''}</div>${o.dismiss?`<button class="ib" data-act="${o.dismiss}" aria-label="${t('বন্ধ','Dismiss')}">${ic('x',18)}</button>`:''}</section>`;
 const meter=(cur,max,label)=>`<span class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="${max}" aria-valuenow="${cur}" aria-valuetext="${label}"><b style="width:${Math.round(cur/max*100)}%"></b></span>`;
-const ident=s=>`<span lang="en" class="nb">${nbh(s)}</span>`;   /* Latin identifier: read with the English voice, never breaks at the hyphen */
+const ident=s=>`<span lang="en">${nbh(s)}</span>`;   /* Latin identifier: read with the English voice, never breaks at the hyphen */
 const warnBanner=()=>st.state==='printer'?banner('warn','warn',t('প্রিন্টার কানেক্ট নেই।','Printer not connected.'),t('মেমো সংরক্ষিত আছে, পরে প্রিন্ট করতে পারবেন।','The memo is saved; print later.')):'';
 const skel=(h,w='100%',r=12)=>`<div class="sk" style="height:${h}px;width:${w};border-radius:${r}px"></div>`;
 const skelRows=k=>Array.from({length:k},()=>`<div style="display:flex;gap:12px;align-items:center;padding:12px 16px">${skel(48,'48px')}<div style="flex:1;display:flex;flex-direction:column;gap:8px">${skel(16,'60%')}${skel(14,'85%')}</div>${skel(20,'56px')}</div>`).join('');
@@ -1075,7 +1097,7 @@ addPhone({id:'home',short:['হোম','Home'],t:['হোম','Home'],ref:'F-SR-
    :sk==='error'?banner('dng','warn',t('পরিসংখ্যান দেখানো যাচ্ছে না','Statistics cannot be shown'),'',{action:t('আবার চেষ্টা করুন','Try again')})
    :`<div class="tiles">${[[zero?'0%':'10%','স্ট্রাইক রেট','Strike rate'],[zero?'60':'54','নন ভিজিট','Non-visit'],['0','বিক্রি নেই','No sale']].map(x=>`<div class="card kpi"><span class="t-numeral num">${n(x[0])}</span><span class="t-label sec">${t(x[1],x[2])}</span></div>`).join('')}</div>`;
   return `<header class="bar hdr"><div class="hdr-row"><span class="avatar" aria-hidden="true">S</span>
-    <div class="hdr-txt"><h2 class="t-heading">SR - Testing Banani (${ident('sr334001')})</h2><p class="t-cap sec hdr-sub"><span class="nb">Apsis RouteDaily</span><br><span class="nb">${nbh('2026-10-05')}</span> · Daily</p></div>
+    <div class="hdr-txt"><h2 class="t-heading">SR - Testing Banani (${ident('sr334001')})</h2><p class="t-cap sec hdr-sub">Apsis RouteDaily<br><span class="nb">${nbh('2026-10-05')}</span> · Daily</p></div>
     ${sunBtn()}<button class="ib" data-act="goto" data-to="settings" aria-label="${t('সেটিংস','Settings')}">${ic('tune')}</button></div></header>
   <div class="content">
     ${zero?banner('info','info',t('আজকের জন্য কোনো রুট নির্ধারিত নেই','No route is planned for today'),''):''}
@@ -1087,8 +1109,8 @@ addPhone({id:'home',short:['হোম','Home'],t:['হোম','Home'],ref:'F-SR-
     ${kpis}
     <section class="card pad"><h3 class="t-heading" style="margin-bottom:8px">${t('স্টক','Stock')}</h3>
       <div class="stk"><span></span><span class="t-label h r">${t('ইস্যু','Issue')}</span><span class="t-label h r">${t('বর্তমান স্টক','Current stock')}</span>
-       <span class="t-body">${t('লাইটার','Lighter')}</span><b class="t-bodyS num r">${n(400)} ${t('পিস','pcs')}</b><b class="t-bodyS num r">${n(25)} ${t('পিস','pcs')}</b>
-       <span class="t-body">${t('ম্যাচ','Match')}</span><b class="t-bodyS num r">${n(400)} ${t('ডজন','doz')}</b><b class="t-bodyS num r">${n(394)} ${t('ডজন','doz')}</b></div></section>
+       <span class="t-body">${t('লাইটার','Lighter')}</span><b class="t-bodyS num r" data-l="${t('ইস্যু','Issue')}">${n(400)} ${t('পিস','pcs')}</b><b class="t-bodyS num r" data-l="${t('বর্তমান স্টক','Current stock')}">${n(25)} ${t('পিস','pcs')}</b>
+       <span class="t-body">${t('ম্যাচ','Match')}</span><b class="t-bodyS num r" data-l="${t('ইস্যু','Issue')}">${n(400)} ${t('ডজন','doz')}</b><b class="t-bodyS num r" data-l="${t('বর্তমান স্টক','Current stock')}">${n(394)} ${t('ডজন','doz')}</b></div></section>
     <section class="card pad"><h3 class="t-heading" style="margin-bottom:8px">${t('আজকের বিক্রয়','Today’s sales')}</h3>
       <div class="kv stackable"><span class="t-body sec">${t('ম্যাচ','Match')}</span><span class="t-bodyS">${mo(zero?0:141)}</span></div>
       <div class="kv stackable"><span class="t-body sec">${t('লাইটার','Lighter')}</span><span class="t-bodyS">${mo(zero?0:4687.5)}</span></div>
@@ -1175,7 +1197,7 @@ addPhone({id:'stock',short:['স্টক','Stock'],t:['স্টক','Stock'],r
  draw(){
   const inc=S.stk.inc,ch=stkChanged(),saved=S.stk.saved;
   const row=k=>{const c=CAT[k.c],unit=t(c[2],c[4]),q=inc[k.id],cur=k.stock+q;
-   return `<div class="srow stock" role="group" aria-label="${k.n}, ${t(c[0],c[1])}, ${t('আজ লোড','Loaded today')} ${n(k.load)} ${unit}, ${t('স্টক','Stock')} ${n(cur)} ${unit}"><div class="top">${thumb(k,k.load)}<div style="flex:1;min-width:0"><div class="t-bodyS">${ident(k.n)}</div><div class="t-cap sec num">${t('আজ লোড','Loaded today')} ${n(k.load)} ${unit}</div></div>
+   return `<div class="srow stock" role="group" aria-label="${k.n}, ${t(c[0],c[1])}, ${t('আজ লোড','Loaded today')} ${n(k.load)} ${unit}, ${t('স্টক','Stock')} ${n(cur)} ${unit}"><div class="top">${thumb(k,k.load)}<div style="flex:1;min-width:0"><div class="t-bodyS">${ident(k.n)}</div><div class="t-cap sec num">${t('আজ লোড','Loaded today')} ${n(k.load)} ${unit}<span class="c-only"> · ${t('স্টক','Stock')} ${n(cur)}</span></div></div>
      <div class="r"><div class="t-numeral num">${n(cur)}</div><div class="t-cap sec">${t('স্টক','Stock')} · ${unit}</div></div></div>
      <div class="stepline end">${stepper(k,q,unit,q<=0,false,'sstep')}</div></div>`;};
   const grp=c=>`<div><h3 class="group-h t-label">${t(CAT[c][0],CAT[c][1])} · ${t(CAT[c][2],CAT[c][4])}</h3><div class="grp" style="margin-top:6px">${SKU.filter(k=>k.c===c).map(row).join('')}</div></div>`;
@@ -1183,6 +1205,7 @@ addPhone({id:'stock',short:['স্টক','Stock'],t:['স্টক','Stock'],r
   const dock=['cig','lt','mt'].map(c=>`<button class="fchip" data-act="stkcats" aria-pressed="false">${t(CAT[c][0],CAT[c][1])} ${n(tot(c))} ${t(CAT[c][2],CAT[c][4])}</button>`).join('');
   return topbar(t('স্টক','Stock'),{printer:'need'})+`<div class="content">
    ${warnBanner()}
+   <div class="infilter">${dock}</div>
    ${saved?banner('ok','checkCircle',t('সংরক্ষিত হয়েছে। স্লিপ এখনো প্রিন্ট হয়নি।','Saved. The slip is not printed yet.'),'',{action:t('প্রিন্ট','Print'),act:'noop'}):''}
    <div class="rows2 t-label sec" style="padding:0 16px"><span>${t('এসকেইউ','SKU')}</span><span>${t('ইস্যু (এখন যোগ হবে)','Issue (added now)')}</span><span>${t('স্টক','Stock')}</span></div>
    ${['cig','lt','mt'].map(grp).join('')}</div>`
@@ -1310,6 +1333,7 @@ addPhone({id:'sale',short:['বিক্রয়','Sale'],t:['বিক্র�
   const dock=`<div class="dockbar"><button class="ib" data-act="noop" aria-label="${t('খুঁজুন','Search')}">${ic('search')}</button><div class="hscroll" role="group" aria-label="${t('ক্যাটাগরি','Category')}">${cats.map(c=>`<button class="fchip" data-act="cat" data-v="${c[0]}" aria-pressed="${S.cat===c[0]}">${S.cat===c[0]?ic('check',14):''}${c[1]}</button>`).join('')}</div></div>`;
   return topbar(t('বিক্রয় · ','Sale · ')+'বনানী স্টোর',{long:true})+`<div class="content">
    <div class="rows2" style="align-items:center">${txt(t('পূর্বের বিক্রয় দেখুন','View previous sales'),'noop',{icon:'chevR'})}</div>
+   <div class="infilter">${dock}</div>
    ${grp(t('এই আউটলেটে আগে বিক্রি','Sold here before'),recent)}${byCat}</div>
    ${bbar(`<div class="bb-sum fitbox"><span class="t-cap sec">${t('মোট','Total')}</span><span class="t-numeral">${mo(tot,'',{big:true})}</span></div>${pri(t('এগিয়ে যান','Proceed')+' →','noop',{cls:'w60'})}`,'',dock)}`;
  }});
@@ -1326,7 +1350,7 @@ addPhone({id:'review',short:['নিরীক্ষণ','Review'],t:['নির�
     return ls.map(k=>`<div class="g-row"><span class="t-body">${ident(k.n)}</span><span class="t-body num r">${n(S.sale[k.id])} ${t(CAT[c][2],CAT[c][4])}</span><span class="t-body num r">${fmt(k.p*S.sale[k.id])}</span></div>`).join('')+
     `<div class="g-row sub"><span class="t-label">${t('মোট '+CAT[c][0],'Total '+CAT[c][1].toLowerCase())}</span><span class="t-label num r">${n(q)} ${t(CAT[c][2],CAT[c][4])}</span><span class="t-label num r">${fmt(v)}</span></div>`;}).join('');
   const err=st.state==='error'?banner('warn','warn',t('প্রিন্ট হয়নি।','Print failed.'),t('প্রিন্টার চালু ও কানেক্ট আছে কিনা দেখুন। মেমো সংরক্ষিত।','Check that the printer is on and connected. The memo is saved.'),{action:t('আবার চেষ্টা','Try again')}):'';
-  return topbar(t('নিরীক্ষণ','Review'),{printer:'off'})+`<div class="content">${warnBanner()}${err}
+  return topbar(t('নিরীক্ষণ','Review'),{printer:st.state==='error'?'need':'off'})+`<div class="content">${warnBanner()}${err}
    <p class="t-cap sec" style="padding:0 4px"><b class="t-label" style="color:var(--text-primary)">বনানী স্টোর</b> (${ident('C-1042')}) · ${t('রুট','Route')}: Apsis RouteDaily · ${t('ক্লাস্টার','Cluster')}: Apsis Cluster</p>
    <section class="card pad">${zero?`<div class="kv"><span class="t-body">${t('জিরো বিক্রয় (কোনো SKU নেই)','Zero sale (no SKU)')}</span><b class="t-bodyS">${mo(0)}</b></div>`:`<div class="g-row h"><span class="t-label">${t('এসকেইউ','SKU')}</span><span class="t-label r">${t('পরিমাণ','Quantity')}</span><span class="t-label r">${t('মূল্য (৳)','Value (৳)')}</span></div>${byc}`}</section>
    <section class="card pad"><div class="kv stackable"><span class="t-body sec">${t('মোট','Total')}</span><span class="t-bodyS">${mo(tot)}</span></div><div class="hr"></div>
@@ -1411,7 +1435,7 @@ addPhone({id:'submit',short:['বিক্রয় জমা','Sales submit'],t
   const memoState=bad?'bad':sy?'wait':'ok';
   return topbar(t('বিক্রয় জমা','Sales submit'))+`<div class="content">
    <div class="drow" style="min-height:40px;flex-wrap:wrap;gap:4px 12px"><span class="t-label sec">${t('ডিভাইস স্ট্যাটাস','Device status')}</span>${st.off?chip('c-off','cloudOff',t('অফলাইন · শেষ যোগাযোগ 10:42','Offline · last contact 10:42')):chip('c-quiet','check',t('অনলাইন · শেষ যোগাযোগ 10:42','Online · last contact 10:42'))}</div>
-   <div class="steps" aria-label="${t('ধাপ','Steps')}"><span class="st ${ok||bad?'done':'on'}"><b>${ok||bad?ic('check',14):n(1)}</b>${t('সিঙ্ক','Sync')}</span><span class="ln"></span><span class="st ${ok?'on':''}"><b>${n(2)}</b>${t('মেলানো','Match')}</span><span class="ln"></span><span class="st"><b>${n(3)}</b>${t('জমা','Submit')}</span></div>
+   <div class="steps" aria-label="${t('ধাপ','Steps')}"><span class="st ${ok||bad?'done':'on'}"><b>${ok||bad?ic('check',14):n(1)}</b><span class="stl">${t('সিঙ্ক','Sync')}</span></span><span class="ln"></span><span class="st ${ok?'on':''}"><b>${n(2)}</b><span class="stl">${t('মেলানো','Match')}</span></span><span class="ln"></span><span class="st"><b>${n(3)}</b><span class="stl">${t('জমা','Submit')}</span></span></div>
    ${bad?banner('warn','warn',t('মিলছে না: মেমো ডিভাইসে 6, সার্ভারে 5','Not matching: memos 6 on the phone, 5 on the server'),'',{action:t('আবার সিঙ্ক','Sync again')}):ok?banner('ok','checkCircle',t('সব তথ্য মিলেছে','Everything matches'),''):banner('info','info',t('আজকের সব তথ্য সিঙ্ক হলে বিক্রয় জমা দেওয়া যাবে। সিঙ্ক নিজে থেকেই চলছে।','You can submit once everything is synced. Sync runs by itself.'),'')}
    <section class="card pad"><div class="rcard">
      ${rw(t('আউটলেট','Outlets'),6,6,'ok')}${rw(t('মেমো','Memos'),6,bad?5:sy?5:6,memoState)}${rw(t('বিক্রয় (৳)','Sales (৳)'),4391,sy?4257:4391,sy?'wait':'ok',true)}${rw(t('স্টক','Stock'),2,2,'ok')}${rw(t('কিউসি','QC'),0,0,'ok')}</div>
@@ -1475,8 +1499,8 @@ addPhone({id:'tutorial',short:['টিউটোরিয়াল','Tutorial'],t
   const it=[['play','অ্যাপ পরিচিতি','App introduction','2:30','8.2','done'],['play','বিক্রয় ও মেমো','Sale and memo','4:10','14.6','dl'],['play','স্টক ও স্লিপ প্রিন্ট','Stock and slip printing','3:20','11.0','none'],['book','জিওফেন্স ও ফোর্স সেল','Geofence and force sale','2:50','9.4','none']];
   return topbar(t('টিউটোরিয়াল','Tutorial'))+`<div class="content">
    ${st.off?banner('off','cloudOff',t('ডাউনলোড করতে ওয়াই-ফাই লাগবে','Downloading needs Wi-Fi'),t('যা নামানো আছে তা অফলাইনেই চলবে।','What is downloaded plays offline.')):banner('info','wifi',t('ভিডিও শুধু ওয়াই-ফাইয়ে নামে','Videos download over Wi-Fi only'),t('মোবাইল ডাটা খরচ হবে না।','No mobile data is used.'))}
-   <div class="grp">${it.map(x=>`<div class="dlrow row" style="padding:12px 16px"><span class="ico">${ic(x[0],24)}</span><span class="mid"><span class="t-bodyS" style="display:block">${t(x[1],x[2])}</span><span class="t-cap sec num" style="display:block">${n(x[3])} · ${n(x[4])} ${t('এমবি','MB')}</span>${x[5]==='dl'?`<span class="mrow" style="margin-top:6px">${meter(40,100,t('40 শতাংশ নামানো হয়েছে','40 percent downloaded'))}<b class="t-label num">${n('40%')}</b></span>`:''}</span>
-     <span class="end">${x[5]==='done'?chip('c-quiet','check',t('অফলাইনে দেখা যাবে','Plays offline')):x[5]==='dl'?chip('c-acc','download',t('নামছে','Downloading')):`<button class="btn sec" style="min-height:48px;padding:4px 14px" data-act="noop" ${st.off?'aria-disabled="true"':''}>${ic('download',20)}${t('ডাউনলোড','Download')}</button>${chip('c-neu','wifi',t('শুধু ওয়াই-ফাই','Wi-Fi only'))}`}</span></div>`).join('')}</div></div>`;
+   <div class="grp">${it.map(x=>`<div class="dlrow row" style="padding:12px 16px;align-items:flex-start"><span class="ico">${ic(x[0],24)}</span><span class="mid"><span class="t-bodyS" style="display:block">${t(x[1],x[2])}</span><span class="t-cap sec num" style="display:block">${n(x[3])} · ${n(x[4])} ${t('এমবি','MB')}</span>
+     <span class="chips-row" style="margin-top:6px">${x[5]==='done'?chip('c-quiet','check',t('অফলাইনে দেখা যাবে','Plays offline')):x[5]==='dl'?`${meter(40,100,t('40 শতাংশ নামানো হয়েছে','40 percent downloaded'))}<b class="t-label num">${n('40%')}</b>`:`<button class="btn sec" style="min-height:48px;padding:4px 14px" data-act="noop" ${st.off?'aria-disabled="true"':''}>${ic('download',20)}${t('ডাউনলোড','Download')}</button>${chip('c-neu','wifi',t('শুধু ওয়াই-ফাই','Wi-Fi only'))}`}</span></span></div>`).join('')}</div></div>`;
  }});
 
 /* ---------- 16. Sales Journey (assumed view: today's route as a timeline) ---------- */
