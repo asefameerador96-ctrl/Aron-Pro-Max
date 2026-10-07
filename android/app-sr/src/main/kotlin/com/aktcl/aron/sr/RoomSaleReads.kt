@@ -18,6 +18,7 @@ import com.aktcl.aron.feature.memo.domain.SummaryMemo
 import com.aktcl.aron.feature.memo.domain.SummarySku
 import com.aktcl.aron.feature.memo.ui.RoomMemoStore
 import com.aktcl.aron.feature.sale.domain.SaleSku
+import com.aktcl.aron.feature.stock.StockTracker
 
 /**
  * The Room reads behind the sale-side screens (docs/status/android-sr-b.md "Production adapters"): the sale catalog from
@@ -29,17 +30,13 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
 
     /** Priced SKUs of [priceType] on [date]; current stock = issued minus sold on live memos, null when the SKU has no stock row. */
     suspend fun catalog(date: String, priceType: String): List<SaleSku> {
-        val issued = dao.stockBalanceOn(date).associate { it.skuId to it.qtyBase }
-        val memos = dao.memosOn(date)
-        val superseded = memos.mapNotNull { it.supersedesClientUuid }.toSet()
-        val live = memos.filter { it.clientUuid !in superseded }.map { it.clientUuid }.toSet()
-        val sold = dao.linesOn(date).filter { it.memoClientUuid in live }.groupBy { it.skuId }.mapValues { (_, v) -> v.sumOf { it.qtyBase } }
+        val stock = StockTracker.of(db, date)
         return reference.skus().mapNotNull { s ->
             val p = db.referenceDao().priceOn(s.skuId, priceType, date) ?: return@mapNotNull null
             SaleSku(
                 skuId = s.skuId, code = s.code, categoryCode = s.categoryCode, name = s.shortName, nameBn = s.nameBn, baseUnit = s.baseUnit,
                 packFactor = s.basePerPack, unitPriceMtk = p.amountMtk, pricePerQty = p.perBaseQty, priceValidFrom = p.validFrom,
-                stockBase = issued[s.skuId]?.let { it - (sold[s.skuId] ?: 0L) },
+                stockBase = stock[s.skuId]?.takeIf { it.hasStockRow }?.current,
             )
         }
     }
@@ -48,7 +45,7 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
     suspend fun summary(date: String): SummaryBundle {
         val cats = reference.skus().associate { it.skuId to SummarySku(it.skuId, it.categoryCode) }
         val memos = store.memos(date)
-        val issued = dao.stockBalanceOn(date).associate { it.skuId to it.qtyBase }
+        val issued = StockTracker.of(db, date).mapValues { (_, b) -> b.issued + b.adjusted - b.qcReturned }
         val sm = memos.map { m ->
             SummaryMemo(m.memoUuid, m.supersedesUuid, m.lines.map { SummaryLine(it.skuId, it.qtyBase, it.grossMtk) }, m.discounts.map { SummaryDiscount(it.skuId, it.valueMtk, it.kind) }, m.qcDeductionMtk, m.netMtk)
         }
@@ -70,11 +67,10 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         val j = journey(date, outlets)
         val skus = reference.skus()
         val cats = skus.associate { it.skuId to SummarySku(it.skuId, it.categoryCode) }
-        val issue = dao.stockOn(date).filter { it.kind == "issue" }.groupBy { it.skuId }.mapValues { (_, v) -> v.sumOf { it.qtyBase } }
         val memos = store.memos(date)
-        val superseded = memos.mapNotNull { it.supersedesUuid }.toSet()
-        val sold = memos.filter { it.memoUuid !in superseded }.flatMap { it.lines }.groupBy { it.skuId }.mapValues { (_, v) -> v.sumOf { it.qtyBase } }
-        val current = dao.stockBalanceOn(date).associate { it.skuId to it.qtyBase - (sold[it.skuId] ?: 0L) }
+        val stock = StockTracker.of(db, date)
+        val issue = stock.mapValues { (_, b) -> b.issued }.filterValues { it != 0L }
+        val current = stock.filterValues { it.hasStockRow }.mapValues { (_, b) -> b.current }
         val unitByCat = skus.groupBy { it.categoryCode }.mapValues { (_, v) -> v.first().baseUnit }
         return KpiStripBuilder.build(j.planned, j.visited, j.sold, issue, current, cats) { unitByCat[it].orEmpty() } to HomeMoneyBuilder.build(memos, cats)
     }
