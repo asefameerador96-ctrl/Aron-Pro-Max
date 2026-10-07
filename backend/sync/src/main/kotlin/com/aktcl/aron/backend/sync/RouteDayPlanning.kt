@@ -118,9 +118,16 @@ class RouteDayPlanningJob(
         due.size
     }
 
+    /** Visits of the last 7 business dates still without a server geo verdict get one (F-SYS-012; at most 200 per tick). */
+    fun sweepGeo(): Int = db.jdbi.inTransaction<Int, Exception> { h ->
+        val now = clock.now()
+        GeoRecheck.sweep(h, now.atZone(DHAKA).toLocalDate(), days = 7, limit = 200, now = now)
+    }
+
     /** One tick: plans today once the Dhaka clock is past 00:05 (every tick is idempotent, so a restart catches up). */
     fun tick(): Int {
         runCatching { settleExpired() }.onFailure { log.error("settle of submitted route-days failed", it) }
+        runCatching { sweepGeo() }.onFailure { log.error("geo re-check sweep failed", it) }
         val local = clock.now().atZone(DHAKA)
         if (local.toLocalTime().isBefore(START)) return 0
         return planDay(local.toLocalDate())

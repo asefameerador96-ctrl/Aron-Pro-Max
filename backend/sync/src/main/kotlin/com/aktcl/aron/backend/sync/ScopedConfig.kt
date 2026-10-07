@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import org.jdbi.v3.core.Handle
@@ -56,6 +57,9 @@ class ScopedConfig private constructor(
     fun value(key: String, chain: Chain): JsonElement? = (winner(key, chain)?.value ?: keys[key]?.default)?.takeUnless { it is JsonNull }
 
     fun int(key: String, chain: Chain, fallback: Int): Int = value(key, chain)?.let { runCatching { it.jsonPrimitive.intOrNull }.getOrNull() } ?: fallback
+
+    fun bool(key: String, chain: Chain, fallback: Boolean): Boolean =
+        value(key, chain)?.let { runCatching { it.jsonPrimitive.booleanOrNull }.getOrNull() } ?: fallback
 
     /** Every key delivered to phones (`delivery` device or both) resolved for [chain]; keys without a value are left out. */
     fun deviceValues(chain: Chain): List<ResolvedConfigValue> = keys.values.filter { it.delivery != "server" }.sortedBy { it.key }.mapNotNull { k ->
@@ -124,6 +128,36 @@ class ScopedConfig private constructor(
                     )
                 }.list().groupBy { it.key }
             return ScopedConfig(keys, rows, now)
+        }
+
+        /**
+         * Only [keyNames], resolved as at [at] (rows valid at that instant, not now): the server geo re-check judges a
+         * record by the values in force at its capture (docs/24 s9.3 item 6, s11.3). A few rows per key, one query each.
+         */
+        fun loadKeysAt(h: Handle, keyNames: Collection<String>, at: Instant): ScopedConfig {
+            val names = keyNames.distinct()
+            val keys = h.createQuery("SELECT key, default_value::text AS dv, bounds::text AS b, delivery, requires_ack FROM app.cfg_key WHERE key = ANY(:k)")
+                .bindArray("k", String::class.java, names)
+                .map { rs, _ ->
+                    val bounds = rs.getString("b")?.let { Json.parseToJsonElement(it) as? JsonObject } ?: JsonObject(emptyMap())
+                    KeyDef(rs.getString("key"), rs.getString("dv")?.let(Json::parseToJsonElement), bounds, rs.getString("delivery"), rs.getBoolean("requires_ack"))
+                }.list().associateBy { it.key }
+            val t = OffsetDateTime.ofInstant(at, java.time.ZoneOffset.UTC)
+            val rows = h.createQuery(
+                """
+                SELECT key, scope_type, scope_id, value::text AS v, effective_from, effective_to, config_version
+                FROM app.cfg_value
+                WHERE key = ANY(:k) AND effective_from <= :t AND (effective_to IS NULL OR effective_to > :t)
+                """.trimIndent(),
+            ).bindArray("k", String::class.java, names).bind("t", t)
+                .map { rs, _ ->
+                    ValueRow(
+                        rs.getString("key"), ConfigScopeType.entries.first { it.wire == rs.getString("scope_type") }, rs.getLong("scope_id"),
+                        Json.parseToJsonElement(rs.getString("v")), rs.getObject("effective_from", OffsetDateTime::class.java).toInstant(),
+                        rs.getObject("effective_to", OffsetDateTime::class.java)?.toInstant(), rs.getLong("config_version"),
+                    )
+                }.list().groupBy { it.key }
+            return ScopedConfig(keys, rows, at)
         }
     }
 }

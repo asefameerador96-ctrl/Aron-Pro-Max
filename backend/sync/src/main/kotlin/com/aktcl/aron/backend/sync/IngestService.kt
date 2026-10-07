@@ -420,6 +420,18 @@ class IngestService(
                     h.rollbackToSavepoint("day_${r.index}")
                     log.error("day state update failed client_uuid=${r.clientUuid} type=${r.type}", e)
                 }
+                // Server geo re-check (F-SYS-012): evidence beside the phone's verdict, never a reason to refuse the
+                // visit (s11.3); a failure leaves server_verdict NULL for GeoRecheck.sweep.
+                if (r.type == "visit") {
+                    h.savepoint("geo_${r.index}")
+                    try {
+                        GeoRecheck.recheck(h, r.clientUuid, bd, ctx.now)
+                        h.release("geo_${r.index}")
+                    } catch (e: Exception) {
+                        h.rollbackToSavepoint("geo_${r.index}")
+                        log.error("geo re-check failed client_uuid=${r.clientUuid}", e)
+                    }
+                }
                 hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 hs.forEach { ctx.afterCommit += Triple(r.index, it, ingestRec!!) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
