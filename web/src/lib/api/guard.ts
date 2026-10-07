@@ -20,7 +20,8 @@ export function problemResponse(status: number, code: ProblemCode, extra?: Parti
 
 /** CSRF defence in depth on top of SameSite=Strict: a browser POST from another site is refused. */
 export function sameOrigin(req: NextRequest): boolean {
-  if (req.headers.get("sec-fetch-site") === "cross-site") return false;
+  const site = req.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") return false; // cross-site and same-site (a sibling subdomain) are refused
   const origin = req.headers.get("origin");
   if (!origin) return true; // non-browser caller; the cookie is SameSite=Strict, so a browser cannot attach it cross-site anyway
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");

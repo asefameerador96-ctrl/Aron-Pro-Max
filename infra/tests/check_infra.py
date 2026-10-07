@@ -443,6 +443,7 @@ class SizingParameters(unittest.TestCase):
         self.assertIn("needs.guard.outputs.go == 'true'", pp)
         self.assertIn("uses: ./.github/workflows/deploy.yml", pp)
         self.assertIn("git merge-base --is-ancestor", pp, "promote only what is on main")
+        self.assertIn('select(.name == "Deploy to stage" and .conclusion == "success")', pp, "soak = a real staging deploy")
         self.assertIn("environment: prod", pp)
         self.assertIn("needs.guard.outputs.go == 'true'", ra)
         for sname in ("ANDROID_SIGNING_KEYSTORE_BASE64", "ANDROID_SIGNING_KEYSTORE_PASSWORD",
@@ -548,13 +549,17 @@ class Workflows(unittest.TestCase):
         self.assertIn('elif [ "${REF}" != "refs/heads/${INTEGRATION_BRANCH}" ]; then\n'
                       '            echo "::error::Deploys run only from', d)
         # prod: only a server-v* tag (promote-prod.yml); any other ref fails.
-        self.assertIn('if [ "${ENV_NAME}" = prod ]; then\n            case "${REF}" in\n'
-                      '              refs/tags/server-v[0-9]*) echo', d)
+        self.assertIn('if [ "${ENV_NAME}" = prod ]; then\n', d)
+        self.assertIn('            case "${REF}" in\n              refs/tags/server-v[0-9]*) echo', d)
         self.assertIn("title=Azure is not set up for this repository", d, "clear failure when secrets are absent")
         self.assertNotRegex(d, r"(?m)^\s*(push|pull_request|pull_request_target):", "deploy is called or dispatched only")
         # A GitHub concurrency group would cancel pending CI runs; deploy.sh serialises instead.
         self.assertNotIn("concurrency:", d)
-        self.assertIn("RUN_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_migrations && 'false' || 'true' }}", d)
+        self.assertIn("RUN_MIGRATIONS: ${{ inputs.run_migrations == false && 'false' || 'true' }}", d)
+        call = d[d.index("workflow_call:"):d.index("workflow_dispatch:")]
+        self.assertIn("run_migrations:", call, "a called deploy (promote-prod) must see run_migrations = true, not null")
+        self.assertIn('[ "${GITHUB_WORKFLOW}" = promote-prod ]', d, "prod only through promote-prod")
+        self.assertIn('[ "${FINAL}" = "true" ]', d, "prod only in the final account")
         conditions = re.findall(r"(?m)^\s*if:\s*(.*)$", d)
         self.assertEqual(conditions, ["failure() && steps.login.outcome == 'failure'"],
                          "only the sign-in explanation may be conditional; no deploy step may be switched off")

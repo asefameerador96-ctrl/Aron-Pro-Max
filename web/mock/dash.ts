@@ -72,6 +72,8 @@ const FIELD = {
   dl_min: c("download_min", "Download MIN", "timestamp"),
   ul_max: c("upload_max", "Upload MAX", "timestamp"),
   count: c("event_count", "Count", "integer"),
+  date: c("business_date", "Date", "date"),
+  source: c("source", "Source", "string"),
 };
 type RouteField = keyof typeof FIELD;
 
@@ -82,6 +84,7 @@ function routeRow(rt: SeedRoute): Row {
     suspicious: rt.suspicious, free_qty: rt.free_qty, offline_memos: rt.offline_memos, online_memos: rt.memos - rt.offline_memos,
     state: rt.state === "final_submitted" ? "Done" : "Not Done", first_submit_at: rt.submitted_at, last_submit_at: rt.submitted_at, logged_in_at: rt.logged_in_at,
     download_min: rt.logged_in_at, upload_max: rt.submitted_at, event_count: rt.memos,
+    route_id: rt.route_id, business_date: SEED_DATE, source: rt.route_id % 2 === 0 ? "Market" : "Warehouse",
   };
 }
 
@@ -99,13 +102,12 @@ const ROUTE_REPORTS: Record<string, { fields: RouteField[]; sum: RouteField[] }>
   "free-sample": { fields: ["route", "free"], sum: ["free"] },
   "task-planner": { fields: ["user", "target", "visited"], sum: ["target", "visited"] },
   "gigo": { fields: ["user", "login", "geo"], sum: [] },
-  "suspicious-location": { fields: ["route", "user", "mock", "susp"], sum: ["mock", "susp"] },
+  "suspicious-location": { fields: ["date", "route", "user", "mock", "susp"], sum: ["mock", "susp"] },
   "memo-number-gaps": { fields: ["user", "memos", "offline"], sum: ["memos"] },
-  "geofence-calibration": { fields: ["route", "visited", "geo", "force"], sum: ["visited", "force"] },
-  "amo-call": { fields: ["user", "visited", "success", "memos"], sum: ["visited", "success", "memos"] },
+    "amo-call": { fields: ["user", "visited", "success", "memos"], sum: ["visited", "success", "memos"] },
   "dss": { fields: ["route", "memos", "net", "gross"], sum: ["memos", "net", "gross"] },
   "ds-rrs": { fields: ["route", "memos", "gross", "net"], sum: ["memos", "gross", "net"] },
-  "qc-report": { fields: ["route", "visited", "success"], sum: ["visited", "success"] },
+  "qc-report": { fields: ["source", "route", "visited", "success"], sum: ["visited", "success"] },
   "route-qc": { fields: ["route", "visited", "success"], sum: ["visited", "success"] },
   "leaderboard": { fields: ["zone", "target", "net", "strike"], sum: ["target", "net"] },
   "by-route-geo-capture": { fields: ["route", "target", "geo"], sum: ["target"] },
@@ -142,6 +144,13 @@ function build(key: Schemas["ReportKey"], user: DashCtx["user"], q: Schemas["Rep
     const columns = [c("code", "SKU", "string"), c("name", "Name", "string"), c("retail_price_mtk", "Retail price", "mtk"), ...(pii ? [c("trade_price_mtk", "Trade price", "mtk")] : []), c("status", "Status", "string")];
     const rows = SKUS.filter((s) => !q.active_status || q.active_status === "all" || s.status === q.active_status);
     return { columns, rows: rows.map((s) => ({ code: s.code, name: s.name, retail_price_mtk: s.retail_mtk, ...(pii ? { trade_price_mtk: s.trade_mtk } : {}), status: s.status })), totals: null };
+  }
+  if (key === "geofence-calibration") {
+    const reach = inScope(user, q);
+    const bands: [string, number, number][] = [["0-25", 55, 0], ["25-50", 25, 0], ["50-100", 15, 40], ["100+", 5, 100]];
+    const total = sum(reach, (r) => r.visited);
+    const rows = bands.map(([band, share, force]): Row => ({ distance_band_m: band, geo_class: "Urban", territory: "T", visits: Math.round((total * share) / 100), force_sale_share: force }));
+    return { columns: [c("distance_band_m", "Distance band (m)", "string"), c("geo_class", "Geo class", "string"), c("territory", "Territory", "string"), c("visits", "Visits", "integer"), c("force_sale_share", "Force-sale share", "pct")], rows: total === 0 ? [] : rows, totals: null };
   }
   const spec = ROUTE_REPORTS[key];
   if (!spec) return null;

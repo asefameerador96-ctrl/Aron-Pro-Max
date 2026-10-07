@@ -16,6 +16,7 @@ This is a real system for 8,500 people, not an MVP. The bar below is measurable.
 | API speed | SLOs of docs/18 s6.1; interactive reports p95 at most 5 s; dashboards p95 at most 1.5 s | docs/18 | smoke and the dev load script now; full load in the final account | Day 6 (small), final account (full) |
 | Safe overload | 429 and 503 with `Retry-After`; phones back off with jitter and keep selling | docs/18 s4 | `N-056` and the sync client tests | Day 6 |
 | Security | scope enforced on the server for every endpoint; IDOR sweep with foreign ids; no secret in git or logs | docs/21, CLAUDE.md | `N-061` scope-leak harness; gitleaks; CodeQL | every push, then Day 6 |
+| Look and feel | every screen from the shared kit, glass tier B on field phones, all states shown, contrast at least AA | docs/32 | kit review, screenshot tests, owner device check | each kit slice and Day 6 |
 | Accessibility and language | Bangla first, every string a resource with a Bangla twin, Bengali digits per locale | CLAUDE.md | `HardcodedStringScanTest` | every push |
 | Money correctness | server recomputes every memo equation; printed total equals stored total | docs/24 s7 | `shared` oracle tests and `F-SYS-062` | every push |
 

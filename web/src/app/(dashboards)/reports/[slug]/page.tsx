@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { ReportFilters } from "@/components/reports/report-filters";
+import { BarChart, chartPoints } from "@/components/reports/bar-chart";
 import { ReportTable } from "@/components/reports/report-table";
 import { TileMeta } from "@/components/reports/tile-meta";
 import { rawRequest } from "@/lib/api/raw";
@@ -9,6 +10,8 @@ import { businessDate, formatNumber, problemMessage, t } from "@/lib/i18n";
 import { canSeeReport, reportBySlug } from "@/lib/reports/catalog";
 import { buildReportQuery } from "@/lib/reports/query";
 import { getExportJob, getMe, runReportJson, type GeoOption } from "@/lib/reports/server";
+import { getGeoValidation } from "@/lib/dash/server";
+import { pctText, n } from "@/components/dash/tiles";
 import type { Schemas } from "@/contract/types";
 
 type Params = Record<string, string | string[] | undefined>;
@@ -31,7 +34,7 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
   const query = buildReportQuery(report, sp, session.scope, "json", today);
   const token = session.at;
 
-  const [me, result, cats, skus, job] = await Promise.all([
+  const [me, result, cats, skus, job, geo] = await Promise.all([
     getMe(token),
     runReportJson(token, report.key, query),
     report.filters.includes("category")
@@ -39,6 +42,7 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
       : Promise.resolve(null),
     report.filters.includes("products") ? rawRequest<{ items: Schemas["Sku"][] }>({ method: "GET", path: "/v1/admin/skus", token, query: { status: "active", limit: 500 } }) : Promise.resolve(null),
     typeof sp.job === "string" && /^[0-9a-f-]{36}$/.test(sp.job) ? getExportJob(token, sp.job) : Promise.resolve(null),
+    report.geoStrip ? getGeoValidation(token, { from: query.period.from ?? query.period.date, to: query.period.to ?? query.period.date }) : Promise.resolve(null),
   ]);
   const categories: GeoOption[] = cats?.ok ? cats.data.items.map((c) => ({ id: c.id, label: locale === "bn" ? (c.name_bn ?? c.name) : c.name })) : [];
   const skuOptions: GeoOption[] = skus?.ok ? skus.data.items.map((s) => ({ id: s.id, label: `${s.short_name} (${s.code})` })) : [];
@@ -79,13 +83,56 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
                 {t(locale, "report.get_excel")}
               </a>
             )}
+            {report.pdf ? (
+              <a href={exportHref("pdf")} className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold" data-testid="download-pdf">
+                {t(locale, "report.pdf")}
+              </a>
+            ) : null}
             {report.print ? (
               <a href={exportHref("print")} target="_blank" rel="noreferrer" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold" data-testid="print-view">
                 {t(locale, "report.print")}
               </a>
             ) : null}
           </div>
-          <ReportTable result={result.data} locale={locale} pii={pii} />
+          {geo?.ok ? (
+            <dl className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm md:grid-cols-4" data-testid="geo-strip">
+              <div>
+                <dt className="text-slate-500">{t(locale, "geo.visits")}</dt>
+                <dd className="font-semibold tabular-nums" data-testid="geo-visits">{n(locale, geo.data.visits)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">{t(locale, "dashboard.mock")}</dt>
+                <dd className="font-semibold tabular-nums" data-testid="geo-mock">{pctText(locale, geo.data.mock_pct)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">{t(locale, "dashboard.suspicious")}</dt>
+                <dd className="font-semibold tabular-nums" data-testid="geo-suspicious">{pctText(locale, geo.data.suspicious_pct)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">{t(locale, "dashboard.force_sale")}</dt>
+                <dd className="font-semibold tabular-nums" data-testid="geo-force">{pctText(locale, geo.data.force_sale_pct)}</dd>
+              </div>
+            </dl>
+          ) : null}
+          {(() => {
+            const pts = report.chart ? chartPoints(result.data.rows, report.chart.label, report.chart.value) : null;
+            return pts ? <BarChart locale={locale} title={t(locale, "report.chart")} rows={pts} /> : null;
+          })()}
+          {report.splitBy && result.data.rows.length > 0 && result.data.columns.some((c) => c.key === report.splitBy) ? (
+            [...new Set(result.data.rows.map((r) => String(r[report.splitBy!] ?? "")))].map((v) => (
+              <section key={v} data-testid={`split-${v}`}>
+                <h2 className="mb-1 text-lg font-semibold">{v}</h2>
+                <ReportTable result={{ ...result.data, rows: result.data.rows.filter((r) => String(r[report.splitBy!] ?? "") === v), totals: null, total_rows: result.data.rows.filter((r) => String(r[report.splitBy!] ?? "") === v).length }} locale={locale} pii={pii} />
+              </section>
+            ))
+          ) : (
+            <ReportTable
+              result={result.data}
+              locale={locale}
+              pii={pii}
+              drill={report.drill ? { column: report.drill.column, idColumn: report.drill.idColumn, href: (id) => `/reports/${report.drill!.to}?${report.drill!.param}=${encodeURIComponent(id)}${query.period.from ? `&from=${query.period.from}&to=${query.period.to ?? query.period.from}` : ""}` } : undefined}
+            />
+          )}
           <nav className="flex items-center gap-3 text-sm" aria-label={t(locale, "report.paging")}>
             {page > 1 ? (
               <a href={qs({ page: String(page - 1) })} data-testid="prev-page" className="underline">

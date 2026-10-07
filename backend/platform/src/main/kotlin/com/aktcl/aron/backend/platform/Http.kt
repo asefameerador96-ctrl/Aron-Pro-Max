@@ -108,7 +108,9 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
         // Answer JSON whatever the Accept header says (a proxy or captive portal may rewrite it); never a bare 406.
         register(ContentType.Any, AlwaysJson(KotlinxSerializationConverter(ResponseJson)))
     }
-    install(Compression) { gzip { minimumSize(1024) } }
+    // Responses only: request bodies are decoded by the handlers (receiveStrict, the sync batch), which cap the
+    // decompressed size and, for the batch, verify X-Device-Proof over the gzip bytes as sent (docs/24 s3.1, s8.3).
+    install(Compression) { mode = io.ktor.server.plugins.compression.CompressionConfig.Mode.CompressResponse; gzip { minimumSize(1024) } }
     install(StatusPages) {
         exception<ApiProblem> { call, e -> call.respondProblem(e, ctx.clock) }
         // Ktor's own client-error exceptions are client errors, never a retryable 500 (phones bisect on 500, s4.7).
