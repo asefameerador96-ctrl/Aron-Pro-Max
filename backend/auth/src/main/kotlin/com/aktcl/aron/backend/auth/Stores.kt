@@ -82,7 +82,8 @@ interface RefreshStore {
     fun findToken(hash: String): TokenView?
     /** Marks [hash] used at [at] and stores the child token; false when the token was already used. */
     fun rotate(hash: String, at: Instant, childHash: String, childExpiresAt: Instant): Boolean
-    fun revokeFamily(familyId: Long, at: Instant, reason: String)
+    /** Revokes an open family; true when this call revoked it (false when it was already revoked or unknown). */
+    fun revokeFamily(familyId: Long, at: Instant, reason: String): Boolean
     /** Revokes the user's open [grant] families on one phone (by device row or, before enrolment, by device_uuid). */
     fun revokeDeviceGrant(userId: Long, deviceId: Long?, deviceUuid: String?, grant: Grant, at: Instant, reason: String)
 }

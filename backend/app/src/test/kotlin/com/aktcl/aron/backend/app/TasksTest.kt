@@ -72,6 +72,10 @@ class TasksTest {
             h.execute("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z-OTHER', 'Other zone', id FROM app.territory WHERE code = 'T-OTHER'")
             outsider = h.createQuery("INSERT INTO app.app_user (username, full_name, role, home_zone_id, must_change_password) SELECT 'sr9009', 'Other SR', 'SR', id, false FROM app.zone WHERE code = 'Z-OTHER' RETURNING id")
                 .mapTo(Long::class.java).one()
+            // A TSO of that other zone: its reach does not hold sr1001.
+            val otherTso = h.createQuery("INSERT INTO app.app_user (username, full_name, role, home_zone_id, must_change_password, password_hash) SELECT 'tso9009', 'Other TSO', 'TSO', id, false, :h FROM app.zone WHERE code = 'Z-OTHER' RETURNING id")
+                .bind("h", PasswordHasher().hash(password)).mapTo(Long::class.java).one()
+            h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from) SELECT $otherTso, 'zone', id, DATE '2026-01-01' FROM app.zone WHERE code = 'Z-OTHER'")
         }
         val key = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
@@ -198,6 +202,20 @@ class TasksTest {
         assertEquals(listOf("accepted"), client.send(srToken, listOf(event(t, "resolved"))))
         assertEquals("cancelled", client.list(tso).single { it["task_uuid"]!!.jsonPrimitive.content == t }["status"]!!.jsonPrimitive.content)
         assertEquals(HttpStatusCode.NotFound, client.post("/v1/tasks/${uuid()}/cancel") { bearerAuth(tso); contentType(ContentType.Application.Json); setBody("""{"reason":"the outlet closed for good"}""") }.status)
+    }
+
+    /** AUD-TP-3 scope case for POST /v1/tasks/{task_uuid}/cancel: a TSO of another zone cannot cancel a task of this zone. */
+    @Test
+    fun aTsoOfAnotherZoneCannotCancelATaskOutsideItsReach() = testApplication {
+        application { aronApi(wiring) }
+        val amo = client.token("amo1001")
+        val t = uuid()
+        assertEquals(HttpStatusCode.OK, client.create(amo, t, sr).status)
+        val r = client.post("/v1/tasks/$t/cancel") {
+            bearerAuth(client.token("tso9009")); contentType(ContentType.Application.Json); setBody("""{"reason":"not my zone at all"}""")
+        }
+        assertTrue(r.status == HttpStatusCode.Forbidden || r.status == HttpStatusCode.NotFound, "${r.status} ${r.bodyAsText()}")
+        assertEquals("ongoing", client.list(client.token("tso1001")).single { it["task_uuid"]!!.jsonPrimitive.content == t }["status"]!!.jsonPrimitive.content)
     }
 
     /** V0037: a task may name a route without an outlet; it must be in reach and is stored as named. */

@@ -9,7 +9,9 @@ import kotlin.test.assertTrue
 class ScopeLeakTest {
     @Test
     fun twoHundredRandomisedQueriesFindZeroCrossScopeRows() {
-        for (seed in listOf(1L, 2L, 3L, 20261005L)) {
+        // AUD-TP-3: ARON_SCOPE_SEEDS (comma-separated) widens the run for the nightly or N-061 job.
+        val seeds = System.getenv("ARON_SCOPE_SEEDS")?.split(',')?.mapNotNull { it.trim().toLongOrNull() }?.ifEmpty { null } ?: listOf(1L, 2L, 3L, 20261005L)
+        for (seed in seeds) {
             val w = ScopeWorld(seed)
             var refused = 0
             val leaks = w.run(200) { u, date, sel ->

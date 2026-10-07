@@ -20,5 +20,7 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
+    // AUD-TP-3: more scope-harness seeds for the nightly run (ScopeLeakTest).
+    System.getenv("ARON_SCOPE_SEEDS")?.let { environment("ARON_SCOPE_SEEDS", it) }
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
 }
