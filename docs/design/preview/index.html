@@ -191,7 +191,7 @@ h1,h2,h3,h4,p{margin:0}
 .btn[aria-disabled="true"]:active{transform:none}
 :root[data-tier="C"] .btn.pri{background:var(--accent);box-shadow:none}
 :root[data-tier="C"] .btn.sec{background:var(--surface-solid);box-shadow:none;border:1.5px solid var(--accent)}
-:root[data-tier="C"] .btn[aria-disabled="true"]{border:0}
+:root[data-tier="C"] .btn[aria-disabled="true"],:root[data-tier="C"] .btn.pri[aria-disabled="true"],:root[data-tier="C"] .btn.sec[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);border:0;box-shadow:none}
 .ib{display:grid;place-items:center;width:48px;height:48px;border:0;border-radius:50%;background:none;color:var(--text-primary);flex:none}
 .ib:active{background:var(--state-pressed)}
 .ib.warnic{color:var(--warning-on-container)}
@@ -439,6 +439,7 @@ html[data-fs="200"] .web .s3{grid-column:span 6}html[data-fs="200"] .web .s4,htm
 .wbtn.pri{color:var(--text-on-accent);background:linear-gradient(180deg,var(--accent-hi),var(--accent));box-shadow:0 4px 10px color-mix(in srgb,var(--accent) 28%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
 .wbtn.pri:hover{background:linear-gradient(180deg,var(--accent),var(--accent-pressed))}
 :root[data-tier="C"] .wbtn.pri{background:var(--accent);box-shadow:none;border:0}
+:root[data-tier="C"] .wbtn[aria-disabled="true"],:root[data-tier="C"] .wbtn.pri[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);border:0}
 .wbtn[aria-disabled="true"]{background:var(--disabled-fill);color:var(--disabled-label);box-shadow:none;cursor:not-allowed;border:0}
 .spark{margin-inline-start:auto;flex:none}
 .rk{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;align-items:center}
@@ -493,10 +494,12 @@ html[dir="rtl"] .sel{background-position:left 12px center}
 }
 @media (max-width:760px){
   .wrap{padding:0 12px}
-  .ctl .wrap{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-  .ctl .cg,.ctl .brand{flex:none}
+  .ctl{position:static}
+  .ctl .wrap{gap:8px 14px}
+  .brand{flex:1 1 100%}
   .gallery{grid-template-columns:minmax(0,1fr)}
 }
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root[data-tier="A"]{--strong-a:.92;--scrim-k:1;--bf-bar:none;--bf-sheet:none}}
 @media print{.ctl{display:none}}
 </style>
 </head>
@@ -1292,7 +1295,8 @@ function build(){
   $('#desk').innerHTML=FR.filter(f=>f.kind==='web').map(webShell).join('');
 }
 (function init(){
-  try{const q=new URLSearchParams(location.search),p=JSON.parse(store.get('aron.prev')||'null');
+  try{const mq=m=>matchMedia(m).matches;if(mq('(prefers-contrast: more)'))st.theme='sunlight';else if(mq('(prefers-color-scheme: dark)'))st.theme='dark';if(mq('(prefers-reduced-transparency: reduce)'))st.tier='C';
+    const q=new URLSearchParams(location.search),p=JSON.parse(store.get('aron.prev')||'null');
     if(p)Object.assign(st,{theme:p.theme||st.theme,tier:p.tier||st.tier,fs:p.fs||st.fs,lang:p.lang||st.lang,off:!!p.off});
     ['theme','tier','fs','lang'].forEach(k=>{if(q.has(k))st[k]=q.get(k);});if(q.has('offline'))st.off=q.get('offline')==='1';
     if(!['light','dark','sunlight'].includes(st.theme))st.theme='light';if(!['A','B','C'].includes(st.tier))st.tier='B';
