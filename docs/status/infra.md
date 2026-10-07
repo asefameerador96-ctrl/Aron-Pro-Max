@@ -27,6 +27,17 @@ Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
 - **Trap for the next drill:** every forced failover swaps the zones again; the deploy now follows that by itself.
 - Restore drill stays blocked until the owner says "owner approved restore drill".
 
+## Day 3, 13:30 UTC: dev deploy reaches the database logins job
+
+Deploy run 37624445094 (c13e75d), the first with the zone fix (laptop session, 347687d) and the psql import by digest
+(laptop session, ac9e44a): **proven on Azure:** what-if guard passes with the live zones (primary 2, standby 1),
+main.bicep applied, the psql image imported into ACR by digest, both app images built once and run **by digest**
+(`aron-backend@sha256:b3c0e071...`), migrations succeeded. **Failed:** the dblogins job execution
+`caj-aron-dev-dblogins-gf9ulpy` ended Failed with NO console log in Log Analytics (6 min), so the apps were not
+updated (the old revision keeps serving). Not yet proven: health gate, alerts, storage CORS (all after dblogins).
+deploy.sh now also prints the Container Apps system log of a failed execution (image pull / start errors). The
+console log of gf9ulpy is needed from a session with az (asked via the lead). Zone block in deploy.sh: not touched.
+
 ## Day 3, 11:00 UTC: first green INT deploy blocked by the failover drill (fixed on lane/infra)
 
 (Superseded at 16:30 UTC by the section above: the 11:00 lookup took `[0]` of a name-prefix match, could read a drill
