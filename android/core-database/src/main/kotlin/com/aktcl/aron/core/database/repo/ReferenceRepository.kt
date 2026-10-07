@@ -278,7 +278,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             return TaskEntity(
                 taskUuid = uuid, taskTypeCode = str("task_type_code") ?: "", title = str("title") ?: "", description = str("description"),
                 outletId = (o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull(), dueDate = str("due_date"),
-                status = str("status") ?: "open", resolvedAt = str("resolved_at"), json = o.toString(),
+                status = str("status") ?: "ongoing", resolvedAt = str("resolved_at"), json = o.toString(),
             )
         }
 

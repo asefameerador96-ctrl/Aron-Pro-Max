@@ -51,8 +51,9 @@ class DayRecordsTest {
         val memo = ClientIds.newUuid()
         val inVisit = DueCollectionEntity(ClientIds.newUuid(), TestRows.meta(), 50001, memo, "sr334001-261004-003", "2026-10-04", 50_000, false, 120_000, visitClientUuid = visit.clientUuid)
         repo.recordDueCollection(inVisit)
-        assertEquals(visit.clientUuid, outboxOf(inVisit.clientUuid).familyUuid)
-        assertEquals(1, outboxOf(inVisit.clientUuid).rank)
+        assertEquals(inVisit.clientUuid, outboxOf(inVisit.clientUuid).familyUuid) // its own family; the visit is a parent reference
+        assertEquals(0, outboxOf(inVisit.clientUuid).rank)
+        assertEquals(visit.clientUuid, payload(outboxOf(inVisit.clientUuid).payloadJson)["visit_client_uuid"]!!.jsonPrimitive.content)
         val p = payload(outboxOf(inVisit.clientUuid).payloadJson)
         assertEquals("cash", p["payment_mode"]!!.jsonPrimitive.content)
         assertTrue(!p.containsKey("fix"))
@@ -69,7 +70,7 @@ class DayRecordsTest {
         }
     }
 
-    @Test fun aSkipHasNoFixAndDaySubmitIsRankThree() = runTest {
+    @Test fun aSkipHasNoFixAndDaySubmitIsTheLastRecordOfItsRouteDay() = runTest {
         val skip = VisitSkipEntity(ClientIds.newUuid(), TestRows.meta(), 50002, "shop_closed")
         repo.recordVisitSkip(skip)
         assertEquals(setOf("outlet_id", "reason_code"), payload(outboxOf(skip.clientUuid).payloadJson).keys)
@@ -78,16 +79,27 @@ class DayRecordsTest {
         )
         repo.recordDaySubmit(submit)
         val row = outboxOf(submit.clientUuid)
-        assertEquals(3, row.rank)
+        assertEquals(0, row.rank)
         assertEquals(12, payload(row.payloadJson)["device_counts"]!!.jsonObject["memo"]!!.jsonPrimitive.content.toInt())
         assertEquals(row.seq, db.outboxDao().nextPending(100).last().seq)
+    }
+
+    @Test fun aSubmittedRouteDayRefusesNewVisitsUntilTheServerReopensIt() = runTest {
+        repo.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), TestRows.meta(), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false))
+        val (visit, fix) = TestRows.visit()
+        assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { repo.recordVisitOpen(visit, fix) } }
+        repo.reopenRouteDay("2026-10-05", TestRows.meta().routeId, voidedCycle = 1)
+        repo.recordVisitOpen(visit, fix)
+        repo.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), TestRows.meta(), "route_day", 2, "{}", MONEY, 0, 0, 0, false, 0, 0, false))
+        val (v2, f2) = TestRows.visit()
+        assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { repo.recordVisitOpen(v2, f2) } }
     }
 
     @Test fun anOutletRequestCarriesItsFixPhotosAndProposal() = runTest {
         val uuid = ClientIds.newUuid()
         val fix = TestRows.fix(uuid, "outlet_request")
         val req = OutletChangeRequestEntity(
-            uuid, TestRows.meta(routeId = null), "new_outlet", null, """{"name":"রহিম স্টোর","owner_name":"রহিম","lat":23.79,"lng":90.40}""",
+            uuid, TestRows.meta(routeId = null), "new", null, """{"name":"রহিম স্টোর","owner_name":"রহিম","lat":23.79,"lng":90.40}""",
             fix.clientUuid, """["${ClientIds.newUuid()}"]""",
         )
         repo.recordOutletRequest(req, fix)
@@ -103,7 +115,7 @@ class DayRecordsTest {
         val raw = bundleWithTask(task)
         val ref = ReferenceRepository(db)
         ref.apply(BundleReference.json.decodeFromJsonElement(BundleReference.serializer(), raw), raw)
-        assertEquals("open", ref.tasks().single().status)
+        assertEquals("ongoing", ref.tasks().single().status)
         val ev = TaskEventEntity(ClientIds.newUuid(), TestRows.meta(routeId = null), task, "resolved", "done")
         repo.resolveTask(ev, "2026-10-05T05:00:00.000Z")
         assertEquals("completed", ref.tasks().single().status)
@@ -160,7 +172,7 @@ class DayRecordsTest {
         val base = Json.parseToJsonElement(javaClass.getResourceAsStream("/fixtures/sr_day_bundle.json")!!.readBytes().decodeToString()).jsonObject
         val meta = JsonObject(base["meta"]!!.jsonObject + ("bundle_version" to kotlinx.serialization.json.JsonPrimitive(version)))
         val tasks = Json.parseToJsonElement(
-            """[{"task_uuid":"$task","task_type_code":"collect_due","title":"বকেয়া আদায়","description":null,"outlet_id":50001,"due_date":"2026-10-06","status":"open","resolved_at":null}]""",
+            """[{"task_uuid":"$task","task_type_code":"collect_due","title":"বকেয়া আদায়","description":null,"outlet_id":50001,"due_date":"2026-10-06","status":"ongoing","resolved_at":null}]""",
         )
         return JsonObject(base + ("meta" to meta) + ("tasks" to tasks))
     }

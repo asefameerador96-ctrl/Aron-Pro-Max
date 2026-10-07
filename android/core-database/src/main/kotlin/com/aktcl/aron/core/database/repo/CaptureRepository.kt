@@ -18,7 +18,11 @@ import com.aktcl.aron.core.database.entity.QcLineEntity
 import com.aktcl.aron.core.database.entity.StockMovementEntity
 import com.aktcl.aron.core.database.entity.VisitCloseEntity
 import com.aktcl.aron.core.database.entity.VisitEntity
+import com.aktcl.aron.contract.OutletRequestType
 import com.aktcl.aron.core.database.record.RecordMapping
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -66,6 +70,7 @@ class CaptureRepository(
     suspend fun recordVisitOpen(visit: VisitEntity, fix: GeoFixEntity) = db.withTransaction {
         requireUuids(visit.clientUuid, fix.clientUuid)
         requireRoute(visit.meta)
+        requireOpenRouteDay(visit.meta)
         requireFixOf(fix, visit.clientUuid, visit.fixClientUuid)
         capture.insertFix(fix)
         capture.insertVisit(visit)
@@ -99,6 +104,7 @@ class CaptureRepository(
             "memo counts must match the lines committed with it"
         }
         db.withTransaction {
+            requireOpenRouteDay(m.meta)
             val visit = checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
             require(visit.outletId == m.outletId) { "memo ${m.memoNo} is for another outlet than its visit" }
             sale.editFix?.let {
@@ -123,6 +129,7 @@ class CaptureRepository(
     suspend fun recordVisitClose(close: VisitCloseEntity) = db.withTransaction {
         requireUuids(close.clientUuid, close.visitClientUuid)
         requireRoute(close.meta)
+        requireOpenRouteDay(close.meta)
         checkNotNull(capture.visit(close.visitClientUuid)) { "visit_close without its visit" }
         capture.insertVisitClose(close)
         outbox.insert(listOf(RecordMapping.visitClose(close, nowIso())))
@@ -138,16 +145,18 @@ class CaptureRepository(
         return memoNo
     }
 
-    /** A due collected against an earlier memo; in its visit's family when collected during a visit. */
+    /** A due collected against an earlier memo: its own family (a signed header record, docs/24 s4.2). */
     suspend fun recordDueCollection(due: DueCollectionEntity, fix: GeoFixEntity? = null) {
         requireUuids(due.clientUuid, due.againstMemoClientUuid)
         due.visitClientUuid?.let { requireUuids(it); requireRoute(due.meta) }
         require(due.amountMtk >= 10) { "amount_mtk is at least 10" }
+        require(due.paymentMode == "cash") { "payment_mode is cash (contract)" }
         require(due.amountMtk <= due.outstandingBeforeMtk) { "a collection cannot exceed what is outstanding" }
         require(due.isFullSettlement == (due.amountMtk == due.outstandingBeforeMtk)) { "full settlement means the whole outstanding" }
         require((fix == null) == (due.fixClientUuid == null)) { "the record references its fix, and only then" }
         db.withTransaction {
             due.visitClientUuid?.let { checkNotNull(capture.visit(it)) { "due collection for a visit not on this phone" } }
+            if (due.meta.routeId != null) requireOpenRouteDay(due.meta)
             fix?.let { requireFixOf(it, due.clientUuid, due.fixClientUuid); capture.insertFix(it) }
             capture.insertDueCollection(due)
             outbox.insert(listOf(RecordMapping.dueCollection(due, fix, nowIso())))
@@ -158,14 +167,27 @@ class CaptureRepository(
     suspend fun recordVisitSkip(skip: VisitSkipEntity) = db.withTransaction {
         requireUuids(skip.clientUuid)
         requireRoute(skip.meta)
+        require(REASON_CODE.matches(skip.reasonCode)) { "reason_code must match ${REASON_CODE.pattern}" }
+        requireOpenRouteDay(skip.meta)
         capture.insertVisitSkip(skip)
         outbox.insert(listOf(RecordMapping.visitSkip(skip, nowIso())))
     }
 
-    /** Sales Submit: the route-day's last record (rank 3); nothing of that route-day may be committed after it. */
+    /**
+     * Sales Submit: the route-day's last record. Nothing of that route-day (visits, sales, closes, skips, dues) is committed
+     * after it until the server reopens the day ([reopenRouteDay]); one submit per cycle.
+     */
     suspend fun recordDaySubmit(submit: DaySubmitEntity) = db.withTransaction {
         requireUuids(submit.clientUuid)
-        requireRoute(submit.meta)
+        require(submit.scope in setOf("route_day", "supervisor_day")) { "scope is route_day or supervisor_day" }
+        if (submit.scope == "route_day") requireRoute(submit.meta)
+        require(submit.submitCycle in 1..50) { "submit_cycle is 1..50" }
+        require(listOf(submit.rejectedCount, submit.quarantinedCount, submit.pendingCount, submit.retailersWithDues).all { it >= 0 }) { "counts are not negative" }
+        require(submit.duesOutstandingMtk >= 0) { "dues_outstanding_mtk is not negative" }
+        check(capture.daySubmitsFor(submit.meta.businessDate, submit.meta.routeId).none { it.scope == submit.scope && it.submitCycle == submit.submitCycle }) {
+            "this route-day is already submitted in cycle ${submit.submitCycle}"
+        }
+        requireOpenRouteDay(submit.meta)
         capture.insertDaySubmit(submit)
         outbox.insert(listOf(RecordMapping.daySubmit(submit, nowIso())))
     }
@@ -173,7 +195,12 @@ class CaptureRepository(
     /** A new-outlet, edit, relocation or closure request with the fix taken for it. */
     suspend fun recordOutletRequest(request: OutletChangeRequestEntity, fix: GeoFixEntity) = db.withTransaction {
         requireUuids(request.clientUuid, fix.clientUuid)
-        request.originVisitClientUuid?.let { requireUuids(it) }
+        require(OutletRequestType.entries.any { it.wire == request.requestType }) { "request_type ${request.requestType} is not in the contract" }
+        require((request.requestType == OutletRequestType.NEW.wire) == (request.outletId == null)) { "outlet_id is null exactly for a new outlet" }
+        val photos = Json.decodeFromString(ListSerializer(String.serializer()), request.photoUuidsJson)
+        require(photos.size <= 4) { "at most 4 photos" }
+        requireUuids(*photos.toTypedArray())
+        request.originVisitClientUuid?.let { requireUuids(it); checkNotNull(capture.visit(it)) { "origin visit not on this phone" } }
         requireFixOf(fix, request.clientUuid, request.fixClientUuid)
         capture.insertFix(fix)
         capture.insertOutletRequest(request)
@@ -184,10 +211,26 @@ class CaptureRepository(
     suspend fun resolveTask(event: TaskEventEntity, resolvedAt: String) = db.withTransaction {
         requireUuids(event.clientUuid, event.taskUuid)
         require(event.event == "resolved") { "resolveTask writes a resolved event" }
+        check(db.referenceDao().completeTask(event.taskUuid, resolvedAt) == 1) { "task ${event.taskUuid} is not on this phone" }
         capture.insertTaskEvent(event)
-        db.referenceDao().completeTask(event.taskUuid, resolvedAt)
         outbox.insert(listOf(RecordMapping.taskEvent(event, nowIso())))
     }
+
+    /**
+     * The server reopened a submitted route-day (a submit void): captures of [businessDate] and [routeId] are allowed again
+     * until a submit of a later cycle than [voidedCycle].
+     */
+    suspend fun reopenRouteDay(businessDate: String, routeId: Long?, voidedCycle: Int) =
+        db.referenceDao().putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(reopenKey(businessDate, routeId), voidedCycle.toString()))
+
+    /** Refuses a route-day capture after its Sales Submit (docs/24 s4.2 rule 2: day_submit is the route-day's last record). */
+    private suspend fun requireOpenRouteDay(meta: CaptureMeta) {
+        val latest = capture.daySubmitsFor(meta.businessDate, meta.routeId).maxOfOrNull { it.submitCycle } ?: return
+        val reopened = db.referenceDao().meta(reopenKey(meta.businessDate, meta.routeId))?.toIntOrNull() ?: 0
+        check(latest <= reopened) { "route-day ${meta.businessDate} is submitted; nothing more can be captured" }
+    }
+
+    private fun reopenKey(businessDate: String, routeId: Long?) = "route_day.reopened.$businessDate.${routeId ?: "none"}"
 
     /** Device ids are lower-case UUID v4 (contract `Uuid`); anything else would be rejected on upload as schema_invalid. */
     private fun requireUuids(vararg ids: String) {
@@ -205,6 +248,8 @@ class CaptureRepository(
     }
 
     private companion object {
+        val REASON_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
+
         /** RFC 3339 UTC with exactly three fraction digits, as on the wire (docs/24 s3.1 item 5). */
         val ISO_MILLIS: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
     }

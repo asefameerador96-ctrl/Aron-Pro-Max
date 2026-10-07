@@ -136,9 +136,9 @@ object RecordMapping {
         QcLinePayload(e.visitClientUuid, e.memoClientUuid, e.appliedToMemo, e.skuId, e.faultTypeCode, e.faultGroup, e.qtyBase, e.unitPriceMtk, e.settlementMtk),
     )
 
-    /** A due collection belongs to its visit's family when collected during a visit, else it is its own family. */
+    /** A due collection is its own family (rank 0, a signed header record; docs/24 s4.2); its visit is a parent reference. */
     fun dueCollection(e: DueCollectionEntity, fix: GeoFixEntity?, createdAt: String) = outbox(
-        RecordType.DUE_COLLECTION, e.clientUuid, e.visitClientUuid ?: e.clientUuid, if (e.visitClientUuid != null) 1 else 0, e.meta, createdAt,
+        RecordType.DUE_COLLECTION, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
         DueCollectionPayload.serializer(),
         DueCollectionPayload(
             e.outletId, e.againstMemoClientUuid, e.againstMemoNo, e.againstMemoBusinessDate, e.amountMtk, e.isFullSettlement,
@@ -151,9 +151,9 @@ object RecordMapping {
         VisitSkipPayload.serializer(), VisitSkipPayload(e.outletId, e.reasonCode),
     )
 
-    /** Rank 3: above every family record, so the server orders it last within its route-day (s4.2 rule 2). */
+    /** Its own family at rank 0 (docs/24 s4.2); it is the route-day's last outbox record because nothing is committed after it. */
     fun daySubmit(e: DaySubmitEntity, createdAt: String) = outbox(
-        RecordType.DAY_SUBMIT, e.clientUuid, e.clientUuid, 3, e.meta, createdAt,
+        RecordType.DAY_SUBMIT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
         DaySubmitPayload.serializer(),
         DaySubmitPayload(
             e.scope, e.submitCycle, Json.parseToJsonElement(e.deviceCountsJson), Json.parseToJsonElement(e.deviceMoneyJson),

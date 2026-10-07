@@ -75,6 +75,9 @@ interface CaptureDao {
     @Query("SELECT * FROM day_submit WHERE business_date = :businessDate ORDER BY submit_cycle")
     suspend fun daySubmitsOn(businessDate: String): List<DaySubmitEntity>
 
+    @Query("SELECT * FROM day_submit WHERE business_date = :businessDate AND route_id IS :routeId ORDER BY submit_cycle")
+    suspend fun daySubmitsFor(businessDate: String, routeId: Long?): List<DaySubmitEntity>
+
     @Query("SELECT * FROM outlet_change_request ORDER BY captured_at DESC")
     suspend fun outletRequests(): List<OutletChangeRequestEntity>
 
