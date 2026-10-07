@@ -22,7 +22,7 @@ object TestTokens {
     }
 
     fun web(userId: Long, role: Role, sv: Long = 1, pii: Boolean = false): String {
-        val now = Instant.now()
+        val now = Instant.now() // wall-clock-ok: the access-token verifier checks exp/nbf against the real clock
         val c = JWTClaimsSet.Builder().issuer("aron").audience("aron-api").subject(userId.toString()).claim("uname", "u$userId")
             .claim("role", role.wire).claim("sv", sv).claim("flv", "web").claim("perm", emptyList<String>()).claim("pii", pii)
             .claim("amr", listOf("pwd")).issueTime(Date.from(now)).notBeforeTime(Date.from(now)).expirationTime(Date.from(now.plusSeconds(900)))
