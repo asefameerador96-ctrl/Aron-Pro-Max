@@ -31,5 +31,12 @@ interface PrintDao {
     @Query("UPDATE memo SET print_count = :count WHERE client_uuid = :uuid") suspend fun setMemoPrintCount(uuid: String, count: Int): Int
     @Query("UPDATE memo SET printed_at = NULL WHERE client_uuid = :uuid") suspend fun clearMemoPrinted(uuid: String): Int
     @Query("SELECT printed_at FROM memo WHERE client_uuid = :uuid") suspend fun memoPrintedAt(uuid: String): String?
-    @Query("UPDATE stock_movement SET slip_printed = :printed WHERE client_uuid = :uuid") suspend fun setSlipPrinted(uuid: String, printed: Boolean): Int
+    /** A stock slip covers one Save: every movement committed with the named row (same date, capture time and kind). */
+    @Query(
+        """UPDATE stock_movement SET slip_printed = :printed WHERE
+           business_date = (SELECT business_date FROM stock_movement WHERE client_uuid = :uuid)
+           AND captured_at = (SELECT captured_at FROM stock_movement WHERE client_uuid = :uuid)
+           AND kind = (SELECT kind FROM stock_movement WHERE client_uuid = :uuid)""",
+    )
+    suspend fun setSlipPrinted(uuid: String, printed: Boolean): Int
 }

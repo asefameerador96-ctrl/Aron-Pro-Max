@@ -116,6 +116,17 @@ class RoomPrintLedgerTest {
         assertTrue(!db.captureDao().stockOn("2026-10-05").first { it.clientUuid == fresh.clientUuid }.slipPrinted)
     }
 
+    @Test fun aSlipMarksEveryMovementOfItsSaveAndNoOther() = runTest {
+        val save = listOf(TestRows.stock(skuId = 100), TestRows.stock(skuId = 103)) // one Save: same meta
+        repo.recordStock(save)
+        val other = TestRows.stock(skuId = 105).let { it.copy(meta = it.meta.copy(capturedAt = "2026-10-05T09:00:00.000Z")) }
+        repo.recordStock(listOf(other))
+        ledger.record(event(save.first().clientUuid, PrintEvent.PRINTED, memo = false))
+        val rows = db.captureDao().stockOn("2026-10-05").associateBy { it.clientUuid }
+        assertTrue(save.all { rows.getValue(it.clientUuid).slipPrinted })
+        assertTrue(!rows.getValue(other.clientUuid).slipPrinted)
+    }
+
     @Test fun aDaySummaryWithoutALocalDocumentGetsTheAppEnvelope() = runTest {
         val e = PrintEvent(ClientIds.newUuid(), "day_summary", null, ClientIds.newUuid(), 1, PrintEvent.PRINTED, true, 3, "MP-58N", 5_000)
         ledger.record(e)
