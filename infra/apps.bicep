@@ -12,7 +12,8 @@ targetScope = 'resourceGroup'
 import { names, suffixFor, secretNames } from 'lib/naming.bicep'
 
 param namePrefix string = 'aron'
-@allowed(['dev', 'prod'])
+@description('dev = test account; stage and prod = final account (docs/30 s1).')
+@allowed(['dev', 'stage', 'prod'])
 param environmentName string
 param location string = resourceGroup().location
 param nameSuffix string = ''

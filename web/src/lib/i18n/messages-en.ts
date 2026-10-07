@@ -1,3 +1,5 @@
+import { dashEn } from "./messages-dash-en";
+import { cfgEn } from "./messages-config";
 // English catalogue. Keys must equal messages-bn.ts (tests/i18n.test.ts). {name} placeholders are interpolated by t().
 export const en = {
   "app.name": "Aron",
@@ -25,7 +27,7 @@ export const en = {
   "common.language.en": "English",
 
   "auth.title": "Sign in",
-  "auth.username": "Username",
+  "auth.username": "User ID",
   "auth.password": "Password",
   "auth.submit": "Sign in",
   "auth.logout": "Sign out",
@@ -120,7 +122,7 @@ export const en = {
 
   "error.generic": "Something went wrong. Try again.",
   "error.network": "The server cannot be reached. Try again in a moment.",
-  "error.ERR_AUTH_INVALID_CREDENTIALS": "Wrong username or password.",
+  "error.ERR_AUTH_INVALID_CREDENTIALS": "Wrong User ID or password.",
   "error.ERR_AUTH_ACCOUNT_LOCKED": "This account is locked for a while. Try again later.",
   "error.ERR_AUTH_USER_DISABLED": "This account is disabled. Contact support.",
   "error.ERR_AUTH_MFA_INVALID": "That code is not right. Check the code and try again.",
@@ -136,6 +138,8 @@ export const en = {
   "error.ERR_APP_VERSION_UNSUPPORTED": "This version is no longer supported. Reload the page.",
   "error.ERR_SERVICE_UNAVAILABLE": "The service is busy. Try again in a moment.",
   "error.ERR_READ_ONLY_MODE": "The system is read-only right now. Try again later.",
+  ...dashEn,
+  ...cfgEn,
 } as const;
 
 export type MessageKey = keyof typeof en;

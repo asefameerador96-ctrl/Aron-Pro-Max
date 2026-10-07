@@ -23,6 +23,7 @@ kotlin {
 }
 
 val openApiPath: String = rootProject.layout.projectDirectory.file("contract/openapi.yaml").asFile.absolutePath
+val slicesPath: String = rootProject.layout.projectDirectory.dir("contract/slices/schemas").asFile.absolutePath
 val buildSpecPath: String = rootProject.layout.projectDirectory.file("docs/24-build-spec.md").asFile.absolutePath
 val verificationPath: String = rootProject.layout.projectDirectory.file("docs/24-build-spec-verification.md").asFile.absolutePath
 val backlogPath: String = rootProject.layout.projectDirectory.file("docs/25-build-backlog.csv").asFile.absolutePath
@@ -31,7 +32,9 @@ tasks.named<Test>("jvmTest") {
     inputs.file(buildSpecPath).withPropertyName("buildSpec").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file(verificationPath).withPropertyName("verification").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file(backlogPath).withPropertyName("backlog").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(slicesPath).withPropertyName("slices").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("aron.openapi", openApiPath)
+    systemProperty("aron.slices", slicesPath)
     systemProperty("aron.spec", buildSpecPath)
     systemProperty("aron.verification", verificationPath)
     systemProperty("aron.backlog", backlogPath)
