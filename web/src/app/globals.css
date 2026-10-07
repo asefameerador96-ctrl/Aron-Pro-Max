@@ -22,6 +22,7 @@
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --accent: #1d5fd1;
+  --on-accent: #ffffff;
   --success: #15803d;
   --warning: #b45309;
   --danger: #b91c1c;
@@ -46,11 +47,12 @@
     --text-primary: #f1f5f9;
     --text-secondary: #b6c2d4;
     --accent: #6ea8ff;
+    --on-accent: #0b1220;
     --chart-1: #6ea8ff;
     --chart-2: #f0b429;
     --success: #4ade80;
     --warning: #fbbf24;
-    --danger: #f87171;
+    --danger: #fca5a5;
     --elev-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);
   }
 }
@@ -62,6 +64,9 @@
   }
 }
 @media (prefers-reduced-transparency: reduce) { :root { --surface: var(--surface-solid); --glass-blur: none; } }
+/* Tier B (glass-lite, docs/design/web-glass.md s3): the glass fills stay, the blur goes; tier C ("off") is solid. The tier is stamped on <html data-glass>. */
+:root[data-glass="lite"] { --surface: var(--surface-glass); --glass-blur: none; }
+:root[data-glass="off"] { --surface: var(--surface-solid); --glass-blur: none; }
 
 body {
   background: var(--bg-gradient) fixed;
@@ -71,6 +76,9 @@ body {
 /* The shared kit's existing utility classes now resolve through the tokens, so every page (dashboards, admin, config) shares one look. */
 .bg-white, .bg-slate-50 { background-color: var(--surface); -webkit-backdrop-filter: var(--glass-blur, none); backdrop-filter: var(--glass-blur, none); }
 .min-h-screen.bg-slate-50 { background-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* Hover fills resolve through the tokens too: the light slate hover turned dark-theme rows near-white under light text. */
+.hover\:bg-brand-700:hover { background-color: color-mix(in srgb, var(--accent) 88%, #000); }
+.hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, .hover\:bg-slate-200:hover { background-color: color-mix(in srgb, var(--accent) 14%, var(--surface-solid)); }
 .bg-slate-100 { background-color: color-mix(in srgb, var(--surface) 70%, transparent); }
 .border-slate-200, .border-slate-300, .divide-slate-200 > * + *, .divide-slate-100 > * + * { border-color: var(--border-line); }
 .rounded-lg { border-radius: var(--radius-card); }
@@ -80,6 +88,8 @@ body {
 .text-slate-700, .text-slate-800, .text-slate-900 { color: var(--text-primary); }
 .text-brand-700 { color: var(--accent); }
 .bg-brand-700, .bg-brand-600 { background-color: var(--accent); }
+/* Text on the accent fill keeps AA contrast in both themes (white on the light-blue dark accent was 2.4:1). */
+.bg-brand-600.text-white, .bg-brand-700.text-white { color: var(--on-accent); }
 a, button, summary, select, input { transition: background-color var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out, box-shadow var(--motion-base) ease-out; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
