@@ -24,3 +24,7 @@ Next: F-ADM-076 (SR lifecycle wizard), F-ADM-020, F-ADM-026, F-ADM-028, F-ADM-06
 Decisions: parent level is the level above in geography; task_type attrs.roles dropped from the editor; ANALYST outside portal gate except outlet requests; direct edit ADMIN/SUPERADMIN only; mock master users madmin1/msupport1/mtso1; sub_channel_id is a plain number; acting-scope end date not expressible.
 Requests (state: awaiting lead): web-admin-create-reason, web-admin-get-by-id, web-password-change-flow, web-refresh-cookie-handoff, web-infra-ci-job, web-admin-sub-channel-ids, web-admin-outlet-web-request, web-admin-acting-scope.
 Known not mine: e2e/pages.spec.ts daily-tracking date-dependent failure (dashboard lane).
+
+## Update (checker round for 005/006/008/071)
+Sonnet checker found 7 issues; fixed: unknown user on scope write is 404, duplicate scope nodes refused, scope node_id safe-integer bound, assignment end not after start, price publish refuses today (contract says future date). Not changed: zero price allowed (contract MtkNonNegative; product call), unknown SKU / overlapping effective ranges / second overlapping primary are API-side rules (mock gaps). Open: transfer form creates the new primary then ends the old one (two calls, not atomic): error is shown, retry is safe; needs an API transfer endpoint (not requested yet). Acting scope end date still requested.
+F-ADM-076 built (`/admin/sr-lifecycle`); checker pending.

@@ -422,6 +422,19 @@ export const en = {
   "error.ERR_READ_ONLY_MODE": "The system is read-only right now. Try again later.",
   ...dashEn,
   ...cfgEn,
+  "menu.admin.sr_lifecycle": "SR lifecycle",
+  "lifecycle.create.title": "Create the SR",
+  "lifecycle.create.hint": "Add the user with the SR role, a phone number and a home zone. A temporary password is shown once.",
+  "lifecycle.create.cta": "New user",
+  "lifecycle.bind.title": "Bind to a route",
+  "lifecycle.bind.hint": "Give the SR a primary route from a date. The next bundle on the phone carries it.",
+  "lifecycle.bind.cta": "New assignment",
+  "lifecycle.reassign.title": "Reassign to another route",
+  "lifecycle.reassign.hint": "Move the SR to a new route from a date; the old assignment ends the day before.",
+  "lifecycle.reassign.cta": "SR transfer",
+  "lifecycle.disable.title": "Disable the SR",
+  "lifecycle.disable.hint": "Set the user inactive. The phone still uploads what it already holds; nothing is lost.",
+  "lifecycle.disable.cta": "SR list",
 } as const;
 
 export type MessageKey = keyof typeof en;

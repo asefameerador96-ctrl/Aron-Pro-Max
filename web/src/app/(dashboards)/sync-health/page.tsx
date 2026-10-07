@@ -25,13 +25,21 @@ export default async function SyncHealthPage({ searchParams }: { searchParams: P
   const zone = sp.zone && ID.test(sp.zone) ? Number(sp.zone) : null;
   const route = sp.route && ID.test(sp.route) ? Number(sp.route) : null;
   const token = session.at;
-  const [tracking, health, summary, ack, photos] = await Promise.all([getDailyTracking(token, date), getSyncHealth(token, date), getSummary(token, { from: date, to: date }), getConfigAck(token), getPendingPhotos(token)]);
+  const [tracking, health, summary] = await Promise.all([getDailyTracking(token, date), getSyncHealth(token, date), getSummary(token, { from: date, to: date })]);
   if (!tracking.ok || !health.ok)
     return (
       <p role="alert" className="rounded bg-red-50 p-3 text-red-900" data-testid="sync-error">
         {problemMessage(locale, (!tracking.ok ? tracking : (health as { problem: { code: string } })).problem.code)}
       </p>
     );
+  // Contract v1.2 gives config ack, pending photos, quarantine backlog and the zone breakdown on the sync-health page itself; the older
+  // admin reads and the tracking roll-up run only when the server leaves a member out (an older server), and "not available" shows when both fail.
+  const sm = health.data.summary;
+  const [ack, photos] = await Promise.all([
+    sm.config_ack_pct === undefined ? getConfigAck(token) : Promise.resolve(null),
+    sm.pending_photos === undefined ? getPendingPhotos(token) : Promise.resolve(null),
+  ]);
+  const byZone = health.data.by_zone;
   const zones = rollupByZone(tracking.data.items);
   const tot = totalsOf(zones);
   const lat = latency(health.data.items);
@@ -63,9 +71,26 @@ export default async function SyncHealthPage({ searchParams }: { searchParams: P
         {cell("sync.submit_pct", "submit", pctText(locale, tot.submit_pct))}
         {cell("sync.final_submit", "final", t(locale, "sync.zones_done", { done: n(locale, tot.zones_done), total: n(locale, tot.zones) }))}
         {cell("sync.trickle", "trickle", lat.worst === null ? NA(locale) : t(locale, "sync.seconds_worst_median", { worst: n(locale, lat.worst), median: n(locale, lat.median ?? 0) }))}
-        {cell("sync.quarantine", "quarantine", n(locale, health.data.summary.quarantined))}
-        {cell("sync.config_ack", "ack", ack ? <span title={t(locale, "sync.config_version", { v: n(locale, ack.version) })}>{pctText(locale, ack.pct)}</span> : NA(locale))}
-        {cell("sync.pending_photos", "photos", photos === null ? NA(locale) : n(locale, photos))}
+        {cell("sync.quarantine", "quarantine", n(locale, sm.quarantine_backlog ?? sm.quarantined))}
+        {cell("sync.config_ack", "ack", sm.config_ack_pct !== undefined ? pctText(locale, sm.config_ack_pct) : ack ? <span title={t(locale, "sync.config_version", { v: n(locale, ack.version) })}>{pctText(locale, ack.pct)}</span> : NA(locale))}
+        {cell(
+          "sync.pending_photos",
+          "photos",
+          sm.pending_photos ? (
+            <>
+              {n(locale, sm.pending_photos.count)}
+              {sm.pending_photos.oldest_age_s === null ? null : (
+                <span className="ml-2 text-xs font-normal text-slate-600" data-testid="photos-oldest">
+                  {t(locale, "sync.oldest_photo", { min: n(locale, Math.floor(sm.pending_photos.oldest_age_s / 60)) })}
+                </span>
+              )}
+            </>
+          ) : photos === null ? (
+            NA(locale)
+          ) : (
+            n(locale, photos)
+          ),
+        )}
         {cell("sync.pending_rows", "pending", n(locale, health.data.items.reduce((a, i) => a + i.pending_rows_reported, 0)))}
       </div>
 
@@ -90,20 +115,37 @@ export default async function SyncHealthPage({ searchParams }: { searchParams: P
       </nav>
 
       {zone === null ? (
-        <Table testId="zone-table" heads={["sync.col.zone", "sync.col.routes", "sync.col.login", "sync.col.submit", "sync.col.final"]} locale={locale}>
-          {zones.map((z) => (
-            <tr key={z.zone_id} data-zone={z.zone_id} data-state={z.done ? "done" : "pending"}>
-              <td className="px-3 py-2">
-                <Link className="underline" href={q({ zone: z.zone_id })}>
-                  {names.get(z.zone_id) ?? `${t(locale, "scope.zone")} ${n(locale, z.zone_id)}`}
-                </Link>
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums">{n(locale, z.routes)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{pctText(locale, z.login_pct)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{pctText(locale, z.submit_pct)}</td>
-              <td className="px-3 py-2">{t(locale, z.done ? "finalsubmit.done" : "finalsubmit.pending")}</td>
-            </tr>
-          ))}
+        <Table testId="zone-table" heads={byZone ? ["sync.col.zone", "sync.col.login", "sync.col.submit", "sync.col.final", "sync.col.p95", "sync.col.quarantined", "sync.col.photos", "sync.col.ack"] : ["sync.col.zone", "sync.col.routes", "sync.col.login", "sync.col.submit", "sync.col.final"]} locale={locale}>
+          {byZone
+            ? byZone.map((z) => (
+                <tr key={z.zone_id} data-zone={z.zone_id} data-state={z.final_submitted ? "done" : "pending"}>
+                  <td className="px-3 py-2">
+                    <Link className="underline" href={q({ zone: z.zone_id })}>
+                      {names.get(z.zone_id) ?? `${t(locale, "scope.zone")} ${n(locale, z.zone_id)}`}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pctText(locale, z.login_pct)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pctText(locale, z.submit_pct)}</td>
+                  <td className="px-3 py-2">{t(locale, z.final_submitted ? "finalsubmit.done" : "finalsubmit.pending")}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{z.trickle_p95_s === null ? "—" : n(locale, z.trickle_p95_s)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{n(locale, z.quarantined)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{n(locale, z.pending_photos)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pctText(locale, z.config_ack_pct)}</td>
+                </tr>
+              ))
+            : zones.map((z) => (
+                <tr key={z.zone_id} data-zone={z.zone_id} data-state={z.done ? "done" : "pending"}>
+                  <td className="px-3 py-2">
+                    <Link className="underline" href={q({ zone: z.zone_id })}>
+                      {names.get(z.zone_id) ?? `${t(locale, "scope.zone")} ${n(locale, z.zone_id)}`}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{n(locale, z.routes)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pctText(locale, z.login_pct)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pctText(locale, z.submit_pct)}</td>
+                  <td className="px-3 py-2">{t(locale, z.done ? "finalsubmit.done" : "finalsubmit.pending")}</td>
+                </tr>
+              ))}
         </Table>
       ) : route === null ? (
         <Table testId="route-table" heads={["tracking.col.route", "tracking.col.user", "sync.col.state", "sync.col.devices"]} locale={locale}>
