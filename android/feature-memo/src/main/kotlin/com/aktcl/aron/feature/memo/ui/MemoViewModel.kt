@@ -29,8 +29,17 @@ interface MemoStore {
 /** Writes a `due_collection` with its outbox row in one transaction (REQUEST: core `recordDueCollection`). */
 fun interface DueCollectionWriter { suspend fun write(draft: DueCollectionDraft) }
 
-/** Prints or reprints a stored memo: production is `MemoPrinting.printMemo(memoUuid, print)`. */
-fun interface MemoReprinter { suspend fun print(memoUuid: String, memo: MemoPrint): PrintAttempt }
+/** Prints or reprints a stored memo and records the "readable?" answer: production is [MemoPrintingReprinter]. */
+interface MemoReprinter {
+    suspend fun print(memoUuid: String, memo: MemoPrint): PrintAttempt
+    suspend fun confirm(attempt: PrintAttempt.AwaitingConfirmation, readable: Boolean) {}
+}
+
+/** Production [MemoReprinter]: `MemoPrinting.printMemo` and `confirm`; the reprint number and the duplicate marker come from it. */
+class MemoPrintingReprinter(private val printing: com.aktcl.aron.core.printing.flow.MemoPrinting) : MemoReprinter {
+    override suspend fun print(memoUuid: String, memo: MemoPrint) = printing.printMemo(memoUuid, memo)
+    override suspend fun confirm(attempt: PrintAttempt.AwaitingConfirmation, readable: Boolean) = printing.confirm(attempt, readable)
+}
 
 data class MemoUiState(
     val rows: List<MemoMenuRow> = emptyList(),
@@ -39,6 +48,7 @@ data class MemoUiState(
     val canMarkPaid: Boolean = false,
     val outletDueMtk: Long = 0,
     val lastPrint: PrintAttempt? = null,
+    val printing: Boolean = false,
 )
 
 /**
@@ -53,6 +63,7 @@ class MemoViewModel(
     private val businessDate: () -> String,
 ) : ViewModel() {
     private val lock = Mutex()
+    private val printLock = Mutex()
     private val _state = MutableStateFlow(MemoUiState())
     val state: StateFlow<MemoUiState> = _state.asStateFlow()
     private var memos: List<StoredMemo> = emptyList()
@@ -75,11 +86,30 @@ class MemoViewModel(
 
     fun reprint() {
         viewModelScope.launch {
-            val m = _state.value.selected?.memo ?: return@launch
-            val attempt = reprinter.print(m.memoUuid, PrintMapping.memo(m, names()))
-            _state.value = _state.value.copy(lastPrint = attempt)
+            printLock.withLock {
+                val m = _state.value.selected?.memo ?: return@withLock
+                if (_state.value.printing) return@withLock // a second tap while printing does nothing
+                _state.value = _state.value.copy(printing = true, lastPrint = null)
+                val attempt = try { reprinter.print(m.memoUuid, PrintMapping.memo(m, names())) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { PrintAttempt.Failed(com.aktcl.aron.core.printing.bt.PrintFailure.DISCONNECTED) }
+                _state.value = _state.value.copy(printing = false, lastPrint = attempt)
+                if (attempt == PrintAttempt.Done) reloadLocked(m.memoUuid) // printed_at may have changed: the duplicate marker follows it
+            }
         }
     }
+
+    /** "ছাপা ঠিক আছে?" answer; recorded once. */
+    fun confirmPrint(readable: Boolean) {
+        viewModelScope.launch {
+            val a = _state.value.lastPrint as? PrintAttempt.AwaitingConfirmation ?: return@launch
+            reprinter.confirm(a, readable)
+            _state.value = _state.value.copy(lastPrint = null)
+            _state.value.selected?.memo?.memoUuid?.let { lock.withLock { reloadLocked(it) } }
+        }
+    }
+
+    /** Retry from a failed print, or dismiss it ("print later"): the memo stays reprintable. */
+    fun retryPrint() = reprint()
+    fun dismissPrint() { _state.value = _state.value.copy(lastPrint = null) }
 
     private suspend fun reload(selected: String?) = lock.withLock { reloadLocked(selected) }
 
