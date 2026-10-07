@@ -112,8 +112,8 @@ class LoginViewModel(
         }
     }
 
-    /** Leaves the OTP step for the login form (the password stays typed). */
-    fun onOtpBack() = _state.update { it.copy(bindToken = null, otp = OtpState()) }
+    /** Leaves the OTP step for the login form; the typed password is dropped (the rep re-enters it, so it never lingers behind a dead end). */
+    fun onOtpBack() = _state.update { if (it.otp.busy) it else it.copy(bindToken = null, password = "", otp = OtpState()) }
 
     companion object {
         fun messageFor(outcome: LoginOutcome): LoginMessage? = when (outcome) {
