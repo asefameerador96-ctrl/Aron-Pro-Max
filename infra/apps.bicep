@@ -201,18 +201,26 @@ resource dblogins 'Microsoft.App/jobs@2025-07-01' = if (!empty(psqlImage)) {
         kvSecret('pw-app-api', secretNames.dbPwAppApi, kvSecretUrl, idMigrate.id)
         kvSecret('pw-app-worker', secretNames.dbPwAppWorker, kvSecretUrl, idMigrate.id)
         kvSecret('pw-app-jobs', secretNames.dbPwAppJobs, kvSecretUrl, idMigrate.id)
+        // The SQL itself (not a secret): mounted as a file. As a 7 KB env value the replica was never created
+        // ("No replicas found for execution"), while the same job with only the image and the four Key Vault refs
+        // ran (deploy run 37659152959, probes A and B).
+        // Checked-in SQL with no credentials (passwords arrive by \getenv from the Key Vault refs above), so not secure.
+        #disable-next-line use-secure-value-for-secure-inputs
+        { name: 'logins-sql', value: loadTextContent('sql/runtime-logins.sql') }
       ]
     }
     template: {
+      // Only the SQL file is projected (an empty secrets list would mount every secret, the database URL included).
+      volumes: [{ name: 'sql', storageType: 'Secret', secrets: [{ secretRef: 'logins-sql', path: 'runtime-logins.sql' }] }]
       containers: [
         {
           name: 'dblogins'
           image: psqlImage
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
           // The JDBC URL minus its "jdbc:" prefix is a libpq URI (host, port, sslmode, user, password parameters).
-          command: ['/bin/sh', '-c', 'printf "%s" "$ARON_SQL" > /tmp/logins.sql && exec psql "\${ARON_DB_URL#jdbc:}" -X -q -f /tmp/logins.sql']
+          command: ['/bin/sh', '-c', 'exec psql "\${ARON_DB_URL#jdbc:}" -X -q -f /sql/runtime-logins.sql']
+          volumeMounts: [{ volumeName: 'sql', mountPath: '/sql' }]
           env: [
-            { name: 'ARON_SQL', value: loadTextContent('sql/runtime-logins.sql') }
             { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
             { name: 'ARON_PW_APP_API', secretRef: 'pw-app-api' }
             { name: 'ARON_PW_APP_WORKER', secretRef: 'pw-app-worker' }
