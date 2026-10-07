@@ -94,6 +94,7 @@ argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2-jvm" }
 azure-sdk-bom = { module = "com.azure:azure-sdk-bom", version.ref = "azure-sdk-bom" }
 azure-storage-blob = { module = "com.azure:azure-storage-blob" }
 azure-identity = { module = "com.azure:azure-identity" }
+azure-core-http-jdk-httpclient = { module = "com.azure:azure-core-http-jdk-httpclient" }
 firebase-admin = { module = "com.google.firebase:firebase-admin", version.ref = "firebase-admin" }
 fastexcel = { module = "org.dhatim:fastexcel", version.ref = "fastexcel" }
 

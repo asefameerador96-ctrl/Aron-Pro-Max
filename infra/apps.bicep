@@ -514,7 +514,7 @@ var appAlerts = concat([
     dimensions: [{ name: 'statusCodeCategory', operator: 'Include', values: ['5xx'] }]
     description: 'api answered more than 10 5xx in 5 minutes. Owner: infra lane (backend for the cause). Runbook: RB-01 (docs/runbooks/rollback-bad-deploy.md).'
   }
-], flatten(map([{ key: 'api', app: n.apiApp, sev: 1 }, { key: 'worker', app: n.workerApp, sev: 2 }], a => [
+], flatten(map([{ key: 'api', app: n.apiApp, sev: 1, min: apiMinReplicas }, { key: 'worker', app: n.workerApp, sev: 2, min: workerMinReplicas }], a => concat([
   {
     name: '${a.key}-restarts'
     app: a.app
@@ -525,9 +525,11 @@ var appAlerts = concat([
     window: 'PT15M'
     severity: a.sev
     dimensions: []
-    description: '${a.key}: a replica restarted more than twice (crash loop). Owner: infra lane (backend for the cause). Runbook: RB-01.'
+    description: '${a.key}: a replica has restarted more than twice in its life (RestartCount is cumulative per replica: a crash loop, or repeated out-of-memory kills; it clears when the replica is replaced). Owner: infra lane (backend for the cause). Runbook: RB-01.'
   }
+], a.min > 0 ? [
   {
+    // Only where the profile keeps a replica running (dev-lite scales the api to zero when idle).
     name: '${a.key}-no-replica'
     app: a.app
     metric: 'Replicas'
@@ -537,9 +539,9 @@ var appAlerts = concat([
     window: 'PT5M'
     severity: a.sev
     dimensions: []
-    description: '${a.key}: no running replica for 5 minutes (min replicas is 1). Owner: infra lane. Runbook: RB-01.'
+    description: '${a.key}: no running replica for 5 minutes although the profile keeps at least one. Owner: infra lane. Runbook: RB-01.'
   }
-])), deployWeb ? [
+] : []))), deployWeb ? [
   {
     name: 'web-restarts'
     app: n.webApp
@@ -550,7 +552,7 @@ var appAlerts = concat([
     window: 'PT15M'
     severity: 3
     dimensions: []
-    description: 'web: a replica restarted more than twice (crash loop). Owner: infra lane (web for the cause). Runbook: RB-01.'
+    description: 'web: a replica has restarted more than twice in its life (cumulative per replica; clears when it is replaced). Owner: infra lane (web for the cause). Runbook: RB-01.'
   }
 ] : [])
 
