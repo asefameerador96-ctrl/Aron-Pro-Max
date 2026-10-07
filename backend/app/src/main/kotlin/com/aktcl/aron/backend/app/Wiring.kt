@@ -32,7 +32,11 @@ import com.aktcl.aron.backend.config.configAdminRoutes
 import com.aktcl.aron.backend.config.configDeltaRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
+import com.aktcl.aron.backend.masterdata.AdminPricesDeps
+import com.aktcl.aron.backend.masterdata.AdminProductsDeps
 import com.aktcl.aron.backend.masterdata.OtpCipher
+import com.aktcl.aron.backend.masterdata.adminPricesRoutes
+import com.aktcl.aron.backend.masterdata.adminProductsRoutes
 import com.aktcl.aron.backend.masterdata.deviceReplaceRoutes
 import com.aktcl.aron.backend.masterdata.deviceOtpRoutes
 import com.aktcl.aron.backend.masterdata.OutletsDeps
@@ -100,6 +104,8 @@ class Wiring(
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
                 deviceReplaceRoutes(otpDeps)
+                adminProductsRoutes(AdminProductsDeps(db, guard, clock))
+                adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)
