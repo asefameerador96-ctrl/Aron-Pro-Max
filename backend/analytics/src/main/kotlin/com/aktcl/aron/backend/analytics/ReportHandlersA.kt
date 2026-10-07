@@ -292,5 +292,7 @@ object ByRouteGeoCaptureReport : ReportHandler {
 
 /** Every handler registered in this build; the batch rows append theirs (docs/27: no programme reports). */
 object ReportHandlers {
-    val all: List<ReportHandler> = listOf(RouteMemoReport, StdMemoReport, SrEfficiencyReport, RouteStdReport, RouteBsrCprReport, ByOutletReport, ByOutletByDayReport, OnlineOfflineReport, TaskPlannerReport, ByRouteGeoCaptureReport, MemoNumberGapsReport, SuspiciousLocationReport)
+    val all: List<ReportHandler> = listOf(RouteMemoReport, StdMemoReport, SrEfficiencyReport, RouteStdReport, RouteBsrCprReport, ByOutletReport, ByOutletByDayReport, OnlineOfflineReport, TaskPlannerReport, ByRouteGeoCaptureReport, MemoNumberGapsReport, SuspiciousLocationReport,
+        DataEntryLogReport, FinalSubmitLogReport, FinalSubmitStatusReport, GigoReport, DssReport, DsRrsReport, TsoTopSheetReport, DailyTrackingReport, LeaderboardReport,
+        AmoCallReport, SrOutletsReport, DiscountReport, FreeSampleReport, SalesSummaryReport)
 }
