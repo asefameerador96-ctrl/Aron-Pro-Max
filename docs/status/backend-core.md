@@ -1,6 +1,6 @@
 # backend-core lane status (handoff for a fresh session)
 
-Updated 2026-10-07 (session 3 of the lane). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
+Updated 2026-10-07 (session 4 of the lane). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
 
 ## Done this session (pushed to INT)
 - **F-API-005 `GET /v1/sync/bundle`** (`backend/sync/BundleService.kt`, `ScopedConfig.kt`, `ReasonTexts.kt`): Opus checker 5 findings, 4 fixed; growing `snapshot_seq` waits on `docs/requests/backend-bundle-snapshot-table.md` (code ready, test assumption-guarded).
@@ -22,7 +22,16 @@ Updated 2026-10-07 (session 3 of the lane). Earlier history: `docs/status/backen
   - **F-SYS-003, F-API-003 bind-device**: at `bind_required` the login creates one OTP per live window (sealed with `OtpCipher`, `otp_sha256` = `OtpCipher.mac`); `POST /v1/auth/bind-device` needs the bind token, X-Device-Proof (`bind`, hex sha256(otp), bucket), is single use, expires after 120 min, and refuses everything after 5 wrong tries; it binds with the next free ordinal (0 to 3) and continues the login. Opus checker: 2 findings, both fixed: a fifth phone answers 409 `ERR_DEVICE_LIMIT_REACHED` (docs/24 s7.5; android-core should map it, the app maps only `ERR_AUTH_BIND_LOCKED` today), and is refused before the OTP is spent. OTP creation now takes the same user-row lock as the TSO panel. Docs note for the lead: an OTP locked after 5 tries stays locked (hidden on the panel) until it expires or the TSO re-issues it; docs/24 says it "expires".
   - Not mine, red on INT: backend-admin's `ConfigToolsTest.whatIfCountsVisitsWhoseVerdictWouldChange` (expected 0, was -4).
 
-## Decisions taken (this session)
+## Session 4 (2026-10-07)
+- Merged INT 107d3a5a. Fresh container: PostgreSQL role `aron`/`aron` (superuser) and database `aron_test` had to be created.
+- **F-SYS-012 server geo re-check** (`sync/GeoRecheck.kt`, `GeoRecheckHandler` registered in `Wiring.recordHandlers`; `GeoRecheckTest`): shared `GeoVerdicts.verdict` against the outlet location of the history row valid at `max(captured_at, received_at - cfg.sys.config_accept_window_h)` and the bundle's radius chain and clamps; stores `server_verdict`, `server_distance_m`, `server_radius_m`, `server_max_accuracy_m`, `server_checked_at`; own savepoint, never refuses a visit. Request: `backend-core-location-history-basis.md` (cleared pins and placeholder basis are not in the history). Open: every visit loads the cfg rows of 7 keys (fine at pilot size; cache per batch before fleet size); `GEO_DEVICE_SERVER_MISMATCH` belongs to the risk-signal worker (F-SYS-057).
+- **N-037 `POST /v1/admin/notifications`** (`notify/Notifications.kt`, `PushNotifier.liveTokens/broadcast`; `AdminNotificationTest`): web ADMIN, SUPERADMIN, TOP, WM, DMO, TSO; target inside the caller's reach (403 geography, 404 user/device; a shared phone through every bound user in reach); 409 ERR_PUSH_DISABLED; `AuditLog.write`; data-only message (keys in `docs/requests/android-core-503-and-generation.md`); broadcasts on their own bounded pool.
+- **DeviceService** audit rows through `AuditLog.write` (lead ruling 2).
+- **AUD-REL-01/02** (`DbServerConfig`, `ServerGeneration`, `Http.kt isTransientDbFailure`; `DatabaseOutageTest`): single-flight refresh with back-off, cold callers wait for the one load, caches warmed at startup, `/v1/health*` use cached values only; transient DB failures answer 503 with Retry-After 5..30. Not built: in-request retry of idempotent transactions and the 25 s request timeout (docs/18 s4.3).
+- Opus checker on the three rows: 9 findings, all fixed (`GeoNotifyOutageCheckerTest`).
+- **AUD-SEC-02** (auth: `LoginService`, `JdbiStores`, `AuthModule`; `LoginAbuseTest`): separate web hash pool, global web login bucket, 2 h lock cap, lockout row purge, refresh limiter. Request: `backend-core-bff-client-ip.md`. Opus checker: see below.
+
+## Decisions taken (session 3)
 - Change-password revokes every full-grant family of the user except the calling phone's own (the contract says "other"; a web caller has no family id in the token, so all web families go and the BFF logs in again).
 - A phone with a temporary password keeps the 10-minute API token for change-password (R15 covers `client: web` only).
 - The bind OTP is created at the first `bind_required` login and reused while it is live; a new one only after expiry, consumption or a TSO re-issue. Wrong tries count per OTP (5), so a TSO re-issue resets them.
