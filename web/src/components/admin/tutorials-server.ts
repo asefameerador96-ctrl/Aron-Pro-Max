@@ -4,13 +4,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Problem } from "@/contract/types";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { rawRequest, type RawRequest } from "@/lib/api/raw";
+import { checkContentWrite, checkRubricWrite, checkSurveyWrite } from "@/lib/admin/definitions";
 import { checkAssetRequest, checkTutorialWrite, type FieldIssue } from "@/lib/admin/tutorials";
 import { hasRole } from "@/lib/auth/roles";
 
 const WRITE = ["ADMIN", "SUPERADMIN"] as const;
-type Plan = { issues: FieldIssue[] } | { call: Omit<RawRequest, "token"> };
+export type Plan = { issues: FieldIssue[] } | { call: Omit<RawRequest, "token"> };
 
-async function run(req: NextRequest, plan: (input: unknown) => Plan): Promise<NextResponse> {
+export async function run(req: NextRequest, plan: (input: unknown) => Plan): Promise<NextResponse> {
   const auth = await authenticate(req, req.nextUrl.pathname);
   if (auth instanceof NextResponse) return auth;
   if (!hasRole(auth.session.user.role, WRITE)) return auth.finish(problemResponse(403, "ERR_FORBIDDEN"));
@@ -43,9 +44,37 @@ export const handleTutorialUpdate = (req: NextRequest, id: string) =>
     const o = (typeof input === "object" && input !== null && !Array.isArray(input) ? input : {}) as Record<string, unknown>;
     const { version, ...rest } = o;
     const issues: FieldIssue[] = [];
-    if (!/^[0-9]{1,15}$/.test(id) || Number(id) < 1) issues.push({ pointer: "/id", code: "invalid" });
+    if (!/^[1-9][0-9]{0,14}$/.test(id)) issues.push({ pointer: "/id", code: "invalid" });
     if (typeof version !== "number" || !Number.isInteger(version) || version < 1 || version > 9_999_999_999) issues.push({ pointer: "/version", code: "invalid" });
     const c = checkTutorialWrite(rest);
     issues.push(...c.issues);
     return c.body && !issues.length ? { call: { method: "PATCH", path: `/v1/admin/tutorials/${id}`, body: c.body, ifMatch: `"${version}"` } } : { issues };
   });
+
+const DEF_KINDS = { surveys: checkSurveyWrite, rubrics: checkRubricWrite, content: checkContentWrite } as const;
+export type DefKind = keyof typeof DEF_KINDS;
+export const isDefKind = (k: string): k is DefKind => Object.prototype.hasOwnProperty.call(DEF_KINDS, k);
+
+/** POST /api/bff/admin/defs/{surveys|rubrics|content}: create a definition (version 1). */
+export const handleDefCreate = (req: NextRequest, kind: string) =>
+  isDefKind(kind)
+    ? run(req, (input) => {
+        const c = DEF_KINDS[kind](input);
+        return c.body ? { call: { method: "POST", path: `/v1/admin/${kind}`, body: c.body } } : { issues: c.issues };
+      })
+    : Promise.resolve(problemResponse(404, "ERR_NOT_FOUND"));
+
+/** PATCH /api/bff/admin/defs/{kind}/{id}: publish a new version, with the row `version` as If-Match. */
+export const handleDefUpdate = (req: NextRequest, kind: string, id: string) =>
+  isDefKind(kind)
+    ? run(req, (input) => {
+        const o = (typeof input === "object" && input !== null && !Array.isArray(input) ? input : {}) as Record<string, unknown>;
+        const { version, ...rest } = o;
+        const issues: FieldIssue[] = [];
+        if (!/^[1-9][0-9]{0,14}$/.test(id)) issues.push({ pointer: "/id", code: "invalid" });
+        if (typeof version !== "number" || !Number.isInteger(version) || version < 1 || version > 9_999_999_999) issues.push({ pointer: "/version", code: "invalid" });
+        const c = DEF_KINDS[kind](rest);
+        issues.push(...c.issues);
+        return c.body && !issues.length ? { call: { method: "PATCH", path: `/v1/admin/${kind}/${id}`, body: c.body, ifMatch: `"${version}"` } } : { issues };
+      })
+    : Promise.resolve(problemResponse(404, "ERR_NOT_FOUND"));

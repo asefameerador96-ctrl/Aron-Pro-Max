@@ -23,6 +23,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.database.entity.OutletEntity
+import com.aktcl.aron.core.system.permission.AndroidPermissions
+import com.aktcl.aron.core.system.permission.GatedFeature
+import com.aktcl.aron.core.system.permission.PermissionGate
+import com.aktcl.aron.core.system.permission.PermissionPolicy
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronTokens
@@ -151,10 +155,12 @@ fun SrApp(
                 banner = if (data.downloading) stringResource(R.string.sr_bundle_downloading) else null,
             )
         }
-        SrScreen.ATTENDANCE -> AttendanceContent(attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn() } }, onCheckOut = { scope.launch { day.attendance.checkOut() } })
+        SrScreen.ATTENDANCE -> PermissionGate(GatedFeature.ATTENDANCE, onBack = { screen = SrScreen.HOME }) {
+            AttendanceContent(attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn() } }, onCheckOut = { scope.launch { day.attendance.checkOut() } })
+        }
         SrScreen.SETTINGS -> SettingsContent(versionText, onLanguageSelect, onLogout)
         SrScreen.STOCK -> StockHost(day)
-        SrScreen.PICKER -> {
+        SrScreen.PICKER -> PermissionGate(GatedFeature.SALE, onBack = { screen = SrScreen.HOME }) {
             var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
             var opening by remember { mutableStateOf(false) }
             val all = OutletPicker.rows(data.outlets)
@@ -168,7 +174,7 @@ fun SrApp(
                 }
             })
         }
-        SrScreen.VISIT -> {
+        SrScreen.VISIT -> PermissionGate(GatedFeature.SALE, onBack = { screen = SrScreen.HOME }) {
             val st by day.visitFlow.state.collectAsState()
             val open by day.visitSession.current.collectAsState()
             if (open != null) {
@@ -224,7 +230,9 @@ fun SrApp(
             var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
             OutletPickerContent(OutletPicker.rows(data.outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r -> day.requestOutlet = r.outlet; screen = SrScreen.REQUEST_FORM })
         }
-        SrScreen.REQUEST_FORM -> RequestHost(day, data.outlets, onDone = { screen = SrScreen.OUTLET_MENU })
+        SrScreen.REQUEST_FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = { screen = SrScreen.OUTLET_MENU }) {
+            RequestHost(day, data.outlets, onDone = { screen = SrScreen.OUTLET_MENU })
+        }
     }
 }
 
@@ -294,7 +302,7 @@ private fun StockHost(day: SrDay) {
                 }
             },
             // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03).
-            onPrint = if (lastSaved.isNotEmpty()) ({
+            onPrint = if (lastSaved.isNotEmpty() && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(androidx.compose.ui.platform.LocalContext.current))) ({
                 scope.launch {
                     val first = lastSaved.minByOrNull { it.skuId }!!
                     attempt = day.printing.printStockSlip(first.clientUuid, day.stockSlip(lastSaved))
