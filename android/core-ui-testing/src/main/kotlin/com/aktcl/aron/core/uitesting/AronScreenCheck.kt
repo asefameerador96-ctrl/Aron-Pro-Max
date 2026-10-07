@@ -56,7 +56,7 @@ object AronScreenCheck {
             val (scale, language) = current
             // stringResource reads the Context's locale, not the theme: give the screen a context in the case's language
             val base = LocalContext.current
-            val config = android.content.res.Configuration(base.resources.configuration).apply { setLocale(Locale.forLanguageTag(language.tag)) }
+            val config = android.content.res.Configuration(LocalConfiguration.current).apply { setLocale(Locale.forLanguageTag(language.tag)) }
             val localized = base.createConfigurationContext(config)
             CompositionLocalProvider(
                 LocalContext provides localized, LocalConfiguration provides config,
