@@ -85,7 +85,7 @@ private fun listLeave(call: ApplicationCall, d: LeaveDeps): LeavePageDto {
     val limit = AdminSupport.limit(call)
     val status = call.request.queryParameters["status"]?.also { if (it !in setOf("pending", "approved", "rejected")) bad("query.status") }
     val (from, to) = AdminSupport.window(call)
-    val cursor = AdminSupport.decodeCursor(call, 2)?.let { (a, b) -> (runCatching { LocalDate.parse(a) }.getOrNull() ?: bad("query.cursor")) to (b.toLongOrNull() ?: bad("query.cursor")) }
+    val cursor = AdminSupport.decodeCursor(call, 2)?.let { (a, b) -> AdminSupport.date(a, "query.cursor") to (b.toLongOrNull() ?: bad("query.cursor")) }
     val today = AdminSupport.today(d.clock)
     val reach = AdminSupport.reach(d.reach, call, d.clock)
     return d.db.jdbi.withHandle<LeavePageDto, Exception> { h ->
@@ -123,6 +123,7 @@ private suspend fun applyLeave(call: ApplicationCall, d: LeaveDeps): Pair<Boolea
     if (!AdminSupport.CODE.matches(req.leave_type_code)) bad("body.leave_type_code")
     val from = AdminSupport.date(req.from_date, "body.from_date")
     if (req.days !in 1..365) bad("body.days", "out_of_range")
+    AdminSupport.noNul("body.reason", req.reason, req.leave_type_code)
     val reason = req.reason.trim()
     if (reason.isEmpty() || req.reason.length > 500) bad("body.reason", "length")
     val now = AdminSupport.utc(d.clock)
@@ -130,6 +131,10 @@ private suspend fun applyLeave(call: ApplicationCall, d: LeaveDeps): Pair<Boolea
     val today = AdminSupport.today(d.clock)
     return d.db.jdbi.inTransaction<Pair<Boolean, LeaveDto>, Exception> { h ->
         if (!codeKnown(h, "leave_type", req.leave_type_code, from)) bad("body.leave_type_code", "unknown_code")
+        // A TSO cannot hold two pending or approved applications over the same days (a replay of the same uuid is not an overlap).
+        val overlap = h.createQuery("SELECT count(*) FROM app.leave_application l WHERE l.user_id = :uid AND l.client_uuid <> :u AND l.voided_at IS NULL AND l.status IN ('pending','approved') AND l.from_date <= :to AND l.to_date >= :f")
+            .bind("uid", p.userId).bind("u", id).bind("f", from).bind("to", from.plusDays(req.days - 1L)).mapTo(Int::class.java).one()
+        if (overlap > 0) throw ApiProblem(ProblemCode.ERR_CONFLICT, "you already have leave over these days", errors = listOf(com.aktcl.aron.backend.platform.FieldError("body.from_date", "overlap")))
         val inserted = h.createUpdate(
             "INSERT INTO app.leave_application (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, leave_type_code, from_date, days, reason) " +
                 "VALUES (:u, :u, :bd, :uid, :at, :cv, :t, :f, :days, :r) ON CONFLICT (client_uuid) DO NOTHING",
@@ -158,7 +163,7 @@ private suspend fun decide(call: ApplicationCall, d: LeaveDeps): LeaveDto {
         val row = h.createQuery("SELECT l.id, $COLS FROM app.leave_application l WHERE l.client_uuid = :u AND l.voided_at IS NULL FOR UPDATE OF l").bind("u", id).map { rs, _ -> mapLeave(rs) }.findOne().orElse(null)
             ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "leave application not found")
         // Out of reach and unknown are told apart only after the reach check: a caller outside the reach learns nothing.
-        AdminSupport.ownerInReachOrThrow(reach, h, row.user_id, today)
+        try { AdminSupport.ownerInReachOrThrow(reach, h, row.user_id, today) } catch (e: ApiProblem) { if (e.code == ProblemCode.ERR_OUT_OF_SCOPE) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "leave application not found") else throw e }
         val applicantRole = h.createQuery("SELECT role FROM app.app_user WHERE id = :u").bind("u", row.user_id).mapTo(String::class.java).one()
         if (applicantRole != "TSO") throw ApiProblem(ProblemCode.ERR_VALIDATION, "only TSO leave is decided here", errors = listOf(com.aktcl.aron.backend.platform.FieldError("path.leave_uuid", "not_a_tso_leave")))
         if (row.user_id == p.userId) throw AdminSupport.forbidden("a user does not decide own leave")

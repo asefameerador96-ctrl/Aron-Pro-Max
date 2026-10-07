@@ -50,7 +50,7 @@ class LeaveTest {
 
         // Decide: out-of-reach DMO, the TSO himself and an SR are refused; the DMO approves; a replay changes nothing.
         val path = "/v1/leave/$id/decision"
-        assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Post, path, env.tok("dmo3001"), """{"decision":"approve"}""").status)
+        assertEquals(HttpStatusCode.NotFound, sendA3(HttpMethod.Post, path, env.tok("dmo3001"), """{"decision":"approve"}""").status)
         assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Post, path, env.tok("tso1001"), """{"decision":"approve"}""").status)
         assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Post, path, env.tok("sr1001"), """{"decision":"approve"}""").status)
         assertEquals(0, env.count("SELECT count(*) FROM app.audit_log WHERE entity = 'leave_application' AND entity_id = '$id'"))

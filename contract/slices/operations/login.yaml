@@ -15,6 +15,18 @@ operation:
 
     15 min per device (docs/24 s3.6, s8.1).
 
+    Web, `password_change_required`: `access_token` is null and `password_change_token` (10 min) is the Bearer
+
+    for `POST /v1/auth/change-password`; TOTP, when the role requires it, comes after the password change
+
+    (docs/24 s14a R15).
+
+    Web refresh token: `refresh_token` in the body is null. The web BFF (a server) receives the refresh token
+
+    from the `Set-Cookie: aron_rt` header of the response and nowhere else; it re-issues its own `aron_rt`
+
+    cookie on the web origin and replays it as `Cookie: aron_rt` on `POST /v1/auth/refresh` (docs/24 s14a R15).
+
     '
   security: []
   parameters:

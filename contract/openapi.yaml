@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.0.0
+  version: 1.2.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -178,6 +178,12 @@ paths:
         `mfa_required` with an `mfa_token` for roles in `cfg.auth.mfa_required_roles`. A version below the
         flavour's `cfg.release.min_version_code` gets 426. Rate limits: 10 per 15 min per username and 30 per
         15 min per device (docs/24 s3.6, s8.1).
+        Web, `password_change_required`: `access_token` is null and `password_change_token` (10 min) is the Bearer
+        for `POST /v1/auth/change-password`; TOTP, when the role requires it, comes after the password change
+        (docs/24 s14a R15).
+        Web refresh token: `refresh_token` in the body is null. The web BFF (a server) receives the refresh token
+        from the `Set-Cookie: aron_rt` header of the response and nowhere else; it re-issues its own `aron_rt`
+        cookie on the web origin and replays it as `Cookie: aron_rt` on `POST /v1/auth/refresh` (docs/24 s14a R15).
       security: []
       parameters:
         - $ref: '#/components/parameters/XAppVersion'
@@ -268,12 +274,23 @@ paths:
       tags: [auth]
       operationId: changePassword
       summary: Change the caller's password (policy-checked, revokes the user's other full-grant families).
+      description: |
+        Authorization: Bearer with an access token (success 204), or, after a web login that answered
+        `password_change_required`, with that response's `password_change_token` (10 min, accepted only here).
+        With the `password_change_token` the success is 200 with a `LoginResponse` that continues the login as for
+        a normal password login: `ok` with tokens, or `mfa_required` with an `mfa_token` when the role requires TOTP
+        (TOTP comes after the password change; docs/24 s14a R15).
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
       responses:
+        '200':
+          description: Password changed with a `password_change_token`; the login continues (`ok` or `mfa_required`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
         '204': { description: Password changed. }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -1841,6 +1858,11 @@ paths:
         - $ref: '#/components/parameters/Search'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
+        - in: query
+          name: include
+          required: false
+          description: '`assignees` adds `assignees` (the users assigned to the route) to every item.'
+          schema: { type: string, enum: [assignees] }
       responses:
         '200':
           description: Page of routes.
@@ -5272,6 +5294,7 @@ components:
             - type: 'null'
     LoginResponse:
       type: object
+      description: 'For `client: web` with `status: password_change_required`, `access_token` is null and `password_change_token` carries a short-lived (10 min) token accepted only by `POST /v1/auth/change-password` (Authorization: Bearer). TOTP, when the role requires it, comes after the password change: the change-password success response then continues to the `mfa_required` step as for a normal login (docs/24 s14a R15).'
       required: [status, user, config_version, server_time]
       additionalProperties: false
       properties:
@@ -5290,6 +5313,7 @@ components:
         upload_refresh_token: { type: [string, 'null'], minLength: 43, maxLength: 64, description: Upload-only grant (phones only). }
         bind_token: { type: [string, 'null'], maxLength: 4096, description: 'Bearer token (aud aron-bind, 10 min) for POST /v1/auth/bind-device.' }
         mfa_token: { type: [string, 'null'], maxLength: 4096, description: 'Bearer token (aud aron-mfa, 5 min) for POST /v1/auth/mfa/verify.' }
+        password_change_token: { type: [string, 'null'], maxLength: 4096, description: 'Bearer token (10 min) accepted only by POST /v1/auth/change-password; set for client web with status password_change_required, else null.' }
         user: { $ref: '#/components/schemas/UserSummary' }
         scope:
           oneOf:
@@ -5437,6 +5461,11 @@ components:
         scope: { $ref: '#/components/schemas/ScopeSummary' }
         pii: { type: boolean, description: Whether the caller may see outlet phone and owner columns. }
         mfa_enabled: { type: boolean }
+        menus:
+          type: array
+          maxItems: 200
+          description: The caller's role row of cfg.web.menu_by_role, resolved now (same mapping as GET /v1/admin/permissions).
+          items: { $ref: '#/components/schemas/MenuPermission' }
 
     # ---------- devices ----------
     JwkEcPublicDevice:
@@ -5485,6 +5514,11 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/DeviceStatusReport' }
             - type: 'null'
+        play_integrity_unavailable:
+          description: Why the enrolment carries no Play Integrity token. When the phone tried Play Integrity exactly one of `play_integrity` (in `status`) and `play_integrity_unavailable` is non-null.
+          oneOf:
+            - { $ref: '#/components/schemas/PlayIntegrityUnavailable' }
+            - type: 'null'
     EnrolDeviceResponse:
       type: object
       required: [device_id, device_uuid, enrolled_at, lockdown_level, trust_level, policy, server_time]
@@ -5499,6 +5533,7 @@ components:
         server_time: { $ref: '#/components/schemas/Timestamp' }
     DeviceNonce:
       type: object
+      description: 'Play Integrity nonce. requestHash (standard API) = lower-case hex (64 characters) of SHA-256 over the UTF-8 bytes of `nonce` immediately followed by `device_uuid` (canonical lower-case hyphenated text), no separator.'
       required: [nonce, expires_at]
       additionalProperties: false
       properties:
@@ -5682,6 +5717,18 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/PlayIntegrityEvidence' }
             - type: 'null'
+        play_integrity_unavailable:
+          description: Why `play_integrity` is null. When the phone tried Play Integrity exactly one of `play_integrity` and `play_integrity_unavailable` is non-null.
+          oneOf:
+            - { $ref: '#/components/schemas/PlayIntegrityUnavailable' }
+            - type: 'null'
+        root_hints:
+          type: array
+          maxItems: 16
+          description: Root, hook-framework and app-clone hints; empty on a clean phone. Hints only, weighted as evidence; they never block a sale alone (docs/05).
+          items:
+            type: string
+            enum: [su_binary, test_keys, ro_debuggable, ro_secure_off, root_app, hook_framework, root_mount, clone_app_installed, secondary_user, foreign_data_dir]
         pending_rows: { type: integer, minimum: 0 }
         pending_media: { type: integer, minimum: 0 }
         last_sync_at:
@@ -5704,6 +5751,14 @@ components:
       properties:
         token: { type: string, maxLength: 20000, description: Encrypted Play Integrity token; decoded on the server only. }
         nonce: { type: string, minLength: 43, maxLength: 64, pattern: '^[A-Za-z0-9_-]+$' }
+    PlayIntegrityUnavailable:
+      type: object
+      description: Explicit "Play Integrity unavailable" marker sent instead of a token when the phone tried and could not get one.
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason: { type: string, enum: [no_play_services, not_configured, offline, api_error, timeout] }
+        detail: { type: [string, 'null'], maxLength: 80 }
     DeviceStatusAck:
       type: object
       required: [device_id, trust, policy_version_current, server_time]
@@ -8572,6 +8627,27 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/PageCursor' }
             - type: 'null'
+        comparator:
+          description: Same-time-yesterday comparator (F-WEB-038). Route counts per `bucket` of the previous business day at the same Asia/Dhaka clock time as `as_of`.
+          oneOf:
+            - type: object
+              required: [business_date, as_of_time, buckets]
+              additionalProperties: false
+              properties:
+                business_date: { $ref: '#/components/schemas/BusinessDate' }
+                as_of_time: { $ref: '#/components/schemas/TimeOfDay' }
+                buckets:
+                  type: object
+                  required: [ge_100, from_90, from_80, below_80, exception, not_logged_in]
+                  additionalProperties: false
+                  properties:
+                    ge_100: { type: integer, minimum: 0 }
+                    from_90: { type: integer, minimum: 0 }
+                    from_80: { type: integer, minimum: 0 }
+                    below_80: { type: integer, minimum: 0 }
+                    exception: { type: integer, minimum: 0 }
+                    not_logged_in: { type: integer, minimum: 0 }
+            - type: 'null'
     LoginSubmitStatus:
       type: object
       required: [as_of, business_date, kpis, not_logged_in, logged_in_not_submitted, submitted]
@@ -8592,6 +8668,16 @@ components:
         exceptions:
           type: array
           items: { $ref: '#/components/schemas/RouteDayState' }
+        zones:
+          type: array
+          description: Final-submit state per zone in the caller's reach (F-WEB-047).
+          items:
+            type: object
+            required: [zone_id, final_submitted]
+            additionalProperties: false
+            properties:
+              zone_id: { $ref: '#/components/schemas/Id' }
+              final_submitted: { type: boolean }
     SyncHealthRow:
       type: object
       required: [user_id, device_id, app_version, pending_rows_reported, rejected_count, quarantined_count, held_rows_alert]
@@ -8638,6 +8724,16 @@ components:
             rejected: { type: integer, minimum: 0 }
             quarantined: { type: integer, minimum: 0 }
             mismatched_route_days: { type: integer, minimum: 0 }
+            config_ack_pct: { type: [number, 'null'], minimum: 0, maximum: 100, description: 'Devices that acknowledged / devices owing an ack for a `requires_ack` config key (0 to 100 with 2 decimals, null when the denominator is 0).' }
+            pending_photos:
+              type: object
+              description: Photos not yet uploaded.
+              required: [count, oldest_age_s]
+              additionalProperties: false
+              properties:
+                count: { type: integer, minimum: 0 }
+                oldest_age_s: { type: [integer, 'null'], minimum: 0, description: Age in seconds of the oldest pending photo; null when count is 0. }
+            quarantine_backlog: { type: integer, minimum: 0, description: Quarantined records not yet resolved. }
         items:
           type: array
           items: { $ref: '#/components/schemas/SyncHealthRow' }
@@ -8645,6 +8741,22 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/PageCursor' }
             - type: 'null'
+        by_zone:
+          type: array
+          description: Per-zone breakdown (F-WEB-045). Percentages as in DashboardKpis (0 to 100 with 2 decimals, null when the denominator is 0); `submit_pct` is the share of logged-in routes that submitted.
+          items:
+            type: object
+            required: [zone_id, login_pct, submit_pct, final_submitted, trickle_p95_s, quarantined, pending_photos, config_ack_pct]
+            additionalProperties: false
+            properties:
+              zone_id: { $ref: '#/components/schemas/Id' }
+              login_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
+              submit_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
+              final_submitted: { type: boolean }
+              trickle_p95_s: { type: [number, 'null'], minimum: 0, description: 'Capture-to-ack latency p95 today of in-day (trickle) uploads, in seconds.' }
+              quarantined: { type: integer, minimum: 0 }
+              pending_photos: { type: integer, minimum: 0 }
+              config_ack_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
     GeoValidationSummary:
       type: object
       required: [as_of, from, to, node, visits, geo_valid_pct, force_sale_pct, mock_pct, geo_mismatch_pct, suspicious_pct, signals_by_code, children]
@@ -9074,6 +9186,18 @@ components:
             visit_days_mask: { type: integer, minimum: 1, maximum: 127, description: 'bit0 Sat, bit1 Sun, bit2 Mon, bit3 Tue, bit4 Wed, bit5 Thu, bit6 Fri (daily = 127, Sun/Tue/Thu = 42, Sat/Mon/Wed = 21).' }
             sequence_no: { type: [integer, 'null'], minimum: 1 }
             status: { $ref: '#/components/schemas/ActiveStatus' }
+            assignees:
+              type: array
+              description: Users assigned to the route; returned only by GET /v1/admin/routes with `include=assignees`, absent otherwise.
+              items:
+                type: object
+                required: [user_id, full_name, role, username]
+                additionalProperties: false
+                properties:
+                  user_id: { $ref: '#/components/schemas/Id' }
+                  full_name: { type: string, maxLength: 120 }
+                  role: { $ref: '#/components/schemas/Role' }
+                  username: { $ref: '#/components/schemas/Username' }
       unevaluatedProperties: false
     RouteWrite:
       type: object
@@ -10284,6 +10408,9 @@ components:
         created_at: { $ref: '#/components/schemas/Timestamp' }
         expires_at: { $ref: '#/components/schemas/Timestamp' }
         attempts: { type: integer, minimum: 0 }
+        employee_code: { type: [string, 'null'], maxLength: 40, description: Field Force ID (app_user.employee_code). }
+        zone_code: { type: [string, 'null'], maxLength: 40 }
+        zone_name: { type: [string, 'null'], maxLength: 120 }
     DeviceOtpPage:
       type: object
       required: [items, next_cursor]
