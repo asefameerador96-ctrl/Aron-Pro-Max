@@ -1,6 +1,6 @@
 package com.aktcl.aron.core.network
 
-/** `GET /v1/sync/bundle` (head only on Day 1) and `HEAD /v1/health` (docs/24 s4.7 T3, s4.10). */
+/** `GET /v1/sync/bundle` and its pages, and `HEAD /v1/health` (docs/24 s4.7 T3, s4.10). */
 class SyncApi(private val client: AronApiClient) {
 
     suspend fun bundle(forDate: String? = null, ifNoneMatch: String? = null, configVersion: Long? = null): ApiResult<BundleDownload> {
@@ -17,6 +17,26 @@ class SyncApi(private val client: AronApiClient) {
             decode = { body, meta ->
                 BundleDownload(WireJson.responses.decodeFromString(BundleHead.serializer(), body), body, meta.etag)
             },
+        )
+    }
+
+    /**
+     * `GET /v1/sync/bundle/page` (s4.10 Size): one page of a paged section of [bundleVersion]; the body is returned raw
+     * (`BundlePage`), merged into the bundle before it is applied.
+     */
+    suspend fun bundlePage(bundleVersion: String, section: String, page: Int): ApiResult<String> {
+        val path = "/v1/sync/bundle/page"
+        return client.call(
+            path = path,
+            auth = CallAuth.Grant(Grant.FULL),
+            build = {
+                url(
+                    client.origin.path(path).newBuilder().addQueryParameter("bundle_version", bundleVersion)
+                        .addQueryParameter("section", section).addQueryParameter("page", page.toString()).build(),
+                )
+                get()
+            },
+            decode = { body, _ -> body },
         )
     }
 
