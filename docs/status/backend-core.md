@@ -34,6 +34,24 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - **Task columns** (db V0037/V0038 on INT): `Tasks.kt` stores `route_id` (named and in reach, or the outlet's) and `cancel_reason`; tests in `TasksTest`. No checker run on this small follow-up (own tests only); if the sync `task` payload gains `route_id`, scope-check the route.
 - db (11:56Z) on lane/db, not yet on INT: V0040 `app.password_history` + `cfg.auth.password_history_depth`/`password_min_age_h`/`password_denylist_enabled` (un-skip `ChangePasswordTest.noneOfTheLastTenPasswords` and store history once on INT); V0041 partitions `app.geo_breadcrumb` (no code change needed).
 
+## Session 8 close-out: next rows (session 9 starts here)
+1. **N-027** (T1, L): server verification of Play Integrity verdicts and key attestation chains; enrolment gate
+   `cfg.device.require_enrolled` on attendance and sales ingest (gate on: parked with a reason and a supervisor flag;
+   off: accepted and flagged). Do not change the dev seed's login device rules. Opus checker.
+2. **Waiting on others:** db keys for F-SYS-090 (`backend-core-working-day-window-keys.md`; until then calendar windows);
+   backend-admin cross-visit GNSS rule (`backend-core-gnss-cross-visit-rule.md`; N-028 stays open until it lands);
+   android-core digest window to 15 days (`backend-core-digest-window-android-core.md`); `checkout_too_early` flag needs
+   a db CHECK change (V0056 allows `resync_late` only).
+3. **Before F-AMO-044 (AMO zone-wide bundle):** cache paged rows per `bundle_version` for a few minutes (BC-71 M2: today
+   every page rebuilds the bundle and syncing sales move the seq, so pages 410); durable fingerprints (bytea on
+   `app.bundle_snapshot`, db request not filed yet) and a byte-bounded fingerprint cache for the fleet.
+4. **Checker items still open:** memo scope test has no positive (national, web) control and no AMO/TSO zone case
+   (BC-66); `resync_late` merge path untested (BC-73); F-SYS-090 untested for zone-scoped holiday, make-up day, user
+   without a home zone (BC-74); digest never asks for a `resync_late` row older than the floor (BC-74).
+5. **Lead note:** a released quarantine must leave the registry row `accepted` (same uuid, user, device) or the digest
+   re-sends daily; check it when backend-reports wires the acceptor.
+6. T2 rows after N-027: `python3 tools/my-rows.py backend-core --todo` (F-API-019/055, F-SYS-025/035/050/057/084/091, N-044).
+
 ## Session 8 (2026-10-07, start here)
 - INT already merged at the start (no new commits on INT).
 - **GET /v1/sync/delta** and **GET /v1/sync/bundle/page** served (BC-71, `BundleDelta.kt`, `BundleDeltaTest` 7 cases, scope registry lines). No contract change. Opus checker FAIL on M1 (paging settings outside the digest), fixed; open items in BC-71 (paged AMO download vs moving seq, byte-bounded cache, durable fingerprints for the fleet).
