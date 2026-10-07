@@ -12,6 +12,11 @@ import com.aktcl.aron.backend.analytics.DailyTrackingService
 import com.aktcl.aron.backend.analytics.AppTeamDeps
 import com.aktcl.aron.backend.analytics.TeamService
 import com.aktcl.aron.backend.analytics.dailyTrackingRoutes
+import com.aktcl.aron.backend.analytics.devices.AttestationTrust
+import com.aktcl.aron.backend.analytics.devices.DeviceDeps
+import com.aktcl.aron.backend.analytics.devices.DeviceService
+import com.aktcl.aron.backend.analytics.devices.EnrolmentSettings
+import com.aktcl.aron.backend.analytics.devices.deviceRoutes
 import com.aktcl.aron.backend.analytics.dashboardRoutes
 import com.aktcl.aron.backend.analytics.appTeamRoutes
 import com.aktcl.aron.backend.analytics.opsRoutes
@@ -134,6 +139,12 @@ class Wiring(
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
+            // Enrolment (N-031): the public API URL the QR carries and the SHA-256 of the Google attestation roots to trust in production (new environment values, docs/requests/backend-reports-device-env.md).
+            val enrolment = EnrolmentSettings(
+                System.getenv("ARON_PUBLIC_API_URL") ?: "https://localhost:8080", s.env.name.lowercase(),
+                AttestationTrust(System.getenv("ARON_ATTESTATION_ROOTS").orEmpty().split(',').map { it.trim().lowercase() }.filter { it.length == 64 }.toSet()),
+            )
+            val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock), reach, guard, clock)
             val ops = OpsDeps(OpsService(db, config, clock), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
             val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
@@ -164,6 +175,7 @@ class Wiring(
                 appTeamRoutes(team)
                 dailyTrackingRoutes(tracking)
                 opsRoutes(ops)
+                deviceRoutes(deviceEnrolment)
                 reportRoutes(reports)
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
@@ -177,7 +189,7 @@ class Wiring(
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
                 dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
                 adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
-                adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock))
+                adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock, config = config))
                 adminProductsRoutes(AdminProductsDeps(db, guard, clock))
                 adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)

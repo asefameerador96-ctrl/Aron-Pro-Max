@@ -9,7 +9,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  reporter: [["list"]],
+  // AUD-TP-6: on CI a test that passed only on its retry is flaky; the github reporter annotates it and the JSON report
+  // feeds the "flaky e2e tests" step in ci.yml, so a flake never passes silently.
+  reporter: process.env.CI ? [["list"], ["github"], ["json", { outputFile: "test-results/results.json" }]] : [["list"]],
   use: { baseURL: `http://127.0.0.1:${WEB_PORT}`, trace: "retain-on-failure" },
   // PW_CHROMIUM_PATH points at a pre-installed Chromium (the cloud sandbox ships one at /opt/pw-browsers/chromium); CI
   // leaves it unset and uses `npx playwright install chromium`.

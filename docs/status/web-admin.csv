@@ -15,7 +15,7 @@ F-ADM-070,M,2026-10-07T08:40Z,2026-10-07T09:20Z,40,4,"Outlet approval/reactivati
 F-ADM-056,S,2026-10-07T09:20Z,2026-10-07T09:50Z,30,3,"Wholesale marking; checker: cursors, display cap, dialog focus/Escape, select-all cap"
 F-WEB-003,S,2026-10-07T09:50Z,2026-10-07T10:10Z,20,2,"Direct-edit reading ADMIN/SUPERADMIN only; 403 on write pages"
 F-WEB-032,S,2026-10-07T10:10Z,2026-10-07T10:30Z,20,1,"Outlet request role gating via ADMIN_PATH_ROLES"
-F-ADM-005,M,2026-10-07T10:30Z,2026-10-07T12:00Z,90,0,"Prices (5 types, effective-dated, preview/publish, integer milli-taka); checker pending"
+F-ADM-005,M,2026-10-07T10:30Z,2026-10-07T12:00Z,90,14,"Prices (5 types, effective-dated, preview/publish, integer milli-taka); Opus checker (money): per_base_qty kept and shown, pending batch shown as waiting, default date tomorrow, grid read-only on load failure, Bangla digits, negative sign; mock now keeps pending batches out of force, 409 on changed replay, 201 SkuPriceList, audit amounts"
 F-ADM-006,M,2026-10-07T10:30Z,2026-10-07T12:00Z,0,0,"Sales plan and user scope editor; checker pending; acting scope gap requested"
 F-ADM-008,S,2026-10-07T10:30Z,2026-10-07T12:00Z,0,0,"User scope role-node rules; checker pending"
 F-ADM-071,S,2026-10-07T10:30Z,2026-10-07T12:00Z,0,0,"SR transfer; checker pending"
