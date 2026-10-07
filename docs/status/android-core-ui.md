@@ -1,6 +1,9 @@
 # Status: lane android-core-ui
 
-## In progress
+## State (2026-10-07 resume)
+N-023 complete: tokens v2 ported, 13 goldens re-recorded (67e7fd53), device checks D-UI-01/02 filed. Open: tile-columns request (docs/requests/android-core-ui-tile-columns.md); CI result on the merged head to confirm.
+
+## In progress (history)
 - **N-023** shared UI kit, published in slices. Slices 1 and 2 are green in CI and merged to INT (commit 4546821). Slice 3 (tokens, glass tiers, status chip) is on `lane/android-core-ui` awaiting CI. Compiled by CI only (Maven Central 429 locally, no mirror used).
 
 ## Kit for feature lanes (`com.aktcl.aron.core.ui`, module `:android:core-ui`)

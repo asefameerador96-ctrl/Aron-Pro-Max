@@ -85,7 +85,7 @@ fun HomeContent(
         }
         banner?.let { AronBanner(it, kind = BannerKind.Info) }
         if (offline) AronBanner(stringResource(R.string.hm_banner_offline), kind = BannerKind.Info)
-        AronTileGrid(tiles, columns = 4) { rt, mod ->
+        AronTileGrid(tiles) { rt, mod ->
             val needsSelling = rt.tile in SELLING_TILES
             AronTile(
                 label = tileLabel(rt.tile), onClick = { onTile(rt.tile) }, badge = rt.badge ?: 0,

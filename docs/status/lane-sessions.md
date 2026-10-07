@@ -20,7 +20,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | db | session_013NHxcKi11ivBpd2B2v3g7D | Opus | 2026-10-07 | recycled 10:51 (third session); previous session_017dmQw2byPhYrFKrGJrEMRj is retired (READY TO RECYCLE 10:50, lane/db 501e466f, V0023 to V0038); earlier session_01KAjUS8Gz437Nx93fsiVFYX retired |
 | shared (first session) | session_01SD55WuhWKuEfeuC6T4A8e2 | Sonnet | 2026-10-05 | finished; blocked by its own permission settings on the contract; do not nudge |
 | shared-2 | session_01QRBncHfaoTvSqTLur5L3ZH | Sonnet | 2026-10-07 | N-002, DTO hosting, web drift |
-| backend-core | session_01465rpZSgSrMTU8CACwuEYx | Opus | 2026-10-07 | recycled 10:25 (fourth session); previous session_01FfFvStuQXyZNg6QM9rndaD is retired (READY TO RECYCLE 10:25, head c59a703d); earlier sessions retired (01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
+| backend-core | session_01CnjB3beqLff7QFRhoTxN3r | Opus | 2026-10-07 | recycled 12:28 (fifth session); previous session_01465rpZSgSrMTU8CACwuEYx is retired (READY TO RECYCLE 12:27, lane/backend-core e8df8227); earlier sessions retired (01FfFvStuQXyZNg6QM9rndaD, 01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
 | backend-reports | session_019WhVDAstm1xPBBrp6FPKM9 | Sonnet | 2026-10-07 | |
 | backend-admin | session_01TogQKB1R6sgWVTafC9DMYG | Sonnet | 2026-10-07 | recycled 05:02; previous session_01JK4kErf8frNpx25mmoyPAc is retired (READY TO RECYCLE 05:01) |
 | android-core | session_01Xx4ADUeVGTHNrVSqXU3tjh | Opus | 2026-10-07 | recycled 08:39 (fourth session); session_01EcjRGi19bkvqTfp5RQnJU2 retired (READY TO RECYCLE 08:39) |
@@ -59,3 +59,9 @@ Lead resolution, to avoid two sessions per lane:
 - android-core-ui: restarted session finished the lane's rows (tokens-v2 already ported); re-recording the
   3 Home goldens after android-sr-a's tile-columns change (edddf441) is the one open step.
 - Branch protection (no force push, non-ff rejected) makes a race lose a push, never work.
+
+## Two leads are active (cloud lead, 2026-10-07 12:30 UTC): owner to decide
+
+Since 10:51 UTC a second session writes as lead on INT (commits stamped +0600: registry notes 4b5b70ec and 436b66ab, ruling D-DB-PART-01, a db salvage note). It describes a restart at "~15:55 UTC" and "skewed clocks"; the real time is the GitHub server time (CI runs created 12:23 UTC when this was written), and +0600 stamps are Dhaka local time, so there is no skew. The cloud lead (session_01MbUQSxrP7AB9tbyANjUTPS) has led the lanes since 2026-10-05 and runs the 2-hourly lane check.
+
+Interim rule until the owner chooses one lead: lanes follow the registry rows above (integrator session_017ASTyJnQ6z71B1uoc447YL conducts the train); a lane that finds a second session of its own on its lane branch pushes its finished work, reports, and stops; rulings are logged in DECISIONS.md with an id and the issuing session; a ruling that contradicts an earlier one is not applied until the owner says which stands. Lanes: do not restart or archive other sessions.

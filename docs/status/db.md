@@ -237,3 +237,14 @@ then stood down under the dedupe rule. Its finished, checked work is on **origin
 DA-06 retention/archive manifest, DA-07 build_dim_date, PERF-07 trigram (held), 4 request files and answers
 to two backend-core requests (task columns; device integrity columns). Cherry-pick and **renumber to V0042+**
 rather than rebuilding; delete the salvage branch when absorbed.
+
+## Lead ruling addendum (2026-10-07 ~17:20 UTC)
+
+- **D-DB-PART-01:** capture-table partitioning is DEFERRED to a scheduled pre-staging migration batch
+  (after the SR slice runs on dev, before the final-account staging deploy). See DECISIONS.md. Keep
+  `db-partitioning-ruling.md` open with status "scheduled: pre-staging gate".
+- The salvage branch also carries three routable requests (infra PG_TRGM allow-list; backend-admin
+  owner_name/address audit redaction; backend-reports capture-context projection). They route normally
+  once absorbed onto lane/db.
+- DA-02 note stands: dims are NOT SCD2; backend-reports' ~40 queries read them live. The capture-context
+  columns are the bridge. Revisit at the staging gate with the partitioning batch.
