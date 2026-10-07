@@ -59,6 +59,15 @@ subprojects {
         }
     }
     plugins.withId("org.jetbrains.kotlin.jvm") { pinJdkApi() }
+    // AUD-TP-6: no compiler warning survives in the correctness-critical production code (test sources stay lenient). A
+    // module joins this list once its warnings are fixed (docs/requests/kotlin-warnings-as-errors.md lists them):
+    // targets :shared:rules, :backend:auth, :backend:sync, :backend:platform.
+    val warningsAsErrors = setOf<String>()
+    if (path in warningsAsErrors) {
+        tasks.withType<KotlinJvmCompile>().matching { !it.name.contains("Test") }.configureEach {
+            compilerOptions.allWarningsAsErrors.set(true)
+        }
+    }
     plugins.withId("org.jetbrains.kotlin.multiplatform") { pinJdkApi() }
 
     // JVM and KMP modules test on the JUnit Platform (Jupiter 6). Android local tests stay on JUnit 4 (Robolectric).

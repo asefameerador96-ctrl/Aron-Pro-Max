@@ -18,4 +18,36 @@
     <string name="perm_gate_open_settings">সেটিংস খুলুন</string>
     <string name="perm_gate_turn_on_location">লোকেশন চালু করুন</string>
     <string name="perm_gate_back">ফিরে যান</string>
+    <!-- F-SYS-022 logout -->
+    <string name="logout_unsent_title">সব পাঠানো হয়নি</string>
+    <plurals name="logout_unsent_message">
+        <item quantity="one">%1$sটি আইটেম এখনো পাঠানো হয়নি। ইন্টারনেটে যুক্ত হয়ে এখনই সিঙ্ক চাপুন; সংখ্যা শূন্য হলে লগআউট করুন।</item>
+        <item quantity="other">%1$sটি আইটেম এখনো পাঠানো হয়নি। ইন্টারনেটে যুক্ত হয়ে এখনই সিঙ্ক চাপুন; সংখ্যা শূন্য হলে লগআউট করুন।</item>
+    </plurals>
+    <string name="logout_sync_now">এখনই সিঙ্ক</string>
+    <string name="logout_cancel">বাতিল</string>
+    <string name="logout_wipe_incomplete">লগআউট হয়েছে, কিন্তু ফোনের কিছু ফাইল মোছা যায়নি। শেষ করতে আবার লগইন ও লগআউট করুন।</string>
+    <!-- F-SYS-020 updater -->
+    <string name="update_title">ARON-এর নতুন সংস্করণ প্রস্তুত</string>
+    <string name="update_title_required">নতুন দিন শুরু করতে ARON আপডেট করুন</string>
+    <string name="update_version_size">সংস্করণ %1$s · প্রায় %2$s এমবি</string>
+    <string name="update_network_wifi">নেটওয়ার্ক: ওয়াই-ফাই</string>
+    <string name="update_network_mobile">নেটওয়ার্ক: মোবাইল ডেটা</string>
+    <string name="update_network_offline">নেটওয়ার্ক: অফলাইন। অনলাইন হলে ডাউনলোড শুরু হবে।</string>
+    <string name="update_download">ডাউনলোড</string>
+    <string name="update_progress">ডাউনলোড হচ্ছে %1$d%%</string>
+    <string name="update_do_not_close">ডাউনলোডের সময় অ্যাপটি বন্ধ করবেন না। থেমে গেলে যেখানে থেমেছিল সেখান থেকে চলবে।</string>
+    <string name="update_install">ইনস্টল</string>
+    <string name="update_needs_wifi">এই আপডেট শুধু ওয়াই-ফাইতে ডাউনলোড হয়। ওয়াই-ফাইতে যুক্ত হন।</string>
+    <string name="update_no_space">আপডেটের জন্য ফোনে যথেষ্ট জায়গা নেই। অন্য ফাইল মুছে আবার চেষ্টা করুন।</string>
+    <string name="update_failed">ডাউনলোড শেষ হয়নি। আবার চেষ্টা করুন; যেখানে থেমেছিল সেখান থেকে চলবে।</string>
+    <string name="update_retry">আবার চেষ্টা করুন</string>
+    <string name="update_sync_busy">এখন বিক্রি পাঠানো হচ্ছে। একটু পরে ইনস্টল করুন।</string>
+    <string name="update_unknown_sources_why">ARON-কে নিজের আপডেট ইনস্টল করার অনুমতি দিতে হবে।</string>
+    <string name="update_unknown_sources_steps">সেটিংস খুলুন চাপুন, \"এই উৎস থেকে অনুমতি দিন\" চালু করুন, তারপর ফিরে এসে ইনস্টল চাপুন।</string>
+    <string name="update_open_settings">সেটিংস খুলুন</string>
+    <string name="update_later">পরে</string>
+    <string name="update_finish_day_first">একটি জরুরি আপডেট অপেক্ষায় আছে। আজকের দিন শেষ করে জমা দিন; কালকের আগে আপডেট করুন।</string>
+    <string name="update_day_blocked">ARON-এর এই সংস্করণ দিয়ে নতুন দিন শুরু করা যাবে না। এখনই আপডেট করুন। না-পাঠানো বিক্রি তবুও যাবে।</string>
+    <string name="update_now">এখনই আপডেট</string>
 </resources>
