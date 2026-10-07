@@ -77,6 +77,18 @@ class RecordPayloadContractTest {
         assertEquals(ContractYaml.requiredNames("ConsentAcceptPayload"), payload.keys)
     }
 
+    /** F-SYS-024: the encoded activity_log payload and its events use exactly the contract's members. */
+    @Suppress("UNCHECKED_CAST")
+    @Test fun activityLogPayload() {
+        val (visit, _) = TestRows.visit()
+        val row = RecordMapping.activityLog("6f1c2d3e-0000-4000-8000-000000000024", visit.meta, listOf(com.aktcl.aron.core.database.record.ActivityEvent("2026-10-05T04:35:00.000Z", "home", "open")))
+        val payload = Json.parseToJsonElement(row.payloadJson).jsonObject["payload"]!!.jsonObject
+        assertEquals(ContractYaml.propertyNames("ActivityLogPayload"), payload.keys)
+        val items = (ContractYaml.schema("ActivityLogPayload")["properties"] as Map<String, Any?>)["events"] as Map<String, Any?>
+        val itemProps = ((items["items"] as Map<String, Any?>)["properties"] as Map<String, Any?>).keys
+        assertEquals(itemProps, payload["events"]!!.jsonArray[0].jsonObject.keys)
+    }
+
     @Test fun routeSnapshot() = check(RouteSnapshot.serializer(), "RouteSnapshot", coverAll = false)
 
     @Test

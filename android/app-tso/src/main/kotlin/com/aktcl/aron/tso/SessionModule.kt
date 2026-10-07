@@ -83,7 +83,8 @@ object SessionModule {
     fun workerFactory(
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
         resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
-    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, config = resumeConfigCheck) }, { scheduler },
+        activityLog: com.aktcl.aron.core.sync.ActivityLog,
+    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, config = resumeConfigCheck, activityLog = activityLog) }, { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
         { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
     )
@@ -121,4 +122,10 @@ object SessionModule {
             usersWithPendingRows = { databases.knownUserIds().filter { id -> runCatching { databases.of(id).outboxDao().unsentCount() > 0 }.getOrDefault(false) } },
             scheduler = scheduler,
         )
+
+    /** F-SYS-024: one activity log per process (the shells log into it; the sync runner flushes it before each batch). */
+    @Provides
+    @Singleton
+    fun activityLog(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.ActivityLog =
+        com.aktcl.aron.core.sync.ActivityLog({ databases.of(it) }, components.trustedClock, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(context))
 }

@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var shellLogout: ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
+    @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
@@ -58,6 +59,19 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { updateShell.check(atLogin = false) }
         pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
         lifecycleScope.launch { components.session.noteTimePassing() } // F-SYS-052: the offline window counts real uptime
+        lifecycleScope.launch { // F-SYS-024: today's sampling, then the app-open event
+            val id = (components.session.settled() as? SessionState.Active)?.user?.userId ?: return@launch
+            activityLog.refreshSampling(id)
+            activityLog.log(id, "app", "open")
+        }
+    }
+
+    /** F-SYS-024: the buffered events become one outbox row when the app leaves the screen (they ride the next upload). */
+    override fun onStop() {
+        super.onStop()
+        val id = (components.session.state.value as? SessionState.Active)?.user?.userId ?: return
+        activityLog.log(id, "app", "close")
+        activityLog.flushSoon(id) // the log's own scope: onDestroy right after must not cancel the write
     }
 
     override fun attachBaseContext(newBase: Context) {

@@ -253,6 +253,26 @@ object RecordMapping {
         },
     )
 
+    /**
+     * `activity_log` (F-SYS-024): sampled screen and action events, telemetry. Its own family, rank 0, no route; 1..200
+     * events (contract), each `{at, screen, action, duration_ms}`.
+     */
+    fun activityLog(clientUuid: String, meta: CaptureMeta, events: List<ActivityEvent>) = outbox(
+        RecordType.ACTIVITY_LOG, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null), meta.capturedAt,
+        JsonObject.serializer(),
+        buildJsonObject {
+            require(events.size in 1..200) { "activity_log carries 1..200 events" }
+            put("events", kotlinx.serialization.json.JsonArray(events.map { e ->
+                buildJsonObject {
+                    put("at", JsonPrimitive(e.at))
+                    put("screen", JsonPrimitive(e.screen))
+                    put("action", JsonPrimitive(e.action))
+                    put("duration_ms", e.durationMs?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
+                }
+            }))
+        },
+    )
+
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */
     fun printEvent(e: PrintEventEntity, familyUuid: String, rank: Int, payload: JsonObject, createdAt: String) = outbox(
         RecordType.PRINT_EVENT, e.clientUuid, familyUuid, rank, e.meta, createdAt, JsonObject.serializer(), payload,
@@ -298,3 +318,6 @@ object RecordMapping {
     fun sha256Hex(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 }
+
+/** One `activity_log` event (contract ActivityLogPayload.events[]). */
+data class ActivityEvent(val at: String, val screen: String, val action: String, val durationMs: Long? = null)

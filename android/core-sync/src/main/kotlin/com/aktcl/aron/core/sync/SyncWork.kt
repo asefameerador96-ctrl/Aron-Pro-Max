@@ -63,12 +63,15 @@ class SessionSyncRunner(
     private val afterRun: (userId: Long, report: SyncReport) -> Unit = { _, _ -> },
     /** F-SYS-053: a config delta when the batch answer's X-Config-Version is newer than the held one; null in tests. */
     private val config: ResumeConfigCheck? = null,
+    /** F-SYS-024: buffered events become one outbox row before the batch is built (they ride this upload). */
+    private val activityLog: ActivityLog? = null,
 ) : SyncRunner {
     override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
         // A queued run of a user wiped since (TSO logout) must not create an empty database and bring the user back.
         if (!databases.exists(userId)) return SyncReport(SyncStop.DRAINED, 0, 0, 0, 0, 0, 0, code = "no_database")
         val db = databases.of(userId)
         try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        activityLog?.flush(userId)
         val report = engine(userId, db).run(trigger)
         // Only after a run the server answered in full: never straight after a hold, 429, 503 or a refusal (s4.10, s4.7).
         // The delta goes out under the FULL grant of the signed-in user: a run for another user on a shared phone (A's rows
