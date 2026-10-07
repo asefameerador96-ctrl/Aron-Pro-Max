@@ -56,7 +56,8 @@ fun main() {
             val workerDb = Database.fromSettings(settings)
             AggregationWorker(workerDb).start()
             com.aktcl.aron.backend.masterdata.RiskSignalJob(com.aktcl.aron.backend.masterdata.RiskSignalEvaluator(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)))).start()
-            log.info("aron worker started (aggregation, risk signals)")
+            com.aktcl.aron.backend.sync.RouteDayPlanningJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
+            log.info("aron worker started (aggregation, risk signals, route-day planning)")
             Thread.currentThread().join()
         }
     }
