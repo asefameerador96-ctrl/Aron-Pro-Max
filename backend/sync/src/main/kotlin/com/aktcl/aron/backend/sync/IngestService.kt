@@ -182,26 +182,28 @@ class IngestService(
             ResponseJson.decodeFromString(SyncBatchResponse.serializer(), gunzip(stored).decodeToString()).copy(replayed = true)
         }
 
+    /**
+     * One record in its own savepoint (poison-row isolation, F-SYS-048): a value the database refuses (SQLSTATE class
+     * 22 or 23) is a final `schema_invalid`; any other failure is `server_error`, retryable and parked, so the phone
+     * resends it and skips ahead after `cfg.sync.family_skip_after` tries. The other records of the family and the
+     * batch go on. Only when the savepoint itself cannot be rolled back does the family fail as a whole.
+     */
     private fun processInSavepoint(h: Handle, ctx: Ctx, r: Rec): Outcome {
         val sp = "rec_${r.index}"
         h.savepoint(sp)
         return try {
             process(h, ctx, r).also { h.release(sp) }
-        } catch (e: SQLException) {
-            // A record the database refuses (type, range, check or reference): that record only, never the batch.
+        } catch (e: Exception) {
+            if (e is ApiProblem) throw e
             h.rollbackToSavepoint(sp)
-            val state = e.sqlState ?: ""
+            val state = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()?.sqlState ?: ""
             if (state.startsWith("22") || state.startsWith("23")) {
                 log.info("record refused by the database client_uuid=${r.clientUuid} type=${r.type} sqlstate=$state")
                 finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "database refused the record ($state)")
-            } else throw e
-        } catch (e: org.jdbi.v3.core.statement.UnableToExecuteStatementException) {
-            h.rollbackToSavepoint(sp)
-            val state = (e.cause as? SQLException)?.sqlState ?: ""
-            if (state.startsWith("22") || state.startsWith("23")) {
-                log.info("record refused by the database client_uuid=${r.clientUuid} type=${r.type} sqlstate=$state")
-                finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "database refused the record ($state)")
-            } else throw e
+            } else {
+                log.error("record failed client_uuid=${r.clientUuid} type=${r.type} batch_uuid=${ctx.batchUuid} sqlstate=$state", e)
+                park(h, ctx, r, RecordOutcomeCode.SERVER_ERROR, "${e.javaClass.simpleName} $state".trim())
+            }
         }
     }
 
@@ -284,7 +286,18 @@ class IngestService(
             }
         }
 
-        // 7. Parents (s4.2 rule 3): a child whose parent is not stored yet is parked.
+        // 7. Content fingerprint (F-SYS-055): a header re-sent under regenerated uuids is the same content; the first
+        // copy stands and the second is quarantined content_duplicate, never stored twice.
+        val contentFp = if (rule.signedHeader) contentFingerprint(r) else null
+        if (contentFp != null) {
+            val twin = h.createQuery(
+                "SELECT client_uuid::text FROM app.ingest_registry WHERE user_id = :u AND record_type = :t AND content_fp = :fp AND client_uuid <> CAST(:c AS uuid) AND status IN ('accepted','voided') LIMIT 1",
+            ).bind("u", ctx.up.userId).bind("t", r.type).bind("fp", contentFp).bind("c", r.clientUuid).mapTo(String::class.java).findOne().orElse(null)
+            if (twin != null) return quarantine(h, ctx, r, bd, RecordOutcomeCode.CONTENT_DUPLICATE, "same content as $twin", contentFp = contentFp)
+        }
+
+        // 8. Parents (s4.2 rule 3): a child whose parent is not stored yet is parked; the child of a content duplicate
+        // is a duplicate too.
         for (field in rule.parents) {
             val parent = payload.str(field) ?: continue
             if (!UUID_V4.matches(parent)) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "$field is not a UUID v4")
@@ -294,13 +307,18 @@ class IngestService(
                 (PARENT_TABLES[field]?.let { t ->
                     h.createQuery("SELECT count(*) FROM app.$t WHERE client_uuid = CAST(:p AS uuid)").bind("p", parent).mapTo(Long::class.java).one() > 0
                 } ?: false)
-            if (!stored) return park(h, ctx, r, RecordOutcomeCode.PARENT_MISSING, "$field $parent")
+            if (!stored) {
+                val parentCode = h.createQuery("SELECT outcome_code FROM app.ingest_registry WHERE client_uuid = CAST(:p AS uuid) AND status = 'quarantined'")
+                    .bind("p", parent).mapTo(String::class.java).findOne().orElse(null)
+                if (parentCode == RecordOutcomeCode.CONTENT_DUPLICATE.wire) return quarantine(h, ctx, r, bd, RecordOutcomeCode.CONTENT_DUPLICATE, "parent $parent is a content duplicate")
+                return park(h, ctx, r, RecordOutcomeCode.PARENT_MISSING, "$field $parent")
+            }
         }
 
-        // 8. Store.
+        // 9. Store.
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
-            is RecordWriter.Result.Stored -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.accepted(stored.serverId) }
+            is RecordWriter.Result.Stored -> { register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp); Outcome.accepted(stored.serverId) }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
             is RecordWriter.Result.Refused -> {
                 if (stored.code.status.wire == "quarantined") quarantine(h, ctx, r, bd, stored.code, stored.detail)
@@ -308,6 +326,20 @@ class IngestService(
                 else finalReject(h, ctx, r, stored.code, stored.detail)
             }
         }
+    }
+
+    /**
+     * Content of a header record without anything a re-mint changes: every UUID-valued string (its own and its
+     * parents' ids) and the envelope's bundle and config stamps are removed; captured_at, the business date and the
+     * payload stay, so two genuine records never share it.
+     */
+    private fun contentFingerprint(r: Rec): ByteArray {
+        fun strip(e: JsonElement): JsonElement = when (e) {
+            is JsonObject -> JsonObject(e.filterKeys { it !in VOLATILE }.mapValues { strip(it.value) }.filterValues { !(it is JsonPrimitive && it.isString && UUID_ANY.matches(it.content)) })
+            is kotlinx.serialization.json.JsonArray -> kotlinx.serialization.json.JsonArray(e.map { strip(it) })
+            else -> e
+        }
+        return sha256(("cfp1|" + r.type + "|" + Jcs.canonicalize(strip(r.json))).toByteArray())
     }
 
     private data class Prior(val status: String, val code: String?, val hash: ByteArray, val serverId: Long?)
@@ -318,16 +350,16 @@ class IngestService(
         h.createUpdate("UPDATE app.ingest_registry SET last_seen_at = now(), seen_count = seen_count + 1 WHERE client_uuid = CAST(:c AS uuid)").bind("c", r.clientUuid).execute()
     }
 
-    private fun register(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?) {
+    private fun register(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?, contentFp: ByteArray? = null) {
         h.createUpdate(
             """
-            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at)
-            VALUES (CAST(:c AS uuid), :t, :h, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now)
-            ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id,
+            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, content_fp, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at)
+            VALUES (CAST(:c AS uuid), :t, :h, :fp, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now)
+            ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id, content_fp = EXCLUDED.content_fp,
                 last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1
             WHERE app.ingest_registry.status = 'parked' AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
             """.trimIndent(),
-        ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
+        ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("fp", contentFp).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
             .bind("s", status).bind("code", code?.wire).bind("sid", serverId).bind("bd", bd).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
             .bind("b", ctx.batchUuid).bind("now", ts(ctx.now)).execute()
         if (status == "accepted") {
@@ -369,7 +401,7 @@ class IngestService(
         return Outcome.of(code)
     }
 
-    private fun quarantine(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String?, register: Boolean = true): Outcome {
+    private fun quarantine(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String?, register: Boolean = true, contentFp: ByteArray? = null): Outcome {
         h.createUpdate(
             """
             INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, detail, user_id, device_id, route_id, business_date, batch_uuid, received_at)
@@ -379,7 +411,7 @@ class IngestService(
         ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", r.json.toString()).bind("detail", detail?.take(1000))
             .bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid)
             .bind("now", ts(ctx.now)).execute()
-        if (register) register(h, ctx, r, bd, "quarantined", code, null)
+        if (register) register(h, ctx, r, bd, "quarantined", code, null, contentFp)
         return Outcome.of(code)
     }
 
@@ -494,6 +526,8 @@ class IngestService(
     }.list()
 
     companion object {
+        private val UUID_ANY = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+        private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")
