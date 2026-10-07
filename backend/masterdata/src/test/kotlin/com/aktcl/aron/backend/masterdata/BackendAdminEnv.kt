@@ -84,7 +84,7 @@ class BackendAdminEnv : AutoCloseable {
             }
             h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT r.id, u.id, 'primary', date '2026-01-01', 'seed' FROM app.route r, app.app_user u WHERE r.code = 'MIR-AMO-1' AND u.username = 'amo1001'")
             h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT r.id, u.id, 'primary', date '2026-01-01', 'seed' FROM app.route r, app.app_user u WHERE r.code = 'OTH-SR-1' AND u.username = 'sr2001'")
-            h.execute("INSERT INTO app.code_list_item (list_key, code, label_en) VALUES ('leave_type', 'casual', 'Casual'), ('leave_type', 'sick', 'Sick'), ('feedback_category', 'app_issue', 'App issue'), ('feedback_category', 'idea', 'Idea')")
+            h.execute("INSERT INTO app.code_list_item (list_key, code, label_en) VALUES ('leave_type', 'casual', 'Casual'), ('leave_type', 'sick', 'Sick'), ('feedback_category', 'app_issue', 'App issue'), ('feedback_category', 'idea', 'Idea') ON CONFLICT (list_key, code) DO NOTHING")
         }
         ids = db.jdbi.withHandle<Map<String, Long>, Exception> { h -> h.createQuery("SELECT username, id FROM app.app_user").map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap() }
         routeIds = db.jdbi.withHandle<Map<String, Long>, Exception> { h -> h.createQuery("SELECT code, id FROM app.route").map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap() }

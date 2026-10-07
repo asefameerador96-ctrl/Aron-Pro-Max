@@ -99,9 +99,12 @@ class ConfigWorkflowTest {
     fun breakGlassNeedsSuperadminAndOnlyRestoresOrRestricts() {
         val o = outlets[n++]
         assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { svc.create(admin, ConfigChangeRequestIn("Emergency widen now please", true, listOf(ConfigChangeItemIn("cfg.geo.radius_m", "outlet", o, JsonPrimitive(200)))), null, null) }.code)
-        // restrictive_dir is 'none' in the seed (docs/requests/backend-admin-restrictive-dir.md), so a plain change is refused...
+        // A key without a restrictive direction can only be restored, so a plain change is refused...
+        env.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.cfg_key SET restrictive_dir = 'none' WHERE key = 'cfg.geo.radius_m'") }
+        svc.resolver.invalidate()
         assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { svc.create(sa1, ConfigChangeRequestIn("Emergency change, not a restore", true, listOf(ConfigChangeItemIn("cfg.geo.radius_m", "outlet", o, JsonPrimitive(60)))), null, null) }.code)
-        // ...with a direction set, narrowing applies at once and expires within break_glass_max_h; widening is still refused.
+        // ...with the direction the registry ships ('down', docs/requests/backend-admin-restrictive-dir.md), narrowing applies at once
+        // and expires within break_glass_max_h; widening is still refused.
         env.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.cfg_key SET restrictive_dir = 'down' WHERE key = 'cfg.geo.radius_m'") }
         svc.resolver.invalidate()
         val c = svc.create(sa1, ConfigChangeRequestIn("Emergency narrowing at once", true, listOf(ConfigChangeItemIn("cfg.geo.radius_m", "outlet", o, JsonPrimitive(60)))), null, null)
