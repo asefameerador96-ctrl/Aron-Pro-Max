@@ -149,11 +149,15 @@ INT has V0001-V0038; the integrator promotes the rest.
 2. Salvage port done (V0047-V0052); DA-07 recorded above. PERF-03, db side done: V0020 `app.db_role_limit` +
    `apply_login_limits()` set the docs/18 timeouts (api 15 s/lock 3 s, auth 5 s, worker 10 min, jobs 30 min, web 60 s)
    on each login; V0029 closed the grant gaps. Left to infra: `dbPerAppLogins = true` (`db-runtime-roles-gaps.md`).
-3. Query-plan candidates still open:
-   - `BundleService.openMemos` and the parent fallback probe memo by client_uuid without business_date.
-   - The `outlet_change_request` and `task (assignee_user_id, status)` indexes.
-   - due_ledger rows in `db/perf/generate.sql`.
-   - `task.route_id` has no index.
+3. Query-plan candidates (session 4 review):
+   - `BundleService.openMemos` joins `app.memo` on client_uuid only (due_ledger has no memo business_date), so each open
+     memo costs one probe of the (client_uuid, business_date) unique index per month partition: ~13 probes per memo in
+     the hot window, about 1 ms per 50 open memos. No migration now; if bundle p95 shows it, add
+     `due_ledger.memo_business_date` (backend-core writes it) so the join prunes. Needs due_ledger rows in
+     `db/perf/generate.sql` to measure (still open).
+   - `task.route_id`: no index needed, no query filters on it (Tasks.kt only reads it).
+   - `outlet_change_request (status, business_date)` and `(outlet_id)` and `task (assignee_user_id, status)` exist (V0007);
+     BundleService's `ongoing` task list and the pending-request EXISTS use them.
 
 **Traps:**
 - Push only to `lane/db` (not `claude/db-wip-v0023`, not INT). A pushed migration is shipped: fix forward only.
