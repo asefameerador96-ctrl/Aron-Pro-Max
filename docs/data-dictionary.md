@@ -2459,11 +2459,11 @@ Append-only history of every map pin an outlet has had and where it came from.
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
-| `lat` | double precision | not null |  | Latitude in WGS84 degrees. |
-| `lng` | double precision | not null |  | Longitude in WGS84 degrees. |
+| `lat` | double precision | null |  | Latitude in WGS84 degrees; null when the basis is placeholder or none. |
+| `lng` | double precision | null |  | Longitude in WGS84 degrees; null when the basis is placeholder or none. |
 | `accuracy_m` | double precision | null |  | Horizontal accuracy radius of the location fix in metres. |
 | `source` | text | not null |  | Where the row came from; allowed values are listed under constraints. |
-| `basis` | text | not null |  | Location basis of the pin: master, provisional, placeholder or none. |
+| `basis` | text | not null |  | Location basis from valid_from on: master, provisional, placeholder (no usable pin) or none (pin cleared). |
 | `source_client_uuid` | uuid | null |  | Client UUID of the outlet_change_request or visit that supplied the fix for this pin. |
 | `valid_from` | timestamp with time zone | not null |  | First day the row is in effect. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |

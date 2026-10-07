@@ -208,6 +208,21 @@ class SchemaV1bTest {
         assertTrue(otherDate.message!!.contains("client_uuid"), "the client_uuid key fired: ${otherDate.message}")
     }
 
+    /** V0044: a cleared pin (none) and a placeholder basis are history rows without coordinates; pinned bases keep them. */
+    @Test
+    fun locationHistoryRecordsEveryBasisAndCoordinatesFollowTheBasis() = tx { c ->
+        val ins = "INSERT INTO app.outlet_location_history (outlet_id, lat, lng, source, basis) VALUES (${fk["outlet"]}, "
+        c.exec(ins + "23.8, 90.36, 'web_edit', 'master')")
+        c.exec(ins + "NULL, NULL, 'web_edit', 'none')")
+        c.exec(ins + "NULL, NULL, 'web_edit', 'placeholder')")
+        for (bad in listOf("NULL, NULL, 'web_edit', 'master')", "23.8, 90.36, 'web_edit', 'none')", "23.8, NULL, 'web_edit', 'provisional')", "NULL, NULL, 'web_edit', 'gone')")) {
+            c.exec("SAVEPOINT s")
+            assertEquals("23514", assertFailsWith<SQLException>(bad) { c.exec(ins + bad) }.sqlState, bad)
+            c.exec("ROLLBACK TO SAVEPOINT s")
+        }
+        assertEquals("t", c.scalar("SELECT bool_and(convalidated) FROM pg_constraint WHERE conrelid = 'app.outlet_location_history'::regclass AND contype = 'c'"))
+    }
+
     /** V0042 (AUD-DA-02): capture rows freeze zone, cluster, channel and geo class; a later route move never rewrites them. */
     @Test
     fun captureRowsFreezeTheirContextAndARouteMoveDoesNotRewriteThem() = tx { c ->
