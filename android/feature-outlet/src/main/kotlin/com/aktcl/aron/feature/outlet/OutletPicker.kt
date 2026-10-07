@@ -35,8 +35,12 @@ object OutletPicker {
      */
     fun chipOf(name: String): String {
         val key = TextRules.nameSortKey(name)
-        val c = key.firstOrNull { it.isLetter() || it in '০'..'৯' } ?: return "#"
-        return if (c.isLetter() && c.code < 0x80) c.uppercaseChar().toString() else if (c.isLetter()) c.toString() else "#"
+        val c = key.firstOrNull() ?: return "#"
+        return when {
+            !c.isLetter() -> "#"
+            c.code < 0x80 -> c.uppercaseChar().toString()
+            else -> c.toString()
+        }
     }
 
     /** The chips present in [rows], Latin first (A to Z) then Bangla in Unicode order, `#` last; the caller prepends All. */
