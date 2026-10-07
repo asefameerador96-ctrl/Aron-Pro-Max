@@ -18,8 +18,16 @@ body='{"type":"ActualCost","timeframe":"MonthToDate","dataset":{"granularity":"D
   "aggregation":{"cost":{"name":"Cost","function":"Sum"}},
   "grouping":[{"type":"Dimension","name":"ResourceId"}]}}'
 summary "### Cost reading of ${rg} ($(date -u +%Y-%m-%dT%H:%MZ))"
-if az rest --method post --url "https://management.azure.com${scope}/providers/Microsoft.CostManagement/query?api-version=2023-11-01" \
-     --body "$body" -o json > "$tmp/q.json" 2> "$tmp/q.err"; then
+# Cost Management throttles hard (429): retry with back-off before calling it refused.
+query_ok=false
+for wait in 0 30 60 120 180; do
+  sleep "$wait"
+  if az rest --method post --url "https://management.azure.com${scope}/providers/Microsoft.CostManagement/query?api-version=2023-11-01" \
+       --body "$body" -o json > "$tmp/q.json" 2> "$tmp/q.err"; then query_ok=true; break; fi
+  grep -q "429\|Too Many Requests" "$tmp/q.err" || break
+  echo "Cost Management throttled (429); retrying"
+done
+if [ "$query_ok" = true ]; then
   python3 - "$tmp/q.json" <<'PY' | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
 import collections, json, sys
 d = json.load(open(sys.argv[1]))["properties"]
@@ -43,7 +51,7 @@ for k, v in sorted(by_res.items(), key=lambda kv: -kv[1]):
 PY
   exit 0
 fi
-summary "- Cost Management query refused: $(tr '\n' ' ' < "$tmp/q.err" | cut -c1-300)"
+summary "- Cost Management query failed: $(tr '\n' ' ' < "$tmp/q.err" | cut -c1-300)"
 
 start="$(date -u +%Y-%m-01)"; end="$(date -u +%Y-%m-%d)"
 if az rest --method get -o json > "$tmp/u.json" 2> "$tmp/u.err" \
@@ -63,8 +71,12 @@ print(f"\nAverage {sum(by_day.values()) / days:.2f} per day over {days} day(s)")
 PY
   exit 0
 fi
-summary "- Consumption usage details refused: $(tr '\n' ' ' < "$tmp/u.err" | cut -c1-300)"
+summary "- Consumption usage details failed: $(tr '\n' ' ' < "$tmp/u.err" | cut -c1-300)"
 summary ""
+if grep -q "429\|Too Many Requests" "$tmp/q.err"; then
+  summary "**Cost Management kept throttling (429) for about 6 minutes; run cost-report again later.**"
+  exit 0
+fi
 summary "**No Azure cost data is readable by the deploy identity.** Turn on the billing account's cost policy for"
 summary "subscription users (the same switch the budget needs), or read the cost in the portal as the owner"
 summary "(Cost Management > Cost analysis, scope ${rg}). Until then the per-day figure is the estimate in docs/status/infra.md."
