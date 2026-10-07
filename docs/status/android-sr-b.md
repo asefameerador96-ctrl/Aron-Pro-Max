@@ -48,3 +48,20 @@ Built against interfaces, fakes only in test sources, so the swap is one line ea
 - feature-memo: `MemoViewModel` over `MemoStore`, `DueCollectionWriter` (REQUEST core), `MemoReprinter` (production: `MemoPrinting.printMemo`).
 - feature-dayclose: `SalesSubmitViewModel` over `DaySource`, `ServerCounts`, `DaySubmitWriter` (REQUEST core), `SyncScheduler` (MANUAL and DAY_SUBMIT triggers).
 Production implementations of the ports (Room reads, due_collection and day_submit writers, memo counter) are the core request; app-sr shell wiring is android-sr-a's.
+
+## Production adapters (Room v3 landed) — assembly lines for the app-sr shell (android-sr-a)
+```kotlin
+val repo = CaptureRepository(db)                                   // per-user AronDatabase from UserDatabases
+// sale
+val committer = SaleCommitter(repo, numbers = { _, _ -> error("unused") }, metaSource, nowIso,
+    findMemo = { db.captureDao().memo(it) }, editReasons = cfgEditReasons, numbering = MemoNumbering(username, bindOrdinal, blockSize))
+val flow = SaleFlow(FileDraftStore(filesDir), catalog /* SaleCatalog over ReferenceDao.activeSkus + prices + stockBalanceOn */, committer)
+val commitStep = SaleCommitStep(flow, memoPrintSource /* RoomMemoStore.memos -> PrintMapping.memo */, editFix)
+val vm = SaleViewModel(flow, SaveAndPrint(commitStep::invoke, memoPrinting))
+// memo
+val store = RoomMemoStore(db); val vm = MemoViewModel(store, RoomDueCollectionWriter(repo, meta, visitUuidOf), MemoReprinter(memoPrinting::printMemo), names, businessDate)
+// sales submit
+val vm = SalesSubmitViewModel(userId, businessDate, RoomDaySource(db), serverCounts, RoomDaySubmitWriter(db, repo, meta, categoryOf), syncScheduler, online)
+```
+Core ruling used: `recordNumberedSale` reserves the memo number in its own committed step, so a failed save burns a number (never reused); `isFullSettlement` means the whole outlet outstanding, so Mark paid on one memo of an owing outlet is a partial settlement.
+Open: `catalog` (prices in Room are part of F-SYS-006), stock slip flag, `serverCounts` (sync response `server_totals`), net_by_category in the day_submit money uses SKU categories plus an `other` bucket for memo-level discounts (to confirm against the server check).
