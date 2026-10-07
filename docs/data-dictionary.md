@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 146 | 2539 |
+| `app` | 146 | 2540 |
 | `dw` | 33 | 512 |
 
 ## Index
@@ -1926,6 +1926,7 @@ Global register of every device record's client_uuid and payload hash; the uniqu
 | `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
 | `last_seen_at` | timestamp with time zone | not null |  | UTC time the same client_uuid was last received. |
 | `seen_count` | integer | not null |  | Number of times the client_uuid was received. |
+| `flags` | text[] | not null |  | Flags on the accepted record: resync_late = re-sent after a failover or restore and accepted past cfg.sync.max_backdate_days (F-SYS-089); empty when none. |
 
 Keys: `PRIMARY KEY (client_uuid)`
 

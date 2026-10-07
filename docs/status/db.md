@@ -129,6 +129,9 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     `cfg.app.image_cache_mb` (40, 10..70), global, device: docs/19 values, not the request's draft (answer
     `docs/requests/db-app-cfg-keys-answer.md`). Sonnet checker PASS. Not yet registered: `cfg.app.rejected_keep_days`
     (docs/19 line 679; no request).
+  - `V0056`/`V0057` `app.ingest_registry.flags text[]` (`resync_late`, F-SYS-089; catalogue-only add, CHECK NOT VALID
+    then validated). Answers `backend-core-resync-late-flag.md`; merge-not-assign note for the conflict path in
+    `docs/requests/db-resync-late-flag-answer.md`. Opus checker PASS (round 4).
 
 ## Handoff (session 3 recycled, 2026-10-07 ~13:10 UTC)
 
