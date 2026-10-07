@@ -42,6 +42,10 @@ class ConfigPermissions(private val db: Database, private val service: ConfigSer
     private val key = "cfg.web.menu_by_role"
     // The seeded vocabulary says `write` for "may change"; read back it means create and edit. Written values keep create and edit apart.
     private val toContract = mapOf("read" to listOf("view"), "view" to listOf("view"), "write" to listOf("create", "edit"), "create" to listOf("create"), "edit" to listOf("edit"), "export" to listOf("export"), "approve" to listOf("approve"), "submit_void" to listOf("void"), "void" to listOf("void"))
+    /** Seeded actions that have no contract action (menu-specific verbs); they are not shown in the contract matrix and are kept in the stored value. Listed so a new seeded action fails the mapping test instead of vanishing. */
+    val droppedActions: Set<String> = setOf("filter", "edit_allowed_sections", "state", "directive", "resolve", "issue", "credentials", "final_submit", "reopen", "publish", "write_own", "verify", "reject", "review", "unlock", "upload", "download", "take_action")
+    val mappedActions: Set<String> get() = toContract.keys
+
     private val toStored = mapOf("view" to "read", "create" to "create", "edit" to "edit", "approve" to "approve", "export" to "export", "void" to "void")
     private val menuId = Regex("^[a-z][a-z0-9_.]{1,60}$")
 
