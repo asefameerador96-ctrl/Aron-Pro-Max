@@ -46,4 +46,13 @@
     <string name="qc_deduction">Deduction: %1$s</string>
     <string name="qc_done">QC done</string>
     <string name="qc_locked">QC is done at this outlet; the sale can no longer be edited.</string>
+    <string name="call_start_title">Start the call?</string>
+    <string name="call_start_message">You are at %1$s. Start the call now?</string>
+    <string name="edit_reason_title">Why are you editing this sale?</string>
+    <string name="edit_reason_wrong_sku">Wrong SKU</string>
+    <string name="edit_reason_wrong_quantity">Wrong quantity</string>
+    <string name="edit_reason_wrong_price_type">Wrong price type</string>
+    <string name="edit_denied_outside">You can edit a sale only at the shop, inside the geofence.</string>
+    <string name="edit_denied_qc">QC is done at this outlet; the sale cannot be edited.</string>
+    <string name="edit_denied_superseded">This memo was already replaced by a newer one.</string>
 </resources>

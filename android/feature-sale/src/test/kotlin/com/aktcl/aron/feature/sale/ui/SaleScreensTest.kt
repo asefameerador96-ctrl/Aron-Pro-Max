@@ -123,3 +123,30 @@ class SaleExtraScreensTest {
         assertEquals(1, done)
     }
 }
+
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [36])
+class CallPromptsTest {
+    @get:Rule val compose = createComposeRule()
+
+    @Test fun noReturnsWithoutStartingAndYesStarts() {
+        var yes = 0; var no = 0
+        compose.setContent { AronTheme(AppLanguage.EN) { StartCallPrompt("Rifat Store", { yes++ }, { no++ }) } }
+        compose.onNodeWithText("You are at Rifat Store. Start the call now?").assertExists()
+        compose.onNodeWithText("No").performClick()
+        assertEquals(0 to 1, yes to no)
+    }
+
+    @Test fun editOffersThreeReasonsOrExplainsTheDenial() {
+        var picked: String? = null
+        compose.setContent { AronTheme(AppLanguage.EN) { EditReasonScreen(null, { picked = it.wire }) } }
+        compose.onNodeWithText("Wrong quantity").performClick()
+        assertEquals("wrong_quantity", picked)
+    }
+
+    @Test fun editDeniedOutsideTheGeofenceShowsNoReasons() {
+        compose.setContent { AronTheme(AppLanguage.EN) { EditReasonScreen(com.aktcl.aron.feature.sale.domain.EditDenied.OutsideGeofence, {}) } }
+        compose.onNodeWithText("You can edit a sale only at the shop, inside the geofence.").assertExists()
+        compose.onNodeWithText("Wrong SKU").assertDoesNotExist()
+    }
+}

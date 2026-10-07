@@ -45,4 +45,13 @@
     <string name="qc_deduction">কর্তন: %1$s</string>
     <string name="qc_done">কিউসি সম্পন্ন</string>
     <string name="qc_locked">এই আউটলেটে কিউসি সম্পন্ন হয়েছে; বিক্রয় আর সম্পাদনা করা যাবে না।</string>
+    <string name="call_start_title">কল শুরু করবেন?</string>
+    <string name="call_start_message">আপনি %1$s এ আছেন। এখনই কল শুরু করবেন?</string>
+    <string name="edit_reason_title">কেন এই বিক্রয় এডিট করছেন?</string>
+    <string name="edit_reason_wrong_sku">ভুল এসকেইউ</string>
+    <string name="edit_reason_wrong_quantity">ভুল পরিমাণ</string>
+    <string name="edit_reason_wrong_price_type">ভুল মূল্যের ধরন</string>
+    <string name="edit_denied_outside">বিক্রয় এডিট করা যায় শুধু দোকানে, জিওফেন্সের ভিতরে।</string>
+    <string name="edit_denied_qc">এই আউটলেটে কিউসি সম্পন্ন; বিক্রয় এডিট করা যাবে না।</string>
+    <string name="edit_denied_superseded">এই মেমোর জায়গায় নতুন মেমো এসেছে।</string>
 </resources>
