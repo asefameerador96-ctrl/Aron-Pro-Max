@@ -1026,6 +1026,22 @@ class PlatformAlerts(unittest.TestCase):
         self.assertEqual(block.count("description:"), block.count("Runbook: RB-"), "every alert names its runbook")
 
 
+class Drills(unittest.TestCase):
+    """AUD-REL-05: the s5a drills are a workflow behind explicit approval phrases; the restore copy never outlives the run."""
+
+    def test_drill_workflow_and_script(self):
+        w = (WORKFLOWS / "drill.yml").read_text(encoding="utf-8")
+        self.assertNotRegex(w, r"(?m)^\s*(push|pull_request|schedule|workflow_call):", "manual dispatch only")
+        self.assertIn('failover) want="lead approved failover drill" ;;', w)
+        self.assertIn('pitr) want="owner approved restore drill" ;;', w)
+        self.assertLess(w.index("Approval phrase"), w.index("azure/login@"), "nothing touches Azure before the phrase")
+        d = (ROOT / "infra" / "scripts" / "drill.sh").read_text(encoding="utf-8")
+        self.assertIn("trap cleanup EXIT", d, "the restored server is deleted on every exit")
+        self.assertLess(d.index("trap cleanup EXIT"), d.index("az postgres flexible-server restore"))
+        self.assertIn("--failover Forced", d)
+        self.assertIn('die "a deploy holds the lock', d, "never during a deploy")
+
+
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():
         sys.exit(f"compiled templates not found in {COMPILED}; run infra/validate.sh")
