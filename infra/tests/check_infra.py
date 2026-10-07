@@ -1107,6 +1107,25 @@ sys.stdout.write(str(codes[min(n, len(codes) - 1)]))
         self.assertEqual(rc, 0, "a call longer than the wait limit is not a false failure: " + out)
 
 
+class AgentDownload(unittest.TestCase):
+    """CI run 361: BuildKit's single ADD request got other bytes from Maven Central (digest mismatch). Both image builds
+    fetch the pinned agent with retries and a checksum, and pass it as the named build context replacing the ADD stage."""
+
+    def test_both_builds_use_the_retrying_fetch(self):
+        df = (ROOT / "infra" / "docker" / "backend.Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("FROM ${JRE_IMAGE} AS agent", df)
+        self.assertRegex(df, r"(?m)^ARG AI_AGENT_VERSION=\S+$")
+        self.assertRegex(df, r"(?m)^ARG AI_AGENT_SHA256=[0-9a-f]{64}$")
+        f = (ROOT / "infra" / "scripts" / "fetch-ai-agent.sh").read_text(encoding="utf-8")
+        self.assertIn("sha256sum -c", f)
+        self.assertIn("--retry-all-errors", f)
+        for script in ("infra/scripts/image-smoke.sh", "infra/deploy.sh"):
+            t = (ROOT / script).read_text(encoding="utf-8")
+            self.assertIn("infra/scripts/fetch-ai-agent.sh", t, script)
+            self.assertIn('--build-context "agent=', t, script)
+            self.assertLess(t.index("fetch-ai-agent.sh"), t.index("-f infra/docker/backend.Dockerfile"), script)
+
+
 class DeviceEnrolment(unittest.TestCase):
     """N-031 (lead #3): the api gets its public base URL and the Android key-attestation roots on every deploy."""
 
