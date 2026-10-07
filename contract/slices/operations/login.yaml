@@ -1,0 +1,79 @@
+path: /v1/auth/login
+method: post
+operation:
+  tags:
+  - auth
+  operationId: login
+  summary: Password login (phone or web).
+  description: 'Phone: needs an enrolled device (`device_uuid`); returns `bind_required` with a short-lived `bind_token`
+
+    when the user is not yet bound to this device and `cfg.auth.bind_otp_required` is true. Web: returns
+
+    `mfa_required` with an `mfa_token` for roles in `cfg.auth.mfa_required_roles`. A version below the
+
+    flavour''s `cfg.release.min_version_code` gets 426. Rate limits: 10 per 15 min per username and 30 per
+
+    15 min per device (docs/24 s3.6, s8.1).
+
+    '
+  security: []
+  parameters:
+  - $ref: '#/components/parameters/XAppVersion'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/LoginRequest'
+  responses:
+    '200':
+      description: Outcome of the login.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginResponse'
+          examples:
+            phoneOk:
+              summary: SR on a bound, enrolled phone
+              value:
+                status: ok
+                access_token: eyJhbGciOiJFUzI1NiIsImtpZCI6InNpZy0yMDI2LTEwIn0.eyJzdWIiOiIxMDAxIn0.sig
+                access_expires_at: '2026-10-05T03:12:44.120Z'
+                refresh_token: 3q2-7wEAAABqZW1hZ2ljLXJlZnJlc2gtdG9rZW4tZXhhbXBsZQ
+                refresh_expires_at: '2027-01-02T00:00:00.000Z'
+                upload_refresh_token: Ulb2FkLWdyYW50LXRva2VuLWV4YW1wbGUtMzJieXRlcw
+                bind_token: null
+                mfa_token: null
+                user:
+                  user_id: 1001
+                  username: sr334001
+                  full_name: Testing Banani
+                  role: SR
+                  designation: SR
+                  locale: bn
+                scope:
+                  scope_version: 7
+                  nodes:
+                  - type: route
+                    id: 10231
+                    code: R-334-01
+                    name: Apsis RouteDaily
+                device:
+                  device_id: 501
+                  bind_ordinal: 0
+                  memo_seq_block_size: 500
+                config_version: 318
+                server_time: '2026-10-05T02:12:44.120Z'
+                min_app_version_code: 100
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '426':
+      $ref: '#/components/responses/UpgradeRequired'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

@@ -1,0 +1,36 @@
+PublicConfig:
+  type: object
+  required:
+  - min_version_codes
+  - support_contacts
+  - server_time
+  additionalProperties: false
+  properties:
+    min_version_codes:
+      type: object
+      required:
+      - sr
+      - amo
+      - tso
+      additionalProperties: false
+      properties:
+        sr:
+          type: integer
+          minimum: 1
+        amo:
+          type: integer
+          minimum: 1
+        tso:
+          type: integer
+          minimum: 1
+    maintenance_banner:
+      oneOf:
+      - type: 'null'
+      - $ref: '#/components/schemas/Banner'
+    support_contacts:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/SupportContact'
+    server_time:
+      $ref: '#/components/schemas/Timestamp'

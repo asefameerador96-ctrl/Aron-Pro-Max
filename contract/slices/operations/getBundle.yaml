@@ -1,0 +1,59 @@
+path: /v1/sync/bundle
+method: get
+operation:
+  tags:
+  - sync
+  operationId: getBundle
+  summary: Full day bundle for the caller and a business date (per-route snapshots inside).
+  description: 'The first request of Dhaka date D (200, 304 or a delta) marks `logged_in` for every route-day of
+    the user
+
+    (docs/24 s4.9). A request with `for` = the next working day is a pre-fetch and never a login. Sections
+
+    above `cfg.bundle.page_threshold_rows` are listed in `meta.paged_sections` and fetched with
+
+    `GET /v1/sync/bundle/page`. A version below the minimum app version gets 426 only for a NEW business date.
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  - $ref: '#/components/parameters/XAppVersion'
+  - $ref: '#/components/parameters/XConfigVersionRequest'
+  - $ref: '#/components/parameters/IfNoneMatch'
+  - name: for
+    in: query
+    required: false
+    description: Business date (Asia/Dhaka) the bundle is for; default today. At most the next working day.
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  responses:
+    '200':
+      description: Full bundle (gzip on the wire).
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+        X-Config-Version:
+          $ref: '#/components/headers/XConfigVersion'
+        X-Server-Generation:
+          $ref: '#/components/headers/XServerGeneration'
+        X-Server-Time:
+          $ref: '#/components/headers/XServerTime'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Bundle'
+          examples:
+            sr:
+              $ref: '#/components/examples/BundleSr'
+    '304':
+      $ref: '#/components/responses/NotModified'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '426':
+      $ref: '#/components/responses/UpgradeRequired'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

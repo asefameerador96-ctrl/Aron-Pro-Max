@@ -1,0 +1,8 @@
+GeoLevel:
+  type: string
+  enum:
+  - wing
+  - division
+  - territory
+  - house
+  - zone

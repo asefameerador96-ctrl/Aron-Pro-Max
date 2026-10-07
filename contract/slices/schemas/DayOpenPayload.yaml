@@ -1,0 +1,22 @@
+DayOpenPayload:
+  type: object
+  required:
+  - route_ids
+  - online
+  - bundle_valid_for
+  - offline_start
+  additionalProperties: false
+  properties:
+    route_ids:
+      type: array
+      minItems: 1
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/Id'
+    online:
+      type: boolean
+    bundle_valid_for:
+      $ref: '#/components/schemas/BusinessDate'
+    offline_start:
+      type: boolean
+      description: True when the day was opened offline on a cached bundle (counts as logged in).

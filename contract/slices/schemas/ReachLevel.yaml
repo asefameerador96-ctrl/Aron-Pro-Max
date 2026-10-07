@@ -1,0 +1,9 @@
+ReachLevel:
+  type: string
+  enum:
+  - national
+  - wing
+  - division
+  - territory
+  - zone
+  - route

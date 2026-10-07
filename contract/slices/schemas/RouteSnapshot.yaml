@@ -1,0 +1,69 @@
+RouteSnapshot:
+  type: object
+  description: Per-route section of the bundle; replaced as a whole when the route is added to the user.
+  required:
+  - route_id
+  - route_snapshot_version
+  - route
+  - assignment_kind
+  - planned_today
+  - target_outlets
+  - outlets
+  - open_memos
+  - sales_plan_sku_ids
+  - targets
+  - achievement_mtd
+  - day_state
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    route_snapshot_version:
+      type: integer
+      minimum: 1
+    route:
+      $ref: '#/components/schemas/Route'
+    assignment_kind:
+      type: string
+      enum:
+      - primary
+      - cover
+    acting_for_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    planned_today:
+      type: boolean
+    target_outlets:
+      type: integer
+      minimum: 0
+      description: Frozen at the first bundle of the day (strike-rate denominator).
+    outlets:
+      type: array
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/BundleOutlet'
+    open_memos:
+      type: array
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/OpenMemo'
+    sales_plan_sku_ids:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/Id'
+    targets:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/TargetRow'
+    achievement_mtd:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/AchievementRow'
+    day_state:
+      $ref: '#/components/schemas/RouteDayState'

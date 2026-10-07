@@ -1,0 +1,18 @@
+ClusterWrite:
+  type: object
+  required:
+  - zone_id
+  - name
+  additionalProperties: false
+  properties:
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    name:
+      type: string
+      minLength: 1
+      maxLength: 120
+    cluster_type:
+      type:
+      - string
+      - 'null'
+      maxLength: 60

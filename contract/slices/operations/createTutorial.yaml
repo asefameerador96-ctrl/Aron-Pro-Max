@@ -1,0 +1,26 @@
+path: /v1/admin/tutorials
+method: post
+operation:
+  tags:
+  - admin-content
+  operationId: createTutorial
+  summary: Add a tutorial video or manual from an uploaded asset.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/TutorialWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TutorialAdmin'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

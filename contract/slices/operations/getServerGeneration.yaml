@@ -1,0 +1,16 @@
+path: /v1/sync/generation
+method: get
+operation:
+  tags:
+  - sync
+  operationId: getServerGeneration
+  summary: Statement of the current server generation after a failover or point-in-time restore.
+  responses:
+    '200':
+      description: Generation record.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ServerGeneration'
+    '401':
+      $ref: '#/components/responses/Unauthorized'

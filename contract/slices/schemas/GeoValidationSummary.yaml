@@ -1,0 +1,90 @@
+GeoValidationSummary:
+  type: object
+  required:
+  - as_of
+  - from
+  - to
+  - node
+  - visits
+  - geo_valid_pct
+  - force_sale_pct
+  - mock_pct
+  - geo_mismatch_pct
+  - suspicious_pct
+  - signals_by_code
+  - children
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    from:
+      $ref: '#/components/schemas/BusinessDate'
+    to:
+      $ref: '#/components/schemas/BusinessDate'
+    node:
+      $ref: '#/components/schemas/NodeRef'
+    visits:
+      type: integer
+      minimum: 0
+    geo_valid_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    force_sale_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    mock_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    geo_mismatch_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    suspicious_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100
+    signals_by_code:
+      type: object
+      propertyNames:
+        $ref: '#/components/schemas/RiskSignalCode'
+      additionalProperties:
+        type: integer
+        minimum: 0
+    children:
+      type: array
+      items:
+        type: object
+        required:
+        - node
+        - visits
+        - geo_valid_pct
+        - suspicious_visits
+        additionalProperties: false
+        properties:
+          node:
+            $ref: '#/components/schemas/NodeRef'
+          visits:
+            type: integer
+            minimum: 0
+          geo_valid_pct:
+            type:
+            - number
+            - 'null'
+            minimum: 0
+            maximum: 100
+          suspicious_visits:
+            type: integer
+            minimum: 0

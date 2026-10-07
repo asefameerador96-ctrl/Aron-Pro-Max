@@ -1,0 +1,30 @@
+path: /v1/admin/users/{id}/scope
+method: put
+operation:
+  tags:
+  - admin-users
+  operationId: putUserScope
+  summary: Replace a user's scope from a date (bumps scope_version; tokens refresh with 401 ERR_SCOPE_CHANGED).
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/UserScopeWrite'
+  responses:
+    '200':
+      description: New scope.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserScope'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

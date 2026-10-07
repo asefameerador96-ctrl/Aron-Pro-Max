@@ -1,0 +1,22 @@
+path: /v1/media/{media_uuid}/read-url
+method: get
+operation:
+  tags:
+  - media
+  operationId: getMediaReadUrl
+  summary: Short-lived read URL for a photo in the caller's reach (supervisors, web).
+  parameters:
+  - $ref: '#/components/parameters/MediaUuidPath'
+  responses:
+    '200':
+      description: Read URL valid for 5 minutes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MediaReadUrl'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

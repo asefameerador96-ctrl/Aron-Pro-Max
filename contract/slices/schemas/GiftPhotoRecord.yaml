@@ -1,0 +1,13 @@
+GiftPhotoRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: gift_photo
+      payload:
+        $ref: '#/components/schemas/GiftPhotoPayload'
+  unevaluatedProperties: false

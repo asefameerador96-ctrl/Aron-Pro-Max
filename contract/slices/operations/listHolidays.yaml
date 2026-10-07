@@ -1,0 +1,21 @@
+path: /v1/admin/calendar/holidays
+method: get
+operation:
+  tags:
+  - admin-calendar
+  operationId: listHolidays
+  summary: Holidays, make-up days and emergency off-days with their scope.
+  parameters:
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  responses:
+    '200':
+      description: Calendar entries.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HolidayList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

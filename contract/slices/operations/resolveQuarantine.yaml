@@ -1,0 +1,38 @@
+path: /v1/admin/quarantine/{quarantine_id}/resolve
+method: post
+operation:
+  tags:
+  - sync
+  operationId: resolveQuarantine
+  summary: Accept, accept with a fix, or discard a quarantined record; re-ingests through the same path.
+  description: The phone learns the outcome through `resolutions[]` of its next batch response or delta. Accepting
+    a data-entry-class fix needs a second person (maker-checker, docs/24 s8.6).
+  parameters:
+  - name: quarantine_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/QuarantineResolveRequest'
+  responses:
+    '200':
+      description: Resolved.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuarantineItem'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

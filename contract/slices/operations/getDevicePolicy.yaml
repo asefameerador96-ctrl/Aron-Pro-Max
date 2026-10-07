@@ -1,0 +1,30 @@
+path: /v1/devices/me/policy
+method: get
+operation:
+  tags:
+  - devices
+  operationId: getDevicePolicy
+  summary: The device-owner policy for this phone (ETag = policy_version).
+  security:
+  - bearerAuth: []
+  - {}
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  - $ref: '#/components/parameters/XDeviceProof'
+  - $ref: '#/components/parameters/IfNoneMatch'
+  responses:
+    '200':
+      description: Current policy.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DevicePolicy'
+    '304':
+      $ref: '#/components/responses/NotModified'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

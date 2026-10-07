@@ -1,0 +1,25 @@
+OpenMemo:
+  type: object
+  description: Credit memo with an open due, so the phone can collect and print the balance offline.
+  required:
+  - memo_client_uuid
+  - memo_no
+  - business_date
+  - outlet_id
+  - net_mtk
+  - due_mtk
+  additionalProperties: false
+  properties:
+    memo_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    memo_no:
+      type: string
+      maxLength: 40
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'
+    due_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'

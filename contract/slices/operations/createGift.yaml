@@ -1,0 +1,28 @@
+path: /v1/admin/gifts
+method: post
+operation:
+  tags:
+  - admin-content
+  operationId: createGift
+  summary: Add a gift to a programme's catalogue (code immutable).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/GiftWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Gift'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

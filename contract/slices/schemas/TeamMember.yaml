@@ -1,0 +1,29 @@
+TeamMember:
+  type: object
+  required:
+  - user_id
+  - username
+  - full_name
+  - role
+  - route_ids
+  additionalProperties: false
+  properties:
+    user_id:
+      $ref: '#/components/schemas/Id'
+    username:
+      $ref: '#/components/schemas/Username'
+    full_name:
+      type: string
+      maxLength: 120
+    role:
+      $ref: '#/components/schemas/Role'
+    route_ids:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/Id'
+    phone_masked:
+      type:
+      - string
+      - 'null'
+      maxLength: 20

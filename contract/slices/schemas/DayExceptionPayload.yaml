@@ -1,0 +1,28 @@
+DayExceptionPayload:
+  type: object
+  required:
+  - reason_code
+  - route_ids
+  - from_date
+  - to_date
+  additionalProperties: false
+  properties:
+    reason_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: Code list day_exception_reason.
+    route_ids:
+      type: array
+      minItems: 1
+      maxItems: 60
+      items:
+        $ref: '#/components/schemas/Id'
+    from_date:
+      $ref: '#/components/schemas/BusinessDate'
+    to_date:
+      $ref: '#/components/schemas/BusinessDate'
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

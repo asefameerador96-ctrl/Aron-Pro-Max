@@ -1,0 +1,30 @@
+path: /v1/media/sas
+method: post
+operation:
+  tags:
+  - media
+  operationId: createMediaUploadUrls
+  summary: Write-only user-delegation SAS URLs for up to 10 photos (15 minutes, one blob path each).
+  description: The upload grant may call this operation. The record that references a photo always syncs first (docs/24
+    s4.11).
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/MediaSasRequest'
+  responses:
+    '200':
+      description: One upload target per item.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MediaSasResponse'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

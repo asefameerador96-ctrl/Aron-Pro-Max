@@ -1,0 +1,30 @@
+WebEntryRouteDayWrite:
+  type: object
+  required:
+  - client_uuid
+  - route_id
+  - business_date
+  - lines
+  - successful_calls
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    lines:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/WebEntryLine'
+    successful_calls:
+      type: integer
+      minimum: 0
+      description: At most the route-day's target outlets (cfg.web.entry_validate_calls_le_target).
+    change_reason:
+      oneOf:
+      - $ref: '#/components/schemas/ChangeReason'
+      - type: 'null'
+      description: Required on a re-save.

@@ -1,0 +1,29 @@
+path: /v1/admin/targets/upload
+method: post
+operation:
+  tags:
+  - admin-targets
+  operationId: uploadTargets
+  summary: Upload a target workbook (all-or-nothing); a bad row rejects the whole file with a downloadable error
+    sheet.
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          $ref: '#/components/schemas/TargetUpload'
+  responses:
+    '200':
+      description: Accepted as a pending revision, or rejected with the error sheet.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TargetUploadResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '413':
+      $ref: '#/components/responses/PayloadTooLarge'

@@ -1,0 +1,32 @@
+AppControlPolicy:
+  type: object
+  required:
+  - mode
+  - blocked_packages
+  - allowed_packages
+  - always_allowed_packages
+  additionalProperties: false
+  properties:
+    mode:
+      type: string
+      enum:
+      - blocklist
+      - allowlist
+      description: 'blocklist: suspend `blocked_packages` during the window. allowlist: suspend every launchable
+        non-system package not in `allowed_packages` or `always_allowed_packages`.'
+    blocked_packages:
+      type: array
+      maxItems: 300
+      items:
+        $ref: '#/components/schemas/PackageName'
+    allowed_packages:
+      type: array
+      maxItems: 300
+      items:
+        $ref: '#/components/schemas/PackageName'
+    always_allowed_packages:
+      type: array
+      maxItems: 100
+      description: Never suspended (dialer, messaging, maps, camera, settings, launcher, keyboard, the Aron app).
+      items:
+        $ref: '#/components/schemas/PackageName'

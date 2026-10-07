@@ -1,0 +1,11 @@
+ProgrammeList:
+  type: object
+  required:
+  - items
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/Programme'

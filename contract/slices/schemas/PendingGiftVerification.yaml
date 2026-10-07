@@ -1,0 +1,25 @@
+PendingGiftVerification:
+  type: object
+  description: A redeemed campaign gift still waiting for its Gift Verify photo.
+  required:
+  - redemption_client_uuid
+  - outlet_id
+  - gift_id
+  - qty
+  - photos_captured
+  additionalProperties: false
+  properties:
+    redemption_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    gift_id:
+      $ref: '#/components/schemas/Id'
+    qty:
+      type: integer
+      minimum: 1
+      maximum: 50
+    photos_captured:
+      type: integer
+      minimum: 0
+      maximum: 50

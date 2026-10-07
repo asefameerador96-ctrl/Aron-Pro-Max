@@ -1,0 +1,50 @@
+TargetBatchWrite:
+  type: object
+  required:
+  - batch_uuid
+  - month
+  - rows
+  - change_reason
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    month:
+      $ref: '#/components/schemas/Month'
+    rows:
+      type: array
+      minItems: 1
+      maxItems: 20000
+      items:
+        type: object
+        required:
+        - scope_type
+        - scope_id
+        - product_level
+        - product_id
+        - std_target
+        - std_unit
+        - memo_target
+        additionalProperties: false
+        properties:
+          scope_type:
+            $ref: '#/components/schemas/TargetScopeType'
+          scope_id:
+            $ref: '#/components/schemas/Id'
+          product_level:
+            $ref: '#/components/schemas/ProductLevel'
+          product_id:
+            $ref: '#/components/schemas/Id'
+          std_target:
+            $ref: '#/components/schemas/Decimal3'
+          std_unit:
+            type: string
+            enum:
+            - stick
+            - piece
+            - dozen
+          memo_target:
+            type: integer
+            minimum: 0
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

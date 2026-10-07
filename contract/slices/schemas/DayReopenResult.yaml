@@ -1,0 +1,17 @@
+DayReopenResult:
+  type: object
+  required:
+  - zone_id
+  - business_date
+  - reopened_at
+  - reopened_by
+  additionalProperties: false
+  properties:
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    reopened_at:
+      $ref: '#/components/schemas/Timestamp'
+    reopened_by:
+      $ref: '#/components/schemas/Id'

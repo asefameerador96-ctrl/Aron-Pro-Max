@@ -1,0 +1,7 @@
+Uuid:
+  type: string
+  format: uuid
+  description: UUID version 4, lower case. Every device-originated identity is generated on the phone.
+  pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+  examples:
+  - 6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10

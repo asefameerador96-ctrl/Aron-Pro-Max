@@ -1,0 +1,21 @@
+path: /v1/team/stock
+method: get
+operation:
+  tags:
+  - team
+  operationId: getTeamStock
+  summary: Issued, sold, returned and current stock per SR and SKU for a date (SR phones never returned).
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/BusinessDateQueryRequired'
+  responses:
+    '200':
+      description: Team stock.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeamStockList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

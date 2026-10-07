@@ -1,0 +1,20 @@
+DeviceReplaceResult:
+  type: object
+  required:
+  - old_device_id
+  - old_state
+  - pending_rows
+  additionalProperties: false
+  properties:
+    old_device_id:
+      $ref: '#/components/schemas/Id'
+    old_state:
+      $ref: '#/components/schemas/DeviceState'
+    pending_rows:
+      type: integer
+      minimum: 0
+      description: Rows the old phone reported pending at its last contact.
+    otp:
+      oneOf:
+      - $ref: '#/components/schemas/DeviceOtp'
+      - type: 'null'

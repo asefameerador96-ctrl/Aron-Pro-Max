@@ -1,0 +1,13 @@
+VisitSkipRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: visit_skip
+      payload:
+        $ref: '#/components/schemas/VisitSkipPayload'
+  unevaluatedProperties: false

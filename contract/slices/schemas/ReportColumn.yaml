@@ -1,0 +1,37 @@
+ReportColumn:
+  type: object
+  required:
+  - key
+  - label_en
+  - type
+  additionalProperties: false
+  properties:
+    key:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{0,60}$
+    label_en:
+      type: string
+      maxLength: 120
+    label_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    type:
+      type: string
+      enum:
+      - string
+      - integer
+      - decimal
+      - mtk
+      - pct
+      - date
+      - timestamp
+      - bool
+    unit:
+      type:
+      - string
+      - 'null'
+      maxLength: 20
+    pii:
+      type: boolean

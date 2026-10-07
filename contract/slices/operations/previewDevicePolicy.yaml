@@ -1,0 +1,22 @@
+path: /v1/admin/devices/{device_id}/policy
+method: get
+operation:
+  tags:
+  - admin-devices
+  operationId: previewDevicePolicy
+  summary: The policy this device would receive now (preview of the resolved cfg.device.* keys).
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  responses:
+    '200':
+      description: Effective policy.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DevicePolicy'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

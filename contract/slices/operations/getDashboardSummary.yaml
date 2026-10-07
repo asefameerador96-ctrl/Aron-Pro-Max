@@ -1,0 +1,30 @@
+path: /v1/dashboards/summary
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getDashboardSummary
+  summary: National, wing, division, territory or zone dashboard for a date or range (p95 at most 1 s).
+  description: Reads stored aggregates only. Without `node_id` the node is the caller's top reach node.
+  parameters:
+  - $ref: '#/components/parameters/GeoLevelQuery'
+  - $ref: '#/components/parameters/NodeIdQuery'
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  responses:
+    '200':
+      description: KPIs with children rows.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DashboardSummary'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

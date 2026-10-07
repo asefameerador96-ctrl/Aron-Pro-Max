@@ -1,0 +1,31 @@
+ConfigValueJson:
+  description: A config value; its shape is fixed by the key's `value_type` in the registry (validated by the registry,
+    not by this schema).
+  anyOf:
+  - type:
+    - number
+    - boolean
+  - type: string
+    maxLength: 4000
+  - type: array
+    maxItems: 500
+    items:
+      anyOf:
+      - type:
+        - string
+        - number
+        maxLength: 200
+      - type: object
+        additionalProperties:
+          $ref: '#/components/schemas/JsonScalar'
+  - type: object
+    additionalProperties:
+      anyOf:
+      - $ref: '#/components/schemas/JsonScalar'
+      - type: array
+        maxItems: 200
+        items:
+          $ref: '#/components/schemas/JsonScalar'
+      - type: object
+        additionalProperties:
+          $ref: '#/components/schemas/JsonScalar'

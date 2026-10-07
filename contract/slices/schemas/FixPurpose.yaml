@@ -1,0 +1,16 @@
+FixPurpose:
+  type: string
+  enum:
+  - attendance_in
+  - attendance_out
+  - visit_open
+  - force_sale
+  - outlet_capture
+  - outlet_verification
+  - memo_edit
+  - memo_void
+  - due_collection
+  - refresh
+  - breadcrumb
+  - gift_photo
+  - redemption

@@ -1,0 +1,13 @@
+CallAssessmentAnswerRecord:
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: call_assessment_answer
+      payload:
+        $ref: '#/components/schemas/CallAssessmentAnswerPayload'
+  unevaluatedProperties: false

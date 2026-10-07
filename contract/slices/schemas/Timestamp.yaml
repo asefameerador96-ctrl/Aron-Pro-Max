@@ -1,0 +1,6 @@
+Timestamp:
+  type: string
+  format: date-time
+  description: RFC 3339 instant in UTC with millisecond precision and a `Z` suffix.
+  examples:
+  - '2026-10-05T03:12:44.120Z'

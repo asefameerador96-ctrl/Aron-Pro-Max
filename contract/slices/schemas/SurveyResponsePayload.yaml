@@ -1,0 +1,49 @@
+SurveyResponsePayload:
+  type: object
+  required:
+  - visit_client_uuid
+  - survey_id
+  - survey_version
+  - question_id
+  - answer_type
+  additionalProperties: false
+  properties:
+    visit_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    survey_id:
+      $ref: '#/components/schemas/Id'
+    survey_version:
+      type: integer
+      minimum: 1
+    question_id:
+      $ref: '#/components/schemas/Id'
+    answer_type:
+      type: string
+      enum:
+      - bool
+      - num
+      - option
+      - text
+      - photo_only
+    answer_bool:
+      type:
+      - boolean
+      - 'null'
+    answer_num:
+      type:
+      - number
+      - 'null'
+    answer_option_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    answer_text:
+      type:
+      - string
+      - 'null'
+      maxLength: 1000
+    photo_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'

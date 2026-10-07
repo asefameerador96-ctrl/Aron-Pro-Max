@@ -1,0 +1,33 @@
+path: /v1/admin/offers/{id}
+method: patch
+operation:
+  tags:
+  - admin-products
+  operationId: updateOffer
+  summary: Change an offer; a rule change creates a new offer version (memos keep the version they used).
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  - $ref: '#/components/parameters/IfMatch'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/OfferPatch'
+  responses:
+    '200':
+      description: Updated.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Offer'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '412':
+      $ref: '#/components/responses/PreconditionFailed'

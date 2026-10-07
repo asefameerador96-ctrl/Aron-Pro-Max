@@ -1,0 +1,38 @@
+VisitPayload:
+  type: object
+  description: Immutable facts at outlet open. The visit is the family root (rank 0, family_uuid = its client_uuid).
+  required:
+  - visit_kind
+  - outlet_id
+  - opened_at
+  - sequence_no
+  - planned
+  - fix
+  - geo
+  additionalProperties: false
+  properties:
+    visit_kind:
+      $ref: '#/components/schemas/VisitKind'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    opened_at:
+      $ref: '#/components/schemas/Timestamp'
+    sequence_no:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      description: Order of this visit in the user's business day.
+    planned:
+      type: boolean
+      description: The outlet is on a route planned today.
+    assessed_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: SR assessed on an AMO joint call (the route's active assignee).
+    fix:
+      $ref: '#/components/schemas/GeoFix'
+    geo:
+      $ref: '#/components/schemas/DeviceGeoVerdict'

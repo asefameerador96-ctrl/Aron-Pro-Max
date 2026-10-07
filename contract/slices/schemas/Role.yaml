@@ -1,0 +1,14 @@
+Role:
+  type: string
+  enum:
+  - SR
+  - AMO
+  - TSO
+  - DMO
+  - WM
+  - TOP
+  - ANALYST
+  - SUPPORT
+  - ADMIN
+  - SUPERADMIN
+  description: User role (docs/24 s8.5). One role per user; admin permission bundles are separate.

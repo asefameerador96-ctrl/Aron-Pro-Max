@@ -1,0 +1,28 @@
+DuesAdjustmentWrite:
+  type: object
+  description: '`amount_mtk` is the signed change of the outlet balance.'
+  required:
+  - client_uuid
+  - outlet_id
+  - kind
+  - amount_mtk
+  - reason
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    memo_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    kind:
+      type: string
+      enum:
+      - correction
+      - write_off
+    amount_mtk:
+      $ref: '#/components/schemas/Mtk'
+    reason:
+      $ref: '#/components/schemas/ChangeReason'

@@ -1,0 +1,20 @@
+CodeListKey:
+  type: string
+  enum:
+  - force_reason
+  - edit_reason
+  - void_reason
+  - visit_outcome
+  - skip_reason
+  - day_exception_reason
+  - stock_variance_reason
+  - task_type
+  - leave_type
+  - feedback_category
+  - qc_fault_type
+  - payment_mode
+  - outlet_close_reason
+  - submit_void_reason
+  - channel
+  - sub_channel
+  - geo_class

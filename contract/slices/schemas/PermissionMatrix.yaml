@@ -1,0 +1,46 @@
+PermissionMatrix:
+  type: object
+  required:
+  - config_version
+  - roles
+  - admin_roster
+  additionalProperties: false
+  properties:
+    config_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    roles:
+      type: array
+      maxItems: 20
+      items:
+        type: object
+        required:
+        - role
+        - menus
+        additionalProperties: false
+        properties:
+          role:
+            $ref: '#/components/schemas/Role'
+          menus:
+            type: array
+            maxItems: 200
+            items:
+              $ref: '#/components/schemas/MenuPermission'
+    admin_roster:
+      type: array
+      maxItems: 500
+      items:
+        type: object
+        required:
+        - user_id
+        - username
+        - role
+        additionalProperties: false
+        properties:
+          user_id:
+            $ref: '#/components/schemas/Id'
+          username:
+            $ref: '#/components/schemas/Username'
+          role:
+            $ref: '#/components/schemas/Role'
+          mfa_enabled:
+            type: boolean

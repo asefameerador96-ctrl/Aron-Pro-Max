@@ -1,0 +1,30 @@
+path: /v1/admin/geo/{level}
+method: post
+operation:
+  tags:
+  - admin-geography
+  operationId: createGeoNode
+  summary: Create a geography node.
+  parameters:
+  - $ref: '#/components/parameters/GeoLevelPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/GeoNodeWrite'
+  responses:
+    '201':
+      description: Created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GeoNode'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

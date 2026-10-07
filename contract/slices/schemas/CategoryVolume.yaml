@@ -1,0 +1,39 @@
+CategoryVolume:
+  type: object
+  required:
+  - category_code
+  - base_unit
+  - qty_base
+  - net_mtk
+  additionalProperties: false
+  properties:
+    category_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,30}$
+    base_unit:
+      type: string
+      enum:
+      - stick
+      - piece
+      - dozen
+    qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+    report_unit:
+      type:
+      - string
+      - 'null'
+      enum:
+      - stick
+      - piece
+      - dozen
+      - box
+      - pack
+      - null
+    qty_report:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+    net_mtk:
+      $ref: '#/components/schemas/Mtk'

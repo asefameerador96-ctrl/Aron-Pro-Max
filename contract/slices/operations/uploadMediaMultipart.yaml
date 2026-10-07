@@ -1,0 +1,34 @@
+path: /v1/media/upload
+method: post
+operation:
+  tags:
+  - media
+  operationId: uploadMediaMultipart
+  summary: Multipart fallback for one small non-evidence image (feedback); evidence photos always use SAS.
+  description: 'Idempotent by (`media_uuid`, `purpose`): a repeat returns `replayed: true` and stores nothing. Only
+    purposes
+
+    `feedback` and `support` are accepted here; at most 300 KB JPEG.
+
+    '
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          $ref: '#/components/schemas/MediaMultipartUpload'
+  responses:
+    '200':
+      description: Stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MediaUploaded'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '413':
+      $ref: '#/components/responses/PayloadTooLarge'
+    '415':
+      $ref: '#/components/responses/UnsupportedMediaType'

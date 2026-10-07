@@ -1,0 +1,32 @@
+path: /v1/admin/config/versions/{version}/rollback
+method: post
+operation:
+  tags:
+  - admin-config
+  operationId: rollbackConfigVersion
+  summary: Revert one version (or roll back to it); produces a NEW version, deletes nothing.
+  parameters:
+  - $ref: '#/components/parameters/ConfigVersionPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ConfigRollbackRequest'
+  responses:
+    '201':
+      description: Revert change created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigChange'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

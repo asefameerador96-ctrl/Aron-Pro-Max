@@ -1,0 +1,22 @@
+RefreshRequest:
+  type: object
+  required:
+  - grant
+  additionalProperties: false
+  properties:
+    refresh_token:
+      type:
+      - string
+      - 'null'
+      minLength: 43
+      maxLength: 64
+      description: Phone body token; null on the web (cookie).
+    grant:
+      type: string
+      enum:
+      - full
+      - upload
+    device_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'

@@ -1,0 +1,85 @@
+Sku:
+  type: object
+  required:
+  - id
+  - code
+  - variant_id
+  - category_code
+  - name
+  - short_name
+  - base_unit
+  - base_per_pack
+  - entry_unit_default
+  - report_factor
+  - sort
+  - status
+  additionalProperties: false
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    code:
+      type: string
+      pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$
+      examples:
+      - MaxR-10S
+    variant_id:
+      $ref: '#/components/schemas/Id'
+    category_code:
+      type: string
+      enum:
+      - cigarette
+      - bidi
+      - lighter
+      - match
+    name:
+      type: string
+      maxLength: 120
+    short_name:
+      type: string
+      maxLength: 20
+      description: Printed on the 58 mm memo.
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    base_unit:
+      type: string
+      enum:
+      - stick
+      - piece
+      - dozen
+    base_per_pack:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      description: Sticks per pack (10, 20, 25); 1 for lighter and match. The read-only pack badge is qty_base /
+        base_per_pack.
+    entry_unit_default:
+      $ref: '#/components/schemas/QtyUnit'
+    report_unit:
+      type:
+      - string
+      - 'null'
+      enum:
+      - stick
+      - piece
+      - dozen
+      - box
+      - pack
+      - null
+    report_factor:
+      $ref: '#/components/schemas/Decimal3'
+    sort:
+      type: integer
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    thumbnail_media_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    updated_at:
+      $ref: '#/components/schemas/Timestamp'
+    version:
+      type: integer
+      minimum: 1

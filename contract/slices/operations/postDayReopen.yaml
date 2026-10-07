@@ -1,0 +1,28 @@
+path: /v1/day/reopen
+method: post
+operation:
+  tags:
+  - day
+  operationId: postDayReopen
+  summary: Audited reopen of a final-submitted zone-day (roles in cfg.day.reopen_roles).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/DayReopenRequest'
+  responses:
+    '200':
+      description: Reopened.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DayReopenResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

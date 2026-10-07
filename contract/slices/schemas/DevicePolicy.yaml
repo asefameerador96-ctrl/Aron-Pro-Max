@@ -1,0 +1,161 @@
+DevicePolicy:
+  type: object
+  description: Device-owner policy (docs/24 s10.2). Applied by android:dpc; works offline once received.
+  required:
+  - policy_version
+  - lockdown_level
+  - generated_at
+  - user_restrictions
+  - global_settings
+  - self_protection
+  - permission_grants
+  - app_control
+  - schedule
+  - location
+  - status_report
+  - integrity
+  additionalProperties: false
+  properties:
+    policy_version:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+    lockdown_level:
+      $ref: '#/components/schemas/LockdownLevel'
+    generated_at:
+      $ref: '#/components/schemas/Timestamp'
+    user_restrictions:
+      type: object
+      description: UserManager restrictions set with DevicePolicyManager.addUserRestriction (true = restricted).
+      required:
+      - no_debugging_features
+      - no_install_unknown_sources
+      - no_install_apps
+      - no_factory_reset
+      - no_safe_boot
+      - no_add_user
+      - no_config_date_time
+      - no_usb_file_transfer
+      - no_config_location
+      additionalProperties: false
+      properties:
+        no_debugging_features:
+          type: boolean
+          description: 'prod true: developer options and USB debugging off; this also prevents selecting a mock-location
+            app.'
+        no_install_unknown_sources:
+          type: boolean
+        no_install_apps:
+          type: boolean
+          description: prod true; the DPC lifts it only while installing its own update.
+        no_factory_reset:
+          type: boolean
+        no_safe_boot:
+          type: boolean
+        no_add_user:
+          type: boolean
+        no_config_date_time:
+          type: boolean
+          description: prod true; with auto_time_required keeps the clock honest.
+        no_usb_file_transfer:
+          type: boolean
+        no_config_location:
+          type: boolean
+          description: True keeps location services on (API 28+).
+    global_settings:
+      type: object
+      required:
+      - auto_time_required
+      - adb_enabled
+      - location_mode_high_accuracy
+      additionalProperties: false
+      properties:
+        auto_time_required:
+          type: boolean
+        adb_enabled:
+          type: boolean
+          description: dev true (test phones keep USB debugging), prod false.
+        location_mode_high_accuracy:
+          type: boolean
+    self_protection:
+      type: object
+      required:
+      - uninstall_blocked
+      - user_control_disabled
+      - battery_optimisation_exempt
+      additionalProperties: false
+      properties:
+        uninstall_blocked:
+          type: boolean
+        user_control_disabled:
+          type: boolean
+          description: setUserControlDisabledPackages (API 30+) so the user cannot force-stop or clear data.
+        battery_optimisation_exempt:
+          type: boolean
+          description: Request and verify the battery-optimisation exemption and show the OEM auto-start guidance.
+    permission_grants:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/PermissionGrant'
+    app_control:
+      $ref: '#/components/schemas/AppControlPolicy'
+    schedule:
+      $ref: '#/components/schemas/BlockingSchedule'
+    location:
+      type: object
+      required:
+      - require_precise
+      - require_location_on
+      - breadcrumbs_enabled
+      - breadcrumb_interval_min
+      additionalProperties: false
+      properties:
+        require_precise:
+          type: boolean
+        require_location_on:
+          type: boolean
+        breadcrumbs_enabled:
+          type: boolean
+          description: Optional batched low-power breadcrumbs (cfg.geo.breadcrumbs_enabled, off by default).
+        breadcrumb_interval_min:
+          type: integer
+          minimum: 5
+          maximum: 120
+    status_report:
+      type: object
+      required:
+      - on_events
+      - min_interval_min
+      additionalProperties: false
+      properties:
+        on_events:
+          type: array
+          items:
+            type: string
+            enum:
+            - enrolment
+            - policy_applied
+            - check_in
+            - check_out
+            - boot
+            - integrity_change
+            - app_update
+        min_interval_min:
+          type: integer
+          minimum: 15
+          maximum: 1440
+    integrity:
+      type: object
+      required:
+      - play_integrity_required
+      - refresh_h
+      - key_attestation_required
+      additionalProperties: false
+      properties:
+        play_integrity_required:
+          type: boolean
+        refresh_h:
+          type: integer
+          minimum: 1
+          maximum: 168
+        key_attestation_required:
+          type: boolean

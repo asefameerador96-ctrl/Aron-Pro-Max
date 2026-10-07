@@ -1,0 +1,10 @@
+MediaPurpose:
+  type: string
+  enum:
+  - force_sale
+  - outlet_capture
+  - outlet_verification
+  - survey
+  - feedback
+  - support
+  - gift_photo

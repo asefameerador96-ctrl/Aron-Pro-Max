@@ -1,0 +1,54 @@
+headers:
+  XAronApi:
+    description: Present (value 1) on every API-originated response; its absence marks an edge response.
+    schema:
+      type: string
+      const: '1'
+  XRequestId:
+    description: Request id (echoes a client X-Request-Id UUID or is minted by the server); also in problem `request_id`.
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  XServerTime:
+    description: Server time at response (RFC 3339 UTC, ms). Phones store it as the trusted-time anchor (docs/24
+      s3.8).
+    schema:
+      $ref: '#/components/schemas/Timestamp'
+  XConfigVersion:
+    description: Current config version; a phone holding an older one pulls GET /v1/config/delta.
+    schema:
+      $ref: '#/components/schemas/ConfigVersionNumber'
+  XServerGeneration:
+    description: Server generation UUID; a change triggers GET /v1/sync/generation and the re-send protocol (docs/24
+      s4.8).
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  XBundleVersionCurrent:
+    description: Newest bundle_version for the caller and today; newer than the local one schedules a delta.
+    schema:
+      $ref: '#/components/schemas/BundleVersion'
+  ETag:
+    description: Strong entity tag.
+    schema:
+      type: string
+      maxLength: 120
+  RetryAfter:
+    description: Seconds to wait before retrying (the phone adds plus or minus 20 percent jitter, caps at 900).
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 3600
+  RateLimitLimit:
+    description: Requests allowed in the current window.
+    schema:
+      type: integer
+      minimum: 0
+  RateLimitRemaining:
+    description: Requests left in the current window.
+    schema:
+      type: integer
+      minimum: 0
+  RateLimitReset:
+    description: Seconds until the window resets.
+    schema:
+      type: integer
+      minimum: 0

@@ -1,0 +1,23 @@
+path: /v1/dashboards/geo-validation
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getGeoValidation
+  summary: Geo-validation, force-sale, mock, mismatch and suspicious-visit rates with risk-signal counts.
+  parameters:
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/GeoLevelQuery'
+  - $ref: '#/components/parameters/NodeIdQuery'
+  responses:
+    '200':
+      description: Geo integrity summary.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GeoValidationSummary'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

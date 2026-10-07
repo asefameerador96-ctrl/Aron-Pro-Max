@@ -1,0 +1,28 @@
+path: /v1/admin/assets
+method: post
+operation:
+  tags:
+  - admin-content
+  operationId: createAdminAssetUpload
+  summary: Write-only SAS for an admin asset (AV video, KV image, tutorial, manual PDF, SKU pack image, gift image).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/AdminAssetUploadRequest'
+  responses:
+    '200':
+      description: Upload URL.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AdminAssetUpload'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '413':
+      $ref: '#/components/responses/PayloadTooLarge'

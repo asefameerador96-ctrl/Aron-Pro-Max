@@ -1,0 +1,13 @@
+MediaReadUrl:
+  type: object
+  required:
+  - url
+  - expires_at
+  additionalProperties: false
+  properties:
+    url:
+      type: string
+      format: uri
+      maxLength: 2000
+    expires_at:
+      $ref: '#/components/schemas/Timestamp'

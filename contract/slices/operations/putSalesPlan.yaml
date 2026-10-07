@@ -1,0 +1,28 @@
+path: /v1/admin/sales-plans/{zone_id}
+method: put
+operation:
+  tags:
+  - admin-products
+  operationId: putSalesPlan
+  summary: Replace a zone's sales plan from a date (effective-dated; no overwrite of the past).
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SalesPlanWrite'
+  responses:
+    '200':
+      description: New plan version.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SalesPlan'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

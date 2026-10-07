@@ -1,0 +1,44 @@
+Holiday:
+  type: object
+  required:
+  - id
+  - date
+  - scope_type
+  - scope_id
+  - kind
+  - selling_day
+  - name_en
+  additionalProperties: false
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    scope_type:
+      type: string
+      enum:
+      - global
+      - wing
+      - division
+      - territory
+      - zone
+    scope_id:
+      type: integer
+      format: int64
+      minimum: 0
+    kind:
+      type: string
+      enum:
+      - holiday
+      - makeup_day
+      - emergency_off
+    selling_day:
+      type: boolean
+    name_en:
+      type: string
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120

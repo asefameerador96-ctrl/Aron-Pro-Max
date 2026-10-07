@@ -1,0 +1,42 @@
+OutletRequestVerificationPayload:
+  type: object
+  required:
+  - request_uuid
+  - decision
+  - fix
+  additionalProperties: false
+  properties:
+    request_uuid:
+      $ref: '#/components/schemas/Uuid'
+    decision:
+      type: string
+      enum:
+      - verified
+      - discarded
+    sub_channel_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    geo_class:
+      type:
+      - string
+      - 'null'
+      enum:
+      - Hill
+      - Urban
+      - SemiUrban
+      - Rural
+      - null
+    fix:
+      $ref: '#/components/schemas/GeoFix'
+    photo_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 500

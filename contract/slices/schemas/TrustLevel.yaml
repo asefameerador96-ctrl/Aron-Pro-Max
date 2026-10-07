@@ -1,0 +1,10 @@
+TrustLevel:
+  type: string
+  enum:
+  - high
+  - normal
+  - low
+  - blocked
+  description: high = device owner, hardware key attestation and Play Integrity pass; normal = enrolled and attested,
+    integrity unevaluated; low = attestation failed or a repack; blocked = integrity failed while cfg.device.require_integrity
+    is true.

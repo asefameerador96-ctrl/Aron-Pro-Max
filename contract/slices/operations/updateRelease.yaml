@@ -1,0 +1,37 @@
+path: /v1/admin/releases/{release_id}
+method: patch
+operation:
+  tags:
+  - admin-releases
+  operationId: updateRelease
+  summary: Publish, block or retire a release, or change its staged rollout percentage.
+  parameters:
+  - name: release_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/IfMatch'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/AppReleasePatch'
+  responses:
+    '200':
+      description: Updated.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AppRelease'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '412':
+      $ref: '#/components/responses/PreconditionFailed'

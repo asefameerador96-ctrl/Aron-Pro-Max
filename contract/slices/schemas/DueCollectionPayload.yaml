@@ -1,0 +1,43 @@
+DueCollectionPayload:
+  type: object
+  required:
+  - outlet_id
+  - against_memo_client_uuid
+  - against_memo_no
+  - against_memo_business_date
+  - amount_mtk
+  - is_full_settlement
+  - outstanding_before_mtk
+  - payment_mode
+  additionalProperties: false
+  properties:
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    against_memo_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    against_memo_no:
+      type: string
+      maxLength: 40
+      description: Native memo number or the imported number of an old memo.
+    against_memo_business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    amount_mtk:
+      type: integer
+      format: int64
+      minimum: 10
+    is_full_settlement:
+      type: boolean
+    outstanding_before_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    payment_mode:
+      type: string
+      enum:
+      - cash
+    visit_client_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    fix:
+      oneOf:
+      - $ref: '#/components/schemas/GeoFix'
+      - type: 'null'

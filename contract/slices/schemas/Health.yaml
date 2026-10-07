@@ -1,0 +1,26 @@
+Health:
+  type: object
+  required:
+  - status
+  - api
+  - server_time
+  - generation
+  - build
+  additionalProperties: false
+  properties:
+    status:
+      type: string
+      enum:
+      - ok
+      - degraded
+    api:
+      type: string
+      const: /v1
+    server_time:
+      $ref: '#/components/schemas/Timestamp'
+    generation:
+      $ref: '#/components/schemas/Uuid'
+    build:
+      type: string
+      maxLength: 80
+      description: Image tag or git SHA of the running build.

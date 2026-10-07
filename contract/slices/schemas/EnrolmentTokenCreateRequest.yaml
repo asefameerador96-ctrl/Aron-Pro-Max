@@ -1,0 +1,65 @@
+EnrolmentTokenCreateRequest:
+  type: object
+  required:
+  - flavour
+  - lockdown_level
+  - max_uses
+  - expires_in_h
+  additionalProperties: false
+  properties:
+    flavour:
+      $ref: '#/components/schemas/AppFlavour'
+    lockdown_level:
+      $ref: '#/components/schemas/LockdownLevel'
+    max_uses:
+      type: integer
+      minimum: 1
+      maximum: 500
+    expires_in_h:
+      type: integer
+      minimum: 1
+      maximum: 168
+    zone_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    release_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: APK to provision; default the latest published release of the flavour.
+    wifi:
+      description: Optional Wi-Fi for the setup wizard; included in the QR only, never stored.
+      type:
+      - object
+      - 'null'
+      required:
+      - ssid
+      - security_type
+      additionalProperties: false
+      properties:
+        ssid:
+          type: string
+          minLength: 1
+          maxLength: 32
+        security_type:
+          type: string
+          enum:
+          - NONE
+          - WPA
+          - WEP
+        password:
+          type:
+          - string
+          - 'null'
+          maxLength: 63
+          writeOnly: true
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 300

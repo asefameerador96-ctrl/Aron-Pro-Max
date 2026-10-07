@@ -1,0 +1,26 @@
+path: /v1/admin/outlets/outlet-kind
+method: post
+operation:
+  tags:
+  - admin-outlets
+  operationId: bulkSetOutletKind
+  summary: Mark outlets wholesale or retail in bulk, idempotent by batch_uuid, one audit row per outlet.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/OutletKindBulkWrite'
+  responses:
+    '200':
+      description: Applied (or the stored result on replay).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BulkResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

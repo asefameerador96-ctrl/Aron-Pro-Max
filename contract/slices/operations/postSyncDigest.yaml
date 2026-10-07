@@ -1,0 +1,28 @@
+path: /v1/sync/digest
+method: post
+operation:
+  tags:
+  - sync
+  operationId: postSyncDigest
+  summary: Compare per-type bucket digests of recent days; the server names the buckets to re-send.
+  parameters:
+  - $ref: '#/components/parameters/XDeviceIdRequired'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SyncDigestRequest'
+  responses:
+    '200':
+      description: Buckets whose count or hash differ.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SyncDigestResponse'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'

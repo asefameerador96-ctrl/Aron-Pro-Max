@@ -1,0 +1,43 @@
+ProgrammesSection:
+  type: object
+  description: Programme data for the user's routes (docs/24 s4.10, s4.14). Balances are as of the previous business
+    day.
+  required:
+  - programmes
+  - loyalty
+  - gifts
+  - astha_targets
+  - gift_assignments
+  - pending_gift_verifications
+  additionalProperties: false
+  properties:
+    programmes:
+      type: array
+      maxItems: 50
+      items:
+        $ref: '#/components/schemas/Programme'
+    loyalty:
+      type: array
+      maxItems: 11000
+      items:
+        $ref: '#/components/schemas/LoyaltyBalance'
+    gifts:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/Gift'
+    astha_targets:
+      type: array
+      maxItems: 20000
+      items:
+        $ref: '#/components/schemas/AsthaTargetRow'
+    gift_assignments:
+      type: array
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/GiftAssignment'
+    pending_gift_verifications:
+      type: array
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/PendingGiftVerification'

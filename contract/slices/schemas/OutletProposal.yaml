@@ -1,0 +1,54 @@
+OutletProposal:
+  type: object
+  description: Proposed outlet facts; which members are required depends on the request type (docs/24 s12.2).
+  additionalProperties: false
+  properties:
+    name:
+      type: string
+      minLength: 2
+      maxLength: 120
+    name_bn:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    owner_name:
+      type: string
+      minLength: 2
+      maxLength: 120
+    contact_number:
+      $ref: '#/components/schemas/PhoneBd'
+    address:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+    cluster_id:
+      $ref: '#/components/schemas/Id'
+    sub_channel_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    geo_class:
+      type:
+      - string
+      - 'null'
+      enum:
+      - Hill
+      - Urban
+      - SemiUrban
+      - Rural
+      - null
+    lat:
+      type: number
+      minimum: -90
+      maximum: 90
+    lng:
+      type: number
+      minimum: -180
+      maximum: 180
+    close_reason_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$

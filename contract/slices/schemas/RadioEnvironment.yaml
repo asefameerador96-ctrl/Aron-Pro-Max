@@ -1,0 +1,51 @@
+RadioEnvironment:
+  type: object
+  description: Passive serving and neighbour cells and hashed Wi-Fi BSSIDs; captured only when cfg.geo.radio_env_enabled
+    (off until the privacy sign-off).
+  required:
+  - cells
+  - wifi_hashes
+  additionalProperties: false
+  properties:
+    cells:
+      type: array
+      maxItems: 8
+      items:
+        type: object
+        required:
+        - mcc
+        - mnc
+        - tac
+        - ci
+        - serving
+        additionalProperties: false
+        properties:
+          mcc:
+            type: integer
+            minimum: 0
+            maximum: 999
+          mnc:
+            type: integer
+            minimum: 0
+            maximum: 999
+          tac:
+            type: integer
+            minimum: 0
+          ci:
+            type: integer
+            format: int64
+            minimum: 0
+          rsrp_dbm:
+            type:
+            - integer
+            - 'null'
+            minimum: -160
+            maximum: 0
+          serving:
+            type: boolean
+    wifi_hashes:
+      type: array
+      maxItems: 8
+      items:
+        type: string
+        pattern: ^[0-9a-f]{16}$

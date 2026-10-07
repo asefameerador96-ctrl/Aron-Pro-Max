@@ -1,0 +1,38 @@
+VisitPlan:
+  type: object
+  required:
+  - plan_uuid
+  - planner_user_id
+  - plan_date
+  - route_id
+  - outlets
+  additionalProperties: false
+  properties:
+    plan_uuid:
+      $ref: '#/components/schemas/Uuid'
+    planner_user_id:
+      $ref: '#/components/schemas/Id'
+    plan_date:
+      $ref: '#/components/schemas/BusinessDate'
+    route_id:
+      $ref: '#/components/schemas/Id'
+    outlets:
+      type: array
+      items:
+        type: object
+        required:
+        - outlet_id
+        - status
+        additionalProperties: false
+        properties:
+          outlet_id:
+            $ref: '#/components/schemas/Id'
+          status:
+            type: string
+            enum:
+            - pending
+            - completed
+          completed_at:
+            oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'

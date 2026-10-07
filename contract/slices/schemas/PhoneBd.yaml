@@ -1,0 +1,4 @@
+PhoneBd:
+  type: string
+  pattern: ^01[3-9]\d{8}$
+  description: Bangladesh mobile number, 11 digits with the leading 0 (Bengali digits are normalised before validation).

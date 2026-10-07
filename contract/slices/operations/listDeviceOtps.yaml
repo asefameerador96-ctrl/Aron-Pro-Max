@@ -1,0 +1,23 @@
+path: /v1/admin/device-otps
+method: get
+operation:
+  tags:
+  - admin-devices
+  operationId: listDeviceOtps
+  summary: SR Device OTP panel (view-only for the TSO; one aggregated audit event per page view).
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of users with their live OTP, if any.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeviceOtpPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

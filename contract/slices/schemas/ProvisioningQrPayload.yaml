@@ -1,0 +1,71 @@
+ProvisioningQrPayload:
+  type: object
+  description: Android fully-managed device provisioning extras (encoded as JSON text in the QR). Keys are Android
+    constants.
+  required:
+  - android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME
+  - android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION
+  - android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM
+  - android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED
+  - android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE
+  additionalProperties: false
+  properties:
+    android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME:
+      type: string
+      pattern: ^com\.aktcl\.aron\.(sr|amo|tso)/com\.aktcl\.aron\.dpc\.AronDeviceAdminReceiver$
+    android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION:
+      type: string
+      format: uri
+      maxLength: 1000
+    android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{43}$
+      description: URL-safe base64 (no padding) SHA-256 of the APK signing certificate.
+    android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED:
+      type: boolean
+    android.app.extra.PROVISIONING_SKIP_ENCRYPTION:
+      type: boolean
+    android.app.extra.PROVISIONING_WIFI_SSID:
+      type: string
+      maxLength: 34
+    android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE:
+      type: string
+      enum:
+      - NONE
+      - WPA
+      - WEP
+    android.app.extra.PROVISIONING_WIFI_PASSWORD:
+      type: string
+      maxLength: 63
+    android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE:
+      type: object
+      required:
+      - aron.enrolment_token
+      - aron.api_base_url
+      - aron.env
+      - aron.flavour
+      - aron.lockdown_level
+      additionalProperties: false
+      properties:
+        aron.enrolment_token:
+          type: string
+          minLength: 43
+          maxLength: 64
+          pattern: ^[A-Za-z0-9_-]+$
+        aron.api_base_url:
+          type: string
+          format: uri
+          maxLength: 200
+        aron.env:
+          type: string
+          enum:
+          - dev
+          - staging
+          - prod
+        aron.flavour:
+          $ref: '#/components/schemas/AppFlavour'
+        aron.lockdown_level:
+          $ref: '#/components/schemas/LockdownLevel'
+        aron.zone_code:
+          type: string
+          maxLength: 40
