@@ -107,19 +107,23 @@ fun Application.installAronPlatform(ctx: PlatformContext) {
         on(ResponseSent) { call ->
             val ms = (System.nanoTime() - (call.attributes.getOrNull(StartNanosKey) ?: System.nanoTime())) / 1_000_000
             val p = call.attributes.getOrNull(PrincipalKey)
-            val line = buildJsonObject {
-                put("request_id", call.attributes.getOrNull(RequestIdKey))
-                put("method", call.request.httpMethod.value)
-                put("route", call.request.path())
-                put("status", call.response.status()?.value ?: 0)
-                put("duration_ms", ms)
-                put("user_id", p?.userId)
-                put("device_id", p?.deviceId)
-                put("problem_code", call.attributes.getOrNull(ProblemCodeKey))
-            }
+            val line = requestLogLine(
+                requestId = call.attributes.getOrNull(RequestIdKey),
+                method = call.request.httpMethod.value,
+                route = call.attributes.getOrNull(RouteTemplateKey) ?: UNMATCHED_ROUTE,
+                status = call.response.status()?.value ?: 0,
+                durationMs = ms,
+                userId = p?.userId,
+                deviceUuid = p?.deviceUuid,
+                problemCode = call.attributes.getOrNull(ProblemCodeKey),
+                appVersion = call.request.headers["X-App-Version"],
+                revision = ctx.build,
+            )
             requestLog.info(line.toString())
         }
     })
+    // The route template (`/v1/admin/users/{id}`), never the raw path: raw paths carry ids and blow up log cardinality.
+    monitor.subscribe(io.ktor.server.routing.RoutingRoot.RoutingCallStarted) { rc -> rc.attributes.put(RouteTemplateKey, routeTemplate(rc.route)) }
     install(ContentNegotiation) {
         json(ResponseJson)
         // Answer JSON whatever the Accept header says (a proxy or captive portal may rewrite it); never a bare 406.
@@ -203,6 +207,38 @@ fun isTransientDbFailure(e: Throwable): Boolean = generateSequence(e) { it.cause
 }
 
 private const val STATEMENT_TIMEOUT = "57014"
+
+private val RouteTemplateKey = AttributeKey<String>("aron.route_template")
+private const val UNMATCHED_ROUTE = "(unmatched)"
+private val ROUTE_MARKERS = Regex("/\\([^)]*\\)")
+
+/** `/v1/(aron-auth)/admin/users/{id}/(method:GET)` becomes `/v1/admin/users/{id}`. */
+fun routeTemplate(route: io.ktor.server.routing.RoutingNode): String = route.toString().replace(ROUTE_MARKERS, "").ifEmpty { "/" }
+
+/** A pseudonymous log id (D-136): the same user or phone gives the same value, which never reveals the id itself. */
+fun logPseudonym(kind: String, id: String): String = SecurityEvents.sha256Hex("aron-log-$kind|$id").take(16)
+
+/**
+ * One request log line (AUD-REL-08): route template, status, duration, hashed user and device, app version and the
+ * server revision. Never a raw path, query, body, username, token or plain id.
+ */
+fun requestLogLine(
+    requestId: String?, method: String, route: String, status: Int, durationMs: Long, userId: Long?, deviceUuid: String?,
+    problemCode: String?, appVersion: String?, revision: String,
+) = buildJsonObject {
+    put("request_id", requestId)
+    put("method", method)
+    put("route", route)
+    put("status", status)
+    put("duration_ms", durationMs)
+    put("user", userId?.let { logPseudonym("user", it.toString()) })
+    put("device", deviceUuid?.let { logPseudonym("device", it) })
+    put("problem_code", problemCode)
+    put("app_version", appVersion?.take(40)?.takeIf { APP_VERSION.matches(it) })
+    put("revision", revision)
+}
+
+private val APP_VERSION = Regex("^[0-9A-Za-z.+_-]{1,40}$")
 
 const val NIL_GENERATION = "00000000-0000-4000-8000-000000000000"
 

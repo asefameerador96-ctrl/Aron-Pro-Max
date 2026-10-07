@@ -73,8 +73,8 @@ class LogSecurityEvents(private val sink: (String) -> Unit = { LoggerFactory.get
         val line = buildJsonObject {
             put("security_event", e.kind.wire)
             put("at", e.at.toString())
-            put("user", e.userId?.let { SecurityEvents.sha256Hex("aron-log-user|$it").take(16) })
-            put("device", e.deviceUuid?.let { SecurityEvents.sha256Hex("aron-log-device|$it").take(16) })
+            put("user", e.userId?.let { logPseudonym("user", it.toString()) })
+            put("device", e.deviceUuid?.let { logPseudonym("device", it) })
             put("request_id", e.requestId)
             e.detail.toSortedMap().forEach { (k, v) -> put(k, v.take(200)) }
         }
