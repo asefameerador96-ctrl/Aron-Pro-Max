@@ -43,6 +43,7 @@ var secretNames = {
   jwtSigningKey: 'aron-jwt-signing-key'
   jwtKid: 'aron-jwt-kid'
   fcmServiceAccount: 'aron-fcm-service-account'
+  playIntegrityServiceAccount: 'aron-play-integrity-service-account'
   dbAdminPassword: 'aron-db-admin-password'
   dbUrl: 'aron-db-url'
   dbDirectUrl: 'aron-db-direct-url'
