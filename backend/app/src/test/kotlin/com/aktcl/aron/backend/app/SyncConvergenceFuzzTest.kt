@@ -220,6 +220,17 @@ class SyncConvergenceFuzzTest {
         val memoDue = LinkedHashMap<String, Long>() // memo client_uuid -> expected open balance at the end
     }
 
+    /**
+     * Expected `server_totals` money of the day. Every run uses the same user and business date, so it is cumulative
+     * over the runs of this test: a doubled number anywhere (memo, line, collection) shows up here.
+     */
+    private class Totals {
+        var activeMemos = 0; var gross = 0L; var due = 0L; var collected = 0L
+        val sold = sortedMapOf<String, Long>()
+        val accepted = sortedMapOf<String, Int>()
+    }
+    private val expected = Totals()
+
     private fun model(rnd: kotlin.random.Random): Model {
         val m = Model()
         repeat(rnd.nextInt(2, 6)) {
@@ -232,10 +243,14 @@ class SyncConvergenceFuzzTest {
                 val paid = minOf(due, 1_000L * rnd.nextInt(1, 40))
                 m.records += collection(outlet, s.memo, s.memoNo, paid, due)
                 open -= paid
+                expected.collected += paid
             }
             if (rnd.nextInt(5) == 0) {
                 m.records += void(s.memo, s.memoNo)
                 open = 0 // a voided memo owes nothing, in every arrival order (F-SYS-060)
+            } else {
+                expected.activeMemos++; expected.gross += 20 * skus[0].second + 10 * skus[1].second; expected.due += due
+                expected.sold.merge(skus[0].first.toString(), 20L, Long::plus); expected.sold.merge(skus[1].first.toString(), 10L, Long::plus)
             }
             m.memoDue[s.memo] = open
         }
@@ -276,14 +291,28 @@ class SyncConvergenceFuzzTest {
             }
             var b = 0
             while (b < bodies.size) {
-                if (b + 1 < bodies.size && rnd.nextInt(4) == 0) {
+                if (rnd.nextInt(6) == 0) {
+                    // The same batch twice in flight (a retry fired before the first answer): the claimed batch row has
+                    // no stored response yet, the state a crash between commit and response leaves. Each copy is
+                    // answered with acks or an infrastructure retry; the oracle below proves nothing was stored twice.
+                    val twin = coroutineScope { listOf(async { client.sendBody(token, bodies[b]) }, async { client.sendBody(token, bodies[b]) }).awaitAll() }
+                    twin.forEach { r ->
+                        val st = r["http_status"]?.jsonPrimitive?.content?.toInt()
+                        assertTrue(st == null || st == 409 || st == 503 || st == 429, "seed=$seed: a concurrent copy is answered with acks or a retry: $r")
+                        note(r)
+                    }
+                    b++
+                } else if (b + 1 < bodies.size && rnd.nextInt(4) == 0) {
                     val pair = coroutineScope { listOf(async { client.sendBody(token, bodies[b]) }, async { client.sendBody(token, bodies[b + 1]) }).awaitAll() }
                     pair.forEach(::note); b += 2
                 } else {
-                    val first = client.sendBody(token, bodies[b]); note(first)
+                    // A lost response (timeout, process killed): the server stored the batch, the phone saw no acks, so
+                    // its outbox resends those records later under a new batch_uuid and they must come back duplicate.
+                    val first = client.sendBody(token, bodies[b]); if (rnd.nextInt(4) != 0) note(first)
                     if (rnd.nextInt(3) == 0) {
                         val replay = client.sendBody(token, bodies[b])
-                        if (first["acks"] != null && replay["acks"] != null) {
+                        if (first["acks"] != null) {
+                            assertEquals("true", replay["replayed"]?.jsonPrimitive?.content, "seed=$seed: a replay of a completed batch is answered from the stored response: $replay")
                             assertEquals(first["acks"], replay["acks"], "seed=$seed: a replayed batch_uuid answers the same acks")
                         }
                     }
@@ -298,7 +327,29 @@ class SyncConvergenceFuzzTest {
                 pending.chunked(50).forEach { note(client.send(token, it)) }
             }
 
+            // 2b. The whole day resent once more under new batch_uuids (a reinstalled outbox, a lost ack of the last
+            // batch): every record must answer duplicate and change nothing.
+            var last: JsonObject? = null
+            m.records.shuffled(rnd).chunked(20).forEach { c ->
+                val r = client.send(token, c); last = r
+                val notDup = r["acks"]?.jsonArray?.filter { it.jsonObject["status"]!!.jsonPrimitive.content != "duplicate" }
+                assertTrue(notDup != null && notDup.isEmpty(), "seed=$seed: a full resend answers duplicate for every record: ${notDup ?: r}")
+            }
+
             // 3. The oracle.
+            m.records.groupBy { it["type"]!!.jsonPrimitive.content }.forEach { (t, rs) -> expected.accepted.merge(t, rs.size, Int::plus) }
+            val totals = last!!["server_totals"]!!.jsonArray.map { it.jsonObject }.single { it["business_date"]!!.jsonPrimitive.content == day }
+            val money = totals["money"]!!.jsonObject
+            fun mny(k: String) = money[k]!!.jsonPrimitive.content.toLong()
+            assertEquals(
+                listOf(expected.activeMemos.toLong(), expected.gross, expected.gross, expected.due, expected.gross - expected.due, expected.collected),
+                listOf(mny("active_memo_count"), mny("gross_mtk"), mny("net_mtk"), mny("due_mtk"), mny("paid_mtk"), mny("due_collected_mtk")),
+                "seed=$seed: server_totals money (count, gross, net, due, paid, collected) equals the model, cumulative over runs",
+            )
+            assertEquals(expected.sold.toMap(), money["sold_qty_base_by_sku"]!!.jsonObject.mapValues { it.value.jsonPrimitive.content.toLong() }, "seed=$seed: sold sticks by sku")
+            val outcomeCounts = totals["by_type"]!!.jsonObject
+            assertEquals(expected.accepted.toMap(), outcomeCounts.mapValues { it.value.jsonObject["accepted"]!!.jsonPrimitive.content.toInt() }, "seed=$seed: server_totals accepted per type")
+            assertTrue(outcomeCounts.values.all { it.jsonObject["rejected"]!!.jsonPrimitive.content == "0" && it.jsonObject["quarantined"]!!.jsonPrimitive.content == "0" }, "seed=$seed: nothing left rejected or quarantined: $outcomeCounts")
             val notStored = m.records.filter { r -> acks[r["client_uuid"]!!.jsonPrimitive.content]?.let(::stored) != true }
                 .map { it["type"]!!.jsonPrimitive.content + ":" + (acks[it["client_uuid"]!!.jsonPrimitive.content]?.toString() ?: "no ack") }
             assertTrue(notStored.isEmpty(), "seed=$seed: every record is stored after the outbox drains: $notStored")
@@ -318,6 +369,23 @@ class SyncConvergenceFuzzTest {
             }
             for ((memo, open) in m.memoDue) {
                 assertEquals(open, memoBalance(memo), "seed=$seed: memo $memo ends at its in-order balance")
+            }
+
+            // 4. A stored client_uuid resent with other content is quarantined payload_conflict and changes nothing.
+            val victim = m.records[rnd.nextInt(m.records.size)]
+            val changed = JsonObject(victim + ("captured_elapsed_ms" to kotlinx.serialization.json.JsonPrimitive(1)))
+            val conflict = client.send(token, listOf(changed))["acks"]!!.jsonArray.single().jsonObject
+            assertEquals("payload_conflict", conflict["code"]?.jsonPrimitive?.content, "seed=$seed: same uuid, other content: $conflict")
+            for ((memo, open) in m.memoDue) assertEquals(open, memoBalance(memo), "seed=$seed: a payload conflict leaves memo $memo unchanged")
+
+            // 5. A batch_uuid reused with other content is refused whole (409 ERR_SYNC_BATCH_UUID_REUSED), nothing stored.
+            if (bodies.isNotEmpty()) {
+                val reusedUuid = json(bodies[0])["batch_uuid"]!!.jsonPrimitive.content
+                val stranger = sale(outlets[0], 1_000L)
+                val r = client.sendBody(token, batch(stranger.records, reusedUuid))
+                assertEquals("409", r["http_status"]?.jsonPrimitive?.content, "seed=$seed: reused batch_uuid with other content: $r")
+                assertTrue("ERR_SYNC_BATCH_UUID_REUSED" in (r["body"]?.jsonPrimitive?.content ?: ""), "seed=$seed: $r")
+                assertEquals(0L, count("SELECT count(*) FROM app.visit WHERE client_uuid = '${stranger.visit}'"), "seed=$seed: nothing of a refused batch is stored")
             }
         }
         // The schedules must really have been hostile: parents missing (retryable answers) and duplicates seen.
