@@ -54,6 +54,7 @@ GET /v1/dashboards/daily-tracking -> gap: backend-reports
 GET /v1/dashboards/login-submit -> case OpsApiTest#v12AdditionsAreScopedAndConsistent
 GET /v1/dashboards/summary -> gap: backend-reports
 GET /v1/dashboards/sync-health -> case OpsApiTest#checker_syncHealthCountsOnlyRowsInsideTheViewersReach
+GET /v1/day/final-submit/preview -> case DayApiTest#zoneDayOutsideReachAndFieldRolesAreRefused
 GET /v1/feedback -> case FeedbackTest#randomisedListsNeverLeakFeedbackOutsideTheCallersReach
 GET /v1/leave -> case LeaveTest#randomisedListsNeverLeakLeaveOutsideTheCallersReach
 GET /v1/me -> exempt: the caller's own account, token or phone only; no geography rows
@@ -62,6 +63,7 @@ GET /v1/report-exports/{export_id} -> gap: backend-reports
 GET /v1/reports -> gap: backend-reports
 GET /v1/routes/{id}/assignments -> case RouteAssignmentsTest#randomisedCallersNeverSeeARouteOutsideTheirReach
 GET /v1/sync/bundle -> case BundleAcceptanceTest#theBundleHoldsOnlyTheCallersOwnRoutesAndTheirOutletsWhateverTheQuerySays
+GET /v1/sync/generation -> exempt: one company-wide database lineage row, identical for every caller; no scoped data
 GET /v1/tasks -> case TasksCheckerTest#listScope
 GET /v1/team/locations -> gap: backend-reports
 GET /v1/team/stock -> gap: backend-reports
@@ -116,6 +118,8 @@ POST /v1/auth/bind-device -> exempt: the caller's own account, token or phone on
 POST /v1/auth/change-password -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/logout -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/dashboards/daily-tracking/actions -> case DailyTrackingTest#checker_sameUuidByAnotherUserIsAConflictAndNeverALeak
+POST /v1/day/final-submit -> case DayApiTest#zoneDayOutsideReachAndFieldRolesAreRefused
+POST /v1/day/sales-submit -> exempt: the caller's own route-day only; ingest re-checks the route against the uploader's assignment (BatchCheckerTest scope cases)
 POST /v1/feedback -> exempt: the caller submits its own feedback record; no other user's rows are read or written
 POST /v1/leave -> exempt: the caller files its own leave request; no other user's rows are read or written
 POST /v1/leave/{leave_uuid}/decision -> case CheckerBackendAdminTest#unknownAndOutOfReachLeaveDecisionLookTheSame

@@ -62,7 +62,8 @@ fun main() {
             AggregationWorker(workerDb).start()
             com.aktcl.aron.backend.masterdata.RiskSignalJob(com.aktcl.aron.backend.masterdata.RiskSignalEvaluator(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)))).start()
             com.aktcl.aron.backend.sync.RouteDayPlanningJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
-            log.info("aron worker started (aggregation, risk signals, route-day planning)")
+            com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
+            log.info("aron worker started (aggregation, risk signals, route-day planning, geo re-check sweep)")
             Thread.currentThread().join()
         }
     }
