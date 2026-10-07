@@ -11,11 +11,24 @@
 --   bi_reader BI and other products (read replica): read dw only (views are the contract, docs/31 s3)
 
 DO $$
-DECLARE r text;
+DECLARE
+  r    text;
+  attr record;
 BEGIN
   FOREACH r IN ARRAY ARRAY['api_rw', 'worker_rw', 'jobs_rw', 'web_ro', 'bi_reader'] LOOP
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+    SELECT * INTO attr FROM pg_roles WHERE rolname = r;
+    IF NOT FOUND THEN
       EXECUTE format('CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT', r);
+    ELSE
+      -- A role left on the server by an earlier install gets the intended attributes back. Only a superuser may touch
+      -- SUPERUSER and BYPASSRLS, so a role holding either stops the migration for a human to fix.
+      IF attr.rolsuper OR attr.rolbypassrls THEN
+        RAISE EXCEPTION 'role % is superuser or bypasses RLS; fix it by hand before migrating', r;
+      END IF;
+      IF attr.rolcanlogin THEN EXECUTE format('ALTER ROLE %I NOLOGIN', r); END IF;
+      IF attr.rolcreatedb THEN EXECUTE format('ALTER ROLE %I NOCREATEDB', r); END IF;
+      IF attr.rolcreaterole THEN EXECUTE format('ALTER ROLE %I NOCREATEROLE', r); END IF;
+      IF attr.rolinherit THEN EXECUTE format('ALTER ROLE %I NOINHERIT', r); END IF;
     END IF;
   END LOOP;
 END $$;
@@ -42,6 +55,7 @@ INSERT INTO app.db_role_grant (role, schema_name, object, privileges, except_tab
   ('api_rw', 'app', '*/update', 'UPDATE',
    '{db_role_grant,partition_policy,audit_log,domain_event,due_ledger,loyalty_ledger,outlet_location_history,outlet_request_event,device_status_report,submit_void_event,route_day_void_barrier,geo_fix,stock_movement,indent_movement,risk_signal,event_consumer,server_generation}',
    'state and lifecycle updates; the guard triggers limit which columns change'),
+  ('api_rw', 'app', 'auth_lockout', 'DELETE', '{}', 'a successful login clears the lockout counter (not a transaction table)'),
   ('api_rw', 'dw', '*', 'SELECT', '{}', 'API read path (app home, dashboards)'),
   ('worker_rw', 'app', '*', 'SELECT', '{}', 'projector and jobs read capture tables'),
   ('worker_rw', 'dw', '*', 'SELECT, INSERT, UPDATE, DELETE', '{}', 'aggregates and facts are rebuilt by the worker'),
@@ -60,10 +74,10 @@ INSERT INTO app.db_role_grant (role, schema_name, object, privileges, except_tab
   ('worker_rw', 'app', 'ingest_registry', 'DELETE', '{}', 'retention after cfg.retention.ingest_registry_days'),
   ('worker_rw', 'app', 'sync_batch', 'DELETE', '{}', 'replay store expiry'),
   ('worker_rw', 'app', 'device_nonce', 'DELETE', '{}', 'expired nonces'),
-  ('web_ro', 'dw', '*', 'SELECT', '{}', 'dashboards read aggregates only'),
+  ('web_ro', 'dw', '*', 'SELECT', '{fact_geo_fix,fact_attendance}', 'dashboards read aggregates only; no PII facts'),
   ('web_ro', 'app', 'code_list', 'SELECT', '{}', 'labels of business codes'),
   ('web_ro', 'app', 'code_list_item', 'SELECT', '{}', 'labels of business codes'),
-  ('bi_reader', 'dw', '*', 'SELECT', '{}', 'stable dw views and tables; nothing in app');
+  ('bi_reader', 'dw', '*', 'SELECT', '{fact_geo_fix,fact_attendance}', 'stable dw views and tables; no PII facts; nothing in app');
 
 -- Revokes everything the five roles hold on app and dw tables and grants exactly the map on tables, partitioned
 -- parents and views (never on single partitions: rows are reached through the parent). Idempotent.
@@ -86,6 +100,14 @@ BEGIN
       EXECUTE format('GRANT %s ON %I.%I TO %I', g.privileges, g.schema_name, t.relname, g.role);
     END LOOP;
   END LOOP;
+  -- Sequences behind serial columns (identity columns need none) and functions created by later migrations.
+  EXECUTE 'GRANT USAGE ON ALL SEQUENCES IN SCHEMA app TO api_rw, worker_rw';
+  EXECUTE 'GRANT USAGE ON ALL SEQUENCES IN SCHEMA dw TO worker_rw';
+  EXECUTE 'REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA app, dw FROM PUBLIC';
+  EXECUTE 'GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO api_rw, worker_rw';
+  EXECUTE 'GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA dw TO api_rw, worker_rw, web_ro, bi_reader';
+  EXECUTE 'REVOKE EXECUTE ON FUNCTION app.apply_db_role_grants(), app.ensure_partitions(date, date) FROM api_rw, worker_rw';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION app.ensure_partitions(date, date) TO jobs_rw';
 END $$;
 REVOKE EXECUTE ON FUNCTION app.apply_db_role_grants() FROM PUBLIC;
 
@@ -103,6 +125,9 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA dw TO worker_rw;
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA app FROM PUBLIC;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO api_rw, worker_rw;
 REVOKE EXECUTE ON FUNCTION app.apply_db_role_grants(), app.ensure_partitions(date, date) FROM api_rw, worker_rw;
+-- Functions a later migration creates are not executable by PUBLIC (SECURITY DEFINER ones included); the migration
+-- calls app.apply_db_role_grants() to give the runtime roles what the map says.
+ALTER DEFAULT PRIVILEGES IN SCHEMA app, dw REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 ALTER FUNCTION app.ensure_partitions(date, date) SECURITY DEFINER SET search_path = pg_catalog, app;
 GRANT EXECUTE ON FUNCTION app.ensure_partitions(date, date) TO jobs_rw;
 

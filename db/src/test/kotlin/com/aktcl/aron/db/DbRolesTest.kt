@@ -41,7 +41,8 @@ class DbRolesTest {
     @Test
     fun theRolesAreNologinGroupsWithoutSpecialPowers() = db.connect().use { c ->
         roles.forEach { r ->
-            assertEquals("f|f|f|f|f", c.scalar("SELECT concat_ws('|', rolcanlogin, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb) FROM pg_roles WHERE rolname = ?", r), r)
+            val inherit = if (r == "jobs_rw") "" else ""
+            assertEquals("f|f|f|f|f|f$inherit", c.scalar("SELECT concat_ws('|', rolcanlogin, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb, rolinherit) FROM pg_roles WHERE rolname = ?", r), r)
         }
     }
 
@@ -54,6 +55,10 @@ class DbRolesTest {
             Triple("api_rw", "app.audit_log", "INSERT") to true, Triple("api_rw", "app.audit_log", "UPDATE") to false,
             Triple("api_rw", "app.due_ledger", "UPDATE") to false, Triple("api_rw", "app.domain_event", "UPDATE") to false,
             Triple("api_rw", "app.dirty_key", "UPDATE") to true, Triple("api_rw", "app.db_role_grant", "SELECT") to false,
+            Triple("api_rw", "app.auth_lockout", "DELETE") to true, Triple("api_rw", "app.refresh_family", "UPDATE") to true,
+            Triple("api_rw", "app.refresh_token", "INSERT") to true,
+            Triple("bi_reader", "dw.fact_geo_fix", "SELECT") to false, Triple("bi_reader", "dw.fact_attendance", "SELECT") to false,
+            Triple("web_ro", "dw.fact_geo_fix", "SELECT") to false, Triple("bi_reader", "dw.v_attendance", "SELECT") to true,
             Triple("api_rw", "dw.agg_daily_route", "SELECT") to true, Triple("api_rw", "dw.agg_daily_route", "INSERT") to false,
             Triple("worker_rw", "app.memo", "SELECT") to true, Triple("worker_rw", "app.memo", "INSERT") to false,
             Triple("worker_rw", "app.memo", "UPDATE") to false, Triple("worker_rw", "app.route_day", "UPDATE") to true,
@@ -74,6 +79,28 @@ class DbRolesTest {
             emptyList(),
             c.column("SELECT n.nspname || '.' || k.relname FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace WHERE n.nspname IN ('app','dw') AND k.relkind IN ('r','p','v') AND NOT k.relispartition AND k.relname <> 'db_role_grant' AND NOT has_table_privilege('worker_rw', k.oid, 'SELECT') AND NOT (n.nspname = 'app' AND k.relname = 'partition_policy')"),
         )
+    }
+
+    @Test
+    fun objectsOfLaterMigrationsGetTheMapAndNothingForPublic() = db.connect().use { c ->
+        c.autoCommit = false
+        try {
+            c.exec("CREATE FUNCTION app.zz_admin() RETURNS int LANGUAGE sql AS 'SELECT 1'")
+            c.exec("CREATE TABLE app.zz_serial (id bigserial PRIMARY KEY, note text)")
+            c.exec("SELECT app.apply_db_role_grants()")
+            assertEquals("f", c.scalar("SELECT has_function_privilege('web_ro', 'app.zz_admin()', 'EXECUTE')"))
+            assertEquals("f", c.scalar("SELECT bool_or(has_function_privilege('public', p.oid, 'EXECUTE')) FROM pg_proc p WHERE p.pronamespace = 'app'::regnamespace AND p.proname = 'zz_admin'"))
+            c.exec("SET ROLE api_rw")
+            c.exec("INSERT INTO app.zz_serial (note) VALUES ('x')")
+            c.exec("RESET ROLE")
+            // The login flow's own SQL (backend:auth JdbiStores) runs under api_rw.
+            c.exec("SET ROLE api_rw")
+            c.exec("INSERT INTO app.auth_lockout (lock_key, failures) VALUES ('k', 1) ON CONFLICT (lock_key) DO UPDATE SET failures = app.auth_lockout.failures + 1")
+            c.exec("DELETE FROM app.auth_lockout WHERE lock_key = 'k'")
+            c.exec("RESET ROLE")
+        } finally {
+            c.rollback()
+        }
     }
 
     @Test

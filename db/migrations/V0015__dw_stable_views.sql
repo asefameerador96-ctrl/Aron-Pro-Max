@@ -60,10 +60,10 @@ m AS (
   SELECT business_date, user_id,
          count(*) FILTER (WHERE status = 'active' AND line_count > 0) AS active_memo_count,
          count(DISTINCT outlet_id) FILTER (WHERE status = 'active' AND line_count > 0) AS successful_calls,
-         coalesce(sum(gross_mtk) FILTER (WHERE status = 'active'), 0) AS gross_mtk,
-         coalesce(sum(net_mtk) FILTER (WHERE status = 'active'), 0) AS net_mtk,
-         coalesce(sum(due_mtk) FILTER (WHERE status = 'active'), 0) AS due_mtk,
-         count(*) FILTER (WHERE captured_offline) AS memos_captured_offline
+         coalesce(sum(gross_mtk) FILTER (WHERE status = 'active' AND line_count > 0), 0)::bigint AS gross_mtk,
+         coalesce(sum(net_mtk) FILTER (WHERE status = 'active' AND line_count > 0), 0)::bigint AS net_mtk,
+         coalesce(sum(due_mtk) FILTER (WHERE status = 'active' AND line_count > 0), 0)::bigint AS due_mtk,
+         count(*) FILTER (WHERE status = 'active' AND line_count > 0 AND captured_offline) AS memos_captured_offline
     FROM dw.fact_memo GROUP BY business_date, user_id)
 SELECT coalesce(v.business_date, m.business_date) AS business_date, coalesce(v.user_id, m.user_id) AS user_id,
        v.route_ids, coalesce(v.visits, 0) AS visits, coalesce(v.visited_outlets, 0) AS visited_outlets,
@@ -96,14 +96,16 @@ SELECT a.business_date, a.outlet_id, o.outlet_code, o.outlet_name, coalesce(a.ro
   LEFT JOIN dw.dim_outlet o ON o.outlet_id = a.outlet_id
  WHERE a.due_mtk <> 0 OR a.dues_collected_mtk <> 0;
 
+-- No coordinates: an employee's location is personal data and stays in dw.fact_attendance, which BI cannot read.
 CREATE VIEW dw.v_attendance AS
 SELECT f.business_date, f.user_id, f.role, f.zone_id, f.check_in_at, f.check_out_at,
        CASE WHEN f.check_in_at IS NOT NULL AND f.check_out_at IS NOT NULL
             THEN round(extract(epoch FROM f.check_out_at - f.check_in_at) / 3600.0, 2) END AS hours_in_field,
-       f.check_in_lat, f.check_in_lng, f.check_in_accuracy_m, f.check_in_is_mock,
-       f.check_out_lat, f.check_out_lng, f.check_out_accuracy_m, f.check_out_is_mock, f.updated_at
+       f.check_in_accuracy_m, f.check_in_is_mock, f.check_out_accuracy_m, f.check_out_is_mock, f.updated_at
   FROM dw.fact_attendance f;
 
+-- Covers every visit kind of the user (SR, AMO and TSO calls): integrity is about the person's fixes; v_daily_sr counts
+-- SR calls only, so their geo_valid_pct differ for a supervisor.
 CREATE VIEW dw.v_geo_integrity AS
 WITH v AS (
   SELECT business_date, user_id,
