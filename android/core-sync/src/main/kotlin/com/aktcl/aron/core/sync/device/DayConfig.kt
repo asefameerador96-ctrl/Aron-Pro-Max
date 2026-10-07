@@ -26,6 +26,14 @@ class DayConfig {
 
     @Volatile private var calendar: Calendar? = null
 
+    /** `cfg.day.checkout_earliest_time` as minutes after midnight Dhaka (default 17:00, registry bounds 12:00..22:00). */
+    @Volatile var checkoutEarliestMinutes: Int = DEFAULT_CHECKOUT_MINUTES
+        private set
+
+    /** `cfg.sync.checkout_jitter_s` (default 90; the scheduler caps it at doc 17 T7's 120). */
+    @Volatile var checkoutJitterS: Int = DEFAULT_CHECKOUT_JITTER_S
+        private set
+
     suspend fun refresh(db: AronDatabase, nowIso: String) {
         val ref = ReferenceRepository(db)
         suspend fun value(key: String) = runCatching { ref.config(key, nowIso)?.let { Json.parseToJsonElement(it) as? JsonPrimitive } }.getOrNull()
@@ -36,6 +44,8 @@ class DayConfig {
             reuseMaxAgeS = value("cfg.geo.fix_reuse_max_age_s")?.intOrNull ?: d.reuseMaxAgeS,
             requirePrecise = value("cfg.geo.require_precise")?.booleanOrNull ?: d.requirePrecise,
         )
+        checkoutEarliestMinutes = minutesOf(value("cfg.day.checkout_earliest_time")?.contentOrNull) ?: DEFAULT_CHECKOUT_MINUTES
+        checkoutJitterS = value("cfg.sync.checkout_jitter_s")?.intOrNull?.takeIf { it in 0..600 } ?: DEFAULT_CHECKOUT_JITTER_S
         // Emergency off-days arrive only in a config delta (calendar_changes, D-542), so both sections count.
         calendar = runCatching { ref.section("calendar")?.let { Calendar.parse(it, ref.section("calendar_changes")) } }.getOrNull()
     }
@@ -48,6 +58,19 @@ class DayConfig {
      * treats the day as working: the rep checked in).
      */
     fun isWorkingDay(businessDate: String): Boolean? = calendar?.isWorkingDay(businessDate)
+
+    companion object {
+        const val DEFAULT_CHECKOUT_MINUTES = 17 * 60
+        const val DEFAULT_CHECKOUT_JITTER_S = 90
+
+        /** "HH:MM" (or "HH:MM:SS") inside the registry bounds 12:00..22:00, else null (the default holds). */
+        internal fun minutesOf(value: String?): Int? {
+            val m = Regex("^(\\d{1,2}):(\\d{2})(:\\d{2})?$").matchEntire(value?.trim() ?: return null) ?: return null
+            val (h, min) = m.destructured
+            val minutes = h.toInt() * 60 + min.toInt()
+            return minutes.takeIf { min.toInt() < 60 && it in 12 * 60..22 * 60 }
+        }
+    }
 
     internal data class Entry(val date: String, val specificity: Int, val sellingDay: Boolean)
 
