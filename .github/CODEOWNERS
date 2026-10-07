@@ -1,0 +1,11 @@
+# One human owner. The lane map below is for orientation (docs/26 s2): who edits what.
+# shared/                      lane shared
+# db/                          lane db
+# backend/                     lanes backend-core, backend-reports, backend-admin
+# android/core-*, android/dpc  lanes android-core, android-geo-dpc, android-print
+# android/feature-*, app-sr    lanes android-sr-a, android-sr-b
+# android/app-amo, app-tso     lanes android-amo, android-tso
+# web/                         lanes web-admin, web-config, web-dashboard
+# infra/, .github/, root gradle  lane infra
+# qa/                          lane qa
+* @asefameerador96-ctrl
