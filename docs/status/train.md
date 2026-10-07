@@ -1,3 +1,21 @@
+# HANDOVER (integrator session 3, 18:55 UTC) for the replacement integrator: read this first
+
+**State:** INT = `claude/wonderful-thompson-k6ejnf` at b85d81fd (promoted zt: android-core 1493b0f7, db 6f9b6dcf, backend-core a7e79655, infra b8a83d87, lead-docs 0229a8f0) plus any docs commit the lead adds. Dev deploys 145 and 146 were green; each INT push starts a deploy (about 30 min).
+
+**In flight:** candidate `lane/train-20261007T1852-zu` (run 37669445412) = INT + db a7d24574 + backend-core 621c9b52 + android-core 1d725c02 + infra 45895434. When ALL jobs are green (incl. Contract lint, Web generated types, APK size gate) and no deploy is in_progress, push it to INT as a fast-forward after the docs-only gate, add a train.md row in the same push, send `@parent` (session_01MbUQSxrP7AB9tbyANjUTPS) the INT sha.
+
+**Queue (heads not yet on INT, check `git rev-list --count INT..lane/X` and own CI run):** android-sr-a 08718d91 conflicts with INT only in docs/status/device-checks.md (lead told 18:47: the live sr-a session merges INT and pushes); android-sr-b cd1365ce and android-core-ui c4116368 are already on INT; lane/lead-docs (docs only; merge into the next code candidate, never push alone); new heads appear constantly, rescan every cycle.
+
+**Rules (all binding):** INT moves only by fast-forward to a candidate whose own CI run was green on that exact commit; never edit lane code; candidates are `lane/train-<yyyymmddThhmm>-<x>`; docs-only gate in the same command as the push; hold INT pushes while a deploy run is in_progress (lead rule), batch everything into one push per deploy, and do not push docs on their own; infra-only priority candidates from the lead go first (push even during a deploy only if the lead says so); record each promotion in this table in the same push; lead messages carry priorities.
+
+**Docs-only gate, exact form:** `git checkout -B prom CAND; if git merge-base --is-ancestor INT HEAD; fast-forward; else git merge --no-ff INT into prom and check `git diff --name-only CAND HEAD | grep -v -e '^docs/' -e '\.md$' | wc -l` is 0` (the old merge-base diff over-counts when the merge-base is a criss-cross: it printed 35 files that were already in the candidate; always test the effect of merging INT into the candidate). If non-zero, rebuild the candidate on the new INT and rerun CI.
+
+**Procedure:** `git fetch origin`; `gh api repos/asefameerador96-ctrl/aron-pro-max/actions/workflows/ci.yml/runs?head_sha=<sha>&per_page=1` for a head's run, `.../actions/runs/<id>/jobs` for jobs, `.../actions/runs?per_page=3&branch=claude/wonderful-thompson-k6ejnf` for deploys; a head with no run: `gh api -X POST .../actions/workflows/ci.yml/dispatches -f ref=lane/<name>`; build a candidate with `git merge --no-ff --no-edit origin/lane/<x>` per head (db, backend-core, android-core, android-sr-a/b, android-core-ui, infra, lead-docs); on a conflict `git merge --abort`, drop that lane, tell `@parent` (one line). Push `git push origin <local>:refs/heads/lane/train-<time>-<x>`; if GitHub answers 500 retry 3 times with 15 s waits (outages happened 14:50 to 15:20 and 16:54).
+
+**Reading failures:** `gh api repos/.../actions/jobs/<id>/logs | grep -E " FAILED$|AssertionError|Execution failed|##\[error\]"`; Web "Generated contract types are up to date" fails when a backend contract change did not regenerate web/src/contract/openapi.d.ts (the lane that changes the contract regenerates it in its own head); RequestIsolationTest was a timing flake, now deterministic; rerun-failed-jobs returned 500 once, rebuild a fresh candidate instead; the Actions runner queue was saturated 17:14 to 17:35 (runs sat pending).
+
+**Wakes:** `send_later` 5 to 7 minutes ahead at the end of every cycle; the text of an old wake is stale, read the current state. Report to `@parent` only: INT moved (one line), a red you cannot attribute, a decision, READY TO RECYCLE.
+
 # Integration train (integrator)
 
 INT only moves by fast-forward to a green candidate. Owner of this file: integrator.
