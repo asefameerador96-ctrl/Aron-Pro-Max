@@ -159,6 +159,20 @@ class ConfigResolver(private val db: Database, private val clock: AronClock = Ar
         return this
     }
 
+    /** True when the scope node exists (role and geo_class ids are ordinals, docs/24 s14a R3). Global is id 0. */
+    fun nodeExists(type: String, id: Long): Boolean {
+        if (type == "global") return id == 0L
+        val sql = when (type) {
+            "wing" -> "SELECT 1 FROM app.wing WHERE id = :i"; "division" -> "SELECT 1 FROM app.division WHERE id = :i"
+            "territory" -> "SELECT 1 FROM app.territory WHERE id = :i"; "zone" -> "SELECT 1 FROM app.zone WHERE id = :i"
+            "route" -> "SELECT 1 FROM app.route WHERE id = :i"; "outlet" -> "SELECT 1 FROM app.outlet WHERE id = :i"
+            "user" -> "SELECT 1 FROM app.app_user WHERE id = :i"; "device" -> "SELECT 1 FROM app.device WHERE id = :i"
+            "role" -> "SELECT 1 FROM app.role_def WHERE ordinal = :i"; "geo_class" -> "SELECT 1 FROM app.geo_class_def WHERE ordinal = :i"
+            else -> return false
+        }
+        return db.jdbi.withHandle<Boolean, Exception> { h -> h.createQuery(sql).bind("i", id).mapTo(Int::class.java).findOne().isPresent }
+    }
+
     /** The winning value of [key] for [chain] at [at]; the registry default when no row applies. */
     fun resolve(key: String, chain: List<ScopeNode>, at: Instant): Resolved {
         val def = registry()[key] ?: error("unknown config key $key")

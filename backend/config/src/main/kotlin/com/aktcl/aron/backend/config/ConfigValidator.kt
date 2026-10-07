@@ -53,6 +53,11 @@ object ConfigValidator {
                 if (value !is JsonArray) bad("invalid_type", "a list is required")
                 val max = (def.bounds["max_items"] as? JsonPrimitive)?.longOrNull
                 if (max != null && value.size > max) out("at most $max items")
+                if (def.key == "cfg.sys.change_freeze_windows") value.forEachIndexed { i, w ->
+                    val o = w as? JsonObject ?: bad("invalid_type", "item $i must be {from, to}")
+                    val f = (o["from"] as? JsonPrimitive)?.takeIf { it.isString }?.content; val t = (o["to"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                    if (o.size != 2 || f == null || t == null || !TIME.matches(f) || !TIME.matches(t) || f == t) bad("invalid_type", "item $i must be {from, to} as HH:MM, different")
+                }
             }
             "json" -> if (value !is JsonObject && value !is JsonArray) bad("invalid_type", "a JSON object or array is required")
             else -> bad("invalid_type", "unsupported value type ${def.valueType}")
@@ -77,14 +82,16 @@ object ConfigValidator {
  * that ends above 150 m and grows the resolved value, "C3 at D and wider", and the value-triggered C3 keys.
  */
 object RiskClassifier {
-    fun classify(def: KeyDef, scopeType: String, newValue: JsonElement?, currentValue: JsonElement?): Int {
+    /** [newValue] is the item's own value (null for a removal); [before] and [after] are the value the node resolves to without and with the change. */
+    fun classify(def: KeyDef, scopeType: String, newValue: JsonElement?, before: JsonElement?, after: JsonElement?): Int {
         var c = def.riskClass
         val num = (newValue as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
         when (def.key) {
             "cfg.geo.radius_m" -> {
                 c = maxOf(c, when (scopeType) { "outlet" -> 1; "route", "zone", "geo_class", "territory" -> 2; else -> 3 })
-                val cur = (currentValue as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
-                if (num != null && num > 150 && (cur == null || num > cur)) c = 3
+                val b = (before as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
+                val a = (after as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
+                if (a != null && a > 150 && (b == null || a > b)) c = 3
             }
             "cfg.geo.fix_timeout_s" -> if (num != null && num > 15) c = 3
             "cfg.media.photo_max_kb" -> if (num != null && num > 150) c = 3

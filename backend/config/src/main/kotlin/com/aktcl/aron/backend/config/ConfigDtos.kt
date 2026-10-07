@@ -34,7 +34,7 @@ data class ResolvedConfigValue(
 /** One item of a change request; `value` JSON null removes the override at the scope (contract ConfigChangeItem). */
 @Serializable
 data class ConfigChangeItemIn(
-    val key: String, val scope_type: String, val scope_id: Long, val value: JsonElement? = null,
+    val key: String, val scope_type: String, val scope_id: Long, val value: JsonElement,
     val effective_from: String? = null, val effective_to: String? = null,
 )
 

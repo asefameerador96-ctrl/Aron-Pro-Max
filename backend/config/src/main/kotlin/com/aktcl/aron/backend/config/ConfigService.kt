@@ -125,18 +125,35 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 }
             }
             val outItems = items.map { it.withOld(oldValueAt(h, it)) }
-            val risk = outItems.maxOf { RiskClassifier.classify(it.def, it.item.scope_type, it.item.value.takeUnless { v -> v is JsonNull }, it.old.takeUnless { v -> v is JsonNull }) }
+            val risk = outItems.maxOf { pr ->
+                val node = ScopeNode(pr.item.scope_type, pr.item.scope_id)
+                val chain = resolver.chainOf(h, node.type, node.id)
+                val at = pr.from ?: now
+                val before = resolver.resolve(pr.def.key, chain, at).value
+                val after = if (pr.item.value !is JsonNull) pr.item.value else resolver.resolve(pr.def.key, chain.filterNot { it == node }, at).value
+                RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, before, after)
+            }
             if (risk >= 3 && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a class C3 change is requested by a SUPERADMIN")
-            val delayMin = if (risk == 2) cfgInt(h, "cfg.sys.c2_delay_min") else 0
+            val delayMin = if (risk == 2) cfgInt(h, "cfg.sys.c2_delay_min", now) else 0
             val status = when { risk >= 3 -> "pending_approval"; risk == 2 && delayMin > 0 -> "scheduled"; else -> "applied" }
             val applyAt = if (status == "scheduled") now.plusSeconds(delayMin * 60L) else null
+            if (applyAt != null) outItems.forEachIndexed { i, pr ->
+                if (pr.to != null && !pr.to.isAfter(applyAt)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "effective_to ends before the change applies", errors = listOf(FieldError("body.changes[$i].effective_to", "before_apply")))
+            }
             val blast = blastRadius(h, outItems)
-            val changeId = h.createQuery(
+            val inserted = h.createQuery(
                 "INSERT INTO app.cfg_change (status, items, reason, risk_class, requested_by, requested_at, apply_at, blast_radius, client_uuid) " +
-                    "VALUES ('pending_approval', CAST(:items AS jsonb), :reason, :risk, :by, :at, :apply, CAST(:blast AS jsonb), CAST(:cu AS uuid)) RETURNING change_id",
+                    "VALUES ('pending_approval', CAST(:items AS jsonb), :reason, :risk, :by, :at, :apply, CAST(:blast AS jsonb), CAST(:cu AS uuid)) ON CONFLICT (client_uuid) DO NOTHING RETURNING change_id",
             ).bind("items", itemsJson(outItems)).bind("reason", req.reason.trim()).bind("risk", risk).bind("by", p.userId)
                 .bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("apply", applyAt?.let { OffsetDateTime.ofInstant(it, ZoneOffset.UTC) })
-                .bind("blast", Json.encodeToString(blast)).bind("cu", clientUuid?.toString()).mapTo(Long::class.java).one()
+                .bind("blast", Json.encodeToString(blast)).bind("cu", clientUuid?.toString()).mapTo(Long::class.java).findOne().orElse(null)
+            if (inserted == null) {
+                // A concurrent request with the same Idempotency-Key won the insert: answer with its change.
+                val (id, by) = h.createQuery("SELECT change_id, requested_by FROM app.cfg_change WHERE client_uuid = CAST(:u AS uuid)").bind("u", clientUuid.toString()).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.one()
+                if (by != p.userId) throw ApiProblem(ProblemCode.ERR_CONFLICT, "idempotency key already used")
+                return@inTransaction loadChange(h, id)!!
+            }
+            val changeId: Long = inserted
             AuditWriter.write(h, p, "cfg_change", changeId.toString(), "create", null, JsonPrimitive(status), req.reason, requestId)
             when (status) {
                 "applied" -> commit(h, changeId, p.userId, now, "change", requestId, p)
@@ -164,7 +181,8 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     if (p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a C3 change is approved by a SUPERADMIN")
                     if (requestedBy == p.userId) throw ApiProblem(ProblemCode.ERR_CFG_SELF_APPROVAL, "the approver is never the requester")
                     if (inFreezeWindow(h, now)) throw ApiProblem(ProblemCode.ERR_CFG_FREEZE_WINDOW, "no class C3 change inside the freeze windows")
-                    val cap = cfgInt(h, "cfg.sys.c3_max_per_hour")
+                    h.execute("SELECT pg_advisory_xact_lock(7242001)") // serialises the hourly cap with every commit
+                    val cap = cfgInt(h, "cfg.sys.c3_max_per_hour", now)
                     val recent = h.createQuery("SELECT count(*) FROM app.cfg_change WHERE risk_class = 3 AND approved_at > :since AND status IN ('applied','reverted')")
                         .bind("since", OffsetDateTime.ofInstant(now.minusSeconds(3600), ZoneOffset.UTC)).mapTo(Int::class.java).one()
                     if (recent >= cap) throw ApiProblem(ProblemCode.ERR_CONFLICT, "at most $cap class C3 changes per hour", retryAfterS = 600)
@@ -232,14 +250,16 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
         val to = parseTs(it.effective_to, "$ptr.effective_to")
         if (from != null && from.isBefore(now.minusSeconds(60))) throw ApiProblem(ProblemCode.ERR_VALIDATION, "effective_from is in the past", errors = listOf(FieldError("$ptr.effective_from", "in_past")))
         val start = from ?: now
+        if (to != null && !to.isAfter(now)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "effective_to is already past", errors = listOf(FieldError("$ptr.effective_to", "in_past")))
         if (to != null && !to.isAfter(start)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "effective_to must follow effective_from", errors = listOf(FieldError("$ptr.effective_to", "invalid_range")))
         if (def.futureDatedOnly) {
             val startOfNextDhakaDay = now.atZone(dhaka).toLocalDate().plusDays(1).atStartOfDay(dhaka).toInstant()
-            if (it.value != null && it.value !is JsonNull && (from == null || from.isBefore(startOfNextDhakaDay) || from.atZone(dhaka).toLocalTime() != LocalTime.MIDNIGHT))
+            if (it.value !is JsonNull && (from == null || from.isBefore(startOfNextDhakaDay) || from.atZone(dhaka).toLocalTime() != LocalTime.MIDNIGHT))
                 throw ApiProblem(ProblemCode.ERR_VALIDATION, "${def.key} is future-dated: effective_from must be a future Dhaka midnight", errors = listOf(FieldError("$ptr.effective_from", "future_midnight_required")))
         }
+        if (!resolver.nodeExists(it.scope_type, it.scope_id)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "${it.scope_type} ${it.scope_id} does not exist", errors = listOf(FieldError("$ptr.scope_id", "unknown_node")))
         val v = it.value
-        if (v != null && v !is JsonNull) {
+        if (v !is JsonNull) {
             ConfigValidator.check(def, v, "$ptr.value") { k -> resolver.resolve(k, listOf(ScopeNode("global", 0)), now).value.let { e -> (e as? JsonPrimitive)?.doubleOrNull } }
         }
         return Prepared(def, it, from, to)
@@ -300,7 +320,7 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
     }
 
     /** Applies the change [changeId] under a new version; requires the change row to be locked or just inserted by this transaction. */
-    private fun commit(h: Handle, changeId: Long, committedBy: Long, now: Instant, kind: String, requestId: String?, actor: AronPrincipal?) {
+    private fun commit(h: Handle, changeId: Long, committedBy: Long, now: Instant, kind: String, requestId: String?, actor: AronPrincipal?): Boolean {
         h.execute("SELECT pg_advisory_xact_lock(7242001)")
         val row = h.createQuery("SELECT items, reason, risk_class, is_revert_of FROM app.cfg_change WHERE change_id = :id").bind("id", changeId)
             .map { rs, _ -> arrayOf(rs.getString(1), rs.getString(2), rs.getInt(3), rs.getObject(4)) }.one()
@@ -308,6 +328,17 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
         val reason = row[1] as String
         val risk = row[2] as Int
         val revertOf = (row[3] as? Number)?.toLong()
+        // A change that waited too long is expired, never applied late: its window already ended, or a future-dated key's midnight has passed.
+        val reg = resolver.registry()
+        val stale = items.any { i ->
+            (i.effective_to?.let { t -> !Instant.parse(t).isAfter(now) } == true) ||
+                (reg[i.key]?.futureDatedOnly == true && i.value !is JsonNull && i.effective_from?.let { f -> Instant.parse(f).isBefore(now) } == true)
+        }
+        if (stale) {
+            h.createUpdate("UPDATE app.cfg_change SET status = 'expired', decided_at = COALESCE(decided_at, :at) WHERE change_id = :id").bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("id", changeId).execute()
+            AuditWriter.write(h, actor, "cfg_change", changeId.toString(), "expire", null, JsonPrimitive("expired"), "effective window passed before the change could apply", requestId, via = if (actor == null) "job" else "web")
+            return false
+        }
         val version = h.createQuery("SELECT COALESCE(max(config_version), 0) + 1 FROM app.cfg_version").mapTo(Long::class.java).one()
         val summary = (items.take(3).joinToString("; ") { "${it.key}@${it.scope_type}${if (it.scope_type == "global") "" else ":" + it.scope_id}" } + if (items.size > 3) " (+${items.size - 3})" else "").take(500)
         h.createUpdate("INSERT INTO app.cfg_version (config_version, kind, change_id, committed_at, committed_by, summary, max_risk_class, is_revert_of) VALUES (:v, :k, :c, :at, :by, :s, :r, :rv)")
@@ -318,6 +349,7 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
             .bind("v", version).bind("items", Json.encodeToString(applied)).bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("id", changeId).execute()
         AuditWriter.write(h, actor, "cfg_version", version.toString(), "commit", null, Json.parseToJsonElement(Json.encodeToString(applied)), reason, requestId, via = if (actor == null) "job" else "web")
         h.createUpdate("SELECT pg_notify('cfg_changed', :v)").bind("v", version.toString()).execute()
+        return true
     }
 
     /** Closes what the item supersedes, inserts its row, and returns the value it replaced (JSON null when none). */
@@ -355,23 +387,21 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
         return old
     }
 
-    private fun cfgInt(h: Handle, key: String): Int {
-        val v = h.createQuery(
-            "SELECT COALESCE((SELECT value FROM app.cfg_value WHERE key = :k AND scope_type = 'global' AND effective_from <= now() AND (effective_to IS NULL OR effective_to > now())), (SELECT default_value FROM app.cfg_key WHERE key = :k))::text",
-        ).bind("k", key).mapTo(String::class.java).one()
-        return v.toDouble().toInt()
-    }
+    private fun cfgInt(h: Handle, key: String, now: Instant): Int = h.createQuery(
+        "SELECT COALESCE((SELECT value FROM app.cfg_value WHERE key = :k AND scope_type = 'global' AND effective_from <= :now AND (effective_to IS NULL OR effective_to > :now)), (SELECT default_value FROM app.cfg_key WHERE key = :k))::text",
+    ).bind("k", key).bind("now", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).mapTo(String::class.java).one().toDouble().toInt()
 
+    private val defaultFreeze = listOf(420 to 570, 990 to 1170)
+
+    /** Freeze windows in Dhaka minutes; a window with from > to crosses midnight. A malformed stored value falls back to the defaults (the writer refuses one). */
     private fun inFreezeWindow(h: Handle, now: Instant): Boolean {
         val raw = h.createQuery(
-            "SELECT COALESCE((SELECT value FROM app.cfg_value WHERE key = 'cfg.sys.change_freeze_windows' AND scope_type = 'global' AND effective_from <= now() AND (effective_to IS NULL OR effective_to > now())), (SELECT default_value FROM app.cfg_key WHERE key = 'cfg.sys.change_freeze_windows'))::text",
-        ).mapTo(String::class.java).one()
+            "SELECT COALESCE((SELECT value FROM app.cfg_value WHERE key = 'cfg.sys.change_freeze_windows' AND scope_type = 'global' AND effective_from <= :now AND (effective_to IS NULL OR effective_to > :now)), (SELECT default_value FROM app.cfg_key WHERE key = 'cfg.sys.change_freeze_windows'))::text",
+        ).bind("now", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).mapTo(String::class.java).one()
         val t = now.atZone(dhaka).toLocalTime().let { it.hour * 60 + it.minute }
         fun mins(s: String) = s.substring(0, 2).toInt() * 60 + s.substring(3, 5).toInt()
-        return (Json.parseToJsonElement(raw) as JsonArray).any { w ->
-            val o = w as JsonObject
-            t >= mins(o["from"]!!.jsonPrimitive.content) && t < mins(o["to"]!!.jsonPrimitive.content)
-        }
+        val windows = runCatching { (Json.parseToJsonElement(raw) as JsonArray).map { w -> val o = w as JsonObject; mins(o["from"]!!.jsonPrimitive.content) to mins(o["to"]!!.jsonPrimitive.content) } }.getOrDefault(defaultFreeze)
+        return windows.any { (f, e) -> if (f < e) t in f until e else (t >= f || t < e) }
     }
 
     // ---------------------------------------------------------------- mapping

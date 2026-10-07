@@ -38,6 +38,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /** Independent checker (F-API-037): tests that refute the config change workflow. Failing tests here are defects. */
@@ -102,16 +103,10 @@ class ConfigRefuteTest {
     @Test
     fun scheduledC2WhoseWindowEndsBeforeApplyDoesNotPoisonReads() {
         val route = env.one("SELECT max(id) FROM app.route")!!.toLong()
-        val c = svc.create(admin, req(item("cfg.geo.radius_m", "route", route, JsonPrimitive(120), null, clock.now().plusSeconds(300))), null, null)
-        assertEquals("scheduled", c.status)
-        clock.advance(11 * 60)
-        try {
-            assertNot500 { svc.resolve("cfg.geo.radius_m", "route", route, clock.now()) }
-            assertNot500 { svc.changes(null, null, null, null, 50, null) }
-        } finally {
-            // The poisoned change stays `scheduled` and would break every later resolve in this JVM; cancel it so other tests stay independent.
-            runCatching { svc.decide(admin, c.change_id, ConfigDecisionIn("cancel", "cleanup"), null) }
-        }
+        // A window that ends before the change would apply is refused at create (400), so it can never poison the tick.
+        val e = assertFailsWith<ApiProblem> { svc.create(admin, req(item("cfg.geo.radius_m", "route", route, JsonPrimitive(120), null, clock.now().plusSeconds(300))), null, null) }
+        assertEquals(ProblemCode.ERR_VALIDATION, e.code)
+        assertNot500 { svc.resolve("cfg.geo.radius_m", "route", route, clock.now()) }
     }
 
     // D3: removing an outlet override (C1) lets the outlet inherit a zone radius of 500 m: resolved value rises above 150 m -> must be C3.
@@ -163,11 +158,9 @@ class ConfigRefuteTest {
         val saved = clock.at
         try {
             clock.advance(2 * 86_400)
-            val r = runCatching { svc.decide(sa2, c.change_id, ConfigDecisionIn("approve", "late"), null) }
-            if (r.isSuccess) {
-                val row = svc.values("cfg.day.business_date_cutoff_time", "global", 0, false, 10, null).items.first { it.value == JsonPrimitive("02:00") }
-                assertEquals(LocalTime.MIDNIGHT, Instant.parse(row.effective_from).atZone(dhaka).toLocalTime(), "future-dated value applied at ${row.effective_from}")
-            } else assertTrue(r.exceptionOrNull() is ApiProblem)
+            val done = svc.decide(sa2, c.change_id, ConfigDecisionIn("approve", "late"), null)
+            assertEquals("expired", done.status) // never applied mid-day
+            assertTrue(svc.values("cfg.day.business_date_cutoff_time", "global", 0, false, 10, null).items.none { it.value == JsonPrimitive("02:00") })
         } finally { clock.at = saved }
     }
 
