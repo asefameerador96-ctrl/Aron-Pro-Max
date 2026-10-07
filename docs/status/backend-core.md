@@ -29,7 +29,7 @@ Updated 2026-10-07 (session 4 of the lane). Earlier history: `docs/status/backen
 - **DeviceService** audit rows through `AuditLog.write` (lead ruling 2).
 - **AUD-REL-01/02** (`DbServerConfig`, `ServerGeneration`, `Http.kt isTransientDbFailure`; `DatabaseOutageTest`): single-flight refresh with back-off, cold callers wait for the one load, caches warmed at startup, `/v1/health*` use cached values only; transient DB failures answer 503 with Retry-After 5..30. Not built: in-request retry of idempotent transactions and the 25 s request timeout (docs/18 s4.3).
 - Opus checker on the three rows: 9 findings, all fixed (`GeoNotifyOutageCheckerTest`).
-- **AUD-SEC-02** (auth: `LoginService`, `JdbiStores`, `AuthModule`; `LoginAbuseTest`): separate web hash pool, global web login bucket, 2 h lock cap, lockout row purge, refresh limiter. Request: `backend-core-bff-client-ip.md`. Opus checker: see below.
+- **AUD-SEC-02** (auth: `LoginService`, `JdbiStores`, `AuthModule`; `LoginAbuseTest`): separate hash pool for web and unknown phones, per-IP-class web bucket and backstops, 2 h lock cap, lockout row purge, refresh limiter by the proven device. Request: `backend-core-bff-client-ip.md`. Opus checker: 5 findings, all fixed (`LoginAbuseCheckerTest`).
 - db (11:00Z): task columns are on lane/db as V0037/V0038 (`route_id` fixed at creation, `cancel_reason` write-once). Build against them once on INT: store both in `Tasks.kt`; if the sync `task` payload gains `route_id`, scope-check the route.
 
 ## Decisions taken (session 3)
