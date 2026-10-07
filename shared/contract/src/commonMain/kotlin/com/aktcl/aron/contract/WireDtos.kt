@@ -138,6 +138,13 @@ data class BundleMeta(
 )
 
 @Serializable
+data class BundleUserConsents(
+    @SerialName("policy_key") val policyKey: String,
+    @SerialName("policy_version") val policyVersion: Int,
+    @SerialName("accepted_at") val acceptedAt: String,
+)
+
+@Serializable
 data class BundleUser(
     @SerialName("user_id") val userId: Long,
     @SerialName("username") val username: String,
@@ -149,6 +156,7 @@ data class BundleUser(
     @SerialName("memo_seq_block_size") val memoSeqBlockSize: Int,
     @SerialName("zone_id") val zoneId: Long? = null,
     @SerialName("territory_id") val territoryId: Long? = null,
+    @SerialName("consents") val consents: List<BundleUserConsents>? = null,
 )
 
 @Serializable

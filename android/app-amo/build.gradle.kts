@@ -33,7 +33,7 @@ val playIntegrityProjectNumber: Long = ((findProperty("aron.playIntegrityProject
 
 // A release build never talks plain HTTP (docs/24 s5.8): fail it here instead of crashing the app at launch.
 val apiBaseUrlIsHttps = apiBaseUrl.startsWith("https://")
-tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+tasks.matching { it.name in setOf("preReleaseBuild", "preBenchmarkBuild", "preBenchmarkProfileBuild") }.configureEach {
     // Copied into a local so the action captures a Boolean, not the build script (configuration cache).
     val https = apiBaseUrlIsHttps
     doFirst { check(https) { "release builds need an https aron.apiBaseUrl (docs/24 s5.8)" } }
@@ -60,6 +60,21 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        // AUD-PERF-04: release code (R8, shrunk) signed with the debug key and profileable, for :android:benchmark only.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+            versionNameSuffix = "-benchmark"
+        }
+        // The baseline-profile generator runs on this one: same code, not obfuscated, so the profile it writes names the
+        // classes R8 sees when it reads src/main/baseline-prof.txt (an obfuscated profile would match nothing).
+        create("benchmarkProfile") {
+            initWith(getByName("benchmark"))
+            proguardFiles(rootProject.file("android/benchmark/dontobfuscate.pro"))
+            versionNameSuffix = "-profile"
         }
     }
 }
@@ -92,6 +107,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    // Compiles the shipped baseline profile (src/main/baseline-prof.txt) at install, so a cold start runs AOT code (AUD-PERF-04).
+    implementation(libs.androidx.profileinstaller)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit4)

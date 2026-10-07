@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AUD-PERF-04: the generator reads the target's versionName (Android 11+ package visibility). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="com.aktcl.aron.sr" />
+        <package android:name="com.aktcl.aron.amo" />
+        <package android:name="com.aktcl.aron.tso" />
+    </queries>
+</manifest>

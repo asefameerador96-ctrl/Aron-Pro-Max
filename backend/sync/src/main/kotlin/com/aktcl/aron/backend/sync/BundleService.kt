@@ -107,6 +107,7 @@ class BundleService(
                     locale = if (user.locale == "en") "en" else "bn", bind_ordinal = bindOrdinal(h, p),
                     memo_seq_block_size = config.int("cfg.memo.seq_block_size").coerceIn(100, 999),
                     zone_id = user.homeZoneId, territory_id = home?.territoryId,
+                    consents = ConsentRecords.accepted(h, user.id),
                 ),
                 config = ResolvedConfig(config.configVersion(), cfg.deviceValues(userChain), cfg.deviceScheduled(userChain, until)),
                 code_lists = codeLists(h, date),

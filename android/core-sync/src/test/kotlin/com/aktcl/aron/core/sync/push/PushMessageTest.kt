@@ -26,6 +26,13 @@ class PushMessageTest {
         assertEquals(setOf(PushPullKind.CONFIG), PushMessage.parse(mapOf("type" to "cfg", "version" to "42", "pull_after_s" to "7"))!!.pulls)
     }
 
+    /** F-SYS-073: a kill switch, min_version, blocked version or revert comes urgent and gets its own pull job. */
+    @Test fun anUrgentConfigPushIsItsOwnPullKind() {
+        assertEquals(setOf(PushPullKind.CONFIG_URGENT), PushMessage.parse(mapOf("kind" to "config_pull", "urgent" to "true"))!!.pulls)
+        assertEquals(setOf(PushPullKind.CONFIG_URGENT), PushMessage.parse(mapOf("type" to "cfg", "version" to "42", "urgent" to "TRUE"))!!.pulls)
+        assertEquals(setOf(PushPullKind.CONFIG), PushMessage.parse(mapOf("kind" to "config_pull", "urgent" to "false"))!!.pulls)
+    }
+
     @Test fun anAnnouncementShowsItsTextInTheAppLanguageAndPullsNothing() {
         val m = PushMessage.parse(mapOf("kind" to "announcement", "title_en" to "Meeting", "body_en" to "At 9", "title_bn" to "সভা", "body_bn" to "৯টায়"))!!
         val n = m.notice as PushNotice.Announcement

@@ -34,10 +34,22 @@ data class OfflineUnlockPolicy(
     val cooldownBaseMs: Long = 60_000,
     val cooldownCapMs: Long = 3_600_000,
 ) {
+    /** The limits for [profile]: its own `cfg.auth.*` values when its bundle carried them, within the registry bounds. */
+    fun forProfile(profile: UserProfile): OfflineUnlockPolicy = copy(
+        maxDays = profile.offlineMaxDays?.takeIf { it in MAX_DAYS_RANGE } ?: maxDays,
+        maxAttempts = profile.offlineMaxAttempts?.takeIf { it in MAX_ATTEMPTS_RANGE } ?: maxAttempts,
+    )
+
     fun cooldownAfter(failures: Int): Long {
         if (failures < maxAttempts) return 0
         val doublings = (failures - maxAttempts).coerceAtMost(30)
         return (cooldownBaseMs shl doublings).coerceAtMost(cooldownCapMs).coerceAtLeast(cooldownBaseMs)
+    }
+
+    companion object {
+        /** Registry bounds (docs/24 s9): a value outside them is ignored and the default holds. */
+        val MAX_DAYS_RANGE = 1..14
+        val MAX_ATTEMPTS_RANGE = 3..20
     }
 }
 
@@ -236,6 +248,9 @@ class SessionRepository(
                     memoSeqBlockSize = answer.device?.memoSeqBlockSize ?: previous?.memoSeqBlockSize,
                     configVersion = answer.configVersion,
                     scopeVersion = answer.scope?.scopeVersion?.toLong(),
+                    // Kept until the user's config is read again: a configured limit is safer than the default meanwhile.
+                    offlineMaxDays = previous?.offlineMaxDays,
+                    offlineMaxAttempts = previous?.offlineMaxAttempts,
                 )
                 // Tokens first, then the profile, then the active pointer: a kill between steps leaves either the old
                 // session or a complete new one, never a pointer to a user without tokens.
@@ -276,6 +291,7 @@ class SessionRepository(
         // Setting the date back never helps: time only moves forward from the highest value seen.
         val now = maxOf(wall, stored.highWaterMs)
         val profile = aged(stored.copy(highWaterMs = now), elapsed)
+        val policy = policy.forProfile(profile)
         if (inCooldown(profile, now, elapsed)) {
             store.saveProfile(profile)
             return LoginOutcome.OfflineUnavailable(OfflineRefusal.COOLDOWN, profile.cooldownUntilMs, serverAnswer)
@@ -329,6 +345,27 @@ class SessionRepository(
                 withContext(dispatchers.io) {
                     store.saveProfile(aged(p.copy(highWaterMs = maxOf(p.highWaterMs, clock.wallClockMs())), clock.elapsedRealtimeMs()))
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * Keeps [userId]'s `cfg.auth.offline_unlock_max_days` and `_max_attempts` (F-SYS-052) in the profile, which the offline
+     * unlock reads before any database is open. Called after the user's config is (re)read; null clears to the default.
+     * A user with no profile on this phone gets nothing. Never throws.
+     */
+    suspend fun noteOfflineUnlockConfig(userId: Long, maxDays: Int?, maxAttempts: Int?) {
+        settled()
+        loginMutex.withLock {
+            try {
+                val p = withContext(dispatchers.io) { store.profileByUserId(userId) } ?: return
+                val days = maxDays?.takeIf { it in OfflineUnlockPolicy.MAX_DAYS_RANGE }
+                val attempts = maxAttempts?.takeIf { it in OfflineUnlockPolicy.MAX_ATTEMPTS_RANGE }
+                if (p.offlineMaxDays == days && p.offlineMaxAttempts == attempts) return
+                withContext(dispatchers.io) { store.saveProfile(p.copy(offlineMaxDays = days, offlineMaxAttempts = attempts)) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
