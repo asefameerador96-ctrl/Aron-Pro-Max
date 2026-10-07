@@ -52,17 +52,35 @@ interface SyncHold {
 }
 
 /** Production runner: the user's own database, upload grant, device id and trusted-time anchors. */
-class SessionSyncRunner(private val databases: UserDatabases, private val components: SessionComponents) : SyncRunner {
-    override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport = SyncEngine(
+class SessionSyncRunner(
+    private val databases: UserDatabases,
+    private val components: SessionComponents,
+    /** Runs before the batch is built (device status and integrity, `DeviceRuntime.beforeBatch`); must never throw. */
+    private val beforeBatch: suspend (userId: Long, db: com.aktcl.aron.core.database.AronDatabase, trigger: SyncTrigger) -> Unit = { _, _, _ -> },
+    /** Bundle deltas after a run when the server's current bundle is newer (F-SYS-007); null in tests. */
+    private val bundles: BundleDownloaders? = null,
+) : SyncRunner {
+    override suspend fun run(userId: Long, trigger: SyncTrigger): SyncReport {
+        val db = databases.of(userId)
+        try { beforeBatch(userId, db, trigger) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        val report = engine(userId, db).run(trigger)
+        // Only after a run the server answered in full: never straight after a hold, 429, 503 or a refusal (s4.10, s4.7).
+        if (report.stop == SyncStop.DRAINED || report.stop == SyncStop.RUN_LIMIT) {
+            try { bundles?.of(userId)?.refreshIfServerNewer() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        }
+        return report
+    }
+
+    private fun engine(userId: Long, db: com.aktcl.aron.core.database.AronDatabase) = SyncEngine(
         userId = userId,
-        db = databases.of(userId),
+        db = db,
         api = SyncBatchApi(components.apiClient, components.proofSigner),
         auth = SessionUploadAuth(components.session),
         deviceUuid = { components.deviceIdentity.deviceUuid },
         appVersion = components.appVersion,
         clock = components.clock,
         timeAnchors = { components.trustedClock.recentAnchors().map { TimeAnchor(it.bootCount, SyncEngine.iso(it.serverTimeMs), it.elapsedMs) } },
-    ).run(trigger)
+    )
 
     override suspend fun unsent(userId: Long): Int = databases.of(userId).outboxDao().unsentCount()
 }

@@ -128,7 +128,12 @@ class FakeIngestServer : Dispatcher() {
             put("server_totals", buildJsonArray {
                 add(buildJsonObject {
                     put("business_date", JsonPrimitive("2026-10-05")); put("as_of", JsonPrimitive("2026-10-05T10:00:00.000Z"))
-                    put("by_type", JsonObject(emptyMap())); put("money", JsonObject(emptyMap()))
+                    // The server's count per type is its registry; money is what an exact server computes, i.e. the
+                    // device's figures when nothing was lost (F-SYS-009 plumbing, not the server's arithmetic).
+                    put("by_type", JsonObject(registry.values.groupBy { it.type }.mapValues { (_, v) ->
+                        buildJsonObject { put("accepted", JsonPrimitive(v.size)); put("rejected", JsonPrimitive(0)); put("quarantined", JsonPrimitive(0)) }
+                    }))
+                    put("money", body["device_money"]?.jsonObject?.get("2026-10-05") ?: JsonObject(emptyMap()))
                 })
             })
             put("day_states", JsonArray(emptyList()))
