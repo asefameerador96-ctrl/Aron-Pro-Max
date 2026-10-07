@@ -6,6 +6,7 @@ plugins {
 
 dependencies {
     implementation(project(":backend:platform"))
+    implementation(libs.firebase.admin)  // FCM HTTP v1 sender (docs/24 s2.2); off without ARON_FCM_SERVICE_ACCOUNT_JSON
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
