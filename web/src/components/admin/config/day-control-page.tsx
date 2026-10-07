@@ -19,11 +19,13 @@ export async function DayControlPageContent({ searchParams, basePath, withMissin
   const date = isRealDate(d) ? d : businessDate();
   let late = null;
   let missing = null;
+  let missingFailed = false;
   if (zone) {
     const [fl, att] = await Promise.all([runReport(session.at, "final-submit-log", date, zone), withMissing ? runReport(session.at, "attendance", date, zone) : null]);
     if (!fl.ok) return onApiFailure(fl.status, fl.problem, locale);
-    late = { ...lateRows(fl.data), columns: fl.data.columns };
-    if (att?.ok) missing = { ...missingCheckoutRows(att.data), columns: att.data.columns };
+    late = { ...lateRows(fl.data), columns: fl.data.columns, total: fl.data.total_rows };
+    if (att?.ok) missing = { ...missingCheckoutRows(att.data), columns: att.data.columns, total: att.data.total_rows };
+    else if (att) missingFailed = true;
   }
-  return <DayControlView locale={locale} zone={zone} date={date} late={late} missing={missing} canWrite={canOp("day.reopen", session.user.role)} withMissing={withMissing} basePath={basePath} />;
+  return <DayControlView locale={locale} zone={zone} date={date} late={late} missing={missing} canWrite={canOp("day.reopen", session.user.role)} withMissing={withMissing} basePath={basePath} missingFailed={missingFailed} />;
 }

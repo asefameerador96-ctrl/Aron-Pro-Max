@@ -4,9 +4,9 @@ import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { getConfigAck, getDailyTracking, getPendingPhotos, getSummary, getSyncHealth } from "@/lib/dash/server";
 import { latency, rollupByZone, totalsOf } from "@/lib/dash/ops";
+import { isCalendarDate } from "@/lib/dates";
 import { businessDate, formatDateTime, problemMessage, t, type Locale, type MessageKey } from "@/lib/i18n";
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ID = /^\d{1,12}$/;
 
 const NA = (locale: Locale) => (
@@ -21,7 +21,7 @@ const NA = (locale: Locale) => (
 export default async function SyncHealthPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const [sp, locale, session] = await Promise.all([searchParams, getLocale(), requireSession()]);
   const today = businessDate();
-  const date = sp.date && DATE.test(sp.date) ? sp.date : today;
+  const date = isCalendarDate(sp.date) ? sp.date : today;
   const zone = sp.zone && ID.test(sp.zone) ? Number(sp.zone) : null;
   const route = sp.route && ID.test(sp.route) ? Number(sp.route) : null;
   const token = session.at;

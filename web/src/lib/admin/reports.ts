@@ -9,11 +9,11 @@ export function runReport(token: string, key: "final-submit-log" | "attendance",
   return rawRequest<ReportResult>({ method: "POST", path: `/v1/reports/${key}/query`, token, body });
 }
 
-const truthy = (v: unknown) => v === true || (typeof v === "number" && v > 0) || (typeof v === "string" && v !== "" && v !== "0" && v.toLowerCase() !== "false");
+const truthy = (v: unknown) => v === true || (typeof v === "number" && v > 0) || (typeof v === "string" && !["", "0", "false", "no", "n", "none"].includes(v.trim().toLowerCase()));
 
 /** Rows of the final-submit log that were captured after the final (a `late*` column that is true or above zero). */
 export function lateRows(r: ReportResult): { rows: ReportResult["rows"]; known: boolean } {
-  const cols = r.columns.filter((c) => /late/i.test(c.key)).map((c) => c.key);
+  const cols = r.columns.filter((c) => /(^|_)late(_|$)|after_final/i.test(c.key) && c.type !== "timestamp" && c.type !== "date" && c.type !== "string").map((c) => c.key);
   if (cols.length === 0) return { rows: [], known: false };
   return { rows: r.rows.filter((row) => cols.some((k) => truthy(row[k]))), known: true };
 }

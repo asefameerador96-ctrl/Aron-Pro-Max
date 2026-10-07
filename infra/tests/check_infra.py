@@ -577,8 +577,22 @@ class Workflows(unittest.TestCase):
                  "approve-private-link.sh", "smoke.sh", "die \"budget $BUDGET not found"]
         positions = [d.index(step) for step in order]
         self.assertEqual(positions, sorted(positions), "deploy steps out of order")
-        self.assertIn('die "migrations $execution ended $status; the apps were NOT updated', d)
-        self.assertIn('if [ "$RUN_MIGRATIONS" = true ]; then\n  execution="$(az containerapp job start', d)
+        self.assertIn('die "migrations $execution ended ${status:-without finishing in 20 minutes}; the apps were NOT updated', d)
+        block = d[d.index('if [ "$RUN_MIGRATIONS" = true ]; then'):d.index("# ---", d.index('if [ "$RUN_MIGRATIONS" = true ]; then'))]
+        self.assertIn('execution="$(az containerapp job start', block)
+        # The only retry: a first execution that could not open a database connection, once.
+        self.assertIn("for attempt in 1 2; do", block)
+        self.assertIn('[ "$attempt" -eq 1 ] && [ "$status" = Failed ]', block)
+        self.assertIn("FlywaySqlUnableToConnectToDbException|Connection is not available, request timed out", block)
+
+    def test_deploy_holds_one_lock_for_the_whole_deploy(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        body = d[d.index("# ---"):]
+        self.assertLess(body.index('note "deploy lock held"'), body.index("merge-base --is-ancestor"),
+                        "the ordering guard runs while the lock is held")
+        self.assertIn("trap 'rm -f \"$whatif_file\" \"$migrate_log\"; release_lock' EXIT", d)
+        self.assertIn('[ "$(read_lock | cut -d\' \' -f1)" = "$lock_me" ] && break', d, "write, settle, re-read")
+        self.assertIn("-lt 5700 ]", d, "a lock older than 95 minutes is stale")
         full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn('RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"', full)
         self.assertNotIn("grep -qs", full, "no source sniffing to decide what to deploy")
@@ -607,7 +621,7 @@ class Workflows(unittest.TestCase):
             self.assertEqual(c.count("cancel-in-progress"), 1, wf.name)
         self.assertNotRegex(self.text("deploy.yml"), r"(?m)^\s*concurrency:", "deploy serialises with the Azure-side lock in deploy.sh")
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn("waiting until no other deployment runs in", d)
+        self.assertIn("deploy lock held", d)
         self.assertIn("merge-base --is-ancestor", d)
 
     def test_repository_gates_run_on_every_push(self):

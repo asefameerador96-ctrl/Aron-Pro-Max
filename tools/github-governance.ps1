@@ -4,7 +4,7 @@
   One-time GitHub governance for Aron (docs/30 s3): creates `main`, protects it, tags the first green deploy, creates the
   `staging` and `prod` environments, and turns on secret scanning where the plan allows it.
   Run by the laptop operator, with the owner's approval, after `gh auth login`. Idempotent; it never deletes anything,
-  never force-pushes, and never changes the integration branch or the default branch.
+  never force-pushes, and never changes the default branch; on the integration branch it only blocks force-push and deletion.
 
   Uses only `gh api` with JSON files (no JMESPath: docs/status/laptop.md lesson).
 #>
@@ -71,6 +71,18 @@ $protection = @{
 } | ConvertTo-Json -Depth 6
 Api PUT "repos/$Repo/branches/main/protection" $protection | Out-Null
 Write-Host 'main protection set'
+
+Step "Protect the integration branch ($Int) from force-push and deletion only (lanes keep pushing directly: no PR, no required checks)"
+$intProtection = @{
+  required_status_checks = $null
+  enforce_admins = $false
+  required_pull_request_reviews = $null
+  restrictions = $null
+  allow_force_pushes = $false
+  allow_deletions = $false
+} | ConvertTo-Json -Depth 4
+Api PUT "repos/$Repo/branches/$Int/protection" $intProtection | Out-Null
+Write-Host "$Int: force-push and deletion blocked"
 
 Step 'Environments: staging and prod (prod needs the owner as reviewer; deploys only from main). azure-dev is left alone.'
 foreach ($e in @('staging', 'prod')) {
