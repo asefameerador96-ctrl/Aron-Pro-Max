@@ -195,7 +195,14 @@ class Wiring(
             // (docs/requests/backend-admin-blob-sas.md).
             val blob: BlobSasIssuer = AzureBlobSasIssuer.fromEnvironment() ?: com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
             val otpDeps = DeviceOtpDeps(db, reach, otpCipher, config, guard, clock)
-            val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
+            // F-SYS-053: the delta re-resolves outlet radius with the bundle's own resolution.
+            val radiusBundle = BundleService(db, config, SqlRoutePlanner(db, geo, config), clock)
+            val deltaDeps = ConfigDeltaDeps(
+                ConfigDelta(db, configResolver, clock) { user, since ->
+                    radiusBundle.outletRadiusChanges(user, since)?.map { (o, r, a) -> com.aktcl.aron.backend.config.OutletRadiusChangeDto(o, r, a) }
+                },
+                configService, guard,
+            )
             val generation = ServerGeneration(db)
             // Warm both caches off the request path, so the first requests of a new replica do not wait (AUD-REL-01).
             Thread({ runCatching { config.configVersion() }; runCatching { generation.current() } }, "aron-warm").apply { isDaemon = true }.start()

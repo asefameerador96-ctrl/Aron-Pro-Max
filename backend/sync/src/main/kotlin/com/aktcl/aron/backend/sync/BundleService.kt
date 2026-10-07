@@ -327,6 +327,32 @@ class BundleService(
         }
     }
 
+    /**
+     * `outlet_radius_changes` of `GET /v1/config/delta` (android-core-backend-config-delta-radius.md, F-SYS-053): null
+     * when no radius or accuracy row (any scope, outlet and route included) was written or superseded after [since];
+     * otherwise every active outlet of the caller's routes today with its radius and accuracy resolved exactly as the
+     * bundle resolves them (the same function). Unchanged outlets ride along: applying a value twice is harmless, and
+     * "as of [since]" per outlet is not worth a second resolver. At most 5000 (contract maxItems).
+     */
+    fun outletRadiusChanges(userId: Long, since: Long): List<Triple<Long, Int, Int>>? {
+        val now = clock.now()
+        val touched = db.jdbi.withHandle<Boolean, Exception> { h ->
+            h.createQuery(
+                "SELECT EXISTS (SELECT 1 FROM app.cfg_value WHERE key = ANY(:k) AND (config_version > :s OR superseded_in_version > :s))",
+            ).bindArray("k", String::class.java, RADIUS_KEYS).bind("s", since).mapTo(Boolean::class.java).one()
+        }
+        if (!touched) return null
+        val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
+        val routeIds = planner.routesFor(userId, today).map { it.routeId }.distinct()
+        if (routeIds.isEmpty()) return emptyList()
+        return db.jdbi.withHandle<List<Triple<Long, Int, Int>>, Exception> { h ->
+            val cfg = ScopedConfig.load(h, now, now, RADIUS_KEYS.toSet())
+            val role = h.createQuery("SELECT r.ordinal FROM app.app_user u JOIN app.role_def r ON r.role = u.role WHERE u.id = :u").bind("u", userId)
+                .mapTo(Long::class.java).findOne().orElse(null)
+            outlets(h, routeIds, cfg, role).values.flatten().map { Triple(it.outlet_id, it.radius_m, it.max_accuracy_m) }.take(5000)
+        }
+    }
+
     /** Active outlets of the routes with radius and accuracy resolved per outlet (outlet > route > zone > geo_class > territory > division > wing > role > global). */
     private fun outlets(h: Handle, routeIds: List<Long>, cfg: ScopedConfig, roleOrdinal: Long?): Map<Long, List<BundleOutlet>> {
         val global = ScopedConfig.Chain.of()
@@ -465,6 +491,8 @@ class BundleService(
     }.list()
 
     companion object {
+        private val RADIUS_KEYS = arrayOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m")
+
         private val PHONE_BD = Regex("^01[3-9]\\d{8}$")
 
         private val PLACEHOLDER_META = BundleMeta("", "", "", "", 0, "", 0, 1, "", false, emptyList())

@@ -308,5 +308,31 @@ class BundleAcceptanceTest {
         }
     }
 
+    /** android-core-backend-config-delta-radius.md (F-SYS-053): a portal radius change reaches the outlets through the delta. */
+    @Test
+    @Order(7)
+    fun anOutletRadiusChangeReachesThePhoneThroughTheConfigDelta() = testApplication {
+        application { aronApi(wiring) }
+        val t = client.token()
+        val (outlet, before) = fresh.db.jdbi.withHandle<Pair<Long, Long>, Exception> { h ->
+            h.createQuery("SELECT min(o.id) FROM app.outlet o JOIN app.route r ON r.id = o.route_id WHERE r.code = 'MIR-SR-D'").mapTo(Long::class.java).one() to
+                h.createQuery("SELECT max(config_version) FROM app.cfg_version").mapTo(Long::class.java).one()
+        }
+        suspend fun delta(since: Long) = client.get("/v1/config/delta?since=$since") { bearerAuth(t); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9") }
+        val quiet = delta(before)
+        assertEquals(HttpStatusCode.NotModified, quiet.status, quiet.bodyAsText())
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'outlet radius' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.geo.radius_m', 'outlet', $outlet, '250'::jsonb, now() - interval '1 minute', max(config_version), 'wide yard' FROM app.cfg_version")
+        }
+        val r = delta(before)
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        val changes = json(r.bodyAsText())["outlet_radius_changes"]!!.jsonArray.map { it.jsonObject }
+        val byOutlet = changes.associate { it["outlet_id"]!!.jsonPrimitive.long to it["radius_m"]!!.jsonPrimitive.int }
+        assertEquals(250, byOutlet[outlet], changes.toString())
+        assertTrue(byOutlet.filterKeys { it != outlet }.values.all { it == 100 }, "the other outlets keep the resolved default")
+        assertEquals(HttpStatusCode.NotModified, delta(before + 1).status, "nothing changed after the radius version")
+    }
+
     private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullSafe(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
 }
