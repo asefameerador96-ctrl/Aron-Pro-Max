@@ -23,7 +23,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | backend-core | session_01CnjB3beqLff7QFRhoTxN3r | Opus | 2026-10-07 | recycled 12:28 (fifth session); previous session_01465rpZSgSrMTU8CACwuEYx is retired (READY TO RECYCLE 12:27, lane/backend-core e8df8227); earlier sessions retired (01FfFvStuQXyZNg6QM9rndaD, 01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
 | backend-reports | session_019WhVDAstm1xPBBrp6FPKM9 | Sonnet | 2026-10-07 | |
 | backend-admin | session_01TogQKB1R6sgWVTafC9DMYG | Sonnet | 2026-10-07 | recycled 05:02; previous session_01JK4kErf8frNpx25mmoyPAc is retired (READY TO RECYCLE 05:01) |
-| android-core | session_01FM6jypmkuGy6Hv1kVjnzLN | Opus | 2026-10-07 | recycled 13:45 (sixth session); previous session_01AgFbNVonyMCWNtJqhyXREy is retired (READY TO RECYCLE 13:44, lane/android-core fac92af1); earlier sessions retired (01Xx4ADUeVGTHNrVSqXU3tjh, 01EcjRGi19bkvqTfp5RQnJU2) |
+| android-core | session_01CWXeY8AFFirF65WP2Tde88 | Opus | 2026-10-07 | recycled 15:36 (seventh session); previous session_01FM6jypmkuGy6Hv1kVjnzLN is retired (READY TO RECYCLE 15:35, lane/android-core 89d3867f); earlier sessions retired (01AgFbNVonyMCWNtJqhyXREy, 01Xx4ADUeVGTHNrVSqXU3tjh) |
 | android-core-ui | session_01F7k2exq6bgrBGdZAmvG9Ey | Sonnet | 2026-10-07 | recycled 08:40; session_01PompFHeojjtrnV78dsjmsB retired (READY TO RECYCLE 08:39) |
 | android-sr-a | session_01TyF3Y1MGEyGN2Ke8EHwZUG | Sonnet | 2026-10-07 | recycled 08:46; session_01Gyh9KAacFpMFb35wUDq21c retired (READY TO RECYCLE 08:46) |
 | android-sr-b | session_019i1dfbm7pSrMDPXskSLY3v | Sonnet | 2026-10-07 | recycled 08:39; session_01DCSzXKooAFuYYEGy9UAMSN retired (READY TO RECYCLE 08:38) |
