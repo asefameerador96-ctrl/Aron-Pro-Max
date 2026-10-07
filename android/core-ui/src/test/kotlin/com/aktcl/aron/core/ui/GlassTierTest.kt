@@ -41,16 +41,21 @@ class GlassPolicyTest {
 class GlassSurfaceTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun chipAndPrimaryButtonInEveryTierAndTheme() {
-        for (tier in GlassTier.values()) for (dark in listOf(false, true)) {
-            rule.setContent {
-                AronTheme(AppLanguage.EN, dark = dark, tier = tier) {
-                    StatusChip(SyncChipState.Waiting(3))
-                    AronPrimaryButton("Save", onClick = {})
-                }
+    private fun check(tier: GlassTier, dark: Boolean) {
+        rule.setContent {
+            AronTheme(AppLanguage.EN, dark = dark, tier = tier) {
+                StatusChip(SyncChipState.Waiting(3))
+                AronPrimaryButton("Save", onClick = {})
             }
-            rule.onNodeWithContentDescription("3 waiting").assertExists()
-            rule.onNodeWithText("Save").assertHeightIsAtLeast(56.dp)
         }
+        rule.onNodeWithContentDescription("3 waiting").assertExists()
+        rule.onNodeWithText("Save").assertHeightIsAtLeast(56.dp)
     }
+
+    @Test fun tierALight() = check(GlassTier.A, false)
+    @Test fun tierBLight() = check(GlassTier.B, false)
+    @Test fun tierCLight() = check(GlassTier.C, false)
+    @Test fun tierADark() = check(GlassTier.A, true)
+    @Test fun tierBDark() = check(GlassTier.B, true)
+    @Test fun tierCDark() = check(GlassTier.C, true)
 }
