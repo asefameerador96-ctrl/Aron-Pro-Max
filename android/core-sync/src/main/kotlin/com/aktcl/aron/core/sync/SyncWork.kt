@@ -111,7 +111,7 @@ class SessionSyncRunner(
 
     /**
      * F-SYS-028: once per business date (trusted time), after a run, whatever its outcome (the purge only touches whole
-     * acked families). `cfg.app.local_history_days` (default 7, held to 1..90). Never throws.
+     * acked families). `cfg.app.local_history_days` (default 7, 1..30) and `cfg.app.outbox_keep_days` (default 3, 1..14), the registry values of db V0055. Never throws.
      */
     private suspend fun dailyPurge(db: com.aktcl.aron.core.database.AronDatabase) {
         try {
@@ -125,8 +125,8 @@ class SessionSyncRunner(
             suspend fun days(key: String, default: Int) = configInt(ref.config(key, nowIso)) ?: default
             com.aktcl.aron.core.database.repo.LocalPurge(db).purge(
                 today, nowIso,
-                historyDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS).coerceIn(1, 90),
-                keepDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_KEEP_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_KEEP_DAYS).coerceIn(1, 90),
+                historyDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_HISTORY_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_HISTORY_DAYS).coerceIn(1, 30),
+                keepDays = days(com.aktcl.aron.core.database.repo.LocalPurge.CFG_KEEP_DAYS, com.aktcl.aron.core.database.repo.LocalPurge.DEFAULT_KEEP_DAYS).coerceIn(1, 14),
             )
             meta.putMeta(com.aktcl.aron.core.database.entity.SyncMetaEntity(KEY_PURGE_DATE, today))
         } catch (e: kotlinx.coroutines.CancellationException) {
