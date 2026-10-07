@@ -2,6 +2,48 @@
 
 Updated 2026-10-07 17:00 UTC (fresh infra session after the team stall).
 
+## HANDOVER (fourth cloud infra session -> next), 2026-10-07 16:55 UTC: read this first
+
+**Proven on dev (deploy run 37649162760, c992c9c, first green dev deploy):** what-if guard with live PostgreSQL zones
+(primary 2, standby 1), main.bicep, images built once and deployed by digest, PITR point before migrations, migrations,
+apps + Front Door routes, health gate (build = commit, ready 200, web /login 200), storage CORS by preflight (Front Door
+origin + PUT + `x-ms-blob-type,content-type` only; other origins and methods 403), `aron-dev-resource-health-recovered`
+alert created. Table: "FIRST GREEN DEV DEPLOY" below.
+
+**Open, in order:**
+1. **dblogins** fails on every deploy: execution Failed, "No replicas found for execution", no console or system log =
+   the replica is never created (psql never runs). Does NOT block the apps while `dbPerAppLogins` is false (warning +
+   summary row "Database logins | FAILED"); blocks again once the apps use those logins. Ruled out: wrong-arch image,
+   identity/ACR/Key Vault roles (same identity as the working migrate job), secret names, the 300 s timeout (fails in
+   ~1 min), the compiled command. **Read the probe** (lane/infra 0cd495f, train candidate zj): in the first deploy log
+   after zj, lines `probe A (...)` and `probe B (...)` follow the dblogins warning.
+   - A Failed or "could not start" -> image/registry pull of `tools/postgres@sha256:7218...`.
+   - A Succeeded, B Failed -> a Key Vault secret reference of the job (db-direct-url, pw-app-api/worker/jobs).
+   - Both Succeeded (B prints "ARON_... set") -> the 7 KB `ARON_SQL` env value or the real command: move the SQL out of
+     the env (into the image, or a secret volume).
+   After it passes: `dbPerAppLogins = true` in dev params (db's V0029 grants are on INT).
+2. **lane/infra 9114b63** (worker gets no token signing key; backend change on INT since c992c9c): after its deploy,
+   check the worker revision starts. Caveat: the worker identity still has vault-wide Secrets User; per-secret scoping is
+   a final-account item.
+3. **Infra-stage skip:** run 143 wrote the resource-group tag `aron-infra-sha`; a deploy with no infra change should log
+   "main.bicep skipped" (verify; it also stops the per-apply Front Door rollout behind the 13:11 Sev4 mail).
+4. **Wall-clock gate** flips to `--blocking` on 2026-10-09; 14 offenders (backend) at last count; tell the lead daily.
+5. Rows: N-062, N-057 (prod-only parameters), N-064 (release candidate, Day 7), seeded-failure proof of the REL-04 alerts,
+   support key script (`docs/requests/android-sys-support-key.md`, needs Key Vault write: deploy identity or the owner).
+6. Follow-up from the laptop session (below): `drill.sh` should pick its server by exact name, before the next drill.
+
+**Waits on people:** restore drill only after the lead relays "owner approved restore drill". main's branch protection
+still requires "Contract lint" (folded into Repository gates): re-run the protection step of
+`tools/github-governance.ps1` before the first gate pull request. Nobody but the deploy workflow has `az` now.
+
+**Final-account items:** Service Health alert, per-secret Key Vault scoping per identity, `activeRevisionsMode` Multiple
+(stage, prod), restore drill rehearsal, deploy freeze window.
+
+**Traps:** `az deployment group create` has no `--tags` (broke run 142; check new az flags against the CLI reference,
+there is no az here); `az postgres flexible-server list` tsv prints a list one value per line; `az acr import` takes a
+tag or a digest, never both; a laptop session (owner account, +0600 commits) may push lane/infra: fetch and merge it
+before every push.
+
 ## Day 3, 16:30 UTC (fresh session after the team stall): deploy run 37608044223 fixed
 
 - **Failure:** the `deploy` run on INT 107d3a5 (10:32 UTC) stopped at the what-if guard: "psql-aron-dev-7i7g53:
