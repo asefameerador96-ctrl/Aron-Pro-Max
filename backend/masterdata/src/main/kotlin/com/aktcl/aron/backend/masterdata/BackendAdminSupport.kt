@@ -30,6 +30,9 @@ internal object AdminSupport {
 
     fun forbidden(what: String): ApiProblem = ApiProblem(ProblemCode.ERR_FORBIDDEN, what)
 
+    /** PostgreSQL text cannot hold U+0000; a body that carries one is a 400, never a 500 (platform-wide fix requested: docs/requests/backend-admin-nul-in-text.md). */
+    fun noNul(pointer: String, vararg values: String?) { if (values.any { it != null && it.contains('\u0000') }) bad(pointer, "invalid_character") }
+
     fun uuid(value: String, pointer: String): UUID {
         if (!UUID_V4.matches(value)) bad(pointer)
         return UUID.fromString(value)

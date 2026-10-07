@@ -49,6 +49,8 @@ abstract class ReportFixture {
     protected open val handlers: List<ReportHandler> = ReportHandlers.all
     /** Extra SQL run after the seed and before aggregation. */
     protected open val extraSql: String = ""
+    /** Extra route groups mounted under /v1 next to the report routes. */
+    protected open fun mount(r: io.ktor.server.routing.Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {}
 
     private val config = object : ServerConfig {
         private val d = RegistryDefaults()
@@ -88,7 +90,7 @@ abstract class ReportFixture {
         val deps = ReportDeps(fresh.db, ReportEngine(fresh.db, config, clock, handlers), reach, AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, config), clock)
         application {
             installAronPlatform(PlatformContext(config = RegistryDefaults(), generation = { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }))
-            routing { route("/v1") { reportRoutes(deps) } }
+            routing { route("/v1") { reportRoutes(deps); mount(this, clock, reach, deps.guard) } }
         }
         block()
     }

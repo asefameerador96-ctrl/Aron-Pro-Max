@@ -616,11 +616,12 @@ class Workflows(unittest.TestCase):
         s = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         self.assertIn("Skipped: nothing deployable changed", s)
 
-    def test_ci_cancels_superseded_runs_but_never_a_deploy(self):
+    def test_ci_skips_superseded_pending_runs_but_never_a_deploy(self):
         # Lead decision 2026-10-07: one ci run per ref (the integration branch is linear; the newer head contains every
         # older commit and compares with the last green head). The deploy is never cancelled mid-flight.
         c = self.text("ci.yml")
-        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true", c)
+        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c,
+                      "a running push run always finishes; only an older pending run is replaced")
         self.assertIn("status=success&per_page=1", c, "the changes job compares with the last green head")
         d = self.text("deploy.yml")
         self.assertEqual(d.count("cancel-in-progress: false"), 1)

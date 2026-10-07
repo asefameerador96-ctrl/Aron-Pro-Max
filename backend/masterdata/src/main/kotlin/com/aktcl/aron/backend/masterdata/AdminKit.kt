@@ -80,7 +80,15 @@ internal fun AdminMasterDeps.ctx(call: ApplicationCall, p: AronPrincipal): Admin
 }
 
 internal fun AdminCtx.audit(h: Handle, entity: String, id: String, action: String, before: JsonElement?, after: JsonElement?, reason: String?) =
-    AuditWriter.write(h, p, entity, id, action, before, after, reason, requestId)
+    AuditWriter.write(h, p, entity, id, action, redactPii(before), redactPii(after), reason, requestId)
+
+/** Personal data never goes into the audit trail in clear: the audit says that a field changed, not what it held. */
+private val PII_KEYS = setOf("phone", "email", "contact_number", "nid", "tin", "trade_license", "password", "password_hash", "temporary_password")
+internal fun redactPii(e: JsonElement?): JsonElement? = when (e) {
+    is JsonObject -> JsonObject(e.mapValues { (k, v) -> if (k in PII_KEYS && v !is JsonNull) JsonPrimitive("[redacted]") else redactPii(v)!! })
+    is kotlinx.serialization.json.JsonArray -> kotlinx.serialization.json.JsonArray(e.map { redactPii(it)!! })
+    else -> e
+}
 
 internal fun odt(i: Instant): OffsetDateTime = OffsetDateTime.ofInstant(i, ZoneOffset.UTC)
 
@@ -117,6 +125,7 @@ internal class Fields(val obj: JsonObject, allowed: Set<String>) {
             Kind.TEXT -> {
                 if (!el.isString) admBad(ptr, "invalid_type")
                 val s = if (c.digits) normDigits(el.content) else el.content
+                if (s.contains('\u0000')) admBad(ptr, "invalid_character")
                 if (s.length < c.min || s.length > c.max) admBad(ptr, "length")
                 if (c.pattern != null && !c.pattern.matches(s)) admBad(ptr, "pattern")
                 s
@@ -164,10 +173,10 @@ internal fun ApplicationCall.admId(name: String = "id"): Long = parameters[name]
 internal fun ApplicationCall.admQueryLong(name: String): Long? = request.queryParameters[name]?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: admBad("query.$name") }
 
 internal fun ApplicationCall.admDate(name: String, source: String = "query"): LocalDate? =
-    request.queryParameters[name]?.let { runCatching { LocalDate.parse(it) }.getOrNull() ?: admBad("$source.$name") }
+    request.queryParameters[name]?.let { runCatching { LocalDate.parse(it) }.getOrNull()?.takeIf { d -> d.year in 1900..2200 } ?: admBad("$source.$name") }
 
 internal fun parseDate(pointer: String, el: JsonElement?): LocalDate? =
-    (el as? JsonPrimitive)?.takeIf { it.isString }?.let { runCatching { LocalDate.parse(it.content) }.getOrNull() ?: admBad(pointer) }
+    (el as? JsonPrimitive)?.takeIf { it.isString }?.let { runCatching { LocalDate.parse(it.content) }.getOrNull()?.takeIf { d -> d.year in 1900..2200 } ?: admBad(pointer) }
 
 // ---- responses ---------------------------------------------------------------------------------------------------
 
@@ -259,6 +268,7 @@ internal fun <T> admWrite(block: () -> T): T = try {
                 "23505" -> throw ApiProblem(ProblemCode.ERR_MASTER_DUPLICATE_CODE, "a row with this code or name already exists", errors = listOf(FieldError(when {
                     msg.contains("username") -> "body.username"; msg.contains("external_ref") -> "body.external_ref"; msg.contains("zone_id_name") -> "body.name"; else -> "body.code"
                 }, "duplicate")))
+                "22021", "22008", "22003", "22007", "22P02", "22P05" -> throw ApiProblem(ProblemCode.ERR_VALIDATION, "a value is not acceptable", errors = listOf(FieldError("body", "invalid_value")))
                 "23P01" -> throw ApiProblem(ProblemCode.ERR_MASTER_OVERLAP, "the dates overlap an existing row")
                 "23514" -> throw ApiProblem(ProblemCode.ERR_VALIDATION, "a value violates a data rule", errors = listOf(FieldError("body", "check_failed", Regex("\"([a-z_]+)\"").find(msg)?.groupValues?.get(1))))
                 "23503" -> throw ApiProblem(ProblemCode.ERR_VALIDATION, "a referenced row does not exist", errors = listOf(FieldError("body", "unknown_reference")))
