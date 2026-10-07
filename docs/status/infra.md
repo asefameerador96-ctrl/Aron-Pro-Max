@@ -4,6 +4,16 @@ Updated 2026-10-07 17:40 UTC (fifth infra session).
 
 ## Fifth infra session, 2026-10-07 17:40 UTC: read this first (the fourth session's handover below still applies)
 
+**Deploy run 145 (INT eaac3ad5 = zl with the probe, 17:27 to 17:51 UTC): SUCCESS.** Health gate through Front Door:
+`/v1/health` 200 with `X-Aron-Api: 1` and build = eaac3ad5 (the INT head), ready 200, web `/login` 200; migrations
+succeeded; images by digest. Still "Argument list too long" there (5f37940 not promoted yet), so main.bicep re-applied.
+**dblogins probe read:** probe A (image only) **Succeeded** (`psql 16.15`), probe B (A + the four Key Vault refs)
+**Succeeded** (all four "set"); the real execution failed again ("No replicas found"). So neither the image nor a secret
+reference: the cause is the job's 7 KB `ARON_SQL` env value. **Fix on lane/infra (this commit):** the SQL is a Container
+Apps secret projected as a file (`storageType: Secret`, only `runtime-logins.sql`, mounted at `/sql`, the same path CI's
+image smoke uses); the command is `psql ... -f /sql/runtime-logins.sql`; no SQL in the environment. `dbPerAppLogins`
+stays false until a dev deploy shows dblogins Succeeded.
+
 **Deploy run 144 (INT 4fd5c4d, 16:49 UTC) failed; dev stays on c992c9c (healthy).** Two infra defects, both fixed on
 lane/infra (needs promotion; until then every INT deploy can fail the same way):
 1. **App Insights agent download:** Maven Central answered HTTP 429 on all 5 attempts at the image build. Fix:
