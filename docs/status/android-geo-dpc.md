@@ -77,3 +77,4 @@ BatteryExemption.requestIfNeeded(activity, policy.selfProtection.batteryOptimisa
 - Robolectric's DevicePolicyManager shadow records restrictions in UserManager; read restrictions back with `UserManager.hasUserRestriction` (also the effective state on a phone).
 - The state files live in credential-encrypted storage: do not handle `LOCKED_BOOT_COMPLETED`.
 - An updated system app keeps `FLAG_SYSTEM`; testing `FLAG_UPDATED_SYSTEM_APP` would make allowlist mode suspend the Play Store.
+- **GD-11:** `android:dpc` now depends on `:shared:contract` for the v1.2 wire DTOs (lead ruling 2026-10-07), beyond the docs/24 s2.1 table (core-common only). `EnrolDeviceResponse` and `DevicePolicy` stay local mirrors until shared adds them.

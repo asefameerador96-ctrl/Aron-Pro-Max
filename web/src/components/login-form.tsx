@@ -1,9 +1,10 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import type { Problem } from "@/contract/types";
+import { ChangePasswordForm } from "./change-password-form";
 import { useI18n } from "./i18n-provider";
 
-type Step = "password" | "mfa" | "password_change_required" | "no_web_access";
+type Step = "password" | "mfa" | "password_change_required" | "password_reset_by_support" | "no_web_access";
 
 async function post(path: string, body: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
   const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "same-origin" });
@@ -35,12 +36,27 @@ export function LoginForm({ next }: { next: string }) {
       }
       if (status === "mfa_required") setStep("mfa");
       else if (status === "password_change_required") setStep("password_change_required");
-      else if (status === "no_web_access") setStep("no_web_access");
+      else if (status === "password_reset_by_support") setStep("password_reset_by_support");
+      else if (status === "signin_again") {
+        setStep("password");
+        setError(t("auth.password_change.signin_again"));
+      } else if (status === "no_web_access") setStep("no_web_access");
     } catch {
       setError(t("error.network"));
     } finally {
       setBusy(false);
     }
+  }
+
+  /** The change answered like a login: signed in, the TOTP step next, or a fresh sign-in. */
+  async function afterChange(b: Record<string, unknown>) {
+    const status = b.status as string;
+    if (status === "ok") window.location.replace(next);
+    else if (status === "mfa_required") setStep("mfa");
+    else if (status === "signin_again") {
+      setStep("password");
+      setError(t("auth.password_change.signin_again"));
+    } else if (status === "no_web_access") setStep("no_web_access");
   }
 
   function onPassword(e: FormEvent<HTMLFormElement>) {
@@ -57,11 +73,20 @@ export function LoginForm({ next }: { next: string }) {
   const input = "mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600";
   const button = "w-full rounded bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700 disabled:opacity-50";
 
-  if (step === "password_change_required" || step === "no_web_access") {
+  if (step === "password_reset_by_support" || step === "no_web_access") {
     return (
       <p role="alert" data-testid="login-blocked" className="rounded border border-amber-300 bg-amber-50 p-3 text-amber-900">
         {t(step === "no_web_access" ? "auth.no_web_access" : "auth.password_change_required")}
       </p>
+    );
+  }
+  if (step === "password_change_required") {
+    return (
+      <div className="space-y-3" data-testid="login-password-change">
+        <h2 className="text-lg font-semibold">{t("auth.password_change.title")}</h2>
+        <p className="text-sm text-slate-600">{t("auth.password_change.hint")}</p>
+        <ChangePasswordForm endpoint="/api/bff/login/change-password" onResponse={(b) => void afterChange(b)} />
+      </div>
     );
   }
 

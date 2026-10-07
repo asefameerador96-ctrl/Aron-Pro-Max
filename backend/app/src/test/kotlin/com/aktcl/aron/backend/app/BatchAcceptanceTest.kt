@@ -175,14 +175,17 @@ class BatchAcceptanceTest {
         ).jsonObject
         val close = Json.parseToJsonElement("""{"visit_client_uuid":"$visit","outcome_code":"sold","call_declined":false,"ended_at":"2027-01-03T03:43:10.000Z","is_zero_sale":false}""").jsonObject
         // Every family is its own capture: a distinct captured_at, so the content fingerprint tells families apart.
-        val at = JsonPrimitive(Instant.parse("2027-01-03T03:00:00Z").plusMillis(captureSeq.incrementAndGet().toLong()).toString())
+        val at = JsonPrimitive(Instant.parse("2027-01-02T18:30:00Z").plusSeconds(captureSeq.incrementAndGet() * 60L).toString())
         return listOf(
             envelope("visit", visit, visit, 0, visitPayload, outlet),
             envelope("memo", memo, visit, 1, memoPayload, outlet),
             envelope("memo_line", uuid(), visit, 2, line(1, s1, 20, p1, g1)),
             envelope("memo_line", uuid(), visit, 2, line(2, s2, 10, p2, g2)),
             envelope("visit_close", uuid(), visit, 1, close),
-        ).map { JsonObject(it + ("captured_at" to at)) }
+        ).map { JsonObject(it + ("captured_at" to at)) }.map { r ->
+            // Each family is its own sale minute (s4.5 content fingerprint: outlet, lines and minute).
+            if (r["type"]!!.jsonPrimitive.content == "memo") JsonObject(r + ("payload" to JsonObject(r["payload"]!!.jsonObject + ("committed_at" to at)))) else r
+        }
     }
 
     private fun count(sql: String): Long = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery(sql).mapTo(Long::class.java).one() }
@@ -402,7 +405,9 @@ class BatchAcceptanceTest {
         val bad = family[3].let { l -> JsonObject(l + ("payload" to JsonObject(l["payload"]!!.jsonObject + ("sku_id" to JsonPrimitive(987_654_321))))) }
         val r = json(client.send(token, batch(family.take(3) + bad + family[4])).bodyAsText())
         val acks = r["acks"]!!.jsonArray.map { it.jsonObject }
-        assertEquals(listOf("accepted", "accepted", "accepted", "rejected", "accepted"), acks.map { it["status"]!!.jsonPrimitive.content })
+        // The bad line is rejected unknown_sku; its memo and sibling line are held for review with it (never a memo
+        // stored with a line missing behind its gross); the visit and its close are stored.
+        assertEquals(listOf("accepted", "quarantined", "quarantined", "rejected", "accepted"), acks.map { it["status"]!!.jsonPrimitive.content })
         assertEquals("unknown_sku", acks[3]["code"]!!.jsonPrimitive.content)
         val cu = bad["client_uuid"]!!.jsonPrimitive.content
         assertEquals(1, count("SELECT count(*) FROM app.sync_rejected WHERE client_uuid = '$cu' AND code = 'unknown_sku' AND payload->'payload'->>'sku_id' = '987654321'"), "kept with its payload, never dropped")
@@ -517,7 +522,7 @@ class BatchAcceptanceTest {
     // ---- N-036 breadcrumbs and team location; F-SYS-078 multi-visit and visit kinds --------------------------------
 
     @Test
-    fun breadcrumbsAreStoredOnceAndTheTeamReadShowsTheLastPointWithItsAge() = testApplication {
+    fun breadcrumbsAreStoredOnceByClientUuid() = testApplication {
         app()
         val token = client.token()
         fun crumb(at: String, lat: Double): JsonObject {
@@ -528,15 +533,8 @@ class BatchAcceptanceTest {
         assertEquals(listOf("accepted", "accepted"), statuses(json(client.send(token, batch(crumbs)).bodyAsText())))
         assertEquals(listOf("duplicate", "duplicate"), statuses(json(client.send(token, batch(crumbs)).bodyAsText())))
         assertEquals(1, count("SELECT count(*) FROM app.geo_breadcrumb WHERE client_uuid = '${crumbs[1]["client_uuid"]!!.jsonPrimitive.content}'"))
-        val tso = json(client.post("/v1/auth/login") { contentType(ContentType.Application.Json); setBody("""{"username":"tso1001","password":"$password","client":"web"}""") }.bodyAsText())["access_token"]!!.jsonPrimitive.content
-        val r = client.get("/v1/team/locations") { bearerAuth(tso) }
-        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
-        val sr = json(r.bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }.single { it["full_name"]!!.jsonPrimitive.content.contains("Test SR") }
-        val fix = sr["last_fix"]!!.jsonObject
-        assertTrue(fix["at"]!!.jsonPrimitive.content >= "2027-01-03T03:55:00.000Z", fix.toString())
-        assertTrue(fix["age_min"]!!.jsonPrimitive.int <= 10)
-        // An SR is not a supervisor.
-        assertEquals(HttpStatusCode.Forbidden, client.get("/v1/team/locations") { bearerAuth(token); header("X-Device-Id", devPhone) }.status)
+        // The team-location read is backend-reports' GET /v1/team/locations (TeamApiTest); it reads these rows.
+        assertEquals(1, count("SELECT count(*) FROM app.geo_breadcrumb WHERE client_uuid = '${crumbs[0]["client_uuid"]!!.jsonPrimitive.content}' AND fix_lat = 23.81"))
     }
 
     @Test

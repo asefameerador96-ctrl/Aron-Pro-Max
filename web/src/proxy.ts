@@ -11,6 +11,7 @@ import { clearAuthCookies } from "@/lib/auth/service";
 import { csp, newNonce, securityHeaders } from "@/lib/security-headers";
 import { forbiddenPage } from "@/lib/forbidden-page";
 import { LOCALE_COOKIE, isLocale, DEFAULT_LOCALE } from "@/lib/i18n/types";
+import { entityCanEdit } from "@/components/admin/crud/meta";
 import { entityBySlug } from "@/app/admin/_entities/registry";
 import { accessFor } from "@/lib/auth/roles";
 import { readSession } from "@/lib/auth/session";
@@ -58,9 +59,16 @@ function route(req: NextRequest, session: ReturnType<typeof readSession>, nonce:
   const writePage = /^\/admin\/([^/]+)\/(new|[0-9]+|[0-9a-f]{8}-[0-9a-f-]{27})(?:\/([^/]+))?\/?$/.exec(decoded);
   const entity = writePage?.[1] ? entityBySlug(writePage[1]) : undefined;
   const actionRoles = writePage?.[3] ? entity?.actions?.find((a) => a.key === writePage[3])?.writeRoles : undefined;
-  if (access === "ok" && session && entity && !(actionRoles ?? entity.writeRoles).includes(session.user.role)) {
+  const noCreate = writePage?.[2] === "new" && entity?.canCreate === false;
+  if (access === "ok" && session && entity && (noCreate || !(actionRoles ?? entity.writeRoles).includes(session.user.role))) {
     const l = req.cookies.get(LOCALE_COOKIE)?.value;
     return forbiddenPage(isLocale(l) ? l : DEFAULT_LOCALE);
+  }
+
+  // The admin segment streams behind a loading boundary, so a notFound() in the page would answer 200: send an edit URL of an
+  // entity that has no edit (route assignments) to a path that does not exist.
+  if (access === "ok" && entity && writePage?.[2] !== "new" && !writePage?.[3] && !entityCanEdit(entity)) {
+    return NextResponse.rewrite(publicUrl(req, "/__not-found"));
   }
 
   if (access === "ok") {

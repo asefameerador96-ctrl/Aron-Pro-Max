@@ -6,11 +6,13 @@ import type { CodeList } from "@/contract/types";
 import { codeListByKey } from "@/app/admin/_codelists/registry";
 import { apiClient, outcome } from "@/lib/api/client";
 import { authenticate, problemResponse } from "@/lib/api/guard";
-import { reasonSchema, toFieldErrors } from "./validation";
+import { isRealDate, reasonSchema, toFieldErrors } from "./validation";
 
 export const CODELIST_WRITE_ROLES = ["ADMIN", "SUPERADMIN"] as const;
 
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const date = z.string().refine(isRealDate, "invalid"); // 2026-13-45 is not a date
+// attrs values are JsonScalar (string up to 2000, number, boolean, null); at most 20 members.
+const scalar = z.union([z.string().max(2000), z.number().finite(), z.boolean(), z.null()]);
 const Item = z
   .object({
     code: z.string().regex(/^[a-z][a-z0-9_]{1,40}$/),
@@ -19,9 +21,10 @@ const Item = z
     sort: z.number().int(),
     valid_from: date.optional(),
     valid_to: date.nullable().optional(),
-    attrs: z.record(z.string(), z.union([z.string().max(120), z.number(), z.boolean(), z.null()])).optional(),
+    attrs: z.record(z.string().min(1).max(60), scalar).refine((o) => Object.keys(o).length <= 20 && !Object.prototype.hasOwnProperty.call(o, "__proto__"), "too_big").optional(),
   })
-  .strict();
+  .strict()
+  .refine((i) => !i.valid_from || !i.valid_to || i.valid_to >= i.valid_from, { message: "invalid", path: ["valid_to"] }); // an item that never applies
 const Body = z.object({ items: z.array(Item).min(1).max(100), reason: z.unknown() }).strict();
 
 export async function handleCodeListPut(req: NextRequest, key: string): Promise<NextResponse> {
@@ -45,7 +48,23 @@ export async function handleCodeListPut(req: NextRequest, key: string): Promise<
   const missing = saved.filter((s) => !codes.includes(s.code));
   if (missing.length) return problemResponse(400, "ERR_VALIDATION", { errors: missing.map(() => ({ pointer: "/items", code: "code_removed" })) });
 
-  const r = await outcome<CodeList>(apiClient(auth.session.at).PUT("/v1/admin/code-lists/{list_key}", { params: { path: { list_key: meta.key } }, body: { items: body.data.items.map((i) => ({ ...i, label_bn: i.label_bn ?? null })), change_reason: reason.data } }));
+  // Attributes: a list with an attribute spec must carry valid values; a list without one never takes attrs from the browser
+  // (saved items keep what the server holds, new items have none), so a typo cannot create an attribute nobody reads.
+  const spec = meta.attrs ?? [];
+  const attrErrors: { pointer: string; code: string }[] = [];
+  const items = body.data.items.map((i, n) => {
+    const stored = saved.find((x) => x.code === i.code);
+    if (spec.length === 0) return { ...i, attrs: (stored?.attrs ?? {}) as Record<string, string | number | boolean | null> };
+    for (const a of spec) {
+      const v = i.attrs?.[a.key];
+      if (a.options ? !a.options.includes(String(v ?? "")) : v === undefined) attrErrors.push({ pointer: `/items/${n}/attrs/${a.key}`, code: "required" });
+    }
+    for (const k of Object.keys(i.attrs ?? {})) if (!spec.some((a) => a.key === k)) attrErrors.push({ pointer: `/items/${n}/attrs/${k}`, code: "unknown_member" });
+    return i;
+  });
+  if (attrErrors.length) return problemResponse(400, "ERR_VALIDATION", { errors: attrErrors });
+
+  const r = await outcome<CodeList>(apiClient(auth.session.at).PUT("/v1/admin/code-lists/{list_key}", { params: { path: { list_key: meta.key } }, body: { items: items.map((i) => ({ ...i, label_bn: i.label_bn ?? null })), change_reason: reason.data } }));
   if (!r.ok) return auth.finish(NextResponse.json(r.problem, { status: r.status, headers: { "Content-Type": "application/problem+json" } }));
   return auth.finish(NextResponse.json({ list: r.data }));
 }

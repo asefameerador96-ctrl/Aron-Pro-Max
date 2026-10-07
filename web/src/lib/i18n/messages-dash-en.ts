@@ -185,6 +185,9 @@ export const dashEn = {
   "sync.col.rejected": "Rejected",
   "sync.col.quarantined": "Quarantined",
   "sync.col.p95": "p95 (s)",
+  "sync.oldest_photo": "Oldest {min} min",
+  "sync.col.photos": "Photos",
+  "sync.col.ack": "Config ack",
   "sync.state.not_started": "Not started",
   "sync.state.logged_in": "Logged in",
   "sync.state.in_field": "In the field",
@@ -228,6 +231,9 @@ export const dashEn = {
   "auth.remember": "Remember me",
 
   "credentials.guideline": "Password guideline",
+  "auth.password_change.title": "Choose a new password",
+  "auth.password_change.hint": "Your password must be changed before you continue. Enter the current password, then a new one: 12 characters or more, with a capital letter, a small letter and a digit.",
+  "auth.password_change.signin_again": "Your password is changed. Sign in again with the new password.",
   "credentials.rule.length": "At least {n} characters.",
   "credentials.rule.mixed": "At least one capital letter, one small letter and one digit.",
   "credentials.rule.history": "Not one of your last 10 passwords, and not changed again within 24 hours.",
@@ -264,6 +270,7 @@ export const dashEn = {
   "geo.visits": "Visits",
 
   "tracking.previous_day": "Day before ({date})",
+  "tracking.same_time_yesterday": "Same time yesterday ({date}, {time})",
 
   "error.page.title": "This page could not be shown",
   "error.page.retry": "Try again",

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sr_visit_open">আপনার ভিজিট চালু আছে। বিক্রয়ের স্ক্রিন এখান থেকে চলবে।</string>
+    <string name="sr_visit_close">ভিজিট বন্ধ করুন</string>
+    <string name="sr_bundle_downloading">আজকের রুট ব্যাকগ্রাউন্ডে ডাউনলোড হচ্ছে। আপনি কাজ চালিয়ে যেতে পারেন।</string>
+</resources>

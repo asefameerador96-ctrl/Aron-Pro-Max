@@ -21,11 +21,16 @@ import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.feature.auth.LoginScreen
 import com.aktcl.aron.feature.auth.LoginViewModel
-import com.aktcl.aron.feature.home.HomePlaceholderScreen
-import com.aktcl.aron.feature.home.HomePlaceholderViewModel
 import com.aktcl.aron.feature.home.HomeUser
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import com.aktcl.aron.core.database.UserDatabases
+import com.aktcl.aron.core.geo.FixManager
+import com.aktcl.aron.core.sync.SyncScheduler
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import javax.inject.Inject
 
 /**
@@ -35,6 +40,10 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     @Inject lateinit var components: SessionComponents
+    @Inject lateinit var databases: UserDatabases
+    @Inject lateinit var scheduler: SyncScheduler
+    @Inject lateinit var fixManager: FixManager
+    @Inject lateinit var bundleDownloaders: com.aktcl.aron.core.sync.BundleDownloaders
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
@@ -55,22 +64,27 @@ class MainActivity : ComponentActivity() {
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect)
                         }
                         is SessionState.Active -> {
-                            val vm = viewModel(key = "home-" + s.user.userId) {
-                                HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
+                            val holder = viewModel(key = "sr-day-" + s.user.userId) { SrDayHolder() }
+                            val day by holder.day.collectAsStateWithLifecycle()
+                            LaunchedEffect(s.user.userId) {
+                                if (holder.day.value == null) {
+                                    holder.day.value = SrDay(s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager)
+                                }
                             }
-                            HomePlaceholderScreen(
-                                viewModel = vm,
-                                user = HomeUser(
-                                    fullName = s.user.fullName,
-                                    username = s.user.username,
-                                    role = s.user.role,
-                                    offline = s.mode == UnlockMode.OFFLINE,
-                                    reauthRequired = s.reauthRequired,
-                                    updateRequired = s.updateRequired,
-                                ),
-                                onLogout = { lifecycleScope.launch { components.session.logout() } },
-                                onLanguageSelect = onLanguageSelect,
-                            )
+                            day?.let { d ->
+                                SrApp(
+                                    day = d,
+                                    user = HomeUser(
+                                        fullName = s.user.fullName, username = s.user.username, role = s.user.role,
+                                        offline = s.mode == UnlockMode.OFFLINE, reauthRequired = s.reauthRequired, updateRequired = s.updateRequired,
+                                    ),
+                                    health = null, versionText = versionName,
+                                    onLanguageSelect = onLanguageSelect,
+                                    onLogout = { lifecycleScope.launch { components.session.logout() } },
+                                    onOtherTile = { },
+                                    startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
+                                )
+                            }
                         }
                     }
                 }

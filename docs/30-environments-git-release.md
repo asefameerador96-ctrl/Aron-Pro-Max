@@ -29,7 +29,7 @@ This page applies the full design of `docs/20` s5 (written for the long plan) to
 
 ## 3. Git and GitHub governance
 
-**State today (honest):** all work is in GitHub (`asefameerador96-ctrl/Aron-Pro-Max`, about 100 commits, every row one commit, "F-XXX-nnn: what"), but there is **one branch**, it is the default branch, there is **no `main`, no branch protection, no tags, no releases, no CODEOWNERS, no PR template, no Dependabot**. That was acceptable for 14 lanes pushing straight to one branch in the first two days; it is not enterprise grade.
+**State today (2026-10-07 05:23 UTC, verified by the laptop operator with read-only API calls after the owner's approval):** governance is **applied**. `main` exists (created at the INT head c433001) and is protected: pull request required, strict (branch up to date), 0 required approvals (one human), conversation resolution on, no force-push, no deletion, admins not enforced, **8 required checks** (Repository gates (secrets, migrations, contract); Contract lint; Shared, db and backend (build and tests); Android debug APKs, unit tests and lint; Release APKs and APK size gate; Web (lint, types, tests, build, e2e); Container images (build and runtime smoke); Infra validation (Bicep, workflows)); the tag `baseline-2026-10-06` is at aac06e0; INT blocks force-push and deletion (no checks, no PR requirement, lanes keep pushing merge-first); environments `azure-dev` (branch INT, unchanged), `azure-stage` (branch main) and `azure-prod` (tags `server-v*` only, the owner is the required reviewer); secret scanning and push protection are on; the repository is public and INT is still the default branch. CODEOWNERS, the PR template and Dependabot are in the repository. Not yet done: the first daily gate pull request (INT to main), gate tags, CodeQL on pull requests (workflow exists).
 
 **Target (applied by `tools/github-governance.ps1`, run by the laptop operator with the owner's approval):**
 
@@ -62,6 +62,6 @@ The repository `asefameerador96-ctrl/Aron-Pro-Max` has been **public** since it 
 
 ## 5. What is not done yet (tracked, owner in brackets)
 
-1. `main`, protection, tags, templates, CODEOWNERS, Dependabot, CodeQL, gitleaks: scripted, **waiting for the owner's approval** (laptop operator, `tools/github-governance.ps1`).
+1. `main`, protection, baseline tag, environments, CODEOWNERS, Dependabot: **done 2026-10-07** (section 3). Open: the first daily gate pull request and the gate tags (lead), the Actions spending limit before the repository is made private (owner).
 2. `stage.bicepparam` and the promotion workflows `promote-prod.yml` and `release-app.yml`: written by the infra lane, **not deployable** until the final account exists.
 3. Device-lab protocol file and the 8-hour battery run: QA lane and the owner (Day 6).

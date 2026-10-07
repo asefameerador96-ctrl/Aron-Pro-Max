@@ -58,6 +58,20 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     of docs/24 s12.5, JSON Schema each, published versions fixed); insert trigger refuses an uncatalogued type or
     version, a non-object payload or a missing required key. `docs/data-events.md` rendered by `DataEventsTest`.
 
+- **Enterprise-bar audit rows** (2026-10-07; Opus checker per migration):
+  - `V0020` (AUD-DA-03, TP-7, REL-03): roles `auth_rw`, `pii_reader` (outlet contact columns), `support_ro`; `web_ro`
+    and `bi_reader` read only `dw.v_*` (+ `dw.v_outlet_masked`); `app.db_role_limit` + `app.apply_login_limits()` write
+    the docs/18 timeouts onto login identities; tests with real logins (SHOW, DROP refused, 57014 cancel). Checker PASS.
+    Infra and backend asks: `docs/requests/db-runtime-roles.md` (update section).
+  - `V0021` (AUD-PERF-01): set-based client_uuid uniqueness. Measured on the docs/22-volume database (7 trading days:
+    726k outlets, 2.0 M visits, 1.7 M memos, 2.8 M lines, 25 monthly partitions), 200-row batches of visit + memo +
+    2 lines each: **66-79 ms p95 with V0007's per-row trigger, 8-16 ms p95 with V0021** (2.3-2.7 ms with no check);
+    checker independently 37.8 -> 8.5 ms. `db/perf/generate.sql`, `db/perf/ingest_batches.sql`. Checker PASS.
+  - `V0022`: `tracking_action.created` v1 catalogued (the analytics producer was refused); producer asked to drop the
+    free-text note (`docs/requests/db-event-tracking-action-note.md`).
+  - AUD-DA-04 (system code lists): built and checked (PASS after fixes) but **held**: it breaks backend-masterdata's
+    fixture (`docs/requests/db-masterdata-code-list-fixture.md`); ships as the next migration once that is idempotent.
+
 ## Lead rulings applied (docs/24 s14a, 2026-10-06)
 
 R1 registry hash partitioning, R2 only the s9.5 keys, R3 scope_id ordinals, R4 `_` in SKU codes: already as built.
@@ -67,12 +81,22 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 
 ## Next
 
-- Index and query-plan review at docs/22 volume (`db/perf/generate.sql`): in progress.
+- Index and query-plan review at docs/22 volume (`db/perf/generate.sql`): ingest measured (V0021); bundle, worker and
+  dashboard plans in progress. Then AUD-DA-01 (outbox commit order, dirty-key dead letter), DA-02, DA-05..08, PERF-03/07/08.
 
 - Back-office tables of docs/24 s12.1 that no db row names (`survey`, `survey_question`, `rubric`, `tutorial`,
   `print_template`, `supervisor_target`, `web_entry_*`, `qc_summary_entry`, `entry_unlock`, `dues_adjustment`,
   `price_batch`, `tracking_action`, `report_export_log`, `client_error`): added only when a docs/25 row of another lane
   needs one (`python3 tools/my-rows.py db` lists no db row after Day 1).
+
+## Sponsor go-live checklist (db)
+
+- [ ] AKTCL confirms the authored code lists of the code-list migration (V0022, held until
+  `docs/requests/db-masterdata-code-list-fixture.md` is done): `void_reason` (Q43), `stock_variance_reason`,
+  `outlet_close_reason`, `submit_void_reason`, `edit_reason` (two more live-app reasons, MQ-18), `feedback_category`
+  (Q-62), and adds codes through the admin code-list page if needed.
+- [ ] AKTCL supplies Bangla labels for every code-list item whose `label_bn` is NULL
+  (`SELECT list_key, code, label_en FROM app.code_list_item WHERE label_bn IS NULL AND valid_to IS NULL`).
 
 ## Not verified here
 
@@ -101,6 +125,7 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 | 2026-10-05 | Tables listed in `app.partition_policy` are never the target of a foreign key; children reference parents by `client_uuid` | re-routing default-partition rows detaches the default partition |
 | 2026-10-07 | `worker_rw` gets table-level UPDATE on the worker-owned app tables (route_day, visit, media, ...); the guard triggers limit the columns | column grants would have to be kept in step with every new column; the triggers already enforce it |
 | 2026-10-07 | `worker_rw` reads every app table except credentials and one-time secrets (`mfa_secret`, `device_otp`, `refresh_token`, `enrolment_token`, `app_user.password_hash`); `push_token` stays readable | the worker sends pushes |
+| 2026-10-07 | Code-list migration (V0022, held) `day_exception_reason` codes follow docs/16 (`dh_out_of_stock`, `sick`) plus docs/19's `other`; channel/geo_class codes are lower case with the canonical value in `attrs.value` | docs/16 owns the data model; the code pattern is lower case (request to the lead filed with V0022) |
 | 2026-10-07 | `jobs_rw` = `worker_rw` + `ensure_partitions`; no rights on `stg` or job bookkeeping yet | no job table exists; added with the first job that needs one |
 | 2026-10-07 | `v_geo_integrity` covers every visit kind of the user; `v_daily_sr` counts SR calls only | integrity is about a person's fixes |
 | 2026-10-07 | Domain-event catalogue enforced by a trigger, not a foreign key; `payload_version` nullable (only pre-V0017 rows) | PG16 cannot add a NOT VALID FK to a partitioned table (squawk gate); the outbox is append-only so it cannot be backfilled |
