@@ -49,6 +49,11 @@ class SyncDigestService(
     private val clock: AronClock = AronClock.SYSTEM,
     /** `cfg.sync.max_backdate_days` (7): an older row re-sent would be quarantined as too old, so it is never asked for. */
     private val windowDays: () -> Long = { DEFAULT_WINDOW_DAYS },
+    /**
+     * The oldest date ingest still stores for the user (F-SYS-090: working days when `cfg.calendar.window_unit` says so,
+     * `IngestService.backdateFloorFor`); null uses [windowDays] calendar days. The digest asks only for what a re-send can store.
+     */
+    private val floor: ((userId: Long, today: LocalDate) -> LocalDate)? = null,
 ) {
     fun compare(p: AronPrincipal, req: SyncDigestRequest): SyncDigestResponse {
         val deviceId = p.deviceId ?: throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "a phone token is required")
@@ -66,7 +71,8 @@ class SyncDigestService(
             if (it.type !in TypeRules.BY_TYPE.keys) throw invalid("/items/$i/type", "unknown record type")
             Triple(date, it.type, it.buckets)
         }
-        val inWindow = items.filter { (d) -> !d.isAfter(today) && !d.isBefore(today.minusDays(windowDays())) }
+        val oldest = floor?.invoke(p.userId, today) ?: today.minusDays(windowDays())
+        val inWindow = items.filter { (d) -> !d.isAfter(today) && !d.isBefore(oldest) }
         if (inWindow.isEmpty()) return SyncDigestResponse(emptyList())
         val server = buckets(p.userId, deviceId, inWindow.map { it.first }.distinct(), inWindow.map { it.second }.distinct())
         val resend = inWindow.mapNotNull { (date, type, phone) ->

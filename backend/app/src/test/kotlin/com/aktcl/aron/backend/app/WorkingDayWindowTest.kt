@@ -165,5 +165,17 @@ class WorkingDayWindowTest {
         assertEquals("accepted", client.status(visitOn("2026-12-19")))
         // 2026-12-18 is 16 calendar days back: beyond the ceiling (15), quarantined as before.
         assertEquals("quarantined:business_date_out_of_window", client.status(visitOn("2026-12-18")))
+
+        // The digest uses the same window: a phone that claims nothing for 2026-12-23 is asked to re-send it (the
+        // calendar window would answer that date as matching), and 2026-12-18, outside, is never asked for.
+        val empty = (1..16).joinToString(",", "[", "]") { """{"count":0,"hash":"0000000000000000"}""" }
+        val t = client.login()
+        val r = client.post("/v1/sync/digest") {
+            bearerAuth(t); header("X-Device-Id", devPhone); contentType(ContentType.Application.Json)
+            setBody("""{"device_uuid":"$devPhone","items":[{"business_date":"2026-12-23","type":"visit","buckets":$empty},{"business_date":"2026-12-18","type":"visit","buckets":$empty}]}""")
+        }
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        val resend = json(r.bodyAsText())["resend"]!!.jsonArray.map { it.jsonObject["business_date"]!!.jsonPrimitive.content }
+        assertEquals(listOf("2026-12-23"), resend)
     }
 }

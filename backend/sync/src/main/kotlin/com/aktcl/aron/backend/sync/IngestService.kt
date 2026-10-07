@@ -117,7 +117,7 @@ class IngestService(
         fun reachOn(d: LocalDate): Reach = reaches.getOrPut(d) { reach.reach(up.userId, up.role, up.scopeVersion, d) }
         val backdateDays: Long = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
         /** The oldest business date inside the backdate window (F-SYS-090: calendar or working days), read once per batch. */
-        val backdateFloor: LocalDate = backdateFloor(up, today, backdateDays)
+        val backdateFloor: LocalDate = backdateFloor(up.userId, today, backdateDays)
         val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
         /** Read once per batch; a missing or unknown value is `record`, which never drops a sale. */
         val signatureMode: SignatureMode = SignatureMode.of(runCatching { config.string("cfg.sec.record_signature_mode") }.getOrNull())
@@ -906,7 +906,11 @@ class IngestService(
      * the scoped holiday calendar), capped by the registry retention. Read before any family transaction; a read failure
      * is a retryable 503 for the whole batch.
      */
-    private fun backdateFloor(up: Uploader, today: LocalDate, days: Long): LocalDate {
+    /** The backdate floor for [userId] on [today] with the configured `cfg.sync.max_backdate_days` (the digest's window). */
+    fun backdateFloorFor(userId: Long, today: LocalDate): LocalDate =
+        backdateFloor(userId, today, runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong())
+
+    private fun backdateFloor(userId: Long, today: LocalDate, days: Long): LocalDate {
         val unit = runCatching { config.string("cfg.calendar.window_unit") }.getOrDefault(WorkingDays.CALENDAR)
         if (unit != WorkingDays.WORKING_DAYS) return today.minusDays(days)
         val registryDays = runCatching { config.int("cfg.retention.ingest_registry_days") }.getOrDefault(45).toLong()
@@ -921,7 +925,7 @@ class IngestService(
                     SELECT z.id, z.territory_id, t.division_id, d.wing_id FROM app.app_user u JOIN app.zone z ON z.id = u.home_zone_id
                     JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id WHERE u.id = :u
                     """.trimIndent(),
-                ).bind("u", up.userId).map { rs, _ -> DayPlan.ZoneChain(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }
+                ).bind("u", userId).map { rs, _ -> DayPlan.ZoneChain(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }
                     .findOne().orElse(DayPlan.ZoneChain(-1, -1, -1, -1))
                 val calendar = h.createQuery("SELECT date, scope_type, scope_id, kind, selling_day FROM app.calendar_holiday WHERE date >= :a AND date < :b AND revoked_at IS NULL")
                     .bind("a", today.minusDays(ceiling)).bind("b", today).map { rs, _ ->
