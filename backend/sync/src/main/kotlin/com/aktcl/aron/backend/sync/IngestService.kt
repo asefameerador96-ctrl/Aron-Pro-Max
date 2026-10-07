@@ -84,7 +84,9 @@ class IngestService(
         val clientUuid: String = (json["client_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
         val type: String = (json["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
         val family: String = (json["family_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: clientUuid
-        val hash: ByteArray = Jcs.sha256(json)
+        /** Set when the record cannot be canonicalised (a number outside the double range): a per-record schema error. */
+        val canonError: String? = runCatching { Jcs.canonicalize(json); null }.getOrElse { "not canonicalisable: ${it.message?.take(80)}" }
+        val hash: ByteArray = if (canonError == null) Jcs.sha256(json) else sha256(json.toString().toByteArray())
         val hashHex: String = hash.joinToString("") { "%02x".format(it) }
     }
 
@@ -95,6 +97,8 @@ class IngestService(
         fun reachOn(d: LocalDate): Reach = reaches.getOrPut(d) { reach.reach(up.userId, up.role, up.scopeVersion, d) }
         val backdateDays: Long = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
         val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
+        /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
+        var arith: Map<String, String> = emptyMap()
     }
 
     fun ingest(up: Uploader, req: SyncBatchRequest): SyncBatchResponse {
@@ -114,6 +118,7 @@ class IngestService(
             var j = i
             while (j + 1 < recs.size && recs[j + 1].family == recs[i].family) j++
             val family = recs.subList(i, j + 1)
+            ctx.arith = MemoChecks.familyMismatches(family.map { it.json })
             try {
                 db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
             } catch (e: Exception) {
@@ -170,7 +175,16 @@ class IngestService(
             ).bind("d", up.deviceId).bind("b", req.batch_uuid).bind("u", up.userId).bind("fp", fingerprint).bind("n", count)
                 .bind("trigger", req.trigger).bind("app", req.app_version.take(40)).bind("pending", req.pending_rows.coerceAtLeast(0))
                 .bind("now", ts(now)).bind("exp", ts(now.plusSeconds(retention * 3600))).execute()
-            val row = h.createQuery("SELECT fingerprint, response_gz, user_id FROM app.sync_batch WHERE device_id = :d AND batch_uuid = CAST(:b AS uuid) FOR UPDATE")
+            val expired = h.createQuery("SELECT expires_at < :now FROM app.sync_batch WHERE device_id = :d AND batch_uuid = CAST(:b AS uuid) FOR UPDATE")
+                .bind("now", ts(now)).bind("d", up.deviceId).bind("b", req.batch_uuid).mapTo(Boolean::class.java).one()
+            if (expired) {
+                // Past cfg.retention.sync_batch_response_h the stored response is gone: the batch is processed afresh
+                // (every record is idempotent) and the row restarts under this request.
+                h.createUpdate("UPDATE app.sync_batch SET fingerprint = :fp, user_id = :u, record_count = :n, response_gz = NULL, completed_at = NULL, received_at = :now, expires_at = :exp WHERE device_id = :d AND batch_uuid = CAST(:b AS uuid)")
+                    .bind("fp", fingerprint).bind("u", up.userId).bind("n", count).bind("now", ts(now)).bind("exp", ts(now.plusSeconds(retention * 3600)))
+                    .bind("d", up.deviceId).bind("b", req.batch_uuid).execute()
+            }
+            val row = h.createQuery("SELECT fingerprint, response_gz, user_id FROM app.sync_batch WHERE device_id = :d AND batch_uuid = CAST(:b AS uuid)")
                 .bind("d", up.deviceId).bind("b", req.batch_uuid)
                 .map { rs, _ -> Triple(rs.getBytes(1), rs.getBytes(2), rs.getLong(3)) }.one()
             if (!row.first.contentEquals(fingerprint) || row.third != up.userId) {
@@ -179,29 +193,35 @@ class IngestService(
             val stored = row.second ?: return@inTransaction null
             h.createUpdate("UPDATE app.sync_batch SET replay_count = replay_count + 1 WHERE device_id = :d AND batch_uuid = CAST(:b AS uuid)")
                 .bind("d", up.deviceId).bind("b", req.batch_uuid).execute()
-            ResponseJson.decodeFromString(SyncBatchResponse.serializer(), gunzip(stored).decodeToString()).copy(replayed = true)
+            val old = ResponseJson.decodeFromString(SyncBatchResponse.serializer(), gunzip(stored).decodeToString())
+            // The fingerprint is order-free (s3.3); the acks follow this request's order (s4.5).
+            val byUuid = old.acks.groupBy { it.client_uuid }.mapValues { it.value.toMutableList() }
+            val acks = req.records.map { rec -> byUuid[(rec["client_uuid"] as? JsonPrimitive)?.content ?: ""]?.removeFirstOrNull() ?: error("replay ack missing") }
+            old.copy(replayed = true, acks = acks)
         }
 
+    /**
+     * One record in its own savepoint (poison-row isolation, F-SYS-048): a value the database refuses (SQLSTATE class
+     * 22 or 23) is a final `schema_invalid`; any other failure is `server_error`, retryable and parked, so the phone
+     * resends it and skips ahead after `cfg.sync.family_skip_after` tries. The other records of the family and the
+     * batch go on. Only when the savepoint itself cannot be rolled back does the family fail as a whole.
+     */
     private fun processInSavepoint(h: Handle, ctx: Ctx, r: Rec): Outcome {
         val sp = "rec_${r.index}"
         h.savepoint(sp)
         return try {
             process(h, ctx, r).also { h.release(sp) }
-        } catch (e: SQLException) {
-            // A record the database refuses (type, range, check or reference): that record only, never the batch.
+        } catch (e: Exception) {
+            if (e is ApiProblem) throw e
             h.rollbackToSavepoint(sp)
-            val state = e.sqlState ?: ""
+            val state = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()?.sqlState ?: ""
             if (state.startsWith("22") || state.startsWith("23")) {
                 log.info("record refused by the database client_uuid=${r.clientUuid} type=${r.type} sqlstate=$state")
                 finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "database refused the record ($state)")
-            } else throw e
-        } catch (e: org.jdbi.v3.core.statement.UnableToExecuteStatementException) {
-            h.rollbackToSavepoint(sp)
-            val state = (e.cause as? SQLException)?.sqlState ?: ""
-            if (state.startsWith("22") || state.startsWith("23")) {
-                log.info("record refused by the database client_uuid=${r.clientUuid} type=${r.type} sqlstate=$state")
-                finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "database refused the record ($state)")
-            } else throw e
+            } else {
+                log.error("record failed client_uuid=${r.clientUuid} type=${r.type} batch_uuid=${ctx.batchUuid} sqlstate=$state", e)
+                park(h, ctx, r, RecordOutcomeCode.SERVER_ERROR, "${e.javaClass.simpleName} $state".trim())
+            }
         }
     }
 
@@ -222,7 +242,9 @@ class IngestService(
         val payload = env["payload"] as JsonObject
         val bd = LocalDate.parse(env.str("business_date")!!)
 
-        // 2. Registry: one uniqueness point for every device record.
+        // 2. Registry: one uniqueness point for every device record. A transaction-scoped advisory lock on the uuid
+        // serialises concurrent batches carrying the same client_uuid (FOR UPDATE locks nothing while no row exists).
+        h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", r.clientUuid)
         val prior = h.createQuery("SELECT status, outcome_code, payload_sha256, server_id FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) FOR UPDATE")
             .bind("c", r.clientUuid).map { rs, _ -> Prior(rs.getString(1), rs.getString(2), rs.getBytes(3), rs.getObject(4) as Long?) }.findOne().orElse(null)
         if (prior != null) {
@@ -274,6 +296,10 @@ class IngestService(
             }
         }
 
+        env.long("acting_for_user_id")?.let { a ->
+            if (!actingForValid(h, ctx, routeId, a, bd)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "acting_for_user_id $a without a cover of route $routeId")
+        }
+
         // 6. Record signature on header records when the device has a key (s8.3).
         if (rule.signedHeader && ctx.up.deviceKey != null) {
             val sig = env.str("sig")
@@ -284,23 +310,59 @@ class IngestService(
             }
         }
 
-        // 7. Parents (s4.2 rule 3): a child whose parent is not stored yet is parked.
+        // 7. Content fingerprint (F-SYS-055): a header re-sent under regenerated uuids is the same content; the first
+        // copy stands and the second is quarantined content_duplicate, never stored twice.
+        val contentFp = if (rule.signedHeader) contentFingerprint(r) else null
+        if (contentFp != null) {
+            val twin = h.createQuery(
+                "SELECT client_uuid::text FROM app.ingest_registry WHERE user_id = :u AND record_type = :t AND content_fp = :fp AND client_uuid <> CAST(:c AS uuid) AND status IN ('accepted','voided') LIMIT 1",
+            ).bind("u", ctx.up.userId).bind("t", r.type).bind("fp", contentFp).bind("c", r.clientUuid).mapTo(String::class.java).findOne().orElse(null)
+            if (twin != null) return quarantine(h, ctx, r, bd, RecordOutcomeCode.CONTENT_DUPLICATE, "same content as $twin", contentFp = contentFp)
+        }
+
+        // 8. Money (F-SYS-062, s7.4): a memo family whose equations fail is quarantined whole, before anything is stored.
+        (ctx.arith[r.clientUuid] ?: MemoChecks.recordMismatch(r.type, payload))?.let { why ->
+            return quarantine(h, ctx, r, bd, RecordOutcomeCode.ARITHMETIC_MISMATCH, why)
+        }
+
+        // 9. Parents (s4.2 rule 3): a child whose parent is not stored yet is parked; the child of a content duplicate
+        // is a duplicate too.
         for (field in rule.parents) {
             val parent = payload.str(field) ?: continue
             if (!UUID_V4.matches(parent)) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "$field is not a UUID v4")
-            val stored = h.createQuery("SELECT count(*) FROM app.ingest_registry WHERE client_uuid = CAST(:p AS uuid) AND status IN ('accepted','voided')")
-                .bind("p", parent).mapTo(Long::class.java).one() > 0 ||
-                // Parents written outside the batch (online endpoints, migrated history) are in their table only.
-                (PARENT_TABLES[field]?.let { t ->
-                    h.createQuery("SELECT count(*) FROM app.$t WHERE client_uuid = CAST(:p AS uuid)").bind("p", parent).mapTo(Long::class.java).one() > 0
-                } ?: false)
-            if (!stored) return park(h, ctx, r, RecordOutcomeCode.PARENT_MISSING, "$field $parent")
+            val reg = h.createQuery("SELECT record_type, user_id, status, outcome_code FROM app.ingest_registry WHERE client_uuid = CAST(:p AS uuid)")
+                .bind("p", parent).map { rs, _ -> listOf(rs.getString(1), rs.getLong(2).toString(), rs.getString(3), rs.getString(4)) }.findOne().orElse(null)
+            // (type, owner) of a stored parent: from the registry, or from its table for parents written outside the
+            // batch (online endpoints, migrated history).
+            val found: Pair<String, Long>? = if (reg != null && reg[2] in setOf("accepted", "voided")) reg[0] to reg[1].toLong()
+            else PARENT_TABLES[field]?.let { t ->
+                h.createQuery("SELECT user_id FROM app.$t WHERE client_uuid = CAST(:p AS uuid) LIMIT 1").bind("p", parent).mapTo(Long::class.java).findOne().orElse(null)
+                    ?.let { (PARENT_TYPES[field] ?: t) to it }
+            }
+            if (found == null) {
+                if (reg?.get(2) == "quarantined" && reg[3] == RecordOutcomeCode.CONTENT_DUPLICATE.wire) {
+                    return quarantine(h, ctx, r, bd, RecordOutcomeCode.CONTENT_DUPLICATE, "parent $parent is a content duplicate")
+                }
+                return park(h, ctx, r, RecordOutcomeCode.PARENT_MISSING, "$field $parent")
+            }
+            val (parentType, owner) = found
+            PARENT_TYPES[field]?.let { want -> if (parentType != want) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "$field names a $parentType, not a $want") }
+            // A child reaches its parent's rows: the parent must be the uploader's own, except where the protocol lets
+            // one user act on another's record within reach (dues on a memo, an assigned task, an outlet request).
+            if (owner != ctx.up.userId && !crossUserParentAllowed(h, ctx, field, parent, bd)) {
+                return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "$field $parent belongs to another user")
+            }
         }
 
-        // 8. Store.
+        // 10. Store.
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
-            is RecordWriter.Result.Stored -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.accepted(stored.serverId) }
+            is RecordWriter.Result.Stored -> {
+                register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
+                MemoChecks.afterChildStored(h, r.type, payload)
+                outOfBounds(h, ctx, r, rule, payload, bd, routeId)
+                Outcome.accepted(stored.serverId)
+            }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
             is RecordWriter.Result.Refused -> {
                 if (stored.code.status.wire == "quarantined") quarantine(h, ctx, r, bd, stored.code, stored.detail)
@@ -308,6 +370,73 @@ class IngestService(
                 else finalReject(h, ctx, r, stored.code, stored.detail)
             }
         }
+    }
+
+    /**
+     * Content of a header record without anything a re-mint changes: every UUID-valued string (its own and its
+     * parents' ids) and the envelope's bundle and config stamps are removed; captured_at, the business date and the
+     * payload stay, so two genuine records never share it.
+     */
+    private fun contentFingerprint(r: Rec): ByteArray {
+        fun strip(e: JsonElement): JsonElement = when (e) {
+            is JsonObject -> JsonObject(e.filterKeys { it !in VOLATILE }.mapValues { strip(it.value) }.filterValues { !(it is JsonPrimitive && it.isString && UUID_ANY.matches(it.content)) })
+            is kotlinx.serialization.json.JsonArray -> kotlinx.serialization.json.JsonArray(e.map { strip(it) })
+            else -> e
+        }
+        return sha256(("cfp1|" + r.type + "|" + Jcs.canonicalize(strip(r.json))).toByteArray())
+    }
+
+    /** GEO_OUT_OF_BOUNDS (s11.4): a fix outside the Bangladesh box raises a signal; the record itself is stored. */
+    private fun outOfBounds(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
+        val fix = payload["fix"] as? JsonObject ?: return
+        val lat = (fix["lat"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: return
+        val lng = (fix["lng"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: return
+        if (lat in 20.5..26.7 && lng in 88.0..92.7) return
+        h.createUpdate(
+            """
+            INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+            VALUES ('GEO_OUT_OF_BOUNDS', 3, :bd, :st, :sid, :u, :route, 40, CAST(:ev AS jsonb), :cv)
+            ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
+            """.trimIndent(),
+        ).bind("bd", bd).bind("st", if (r.type == "visit") "visit" else "user").bind("sid", if (r.type == "visit") r.clientUuid else ctx.up.userId.toString())
+            .bind("u", ctx.up.userId).bind("route", routeId)
+            .bind("ev", kotlinx.serialization.json.buildJsonObject {
+                put("record_type", JsonPrimitive(rule.type)); put("client_uuid", JsonPrimitive(r.clientUuid)); put("lat", JsonPrimitive(lat)); put("lng", JsonPrimitive(lng))
+            }.toString()).bind("cv", config.configVersion()).execute()
+    }
+
+    /** Cross-user parent references the protocol allows, each still bounded by the uploader's reach. */
+    private fun crossUserParentAllowed(h: Handle, ctx: Ctx, field: String, parent: String, bd: LocalDate): Boolean {
+        fun outletInReach(outletId: Long?): Boolean {
+            if (outletId == null) return false
+            val (oRoute, oZone) = h.createQuery("SELECT route_id, zone_id FROM app.outlet WHERE id = :o").bind("o", outletId)
+                .map { rs, _ -> (rs.getObject(1) as Long?) to rs.getLong(2) }.findOne().orElse(null) ?: return false
+            val reach = ctx.reachOn(bd)
+            return if (reach.ownRecordsOnly) oRoute != null && oRoute in reach.routeIds else reach.coversZone(oZone) || (oRoute != null && oRoute in reach.routeIds)
+        }
+        return when (field) {
+            "against_memo_client_uuid" -> outletInReach(
+                h.createQuery("SELECT outlet_id FROM app.memo WHERE client_uuid = CAST(:p AS uuid) LIMIT 1").bind("p", parent).mapTo(Long::class.java).findOne().orElse(null),
+            )
+            "task_uuid" -> h.createQuery("SELECT count(*) FROM app.task WHERE client_uuid = CAST(:p AS uuid) AND assignee_user_id = :u").bind("p", parent)
+                .bind("u", ctx.up.userId).mapTo(Long::class.java).one() > 0
+            "request_uuid" -> outletInReach(
+                h.createQuery("SELECT outlet_id FROM app.outlet_change_request WHERE client_uuid = CAST(:p AS uuid) LIMIT 1").bind("p", parent).mapTo(Long::class.java).findOne().orElse(null),
+            )
+            else -> false
+        }
+    }
+
+    /** acting_for_user_id (s4.3) is a claim: true only when the uploader covers the route on that date and the named user is its primary. */
+    private fun actingForValid(h: Handle, ctx: Ctx, routeId: Long?, actingFor: Long, bd: LocalDate): Boolean {
+        if (routeId == null) return false
+        return h.createQuery(
+            """
+            SELECT count(*) FROM app.route_assignment c JOIN app.route_assignment p ON p.route_id = c.route_id AND p.kind = 'primary'
+                AND p.valid_from <= :d AND (p.valid_to IS NULL OR p.valid_to > :d)
+            WHERE c.route_id = :r AND c.user_id = :u AND c.kind = 'cover' AND c.valid_from <= :d AND (c.valid_to IS NULL OR c.valid_to > :d) AND p.user_id = :a
+            """.trimIndent(),
+        ).bind("r", routeId).bind("u", ctx.up.userId).bind("d", bd).bind("a", actingFor).mapTo(Long::class.java).one() > 0
     }
 
     private data class Prior(val status: String, val code: String?, val hash: ByteArray, val serverId: Long?)
@@ -318,16 +447,16 @@ class IngestService(
         h.createUpdate("UPDATE app.ingest_registry SET last_seen_at = now(), seen_count = seen_count + 1 WHERE client_uuid = CAST(:c AS uuid)").bind("c", r.clientUuid).execute()
     }
 
-    private fun register(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?) {
+    private fun register(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?, contentFp: ByteArray? = null) {
         h.createUpdate(
             """
-            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at)
-            VALUES (CAST(:c AS uuid), :t, :h, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now)
-            ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id,
+            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, content_fp, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at)
+            VALUES (CAST(:c AS uuid), :t, :h, :fp, CAST(:f AS uuid), :s, :code, :sid, :bd, :u, :d, CAST(:b AS uuid), :now, :now)
+            ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id, content_fp = EXCLUDED.content_fp,
                 last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1
             WHERE app.ingest_registry.status = 'parked' AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
             """.trimIndent(),
-        ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
+        ).bind("c", r.clientUuid).bind("t", r.type).bind("h", r.hash).bind("fp", contentFp).bind("f", r.family.takeIf { UUID_V4.matches(it) } ?: r.clientUuid)
             .bind("s", status).bind("code", code?.wire).bind("sid", serverId).bind("bd", bd).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
             .bind("b", ctx.batchUuid).bind("now", ts(ctx.now)).execute()
         if (status == "accepted") {
@@ -369,7 +498,7 @@ class IngestService(
         return Outcome.of(code)
     }
 
-    private fun quarantine(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String?, register: Boolean = true): Outcome {
+    private fun quarantine(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String?, register: Boolean = true, contentFp: ByteArray? = null): Outcome {
         h.createUpdate(
             """
             INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, detail, user_id, device_id, route_id, business_date, batch_uuid, received_at)
@@ -379,7 +508,7 @@ class IngestService(
         ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", r.json.toString()).bind("detail", detail?.take(1000))
             .bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid)
             .bind("now", ts(ctx.now)).execute()
-        if (register) register(h, ctx, r, bd, "quarantined", code, null)
+        if (register) register(h, ctx, r, bd, "quarantined", code, null, contentFp)
         return Outcome.of(code)
     }
 
@@ -403,7 +532,13 @@ class IngestService(
             val v = env[k]
             if (v != null && v !is JsonNull && (v !is JsonPrimitive || v.isString || (v.longOrNull ?: 0) < 1)) return "$k must be a positive integer"
         }
+        r.canonError?.let { return it }
         val payload = env["payload"] as? JsonObject ?: return "payload must be an object"
+        for ((k, v) in payload) {
+            if (v is JsonNull) continue
+            if (k.endsWith("_uuid") && (v !is JsonPrimitive || !v.isString)) return "$k must be a string"
+            if ((k.endsWith("_id") || k.endsWith("_user_id")) && (v !is JsonPrimitive || v.isString || v.longOrNull == null)) return "$k must be an integer"
+        }
         (payload.keys - shape.allowed).firstOrNull()?.let { return "unknown payload member $it" }
         (shape.required - payload.keys).firstOrNull()?.let { return "missing payload member $it" }
         for ((k, nested) in shape.nested) {
@@ -494,9 +629,20 @@ class IngestService(
     }.list()
 
     companion object {
+        private val UUID_ANY = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+        private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")
+
+        /** Record type a parent reference must name. */
+        private val PARENT_TYPES = mapOf(
+            "visit_client_uuid" to "visit", "origin_visit_client_uuid" to "visit", "source_visit_client_uuid" to "visit",
+            "memo_client_uuid" to "memo", "against_memo_client_uuid" to "memo", "supersedes_client_uuid" to "memo",
+            "check_client_uuid" to "distribution_check", "assessment_client_uuid" to "call_assessment", "request_uuid" to "outlet_change_request",
+            "task_uuid" to "task", "plan_client_uuid" to "visit_plan", "redemption_client_uuid" to "redemption",
+            "visit_plan_outlet_client_uuid" to "visit_plan_outlet",
+        )
 
         /** Table of a parent reference, for parents stored without a registry row (online commands, migrated history). */
         private val PARENT_TABLES = mapOf(

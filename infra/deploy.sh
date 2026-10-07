@@ -82,8 +82,11 @@ while :; do
     [ $(( waits % 4 )) -eq 0 ] && note "deploy lock held by $(lock_owner "$cur") (heartbeat $(lock_age "$cur") s ago); waiting"
     waits=$(( waits + 1 )); sleep 30; continue
   fi
-  az tag update --resource-id "$rg_id" --operation Merge --tags "$lock_tag=$lock_me $(date +%s)" -o none \
-    || { note "cannot write the deploy lock tag; retrying"; sleep 30; continue; }
+  if ! tag_err="$(az tag update --resource-id "$rg_id" --operation Merge --tags "$lock_tag=$lock_me $(date +%s)" -o none 2>&1)"; then
+    # A missing right never heals by waiting: stop at once instead of holding the queue for 80 minutes.
+    grep -q "AuthorizationFailed" <<<"$tag_err" && die "the deploy identity may not write tags on $RG (needed for the deploy lock): $tag_err"
+    note "cannot write the deploy lock tag; retrying"; sleep 30; continue
+  fi
   lock_held=true  # from the write on, the exit trap may release it (only while the value is still ours)
   sleep 20
   if got="$(read_lock)" && [ "$(lock_owner "$got")" = "$lock_me" ]; then break; fi
