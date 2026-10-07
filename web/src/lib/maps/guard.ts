@@ -24,12 +24,13 @@ export class MapsGuard {
 }
 
 export function capFromEnv(env: Record<string, string | undefined> = process.env): number {
+  if (!env.MAPS_DAILY_CAP?.trim()) return DEFAULT_DAILY_CAP;
   const n = Number(env.MAPS_DAILY_CAP);
   return Number.isInteger(n) && n >= 0 ? n : DEFAULT_DAILY_CAP;
 }
 
 export function mapsKey(env: Record<string, string | undefined> = process.env): string | null {
-  return env.MAPS_WEB_KEY || env.NEXT_PUBLIC_MAPS_WEB_KEY || null;
+  return env.MAPS_WEB_KEY || null; // server-side only: a NEXT_PUBLIC key would be inlined into public client JS
 }
 
 let shared: MapsGuard | null = null;

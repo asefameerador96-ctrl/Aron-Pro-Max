@@ -8,13 +8,16 @@ import type { MenuPermission } from "@/lib/admin/types";
 import type { MessageKey } from "@/lib/i18n";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 
+const MENU_EXAMPLE = "web_entry";
 export const ACTIONS = ["view", "create", "edit", "approve", "export", "void"] as const;
 type Action = (typeof ACTIONS)[number];
 
-export function PermissionEditor({ role, menuIds, initial, canWrite }: { role: string; menuIds: string[]; initial: MenuPermission[]; canWrite: boolean }) {
+export function PermissionEditor({ role, menuIds: knownMenus, initial, canWrite }: { role: string; menuIds: string[]; initial: MenuPermission[]; canWrite: boolean }) {
   const { t, problem } = useI18n();
   const router = useRouter();
-  const [grid, setGrid] = useState<Record<string, Set<Action>>>(() => Object.fromEntries(menuIds.map((m) => [m, new Set((initial.find((x) => x.menu_id === m)?.actions ?? []) as Action[])])));
+  const [menuIds, setMenuIds] = useState<string[]>(knownMenus);
+  const [newMenu, setNewMenu] = useState("");
+  const [grid, setGrid] = useState<Record<string, Set<Action>>>(() => Object.fromEntries(knownMenus.map((m) => [m, new Set((initial.find((x) => x.menu_id === m)?.actions ?? []) as Action[])])));
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
@@ -29,6 +32,15 @@ export function PermissionEditor({ role, menuIds, initial, canWrite }: { role: s
       if (s.size > 0) s.add("view");
       return { ...g, [m]: s };
     });
+
+  function addMenu() {
+    const id = newMenu.trim();
+    if (!/^[a-z][a-z0-9_.]{1,60}$/.test(id) || menuIds.includes(id)) return setErr(t("error.field.invalid"));
+    setMenuIds((s) => [...s, id]);
+    setGrid((g) => ({ ...g, [id]: new Set<Action>() }));
+    setNewMenu("");
+    setErr(null);
+  }
 
   async function save() {
     if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) return setErr(t("admin.reason.too_short"));
@@ -79,10 +91,14 @@ export function PermissionEditor({ role, menuIds, initial, canWrite }: { role: s
       </div>
       {canWrite ? (
         <>
-          <p className="text-xs text-amber-700">{t("pm.c3")}</p>
+          <div className="flex items-end gap-2">
+            <input aria-label={t("pm.add_menu")} name="menu_id" value={newMenu} onChange={(e) => setNewMenu(e.target.value)} placeholder={MENU_EXAMPLE} className="rounded border border-slate-300 px-2 py-1.5 text-sm" />
+            <button type="button" onClick={addMenu} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">{t("pm.add")}</button>
+          </div>
+          <p className="text-xs text-[var(--warning)]">{t("pm.c3")}</p>
           <ReasonField value={reason} onChange={setReason} error={err} id={`reason-${role}`} />
-          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{banner.text}</p> : null}
-          <button type="button" disabled={busy} onClick={save} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("pm.request")}</button>
+          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>{banner.text}</p> : null}
+          <button type="button" disabled={busy} onClick={save} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("pm.request")}</button>
         </>
       ) : (
         <p className="text-sm text-slate-600">{t("cfgc.read_only")}</p>

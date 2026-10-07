@@ -1,14 +1,15 @@
 # Deploy Aron to Azure (docs/23 s6, docs/24 s6 and s13.6). Owner: infra lane. Order and reasons: infra/README.md.
 #
 # Triggers
-#   - called by ci.yml after the contract, JVM, web, Android and infra jobs passed on a push to the integration branch
-#     (nothing untested is deployed; pull requests never deploy);
+#   - workflow_run: after a SUCCESSFUL ci run of a push to the integration branch, deploying exactly the commit that
+#     run tested (nothing untested is deployed; pull requests never deploy);
+#   - workflow_call from promote-prod (prod, final account only);
 #   - manual dispatch, from the integration branch only.
 # The GitHub environment azure-dev additionally allows deployments from the integration branch only
 # (infra/bootstrap-azure.ps1), so editing this file on another branch does not reach Azure.
 #
 # All deploy logic lives in infra/deploy.sh (the same one command a person runs); this file signs in, proves the
-# identity's scope, and calls it. No GitHub concurrency group: it would cancel pending CI runs. deploy.sh waits for
+# identity's scope, and calls it. Its concurrency group only queues deploys (ci runs are never touched). deploy.sh waits for
 # a running deployment instead and never replaces a deployed commit by one of its ancestors.
 #
 # Needs (created by infra/bootstrap-azure.ps1): secrets AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID;
@@ -19,6 +20,12 @@
 name: deploy
 
 on:
+  # After a green ci run of a push to the integration branch (a separate workflow, so a cancelled ci run never stops a
+  # deploy that has started).
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [claude/wonderful-thompson-k6ejnf]
   workflow_call:
     inputs:
       environment:
@@ -52,9 +59,17 @@ permissions:
 env:
   INTEGRATION_BRANCH: claude/wonderful-thompson-k6ejnf
 
+# One deploy per environment at a time, never cancelled mid-flight; GitHub keeps one pending run and a newer one
+# replaces it, so after a burst of pushes only the newest green head deploys. deploy.sh also holds an Azure-side lock
+# (manual runs, promote-prod) and skips an ancestor of the live commit or a commit with nothing deployable changed.
+concurrency:
+  group: deploy-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to ${{ inputs.environment || 'dev' }}
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     environment: ${{ (inputs.environment || 'dev') == 'prod' && 'azure-prod' || 'azure-dev' }}
@@ -65,9 +80,9 @@ jobs:
       ARON_ALERT_EMAILS: ${{ vars.ARON_ALERT_EMAILS }}
       ARON_BUDGET_AMOUNT: ${{ vars.ARON_BUDGET_AMOUNT }}
       ARON_NAME_SUFFIX: ${{ vars.ARON_NAME_SUFFIX }}
-      # Migrations run unless a person unticks run_migrations on a manual dispatch (declared, default true, for both
-      # triggers, so the value is never null).
-      RUN_MIGRATIONS: ${{ inputs.run_migrations == false && 'false' || 'true' }}
+      # Migrations run unless a person unticks run_migrations on a manual dispatch. Under workflow_run the inputs are
+      # null, and null == false is TRUE in GitHub expressions, so the event is tested first.
+      RUN_MIGRATIONS: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_migrations == false) && 'false' || 'true' }}
       FORCE_INFRA: ${{ inputs.force_infra && 'true' || 'false' }}
     steps:
       - name: Deploy only from the integration branch (prod only from a server-v* release tag)
@@ -113,6 +128,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # The commit the green ci run tested (workflow_run runs on the branch tip otherwise).
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
@@ -144,7 +161,7 @@ jobs:
 
       - name: Deploy (infra/deploy.sh)
         env:
-          GIT_SHA: ${{ github.sha }}
+          GIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
           MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
         run: infra/deploy.sh "${ENV_NAME}"

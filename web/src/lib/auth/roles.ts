@@ -9,6 +9,9 @@ export const WEB_ROLES = ["TSO", "DMO", "WM", "TOP", "ANALYST", "SUPPORT", "ADMI
 /** Roles that may open the admin portal route group. Everyone else gets 403 on /admin/**. */
 export const ADMIN_PORTAL_ROLES = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 
+/** Admin pages SUPPORT has no access to (docs/24 s8.5: permission matrix, print templates, supervisory targets). */
+export const ADMIN_ONLY_ROLES = ["ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
+
 /** Roles that must complete a TOTP step after the password (cfg.auth.mfa_required_roles, docs/24 s6.5, D24-33). */
 export const MFA_ROLES = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 

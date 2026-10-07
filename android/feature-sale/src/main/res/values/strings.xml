@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- feature-sale strings. English default; Bangla in values-bn (docs/24 s5.6). -->
+<resources>
+    <string name="sale_title">Sale</string>
+    <string name="sale_total">Total</string>
+    <string name="sale_review">Review</string>
+    <string name="sale_less">Less</string>
+    <string name="sale_more">More</string>
+    <string name="sale_unit_stick">sticks</string>
+    <string name="sale_unit_piece">pieces</string>
+    <string name="sale_unit_dozen">dozen</string>
+    <string name="sale_unit_pack">packs</string>
+    <string name="sale_pack_badge">= %1$s packs + %2$s</string>
+    <string name="sale_stock_warning">Only %1$s in stock for %2$s.</string>
+    <string name="sale_empty">Add a quantity to start the sale.</string>
+    <string name="sale_zero_sale">Sell nothing here</string>
+    <string name="sale_zero_confirm_title">Zero sale</string>
+    <string name="sale_zero_confirm_message">No SKU was entered. Record a visit with no sale?</string>
+    <string name="sale_yes">Yes</string>
+    <string name="sale_no">No</string>
+    <string name="review_title">Review</string>
+    <string name="review_gross">Gross</string>
+    <string name="review_offer_discount">Offer discount</string>
+    <string name="review_drp_discount">Slide discount</string>
+    <string name="review_qc">QC</string>
+    <string name="review_net">Net</string>
+    <string name="review_paid">Paid</string>
+    <string name="review_due">Due</string>
+    <string name="review_credit">On credit</string>
+    <string name="review_save">Save sale</string>
+    <string name="review_problem_too_many_lines">A memo can have at most %1$s lines (now %2$s).</string>
+    <string name="review_problem_unit">This unit is not allowed for %1$s.</string>
+    <string name="review_problem_paid">Paid must be 0 or more and less than the total, in whole paisa.</string>
+    <string name="review_problem_nothing">Nothing to sell.</string>
+    <string name="review_problem_other">Please check the sale.</string>
+</resources>

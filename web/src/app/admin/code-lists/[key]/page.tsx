@@ -17,7 +17,7 @@ export default async function CodeListPage({ params }: { params: Promise<{ key: 
   const r = await outcome(apiClient(session.at).GET("/v1/admin/code-lists"));
   if (!r.ok) {
     return (
-      <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">
+      <p role="alert" className="rounded border border-red-200 bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-[var(--danger)]">
         {problemMessage(locale, r.problem.code)}
       </p>
     );

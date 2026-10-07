@@ -40,7 +40,7 @@ test("user scope: an SR has none; support sees it read-only", async ({ page }) =
 test("sales plan: tree with select-all, apply to every zone of a territory, one audit row per zone", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/master-data");
-  await page.getByTestId("hub-sales-plan").click();
+  await page.getByTestId("link-sales-plan").click();
   await page.locator('select[name="zone_id"]').selectOption({ label: "Z-335-1 · Mirpur Zone 1" });
   await page.getByTestId("filter-bar").locator('button[type="submit"]').click();
   await expect(page.getByTestId("plan-count")).toContainText("০"); // Bengali digits, none enabled yet

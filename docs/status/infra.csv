@@ -10,3 +10,8 @@ LEAD-DAY2-BUDGET-POLICY,S,2026-10-06T14:15Z,2026-10-06T14:35Z,20,0,"dev deploy r
 LEAD-DAY2-WHATIF-SUBNET,S,2026-10-06T14:30Z,2026-10-06T14:50Z,20,0,"guard refused PG subnet Modify (unresolved module output in what-if); resourceId-based network ids; guard prints before/after, ignores case; 2 tests"
 LEAD-DAY2-DEV-DEPLOYED,S,2026-10-06T14:50Z,2026-10-06T15:15Z,25,0,"dev deployed via Front Door; /v1/health 200 with X-Aron-Api; web /login 200; smoke timeout 45 min for Front Door"
 LEAD-DAY2-DEV-GREEN,S,2026-10-06T15:15Z,2026-10-06T15:55Z,40,0,"migrate job failed once (cause not captured); job log fetch added; run 37489113157 green with smoke through Front Door; nightly PG stop/start blocked pending owner"
+LEAD-DAY3-CI-GATES,L,2026-10-07T03:47Z,2026-10-07T04:45Z,58,0,"gitleaks, squawk + checksum, oasdiff, SR release + APK size gate, SBOM, CodeQL; 15 gate tests; 2 checkers 8 defects fixed"
+LEAD-DAY3-STAGE-RELEASE,M,2026-10-07T04:05Z,2026-10-07T04:35Z,30,0,"stage params; inert promote-prod and release-app; prod only via promote-prod from a server-v tag"
+LEAD-DAY3-DEPLOY-LOCK-COST,M,2026-10-07T04:15Z,2026-10-07T04:50Z,35,0,"whole-deploy lock after DeploymentActive; migrate connect retry once + backend request; cost-report: SubscriptionCostDisabled, estimate 16.5-22/day"
+LEAD-DAY3-THROUGHPUT-DG03,M,2026-10-07T04:40Z,2026-10-07T05:15Z,35,0,"AUD-DG-03 dev origin + versionCode + signed release APKs; cancel superseded ci; deploy via workflow_run; CodeQL PR+weekly; slices check; governance names checked"
+LEAD-DAY3-CI-THROUGHPUT-2,S,2026-10-07T04:53Z,2026-10-07T05:10Z,17,0,"concurrency per ref without cancelling running runs; CodeQL nightly; dependabot grouped; 21 superseded queued runs cancelled; run 145 cause found"

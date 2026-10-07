@@ -32,8 +32,18 @@
   - Property test: 40 seeds of lost answers, kills before and after the server, 500/503, retryable rejects, tiny batches and replays of old batches by a second path: exactly one memo and one set of lines per sale, every row acked with the server's id.
   - Not in this row: `device_money` (F-SYS-009 reconciliation), time anchors (F-SYS-049 supplies them through `SyncEngine(timeAnchors=)`), scheduling (F-SYS-011).
 
+- **F-SYS-006** Day bundle into Room (three Opus checker rounds; `CheckerF006Test`, `CheckerF006DbTest`).
+  - Room v2: `price`, `config_value`, `bundle_section` (auto-migration 1->2 with a test). One-transaction apply that only moves forward within a day; long text chunked under the 2 MB CursorWindow.
+  - A prefetch of a later day is kept aside, the morning request is conditional on it (a 304 promotes it), and offline at day start it is promoted. A prefetch never counts as the day's login.
+  - `BundleDownloader` stages pages per version and resumes after a kill; pages are verified (version, section, page, row total).
+  - App shells: `UserDatabases` (per-user file, Keystore-wrapped 32-byte key used as a raw SQLCipher key, opened off the main thread) and `BundleDownloaders`.
+- **F-SYS-049** Trusted time (`TrustedClockSource`, three Opus checker rounds; `CheckerF049Test`). One estimate per boot from `X-Server-Time`: late replies never step time back, a far reading needs the wall clock or a second reading, in-process anchors survive clock changes, boot identity from BOOT_COUNT, then boot_id, then wall-minus-uptime. The AC-04 offline-unlock guard runs on the raw wall clock (`WallClock.wallClockMs()`).
+- **AUD-PERF-05** key half: raw SQLCipher key, cached Keystore key. Still open: session restore off the main thread.
+
 ## In progress
-- **F-SYS-006** bundle into Room: built and tested (Room v2 with `price`, `config_value`, `bundle_section`, auto-migration 1->2 with a test; forward-only apply; `BundleDownloader` with staged pages that resume after a kill). Checker pending; app-shell wiring of `AronDatabase.open` with a Keystore-wrapped SQLCipher passphrase still to do in this row.
+- **F-SYS-011** constrained background sync: `WorkManagerSyncScheduler`, `SyncWorker`, `AronWorkerFactory` (app `Configuration.Provider`, default initializer removed), `NoPollingLintTest`. Built and green; checker next.
+
+## Next (in this order, per the lead): F-SYS-046, then one Room v3 migration for the routed requests (docs/requests/android-sr-a-task-tables.md, android-sr-a-outlet-request-capture.md, android-sr-b-core-records.md) together with F-SYS-027 (memo counter), then F-SYS-009, F-SYS-007, the AUD rows.
 
 ## Second re-check (independent agent, on the pushed fixes)
 - Found a release-build regression: the https guard broke the configuration cache. Fixed; `assembleRelease` now builds (10.7 MB unsigned with R8) and an http base URL fails. **Ask to infra:** add `:android:app-sr:assembleRelease` to CI so this cannot regress silently.
@@ -62,7 +72,7 @@
 Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s5.1). Local wire DTOs are marked
 `REQUEST:` and move to `shared:contract` when the shared lane lands them, with the same names.
 
-**core-database** (`com.aktcl.aron.core.database`): one Room database per user, `AronDatabase.open(context, userId, openHelperFactory)`; the factory is `SqlCipher.factory(passphrase)` in production, `null` in Robolectric tests.
+**core-database** (`com.aktcl.aron.core.database`): one Room database per user. In app code inject `UserDatabases` (Hilt, app module) and call `userDatabases.of(userId)` (suspend; opens once, encrypted). In Robolectric tests use `AronDatabase.open(context, userId, null)` or an in-memory builder.
 - `CaptureRepository(db)`: commits a capture plus its outbox records in ONE transaction. A duplicate client UUID throws `SQLiteConstraintException`. A malformed capture throws `IllegalArgumentException` or `IllegalStateException` before any write. Methods: `recordAttendance(event, fix)`, `recordStock(movements)`, `recordVisitOpen(visit, fix)`, `recordSale(SaleCapture(memo, lines, discounts, qcLines, editFix))`, `recordVisitClose(close)`.
   ```kotlin
   val visitUuid = ClientIds.newUuid()
@@ -101,6 +111,10 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
   when (val r = syncApi.bundle()) { is ApiResult.Success -> r.value.head; is ApiResult.Transport -> offline(); else -> Unit }
   ```
 
+**Day bundle** (core-sync): inject `BundleDownloaders`; at login and at day start call `bundleDownloaders.of(userId).download()` (`APPLIED`, `UNCHANGED`, `PREFETCH_PROMOTED` mean the day is ready offline; `OFFLINE` keeps the previous bundle). Evening prefetch: `download("<tomorrow>")`. Read everything through `ReferenceRepository(db)`.
+
+**Trusted time** (core-session): `SessionComponents.clock` (a `WallClock`) and `SessionComponents.trustedClock` (`businessDate()`, `isAtOrAfterDhaka(LocalTime.of(17, 0))`, `clockOffsetMs()` for `clock_offset_ms`, `bootCountNow()`, `recentAnchors()`). Never use `System.currentTimeMillis()` for a business date or a gate.
+
 **core-session** (`com.aktcl.aron.core.session`):
 - Injected `SessionComponents` gives `session`, `syncApi` and `apiClient`.
 - `session.state: StateFlow<SessionState>` is either `LoggedOut` or `Active(user, mode, reauthRequired, updateRequired)`.
@@ -111,7 +125,7 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
 - `ClientIds.newUuid()`
 - `LocaleDigits.localize(text, language)` and `formatInteger(n, language)`
 - `AppLanguage`
-- `WallClock`: replaced by the trusted clock in F-SYS-049.
+- `WallClock`: implemented by the trusted clock (F-SYS-049); inject `SessionComponents.clock`.
 - Business date: `com.aktcl.aron.rules.BusinessDate.of(epochMs)` from shared:rules.
 - Money formatting per the lead's ruling, `1,234.50 ৳`: use the shared `Formats` when the shared lane publishes it.
 
@@ -159,6 +173,8 @@ Use these; do not reach into Room, OkHttp or the token store directly (docs/24 s
 - **AC-09:** Bangla mode renders in Noto Sans Bengali, which also covers Basic Latin. English mode renders in subset Noto Sans.
 - **AC-10:** the language preference lives in SharedPreferences, not DataStore. Reason: it must be read synchronously in `attachBaseContext`.
 - **AC-11:** WorkManager's `SystemJobService` and `DiagnosticsReceiver` and profileinstaller's receiver are exported by those libraries behind system-only permissions. They are allowlisted by name. This deviates from the literal list in docs/24 s5.8.
+- **AC-13:** below Android 12 (minSdk 26) an expedited job would run as a foreground service, which docs/24 s5.4 forbids outside printing; there the after-failure and Sales Submit jobs are plain network-constrained jobs. The Galaxy A06 (Android 14) gets expedited jobs.
+- **AC-14:** the save debounce is "5 s after the first save of a burst" (`ExistingWorkPolicy.KEEP`), not "5 s of quiet": REPLACE would cancel a running upload on every save.
 - **AC-12:** ownership. Per the lead's Day-1 notes, android-core owns the three app shells' build wiring. The Day-1 login screen in feature-auth and the home placeholder in feature-home were built here because N-001 needs them and android-sr had no Day-1 rows. android-sr takes them over from Day 2 (F-SR-001, F-SR-008).
 
 ## Requests filed

@@ -47,3 +47,21 @@
 - `lint` rejects string props named `label`/`title` etc. on JSX (hard-coded text rule): name the prop `msg`.
 - The web-admin lane owns `web/src/app/admin` and `messages-config.ts`; dashboards add their messages in `messages-dash-*.ts` only.
 - Mock handler order: stubs first, then `handleDash`, then the admin gate; keep it that way (the admin tests stub paths I also serve).
+
+### Checker results (2026-10-07)
+Opus (T1 rows), Sonnet (report engine), Sonnet (dashboard pages). All confirmed defects fixed with tests: safeNext open redirect, MFA promotion on refresh, Remember me 30-day cap, comma id lists on export, calendar-valid dates, fail-closed scope binding, strict money formatting, relative export redirect, same-site CSRF refusal, take-action note min 3, exception routes out of KPI denominators, paged reads, final-submit badge on real final submit, histogram band sums, password length in code points, blank MAPS_DAILY_CAP.
+Open: web-admin's radius map still loads Maps outside the cap (request docs/requests/web-dashboard-radius-map-maps-key.md; checker test skipped until then). Not fixed (noted): `afterHour` 17 hard-coded vs cfg.day.take_action_after; per-user Maps limit; mock sanitiser edge cases.
+Gates: vitest 396 pass (1 skipped), lint and tsc clean, Playwright 41 pass.
+
+## HANDOFF (2026-10-07, recycle at ~480k tokens)
+
+**Done (all pushed to INT, gates green: vitest 541, lint/tsc clean, Playwright 63):** every row of the lane (engine + 27 reports, dashboard home, tracking, sync health, exceptions, leave, tutorial, routes, products, login, credentials, scope filter, maps with cap), checker fixes, AUD-SEC-04 (CSP nonce, HSTS, no-store, idle 30 min / absolute 7 d admin; `tests/security-headers.test.ts`), loading/error/not-found states, chart tokens, Calm Glass v0 tokens in `globals.css`.
+
+**In progress:** nothing uncommitted.
+
+**Next three jobs (contract v1.2 lands on INT, commit starts "Contract v1.2"; pull, then `npm run gen:contract`):**
+1. Wire v1.2: (a) `DailyTrackingPage.comparator` in `daily-tracking/page.tsx` (keep "Day before" label as fallback when null); (b) sync-health `summary.config_ack_pct`, `pending_photos`, `quarantine_backlog`, `by_zone[]` in `sync-health/page.tsx` (replace `getConfigAck`/`getPendingPhotos` admin reads and the tracking roll-up); (c) `GET /v1/admin/routes?include=assignees` in `routes/page.tsx` (drop `joinRoutes` joins); (d) `LoginSubmitStatus.zones [{zone_id, final_submitted}]` for the per-zone badge (`isFinal` in `final-submit-panel.tsx`); (e) `auth.password_min_len` from public config for the guideline (fallback 12; `password-policy.ts`); (f) password change flow: login with `password_change_required` returns `password_change_token` (10 min) used as Bearer on `POST /v1/auth/change-password`; build the form after that status (BFF `login` route + `login-form.tsx`; for MFA roles TOTP comes after the change). Update `mock/dash.ts` and tests to match; regenerate the client.
+2. Design v1 tokens when `docs/design/` lands: swap values in `web/src/app/globals.css` (token names unchanged).
+3. Re-check report columns against the real API when backend-reports pushes (`columns_known` false for several; mock columns in `mock/dash.ts` are invented). When web-config reports the radius map fixed: un-skip `tests/checker-t1-maps.test.ts` and remove the `NEXT_PUBLIC_MAPS_WEB_KEY` fallback in `src/lib/maps/guard.ts` (request: docs/requests/web-dashboard-radius-map-maps-key.md).
+
+**Traps:** one `npm run build`/Playwright at a time (shared `.next` and ports); run e2e with `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium`. Lint rejects JSX props named `label`/`title` with string values (hard-coded text rule): use `msg`. Mock order: stubs, then `handleDash`, then admin gate. Middleware headers override route-handler headers (the proxy skips CSP on pass-through `/api/` calls so the print view keeps its sandbox). Messages go in `messages-dash-*.ts` only; web-config owns `messages-config.ts` and `src/app/admin`. The 12 rows moved to and back from this lane (F-ADM-029, F-WEB-051/050/052/060/063, F-ADM-024/025/036/057/060/067) are web-config's: do not rebuild. Leaderboard target view stays deferred (docs/27).

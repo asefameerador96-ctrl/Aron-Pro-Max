@@ -33,7 +33,8 @@ export async function handleOp(req: NextRequest, table: "admin" | "team" = "admi
   const body: Record<string, unknown> = isPlainObject(input.body) ? { ...input.body } : {};
   if (def.forbid && typeof body[def.forbid.member] === "string" && def.forbid.values.includes(body[def.forbid.member] as string)) return auth.finish(problemResponse(403, "ERR_FORBIDDEN"));
   const errors: { pointer: string; code: string }[] = [];
-  if (def.reason !== null) {
+  const given = typeof input.reason === "string" && input.reason.trim() !== "";
+  if (def.reason !== null && (!def.reasonOptional || given)) {
     const reason = typeof input.reason === "string" ? input.reason.trim() : "";
     const n = codePoints(reason);
     if (n < REASON_MIN) errors.push({ pointer: "/reason", code: "too_short" });

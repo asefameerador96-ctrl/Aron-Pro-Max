@@ -21,11 +21,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -76,9 +79,9 @@ fun AronErrorState(message: String, retryLabel: String, onRetry: () -> Unit, mod
 @Composable
 private fun CenteredState(title: String, hint: String?, actionLabel: String?, onAction: (() -> Unit)?, modifier: Modifier, titleColor: androidx.compose.ui.graphics.Color) {
     Column(
-        modifier.fillMaxWidth().padding(24.dp),
+        modifier.fillMaxWidth().padding(AronTokens.Space.Xl),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M, Alignment.CenterVertically),
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium, color = titleColor, textAlign = TextAlign.Center)
         if (hint != null) Text(hint, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
@@ -88,23 +91,31 @@ private fun CenteredState(title: String, hint: String?, actionLabel: String?, on
 
 /**
  * Press-and-hold button for destructive or irreversible actions (Sales Submit, delete): [onConfirmed] fires only after
- * the finger has stayed down for [holdMillis]; lifting early cancels. Accessibility: exposes a long-click action so
- * TalkBack users can confirm without holding. The fill shows progress.
+ * the finger has stayed down for [holdMillis]; lifting early, disabling or leaving composition cancels. TalkBack users
+ * get a long-click action instead of a hold. It is a primary action, so 56 dp. The fill shows progress (draw phase only).
  */
 @Composable
-fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modifier = Modifier, holdMillis: Int = 1200, enabled: Boolean = true) {
+fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modifier = Modifier, holdMillis: Int = AronTokens.Motion.Hold, enabled: Boolean = true) {
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
-    val scheme = MaterialTheme.colorScheme
-    val fillColor = scheme.secondary.copy(alpha = 0.5f)
+    val currentOnConfirmed by rememberUpdatedState(onConfirmed)
+    val currentEnabled by rememberUpdatedState(enabled)
+    val c = LocalAronColors.current
+    val trackColor = if (enabled) c.accent.copy(alpha = AronTokens.Alpha.HoldTrack) else MaterialTheme.colorScheme.surfaceVariant
+    val fillColor = c.accent.copy(alpha = AronTokens.Alpha.HoldFill)
+    val textColor = if (enabled) c.textPrimary else c.textSecondary
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = MinTouch)
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (enabled) scheme.secondary.copy(alpha = 0.25f) else scheme.surfaceVariant, RoundedCornerShape(12.dp))
+            .heightIn(min = AronTokens.Touch.Primary)
+            .clip(AronTokens.ButtonShape)
+            .background(trackColor, AronTokens.ButtonShape)
             .drawBehind { drawRect(fillColor, size = androidx.compose.ui.geometry.Size(size.width * progress.value, size.height)) }
-            .semantics(mergeDescendants = true) { role = Role.Button; onLongClick(label = text) { if (enabled) { onConfirmed(); true } else false } }
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                if (!enabled) disabled()
+                onLongClick(label = text) { if (currentEnabled) { currentOnConfirmed(); true } else false }
+            }
             .pointerInput(enabled, holdMillis) {
                 if (!enabled) return@pointerInput
                 awaitEachGesture {
@@ -112,15 +123,19 @@ fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modi
                     val job = scope.launch {
                         progress.snapTo(0f)
                         progress.animateTo(1f, tween(holdMillis))
-                        onConfirmed()
+                        if (currentEnabled) currentOnConfirmed()
                         progress.snapTo(0f)
                     }
-                    waitForUpOrCancellation()
-                    if (progress.value < 1f) { job.cancel(); scope.launch { progress.snapTo(0f) } }
+                    try {
+                        waitForUpOrCancellation()
+                    } finally {
+                        // runs on early lift AND when this block is cancelled by a key change or leaving composition
+                        if (progress.value < 1f) { job.cancel(); scope.launch { progress.snapTo(0f) } }
+                    }
                 }
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+        Text(text, color = textColor, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.Xl, vertical = AronTokens.Space.M))
     }
 }

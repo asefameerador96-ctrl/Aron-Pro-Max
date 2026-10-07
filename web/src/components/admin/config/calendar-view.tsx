@@ -35,7 +35,7 @@ export function CalendarView({ locale, holidays, weekend, weekendKey, from, to, 
     { name: "date", label: t(locale, "cfgc.col.date"), kind: "date", required: true },
     { name: "kind", label: t(locale, "cfgc.col.kind"), kind: "enum", required: true, hint: t(locale, "cal.add.emergency_hint"), options: KINDS.map((k) => ({ value: k, label: t(locale, `cal.kind.${k}` as MessageKey) })) },
     { name: "scope_type", label: t(locale, "cfgc.scope.type"), kind: "enum", required: true, options: SCOPES.map((k) => ({ value: k, label: t(locale, `cfgc.scope.${k}` as MessageKey) })) },
-    { name: "scope_id", label: t(locale, "cfgc.scope.id"), kind: "int", required: true, initial: "0" },
+    { name: "scope_id", label: t(locale, "cfgc.scope.id"), kind: "int", required: true, allowZero: true, initial: "0" },
     { name: "name_en", label: t(locale, "cal.col.name_en"), kind: "text", required: true, maxLength: 120 },
     { name: "name_bn", label: t(locale, "cal.col.name_bn"), kind: "text", nullable: true, maxLength: 120 },
   ];

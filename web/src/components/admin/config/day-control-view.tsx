@@ -23,8 +23,8 @@ function ReportList({ locale, data, title, unknownKey, emptyKey }: { locale: Loc
   const columns: Column<ReportResult["rows"][number]>[] = data.columns.map((c) => ({ key: c.key, header: (locale === "bn" && c.label_bn) || c.label_en, render: (r) => (r[c.key] === null || r[c.key] === undefined ? "—" : String(r[c.key])) }));
   return (
     <Card title={title}>
-      {data.total !== undefined && data.total > 100 ? <p role="note" className="text-xs text-amber-800">{t(locale, "day.truncated", { n: formatNumber(locale, data.total) })}</p> : null}
-      {!data.known ? <p className="text-sm text-amber-800">{t(locale, unknownKey)}</p> : <DataTable columns={columns} rows={data.rows} rowKey={(r) => JSON.stringify(r)} empty={t(locale, partial ? "day.truncated_empty" : emptyKey)} caption={title} />}
+      {data.total !== undefined && data.total > 100 ? <p role="note" className="text-xs text-[var(--warning)]">{t(locale, "day.truncated", { n: formatNumber(locale, data.total) })}</p> : null}
+      {!data.known ? <p className="text-sm text-[var(--warning)]">{t(locale, unknownKey)}</p> : <DataTable columns={columns} rows={data.rows} rowKey={(r) => JSON.stringify(r)} empty={t(locale, partial ? "day.truncated_empty" : emptyKey)} caption={title} />}
     </Card>
   );
 }
@@ -53,7 +53,7 @@ export function DayControlView({ locale, zone, date, late, missing, canWrite, wi
       {late ? <ReportList locale={locale} data={late} title={t(locale, "day.late.title")} unknownKey="day.unknown_columns" emptyKey="day.late.empty" /> : <p className="text-sm text-slate-600">{t(locale, "day.choose")}</p>}
       {withMissing && missingFailed ? (
         <Card title={t(locale, "day.missing.title")}>
-          <p role="alert" className="text-sm text-red-800">{t(locale, "cfgc.error.load")}</p>
+          <p role="alert" className="text-sm text-[var(--danger)]">{t(locale, "cfgc.error.load")}</p>
         </Card>
       ) : null}
       {withMissing && missing ? <ReportList locale={locale} data={missing} title={t(locale, "day.missing.title")} unknownKey="day.unknown_columns" emptyKey="day.missing.empty" /> : null}

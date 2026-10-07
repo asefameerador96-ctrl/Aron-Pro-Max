@@ -40,11 +40,19 @@ import kotlinx.serialization.json.put
  */
 class ConfigPermissions(private val db: Database, private val service: ConfigService, private val clock: AronClock = AronClock.SYSTEM) {
     private val key = "cfg.web.menu_by_role"
-    private val toContract = mapOf("read" to listOf("view"), "write" to listOf("create", "edit"), "export" to listOf("export"), "approve" to listOf("approve"), "submit_void" to listOf("void"), "void" to listOf("void"))
-    private val toStored = mapOf("view" to "read", "create" to "write", "edit" to "write", "approve" to "approve", "export" to "export", "void" to "submit_void")
+    // The seeded vocabulary says `write` for "may change"; read back it means create and edit. Written values keep create and edit apart.
+    private val toContract = mapOf("read" to listOf("view"), "view" to listOf("view"), "write" to listOf("create", "edit"), "create" to listOf("create"), "edit" to listOf("edit"), "export" to listOf("export"), "approve" to listOf("approve"), "submit_void" to listOf("void"), "void" to listOf("void"))
+    /** Seeded actions that have no contract action (menu-specific verbs); they are not shown in the contract matrix and are kept in the stored value. Listed so a new seeded action fails the mapping test instead of vanishing. */
+    val droppedActions: Set<String> = setOf("filter", "edit_allowed_sections", "state", "directive", "resolve", "issue", "credentials", "final_submit", "reopen", "publish", "write_own", "verify", "reject", "review", "unlock", "upload", "download", "take_action")
+    val mappedActions: Set<String> get() = toContract.keys
+
+    private val toStored = mapOf("view" to "read", "create" to "create", "edit" to "edit", "approve" to "approve", "export" to "export", "void" to "void")
     private val menuId = Regex("^[a-z][a-z0-9_.]{1,60}$")
 
-    fun matrix(): PermissionMatrixDto {
+    /** One role's menus in the contract shape, resolved now: what `GET /v1/me` returns as `menus` (request backend-admin-contract-changes.md). */
+    fun menusForRole(role: String): List<MenuPermissionDto> = matrix(rosterToo = false).roles.firstOrNull { it.role == role }?.menus.orEmpty()
+
+    fun matrix(rosterToo: Boolean = true): PermissionMatrixDto {
         val def = service.resolver.registry().getValue(key).default as? JsonObject ?: JsonObject(emptyMap())
         val ordinals = db.jdbi.withHandle<Map<String, Long>, Exception> { h -> h.createQuery("SELECT role, ordinal FROM app.role_def ORDER BY ordinal").map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap() }
         val roles = ordinals.map { (role, ord) ->
@@ -58,7 +66,7 @@ class ConfigPermissions(private val db: Database, private val service: ConfigSer
                 MenuPermissionDto(if (page != null) "$menu.$page" else menu, actions)
             }).takeIf { it.menus.isNotEmpty() || ordinals.containsKey(role) } ?: RolePermissionsDto(role, emptyList())
         }
-        val roster = db.jdbi.withHandle<List<RosterEntry>, Exception> { h ->
+        val roster = if (!rosterToo) emptyList() else db.jdbi.withHandle<List<RosterEntry>, Exception> { h ->
             h.createQuery("SELECT u.id, u.username, u.role, EXISTS (SELECT 1 FROM app.mfa_secret m WHERE m.user_id = u.id AND m.confirmed_at IS NOT NULL) AS mfa FROM app.app_user u WHERE u.role IN ('ADMIN','SUPERADMIN') AND u.status = 'active' ORDER BY u.id LIMIT 500")
                 .map { rs, _ -> RosterEntry(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getBoolean(4)) }.list()
         }

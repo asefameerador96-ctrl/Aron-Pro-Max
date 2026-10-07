@@ -45,7 +45,7 @@ export function formatCell(locale: Locale, col: ReportColumn, v: Cell, labels: {
     case "decimal":
       return typeof v === "number" ? formatNumber(locale, v, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : String(v);
     case "pct":
-      return typeof v === "number" ? `${formatNumber(locale, v, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : String(v);
+      return typeof v === "number" ? `${formatNumber(locale, v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : String(v);
     case "date":
       return typeof v === "string" ? formatBusinessDate(locale, v) : String(v);
     case "timestamp":

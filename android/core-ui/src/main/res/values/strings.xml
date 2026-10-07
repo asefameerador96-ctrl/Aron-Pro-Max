@@ -23,4 +23,14 @@
     <string name="core_ui_kit_gallery_tile_stock">Stock</string>
     <string name="core_ui_kit_gallery_tile_sale">Sale</string>
     <string name="core_ui_kit_gallery_tile_task">Task delegation</string>
+    <string name="core_ui_chip_offline">Offline</string>
+    <string name="core_ui_chip_syncing">Syncing</string>
+    <string name="core_ui_chip_synced">Synced</string>
+    <string name="core_ui_chip_waiting">%1$s waiting</string>
+    <string name="core_ui_kit_gallery_info">Show information</string>
+    <string name="core_ui_kit_gallery_info_title">Saved on this phone</string>
+    <string name="core_ui_kit_gallery_info_msg">Your sale will be sent when the network is back.</string>
+    <string name="core_ui_kit_gallery_ok">OK</string>
+    <string name="core_ui_kit_gallery_empty_action">Download route</string>
+    <string name="core_ui_kit_gallery_disabled">Not available</string>
 </resources>

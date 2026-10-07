@@ -21,7 +21,7 @@ export default async function WholesaleMarkingPage({ searchParams }: { searchPar
   const [all, zones] = await Promise.all([loadAllRows("/v1/admin/outlets", session.at, query), loadRefOptions(ZONES, session.at)]);
   if (all.failed && all.rows.length === 0) {
     return (
-      <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">
+      <p role="alert" className="rounded border border-red-200 bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-[var(--danger)]">
         {t(locale, "error.ref_load")}
       </p>
     );
@@ -40,7 +40,7 @@ export default async function WholesaleMarkingPage({ searchParams }: { searchPar
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{t(locale, "wholesale.title")}</h1>
       <FilterBar controls={controls} applyLabel={t(locale, "common.filter")} clearLabel={t(locale, "common.clear")} allLabel={t(locale, "common.all")} clearHref="/admin/wholesale-marking" />
-      {all.failed ? <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{t(locale, "error.ref_load")}</p> : null}
+      {all.failed ? <p role="alert" className="rounded border border-red-200 bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-[var(--danger)]">{t(locale, "error.ref_load")}</p> : null}
       <WholesaleBasket rows={rows} total={matching.length} />
     </div>
   );

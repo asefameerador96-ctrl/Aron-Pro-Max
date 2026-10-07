@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="memo_title">Memo</string>
+    <string name="memo_banner">Select an outlet to see its memo. You can reprint it from here.</string>
+    <string name="memo_total_discount">Total discount</string>
+    <string name="memo_total_qc">Total QC</string>
+    <string name="memo_grand_total">Grand total</string>
+    <string name="memo_due">Due: %1$s</string>
+    <string name="memo_print">Print</string>
+    <string name="memo_edit">Edit</string>
+    <string name="memo_mark_paid">Mark paid</string>
+    <string name="memo_mark_paid_confirm">Settle the whole due of this memo?</string>
+    <string name="memo_yes">Yes</string>
+    <string name="memo_no">No</string>
+    <string name="memo_empty">No memos yet today.</string>
+    <string name="memo_duplicate">Duplicate</string>
+    <string name="summary_title">Sales summary</string>
+    <string name="summary_discount_and_others">Discount and others (-)</string>
+    <string name="summary_grand_total">Grand total</string>
+    <string name="summary_print">Print</string>
+</resources>

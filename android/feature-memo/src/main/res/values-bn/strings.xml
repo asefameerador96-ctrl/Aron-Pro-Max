@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="memo_title">মেমো</string>
+    <string name="memo_banner">মেমো দেখতে একটি আউটলেট নির্বাচন করুন। এখান থেকে পুনরায় প্রিন্ট করতে পারেন।</string>
+    <string name="memo_total_discount">মোট ডিসকাউন্ট</string>
+    <string name="memo_total_qc">মোট কিউসি</string>
+    <string name="memo_grand_total">সর্বমোট</string>
+    <string name="memo_due">বাকি: %1$s</string>
+    <string name="memo_print">প্রিন্ট</string>
+    <string name="memo_edit">এডিট</string>
+    <string name="memo_mark_paid">পরিশোধিত</string>
+    <string name="memo_mark_paid_confirm">এই মেমোর পুরো বাকি পরিশোধ করবেন?</string>
+    <string name="memo_yes">হ্যাঁ</string>
+    <string name="memo_no">না</string>
+    <string name="memo_empty">আজ এখনও কোনো মেমো নেই।</string>
+    <string name="memo_duplicate">ডুপ্লিকেট</string>
+    <string name="summary_title">বিক্রয় সারসংক্ষেপ</string>
+    <string name="summary_discount_and_others">ডিসকাউন্ট এবং অন্যান্য (-)</string>
+    <string name="summary_grand_total">সর্বমোট</string>
+    <string name="summary_print">প্রিন্ট</string>
+</resources>

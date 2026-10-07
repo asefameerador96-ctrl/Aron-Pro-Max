@@ -1,22 +1,39 @@
-# Weekly dependency PRs, small and grouped. The stack is pinned by docs/24 s13 (Gradle, Kotlin, AGP, Ktor, Compose BOM,
-# Room, ...): the lead reviews each update; a pinned major is never merged without a spec change.
+# Weekly dependency PRs, small and grouped (lead, 2026-10-07). The stack is pinned by docs/24 s13 (Gradle, Kotlin, AGP,
+# Ktor, Compose BOM, Room, ...): the lead reviews each update; a pinned major is never merged without a spec change.
+# Minor and patch updates come as ONE grouped PR per ecosystem; at most 3 open PRs per ecosystem.
+# Held until Day 6: eslint majors (eslint 10 fails the web lint), and the Kotlin and Gradle plugin lines.
 version: 2
 updates:
   - package-ecosystem: gradle
     directory: "/"
     schedule: { interval: weekly, day: monday, time: "03:00", timezone: Asia/Dhaka }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups: { gradle-minor-patch: { update-types: [minor, patch] } }
+    ignore:
+      - dependency-name: "org.jetbrains.kotlin*"
+      - dependency-name: "com.android.tools.build:gradle"
+      - dependency-name: "com.android.application"
+      - dependency-name: "com.android.library"
+      - dependency-name: "com.google.devtools.ksp*"
   - package-ecosystem: npm
     directory: "/web"
     schedule: { interval: weekly, day: monday, time: "03:00", timezone: Asia/Dhaka }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups: { npm-minor-patch: { update-types: [minor, patch] } }
+    ignore:
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule: { interval: weekly, day: monday, time: "03:00", timezone: Asia/Dhaka }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    groups: { actions-minor-patch: { update-types: [minor, patch] } }
   - package-ecosystem: docker
     directory: "/infra/docker"
     schedule: { interval: weekly, day: monday, time: "03:00", timezone: Asia/Dhaka }
     open-pull-requests-limit: 3
+    groups: { docker-minor-patch: { update-types: [minor, patch] } }
