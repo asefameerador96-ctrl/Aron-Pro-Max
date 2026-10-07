@@ -263,6 +263,30 @@ class SecurityDefaults(unittest.TestCase):
 class ReliabilityProperties(unittest.TestCase):
     """The settings N-012 promises, asserted on the compiled resources (not only on the parameter files)."""
 
+    def test_postgres_zones_follow_the_live_server_after_a_failover(self):
+        # Deploy run 37608044223 failed: the forced-failover drill swapped primary (1 -> 2) and standby (2 -> 1), the
+        # template still asked for standby zone 2 and the what-if guard refused. The zones must be parameters that
+        # deploy.sh fills from the live server, with the creation defaults only when no server exists yet.
+        _, bound = module("main.json", "postgres")
+        self.assertEqual(bound["primaryZone"]["value"], "[parameters('postgresPrimaryZone')]")
+        self.assertEqual(bound["standbyZone"]["value"], "[parameters('postgresStandbyZone')]")
+        self.assertEqual(param_default("main.json", "postgresPrimaryZone"), "1")
+        self.assertEqual(param_default("main.json", "postgresStandbyZone"), "2")
+        for prof in ("dev", "dev-lite", "stage", "prod"):
+            src = (ROOT / "infra" / "params" / f"{prof}.bicepparam").read_text(encoding="utf-8")
+            self.assertIn("readEnvironmentVariable('ARON_PG_PRIMARY_ZONE', '')", src, prof)
+            self.assertIn("readEnvironmentVariable('ARON_PG_STANDBY_ZONE', '')", src, prof)
+            p = params(f"{prof}.parameters.json")
+            self.assertEqual((p["postgresPrimaryZone"], p["postgresStandbyZone"]), ("1", "2"),
+                             f"{prof}: without a live server the creation defaults apply")
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        live = d.index('export ARON_PG_PRIMARY_ZONE="$pg_zone"')
+        self.assertIn('export ARON_PG_STANDBY_ZONE="$pg_standby"', d)
+        self.assertIn("unset ARON_PG_PRIMARY_ZONE ARON_PG_STANDBY_ZONE", d)
+        # Exported before the parameter comparison (a swap re-runs the infra stage) and before the what-if.
+        self.assertLess(live, d.index("params_unchanged() {"))
+        self.assertLess(live, d.index("az deployment group what-if"))
+
     def test_postgres_ha_backup_and_pooling_follow_the_parameters(self):
         t, bound = module("main.json", "postgres")
         primary = [r for r in resources_of(t, "Microsoft.DBforPostgreSQL/flexibleServers") if "createMode" not in r["properties"]]
