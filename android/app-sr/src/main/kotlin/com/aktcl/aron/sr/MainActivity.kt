@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
+                        SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore
                         SessionState.LoggedOut -> {
                             val vm = viewModel { LoginViewModel(components.session::login) }
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect)

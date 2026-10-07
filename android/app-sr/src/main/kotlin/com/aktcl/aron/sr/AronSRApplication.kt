@@ -27,11 +27,16 @@ class AronSRApplication : Application(), Configuration.Provider {
     @Inject lateinit var systemShell: SystemShell
 
     override fun onCreate() {
+        com.aktcl.aron.core.common.DebugStrictMode.install(BuildConfig.DEBUG) // before Hilt builds the graph on this thread
         super.onCreate()
         ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives
         // DPC: trusted clock and calendar, re-apply the stored policy; integrity evidence after each online login.
         // Off the main thread; nothing here touches the network or waits for it.
         deviceRuntime.start(CoroutineScope(SupervisorJob() + Dispatchers.Default), syncScheduler)
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch { // AUD-PERF-05 timing for D-PERF-05 (logcat AronPerf)
+            sessionComponents.session.settled()
+            android.util.Log.i("AronPerf", "session_restore ms=" + sessionComponents.session.restoreTookMs)
+        }
         // F-SYS-020: an update check after every online login (the 12 h throttle is skipped at login); resume checks too.
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             sessionComponents.session.onlineLogins.collect { updateShell.check(atLogin = true) }

@@ -47,12 +47,12 @@ class SessionRepositoryTest {
     @Before fun setUp() { server = MockWebServer(); server.start() }
     @After fun tearDown() { server.close() }
 
-    private inner class Phone(storage: File = tmp.root) {
+    private inner class Phone(storage: File = tmp.root, d: DispatcherProvider = dispatchers, c: SecretCipher = cipher) {
         val identity = DeviceIdentity(storage)
         private val holder = Holder()
         val api = AronApiClient(ApiOrigin.parse(server.url("/").toString(), true), AronApiClient.defaultOkHttp(), ClientIdentity("0.1.0+1") { identity.deviceUuid }, holder)
-        val store = SessionStore(File(storage, "session"), cipher)
-        val session = SessionRepository(AuthApi(api), store, verifier, identity, "app_sr", clock, OfflineUnlockPolicy(), dispatchers).also { holder.target = it }
+        val store = SessionStore(File(storage, "session"), c)
+        val session = SessionRepository(AuthApi(api), store, verifier, identity, "app_sr", clock, OfflineUnlockPolicy(), d).also { holder.target = it }
         val sync = SyncApi(api)
     }
 
@@ -79,6 +79,64 @@ class SessionRepositoryTest {
     private suspend fun Phone.loginOnline(password: String = "secret-1"): LoginOutcome {
         server.enqueue(api(200, loginOk))
         return session.login(" SR334001 ", password)
+    }
+
+    /** Holds the first task dispatched (the repository's background restore) and runs everything else in place. */
+    private class HoldFirst : CoroutineDispatcher() {
+        var held: Runnable? = null
+        var threadOfFirst: Thread? = null
+        override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+            if (threadOfFirst == null) { threadOfFirst = Thread.currentThread(); held = block } else block.run()
+        }
+        fun release() { held?.run(); held = null }
+    }
+
+    private fun holding(d: HoldFirst) = object : DispatcherProvider {
+        override val io: CoroutineDispatcher = d
+        override val default: CoroutineDispatcher = d
+    }
+
+    @Test
+    fun audPerf05_theRestoreIsNotDoneByTheConstructorButBehindRestoring() = runTest {
+        Phone().loginOnline()
+        val hold = HoldFirst()
+        val relaunched = Phone(d = holding(hold))
+        assertEquals("the constructor (main thread under Hilt) restores nothing", SessionState.Restoring, relaunched.session.state.value)
+        assertTrue("the restore was handed to the IO dispatcher", hold.held != null)
+        hold.release()
+        assertEquals(1001L, (relaunched.session.state.value as SessionState.Active).user.userId)
+    }
+
+    @Test
+    fun audPerf05_settledNeverAnswersRestoringAndALaterRestoreNeverOverwritesALogout() = runTest {
+        Phone().loginOnline()
+        val hold = HoldFirst()
+        val relaunched = Phone(d = holding(hold))
+        assertTrue(relaunched.session.settled() is SessionState.Active)
+        relaunched.logoutOnline()
+        hold.release() // the background restore arrives late
+        assertEquals(SessionState.LoggedOut, relaunched.session.state.value)
+    }
+
+    @Test
+    fun audPerf05_aLoginWhileRestoringIsKeptAndTheTokenIsReadyForTheNetworkThread() = runTest {
+        val hold = HoldFirst()
+        val phone = Phone(d = holding(hold))
+        assertTrue(phone.loginOnline() is LoginOutcome.LoggedIn)
+        hold.release()
+        assertTrue(phone.session.state.value is SessionState.Active)
+        assertEquals(contractAccessToken, phone.session.currentAccessToken(Grant.FULL))
+    }
+
+    @Test
+    fun audPerf05_aKeystoreFailureAtRestoreLeavesTheUserSignedOutNeverACrash() = runTest {
+        Phone().loginOnline()
+        val broken = object : SecretCipher {
+            override fun encrypt(plain: ByteArray) = cipher.encrypt(plain)
+            override fun decrypt(blob: ByteArray): ByteArray = throw java.security.GeneralSecurityException("keystore")
+        }
+        val relaunched = Phone(c = broken)
+        assertEquals(SessionState.LoggedOut, relaunched.session.settled())
     }
 
     @Test

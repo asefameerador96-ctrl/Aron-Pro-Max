@@ -85,7 +85,7 @@ object SessionModule {
         resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
     ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, config = resumeConfigCheck) }, { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
-        { com.aktcl.aron.core.sync.push.SessionPushPull(push::activeUser, bundles, resumeConfigCheck) },
+        { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
     )
 
     /** N-038 push: the FCM token for the signed-in user, the Bangla/English notice and the jittered pull (never an upload). */

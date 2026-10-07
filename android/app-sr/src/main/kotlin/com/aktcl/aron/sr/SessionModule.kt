@@ -87,7 +87,7 @@ object SessionModule {
     ): AronWorkerFactory = AronWorkerFactory(
         { SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, afterRun = { _, report -> media.afterSync(report) }, config = resumeConfigCheck) }, { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
-        { com.aktcl.aron.core.sync.push.SessionPushPull(push::activeUser, bundles, resumeConfigCheck) },
+        { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
     )
 
     /** Photos (android-sys F-SYS-010/030/037): the media worker's wiring, the per-user camera and the Wi-Fi-only switch. */

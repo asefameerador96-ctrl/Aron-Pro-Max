@@ -25,6 +25,7 @@ class AronAMOApplication : Application(), Configuration.Provider {
     @Inject lateinit var sessionComponents: com.aktcl.aron.core.session.SessionComponents
 
     override fun onCreate() {
+        com.aktcl.aron.core.common.DebugStrictMode.install(BuildConfig.DEBUG) // before Hilt builds the graph on this thread
         super.onCreate()
         ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives
         // DPC: trusted clock and calendar, re-apply the stored policy; integrity evidence after each online login.

@@ -80,6 +80,9 @@ class PushShell(
 
     fun activeUser(): Long? = (components.session.state.value as? SessionState.Active)?.user?.userId
 
+    /** [activeUser] after the cold-start restore (AUD-PERF-05): a push pull in a cold process must not see "nobody". */
+    suspend fun settledActiveUser(): Long? = (components.session.settled() as? SessionState.Active)?.user?.userId
+
     private suspend fun register(userId: Long, known: String?) {
         try {
             // The token is sent only for the user signed in now (the call uses the active full grant).

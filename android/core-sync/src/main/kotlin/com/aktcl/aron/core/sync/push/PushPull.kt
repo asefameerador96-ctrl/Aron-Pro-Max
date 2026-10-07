@@ -31,7 +31,7 @@ fun interface PushPull {
  * Nobody signed in: nothing (the token is the server's only address, and it follows the last user who registered it).
  */
 class SessionPushPull(
-    private val activeUserId: () -> Long?,
+    private val activeUserId: suspend () -> Long?,
     private val bundles: BundleDownloaders,
     private val config: ResumeConfigCheck,
 ) : PushPull {

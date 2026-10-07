@@ -73,7 +73,7 @@ class SessionSyncRunner(
         // Only after a run the server answered in full: never straight after a hold, 429, 503 or a refusal (s4.10, s4.7).
         // The delta goes out under the FULL grant of the signed-in user: a run for another user on a shared phone (A's rows
         // uploading while B is signed in) must never pull B's day into A's database (F-SYS-052 checker).
-        val active = (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
+        val active = (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
         if (refreshesBundle(userId, active, report.stop)) {
             try { bundles?.of(userId)?.refreshIfServerNewer() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         }

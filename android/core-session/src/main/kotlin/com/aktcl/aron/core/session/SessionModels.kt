@@ -76,6 +76,9 @@ data class ActiveSession(val userId: Long, val mode: String)
 
 /** Session state seen by the app shell. Local work never waits on it: selling needs only [Active]. */
 sealed interface SessionState {
+    /** Cold start: the stored session is being read off the main thread (AUD-PERF-05). The shells show the splash. */
+    data object Restoring : SessionState
+
     data object LoggedOut : SessionState
 
     data class Active(
