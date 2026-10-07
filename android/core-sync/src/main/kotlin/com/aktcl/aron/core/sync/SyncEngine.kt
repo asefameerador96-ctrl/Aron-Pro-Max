@@ -376,11 +376,11 @@ class SyncEngine(
         suspend fun requestJson(batchUuid: String, rows: List<OutboxEntity>): String {
             val today = BusinessDate.of(clock.nowMs()).toString()
             val dates = (rows.map { it.businessDate } + today).toSortedSet()
-            val counts = buildJsonObject {
-                for (date in dates) {
-                    put(date, buildJsonObject { outbox.committedCounts(date).forEach { put(it.recordType, JsonPrimitive(it.count)) } })
-                }
-            }
+            val recon = com.aktcl.aron.core.database.repo.ReconciliationRepository(db) { iso(clock.nowMs()) }
+            val counts = buildJsonObject { for (date in dates) put(date, recon.deviceCountsJson(date)) }
+            // MoneyTotals per date (s4.4, s4.12): every batch carries them for its dates, so day_submit and "at least once
+            // per date" are both covered; a few hundred bytes gzipped.
+            val money = buildJsonObject { for (date in dates) put(date, recon.deviceMoney(date)) }
             val body = buildJsonObject {
                 put("batch_uuid", JsonPrimitive(batchUuid))
                 put("device_uuid", JsonPrimitive(device))
@@ -391,6 +391,7 @@ class SyncEngine(
                 put("pending_rows", JsonPrimitive(outbox.unsentCount()))
                 put("time_anchors", WireJson.requests.encodeToJsonElement(ANCHORS, timeAnchors().takeLast(3)))
                 put("device_counts", counts)
+                put("device_money", money)
                 put("records", JsonArray(rows.map { RECORD_JSON.parseToJsonElement(it.payloadJson) }))
             }
             return body.toString()
@@ -458,7 +459,7 @@ class SyncEngine(
         const val KEY_CONFIG_VERSION_SERVER = "sync.config_version_server"
         const val KEY_GENERATION = "sync.server_generation"
         const val KEY_BUNDLE_CURRENT = "sync.bundle_version_current"
-        const val KEY_SERVER_TOTALS = "sync.server_totals."
+        const val KEY_SERVER_TOTALS = com.aktcl.aron.core.database.repo.ReconciliationRepository.KEY_SERVER_TOTALS
         const val KEY_DAY_STATES = "sync.day_states"
         const val KEY_LAST_SUCCESS = "sync.last_success_at"
         private const val ATTEMPT_PREFIX = "sync.batch_attempt."

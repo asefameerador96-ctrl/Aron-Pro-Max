@@ -34,6 +34,8 @@ interface ReferenceDao {
     @Query("SELECT * FROM outlet WHERE outlet_id = :outletId")
     suspend fun outlet(outletId: Long): OutletEntity?
 
+    /** Every SKU of the bundle, inactive ones too (a memo line of an SKU since withdrawn still has a category). */
+    @Query("SELECT sku_id AS skuId, category_code AS categoryCode FROM sku") suspend fun skuCategories(): List<SkuCategory>
     @Query("SELECT * FROM sku WHERE status = 'active' ORDER BY sort, code")
     suspend fun activeSkus(): List<SkuEntity>
 
@@ -88,3 +90,5 @@ interface ReferenceDao {
     @Query("UPDATE outlet SET radius_m = :radiusM, max_accuracy_m = :maxAccuracyM WHERE outlet_id = :outletId")
     suspend fun updateOutletRadius(outletId: Long, radiusM: Int, maxAccuracyM: Int): Int
 }
+
+data class SkuCategory(val skuId: Long, val categoryCode: String)
