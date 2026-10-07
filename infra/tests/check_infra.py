@@ -743,6 +743,12 @@ class Workflows(unittest.TestCase):
             self.assertIn(flag, block)
             self.assertIn(flag, c[c.index("\n  android:"):c.index("\n  android-release:")])
         self.assertIn("ARON_VERSION_CODE: ${{ github.run_number }}", c)
+        # N-064: the version name fits the contract pattern for every run number (set before any build step).
+        name_step = 'echo "ARON_VERSION_NAME=0.$((GITHUB_RUN_NUMBER / 1000 + 1)).$((GITHUB_RUN_NUMBER % 1000))" >> "${GITHUB_ENV}"'
+        for job in (block, c[c.index("\n  android:"):c.index("\n  android-release:")]):
+            self.assertLess(job.index(name_step), job.index("-Paron.versionName="))
+        self.assertNotIn("ARON_VERSION_NAME: ", c, "no workflow-level value that the step could fail to override")
+        self.assertIn('release-manifest.py signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}" "${GITHUB_SHA}"', block)
         self.assertIn("python3 tools/ci/apk-size-gate.py", block)
         gate = (ROOT / "tools" / "ci" / "apk-size-gate.py").read_text(encoding="utf-8")
         self.assertIn("ABS_DOWNLOAD_MB, ABS_INSTALLED_MB = 30, 70", gate)
