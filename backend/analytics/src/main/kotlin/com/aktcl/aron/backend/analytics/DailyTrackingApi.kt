@@ -112,8 +112,10 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
         val id = runCatching { UUID.fromString(req.action_uuid) }.getOrNull()?.takeIf { it.toString() == req.action_uuid }
             ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad action_uuid", errors = listOf(FieldError("/action_uuid", "invalid_value")))
         val date = runCatching { LocalDate.parse(req.business_date) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad business_date", errors = listOf(FieldError("/business_date", "invalid_value")))
-        if (req.note.length !in 3..500) throw ApiProblem(ProblemCode.ERR_VALIDATION, "note must be 3..500 characters", errors = listOf(FieldError("/note", "out_of_range")))
+        if (req.note.trim().length < 3 || req.note.length > 500) throw ApiProblem(ProblemCode.ERR_VALIDATION, "note must be 3..500 characters", errors = listOf(FieldError("/note", "out_of_range")))
         return db.jdbi.inTransaction<TrackingAction, Exception> { h ->
+            // One writer per action_uuid at a time: two concurrent posts of the same uuid serialise here, the second then replays the first.
+            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "tracking_action:" + req.action_uuid)
             // A route outside the caller's reach, or unknown, is 403 (no existence leak).
             val geo = h.createQuery("SELECT zone_id, territory_id FROM dw.dim_geo WHERE route_id = :r").bind("r", req.route_id).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null)
             if (geo == null || (!reach.national && geo.first !in reach.zoneIds)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route is outside your reach")
@@ -125,6 +127,8 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                     if (by != p.userId || s("route_id") != req.route_id.toString() || s("business_date") != req.business_date || s("note") != req.note) throw ApiProblem(ProblemCode.ERR_CONFLICT, "action_uuid already used for a different action")
                     return@inTransaction TrackingAction(req.action_uuid, req.route_id, req.business_date, req.note, by, at.wire(), (after["notified_user_ids"] as kotlinx.serialization.json.JsonArray).map { (it as kotlinx.serialization.json.JsonPrimitive).content.toLong() })
                 }
+            if (!h.createQuery("SELECT EXISTS (SELECT 1 FROM app.route_day WHERE route_id = :r AND business_date = :d)").bind("r", req.route_id).bind("d", date).mapTo(Boolean::class.java).one())
+                throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the route has no route-day on that date")
             val after = runCatching { LocalTime.parse(config.string("cfg.day.take_action_after")) }.getOrDefault(LocalTime.of(17, 0))
             val opensAt = date.atTime(after).atZone(ZoneId.of("Asia/Dhaka")).toInstant()
             if (clock.now().isBefore(opensAt)) throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "take action opens at $after Dhaka time on the business date")
@@ -145,10 +149,8 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                 "INSERT INTO app.audit_log (actor_user_id, actor_username, actor_role, via, entity, entity_id, action, after, request_id) VALUES (:u, :n, :r, 'api', 'tracking_action', :id, 'create', CAST(:a AS jsonb), CAST(:rid AS uuid)) RETURNING at",
             ).bind("u", p.userId).bind("n", p.username.take(40)).bind("r", p.role.wire).bind("id", req.action_uuid).bind("a", body.toString())
                 .bind("rid", requestId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }).map { rs, _ -> rs.getObject(1, OffsetDateTime::class.java).toInstant() }.one()
-            // The nudge to the route's TSO and AMO is the notify module's job: it reads this outbox event.
-            h.createUpdate(
-                "INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, payload) VALUES ('tracking_action.created', 'tracking_action', :id, :d, CAST(:p AS jsonb))",
-            ).bind("id", req.action_uuid).bind("d", date).bind("p", body.toString()).execute()
+            // The FCM nudge to the route's TSO and AMO is the notify module's: it needs `tracking_action.created` in app.domain_event_type
+            // (docs/requests/backend-reports-db-indexes-and-events.md); no unregistered event is written meanwhile. `notified_user_ids` names who it will reach.
             TrackingAction(req.action_uuid, req.route_id, req.business_date, req.note, p.userId, now.wire(), notified)
         }
     }

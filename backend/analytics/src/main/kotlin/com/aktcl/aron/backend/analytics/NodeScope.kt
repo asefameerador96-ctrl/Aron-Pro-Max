@@ -25,6 +25,8 @@ internal fun resolveScopedNode(h: Handle, reach: Reach, level: String?, nodeId: 
     if (level == null && nodeId == null) {
         if (reach.national) return ScopedNode(NodeRefDto("national", 0, "national", "National"), null)
         val top = reach.topNodes.firstOrNull() ?: throw out
+        // A caller with several top nodes sees all of them: the zones are the whole reach, the node label is the first top node.
+        if (reach.topNodes.size > 1) return ScopedNode(NodeRefDto(top.type, top.id, top.code, top.name), reach.zoneIds.toList().ifEmpty { listOf(-1L) })
         lv = top.type; id = top.id
     } else {
         lv = level ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "node_id needs level", errors = listOf(FieldError("query.level", "required")))
