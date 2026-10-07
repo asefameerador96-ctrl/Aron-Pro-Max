@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck
     @Inject lateinit var mediaShell: MediaShell
     @Inject lateinit var shellLogout: com.aktcl.aron.core.sync.shell.ShellLogout
+    @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     private var dayHolder: SrDayHolder? = null
 
     override fun attachBaseContext(newBase: Context) {
@@ -59,6 +60,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         dayHolder?.day?.value?.let { it.launchConfigCheck(); it.launchDeltaRefresh(bundleDownloaders) }
+        lifecycleScope.launch { updateShell.check(atLogin = false) } // F-SYS-020, throttled to 12 h inside
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,7 +92,10 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            day?.let { d ->
+                            // F-SYS-020: an open day (checked in, not submitted) is never interrupted by a required update.
+                            var dayOpen by remember { mutableStateOf(true) }
+                            LaunchedEffect(day) { dayOpen = day?.dayOpen() ?: true }
+                            day?.let { d -> UpdateHost(updateShell, dayOpen, s.updateRequired) {
                                 SrApp(
                                     day = d,
                                     user = HomeUser(
@@ -114,7 +119,7 @@ class MainActivity : ComponentActivity() {
                                     onOtherTile = { },
                                     startBundleDownload = { day?.downloadBundle(bundleDownloaders) },
                                 )
-                            }
+                            } }
                             // Drawn after the screens so the camera covers them while a capture is open (F-SYS-030).
                             day?.media?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
                         }

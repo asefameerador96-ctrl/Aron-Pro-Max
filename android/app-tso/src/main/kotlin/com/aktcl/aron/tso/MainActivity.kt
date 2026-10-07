@@ -46,6 +46,13 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject lateinit var components: SessionComponents
     @Inject lateinit var shellLogout: ShellLogout
+    @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+
+    /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch { updateShell.check(atLogin = false) }
+    }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
@@ -73,7 +80,7 @@ class MainActivity : ComponentActivity() {
                             val vm = viewModel(key = "home-" + s.user.userId) {
                                 HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
                             }
-                            HomePlaceholderScreen(
+                            UpdateHost(updateShell, dayOpen = false, serverSaidTooOld = s.updateRequired) { HomePlaceholderScreen(
                                 viewModel = vm,
                                 user = HomeUser(
                                     fullName = s.user.fullName,
@@ -103,7 +110,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onLanguageSelect = onLanguageSelect,
-                            )
+                            ) }
                         }
                     }
                 }
