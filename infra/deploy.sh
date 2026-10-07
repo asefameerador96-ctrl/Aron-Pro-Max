@@ -556,6 +556,7 @@ if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ] && [ -n "$DBLOGINS_JOB"
     cp db/seed/0*.sql infra/scripts/devseed-run.sh "$ctx/"
     rm -f "$ctx"/04_*.sql
     cp infra/sql/devseed-smoke-outlet.sql "$ctx/09_smoke_outlet.sql"
+    cp infra/sql/devseed-app-release.sql "$ctx/09b_dev_app_release.sql"  # enrolment tokens on dev (device day)
     docker build -q --provenance=false --sbom=false --build-arg "PSQL_IMAGE=${ARON_PSQL_IMAGE}" \
       -f infra/docker/devseed.Dockerfile -t "${REGISTRY}/aron-devseed:${SHA}" "$ctx"
   }

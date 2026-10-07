@@ -1669,6 +1669,16 @@ class SliceSmoke(unittest.TestCase):
         sql = (ROOT / "infra/sql/devseed-smoke-outlet.sql").read_text(encoding="utf-8")
         self.assertIn("'SMOKE-SR-001'", sql)
         self.assertNotIn("cfg_value", sql)
+        # Device day (lead): a published release per flavour so enrolment tokens can be minted, dev seed image only
+        # (inside build_devseed, which runs only with devSeed = true; stage/prod have no devSeed), never a gate change.
+        rel = (ROOT / "infra/sql/devseed-app-release.sql").read_text(encoding="utf-8")
+        build = d[d.index("build_devseed() {"):d.index("publish aron-devseed build_devseed")]
+        self.assertIn('cp infra/sql/devseed-app-release.sql "$ctx/09b_dev_app_release.sql"', build)
+        self.assertEqual(d.count("devseed-app-release.sql"), 1, "loaded by the dev seed image only")
+        self.assertIn("'published'", rel)
+        self.assertIn("ON CONFLICT (flavour, version_code, abi) DO NOTHING", rel, "idempotent")
+        self.assertEqual(sorted(re.findall(r"\('(sr|amo|tso)',\s+'[0-9a-f]{64}'\)", rel)), ["amo", "sr", "tso"])
+        self.assertNotRegex(rel, r"require_enrolled|require_integrity|lockdown|cfg_value", "no gate or config change")
         self.assertIn('echo "::add-mask::${slice_pw}"', d)
         self.assertIn('( publish aron-devseed build_devseed', d, "a failed seed image never stops the deploy")
         for f in ("stage", "prod"):

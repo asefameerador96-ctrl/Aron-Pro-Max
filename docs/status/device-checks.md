@@ -4,17 +4,21 @@ The lead posts each check here as soon as the build for it exists, with exact st
 
 ## Device day 2026-10-08: start here (infra, 2026-10-07 23:10 UTC)
 
-**Status: a real phone cannot log in to dev yet.** Dev runs with enrolment required (`cfg.device.require_enrolled`
-= true, the registry default; integrity off; lockdown as seeded). With that gate on, three things block a real phone
-(checked in code):
-1. Login refuses an unknown phone before the password: 403 `ERR_DEVICE_NOT_ENROLLED` (LoginService.checkDevice).
-2. No enrolment token can be made on dev: the admin token call needs a published app release, and none exists
-   (nothing seeds one; `POST /v1/admin/releases` is not built yet). **Fix: infra/db, a dev seed of the release row
-   with the CI signing certificate (can be done tonight).**
-3. The SR app has no enrolment step for a normally installed phone (only the device-owner QR path).
-   **Fix: android-core, about a day.**
-The lead routes the fixes and asks the owner whether enrolment may be switched off on dev meanwhile. Until one of
-these happens, the steps below stop at the login screen with "this phone is not enrolled".
+**Status: a real phone cannot log in to dev yet.** Dev requires enrolment (`cfg.device.require_enrolled` = true,
+the registry default; integrity off; lockdown as seeded), and an unknown phone is refused at login with
+"this phone is not enrolled" (403 `ERR_DEVICE_NOT_ENROLLED`) before the password is checked. Two ways forward:
+
+- **Path 1: owner's decision, one switch.** The lead asks the owner whether enrolment may be off on dev for the
+  device day. If yes: the phone logs in with sr1001, binds with the 4-digit code (below) and sells. Nothing else
+  changes (integrity stays off, lockdown as seeded, the bind code stays required).
+- **Path 2: enrolment stays on. NOT ready tomorrow.** Needs android-core's enrolment step for a normally installed
+  phone (being built: EnrolmentCoordinator installed in the apps, token entry before login). The server side is
+  ready on dev after the next deploy with infra 09b seed: a published release per app with the CI signing
+  certificate, so an admin can mint an enrolment token (`lockdown_level` dev, flavour sr). The same seed lets the
+  device-owner path (D-04) mint tokens.
+
+**Checks that need NO login, run these first on the A06:** D-P1 (on-phone print goldens), D-PERF-04 (lab
+benchmark), D-DB-VAC (SQLCipher device test), D-UI-01 if it runs on the seeded day without a server login.
 
 **What the owner needs either way**
 - **APK:** GitHub, Actions, the latest green `ci` run on the integration branch, artifact
