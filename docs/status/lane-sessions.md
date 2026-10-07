@@ -17,7 +17,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 
 | Sub-lane | Session id | Model | Started | Notes |
 |---|---|---|---|---|
-| db | session_013NHxcKi11ivBpd2B2v3g7D | Opus | 2026-10-07 | recycled 10:51 (third session); previous session_017dmQw2byPhYrFKrGJrEMRj is retired (READY TO RECYCLE 10:50, lane/db 501e466f, V0023 to V0038); earlier session_01KAjUS8Gz437Nx93fsiVFYX retired |
+| db | session_011K2gmzr1feSNNQxnqWkRt5 | Opus | 2026-10-07 | recycled 12:58 (fourth session); previous session_013NHxcKi11ivBpd2B2v3g7D is retired (READY TO RECYCLE 12:57, lane/db V0039-V0046); earlier sessions retired (017dmQw2byPhYrFKrGJrEMRj, 01KAjUS8Gz437Nx93fsiVFYX) |
 | shared (first session) | session_01SD55WuhWKuEfeuC6T4A8e2 | Sonnet | 2026-10-05 | finished; blocked by its own permission settings on the contract; do not nudge |
 | shared-2 | session_01QRBncHfaoTvSqTLur5L3ZH | Sonnet | 2026-10-07 | N-002, DTO hosting, web drift |
 | backend-core | session_01CnjB3beqLff7QFRhoTxN3r | Opus | 2026-10-07 | recycled 12:28 (fifth session); previous session_01465rpZSgSrMTU8CACwuEYx is retired (READY TO RECYCLE 12:27, lane/backend-core e8df8227); earlier sessions retired (01FfFvStuQXyZNg6QM9rndaD, 01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
