@@ -158,6 +158,10 @@ class BundleAcceptanceTest {
         assertEquals(mapOf("MIR-SR-D" to true, "MIR-SR-3F" to true, "MIR-SR-2F" to false), byCode.mapValues { it.value["planned_today"]!!.jsonPrimitive.boolean })
         assertEquals(40, routes.sumOf { it["target_outlets"]!!.jsonPrimitive.int })
         assertEquals(60, routes.sumOf { it["outlets"]!!.jsonArray.size })
+        // F-SYS-086: the day's first login (logged_in) dirties each route-day's tile key.
+        assertEquals(3L, fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery("SELECT count(DISTINCT d.subject_id) FROM app.dirty_key d JOIN app.route r ON r.id = d.subject_id WHERE d.kind = 'route_day_agg' AND d.business_date = DATE '2027-01-03' AND r.code IN ('MIR-SR-D', 'MIR-SR-3F', 'MIR-SR-2F')").mapTo(Long::class.java).one()
+        })
         routes.forEach { rt ->
             assertEquals("logged_in", rt["day_state"]!!.jsonObject["state"]!!.jsonPrimitive.content)
             assertEquals("primary", rt["assignment_kind"]!!.jsonPrimitive.content)
@@ -190,6 +194,13 @@ class BundleAcceptanceTest {
         assertEquals("default", values["cfg.geo.radius_m"]!!["scope_type"]!!.jsonPrimitive.content)
         assertEquals("global", values["cfg.device.lockdown_level"]!!["scope_type"]!!.jsonPrimitive.content, "the dev override wins over the default")
         assertEquals("dev", values["cfg.device.lockdown_level"]!!["value"]!!.jsonPrimitive.content)
+        // N-033: the device policy version (app-block list) is the config version the policy renders at.
+        assertEquals(b["config"]!!.jsonObject["config_version"]!!.jsonPrimitive.long, b["device_policy_version"]!!.jsonPrimitive.long)
+        assertTrue("cfg.device.blocked_packages" in values.keys, "the app-block list reaches the phone with the config")
+        // V0055 field-app keys (F-SYS-024/028/029, docs/19 s9): global defaults, delivered to the device.
+        mapOf("cfg.app.local_history_days" to 7, "cfg.app.outbox_keep_days" to 3, "cfg.app.image_cache_mb" to 40).forEach { (k, v) ->
+            assertEquals(v, values[k]?.get("value")?.jsonPrimitive?.int, "$k reaches the phone")
+        }
         assertTrue(values.keys.none { it == "cfg.geo.max_speed_kmh" || it == "cfg.device.require_enrolled" }, "server-only keys stay on the server")
         // Code lists, calendar, user, reason texts.
         assertTrue(b["code_lists"]!!.jsonArray.any { it.jsonObject["list_key"]!!.jsonPrimitive.content == "force_reason" })
