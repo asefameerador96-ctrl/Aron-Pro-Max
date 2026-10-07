@@ -76,8 +76,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         dayHolder?.day?.value?.let { it.launchConfigCheck(); it.launchDeltaRefresh(bundleDownloaders) }
-        lifecycleScope.launch { updateShell.check(atLogin = false) }
-        pushShell.onResume() // N-038: a token not registered yet is tried again (local check first) // F-SYS-020, throttled to 12 h inside
+        lifecycleScope.launch { updateShell.check(atLogin = false) } // F-SYS-020, throttled to 12 h inside
+        pushShell.onResume() // N-038: a token not registered yet is tried again (local check first)
     }
 
     /** F-SYS-022: SR keeps its data (it keeps uploading); a failure never crashes the app. */

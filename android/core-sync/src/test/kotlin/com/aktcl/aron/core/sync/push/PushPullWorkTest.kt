@@ -72,6 +72,15 @@ class PushPullWorkTest {
         assertTrue(live(PushPullKind.BUNDLE).isEmpty())
     }
 
+    /** Checker: a push landing while a pull runs (it may have fetched before the change) queues exactly one more. */
+    @Test fun aPushDuringARunningPullQueuesOneMoreAndAWaitingPullCoversIt() {
+        assertEquals(androidx.work.ExistingWorkPolicy.KEEP, PushPullScheduler.policyFor(emptyList()))
+        assertEquals(androidx.work.ExistingWorkPolicy.APPEND_OR_REPLACE, PushPullScheduler.policyFor(listOf(WorkInfo.State.RUNNING)))
+        assertEquals(androidx.work.ExistingWorkPolicy.KEEP, PushPullScheduler.policyFor(listOf(WorkInfo.State.RUNNING, WorkInfo.State.BLOCKED)))
+        assertEquals(androidx.work.ExistingWorkPolicy.KEEP, PushPullScheduler.policyFor(listOf(WorkInfo.State.ENQUEUED)))
+        assertEquals(androidx.work.ExistingWorkPolicy.KEEP, PushPullScheduler.policyFor(listOf(WorkInfo.State.SUCCEEDED)))
+    }
+
     @Test fun configAndBundlePullsAreSeparateJobs() {
         scheduler.schedule(PushPullKind.CONFIG, 5_000)
         scheduler.schedule(PushPullKind.BUNDLE, 5_000)

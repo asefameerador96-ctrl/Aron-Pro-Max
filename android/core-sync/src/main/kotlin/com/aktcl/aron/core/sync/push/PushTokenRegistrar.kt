@@ -104,6 +104,12 @@ class PushTokenRegistrar(
     }
 
 
+    /**
+     * An online login or a finished bind may have fixed what was refused (e.g. the device key reached the server): the
+     * next [ensure] asks again instead of waiting out the back-off.
+     */
+    fun retryRefused() = store.put(KEY_REFUSED, null)
+
     companion object {
         const val KEY_REGISTERED = "registered"
         const val KEY_REFUSED = "refused"

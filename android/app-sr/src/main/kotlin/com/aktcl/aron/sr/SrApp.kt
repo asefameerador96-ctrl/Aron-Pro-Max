@@ -83,7 +83,7 @@ fun SrApp(
     startBundleDownload: suspend () -> Unit,
     sunlight: Boolean = false, onSunlight: (Boolean) -> Unit = {},
     /** N-038: a new value means the rep tapped a task notification (android-core wiring). */
-    openTasks: kotlinx.coroutines.flow.StateFlow<Int>? = null,
+    openTasks: kotlinx.coroutines.flow.MutableStateFlow<Int>? = null,
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -119,8 +119,16 @@ fun SrApp(
         boundary++
     }
     // N-038: a task notification opens the task list; a pull a push asked for refreshes it when it lands.
+    // A tap is consumed once (reset to 0), and never pulls the rep out of a visit, sale or memo: it waits until they are
+    // back on a list screen.
     val openTasksTap = openTasks?.collectAsState()?.value ?: 0
-    LaunchedEffect(openTasksTap) { if (openTasksTap > 0) { screen = SrScreen.TASKS; day.taskBoard.load() } }
+    LaunchedEffect(openTasksTap, screen) {
+        if (openTasksTap > 0 && screen in setOf(SrScreen.HOME, SrScreen.PICKER, SrScreen.TASKS, SrScreen.SETTINGS, SrScreen.KPI, SrScreen.JOURNEY)) {
+            openTasks?.value = 0
+            screen = SrScreen.TASKS
+            day.taskBoard.load()
+        }
+    }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.taskBoard.load() } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
         scope.launch { day.attendance.tick(); day.reload(); day.taskBoard.load() }

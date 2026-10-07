@@ -93,8 +93,8 @@ class SharedPhoneSyncTest {
         // B signs in on the same phone: a different file, an empty outbox, none of A's rows.
         val dbB = databases.of(B)
         assertNotEquals(AronDatabase.fileName(A), AronDatabase.fileName(B))
+        assertEquals(0, dbB.outboxDao().unsentCount()) // Room creates the file on the first query
         assertTrue(context.getDatabasePath(AronDatabase.fileName(A)).exists() && context.getDatabasePath(AronDatabase.fileName(B)).exists())
-        assertEquals(0, dbB.outboxDao().unsentCount())
         assertTrue(databases.knownUserIds().containsAll(listOf(A, B)))
 
         // B's run sends nothing; A's run (B still signed in) sends A's rows under A's grant.

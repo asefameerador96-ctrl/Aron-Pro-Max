@@ -59,7 +59,7 @@ class PushShell(
         scope.launch {
             components.session.state.map { (it as? SessionState.Active)?.user?.userId }.distinctUntilChanged().collect { id -> id?.let { register(it, null) } }
         }
-        scope.launch { components.session.onlineLogins.collect { id -> register(id, null) } }
+        scope.launch { components.session.onlineLogins.collect { id -> registrar.retryRefused(); register(id, null) } }
     }
 
     /** App in front: a token that could not be registered earlier (offline, refused yesterday) is tried again. */

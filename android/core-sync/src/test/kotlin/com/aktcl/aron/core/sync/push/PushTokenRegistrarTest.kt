@@ -71,6 +71,15 @@ class PushTokenRegistrarTest {
         assertEquals(TokenOutcome.REGISTERED, registrar.ensure(9, token))
     }
 
+    /** Checker: a refusal before enrolment must not block pushes for 12 h once an online login or bind fixed it. */
+    @Test fun anOnlineLoginEndsTheRefusalBackOff() = runTest {
+        answers += failure(403)
+        assertEquals(TokenOutcome.REFUSED, registrar.ensure(7, token))
+        assertEquals(TokenOutcome.BACKED_OFF, registrar.ensure(7, token))
+        registrar.retryRefused()
+        assertEquals(TokenOutcome.REGISTERED, registrar.ensure(7, token))
+    }
+
     @Test fun theApiSendsTheContractBodyWithTheDeviceProofOverItsExactBytes() = runTest {
         val server = MockWebServer()
         server.enqueue(MockResponse.Builder().code(204).addHeader("X-Aron-Api", "1").build())

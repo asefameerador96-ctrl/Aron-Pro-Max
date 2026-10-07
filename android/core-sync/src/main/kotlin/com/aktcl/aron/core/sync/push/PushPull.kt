@@ -7,6 +7,7 @@ import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.aktcl.aron.core.sync.BundleDownloaders
@@ -45,8 +46,8 @@ class SessionPushPull(
 
 /**
  * Schedules the pull a push asked for (N-038): one WorkManager job per kind, after the push's delay, only with a network.
- * A pull already waiting covers a later push of the same kind (KEEP): a burst of pushes costs one request. A push that
- * is lost or swallowed loses nothing: the next sync run sees the newer bundle version and pulls anyway (s4.10).
+ * A pull already waiting covers a later push of the same kind ([policyFor]): a burst of pushes costs one request. A push
+ * that is lost loses nothing: the next sync run sees the newer bundle version and pulls anyway (s4.10).
  */
 class PushPullScheduler(private val workManager: () -> WorkManager) {
     fun schedule(kind: PushPullKind, delayMs: Long, now: Boolean = false) {
@@ -56,13 +57,27 @@ class PushPullScheduler(private val workManager: () -> WorkManager) {
             .addTag(TAG)
         if (delayMs > 0) builder.setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
         // The rep opened the task notification: pull at once instead of waiting out the spread.
-        workManager().enqueueUniqueWork(name(kind), if (now) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, builder.build())
+        val policy = if (now) ExistingWorkPolicy.REPLACE else policyFor(states(kind))
+        workManager().enqueueUniqueWork(name(kind), policy, builder.build())
     }
+
+    private fun states(kind: PushPullKind): List<WorkInfo.State> =
+        try { workManager().getWorkInfosForUniqueWork(name(kind)).get().map { it.state } } catch (_: Exception) { emptyList() }
 
     companion object {
         const val TAG = "aron-push"
         const val KEY_KIND = "kind"
         fun name(kind: PushPullKind) = "aron-push-${kind.wire}"
+
+        /**
+         * A pull still waiting covers a new push (KEEP: a burst costs one request). A pull already running may have fetched
+         * before the new change was made, so the new push queues one more after it (APPEND_OR_REPLACE), at most one.
+         */
+        fun policyFor(states: List<WorkInfo.State>): ExistingWorkPolicy = when {
+            states.any { it == WorkInfo.State.ENQUEUED || it == WorkInfo.State.BLOCKED } -> ExistingWorkPolicy.KEEP
+            states.any { it == WorkInfo.State.RUNNING } -> ExistingWorkPolicy.APPEND_OR_REPLACE
+            else -> ExistingWorkPolicy.KEEP
+        }
     }
 }
 
