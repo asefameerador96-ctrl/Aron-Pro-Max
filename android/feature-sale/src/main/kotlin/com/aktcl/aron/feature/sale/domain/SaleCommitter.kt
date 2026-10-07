@@ -36,7 +36,13 @@ class SaleCommitter(
     private val metaSource: CaptureMetaSource,
     private val nowIso: () -> String,
     private val newUuid: () -> String = ClientIds::newUuid,
+    /** Looks a memo up by uuid (production: `captureDao().memo`); lets a relaunch notice a commit that landed before the kill. */
+    private val findMemo: suspend (String) -> MemoEntity? = { null },
 ) {
+    /** The result of an already committed memo of this draft, or null. */
+    suspend fun existing(memoUuid: String): CommittedSale? =
+        findMemo(memoUuid)?.let { CommittedSale(it.clientUuid, it.memoNo, it.netMtk, it.dueMtk) }
+
     suspend fun commit(
         draft: SaleDraft,
         catalog: Map<Long, SaleSku>,

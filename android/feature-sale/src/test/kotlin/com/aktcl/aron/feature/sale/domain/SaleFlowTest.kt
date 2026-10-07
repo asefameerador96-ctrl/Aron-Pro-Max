@@ -34,7 +34,7 @@ class SaleFlowTest {
     @After fun tearDown() = db.close()
 
     private var seq = 0
-    private fun committer() = SaleCommitter(CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }, { "sr334001-261005-%03d".format(++seq) }, { _, r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" })
+    private fun committer() = SaleCommitter(CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }, { "sr334001-261005-%03d".format(++seq) }, { _, r -> Fx.meta().copy(routeId = r) }, { "2026-10-05T04:35:00.000Z" }, findMemo = { db.captureDao().memo(it) })
     private fun flow(store: DraftStore) = SaleFlow(store, { _, _ -> Fx.catalog.values.toList() }, committer())
     private suspend fun visit(): SaleVisit {
         val u = ClientIds.newUuid(); val (v, f) = Fx.visit(u)
@@ -73,7 +73,9 @@ class SaleFlowTest {
         a.commit()
         store.save(saved) // the kill happened between the Room commit and the draft clear
         val b = flow(store); b.start(v)
-        assertThrows(android.database.sqlite.SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { b.commit() } }
+        assertEquals(a.state.value.committed, b.state.value.committed) // recognised as already committed
+        assertEquals(a.state.value.committed, b.commit())              // and a commit tap returns it without writing
+        assertNull(store.load(v.visitUuid))
         assertEquals(1, db.captureDao().memosOn(Fx.DATE).size)
         assertNotNull(db.captureDao().memo(saved.memoUuid))
     }

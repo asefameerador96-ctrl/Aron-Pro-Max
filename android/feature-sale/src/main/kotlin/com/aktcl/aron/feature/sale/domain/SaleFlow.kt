@@ -57,7 +57,9 @@ class SaleFlow(
             visitUuid = visit.visitUuid, outletId = visit.outletId, routeId = visit.routeId, businessDate = visit.businessDate,
             priceType = visit.priceType, memoUuid = ClientIds.newUuid(),
         ).also(store::save)
-        publish(visit, draft, catalog, null)
+        val landed = committer.existing(draft.memoUuid)
+        if (landed != null) store.clear(visit.visitUuid) // the commit landed and the kill came before the draft was cleared
+        publish(visit, draft, catalog, landed)
     }
 
     suspend fun setQuantity(skuId: Long, qty: Long, unit: QtyUnit) = edit { SaleDraftOps.setQuantity(it, skuId, qty, unit) }
