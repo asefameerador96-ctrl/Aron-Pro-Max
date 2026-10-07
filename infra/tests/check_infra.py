@@ -554,14 +554,15 @@ class Workflows(unittest.TestCase):
         self.assertIn("title=Azure is not set up for this repository", d, "clear failure when secrets are absent")
         self.assertNotRegex(d, r"(?m)^\s*(push|pull_request|pull_request_target):", "deploy is called or dispatched only")
         # A GitHub concurrency group would cancel pending CI runs; deploy.sh serialises instead.
-        self.assertNotIn("concurrency:", d)
-        self.assertIn("RUN_MIGRATIONS: ${{ inputs.run_migrations == false && 'false' || 'true' }}", d)
+        self.assertIn("group: deploy-${{ inputs.environment || 'dev' }}\n  cancel-in-progress: false", d, "a deploy is never cancelled")
+        self.assertIn("RUN_MIGRATIONS: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_migrations == false) && 'false' || 'true' }}", d)
         call = d[d.index("workflow_call:"):d.index("workflow_dispatch:")]
         self.assertIn("run_migrations:", call, "a called deploy (promote-prod) must see run_migrations = true, not null")
         self.assertIn('[ "${GITHUB_WORKFLOW}" = promote-prod ]', d, "prod only through promote-prod")
         self.assertIn('[ "${FINAL}" = "true" ]', d, "prod only in the final account")
         conditions = re.findall(r"(?m)^\s*if:\s*(.*)$", d)
-        self.assertEqual(conditions, ["failure() && steps.login.outcome == 'failure'"],
+        self.assertEqual(conditions, ["github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')",
+                                      "failure() && steps.login.outcome == 'failure'"],
                          "only the sign-in explanation may be conditional; no deploy step may be switched off")
         steps = ["Deploy only from the integration branch", "Check the Azure secrets", "azure/login@",
                  "scope-check.sh", "infra/deploy.sh"]
@@ -603,32 +604,41 @@ class Workflows(unittest.TestCase):
         self.assertIn('RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"', full)
         self.assertNotIn("grep -qs", full, "no source sniffing to decide what to deploy")
 
-    def test_ci_calls_deploy_only_for_pushes_to_the_integration_branch(self):
-        c = self.text("ci.yml")
-        block = c[c.index("\n  deploy:"):]
-        self.assertIn("uses: ./.github/workflows/deploy.yml", block)
-        expected_if = ("!cancelled() && !failure() && github.event_name == 'push' "
-                       f"&& github.ref == 'refs/heads/{INTEGRATION_BRANCH}' && needs.changes.outputs.deploy == 'true'")
-        m = re.search(r"if: >-\n((?:\s{6}.*\n)+)", block)
-        self.assertTrue(m, "deploy job has no if:")
-        self.assertEqual(" ".join(m.group(1).split()), expected_if)
-        self.assertIn("needs: [changes, gates, contract, jvm, web, android, android-release, images, infra]", block)
-        self.assertIn("secrets: inherit", block)
+    def test_deploy_follows_only_green_ci_of_integration_pushes(self):
+        c, d = self.text("ci.yml"), self.text("deploy.yml")
+        self.assertNotIn("\n  deploy:", c, "the deploy is its own workflow, so a cancelled ci run never stops it")
+        trig = d[d.index("  workflow_run:"):d.index("  workflow_call:")]
+        self.assertIn("workflows: [ci]", trig)
+        self.assertIn(f"branches: [{INTEGRATION_BRANCH}]", trig)
+        self.assertIn("github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'", d)
+        self.assertIn("ref: ${{ github.event.workflow_run.head_sha || github.sha }}", d, "deploy the commit ci tested")
+        self.assertIn("GIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}", d)
+        s = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn("Skipped: nothing deployable changed", s)
 
-    def test_push_runs_are_never_cancelled(self):
-        # 14 lanes push to the integration branch: every workflow a push triggers groups by ref AND commit, and only
-        # pull requests cancel their predecessor. The deploy itself is serialised in Azure (deploy.sh lock), not here.
-        for wf in WORKFLOWS.glob("*.yml"):
-            c = self.text(wf.name)
-            if not re.search(r"(?m)^  push:", c):
-                continue
-            self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c, wf.name)
-            self.assertIn("github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.ref, github.sha)", c, wf.name)
-            self.assertEqual(c.count("cancel-in-progress"), 1, wf.name)
-        self.assertNotRegex(self.text("deploy.yml"), r"(?m)^\s*concurrency:", "deploy serialises with the Azure-side lock in deploy.sh")
-        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertIn("deploy lock held", d)
-        self.assertIn("merge-base --is-ancestor", d)
+    def test_ci_skips_superseded_pending_runs_but_never_a_deploy(self):
+        # Lead decision 2026-10-07: one ci run per ref (the integration branch is linear; the newer head contains every
+        # older commit and compares with the last green head). The deploy is never cancelled mid-flight.
+        c = self.text("ci.yml")
+        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c,
+                      "a running push run always finishes; only an older pending run is replaced")
+        self.assertIn("status=success&per_page=1", c, "the changes job compares with the last green head")
+        d = self.text("deploy.yml")
+        self.assertEqual(d.count("cancel-in-progress: false"), 1)
+        self.assertNotIn("cancel-in-progress: true", d)
+        q = self.text("codeql.yml")
+        self.assertNotRegex(q, r"(?m)^  push:", "CodeQL only on pull requests to main and weekly")
+        self.assertIn("branches: [main]", q)
+        s = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn("deploy lock held", s)
+        self.assertIn("merge-base --is-ancestor", s)
+
+    def test_docs_only_pushes_start_no_ci_run(self):
+        c = self.text("ci.yml")
+        push = c[c.index("  push:"):c.index("  pull_request:")]
+        for p in ('"!docs/**"', '"!**/*.md"', '"docs/24-build-spec.md"', '"docs/data-dictionary.md"'):
+            self.assertIn(p, push)
+        self.assertLess(push.index('"!docs/**"'), push.index('"docs/24-build-spec.md"'), "re-includes come after the excludes")
 
     def test_repository_gates_run_on_every_push(self):
         c = self.text("ci.yml")
@@ -646,7 +656,15 @@ class Workflows(unittest.TestCase):
     def test_release_apk_and_size_gate(self):
         c = self.text("ci.yml")
         block = c[c.index("\n  android-release:"):c.index("\n  web:")]
-        self.assertIn(":android:app-sr:assembleRelease", block)
+        for app in ("sr", "amo", "tso"):
+            self.assertIn(f":android:app-{app}:assembleRelease", block)
+        self.assertIn("--ks-pass env:KSP", block, "signing passwords by environment only")
+        self.assertIn("if: github.event_name == 'push' && github.ref == 'refs/heads/claude/wonderful-thompson-k6ejnf'", block)
+        # AUD-DG-03: every CI APK talks to dev and upgrades over the previous run's.
+        for flag in ('-Paron.apiBaseUrl="${ARON_API_BASE_URL}"', '-Paron.versionCode="${ARON_VERSION_CODE}"'):
+            self.assertIn(flag, block)
+            self.assertIn(flag, c[c.index("\n  android:"):c.index("\n  android-release:")])
+        self.assertIn("ARON_VERSION_CODE: ${{ github.run_number }}", c)
         self.assertIn("python3 tools/ci/apk-size-gate.py", block)
         gate = (ROOT / "tools" / "ci" / "apk-size-gate.py").read_text(encoding="utf-8")
         self.assertIn("ABS_DOWNLOAD_MB, ABS_INSTALLED_MB = 30, 70", gate)
@@ -661,6 +679,11 @@ class Workflows(unittest.TestCase):
         self.assertIn("for img in aron-backend aron-web; do", block)
         self.assertIn('-o "spdx-json=sbom-${img}.spdx.json"', block)
         self.assertNotIn("sbom-action", block)
+
+    def test_contract_slices_and_web_types_cannot_go_stale(self):
+        c = self.text("ci.yml")
+        self.assertIn("python3 tools/slice-contract.py --check", c[c.index("\n  contract:"):c.index("\n  jvm:")])
+        self.assertIn("bash scripts/ci.sh generate", c, "web/src/contract/openapi.d.ts regenerate-and-diff")
 
     def test_data_dictionary_stays_a_required_check(self):
         c = self.text("ci.yml")

@@ -85,7 +85,9 @@ class ReferenceRepository(private val db: AronDatabase) {
         val config = bundle.config?.let { c ->
             c.values.map { configRow(it, scheduled = false) } + c.scheduled.map { configRow(it, scheduled = true) }
         }.orEmpty()
-        val sections = raw?.let(::rawSections).orEmpty()
+        val sections = raw?.let(::rawSections).orEmpty().flatMap { sec ->
+            chunks(sec.json).mapIndexed { i, part -> BundleSectionEntity(chunkName(sec.name, i), part) }
+        }
         return db.withTransaction {
             if (compare(version, dao.meta(KEY_BUNDLE_VERSION)) < 0) return@withTransaction ApplyResult.OLDER_IGNORED
             dao.clearOutlets()
@@ -102,6 +104,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             dao.insertSections(sections)
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_DATE, date))
+            dao.meta(KEY_PREFETCH_DATE)?.let { if (it <= date) clearPrefetch() } // a prefetch of this day or earlier is spent
             putOrDelete(KEY_BUNDLE_ETAG, etag)
             putOrDelete(KEY_BUNDLE_CURSOR, bundle.meta.cursor)
             putOrDelete(KEY_BUNDLE_SERVER_TIME, bundle.meta.serverTime)
@@ -115,7 +118,7 @@ class ReferenceRepository(private val db: AronDatabase) {
         val version = bundle.meta.bundleVersion
         if (compare(version, dao.meta(KEY_BUNDLE_VERSION)) <= 0) return@withTransaction ApplyResult.OLDER_IGNORED
         if (compare(version, dao.meta(KEY_PREFETCH_VERSION)) < 0) return@withTransaction ApplyResult.OLDER_IGNORED
-        dao.putMeta(SyncMetaEntity(KEY_PREFETCH_JSON, raw.toString()))
+        putChunked(KEY_PREFETCH_JSON, raw.toString())
         dao.putMeta(SyncMetaEntity(KEY_PREFETCH_VERSION, version))
         dao.putMeta(SyncMetaEntity(KEY_PREFETCH_DATE, bundle.meta.validForBusinessDate))
         putOrDelete(KEY_PREFETCH_ETAG, etag)
@@ -133,7 +136,7 @@ class ReferenceRepository(private val db: AronDatabase) {
         val date = dao.meta(KEY_PREFETCH_DATE) ?: return null
         if (date < businessDate) { clearPrefetch(); return null }
         if (date != businessDate) return null
-        val text = dao.meta(KEY_PREFETCH_JSON) ?: run { clearPrefetch(); return null }
+        val text = getChunked(KEY_PREFETCH_JSON) ?: run { clearPrefetch(); return null }
         val raw = Json.parseToJsonElement(text) as JsonObject
         val result = apply(BundleReference.json.decodeFromJsonElement(BundleReference.serializer(), raw), raw, dao.meta(KEY_PREFETCH_ETAG), asDay = true)
         clearPrefetch()
@@ -141,7 +144,28 @@ class ReferenceRepository(private val db: AronDatabase) {
     }
 
     private suspend fun clearPrefetch() = db.withTransaction {
-        listOf(KEY_PREFETCH_JSON, KEY_PREFETCH_VERSION, KEY_PREFETCH_DATE, KEY_PREFETCH_ETAG).forEach { dao.deleteMeta(it) }
+        deleteChunked(KEY_PREFETCH_JSON)
+        listOf(KEY_PREFETCH_VERSION, KEY_PREFETCH_DATE, KEY_PREFETCH_ETAG).forEach { dao.deleteMeta(it) }
+    }
+
+    // A row larger than Android's 2 MB CursorWindow cannot be read back, so long text is stored in chunks: `<key>`,
+    // `<key>#1`, `<key>#2`, ... (a whole day bundle as JSON is easily 10 MB; F-SYS-006 checker).
+    private suspend fun putChunked(key: String, text: String) {
+        deleteChunked(key)
+        chunks(text).forEachIndexed { i, part -> dao.putMeta(SyncMetaEntity(chunkName(key, i), part)) }
+    }
+
+    private suspend fun getChunked(key: String): String? {
+        val first = dao.meta(key) ?: return null
+        val sb = StringBuilder(first)
+        var i = 1
+        while (true) sb.append(dao.meta(chunkName(key, i++)) ?: break)
+        return sb.toString()
+    }
+
+    private suspend fun deleteChunked(key: String) {
+        dao.metaWithPrefix("$key#").forEach { dao.deleteMeta(it.key) }
+        dao.deleteMeta(key)
     }
 
     private suspend fun putOrDelete(key: String, value: String?) =
@@ -176,7 +200,13 @@ class ReferenceRepository(private val db: AronDatabase) {
     }
 
     /** A raw bundle section (see [apply]), or `route.<id>` for a route's extras. */
-    suspend fun section(name: String): String? = dao.section(name)
+    suspend fun section(name: String): String? {
+        val first = dao.section(name) ?: return null
+        val sb = StringBuilder(first)
+        var i = 1
+        while (true) sb.append(dao.section(chunkName(name, i++)) ?: break)
+        return sb.toString()
+    }
 
     companion object {
         const val KEY_BUNDLE_VERSION = "bundle_version"
@@ -191,6 +221,26 @@ class ReferenceRepository(private val db: AronDatabase) {
 
         /** The config version the phone holds (`X-Config-Version`); the sync engine also moves it from batch responses. */
         const val KEY_CONFIG_VERSION = "sync.config_version"
+
+        /** Characters per stored chunk: at most 1.2 MB of UTF-8 even for Bangla text (3 bytes a character). */
+        private const val CHUNK_CHARS = 400_000
+
+        private fun chunkName(key: String, i: Int) = if (i == 0) key else "$key#$i"
+
+        /** Splits [text] into chunks, never between the two halves of a surrogate pair (SQLite stores UTF-8). */
+        internal fun chunks(text: String, size: Int = CHUNK_CHARS): List<String> {
+            require(size >= 2) { "a chunk must hold a surrogate pair" }
+            if (text.length <= size) return listOf(text)
+            val out = ArrayList<String>()
+            var start = 0
+            while (start < text.length) {
+                var end = minOf(text.length, start + size)
+                if (end < text.length && Character.isHighSurrogate(text[end - 1])) end--
+                out += text.substring(start, end)
+                start = end
+            }
+            return out
+        }
 
         /** Sections with tables of their own; everything else at the top level is kept raw. */
         private val TYPED = setOf("meta", "routes", "prices", "config")

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- android:core-geo: on-demand location fixes only (docs/24 s5.5, s11.1). No background location here: breadcrumbs
+     (N-035) declare ACCESS_BACKGROUND_LOCATION only when that row lands, and the DPC grants it only while enabled. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Mock-location app detection (FixDeviceState.mock_app_present, docs/24 s10.3); the apps ship outside Play. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+</manifest>

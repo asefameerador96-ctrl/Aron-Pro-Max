@@ -1,4 +1,5 @@
 import { QcEntryView } from "./qc-entry-view";
+import { loadAllSkus } from "@/lib/admin/skus";
 import { apiGet, one, type SearchParams } from "@/components/admin/kit/page";
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { Forbidden } from "@/components/forbidden";
@@ -33,9 +34,9 @@ export async function QcEntryPageContent({ searchParams, source }: { searchParam
   let faultItems: CodeList["items"] | null = null;
   let skus: Sku[] = [];
   if (selection.zone && (source === "warehouse" || routeId)) {
-    const [c, s] = await Promise.all([apiGet<{ lists: CodeList[] }>("/v1/admin/code-lists", session.at), apiGet<{ items: Sku[] }>("/v1/admin/skus", session.at, { status: "active", limit: 500 })]);
+    const [c, s] = await Promise.all([apiGet<{ lists: CodeList[] }>("/v1/admin/code-lists", session.at), loadAllSkus(session.at)]);
     faultItems = c.ok ? (c.data.lists.find((l) => l.list_key === "qc_fault_type")?.items ?? []) : null;
-    skus = s.ok ? s.data.items : [];
+    skus = s;
   }
   return <QcEntryView locale={locale} source={source} options={options} selection={selection} date={date} today={today} routes={routes} routeId={routeId} faultItems={faultItems} skus={skus} />;
 }

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
 import { buildQcRows } from "@/lib/admin/qc-entry";
+import { digitsOnly } from "@/lib/admin/taka";
 import { inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 
@@ -82,7 +83,7 @@ export function QcGrid({ source, zoneId, routeId, date, skus, faults }: { source
                   const k = `${s.id}|${f.code}`;
                   return (
                     <td key={f.code} className={cell}>
-                      <input aria-label={`${s.label} ${f.label}`} value={cells[k] ?? ""} inputMode="numeric" onChange={(ev) => setCells((c) => ({ ...c, [k]: ev.target.value.replace(/\D/g, "").slice(0, 8) }))} aria-invalid={bad.includes(k) ? true : undefined} className={`${inputClass} w-20 text-right`} />
+                      <input aria-label={`${s.label} ${f.label}`} value={cells[k] ?? ""} inputMode="numeric" onChange={(ev) => setCells((c) => ({ ...c, [k]: digitsOnly(ev.target.value).slice(0, 8) }))} aria-invalid={bad.includes(k) ? true : undefined} className={`${inputClass} w-20 text-right`} />
                     </td>
                   );
                 })}
@@ -91,10 +92,10 @@ export function QcGrid({ source, zoneId, routeId, date, skus, faults }: { source
           </tbody>
         </table>
       </div>
-      {err.cells ? <p role="alert" className="text-xs text-red-700">{err.cells}</p> : null}
+      {err.cells ? <p role="alert" className="text-xs text-[var(--danger)]">{err.cells}</p> : null}
       {source === "warehouse" ? <ReasonField value={reason} onChange={setReason} error={err.reason} /> : null}
-      {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{banner.text}</p> : null}
-      <button type="button" disabled={busy} onClick={save} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
+      {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>{banner.text}</p> : null}
+      <button type="button" disabled={busy} onClick={save} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
     </div>
   );
 }

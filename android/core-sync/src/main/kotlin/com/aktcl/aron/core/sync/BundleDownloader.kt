@@ -77,13 +77,16 @@ class BundleDownloader(
     suspend fun download(forDate: String = BusinessDate.of(clock.nowMs()).toString()): BundleReport = lock.withLock {
         val today = BusinessDate.of(clock.nowMs()).toString()
         val isDay = forDate <= today // a later date is a prefetch: stored aside, never the day's login
-        val ifNoneMatch = if (isDay) {
-            repo.etag().takeIf { repo.businessDate() == forDate }
-        } else {
-            repo.prefetch()?.takeIf { it.first == forDate }?.second
+        val prefetchEtag = repo.prefetch()?.takeIf { it.first == forDate }?.second
+        // The morning request is conditional on last evening's prefetch of the same day: a 304 promotes it (no second download).
+        val onPrefetch = isDay && repo.businessDate() != forDate && prefetchEtag != null
+        val ifNoneMatch = when {
+            !isDay -> prefetchEtag
+            onPrefetch -> prefetchEtag
+            else -> repo.etag().takeIf { repo.businessDate() == forDate }
         }
         val configVersion = meta.meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull()
-        val report = fetch(forDate, isDay, ifNoneMatch, configVersion)
+        val report = fetch(forDate, isDay, onPrefetch, ifNoneMatch, configVersion)
         if (isDay && report.outcome !in setOf(BundleOutcome.APPLIED, BundleOutcome.UNCHANGED, BundleOutcome.OLDER_IGNORED) && repo.businessDate() != forDate) {
             // No fresh bundle for a new day: start it on the stored prefetch, if one was fetched for it.
             if (repo.promotePrefetch(forDate) == ApplyResult.APPLIED) {
@@ -93,9 +96,17 @@ class BundleDownloader(
         report
     }
 
-    private suspend fun fetch(forDate: String, isDay: Boolean, ifNoneMatch: String?, configVersion: Long?): BundleReport {
+    private suspend fun fetch(forDate: String, isDay: Boolean, onPrefetch: Boolean, ifNoneMatch: String?, configVersion: Long?): BundleReport {
         return when (val r = api.bundle(forDate, ifNoneMatch, configVersion)) {
             is ApiResult.NotModified -> {
+                if (onPrefetch) {
+                    if (repo.promotePrefetch(forDate) == ApplyResult.APPLIED) {
+                        markLoggedIn(forDate)
+                        return BundleReport(BundleOutcome.PREFETCH_PROMOTED, repo.bundleVersion(), repo.businessDate())
+                    }
+                    // The stored prefetch could not be used: ask again without a condition, never report a stale day as current.
+                    return fetch(forDate, isDay, onPrefetch = false, ifNoneMatch = null, configVersion = configVersion)
+                }
                 if (isDay) markLoggedIn(forDate)
                 BundleReport(BundleOutcome.UNCHANGED, if (isDay) repo.bundleVersion() else repo.prefetch()?.first, forDate)
             }
@@ -114,7 +125,10 @@ class BundleDownloader(
                 }
                 val stage = File(stagingDir, version.replace(Regex("[^0-9A-Za-z._-]"), "_"))
                 withContext(Dispatchers.IO) {
-                    stagingDir.listFiles()?.filter { it != stage }?.forEach { it.deleteRecursively() }
+                    // Only an older stage of the same day is stale; a day download and a prefetch keep their own stages.
+                    val day = stage.name.substringBefore('_')
+                    stagingDir.listFiles()?.filter { it != stage && (it.name.substringBefore('_') == day || it.name.substringBefore('_') < day) }
+                        ?.forEach { it.deleteRecursively() }
                     stage.mkdirs()
                 }
                 val pages = HashMap<String, MutableList<JsonElement>>()

@@ -122,7 +122,7 @@ A selected row or tile uses `accent.container` plus a check icon (never colour a
 | `border.focus` on `surface.solid` | 3 | 6.40 | 8.10 | 21.00 |
 | `text.primary` on `surface.solid` (tier C) | 7 | 17.23 | 15.38 | 19.81 |
 
-Sunlight meets AAA (7:1) for `text.primary`, `text.secondary`, every container pair and every status colour. Default light and dark meet AA everywhere and AAA for `text.primary`.
+Sunlight meets AAA (7:1) for `text.primary`, `text.secondary`, every container pair and every status colour. Default light and dark meet AA for every text and icon pair above (disabled text is exempt and held to 3:1 visibility) and AAA for `text.primary`.
 
 ## 3. Glass tiers: token values
 
@@ -139,7 +139,7 @@ Tier is a surface treatment only; layout, radii and type are identical (docs/32 
 | `dialog` | `surface.glass.strong` 94%, no blur, `surface.scrim`, `elev.dialog` | same | `surface.solid`, `surface.scrim`, `elev.dialog` (sunlight none) |
 | chip, banner, tile icon well | opaque `*.container` | same | same |
 
-Limits (hard): at most **2** blurred layers on screen (`glass.blur.maxLayers`); never blur inside a scrolling list or under a dialog; blur area at most 40% of the screen except a sheet; at most 8 glass cards painted at once on tier B; glass never nests (an inner box on a glass card uses `surface.solid.raised`).
+Limits (hard): at most **2** blurred layers on screen (`glass.blur.maxLayers`); never blur inside a scrolling list or under a dialog; blur area at most 40% of the screen except a sheet; at most 8 shadowed glass cards painted at once on tier B (tiles are shadowless, so a 14-tile Home is exempt; at most 16 shadowless glass surfaces); glass never nests (an inner box on a glass card uses `surface.solid.raised`).
 
 Translucency floor (`glass.floor`): any surface that carries text over moving content has an effective fill of at least 86% (tier A) so the contrast ledger holds over the worst backdrop. Tier A is therefore modestly translucent on bars (14% show-through); the glassy look there comes from the blur, the colour bleed and the lit edge.
 
@@ -163,7 +163,7 @@ Concentric rule: inner radius = outer radius minus the inset between them, minim
 |---|---|---|---|---|---|
 | `elev.page` | 0 dp | none | none | none | page, rows, chips, banners |
 | `elev.card` | 4 dp | 6% / 10% | 25% / 35% | y 2, blur 10 | cards, tiles |
-| `elev.sheet` | 12 dp | 8% / 14% | 40% / 50% | y -4 (upward), blur 24 | sheets, bottom action bar |
+| `elev.sheet` | 12 dp | 8% / 14% | 40% / 50% | y -4 (upward), blur 24 | sheets (bars carry no shadow, only the edge stroke) |
 | `elev.dialog` | 24 dp | 10% / 18% | 45% / 55% | y 8, blur 32 | dialogs |
 
 Rules: coloured shadows need API 28 or later; on API 26 and 27 the colours are ignored, so use half the elevation. **Never** put a shadow inside a lazy list item (200 shadows at once cost frames on the A06). Tier C: `elev.card` is 0 (the border carries the edge), sheet and dialog keep their shadow. Sunlight: no shadows (1.5 dp borders). A primary button uses an accent-tinted shadow (spot `accent` 28%, elevation 6 dp, 2 dp when pressed).
@@ -207,7 +207,7 @@ Fonts are exactly the four bundled files in `android/core-ui/src/main/res/font` 
 | `type.caption` | 13 / 18 | **14 / 20** | 400 | secondary lines, helper text |
 | **+** `type.label` | 13 / 18 | 14 / 20 | 700 | chip text, tile labels, column headers |
 
-Why the Bangla line heights: the bundled Noto Sans Bengali has hhea ascent 917 and descent 408 (1.325 em) and win ascent 995 (1.403 em including stacked marks); the Latin face is 1.362 em. Bangla text therefore uses at least 1.40 em, and every Bangla line height above is at least 1.43 em. `letterSpacing = 0.sp` everywhere. Minimums: Latin 13 sp, Bangla 14 sp.
+Why the Bangla line heights: the bundled Noto Sans Bengali has hhea ascent 917 and descent 408 (1.325 em) and win ascent 995 (1.403 em including stacked marks); the Latin face is 1.362 em. Bangla text therefore uses at least 1.40 em, and every Bangla line height above is at least 1.41 em (display 48 / 34 is the tightest). `letterSpacing = 0.sp` everywhere. Minimums: Latin 13 sp, Bangla 14 sp.
 
 **Figures.** Both fonts already set every digit to the same advance (verified from the font files: ASCII 572 regular and 582 bold units per 1,000 em; Bengali digits 592 and 609), so money columns align without a feature flag. Keep `fontFeatureSettings = "tnum"` on `numeral` and `display` as a guard against a future font swap. Bengali digits (`০` to `৯`) are display only (`LocaleDigits.localize`); identifiers (codes, usernames, phone numbers, versions) stay ASCII. The taka sign `৳` is not in the Latin subset: render it with `AronFonts.Bengali` even when the app language is English, at 0.6 em of the number, baseline aligned, after the amount (current app, UI-SR-08), two decimals always (UI-SR-33).
 
@@ -263,3 +263,19 @@ CSS rules for the web theme (details in the web glass spec): `backdrop-filter` o
 4. **`TokenContrastTest` (kit lane).** A JVM unit test in `core-ui` that asserts the ledger pairs of s2.7 from the token values, so a colour edit cannot silently drop below the gate.
 5. **Register `cfg.app.ui_glass`** (`auto`, `lite`, `off`, default `auto`; `off` is the restrictive direction) in `docs/19`; it is named in docs/32 but not yet in the config registry.
 6. **Reserved, not designed:** programme dots on outlet rows and any target, loyalty or discount surface (docs/27 deferred). Rows keep an empty leading slot so adding them later changes no layout.
+
+## 11. Web alignment (answer to the extension list in `web-glass.md`)
+
+`web-glass.md` was drafted in parallel from docs/32 v0 and defers to this file on conflicts. Role names and role colours are shared by Android and web; page-gradient stops, glass alphas and blur sizes are per-platform parameters. The web file must adopt these colour values and re-run its own contrast table (its page gradient is brighter than the Android one, so its glass alphas may differ, its role colours may not).
+
+| web-glass name | v1 decision |
+|---|---|
+| `--accent` `#1D5FD1` / `#4F93FF`, `-hover`, `-ink`, `-wash`, `-on` | replaced by `accent` `#0A58CC` / `#84B6FF` (sunlight `#0041B3`), `accent.pressed` (hover), `accent` itself as link and icon ink (6.40:1 on white), `accent.container` (opaque wash), `text.onAccent` |
+| status `fill` / `ink` / `wash` | fill = the role colour, ink = `*.onContainer`, wash = `*.container` (opaque, s2.5); the web's alpha washes and its `#0CA30C`, `#FAB219` fills are replaced. Chart series colours stay in the dataviz palette, outside these tokens |
+| `text.secondary` `#3F4B63` / `#C6CFE1`, `text.primary` `#0B1324` / `#F4F7FD` | replaced by s2.4 values |
+| `text.tertiary` | **rejected for v1**: in dark, a third level at 4.5:1 on the glass worst case is indistinguishable from `text.secondary`; use `type.caption` in `text.secondary` |
+| `surface.data` (92%), `glass.lite` (92%), `glass.strong` (78%) | `surface.glass.strong` with the tier's alpha (92% for data and tier B; the web may keep 78% for tier A bars if its own ledger holds) |
+| `surface.sunken`, `border.field`, `border.edge`, `focus-ring`, `scrim`, `page-base` | = `surface.solid.raised`, `border.input`, `border.hairline.bottom`, `border.focus`, `surface.scrim`, `bg.solid` |
+| `--elev-1`, `-2`, `-3`, `-4` | = `elev.card`, (web-only raised level for menus), `elev.sheet`, `elev.dialog`; the web may use its multi-layer shadow strings as the CSS form of the same four levels |
+| three-blob page gradient (`body::before`) | web keeps three static blobs (no per-frame cost in a fixed layer); Android uses the two glows of s2.1 |
+| density, sheen and blur variables, `saturate(1.6)` vibrancy | web-only platform parameters, stay in the web file |
