@@ -144,15 +144,25 @@ fun AronTile(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, 
     }
 }
 
-/** A tile grid with [columns] columns. Plain rows (not lazy) because a home grid has a handful of tiles. */
+/**
+ * Columns for a tile grid (docs/design/tokens.md s6): floor((width - 32 + 12) / (96 + 12)) between 2 and 4 (3 on a 360 dp
+ * phone), and 2 at font scale 1.5 or more, so Bangla labels never break inside a word or conjunct.
+ */
+fun autoTileColumns(widthDp: Float, fontScale: Float): Int =
+    if (fontScale >= 1.5f) 2 else ((widthDp - 32f + 12f) / (96f + 12f)).toInt().coerceIn(2, 4)
+
+/** A tile grid. [columns] null means [autoTileColumns] from the window width and font scale. Plain rows (a home grid has a handful of tiles). */
 @Composable
-fun <T> AronTileGrid(items: List<T>, columns: Int, modifier: Modifier = Modifier, tile: @Composable (T, Modifier) -> Unit) {
-    require(columns > 0)
+fun <T> AronTileGrid(items: List<T>, columns: Int? = null, modifier: Modifier = Modifier, tile: @Composable (T, Modifier) -> Unit) {
+    val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+    val cols = columns ?: autoTileColumns(config.screenWidthDp.toFloat(), fontScale)
+    require(cols > 0)
     Column(modifier.fillMaxWidth().padding(AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        items.chunked(columns).forEach { rowItems ->
+        items.chunked(cols).forEach { rowItems ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 rowItems.forEach { tile(it, Modifier.weight(1f)) }
-                repeat(columns - rowItems.size) { Box(Modifier.weight(1f)) }
+                repeat(cols - rowItems.size) { Box(Modifier.weight(1f)) }
             }
         }
     }

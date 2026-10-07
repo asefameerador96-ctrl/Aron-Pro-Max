@@ -32,6 +32,7 @@ import com.aktcl.aron.feature.sale.ui.SaleEntryScreen
 import com.aktcl.aron.rules.QtyUnit
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
@@ -42,7 +43,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * N-023 / docs/32 s2a item 8(b): golden screenshots of Home, Sale entry, Review and Memo detail, tier B, 360 x 640 dp.
- * Default = verify against src/test/screenshots (1 percent changed-pixel tolerance); see docs/status/android-core-ui.md to re-record.
+ * Default = verify against src/test/screenshots (0.2 percent changed-pixel tolerance); see docs/status/android-core-ui.md to re-record.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -52,7 +53,7 @@ class ScreenshotTests {
 
     private val recordTo: String? = System.getProperty("aron.screenshots.recordTo")
     private val goldens: String = System.getProperty("aron.screenshots.goldens") ?: "src/test/screenshots"
-    private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.01f))
+    private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
 
     private fun shot(name: String, language: AppLanguage, sunlight: Boolean = false, fontScale: Float = 1.0f, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
@@ -63,6 +64,10 @@ class ScreenshotTests {
             ) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B) { content() } }
         }
         rule.waitForIdle()
+        if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") {
+            // a missing golden must fail the build, never pass silently or be recorded by a normal run
+            assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
+        }
         rule.onRoot().captureRoboImage("${recordTo ?: goldens}/$name.png", roborazziOptions = options)
     }
 
