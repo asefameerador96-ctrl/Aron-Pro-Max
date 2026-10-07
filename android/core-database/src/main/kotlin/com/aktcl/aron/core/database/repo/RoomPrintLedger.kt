@@ -10,6 +10,7 @@ import com.aktcl.aron.core.database.record.RecordMapping
 import com.aktcl.aron.core.printing.flow.PendingPrint
 import com.aktcl.aron.core.printing.flow.PrintEvent
 import com.aktcl.aron.core.printing.flow.PrintLedger
+import com.aktcl.aron.core.printing.flow.ReprintPolicy
 import java.time.Instant
 
 /**
@@ -36,8 +37,9 @@ class RoomPrintLedger(
         val e = job.event
         validate(e)
         if (dao.eventCount(e.clientUuid) > 0) return@withTransaction // already final
-        dao.upsertJob(job.toEntity())
-        if (job.paperOut) markPrinted(e)
+        val paperOut = job.paperOut || dao.jobPaperOut(e.clientUuid) == true // a paper that came out never comes back
+        dao.upsertJob(job.copy(paperOut = paperOut).toEntity())
+        if (paperOut && e.documentKind !in ReprintPolicy.NOT_COPIES) markPrinted(e)
     }
 
     override suspend fun record(event: PrintEvent): Unit = db.withTransaction {
@@ -61,7 +63,8 @@ class RoomPrintLedger(
         val family = if (inFamily) memo!!.visitClientUuid else event.clientUuid
         db.outboxDao().insert(listOf(RecordMapping.printEvent(row, family, if (inFamily) 3 else 0, event.payload(), nowIso())))
         dao.deleteJob(event.clientUuid)
-        when (event.outcome) {
+        // A void slip or a due receipt that names a memo is not a copy of it (ReprintPolicy.NOT_COPIES, same as MemLedger).
+        if (event.documentKind !in ReprintPolicy.NOT_COPIES) when (event.outcome) {
             PrintEvent.PRINTED -> markPrinted(event)
             PrintEvent.FAILED_USER -> {
                 val doc = event.memoClientUuid ?: event.refClientUuid
@@ -83,7 +86,7 @@ class RoomPrintLedger(
     }
 
     private suspend fun markPrinted(e: PrintEvent) {
-        val at = Instant.ofEpochMilli(e.atEpochMs).toString()
+        val at = ISO_MILLIS.format(Instant.ofEpochMilli(e.atEpochMs))
         val memo = e.memoClientUuid
         if (memo != null && dao.memoCount(memo) > 0) dao.markMemoPrinted(memo, at)
         else e.refClientUuid?.let { dao.setSlipPrinted(it, true) }
@@ -111,5 +114,9 @@ class RoomPrintLedger(
     private companion object {
         val KINDS = setOf("memo", "memo_reprint", "stock_slip", "day_summary", "void_slip", "due_receipt")
         val OUTCOMES = setOf(PrintEvent.PRINTED, PrintEvent.FAILED, PrintEvent.FAILED_USER)
+
+        /** RFC 3339 UTC with exactly three fraction digits, as every other stored timestamp. */
+        val ISO_MILLIS: java.time.format.DateTimeFormatter =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC)
     }
 }

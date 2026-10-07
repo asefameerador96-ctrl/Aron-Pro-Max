@@ -127,6 +127,26 @@ class RoomPrintLedgerTest {
         assertTrue(!rows.getValue(other.clientUuid).slipPrinted)
     }
 
+    @Test fun aVoidSlipOrDueReceiptNamingTheMemoIsNoCopy() = runTest {
+        val (memo, _) = memo()
+        ledger.record(PrintEvent(ClientIds.newUuid(), "void_slip", memo, null, 1, PrintEvent.PRINTED, true, 3, null, 1_000))
+        ledger.savePending(PendingPrint(PrintEvent(ClientIds.newUuid(), "due_receipt", memo, null, 1, PrintEvent.PRINTED, null, 3, null, 2_000), paperOut = true))
+        assertNull(db.captureDao().memo(memo)!!.printedAt)
+        assertEquals(0, db.captureDao().memo(memo)!!.printCount)
+    }
+
+    @Test fun printedAtHasMillisecondsHistoryKeepsInsertionOrderAndPaperOutNeverComesBack() = runTest {
+        val (memo, _) = memo()
+        val e = event(memo, PrintEvent.FAILED, at = 1_791_165_600_000L)
+        ledger.savePending(PendingPrint(e.copy(outcome = PrintEvent.PRINTED, userConfirmed = null), paperOut = true))
+        ledger.savePending(PendingPrint(e.copy(outcome = PrintEvent.PRINTED, userConfirmed = null), paperOut = false))
+        assertTrue(ledger.pending().single().paperOut)
+        assertEquals("2026-10-05T02:00:00.000Z", db.captureDao().memo(memo)!!.printedAt)
+        ledger.record(event(memo, PrintEvent.PRINTED, at = 5_000))
+        ledger.record(event(memo, PrintEvent.PRINTED, count = 2, at = 1_000)) // the clock went backwards
+        assertEquals(listOf(5_000L, 1_000L), ledger.history(memo).map { it.atEpochMs })
+    }
+
     @Test fun aDaySummaryWithoutALocalDocumentGetsTheAppEnvelope() = runTest {
         val e = PrintEvent(ClientIds.newUuid(), "day_summary", null, ClientIds.newUuid(), 1, PrintEvent.PRINTED, true, 3, "MP-58N", 5_000)
         ledger.record(e)
