@@ -66,7 +66,8 @@ fun LoginScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (state.bindToken != null) {
-        OtpContent(state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify)
+        androidx.activity.compose.BackHandler(onBack = viewModel::onOtpBack)
+        OtpContent(state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify, onBack = viewModel::onOtpBack)
         return
     }
     LoginContent(

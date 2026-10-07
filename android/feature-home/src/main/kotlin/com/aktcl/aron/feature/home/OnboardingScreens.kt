@@ -36,6 +36,7 @@ private fun whyText(p: AppPermission): String = stringResource(
         AppPermission.PRECISE_LOCATION -> R.string.perm_location_why
         AppPermission.CAMERA -> R.string.perm_camera_why
         AppPermission.BLUETOOTH -> R.string.perm_bluetooth_why
+        AppPermission.NOTIFICATIONS -> R.string.perm_notifications_why
     },
 )
 
