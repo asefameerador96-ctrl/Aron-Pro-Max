@@ -118,11 +118,16 @@ class DeviceService(
         fun fail(why: String): Nothing = throw ApiProblem(ProblemCode.ERR_ENROLMENT_ATTESTATION_FAILED, why)
         val now = clock.now()
         val uuid = runCatching { UUID.fromString(req.device_uuid) }.getOrNull()?.takeIf { it.toString() == req.device_uuid } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad device_uuid", errors = listOf(FieldError("/device_uuid", "invalid_value")))
+        if (!Regex("^[A-Za-z0-9_-]{43,64}$").matches(req.enrolment_token)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad enrolment_token", errors = listOf(FieldError("/enrolment_token", "invalid_value")))
+        if (req.key_attestation_chain.size !in 1..KeyAttestation.MAX_CHAIN || req.key_attestation_chain.any { it.length > 8000 }) throw ApiProblem(ProblemCode.ERR_VALIDATION, "key_attestation_chain must have 1..6 certificates of at most 8000 characters", errors = listOf(FieldError("/key_attestation_chain", "out_of_range")))
+        checkAppVersion(req.app_version, "/app_version")
         val certHex = req.app_signing_cert_sha256.lowercase().also { if (!Regex("^[0-9a-f]{64}$").matches(it)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad certificate digest", errors = listOf(FieldError("/app_signing_cert_sha256", "invalid_value"))) }
         val pub = runCatching { ECKey.Builder(Curve.P_256, Base64URL(req.public_key.x), Base64URL(req.public_key.y)).build() }.getOrNull()
             ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "public_key is not a point of P-256", errors = listOf(FieldError("/public_key", "invalid_value")))
         if (req.public_key.kty != "EC" || req.public_key.crv != "P-256") throw ApiProblem(ProblemCode.ERR_VALIDATION, "public_key must be EC P-256", errors = listOf(FieldError("/public_key", "invalid_value")))
-        val thumb = b64u(sha256("""{"crv":"P-256","kty":"EC","x":"${req.public_key.x}","y":"${req.public_key.y}"}""".toByteArray()))
+        // RFC 7638 thumbprint over the canonical (decoded, re-encoded) coordinates, so padded or differently encoded copies of one key collide.
+        val canonX = b64u(pub.x.decode()); val canonY = b64u(pub.y.decode())
+        val thumb = b64u(sha256("""{"crv":"P-256","kty":"EC","x":"$canonX","y":"$canonY"}""".toByteArray()))
         return db.jdbi.inTransaction<EnrolDeviceResponse, Exception> { h ->
             val tok = h.createQuery("SELECT * FROM app.enrolment_token WHERE token_sha256 = :h FOR UPDATE").bind("h", sha256(req.enrolment_token.toByteArray()))
                 .map { rs, _ -> TokenRow(rs.getLong("id"), rs.getString("flavour"), rs.getString("lockdown_level"), rs.getInt("max_uses"), rs.getInt("used_count"), rs.getObject("zone_id") as Long?,
@@ -133,9 +138,12 @@ class DeviceService(
             val existing = h.createQuery("SELECT id, public_key_thumbprint, enrolment_token_id, lockdown_level, trust_level, enrolled_at FROM app.device WHERE device_uuid = :u").bind("u", uuid)
                 .map { rs, _ -> listOf(rs.getLong(1), rs.getString(2), rs.getObject(3), rs.getString(4), rs.getString(5), rs.getObject(6, OffsetDateTime::class.java)) }.findOne().orElse(null)
             if (existing != null) {
+                val st = h.createQuery("SELECT status FROM app.device WHERE id = :i").bind("i", existing[0] as Long).mapTo(String::class.java).one()
+                if (st == "revoked" || st == "replaced") throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "device revoked")
                 if (existing[1] != thumb || existing[2] != tok.id) throw ApiProblem(ProblemCode.ERR_CONFLICT, "device already enrolled")
                 return@inTransaction EnrolDeviceResponse(existing[0] as Long, req.device_uuid, (existing[5] as OffsetDateTime).toInstant().wire(), existing[3] as String, existing[4] as String, policy.render(existing[3] as String), now.wire())
             }
+            if (h.createQuery("SELECT EXISTS (SELECT 1 FROM app.device WHERE public_key_thumbprint = :t)").bind("t", thumb).mapTo(Boolean::class.java).one()) throw ApiProblem(ProblemCode.ERR_CONFLICT, "this key is already enrolled")
             if (!now.isBefore(tok.expiresAt)) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_EXPIRED, "enrolment token expired")
             if (tok.used >= tok.maxUses) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_EXHAUSTED, "enrolment token used up")
 
@@ -164,7 +172,7 @@ class DeviceService(
                 VALUES (:u, :f, :pkg, 'enrolled', :own, :l, :t, 'unevaluated', :hw, CAST(:jwk AS jsonb), :thumb, CAST(:att AS jsonb), decode(:cert, 'hex'), :tid, CAST(:info AS jsonb), :ver, :zone, now()) RETURNING id
                 """,
             ).bind("u", uuid).bind("f", tok.flavour).bind("pkg", req.app_package).bind("own", req.device_owner).bind("l", tok.lockdown).bind("t", trust).bind("hw", facts.hardwareBacked)
-                .bind("jwk", """{"kty":"EC","crv":"P-256","x":"${req.public_key.x}","y":"${req.public_key.y}"}""").bind("thumb", thumb)
+                .bind("jwk", """{"kty":"EC","crv":"P-256","x":"$canonX","y":"$canonY"}""").bind("thumb", thumb)
                 .bind("att", buildJsonObject { put("security_level", facts.securityLevel); put("chain_length", facts.chainLength); put("root_sha256", facts.rootSha256); put("verified_boot_state", facts.verifiedBootState); put("device_locked", facts.deviceLocked) }.toString())
                 .bind("cert", certHex).bind("tid", tok.id).bind("info", info).bind("ver", req.app_version).bind("zone", tok.zone).mapTo(Long::class.java).one()
             h.createUpdate("UPDATE app.enrolment_token SET used_count = used_count + 1 WHERE id = :i").bind("i", tok.id).execute()
@@ -186,7 +194,7 @@ class DeviceService(
     fun deviceByUuid(uuid: String): DeviceRow? = db.jdbi.withHandle<DeviceRow?, Exception> { h ->
         h.createQuery("SELECT id, device_uuid::text, status, flavour, lockdown_level, public_key_jwk::text, device_owner, trust_level, integrity_verdict, integrity_checked_at FROM app.device WHERE device_uuid = CAST(:u AS uuid)")
             .bind("u", uuid).map { rs, _ ->
-                val key = ECKey.parse(rs.getString(6)).toECPublicKey()
+                val key = runCatching { ECKey.parse(rs.getString(6)).toECPublicKey() }.getOrNull() ?: return@map null
                 DeviceRow(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), key, rs.getBoolean(7), rs.getString(8), rs.getString(9), rs.getObject(10, OffsetDateTime::class.java)?.toInstant())
             }.findOne().orElse(null)
     }
@@ -241,8 +249,17 @@ class DeviceService(
         rs.getObject(5, OffsetDateTime::class.java).toInstant().wire(), rs.getObject(6, OffsetDateTime::class.java)?.toInstant()?.wire(), rs.getString(7),
     )
 
+    private fun checkAppVersion(v: String, pointer: String) {
+        if (!Regex("^\\d{1,3}[.]\\d{1,3}[.]\\d{1,3}[+]\\d{1,10}$").matches(v)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "app_version must be <versionName>+<versionCode>", errors = listOf(FieldError(pointer, "invalid_value")))
+    }
+
+    private val TRIGGERS = setOf("enrolment", "policy_applied", "check_in", "check_out", "boot", "integrity_change", "app_update", "periodic", "directive")
+
     private fun storeStatus(h: Handle, deviceId: Long, userId: Long?, trigger: String, r: DeviceStatusReportDto, now: Instant) {
         val reportedAt = runCatching { Instant.parse(r.reported_at) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad reported_at", errors = listOf(FieldError("/reported_at", "invalid_value")))
+        checkAppVersion(r.app_version, "/app_version")
+        if (trigger !in TRIGGERS) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad trigger", errors = listOf(FieldError("/trigger", "invalid_value")))
+        if (r.lockdown_level_applied !in setOf("dev", "prod")) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad lockdown_level_applied", errors = listOf(FieldError("/lockdown_level_applied", "invalid_value")))
         if (r.battery_pct !in 0..100 || r.pending_rows < 0) throw ApiProblem(ProblemCode.ERR_VALIDATION, "out of range", errors = listOf(FieldError("/battery_pct", "out_of_range")))
         if (r.play_integrity != null && r.play_integrity_unavailable != null) throw ApiProblem(ProblemCode.ERR_VALIDATION, "play_integrity and play_integrity_unavailable are exclusive", errors = listOf(FieldError("/play_integrity_unavailable", "conflict")))
         val dhaka = now.atZone(java.time.ZoneId.of("Asia/Dhaka")).toLocalDate()

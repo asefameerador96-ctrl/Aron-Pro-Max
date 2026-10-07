@@ -85,3 +85,23 @@ object Backoff {
     fun holdMs(holdS: Int, random: Random = Random.Default): Long =
         (holdS.coerceAtLeast(0) * 1000L * random.nextDouble(1.0, 1.2)).toLong()
 }
+
+/**
+ * Server resolutions of quarantined records (s4.5), stashed by client_uuid until the row is quarantined on the phone; they
+ * arrive in batch answers and bundle deltas. [drain] applies every stash entry it can and keeps the rest.
+ */
+internal object ResolutionStash {
+    suspend fun drain(db: com.aktcl.aron.core.database.AronDatabase, now: String) {
+        val meta = db.referenceDao()
+        val outbox = db.outboxDao()
+        val prefix = com.aktcl.aron.core.database.repo.ReferenceRepository.KEY_RESOLUTION_PREFIX
+        for (stash in meta.metaWithPrefix(prefix)) {
+            val uuid = stash.key.removePrefix(prefix)
+            val t = AckRules.resolution(stash.value) ?: run { meta.deleteMeta(stash.key); null } ?: continue
+            val row = outbox.byClientUuid(uuid)
+            val done = row == null || outbox.applyResolution(uuid, t.state, t.code!!, now) > 0 ||
+                row.state == com.aktcl.aron.core.database.entity.OutboxState.ACKED || row.state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED
+            if (done) meta.deleteMeta(stash.key)
+        }
+    }
+}
