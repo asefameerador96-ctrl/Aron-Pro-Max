@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
-import type { OpKey } from "@/lib/admin/ops";
+import type { OpKey, TeamOpKey } from "@/lib/admin/ops";
 import type { MessageKey } from "@/lib/i18n";
 import { Field, inputClass } from "./field";
 import { ReasonField, REASON_MIN_LENGTH } from "./reason-field";
@@ -39,7 +39,11 @@ export interface OpResult {
 }
 
 interface Props {
-  op: OpKey;
+  op: OpKey | TeamOpKey;
+  /** BFF endpoint: the admin whitelist by default, "/api/bff/team-op" for web-role pages. */
+  endpoint?: string;
+  /** Body members that get a fresh client UUID per attempt-set (idempotency: a retry reuses it, a success renews it). */
+  uuidMembers?: string[];
   params?: Record<string, string>;
   fields: OpFieldDef[];
   /** Fixed body members merged under the typed values (e.g. a scope the page already chose). */
@@ -77,7 +81,7 @@ function toValue(f: OpFieldDef, raw: string): unknown {
   return f.lowercase ? raw.trim().toLowerCase() : raw.trim();
 }
 
-export function OpForm({ op, params, fields, fixed, version, submitLabel, noReason, successKey, resultField, resetOnSuccess = true, testId = "op-form" }: Props) {
+export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, version, submitLabel, noReason, successKey, resultField, resetOnSuccess = true, testId = "op-form" }: Props) {
   const { t, problem } = useI18n();
   const router = useRouter();
   const initial = Object.fromEntries(fields.map((f) => [f.name, f.initial ?? (f.kind === "checkbox" ? "false" : f.kind === "enum" && f.required ? (f.options?.[0]?.value ?? "") : "")]));
@@ -87,13 +91,14 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [ver, setVer] = useState(version);
+  const [uuids, setUuids] = useState<Record<string, string>>(() => Object.fromEntries((uuidMembers ?? []).map((m) => [m, crypto.randomUUID()])));
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setErrors({});
     setBanner(null);
     const local: Record<string, string> = {};
-    const body: Record<string, unknown> = { ...fixed };
+    const body: Record<string, unknown> = { ...fixed, ...uuids };
     for (const f of fields) {
       const raw = values[f.name] ?? "";
       if (f.required && f.kind !== "checkbox" && raw.trim() === "") local[f.name] = t("error.field.required");
@@ -113,7 +118,7 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
     }
     setBusy(true);
     try {
-      const res = await fetch("/api/bff/admin-op", {
+      const res = await fetch(endpoint ?? "/api/bff/admin-op", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -127,6 +132,7 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
         setBanner({ kind: "ok", text: `${t(successKey ?? "admin.save.ok")}${shown ? ` ${shown}` : ""}` });
         setReason("");
         if (resetOnSuccess) setValues(initial);
+        setUuids(Object.fromEntries((uuidMembers ?? []).map((m) => [m, crypto.randomUUID()])));
         router.refresh();
         return;
       }

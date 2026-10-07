@@ -100,7 +100,7 @@ export function GeofenceView({ locale, key_, level, areaId, current, whatIfValue
             </p>
             <RadiusMap radiusM={whatIfValue ?? radius} />
           </Card>
-          {canWrite ? <ConfigSetForm keyName={key_.key} valueType={key_.value_type} bounds={key_.bounds} scopeLevels={key_.scope_levels} scope={{ type: level as ConfigScopeType, id: Number(here.id) }} current={radius} label={t(locale, "geo.whatif.value")} testId="radius-form" /> : <p className="text-sm text-slate-600">{t(locale, "cfgc.read_only")}</p>}
+          {canWrite ? <ConfigSetForm keyName={key_.key} valueType={key_.value_type} bounds={key_.bounds} scopeLevels={key_.scope_levels} scope={{ type: level as ConfigScopeType, id: Number(here.id) }} current={radius} label={t(locale, "geo.radius")} testId="radius-form" /> : <p className="text-sm text-slate-600">{t(locale, "cfgc.read_only")}</p>}
           <Card title={t(locale, "geo.whatif")} testId="whatif">
             <form method="get" className="flex flex-wrap items-end gap-3">
               <input type="hidden" name="level" value={level} />

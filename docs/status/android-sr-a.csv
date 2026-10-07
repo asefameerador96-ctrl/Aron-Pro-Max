@@ -20,3 +20,6 @@ F-SR-038,S,2026-10-07T04:00Z,2026-10-07T05:00Z,0,1,"close needs no reason; dues 
 F-SR-039,M,2026-10-07T04:00Z,2026-10-07T05:00Z,0,0,"with F-SR-037"
 F-SR-076,S,2026-10-07T04:00Z,2026-10-07T05:00Z,0,0,"with F-SR-037"
 N-040,M,2026-10-07T04:00Z,2026-10-07T05:00Z,0,0,"cluster request logic"
+F-SR-002,S,2026-10-07T05:00Z,2026-10-07T05:20Z,10,0,"model only (OTP boxes, contract error mapping); needs F-SYS-003 call and screen"
+F-SR-003,S,2026-10-07T05:00Z,2026-10-07T05:20Z,5,0,"model only (gate, no microphone); the rationale screen and device check pending"
+F-SR-065,S,2026-10-07T05:00Z,2026-10-07T05:20Z,5,0,"model only"
