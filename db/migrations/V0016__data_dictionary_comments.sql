@@ -4,6 +4,8 @@
 -- docs/data-dictionary.md is rendered from these comments (tools/data-dictionary), and DataDictionaryTest fails on any
 -- table, view or column without one, so every later migration adds COMMENT ON for what it creates.
 
+SET lock_timeout = '5s';
+
 COMMENT ON TABLE app.activity_log IS 'One row is a batch of sampled screen and action events from a phone, kept for support and usage analysis.
 owner: backend:platform | capture: OFFLINE | retention: telemetry | pii: none';
 COMMENT ON COLUMN app.activity_log.id IS 'Server surrogate key.';

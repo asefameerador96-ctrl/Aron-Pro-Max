@@ -5,8 +5,8 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
 
 ## Versioning rules (V0017)
 
-- Every outbox row names `event_type` and `payload_version`; the pair must be a catalogue row (foreign key), and the
-  insert trigger refuses a payload that is not a JSON object or lacks a required key.
+- Every outbox row names `event_type` and `payload_version`; the insert trigger refuses a pair that is not a
+  catalogue row, a payload that is not a JSON object and one that lacks a required key (presence only).
 - Payloads carry ids, codes, counts and amounts, never names, phone numbers, NIDs or coordinates.
 - Adding an optional key keeps the version. Removing or renaming a key, changing its type or meaning, or making
   a key required adds a new version (a db migration; ask through docs/requests). A published schema never changes.

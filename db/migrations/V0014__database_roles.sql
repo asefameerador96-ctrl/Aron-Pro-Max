@@ -10,6 +10,8 @@
 --   web_ro    web dashboards: read dw and the business code lists; nothing else in app
 --   bi_reader BI and other products (read replica): read dw only (views are the contract, docs/31 s3)
 
+SET lock_timeout = '5s';
+
 DO $$
 DECLARE
   r     text;

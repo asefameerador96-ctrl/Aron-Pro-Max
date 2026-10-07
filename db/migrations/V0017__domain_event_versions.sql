@@ -1,7 +1,7 @@
 -- V0017 versioned domain-event payloads (docs/31 s3, docs/24 s6.3 and s12.5 item 4).
 --
--- Every outbox row names the version of its payload, and every (event_type, payload_version) pair is a row of the
--- catalogue app.domain_event_type, so an undocumented event cannot be written. docs/data-events.md is rendered from the
+-- Every outbox row names the version of its payload, and every (event_type, payload_version) pair must be a row of the
+-- catalogue app.domain_event_type (insert trigger), so an undocumented event cannot be written. docs/data-events.md is rendered from the
 -- catalogue (DataEventsTest).
 --
 -- Rules:
@@ -14,6 +14,8 @@
 -- - The insert trigger refuses a payload that is not a JSON object or lacks a key the schema lists as required. It
 --   checks presence only: a required key may hold null where its schema type allows it (from_state), and value types
 --   are the producer's contract test, not the database's.
+
+SET lock_timeout = '5s';
 
 CREATE TABLE app.domain_event_type (
   event_type       text NOT NULL CHECK (event_type ~ '^[a-z_]+\.[a-z_]+$'),
@@ -33,13 +35,14 @@ CREATE TABLE app.domain_event_type (
 CREATE TRIGGER domain_event_type_fixed BEFORE UPDATE OR DELETE ON app.domain_event_type
   FOR EACH ROW EXECUTE FUNCTION app.guard_synced_row('description', '=deprecated_at');
 
--- Existing rows (none in production yet) are version 1; afterwards every producer names its version explicitly.
-ALTER TABLE app.domain_event ADD COLUMN payload_version smallint NOT NULL DEFAULT 1;
-ALTER TABLE app.domain_event ALTER COLUMN payload_version DROP DEFAULT;
-ALTER TABLE app.domain_event ADD CONSTRAINT domain_event_payload_object CHECK (jsonb_typeof(payload) = 'object');
+-- Nullable with no default: the outbox is append-only (rows written before V0017 cannot be backfilled, and none exist
+-- outside development), and the trigger below refuses a new row without a catalogued version, so a producer must
+-- name its version explicitly. A foreign key would duplicate the trigger and cannot be added NOT VALID on a
+-- partitioned table in PostgreSQL 16; catalogue rows are never deleted (guard above).
+ALTER TABLE app.domain_event ADD COLUMN payload_version smallint;
 
--- Refuses an event whose payload lacks a required key of its catalogued version (the foreign key below refuses an
--- uncatalogued type or version; this trigger runs first and reports that case too).
+-- Refuses an event of an uncatalogued type or version (23503), a payload that is not a JSON object, or one that lacks
+-- a required key of its version (23514).
 CREATE FUNCTION app.domain_event_check_payload() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -53,8 +56,11 @@ BEGIN
     RAISE EXCEPTION 'app.domain_event: % v% is not in app.domain_event_type', NEW.event_type, NEW.payload_version
       USING ERRCODE = 'foreign_key_violation';
   END IF;
-  IF jsonb_typeof(NEW.payload) = 'object'
-     AND NOT (NEW.payload ?& ARRAY(SELECT jsonb_array_elements_text(req))) THEN
+  IF jsonb_typeof(NEW.payload) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'app.domain_event: % v% payload is not a JSON object', NEW.event_type, NEW.payload_version
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF NOT (NEW.payload ?& ARRAY(SELECT jsonb_array_elements_text(req))) THEN
     RAISE EXCEPTION 'app.domain_event: % v% payload lacks required keys %', NEW.event_type, NEW.payload_version,
       ARRAY(SELECT k FROM jsonb_array_elements_text(req) k WHERE NOT NEW.payload ? k)
       USING ERRCODE = 'check_violation';
@@ -116,9 +122,6 @@ INSERT INTO app.domain_event_type
    "target_set_id":{"type":"integer"},"revision_id":{"type":"integer"},"revision_no":{"type":"integer"},
    "months":{"type":"array","items":{"type":"string","format":"date"}}}}', 'V0017');
 
-ALTER TABLE app.domain_event ADD CONSTRAINT domain_event_type_version
-  FOREIGN KEY (event_type, payload_version) REFERENCES app.domain_event_type (event_type, payload_version);
-
 -- Grants: the catalogue is written by migrations only; every role that writes or reads events may read it.
 UPDATE app.db_role_grant SET except_tables = except_tables || '{domain_event_type}'
  WHERE role = 'api_rw' AND schema_name = 'app' AND object IN ('*', '*/update');
@@ -137,6 +140,6 @@ COMMENT ON COLUMN app.domain_event_type.description IS 'What happened and what c
 COMMENT ON COLUMN app.domain_event_type.payload_schema IS 'JSON Schema of the payload; its required keys are enforced on insert.';
 COMMENT ON COLUMN app.domain_event_type.introduced_in IS 'Migration that added this version.';
 COMMENT ON COLUMN app.domain_event_type.deprecated_at IS 'UTC instant producers stopped writing this version; null while current.';
-COMMENT ON COLUMN app.domain_event.payload_version IS 'Version of the payload shape, a row of app.domain_event_type with event_type.';
+COMMENT ON COLUMN app.domain_event.payload_version IS 'Version of the payload shape, a row of app.domain_event_type with event_type; null only on rows written before V0017.';
 COMMENT ON COLUMN app.domain_event.payload IS 'Event payload (JSON object) in the shape of its catalogued version; ids, codes and amounts only, no personal data.';
 COMMENT ON FUNCTION app.domain_event_check_payload() IS 'Refuses an outbox row of an uncatalogued type or version, or whose payload lacks a required key.';

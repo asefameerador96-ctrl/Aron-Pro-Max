@@ -159,7 +159,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`dw.v_daily_outlet`](#dwv_daily_outlet) | view | worker | SERVER | event_fact | none | Stable view: per outlet and business date, visit, geo validity, sales and dues, with the outlet's classification. |
 | [`dw.v_daily_route`](#dwv_daily_route) | view | worker | SERVER | event_fact | none | Stable view (contract for BI and other products): KPIs, money and day state per route and business date, with its geography. |
 | [`dw.v_daily_sku`](#dwv_daily_sku) | view | worker | SERVER | event_fact | none | Stable view: per route, SKU and business date, quantities sold, free, issued and returned and the gross value. |
-| [`dw.v_daily_sr`](#dwv_daily_sr) | view | worker | SERVER | event_fact | none | Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts. |
+| [`dw.v_daily_sr`](#dwv_daily_sr) | view | worker | SERVER | event_fact | none | Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts (active memos with lines); a user-day with neither an SR call nor such a memo has no row. |
 | [`dw.v_geo_integrity`](#dwv_geo_integrity) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, geo-validation outcomes of visits and mock-location evidence of fixes. |
 
 ## app.activity_log
@@ -1237,11 +1237,9 @@ Append-only outbox of events written with each change; the projector and later c
 | `payload` | jsonb | not null |  | Event payload (JSON object) in the shape of its catalogued version; ids, codes and amounts only, no personal data. |
 | `source_client_uuid` | uuid | null |  | Client UUID of the device record that caused the event, if any. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
-| `payload_version` | smallint | not null |  | Version of the payload shape, a row of app.domain_event_type with event_type. |
+| `payload_version` | smallint | null |  | Version of the payload shape, a row of app.domain_event_type with event_type; null only on rows written before V0017. |
 
 Keys: `PRIMARY KEY (id, business_date)`
-
-References: `FOREIGN KEY (event_type, payload_version) REFERENCES app.domain_event_type(event_type, payload_version)`
 
 ## app.domain_event_type
 
@@ -4518,7 +4516,7 @@ Stable view: per route, SKU and business date, quantities sold, free, issued and
 
 ## dw.v_daily_sr
 
-Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts.
+Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts (active memos with lines); a user-day with neither an SR call nor such a memo has no row.
 
 `owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
 

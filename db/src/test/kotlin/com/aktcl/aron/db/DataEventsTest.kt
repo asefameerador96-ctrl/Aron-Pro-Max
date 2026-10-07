@@ -51,6 +51,7 @@ class DataEventsTest {
             assertEquals("1", c.scalar("SELECT payload_version FROM app.domain_event"))
             assertEquals("23503", refused(c, event("memo.voided", 2, "{}")))                  // no such version
             assertEquals("23503", refused(c, event("memo.renamed", 1, "{}")))                 // no such type
+            assertEquals("23503", refused(c, event("memo.voided", 1, "{}").replace(", 1, 'memo'", ", NULL, 'memo'")))  // no version
             assertEquals("23514", refused(c, event("memo.voided", 1, """{"memo_uuid":"x"}""")))  // required keys missing
             assertEquals("23514", refused(c, event("memo.voided", 1, "[]")))                  // not an object
         } finally {
@@ -112,8 +113,8 @@ class DataEventsTest {
         appendLine()
         appendLine("## Versioning rules (V0017)")
         appendLine()
-        appendLine("- Every outbox row names `event_type` and `payload_version`; the pair must be a catalogue row (foreign key), and the")
-        appendLine("  insert trigger refuses a payload that is not a JSON object or lacks a required key.")
+        appendLine("- Every outbox row names `event_type` and `payload_version`; the insert trigger refuses a pair that is not a")
+        appendLine("  catalogue row, a payload that is not a JSON object and one that lacks a required key (presence only).")
         appendLine("- Payloads carry ids, codes, counts and amounts, never names, phone numbers, NIDs or coordinates.")
         appendLine("- Adding an optional key keeps the version. Removing or renaming a key, changing its type or meaning, or making")
         appendLine("  a key required adds a new version (a db migration; ask through docs/requests). A published schema never changes.")

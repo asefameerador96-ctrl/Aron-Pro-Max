@@ -6,6 +6,8 @@
 -- instants UTC, business_date the Asia/Dhaka date. Percentages are 0..100 with 2 decimals, null when the denominator
 -- is 0 (docs/24 s12.4).
 
+SET lock_timeout = '5s';
+
 -- Attendance had no dw fact; the worker fills one row per user and business date from attendance_event.
 CREATE TABLE dw.fact_attendance (
   business_date        date NOT NULL,
