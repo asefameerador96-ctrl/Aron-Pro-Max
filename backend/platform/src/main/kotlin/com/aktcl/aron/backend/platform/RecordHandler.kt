@@ -44,6 +44,12 @@ interface RecordHandler {
     /** Record types this handler is for (the envelope `type`, e.g. `config_ack`). */
     val types: Set<String>
 
+    /**
+     * Runs before the parent check, so a record (and its children) that must be refused for good is refused `final`
+     * instead of parked while its parent is missing (the admin data-void barrier needs this).
+     */
+    fun checkEarly(h: Handle, rec: IngestRecord): RecordRefusal? = null
+
     fun check(h: Handle, rec: IngestRecord): RecordRefusal? = null
 
     fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {}
