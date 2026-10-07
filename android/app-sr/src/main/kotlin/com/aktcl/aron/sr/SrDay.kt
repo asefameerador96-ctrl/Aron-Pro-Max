@@ -1,5 +1,6 @@
 package com.aktcl.aron.sr
 
+import androidx.room.withTransaction
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -351,6 +352,59 @@ class SrDay(
     private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
     private val _stockAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
     val stockAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _stockAttempt.asStateFlow()
+
+    // ---- AV, KV and the POSM survey during the call (F-SR-020/021) ----
+
+    /** The cached file of an AV/KV item (disk only; null = missing). Set by the activity once the content shell is injected. */
+    @Volatile var contentFile: (suspend (com.aktcl.aron.core.database.entity.ContentItemEntity) -> java.io.File?)? = null
+
+    /** Items for this outlet today, with the ones already logged for this visit left out (a kill and relaunch does not replay them). */
+    suspend fun pendingContent(visitUuid: String, outletId: Long): List<com.aktcl.aron.core.database.entity.ContentItemEntity> {
+        val logged = db.captureDao().contentViewsOf(visitUuid).map { it.contentId }.toSet()
+        return db.referenceDao().contentForOutlet(outletId, businessDate()).filter { it.contentId !in logged }
+            .sortedWith(compareBy({ if (it.kind == "av") 0 else 1 }, { it.sequence }, { it.contentId })) // AV before KV, whatever the DAO order
+    }
+
+    /** One event per item per visit; a repeat returns false and is ignored. Logged after the item ends. */
+    suspend fun logContentView(
+        visitUuid: String, item: com.aktcl.aron.core.database.entity.ContentItemEntity, outcome: com.aktcl.aron.feature.outlet.ContentOutcome,
+        startedAtMs: Long?, durationMs: Long?, sequenceNo: Int,
+    ) {
+        runCatching {
+            capture.recordContentView(
+                com.aktcl.aron.core.database.entity.ContentViewEntity(
+                    com.aktcl.aron.core.common.ClientIds.newUuid(), metaProvider.meta(0L), visitUuid, item.contentId, item.version, item.kind,
+                    outcome.wire, sequenceNo.coerceIn(1, 20), startedAtMs?.let(::iso), durationMs,
+                ),
+            )
+        }
+    }
+
+    /** The survey of the call with its questions, or null when the bundle has none or this visit already answered it. */
+    suspend fun pendingSurvey(visitUuid: String): Pair<com.aktcl.aron.core.database.entity.SurveyEntity, List<com.aktcl.aron.core.database.entity.SurveyQuestionEntity>>? {
+        if (db.captureDao().surveyResponsesOf(visitUuid).isNotEmpty()) return null
+        val survey = db.referenceDao().surveys().firstOrNull() ?: return null
+        val questions = db.referenceDao().surveyQuestions(survey.surveyId)
+        return if (questions.isEmpty()) null else survey to questions
+    }
+
+    /** Writes the confirmed answers (one per question per visit) and claims the photos for them. */
+    suspend fun saveSurvey(
+        visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity,
+        rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>,
+    ) {
+        // All or nothing: a kill mid-way must not leave Q1 saved and Q1.1 lost (pendingSurvey treats any stored answer as answered).
+        db.withTransaction { for (r in rows) {
+            val a = r.answer
+            capture.recordSurveyResponse(
+                com.aktcl.aron.core.database.entity.SurveyResponseEntity(
+                    r.clientUuid, metaProvider.meta(0L), visitUuid, survey.surveyId, survey.version, r.question.questionId,
+                    r.question.answerType.name.lowercase(), a.bool, a.num, a.optionCode, a.text, a.photoUuid,
+                ),
+            )
+        } }
+        for (r in rows) r.answer.photoUuid?.let { runCatching { claimPhoto(it, "survey", "survey_response", r.clientUuid, null) } }
+    }
 
     /** Today's stock rows not yet on a printed slip, read from Room (survives a kill and relaunch). */
     suspend fun unprintedStock() = db.captureDao().stockOn(businessDate()).filter { !it.slipPrinted }

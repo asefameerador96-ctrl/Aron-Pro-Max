@@ -17,7 +17,7 @@
 # ordering guard is bypassed on purpose.
 #
 # Environment: AZURE_RESOURCE_GROUP (required), ARON_ALERT_EMAILS (required, comma-separated), AZURE_LOCATION,
-# ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX, FCM_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY (all optional),
+# ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX, FCM_SERVICE_ACCOUNT_JSON, PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY (all optional),
 # RUN_MIGRATIONS (true | false; default true), FORCE_INFRA (true = always run main.bicep), ROLLBACK_SHA (see above),
 # ARON_DEPLOY_FREEZE_DHAKA ("HH:MM-HH:MM" Asia/Dhaka; refuses a deploy inside that window, rollbacks excepted; unset
 # until real users exist).
@@ -556,6 +556,7 @@ if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ] && [ -n "$DBLOGINS_JOB"
     cp db/seed/0*.sql infra/scripts/devseed-run.sh "$ctx/"
     rm -f "$ctx"/04_*.sql
     cp infra/sql/devseed-smoke-outlet.sql "$ctx/09_smoke_outlet.sql"
+    cp infra/sql/devseed-app-release.sql "$ctx/09b_dev_app_release.sql"  # enrolment tokens on dev (device day)
     docker build -q --provenance=false --sbom=false --build-arg "PSQL_IMAGE=${ARON_PSQL_IMAGE}" \
       -f infra/docker/devseed.Dockerfile -t "${REGISTRY}/aron-devseed:${SHA}" "$ctx"
   }

@@ -73,6 +73,12 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
         StartCallPrompt(name, onYes = { kit.callStarted[v.visitUuid] = day.iso(day.currentMs()); started = true }, onNo = { scope.launch { day.closeVisitAbandoned(); onDone() } })
         return
     }
+    // AV, then KV, then the POSM survey, then the sale (F-SR-020/021); every item reads local data and a missing one is skipped.
+    var contentDone by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
+    if (!contentDone) {
+        CallContentHost(day, v.visitUuid, v.outletId) { contentDone = true }
+        return
+    }
     val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }
     LaunchedEffect(v.visitUuid) { kit.prepare(); vm.start(kit.saleVisit(v)) }
     Column(Modifier.fillMaxSize()) {
