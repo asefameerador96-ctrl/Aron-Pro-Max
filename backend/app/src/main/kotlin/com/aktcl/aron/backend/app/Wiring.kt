@@ -13,6 +13,12 @@ import com.aktcl.aron.backend.auth.TokenIssuer
 import com.aktcl.aron.backend.auth.authRoutes
 import com.aktcl.aron.backend.config.ConfigDeps
 import com.aktcl.aron.backend.config.ConfigResolver
+import com.aktcl.aron.backend.config.ConfigPermissions
+import com.aktcl.aron.backend.config.ConfigPermissionsDeps
+import com.aktcl.aron.backend.config.ConfigPublic
+import com.aktcl.aron.backend.config.ConfigPublicDeps
+import com.aktcl.aron.backend.config.configPermissionRoutes
+import com.aktcl.aron.backend.config.configPublicRoutes
 import com.aktcl.aron.backend.config.ConfigService
 import com.aktcl.aron.backend.config.ConfigTools
 import com.aktcl.aron.backend.config.ConfigToolsDeps
@@ -69,6 +75,8 @@ class Wiring(
             val configService = ConfigService(db, configResolver, clock) { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
             val configDeps = ConfigDeps(configService, guard, clock)
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock), guard)
+            val permDeps = ConfigPermissionsDeps(ConfigPermissions(db, configService, clock), guard)
+            val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
             val otpDeps = DeviceOtpDeps(db, reach, OtpCipher(keys.derivedSecret("aron-device-otp-v1")), config, guard, clock)
             val deltaDeps = ConfigDeltaDeps(ConfigDelta(db, configResolver, clock), configService, guard)
             // The server generation table arrives with the sync schema (N-006); until then the nil generation is sent.
@@ -79,6 +87,8 @@ class Wiring(
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
                 configToolRoutes(toolsDeps)
+                configPermissionRoutes(permDeps)
+                configPublicRoutes(publicDeps)
             }, frontDoorId = s.frontDoorId)
         }
     }
