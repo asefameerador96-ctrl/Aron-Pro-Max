@@ -6,13 +6,21 @@
 #
 # Order (infra/README.md explains why):
 #   lock -> ordering guard -> infra (main.bicep; skipped when infra is unchanged since the deployed commit) ->
-#   Key Vault seeding -> backend image (+ web image when web/ exists) -> migrate job with the new image -> wait for
-#   the migrations -> apps (+ Front Door routes when the profile has Front Door) -> Private Link approval (Premium)
-#   -> smoke test on the public API address -> budget check.
+#   Key Vault seeding -> backend image (+ web image when web/ exists), pushed once and deployed BY DIGEST ->
+#   ordering guard again -> PITR restore point recorded -> migrate job with the new image -> wait for the migrations
+#   -> ordering guard again -> apps (+ Front Door routes when the profile has Front Door) -> Private Link approval
+#   (Premium) -> health gate (build == this commit, readiness, web login page; in Multiple revision mode a failed
+#   gate puts the api traffic back on the previous revision) -> budget check.
+#
+# Rollback (docs/runbooks/rollback-bad-deploy.md): ROLLBACK_SHA=<earlier commit of the integration branch> redeploys
+# the image already in the registry for that commit, by digest: no build, no migrations, no infra stage, and the
+# ordering guard is bypassed on purpose.
 #
 # Environment: AZURE_RESOURCE_GROUP (required), ARON_ALERT_EMAILS (required, comma-separated), AZURE_LOCATION,
 # ARON_BUDGET_AMOUNT, ARON_NAME_SUFFIX, FCM_SERVICE_ACCOUNT_JSON, MAPS_WEB_KEY (all optional),
-# RUN_MIGRATIONS (true | false; default true), FORCE_INFRA (true = always run main.bicep).
+# RUN_MIGRATIONS (true | false; default true), FORCE_INFRA (true = always run main.bicep), ROLLBACK_SHA (see above),
+# ARON_DEPLOY_FREEZE_DHAKA ("HH:MM-HH:MM" Asia/Dhaka; refuses a deploy inside that window, rollbacks excepted; unset
+# until real users exist).
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/scripts/lib.sh"
 cd "$(dirname "$0")/.." || exit 1
@@ -27,6 +35,25 @@ need ARON_ALERT_EMAILS "who receives the budget and platform alerts"
 RG="$AZURE_RESOURCE_GROUP"
 SHA="${GIT_SHA:-$(git rev-parse HEAD)}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
+ROLLBACK_SHA="${ROLLBACK_SHA:-}"
+if [ -n "$ROLLBACK_SHA" ]; then
+  # Only a commit already on the branch being deployed from (so it passed CI when it was pushed); never a stray one.
+  [[ "$ROLLBACK_SHA" =~ ^[0-9a-f]{40}$ ]] || die "ROLLBACK_SHA must be a full 40-character commit id, was '$ROLLBACK_SHA'"
+  git merge-base --is-ancestor "$ROLLBACK_SHA" "$SHA" 2>/dev/null \
+    || die "ROLLBACK_SHA $ROLLBACK_SHA is not an earlier commit of the deployed branch ($SHA)"
+  SHA="$ROLLBACK_SHA"
+  # The schema is forward-only (expand/contract), so the older image runs on the newer schema; never migrate back.
+  RUN_MIGRATIONS=false
+fi
+# Dhaka selling window (docs/18): once real users exist, no deploy while reps sell; a rollback is always allowed.
+# Checked at the start and again right before the migrations and the apps (the lock wait and the build take time).
+check_freeze() { # stage
+  if [ -z "${ARON_DEPLOY_FREEZE_DHAKA:-}" ] || [ -n "$ROLLBACK_SHA" ]; then return 0; fi
+  if in_freeze_window "$ARON_DEPLOY_FREEZE_DHAKA"; then
+    die "deploys are frozen ${ARON_DEPLOY_FREEZE_DHAKA} Asia/Dhaka (ARON_DEPLOY_FREEZE_DHAKA), stopped $1; run it again after the window"
+  fi
+}
+check_freeze "at the start"
 export AZURE_LOCATION="${AZURE_LOCATION:-$(az group show -n "$RG" --query location -o tsv)}"
 export ARON_ALERT_EMAILS ARON_BUDGET_AMOUNT="${ARON_BUDGET_AMOUNT:-}" ARON_NAME_SUFFIX="${ARON_NAME_SUFFIX:-}"
 whatif_file="$(mktemp)"; migrate_log="$(mktemp)"
@@ -115,24 +142,42 @@ done
 # ---------------------------------------------------------------------------------------------- ordering guard
 # CI runs of several pushes finish out of order. Never replace a deployed commit by one of its ancestors.
 api_name="ca-aron-${ENV_NAME}-api"
-deployed_image="$(az containerapp show -g "$RG" -n "$api_name" --query 'properties.template.containers[0].image' -o tsv 2>/dev/null || true)"
-deployed_sha="${deployed_image##*:}"
-if [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "$deployed_sha" != "$SHA" ]; then
-  git cat-file -e "${deployed_sha}^{commit}" 2>/dev/null || git fetch -q origin "$deployed_sha" 2>/dev/null || true
-  if git merge-base --is-ancestor "$SHA" "$deployed_sha" 2>/dev/null; then
-    summary "Skipped: $SHA is an ancestor of the deployed commit $deployed_sha (a newer commit is already live)."
+# The commit the live api runs: its ARON_BUILD (images are deployed by digest), or the tag of an older tag deploy.
+live_sha() {
+  local b img
+  b="$(az containerapp show -g "$RG" -n "$api_name" --query "properties.template.containers[0].env[?name=='ARON_BUILD'].value | [0]" -o tsv 2>/dev/null || true)"
+  if [[ ! "$b" =~ ^[0-9a-f]{40}$ ]]; then
+    img="$(az containerapp show -g "$RG" -n "$api_name" --query 'properties.template.containers[0].image' -o tsv 2>/dev/null || true)"
+    b="${img##*:}"
+  fi
+  printf '%s' "$b"
+}
+# Exits 0 ("Skipped") when a NEWER commit is live. Run again right before the migrate stage and the apps stage
+# (AUD-DG-07): the lock covers every deploy.sh, but a person or an older script without the lock may have deployed
+# while this one built its images.
+guard_newer_live() { # stage
+  [ -n "$ROLLBACK_SHA" ] && return 0
+  local live; live="$(live_sha)"
+  [[ "$live" =~ ^[0-9a-f]{40}$ ]] && [ "$live" != "$SHA" ] || return 0
+  git cat-file -e "${live}^{commit}" 2>/dev/null || git fetch -q origin "$live" 2>/dev/null || true
+  if git merge-base --is-ancestor "$SHA" "$live" 2>/dev/null; then
+    summary "Skipped ($1): $SHA is an ancestor of the deployed commit $live (a newer commit is already live)."
     exit 0
   fi
-fi
+}
+deployed_sha="$(live_sha)"
+guard_newer_live "start"
 # Nothing that reaches Azure changed since the live commit (docs, Android, tests only): nothing to deploy.
 deploy_paths=(shared db backend web infra build.gradle.kts settings.gradle.kts gradle.properties gradle .github/workflows/deploy.yml)
-if [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "${FORCE_INFRA:-false}" != true ] \
+# The same commit again (a re-run, e.g. after a failed health gate) always deploys fully, so the gate runs again.
+if [ -z "$ROLLBACK_SHA" ] && [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] && [ "$deployed_sha" != "$SHA" ] \
+   && [ "${FORCE_INFRA:-false}" != true ] \
    && git merge-base --is-ancestor "$deployed_sha" "$SHA" 2>/dev/null \
    && git diff --quiet "$deployed_sha" "$SHA" -- "${deploy_paths[@]}" 2>/dev/null; then
   summary "Skipped: nothing deployable changed between the live commit $deployed_sha and $SHA."
   exit 0
 fi
-note "deploying $SHA (currently deployed: ${deployed_sha:-nothing})"
+note "deploying $SHA (currently deployed: ${deployed_sha:-nothing})$([ -n "$ROLLBACK_SHA" ] && echo ' as a ROLLBACK')"
 
 # Budgets: Azure refuses every budget (even a what-if of one) while the billing account's cost policy is off for
 # subscription users. Only that exact refusal skips the budget, with a loud warning; any other failure stops here.
@@ -169,7 +214,11 @@ sys.exit(1 if diff else 0)
 PY
 }
 skip_infra=false
-if [ "${FORCE_INFRA:-false}" != "true" ] && [ -n "$previous" ] && [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] \
+if [ -n "$ROLLBACK_SHA" ]; then
+  # A rollback changes images only; the infrastructure stays as the newest commit left it.
+  [ -n "$previous" ] || die "rollback needs a previous successful infra deployment (aron-infra) in $RG"
+  skip_infra=true
+elif [ "${FORCE_INFRA:-false}" != "true" ] && [ -n "$previous" ] && [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]] \
    && git diff --quiet "$deployed_sha" "$SHA" -- "${infra_paths[@]}" 2>/dev/null \
    && [ "$(az deployment group show -g "$RG" -n aron-infra --query properties.provisioningState -o tsv)" = "Succeeded" ] \
    && params_unchanged; then
@@ -222,24 +271,78 @@ BUDGET="$(out "$outputs" budgetName)"
 infra/scripts/seed-secrets.sh "$KV"
 
 # -------------------------------------------------------------------------------------------------- images
-./gradlew --console=plain -q :backend:app:installDist
-BACKEND_IMAGE="${REGISTRY}/aron-backend:${SHA}"
-docker build --pull -q -f infra/docker/backend.Dockerfile -t "$BACKEND_IMAGE" \
-  --label "org.opencontainers.image.revision=${SHA}" backend/app/build/install/aron-backend
-az acr login --name "$REGISTRY_NAME"
-docker push -q "$BACKEND_IMAGE"
-WEB_IMAGE=""
-if [ -f web/package.json ]; then
-  WEB_IMAGE="${REGISTRY}/aron-web:${SHA}"
-  docker build --pull -q -f infra/docker/web.Dockerfile -t "$WEB_IMAGE" \
+# Each commit's image is pushed ONCE as <repo>:<sha>, its tag locked (write-enabled false; delete stays allowed for
+# the purge, infra/scripts/acr-purge.sh), and the apps run it BY DIGEST (AUD-DG-06): a re-pushed or moved tag can
+# never change what runs. A re-run or a rollback of a commit whose image exists reuses it without building.
+digest_of() { # repo tag -> digest; empty ONLY when the registry says the repository or tag does not exist
+  local out err i
+  for i in 1 2 3; do
+    if out="$(az acr repository show --name "$REGISTRY_NAME" --image "$1:$2" --query digest -o tsv 2>"$migrate_log")"; then
+      printf '%s' "$out"; return 0
+    fi
+    err="$(cat "$migrate_log")"
+    grep -qiE 'not found|MANIFEST_UNKNOWN|NAME_UNKNOWN|does not exist' <<<"$err" && return 0
+    sleep $(( i * 10 ))
+  done
+  die "cannot read $1:$2 from the registry: $err"
+}
+publish() { # repo build-command...  -> sets IMAGE_REF to <registry>/<repo>@<digest>
+  local repo="$1" d; shift
+  d="$(digest_of "$repo" "$SHA")"
+  if [ -z "$d" ]; then
+    [ -z "$ROLLBACK_SHA" ] || die "rollback: $repo:$SHA is no longer in the registry (purged); roll forward with a revert commit instead"
+    "$@"
+    docker push -q "${REGISTRY}/${repo}:${SHA}"
+    d="$(digest_of "$repo" "$SHA")"
+    [[ "$d" =~ ^sha256:[0-9a-f]{64}$ ]] || die "cannot read the digest of ${repo}:${SHA} after the push"
+    az acr repository update --name "$REGISTRY_NAME" --image "${repo}:${SHA}" --write-enabled false --delete-enabled true -o none \
+      || echo "::warning::could not lock the tag ${repo}:${SHA}; the apps still run it by digest"
+  else
+    note "${repo}:${SHA} already in the registry (${d}); not rebuilt"
+  fi
+  IMAGE_REF="${REGISTRY}/${repo}@${d}"
+}
+build_backend() {
+  ./gradlew --console=plain -q :backend:app:installDist
+  docker build --pull -q --provenance=false --sbom=false -f infra/docker/backend.Dockerfile -t "${REGISTRY}/aron-backend:${SHA}" \
+    --label "org.opencontainers.image.revision=${SHA}" backend/app/build/install/aron-backend
+}
+build_web() {
+  docker build --pull -q --provenance=false --sbom=false -f infra/docker/web.Dockerfile -t "${REGISTRY}/aron-web:${SHA}" \
     --build-arg "NEXT_PUBLIC_MAPS_WEB_KEY=${MAPS_WEB_KEY:-}" --label "org.opencontainers.image.revision=${SHA}" web
-  docker push -q "$WEB_IMAGE"
+}
+az acr login --name "$REGISTRY_NAME"
+publish aron-backend build_backend; BACKEND_IMAGE="$IMAGE_REF"
+WEB_IMAGE=""
+if [ -n "$ROLLBACK_SHA" ] && [ -n "$(digest_of aron-web "$SHA")" ]; then
+  publish aron-web build_web; WEB_IMAGE="$IMAGE_REF"
+elif [ -z "$ROLLBACK_SHA" ] && [ -f web/package.json ]; then
+  publish aron-web build_web; WEB_IMAGE="$IMAGE_REF"
+elif [ -n "$ROLLBACK_SHA" ]; then
+  # Without the old web image the web app would be left out of the template; keep the running one instead.
+  WEB_IMAGE="$(az containerapp show -g "$RG" -n "ca-aron-${ENV_NAME}-web" --query 'properties.template.containers[0].image' -o tsv 2>/dev/null || true)"
+  note "rollback: no aron-web image for $SHA; the web app keeps ${WEB_IMAGE:-nothing}"
 else
   note "web/ has no package.json: no web app"
 fi
-export ARON_BACKEND_IMAGE="$BACKEND_IMAGE" ARON_WEB_IMAGE="$WEB_IMAGE"
+summary "Images (by digest): backend ${BACKEND_IMAGE}; web ${WEB_IMAGE:-none}"
+export ARON_BACKEND_IMAGE="$BACKEND_IMAGE" ARON_WEB_IMAGE="$WEB_IMAGE" ARON_BUILD_ID="$SHA"
+ARON_MIGRATE_IMAGE=""
+if [ -n "$ROLLBACK_SHA" ]; then
+  # The migrate job keeps the image that applied the newest migrations: an older Flyway would refuse the newer
+  # schema ("applied migration not resolved locally") if a person started the job later.
+  ARON_MIGRATE_IMAGE="$(az containerapp job show -g "$RG" -n "$JOB" --query 'properties.template.containers[0].image' -o tsv)" \
+    || die "rollback: cannot read the migrate job's current image"
+fi
+export ARON_MIGRATE_IMAGE
 
 # ------------------------------------------------------------------------------------------------ migrations
+guard_newer_live "before the migrations"
+check_freeze "before the migrations"
+if [ "$RUN_MIGRATIONS" = true ]; then
+  # The point-in-time-restore target if these migrations damage data (docs/runbooks/rollback-bad-migration.md).
+  summary "PITR restore point (before the migrations): $(date -u +%Y-%m-%dT%H:%M:%SZ) on server $(out "$outputs" postgresServerName 2>/dev/null || echo "(see aron-infra outputs)")"
+fi
 note "migrate job with $BACKEND_IMAGE"
 ARON_DEPLOY_SERVICES=false az deployment group create -g "$RG" -n aron-apps-migrate --template-file infra/apps.bicep \
   --parameters "infra/params/${PROFILE}.apps.bicepparam" -o none
@@ -294,11 +397,18 @@ else
 fi
 
 # ------------------------------------------------------------------------------------------------------ apps
+guard_newer_live "before the apps"
+check_freeze "before the apps"
+# Multiple revision mode (stage, prod): the revision serving now is the fallback if the health gate fails.
+api_mode="$(az containerapp show -g "$RG" -n "$api_name" --query properties.configuration.activeRevisionsMode -o tsv 2>/dev/null || true)"
+prev_revision="$(az containerapp show -g "$RG" -n "$api_name" --query properties.latestReadyRevisionName -o tsv 2>/dev/null || true)"
 note "apps (and Front Door routes when the profile has Front Door)"
 apps="$(ARON_DEPLOY_SERVICES=true az deployment group create -g "$RG" -n aron-apps --template-file infra/apps.bicep \
   --parameters "infra/params/${PROFILE}.apps.bicepparam" --query properties.outputs -o json)"
 API_HOST="$(out "$apps" apiHost)"
 WEB_DEPLOYED="$(out "$apps" webDeployed)"
+WEB_HOST="$(out "$apps" webHost)"
+api_mode_now="$(az containerapp show -g "$RG" -n "$api_name" --query properties.configuration.activeRevisionsMode -o tsv || true)"
 
 if [ "$PRIVATE_LINK" = true ]; then
   expected=1; [ "$WEB_DEPLOYED" = true ] && expected=2
@@ -306,7 +416,27 @@ if [ "$PRIVATE_LINK" = true ]; then
 fi
 
 # ------------------------------------------------------------------------------------------------ checks
-infra/scripts/smoke.sh "$API_HOST"
+# Health gate (AUD-REL-06, AUD-DG-04): the public address answers with THIS build, readiness (database) is 200, and
+# the web login page loads. In Multiple revision mode a failed gate puts all api traffic back on the previous
+# revision before the deploy fails; in Single mode (dev) the runbook's rollback dispatch does that.
+if ! infra/scripts/smoke.sh "$API_HOST" "$SHA" "$WEB_HOST"; then
+  if [ "$api_mode" = Multiple ] && [ "$api_mode_now" = Multiple ] && [ -n "$prev_revision" ]; then
+    if az containerapp ingress traffic set -g "$RG" -n "$api_name" --revision-weight "${prev_revision}=100" -o none; then
+      summary "Health gate FAILED: api traffic is back on ${prev_revision}."
+    else
+      summary "Health gate FAILED and the traffic could NOT be put back on ${prev_revision}: follow docs/runbooks/rollback-bad-deploy.md now."
+    fi
+  fi
+  die "health gate failed for $SHA on $API_HOST (docs/runbooks/rollback-bad-deploy.md)"
+fi
+if [ "$api_mode_now" = Multiple ]; then
+  # Keep the new revision and the one before it (instant traffic switch back); deactivate any older active ones.
+  latest="$(az containerapp show -g "$RG" -n "$api_name" --query properties.latestReadyRevisionName -o tsv)"
+  for r in $(az containerapp revision list -g "$RG" -n "$api_name" --query "[?properties.active].name" -o tsv); do
+    [ "$r" = "$latest" ] || [ "$r" = "$prev_revision" ] || az containerapp revision deactivate -g "$RG" -n "$api_name" --revision "$r" -o none \
+      || echo "::warning::could not deactivate the old revision $r"
+  done
+fi
 if [ "$ARON_DEPLOY_BUDGET" = true ]; then
   amount="$(az consumption budget show -g "$RG" --budget-name "$BUDGET" --query amount -o tsv)" \
     || die "budget $BUDGET not found in $RG"
@@ -319,7 +449,7 @@ summary "### Aron ${ENV_NAME} deployed (profile ${PROFILE})"
 summary "| Item | Value |"
 summary "|---|---|"
 summary "| Resource group | ${RG} |"
-summary "| Commit | ${SHA} |"
+summary "| Commit | ${SHA}$([ -n "$ROLLBACK_SHA" ] && echo ' (ROLLBACK)') |"
 summary "| API | https://${API_HOST}/v1/health |"
 summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"

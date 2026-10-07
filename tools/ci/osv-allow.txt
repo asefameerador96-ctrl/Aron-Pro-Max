@@ -1,0 +1,2 @@
+# Reviewed exceptions to the OSV dependency gate (tools/ci/osv-gate.py): "<vuln id> <YYYY-MM-DD expiry> <reason>".
+# Every line expires; renew only after a fresh review. Empty today.
