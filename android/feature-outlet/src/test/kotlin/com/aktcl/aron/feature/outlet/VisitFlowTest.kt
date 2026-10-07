@@ -256,4 +256,37 @@ class VisitFlowTest {
         f.open(outlet)
         assertTrue(runCatching { f.open(outlet.copy(outletId = 2)) }.exceptionOrNull() is IllegalStateException)
     }
+
+    private class MemStore : OpenVisitStore {
+        val rows = mutableMapOf<String, OpenVisitRow>()
+        override suspend fun begin(visitUuid: String, outletId: Long, routeId: Long, startedAtIso: String) { rows[visitUuid] = OpenVisitRow(visitUuid, outletId, routeId, startedAtIso) }
+        override suspend fun findOpen(businessDate: String) = rows.values.firstOrNull()
+        override suspend fun clear(visitUuid: String) { rows.remove(visitUuid) }
+    }
+
+    @Test fun openRowExistsAtOnceWithNoOutboxRecordAndSurvivesARelaunch() = runTest {
+        val store = MemStore(); val rec = Recorder()
+        val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
+        val far = fix(lat = farLat())
+        val src = FakeFixes(ArrayDeque(listOf(far, fix())))
+        val f1 = VisitFlow(src, meta, rec, VisitSession(), { GeoSettings.DEFAULT }, { UUID.randomUUID().toString() }, { "x" }, { 1 }, openStore = store)
+        f1.open(outlet) // out of range: not final
+        assertEquals(1, store.rows.size); assertTrue(rec.visits.isEmpty())
+        // kill and relaunch: a new flow finds the OPEN row and continues with the same visit uuid
+        val f2 = VisitFlow(src, meta, rec, VisitSession(), { GeoSettings.DEFAULT }, { UUID.randomUUID().toString() }, { "x" }, { 1 }, openStore = store)
+        val row = f2.pendingOpenRow("2026-10-07")!!
+        assertTrue(f2.resume(row, outlet) is VisitUiState.Open)
+        assertEquals(row.visitUuid, rec.visits.single().first.clientUuid)
+        assertTrue(store.rows.isEmpty())
+    }
+
+    @Test fun configCheckRunsOnRefreshAndNeverBlocksEvenWhenItThrows() = runTest {
+        var calls = 0
+        val far = fix(lat = farLat())
+        val src = FakeFixes(ArrayDeque(listOf(far, far)))
+        val meta = CaptureMetaProvider { r -> CaptureMeta("2026-10-07", "2026-10-07T04:00:00.000Z", 1, 3, 0, true, r, null, "2026-10-07:1", false, 5) }
+        val f = VisitFlow(src, meta, Recorder(), VisitSession(), { GeoSettings.DEFAULT }, { UUID.randomUUID().toString() }, { "x" }, { 1 }, configCheck = { calls++; error("offline") })
+        f.open(outlet); assertTrue(f.refresh() is VisitUiState.NeedsDecision)
+        assertEquals(1, calls)
+    }
 }
