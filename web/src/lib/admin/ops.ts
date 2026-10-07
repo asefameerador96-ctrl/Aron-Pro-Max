@@ -31,6 +31,12 @@ export const OPS = {
   "config.decide": { method: "POST", path: "/v1/admin/config/changes/{change_id}/decision", roles: ADMINS, reason: "note" },
   // F-ADM-043 P6 revert or roll back to a version (always creates a NEW version)
   "config.rollback": { method: "POST", path: "/v1/admin/config/versions/{version}/rollback", roles: ADMINS, reason: "reason" },
+  // F-ADM-009 / F-ADM-048 devices: suspend, revoke, reactivate (revoke blocks sync, never local capture)
+  "device.state": { method: "POST", path: "/v1/admin/devices/{device_id}/state", roles: SUPPORT_UP, reason: "reason" },
+  // remote directives carry no reason member in the contract; they never change data (docs/24 s10)
+  "device.directive": { method: "POST", path: "/v1/admin/devices/{device_id}/directives", roles: SUPPORT_UP, reason: null },
+  // F-ADM-078 replace-device wizard
+  "device.replace": { method: "POST", path: "/v1/admin/devices/{device_id}/replace", roles: SUPPORT_UP, reason: "reason" },
 } as const satisfies Record<string, OpDef>;
 
 export type OpKey = keyof typeof OPS;

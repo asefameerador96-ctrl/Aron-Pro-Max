@@ -18,5 +18,5 @@ export default async function ChangesPage({ searchParams }: { searchParams: Prom
   const r = await changesOf(session.at, { status: status || undefined, cursor: one(sp.cursor, 512), limit: 50 });
   if (!r.ok) return onApiFailure(r.status, r.problem, locale);
   const nextHref = r.data.next_cursor ? `/admin/config/changes${qs({ status, cursor: r.data.next_cursor })}` : null;
-  return <ChangesView locale={locale} rows={r.data.items} status={status} nextHref={nextHref} userId={session.user.user_id} canDecide={canOp("config.decide", session.user.role)} />;
+  return <ChangesView locale={locale} rows={r.data.items} status={status} nextHref={nextHref} userId={session.user.user_id} canDecide={canOp("config.decide", session.user.role)} role={session.user.role} />;
 }

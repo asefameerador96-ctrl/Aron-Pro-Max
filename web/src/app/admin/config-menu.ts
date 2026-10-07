@@ -10,6 +10,7 @@ export const CONFIG_MENU: readonly MenuItem[] = [
   { id: "cfg-changes", labelKey: "cfgp5.title", href: "/admin/config/changes", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-history", labelKey: "cfgp6.title", href: "/admin/config/history", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-reach", labelKey: "cfgr.title", href: "/admin/config/reach", roles: ADMIN_PORTAL_ROLES, group: "config" },
+  { id: "cfg-devices", labelKey: "menu.config.devices", href: "/admin/devices", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-calendar", labelKey: "menu.config.calendar", href: "/admin/calendar", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-device-otps", labelKey: "menu.config.device_otp", href: "/admin/device-otps", roles: ADMIN_PORTAL_ROLES, group: "config" },
   { id: "cfg-audit", labelKey: "cfgp.audit.title", href: "/admin/config/audit", roles: ADMIN_PORTAL_ROLES, group: "config" },

@@ -101,7 +101,7 @@ export function OpForm({ op, params, fields, fixed, version, submitLabel, noReas
       });
       const data = (await res.json().catch(() => ({}))) as { data?: Record<string, unknown> | null } & Partial<Problem>;
       if (res.ok) {
-        const shown = resultField && data.data ? String(data.data[resultField] ?? "") : "";
+        const shown = resultField && data.data ? String(resultField.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), data.data) ?? "") : "";
         const newVersion = data.data && typeof data.data.version === "number" ? data.data.version : undefined;
         if (newVersion !== undefined) setVer(newVersion);
         setBanner({ kind: "ok", text: `${t(successKey ?? "admin.save.ok")}${shown ? ` ${shown}` : ""}` });

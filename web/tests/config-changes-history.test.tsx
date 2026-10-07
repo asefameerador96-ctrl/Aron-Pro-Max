@@ -14,7 +14,7 @@ const change = (id: number, over: Partial<ConfigChange> = {}): ConfigChange => (
 
 describe("P5 change requests", () => {
   it("shows the diff, the blast radius and the two-person warning; others' requests get approve and reject", () => {
-    const m = html(<ChangesView locale="en" rows={[change(1, { requested_by: 3002 })]} status="" nextHref={null} userId={3001} canDecide />);
+    const m = html(<ChangesView locale="en" rows={[change(1, { requested_by: 3002 })]} status="" nextHref={null} userId={3001} canDecide role="SUPERADMIN" />);
     const x = text(m);
     expect(x).toContain("[5] → [5,6]");
     expect(x).toContain("12 zones, 340 routes, 9,000 outlets, 80 phones");
@@ -23,14 +23,18 @@ describe("P5 change requests", () => {
     expect(m).toContain('data-testid="reject-1"');
   });
   it("your own request can only be withdrawn", () => {
-    const m = html(<ChangesView locale="en" rows={[change(2)]} status="" nextHref={null} userId={3001} canDecide />);
+    const m = html(<ChangesView locale="en" rows={[change(2)]} status="" nextHref={null} userId={3001} canDecide role="SUPERADMIN" />);
     expect(m).not.toContain('data-testid="approve-2"');
     expect(m).toContain('data-testid="cancel-2"');
     expect(text(m)).toContain("second person must approve");
   });
+  it("an ADMIN cannot approve a risk-3 change (second SUPERADMIN needed)", () => {
+    expect(html(<ChangesView locale="en" rows={[change(5, { requested_by: 9 })]} status="" nextHref={null} userId={1} canDecide role="ADMIN" />)).not.toContain("approve-5");
+    expect(html(<ChangesView locale="en" rows={[change(6, { requested_by: 9 })]} status="" nextHref={null} userId={1} canDecide role="SUPERADMIN" />)).toContain("approve-6");
+  });
   it("no decision buttons for a read-only role or a decided change", () => {
-    expect(html(<ChangesView locale="en" rows={[change(3, { requested_by: 9 })]} status="" nextHref={null} userId={1} canDecide={false} />)).not.toContain("approve-3");
-    expect(html(<ChangesView locale="en" rows={[change(4, { requested_by: 9, status: "applied" })]} status="" nextHref={null} userId={1} canDecide />)).not.toContain("approve-4");
+    expect(html(<ChangesView locale="en" rows={[change(3, { requested_by: 9 })]} status="" nextHref={null} userId={1} canDecide={false} role="ADMIN" />)).not.toContain("approve-3");
+    expect(html(<ChangesView locale="en" rows={[change(4, { requested_by: 9, status: "applied" })]} status="" nextHref={null} userId={1} canDecide role="ADMIN" />)).not.toContain("approve-4");
   });
   it("decision goes through the proxy with the note as reason", async () => {
     h.stub({ method: "POST", path: /^\/v1\/admin\/config\/changes\/(\d+)\/decision$/, fn: () => ({ status: 200, body: { status: "applied" } }) });
@@ -46,16 +50,16 @@ const detail = (n: number, vals: Record<string, unknown>): ConfigVersionDetail =
 
 describe("P6 history and rollback", () => {
   it("lists versions with revert and roll-back actions for writers only", () => {
-    const w = html(<HistoryView locale="en" versions={[v(3), v(2, "revert")]} nextHref={null} canWrite compare={null} a="" b="" />);
+    const w = html(<HistoryView locale="en" versions={[v(3), v(2, "revert")]} nextHref={null} canWrite compare={null} a="" b="" keyFilter={{ key: "", scope_type: "", scope_id: "" }} values={null} />);
     expect(w).toContain('data-testid="revert-3"');
     expect(w).toContain('data-testid="rollback-2"');
     expect(text(w)).toContain("Revert");
-    expect(html(<HistoryView locale="en" versions={[v(3)]} nextHref={null} canWrite={false} compare={null} a="" b="" />)).not.toContain("revert-3");
+    expect(html(<HistoryView locale="en" versions={[v(3)]} nextHref={null} canWrite={false} compare={null} a="" b="" keyFilter={{ key: "", scope_type: "", scope_id: "" }} values={null} />)).not.toContain("revert-3");
   });
   it("compares two versions, listing only differing keys", () => {
     const rows = compareVersions(detail(1, { "cfg.a": 1, "cfg.b": 2 }), detail(2, { "cfg.a": 1, "cfg.b": 3, "cfg.c": true }));
     expect(rows).toEqual([{ key: "cfg.b", a: "2", b: "3" }, { key: "cfg.c", a: "", b: "true" }]);
-    expect(text(html(<HistoryView locale="en" versions={[]} nextHref={null} canWrite compare={rows} a="1" b="2" />))).toContain("cfg.b");
+    expect(text(html(<HistoryView locale="en" versions={[]} nextHref={null} canWrite compare={rows} a="1" b="2" keyFilter={{ key: "", scope_type: "", scope_id: "" }} values={null} />))).toContain("cfg.b");
   });
   it("rollback creates a new version through the proxy (mode in the body, version in the path)", async () => {
     h.stub({ method: "POST", path: /^\/v1\/admin\/config\/versions\/(\d+)\/rollback$/, fn: () => ({ status: 201, body: { change_id: 9, status: "applied" } }) });
