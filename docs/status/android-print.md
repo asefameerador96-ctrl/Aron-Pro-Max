@@ -1,5 +1,11 @@
 # Status: lane android-print (Day 3, 2026-10-07, session #3)
 
+## Row state (2026-10-07 19:10 UTC, session #2, T1 Opus check on INT b85d81fd)
+- **F-SR-013, F-SR-028, F-SR-073, F-SR-066: done on the host** (builder tests + contract on Room + `StoredMemoPrintTotalsTest`; independent Opus checker: host acceptance proven). **DEVICE-PENDING:** D-P1, D-P2a, D-P2b with the owner's A06 and MP-58N.
+- **F-SR-015: GAP (sr-a, blocking):** one slip prints all unprinted rows of the day, but the ledger flips one Save. Fix requested: one slip per Save (`docs/requests/android-print-t1-findings-sr.md` item 1).
+- **F-SR-031: GAP (sr-a):** the reprint limit is the default 5; `cfg.memo.reprint_max` and `cfg.print.confirm_after_print` are not passed to `MemoPrinting` (item 2).
+- Added `feature-memo/src/test/.../StoredMemoPrintTotalsTest.kt` (in sr-b's module, the only one that sees Room, `PrintMapping` and core-printing): a stored memo prints its stored net, paid, due, discount, QC, rounding and line amounts in both digit styles. It fails when the mapper recomputes gross as net or recomputes net from the parts.
+
 ## Session #3 (after the 10:39 UTC stall)
 - **Flow contract on Room:** `PrintLedgerContract` now also drives the production `MemoPrinting` with the production renderer and `SimPrinter` (moved to `src/testContract`) on each ledger, and compares the paper row for row: reprint marker across a restart and the limit (F-SR-031/066), edited memo prints "supersedes" as its own original (F-SR-066), slip over a whole Save with a marked reprint (F-SR-015), printer off (F-SR-028), kill before the answer, rejected original with a double tap, no-confirmation path (F-SR-073). 7 new scenarios; reference and `RoomPrintLedger` both run them. Opus checker: 0 blocking, 7 minor; fixed 1, 2, 3, 5, 6 (labels), 7; 4 logged below; 6 (Gradle inputs for the font/label files) is a build-file change in android-core's module, not done.
 - **Wiring re-checked** (sr-a 860d4f7, sr-b d4dc7e4): Stock print is complete on sr-a; Sale, Memo menu reprint, Edit and Summary print are hosted on sr-b (`SrSaleHosts`) and follow the contract. Open: keep sr-a's StockHost when sr-a and sr-b meet on INT; sr-b `SummaryHost` uses a screen scope (minor). Recorded in `docs/requests/android-print-wiring-gaps.md`.
@@ -56,7 +62,7 @@
 
 ## In progress / waiting
 - Requests open: `docs/requests/android-print-wiring-gaps.md` (sr-a items 1-8, sr-b 9-14, android-core 15; lanes messaged once) and `docs/requests/android-print-ledger-findings.md` (android-core: all five fixed and in the contract).
-- No SR module calls the printer yet (INT, lane/android-sr-a, lane/android-sr-b checked 2026-10-07).
+- SR wiring is on INT (sr-a Stock, sr-b Sale/Memo/Summary); T1 findings in `docs/requests/android-print-t1-findings-sr.md`.
 
 ## Next three rows
 1. **F-SR-015** (multi-row flag is in; waits for sr-a's Save hook): Room-level slip test, then D-P2 slip print.
