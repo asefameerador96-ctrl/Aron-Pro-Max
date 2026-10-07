@@ -15,8 +15,8 @@ export function checkPasswords(oldPw: string, newPw: string, confirm: string): P
   const out: PasswordCheck = {};
   if (oldPw.length === 0) out.old = "required";
   if (newPw.length === 0) out.next = "required";
-  else if (newPw.length < WEB_MIN_LENGTH) out.next = "too_short";
-  else if (newPw.length > MAX_LENGTH) out.next = "too_long";
+  else if ([...newPw].length < WEB_MIN_LENGTH) out.next = "too_short"; // characters, not UTF-16 units
+  else if ([...newPw].length > MAX_LENGTH) out.next = "too_long";
   else if (!/[A-Z]/.test(newPw)) out.next = "needs_upper";
   else if (!/[a-z]/.test(newPw)) out.next = "needs_lower";
   else if (!/\d/.test(newPw)) out.next = "needs_digit";

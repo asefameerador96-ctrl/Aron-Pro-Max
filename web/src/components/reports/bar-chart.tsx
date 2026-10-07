@@ -25,5 +25,9 @@ export function BarChart({ locale, title, rows }: { locale: Locale; title: strin
 export function chartPoints(rows: Record<string, Cell>[], label: string, value: string): { label: string; value: number }[] | null {
   if (rows.length === 0 || !(label in rows[0]!) || !(value in rows[0]!)) return null;
   const pts = rows.map((r) => ({ label: String(r[label] ?? ""), value: Number(r[value]) }));
-  return pts.every((p) => Number.isFinite(p.value)) ? pts : null;
+  if (!pts.every((p) => Number.isFinite(p.value))) return null;
+  // One bar per label: a result with several geo classes or territories repeats the bands, so sum them.
+  const sums = new Map<string, number>();
+  for (const p of pts) sums.set(p.label, (sums.get(p.label) ?? 0) + p.value);
+  return [...sums].map(([l, v]) => ({ label: l, value: v }));
 }

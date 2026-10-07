@@ -47,3 +47,8 @@
 - `lint` rejects string props named `label`/`title` etc. on JSX (hard-coded text rule): name the prop `msg`.
 - The web-admin lane owns `web/src/app/admin` and `messages-config.ts`; dashboards add their messages in `messages-dash-*.ts` only.
 - Mock handler order: stubs first, then `handleDash`, then the admin gate; keep it that way (the admin tests stub paths I also serve).
+
+### Checker results (2026-10-07)
+Opus (T1 rows), Sonnet (report engine), Sonnet (dashboard pages). All confirmed defects fixed with tests: safeNext open redirect, MFA promotion on refresh, Remember me 30-day cap, comma id lists on export, calendar-valid dates, fail-closed scope binding, strict money formatting, relative export redirect, same-site CSRF refusal, take-action note min 3, exception routes out of KPI denominators, paged reads, final-submit badge on real final submit, histogram band sums, password length in code points, blank MAPS_DAILY_CAP.
+Open: web-admin's radius map still loads Maps outside the cap (request docs/requests/web-dashboard-radius-map-maps-key.md; checker test skipped until then). Not fixed (noted): `afterHour` 17 hard-coded vs cfg.day.take_action_after; per-user Maps limit; mock sanitiser edge cases.
+Gates: vitest 396 pass (1 skipped), lint and tsc clean, Playwright 41 pass.

@@ -17,6 +17,16 @@ export const MFA_ROLES = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies r
 
 export type RoleList = readonly Role[];
 
+/** Roles that read or act on outlet requests on the web (docs/24 s8.5): DMO and WM approve, TSO/TOP/ANALYST read. */
+export const OUTLET_REQUEST_READ_ROLES = ["TSO", "DMO", "WM", "TOP", "ANALYST", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
+export const OUTLET_REQUEST_ACT_ROLES = ["DMO", "WM", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
+
+/** Admin-group paths that roles outside the portal may open (longest prefix wins). Everything else under /admin is portal only. */
+export const ADMIN_PATH_ROLES: readonly { prefix: string; roles: RoleList }[] = [
+  { prefix: "/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
+  { prefix: "/api/bff/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
+];
+
 export function hasRole(role: Role | undefined, allowed: RoleList): boolean {
   return role !== undefined && allowed.includes(role);
 }
@@ -40,6 +50,9 @@ export function accessFor(role: Role | undefined, pathname: string): Access {
   const group = routeGroup(pathname);
   if (group === "public") return "ok";
   if (role === undefined) return "unauthenticated";
-  if (group === "admin") return hasRole(role, ADMIN_PORTAL_ROLES) ? "ok" : "forbidden";
+  if (group === "admin") {
+    const override = ADMIN_PATH_ROLES.find((o) => pathname === o.prefix || pathname.startsWith(`${o.prefix}/`));
+    return hasRole(role, override ? override.roles : ADMIN_PORTAL_ROLES) ? "ok" : "forbidden";
+  }
   return hasRole(role, WEB_ROLES) ? "ok" : "forbidden";
 }

@@ -24,3 +24,8 @@ export async function loginOk(page: Page, username: string, password: string, to
   await login(page, username, password, totp);
   await expect(page.getByTestId("who")).toBeVisible();
 }
+
+/** A Dhaka business date `n` days from now (the portal refuses past dates, so tests use relative ones). */
+export function dhakaPlus(n: number): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(Date.now() + n * 86_400_000));
+}

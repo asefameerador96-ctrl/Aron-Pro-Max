@@ -1,6 +1,7 @@
 package com.aktcl.aron.core.database
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -9,6 +10,9 @@ import com.aktcl.aron.core.database.dao.CaptureDao
 import com.aktcl.aron.core.database.dao.OutboxDao
 import com.aktcl.aron.core.database.dao.ReferenceDao
 import com.aktcl.aron.core.database.entity.AttendanceEventEntity
+import com.aktcl.aron.core.database.entity.BundleSectionEntity
+import com.aktcl.aron.core.database.entity.ConfigValueEntity
+import com.aktcl.aron.core.database.entity.PriceEntity
 import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.core.database.entity.MemoDiscountEntity
 import com.aktcl.aron.core.database.entity.MemoEntity
@@ -29,14 +33,16 @@ import com.aktcl.aron.core.database.entity.VisitEntity
  * a Migration with a test, and destructive migration is never enabled.
  */
 @Database(
-    version = 1,
+    version = 2,
     exportSchema = true,
+    autoMigrations = [AutoMigration(from = 1, to = 2)], // v2 (F-SYS-006): price, config_value, bundle_section
     entities = [
         RouteEntity::class, OutletEntity::class, SkuEntity::class,
         GeoFixEntity::class, AttendanceEventEntity::class, StockMovementEntity::class,
         VisitEntity::class, VisitCloseEntity::class, MemoEntity::class, MemoLineEntity::class,
         MemoDiscountEntity::class, QcLineEntity::class,
         OutboxEntity::class, SyncMetaEntity::class,
+        PriceEntity::class, ConfigValueEntity::class, BundleSectionEntity::class,
     ],
 )
 abstract class AronDatabase : RoomDatabase() {

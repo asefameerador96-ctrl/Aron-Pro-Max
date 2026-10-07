@@ -19,18 +19,20 @@ export interface ZoneRollup {
   done: boolean;
 }
 
-const pct = (n: number, d: number): number | null => (d === 0 ? null : Math.round((n / d) * 1000) / 10);
+const pct = (n: number, d: number): number | null => (d === 0 ? null : Math.round((n / d) * 10000) / 100);
 
 export function rollupByZone(rows: readonly Row[]): ZoneRollup[] {
   const by = new Map<number, Row[]>();
   for (const r of rows) by.set(r.zone_id, [...(by.get(r.zone_id) ?? []), r]);
   return [...by.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([zone_id, rs]) => {
+    .map(([zone_id, all]) => {
+      // docs/24 s12.4: target routes are planned routes minus approved day exceptions.
+      const rs = all.filter((r) => r.bucket !== "exception");
       const logged = rs.filter((r) => LOGGED_IN.includes(r.state)).length;
       const submitted = rs.filter((r) => SUBMITTED.includes(r.state)).length;
       const fin = rs.filter((r) => r.state === "final_submitted").length;
-      return { zone_id, routes: rs.length, logged_in: logged, submitted, final_submitted: fin, login_pct: pct(logged, rs.length), submit_pct: pct(submitted, logged), done: fin === rs.length };
+      return { zone_id, routes: rs.length, logged_in: logged, submitted, final_submitted: fin, login_pct: pct(logged, rs.length), submit_pct: pct(submitted, logged), done: rs.length > 0 && fin === rs.length };
     });
 }
 
