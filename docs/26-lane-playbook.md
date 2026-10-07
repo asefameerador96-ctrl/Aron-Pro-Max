@@ -33,20 +33,28 @@ One folder, one owner. Edit only your lane's folders.
 - **Root files** (`settings.gradle.kts`, `gradle/libs.versions.toml`): you may only **append** an `include(...)` line or a catalogue entry; never reorder or reformat.
 - Never edit: `docs/00` to `docs/27`, `docs/evidence/`, `DECISIONS.md`, the backlog CSV.
 
-## 3. Git protocol (every lane pushes to the integration branch)
+## 3. Git protocol: lane branches and the integration train (changed 2026-10-07 06:30 UTC, binding)
 
-The integration branch is `claude/wonderful-thompson-k6ejnf` (`INT` below). There is no pull request step.
+**Why:** the CI audit (`docs/audit/2026-10-07-ci-audit.md`) found that 16 lanes pushing into one branch about every 20 seconds meant one red commit poisoned everybody, lanes copied each other's breaks, and no INT run created after 04:51 was green. The fix is that INT only ever receives verified code.
+
+The integration branch is `claude/wonderful-thompson-k6ejnf` (`INT` below). **INT moves only by fast-forward to a candidate whose CI run is green, and only the integrator session (docs/lanes/integrator.md) moves it.** Lanes never push to INT.
 
 ```
 git fetch origin
-git checkout -B work origin/claude/wonderful-thompson-k6ejnf      # at the start of each task
+git checkout -B work origin/claude/wonderful-thompson-k6ejnf      # at the start of each task: INT is green by construction
 # ... build the row, commit with message "F-XXX-nnn: <what>" ...
 git fetch origin && git merge origin/claude/wonderful-thompson-k6ejnf   # resolve conflicts in YOUR files only
 <run your lane's build and tests; all must pass>
-git push origin HEAD:claude/wonderful-thompson-k6ejnf
+git push origin HEAD:lane/<your sublane>                          # for example lane/backend-core
 ```
 
-If the push is rejected (someone pushed first), fetch, merge, re-run your tests, push again. **Never force-push, never rewrite history, never push a failing build.** Commit after every finished row; do not hold work back.
+- **Your lane branch is `lane/<sublane>`** (create it by the first push). CI runs on it. A head is **ready** when the CI run on that exact commit is green, or when everything it changes since INT is documentation (`docs/**`, `*.md`).
+- **The integrator** merges all ready lane heads into a candidate branch `lane/train-<time>` off INT, never resolves conflicts, lets CI run on the candidate, and fast-forwards INT when it is green; if it is red it splits the lanes and finds the culprit. It tells a lane only when its branch conflicts with INT (merge INT, resolve in your files, push again) or when its head breaks the candidate (it names the failing job). The state is in `docs/status/train.md`; read it instead of asking.
+- **A red CI on your lane head is yours** (INT was green when you started): fix it with the next push. Never wait for another lane and never merge another lane's branch, only INT.
+- Merge INT into your branch before every push and at least every time `docs/status/train.md` shows INT moved with changes in files you use (contract, shared, db migrations, `ci.yml`).
+- A change to the contract, shared DTOs, a migration or `ci.yml` is announced in your commit message and by a request file; the owner lane of the consumers runs its compile before it is promoted (checklist in `docs/requests/contract-v1.3-queue.md`).
+- **Never force-push, never rewrite history, never push a failing build** (a local green build is the entry ticket; CI is the check). Commit after every finished row; do not hold work back.
+- The lead pushes documentation-only commits to INT directly (no CI run starts for them); the lead's code changes go through `lane/lead-<name>` like everyone else.
 
 End every commit message with:
 ```
