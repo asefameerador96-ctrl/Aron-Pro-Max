@@ -33,4 +33,8 @@
     <string name="money_drp">স্লাইড ডিসকাউন্ট</string>
     <string name="money_qc">মোট কিউসি</string>
     <string name="money_grand">সর্বমোট</string>
+    <string name="history_title">বিক্রয়ের ইতিহাস</string>
+    <string name="history_offline">সংযোগ নেই: এই ফোনের শেষ ৭ দিনের তথ্য দেখানো হচ্ছে।</string>
+    <string name="history_footer">মোট</string>
+    <string name="history_empty">এই আউটলেটের কোনো বিক্রয় নেই।</string>
 </resources>

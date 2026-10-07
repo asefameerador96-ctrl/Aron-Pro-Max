@@ -2,6 +2,8 @@ package com.aktcl.aron.feature.memo.ui
 
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
@@ -87,5 +89,25 @@ class HomeCardsTest {
         compose.setContent { AronTheme(AppLanguage.EN) { JourneyScreen(j) } }
         compose.onNodeWithText("Sold").assertExists(); compose.onNodeWithText("Not visited").assertExists()
         compose.onNodeWithText("Planned 2, visited 1, sold 1, not visited 1").assertExists()
+    }
+}
+
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [36])
+class HistoryScreenTest {
+    @get:Rule val compose = createComposeRule()
+    private fun memo(id: String, date: String, net: Long) = StoredMemo(id, "no-$id", 1, date, "${date}T04:00:00.000Z", null, emptyList(), emptyList(), emptyList(), net, 0, 0, 0, net, net, 0)
+
+    @Test fun footerEqualsTheSumOfTheRowsAndFallbackShowsTheBanner() {
+        val h = com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder.build(listOf(memo("a", "2026-10-05", 10_010), memo("b", "2026-10-04", 20_020)), 1, fromServer = true)
+        compose.setContent { AronTheme(AppLanguage.EN) { SaleHistoryScreen(h, false) } }
+        compose.onNodeWithText("30.03 ৳").assertExists()
+        compose.onAllNodesWithText("10.01 ৳").assertCountEquals(2)
+        compose.onNodeWithText("No connection: showing the last 7 days from this phone, or the server list when it was loaded.").assertExists()
+    }
+
+    @Test fun emptyOutletShowsTheEmptyState() {
+        compose.setContent { AronTheme(AppLanguage.EN) { SaleHistoryScreen(com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder.build(emptyList(), 1), false) } }
+        compose.onNodeWithText("No sales for this outlet.").assertExists()
     }
 }
