@@ -30,4 +30,9 @@
     <string name="core_ui_kit_gallery_ok">ঠিক আছে</string>
     <string name="core_ui_kit_gallery_empty_action">রুট নামান</string>
     <string name="core_ui_kit_gallery_disabled">পাওয়া যাচ্ছে না</string>
+    <string name="core_ui_sunlight_toggle">রোদের মোড</string>
+    <string name="core_ui_sunlight_suggest">উজ্জ্বল আলো? সহজে পড়তে রোদের মোডে যান</string>
+    <string name="core_ui_sunlight_switch">চালু করুন</string>
+    <string name="core_ui_sunlight_not_now">এখন নয়</string>
+    <string name="core_ui_kit_gallery_card_title">আজকের বিক্রয়</string>
 </resources>

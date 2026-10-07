@@ -129,6 +129,7 @@ object ReprintPolicy {
  * Printing of committed documents (F-SR-028, F-SR-031, F-SR-066, F-SR-073, F-SR-015). Callers commit first:
  * nothing here touches the sale, and every failure leaves the document reprintable. Never throws for printer
  * problems.
+ * One instance per process (with the one [PrinterManager]): [recover] skips the jobs this instance has in flight.
  */
 class MemoPrinting(
     private val printer: PrinterManager,
@@ -214,30 +215,30 @@ class MemoPrinting(
         // The job is saved before the printer is called; each attempt is its own job id, so a retry after a
         // failure is a fresh, whole print.
         inFlight.add(eventUuid)
+        var awaiting = false
         try {
             ledger.savePending(PendingPrint(base, paperOut = false))
-        } catch (e: Exception) {
-            inFlight.remove(eventUuid)
-            throw e
-        }
-        return when (val r = printer.print(PrintJob(eventUuid, paper.bitmap))) {
-            is PrintOutcome.Failed -> {
-                ledger.record(base.copy(outcome = PrintEvent.FAILED))
-                inFlight.remove(eventUuid)
-                PrintAttempt.Failed(r.reason)
-            }
-            PrintOutcome.Printed, PrintOutcome.AlreadyPrinted -> {
-                // The paper is out whatever storage says next: a failed save here never turns it into a
-                // failure; the confirmation (or the final record) stores it again.
-                markPaperOut(base)
-                if (confirmAfterPrint()) {
-                    PrintAttempt.AwaitingConfirmation(base)
-                } else {
-                    ledger.record(base)
-                    inFlight.remove(eventUuid)
-                    PrintAttempt.Done
+            return when (val r = printer.print(PrintJob(eventUuid, paper.bitmap))) {
+                is PrintOutcome.Failed -> {
+                    ledger.record(base.copy(outcome = PrintEvent.FAILED))
+                    PrintAttempt.Failed(r.reason)
+                }
+                PrintOutcome.Printed, PrintOutcome.AlreadyPrinted -> {
+                    // The paper is out whatever storage says next: a failed save here never turns it into a
+                    // failure; the confirmation (or the final record) stores it again.
+                    markPaperOut(base)
+                    if (confirmAfterPrint()) {
+                        awaiting = true
+                        PrintAttempt.AwaitingConfirmation(base)
+                    } else {
+                        ledger.record(base)
+                        PrintAttempt.Done
+                    }
                 }
             }
+        } finally {
+            // Cancelled or failed half way: the job is no longer this process's, so recover() may finish it.
+            if (!awaiting) inFlight.remove(eventUuid)
         }
     }
 

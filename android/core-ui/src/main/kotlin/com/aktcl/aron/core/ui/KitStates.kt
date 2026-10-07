@@ -101,9 +101,9 @@ fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modi
     val currentOnConfirmed by rememberUpdatedState(onConfirmed)
     val currentEnabled by rememberUpdatedState(enabled)
     val c = LocalAronColors.current
-    val trackColor = if (enabled) c.accent.copy(alpha = AronTokens.Alpha.HoldTrack) else MaterialTheme.colorScheme.surfaceVariant
+    val trackColor = if (enabled) c.accentContainer else c.stateDisabledFill
     val fillColor = c.accent.copy(alpha = AronTokens.Alpha.HoldFill)
-    val textColor = if (enabled) c.textPrimary else c.textSecondary
+    val textColor = if (enabled) c.accentOnContainer else c.stateDisabledLabel
     Box(
         modifier = modifier
             .fillMaxWidth()
