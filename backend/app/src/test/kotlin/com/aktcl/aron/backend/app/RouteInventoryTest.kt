@@ -14,6 +14,7 @@ import io.ktor.server.routing.PathSegmentParameterRouteSelector
 import io.ktor.server.routing.PathSegmentTailcardRouteSelector
 import io.ktor.server.routing.PathSegmentWildcardRouteSelector
 import io.ktor.server.routing.RoutingNode
+import io.ktor.server.routing.RootRouteSelector
 import io.ktor.server.routing.RoutingRoot
 import io.ktor.server.testing.testApplication
 import org.junit.jupiter.api.AfterAll
@@ -42,13 +43,16 @@ import kotlin.test.fail
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RouteInventoryTest {
-    data class Endpoint(val method: String, val path: String, val guarded: Boolean) {
+    /** [guard] is the settings of the nearest guard (the innermost route-scoped install wins in Ktor), null when public. */
+    data class Endpoint(val method: String, val path: String, val guard: String?) {
+        val guarded: Boolean get() = guard != null
         val key: String get() = "$method $path"
         val shape: String get() = "$method ${normalise(path)}"
     }
 
     private lateinit var wiring: Wiring
     private lateinit var endpoints: List<Endpoint>
+    private val oddNodes = mutableListOf<String>()
     private val repoRoot = File(System.getProperty("aron.repoRoot") ?: "../..")
 
     @BeforeAll
@@ -71,7 +75,7 @@ class RouteInventoryTest {
         }
         endpoints = found.sortedBy { it.key }
         File("build").mkdirs()
-        File("build/route-inventory.txt").writeText(endpoints.joinToString("\n") { "${it.key}${if (it.guarded) "" else "  [public]"}" } + "\n")
+        File("build/route-inventory.txt").writeText(endpoints.joinToString("\n") { "${it.key}${when (it.guard) { null -> "  [public]"; AuthenticatedRouteSelector.DEFAULT -> ""; else -> "  [guard ${it.guard}]" }}" } + "\n")
     }
 
     @AfterAll
@@ -114,10 +118,12 @@ class RouteInventoryTest {
     @Test
     fun everyGuardedRouteHasAScopeCaseAnExemptionOrAKnownGap() {
         val lines = javaClass.getResource("/scope-cases.txt")?.readText()?.lines() ?: fail("scope-cases.txt missing")
-        val entries = lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.associate { l ->
+        val pairs = lines.map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.map { l ->
             val (route, rest) = l.split("->", limit = 2).map { it.trim() }.also { require(it.size == 2) { "bad line: $l" } }
             route to rest
         }
+        assertEquals(emptyList(), pairs.groupBy { it.first }.filter { it.value.size > 1 }.keys.toList(), "duplicate scope lines")
+        val entries = pairs.toMap()
         val guarded = endpoints.filter { it.guarded }.map { it.key }.toSet()
         val missing = guarded - entries.keys
         val stale = entries.keys - guarded
@@ -130,17 +136,54 @@ class RouteInventoryTest {
                 rest.startsWith("case ") -> {
                     val ref = rest.removePrefix("case ").trim()
                     val (cls, method) = ref.split("#").also { if (it.size != 2) problems += "$route: case must be Class#method" }.let { it[0] to it.getOrElse(1) { "" } }
-                    val ok = testSources.any { f -> f.nameWithoutExtension == cls && f.readText().let { t -> "fun $method(" in t || "fun `$method`(" in t } }
-                    if (!ok) problems += "$route: scope case $ref not found under backend/*/src/test"
+                    val file = testSources.firstOrNull { it.nameWithoutExtension == cls && methodBody(it.readText(), method) != null }
+                    // The cited test must at least call this route: its literal path up to the first parameter, in the
+                    // method or in a helper of the same test class (several tests post through one helper).
+                    val literal = route.substringAfter(' ').removePrefix("/v1").substringBefore("/{").substringBefore("{")
+                    when {
+                        file == null -> problems += "$route: scope case $ref not found under backend/*/src/test"
+                        literal !in file.readText() -> problems += "$route: scope case $ref never names $literal"
+                    }
                 }
                 rest.startsWith("exempt:") -> if (rest.removePrefix("exempt:").trim().length < 10) problems += "$route: an exemption needs a reason"
                 rest.startsWith("gap:") -> {}
                 else -> problems += "$route: expected `case`, `exempt:` or `gap:`, was `$rest`"
             }
         }
-        val gaps = entries.count { it.value.startsWith("gap:") }
-        assertTrue(gaps <= KNOWN_GAPS_MAX, "the scope gap list grew to $gaps (max $KNOWN_GAPS_MAX): a new route needs a scope case or a reasoned exemption")
+        // The gap list may only shrink: every gap must be in the baseline frozen when the registry was introduced.
+        val baseline = javaClass.getResource("/scope-gaps-baseline.txt")!!.readText().lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.toSet()
+        val newGaps = entries.filter { it.value.startsWith("gap:") }.keys - baseline
+        newGaps.sorted().forEach { problems += "new scope gap $it: a new route needs a scope case or a reasoned exemption" }
         assertEquals(emptyList(), problems)
+    }
+
+    @Test
+    fun theWalkerUnderstandsEveryNode() {
+        assertEquals(emptyList(), oddNodes, "routes the inventory cannot see; teach the walker or use get/post/... under a path")
+    }
+
+    @Test
+    fun theOnlyWidenedGuardsAreThePinnedOnes() {
+        val widened = endpoints.filter { it.guarded && it.guard != AuthenticatedRouteSelector.DEFAULT }.associate { it.key to it.guard }
+        assertEquals(WIDENED_GUARDS, widened, "a route whose guard accepts other token kinds or skips the scope check must be pinned here deliberately")
+    }
+
+    @Test
+    fun thePublicSetIsPinnedAndEqualsTheContract() {
+        assertEquals(PUBLIC_OPERATIONS, contractPublicOperations(), "a contract edit made an operation public (or private): review it, then update PUBLIC_OPERATIONS")
+        assertEquals(contractLines().count { OPERATION_ID.containsMatchIn(it) }, contractOps().size, "the contract parser missed operations")
+    }
+
+    @Test
+    fun theDeviceProofRoutesRefuseACallWithoutAProof() = testApplication {
+        application { aronApi(wiring) }
+        val wrong = mutableListOf<String>()
+        for (op in DEVICE_PROOF_OPERATIONS) {
+            val (m, p) = op.split(' ', limit = 2)
+            val r = client.request(p) { method = HttpMethod.parse(m) }
+            if (r.status.value != 401) wrong += "$op -> ${r.status.value} ${r.bodyAsText().take(120)}"
+        }
+        assertEquals(emptyList(), wrong)
     }
 
     private fun contractLines(): List<String> = repoRoot.resolve("contract/openapi.yaml").readLines()
@@ -176,31 +219,58 @@ class RouteInventoryTest {
 
     private fun collect(root: RoutingNode): List<Endpoint> {
         val out = mutableListOf<Endpoint>()
-        fun walk(n: RoutingNode, path: String, guarded: Boolean) {
+        fun walk(n: RoutingNode, path: String, guarded: String?) {
             var p = path
             var g = guarded
             when (val s = n.selector) {
-                is AuthenticatedRouteSelector -> g = true
+                is AuthenticatedRouteSelector -> g = s.guard
                 is HttpMethodRouteSelector -> out += Endpoint(s.method.value, p.ifEmpty { "/" }, g)
                 is PathSegmentConstantRouteSelector -> p += "/" + s.value
                 is PathSegmentParameterRouteSelector -> p += "/{" + s.name + "}"
                 is PathSegmentOptionalParameterRouteSelector -> p += "/{" + s.name + "?}"
                 is PathSegmentWildcardRouteSelector -> p += "/*"
                 is PathSegmentTailcardRouteSelector -> p += "/{...}"
-                else -> {}
+                is RootRouteSelector -> {}
+                // A selector the walker does not understand (header, host, parameter, handle {} ...) could hide a route.
+                else -> oddNodes += "unknown selector ${s.javaClass.name} at $n"
             }
+            if (n.children.isEmpty() && n.selector !is HttpMethodRouteSelector) oddNodes += "leaf without a method: $n"
             n.children.forEach { walk(it, p, g) }
         }
-        walk(root, "", false)
+        walk(root, "", null)
         return out
+    }
+
+    /** The text of `fun name(` up to the next member at the same indentation, or null. */
+    private fun methodBody(src: String, name: String): String? {
+        val start = Regex("\\bfun `?" + Regex.escape(name) + "`?\\(").find(src)?.range?.first ?: return null
+        val next = Regex("\\n    (?:@Test|fun |private fun |val |private val |@)").find(src, start + 5)?.range?.first ?: src.length
+        return src.substring(start, next)
     }
 
     /** A request path for a route template: every parameter becomes a well-formed UUID (the guard runs before parsing). */
     private fun concrete(path: String): String = path.replace(Regex("\\{[^}]*}"), "00000000-0000-4000-8000-000000000001").replace("*", "x")
 
     companion object {
-        /** The routes without a scope test when the registry was introduced (2026-10-07); lower it as cases land. */
-        const val KNOWN_GAPS_MAX = 53
+        /** Optional-bearer operations that authenticate with the phone's own X-Device-Proof instead (docs/24 s8.3). */
+        val DEVICE_PROOF_OPERATIONS = listOf("POST /v1/devices/nonce", "GET /v1/devices/me/policy", "POST /v1/devices/me/status")
+
+        /** Contract operations a caller may use without a bearer token (2026-10-07). Change only with a security review. */
+        val PUBLIC_OPERATIONS = setOf(
+            "GET /v1/health", "HEAD /v1/health", "GET /v1/health/ready", "GET /v1/config/public", "POST /v1/auth/login",
+            "POST /v1/auth/refresh", "POST /v1/auth/mfa/verify", "GET /v1/auth/jwks", "POST /v1/devices/enrol",
+        ) + DEVICE_PROOF_OPERATIONS
+
+
+        /** Guards that accept more than an API token with a current scope version, each on purpose (AuthModule, SyncApi). */
+        val WIDENED_GUARDS: Map<String, String> = mapOf(
+            "POST /v1/auth/change-password" to "aud=aron-api,aron-pwchange;grace=0;sv=true;pwchange=true",
+            "POST /v1/auth/bind-device" to "aud=aron-bind;grace=0;sv=true;pwchange=true",
+            "POST /v1/auth/logout" to "aud=aron-api,aron-upload;grace=0;sv=false;pwchange=true",
+            "POST /v1/sync/batch" to "aud=aron-api,aron-upload;grace=60;sv=false;pwchange=false",
+        )
+
+        private val OPERATION_ID = Regex("^      operationId:")
 
         private val PATH_LINE = Regex("^  (/\\S*):\\s*$")
         private val METHOD_LINE = Regex("^    (get|put|post|delete|patch|head|options):\\s*$")

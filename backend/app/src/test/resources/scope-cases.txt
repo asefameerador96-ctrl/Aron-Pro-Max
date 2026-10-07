@@ -1,20 +1,20 @@
 # AUD-TP-3 scope registry, checked by RouteInventoryTest against the production routing tree.
 # Every guarded route needs one line: `METHOD /path -> case <TestClass>#<method>` (the test under backend/*/src/test
 # that proves a caller cannot read or change rows outside their reach), `exempt: <reason>` (scope does not apply),
-# or `gap: <lane>` (no scope test yet: debt, the owning lane replaces it with a case; the gap count may only shrink,
-# RouteInventoryTest.KNOWN_GAPS_MAX). Cases were matched 2026-10-07 by test name and the route path in its body;
+# or `gap: <lane>` (no scope test yet: debt, the owning lane replaces it with a case; every gap must be listed in
+# scope-gaps-baseline.txt, frozen 2026-10-07, so the gap set may only shrink). A case must name the route's path. Cases were matched 2026-10-07 by test name and the route path in its body;
 # a reviewer who finds a case that does not assert scope for that route turns it back into a gap.
 # Role denial (which roles may call a route) is not recorded here: the contract carries no per-operation roles.
 GET /v1/admin/calendar/holidays -> gap: backend-admin
 GET /v1/admin/clusters -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
 GET /v1/admin/code-lists -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
-GET /v1/admin/config/blast-radius -> case ConfigToolsTest#blastRadiusCountsTheScopeAndMatchesTheCommittedChange
+GET /v1/admin/config/blast-radius -> gap: backend-admin
 GET /v1/admin/config/calibration -> gap: backend-admin
 GET /v1/admin/config/changes -> gap: backend-admin
 GET /v1/admin/config/changes/{change_id} -> gap: backend-admin
-GET /v1/admin/config/density -> case CheckerT2Test#densityRowsHonourRouteScope
+GET /v1/admin/config/density -> gap: backend-admin
 GET /v1/admin/config/keys -> gap: backend-admin
-GET /v1/admin/config/reach/{version} -> case ConfigToolsTest#reachCountsTargetedAppliedAckedAndPendingDevices
+GET /v1/admin/config/reach/{version} -> gap: backend-admin
 GET /v1/admin/config/reach/{version}/pending -> gap: backend-admin
 GET /v1/admin/config/resolve -> gap: backend-admin
 GET /v1/admin/config/values -> gap: backend-admin
@@ -46,13 +46,13 @@ GET /v1/admin/surveys -> gap: backend-admin
 GET /v1/admin/tutorials -> case AdminContentTest#randomisedTutorialListsNeverShowAnotherRolesContent
 GET /v1/admin/users -> case AdminUsersRoutesTest#userListsAreReachScopedAndOtherTerritoriesAreNotFound
 GET /v1/admin/users/{id} -> case AdminUsersRoutesTest#userListsAreReachScopedAndOtherTerritoriesAreNotFound
-GET /v1/admin/users/{id}/scope -> case CheckerAdminTest#ckUserRulesAndScopeVersion
+GET /v1/admin/users/{id}/scope -> gap: backend-admin
 GET /v1/app/home -> case TeamApiTest#appHomeGivesTheKpiStripAndTeamRowsOfTheCallersReach
 GET /v1/app/update-check -> exempt: the caller's own account, token or phone only; no geography rows
-GET /v1/config/delta -> case ConfigDeltaTest#aChangeOutsideTheCallersChainIsNotInTheDeltaAndServerOnlyKeysNever
+GET /v1/config/delta -> gap: backend-admin
 GET /v1/dashboards/daily-tracking -> gap: backend-reports
 GET /v1/dashboards/login-submit -> case OpsApiTest#v12AdditionsAreScopedAndConsistent
-GET /v1/dashboards/summary -> case DashboardTest#aZoneCallerSeesOnlyItsZoneAndCannotAskForAnother
+GET /v1/dashboards/summary -> gap: backend-reports
 GET /v1/dashboards/sync-health -> case OpsApiTest#checker_syncHealthCountsOnlyRowsInsideTheViewersReach
 GET /v1/feedback -> case FeedbackTest#randomisedListsNeverLeakFeedbackOutsideTheCallersReach
 GET /v1/leave -> case LeaveTest#randomisedListsNeverLeakLeaveOutsideTheCallersReach
@@ -69,7 +69,7 @@ GET /v1/tutorials -> case AdminContentTest#randomisedTutorialListsNeverShowAnoth
 GET /v1/visit-plans -> case VisitPlansTest#randomisedReadsNeverLeakAPlanOutsideTheCallersReach
 PATCH /v1/admin/clusters/{id} -> gap: backend-admin
 PATCH /v1/admin/content/{id} -> gap: backend-admin
-PATCH /v1/admin/geo/{level}/{id} -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
+PATCH /v1/admin/geo/{level}/{id} -> gap: backend-admin
 PATCH /v1/admin/outlets/{id} -> case AdminOutletsTest#outletScopeAndRoles
 PATCH /v1/admin/product-nodes/{level}/{id} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 PATCH /v1/admin/routes/{id} -> case AdminUsersRoutesTest#routesCreatePatchEffectiveDatedVisitDaysDuplicateAndScope
@@ -77,11 +77,11 @@ PATCH /v1/admin/rubrics/{id} -> exempt: company-wide reference data, identical f
 PATCH /v1/admin/skus/{id} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 PATCH /v1/admin/surveys/{id} -> gap: backend-admin
 PATCH /v1/admin/tutorials/{id} -> gap: backend-admin
-PATCH /v1/admin/users/{id} -> case CheckerAdminTest#ckUserRulesAndScopeVersion
+PATCH /v1/admin/users/{id} -> gap: backend-admin
 PATCH /v1/feedback/{feedback_uuid} -> gap: backend-admin
 POST /v1/admin/assets -> gap: backend-admin
 POST /v1/admin/calendar/holidays -> gap: backend-admin
-POST /v1/admin/clusters -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
+POST /v1/admin/clusters -> gap: backend-admin
 POST /v1/admin/config/changes -> gap: backend-admin
 POST /v1/admin/config/changes/{change_id}/decision -> gap: backend-admin
 POST /v1/admin/config/versions/{version}/rollback -> gap: backend-admin
@@ -93,7 +93,7 @@ POST /v1/admin/devices/{device_id}/replace -> gap: backend-reports
 POST /v1/admin/devices/{device_id}/state -> gap: backend-reports
 POST /v1/admin/enrolment-tokens -> gap: backend-reports
 POST /v1/admin/enrolment-tokens/{token_id}/revoke -> gap: backend-reports
-POST /v1/admin/geo/{level} -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
+POST /v1/admin/geo/{level} -> gap: backend-admin
 POST /v1/admin/notifications -> case AdminNotificationTest#aNodeOutsideTheCallersReachIsRefused
 POST /v1/admin/outlets -> case AdminOutletsTest#outletScopeAndRoles
 POST /v1/admin/outlets/outlet-kind -> case AdminOutletsTest#bulkOutletKindValidationRolesAndScope
@@ -110,22 +110,22 @@ POST /v1/admin/rubrics -> exempt: company-wide reference data, identical for eve
 POST /v1/admin/skus -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 POST /v1/admin/surveys -> gap: backend-admin
 POST /v1/admin/tutorials -> gap: backend-admin
-POST /v1/admin/users -> case CheckerAdminTest#ckUserRulesAndScopeVersion
-POST /v1/admin/users/{id}/credentials -> case CheckerAdminTest#ckUserRulesAndScopeVersion
+POST /v1/admin/users -> gap: backend-admin
+POST /v1/admin/users/{id}/credentials -> gap: backend-admin
 POST /v1/auth/bind-device -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/change-password -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/logout -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/dashboards/daily-tracking/actions -> case DailyTrackingTest#checker_sameUuidByAnotherUserIsAConflictAndNeverALeak
-POST /v1/feedback -> case FeedbackTest#randomisedListsNeverLeakFeedbackOutsideTheCallersReach
-POST /v1/leave -> case LeaveTest#randomisedListsNeverLeakLeaveOutsideTheCallersReach
+POST /v1/feedback -> exempt: the caller submits its own feedback record; no other user's rows are read or written
+POST /v1/leave -> exempt: the caller files its own leave request; no other user's rows are read or written
 POST /v1/leave/{leave_uuid}/decision -> case CheckerBackendAdminTest#unknownAndOutOfReachLeaveDecisionLookTheSame
 POST /v1/reports/{report_key}/query -> case ReportApiTest#scopeComesFromTheTokenAndSelectorsOnlyNarrow
 POST /v1/support/pda-upload -> gap: backend-admin
 POST /v1/sync/batch -> case BatchCheckerTest#checkerVisitCloseCannotCloseAnotherUsersVisitOutsideReach
 POST /v1/tasks -> case TasksCheckerTest#outletOutsideReach
-POST /v1/tasks/{task_uuid}/cancel -> case TasksTest#cancelIsForTheCreatorTheZonesTsoOrAnAdminAndIsFinal
-POST /v1/visit-plans -> case VisitPlansTest#randomisedReadsNeverLeakAPlanOutsideTheCallersReach
+POST /v1/tasks/{task_uuid}/cancel -> gap: backend-core
+POST /v1/visit-plans -> gap: backend-admin
 PUT /v1/admin/code-lists/{list_key} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 PUT /v1/admin/permissions/roles/{role} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
-PUT /v1/admin/users/{id}/scope -> case CheckerAdminTest#ckUserRulesAndScopeVersion
+PUT /v1/admin/users/{id}/scope -> gap: backend-admin
 PUT /v1/devices/me/push-token -> exempt: the caller's own account, token or phone only; no geography rows
