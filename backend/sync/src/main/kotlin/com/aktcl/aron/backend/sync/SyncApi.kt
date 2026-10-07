@@ -60,9 +60,14 @@ fun Route.syncRoutes(d: SyncDeps) {
         get("/sync/delta") { getDelta(call, d) }
         if (d.db != null) get("/sync/generation") { getGeneration(call, d.db) }
         if (d.db != null) {
-            val digest = SyncDigestService(d.db, d.clock) {
-                d.config?.let { c -> runCatching { c.int("cfg.sync.max_backdate_days").toLong() }.getOrNull() }?.coerceIn(1, 31) ?: SyncDigestService.DEFAULT_WINDOW_DAYS
-            }
+            val digest = SyncDigestService(
+                d.db, d.clock,
+                windowDays = {
+                    d.config?.let { c -> runCatching { c.int("cfg.sync.max_backdate_days").toLong() }.getOrNull() }?.coerceIn(1, 31) ?: SyncDigestService.DEFAULT_WINDOW_DAYS
+                },
+                // The same window ingest applies (F-SYS-090 working days when configured).
+                floor = d.ingest?.let { ingest -> { u: Long, today: java.time.LocalDate -> ingest.backdateFloorFor(u, today) } },
+            )
             post("/sync/digest") {
                 val req = call.receiveStrict(SyncDigestRequest.serializer())
                 call.respond(withContext(Dispatchers.IO) { digest.compare(call.principal, req) })

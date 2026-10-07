@@ -33,6 +33,8 @@ import java.security.interfaces.ECPublicKey
 import java.sql.SQLException
 import java.time.Instant
 import java.time.LocalDate
+import com.aktcl.aron.backend.platform.DayPlan
+import kotlinx.serialization.json.jsonArray
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.zip.GZIPInputStream
@@ -114,6 +116,8 @@ class IngestService(
         private val reaches = HashMap<LocalDate, Reach>()
         fun reachOn(d: LocalDate): Reach = reaches.getOrPut(d) { reach.reach(up.userId, up.role, up.scopeVersion, d) }
         val backdateDays: Long = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
+        /** The oldest business date inside the backdate window (F-SYS-090: calendar or working days), read once per batch. */
+        val backdateFloor: LocalDate = backdateFloor(up.userId, today, backdateDays)
         val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
         /** Read once per batch; a missing or unknown value is `record`, which never drops a sale. */
         val signatureMode: SignatureMode = SignatureMode.of(runCatching { config.string("cfg.sec.record_signature_mode") }.getOrNull())
@@ -322,7 +326,7 @@ class IngestService(
         // 3. Business-date window (s3.8 item 4): too old or in the future is quarantined, never dropped.
         val captured = Instant.parse(env.str("captured_at")!!)
         // A released signature quarantine was inside the window when first received: it is not too old now (item 2).
-        val tooOld = !released && bd.isBefore(ctx.today.minusDays(ctx.backdateDays))
+        val tooOld = !released && bd.isBefore(ctx.backdateFloor)
         // F-SYS-089: after a failover or restore the phone re-sends rows the lost lineage had acknowledged (trigger
         // `resync`, docs/24 s4.8). One captured before the new lineage started may be older than the window: it is
         // accepted and flagged `resync_late`, never quarantined (idempotency by client_uuid keeps the re-send safe).
@@ -895,6 +899,56 @@ class IngestService(
     ).bind("u", userId).bind("since", ts(now.minusSeconds(7 * 86_400))).map { rs, _ ->
         Resolution(rs.getString(1), rs.getString(2), rs.getString(3), rs.getObject(4, OffsetDateTime::class.java).toInstant().wire())
     }.list()
+
+    /**
+     * F-SYS-090: the backdate window's floor. `cfg.calendar.window_unit` missing or `calendar` keeps today minus
+     * `cfg.sync.max_backdate_days`; `working_days` counts selling days of the uploader's home zone (global weekend and
+     * the scoped holiday calendar), capped by the registry retention. Read before any family transaction; a read failure
+     * is a retryable 503 for the whole batch.
+     */
+    /**
+     * The backdate floor for [userId] on [today] with the configured `cfg.sync.max_backdate_days` (the digest's window).
+     * On a read failure the calendar floor: never older than the working-day one, so the digest only asks for less.
+     */
+    fun backdateFloorFor(userId: Long, today: LocalDate): LocalDate {
+        val days = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
+        return try {
+            backdateFloor(userId, today, days)
+        } catch (e: ApiProblem) {
+            today.minusDays(days)
+        }
+    }
+
+    private fun backdateFloor(userId: Long, today: LocalDate, days: Long): LocalDate {
+        val unit = runCatching { config.string("cfg.calendar.window_unit") }.getOrDefault(WorkingDays.CALENDAR)
+        if (unit != WorkingDays.WORKING_DAYS) return today.minusDays(days)
+        val registryDays = runCatching { config.int("cfg.retention.ingest_registry_days") }.getOrDefault(45).toLong()
+        val ceiling = WorkingDays.ceiling(registryDays, days)
+        val weekend = runCatching {
+            config.value("cfg.calendar.weekend_days").jsonArray.mapNotNull { it.jsonPrimitive.content.toIntOrNull() }.filter { it in 1..7 }.toSet()
+        }.getOrNull() ?: DayPlan.DEFAULT_WEEKEND
+        return runCatching {
+            db.jdbi.withHandle<LocalDate, Exception> { h ->
+                val zone = h.createQuery(
+                    """
+                    SELECT z.id, z.territory_id, t.division_id, d.wing_id FROM app.app_user u JOIN app.zone z ON z.id = u.home_zone_id
+                    JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id WHERE u.id = :u
+                    """.trimIndent(),
+                ).bind("u", userId).map { rs, _ -> DayPlan.ZoneChain(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }
+                    .findOne().orElse(DayPlan.ZoneChain(-1, -1, -1, -1))
+                val calendar = h.createQuery("SELECT date, scope_type, scope_id, kind, selling_day FROM app.calendar_holiday WHERE date >= :a AND date < :b AND revoked_at IS NULL")
+                    .bind("a", today.minusDays(ceiling)).bind("b", today).map { rs, _ ->
+                        DayPlan.CalendarEntry(rs.getObject(1, LocalDate::class.java), DayPlan.CalendarScope.valueOf(rs.getString(2).uppercase()), rs.getLong(3), rs.getString(4), rs.getBoolean(5))
+                    }.list()
+                WorkingDays.floor(today, days, unit, ceiling) { WorkingDays.isWorking(it, zone, calendar, weekend) }
+            }
+        }.getOrElse { e ->
+            // Not the calendar rule: a row quarantined as too old keeps that answer on every re-send, so a passing read
+            // failure on the first morning after a break would lose the relief for good. The batch is retried instead.
+            log.warn("working-day backdate window unavailable; batch refused as retryable", e)
+            throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "try again shortly", retryAfterS = 30, headers = mapOf("Retry-After" to "30"))
+        }
+    }
 
     /**
      * F-SYS-089: the re-send allowance after a failover or restore, for a `resync` or `digest_resend` batch (the digest
