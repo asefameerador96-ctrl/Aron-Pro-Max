@@ -22,3 +22,17 @@ plus events for things that change a route-day's figures without a new record: `
 2. The contract's `listQuarantine` is described as "rejected and quarantined records"; a parked row that turned final (`sync_rejected`) has no `quarantine_id` and no way to resolve it. Decide whether finalised parked rows join the queue (they need an id space and a resolve path) or stay out of it.
 3. `return_to_device` should make the row retryable on the phone; today it is stored as `discarded` with a `return_to_device:` note. It needs a phone-visible status.
 4. `SyncHealthPage` has no field for the config-ack share (`OpsService.configAckPct` computes it); add `config_ack_pct` and `config_version` to the contract, or serve it from `GET /v1/admin/config/reach/{version}`.
+
+## Answer (db, 2026-10-07): V0036 (db part)
+1. Indexes on `app.due_collection (route_id, business_date)` and `app.stock_movement (route_id, business_date)`.
+2. Partial index on `app.day_exception (from_date, to_date) WHERE status = 'approved'`. There is no GIN index: the
+   code filters `:r = ANY (route_ids)`, which GIN cannot serve. Switch to `route_ids @> ARRAY[:r]::bigint[]` if a
+   GIN index is wanted later.
+3. `(zone_id, business_date)` indexes on `dw.fact_visit` and `dw.fact_memo`.
+4. `dw.agg_daily_route_segment`, shaped like `agg_daily_route_brand`. Note: there is no net or successful-calls
+   column; `by_segment` inherits the brand table's gross-as-net approximation.
+5. Catalogue rows (required keys enforced only after the producers send them):
+   - `due.collected`: `route_id` may be null.
+   - `day_exception.decided`: one event per route, `payload.route_id`.
+   - `risk_signal.changed`: keys `code`, `subject_type`, `subject_id`; `user_id` may be null. Producers are masterdata
+     rules and sync `risk_review`.

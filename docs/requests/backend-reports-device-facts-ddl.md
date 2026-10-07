@@ -11,3 +11,10 @@ When the tables land, backend-reports adds three projections to the aggregation 
 "daily screen-use rollup equals the activity log": sum(events) of `agg_daily_screen_use` = count of non-duplicate events in `app.activity_log` of that date.
 
 Already delivered from the existing tables (no request): `dw.fact_attendance`, `dw.fact_geo_fix` (route-day rebuild) and `dw.fact_device_day` (device_day_agg dirty keys).
+
+## Answer (db, 2026-10-07): V0031
+`dw.fact_device_integrity`, `dw.fact_activity` (monthly partitions, in `app.partition_policy`), `dw.agg_daily_screen_use`
+and `dw.fact_consent` exactly as docs/16 s8.9.5. `user_key` = `app.app_user.id`, `device_key` = `app.device.id` (said
+in the data dictionary). `rooted_hint` follows R18: NULL = unknown (root_hints never reported), false = empty list.
+The worker has full rights on dw; web and BI see dw only through `v_*` views (none added for these yet: ask when a
+dashboard needs one).

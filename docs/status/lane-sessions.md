@@ -1,8 +1,23 @@
 # Lane sessions (the lead keeps this current; the lane check reads it)
 
+## Restart 2026-10-07 ~15:55 UTC (lead session aron-b3)
+
+Every lane stopped at ~10:39-10:44 UTC (last lane pushes and CI runs) and stayed silent for ~5 hours. The lead
+session was resumed with a fresh context at ~15:46 UTC and could no longer reach the old lane sessions by id,
+so the critical-path lanes were restarted as fresh remote sessions on the same briefs (state from git and
+docs/status, per docs/29 s3). The sessions in the table below are therefore **all retired**; the active lanes
+are now the lead's remote agents: integrator (Sonnet), backend-core (Opus), db (Opus), android-core (Opus),
+android-sr-a (Sonnet), android-sr-b (Sonnet), android-core-ui (Sonnet), android-print (Opus), infra (Opus).
+The integrator verified git fetch/push from the remote environment before the others were started.
+Still on hold (unchanged, see the throttle note and docs/status/hold-notes.md): web-config, web-admin,
+web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-geo-dpc stays finished
+(device halves DEVICE-PENDING). The laptop operator session is untouched.
+
+## Retired registry (pre-restart)
+
 | Sub-lane | Session id | Model | Started | Notes |
 |---|---|---|---|---|
-| db | session_017dmQw2byPhYrFKrGJrEMRj | Opus | 2026-10-07 | recycled 05:35; previous session_01KAjUS8Gz437Nx93fsiVFYX is retired (READY TO RECYCLE 05:33) |
+| db | session_013NHxcKi11ivBpd2B2v3g7D | Opus | 2026-10-07 | recycled 10:51 (third session); previous session_017dmQw2byPhYrFKrGJrEMRj is retired (READY TO RECYCLE 10:50, lane/db 501e466f, V0023 to V0038); earlier session_01KAjUS8Gz437Nx93fsiVFYX retired |
 | shared (first session) | session_01SD55WuhWKuEfeuC6T4A8e2 | Sonnet | 2026-10-05 | finished; blocked by its own permission settings on the contract; do not nudge |
 | shared-2 | session_01QRBncHfaoTvSqTLur5L3ZH | Sonnet | 2026-10-07 | N-002, DTO hosting, web drift |
 | backend-core | session_01465rpZSgSrMTU8CACwuEYx | Opus | 2026-10-07 | recycled 10:25 (fourth session); previous session_01FfFvStuQXyZNg6QM9rndaD is retired (READY TO RECYCLE 10:25, head c59a703d); earlier sessions retired (01MJ1SsuGYYncC4RgHdgyMrb, 01MBUTbmmLSATv8rnitvbFdL) |
@@ -19,9 +34,28 @@
 | web-config | session_0146veK2iXvmHGwiPBpbBJ2k | Sonnet | 2026-10-07 | |
 | web-dashboard | session_01RM4v6DRfjmfAbfrDi17Jzo | Sonnet | 2026-10-07 | recycled 05:01; previous session_01Sk9wwEshZ57sQafoEyccP7 is retired (READY TO RECYCLE 04:51) |
 | infra | session_01Th2LZgi7Jg7dxUX3gmwFQ2 | Opus | 2026-10-07 | recycled 06:41 (third session); session_01CDohyiiiYjHVdhw5DSeqPc retired (READY TO RECYCLE 06:41); session_011BobrrmxjEerwAMUs6AzN2 retired earlier |
-| integrator | session_01HMc2Bcq7MRYf8xgj423pKU | Sonnet | 2026-10-07 | integration train conductor (docs/lanes/integrator.md): promotes green lane heads to INT; the only mover of INT besides lead docs-only commits; state in docs/status/train.md |
+| integrator | session_017ASTyJnQ6z71B1uoc447YL | Sonnet | 2026-10-07 | recycled 10:50 (second session; integration train conductor, docs/lanes/integrator.md; recycle at ~300k); session_01HMc2Bcq7MRYf8xgj423pKU retired and archived (READY TO RECYCLE 10:49, 439k context) |
 | laptop operator | session_01UbRHnSorx4s1XARa6aN1Tg | Opus | 2026-10-06 | never nudged; runs only owner-approved laptop tasks |
 
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
 
 **Throttle (2026-10-07 08:38 UTC, usage constraint):** woken automatically: integrator, backend-core, db, android-core, android-sr-a, android-sr-b, android-core-ui, android-geo-dpc, android-print, infra. ON HOLD until the lead releases them: web-config (released 2026-10-07 09:41 UTC for ONE job only: de-flake web/e2e/config-journeys.spec.ts, then back on hold), web-admin, web-dashboard, backend-reports, backend-admin, android-sys, shared-2.
+
+## Update 2026-10-07 ~16:30 UTC (lead): the pre-stall cloud team woke up
+
+After the restart above, the pre-stall cloud sessions resumed on their own when the usage window lifted
+(their environments carry a skewed clock, so their commits are stamped ~10:50-11:20 UTC but were made after
+~15:50 UTC real time). The old integrator is conducting the train again (promotions 1054 and 1100-i,
+ruling D-GEO-BG-01 on geo-dpc's ACCESS_BACKGROUND_LOCATION) and some old lanes are pushing.
+
+Lead resolution, to avoid two sessions per lane:
+- **Train:** the pre-stall integrator owns it. The lead's restarted integrator stood down after verifying
+  access and diagnosing the 1044 red (same conclusion as D-GEO-BG-01); its green candidate
+  lane/train-20261007T1105 remains on the remote, unpromoted, harmless.
+- **Lanes:** every restarted lane now runs a dedupe rule — before each row and each push it fetches and
+  checks its lane branch for commits it did not make; if a foreign (pre-stall) session is demonstrably
+  active on the branch, the restarted session pushes its finished work, reports, and stops. If the branch
+  only moves when it pushes, the restarted session owns the lane.
+- android-core-ui: restarted session finished the lane's rows (tokens-v2 already ported); re-recording the
+  3 Home goldens after android-sr-a's tile-columns change (edddf441) is the one open step.
+- Branch protection (no force push, non-ff rejected) makes a race lose a push, never work.

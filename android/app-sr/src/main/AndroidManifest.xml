@@ -4,6 +4,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Optional low-power breadcrumbs (N-035, D-GEO-BG-01): declared in the SR and AMO apps only. Never requested at
+         runtime unless cfg.geo.breadcrumbs_enabled; the DPC grants it only while that key is true and pins it denied
+         otherwise. Breadcrumbs are off by default. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- Shop photo for Force Sale and outlet requests (F-SR-003). The microphone is never declared or requested. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

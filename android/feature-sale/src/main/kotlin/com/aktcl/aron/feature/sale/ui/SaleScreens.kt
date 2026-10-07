@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronPrimaryButton
@@ -72,27 +73,31 @@ fun SaleEntryScreen(
         LazyColumn(Modifier.weight(1f, fill = false)) {
             items(skus, key = { it.skuId }) { sku ->
                 val line = lines[sku.skuId]
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(if (LocalAppLanguage.current == AppLanguage.BN) (sku.nameBn ?: sku.name) else sku.name, style = MaterialTheme.typography.bodyLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        AronStepper(
-                            value = qtyOf(sku.skuId).toInt(), onValueChange = { onQuantity(sku.skuId, it.toLong()) },
-                            minusLabel = stringResource(R.string.sale_less), plusLabel = stringResource(R.string.sale_more), min = 0, max = 999_999,
-                        )
-                        Text(unitLabel(sku.baseUnit), style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (line != null && line.packBadge.first > 0) {
-                        Text(localizedDigits(stringResource(R.string.sale_pack_badge, line.packBadge.first.toString(), line.packBadge.second.toString())), style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (line?.exceedsStock == true) {
-                        AronBanner(localizedDigits(stringResource(R.string.sale_stock_warning, (sku.stockBase ?: 0L).toString(), sku.name)), kind = BannerKind.Warning)
+                AronCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text(if (LocalAppLanguage.current == AppLanguage.BN) (sku.nameBn ?: sku.name) else sku.name, style = MaterialTheme.typography.bodyLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            AronStepper(
+                                value = qtyOf(sku.skuId).toInt(), onValueChange = { onQuantity(sku.skuId, it.toLong()) },
+                                minusLabel = stringResource(R.string.sale_less), plusLabel = stringResource(R.string.sale_more), min = 0, max = 999_999,
+                            )
+                            Text(unitLabel(sku.baseUnit), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        if (line != null && line.packBadge.first > 0) {
+                            Text(localizedDigits(stringResource(R.string.sale_pack_badge, line.packBadge.first.toString(), line.packBadge.second.toString())), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        if (line?.exceedsStock == true) {
+                            AronBanner(localizedDigits(stringResource(R.string.sale_stock_warning, (sku.stockBase ?: 0L).toString(), sku.name)), kind = BannerKind.Warning)
+                        }
                     }
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(stringResource(R.string.sale_total), style = MaterialTheme.typography.titleMedium)
-            Text(money(review?.totals?.grossMtk ?: 0), style = MaterialTheme.typography.titleMedium)
+        AronCard(Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.sale_total), style = MaterialTheme.typography.titleMedium)
+                Text(money(review?.totals?.grossMtk ?: 0), style = MaterialTheme.typography.titleMedium)
+            }
         }
         val hasLines = review?.lines?.isNotEmpty() == true
         AronPrimaryButton(stringResource(R.string.sale_review), onReview, Modifier.padding(horizontal = 16.dp).fillMaxWidth(), enabled = hasLines)
@@ -110,25 +115,27 @@ fun SaleEntryScreen(
 /** Review (নিরীক্ষণ) with category subtotals, every non-zero component and the net (F-SR-025). */
 @Composable
 fun ReviewScreen(review: SaleReview, onSave: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(stringResource(R.string.review_title), style = MaterialTheme.typography.titleLarge)
-        review.categories.forEach { c ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(c.categoryCode); Text("${localizedNumber(c.qtyBase)}  ${money(c.grossMtk)}")
+    AronCard(modifier.fillMaxWidth().padding(16.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.review_title), style = MaterialTheme.typography.titleLarge)
+            review.categories.forEach { c ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(c.categoryCode); Text("${localizedNumber(c.qtyBase)}  ${money(c.grossMtk)}")
+                }
             }
+            val t = review.totals
+            Amount(R.string.review_gross, t.grossMtk)
+            if (t.offerDiscountMtk != 0L) Amount(R.string.review_offer_discount, -t.offerDiscountMtk)
+            if (t.drpDiscountMtk != 0L) Amount(R.string.review_drp_discount, -t.drpDiscountMtk)
+            if (t.qcDeductionMtk != 0L) Amount(R.string.review_qc, -t.qcDeductionMtk)
+            Amount(R.string.review_net, t.netMtk)
+            if (review.settlement.isCredit) {
+                Amount(R.string.review_paid, review.settlement.paidMtk)
+                Amount(R.string.review_due, review.settlement.dueMtk)
+            }
+            review.problems.forEach { p -> AronBanner(problemText(p), kind = BannerKind.Error) }
+            AronPrimaryButton(stringResource(R.string.review_save), onSave, Modifier.fillMaxWidth(), enabled = review.canCommit)
         }
-        val t = review.totals
-        Amount(R.string.review_gross, t.grossMtk)
-        if (t.offerDiscountMtk != 0L) Amount(R.string.review_offer_discount, -t.offerDiscountMtk)
-        if (t.drpDiscountMtk != 0L) Amount(R.string.review_drp_discount, -t.drpDiscountMtk)
-        if (t.qcDeductionMtk != 0L) Amount(R.string.review_qc, -t.qcDeductionMtk)
-        Amount(R.string.review_net, t.netMtk)
-        if (review.settlement.isCredit) {
-            Amount(R.string.review_paid, review.settlement.paidMtk)
-            Amount(R.string.review_due, review.settlement.dueMtk)
-        }
-        review.problems.forEach { p -> AronBanner(problemText(p), kind = BannerKind.Error) }
-        AronPrimaryButton(stringResource(R.string.review_save), onSave, Modifier.fillMaxWidth(), enabled = review.canCommit)
     }
 }
 

@@ -165,14 +165,15 @@ class SeedTest {
         other.connect().use { c ->
             c.exec(
                 "INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT v, 'change', id, 'earlier change ' || v " +
-                    "FROM app.app_user, generate_series(2, 3) AS v WHERE username = 'aron.system'",
+                    "FROM app.app_user, generate_series((SELECT max(config_version) + 1 FROM app.cfg_version), (SELECT max(config_version) + 2 FROM app.cfg_version)) AS v WHERE username = 'aron.system'",
             )
+            val next = c.scalar("SELECT max(config_version) + 1 FROM app.cfg_version")!!
             SeedLoader.load(c)
             assertEquals(
-                listOf("4", "4", "4"),
+                listOf(next, next, next),
                 c.column("SELECT config_version FROM app.cfg_value WHERE key LIKE 'cfg.device.%' AND scope_type = 'global' ORDER BY key"),
             )
-            assertEquals("Dev database overrides (docs/24 s9.4, seed)", c.scalar("SELECT summary FROM app.cfg_version WHERE config_version = 4"))
+            assertEquals("Dev database overrides (docs/24 s9.4, seed)", c.scalar("SELECT summary FROM app.cfg_version WHERE config_version = $next"))
         }
     }
 
@@ -182,7 +183,20 @@ class SeedTest {
         assertEquals("false", c.scalar(sql, "cfg.device.require_enrolled"))
         assertEquals("\"dev\"", c.scalar(sql, "cfg.device.lockdown_level"))
         assertEquals("false", c.scalar(sql, "cfg.device.require_integrity"))
-        assertTrue(c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'force_reason'")!!.toInt() >= 2)
+        assertTrue(c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'force_reason' AND valid_to IS NULL")!!.toInt() >= 2)
+    }
+
+    @Test
+    fun aDevDatabaseSeededBeforeV0027LosesTheInventedCodesAndLabels() = TestPostgres.createDatabase().migrated().use { other ->
+        other.connect().use { c ->
+            // What the pre-V0027 seed left behind: an invented code and a wrong label on a V0027 code.
+            c.exec("INSERT INTO app.code_list_item (list_key, code, label_en) VALUES ('force_reason', 'gps_not_found', 'GPS not found')")
+            c.exec("UPDATE app.code_list_item SET label_en = 'Wrong product', label_bn = 'ভুল পণ্য' WHERE list_key = 'edit_reason' AND code = 'wrong_sku'")
+            SeedLoader.load(c)
+            assertEquals("2026-10-07", c.scalar("SELECT valid_to::text FROM app.code_list_item WHERE list_key = 'force_reason' AND code = 'gps_not_found'"))
+            assertEquals("ভুল SKU নির্বাচিত।", c.scalar("SELECT label_bn FROM app.code_list_item WHERE list_key = 'edit_reason' AND code = 'wrong_sku'"))
+            assertEquals("4", c.scalar("SELECT count(*) FROM app.code_list_item WHERE list_key = 'force_reason' AND valid_to IS NULL"))
+        }
     }
 
     @Test
