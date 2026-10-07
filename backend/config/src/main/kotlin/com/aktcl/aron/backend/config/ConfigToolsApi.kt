@@ -7,7 +7,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 
-class ConfigToolsDeps(val tools: ConfigTools, val guard: AuthGuardDeps)
+class ConfigToolsDeps(val tools: ConfigTools, val guard: AuthGuardDeps, val geo: ConfigGeoReports? = null)
 
 private fun ApplicationCall.scopeType(): String? = request.queryParameters["scope_type"]?.also { if (it !in SCOPE_TYPES) bad("query.scope_type") }
 private fun ApplicationCall.scopeId(): Long? = request.queryParameters["scope_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: bad("query.scope_id") }
@@ -25,6 +25,8 @@ fun Route.configToolRoutes(d: ConfigToolsDeps) {
             val days = q["days"]?.let { it.toIntOrNull() ?: bad("query.days") } ?: 30
             call.respond(d.tools.whatIf(call.scopeType(), call.scopeId(), value, days))
         }
+        get("/admin/config/density") { call.reader(); call.respond(d.geo!!.density(call.scopeType(), call.scopeId())) }
+        get("/admin/config/calibration") { call.reader(); call.respond(d.geo!!.calibration(call.scopeType(), call.scopeId())) }
         get("/admin/config/versions/{version}") { call.reader(); call.respond(d.tools.versionDetail(call.version())) }
         get("/admin/config/reach/{version}") { call.reader(); call.respond(d.tools.reach(call.version(), call.zone())) }
         get("/admin/config/reach/{version}/pending") { call.reader(); call.respond(d.tools.pending(call.version(), call.zone(), call.limit(), call.cursor())) }

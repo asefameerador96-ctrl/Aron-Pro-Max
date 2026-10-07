@@ -39,7 +39,7 @@ export function FinalSubmitView({ locale, options, selection, date, today, previ
       header: t(locale, "common.actions"),
       render: (r) =>
         canVoid && preview && !preview.already_submitted && r.had_data ? (
-          <OpInline op="day.data-void" endpoint={TEAM} uuidMembers={["client_uuid"]} body={{ route_id: r.route_id, business_date: preview.business_date, scope: "all" }} label={t(locale, "fs.void")} danger successKey="fs.void.done" testId={`void-${r.route_id}`} />
+          <OpInline op="day.data-void" endpoint={TEAM} uuidMembers={["client_uuid"]} body={{ route_id: r.route_id, business_date: preview.business_date, scope: "web_entry" }} label={t(locale, "fs.void")} danger successKey="fs.void.done" testId={`void-${r.route_id}`} />
         ) : null,
     },
   ];
@@ -62,24 +62,22 @@ export function FinalSubmitView({ locale, options, selection, date, today, previ
               {t(locale, "fs.already", { by: preview.submitted_by ?? "—", at: preview.submitted_at ? formatDateTime(locale, preview.submitted_at) : "—" })}
             </p>
           ) : null}
-          {(preview.warnings ?? []).length > 0 || preview.routes.some((r) => r.state !== "sales_submitted" && r.state !== "final_submitted" && r.had_data) ? (
-            <div role="note" data-testid="dss-advisory" className="rounded border border-slate-300 bg-white p-3 text-sm">
-              <p className="font-semibold">{t(locale, "fs.dss.title")}</p>
-              <ul className="list-disc pl-5">
-                {(preview.warnings ?? []).map((w) => (
-                  <li key={w}>{t(locale, `fs.warn.${w}` as MessageKey)}</li>
-                ))}
-              </ul>
-              <p className="mt-1 text-slate-600">{t(locale, "fs.dss.hint")}</p>
-            </div>
-          ) : null}
+          <div role="note" data-testid="dss-advisory" className="rounded border border-slate-300 bg-white p-3 text-sm">
+            <p className="font-semibold">{t(locale, "fs.dss.title")}</p>
+            <ul className="list-disc pl-5">
+              {(preview.warnings ?? []).map((w) => (
+                <li key={w}>{t(locale, `fs.warn.${w}` as MessageKey)}</li>
+              ))}
+            </ul>
+            <p className="mt-1 text-slate-600">{t(locale, "fs.dss.hint")}</p>
+          </div>
           <Card title={`${formatBusinessDate(locale, preview.business_date)}`}>
             <DataTable columns={columns} rows={preview.routes} rowKey={(r) => String(r.route_id)} empty={t(locale, "common.empty")} caption={t(locale, "fs.title")} />
           </Card>
           {canSubmit && !preview.already_submitted ? (
             <Card title={t(locale, "fs.submit.title")}>
               <p className="text-sm text-slate-600">{t(locale, "fs.submit.hint")}</p>
-              <OpForm op="day.final-submit" endpoint={TEAM} uuidMembers={["client_uuid"]} fixed={{ zone_id: preview.zone_id, business_date: preview.business_date }} fields={fields} noReason submitLabel={t(locale, "fs.submit")} successKey="fs.submit.done" resetOnSuccess={false} testId="final-submit-form" />
+              <OpForm op="day.final-submit" endpoint={TEAM} uuidMembers={["client_uuid"]} confirmText={t(locale, "fs.confirm")} fixed={{ zone_id: preview.zone_id, business_date: preview.business_date }} fields={fields} noReason submitLabel={t(locale, "fs.submit")} successKey="fs.submit.done" resetOnSuccess={false} testId="final-submit-form" />
             </Card>
           ) : null}
           <p className="text-xs text-slate-500">

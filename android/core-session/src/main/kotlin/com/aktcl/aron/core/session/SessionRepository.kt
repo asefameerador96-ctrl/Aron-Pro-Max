@@ -260,6 +260,13 @@ class SessionRepository(
         return if (grant == Grant.FULL) tokens.accessToken else tokens.uploadAccessToken
     }
 
+    /**
+     * The stored upload-grant access token of [userId], whether or not that user is the active one (the sync engine
+     * uploads a logged-out or switched-away user's rows under that user's own grant, D24-57). Null when none is held;
+     * the engine then calls [refresh] with [Grant.UPLOAD].
+     */
+    suspend fun uploadAccessToken(userId: Long): String? = withContext(dispatchers.io) { store.tokens(userId).uploadAccessToken }
+
     override suspend fun refreshAfterUnauthorized(grant: Grant, rejectedToken: String?, code: ProblemCode?): Boolean {
         val active = _state.value as? SessionState.Active ?: return false
         return refresh(active.user.userId, grant, rejectedToken)

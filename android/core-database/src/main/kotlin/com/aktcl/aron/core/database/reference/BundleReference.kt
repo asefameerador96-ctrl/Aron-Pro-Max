@@ -8,20 +8,30 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 
 // The reference sections of the day bundle as the contract defines them (Bundle.routes[] RouteSnapshot with Route and
-// BundleOutlet; Bundle.products.skus[] Sku). REQUEST: docs/requests/android-core-contract-dtos.md. The full bundle
-// apply (prices, offers, config, templates, tasks) is F-SYS-006 (Day 2).
+// BundleOutlet; Bundle.products.skus[] Sku; Bundle.prices[] SkuPrice; Bundle.config ResolvedConfig). REQUEST:
+// docs/requests/android-core-contract-dtos.md. Sections without a table of their own are kept raw (bundle_section).
 
 @Serializable
 data class BundleReference(
     val meta: Meta,
     val products: Products,
     val routes: List<RouteSnapshot>,
+    val prices: List<SkuPrice> = emptyList(),
+    val config: ConfigSection? = null,
 ) {
     @Serializable
     data class Meta(
         @SerialName("bundle_version") val bundleVersion: String,
         @SerialName("valid_for_business_date") val validForBusinessDate: String,
+        @SerialName("server_time") val serverTime: String? = null,
+        @SerialName("config_version") val configVersion: Long? = null,
+        val cursor: String? = null,
+        @SerialName("is_prefetch") val isPrefetch: Boolean = false,
+        @SerialName("paged_sections") val pagedSections: List<PagedSection> = emptyList(),
     )
+
+    @Serializable
+    data class PagedSection(val section: String, val pages: Int, val rows: Int = 0)
 
     @Serializable
     data class Products(val skus: List<Sku>)
@@ -32,6 +42,39 @@ data class BundleReference(
         fun parse(text: String): BundleReference = json.decodeFromString(serializer(), text)
     }
 }
+
+/** `SkuPrice` (contract). */
+@Serializable
+data class SkuPrice(
+    val id: Long,
+    @SerialName("sku_id") val skuId: Long,
+    @SerialName("price_type") val priceType: String,
+    @SerialName("amount_mtk") val amountMtk: Long,
+    @SerialName("per_base_qty") val perBaseQty: Int,
+    @SerialName("valid_from") val validFrom: String,
+    @SerialName("valid_to") val validTo: String? = null,
+)
+
+/** `ResolvedConfig` (contract): values in force plus scheduled values within the horizon. */
+@Serializable
+data class ConfigSection(
+    @SerialName("config_version") val configVersion: Long,
+    val values: List<ResolvedValue> = emptyList(),
+    val scheduled: List<ResolvedValue> = emptyList(),
+)
+
+/** `ResolvedConfigValue` (contract). */
+@Serializable
+data class ResolvedValue(
+    val key: String,
+    val value: JsonElement,
+    @SerialName("scope_type") val scopeType: String,
+    @SerialName("scope_id") val scopeId: Long? = null,
+    @SerialName("effective_from") val effectiveFrom: String? = null,
+    @SerialName("effective_to") val effectiveTo: String? = null,
+    @SerialName("config_version") val configVersion: Long? = null,
+    @SerialName("requires_ack") val requiresAck: Boolean = false,
+)
 
 @Serializable
 data class RouteSnapshot(

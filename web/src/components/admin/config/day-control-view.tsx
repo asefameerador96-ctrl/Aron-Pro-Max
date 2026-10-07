@@ -4,29 +4,32 @@ import { FilterBar } from "@/components/admin/kit/filter-bar";
 import { OpForm, type OpFieldDef } from "@/components/admin/kit/op-form";
 import { Card, PageHeading } from "@/components/admin/kit/page";
 import type { ReportResult } from "@/lib/admin/types";
-import { formatBusinessDate, t, type Locale } from "@/lib/i18n";
+import { formatBusinessDate, formatNumber, t, type Locale } from "@/lib/i18n";
 
 export interface DayControlViewProps {
   locale: Locale;
   zone: string;
   date: string;
-  late: { rows: ReportResult["rows"]; columns: ReportResult["columns"]; known: boolean } | null;
-  missing: { rows: ReportResult["rows"]; columns: ReportResult["columns"]; known: boolean } | null;
+  late: { rows: ReportResult["rows"]; columns: ReportResult["columns"]; known: boolean; total?: number } | null;
+  missing: { rows: ReportResult["rows"]; columns: ReportResult["columns"]; known: boolean; total?: number } | null;
+  missingFailed?: boolean;
   canWrite: boolean;
   withMissing: boolean;
   basePath: string;
 }
 
 function ReportList({ locale, data, title, unknownKey, emptyKey }: { locale: Locale; data: NonNullable<DayControlViewProps["late"]>; title: string; unknownKey: "day.unknown_columns"; emptyKey: "day.late.empty" | "day.missing.empty" }) {
-  const columns: Column<ReportResult["rows"][number]>[] = data.columns.slice(0, 8).map((c) => ({ key: c.key, header: (locale === "bn" && c.label_bn) || c.label_en, render: (r) => (r[c.key] === null || r[c.key] === undefined ? "—" : String(r[c.key])) }));
+  const partial = data.total !== undefined && data.total > data.rows.length && data.total > 100;
+  const columns: Column<ReportResult["rows"][number]>[] = data.columns.map((c) => ({ key: c.key, header: (locale === "bn" && c.label_bn) || c.label_en, render: (r) => (r[c.key] === null || r[c.key] === undefined ? "—" : String(r[c.key])) }));
   return (
     <Card title={title}>
-      {!data.known ? <p className="text-sm text-amber-800">{t(locale, unknownKey)}</p> : <DataTable columns={columns} rows={data.rows} rowKey={(r) => JSON.stringify(r)} empty={t(locale, emptyKey)} caption={title} />}
+      {data.total !== undefined && data.total > 100 ? <p role="note" className="text-xs text-amber-800">{t(locale, "day.truncated", { n: formatNumber(locale, data.total) })}</p> : null}
+      {!data.known ? <p className="text-sm text-amber-800">{t(locale, unknownKey)}</p> : <DataTable columns={columns} rows={data.rows} rowKey={(r) => JSON.stringify(r)} empty={t(locale, partial ? "day.truncated_empty" : emptyKey)} caption={title} />}
     </Card>
   );
 }
 
-export function DayControlView({ locale, zone, date, late, missing, canWrite, withMissing, basePath }: DayControlViewProps) {
+export function DayControlView({ locale, zone, date, late, missing, canWrite, withMissing, basePath, missingFailed }: DayControlViewProps) {
   const fields: OpFieldDef[] = [
     { name: "zone_id", label: t(locale, "cfgc.col.zone"), kind: "int", required: true, initial: zone },
     { name: "business_date", label: t(locale, "cfgc.col.date"), kind: "date", required: true, initial: date },
@@ -48,6 +51,11 @@ export function DayControlView({ locale, zone, date, late, missing, canWrite, wi
         <p className="text-sm text-slate-600">{t(locale, "cfgc.read_only")}</p>
       )}
       {late ? <ReportList locale={locale} data={late} title={t(locale, "day.late.title")} unknownKey="day.unknown_columns" emptyKey="day.late.empty" /> : <p className="text-sm text-slate-600">{t(locale, "day.choose")}</p>}
+      {withMissing && missingFailed ? (
+        <Card title={t(locale, "day.missing.title")}>
+          <p role="alert" className="text-sm text-red-800">{t(locale, "cfgc.error.load")}</p>
+        </Card>
+      ) : null}
       {withMissing && missing ? <ReportList locale={locale} data={missing} title={t(locale, "day.missing.title")} unknownKey="day.unknown_columns" emptyKey="day.missing.empty" /> : null}
     </div>
   );

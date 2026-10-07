@@ -108,7 +108,8 @@ gift_photo, target_*, offer*) stay as empty hooks and are not edited.
 
 ## Notes for other lanes
 
-- Backend (outbox producers): write `payload_version` explicitly and only catalogued events (`docs/data-events.md`);
+- Backend (outbox producers): only catalogued events (`docs/data-events.md`), `payload_version` explicit (default 1);
+  required keys are enforced per event once `enforce_required` is on (V0018; `docs/requests/db-event-payload-v1.md`);
   a new event or a breaking payload change is a db migration, ask through docs/requests.
 - Every lane adding a table or column: `COMMENT ON` it in the same migration with the metadata line (V0016 header),
   then `tools/data-dictionary/render.sh`; a migration that creates a table calls `SELECT app.apply_db_role_grants();`.

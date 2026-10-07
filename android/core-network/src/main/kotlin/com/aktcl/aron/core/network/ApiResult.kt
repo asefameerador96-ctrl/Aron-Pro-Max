@@ -23,10 +23,16 @@ data class Problem(
     @SerialName("server_time") val serverTime: String? = null,
     @SerialName("message_key") val messageKey: String? = null,
     val context: Map<String, JsonElement>? = null,
+    /** One entry per field problem of `400 ERR_VALIDATION` (`FieldError`); `pointer` is a JSON Pointer into the request. */
+    val errors: List<FieldError> = emptyList(),
 ) {
     /** The contract code, or null when the server sent a code this build does not know. */
     val problemCode: ProblemCode? get() = code?.let { c -> ProblemCode.entries.firstOrNull { it.wire == c } }
 }
+
+/** `FieldError` (contract), read leniently. */
+@Serializable
+data class FieldError(val pointer: String? = null, val code: String? = null)
 
 /** Marker headers of an API-originated response (docs/24 s3.1 item 6). */
 data class ResponseMeta(
