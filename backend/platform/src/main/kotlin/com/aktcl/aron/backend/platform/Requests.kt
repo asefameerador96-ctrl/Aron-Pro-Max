@@ -36,7 +36,25 @@ suspend fun <T> ApplicationCall.receiveStrict(serializer: KSerializer<T>, maxByt
         "gzip" -> gunzipCapped(raw, maxBytes)
         else -> throw ApiProblem(ProblemCode.ERR_UNSUPPORTED_MEDIA_TYPE, "unsupported Content-Encoding")
     }
-    return decodeStrict(serializer, bytes.decodeToString())
+    val text = bytes.decodeToString()
+    // U+0000 cannot be stored in PostgreSQL text: refused here, once, for every JSON endpoint (the sync batch decodes
+    // with decodeStrict and refuses it per record instead, so one bad record never fails the batch).
+    if ("\\u0000" in text || '\u0000' in text) nulPointer(text)?.let { pointer ->
+        throw ApiProblem(ProblemCode.ERR_VALIDATION, "a text value holds a NUL character", errors = listOf(FieldError(pointer, "invalid_character")))
+    }
+    return decodeStrict(serializer, text)
+}
+
+/** JSON Pointer of the first member name or string value that holds U+0000, or null (also null for invalid JSON). */
+internal fun nulPointer(text: String): String? {
+    val root = try { RequestJson.parseToJsonElement(text) } catch (e: SerializationException) { return null }
+    fun esc(k: String) = k.replace("~", "~0").replace("/", "~1")
+    fun walk(e: kotlinx.serialization.json.JsonElement, path: String): String? = when (e) {
+        is kotlinx.serialization.json.JsonObject -> e.entries.firstNotNullOfOrNull { (k, v) -> if ('\u0000' in k) "$path/${esc(k)}" else walk(v, "$path/${esc(k)}") }
+        is kotlinx.serialization.json.JsonArray -> e.withIndex().firstNotNullOfOrNull { (i, v) -> walk(v, "$path/$i") }
+        is kotlinx.serialization.json.JsonPrimitive -> if (e.isString && '\u0000' in e.content) path else null
+    }
+    return walk(root, "")
 }
 
 private fun gunzipCapped(raw: ByteArray, maxBytes: Long): ByteArray = try {

@@ -24,4 +24,4 @@
 
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
 
-**Throttle (2026-10-07 08:38 UTC, usage constraint):** woken automatically: integrator, backend-core, db, android-core, android-sr-a, android-sr-b, android-core-ui, android-geo-dpc, android-print, infra. ON HOLD until the lead releases them: web-config, web-admin, web-dashboard, backend-reports, backend-admin, android-sys, shared-2.
+**Throttle (2026-10-07 08:38 UTC, usage constraint):** woken automatically: integrator, backend-core, db, android-core, android-sr-a, android-sr-b, android-core-ui, android-geo-dpc, android-print, infra. ON HOLD until the lead releases them: web-config (released 2026-10-07 09:41 UTC for ONE job only: de-flake web/e2e/config-journeys.spec.ts, then back on hold), web-admin, web-dashboard, backend-reports, backend-admin, android-sys, shared-2.

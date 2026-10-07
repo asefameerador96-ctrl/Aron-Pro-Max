@@ -6,6 +6,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 |---|---|---|---|
 | 2026-10-07 06:36 | 7128431 | none (candidate lane/train-20261007T0636 = INT head) | INT verdict: red (Android debug APKs, unit tests and lint) |
 | 2026-10-07 08:48 | f1d77ed | candidate lane/train-20261007T0848 (backend-admin 3c40e33, backend-reports dc0ab6c, android-core 93632be, web-config 3fc8ae1, infra 6485bb6, lead-contract-v1-3 e0feeb3) | optimistic batch; CI red only on the Android job (same as INT), not promoted |
+| 2026-10-07 09:42 | 699d4dd | backend-core 7722643 (green ci run 37599857144; INT merged in, docs-only difference, so no new run) | promoted alone, fast-forward; INT 88ede0b -> 699d4dd |
 
 ## Open reds
 

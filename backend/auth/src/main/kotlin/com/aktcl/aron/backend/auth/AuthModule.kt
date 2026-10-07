@@ -39,6 +39,8 @@ class AuthDeps(
     val clock: AronClock = AronClock.SYSTEM,
     /** Front Door profile id (`X-Azure-FDID`); only then is `X-Azure-ClientIP` trusted for the lockout IP class. */
     val trustedFrontDoorId: String? = null,
+    /** The caller's role row of `cfg.web.menu_by_role` (contract v1.2 `Me.menus`, R10); wired to ConfigPermissions.menusForRole. */
+    val menusForRole: (String) -> List<kotlinx.serialization.json.JsonElement>? = { null },
 )
 
 /** Mounts the auth endpoints of this build under /v1 (contract tag `auth`). */
@@ -61,6 +63,37 @@ fun Route.authRoutes(d: AuthDeps) {
             }))
         }
     }
+    // An access token (204) or a web login's password_change_token (200 LoginResponse, R15); a temporary password may call it.
+    authenticated(d.guard, { audiences = setOf(Audience.API, Audience.PWCHANGE); allowPasswordChangeRequired = true }) {
+        post("/auth/change-password") {
+            val req = call.receiveStrict(ChangePasswordRequest.serializer())
+            val p = call.principal
+            // A web BFF forwards its aron_rt so its own session survives the change (docs/21 s2: "except the caller's").
+            val callerRt = call.request.cookies["aron_rt"]
+            val res = withContext(Dispatchers.IO) { d.login.changePassword(p, req, callerRt) }
+            if (res == null) call.respond(io.ktor.http.HttpStatusCode.NoContent)
+            else call.respond(call.webCookie(res.refresh_token, res.refresh_expires_at).let { res.copy(refresh_token = null) })
+        }
+    }
+    // The login's bind_token only (aud aron-bind); X-Device-Id must name the token's device (the guard checks it).
+    authenticated(d.guard, { audiences = setOf(Audience.BIND); allowPasswordChangeRequired = true }) {
+        post("/auth/bind-device") {
+            val req = call.receiveStrict(BindDeviceRequest.serializer())
+            val p = call.principal
+            call.respond(withContext(Dispatchers.IO) { d.login.bindDevice(p, req, call.request.headers["X-Device-Proof"]) })
+        }
+    }
+    // Logout (F-API-031): the full or the upload grant. The upload grant may call it too (s3.2), and so may a temporary
+    // password; a stale scope version never blocks it.
+    authenticated(d.guard, { audiences = setOf(Audience.API, Audience.UPLOAD); allowPasswordChangeRequired = true; checkScopeVersion = false }) {
+        post("/auth/logout") {
+            val req = call.receiveStrict(LogoutRequest.serializer())
+            val p = call.principal
+            withContext(Dispatchers.IO) { logout(call, p, req, d) }
+            if (!p.isPhone) call.response.headers.append("Set-Cookie", "aron_rt=; Path=/v1/auth/refresh; HttpOnly; Secure; SameSite=Strict; Max-Age=0", safeOnly = false)
+            call.respond(io.ktor.http.HttpStatusCode.NoContent)
+        }
+    }
     authenticated(d.guard) {
         get("/me") {
             val p = call.principal
@@ -79,7 +112,21 @@ private fun me(call: ApplicationCall, d: AuthDeps): Me {
                 scope = ScopeSummary(user.scopeVersion, reach.topNodes.take(16).map { NodeRef(it.type, it.id, it.code, it.name) }),
                 pii = p.pii,
                 mfa_enabled = false,
+                menus = d.menusForRole(user.role.wire)?.take(200),
             )
+}
+
+/**
+ * `session` revokes the full grant at once: the presented refresh tokens' families (body and the web aron_rt cookie, the caller's only)
+ * and, on a phone, every full family of the user on that phone. `upload` revokes the upload grant (the phone calls
+ * it after its outbox and media queue are empty, D24-57); `all` both. A token of another user is ignored. Idempotent.
+ */
+private fun logout(call: ApplicationCall, p: com.aktcl.aron.backend.platform.AronPrincipal, req: LogoutRequest, d: AuthDeps) {
+    val grants = when (req.scope) { "session" -> setOf(Grant.FULL); "upload" -> setOf(Grant.UPLOAD); else -> setOf(Grant.FULL, Grant.UPLOAD) }
+    listOfNotNull(req.refresh_token, call.request.cookies["aron_rt"]).forEach { t ->
+        d.refresh.peek(t)?.family?.let { f -> if (f.userId == p.userId && f.grant in grants) d.refresh.revoke(f.id, RefreshService.REASON_LOGOUT) }
+    }
+    if (p.isPhone) grants.forEach { g -> d.refresh.revokeDeviceGrant(p.userId, p.deviceId, p.deviceUuid, g, RefreshService.REASON_LOGOUT) }
 }
 
 private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps): TokenPair {
