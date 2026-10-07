@@ -360,6 +360,7 @@ class IngestService(
             is RecordWriter.Result.Stored -> {
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
                 MemoChecks.afterChildStored(h, r.type, payload)
+                DuesLedger.afterStored(h, r.type, env, payload)
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)
             }

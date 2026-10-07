@@ -33,7 +33,7 @@ export function DataTable<Row>({ columns, rows, rowKey, empty, caption }: { colu
           {rows.map((r) => (
             <tr key={rowKey(r)} className="hover:bg-slate-50">
               {columns.map((c) => (
-                <td key={c.key} className={`px-3 py-2 ${c.align === "right" ? "text-right" : "text-left"}`}>
+                <td key={c.key} className={`max-w-[32rem] break-words px-3 py-2 align-top ${c.align === "right" ? "text-right" : "text-left"}`}>
                   {c.render(r)}
                 </td>
               ))}

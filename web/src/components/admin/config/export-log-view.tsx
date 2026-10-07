@@ -12,7 +12,7 @@ export function ExportLogView({ locale, rows, filters, nextHref }: { locale: Loc
     { key: "r", header: t(locale, "xl.col.report"), render: (e) => e.report_key },
     { key: "f", header: t(locale, "xl.col.format"), render: (e) => e.format },
     { key: "n", header: t(locale, "xl.col.rows"), render: (e) => formatNumber(locale, e.rows), align: "right" },
-    { key: "p", header: t(locale, "xl.col.pii"), render: (e) => <span className={e.pii_included ? "font-semibold text-red-700" : ""}>{t(locale, e.pii_included ? "common.yes" : "common.no")}</span> },
+    { key: "p", header: t(locale, "xl.col.pii"), render: (e) => <span className={e.pii_included ? "font-semibold text-[var(--danger)]" : ""}>{t(locale, e.pii_included ? "common.yes" : "common.no")}</span> },
     { key: "flt", header: t(locale, "xl.col.filters"), render: (e) => <code className="text-xs">{Object.entries(e.filters ?? {}).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join(", ") || "—"}</code> },
   ];
   return (

@@ -87,19 +87,21 @@ export function GeofenceView({ locale, key_, level, areaId, current, whatIfValue
           <span className="mb-1 block">{t(locale, "geo.area_id")}</span>
           <input name="id" defaultValue={areaId} inputMode="numeric" className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm" />
         </label>
-        <button type="submit" className="rounded bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700">{t(locale, "geo.show")}</button>
+        <button type="submit" className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">{t(locale, "geo.show")}</button>
       </form>
       {!chosen ? (
         <p className="rounded border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600">{t(locale, "geo.need_id")}</p>
       ) : (
         <>
-          <Card testId="geo-current">
-            <p>
-              {t(locale, "geo.current")}: <strong data-testid="current-radius">{t(locale, "geo.metres", { m: n(radius) })}</strong>{" "}
-              <span className="text-sm text-slate-500">({current ? t(locale, `cfgk.from.${current.scope_type}` as MessageKey) : t(locale, "cfgk.from.default")})</span>
-            </p>
+          <div className="relative" data-testid="geo-current">
             <RadiusMap radiusM={whatIfValue ?? radius} />
-          </Card>
+            <aside className="mt-3 space-y-2 rounded-[var(--radius-sheet)] border border-[var(--border-hairline)] bg-[var(--surface-glass)] p-5 shadow-[var(--elev-1)] backdrop-blur-xl transition-all duration-[var(--motion-base)] md:absolute md:left-4 md:top-4 md:mt-0 md:w-80" aria-label={t(locale, "geo.current")}>
+              <p className="text-sm text-[var(--text-secondary)]">{t(locale, "geo.current")}</p>
+              <p className="text-3xl font-semibold tabular-nums" data-testid="current-radius">{t(locale, "geo.metres", { m: n(radius) })}</p>
+              <p className="text-xs text-[var(--text-secondary)]">{current ? t(locale, `cfgk.from.${current.scope_type}` as MessageKey) : t(locale, "cfgk.from.default")}</p>
+              {whatIf ? <p className="border-t border-[var(--border-line)] pt-2 text-sm" data-testid="whatif-result">{t(locale, "geo.whatif.result", { evaluated: n(whatIf.visits_evaluated), valid: n(whatIf.to_valid), invalid: n(whatIf.to_invalid), same: n(whatIf.unchanged) })}</p> : null}
+            </aside>
+          </div>
           {canWrite ? <ConfigSetForm keyName={key_.key} valueType={key_.value_type} bounds={key_.bounds} scopeLevels={key_.scope_levels} scope={{ type: level as ConfigScopeType, id: Number(here.id) }} current={radius} label={t(locale, "geo.radius")} testId="radius-form" /> : <p className="text-sm text-slate-600">{t(locale, "cfgc.read_only")}</p>}
           <Card title={t(locale, "geo.whatif")} testId="whatif">
             <form method="get" className="flex flex-wrap items-end gap-3">
@@ -115,7 +117,6 @@ export function GeofenceView({ locale, key_, level, areaId, current, whatIfValue
               </label>
               <button type="submit" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">{t(locale, "geo.whatif.run")}</button>
             </form>
-            {whatIf ? <p className="text-sm" data-testid="whatif-result">{t(locale, "geo.whatif.result", { evaluated: n(whatIf.visits_evaluated), valid: n(whatIf.to_valid), invalid: n(whatIf.to_invalid), same: n(whatIf.unchanged) })}</p> : null}
           </Card>
           {blast ? <p className="text-sm text-slate-700" data-testid="blast">{t(locale, "geo.blast")}: {t(locale, "geo.blast.line", { zones: n(blast.zones), routes: n(blast.routes), outlets: n(blast.outlets), users: n(blast.users), devices: n(blast.devices) })}</p> : null}
           {density ? (

@@ -29,9 +29,23 @@
 - **AP-05:** the paired printer is kept in each app's own SharedPreferences (`aron_printer`); each app pairs once with the same MP-58N (F-SYS-044 device part).
 - **AP-06:** Print stays enabled after "paper out" (the link is up) so the seller can retry after changing the roll.
 
-## Next (feature rows)
-- F-SR-013 printer pairing and state UI, F-SR-028 print memo flow, F-SR-073 print confirmation: building the print flow (dialogs, reprint/confirmation policy, `print_event` payload) in core-printing; persistence (`print_event` table, `memo.printed_at`, `print_count`) and the sale-screen hook need android-core and android-sr, see `docs/requests/android-print-integration.md`.
-- F-SR-015 (needs F-SR-014 stock screen), F-SR-031 and F-SR-066 (need F-SR-030 memo menu): waiting for android-sr.
+## Feature rows: core-printing part built and checked; BLOCKED on other lanes
+- **F-SR-013, F-SR-028, F-SR-073** (Opus checker: 2 blocking + 4 minor findings, all fixed with tests, re-check clean, commit 2cca990/d918c28):
+  - `ui/PrinterUi.kt`: `PrinterIcon` (green / red slashed), `PrinterBanner`, `PrinterPickerDialog` (bonded devices, Bluetooth settings, BLUETOOTH_CONNECT), `HoldPrinter`, `SaveAndPrintDialogs`.
+  - `flow/SaveAndPrint.kt`: commit before and regardless of printing; Retry / Print later; "ছাপা ঠিক আছে?".
+  - `flow/PrintFlow.kt`: `MemoPrinting` (job saved before the printer call, paper-out sets printed_at, `recover()` at start), `ReprintPolicy` (failed and failed_user never count; limit `cfg.memo.reprint_max`), `PrintEvent.payload()` = contract `PrintEventPayload`.
+  - **Blocked:** the rows are not done until android-core implements `PrintLedger` on Room (`print_event`, `print_job`, `memo.printed_at`/`print_count`) and android-sr wires the screens. See `docs/requests/android-print-integration.md`. The same code serves F-SR-031/F-SR-066 (reprint, marker "পুনর্মুদ্রণ #n", "supersedes") and F-SR-015 (stock slip), which also wait for F-SR-030 and F-SR-014.
+- Ruling asked of the lead (request §3): config keys `cfg.print.confirm_after_print`, `cfg.memo.reprint_watermark`, `cfg.sale.require_printer_before_sale`; the marker after a rejected reprint.
+- **AP-07:** a rejected print (`failed_user`) does not count; the next print has no marker only while no copy has counted (prevents an unmarked second original).
+- **AP-08:** the printer UI lives in core-printing with Compose (no dependency on core-ui; themed by the host app), so every app reuses one picker and icon.
+
+## In progress
+- Nothing. Every remaining row waits on another lane (above).
+
+## Next three rows (when unblocked)
+1. **F-SR-028 + F-SR-073** end to end: once android-core's Room `PrintLedger` and android-sr's Review screen exist, run `PrintFlowTest`'s scenarios against the Room ledger (instrumented), confirm printed_at/print_count/outbox rows, then mark done.
+2. **F-SR-013**: verify the icon/banner/picker inside the SR screens (Stock, Review, Memo, Summary), then D-P2 on the MP-58N.
+3. **F-SR-031/F-SR-066** (after F-SR-030 memo menu), then **F-SR-015** (after F-SR-014 stock screen): wire `MemoPrinting.printMemo` / `printStockSlip`; the policy, marker and goldens already exist.
 
 ## Traps
 - `HardcodedStringScanTest` (core-ui) scans `core-printing/src/main` too: diagnostics are short codes, test samples live under `src/test/` (shared with androidTest via `src/test/shared/kotlin`).

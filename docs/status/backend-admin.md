@@ -22,3 +22,19 @@ Apply checker findings for the two Sonnet checks; file the `entry_unlock` reques
 - Never run two Gradle builds in one worktree at once (test-result files collide); checkers use their own worktree.
 - Builders' test helpers clash by name across files (`obj`, `send`, `str`, `items`): suffixes A1/A3 were added.
 - Test clocks: two changes at one scope in the same millisecond are bumped by 1 ms.
+
+## Permission matrix mapping (ruling 7; `ConfigPermissions`, test `PermissionMappingTest`)
+Stored (`cfg.web.menu_by_role`, seeded `{menu, page, actions}`) to contract (`MenuPermission {menu_id = "menu.page", actions}`):
+
+| Stored action | Contract action(s) | Written back as |
+|---|---|---|
+| read, view | view | read |
+| write | create, edit | (write is only read from the seed) |
+| create | create | create |
+| edit | edit | edit |
+| approve | approve | approve |
+| export | export | export |
+| submit_void, void | void | void |
+| filter, edit_allowed_sections, state, directive, resolve, issue, credentials, final_submit, reopen, publish, write_own, verify, reject, review, unlock, upload, download, take_action | dropped from the contract view (menu-specific verbs, no contract action) | not written by the PUT; a PUT replaces the role's whole list, so these are lost for that role (the editor shows only contract actions) |
+
+A seeded action that is in neither list fails `PermissionMappingTest`.
