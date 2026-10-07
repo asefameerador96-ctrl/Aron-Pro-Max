@@ -85,7 +85,7 @@ abstract class AronDatabase : RoomDatabase() {
          */
         fun open(context: Context, userId: Long, openHelperFactory: SupportSQLiteOpenHelper.Factory?): AronDatabase =
             Room.databaseBuilder(context.applicationContext, AronDatabase::class.java, fileName(userId))
-                .apply { if (openHelperFactory != null) openHelperFactory(openHelperFactory) }
+                .openHelperFactory(IncrementalVacuumFactory(openHelperFactory)) // new files reclaim purged pages
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
                 .build()
     }

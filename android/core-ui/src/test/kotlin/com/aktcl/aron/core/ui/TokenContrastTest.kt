@@ -113,4 +113,9 @@ class TokenContrastTest {
     @Test fun glareProxyBodyTextStaysAboveThree() = modes.forEach { m ->
         (m.solids() + m.fields() + m.glassOnPage() + m.barOnBackdrop()).forEach { glareCheck(m, "body", m.textPrimary, it, 3.0) }
     }
+
+    @Test fun textOnTheBarePageKeepsItsGates() = modes.forEach { m ->
+        // section labels and captions sit on the bare gradient (tokens.md s2.7): body 7:1, secondary 4.5:1, raw
+        m.pageStops().forEach { check(m, "textPrimary on page", m.textPrimary, it, 7.0); check(m, "textSecondary on page", m.textSecondary, it, 4.5) }
+    }
 }

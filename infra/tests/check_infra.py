@@ -1050,13 +1050,15 @@ class PerAppDatabaseLogins(unittest.TestCase):
         # The SQL is a mounted file, never an env value: as a 7 KB env value the replica was never created
         # (deploy run 37659152959: probes A and B succeeded, the real job did not).
         self.assertNotIn("ARON_SQL", env)
-        # The Key Vault secrets compile to kvSecret(...) expression strings; the SQL secret is the one literal object.
-        secret = {x["name"]: x for x in job["properties"]["configuration"]["secrets"] if isinstance(x, dict)}["logins-sql"]
-        value = secret["value"]
-        m = re.fullmatch(r"\[variables\('(.+)'\)\]", value)
-        if m:
-            value = compiled["variables"][m.group(1)]
-        self.assertEqual(value.strip(), sql.strip(), "the job runs exactly infra/sql/runtime-logins.sql")
+        # The secrets compile to one concat(...) expression (the dev seed secret is conditional), so the SQL secret is
+        # checked in the Bicep source (exactly the checked-in file) and its presence in the compiled template.
+        src = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        self.assertIn("{ name: 'logins-sql', value: loadTextContent('sql/runtime-logins.sql') }", src,
+                      "the job runs exactly infra/sql/runtime-logins.sql")
+        secrets = job["properties"]["configuration"]["secrets"]
+        m = re.search(r"'name', 'logins-sql', 'value', variables\('([^']+)'\)", secrets)
+        self.assertTrue(m, secrets[:300])
+        self.assertEqual(compiled["variables"][m.group(1)].strip(), sql.strip(), "the compiled job embeds exactly that file")
         (vol,) = job["properties"]["template"]["volumes"]
         self.assertEqual(vol["storageType"], "Secret")
         self.assertEqual(vol["secrets"], [{"secretRef": "logins-sql", "path": "runtime-logins.sql"}],
@@ -1429,6 +1431,157 @@ class Observability(unittest.TestCase):
         call = src.index("infra/scripts/release-marker.sh")
         self.assertLess(src.index('infra/scripts/smoke.sh "$API_HOST"'), call, "only after the health gate passed")
         self.assertIn('|| echo "::warning::release marker step failed"', src[call:call + 400])
+
+
+class SliceSmoke(unittest.TestCase):
+    """Lead request 2026-10-07: the SR slice proof after a dev deploy (infra/scripts/slice-smoke.py), run here against a
+    local stub of the API: it must pass on a correct server, fail on a server that doubles a re-uploaded sale, void
+    its sale on the way out, and never print the password or the token."""
+
+    PW, TOKEN = "seed-pw-Never-Printed-1", "tok-Never-Printed-2"
+
+    def serve(self, doubles=False):
+        import gzip as gz, http.server, threading
+        from urllib.parse import urlparse, parse_qs
+        state = {"records": {}, "batches": {}, "memos": {}, "voided": set(), "calls": []}
+        test = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def reply(self, code, body):
+                raw = json.dumps(body).encode()
+                self.send_response(code); self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+
+            def authed(self):
+                return self.headers.get("Authorization") == "Bearer " + test.TOKEN
+
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                if self.headers.get("Content-Encoding") == "gzip":
+                    body = gz.decompress(body)
+                b = json.loads(body)
+                path = urlparse(self.path).path
+                state["calls"].append(path)
+                if path == "/v1/auth/login":
+                    ok = b == {"username": "sr1001", "password": test.PW, "client": "app_sr",
+                               "device_uuid": "00000000-0000-4000-8000-000000000001"}
+                    return self.reply(200, {"status": "ok", "access_token": test.TOKEN}) if ok else self.reply(401, {"code": "bad"})
+                if path == "/v1/sync/batch" and self.authed():
+                    envelope = {"type", "client_uuid", "family_uuid", "rank", "schema_version", "business_date", "captured_at",
+                                "route_id", "bundle_version", "config_version", "payload"}
+                    for r in b["records"]:
+                        if not envelope <= r.keys() or (r["type"] == "memo" and not re.fullmatch(
+                                r"[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}", r["payload"]["memo_no"])):
+                            return self.reply(400, {"code": "ERR_VALIDATION"})
+                    if b["batch_uuid"] in state["batches"]:
+                        return self.reply(200, {**state["batches"][b["batch_uuid"]], "replayed": True})
+                    acks = []
+                    for r in b["records"]:
+                        dup = r["client_uuid"] in state["records"] and not doubles
+                        if not dup:
+                            state["records"][r["client_uuid"] + ("x" if r["client_uuid"] in state["records"] else "")] = r
+                            if r["type"] == "memo":
+                                key = r["client_uuid"] + str(len(state["memos"]))
+                                state["memos"][key] = r
+                            if r["type"] == "memo_void":
+                                state["voided"].add(r["payload"]["memo_client_uuid"])
+                        acks.append({"client_uuid": r["client_uuid"], "type": r["type"], "status": "duplicate" if dup else "accepted"})
+                    live = [m for m in state["memos"].values() if m["client_uuid"] not in state["voided"]]
+                    day = b["records"][0]["business_date"]
+                    resp = {"batch_uuid": b["batch_uuid"], "replayed": False, "acks": acks, "server_totals": [{
+                        "business_date": day, "as_of": "x",
+                        "by_type": {"memo": {"accepted": len(state["memos"]), "rejected": 0, "quarantined": 0}},
+                        "money": {"active_memo_count": len(live), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in live)}}]}
+                    state["batches"][b["batch_uuid"]] = resp
+                    return self.reply(200, resp)
+                return self.reply(401, {"code": "unauthorized"})
+
+            def do_GET(self):
+                u = urlparse(self.path); q = parse_qs(u.query)
+                state["calls"].append(u.path)
+                if not self.authed():
+                    return self.reply(401, {"code": "unauthorized"})
+                memos = [m for m in state["memos"].values() if m["client_uuid"] not in state["voided"]]
+                if u.path == "/v1/sync/bundle":
+                    return self.reply(200, {
+                        "meta": {"bundle_version": q["for"][0] + ":1", "config_version": 7},
+                        "products": {"skus": [{"id": 5, "code": "GL-20", "status": "active", "base_unit": "stick"}]},
+                        "prices": [{"sku_id": 5, "price_type": "outlet", "amount_mtk": 14500, "per_base_qty": 1, "valid_from": "2026-01-01"}],
+                        "routes": [{"route_id": 3, "planned_today": True, "sales_plan_sku_ids": [5],
+                                    "outlets": [{"outlet_id": 8, "code": "MIR-D-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100},
+                                                {"outlet_id": 9, "code": "SMOKE-SR-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100}]}]})
+                if u.path == "/v1/app/home":
+                    return self.reply(200, {"kpis": {"active_memo_count": len(memos), "gross_mtk": sum(m["payload"]["gross_mtk"] for m in memos)}})
+                return self.reply(404, {"code": "not_found"})
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        return srv, state
+
+    def run_smoke(self, srv):
+        import subprocess, tempfile
+        with tempfile.NamedTemporaryFile("r", suffix=".md") as summary:
+            env = dict(os.environ, SLICE_API_HOST=f"127.0.0.1:{srv.server_address[1]}", SLICE_SCHEME="http",
+                       SLICE_PASSWORD=self.PW, SLICE_TILE_WAIT_S="2", SLICE_TILE_POLL_S="0.2", GITHUB_STEP_SUMMARY=summary.name)
+            r = subprocess.run([sys.executable, str(ROOT / "infra" / "scripts" / "slice-smoke.py")], env=env,
+                               capture_output=True, text=True, timeout=60)
+            out = r.stdout + r.stderr + summary.read()
+        self.assertNotIn(self.PW, out, "the password is never printed")
+        self.assertNotIn(self.TOKEN, out, "the token is never printed")
+        return r.returncode, out
+
+    def test_passes_on_a_correct_server_and_voids_its_sale(self):
+        srv, state = self.serve()
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 0, out)
+        for line in ("PASS 4 sale uploaded", "PASS 5 re-upload acked duplicate", "PASS 6 batch replay",
+                     "PASS 7 server count unchanged by the re-upload: (1, 1, 145000) -> (1, 1, 145000)",
+                     "SKIP 8 memo read: HTTP 404", "PASS 9 dashboard tile shows the sale",
+                     "PASS 10 cleanup: sale voided", "### SR slice smoke: PASSED"):
+            self.assertIn(line, out)
+        (memo,) = state["memos"].values()
+        self.assertIn(memo["client_uuid"], state["voided"], "the smoke sale is voided")
+        self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-9\d{3}$", "contract pattern, clear of phone blocks")
+        self.assertEqual(memo["payload"]["outlet_id"], 9, "the smoke's own outlet, never a tester's")
+
+    def test_fails_when_a_re_upload_doubles_the_sale(self):
+        srv, state = self.serve(doubles=True)
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL 5 re-upload acked duplicate", out)
+        self.assertIn("### SR slice smoke: FAILED", out)
+        self.assertIn("PASS 10 cleanup: sale voided", out, "a failed later step still voids the smoke sale")
+        self.assertTrue(state["voided"])
+
+    def test_wired_after_the_health_gate_for_dev_only(self):
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.index("infra/scripts/slice-smoke.py"))
+        self.assertLess(d.index('DBLOGINS_JOB="$(az deployment'), d.index("publish aron-devseed build_devseed"))
+        self.assertLess(d.index("publish aron-devseed build_devseed"), d.index('guard_newer_live "before the apps"'))
+        self.assertIn("grep -qx 'param devSeed = true' \"infra/params/${PROFILE}.apps.bicepparam\"", d, "a committed switch")
+        self.assertIn('rm -f "$ctx"/04_*.sql', d, "the global dev relaxations stay off (lead)")
+        self.assertIn("param devSeed = true\n", (ROOT / "infra/params/dev.apps.bicepparam").read_text(encoding="utf-8"))
+        for f in ("dev-lite", "stage", "prod"):
+            self.assertNotIn("param devSeed = true", (ROOT / f"infra/params/{f}.apps.bicepparam").read_text(encoding="utf-8"), f)
+        self.assertNotIn("ARON_DEV_SEED", (WORKFLOWS / "deploy.yml").read_text(encoding="utf-8"), "no repository variable")
+        sql = (ROOT / "infra/sql/devseed-smoke-outlet.sql").read_text(encoding="utf-8")
+        self.assertIn("'SMOKE-SR-001'", sql)
+        self.assertNotIn("cfg_value", sql)
+        self.assertIn('echo "::add-mask::${slice_pw}"', d)
+        self.assertIn('( publish aron-devseed build_devseed', d, "a failed seed image never stops the deploy")
+        for f in ("stage", "prod"):
+            self.assertIs(params(f"{f}.apps.parameters.json").get("devSeed", False), False, f)
+        job = load("apps.json")["resources"]["dblogins"]
+        self.assertIn("seed-pw", json.dumps(job["properties"]["configuration"]["secrets"]))
+        self.assertIn("parameters('devSeed')", json.dumps(job["properties"]["configuration"]["secrets"]))
+        run = (ROOT / "infra" / "scripts" / "devseed-run.sh").read_text(encoding="utf-8")
+        self.assertIn('printf \'%s\' "$ARON_SEED_PASSWORD" | argon2', run, "the password reaches argon2 on stdin only")
+        self.assertIn("\\getenv h ARON_SEED_HASH", run)
+        self.assertIn("-id -t 2 -k 19456 -p 1", run, "the backend's Argon2id parameters")
 
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():

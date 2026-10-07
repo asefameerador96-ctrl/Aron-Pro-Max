@@ -82,6 +82,7 @@ android {
 dependencies {
     implementation(project(":android:core-common"))
     implementation(project(":android:core-ui"))
+    implementation(project(":android:core-map")) // F-SYS-074 attendance address (geocoder only; no map in the SR flow)
     implementation(project(":android:core-database"))
     implementation(project(":android:core-network"))
     implementation(project(":android:core-session"))
