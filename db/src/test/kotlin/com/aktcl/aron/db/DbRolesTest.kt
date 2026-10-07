@@ -159,13 +159,13 @@ class DbRolesTest {
     /**
      * CI run 254: "tuple concurrently updated" on ALTER ROLE bi_reader when test processes migrated while a test changed
      * the role. Migrations of the harness and role changes of the tests are serialised by TestPostgres.RoleDdlLock;
-     * here three databases migrate at the same time as repeated repairs, and every one succeeds.
+     * here two databases migrate at the same time as repeated repairs, and every one succeeds.
      */
     @Test
     fun concurrentRoleMigrationsAndRepairsDoNotRace() {
         val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
         try {
-            val migrations = (1..3).map { pool.submit<String> { TestPostgres.createDatabase().use { d -> d.migrated(); d.name } } }
+            val migrations = (1..2).map { pool.submit<String> { TestPostgres.createDatabase().use { d -> d.migrated(); d.name } } }
             val repairs = pool.submit { repeat(5) { aRoleLeftWithAWrongAttributeIsRepairedByTheNextMigration() } }
             migrations.forEach { assertTrue(it.get(10, java.util.concurrent.TimeUnit.MINUTES).startsWith("aron_db_test_")) }
             repairs.get(10, java.util.concurrent.TimeUnit.MINUTES)

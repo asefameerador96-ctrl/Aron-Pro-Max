@@ -13,7 +13,7 @@ import kotlin.test.assertFailsWith
 /**
  * V0023: back-office content and price-batch tables, the leave-decision repair.
  * V0024: flat cfg.sync.reconcile_types (R17) with stored values reshaped, server-only outlet_fields, three device keys.
- * V0025/V0026: v1.2 device integrity columns with NULL = unknown.
+ * V0025/V0026: v1.2 device integrity columns with NULL = unknown. V0028: restrictive directions.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class BackOfficeAndConfigV0023Test {
@@ -69,7 +69,13 @@ class BackOfficeAndConfigV0023Test {
             exec("UPDATE app.price_batch SET status = 'published', decided_by = ${uid("adm9002")}, decided_at = now(), price_list_version = 7")
             assertEquals("42501", refused("UPDATE app.price_batch SET status = 'pending_approval'"))
             assertEquals("42501", refused("UPDATE app.price_batch SET status = 'rejected'"))
-            exec("UPDATE app.price_batch SET updated_at = now()")                        // a terminal batch may still be touched
+            exec("UPDATE app.price_batch SET updated_at = now()")                        // a terminal batch may still be touched...
+            assertEquals("42501", refused("UPDATE app.price_batch SET price_rows = '[]'"))       // ...but not changed
+            assertEquals("42501", refused("UPDATE app.price_batch SET price_list_version = 8"))  // written once
+            assertEquals("42501", refused("DELETE FROM app.price_batch"))
+            exec("$ins ('00000000-0000-4000-8000-000000000004', 'previewed', '2026-10-08', repeat('b', 64), '[]', 1, ${uid("adm9001")})")
+            exec("UPDATE app.price_batch SET status = 'published', price_list_version = NULL WHERE batch_uuid = '00000000-0000-4000-8000-000000000004'")
+            exec("UPDATE app.price_batch SET price_list_version = 9 WHERE batch_uuid = '00000000-0000-4000-8000-000000000004'")  // publish writes it after the move
             assertEquals("23514", refused("$ins ('00000000-0000-4000-8000-000000000002', 'previewed', '2026-10-08', 'short', '[]', 1, NULL)"))
             assertEquals("23514", refused("$ins ('00000000-0000-4000-8000-000000000003', 'previewed', '2026-10-08', repeat('a', 64), '{}', 1, NULL)"))
         }
@@ -97,6 +103,22 @@ class BackOfficeAndConfigV0023Test {
         assertEquals(
             listOf("t", "t"),
             c.column("SELECT convalidated FROM pg_constraint WHERE conname IN ('content_item_asset_id_fkey', 'content_item_assigned_scope_array') ORDER BY conname"),
+        )
+    }
+
+    @Test
+    fun restrictiveDirectionsAreSetWhereBreakGlassCanCompare() = db.connect().use { c ->
+        assertEquals(
+            listOf(
+                "cfg.auth.lockout_attempts=down", "cfg.auth.lockout_min=up", "cfg.device.lockdown_level=enum_order", "cfg.geo.max_accuracy_m=down",
+                "cfg.geo.mock_policy=enum_order", "cfg.geo.radius_m=down", "cfg.sale.stock_check=enum_order",
+            ),
+            c.column("SELECT key || '=' || restrictive_dir FROM app.cfg_key WHERE restrictive_dir <> 'none' ORDER BY key"),
+        )
+        // enum_order means "later in bounds.enum is more restrictive": the last value must be the strictest.
+        assertEquals(
+            listOf("cfg.device.lockdown_level=prod", "cfg.geo.mock_policy=block_sale", "cfg.sale.stock_check=block"),
+            c.column("SELECT key || '=' || (bounds -> 'enum' ->> (jsonb_array_length(bounds -> 'enum') - 1)) FROM app.cfg_key WHERE restrictive_dir = 'enum_order' ORDER BY key"),
         )
     }
 
@@ -134,7 +156,8 @@ class BackOfficeAndConfigV0023Test {
             c.exec("$ins 'role', r.ordinal, '{\"AMO.outlet\": [\"visit\"]}', now() - interval '1 day', NULL, 2, u.id, 'already flat' FROM app.app_user u, app.role_def r WHERE u.username = 'aron.system' AND r.role = 'AMO'")
             c.exec(
                 "INSERT INTO app.cfg_change (status, items, reason, risk_class, requested_by) SELECT s, " +
-                    "'[{\"key\": \"cfg.geo.radius_m\", \"value\": 90}, {\"key\": \"cfg.sync.reconcile_types\", \"scope_type\": \"global\", \"scope_id\": 0, \"value\": {\"SR\": {\"sale\": [\"memo\"]}}}]', " +
+                    "jsonb_build_array('{\"key\": \"cfg.geo.radius_m\", \"value\": 90}'::jsonb, '{\"key\": \"cfg.sync.reconcile_types\", \"scope_type\": \"global\", \"scope_id\": 0, \"value\": {\"SR\": {\"sale\": [\"memo\"]}}}'::jsonb, " +
+                    "jsonb_build_object('key', 'cfg.sync.reconcile_types', 'scope_type', 'role', 'scope_id', (SELECT ordinal FROM app.role_def WHERE role = 'AMO'), 'value', '{\"outlet\": [\"visit\"]}'::jsonb)), " +
                     "'reconcile change ' || s, 1, id FROM app.app_user, (VALUES ('scheduled'), ('applied')) v(s) WHERE username = 'aron.system'",
             )
         }
@@ -146,16 +169,18 @@ class BackOfficeAndConfigV0023Test {
             assertEquals("""{"SR.stock": ["stock_movement"]}""", c.scalar("$open AND reason LIKE '%role bare'"))
             assertEquals("0", c.scalar("$open AND reason LIKE '%already flat'".replace("SELECT value::text", "SELECT count(*)")))
             assertEquals("0", c.scalar("$open AND reason LIKE '%closed'".replace("SELECT value::text", "SELECT count(*)")))
-            // No value of the key valid now or later still has the nested shape, except the replaced future row, which
-            // keeps one microsecond at its start (rows are close-only); the history keeps its own shape.
-            assertEquals(listOf("future|00:00:00.000001"), c.column(
-                "SELECT v.reason || '|' || (v.effective_to - v.effective_from) FROM app.cfg_value v WHERE v.key = 'cfg.sync.reconcile_types' " +
+            // No value of the key valid now or later still has the nested shape (a not-yet-valid row is rewritten, not
+            // left as a closed stub the scheduled list would still show); the history keeps its own shape.
+            assertEquals(emptyList(), c.column(
+                "SELECT v.reason FROM app.cfg_value v WHERE v.key = 'cfg.sync.reconcile_types' " +
                     "AND EXISTS (SELECT 1 FROM jsonb_each(v.value) e WHERE jsonb_typeof(e.value) = 'object') AND (v.effective_to IS NULL OR v.effective_to > now())",
             ))
+            assertEquals("t", c.scalar("SELECT count(*) = 1 AND bool_and(effective_to IS NULL AND superseded_in_version IS NULL) FROM app.cfg_value WHERE reason LIKE '%future'"))
+            assertEquals("t", c.scalar("SELECT tgenabled = 'O' FROM pg_trigger WHERE tgname = 'cfg_value_immutable'"))      // guard back on
             assertEquals("2", c.scalar("SELECT count(*) FROM app.cfg_value v, jsonb_each(v.value) e WHERE v.reason = 'closed' AND jsonb_typeof(e.value) = 'object'"))
             // The reshaped global row starts exactly where the replaced one ends and keeps its end.
             assertEquals("t", c.scalar(
-                "SELECT o.effective_to = n.effective_from AND o.superseded_in_version = 3 AND n.effective_to = (SELECT effective_from FROM app.cfg_value WHERE reason = 'future') " +
+                "SELECT o.effective_to = n.effective_from AND o.superseded_in_version = 3 AND n.effective_to = (SELECT effective_from FROM app.cfg_value WHERE reason LIKE '%future') " +
                     "FROM app.cfg_value o, app.cfg_value n WHERE o.reason = 'current' AND n.reason LIKE 'V0024%current'",
             ))
             assertEquals("V0024: cfg.sync.reconcile_types reshaped to the flat ROLE.row shape (docs/24 s14a R17)", c.scalar("SELECT summary FROM app.cfg_version WHERE config_version = 3"))
@@ -164,6 +189,8 @@ class BackOfficeAndConfigV0023Test {
                 c.column("SELECT status || '|' || (items -> 1 -> 'value')::text FROM app.cfg_change ORDER BY status"),
             )
             assertEquals("90", c.scalar("SELECT items -> 0 ->> 'value' FROM app.cfg_change WHERE status = 'scheduled'"))
+            assertEquals("""{"AMO.outlet": ["visit"]}""", c.scalar("SELECT (items -> 2 -> 'value')::text FROM app.cfg_change WHERE status = 'scheduled'"))
+            assertEquals("""{"outlet": ["visit"]}""", c.scalar("SELECT (items -> 2 -> 'value')::text FROM app.cfg_change WHERE status = 'applied'"))
         }
     }
 

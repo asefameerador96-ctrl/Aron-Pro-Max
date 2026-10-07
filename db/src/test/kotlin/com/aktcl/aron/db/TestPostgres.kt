@@ -86,8 +86,16 @@ object TestPostgres {
 
         private fun acquire() {
             jvm.lock()
-            if (jvm.holdCount == 1) {
-                holder = connect(server.baseUrl).also { c -> c.createStatement().use { it.execute("SELECT pg_advisory_lock($KEY)") } }
+            if (jvm.holdCount > 1) return
+            var c: Connection? = null
+            try {
+                c = connect(server.baseUrl)
+                c.createStatement().use { it.execute("SELECT pg_advisory_lock($KEY)") }
+                holder = c
+            } catch (e: Throwable) {                       // never keep the JVM lock (or a connection) after a failed acquire
+                runCatching { c?.close() }
+                jvm.unlock()
+                throw e
             }
         }
 

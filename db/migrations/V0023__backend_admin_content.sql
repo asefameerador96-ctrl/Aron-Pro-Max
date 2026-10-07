@@ -164,7 +164,26 @@ CREATE TABLE app.price_batch (
   CHECK (decided_by IS NULL OR decided_by <> submitted_by)
 );
 CREATE INDEX price_batch_pending ON app.price_batch (status) WHERE status = 'pending_approval';
--- Terminal states never move back (a published or rejected batch is history).
+-- A published or rejected batch is history: nothing in it changes again, except price_list_version, written once by the
+-- publish that follows the status move, and updated_at; it is never deleted.
+CREATE FUNCTION app.price_batch_frozen() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'app.price_batch: batches are never deleted' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF OLD.status IN ('published', 'rejected') AND (
+       (to_jsonb(NEW) - ARRAY['price_list_version', 'updated_at']) IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['price_list_version', 'updated_at'])
+       OR (OLD.price_list_version IS NOT NULL AND NEW.price_list_version IS DISTINCT FROM OLD.price_list_version)) THEN
+    RAISE EXCEPTION 'app.price_batch: a % batch is history and does not change', OLD.status USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END $$;
+COMMENT ON FUNCTION app.price_batch_frozen() IS 'Refuses any change to a published or rejected price batch (except writing price_list_version once) and any delete.';
+CREATE TRIGGER price_batch_frozen BEFORE UPDATE OR DELETE ON app.price_batch
+  FOR EACH ROW EXECUTE FUNCTION app.price_batch_frozen();
+-- Terminal states never move back.
 CREATE TRIGGER price_batch_status_flow BEFORE UPDATE OF status ON app.price_batch
   FOR EACH ROW EXECUTE FUNCTION app.guard_transition('status',
     'previewed>pending_approval', 'previewed>published', 'pending_approval>published', 'pending_approval>rejected');
