@@ -8,5 +8,4 @@
     <string name="map_no_fix">এখনো কোনো অবস্থান নেই</string>
     <string name="map_last_seen">সর্বশেষ দেখা %1$s (%2$s মিনিট আগে)</string>
     <string name="map_address_last_known">%1$s (কাছাকাছি: %2$s, সর্বশেষ জানা)</string>
-    <string name="map_line_with_source">%1$s · %2$s</string>
 </resources>
