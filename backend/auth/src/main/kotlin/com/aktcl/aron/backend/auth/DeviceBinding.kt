@@ -35,10 +35,14 @@ interface BindStore {
 
 /** F-SYS-003, F-API-003 on app.device_otp and app.device_binding (docs/24 s8.1, s8.7). */
 class JdbiBindStore(private val db: Database) : BindStore {
+    /** The same lock as the TSO panel's issue (the user row), so a login and a re-issue never leave two live OTPs. */
+    private fun lockUser(h: org.jdbi.v3.core.Handle, userId: Long) {
+        h.createQuery("SELECT id FROM app.app_user WHERE id = :u FOR UPDATE").bind("u", userId).mapTo(Long::class.java).findOne()
+    }
+
     override fun ensureOtp(userId: Long, now: Instant, ttl: Duration, length: Int, sealer: OtpSealer) {
         db.jdbi.useTransaction<Exception> { h ->
-            // Transaction-scoped (no session state): two logins at once create one OTP.
-            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "device_otp:$userId")
+            lockUser(h, userId)
             val live = h.createQuery(
                 "SELECT count(*) FROM app.device_otp WHERE user_id = :u AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > :now",
             ).bind("u", userId).bind("now", now.odt()).mapTo(Long::class.java).one()
@@ -53,7 +57,7 @@ class JdbiBindStore(private val db: Database) : BindStore {
 
     override fun bind(userId: Long, deviceId: Long, otp: String, now: Instant, maxAttempts: Int, sealer: OtpSealer): BindResult =
         db.jdbi.inTransaction<BindResult, Exception> { h ->
-            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "device_otp:$userId")
+            lockUser(h, userId)
             val row = h.createQuery(
                 "SELECT id, otp_sha256, attempts, expires_at FROM app.device_otp WHERE user_id = :u AND consumed_at IS NULL AND revoked_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1 FOR UPDATE",
             ).bind("u", userId).map { rs, _ -> listOf(rs.getLong(1), rs.getBytes(2), rs.getInt(3), rs.instant("expires_at")) }.findOne().orElse(null)
@@ -66,13 +70,15 @@ class JdbiBindStore(private val db: Database) : BindStore {
                 h.createUpdate("UPDATE app.device_otp SET attempts = attempts + 1 WHERE id = :id").bind("id", id).execute()
                 return@inTransaction BindResult.Invalid
             }
-            h.createUpdate("UPDATE app.device_otp SET consumed_at = :now WHERE id = :id").bind("now", now.odt()).bind("id", id).execute()
+            fun consume() = h.createUpdate("UPDATE app.device_otp SET consumed_at = :now WHERE id = :id").bind("now", now.odt()).bind("id", id).execute()
             h.createQuery("SELECT bind_ordinal FROM app.device_binding WHERE user_id = :u AND device_id = :d AND status = 'active'")
                 .bind("u", userId).bind("d", deviceId).mapTo(Int::class.java).findOne().orElse(null)
-                ?.let { return@inTransaction BindResult.Bound(it) }
+                ?.let { consume(); return@inTransaction BindResult.Bound(it) }
+            // A full phone list is refused before the code is spent: the TSO's code stays usable once a phone is unbound.
             val taken = h.createQuery("SELECT bind_ordinal FROM app.device_binding WHERE user_id = :u AND status = 'active'")
                 .bind("u", userId).mapTo(Int::class.java).set()
             val free = (0..3).firstOrNull { it !in taken } ?: return@inTransaction BindResult.NoFreeOrdinal
+            consume()
             h.createUpdate("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_at, bound_via) VALUES (:d, :u, :o, :now, 'otp')")
                 .bind("d", deviceId).bind("u", userId).bind("o", free).bind("now", now.odt()).execute()
             BindResult.Bound(free)

@@ -194,7 +194,7 @@ class LoginService(
             BindResult.Invalid -> throw ApiProblem(ProblemCode.ERR_AUTH_OTP_INVALID, "the code is wrong")
             BindResult.Expired -> throw ApiProblem(ProblemCode.ERR_AUTH_OTP_EXPIRED, "the code has expired; ask the TSO for a new one")
             BindResult.AttemptsExceeded -> throw ApiProblem(ProblemCode.ERR_AUTH_OTP_ATTEMPTS_EXCEEDED, "too many wrong codes; ask the TSO for a new one")
-            BindResult.NoFreeOrdinal -> throw ApiProblem(ProblemCode.ERR_AUTH_BIND_LOCKED, "this user is bound to four phones already")
+            BindResult.NoFreeOrdinal -> throw ApiProblem(ProblemCode.ERR_DEVICE_LIMIT_REACHED, "this user is bound to four phones already (docs/24 s7.5)")
         }
         return complete(user, device, uuid, p.flavour, minVersionCode(p.flavour), afterPasswordChange = false)
     }
