@@ -9,7 +9,7 @@
 # Budget: under 15 minutes wall time for a full run (docs/31 s2); the jobs run in parallel and path-filtered.
 #
 # Secrets (never committed; set them in GitHub > Settings > Secrets and variables > Actions, docs/24 s13.6):
-#   MAPS_ANDROID_KEY          Google Maps SDK for Android key (AMO and TSO apps); manifest placeholder mapsApiKey
+#   MAPS_ANDROID_KEY          Google Maps SDK for Android key (SR, AMO and TSO apps); manifest placeholder mapsApiKey
 #   MAPS_WEB_KEY              Google Maps JavaScript API key for web/ (NEXT_PUBLIC_MAPS_WEB_KEY at next build)
 #   GOOGLE_SERVICES_JSON      Firebase google-services.json content, written into android/app-{sr,amo,tso}/
 #   FCM_SERVICE_ACCOUNT_JSON  Firebase service account for the backend FCM sender; copied to Key Vault by the deploy
@@ -352,6 +352,10 @@ jobs:
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # Manifest placeholder mapsApiKey of all three apps (root build.gradle.kts; SR has the on-tap map since docs/24
+      # s14a R19). Optional: without the secret the APKs build and the map shows no tiles.
+      MAPS_ANDROID_KEY: ${{ secrets.MAPS_ANDROID_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Point ANDROID_HOME at a cacheable SDK in the runner temp folder
@@ -376,12 +380,12 @@ jobs:
           -Paron.apiBaseUrl="${ARON_API_BASE_URL}" -Paron.versionCode="${ARON_VERSION_CODE}" -Paron.versionName="${ARON_VERSION_NAME}"
           :android:app-sr:assembleRelease :android:app-amo:assembleRelease :android:app-tso:assembleRelease
       - name: APK size gate (30 MB per ABI, installed 70 MB, warn +5 %, fail +15 % against the baseline)
+        # One universal APK per app today; per-ABI splits too once android-core enables them (tools/ci/release-apks.py
+        # accepts both layouts and requires the universal provisioning APK).
         run: |
+          list="$(python3 tools/ci/release-apks.py)"
           apks=()
-          for app in sr amo tso; do
-            for f in "android/app-${app}/build/outputs/apk/release/"*.apk; do apks+=("${app}-release=$f"); done
-          done
-          [ "${#apks[@]}" -eq 3 ] || { echo "::error::expected 3 release APKs, found ${#apks[@]}"; exit 1; }
+          while IFS=$'\t' read -r _app _variant gate _stem path; do apks+=("${gate}=${path}"); done <<< "${list}"
           python3 tools/ci/apk-size-gate.py "${apks[@]}"
       - name: Sign with the release key (integration branch pushes only, when the ANDROID_SIGNING_* secrets exist)
         # AUD-DG-03: the owner's device-owner phones are installed ONCE with a release-signed build (changing the signer
@@ -401,12 +405,12 @@ jobs:
           printf '%s' "${KS}" | base64 -d > "${ks}"
           signer="${ANDROID_HOME}/build-tools/36.0.0/apksigner"
           mkdir -p signed
-          for app in sr amo tso; do
-            src="$(ls android/app-${app}/build/outputs/apk/release/*-release-unsigned.apk)"
-            dst="signed/aron-${app}-${ARON_VERSION_NAME}-dev.apk"
+          list="$(python3 tools/ci/release-apks.py)"
+          while IFS=$'\t' read -r app variant _gate stem src; do
+            dst="signed/${stem}-${ARON_VERSION_NAME}-dev.apk"
             "${signer}" sign --ks "${ks}" --ks-pass env:KSP --ks-key-alias "${ALIAS}" --key-pass env:KP --out "${dst}" "${src}"
-            "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app}: /"
-          done
+            "${signer}" verify --print-certs "${dst}" | grep -E "Signer #1 certificate SHA-256 digest" | sed "s/^/${app} ${variant}: /"
+          done <<< "${list}"
           (cd signed && sha256sum ./*.apk > SHA256SUMS && cat SHA256SUMS)
           echo "signed=true" >> "${GITHUB_OUTPUT}"
       - name: Upload the release-signed dev APKs

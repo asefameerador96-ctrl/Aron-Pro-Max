@@ -53,8 +53,10 @@ fun main() {
         }
         ServerRole.WORKER -> {
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
-            AggregationWorker(Database.fromSettings(settings)).start()
-            log.info("aron worker started (aggregation)")
+            val workerDb = Database.fromSettings(settings)
+            AggregationWorker(workerDb).start()
+            com.aktcl.aron.backend.masterdata.RiskSignalJob(com.aktcl.aron.backend.masterdata.RiskSignalEvaluator(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)))).start()
+            log.info("aron worker started (aggregation, risk signals)")
             Thread.currentThread().join()
         }
     }

@@ -18,6 +18,13 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}" />
+        <!-- N-041: the map is its own screen, started only when the SR taps Map; never preloaded, never needed for a sale. -->
+        <activity
+            android:name=".OutletMapActivity"
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

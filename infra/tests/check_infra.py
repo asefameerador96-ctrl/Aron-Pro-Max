@@ -954,7 +954,8 @@ class PerAppDatabaseLogins(unittest.TestCase):
         mig = secrets("migrate")
         self.assertIn("dbDirectUrl", mig["db-direct-url"], "the migrate job keeps the admin login")
         for f in ("dev", "dev-lite", "stage", "prod"):
-            self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], True, f)
+            # Off until api_rw has the DELETE grants the admin flows use (docs/requests/db-runtime-roles-gaps.md).
+            self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], False, f)
         self.assertIs(param_default("apps.json", "dbPerAppLogins"), False, "off unless a profile turns it on")
 
     def test_dblogins_job_runs_the_checked_in_sql(self):
@@ -972,7 +973,8 @@ class PerAppDatabaseLogins(unittest.TestCase):
         self.assertIn('exec psql "${ARON_DB_URL#jdbc:}"', " ".join(c["command"]), "shell expansion, not a Bicep one")
         for k in ("ARON_PW_APP_API", "ARON_PW_APP_WORKER", "ARON_PW_APP_JOBS", "ARON_DB_URL"):
             self.assertIn("secretRef", env[k], f"{k} must come from Key Vault")
-        for needle in ("GRANT %I TO %I WITH INHERIT TRUE", "REVOKE %I FROM %I", "\\getenv pw_api ARON_PW_APP_API",
+        for needle in ("GRANT %I TO %I WITH INHERIT %s, SET TRUE", "REVOKE %I FROM %I", "\\getenv pw_api ARON_PW_APP_API",
+                       "('app_api', 'pii_reader', false)", "SELECT app.apply_login_limits()", "\\if :{?pw_jobs}",
                        "EXCEPTION WHEN others THEN", "\\gset"):
             self.assertIn(needle, sql)
         role_stmts = [l for l in sql.splitlines() if "ROLE %I LOGIN" in l]

@@ -83,6 +83,7 @@ object RecordWriter {
                         doc["report"] = JsonObject(payload.filterKeys { it != "play_integrity" })
                     }
                 }
+                doc["external_ref"] = JsonPrimitive(clientUuid) // N-049: stable external reference (ignored by tables without the column)
                 doc["user_id"] = JsonPrimitive(up.userId)
                 doc["device_id"] = JsonPrimitive(up.deviceId)
                 doc["first_batch_uuid"] = JsonPrimitive(batchUuid)

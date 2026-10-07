@@ -46,8 +46,10 @@ fun AronConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val c = LocalAronColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = c.surfaceSolid, titleContentColor = c.textPrimary, textContentColor = c.textPrimary,
         title = { Text(title) },
         text = { Text(message) },
         confirmButton = { TextButton(onClick = onConfirm, modifier = Modifier.heightIn(min = MinTouch)) { Text(confirmLabel) } },
@@ -58,8 +60,10 @@ fun AronConfirmDialog(
 /** Information dialog with one button. */
 @Composable
 fun AronInfoDialog(title: String, message: String, okLabel: String, onDismiss: () -> Unit) {
+    val c = LocalAronColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = c.surfaceSolid, titleContentColor = c.textPrimary, textContentColor = c.textPrimary,
         title = { Text(title) },
         text = { Text(message) },
         confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = MinTouch)) { Text(okLabel) } },
@@ -101,16 +105,17 @@ fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modi
     val currentOnConfirmed by rememberUpdatedState(onConfirmed)
     val currentEnabled by rememberUpdatedState(enabled)
     val c = LocalAronColors.current
-    val trackColor = if (enabled) c.accent.copy(alpha = AronTokens.Alpha.HoldTrack) else MaterialTheme.colorScheme.surfaceVariant
-    val fillColor = c.accent.copy(alpha = AronTokens.Alpha.HoldFill)
-    val textColor = if (enabled) c.textPrimary else c.textSecondary
+    val trackColor = if (enabled) c.accentContainer else c.stateDisabledFill
+    val barColor = c.accent
+    val textColor = if (enabled) c.accentOnContainer else c.stateDisabledLabel
     Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = AronTokens.Touch.Primary)
             .clip(AronTokens.ButtonShape)
             .background(trackColor, AronTokens.ButtonShape)
-            .drawBehind { drawRect(fillColor, size = androidx.compose.ui.geometry.Size(size.width * progress.value, size.height)) }
+            // progress is a bar along the bottom edge, never a translucent fill under the label (docs/32 s2a item 1)
+            .drawBehind { val h = AronTokens.Space.S.toPx(); drawRect(barColor, topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - h), size = androidx.compose.ui.geometry.Size(size.width * progress.value, h)) }
             .semantics(mergeDescendants = true) {
                 role = Role.Button
                 if (!enabled) disabled()
@@ -136,6 +141,6 @@ fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modi
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = textColor, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.Xl, vertical = AronTokens.Space.M))
+        Text(text, color = textColor, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(start = AronTokens.Space.Xl, end = AronTokens.Space.Xl, top = AronTokens.Space.M, bottom = AronTokens.Space.M + AronTokens.Space.S))
     }
 }

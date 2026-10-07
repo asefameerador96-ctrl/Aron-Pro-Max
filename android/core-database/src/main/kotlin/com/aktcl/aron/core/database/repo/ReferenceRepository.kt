@@ -12,7 +12,7 @@ import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.entity.TaskEntity
 import com.aktcl.aron.core.database.reference.BundleReference
 import com.aktcl.aron.core.database.reference.ConfigDeltaWire
-import com.aktcl.aron.core.database.reference.ResolvedValue
+import com.aktcl.aron.contract.ResolvedConfigValue
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -330,7 +330,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             )
         }
 
-        private fun configRow(v: ResolvedValue, scheduled: Boolean) = ConfigValueEntity(
+        private fun configRow(v: ResolvedConfigValue, scheduled: Boolean) = ConfigValueEntity(
             key = v.key, valueJson = v.value.toString(), scopeType = v.scopeType, scopeId = v.scopeId, effectiveFrom = v.effectiveFrom,
             effectiveTo = v.effectiveTo, configVersion = v.configVersion, requiresAck = v.requiresAck, scheduled = scheduled,
         )

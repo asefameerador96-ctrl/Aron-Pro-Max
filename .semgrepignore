@@ -7,3 +7,11 @@ contract/slices/
 web/src/contract/openapi.d.ts
 .claude/
 infra/.compiled/
+# Test code never ships; it calls local mocks over http and uses fixed fake secrets on purpose.
+web/e2e/
+web/tests/
+**/src/test/
+**/src/androidTest/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
