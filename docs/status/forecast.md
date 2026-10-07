@@ -70,3 +70,11 @@ Day 7 holds if: (1) no lane idles more than 2 hours (the lane check runs every 2
 - Server side: bundle content and surveys, sync totals, memos, digest, media SAS are on INT. 68 contract operations still have no route (backend-core handover): phone-facing ones first (sync/delta, sync/bundle/page).
 - Wave 2 still waits for the slice smoke's first full green run and for usage `allowed`. Owner reply on the weekly usage % is still needed to release backend-admin and backend-reports.
 - Open reds: none attributable. CI "Shared, db and backend" job: timeout raised to 45 and a split into two jobs is in a candidate (infra 11cd544b).
+
+## Update 2026-10-07 22:50 UTC (Day 3 night, Dhaka 04:50 of Day 4; lead lane check)
+- Rows built: **355 of 490 BUILD rows (72.4%)**, 353 on INT (was 345 / 344 at 21:56). Backend 93/135, SR app 56/57, shared core 52/61, DB 17/18, web 49/50 and 64/64, infra 16/16, shared 7/7; AMO 1/40, TSO 0/22, QA 0/20 (wave 2 not started).
+- INT f4945a81 (22:36). Dev: deploys 150, 151, 153 green; the SR slice smoke PASSED end to end on dev (deploy 151, API level, device proof signed, enrolment ON; run on INT 0e5c3dc4). Web CI job hang (apt stall) fixed in lane/infra 2fe687b9 (now on INT); deploy 152 was skipped by it.
+- Recycles this window: integrator 5, backend-core 10, db 5; android-core parked; android-sr-a finishing F-SR-020/021.
+- Ruling: on dev the integrity and enrolment gates stay OFF (accepted and flagged) until the owner links the app in Play Console (owner action 13); quarantined rows cannot be released yet.
+- Wave 2 and the held lanes still wait for the owner's weekly-usage reading (usage `allowed_warning`). Backend remaining: 42 rows; AMO 39, TSO 22, QA 20. Day 7 is at risk unless wave 2 starts by Day 4 midday.
+- Device checks: Day 4 (2026-10-08). The owner needs a fresh laptop Claude session first (owner action 12) and the lab phone on USB.

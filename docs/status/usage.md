@@ -67,3 +67,10 @@
 | 2026-10-07 20:50 | infra (session 4) | - | 581 | n/a | seven_day allowed_warning | asked to hand over and recycle |
 | 2026-10-07 20:50 | android-core-ui | - | 294 | n/a | seven_day allowed_warning | idle, lint fix e34652dc sent |
 | 2026-10-07 20:50 | android-print | - | 379 | n/a | seven_day allowed_warning | idle (db7b645e on INT; F-SR-015/031 with sr lanes) |
+| 2026-10-07 22:50 | integrator (session 5) | - | 0 | n/a | seven_day allowed_warning | new session, running |
+| 2026-10-07 22:50 | backend-core (session 10) | - | 0 | n/a | seven_day allowed_warning | new session (gates OFF on dev ruling first) |
+| 2026-10-07 22:50 | db (session 5) | - | 0 | n/a | seven_day allowed_warning | new session (3 backend-core requests) |
+| 2026-10-07 22:50 | infra (session 5) | - | 290 | n/a | seven_day allowed_warning | running (Web job fix, pg_trgm next) |
+| 2026-10-07 22:50 | android-sr-a | - | 434 | n/a | seven_day allowed_warning | finishing F-SR-020/021, then handover and park |
+| 2026-10-07 22:50 | android-core | - | - | n/a | seven_day allowed_warning | parked (restart for the gate re-send request) |
+| 2026-10-07 22:50 | android-sr-b / android-core-ui / android-print | - | 398 / 196 / 379 | n/a | seven_day allowed_warning | idle (no rows) |
