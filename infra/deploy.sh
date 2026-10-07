@@ -378,8 +378,9 @@ else
   note "web/ has no package.json: no web app"
 fi
 # psql client for the dblogins job, imported once from Docker Hub by digest into this registry (the apps never pull
-# from Docker Hub at run time; the purge leaves tools/ alone).
-PSQL_SOURCE="docker.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+# from Docker Hub at run time; the purge leaves tools/ alone). `az acr import` takes a tag OR a digest, never both
+# (InvalidImportImageParameter, deploy run 37619397240): the digest of postgres:16-alpine alone.
+PSQL_SOURCE="docker.io/library/postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
 PSQL_TAG="16-alpine-721873c34ceb"
 psql_digest="$(digest_of tools/postgres "$PSQL_TAG")"
 if [ -z "$psql_digest" ]; then
