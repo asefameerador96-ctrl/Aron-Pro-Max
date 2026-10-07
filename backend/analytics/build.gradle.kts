@@ -7,6 +7,7 @@ plugins {
 dependencies {
     implementation(project(":backend:platform"))
     implementation(libs.logback.classic)
+    implementation(libs.fastexcel)
 
     testImplementation(project(":db"))
     testImplementation(testFixtures(project(":backend:platform")))

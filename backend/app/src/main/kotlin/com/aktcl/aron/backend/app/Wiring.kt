@@ -2,7 +2,11 @@ package com.aktcl.aron.backend.app
 
 import com.aktcl.aron.backend.analytics.DashboardDeps
 import com.aktcl.aron.backend.analytics.DashboardService
+import com.aktcl.aron.backend.analytics.ReportDeps
+import com.aktcl.aron.backend.analytics.ReportEngine
+import com.aktcl.aron.backend.analytics.ReportHandlers
 import com.aktcl.aron.backend.analytics.dashboardRoutes
+import com.aktcl.aron.backend.analytics.reportRoutes
 import com.aktcl.aron.backend.auth.AuthDeps
 import com.aktcl.aron.backend.auth.HashLimiter
 import com.aktcl.aron.backend.auth.JdbiLockoutStore
@@ -74,6 +78,7 @@ class Wiring(
             val auth = AuthDeps(login, refresh, issuer, users, devices, keys, reach, config, guard, clock, trustedFrontDoorId = s.frontDoorId)
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboards = DashboardDeps(DashboardService(db, clock), reach, guard, clock)
+            val reports = ReportDeps(db, ReportEngine(db, config, clock, ReportHandlers.all), reach, guard, clock)
             val configResolver = ConfigResolver(db, clock)
             val configService = ConfigService(db, configResolver, clock)
             val configDeps = ConfigDeps(configService, guard, clock)
@@ -86,6 +91,7 @@ class Wiring(
                 authRoutes(auth)
                 outletRoutes(outlets)
                 dashboardRoutes(dashboards)
+                reportRoutes(reports)
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
