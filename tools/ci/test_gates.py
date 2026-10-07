@@ -8,6 +8,7 @@ Each gate is proven to FAIL on a deliberate violation and to pass on a clean inp
   gitleaks.toml         a token fails anywhere except the generated contract/slices/ (needs gitleaks)
   osv-gate.py           a high in a production dependency fails; dev-only warns; a dated allow line passes, an
                         expired one does not; the real web lockfile scanned by osv-scanner (when installed)
+  playwright-chromium.sh  the Web job's browser step: capped, one retry, apt only when needed, Chrome fallback
   release-manifest.py   N-064 manifest: AppReleaseWrite entries, one signer, contract ABIs and version pattern
   release-apks.py       one APK per app or per-ABI splits both list correctly; a missing universal APK or an
                         unknown file name fails
@@ -317,6 +318,50 @@ class InstallScripts(unittest.TestCase):
                             str(HERE / "npm-install-scripts.txt")], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn("ignore-scripts=true", (ROOT / "web" / ".npmrc").read_text())
+
+
+class PlaywrightChromium(unittest.TestCase):
+    """The Web job's browser step never hangs (run 37691144739 hung in apt-get update): capped download with one
+    retry, apt only when a library is missing, the preinstalled Chrome as the fallback, an error without one."""
+
+    def run_step(self, npx_body, chrome=True):
+        with tempfile.TemporaryDirectory() as t:
+            bin_ = Path(t) / "bin"; bin_.mkdir()
+            (bin_ / "npx").write_text("#!/bin/sh\n" + npx_body + "\n"); (bin_ / "npx").chmod(0o755)
+            if chrome:
+                (bin_ / "google-chrome").write_text("#!/bin/sh\n"); (bin_ / "google-chrome").chmod(0o755)
+            env_file = Path(t) / "env"; env_file.write_text("")
+            path = str(bin_) + ":" + ":".join(p for p in os.environ["PATH"].split(":") if not (Path(p) / "google-chrome").exists())
+            r = subprocess.run(["bash", str(HERE / "playwright-chromium.sh")], capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, PATH=path, GITHUB_ENV=str(env_file), PW_STEP_TIMEOUT_S="1",
+                                        PLAYWRIGHT_BROWSERS_PATH=str(Path(t) / "cache")))
+            return r.returncode, r.stdout + r.stderr, env_file.read_text()
+
+    def test_download_ok_and_no_library_missing(self):
+        rc, out, env = self.run_step("exit 0")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ready (no system library missing)", out)
+        self.assertEqual(env, "")
+
+    def test_a_hanging_download_falls_back_to_chrome(self):
+        rc, out, env = self.run_step("sleep 30")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(out.count("timed out after 1 s"), 2, "two capped attempts")
+        self.assertRegex(env, r"^PW_CHROMIUM_PATH=.*/google-chrome$")
+
+    def test_no_browser_and_no_chrome_fails(self):
+        rc, out, env = self.run_step("exit 1", chrome=False)
+        self.assertEqual(rc, 1)
+        self.assertIn("::error::no Playwright Chromium", out)
+
+    def test_wired_in_the_web_job(self):
+        c = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        web = c[c.index("\n  web:"):c.index("\n  images:")]
+        self.assertNotIn("playwright install --with-deps", web)
+        self.assertIn("run: bash ../tools/ci/playwright-chromium.sh", web)
+        self.assertIn("path: ~/.cache/ms-playwright", web)
+        self.assertLess(web.index("playwright-chromium.sh"), web.index("bash scripts/ci.sh e2e"))
+        self.assertIn("process.env.PW_CHROMIUM_PATH", (ROOT / "web" / "playwright.config.ts").read_text(encoding="utf-8"))
 
 
 class ReleaseManifest(unittest.TestCase):
