@@ -269,12 +269,17 @@ class IngestRetryTest {
         }
     }
 
-    /** s4.5 `checkout_too_early`: a check-out before cfg.day.checkout_earliest_time (17:00 Dhaka, inclusive) is held for review. */
+    /**
+     * s4.5 `checkout_too_early` (BC-63): a check-out before cfg.day.checkout_earliest_time (17:00 Dhaka, inclusive) is
+     * accepted and flagged until a review path can release a quarantined one; it is never lost.
+     */
     @Test
-    fun aCheckOutBeforeTheEarliestTimeIsQuarantined() = testApplication {
+    fun aCheckOutBeforeTheEarliestTimeIsAcceptedNeverQuarantined() = testApplication {
         application { aronApi(wiring) }
-        val early = client.send(listOf(checkOut("2027-01-03T05:30:00.000Z")), want = "quarantined") // 11:30 Dhaka
-        assertEquals("checkout_too_early", early["acks"]!!.jsonArray.single().jsonObject["code"]!!.jsonPrimitive.content)
-        client.send(listOf(checkOut("2027-01-03T11:00:00.000Z").let { JsonObject(it + ("captured_at" to kotlinx.serialization.json.JsonPrimitive("2027-01-02T11:00:00.000Z")) + ("business_date" to kotlinx.serialization.json.JsonPrimitive("2027-01-02"))) }))
+        val early = checkOut("2027-01-03T05:30:00.000Z") // 11:30 Dhaka
+        client.send(listOf(early))
+        assertEquals(1L, fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery("SELECT count(*) FROM app.attendance_event WHERE client_uuid = CAST(:c AS uuid)").bind("c", uuidOf(early)).mapTo(Long::class.java).one()
+        })
     }
 }

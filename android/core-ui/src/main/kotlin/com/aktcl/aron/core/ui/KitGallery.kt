@@ -48,7 +48,7 @@ fun KitGallery(modifier: Modifier = Modifier) {
             SunlightToggle(sun, { sun = it }, Modifier.padding(horizontal = AronTokens.Space.L))
             SunlightSuggestionChip(onSwitch = { sun = true }, onDismiss = {}, modifier = Modifier.padding(AronTokens.Space.L))
             OfflineBanner()
-            AronTileGrid(tiles, columns = 2) { t, m -> AronTile(stringResource(t.label), onClick = {}, modifier = m, badge = t.badge) }
+            AronTileGrid(tiles) { t, m -> AronTile(stringResource(t.label), onClick = {}, modifier = m, badge = t.badge) }
             LanguageToggle(LocalAppLanguage.current, onSelect = {}, modifier = Modifier.padding(horizontal = AronTokens.Space.L))
             AronListRow(stringResource(R.string.core_ui_kit_gallery_outlet), subtitle = stringResource(R.string.core_ui_kit_gallery_outlet_sub), trailing = localizedNumber(1250), onClick = {})
             AronStepper(qty, { qty = it }, stringResource(R.string.core_ui_kit_gallery_stepper_less), stringResource(R.string.core_ui_kit_gallery_stepper_more), Modifier.padding(16.dp), max = 999)

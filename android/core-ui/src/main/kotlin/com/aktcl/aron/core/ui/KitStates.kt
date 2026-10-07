@@ -78,7 +78,7 @@ fun AronEmptyState(title: String, modifier: Modifier = Modifier, hint: String? =
 /** Error state: what went wrong in words, with a retry action. Never shows a raw code to the user. */
 @Composable
 fun AronErrorState(message: String, retryLabel: String, onRetry: () -> Unit, modifier: Modifier = Modifier, hint: String? = null) =
-    CenteredState(message, hint, retryLabel, onRetry, modifier, MaterialTheme.colorScheme.error)
+    CenteredState(message, hint, retryLabel, onRetry, modifier, MaterialTheme.colorScheme.onSurface)   // 7:1 key-figure ink: the danger red is only 3:1 (docs/32 s2a item 3)
 
 @Composable
 private fun CenteredState(title: String, hint: String?, actionLabel: String?, onAction: (() -> Unit)?, modifier: Modifier, titleColor: androidx.compose.ui.graphics.Color) {

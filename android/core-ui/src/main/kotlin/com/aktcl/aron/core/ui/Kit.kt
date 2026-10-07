@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
@@ -110,7 +111,31 @@ fun AronBanner(text: String, modifier: Modifier = Modifier, kind: BannerKind = B
     }
     val click = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier
     Surface(color = bg, contentColor = fg, modifier = modifier.fillMaxWidth().then(click)) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.heightIn(min = MinTouch).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M))
+        androidx.compose.foundation.layout.Row(
+            Modifier.heightIn(min = MinTouch).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+        ) {
+            BannerGlyph(kind, fg, bg)   // status never rides on colour alone (docs/32 s2a item 3): a drawn icon plus the words
+            Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+/** A drawn, text-free status glyph: a disc with an "i" (info) or a "!" (warning, error). Decorative: the words carry the meaning. */
+@Composable
+private fun BannerGlyph(kind: BannerKind, ink: androidx.compose.ui.graphics.Color, paper: androidx.compose.ui.graphics.Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(24.dp)) {
+        val r = size.minDimension / 2f
+        val c = center
+        drawCircle(ink, r, c)
+        val bar = androidx.compose.ui.geometry.Size(r * 0.2f, r * 0.7f)
+        val dot = r * 0.13f
+        val barTop = kind == BannerKind.Info
+        val dotY = if (barTop) c.y - r * 0.5f else c.y + r * 0.5f
+        val barY = if (barTop) c.y - r * 0.05f else c.y - r * 0.6f
+        drawRect(paper, androidx.compose.ui.geometry.Offset(c.x - bar.width / 2, barY), bar)
+        drawCircle(paper, dot, androidx.compose.ui.geometry.Offset(c.x, dotY))
     }
 }
 
