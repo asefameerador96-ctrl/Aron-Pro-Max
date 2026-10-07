@@ -4,8 +4,12 @@
 #   aron-jwt-kid               its key id
 #   aron-fcm-service-account   Firebase service account JSON from the GitHub secret FCM_SERVICE_ACCOUNT_JSON;
 #                              "{}" when the secret is not set (push disabled until it is)
+#   aron-play-integrity-service-account  Play Integrity decode account JSON from the GitHub secret
+#                              PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON; " " (one space) when not set: the API reads that as
+#                              absent and decodes with the FCM account. The gate cfg.device.require_integrity is NOT set here.
 #   aron-web-session-secret    48 random characters sealing the web BFF session cookies (ARON_SESSION_SECRET)
-# Idempotent: an existing value is kept, except the FCM account, which follows the GitHub secret when one is given.
+# Idempotent: an existing value is kept, except the FCM and Play Integrity accounts, which follow their GitHub secrets
+# when given.
 # Usage: infra/scripts/seed-secrets.sh <key-vault-name>
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -49,6 +53,19 @@ else
   printf '{}' > "$tmp/fcm.json"
   put_file aron-fcm-service-account "$tmp/fcm.json" application/json
   note "aron-fcm-service-account created as {} (push disabled until FCM_SERVICE_ACCOUNT_JSON is set)"
+fi
+
+if [ -n "${PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON:-}" ]; then
+  printf '%s' "$PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON" > "$tmp/pi.json"
+  python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$tmp/pi.json" || die "PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON is not valid JSON"
+  put_file aron-play-integrity-service-account "$tmp/pi.json" application/json
+  note "aron-play-integrity-service-account set from the GitHub secret"
+elif exists aron-play-integrity-service-account; then
+  note "aron-play-integrity-service-account present (kept; GitHub secret PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON not set)"
+else
+  printf ' ' > "$tmp/pi.json"
+  put_file aron-play-integrity-service-account "$tmp/pi.json" text/plain
+  note "aron-play-integrity-service-account created as a placeholder (the API decodes with the FCM account)"
 fi
 
 if exists aron-web-session-secret; then
