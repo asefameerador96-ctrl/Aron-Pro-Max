@@ -241,7 +241,7 @@ private suspend fun getDelta(call: ApplicationCall, d: SyncDeps) {
         runCatching { LocalDate.parse(it) }.getOrNull()?.takeIf { _ -> DATE.matches(it) }
             ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "for must be YYYY-MM-DD", errors = listOf(FieldError("query.for", "invalid_value")))
     }
-    val delta = withContext(Dispatchers.IO) { d.bundles.delta(p, call.request.queryParameters["since"], forDate) }
+    val delta = withContext(Dispatchers.IO) { d.bundles.delta(p, call.request.queryParameters["since"], forDate, call.request.headers["X-App-Version"]) }
     if (delta == null) {
         call.respond(HttpStatusCode.NotModified)
         return

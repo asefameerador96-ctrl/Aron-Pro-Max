@@ -97,7 +97,7 @@ class BundleFingerprint(
             prices = b.prices.associate { it.id to h(SkuPrice.serializer(), it) },
             skus = b.products.skus.associate { it.id to h(SkuDto.serializer(), it) },
             tasks = b.tasks.associate { it.task_uuid to h(TaskDto.serializer(), it) },
-            offers = b.offers.associate { offerKey(it) to hash(it) },
+            offers = b.offers.mapNotNull { o -> offerKey(o)?.let { it to hash(o) } }.toMap(),
             codeLists = b.code_lists.associate { it.list_key to h(CodeList.serializer(), it) },
             templates = b.templates.associate { it.kind to h(PrintTemplate.serializer(), it) },
             routes = b.routes.associate { it.route_id to hash(routeLevel(it)) },
@@ -118,7 +118,8 @@ class BundleFingerprint(
         internal fun routeLevel(r: RouteSnapshot): JsonElement =
             JsonObject(ResponseJson.encodeToJsonElement(RouteSnapshot.serializer(), r).jsonObject - setOf("outlets", "open_memos", "day_state"))
 
-        internal fun offerKey(o: JsonObject): String = o["id"]?.let { (it as? JsonPrimitive)?.content } ?: hash(o).toString()
+        /** An offer is keyed by its numeric `id`; one without is left out (a delete key must be an id or a uuid). */
+        internal fun offerKey(o: JsonObject): String? = (o["id"] as? JsonPrimitive)?.content?.takeIf { it.toLongOrNull()?.let { n -> n >= 1 } == true }
 
         private fun <T> h(s: kotlinx.serialization.KSerializer<T>, v: T): Long = hash(ResponseJson.encodeToJsonElement(s, v))
 
@@ -135,11 +136,14 @@ class FingerprintCache(private val capacity: Int = 1024) {
 
     private fun key(userId: Long, date: LocalDate, seq: Long) = "$userId|$date|$seq"
 
-    @Synchronized fun get(userId: Long, date: LocalDate, seq: Long): BundleFingerprint? = map[key(userId, date, seq)]
+    fun get(userId: Long, date: LocalDate, seq: Long): BundleFingerprint? = synchronized(this) { map[key(userId, date, seq)] }
 
-    @Synchronized fun putIfAbsent(userId: Long, date: LocalDate, seq: Long, fp: () -> BundleFingerprint) {
+    /** The fingerprint is computed outside the lock, so one large bundle never holds up the others. */
+    fun putIfAbsent(userId: Long, date: LocalDate, seq: Long, fp: () -> BundleFingerprint) {
         val k = key(userId, date, seq)
-        if (k !in map) map[k] = fp()
+        if (synchronized(this) { k in map }) return
+        val v = fp()
+        synchronized(this) { map.putIfAbsent(k, v) }
     }
 }
 
@@ -183,7 +187,7 @@ internal object DeltaDiff {
         keyed("prices", now.prices, { it.id }, base.prices, cur.prices, { ResponseJson.encodeToJsonElement(SkuPrice.serializer(), it) }, { JsonPrimitive(it) })
         keyed("skus", now.products.skus, { it.id }, base.skus, cur.skus, { ResponseJson.encodeToJsonElement(SkuDto.serializer(), it) }, { JsonPrimitive(it) })
         keyed("tasks", now.tasks, { it.task_uuid }, base.tasks, cur.tasks, { ResponseJson.encodeToJsonElement(TaskDto.serializer(), it) }, { JsonPrimitive(it) })
-        keyed("offers", now.offers, { BundleFingerprint.offerKey(it) }, base.offers, cur.offers, { it }, { k -> k.toLongOrNull()?.let { JsonPrimitive(it) } ?: JsonPrimitive(k) })
+        keyed("offers", now.offers.filter { BundleFingerprint.offerKey(it) != null }, { BundleFingerprint.offerKey(it)!! }, base.offers, cur.offers, { it }, { k -> JsonPrimitive(k.toLong()) })
 
         // Code lists and templates are replaced whole; one that disappeared cannot be expressed (no delete member).
         if (base.codeLists.keys.any { it !in cur.codeLists } || base.templates.keys.any { it !in cur.templates }) return null

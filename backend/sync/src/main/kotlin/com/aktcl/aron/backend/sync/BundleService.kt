@@ -154,7 +154,7 @@ class BundleService(
      * Null means 304 (same snapshot, no new resolutions). 409 for a cursor of another date than `for` (default today),
      * 410 for one older than `cfg.bundle.delta_max_age_h` or whose snapshot this replica cannot diff against.
      */
-    fun delta(p: AronPrincipal, sinceRaw: String?, forDate: LocalDate?): BundleDeltaDto? {
+    fun delta(p: AronPrincipal, sinceRaw: String?, forDate: LocalDate?, appVersion: String? = null): BundleDeltaDto? {
         val since = DeltaCursor.parse(sinceRaw)
         val now = clock.now()
         val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
@@ -164,7 +164,7 @@ class BundleService(
         }
         val maxAgeH = runCatching { config.int("cfg.bundle.delta_max_age_h") }.getOrDefault(72).coerceIn(24, 168).toLong()
         if (since.at.isBefore(now.minusSeconds(maxAgeH * 3600))) throw expired("the cursor is older than $maxAgeH h")
-        val r = bundle(p, date, null)
+        val r = bundle(p, date, appVersion) // the version gate of a new date applies as to the bundle
         val resolutions = db.jdbi.withHandle<List<Resolution>, Exception> { h -> resolutionsAfter(h, p.userId, since.at, now) }
         if (r.seq == since.seq && resolutions.isEmpty()) return null
         val body = if (r.seq == since.seq) DeltaDiff.Body(emptyMap(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
@@ -243,7 +243,11 @@ class BundleService(
      * digest. Either way equal content gives an equal version (ETag) on every replica.
      */
     private fun snapshotSeq(userId: Long, date: LocalDate, b: Bundle): Long {
-        val digest = contentDigest(b)
+        // The paging settings are server keys outside the content: a change must move the seq, so staged pages of the
+        // old size are never mixed with pages of the new size under one bundle_version (BC-71 checker M1).
+        val digest = MessageDigest.getInstance("SHA-256").apply {
+            update(contentDigest(b)); update("|${pageThreshold()}|${pageRows()}".toByteArray())
+        }.digest()
         return db.jdbi.inTransaction<Long, Exception> { h ->
             val hasTable = h.createQuery("SELECT to_regclass('app.bundle_snapshot') IS NOT NULL").mapTo(Boolean::class.java).one()
             if (!hasTable) return@inTransaction contentSeq(b)

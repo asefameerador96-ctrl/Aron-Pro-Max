@@ -236,4 +236,25 @@ class BundleDeltaTest {
         assertEquals(total, ids.toSet().size)
         assertEquals(HttpStatusCode.NotFound, client.call(token, "/v1/sync/bundle/page?bundle_version=$version&section=outlets&page=${outlets["pages"]!!.jsonPrimitive.int + 1}").status)
     }
+
+    @Test
+    @Order(7)
+    fun anOutletMovedToAnotherOfTheUsersRoutesIsOneUpsertWithItsNewRoute() = testApplication {
+        application { aronApi(wiring) }
+        val token = client.token()
+        client.freshBundle(token)
+        val id = firstOutlet()
+        val to = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.route WHERE code = 'MIR-SR-3F'").mapTo(Long::class.java).one() }
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.outlet SET route_id = ? WHERE id = ?", to, id) }
+        val r = client.call(token, "/v1/sync/delta?since=$cursor")
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        val d = json(r.bodyAsText())
+        val outlets = d["sections"]!!.jsonObject["outlets"]!!.jsonObject
+        val up = outlets["upsert"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf(id), up.map { it["outlet_id"]!!.jsonPrimitive.long })
+        assertEquals(to, up.single()["route_id"]!!.jsonPrimitive.long)
+        assertEquals(0, outlets["delete"]!!.jsonArray.size, "a moved outlet is never deleted")
+        assertEquals(0, d["routes_added"]!!.jsonArray.size)
+        assertEquals(0, d["routes_removed"]!!.jsonArray.size)
+    }
 }
