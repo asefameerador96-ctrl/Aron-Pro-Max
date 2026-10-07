@@ -1000,6 +1000,32 @@ class PerAppDatabaseLogins(unittest.TestCase):
         self.assertIn('"ARON_DB_URL=$PG_JOBS"', smoke, "CI runs the worker as app_jobs")
 
 
+class PlatformAlerts(unittest.TestCase):
+    """AUD-REL-04: application-metric-free alerts, each naming an owner and a runbook."""
+
+    def test_database_and_resource_health(self):
+        t, _ = module("main.json", "alerts")
+        text = json.dumps(t)
+        for needle in ("is_db_alive", "pg-not-alive", "ResourceHealth", "Unavailable", "Degraded", "ServiceHealth"):
+            self.assertIn(needle, text)
+        (rh, sh) = sorted(resources_of(t, "Microsoft.Insights/activityLogAlerts"), key=lambda r: r["name"])
+        self.assertEqual(rh["properties"]["scopes"], ["[resourceGroup().id]"])
+        self.assertIn("Owner:", rh["properties"]["description"])
+        self.assertEqual(sh.get("condition"), "[parameters('enableServiceHealthAlert')]", "off until subscription Reader exists")
+
+    def test_app_alerts(self):
+        apps = load("apps.json")
+        text = json.dumps(apps["variables"]) + json.dumps(apps["resources"]["appMetricAlerts"])
+        for needle in ("api-5xx", "statusCodeCategory", "5xx", "-restarts", "-no-replica", "RestartCount", "Replicas",
+                       "Microsoft.App/containerApps"):
+            self.assertIn(needle, text)
+        self.assertEqual(apps["resources"]["appMetricAlerts"]["condition"], "[parameters('deployServices')]")
+        src = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        block = src[src.index("var appAlerts"):src.index("resource appMetricAlerts")]
+        self.assertEqual(block.count("description:"), block.count("Owner: infra lane"), "every alert names its owner")
+        self.assertEqual(block.count("description:"), block.count("Runbook: RB-"), "every alert names its runbook")
+
+
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():
         sys.exit(f"compiled templates not found in {COMPILED}; run infra/validate.sh")

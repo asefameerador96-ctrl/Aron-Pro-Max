@@ -496,6 +496,96 @@ resource routeWeb 'Microsoft.Cdn/profiles/afdEndpoints/routes@2024-09-01' = if (
   }
 }
 
+// ------------------------------------------------------------------------------------------------- app alerts
+// AUD-REL-04: the cheap platform-metric alerts (no application metrics), here because the apps exist only after this
+// stage. Each description names the owner and the runbook (docs/18 s7.6). Metric alerts cost cents a month each.
+resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' existing = { name: n.actionGroup }
+
+var appAlerts = concat([
+  {
+    name: 'api-5xx'
+    app: n.apiApp
+    metric: 'Requests'
+    aggregation: 'Total'
+    operator: 'GreaterThan'
+    threshold: 10
+    window: 'PT5M'
+    severity: 1
+    dimensions: [{ name: 'statusCodeCategory', operator: 'Include', values: ['5xx'] }]
+    description: 'api answered more than 10 5xx in 5 minutes. Owner: infra lane (backend for the cause). Runbook: RB-01 (docs/runbooks/rollback-bad-deploy.md).'
+  }
+], flatten(map([{ key: 'api', app: n.apiApp, sev: 1 }, { key: 'worker', app: n.workerApp, sev: 2 }], a => [
+  {
+    name: '${a.key}-restarts'
+    app: a.app
+    metric: 'RestartCount'
+    aggregation: 'Maximum'
+    operator: 'GreaterThan'
+    threshold: 2
+    window: 'PT15M'
+    severity: a.sev
+    dimensions: []
+    description: '${a.key}: a replica restarted more than twice (crash loop). Owner: infra lane (backend for the cause). Runbook: RB-01.'
+  }
+  {
+    name: '${a.key}-no-replica'
+    app: a.app
+    metric: 'Replicas'
+    aggregation: 'Maximum'
+    operator: 'LessThan'
+    threshold: 1
+    window: 'PT5M'
+    severity: a.sev
+    dimensions: []
+    description: '${a.key}: no running replica for 5 minutes (min replicas is 1). Owner: infra lane. Runbook: RB-01.'
+  }
+])), deployWeb ? [
+  {
+    name: 'web-restarts'
+    app: n.webApp
+    metric: 'RestartCount'
+    aggregation: 'Maximum'
+    operator: 'GreaterThan'
+    threshold: 2
+    window: 'PT15M'
+    severity: 3
+    dimensions: []
+    description: 'web: a replica restarted more than twice (crash loop). Owner: infra lane (web for the cause). Runbook: RB-01.'
+  }
+] : [])
+
+resource appMetricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for a in appAlerts: if (deployServices) {
+  name: '${namePrefix}-${environmentName}-${a.name}'
+  location: 'global'
+  tags: allTags
+  properties: {
+    description: a.description
+    severity: a.severity
+    enabled: true
+    scopes: [resourceId('Microsoft.App/containerApps', a.app)]
+    evaluationFrequency: 'PT1M'
+    windowSize: a.window
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          criterionType: 'StaticThresholdCriterion'
+          name: a.metric
+          metricName: a.metric
+          metricNamespace: 'Microsoft.App/containerApps'
+          operator: a.operator
+          threshold: a.threshold
+          timeAggregation: a.aggregation
+          dimensions: a.dimensions
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: [{ actionGroupId: actionGroup.id }]
+  }
+  dependsOn: [api, worker, web]
+}]
+
 output migrateJobName string = migrate.name
 output dbLoginsJobName string = empty(psqlImage) ? '' : dblogins.name
 output dbPerAppLogins bool = perApp
