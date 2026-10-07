@@ -920,7 +920,7 @@ class SupplyChainGates(unittest.TestCase):
         c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
         gates = c[c.index("\n  gates:"):c.index("\n  contract:")]
         for needle in ("for t in gitleaks oasdiff squawk osv-scanner; do", "tools/ci/osv-gate.py", "tools/ci/osv-allow.txt",
-                       'tools/ci/semgrep.sh "${base}"', 'base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}"', "tools/ci/install-scripts-check.py web/package-lock.json",
+                       'tools/ci/semgrep.sh "${base}"', 'base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}"', "tools/ci/install-scripts-check.py web/package-lock.json", '[ "${GITHUB_EVENT_NAME}" = push ] && [ "${GITHUB_REF}" != "refs/heads/main" ]',
                        "actions/dependency-review-action@", "fail-on-severity: high"):
             self.assertIn(needle, gates)
         self.assertIn("if: github.event_name == 'pull_request'", gates[gates.index("Dependency review"):])

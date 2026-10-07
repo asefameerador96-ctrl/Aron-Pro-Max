@@ -27,8 +27,8 @@ via `lane/train-*` to INT. First lane/infra push: deploy concurrency moved to th
 5. Dependabot: ignore major bumps of eslint and of any package failing CI today.
 6. Android local compile: confirm the committed Maven mirror covers Google Maven, AndroidX/AGP and Robolectric
    android-all, or document what still 429s; update the stale lines in core-ui and sr-b status (via the lead).
-7. Pending checker report on the storage CORS rule and the Semgrep lane base (agent was running at handoff): if it
-   reports that the web upload sends more headers than `x-ms-blob-type` and `content-type`, add them.
+7. Checker on storage CORS and the Semgrep lane base: CORS confirmed working (headers match the web upload code);
+   Semgrep override limited to lane pushes (PRs and main keep the gate base), pushed. Custom domain later: add to uploadOrigins.
 8. Switch `dbPerAppLogins` to true when db says the DELETE-grant migration is on INT; watch the first deploy.
 9. Flip the wall-clock scan to `--blocking` on 2026-10-09 (lead routes the 14 offenders).
 10. Rows: N-062 observability, N-057 (prod-only parameters), N-064 release candidate (Day 7); seeded-failure proof of
