@@ -4,6 +4,7 @@ import com.aktcl.aron.contract.Role
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import org.jdbi.v3.core.Handle
 import java.time.Duration
 import java.time.Instant
@@ -52,17 +53,17 @@ object DayStates {
             // day_open names the routes it opens; the envelope's route is one of them.
             type == "day_open" -> ((p["route_ids"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content?.toLongOrNull() }.orEmpty() + listOfNotNull(route)).distinct()
             route != null -> listOf(route)
-            // A check-in carries no route: it starts every route-day the user holds on the date.
-            type == "attendance_event" -> h.createQuery("SELECT route_id FROM app.route_day WHERE business_date = :d AND (assigned_user_id = :u OR acting_user_id = :u)")
+            // A check-in carries no route: it starts every route the user holds on the date (primary or cover).
+            type == "attendance_event" -> h.createQuery("SELECT DISTINCT route_id FROM app.route_assignment WHERE user_id = :u AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
                 .bind("d", date).bind("u", up.userId).mapTo(Long::class.java).list()
             else -> emptyList()
         }
         // Only routes the uploader holds on the date (primary or cover): a device never moves another user's day.
         val routes = if (named.isEmpty()) named else h.createQuery(
-            "SELECT DISTINCT route_id FROM app.route_assignment WHERE user_id = :u AND route_id = ANY(:r) AND ended_at IS NULL AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)",
+            "SELECT DISTINCT route_id FROM app.route_assignment WHERE user_id = :u AND route_id = ANY(:r) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)",
         ).bind("u", up.userId).bindArray("r", Long::class.javaObjectType, named).bind("d", date).mapTo(Long::class.java).list()
         if (routes.isEmpty()) return
-        if (type != "attendance_event") planner.planIn(h, date, routes)
+        planner.planIn(h, date, routes)
         routes.forEach { touched.routeDays += it to date }
         val set = when (type) {
             "day_open" -> if (p.bool("offline_start") == true) "logged_in_at = COALESCE(logged_in_at, :at)" else null
@@ -72,7 +73,9 @@ object DayStates {
                 "settle_deadline_at = COALESCE(settle_deadline_at, :deadline), submit_cycle = GREATEST(submit_cycle, :cycle)"
             else -> null
         } ?: return
-        val awaited = (p["device_counts"] as? JsonObject)?.values?.sumOf { (it as? JsonPrimitive)?.intOrNull ?: 0 } ?: 0
+        // TypeCounts has no maximum: Long sums, clamped to the int column (never an overflow into the CHECK).
+        val awaited = ((p["device_counts"] as? JsonObject)?.values?.sumOf { ((it as? JsonPrimitive)?.longOrNull ?: 0L).coerceAtLeast(0L) } ?: 0L)
+            .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         h.createUpdate("UPDATE app.route_day SET $set WHERE route_id = ANY(:r) AND business_date = :d")
             .bindArray("r", Long::class.javaObjectType, routes).bind("d", date).bind("at", ts(captured)).bind("now", ts(now))
             .bind("awaited", awaited).bind("cycle", p.int("submit_cycle") ?: 1)
@@ -129,7 +132,7 @@ object DayStates {
         ).bind("r", route).bind("d", date).mapTo(String::class.java).findOne().orElse(null)
             ?.let { kotlinx.serialization.json.Json.parseToJsonElement(it) as? JsonObject }
         val reached = parked == 0L && counts != null && counts.all { (type, v) ->
-            val want = (v as? JsonPrimitive)?.intOrNull ?: 0
+            val want = (v as? JsonPrimitive)?.longOrNull ?: Long.MAX_VALUE // unreadable: never reached, the timeout decides
             val have = h.createQuery("SELECT count(*) FROM app.ingest_registry WHERE user_id = :u AND business_date = :d AND record_type = :t AND status IN ('accepted','voided','rejected','quarantined')")
                 .bind("u", userId).bind("d", date).bind("t", type).mapTo(Long::class.java).one()
             have >= want

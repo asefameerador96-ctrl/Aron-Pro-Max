@@ -405,7 +405,15 @@ class IngestService(
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
-                DayStates.afterStored(h, r.type, env, payload, ctx.up, ctx.now, routeDays, ctx.touched)
+                // Day states follow the record but never decide its outcome: a failure here is logged, the record stays stored.
+                h.savepoint("day_${r.index}")
+                try {
+                    DayStates.afterStored(h, r.type, env, payload, ctx.up, ctx.now, routeDays, ctx.touched)
+                    h.release("day_${r.index}")
+                } catch (e: Exception) {
+                    h.rollbackToSavepoint("day_${r.index}")
+                    log.error("day state update failed client_uuid=${r.clientUuid} type=${r.type}", e)
+                }
                 hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)

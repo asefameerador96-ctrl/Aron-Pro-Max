@@ -16,7 +16,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Route-day planning job (F-SYS-056, docs/24 s4.9, D24-26): from 00:05 Asia/Dhaka, one `route_day` per route held on
- * that business date (an assignment, primary or cover), `planned` by its visit kind and days (the effective
+ * that business date (an assignment, primary or cover, valid on the date: an assignment whose end is scheduled
+ * (`ended_at` set, `valid_to` later) still holds the route until `valid_to`, as in the bundle planner), `planned` by its visit kind and days (the effective
  * `route_planned` row, else the route's own) and the calendar (scoped holidays and make-up days, weekend), the same rules
  * as the bundle's planner (`DayPlan`). The job never fixes the target: `target_outlets` is frozen by the first bundle of
  * the day (s12.4). Idempotent and safe on several worker replicas: a row that exists (the job ran, or a bundle came
@@ -51,16 +52,16 @@ class RouteDayPlanningJob(
                        COALESCE(CASE WHEN p.id IS NOT NULL THEN p.visit_days_mask ELSE r.visit_days_mask END, 0) AS mask,
                        p.id IS NOT NULL AS override,
                        z.id AS zone, t.id AS territory, d.id AS division, d.wing_id AS wing,
-                       (SELECT a.user_id FROM app.route_assignment a WHERE a.route_id = r.id AND a.kind = 'primary' AND a.ended_at IS NULL
+                       (SELECT a.user_id FROM app.route_assignment a WHERE a.route_id = r.id AND a.kind = 'primary'
                           AND a.valid_from <= :d AND (a.valid_to IS NULL OR a.valid_to > :d) ORDER BY a.valid_from DESC, a.id DESC LIMIT 1) AS primary_user,
-                       (SELECT a.user_id FROM app.route_assignment a WHERE a.route_id = r.id AND a.kind = 'cover' AND a.ended_at IS NULL
+                       (SELECT a.user_id FROM app.route_assignment a WHERE a.route_id = r.id AND a.kind = 'cover'
                           AND a.valid_from <= :d AND (a.valid_to IS NULL OR a.valid_to > :d) ORDER BY a.valid_from DESC, a.id DESC LIMIT 1) AS cover_user
                 FROM app.route r
                 JOIN app.zone z ON z.id = r.zone_id
                 JOIN app.territory t ON t.id = z.territory_id
                 JOIN app.division d ON d.id = t.division_id
                 LEFT JOIN app.route_planned p ON p.route_id = r.id AND p.valid_from <= :d AND (p.valid_to IS NULL OR p.valid_to > :d)
-                WHERE EXISTS (SELECT 1 FROM app.route_assignment a WHERE a.route_id = r.id AND a.ended_at IS NULL
+                WHERE EXISTS (SELECT 1 FROM app.route_assignment a WHERE a.route_id = r.id
                               AND a.valid_from <= :d AND (a.valid_to IS NULL OR a.valid_to > :d))
                   AND NOT EXISTS (SELECT 1 FROM app.route_day rd WHERE rd.route_id = r.id AND rd.business_date = :d)
                   ${if (routeIds == null) "" else "AND r.id = ANY(CAST(:only AS bigint[]))"}
@@ -101,10 +102,12 @@ class RouteDayPlanningJob(
         val now = clock.now()
         val due = h.createQuery(
             """
-            SELECT route_id, business_date, COALESCE(acting_user_id, assigned_user_id) FROM app.route_day
-            WHERE submit_received_at IS NOT NULL AND sales_submitted_at IS NULL AND NOT submit_voided AND settle_deadline_at <= :now
-              AND COALESCE(acting_user_id, assigned_user_id) IS NOT NULL
-            ORDER BY settle_deadline_at LIMIT 500 FOR UPDATE SKIP LOCKED
+            SELECT rd.route_id, rd.business_date, e.user_id FROM app.route_day rd
+            -- the submitter's own rows settle it (a cover may submit a route whose primary also holds it)
+            JOIN LATERAL (SELECT user_id FROM app.route_day_event WHERE kind = 'day_submit' AND scope = 'route_day' AND route_id = rd.route_id
+                          AND business_date = rd.business_date AND voided_at IS NULL ORDER BY submit_cycle DESC, id DESC LIMIT 1) e ON true
+            WHERE rd.submit_received_at IS NOT NULL AND rd.sales_submitted_at IS NULL AND NOT rd.submit_voided AND rd.settle_deadline_at <= :now
+            ORDER BY rd.settle_deadline_at LIMIT 500 FOR UPDATE OF rd SKIP LOCKED
             """.trimIndent(),
         ).bind("now", java.time.OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC))
             .map { rs, _ -> Triple(rs.getLong(1), rs.getObject(2, LocalDate::class.java), rs.getLong(3)) }.list()

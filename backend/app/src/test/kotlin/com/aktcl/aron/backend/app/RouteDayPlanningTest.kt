@@ -49,13 +49,13 @@ class RouteDayPlanningTest {
     private fun count(sql: String): Long = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery(sql).mapTo(Long::class.java).one() }
 
     private val heldOn = { d: String ->
-        "SELECT count(DISTINCT route_id) FROM app.route_assignment WHERE ended_at IS NULL AND valid_from <= DATE '$d' AND (valid_to IS NULL OR valid_to > DATE '$d')"
+        "SELECT count(DISTINCT route_id) FROM app.route_assignment WHERE valid_from <= DATE '$d' AND (valid_to IS NULL OR valid_to > DATE '$d')"
     }
 
     /** route_day.planned agrees with the bundle planner for every holder of the date. */
     private fun assertSameAsPlanner(date: LocalDate) {
         val holders = fresh.db.jdbi.withHandle<List<Long>, Exception> { h ->
-            h.createQuery("SELECT DISTINCT user_id FROM app.route_assignment WHERE ended_at IS NULL AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
+            h.createQuery("SELECT DISTINCT user_id FROM app.route_assignment WHERE valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
                 .bind("d", date).mapTo(Long::class.java).list()
         }
         assertTrue(holders.isNotEmpty())

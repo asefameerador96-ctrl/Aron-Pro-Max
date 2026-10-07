@@ -29,3 +29,4 @@ F-SYS-003/F-API-003-FIX,S,2026-10-07T09:20Z,2026-10-07T09:30Z,10,"2 found (409 E
 F-API-031,S,2026-10-07T08:50Z,2026-10-07T09:05Z,15,"checker running",""
 F-SYS-056,M,2026-10-07T09:05Z,2026-10-07T09:20Z,15,"checker pending",""
 F-SYS-016,M,2026-10-07T09:35Z,2026-10-07T10:05Z,30,"own test found day_submit refused (map shape); fixed; checker running",""
+F-SYS-056/F-SYS-016-FIX,S,2026-10-07T10:20Z,2026-10-07T10:35Z,15,"4 found (scheduled assignment end, Long counts, cover check-in, submitter rows); fixed",""
