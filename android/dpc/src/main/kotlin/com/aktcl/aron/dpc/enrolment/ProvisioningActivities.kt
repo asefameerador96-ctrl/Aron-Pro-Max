@@ -38,7 +38,7 @@ fun acceptProvisioningExtras(context: android.content.Context, intent: Intent?):
     val extras = EnrolmentExtras.parse({ bundle.getString(it) }, context.packageName) ?: return false
     // Without an installed coordinator, the same store and the same same-token rule apply; a replaced pending key is
     // cleared by the coordinator's next successful enrolment (deleteAllExcept).
-    Enrolment.coordinator(context)?.accept(extras)
+    Enrolment.coordinator(context)?.let { it.accept(extras); Enrolment.accepted() }
         ?: Enrolment.pendingStore(context).acceptPending(extras) { java.util.UUID.randomUUID().toString() }
     return true
 }
@@ -46,8 +46,11 @@ fun acceptProvisioningExtras(context: android.content.Context, intent: Intent?):
 /** Process-wide wiring: the app installs its coordinator (transport, keys, facts) at start. */
 object Enrolment {
     @Volatile private var installed: EnrolmentCoordinator? = null
+    @Volatile private var onAccepted: () -> Unit = {}
 
-    fun install(coordinator: EnrolmentCoordinator) { installed = coordinator }
+    /** [accepted] runs after the provisioning extras are stored (the app starts the enrolment in the same process). */
+    fun install(coordinator: EnrolmentCoordinator, accepted: () -> Unit = {}) { installed = coordinator; onAccepted = accepted }
+    fun accepted() { runCatching(onAccepted) }
     fun coordinator(context: android.content.Context): EnrolmentCoordinator? = installed
     fun pendingStore(context: android.content.Context) = EnrolmentStore(java.io.File(context.applicationContext.noBackupFilesDir, "dpc"))
 }
