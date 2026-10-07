@@ -11,23 +11,27 @@ cd "$(dirname "$0")/../.."
 IMAGE="semgrep/semgrep:1.179.0@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b"
 base="${1:-}"
 rules=(--config p/kotlin --config p/typescript --config p/react --config p/nextjs --config p/github-actions --config p/dockerfile)
-out="$(mktemp)"; trap 'rm -f "$out"' EXIT
+# A dedicated folder for the report: the container runs as root, so the file it writes is root-owned; it is read in
+# place (mode 0644), never moved, and the runner may still delete it because it owns the folder.
+outdir="$(mktemp -d)"; chmod 0777 "$outdir"; trap 'rm -rf "$outdir"' EXIT
+out="$outdir/semgrep.json"
 args=(scan "${rules[@]}" --metrics=off --disable-version-check --severity ERROR --severity WARNING --json --output /out/semgrep.json)
 [ -n "$base" ] && args+=(--baseline-commit "$base" --error)
 set +e
 # The runner owns the checkout, the container runs as root: mark it safe for git (baseline mode reads history).
 # shellcheck disable=SC2086 # SEMGREP_DOCKER_ARGS is a list of options on purpose
-docker run --rm ${SEMGREP_DOCKER_ARGS:-} -v "$PWD:/src" -v "$(dirname "$out"):/out" -w /src \
+docker run --rm ${SEMGREP_DOCKER_ARGS:-} -v "$PWD:/src" -v "$outdir:/out" -w /src \
   -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/src \
   "$IMAGE" semgrep "${args[@]}"
 rc=$?
 set -e
-mv "$(dirname "$out")/semgrep.json" "$out" 2>/dev/null || true
 python3 - "$out" "${base:+new}" <<'PY'
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
-except Exception:
+except Exception as e:
+    # No report: the step's exit code below still fails a baseline run; say why there is no list.
+    print(f"::warning::no semgrep report to list ({e})")
     sys.exit(0)
 kind = "error" if len(sys.argv) > 2 and sys.argv[2] == "new" else "warning"
 for r in d.get("results", []):

@@ -544,10 +544,13 @@ class BatchAcceptanceTest {
         val first = saleFamily().let { f -> listOf(f[0], JsonObject(f[4] + ("payload" to JsonObject(f[4]["payload"]!!.jsonObject + mapOf("outcome_code" to JsonPrimitive("zero_sale_stock_ok"), "is_zero_sale" to JsonPrimitive(true)))))) }
         assertEquals(listOf("accepted", "accepted"), statuses(json(client.send(token, batch(first)).bodyAsText())))
         assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(saleFamily())).bodyAsText())), "the same outlet again the same day")
+        // Every visit kind is storable; an SR phone books sr_call only (the others are AMO, TSO or web kinds, F-SYS-078).
         val kinds = listOf("sr_call", "amo_control_call", "amo_joint_call", "tso_visit", "web_entry")
+        val check = fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT string_agg(pg_get_constraintdef(oid), ' ') FROM pg_constraint WHERE conrelid = 'app.visit'::regclass AND pg_get_constraintdef(oid) LIKE '%visit_kind%'").mapTo(String::class.java).one() }
+        kinds.forEach { assertTrue("'$it'" in check, "visit_kind $it is storable: $check") }
         val visits = kinds.map { k -> saleFamily().first().let { v -> JsonObject(v + ("payload" to JsonObject(v["payload"]!!.jsonObject + ("visit_kind" to JsonPrimitive(k))))) } }
-        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(visits)).bodyAsText())))
-        assertEquals(5, count("SELECT count(DISTINCT visit_kind) FROM app.visit WHERE client_uuid IN (${visits.joinToString { "'" + it["client_uuid"]!!.jsonPrimitive.content + "'" }})"))
+        assertEquals(listOf("accepted", "quarantined", "quarantined", "quarantined", "quarantined"), statuses(json(client.send(token, batch(visits)).bodyAsText())))
+        assertEquals(1, count("SELECT count(*) FROM app.visit WHERE visit_kind = 'sr_call' AND client_uuid = '${visits[0]["client_uuid"]!!.jsonPrimitive.content}'"))
     }
 
     private fun JsonPrimitive.contentOrNull(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content

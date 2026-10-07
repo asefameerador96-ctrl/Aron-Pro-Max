@@ -121,7 +121,7 @@ jobs:
     name: Repository gates (secrets, migrations, contract)
     needs: changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       BEFORE: ${{ needs.changes.outputs.base }}
       INTEGRATION_BRANCH: claude/wonderful-thompson-k6ejnf
@@ -205,7 +205,10 @@ jobs:
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet --user pyyaml==6.0.2
           python3 tools/slice-contract.py --check
       - name: Lint contract/openapi.yaml (Redocly, 0 errors and 0 warnings)
-        run: npx --yes @redocly/cli@2 lint contract/openapi.yaml --config contract/redocly.yaml
+        # Exact version, no install scripts (AUD-SEC-05); a new version is a reviewed change here.
+        env:
+          npm_config_ignore_scripts: "true"
+        run: npx --yes @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml
 
   jvm:
     name: Shared, db and backend (build and tests)
