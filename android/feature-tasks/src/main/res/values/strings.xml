@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tsk_title">Task delegation</string>
+    <string name="tsk_empty">Your AMO has not assigned any task.</string>
+    <string name="tsk_synced_at">Synced at %1$s</string>
+    <string name="tsk_never_synced">Not synced yet</string>
+    <string name="tsk_status_ongoing">Ongoing</string>
+    <string name="tsk_status_completed">Completed</string>
+    <string name="tsk_due">Due %1$s</string>
+    <string name="tsk_outlet">Outlet: %1$s</string>
+    <string name="tsk_resolve">Resolve</string>
+    <string name="tsk_swipe_hint">Swipe a task to resolve it.</string>
+    <string name="tsk_badge_open">%1$s open</string>
+</resources>

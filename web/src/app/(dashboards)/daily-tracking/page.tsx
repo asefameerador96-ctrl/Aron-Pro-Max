@@ -9,13 +9,16 @@ import { businessDate, formatBusinessDate, problemMessage, t } from "@/lib/i18n"
 
 
 // Daily Tracking Dashboard (F-WEB-038): route buckets (100, 90-100, 80-90, below 80), the exception bucket distinct from not logged in,
-// and a yesterday comparator. The contract has no same-time comparator yet (docs/requests/web-dashboard-contract-gaps.md, item 1), so the
-// comparator is the previous business day's figures and the page says so. From 17:00 Dhaka each route can take action.
+// and the same-time-yesterday comparator from the server (contract v1.2); when it is null the previous business day's figures are shown
+// and the page says so. From 17:00 Dhaka each route can take action.
 export default async function DailyTrackingPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const [sp, locale, session] = await Promise.all([searchParams, getLocale(), requireSession()]);
   const today = businessDate();
   const date = isCalendarDate(sp.date) ? sp.date : today;
-  const [cur, prev] = await Promise.all([getDailyTracking(session.at, date), getDailyTracking(session.at, previousDate(date))]);
+  const cur = await getDailyTracking(session.at, date);
+  // The same-time comparator comes from the server (v1.2); only when it is missing or null do we fall back to the full previous day.
+  const cmp = cur.ok ? cur.data.comparator : null;
+  const prev = cur.ok && !cmp ? await getDailyTracking(session.at, previousDate(date)) : null;
   const canAct = canTakeAction(date, today);
   return (
     <div className="space-y-4" data-testid="daily-tracking">
@@ -31,10 +34,12 @@ export default async function DailyTrackingPage({ searchParams }: { searchParams
       {cur.ok ? (
         <>
           <TileMeta locale={locale} businessDate={cur.data.business_date} asOf={cur.data.as_of} today={today} />
-          <BucketCards locale={locale} items={cur.data.items} compare={prev.ok ? countBuckets(prev.data.items) : null} compareLabel={t(locale, "tracking.previous_day", { date: formatBusinessDate(locale, previousDate(date)) })} />
-          <p className="text-xs text-slate-600" data-testid="comparator-note">
-            {t(locale, "tracking.comparator_note")}
-          </p>
+          <BucketCards locale={locale} items={cur.data.items} compare={cmp ? cmp.buckets : prev?.ok ? countBuckets(prev.data.items) : null} compareLabel={cmp ? t(locale, "tracking.same_time_yesterday", { date: formatBusinessDate(locale, cmp.business_date), time: cmp.as_of_time }) : t(locale, "tracking.previous_day", { date: formatBusinessDate(locale, previousDate(date)) })} />
+          {cmp ? null : (
+            <p className="text-xs text-slate-600" data-testid="comparator-note">
+              {t(locale, "tracking.comparator_note")}
+            </p>
+          )}
           <p className="text-sm" data-testid="take-action-state">
             {canAct ? t(locale, "tracking.action_open") : t(locale, "tracking.action_after")}
           </p>

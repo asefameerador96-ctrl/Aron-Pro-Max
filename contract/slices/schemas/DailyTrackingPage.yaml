@@ -19,3 +19,48 @@ DailyTrackingPage:
       oneOf:
       - $ref: '#/components/schemas/PageCursor'
       - type: 'null'
+    comparator:
+      description: Same-time-yesterday comparator (F-WEB-038). Route counts per `bucket` of the previous business
+        day at the same Asia/Dhaka clock time as `as_of`.
+      oneOf:
+      - type: object
+        required:
+        - business_date
+        - as_of_time
+        - buckets
+        additionalProperties: false
+        properties:
+          business_date:
+            $ref: '#/components/schemas/BusinessDate'
+          as_of_time:
+            $ref: '#/components/schemas/TimeOfDay'
+          buckets:
+            type: object
+            required:
+            - ge_100
+            - from_90
+            - from_80
+            - below_80
+            - exception
+            - not_logged_in
+            additionalProperties: false
+            properties:
+              ge_100:
+                type: integer
+                minimum: 0
+              from_90:
+                type: integer
+                minimum: 0
+              from_80:
+                type: integer
+                minimum: 0
+              below_80:
+                type: integer
+                minimum: 0
+              exception:
+                type: integer
+                minimum: 0
+              not_logged_in:
+                type: integer
+                minimum: 0
+      - type: 'null'

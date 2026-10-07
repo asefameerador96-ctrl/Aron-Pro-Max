@@ -3,8 +3,10 @@ package com.aktcl.aron.backend.sync
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
+import com.aktcl.aron.backend.platform.IngestRecord
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ReachResolver
+import com.aktcl.aron.backend.platform.RecordHandlers
 import com.aktcl.aron.backend.platform.ResponseJson
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.wire
@@ -67,6 +69,8 @@ class IngestService(
     private val reach: ReachResolver,
     private val clock: AronClock = AronClock.SYSTEM,
     private val generation: () -> String = { com.aktcl.aron.backend.platform.NIL_GENERATION },
+    /** Type-specific rules and side effects registered by other modules (the ingest extension point). */
+    private val handlers: RecordHandlers = RecordHandlers.NONE,
 ) {
     private val log = LoggerFactory.getLogger("aron.sync.ingest")
 
@@ -81,7 +85,7 @@ class IngestService(
 
     /** One record as received, with what the batch fingerprint and the registry need. */
     private class Rec(val index: Int, val json: JsonObject) {
-        val clientUuid: String = (json["client_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
+        val clientUuid: String = uuidKey(json)
         val type: String = (json["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
         val family: String = (json["family_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: clientUuid
         /** Set when the record cannot be canonicalised (a number outside the double range): a per-record schema error. */
@@ -99,6 +103,8 @@ class IngestService(
         val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
         /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
         var arith: Map<String, String> = emptyMap()
+        /** Memo content fingerprints of the current segment (s4.5: same outlet, lines and minute). */
+        var memoFps: Map<String, ByteArray> = emptyMap()
     }
 
     fun ingest(up: Uploader, req: SyncBatchRequest): SyncBatchResponse {
@@ -118,7 +124,8 @@ class IngestService(
             var j = i
             while (j + 1 < recs.size && recs[j + 1].family == recs[i].family) j++
             val family = recs.subList(i, j + 1)
-            ctx.arith = MemoChecks.familyMismatches(family.map { it.json })
+            ctx.arith = MemoChecks.familyMismatches(family.map { it.json }) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
+            ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
             try {
                 db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
             } catch (e: Exception) {
@@ -137,8 +144,8 @@ class IngestService(
             )
         }
         val response = db.jdbi.withHandle<SyncBatchResponse, Exception> { h ->
-            val dates = (recs.mapNotNull { r -> (r.json["business_date"] as? JsonPrimitive)?.content?.let { runCatching { LocalDate.parse(it) }.getOrNull() } } + ctx.today)
-                .distinct().sortedDescending().take(10)
+            val dates = ((recs.mapNotNull { r -> (r.json["business_date"] as? JsonPrimitive)?.content?.let { runCatching { LocalDate.parse(it) }.getOrNull() } } + ctx.today)
+                .filter { it != ctx.today }.distinct().sortedDescending().take(9) + ctx.today).distinct()
             SyncBatchResponse(
                 batch_uuid = req.batch_uuid, replayed = false, received_at = now.wire(), acks = acks,
                 summary = AckSummary(acks.count { it.status == "accepted" }, acks.count { it.status == "duplicate" }, acks.count { it.status == "rejected" }, acks.count { it.status == "quarantined" }),
@@ -196,7 +203,7 @@ class IngestService(
             val old = ResponseJson.decodeFromString(SyncBatchResponse.serializer(), gunzip(stored).decodeToString())
             // The fingerprint is order-free (s3.3); the acks follow this request's order (s4.5).
             val byUuid = old.acks.groupBy { it.client_uuid }.mapValues { it.value.toMutableList() }
-            val acks = req.records.map { rec -> byUuid[(rec["client_uuid"] as? JsonPrimitive)?.content ?: ""]?.removeFirstOrNull() ?: error("replay ack missing") }
+            val acks = req.records.map { rec -> byUuid[uuidKey(rec)]?.removeFirstOrNull() ?: error("replay ack missing") }
             old.copy(replayed = true, acks = acks)
         }
 
@@ -312,8 +319,10 @@ class IngestService(
 
         // 7. Content fingerprint (F-SYS-055): a header re-sent under regenerated uuids is the same content; the first
         // copy stands and the second is quarantined content_duplicate, never stored twice.
-        val contentFp = if (rule.signedHeader) contentFingerprint(r) else null
+        val contentFp = ctx.memoFps[r.clientUuid] ?: if (rule.signedHeader) contentFingerprint(r) else null
         if (contentFp != null) {
+            // Serialise re-mints carrying the same content under different uuids (the uuid lock does not cover them).
+            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 2))", "cfp:" + contentFp.joinToString("") { "%02x".format(it) })
             val twin = h.createQuery(
                 "SELECT client_uuid::text FROM app.ingest_registry WHERE user_id = :u AND record_type = :t AND content_fp = :fp AND client_uuid <> CAST(:c AS uuid) AND status IN ('accepted','voided') LIMIT 1",
             ).bind("u", ctx.up.userId).bind("t", r.type).bind("fp", contentFp).bind("c", r.clientUuid).mapTo(String::class.java).findOne().orElse(null)
@@ -340,8 +349,11 @@ class IngestService(
                     ?.let { (PARENT_TYPES[field] ?: t) to it }
             }
             if (found == null) {
-                if (reg?.get(2) == "quarantined" && reg[3] == RecordOutcomeCode.CONTENT_DUPLICATE.wire) {
-                    return quarantine(h, ctx, r, bd, RecordOutcomeCode.CONTENT_DUPLICATE, "parent $parent is a content duplicate")
+                // The child of a quarantined parent is held with it (same code), so a review that accepts the parent
+                // finds its children; parking it would let the phone give up on it.
+                if (reg?.get(2) == "quarantined") {
+                    val code = code(reg[3]) ?: RecordOutcomeCode.PAYLOAD_CONFLICT
+                    return quarantine(h, ctx, r, bd, code, "parent $parent is quarantined (${reg[3]})")
                 }
                 return park(h, ctx, r, RecordOutcomeCode.PARENT_MISSING, "$field $parent")
             }
@@ -354,23 +366,35 @@ class IngestService(
             }
         }
 
-        // 10. Store.
+        // 10. Registered handlers' own checks, then store.
+        val hs = handlers.forType(r.type)
+        val ingestRec = if (hs.isEmpty()) null else IngestRecord(
+            r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now,
+        )
+        for (hd in hs) {
+            val refusal = hd.check(h, ingestRec!!) ?: continue
+            return refuse(h, ctx, r, bd, refusal.code, refusal.detail)
+        }
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp)
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
+                hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)
             }
             is RecordWriter.Result.AlreadyThere -> { register(h, ctx, r, bd, "accepted", null, stored.serverId); Outcome.duplicate(stored.serverId) }
-            is RecordWriter.Result.Refused -> {
-                if (stored.code.status.wire == "quarantined") quarantine(h, ctx, r, bd, stored.code, stored.detail)
-                else if (stored.code.retryable == true) park(h, ctx, r, stored.code, stored.detail)
-                else finalReject(h, ctx, r, stored.code, stored.detail)
-            }
+            is RecordWriter.Result.Refused -> refuse(h, ctx, r, bd, stored.code, stored.detail)
         }
+    }
+
+    /** A refusal by the writer or a handler: the outcome code's status decides quarantine, park or final reject. */
+    private fun refuse(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String): Outcome = when {
+        code.status.wire == "quarantined" -> quarantine(h, ctx, r, bd, code, detail)
+        code.retryable == true -> park(h, ctx, r, code, detail)
+        else -> finalReject(h, ctx, r, code, detail)
     }
 
     /**
@@ -389,7 +413,10 @@ class IngestService(
 
     /** GEO_OUT_OF_BOUNDS (s11.4): a fix outside the Bangladesh box raises a signal; the record itself is stored. */
     private fun outOfBounds(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
-        val fix = payload["fix"] as? JsonObject ?: return
+        for (slot in listOf("fix", "edit_fix")) (payload[slot] as? JsonObject)?.let { outOfBoundsFix(h, ctx, r, rule, it, bd, routeId) }
+    }
+
+    private fun outOfBoundsFix(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, fix: JsonObject, bd: LocalDate, routeId: Long?) {
         val lat = (fix["lat"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: return
         val lng = (fix["lng"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: return
         if (lat in 20.5..26.7 && lng in 88.0..92.7) return
@@ -478,7 +505,7 @@ class IngestService(
                 parked_until = COALESCE(app.sync_rejected.parked_until, EXCLUDED.parked_until)
             """.trimIndent(),
         ).bind("c", r.clientUuid).bind("t", r.type.take(40).ifEmpty { "unknown" }).bind("code", code.wire).bind("retry", retryable).bind("h", r.hash)
-            .bind("p", r.json.toString()).bind("detail", detail?.take(1000)).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
+            .bind("p", storable(r.json)).bind("detail", detail?.take(1000)).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId)
             .bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid).bind("now", ts(ctx.now))
             .bind("until", if (retryable) ts(ctx.now.plusSeconds(ctx.parkedTtlDays * 86_400)) else null).execute()
     }
@@ -506,7 +533,7 @@ class IngestService(
             VALUES (CAST(:c AS uuid), :t, :code, :h, CAST(:p AS jsonb), :detail, :u, :d, :route, :bd, CAST(:b AS uuid), :now)
             ON CONFLICT (client_uuid, payload_sha256) DO NOTHING
             """.trimIndent(),
-        ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", r.json.toString()).bind("detail", detail?.take(1000))
+        ).bind("c", r.clientUuid).bind("t", r.type).bind("code", code.wire).bind("h", r.hash).bind("p", storable(r.json)).bind("detail", detail?.take(1000))
             .bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("route", r.json.long("route_id")).bind("bd", bd).bind("b", ctx.batchUuid)
             .bind("now", ts(ctx.now)).execute()
         if (register) register(h, ctx, r, bd, "quarantined", code, null, contentFp)
@@ -534,6 +561,7 @@ class IngestService(
             if (v != null && v !is JsonNull && (v !is JsonPrimitive || v.isString || (v.longOrNull ?: 0) < 1)) return "$k must be a positive integer"
         }
         r.canonError?.let { return it }
+        if (NUL in r.json.toString()) return "a string holds a NUL character"
         val payload = env["payload"] as? JsonObject ?: return "payload must be an object"
         for ((k, v) in payload) {
             if (v is JsonNull) continue
@@ -651,6 +679,14 @@ class IngestService(
             "memo_client_uuid" to "memo", "against_memo_client_uuid" to "memo", "supersedes_client_uuid" to "memo",
             "task_uuid" to "task", "request_uuid" to "outlet_change_request",
         )
+
+        private const val NUL = "\\u0000"
+
+        /** The client_uuid string of a record, as acks and replays key it ("" when absent or not a string). */
+        fun uuidKey(rec: JsonObject): String = (rec["client_uuid"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
+
+        /** A record as jsonb can hold it (PostgreSQL refuses NUL in text). */
+        fun storable(rec: JsonObject): String = rec.toString().replace(NUL, "\\ufffd")
 
         fun sha256(b: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(b)
         fun sha256Hex(b: ByteArray): String = sha256(b).joinToString("") { "%02x".format(it) }

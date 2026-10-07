@@ -68,6 +68,7 @@ class OtpCipher(secret: ByteArray) {
 data class DeviceOtpDto(
     val user_id: Long, val username: String, val full_name: String, val zone_id: Long?, val otp: String?, val device_model: String?,
     val created_at: String, val expires_at: String, val attempts: Int,
+    val employee_code: String? = null, val zone_code: String? = null, val zone_name: String? = null,
 )
 
 @Serializable
@@ -121,7 +122,7 @@ private fun listOtps(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpPage {
         if (zoneSel != null) where += "$USER_ZONE = :zone" else if (!national) where += "$USER_ZONE IN (<zones>)"
         if (search != null) where += "(u.username ILIKE :s OR u.full_name ILIKE :s)"
         if (cursor != null) where += "u.id > :c"
-        val sql = "SELECT u.id, u.username, u.full_name, $USER_ZONE AS zone_id, o.otp_cipher, o.device_model, o.created_at, o.expires_at, o.attempts FROM app.app_user u " +
+        val sql = "SELECT u.id, u.username, u.full_name, $USER_ZONE AS zone_id, o.otp_cipher, o.device_model, o.created_at, o.expires_at, o.attempts, u.employee_code, zz.code AS zone_code, zz.name AS zone_name FROM app.app_user u LEFT JOIN app.zone zz ON zz.id = $USER_ZONE " +
             "LEFT JOIN LATERAL (SELECT * FROM app.device_otp x WHERE x.user_id = u.id AND x.consumed_at IS NULL AND x.revoked_at IS NULL AND x.expires_at > :now AND x.attempts < :maxAtt ORDER BY x.created_at DESC LIMIT 1) o ON TRUE " +
             "WHERE ${where.joinToString(" AND ")} ORDER BY u.id LIMIT :lim"
         val query = h.createQuery(sql).bind("now", now).bind("lim", limit + 1).bind("today", today).bind("maxAtt", maxAttempts)
@@ -135,6 +136,7 @@ private fun listOtps(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpPage {
                 uid, rs.getString("username"), rs.getString("full_name"), rs.getObject("zone_id") as Long?, cipher?.let { d.cipher.open(it, uid) }, rs.getString("device_model"),
                 (rs.getObject("created_at", OffsetDateTime::class.java)?.toInstant() ?: d.clock.now()).wire(),
                 (rs.getObject("expires_at", OffsetDateTime::class.java)?.toInstant() ?: d.clock.now()).wire(), rs.getInt("attempts"),
+                rs.getString("employee_code"), rs.getString("zone_code"), rs.getString("zone_name"),
             ) to uid
         }.list()
         // One aggregated audit event per page view; the OTP values themselves are never logged.
@@ -164,8 +166,8 @@ internal fun issueOtp(h: Handle, d: DeviceOtpDeps, p: com.aktcl.aron.backend.pla
     val now = d.clock.now()
     val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
     val maxAttempts = d.config.int("cfg.auth.otp_max_attempts")
-        val u = h.createQuery("SELECT u.id, u.username, u.full_name, u.role, u.status, $USER_ZONE AS zone_id FROM app.app_user u WHERE u.id = :u FOR UPDATE OF u").bind("u", req.user_id).bind("today", today)
-            .map { rs, _ -> arrayOf<Any?>(rs.getString("username"), rs.getString("full_name"), rs.getString("role"), rs.getString("status"), rs.getObject("zone_id") as Long?) }.findOne().orElse(null)
+        val u = h.createQuery("SELECT u.id, u.username, u.full_name, u.role, u.status, $USER_ZONE AS zone_id, u.employee_code, (SELECT code FROM app.zone WHERE id = $USER_ZONE) AS zone_code, (SELECT name FROM app.zone WHERE id = $USER_ZONE) AS zone_name FROM app.app_user u WHERE u.id = :u FOR UPDATE OF u").bind("u", req.user_id).bind("today", today)
+            .map { rs, _ -> arrayOf<Any?>(rs.getString("username"), rs.getString("full_name"), rs.getString("role"), rs.getString("status"), rs.getObject("zone_id") as Long?, rs.getString("employee_code"), rs.getString("zone_code"), rs.getString("zone_name")) }.findOne().orElse(null)
         // An unknown user and one outside the caller's reach are the same answer (no existence leak).
         if (u == null || (!national && (u[4] as Long?) !in zones)) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "user outside your reach")
         if (u[2] !in setOf("SR", "AMO") || u[3] != "active") throw ApiProblem(ProblemCode.ERR_VALIDATION, "device OTPs are issued to active SR and AMO users", errors = listOf(FieldError("body.user_id", "not_a_field_user")))
@@ -186,8 +188,8 @@ internal fun issueOtp(h: Handle, d: DeviceOtpDeps, p: com.aktcl.aron.backend.pla
             .bind("u", req.user_id).bind("c", d.cipher.seal(otp, req.user_id)).bind("h", d.cipher.mac(otp, req.user_id))
             .bind("by", p.userId).bind("r", req.reason.trim()).bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("exp", OffsetDateTime.ofInstant(expires, ZoneOffset.UTC)).execute()
         AuditWriter.write(h, p, "device_otp", req.user_id.toString(), "issue", null, buildJsonObject { put("expires_at", expires.wire()) }, req.reason, requestId)
-    return DeviceOtpDto(req.user_id, u[0] as String, u[1] as String, u[4] as Long?, otp, null, now.wire(), expires.wire(), 0)
+    return DeviceOtpDto(req.user_id, u[0] as String, u[1] as String, u[4] as Long?, otp, null, now.wire(), expires.wire(), 0, u[5] as String?, u[6] as String?, u[7] as String?)
 }
 
 private fun dto(userId: Long, u: Array<Any?>, cipher: ByteArray, model: String?, created: OffsetDateTime, expires: OffsetDateTime, attempts: Int, d: DeviceOtpDeps) =
-    DeviceOtpDto(userId, u[0] as String, u[1] as String, u[4] as Long?, d.cipher.open(cipher, userId), model, created.toInstant().wire(), expires.toInstant().wire(), attempts)
+    DeviceOtpDto(userId, u[0] as String, u[1] as String, u[4] as Long?, d.cipher.open(cipher, userId), model, created.toInstant().wire(), expires.toInstant().wire(), attempts, u[5] as String?, u[6] as String?, u[7] as String?)

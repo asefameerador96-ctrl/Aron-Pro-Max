@@ -48,7 +48,7 @@ describe("entity metadata → validation", () => {
       if (entityCanEdit(e) && !NO_REASON_MEMBER.includes(e.slug)) expect(e.reasonOnUpdate, e.slug).toBeTruthy();
       for (const a of e.actions ?? []) {
         expect(en[a.labelKey], `${e.slug}.${a.key}`).toBeTruthy();
-        expect(e.api.get || a.path.includes("{id}")).toBeTruthy();
+        expect(e.api.get || a.path.includes("{id}") || a.path.includes(`{${String(e.idField)}}`)).toBeTruthy();
         for (const f of a.fields) expect(en[f.labelKey]).toBeTruthy();
       }
       expect(e.group).toBeTruthy();

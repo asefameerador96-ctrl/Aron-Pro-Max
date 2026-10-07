@@ -20,10 +20,15 @@ class NoPollingLintTest {
     private val rules = listOf(
         Rule("repeating alarm", Regex("""\bset(Inexact)?Repeating\s*\(""")),
         Rule("exact-alarm permission", Regex("""(SCHEDULE|USE)_EXACT_ALARM""")),
-        Rule("alarm", Regex("""\bAlarmManager\b"""), allowedIn = listOf("dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/")),
-        Rule("timer", Regex("""\bjava\.util\.Timer\b|\bTimer\s*\(|\bTimerTask\b""")),
+        Rule("alarm", Regex("""\bAlarmManager\b|\bALARM_SERVICE\b"""), allowedIn = listOf("dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/")),
+        Rule("timer", Regex("""\bjava\.util\.Timer\b|\bTimer\s*\(|\bTimerTask\b|\bticker\s*\(|\bfixedRateTimer\s*\(|\btimer\s*\(|\bCountDownTimer\b""")),
         Rule("scheduled executor", Regex("""scheduleAtFixedRate|scheduleWithFixedDelay|ScheduledExecutorService|newScheduledThreadPool""")),
-        Rule("foreground service", Regex("""\bstartForeground\s*\(|FOREGROUND_SERVICE|foregroundServiceType"""), allowedIn = listOf("core-printing/")),
+        Rule("delayed handler post", Regex("""\bpostDelayed\s*\(|\bsendMessageDelayed\s*\(""")),
+        Rule(
+            "foreground service",
+            Regex("""\bstartForeground\s*\(|\bstartForegroundService\s*\(|\bsetForeground(Async)?\s*\(|FOREGROUND_SERVICE|foregroundServiceType"""),
+            allowedIn = listOf("core-printing/"),
+        ),
     )
 
     private fun sources(): List<File> = androidRoot.listFiles().orEmpty().filter { File(it, "src/main").isDirectory }
@@ -34,20 +39,112 @@ class NoPollingLintTest {
     fun violations(files: List<Pair<String, String>>): List<String> {
         val out = ArrayList<String>()
         for ((path, text) in files) {
-            val code = text.lines().filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }.joinToString("\n")
+            val code = if (path.endsWith(".kt")) stripKotlin(text) else text.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
             for (r in rules) if (r.pattern.containsMatchIn(code) && r.allowedIn.none { path.startsWith(it) }) out += "$path: ${r.name}"
-            Regex("""PeriodicWorkRequestBuilder<[^>]+>\(\s*(\d+)L?\s*,\s*TimeUnit\.(SECONDS|MINUTES)""").findAll(code).forEach { m ->
-                val minutes = if (m.groupValues[2] == "SECONDS") m.groupValues[1].toLong() / 60 else m.groupValues[1].toLong()
-                if (minutes < 15) out += "$path: periodic work under 15 min"
+            // A periodic request must say its interval as a literal of at least 15 minutes, so a reviewer can see it.
+            Regex("""PeriodicWorkRequestBuilder<[^>]*>\s*\(|PeriodicWorkRequest\.Builder\s*\(""").findAll(code).forEach { m ->
+                val args = code.substring(m.range.last + 1).take(160)
+                if (!periodicAtLeast15(args)) out += "$path: periodic work not a literal of at least 15 min"
             }
             if (!path.startsWith("core-printing/")) {
-                Regex("""while\s*\(\s*(true|isActive)\s*\)\s*\{""").findAll(code).forEach { m ->
-                    val body = block(code, m.range.last)
-                    if (Regex("""\bdelay\s*\(|\bThread\.sleep\s*\(""").containsMatchIn(body)) out += "$path: polling loop"
+                for (open in loopBodies(code)) {
+                    val body = block(code, open)
+                    if (Regex("""\bdelay\s*\(|\bThread\.sleep\s*\(""").containsMatchIn(body)) { out += "$path: polling loop"; break }
                 }
             }
         }
         return out
+    }
+
+    private fun periodicAtLeast15(args: String): Boolean {
+        Regex("""^\s*(?:[A-Za-z_][\w.]*::class\.java\s*,\s*)?(\d+)L?\s*,\s*TimeUnit\.(MINUTES|HOURS|DAYS)""").find(args)?.let { m ->
+            val n = m.groupValues[1].toLong()
+            return if (m.groupValues[2] == "MINUTES") n >= 15 else n >= 1
+        }
+        Regex("""^\s*(?:[A-Za-z_][\w.]*::class\.java\s*,\s*)?Duration\.of(Minutes|Hours|Days)\s*\(\s*(\d+)L?\s*\)""").find(args)?.let { m ->
+            val n = m.groupValues[2].toLong()
+            return if (m.groupValues[1] == "Minutes") n >= 15 else n >= 1
+        }
+        return false
+    }
+
+    /** Offsets of the `{` that opens each loop body: `while (...) {`, `for (...) {`, `repeat(...) {` (balanced parentheses), `do {`. */
+    private fun loopBodies(code: String): List<Int> {
+        val out = ArrayList<Int>()
+        Regex("""\b(while|for|repeat)\s*\(""").findAll(code).forEach { m ->
+            var depth = 0
+            var i = m.range.last
+            while (i < code.length) {
+                when (code[i]) { '(' -> depth++; ')' -> if (--depth == 0) break }
+                i++
+            }
+            var j = i + 1
+            while (j < code.length && code[j].isWhitespace()) j++
+            if (j < code.length && code[j] == '{') out += j
+        }
+        Regex("""\bdo\s*\{""").findAll(code).forEach { out += it.range.last }
+        return out
+    }
+
+    /**
+     * Kotlin source with comments, string and char literals blanked out, read left to right like the compiler does, so a
+     * block-comment opener inside a string or a `'"'` cannot hide code; the code inside `${...}` templates is kept.
+     */
+    internal fun stripKotlin(text: String): String {
+        val out = StringBuilder(text.length)
+        var i = 0
+        fun template(start: Int): Int { // text[start] == '{' after '$'; copies the expression, returns the index after '}'
+            var depth = 0
+            var k = start
+            while (k < text.length) {
+                val c = text[k]
+                if (c == '{') depth++ else if (c == '}') { depth--; if (depth == 0) { out.append(' '); return k + 1 } }
+                if (depth > 0 && k > start) out.append(c)
+                k++
+            }
+            return k
+        }
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                text.startsWith("//", i) -> { while (i < text.length && text[i] != '\n') i++ }
+                text.startsWith("/*", i) -> {
+                    var depth = 0
+                    while (i < text.length) {
+                        if (text.startsWith("/*", i)) { depth++; i += 2 } else if (text.startsWith("*/", i)) { depth--; i += 2; if (depth == 0) break } else i++
+                    }
+                    out.append(' ')
+                }
+                text.startsWith("\"\"\"", i) -> {
+                    i += 3
+                    while (i < text.length && !text.startsWith("\"\"\"", i)) {
+                        if (text.startsWith("\${", i)) i = template(i + 1) else i++
+                    }
+                    i += 3
+                    out.append("\"\"")
+                }
+                c == '"' -> {
+                    i++
+                    while (i < text.length && text[i] != '"' && text[i] != '\n') {
+                        when {
+                            text[i] == '\\' -> i += 2
+                            text.startsWith("\${", i) -> i = template(i + 1)
+                            else -> i++
+                        }
+                    }
+                    i++
+                    out.append("\"\"")
+                }
+                c == '\'' -> {
+                    i++
+                    while (i < text.length && text[i] != '\'' && text[i] != '\n') i += if (text[i] == '\\') 2 else 1
+                    i++
+                    out.append("' '")
+                }
+                else -> { out.append(c); i++ }
+            }
+        }
+        return out.toString()
     }
 
     /** The text of the brace block that opens at [open]. */
@@ -83,6 +180,7 @@ class NoPollingLintTest {
             "core-printing/src/main/P.kt" to "while (true) { if (ok) break; delay(5) }",
             "dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/H.kt" to "val am: AlarmManager = x",
             "core-sync/src/main/S.kt" to "PeriodicWorkRequestBuilder<W>(15, TimeUnit.MINUTES); while (true) { i++ ; if (i > 3) break }",
+            "feature-y/src/main/T.kt" to "/* never use AlarmManager or Timer() */ val s = \"startForeground( in a string\" // postDelayed in a comment",
         )
         assertEquals(emptyList<String>(), violations(fine))
     }

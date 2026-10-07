@@ -9,7 +9,9 @@ import com.aktcl.aron.core.database.entity.PriceEntity
 import com.aktcl.aron.core.database.entity.RouteEntity
 import com.aktcl.aron.core.database.entity.SkuEntity
 import com.aktcl.aron.core.database.entity.SyncMetaEntity
+import com.aktcl.aron.core.database.entity.TaskEntity
 import com.aktcl.aron.core.database.reference.BundleReference
+import com.aktcl.aron.core.database.reference.ConfigDeltaWire
 import com.aktcl.aron.core.database.reference.ResolvedValue
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -85,6 +87,7 @@ class ReferenceRepository(private val db: AronDatabase) {
         val config = bundle.config?.let { c ->
             c.values.map { configRow(it, scheduled = false) } + c.scheduled.map { configRow(it, scheduled = true) }
         }.orEmpty()
+        val tasks = (raw?.get("tasks") as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::taskRow) }
         val sections = raw?.let(::rawSections).orEmpty().flatMap { sec ->
             chunks(sec.json).mapIndexed { i, part -> BundleSectionEntity(chunkName(sec.name, i), part) }
         }
@@ -102,6 +105,9 @@ class ReferenceRepository(private val db: AronDatabase) {
             dao.insertPrices(prices)
             dao.insertConfig(config)
             dao.insertSections(sections)
+            dao.clearTasks()
+            dao.insertTasks(tasks)
+            dao.reapplyLocalResolutions()
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_VERSION, version))
             dao.putMeta(SyncMetaEntity(KEY_BUNDLE_DATE, date))
             dao.meta(KEY_PREFETCH_DATE)?.let { if (it <= date) clearPrefetch() } // a prefetch of this day or earlier is spent
@@ -123,6 +129,34 @@ class ReferenceRepository(private val db: AronDatabase) {
         dao.putMeta(SyncMetaEntity(KEY_PREFETCH_DATE, bundle.meta.validForBusinessDate))
         putOrDelete(KEY_PREFETCH_ETAG, etag)
         ApplyResult.PREFETCH_STORED
+    }
+
+    /**
+     * Applies a config delta (docs/24 s4.10 Config delta) in one transaction: changed values and scheduled values replace
+     * those of their keys, removed keys go, outlet radius changes update the outlets, calendar changes are kept raw
+     * (`calendar_changes`), a policy change is flagged (`device_policy.refresh_needed`), and the phone's config version
+     * moves to `to_version`. A delta not newer than the stored version is ignored. Returns true when applied.
+     */
+    suspend fun applyConfigDelta(delta: ConfigDeltaWire): Boolean = db.withTransaction {
+        val current = dao.meta(KEY_CONFIG_VERSION)?.toLongOrNull()
+        if (current != null && delta.toVersion <= current) return@withTransaction false
+        for ((key, rows) in delta.values.groupBy { it.key }) {
+            dao.deleteConfig(key, scheduled = false)
+            dao.insertConfig(rows.map { configRow(it, scheduled = false) })
+        }
+        for ((key, rows) in delta.scheduled.groupBy { it.key }) {
+            dao.deleteConfig(key, scheduled = true)
+            dao.insertConfig(rows.map { configRow(it, scheduled = true) })
+        }
+        delta.removedKeys.forEach { dao.deleteConfigKey(it) }
+        delta.outletRadiusChanges.forEach { dao.updateOutletRadius(it.outletId, it.radiusM, it.maxAccuracyM) }
+        if (delta.calendarChanges.isNotEmpty()) {
+            val previous = section("calendar_changes")?.let { Json.parseToJsonElement(it) as? JsonArray }.orEmpty()
+            dao.insertSections(listOf(BundleSectionEntity("calendar_changes", JsonArray(previous + delta.calendarChanges).toString())))
+        }
+        if (delta.policyChanged) dao.putMeta(SyncMetaEntity(KEY_POLICY_REFRESH, "true"))
+        dao.putMeta(SyncMetaEntity(KEY_CONFIG_VERSION, delta.toVersion.toString()))
+        true
     }
 
     /** The stored prefetch's date and ETag (for a conditional prefetch request), or null. */
@@ -199,6 +233,8 @@ class ReferenceRepository(private val db: AronDatabase) {
         return (scheduled ?: rows.firstOrNull { !it.scheduled })?.valueJson
     }
 
+    suspend fun tasks(): List<TaskEntity> = dao.tasks()
+
     /** A raw bundle section (see [apply]), or `route.<id>` for a route's extras. */
     suspend fun section(name: String): String? {
         val first = dao.section(name) ?: return null
@@ -214,6 +250,12 @@ class ReferenceRepository(private val db: AronDatabase) {
         const val KEY_BUNDLE_ETAG = "bundle.etag"
         const val KEY_BUNDLE_CURSOR = "bundle.cursor"
         const val KEY_BUNDLE_SERVER_TIME = "bundle.server_time"
+
+        /** Set when a config delta says the device policy changed; the policy lane fetches it. */
+        const val KEY_POLICY_REFRESH = "device_policy.refresh_needed"
+
+        /** Set when the server answers 410 to a config delta: only a full bundle brings the phone up to date. */
+        const val KEY_BUNDLE_REFRESH = "bundle.refresh_needed"
         private const val KEY_PREFETCH_JSON = "prefetch.json"
         private const val KEY_PREFETCH_VERSION = "prefetch.version"
         private const val KEY_PREFETCH_DATE = "prefetch.date"
@@ -243,7 +285,7 @@ class ReferenceRepository(private val db: AronDatabase) {
         }
 
         /** Sections with tables of their own; everything else at the top level is kept raw. */
-        private val TYPED = setOf("meta", "routes", "prices", "config")
+        private val TYPED = setOf("meta", "routes", "prices", "config", "tasks")
 
         /** RouteSnapshot members stored in tables; the rest of each snapshot is kept raw as `route.<id>`. */
         private val ROUTE_TYPED = setOf("route", "outlets")
@@ -263,6 +305,16 @@ class ReferenceRepository(private val db: AronDatabase) {
             if (i <= 0) return null
             val seq = v.substring(i + 1).toLongOrNull() ?: return null
             return v.substring(0, i) to seq
+        }
+
+        private fun taskRow(o: JsonObject): TaskEntity? {
+            fun str(k: String) = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            val uuid = str("task_uuid") ?: return null
+            return TaskEntity(
+                taskUuid = uuid, taskTypeCode = str("task_type_code") ?: "", title = str("title") ?: "", description = str("description"),
+                outletId = (o["outlet_id"] as? JsonPrimitive)?.content?.toLongOrNull(), dueDate = str("due_date"),
+                status = str("status") ?: "ongoing", resolvedAt = str("resolved_at"), json = o.toString(),
+            )
         }
 
         private fun configRow(v: ResolvedValue, scheduled: Boolean) = ConfigValueEntity(

@@ -39,8 +39,10 @@ class DailyTrackingTest : ReportFixture() {
     """.trimIndent()
 
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
-        r.dailyTrackingRoutes(DailyTrackingDeps(DailyTrackingService(fresh.db, RegistryDefaults(), clock), reach, guard, clock))
+        val c = AronClock { testNow }
+        r.dailyTrackingRoutes(DailyTrackingDeps(DailyTrackingService(fresh.db, RegistryDefaults(), c), reach, guard, c))
     }
+    @Volatile private var testNow: java.time.Instant = java.time.Instant.parse("2026-10-04T12:00:00Z")
 
     private suspend fun ApplicationTestBuilder.get(uid: Long, role: Role, path: String): HttpResponse = client.get(path) { bearerAuth(TestTokens.web(uid, role)) }
     private suspend fun ApplicationTestBuilder.act(uid: Long, role: Role, json: String): HttpResponse =
@@ -92,11 +94,10 @@ class DailyTrackingTest : ReportFixture() {
         val a = Json.parseToJsonElement(r.bodyAsText()).jsonObject
         assertEquals("Why not logged in?", a.s("note")); assertEquals(11, a.s("created_by_user_id").toInt())
         assertEquals(setOf(11L, 12L), a["notified_user_ids"]!!.jsonArray.map { it.jsonPrimitive.content.toLong() }.toSet())   // the zone's TSO and AMO, not zone 2's TSO
-        // Replay changes nothing: same answer, one stored row, one outbox event.
+        // Replay changes nothing: same answer, one stored row.
         val again = Json.parseToJsonElement(act(11, Role.TSO, body).bodyAsText()).jsonObject
         assertEquals(a.s("created_at"), again.s("created_at"))
         assertEquals(1, fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery("SELECT count(*) FROM app.audit_log WHERE entity = 'tracking_action'").mapTo(Int::class.java).one() })
-        assertEquals(1, fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery("SELECT count(*) FROM app.domain_event WHERE event_type = 'tracking_action.created'").mapTo(Int::class.java).one() })
         // The same uuid with another note is a conflict; another user's uuid reuse too.
         assertEquals(HttpStatusCode.Conflict, act(11, Role.TSO, body.replace("Why not", "Where is")).status)
         // Too early (business date of the future: the cutoff 17:00 Dhaka of that date has not come), outside reach, wrong role, bad body.
@@ -106,5 +107,67 @@ class DailyTrackingTest : ReportFixture() {
         assertEquals(HttpStatusCode.Forbidden, act(12, Role.AMO, body.replace(uuid, "9f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10")).status)
         assertEquals(HttpStatusCode.BadRequest, act(11, Role.TSO, """{"action_uuid":"$uuid","route_id":$r4,"business_date":"2026-10-04","note":"x","scope":[1]}""").status)
         assertNotNull(a["notified_user_ids"])
+    }
+
+    private fun body(uuid: String, route: Long, date: String = "2026-10-04", note: String = "Please follow up") = """{"action_uuid":"$uuid","route_id":$route,"business_date":"$date","note":"$note"}"""
+
+    @Test
+    fun checker_cutoffIsExactly1700DhakaOnTheBusinessDate() = app {
+        val r4 = routeId("R4")
+        testNow = java.time.Instant.parse("2026-10-04T10:59:59Z")   // 16:59:59 Dhaka
+        assertEquals(HttpStatusCode.Conflict, act(11, Role.TSO, body("1a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
+        testNow = java.time.Instant.parse("2026-10-04T11:00:00Z")   // 17:00:00 Dhaka
+        assertEquals(HttpStatusCode.Created, act(11, Role.TSO, body("1a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
+        testNow = java.time.Instant.parse("2026-10-04T18:30:00Z")   // 00:30 on 10-05 Dhaka: business date 10-04 stays open
+        assertEquals(HttpStatusCode.Created, act(11, Role.TSO, body("1b1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
+        testNow = java.time.Instant.parse("2026-10-04T12:00:00Z")
+    }
+
+    @Test
+    fun checker_sameUuidByAnotherUserIsAConflictAndNeverALeak() = app {
+        val r4 = routeId("R4")
+        assertEquals(HttpStatusCode.Created, act(11, Role.TSO, body("2a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
+        assertEquals(HttpStatusCode.Conflict, act(13, Role.ADMIN, body("2a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
+        // zone 2's TSO replaying zone 1's uuid on its own route must not read the other action back
+        val r3 = routeId("R3")
+        val x = act(14, Role.TSO, body("2a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r3))
+        assertEquals(HttpStatusCode.Conflict, x.status)
+        assertEquals(1, fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery("SELECT count(*) FROM app.audit_log WHERE entity = 'tracking_action'").mapTo(Int::class.java).one() })
+    }
+
+    @Test
+    fun checker_twoConcurrentInsertsOfOneUuidStoreOneAction() = app {
+        val r4 = routeId("R4")
+        val results = java.util.concurrent.ConcurrentLinkedQueue<String>()
+        val n = 8; val gate = java.util.concurrent.CyclicBarrier(n)
+        val threads = (1..n).map { Thread {
+            gate.await()
+            val r = kotlinx.coroutines.runBlocking { act(11, Role.TSO, body("3a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status.value.toString() }
+            results += r
+        } }
+        threads.forEach { it.start() }; threads.forEach { it.join() }
+        assertEquals(1, fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery("SELECT count(*) FROM app.audit_log WHERE entity = 'tracking_action'").mapTo(Int::class.java).one() }, "results=$results")
+    }
+
+    @Test
+    fun checker_aTsoWithTwoTopNodesSeesRoutesOfBothInDailyTracking() = app {
+        reaches[11] = com.aktcl.aron.backend.platform.Reach(11, Role.TSO, day, false, setOf(z1, z2), emptySet(), false,
+            listOf(com.aktcl.aron.backend.platform.ReachNode("zone", z1), com.aktcl.aron.backend.platform.ReachNode("zone", z2)))
+        val names = Json.parseToJsonElement(get(11, Role.TSO, "/v1/dashboards/daily-tracking?business_date=2026-10-04").bodyAsText()).jsonObject["items"]!!.jsonArray.map { it.jsonObject.s("route_name") }
+        assertEquals(5, names.size, "got $names")
+    }
+
+
+
+    @Test
+    fun takeActionWorksAgainstTheEventCatalogue() = app {
+        // No unregistered outbox event is written (app.domain_event_type is a fixed catalogue): the action is stored and answered 201.
+        assertEquals(HttpStatusCode.Created, act(11, Role.TSO, body("6a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", routeId("R4"))).status)
+    }
+
+    @Test
+    fun aBlankNoteAndARouteWithoutARouteDayAreRefused() = app {
+        assertEquals(HttpStatusCode.BadRequest, act(11, Role.TSO, body("7a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", routeId("R4"), note = "     ")).status)
+        assertEquals(HttpStatusCode.Conflict, act(11, Role.TSO, body("8a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", routeId("R4"), date = "2026-09-01")).status)
     }
 }

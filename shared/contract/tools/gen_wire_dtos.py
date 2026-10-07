@@ -21,12 +21,24 @@ GROUPS = [
     ("Records (docs/24 s4)", ["RecordEnvelope", "GeoFix", "FixDeviceState", "GnssSummary", "DeviceGeoVerdict",
                               "AttendanceEventPayload", "StockMovementPayload", "VisitPayload", "VisitClosePayload",
                               "MemoPayload", "MemoLinePayload", "MemoDiscountPayload", "QcLinePayload"]),
+    ("Device enrolment, admin identity (contract v1.2)", ["PlayIntegrityUnavailable", "ChangePasswordRequest", "DeviceStatusReport",
+                                                          "EnrolDeviceRequest", "Me", "DeviceOtp"]),
+    ("Device policy and enrolment (docs/24 s10)", ["JwkEcPublicDevice", "DeviceInfo", "PermissionGrant", "AppControlPolicy", "BlockingSchedule",
+                                                    "DevicePolicy", "EnrolDeviceResponse"]),
+    ("Sync batch parts and errors", ["TimeAnchor", "Resolution", "RouteDayState", "ServerTotals", "ResolvedConfigValue", "FieldError", "Problem"]),
     ("Sync batch", ["SyncBatchRequest", "SyncBatchResponse", "RecordAck"]),
 ]
-SECRETS = {"password", "access_token", "refresh_token", "upload_refresh_token", "bind_token", "mfa_token"}
+# Members that must never reach a log or crash report; WireDtosDriftTest fails when a generated class has a member
+# matching SECRET_PATTERN that its toString does not redact.
+SECRET_PATTERN = re.compile(r"password|token|otp|secret|totp|recovery_codes|attestation|^code$|qr_payload|qr_text")
+NOT_SECRET = {"token_id", "token_prefix", "enrolment_token_id", "temporary_password_expires_at"}
 NESTED = {("BundleMeta", "paged_sections"): "PagedSection", ("SyncBatchResponse", "summary"): "SyncBatchSummary"}
 ID_ALIASES = {"Id", "Mtk", "MtkNonNegative"}
 RAW = {"RadioEnvironment": "JsonObject", "SyncRecord": "JsonObject"}  # everything else unknown -> JsonElement
+
+
+def is_secret(p):
+    return p not in NOT_SECRET and bool(SECRET_PATTERN.search(p))
 
 
 def load(name):
@@ -98,8 +110,8 @@ def ktype(s, owner, prop):
     if t == "array":
         return f"List<{ktype(s['items'], owner, prop)}>"
     if t == "object":
-        if (owner, prop) in NESTED:
-            cls = NESTED[(owner, prop)]
+        if (owner, prop) in NESTED or "properties" in s:
+            cls = NESTED.get((owner, prop)) or owner + "".join(x.capitalize() for x in prop.split("_"))
             nested_out.append((cls, s))
             return cls
         if "additionalProperties" in s and "properties" not in s:
@@ -148,10 +160,10 @@ def emit_class(name, sch, owner_for_nested):
             if t in WIRE_NULLS:
                 prefix = f"@Serializable(with = {t}Wire::class) "
         lines.append(f'    {prefix}@SerialName("{p}") val {kt_name(p)}: {decl}{default},')
-    secret = [p for p in props if p in SECRETS]
+    secret = [p for p in props if is_secret(p)]
     if secret:
         # never print credentials: a DTO in a log line or crash report shows *** (CLAUDE.md rule 8)
-        shown = ", ".join(f"{kt_name(p)}=" + ("***" if p in SECRETS else f"${{{kt_name(p)}}}") for p in props)
+        shown = ", ".join(f"{kt_name(p)}=" + ("***" if is_secret(p) else f"${{{kt_name(p)}}}") for p in props)
         lines.append(f') {{\n    override fun toString(): String = "{name}({shown})"\n}}')
     else:
         lines.append(")")

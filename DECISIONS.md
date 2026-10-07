@@ -1044,7 +1044,7 @@ The sponsor said "hold it": keep the zone-redundant dev resources (about USD 15.
 
 ## 2026-10-07 — Owner decisions: Maven mirror, git governance, repository visibility
 - **Maven mirror allowed** (owner, in the lead chat): `settings.gradle.kts` tries Google's official Maven Central mirror first, except on GitHub Actions (CI always resolves from real Central, the independent check) or when `ARON_NO_MIRROR` is set. Reason: lane containers share one IP that Central rate-limits with HTTP 429. Later hardening: Gradle dependency verification (checksums generated on CI from real Central), Day 6.
-- **Git governance approved** (owner): `tools/github-governance.ps1` run by the laptop operator: `main` created and protected, baseline tag, `staging` and `prod` environments; the lead opens a daily gate pull request INT to `main` (docs/30 s2 and s3).
+- **Git governance approved** (owner): `tools/github-governance.ps1` run by the laptop operator: `main` created and protected, baseline tag, `azure-stage` and `azure-prod` environments (names changed from staging and prod to match the deploy workflows, 2026-10-07); the lead opens a daily gate pull request INT to `main` (docs/30 s2 and s3).
 - **Repository stays public until the product is complete** (owner): the owner makes it private afterwards. Before that, set a GitHub Actions spending limit (private repositories meter CI minutes). CodeQL and secret scanning are usable while it is public; CI gates must not depend on them (gitleaks, OSV-scanner, Semgrep).
 
 ## backend-reports lane (2026-10-07)
@@ -1052,3 +1052,9 @@ The sponsor said "hold it": keep the zone-redundant dev resources (about USD 15.
 - D-REP-02 Outbox reading is gap-safe: ids not seen are re-read until they commit or 60 s pass (rolled back). Reason: identity ids commit out of order (checker finding).
 - D-REP-03 geo_valid uses the server verdict, falling back to the phone's verdict while the server re-check has not run. A user-day is suspicious when its open/confirmed risk-signal scores sum to at least cfg.geo.suspicious_score_threshold (default 50, s11.4).
 - D-REP-04 `agg_daily_outlet` is one row per (date, outlet) across all routes; `route_id` is the outlet's own route.
+
+## android-geo-dpc lane (2026-10-07)
+- GD-11 `android/dpc` and `android/core-geo` may depend on `:shared:contract` (wire DTOs are the single truth); amends the docs/24 s2.1 module table (lead ruling 2026-10-07). Local mirrors of `EnrolDeviceResponse` and `DevicePolicy` are deleted once shared announces them.
+
+## Design (2026-10-07)
+- **Outdoor-first overrides glass** (owner): the owner wants the Apple-like glass look but said that where it could hurt legibility for salesmen in sunlight, the lead's recommendation applies, while keeping the apps fancy and of a clear standard. Decision: content surfaces in the field apps are solid, glass is limited to chrome, light theme is the field default, contrast is computed from tokens (7:1 key figures, 35 percent glare proxy), one-tap Sunlight mode (opaque, higher contrast and weight, larger type, thicker lines), web and admin keep full glass. Specified in `docs/32` section 2a; tested by a contrast unit test and screenshot tests; the owner's outdoor check is D-UI-01. Reason: a field app that cannot be read in the sun fails the core promise of no disruption to a selling day.

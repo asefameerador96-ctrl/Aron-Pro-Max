@@ -12,31 +12,23 @@ Package `com.aktcl.aron.feature.outlet`:
 - Stock (F-SR-014): `StockLoad` in `feature-stock`; the day's loaded total per SKU comes from `captureDao().stockBalanceOn(businessDate)`; sr-b's sale stock column subtracts sales from that.
 - Picker (F-SR-016/074): `OutletPicker.rows(...)` over `OutletEntity`.
 
-## Done (logic, tests green locally and in CI; Compose screens pending N-023)
-F-SR-002, 003, 065 (model only, not yet checker-reviewed), F-SR-017, 019 (T1: Opus checker found 6 defects, all fixed with tests), F-SR-014, 016, 074, 011, 012, 046, 047, 063, 008, 009, 064, 072, 079, 049, 037, 038, 039, 076, N-040 (T2: Sonnet checker found defects, fixed with tests). "Done" here means the domain logic and its acceptance tests; each row's screen is still to do and each row is not fully closed until its screen lands.
+## Done (2026-10-07, 164 unit and Robolectric tests green locally in my modules; app-sr assemble and lint green)
+Logic plus screens, Bangla and English, offline, wired in `app-sr` (`SrApp`, `SrDay`, `SrDayHolder`):
+- Home header, tiles, task badge, stale/expired/missing bundle banners, device-health line, Settings (language, logout with confirmation)
+- Attendance check-in and press-and-hold check-out; Stock; Sale picker (chips, distance sort ready), visit open and geo check, Refresh GPS, locked/blocked states; Tasks with swipe-resolve (Room); Outlet menu (4 tiles) and request forms (new, close, info, cluster, add to route; Room `recordOutletRequest`); OTP model and screen; permissions onboarding; route picker; tutorial list screen; outlet card model.
+- Force Sale: controller, screen and shell wiring are done; it **cannot complete a photo step until F-SYS-030/010 (camera and media queue) land** (`NoCameraPipeline` placeholder in `SrDay`).
+- T1 checker (Opus) on F-SR-017/019: 6 defects fixed. T2 checkers (Sonnet): batch logic round and screens round (7 defects: double tap crash, hook failure, tick, restore, permissions, wiring, refresh) all fixed.
 
-## Open items from the checkers (need a lead or owner ruling)
-- RULED R8/R9 (lead): local OPEN row at once (OpenVisitStore, no outbox), outbox record at the final verdict; refresh fixes not stored; ConfigCheck hook (no-op default). Request: docs/requests/android-sr-a-open-visit-row.md.
-- Close form for outlet requests: docs/15 says new/info have no confirm, F-SR-039 requires a confirm for info; built per F-SR-039.
-- Requests filed: docs/requests/android-sr-a-task-tables.md, android-sr-a-outlet-request-capture.md.
+## Not done / waiting
+- F-SR-001 login screen is the Day-1 one plus the day-start bundle download in the background (`SrDay.downloadBundle`); the "first bundle with progress" screen and the single version source need a design pass.
+- F-SR-004 update prompt, F-SR-006 PDA to Support: need F-SYS-020/021.
+- F-SR-018 photo, F-SR-037/039 photo steps: need F-SYS-030/010.
+- F-SR-020/021: need F-SR-060 (sr-b). F-SR-048 tutorials: screen done, data needs F-API-027 and a cache table. N-041 Google Maps on tap: not started.
+- F-SR-015 stock-slip print hook: waits for the android-print wiring checklist.
+- `DeviceOwnerPolicy.configure(trustedClock...)` and `reapply()` belong in the Application (android-core); `ConfigCheck` implementation with android-core.
+- Hand-offs: sr-b plugs in through `SrApp(onOtherTile)` and the open `VisitSession`; the placeholder visit end (`SrDay.closeVisitAbandoned`) is theirs to replace.
 
-## Built (logic and tests; screens pending N-023)
-- F-SR-017, F-SR-019: `VisitFlow` + `VisitFlowTest` (13 cases: in range, out of range, refresh cap, force sale, mocked, blocked, no fix, no outlet location).
-- F-SR-016, F-SR-074 logic: `OutletPicker` + `OutletPickerTest`.
-- F-SR-014 logic: `StockLoad` + `StockLoadTest`.
-
-## Decisions taken (DECISIONS.md is read-only for lanes)
-- **SRA-01** A visit record has one fix and one final verdict (contract action: sale_allowed, force_sale, blocked), so the row is committed when the verdict is final, not before. A kill mid-refresh restarts the check. Reason: the contract has no refreshed or pending verdict.
-- **SRA-02** Picker label shows the phone as 11 digits (normalised); closed, merged and archived outlets are hidden (reading of "11-digit phones and closed outlets hidden").
-- **SRA-03** Stock re-save guard window default 120 s (`cfg` key not in the registry; request to follow if the lead wants it configurable).
-- **SRA-04** Picker chip is the first character of the name, Latin upper-cased, Bangla as is, anything else `#`.
-
-## Blocked / waiting
-Compose screens: N-023 kit. Real fix source: N-021. Bundle into Room and app wiring: F-SYS-006.
-
-## Next
-F-SR-011/012 attendance logic, F-SR-046/047 tasks logic (needs F-API-026 DTO), F-SR-079 capture component state, F-SR-063 stale-bundle rules.
-
-## Not started (needs another lane or the UI kit)
-F-SR-001 (login and first bundle, needs F-SYS-006), F-SR-004/005/006/007 (need F-SYS-019/020/021/022), F-SR-018 (force-sale screen: logic is in VisitFlow, needs F-SYS-010 media queue), F-SR-020/021 (need F-SR-060 from sr-b), F-SR-048 (needs F-API-027), N-041 (map on tap, needs Maps wiring). All Compose screens wait for the N-023 kit slices.
-Local note: Robolectric tests (`LoginScreenLocaleTest`, `HomePlaceholderTest`) fail in this container only because the Robolectric android-all artifact cannot be fetched; CI runs them.
+## Later today
+- Printing wired for the stock slip (PrinterManager singleton, MemoPrinting on RoomPrintLedger, recover at day start, Print after Save, slip warning from Room). Open with android-core: item 15 (slip flag on every row of one Save).
+- N-041 needs a decision: docs/requests/android-sr-a-map-on-tap.md.
+- Owner design rule (docs/32 s2a, outdoor-first): screens use the kit's components and tokens only; numbers, status and actions sit on solid cards, glass only for chrome. When `ContentCard` lands in the kit, swap it in for the plain Columns on Stock, Attendance and Tasks; no hard-coded colours exist in my modules today.

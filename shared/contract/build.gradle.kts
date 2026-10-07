@@ -14,6 +14,7 @@ kotlin {
             api(libs.kotlinx.serialization.json)
         }
         jvmTest.dependencies {
+            implementation(project(":shared:rules")) // test-only: wire names of the rules enums are diffed against the contract
             implementation(libs.snakeyaml.engine)
             implementation(project.dependencies.platform(libs.junit.bom))
             implementation(libs.junit.jupiter)

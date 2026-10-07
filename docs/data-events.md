@@ -23,6 +23,7 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
 | [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | current | not yet |
 | [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | current | not yet |
 | [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | current | not yet |
+| [`tracking_action.created`](#tracking_actioncreated-v1) | 1 | `tracking_action` | `tracking action uuid (audit_log.entity_id)` | backend:analytics | current | not yet |
 | [`visit.closed`](#visitclosed-v1) | 1 | `visit` | `visit.client_uuid` | backend:sync | current | not yet |
 
 ## memo.created v1
@@ -104,6 +105,17 @@ A target revision was committed (Phase 2 target engine; deferred programme, docs
 | `revision_no` | integer | yes |  |
 | `target_set_id` | integer | yes |  |
 | `months` | array | no |  |
+
+## tracking_action.created v1
+
+A supervisor recorded a daily-tracking action on a route-day; the notify module nudges the route's TSO and AMO. Introduced in V0022; current.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `business_date` | string (date) | yes |  |
+| `notified_user_ids` | array | yes | TSO and AMO users nudged |
+| `route_id` | integer | yes |  |
+| `note` | string or null | no | free text (to be removed in v2: personal data does not belong in the outbox) |
 
 ## visit.closed v1
 

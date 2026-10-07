@@ -33,18 +33,19 @@ class PrintFlowTest {
         override suspend fun pending() = jobs.values.toList()
         override suspend fun savePending(job: PendingPrint) {
             if (events.any { it.clientUuid == job.event.clientUuid }) return
-            jobs[job.event.clientUuid] = job
-            if (job.paperOut) (job.event.memoClientUuid ?: job.event.refClientUuid)?.let { printedAt.putIfAbsent(it, job.event.atEpochMs) }
+            // A paper that came out never comes back: paper_out stays set once set.
+            jobs[job.event.clientUuid] = if (jobs[job.event.clientUuid]?.paperOut == true) job.copy(paperOut = true) else job
+            if (job.paperOut && job.event.documentKind !in ReprintPolicy.NOT_COPIES) (job.event.memoClientUuid ?: job.event.refClientUuid)?.let { printedAt.putIfAbsent(it, job.event.atEpochMs) }
         }
         override suspend fun record(event: PrintEvent) {
             if (events.any { it.clientUuid == event.clientUuid }) return // idempotent by client uuid
             events.add(event)
             jobs.remove(event.clientUuid)
             val doc = event.memoClientUuid ?: event.refClientUuid ?: return
-            if (event.outcome == PrintEvent.PRINTED) printedAt.putIfAbsent(doc, event.atEpochMs)
+            if (ReprintPolicy.isCopy(event)) printedAt.putIfAbsent(doc, event.atEpochMs)
             // A paper the seller rejected is not a printed memo: clear the flag unless another copy counts.
             if (event.outcome == PrintEvent.FAILED_USER &&
-                events.none { (it.memoClientUuid ?: it.refClientUuid) == doc && it.outcome == PrintEvent.PRINTED } &&
+                events.none { (it.memoClientUuid ?: it.refClientUuid) == doc && ReprintPolicy.isCopy(it) } &&
                 jobs.values.none { (it.event.memoClientUuid ?: it.event.refClientUuid) == doc && it.paperOut }
             ) printedAt.remove(doc)
         }
@@ -57,8 +58,7 @@ class PrintFlowTest {
         val sim = SimPrinter({ testScheduler.currentTime })
         val pm = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
         val ledger = MemLedger()
-        var n = 0
-        val printing = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { "e-${++n}" }, { testScheduler.currentTime }, { reprintMax }, { confirm })
+        val printing = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { reprintMax }, { confirm })
         return Env(sim, ledger, printing)
     }
 
@@ -184,5 +184,46 @@ class PrintFlowTest {
         val p = ev.payload()
         assertEquals(setOf("document_kind", "memo_client_uuid", "ref_client_uuid", "print_count", "outcome", "user_confirmed", "template_version", "printer_model"), p.keys)
         assertFalse(e.sim.overflowed)
+    }
+
+    @Test fun daySummaryIsAReportWithoutLimitOrMarker() = runTest {
+        val e = env(reprintMax = 0)
+        val day = "44444444-4444-4444-8444-444444444444"
+        repeat(3) {
+            val a = e.printing.printDaySummary(day, com.aktcl.aron.core.printing.PrintSamples.daySummary) as PrintAttempt.AwaitingConfirmation
+            e.printing.confirm(a, true)
+        }
+        assertEquals(listOf("day_summary", "day_summary", "day_summary"), e.ledger.events.map { it.documentKind })
+        assertEquals(listOf(day, day, day), e.ledger.events.map { it.refClientUuid })
+        assertTrue(e.ledger.events.all { it.memoClientUuid == null })
+        assertEquals(listOf(1, 2, 3), e.ledger.events.map { it.printCount })
+        // Every copy is the same paper: no duplicate marker on a report.
+        val one = lastInk(Fixtures.renderer().daySummary(com.aktcl.aron.core.printing.PrintSamples.daySummary).bitmap) + 1
+        assertEquals(3 * one, e.sim.sessions.flatten().size)
+    }
+
+    @Test fun aVoidSlipOrDueReceiptNamingTheMemoIsNotACopy() = runTest {
+        val e = env()
+        listOf("void_slip", "due_receipt").forEach { kind ->
+            e.ledger.record(PrintEvent(java.util.UUID.randomUUID().toString(), kind, memoUuid, null, 1, PrintEvent.PRINTED, true, 3, null, 1_000))
+        }
+        assertEquals(0, ReprintPolicy.counted(e.ledger.history(memoUuid)))
+        assertNull(e.ledger.printedAt(memoUuid))
+        val a = e.printing.printMemo(memoUuid, Fixtures.seededSale) as PrintAttempt.AwaitingConfirmation
+        e.printing.confirm(a, true)
+        assertEquals("the memo's first copy is the original, unmarked", "memo", e.ledger.events.last().documentKind)
+        assertEquals(1, e.ledger.events.last().printCount)
+    }
+
+    @Test fun recoverDuringAPrintLeavesThisProcessJobAlone() = runTest {
+        val e = env()
+        val a = e.printing.printMemo(memoUuid, Fixtures.seededSale) as PrintAttempt.AwaitingConfirmation
+        e.printing.recover() // e.g. a second screen calling it while "ছাপা ঠিক আছে?" is open
+        assertTrue(e.ledger.events.isEmpty())
+        e.printing.confirm(a, true)
+        assertEquals(listOf(PrintEvent.PRINTED), e.ledger.events.map { it.outcome })
+        assertEquals(true, e.ledger.events.single().userConfirmed)
+        e.printing.recover()
+        assertEquals(1, e.ledger.events.size)
     }
 }

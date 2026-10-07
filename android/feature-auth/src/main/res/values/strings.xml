@@ -32,4 +32,14 @@
     <string name="auth_error_offline_wrong_password">No internet, and the password does not match your last online login.</string>
     <string name="auth_error_offline_cooldown">Too many wrong passwords. Try again after %1$s.</string>
     <string name="auth_error_offline_clock_wrong">No internet, and the phone\'s date is earlier than your last online login. Set the correct date or connect to the internet.</string>
+    <string name="otp_title">Bind this phone</string>
+    <string name="otp_hint">Enter the 4-digit code from your TSO.</string>
+    <string name="otp_verify">Verify</string>
+    <string name="otp_invalid">That code is wrong. Try again.</string>
+    <string name="otp_expired">That code has expired. Ask your TSO for a new one.</string>
+    <string name="otp_attempts">Too many wrong codes. Ask your TSO for a new one.</string>
+    <string name="otp_locked">This phone is locked for binding. Contact support.</string>
+    <string name="otp_offline">You need a network connection once to bind this phone.</string>
+    <string name="otp_other">Something went wrong. Try again.</string>
+    <string name="otp_bound">This phone is now bound to your account.</string>
 </resources>

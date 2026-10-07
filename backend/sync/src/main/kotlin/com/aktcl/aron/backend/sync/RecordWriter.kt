@@ -59,6 +59,25 @@ object RecordWriter {
                         doc["via"] = JsonPrimitive("device")
                         doc["at"] = env["captured_at"] ?: JsonNull
                     }
+                    "qc_line" -> {
+                        // The QC header (one per visit) is the server's; the line points at it (s12.1).
+                        val visit = payload.str("visit_client_uuid")!!
+                        h.createUpdate(
+                            """
+                            INSERT INTO app.qc_entry (visit_client_uuid, business_date, user_id, route_id, outlet_id)
+                            SELECT v.client_uuid, v.business_date, v.user_id, v.route_id, v.outlet_id FROM app.visit v WHERE v.client_uuid = CAST(:v AS uuid) LIMIT 1
+                            ON CONFLICT (visit_client_uuid) DO NOTHING
+                            """.trimIndent(),
+                        ).bind("v", visit).execute()
+                        val qc = h.createQuery("SELECT id FROM app.qc_entry WHERE visit_client_uuid = CAST(:v AS uuid)").bind("v", visit).mapTo(Long::class.java).findOne().orElse(null)
+                            ?: return Result.Refused(RecordOutcomeCode.PARENT_MISSING, "visit $visit")
+                        doc["qc_entry_id"] = JsonPrimitive(qc)
+                    }
+                    "config_ack" -> {
+                        // The payload's config_version is the applied one; the envelope's stays the capture stamp.
+                        doc["acked_config_version"] = payload["config_version"] ?: JsonNull
+                        doc["config_version"] = env["config_version"] ?: JsonNull
+                    }
                     "device_status" -> {
                         doc["source"] = JsonPrimitive("record")
                         doc["report"] = JsonObject(payload.filterKeys { it != "play_integrity" })

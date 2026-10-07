@@ -32,7 +32,8 @@ export default async function CodeListPage({ params }: { params: Promise<{ key: 
       sort: String(i.sort),
       valid_from: i.valid_from ?? "",
       valid_to: i.valid_to ?? "",
-      attrs: Object.fromEntries(Object.entries(i.attrs ?? {}).map(([k, v]) => [k, v === null ? "" : String(v)])),
+      attrs: Object.fromEntries((meta.attrs ?? []).map((a) => [a.key, i.attrs?.[a.key] == null ? "" : String(i.attrs[a.key])])),
+      rawAttrs: Object.fromEntries(Object.entries(i.attrs ?? {}).filter(([k]) => !(meta.attrs ?? []).some((a) => a.key === k))),
       saved: true,
     }));
   return (

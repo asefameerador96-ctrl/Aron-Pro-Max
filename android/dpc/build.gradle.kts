@@ -16,10 +16,13 @@ android {
 
 dependencies {
     implementation(project(":android:core-common"))
+    // Wire DTOs (contract v1.2, lead ruling 2026-10-07): the enrolment request and PlayIntegrityUnavailable.
+    implementation(project(":shared:contract"))
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.snakeyaml.engine)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
