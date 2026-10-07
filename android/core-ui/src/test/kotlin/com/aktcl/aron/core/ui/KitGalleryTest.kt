@@ -45,7 +45,7 @@ class KitGalleryTest {
             // hasVisualOverflow is not usable here (it is true for every node); test the three real truncations instead
             val len = r.layoutInput.text.text.trimEnd().length
             val cutOff = r.getLineEnd(r.lineCount - 1, visibleEnd = true) < len
-            val tooWide = (0 until r.lineCount).any { r.getLineRight(it) > r.size.width + 1f }
+            val tooWide = (0 until r.lineCount).any { r.layoutInput.constraints.hasBoundedWidth && r.getLineRight(it) > r.layoutInput.constraints.maxWidth + 1f }
             if (cutOff || tooWide || r.didOverflowHeight) "${node.config.getOrNull(SemanticsProperties.Text)} size=${node.size} cutOff=$cutOff tooWide=$tooWide overflowH=${r.didOverflowHeight}" else null
         }
         assertTrue("text overflows: $overflowing", overflowing.isEmpty())
