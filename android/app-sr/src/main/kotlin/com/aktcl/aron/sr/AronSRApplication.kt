@@ -6,7 +6,6 @@ import com.aktcl.aron.core.sync.AronWorkerFactory
 import com.aktcl.aron.core.sync.ConnectivityFlush
 import com.aktcl.aron.core.sync.WorkManagerSyncScheduler
 import com.aktcl.aron.core.sync.device.DeviceRuntime
-import com.aktcl.aron.core.sync.shell.MediaShell
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

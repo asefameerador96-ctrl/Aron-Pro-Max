@@ -98,6 +98,7 @@
   - photo file I/O off the main thread (resume, claim, unsent count, install).
   - Not changed: the Force Sale photo's stamp is the visit's stored fix (the contract's `media_meta.fix` is a stored row); the shutter fix travels in the location request.
 - **INT red job (lead #4)**: `core-media/consumer-rules.pro`; ACCESS_NETWORK_STATE in core-sync and core-system manifests; core-sync lint also needed `AndroidDevice` `isLocationEnabled` behind API 28 (providers below). `:android:core-sync:lintDebug :android:core-system:lintDebug :android:core-media:mergeDebugConsumerProguardFiles` pass locally.
+- **Integrator red on 2e34ef70, fixed:** (1) core-media's `theRecordSyncNeverWaitsForPhotos` forbids core-sync from linking core-media: `MediaShell` moved to app-sr (only app with a camera), `ShellLogout` takes the photo count and upload as lambdas; AMO/TSO no longer link core-media. (2) SR release +16.1 % (armeabi-v7a) is the CameraX camera itself: `docs/requests/android-core-apk-baseline.md` asks infra to refresh the SR baseline.
 - **Next:** updater (item 4), support tile (item 5, waits on the key), the Wi-Fi-only row (needs a slot in feature-home Settings, android-sr-a), then the requests naming android-core and `my-rows.py android-core --todo`.
 
 ## Handover (READY TO RECYCLE, 2026-10-07 ~08:45Z, third session)

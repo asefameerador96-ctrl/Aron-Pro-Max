@@ -1,4 +1,4 @@
-package com.aktcl.aron.core.sync.shell
+package com.aktcl.aron.sr
 
 import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.media.MediaItem

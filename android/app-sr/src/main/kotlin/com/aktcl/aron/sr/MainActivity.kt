@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var bundleDownloaders: com.aktcl.aron.core.sync.BundleDownloaders
     @Inject lateinit var deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime
     @Inject lateinit var resumeConfigCheck: com.aktcl.aron.core.sync.ResumeConfigCheck
-    @Inject lateinit var mediaShell: com.aktcl.aron.core.sync.shell.MediaShell
+    @Inject lateinit var mediaShell: MediaShell
     @Inject lateinit var shellLogout: com.aktcl.aron.core.sync.shell.ShellLogout
     private var dayHolder: SrDayHolder? = null
 

@@ -21,7 +21,10 @@ class ShellLogout(
     private val components: SessionComponents,
     private val databases: UserDatabases,
     private val syncScheduler: SyncScheduler,
-    private val media: MediaShell,
+    /** Photos of the user the server does not have yet (SR: the media queue); 0 in an app without a camera. */
+    private val unsentPhotos: suspend (userId: Long) -> Int = { 0 },
+    /** Asks the photo job to run (SR); nothing in an app without a camera. core-sync never depends on core-media. */
+    private val requestPhotoUpload: () -> Unit = {},
 ) {
     private val app = context.applicationContext
 
@@ -32,8 +35,8 @@ class ShellLogout(
             userId = userId,
             db = { databases.of(userId) },
             endSessionAction = { components.session.logout() },
-            requestSyncAction = { syncScheduler.requestSync(userId, SyncTrigger.MANUAL); media.scheduler.requestUpload() },
-            unsentPhotosCount = { media.unsentPhotos(userId) },
+            requestSyncAction = { syncScheduler.requestSync(userId, SyncTrigger.MANUAL); requestPhotoUpload() },
+            unsentPhotosCount = { unsentPhotos(userId) },
             closeDatabaseAction = { databases.close(userId) },
             forgetCredentialsAction = { components.session.forgetUser(userId) },
         ),

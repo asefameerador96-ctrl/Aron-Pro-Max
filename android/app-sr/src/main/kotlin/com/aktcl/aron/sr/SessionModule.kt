@@ -12,7 +12,6 @@ import com.aktcl.aron.core.sync.ResumeConfigCheck
 import com.aktcl.aron.core.sync.SyncScheduler
 import com.aktcl.aron.core.sync.device.DeviceRuntime
 import com.aktcl.aron.core.sync.WorkManagerSyncScheduler
-import com.aktcl.aron.core.sync.shell.MediaShell
 import com.aktcl.aron.core.sync.shell.ShellLogout
 import java.io.File
 import com.aktcl.aron.core.session.SessionComponents
@@ -99,7 +98,7 @@ object SessionModule {
     @Singleton
     fun shellLogout(
         @ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases, scheduler: WorkManagerSyncScheduler, media: MediaShell,
-    ): ShellLogout = ShellLogout(context, components, databases, scheduler, media)
+    ): ShellLogout = ShellLogout(context, components, databases, scheduler, media::unsentPhotos) { media.scheduler.requestUpload() }
 
     /** Connectivity trigger (F-SYS-046): uploads for every user on the phone with rows waiting, after a 5 s quiet period. */
     @Provides
