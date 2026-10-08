@@ -58,7 +58,7 @@ class LoginService(
      * anonymous flood of web logins must never take the hash slots the 07:00 phone wave needs.
      */
     private val webLimiter: HashLimiter = HashLimiter(concurrency = 1, queueMax = 8),
-    /** login_failure, lockout and password_change events (AUD-SEC-03); best effort, never fails the call. */
+    /** login_failure, lockout, password_change, mfa_enrol and mfa_verify_failure events (AUD-SEC-03); best effort, never fails the call. */
     private val securityEvents: SecurityEvents = SecurityEvents.LOG,
     /** TOTP enrolment and the second login step (F-WEB-043); null where a test wires no database (503). */
     private val mfa: MfaStore? = null,
@@ -247,7 +247,9 @@ class LoginService(
             throw ApiProblem(ProblemCode.ERR_AUTH_ACCOUNT_LOCKED, "too many wrong codes", retryAfterS = sec, headers = mapOf("Retry-After" to sec.toString()))
         }
         mfaLimiter.tryAcquire("m:${user.id}").let { if (!it.allowed) throw it.toProblem("too many codes") }
+        var enrolled = true
         val outcome = store.verify(user.id, now, p) { state ->
+            if (state == null) enrolled = false
             val secret = state?.let { cipher.open(it.secretCipher, user.id) }
             when {
                 state == null -> MfaUpdate.None
@@ -267,7 +269,7 @@ class LoginService(
             val n = lockouts.recordFailure(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_window_min").toLong()))
             val facts = mapOf("flow" to "mfa", "client" to "web")
             // Its own kind (V0070), not login_failure: that kind is deduped by username hash, which this step does not carry.
-            securityEvents.safely(SecurityEvent(SecurityEventKind.MFA_VERIFY_FAILURE, now, user.id, null, detail = facts + ("reason" to if (code.length == 6) "wrong_totp" else "wrong_recovery")))
+            securityEvents.safely(SecurityEvent(SecurityEventKind.MFA_VERIFY_FAILURE, now, user.id, null, detail = facts + ("reason" to when { !enrolled -> "not_enrolled"; code.length == 6 -> "wrong_totp"; else -> "wrong_recovery" })))
             if (n >= config.int("cfg.auth.lockout_attempts")) {
                 lockouts.lock(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_min").toLong()))
                 securityEvents.safely(SecurityEvent(SecurityEventKind.LOCKOUT, now, user.id, null, detail = facts + ("failures" to n.toString())))
