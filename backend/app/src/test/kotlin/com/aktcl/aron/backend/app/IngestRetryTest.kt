@@ -286,9 +286,47 @@ class IngestRetryTest {
         application { aronApi(wiring) }
         val early = checkOut("2027-01-03T05:30:00.000Z") // 11:30 Dhaka
         client.send(listOf(early))
-        assertEquals("{}", flagsText(uuidOf(early)), "no flag storage for checkout_too_early yet (V0056 allows resync_late only)")
+        assertEquals("{checkout_too_early}", flagsText(uuidOf(early)), "stored on the registry row (V0059)")
         assertEquals(1L, fresh.db.jdbi.withHandle<Long, Exception> { h ->
             h.createQuery("SELECT count(*) FROM app.attendance_event WHERE client_uuid = CAST(:c AS uuid)").bind("c", uuidOf(early)).mapTo(Long::class.java).one()
         })
+    }
+
+    /**
+     * F-SYS-091 (s11.4): a row stamped below a config version the phone had already applied before the row's capture is
+     * accepted and flagged `config_stamp_regress`; the third such row of the device and day raises CONFIG_STAMP_REGRESS once.
+     */
+    @Test
+    fun rowsStampedBelowAnAppliedConfigAreFlaggedAndTheThirdRaisesTheSignal() = testApplication {
+        application { aronApi(wiring) }
+        val outlet = newOutlet("RTY-CSR-1")
+        val ack = uuid()
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                """
+                INSERT INTO app.cfg_ack (client_uuid, family_uuid, business_date, user_id, device_id, captured_at, config_version, acked_config_version, applied_at)
+                SELECT CAST('$ack' AS uuid), CAST('$ack' AS uuid), DATE '2027-01-03', d.user_id, d.id, TIMESTAMPTZ '2027-01-02T23:00:00Z', 5, 5, TIMESTAMPTZ '2027-01-02T23:00:00Z'
+                  FROM (SELECT dv.id, (SELECT id FROM app.app_user WHERE username = 'sr1001') AS user_id FROM app.device dv WHERE dv.device_uuid = '$devPhone') d
+                """.trimIndent(),
+            )
+        }
+        fun signals() = fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery("SELECT count(*) FROM app.risk_signal WHERE code = 'CONFIG_STAMP_REGRESS' AND subject_id = '$devPhone'").mapTo(Long::class.java).one()
+        }
+        try {
+            val before = visit(outlet, 10.0, capturedAt = "2027-01-02T22:30:00.000Z") // captured before the ack: not judged
+            client.send(listOf(before))
+            assertEquals("{}", flagsText(uuidOf(before)))
+            val rows = List(3) { visit(outlet, 10.0) } // config_version 1 < 5
+            client.send(rows.take(2))
+            rows.take(2).forEach { assertEquals("{config_stamp_regress}", flagsText(uuidOf(it))) }
+            assertEquals(0L, signals(), "two rows: no signal yet")
+            client.send(rows.drop(2))
+            assertEquals(1L, signals(), "the third row raises it")
+            client.send(listOf(visit(outlet, 10.0)))
+            assertEquals(1L, signals(), "once per device and day")
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.cfg_ack SET voided_at = now() WHERE client_uuid = CAST('$ack' AS uuid)") }
+        }
     }
 }
