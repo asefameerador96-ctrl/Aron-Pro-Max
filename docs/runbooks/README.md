@@ -9,6 +9,7 @@ Each runbook states its trigger, the commands, who runs them, and the time measu
 | [rollback-bad-deploy.md](rollback-bad-deploy.md) | RB-01 (API availability), deploy part | written 2026-10-07; dev drill not yet run |
 | [rollback-bad-migration.md](rollback-bad-migration.md) | RB-14 (point-in-time restore), migration part | written 2026-10-07; restore drill: `drill.yml` mode pitr (owner approves the cost) |
 | [database-failover.md](database-failover.md) | RB-02 (database failover) | written 2026-10-07; drill: `drill.yml` mode failover (lead picks the time) |
+| [rotate-mfa-key.md](rotate-mfa-key.md) | security, key rotation (F-WEB-043) | written 2026-10-08; not drilled |
 
 Measured times are added from the drill runs. Still to write: RB-52 geo-restore (after the final account). The
 device row-by-row reconciliation stays in N-059 (qa).
