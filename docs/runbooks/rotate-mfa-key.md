@@ -8,7 +8,7 @@ replaces it. A Key Vault read error stops the deploy; only a definite `SecretNot
 **Trigger for a rotation:** the key may have leaked, or a scheduled rotation in the final account. Not routine on dev.
 **Who:** the infra lane, as an infra commit promoted to the integration branch. The owner only approves it.
 Never set the secret by hand and never print it.
-**Time:** not drilled (design figure: two deploys, about 30 minutes, plus the re-enrolment window).
+**Time:** not drilled (design figure: three deploys, about 45 minutes, plus the re-enrolment window).
 
 ## The key ring the API reads (backend `mfaKeyRing`)
 
@@ -20,25 +20,35 @@ That is why `ARON_MFA_KEY_PREVIOUS` is not wired today: it is added only for a r
 Admins enrolled before `aron-mfa-key` existed (sealed with the derived key) stay readable as long as the JWT signing
 key is not rotated. To move them onto the dedicated key, they re-enrol once (optional on dev).
 
-## Steps (one infra commit, then one more after the window)
+## Steps (three infra commits, each a normal promotion and deploy)
 
-1. **Copy the current key to the previous slot.** Add a one-shot step to `seed-secrets.sh` that copies the value of
-   `aron-mfa-key` to `aron-mfa-key-previous` through a temp file (never echoed), then writes a new
-   `openssl rand -base64 32` value to `aron-mfa-key`. Guard the step with a marker such as a secret tag
-   `rotated=<date>` so it runs once.
-2. **Wire the previous key.** In `infra/apps.bicep`, add `kvSecret('mfa-key-previous', ...)` to the API's secrets and
-   `{ name: 'ARON_MFA_KEY_PREVIOUS', secretRef: 'mfa-key-previous' }` to `apiOnlySecretRefs`. Also add
-   `mfaKeyPrevious: 'aron-mfa-key-previous'` to `secretNames`. Extend the `check_infra` tests.
-3. **Deploy** (normal promotion). Check: the health gate passes and an admin logs in with their existing TOTP code.
-   New enrolments are now sealed with the new key.
-4. **Re-enrolment window.** Each admin re-enrols MFA, which re-seals their secret with the new key.
-5. **Remove the previous key** (second infra commit): take out the step 2 wiring and the one-shot step 1. Then delete
-   `aron-mfa-key-previous` from Key Vault with a scripted step. An admin who has not re-enrolled by then must
-   re-enrol.
+The key is never swapped in the same deploy that wires the previous key. `seed-secrets.sh` runs before the
+migrations and the apps stage, and the Key Vault reference has no version. If the deploy stopped after a swap, a
+replica that restarts would load the new key with no previous key wired, and every admin would be locked out.
+
+1. **Deploy A: wire the previous key (no change in behaviour).** Add a one-shot step to `seed-secrets.sh` that
+   copies the current `aron-mfa-key` value to `aron-mfa-key-previous` through a temp file (never echoed). In
+   `infra/apps.bicep`, add `kvSecret('mfa-key-previous', ...)` to the API's secrets and
+   `{ name: 'ARON_MFA_KEY_PREVIOUS', secretRef: 'mfa-key-previous' }` to `apiOnlySecretRefs`, plus
+   `mfaKeyPrevious: 'aron-mfa-key-previous'` in `secretNames`. Extend the `check_infra` tests. Both slots now hold
+   the same key. Check: the health gate passes and an admin logs in with their existing TOTP code.
+2. **Deploy B: swap the key.** Only after deploy A is green, add a one-shot step that writes a new
+   `openssl rand -base64 32` value to `aron-mfa-key`. Guard it with a secret tag `rotated=<date>` so it runs
+   once. A replica that restarts at any point now has the old key as previous. Check as in step 1. New enrolments
+   are sealed with the new key.
+3. **Re-enrolment window.** Each admin re-enrols MFA, which re-seals their secret with the new key.
+4. **Deploy C: remove the previous key.** Remove the deploy A wiring and both one-shot steps. Then delete
+   `aron-mfa-key-previous` with a scripted step. Key Vault soft delete keeps it for 90 days, and prod has purge
+   protection. So the next rotation's deploy A must run `az keyvault secret recover` for it before writing; on dev
+   it may purge instead. An admin who has not re-enrolled by then must re-enrol.
+
+If `aron-mfa-key` itself is ever soft-deleted, the deploy stops at `secret set` ("deleted but recoverable") and
+replaces nothing. Recover it (`az keyvault secret recover --name aron-mfa-key`) with a scripted step rather than
+letting a new key be created.
 
 ## Rolling back
 
-The Container Apps secret reference reads the **latest** version of `aron-mfa-key`, so reverting the commit does not
-bring the old key back. If the API does not start after step 3, look for a key that failed validation in the
-revision's console log, then fix forward. Keep `ARON_MFA_KEY_PREVIOUS` wired until every admin has re-enrolled:
-removing it locks out each admin who has not.
+The Container Apps secret reference reads the **latest** version of `aron-mfa-key`, so reverting a commit does not
+bring the old key back. Never revert deploy A's wiring once deploy B has run: that removes `ARON_MFA_KEY_PREVIOUS`
+and locks out every admin who has not re-enrolled. If the API does not start, look for a key that failed
+validation in the revision's console log, then fix forward.
