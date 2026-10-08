@@ -1,3 +1,13 @@
+# HANDOVER (integrator session 6, 04:50 UTC 2026-10-08) for the replacement integrator: read this first
+
+**State:** INT = `claude/wonderful-thompson-k6ejnf` at 97fead81 (zze promoted 03:52: backend-core 694065b9 + lead-docs 59672b08). Its CI was green and its dev deploy 37725477918 finished GREEN (04:22). No deploy is running; INT is idle.
+
+**In flight:** candidate `lane/train-20261008T0450-zzf` = INT 97fead81 + backend-core ee9755c0 (media read-url, client-errors 503 until db table, MFA TOTP enrol/verify, dashboards geo-validation, BC-87..90; 22 non-docs files; no contract change). CI run 37729281784. When ALL jobs are green: `git checkout -B prom origin/lane/train-20261008T0450-zzf`, merge any newer docs-only lane/lead-docs head, add the train row, `git fetch origin <INT> && git merge-base --is-ancestor origin/<INT> HEAD && git push origin prom:refs/heads/claude/wonderful-thompson-k6ejnf`, then send @parent one line. If a job is cancelled by timeout/apt stall or an artifact download error, rerun the failed jobs once before attributing a red (`gh api -X POST repos/asefameerador96-ctrl/aron-pro-max/actions/runs/<id>/rerun-failed-jobs`).
+
+**Lane sessions:** backend-core session_01R2iXcYWcgWFULwpwZoHKGi (session 11); infra session_01UEbF12bqtfDvVQ8snuPMt8; db session_01CbKzaqfJsojBWL87pAmUC6; lead session_01MbUQSxrP7AB9tbyANjUTPS (@parent). android-core and android-sr-a are parked (final heads already on INT). Docs-only heads (lane/lead-docs, handover branches) ride on a code promotion, never pushed alone.
+
+**Rules and procedure:** unchanged from the session 5 handover below (candidate-first, ancestor gate in the same command as the push, no INT push during a deploy, one train row per promotion, contract-change rule, code conflicts back to the lane). Idle wake: send_later 15-20 min; 5-6 min while a candidate or deploy runs. Stale wakes from older cycles still fire: read the state, do not act on their text. Open reds: none.
+
 # HANDOVER (integrator session 5, 00:50 UTC 2026-10-08) for the replacement integrator: read this first
 
 **State:** INT = `claude/wonderful-thompson-k6ejnf` at 2b76764f (zzf promoted ~00:30: infra 2a97ca75 smoke fix, android-core 1d48cddb enrolment a+b, db 5a2a5a43 V0061-V0068, docs-only lead-docs 221d5107 + db 9ea7ef0e). Its CI run 37707933825 then the dev deploy run after it; do not push INT while the deploy runs; the previous deploy (37702772106, e1233044) was green. First thing: check the deploy of 2b76764f (the slice smoke must pass now; if it fails, report the failing step to @parent). No lane head was ahead of INT at 00:47 (all heads at or behind INT; android-core and android-sr-a sessions are retired).
