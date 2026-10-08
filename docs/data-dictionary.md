@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 147 | 2552 |
+| `app` | 148 | 2563 |
 | `dw` | 33 | 512 |
 
 ## Index
@@ -39,6 +39,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.cfg_key`](#appcfg_key) | table | backend:config | REFERENCE | master | none | Registry of every config key with type, default, bounds, scope levels, risk class and delivery; seeded by migration, never deleted. |
 | [`app.cfg_value`](#appcfg_value) | table | backend:config | ONLINE | master | none | One scoped value of a config key valid for a period; rows are closed, never edited. |
 | [`app.cfg_version`](#appcfg_version) | table | backend:config | ONLINE | audit | none | One committed config version; versions are global and increase monotonically. |
+| [`app.client_error`](#appclient_error) | table | backend:platform | ONLINE | telemetry | none | One row is a privacy-scrubbed error report from the web app (POST /v1/client-errors, F-SYS-032); phones report errors as app.app_error. |
 | [`app.cluster`](#appcluster) | table | backend:masterdata | ONLINE | master | none | A named group of outlets within a zone, used to organise routes. |
 | [`app.code_list`](#appcode_list) | table | backend:masterdata | REFERENCE | master | none | Header of a business code list (reasons, outcomes, channels and similar) with its key. |
 | [`app.code_list_item`](#appcode_list_item) | table | backend:masterdata | ONLINE | master | none | One code of a business code list with English and Bangla labels; codes never change, only retire. |
@@ -803,6 +804,30 @@ One committed config version; versions are global and increase monotonically.
 Keys: `PRIMARY KEY (config_version)`
 
 References: `FOREIGN KEY (change_id) REFERENCES app.cfg_change(change_id)`; `FOREIGN KEY (committed_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (is_revert_of) REFERENCES app.cfg_version(config_version)`
+
+## app.client_error
+
+One row is a privacy-scrubbed error report from the web app (POST /v1/client-errors, F-SYS-032); phones report errors as app.app_error.
+
+`owner: backend:platform | capture: ONLINE | retention: telemetry | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `error_uuid` | uuid | not null |  | UUID v4 the browser generated for the report; idempotency key (a repeat stores nothing). |
+| `user_id` | bigint | not null |  | User of the token that sent the report (app.app_user), never from the body. |
+| `source` | text | not null |  | Client that sent the report: web. |
+| `occurred_at` | timestamp with time zone | not null |  | UTC time of the error by the browser clock, clamped by the API. |
+| `received_at` | timestamp with time zone | not null |  | UTC time the server stored the report. |
+| `business_date` | date | not null |  | Asia/Dhaka business date of received_at; retention counts from it. |
+| `page` | text | null |  | Route of the web page the error happened on, without query string (at most 200 characters). |
+| `message` | text | not null |  | Scrubbed error message (at most 500 characters). |
+| `stack` | text | null |  | Scrubbed stack trace (at most 16000 characters). |
+| `build` | text | null |  | Build id of the web app that sent the report. |
+
+Keys: `UNIQUE (error_uuid)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.cluster
 
@@ -3632,7 +3657,7 @@ Append-only security events (login failures, lockouts, refresh reuse, device pro
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
 | `at` | timestamp with time zone | not null |  | UTC instant of the event. |
-| `kind` | text | not null |  | login_failure, lockout, refresh_reuse, device_proof_invalid, device_state_refused, scope_changed, password_change, force_logout or otp_view. |
+| `kind` | text | not null |  | login_failure, lockout, refresh_reuse, device_proof_invalid, device_state_refused, scope_changed, password_change, force_logout, otp_view, mfa_enrol or mfa_verify_failure. |
 | `user_id` | bigint | null |  | User the event names; no foreign key (a failure may name an unknown account); null when none. |
 | `device_uuid` | uuid | null |  | Device the event came from; null when unknown. |
 | `request_id` | uuid | null |  | Request id of the API call, to join the structured log line. |
