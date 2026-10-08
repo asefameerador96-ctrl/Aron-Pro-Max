@@ -221,4 +221,5 @@ fun Route.adminOutletsRoutes(d: AdminMasterDeps) {
 /** Everything under `/v1/admin` that this file set serves, registered in one call. */
 fun Route.adminMasterRoutes(d: AdminMasterDeps) {
     adminGeographyRoutes(d); adminCalendarRoutes(d); adminUsersRoutes(d); adminRoutesRoutes(d); adminOutletsRoutes(d)
+    outletRequestRoutes(d)
 }

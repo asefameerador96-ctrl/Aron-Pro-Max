@@ -62,6 +62,12 @@ GET /v1/memos -> case SyncReadsTest#memosAreReadByNumberOrOutletWithLinesAndNeve
 GET /v1/outlets/nearby -> case NearbyOutletsTest#nearbyOutletsAreTheSeededOnesInsideTheCircleAndTheReachNearestFirst
 GET /v1/risk-signals -> case RiskSignalsTest#supervisorsSeeOnlySignalsInTheirReachAndFieldRepsNone
 POST /v1/risk-signals/{signal_id}/review -> case RiskSignalsTest#aReviewIsAnIdempotentEventAndOutOfReachIsNotFound
+GET /v1/outlet-requests -> case OutletRequestsTest#aNewOutletRequestIsVerifiedThenApprovedIntoTheMasterOnce
+GET /v1/outlet-requests/{request_uuid} -> case OutletRequestsTest#aNewOutletRequestIsVerifiedThenApprovedIntoTheMasterOnce
+POST /v1/outlet-requests -> case OutletRequestsTest#aWebCloseRequestIsIdempotentByUuidAndRejectedWithAReason
+POST /v1/outlet-requests/{request_uuid}/verify -> case OutletRequestsTest#aNewOutletRequestIsVerifiedThenApprovedIntoTheMasterOnce
+POST /v1/outlet-requests/{request_uuid}/approve -> case OutletRequestsTest#aNewOutletRequestIsVerifiedThenApprovedIntoTheMasterOnce
+POST /v1/outlet-requests/{request_uuid}/reject -> case OutletRequestsTest#aWebCloseRequestIsIdempotentByUuidAndRejectedWithAReason
 GET /v1/report-exports -> gap: backend-reports
 GET /v1/report-exports/{export_id} -> gap: backend-reports
 GET /v1/reports -> gap: backend-reports
