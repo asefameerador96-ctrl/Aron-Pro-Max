@@ -2,7 +2,7 @@
 
 The lead posts each check here as soon as the build for it exists, with exact steps (about 10 minutes each). The owner runs them in the evening and replies with what happened. Lanes add rows marked DEVICE-PENDING.
 
-## Device day 2026-10-08: start here (infra, updated 2026-10-08 01:10 UTC)
+## Device day 2026-10-08: start here (infra, updated 2026-10-08 05:45 UTC)
 
 **Status: enrolment is ON on dev, and the phone can now enrol itself (path 2).** Dev requires enrolment
 (`cfg.device.require_enrolled` = true, the registry default; integrity off; lockdown as seeded). An unknown phone is
@@ -14,17 +14,50 @@ Two ways in:
   before login (Scan QR or paste the token). Use the **release-signed** APK from the first green `ci` run on INT
   2b76764f or later (run 687+). Steps: **D-ENR** below (normally installed phone). The server side is on dev: one
   published app_release per app (sr, amo, tso; CI signing certificate 468d9b4e...a4fb) so an admin can mint tokens.
+  Minting a token needs an **admin** web login, which needs MFA (next block).
 - **Path 1 (only if the owner says so): enrolment off on dev.** The lead has asked the owner. Only after the words
-  "owner approves dev enrolment off" reach infra through the lead does infra write it as a new audited config
-  version; then a phone logs in with sr1001 without a token. D-04 needs it back ON (infra notes how to flip it).
+  "owner approves dev enrolment off" reach infra through the lead does infra write it, as a new audited config version
+  through the dev seed path (author `aron.system`, like seed 04). **No admin login is needed for path 1**: the
+  config API (`/v1/admin/config/changes`) is maker-checker and would need two MFA admins. The phone checks then need
+  only the APK, `sr1001` and the bind code from `tso1001`'s web page. D-04 needs it back ON (infra writes a new
+  version that turns it on; nothing is edited in place).
 
-**Laptop-session check first (proves tokens can be minted on dev):** in the web dashboard as `admin1001` open
-`/admin/enrolment` and create a token (app SR, lockdown **dev**, 2 uses, 24 h), or call the API as admin1001:
-`POST /v1/admin/enrolment-tokens` with `{"flavour":"sr","lockdown_level":"dev","max_uses":2,"expires_in_h":24}`.
-Expected: **201** with `enrolment_token` and `qr_text`. The token is shown once: never paste it into chat, a file or
-a commit; show the QR on the laptop screen for the phone to scan. 404 "no published release of this flavour to
-provision" means the release seed (infra 09b) is missing on dev: tell infra. The token's app must match the APK
-(an SR token for the SR app); 2 uses covers both test phones.
+**Web logins on dev: who needs MFA** (lead read of backend-core 6541cf94; checked by infra against INT d596637f:
+V0006, `contract/openapi.yaml`, `LoginService.kt`)
+- `cfg.auth.mfa_required_roles` = `["ADMIN","SUPERADMIN","SUPPORT"]` (V0006 default; no seed row changes it or enrols
+  anyone). So `admin1001`, `superadmin1001` and `support1001` need MFA. **`tso1001` (and the AMO/DMO accounts) do
+  not**: `tso1001` logs in on the web with the password alone and reads the bind code on `/device-otp`, today.
+- The MFA routes exist only from backend-core ee9755c0, which is on INT d596637f (deploy run 37732865997, started
+  05:32 UTC). On any older deploy an admin web login could not finish. Check `GET /v1/health` shows build
+  `d596637f...` or later before trying.
+- **Admin first login is trust on first use. There is no web enrolment screen yet** (web-dashboard is held). The
+  **laptop session** does it once for `admin1001` through the API:
+  1. `POST /v1/auth/login` `{"username":"admin1001","password":<seed password>,"client":"web"}`: the answer says
+     `status` `mfa_required` and an `mfa_token` (5 minutes).
+  2. `POST /v1/auth/mfa/enrol` with `Authorization: Bearer <mfa_token>`: **200** with the TOTP `otpauth://` URI
+     (it contains the secret) and ten recovery codes, **shown once**. Write the whole answer straight to a local
+     file readable only by you (`chmod 600`), or into a password manager. **Never print it, paste it in chat, put it
+     in a log or a commit.**
+  3. Compute the current 6-digit code from that secret locally (for example `oathtool --totp -b <secret>`, read
+     from the file, not typed on the command line), then `POST /v1/auth/mfa/verify`
+     `{"mfa_token":"<from step 1>","code":"123456"}`: **200** with the full session. A recovery code
+     (`XXXX-XXXX`) also works once enrolment is confirmed. Wrong codes count towards the account lockout.
+  4. Later logins: steps 1 and 3 only (enrol answers 409 once confirmed; only an admin's `reset_mfa` starts over).
+- **Owner's hands (only if the owner wants to log in to the web as admin1001 themself):** the laptop renders the
+  `otpauth://` URI as a QR **locally** (for example `qrencode -t ansiutf8 < file`); the owner scans it with an
+  authenticator app. Nobody else ever sees it. After that the normal web login works for them: password, then the
+  login form's code step (status `mfa_required`) takes the 6-digit code. The form has no enrolment step, so the
+  first enrolment must be the API one above.
+- These enrolments are sealed with the key derived from the JWT signing key until `aron-mfa-key` is live (infra
+  bd4ad030). They stay readable after that; they are lost only if the signing key rotates first.
+
+**Laptop-session check (proves tokens can be minted on dev), after the admin login above:** as `admin1001`, open
+`/admin/enrolment` in the web dashboard and create a token (app SR, lockdown **dev**, 2 uses, 24 h), or call
+`POST /v1/admin/enrolment-tokens` with `{"flavour":"sr","lockdown_level":"dev","max_uses":2,"expires_in_h":24}` and
+the bearer from step 3. Expected: **201** with `enrolment_token` and `qr_text`. The token is shown once: never paste
+it into chat, a file or a commit; show the QR on the laptop screen for the phone to scan. 404 "no published release
+of this flavour to provision" means the release seed (infra 09b) is missing on dev: tell infra. The token's app must
+match the APK (an SR token for the SR app); 2 uses covers both test phones.
 
 **Checks that need NO login, run these first on the A06:** D-P1 (on-phone print goldens), D-PERF-04 (lab
 benchmark), D-DB-VAC (SQLCipher device test), D-UI-01 if it runs on the seeded day without a server login.
