@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 148 | 2563 |
+| `app` | 148 | 2564 |
 | `dw` | 33 | 512 |
 
 ## Index
@@ -3169,6 +3169,7 @@ A login session: the family of refresh tokens issued from one login, with expiry
 | `revoked_at` | timestamp with time zone | null |  | UTC instant the row was revoked; null while valid. |
 | `revoke_reason` | text | null |  | Reason the family was revoked. |
 | `device_uuid` | uuid | null |  | UUID of the phone the session belongs to; null for web sessions. |
+| `amr` | text[] | not null |  | Authentication methods of the login that opened the family (RFC 8176 amr: pwd, mfa); every refresh of the family carries the same. |
 
 Keys: `PRIMARY KEY (id)`
 
