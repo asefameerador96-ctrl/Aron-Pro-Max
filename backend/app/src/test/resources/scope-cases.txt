@@ -61,6 +61,7 @@ GET /v1/leave -> case LeaveTest#randomisedListsNeverLeakLeaveOutsideTheCallersRe
 GET /v1/me -> exempt: the caller's own account, token or phone only; no geography rows
 GET /v1/media/{media_uuid}/read-url -> case MediaReadTest#aPhotoIsReadableOnlyInsideTheCallersReach
 GET /v1/memos -> case SyncReadsTest#memosAreReadByNumberOrOutletWithLinesAndNeverOutsideTheCallersReach
+GET /v1/outlets -> case ScopeLeakHttpTest#theFieldReadForEveryRoleFindsZeroCrossScopeRows
 GET /v1/outlets/nearby -> case NearbyOutletsTest#nearbyOutletsAreTheSeededOnesInsideTheCircleAndTheReachNearestFirst
 GET /v1/risk-signals -> case RiskSignalsTest#supervisorsSeeOnlySignalsInTheirReachAndFieldRepsNone
 POST /v1/client-errors -> exempt: stores the caller's own error report (user from the token); reads no rows
@@ -74,6 +75,7 @@ POST /v1/outlet-requests/{request_uuid}/reject -> case OutletRequestsTest#aWebCl
 GET /v1/report-exports -> gap: backend-reports
 GET /v1/report-exports/{export_id} -> gap: backend-reports
 GET /v1/reports -> gap: backend-reports
+GET /v1/routes -> case RoutesInReachTest#everyRoleSeesExactlyTheRoutesInItsReachWithTheirAssignees
 GET /v1/routes/{id}/assignments -> case RouteAssignmentsTest#randomisedCallersNeverSeeARouteOutsideTheirReach
 GET /v1/sync/bundle -> case BundleAcceptanceTest#theBundleHoldsOnlyTheCallersOwnRoutesAndTheirOutletsWhateverTheQuerySays
 GET /v1/sync/bundle/page -> exempt: a page of the caller's own bundle (user from the token, rebuilt as GET /v1/sync/bundle); bundle_version names only a date and a seq, never a user or scope (BundleDeltaTest#outletsAboveTheThresholdArePagedAndThePagesHoldEveryRowOnce)

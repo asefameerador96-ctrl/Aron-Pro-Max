@@ -1,0 +1,51 @@
+path: /v1/outlets
+method: get
+operation:
+  tags:
+  - team
+  operationId: listOutletsInReach
+  summary: Outlets in the caller's reach for every role (F-API-010); PII columns only with the pii claim.
+  description: 'The read of `listOutlets` for every role, field roles included: an SR sees the outlets of its own
+    routes, an
+
+    AMO or TSO those of its zones, national roles all. Reach comes from the token on today''s Dhaka business date;
+
+    a selector outside it is 403 and the filters only narrow it. With `updated_since` the page is ordered by
+
+    `(updated_at, id)` for incremental pulls. `contact_number` is null without the `pii` claim.
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - name: route_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: cluster_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/OutletStatus'
+  - $ref: '#/components/parameters/UpdatedSince'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of outlets.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OutletPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

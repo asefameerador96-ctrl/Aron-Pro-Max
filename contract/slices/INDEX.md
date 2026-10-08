@@ -313,7 +313,7 @@ Source: contract/openapi.yaml, version 1.3.0.
 - `schemas/ClusterWrite.yaml` (306 B)
 - `schemas/ClusterPatch.yaml` (455 B)
 - `schemas/ClusterPage.yaml` (296 B)
-- `schemas/Route.yaml` (1930 B)
+- `schemas/Route.yaml` (1960 B)
 - `schemas/RouteWrite.yaml` (757 B)
 - `schemas/RoutePatch.yaml` (795 B)
 - `schemas/RoutePage.yaml` (292 B)
@@ -502,7 +502,7 @@ Source: contract/openapi.yaml, version 1.3.0.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (207)
+## Operations (209)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -646,6 +646,8 @@ Source: contract/openapi.yaml, version 1.3.0.
 - `operations/getReleasePolicy.yaml`  GET /v1/admin/releases/policy (525 B)
 - `operations/listAudit.yaml`  GET /v1/admin/audit (1062 B)
 - `operations/getNearbyOutlets.yaml`  GET /v1/outlets/nearby (1605 B)
+- `operations/listOutletsInReach.yaml`  GET /v1/outlets (1564 B)
+- `operations/listRoutesInReach.yaml`  GET /v1/routes (1258 B)
 - `operations/createTrackingAction.yaml`  POST /v1/dashboards/daily-tracking/actions (1058 B)
 - `operations/listTutorials.yaml`  GET /v1/tutorials (428 B)
 - `operations/createSupportUpload.yaml`  POST /v1/support/pda-upload (1162 B)

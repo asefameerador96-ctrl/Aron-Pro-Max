@@ -56,8 +56,8 @@ Route:
         $ref: '#/components/schemas/ActiveStatus'
       assignees:
         type: array
-        description: Users assigned to the route; returned only by GET /v1/admin/routes with `include=assignees`,
-          absent otherwise.
+        description: Users assigned to the route today; returned by GET /v1/routes always and by GET /v1/admin/routes
+          with `include=assignees`, absent otherwise.
         items:
           type: object
           required:

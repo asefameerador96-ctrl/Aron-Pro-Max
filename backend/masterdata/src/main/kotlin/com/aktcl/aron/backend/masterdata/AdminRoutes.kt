@@ -4,6 +4,8 @@ import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.authenticated
+import com.aktcl.aron.backend.platform.principal
+import com.aktcl.aron.contract.Role
 import com.aktcl.aron.contract.ProblemCode
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -224,6 +226,13 @@ fun Route.adminRoutesRoutes(d: AdminMasterDeps) {
         get("/admin/route-assignments") { call.admRespond(HttpStatusCode.OK, listAssignments(call, d)) }
         post("/admin/route-assignments") { createAssignment(call, d) }
         post("/admin/route-assignments/{id}/end") { endAssignment(call, d) }
+        // F-API-011 (contract listRoutesInReach): every role, always with today's assignees; an SR only its own routes.
+        get("/routes") {
+            val p = call.principal
+            val own = if (p.role == Role.SR) d.ctx(call, p).reach.routeIds else null
+            val extra = own?.let { ids -> (if (ids.isEmpty()) "FALSE" else "t.id IN (${ids.sorted().joinToString(",")})") to emptyMap<String, Any>() }
+            call.admRespond(HttpStatusCode.OK, assignees(d, adminList(call, d, p, ROUTE, extra)))
+        }
     }
 }
 
@@ -235,6 +244,10 @@ fun Route.adminRoutesRoutes(d: AdminMasterDeps) {
 private fun withAssignees(call: ApplicationCall, d: AdminMasterDeps, page: JsonObject): JsonObject {
     val inc = call.request.queryParameters["include"] ?: return page
     if (inc != "assignees") admBad("query.include", "invalid_value")
+    return assignees(d, page)
+}
+
+private fun assignees(d: AdminMasterDeps, page: JsonObject): JsonObject {
     val items = (page["items"] as? JsonArray) ?: return page
     val ids = items.mapNotNull { ((it as? JsonObject)?.get("id") as? JsonPrimitive)?.content?.toLongOrNull() }
     val today = java.time.LocalDate.ofInstant(d.clock.now(), java.time.ZoneId.of("Asia/Dhaka"))
