@@ -2,26 +2,29 @@
 
 The lead posts each check here as soon as the build for it exists, with exact steps (about 10 minutes each). The owner runs them in the evening and replies with what happened. Lanes add rows marked DEVICE-PENDING.
 
-## Device day 2026-10-08: start here (infra, 2026-10-07 23:10 UTC)
+## Device day 2026-10-08: start here (infra, updated 2026-10-08 01:10 UTC)
 
-**Status: a real phone cannot log in to dev yet.** Dev requires enrolment (`cfg.device.require_enrolled` = true,
-the registry default; integrity off; lockdown as seeded), and an unknown phone is refused at login with
-"this phone is not enrolled" (403 `ERR_DEVICE_NOT_ENROLLED`) before the password is checked. Two ways forward:
+**Status: enrolment is ON on dev, and the phone can now enrol itself (path 2).** Dev requires enrolment
+(`cfg.device.require_enrolled` = true, the registry default; integrity off; lockdown as seeded). An unknown phone is
+refused at login with "this phone is not enrolled" (403 `ERR_DEVICE_NOT_ENROLLED`) before the password is checked.
+Two ways in:
 
-- **Path 1: owner's decision, one switch.** The lead asks the owner whether enrolment may be off on dev for the
-  device day. If yes: the phone logs in with sr1001, binds with the 4-digit code (below) and sells. Nothing else
-  changes (integrity stays off, lockdown as seeded, the bind code stays required).
-- **Path 2: enrolment stays on. NOT ready tomorrow.** Needs android-core's enrolment step for a normally installed
-  phone (being built: EnrolmentCoordinator installed in the apps, token entry before login). The server side is
-  ready on dev after the next deploy with infra 09b seed: a published release per app with the CI signing
-  certificate, so an admin can mint an enrolment token (`lockdown_level` dev, flavour sr). The same seed lets the
-  device-owner path (D-04) mint tokens.
+- **Path 2 (default, needs nobody's decision): enrol the phone with a token.** android-core's enrolment screen
+  (59631840, f357e344, 1d48cddb) is on INT from 2b76764f in all three apps: a new install shows "Enrol this phone"
+  before login (Scan QR or paste the token). Use the **release-signed** APK from the first green `ci` run on INT
+  2b76764f or later (run 687+). Steps: **D-ENR** below (normally installed phone). The server side is on dev: one
+  published app_release per app (sr, amo, tso; CI signing certificate 468d9b4e...a4fb) so an admin can mint tokens.
+- **Path 1 (only if the owner says so): enrolment off on dev.** The lead has asked the owner. Only after the words
+  "owner approves dev enrolment off" reach infra through the lead does infra write it as a new audited config
+  version; then a phone logs in with sr1001 without a token. D-04 needs it back ON (infra notes how to flip it).
 
-**Laptop-session check after the next dev deploy (enrolment tokens can be minted):** log in to the dev API as
-`admin1001` (web client), then `POST /v1/admin/enrolment-tokens` with
-`{"flavour":"sr","lockdown_level":"dev","max_uses":2,"expires_in_h":24}`. Expected: **201** with a token and QR text.
-The token is shown once: never paste it into chat, a file or a commit. Before the release seed this answered 404
-"no published release of this flavour to provision".
+**Laptop-session check first (proves tokens can be minted on dev):** in the web dashboard as `admin1001` open
+`/admin/enrolment` and create a token (app SR, lockdown **dev**, 2 uses, 24 h), or call the API as admin1001:
+`POST /v1/admin/enrolment-tokens` with `{"flavour":"sr","lockdown_level":"dev","max_uses":2,"expires_in_h":24}`.
+Expected: **201** with `enrolment_token` and `qr_text`. The token is shown once: never paste it into chat, a file or
+a commit; show the QR on the laptop screen for the phone to scan. 404 "no published release of this flavour to
+provision" means the release seed (infra 09b) is missing on dev: tell infra. The token's app must match the APK
+(an SR token for the SR app); 2 uses covers both test phones.
 
 **Checks that need NO login, run these first on the A06:** D-P1 (on-phone print goldens), D-PERF-04 (lab
 benchmark), D-DB-VAC (SQLCipher device test), D-UI-01 if it runs on the seeded day without a server login.
@@ -29,7 +32,7 @@ benchmark), D-DB-VAC (SQLCipher device test), D-UI-01 if it runs on the seeded d
 **What the owner needs either way**
 - **APK:** GitHub, Actions, the latest green `ci` run on the integration branch, artifact
   `aron-release-signed-dev-<run>` (use this one, not `aron-debug-apks-*`: enrolment checks the release signing
-  certificate). Unzip, phone on USB with USB debugging on, then `adb install -r aron-sr-0.1.<run>-dev.apk`.
+  certificate). Unzip, phone on USB with USB debugging on, then `adb install -r aron-sr-0.1.<run>-dev.apk`, then enrol it (D-ENR) before the login below.
   The APK talks to the dev API `https://fde-aron-dev-7i7g53-gpgaa3fpgrhmdgaz.z03.azurefd.net` (baked in by CI).
 - **Login:** username `sr1001` and the dev seed password (Key Vault `aron-dev-seed-password`; the laptop session
   reads it, never paste it in chat). There is no phone-number/SMS login and no fixed dev OTP.

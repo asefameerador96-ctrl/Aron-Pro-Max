@@ -1,6 +1,46 @@
 # Infra lane status
 
-Updated 2026-10-07 22:55 UTC (sixth infra session).
+Updated 2026-10-08 00:50 UTC (sixth infra session, handover).
+
+## HANDOVER (sixth infra session -> seventh), 2026-10-08 00:50 UTC: read this first
+
+Recycled at about 475k tokens (lead). Lead: session_01MbUQSxrP7AB9tbyANjUTPS. Integrator: session_016uXu7QkPQGGTn3FmR92YHu.
+backend-core: session_01Kn9iDxdP1Cjp7N1JgsTsjY. db session_011K2gmzr1feSNNQxnqWkRt5 is inactive (the lead relays).
+No check-in of this session is scheduled.
+
+**First task: confirm the slice smoke is green again (lead asked, two lines).** Deploy #154 (37700214494) and #155
+(37702772106) failed smoke step 4: memo + memo_line quarantined `device_not_enrolled` (backend-core's N-027 gate counts
+a device as enrolled only when app.device.enrolment_token_id is set). Fix 2a97ca75 (lead-approved, CI 37703191467 green):
+devseed-run.sh records ONLY the smoke device as enrolled through a single-use, already-used dev token, only when it
+carries the real Key Vault key. Read the first deploy that carries it (INT 2b76764f expected): `grep slice:` steps 4,
+7b (GET /v1/sync/totals, hard), 8 (GET /v1/memos, hard), 9, 10, and the summary rows; tell the lead.
+
+**Dev state (as of deploy #155):**
+- Config: no config version written by infra. `cfg.device.require_enrolled` = TRUE (registry default V0006; seed 04
+  deliberately not loaded), `cfg.device.require_integrity` = FALSE (registry default). Owner decides on enrolment off
+  for device day (path 1); if "owner approves dev enrolment off" arrives via the lead, write it as a NEW config version
+  through the audited path with a test and a note on how to flip it back for D-04. Do nothing before that.
+- Release seed (b3cd9bb4, infra/sql/devseed-app-release.sql as 09b): one PUBLISHED app.app_release per flavour,
+  0.1.516 universal, signing_cert_sha256 468d9b4e...a4fb (CI release key, public). Loaded in #155 (Dev seed Succeeded).
+  Enrolment tokens can now be minted on dev: laptop-session check `POST /v1/admin/enrolment-tokens`
+  `{"flavour":"sr","lockdown_level":"dev","max_uses":2,"expires_in_h":24}` as admin1001 -> 201 (token shown once,
+  never pasted). Not yet run (needs the laptop session).
+- pg_trgm: PG_TRGM in azure.extensions (bb221dfe); applied by #155's infra stage (main.bicep ran). db's AUD-PERF-07
+  migration may now go.
+- Play Integrity: Key Vault aron-play-integrity-service-account -> API-only env (8d9ca261), one-space placeholder
+  (API falls back to the FCM account). Gate untouched. Parked until the owner links Play Integrity.
+- Device day: docs/status/device-checks.md "Device day 2026-10-08: start here" (path 1 owner switch; path 2 gate on,
+  needs android-core's enrolment step, not ready; no-login checks first; bind OTP from web /device-otp; Force Sale).
+
+**Done this session (all on INT unless noted):** CI split proven (37682155791, 22.3 min); slice smoke first full PASS
+(37687665680); 7b/8 hard checks (5524b051); worker check blocking (fdd1c2af); N-064 part 1 release manifest + version
+name fix (51ccd44b, 41d9fe4c); Web job hang fixed (2fe687b9: playwright cache, capped download/apt, Chrome fallback);
+Play Integrity wiring; pg_trgm; release seed; smoke-device enrolment (2a97ca75, waiting for promotion).
+
+**Open:** N-064 rest (store upload needs backend `POST /v1/admin/releases`; install proof on phones = owner);
+governance re-run on the laptop (`gh auth login`, `pwsh -NoProfile -File tools/github-governance.ps1`, only with
+"Backend app tests" on INT, which it now is); restore drill only after "owner approved restore drill"; checker notes
+(release-apks lists x86 splits the manifest rejects; smoke step 8 has no retry for a future read replica).
 
 ## Sixth infra session, 2026-10-07 21:05 UTC (read with the handover below)
 
