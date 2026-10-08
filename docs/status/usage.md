@@ -89,3 +89,7 @@
 | 2026-10-08 04:50 | integrator (session 6 -> 7) | - | 470 -> new | n/a | seven_day allowed_warning | recycled at 470k; candidate zzf (backend-core ee9755c0) in CI |
 | 2026-10-08 04:50 | backend-core (session 11) | - | new | n/a | seven_day allowed_warning | running; queue (a) done (MFA verify, media read-url, client-errors, geo-validation), on F-API-010/011 |
 | 2026-10-08 04:50 | infra (session 6) | - | 154 | n/a | seven_day allowed_warning | idle; awaiting backend-core MFA answer for the device-day section |
+| 2026-10-08 06:50 | integrator (session 7) | - | 300 | n/a | seven_day allowed_warning | running (zzm/zzn CI, INT e528b98d deploying); asked to hand over after this promotion |
+| 2026-10-08 06:50 | backend-core (session 12) | - | 232 | n/a | seven_day allowed_warning | parked, queue empty (only F-SYS-086 left, waits on backend-admin) |
+| 2026-10-08 06:50 | infra (session 6) | - | 224 | n/a | seven_day allowed_warning | idle; waits for owner's enrolment words (path A) |
+| 2026-10-08 06:50 | db (session 5) | - | - | n/a | seven_day allowed_warning | amr column (refresh_family) on lane/db 93789a03 |
