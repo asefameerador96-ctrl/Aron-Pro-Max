@@ -17,3 +17,7 @@ COMMENT ON COLUMN app.refresh_family.amr IS 'Authentication methods of the login
 **Backend side (ready, lane/backend-core):** `JdbiRefreshStore` writes and reads the column when it exists (checked once
 per process) and falls back to ["pwd"] until then; `MfaTest` adds the column in its own test database and proves a
 refreshed web MFA session keeps ["pwd","mfa"]. Nothing else changes when the migration lands.
+
+**Rollout note (lead accepted, BC-97):** once the column exists, every family created before it reads `{pwd}`, so
+admins (MFA roles) are signed out at their next refresh (15 min) and sign in again once with TOTP. Please mention this
+in the migration's note.
