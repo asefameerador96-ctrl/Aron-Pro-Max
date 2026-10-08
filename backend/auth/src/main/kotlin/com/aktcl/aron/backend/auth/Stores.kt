@@ -16,6 +16,8 @@ data class UserRecord(
     val passwordHash: String?,
     val scopeVersion: Long,
     val mustChangePassword: Boolean,
+    /** A confirmed TOTP enrolment (`app_user.mfa_enabled`): the web login asks for a code whatever the role. */
+    val mfaEnabled: Boolean = false,
 )
 
 /** Login view of a `device` row and the caller's binding to it (docs/24 s8.7). */

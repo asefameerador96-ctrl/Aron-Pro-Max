@@ -43,6 +43,13 @@ data class Settings(
     val frontDoorId: String? = null,
     /** Firebase service account JSON for FCM (Key Vault `aron-fcm-service-account`); push is off without it. */
     val fcmServiceAccountJson: Secret? = null,
+    /**
+     * Key of the sealed TOTP secrets (Key Vault `aron-mfa-key`, 32+ random bytes, base64), independent of the JWT signing
+     * key so a token-key rotation never locks MFA users out; the previous key stays readable during a rotation. Without
+     * it (local runs) a key derived from the signing key is used, and stays readable after one is configured.
+     */
+    val mfaKey: Secret? = null,
+    val mfaKeyPrevious: Secret? = null,
     /** Google service account allowed to call Play Integrity `decodeIntegrityToken` (N-027); falls back to the FCM one; verdicts stay unevaluated without either. */
     val playIntegrityServiceAccountJson: Secret? = null,
 ) {
@@ -105,6 +112,8 @@ data class Settings(
                 hashQueueMax = src.int("ARON_HASH_QUEUE_MAX", 32),
                 frontDoorId = src.get("ARON_FRONT_DOOR_ID"),
                 fcmServiceAccountJson = src.secret("ARON_FCM_SERVICE_ACCOUNT_JSON"),
+                mfaKey = src.secret("ARON_MFA_KEY"),
+                mfaKeyPrevious = src.secret("ARON_MFA_KEY_PREVIOUS"),
                 playIntegrityServiceAccountJson = src.secret("ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON"),
             )
         }

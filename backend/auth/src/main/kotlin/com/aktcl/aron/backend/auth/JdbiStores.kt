@@ -23,13 +23,14 @@ private val HEX = HexFormat.of()
 /** `app_user` reads, plus a short per-replica cache of `scope_version` for the bearer guard. */
 class JdbiUserStore(private val db: Database, private val clock: AronClock = AronClock.SYSTEM, private val svCacheMs: Long = 10_000) :
     UserStore, ScopeVersionLookup {
-    private val cols = "id, username, full_name, role, status, locale, designation, password_hash, scope_version, must_change_password"
+    private val cols = "id, username, full_name, role, status, locale, designation, password_hash, scope_version, must_change_password, mfa_enabled"
 
     private fun map(rs: ResultSet) = UserRecord(
         id = rs.getLong("id"), username = rs.getString("username"), fullName = rs.getString("full_name"),
         role = Role.valueOf(rs.getString("role")), status = rs.getString("status"), locale = rs.getString("locale"),
         designation = rs.getString("designation"), passwordHash = rs.getString("password_hash"),
         scopeVersion = rs.getLong("scope_version"), mustChangePassword = rs.getBoolean("must_change_password"),
+        mfaEnabled = rs.getBoolean("mfa_enabled"),
     )
 
     override fun findByUsername(username: String): UserRecord? = db.jdbi.withHandle<UserRecord?, Exception> { h ->

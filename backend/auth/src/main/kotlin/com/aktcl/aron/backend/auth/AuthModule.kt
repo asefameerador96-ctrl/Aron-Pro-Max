@@ -70,6 +70,16 @@ fun Route.authRoutes(d: AuthDeps) {
             val web = req.refresh_token == null
             call.respond(if (web) call.webCookie(pair.refresh_token, pair.refresh_expires_at).let { pair.copy(refresh_token = null) } else pair)
         }
+        // The login's mfa_token travels in the body (contract verifyMfa, `security: []`); only aud aron-mfa is accepted.
+        post("/mfa/verify") {
+            val req = call.receiveStrict(MfaVerifyRequest.serializer())
+            if (req.mfa_token.length > 4096) throw ApiProblem(ProblemCode.ERR_VALIDATION, "mfa_token is too long", errors = listOf(FieldError("/mfa_token", "max_length")))
+            val p = try { d.guard.verifier.verify(req.mfa_token, setOf(Audience.MFA)) } catch (e: ApiProblem) {
+                throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "the sign-in has expired; sign in again")
+            }
+            val res = withContext(Dispatchers.IO) { d.login.verifyMfa(p, req.code) }
+            call.respond(call.webCookie(res.refresh_token, res.refresh_expires_at).let { res.copy(refresh_token = null) })
+        }
         get("/jwks") {
             call.respond(Jwks(d.keys.publicJwks().map {
                 JwkEcPublic("EC", "P-256", it.x.toString(), it.y.toString(), it.keyID, "sig", "ES256")
@@ -86,6 +96,15 @@ fun Route.authRoutes(d: AuthDeps) {
             val res = withContext(Dispatchers.IO) { d.login.changePassword(p, req, callerRt) }
             if (res == null) call.respond(io.ktor.http.HttpStatusCode.NoContent)
             else call.respond(call.webCookie(res.refresh_token, res.refresh_expires_at).let { res.copy(refresh_token = null) })
+        }
+    }
+    // TOTP enrolment (F-WEB-043): a full web session, or the login's mfa_token for the first enrolment of an MFA role.
+    authenticated(d.guard, { audiences = setOf(Audience.API, Audience.MFA) }) {
+        post("/auth/mfa/enrol") {
+            val p = call.principal
+            val res = withContext(Dispatchers.IO) { d.login.enrolMfa(p) }
+            call.response.headers.append(io.ktor.http.HttpHeaders.CacheControl, "no-store")
+            call.respond(res)
         }
     }
     // The login's bind_token only (aud aron-bind); X-Device-Id must name the token's device (the guard checks it).
@@ -124,7 +143,7 @@ private fun me(call: ApplicationCall, d: AuthDeps): Me {
                 permissions = p.permissions,
                 scope = ScopeSummary(user.scopeVersion, reach.topNodes.take(16).map { NodeRef(it.type, it.id, it.code, it.name) }),
                 pii = p.pii,
-                mfa_enabled = false,
+                mfa_enabled = user.mfaEnabled,
                 menus = d.menusForRole(user.role.wire)?.take(200),
             )
 }

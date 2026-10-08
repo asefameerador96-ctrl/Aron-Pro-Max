@@ -20,4 +20,5 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
+    systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
 }

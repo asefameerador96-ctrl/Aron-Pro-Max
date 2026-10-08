@@ -1,6 +1,6 @@
 # backend-core lane status (handoff for a fresh session)
 
-Updated 2026-10-08 05:00 UTC (session 10; earlier header text from session 5 of the lane, recycled at ~580k tokens). Last pushed head: see `git log origin/lane/backend-core` (d5d7ca2e is queued with the integrator). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
+Updated 2026-10-08 (session 11; earlier: session 10, earlier header text from session 5 of the lane, recycled at ~580k tokens). Last pushed head: see `git log origin/lane/backend-core` (d5d7ca2e is queued with the integrator). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
 
 ## Done this session (pushed to INT)
 - **F-API-005 `GET /v1/sync/bundle`** (`backend/sync/BundleService.kt`, `ScopedConfig.kt`, `ReasonTexts.kt`): Opus checker 5 findings, 4 fixed; growing `snapshot_seq` waits on `docs/requests/backend-bundle-snapshot-table.md` (code ready, test assumption-guarded).
@@ -53,6 +53,15 @@ Updated 2026-10-08 05:00 UTC (session 10; earlier header text from session 5 of 
 - **db answered (22:05Z):** V0058 (working-day window keys) and V0059/V0060 (`config_stamp_regress`, `checkout_too_early`
   registry flags) are on lane/db 2205ff98, not yet on INT. Once INT carries them: F-SYS-091, write `checkout_too_early`
   in ingest, and check BC-74's `cfg.calendar.window_unit` reads (see `docs/requests/db-working-day-keys-and-flags-answer.md`).
+
+## Session 11 (2026-10-08, start here)
+- Merged INT at the start. Queue (a) done, independent checkers run, findings fixed:
+  - **GET /v1/media/{media_uuid}/read-url** (BC-87, `media/MediaRead.kt`; Sonnet checker): 5-min read SAS, captor's reach on the photo's date.
+  - **POST /v1/client-errors** (BC-88, `media/ClientErrors.kt`; Sonnet checker): storage waits on db `backend-core-client-error-table.md` (503 until then).
+  - **POST /v1/auth/mfa/enrol, /verify** (BC-89, `auth/Mfa.kt`; Opus checker): MFA roles could not finish a web login before. Requests: infra `backend-core-mfa-key.md` (Key Vault `aron-mfa-key`), db `backend-core-mfa-security-events.md`, web-dashboard `backend-core-mfa-enrol-web.md` (enrolment screen). Admin `unlock`/`reset_mfa` now clear the MFA lock (two lines in backend-admin's `AdminUsers.kt`).
+  - **GET /v1/dashboards/geo-validation** (BC-90, `DashboardService.geoValidation`).
+- Not mine and left unrouted: admin releases/audit/devices policy/sales-plans (backend-admin, on hold), day DROP rows, deferred programmes (docs/27).
+- Next: (b) F-API-010 `GET /v1/outlets` and F-API-011 `GET /v1/routes` as additive contract operations (lead ruling), then (c) BC-81, BC-84, BC-85 checker items.
 
 ## Session 10 close-out: next rows (session 11 starts here)
 1. Lane head 53246921 + this close-out commit; everything pushed and sent to the integrator (session_01DrpAFbHEdU2moUPcEGurmS). Rows done this session: F-API-007 (BC-81), F-SYS-025 and F-SYS-050 (BC-82), F-API-055 (BC-84), F-SYS-091 (BC-85), N-044 (BC-86); V0062/V0067 taken up.

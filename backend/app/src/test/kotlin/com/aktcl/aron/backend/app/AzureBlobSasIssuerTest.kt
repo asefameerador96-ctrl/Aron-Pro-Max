@@ -59,6 +59,19 @@ class AzureBlobSasIssuerTest {
     }
 
     @Test
+    fun readSasIsReadOnlyOnOneBlobUntilTheGivenTime() {
+        val i = issuer()
+        val url = i.readSas("photos/2026-10-07/00000000-0000-4000-8000-000000000001/11111111-1111-4111-8111-111111111111.jpg", t0.plusSeconds(300))
+        val q = query(url)
+        assertEquals("r", q["sp"])
+        assertEquals("https", q["spr"])
+        assertEquals("b", q["sr"])
+        assertEquals("2026-10-07T06:05:00Z", q["se"])
+        assertFailsWith<IllegalArgumentException> { i.readSas("photos/../x", t0.plusSeconds(300)) }
+        assertFailsWith<IllegalArgumentException> { i.readSas("photos/a.jpg", t0) }
+    }
+
+    @Test
     fun theDelegationKeyIsReusedAndRenewedBeforeItExpires() {
         val i = issuer()
         i.writeSas("a/1", 1, t0.plusSeconds(60)); i.readUrl("a/2")
