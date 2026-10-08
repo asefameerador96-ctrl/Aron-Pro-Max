@@ -14,7 +14,7 @@ class InMemoryRefreshStore : RefreshStore {
 
     override fun createFamily(family: NewFamily, tokenHash: String, tokenExpiresAt: Instant): Long {
         val id = ids.incrementAndGet()
-        families[id] = FamilyView(id, family.userId, family.deviceId, family.grant, family.flavour, family.absoluteExpiresAt, null, null)
+        families[id] = FamilyView(id, family.userId, family.deviceId, family.grant, family.flavour, family.absoluteExpiresAt, null, null, family.amr)
         tokens[tokenHash] = Row(id, tokenExpiresAt)
         return id
     }

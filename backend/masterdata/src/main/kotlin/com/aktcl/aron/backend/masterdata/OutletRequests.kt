@@ -271,9 +271,9 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         }.take(49).forEach {
             trail += OutletRequestEventDto(it["event"] as String, (it["actor_user_id"] as Number).toLong(), ts(it["at"])!!, it["note"] as String?)
         }
-        // The request row keeps only the fix's status, position and mock flag; a full contract GeoFix (provider, device,
-        // reuse) lives in app.geo_fix and is not rebuilt here yet, so the member is null (BC-84) and the mock flag rides `flags`.
-        val fix: JsonObject? = null
+        // The request row keeps only the fix's status, position and mock flag; the full contract GeoFix is rebuilt from
+        // the request's own app.geo_fix row (BC-84). A web request carries no fix, so the member is null.
+        val fix = requestFix(h, r, viewer.pii || (r["user_id"] as Number).toLong() == viewer.userId)
         val (moved, tso) = movement(h, r)
         val status = r["status"] as String
         val verifiedVia = events.lastOrNull { it["event"] == "verified" }?.get("via")?.let { if (it == "device") "app" else "web" }
@@ -287,6 +287,64 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
             if (status == "rejected" || status == "discarded") r["decision_reason"] as String? else null, (r["created_outlet_id"] as Number?)?.toLong() ?: if (status == "approved") (r["outlet_id"] as Number?)?.toLong() else null,
             trail,
         )
+    }
+
+    /**
+     * The contract GeoFix of a phone request, from the app.geo_fix row its record wrote (slot `fix`, same user, the
+     * request's business date or the phone's own date when the server re-dated it), or null when there is none or it is
+     * voided. The radio environment (cell ids, hashed Wi-Fi) is given only with [radio] (pii claim or the requester).
+     */
+    private fun requestFix(h: Handle, r: Map<String, Any?>, radio: Boolean): JsonObject? {
+        val dates = listOfNotNull(r["business_date"], r["business_date_device"]).map { it.toString() }.distinct()
+        val f = h.createQuery(
+            "SELECT * FROM app.geo_fix WHERE source_client_uuid = :u AND source_type = 'outlet_change_request' AND slot = 'fix' " +
+                "AND user_id = :usr AND business_date IN (<d>) AND voided_at IS NULL LIMIT 1",
+        ).bind("u", UUID.fromString(r["client_uuid"].toString())).bind("usr", (r["user_id"] as Number).toLong())
+            .bindList("d", dates.map { LocalDate.parse(it) }).mapToMap().findOne().orElse(null) ?: return null
+        fun num(k: String): JsonPrimitive = when (val v = f[k]) {
+            null -> JsonNull
+            is Double -> JsonPrimitive(v)
+            is Number -> JsonPrimitive(v.toLong())
+            else -> JsonNull
+        }
+        // Ingest checks only the fix's own members, so the stored gnss and radio objects are cut to their schemas here
+        // (additionalProperties false) and dropped when a required member is missing.
+        fun obj(k: String, keys: Set<String>, required: Set<String>): JsonObject? =
+            (f[k]?.toString()?.let { Json.parseToJsonElement(it) } as? JsonObject)?.filterKeys { it in keys }?.takeIf { it.keys.containsAll(required) }?.let(::JsonObject)
+        fun gnss() = obj("gnss", GNSS_KEYS, setOf("window_ms", "satellites_visible", "satellites_used", "constellations_used")) ?: JsonNull
+        fun radio(): kotlinx.serialization.json.JsonElement {
+            val o = obj("radio", setOf("cells", "wifi_hashes"), setOf("cells", "wifi_hashes")) ?: return JsonNull
+            val cells = (o["cells"] as? kotlinx.serialization.json.JsonArray ?: return JsonNull).mapNotNull { c ->
+                (c as? JsonObject)?.filterKeys { it in CELL_KEYS }?.takeIf { it.keys.containsAll(CELL_KEYS - "rsrp_dbm") }?.let(::JsonObject)
+            }
+            val wifi = (o["wifi_hashes"] as? kotlinx.serialization.json.JsonArray ?: return JsonNull)
+                .filter { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.matches(WIFI_HASH) == true }
+            return JsonObject(mapOf("cells" to kotlinx.serialization.json.JsonArray(cells), "wifi_hashes" to kotlinx.serialization.json.JsonArray(wifi)))
+        }
+        val m = LinkedHashMap<String, kotlinx.serialization.json.JsonElement>()
+        m["purpose"] = JsonPrimitive(f["purpose"] as String)
+        m["fix_status"] = JsonPrimitive(f["fix_status"] as String)
+        for (k in listOf("lat", "lng", "accuracy_m", "altitude_m", "vertical_accuracy_m", "speed_mps", "bearing_deg")) m[k] = num(k)
+        m["provider"] = JsonPrimitive(f["provider"] as String)
+        m["fix_time"] = ts(f["fix_time"])?.let { JsonPrimitive(it) } ?: JsonNull
+        for (k in listOf("fix_elapsed_realtime_ms", "fix_age_ms", "time_to_fix_ms")) m[k] = num(k)
+        (f["request_priority"] as String?)?.let { m["request_priority"] = JsonPrimitive(it) }
+        m["is_mock"] = JsonPrimitive(f["is_mock"] as Boolean)
+        m["reused"] = JsonPrimitive(f["reused"] as Boolean)
+        (f["refresh_count"] as Number?)?.let { m["refresh_count"] = JsonPrimitive(it.toLong()) }
+        m["gnss"] = gnss()
+        m["radio"] = if (radio) radio() else JsonNull
+        m["device"] = JsonObject(
+            linkedMapOf(
+                "device_owner" to JsonPrimitive(f["device_owner"] as Boolean),
+                "dev_options_enabled" to JsonPrimitive(f["dev_options_enabled"] as Boolean),
+                "adb_enabled" to JsonPrimitive(f["adb_enabled"] as Boolean),
+                "auto_time_enabled" to JsonPrimitive(f["auto_time_enabled"] as Boolean),
+                "mock_app_present" to JsonPrimitive(f["mock_app_present"] as Boolean),
+                "integrity_ref" to (f["integrity_ref"]?.let { JsonPrimitive(it.toString()) } ?: JsonNull),
+            ),
+        )
+        return JsonObject(m)
     }
 
     /** For a location request on a confirmed outlet: the move in metres and whether it is above the TSO threshold. */
@@ -557,3 +615,10 @@ class OutletRequestVerificationHandler(private val reach: ReachResolver? = null)
         }
     }
 }
+
+private val GNSS_KEYS = setOf(
+    "window_ms", "satellites_visible", "satellites_used", "constellations_used", "cn0_used_mean_dbhz", "cn0_used_max_dbhz",
+    "cn0_used_stddev_dbhz", "cn0_all_mean_dbhz", "ephemeris_share", "raw_supported", "raw_measurement_count", "agc_db_mean",
+)
+private val CELL_KEYS = setOf("mcc", "mnc", "tac", "ci", "rsrp_dbm", "serving")
+private val WIFI_HASH = Regex("^[0-9a-f]{16}$")

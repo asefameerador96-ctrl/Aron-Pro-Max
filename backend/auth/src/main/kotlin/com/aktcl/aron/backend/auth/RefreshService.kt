@@ -39,7 +39,7 @@ class RefreshService(
 ) {
     private val keySpec = SecretKeySpec(rotationKey, "HmacSHA256")
 
-    fun issue(userId: Long, deviceId: Long?, grant: Grant, flavour: String): IssuedRefresh {
+    fun issue(userId: Long, deviceId: Long?, grant: Grant, flavour: String, amr: List<String> = listOf("pwd")): IssuedRefresh {
         val now = clock.now()
         val absolute = if (grant == Grant.FULL) {
             val base = config.int("cfg.auth.refresh_absolute_days").toLong()
@@ -49,7 +49,7 @@ class RefreshService(
         } else null
         val token = ByteArray(32).also(random::nextBytes).let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
         val expires = slidingExpiry(grant, now, absolute)
-        val id = store.createFamily(NewFamily(userId, deviceId, grant, flavour, now, absolute), sha256(token), expires)
+        val id = store.createFamily(NewFamily(userId, deviceId, grant, flavour, now, absolute, amr), sha256(token), expires)
         return IssuedRefresh(token, id, absolute, expires)
     }
 
