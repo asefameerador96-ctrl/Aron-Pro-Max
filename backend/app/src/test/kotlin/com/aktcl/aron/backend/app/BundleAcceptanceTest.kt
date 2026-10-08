@@ -133,6 +133,12 @@ class BundleAcceptanceTest {
             .bind("c", code).bind("d", date).mapToMap().findOne().orElse(emptyMap())
     }
 
+    /** F-SYS-025 (V0065): full downloads counted on the route-day, with the last one's time. */
+    private fun downloads(code: String, date: LocalDate): Pair<Int, Boolean> = fresh.db.jdbi.withHandle<Pair<Int, Boolean>, Exception> { h ->
+        h.createQuery("SELECT d.bundle_count, d.last_bundle_at IS NOT NULL FROM app.route_day d JOIN app.route r ON r.id = d.route_id WHERE r.code = :c AND d.business_date = :d")
+            .bind("c", code).bind("d", date).map { rs, _ -> rs.getInt(1) to rs.getBoolean(2) }.findOne().orElse(0 to false)
+    }
+
     @Test
     @Order(1)
     fun theSeededSrGetsItsWholeDayGzippedWithAnEtagAnd304OnRepeat() = testApplication {
@@ -198,7 +204,7 @@ class BundleAcceptanceTest {
         assertEquals(b["config"]!!.jsonObject["config_version"]!!.jsonPrimitive.long, b["device_policy_version"]!!.jsonPrimitive.long)
         assertTrue("cfg.device.blocked_packages" in values.keys, "the app-block list reaches the phone with the config")
         // V0055 field-app keys (F-SYS-024/028/029, docs/19 s9): global defaults, delivered to the device.
-        mapOf("cfg.app.local_history_days" to 7, "cfg.app.outbox_keep_days" to 3, "cfg.app.image_cache_mb" to 40).forEach { (k, v) ->
+        mapOf("cfg.app.local_history_days" to 7, "cfg.app.outbox_keep_days" to 3, "cfg.app.image_cache_mb" to 40, "cfg.app.rejected_keep_days" to 30).forEach { (k, v) ->
             assertEquals(v, values[k]?.get("value")?.jsonPrimitive?.int, "$k reaches the phone")
         }
         assertTrue(values.keys.none { it == "cfg.geo.max_speed_kmh" || it == "cfg.device.require_enrolled" }, "server-only keys stay on the server")
@@ -218,11 +224,18 @@ class BundleAcceptanceTest {
         assertEquals(20, routeDay("MIR-SR-D", sunday)["target_outlets"])
         assertEquals(0, routeDay("MIR-SR-2F", sunday)["target_outlets"])
 
+        // The served download is counted on every route-day it carries.
+        assertEquals(1 to true, downloads("MIR-SR-D", sunday))
+        assertEquals(1 to true, downloads("MIR-SR-2F", sunday))
+
         // Repeat with the ETag: 304, no body.
         val again = client.bundle(token, etag = r.headers[HttpHeaders.ETag])
         assertEquals(HttpStatusCode.NotModified, again.status)
         assertEquals(0, again.bodyAsBytes().size)
         assertEquals(HttpStatusCode.NotModified, client.bundle(token, etag = "W/\"$version\"").status, "a weak tag from a proxy matches too")
+        assertEquals(1 to true, downloads("MIR-SR-D", sunday), "a 304 is not a download")
+        assertEquals(HttpStatusCode.OK, client.bundle(token).status)
+        assertEquals(2 to true, downloads("MIR-SR-D", sunday), "a second full download counts")
     }
 
     @Test
@@ -262,6 +275,7 @@ class BundleAcceptanceTest {
         assertEquals("$monday", meta["valid_for_business_date"]!!.jsonPrimitive.content)
         assertEquals("not_started", routeDay("MIR-SR-2F", monday)["state"], "a pre-fetch is never a login")
         assertNull(routeDay("MIR-SR-2F", monday)["logged_in_at"])
+        assertEquals(0 to false, downloads("MIR-SR-2F", monday), "a pre-fetch is not a download of that day")
         assertEquals(HttpStatusCode.BadRequest, client.bundle(token, "?for=${sunday.minusDays(1)}").status)
         assertEquals(HttpStatusCode.BadRequest, client.bundle(token, "?for=${sunday.plusDays(2)}").status)
         assertEquals(HttpStatusCode.BadRequest, client.bundle(token, "?for=tomorrow").status)

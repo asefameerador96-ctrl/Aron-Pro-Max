@@ -60,6 +60,18 @@ class AzureBlobSasIssuer internal constructor(
         return sign(blobPath, expiresAt.atOffset(ZoneOffset.UTC), BlobSasPermission().setCreatePermission(true).setWritePermission(true))
     }
 
+    /**
+     * Server-side write of one small blob (POST /v1/media/upload, F-API-007) with the api's managed identity
+     * (Storage Blob Data Contributor). Overwrites: the caller holds the per-uuid lock and has no acknowledged upload.
+     */
+    fun putBytes(blobPath: String, bytes: ByteArray) {
+        require(blobPath.isNotBlank() && !blobPath.startsWith("/") && ".." !in blobPath.split('/')) { "invalid blob path" }
+        val blob = service.getBlobContainerClient(container).getBlobClient(blobPath)
+        val options = com.azure.storage.blob.options.BlobParallelUploadOptions(com.azure.core.util.BinaryData.fromBytes(bytes))
+            .setHeaders(com.azure.storage.blob.models.BlobHttpHeaders().setContentType("image/jpeg"))
+        blob.uploadWithResponse(options, Duration.ofSeconds(30), com.azure.core.util.Context.NONE)
+    }
+
     override fun readUrl(blobPath: String): String =
         sign(blobPath, now().plus(readTtl).atOffset(ZoneOffset.UTC), BlobSasPermission().setReadPermission(true))
 

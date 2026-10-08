@@ -187,7 +187,7 @@ class DeviceGateTest {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(s)
     }
 
-    private suspend fun HttpClient.send(records: List<JsonObject>): List<String> {
+    private suspend fun HttpClient.send(records: List<JsonObject>, lastError: String? = null): List<String> {
         val t = token ?: run {
             val r = post("/v1/auth/login") {
                 contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9")
@@ -207,6 +207,7 @@ class DeviceGateTest {
         val gz = ByteArrayOutputStream().also { o -> GZIPOutputStream(o).use { it.write(body.toByteArray()) } }.toByteArray()
         val r = post("/v1/sync/batch") {
             bearerAuth(t); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9")
+            lastError?.let { header("X-Last-Sync-Error", it) }
             proofKey?.let { header("X-Device-Proof", sign(it, listOf("aron-proof-v1", "batch", devPhone, DeviceProof.sha256Hex(gz), batchUuid, "1").joinToString("\n"))) }
             header("Content-Encoding", "gzip"); setBody(io.ktor.http.content.ByteArrayContent(gz, ContentType.Application.Json))
         }
@@ -319,12 +320,21 @@ class DeviceGateTest {
         fun pending() = count("SELECT coalesce(pending_rows_reported, -1) FROM app.device WHERE device_uuid = '$devPhone'")
         now.updateAndGet { it.plusSeconds(11 * 60) }
         fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.device SET pending_rows_reported = 99, app_version = '1.0.0+1' WHERE device_uuid = '$devPhone'") }
-        client.send(listOf(attendance("check_in", "2027-01-01")))
+        fun lastError() = fresh.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery("SELECT last_sync_error FROM app.device WHERE device_uuid = '$devPhone'").mapTo(String::class.java).one() }
+        client.send(listOf(attendance("check_in", "2027-01-01")), lastError = "ERR_SERVICE_UNAVAILABLE")
         assertEquals(0, pending(), "the body's pending_rows (no header) after more than 10 minutes")
+        assertEquals("ERR_SERVICE_UNAVAILABLE", lastError(), "X-Last-Sync-Error lands on last_sync_error (V0063)")
         assertEquals("1.0.9+9", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT app_version FROM app.device WHERE device_uuid = '$devPhone'").mapTo(String::class.java).one() })
         fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.device SET pending_rows_reported = 99 WHERE device_uuid = '$devPhone'") }
         now.updateAndGet { it.plusSeconds(9 * 60) }
-        client.send(listOf(attendance("check_out", "2027-01-01")))
+        client.send(listOf(attendance("check_out", "2027-01-01")), lastError = "NETWORK")
         assertEquals(99, pending(), "within 10 minutes: not written again")
+        assertEquals("ERR_SERVICE_UNAVAILABLE", lastError(), "throttled with the rest of the telemetry")
+        now.updateAndGet { it.plusSeconds(11 * 60) }
+        client.send(listOf(attendance("check_out", "2027-01-01")), lastError = "bad value; drop")
+        assertEquals("ERR_SERVICE_UNAVAILABLE", lastError(), "an invalid value leaves the column as it is")
+        now.updateAndGet { it.plusSeconds(11 * 60) }
+        client.send(listOf(attendance("check_out", "2027-01-01")), lastError = "HTTP_503")
+        assertEquals("HTTP_503", lastError())
     }
 }

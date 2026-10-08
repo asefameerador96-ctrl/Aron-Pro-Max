@@ -288,7 +288,8 @@ class Wiring(
                 memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
                 nearbyRoutes(com.aktcl.aron.backend.sync.NearbyDeps(db, config, reach, guard, clock))
                 riskSignalRoutes(com.aktcl.aron.backend.sync.RiskSignalDeps(db, config, reach, guard, clock))
-                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock))
+                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock,
+                    (blob as? AzureBlobSasIssuer)?.let { az -> com.aktcl.aron.backend.media.PhotoBlobWriter(az::putBytes) } ?: com.aktcl.aron.backend.media.UnconfiguredPhotoBlobWriter))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
