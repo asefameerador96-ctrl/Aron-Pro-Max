@@ -1,6 +1,6 @@
 # backend-core lane status (handoff for a fresh session)
 
-Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). Last pushed head: see `git log origin/lane/backend-core` (d5d7ca2e is queued with the integrator). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
+Updated 2026-10-08 05:00 UTC (session 10; earlier header text from session 5 of the lane, recycled at ~580k tokens). Last pushed head: see `git log origin/lane/backend-core` (d5d7ca2e is queued with the integrator). Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
 
 ## Done this session (pushed to INT)
 - **F-API-005 `GET /v1/sync/bundle`** (`backend/sync/BundleService.kt`, `ScopedConfig.kt`, `ReasonTexts.kt`): Opus checker 5 findings, 4 fixed; growing `snapshot_seq` waits on `docs/requests/backend-bundle-snapshot-table.md` (code ready, test assumption-guarded).
@@ -53,6 +53,14 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 - **db answered (22:05Z):** V0058 (working-day window keys) and V0059/V0060 (`config_stamp_regress`, `checkout_too_early`
   registry flags) are on lane/db 2205ff98, not yet on INT. Once INT carries them: F-SYS-091, write `checkout_too_early`
   in ingest, and check BC-74's `cfg.calendar.window_unit` reads (see `docs/requests/db-working-day-keys-and-flags-answer.md`).
+
+## Session 10 close-out: next rows (session 11 starts here)
+1. Lane head 53246921 + this close-out commit; everything pushed and sent to the integrator (session_01DrpAFbHEdU2moUPcEGurmS). Rows done this session: F-API-007 (BC-81), F-SYS-025 and F-SYS-050 (BC-82), F-API-055 (BC-84), F-SYS-091 (BC-85), N-044 (BC-86); V0062/V0067 taken up.
+2. **Do not touch the device gate** (BC-83, lead): the unchecked-verdict low flag is deferred until the owner allows it; no config default edits.
+3. Remaining backend-core rows (`python3 tools/my-rows.py backend-core --todo`): F-API-010 and F-API-011 (not in the contract: ask the lead, do not build), F-SYS-086 (waits on backend-admin dirty keys for admin writes).
+4. Unrouted contract operations still open (compare `backend/app/build/route-inventory.txt` with the contract): `GET /v1/media/{media_uuid}/read-url`, `POST /v1/client-errors`, `POST /v1/auth/mfa/enrol|verify` (check: auth may already serve verify), `GET /v1/dashboards/geo-validation`, admin releases/audit/devices policy/sales-plans (backend-admin), day DROP rows; deferred programmes (docs/27) stay unrouted.
+5. Checker items open: BC-81 (Ktor parser 500 on a chunked or malformed multipart body), BC-84 (app verification handler has no zone check; a no-op device `verified` event shows in the trail; `request_fix` null until a full GeoFix is rebuilt from `app.geo_fix`; no lapse job), BC-85 (an ack in the same batch is not seen).
+6. Local test setup after a container restart: `service postgresql start`; role `aron`/`aron` superuser and db `aron_test` (both survived this session's restart).
 
 ## Session 10 (2026-10-08, start here)
 - Merged INT 2b76764f (db V0061-V0068). Pushed: **F-API-007** POST /v1/media/upload (BC-81, `media/MediaUpload.kt`, `MediaUploadTest`; Sonnet checker, fixes in), **F-SYS-025** route-day download count and last time (BC-82), **F-SYS-050** `X-Last-Sync-Error` (BC-82; the row is complete apart from a separate test of the daily device object), V0062 (no change needed), V0067 asserted.
