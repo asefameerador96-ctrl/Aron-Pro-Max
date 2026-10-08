@@ -209,6 +209,7 @@ class MfaTest {
         assertTrue(locked.headers["Retry-After"] != null)
         now.set(now.get().plus(Duration.ofMinutes(16)))
         assertEquals(HttpStatusCode.OK, client.verify(client.mfaToken(name), Totp.code(secret, Totp.step(now.get()))).status, "usable again after the lock")
+        client.verify(client.mfaToken(name), "ABCD-EFGH").let { assertEquals("ERR_AUTH_MFA_INVALID", code(it, it.bodyAsText()), "a wrong recovery code") }
 
         // A secret no key of the ring opens is 503 and never counts towards the lockout.
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.mfa_secret SET secret_cipher = decode(repeat('00', 40), 'hex') WHERE user_id = (SELECT id FROM app.app_user WHERE username = ?)", name) }
@@ -228,6 +229,11 @@ class MfaTest {
         assertEquals(10, k.count { it == "mfa_verify_failure:wrong_totp" }, "every wrong code is one event, never deduped: $k")
         assertEquals(11, k.count { it == "mfa_verify_failure:unreadable" }, k.toString())
         assertTrue(k.none { it.startsWith("login_failure") }, "MFA failures are not login failures: $k")
+        assertEquals(1, k.count { it == "mfa_verify_failure:wrong_recovery" }, k.toString())
         assertTrue(k.any { it.startsWith("lockout") })
+        val keys = fresh.db.jdbi.withHandle<List<String>, Exception> { h ->
+            h.createQuery("SELECT DISTINCT k FROM app.security_event, jsonb_object_keys(detail) k WHERE user_id = :u AND kind LIKE 'mfa%' ORDER BY k").bind("u", uid).mapTo(String::class.java).list()
+        }
+        assertEquals(listOf("client", "flow", "reason", "via"), keys, "only these facts, never a code")
     }
 }
