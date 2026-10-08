@@ -80,3 +80,9 @@
 | 2026-10-08 00:50 | infra (session 5) | - | 476 | n/a | seven_day allowed_warning | smoke confirmation pending, then handover and recycle |
 | 2026-10-08 00:50 | android-core / android-sr-a | - | parked | n/a | seven_day allowed_warning | both parked after clean handovers (1d48cddb / b8e083a1) |
 | 2026-10-08 00:50 | android-sr-b / android-core-ui / android-print | - | 398 / 196 / 379 | n/a | seven_day allowed_warning | idle (no rows) |
+| 2026-10-08 02:50 | integrator (session 6) | - | 282 | n/a | seven_day allowed_warning | idle; INT ec9f0dfe (deployed green 02:16); no lane heads ahead |
+| 2026-10-08 02:50 | backend-core (session 10) | - | 262 | n/a | seven_day allowed_warning | idle after BC-81 batch; nudged to continue unrouted contract ops |
+| 2026-10-08 02:50 | infra (session 6) | - | 141 | n/a | seven_day allowed_warning | idle; waits for the owner's enrolment decision (path A) |
+| 2026-10-08 02:50 | db (session 5) | - | 205 | n/a | seven_day allowed_warning | idle (open rows empty) |
+| 2026-10-08 02:50 | android-core / android-sr-a / android-sr-b / android-core-ui / android-print | - | parked | n/a | seven_day allowed_warning | parked or no rows |
+- 2026-10-08 02:50 UTC: SR slice smoke green on dev since deploy 37709998876 (1-10); dev deploys 37712489080 and 37715348623 green. Wave 2 waits only for usage `allowed`.
