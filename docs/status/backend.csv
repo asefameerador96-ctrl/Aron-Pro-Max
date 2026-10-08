@@ -96,3 +96,4 @@ F-SYS-084,S,2026-10-07T23:10Z,2026-10-07T23:20Z,10,"-","held rows past 17:30 in 
 F-API-007,S,2026-10-08T00:50Z,2026-10-08T01:40Z,50,"Sonnet checker: 0 blocking, 4 non-blocking; 3 fixed","multipart media upload, one uuid = one purpose (BC-81)"
 F-SYS-025,S,2026-10-08T01:40Z,2026-10-08T01:55Z,15,"-","route-day bundle_count + last_bundle_at, pre-fetch not counted (BC-82)"
 F-SYS-050,S,2026-10-08T01:30Z,2026-10-08T01:40Z,10,"-","X-Last-Sync-Error on last_sync_error (BC-82)"
+F-API-055,M,2026-10-08T02:50Z,2026-10-08T04:10Z,80,"Sonnet checker: 2 blocking + 4 non-blocking; blocking and 4 fixed","outlet change requests, six operations, app verification handler (BC-84)"
