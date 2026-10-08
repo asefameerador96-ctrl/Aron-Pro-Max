@@ -95,4 +95,27 @@ class RetentionJobTest {
             fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DROP OWNED BY $login"); h.execute("DROP ROLE $login") }
         }
     }
+
+    /** db V0069 note: web error reports past the telemetry keep window (12 months) are deleted; younger ones stay. */
+    @Test
+    @Order(99)
+    fun clientErrorsPastTheTelemetryWindowAreDeleted() {
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app.client_error (
+                  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, error_uuid uuid NOT NULL UNIQUE, user_id bigint NOT NULL REFERENCES app.app_user(id),
+                  source text NOT NULL, occurred_at timestamptz NOT NULL, received_at timestamptz NOT NULL DEFAULT now(), business_date date NOT NULL,
+                  page text, message text NOT NULL, stack text, build text)
+                """.trimIndent(),
+            )
+            h.execute(
+                "INSERT INTO app.client_error (error_uuid, user_id, source, occurred_at, business_date, message) " +
+                    "SELECT gen_random_uuid(), (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'web', now(), d, 'm' FROM unnest(ARRAY[DATE '2025-01-01', DATE '2026-12-01']) d",
+            )
+        }
+        val r = job.tick()
+        assertEquals(1, r.clientErrorsDeleted)
+        assertEquals("2026-12-01", one("SELECT string_agg(business_date::text, ',') FROM app.client_error"))
+    }
 }
