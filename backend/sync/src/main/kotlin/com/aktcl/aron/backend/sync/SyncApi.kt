@@ -189,7 +189,7 @@ private suspend fun postBatch(call: ApplicationCall, d: SyncDeps) {
     // (the phone would retry them forever) but held: the ingest gate quarantines every non-telemetry record of it
     // `device_not_enrolled` (N-027, D24-17); with the gate off they are accepted as before.
 
-    recordTelemetry(d, device.second, call.request.headers["X-Pending-Rows"], call.request.headers["X-App-Version"], req.pending_rows, req.app_version)
+    recordTelemetry(d, device.second, call.request.headers["X-Pending-Rows"], call.request.headers["X-App-Version"], req.pending_rows, req.app_version, call.request.headers["X-Last-Sync-Error"])
 
     if (!d.inflight.tryAcquire()) {
         throw retryLater(ProblemCode.ERR_SERVICE_UNAVAILABLE, "too many batches in flight", Random.nextInt(5, 61))
@@ -206,26 +206,31 @@ private suspend fun postBatch(call: ApplicationCall, d: SyncDeps) {
 private val TRIGGERS = com.aktcl.aron.contract.SyncTrigger.entries.map { it.wire }.toSet()
 
 private val APP_VERSION = Regex("^[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[+][0-9]{1,10}$")
+/** Contract XLastSyncError (within V0063's CHECK): a problem code, `HTTP_<n>` or `NETWORK`. */
+private val SYNC_ERROR = Regex("^[A-Z0-9_]{2,60}$")
 private val telemetryLog = org.slf4j.LoggerFactory.getLogger("aron.sync.telemetry")
 
 /**
  * F-SYS-050: the batch's telemetry headers (`X-Pending-Rows`, else the body's `pending_rows`; `X-App-Version`, else the
  * body's) on the device row, at most once per 10 minutes per device (the write is skipped while `last_contact_at` is
  * younger), so a burst of retries costs one UPDATE. Telemetry only: a bad value is ignored and a failure never changes
- * the batch outcome (docs/24 s2.4). `X-Last-Sync-Error` has no column yet (docs/requests/backend-core-device-telemetry-columns.md).
+ * the batch outcome (docs/24 s2.4). `X-Last-Sync-Error` goes to `last_sync_error` (V0063) in the same UPDATE; an
+ * absent or invalid value leaves the column as it is.
  */
-internal fun recordTelemetry(d: SyncDeps, deviceId: Long, pendingHeader: String?, versionHeader: String?, bodyPending: Int, bodyVersion: String) {
+internal fun recordTelemetry(d: SyncDeps, deviceId: Long, pendingHeader: String?, versionHeader: String?, bodyPending: Int, bodyVersion: String, errorHeader: String? = null) {
     val pending = pendingHeader?.trim()?.toIntOrNull()?.takeIf { it in 0..1_000_000 } ?: bodyPending.takeIf { it in 0..1_000_000 }
     val version = versionHeader?.trim()?.takeIf { APP_VERSION.matches(it) } ?: bodyVersion.takeIf { APP_VERSION.matches(it) }
+    val lastError = errorHeader?.trim()?.takeIf { SYNC_ERROR.matches(it) }
     val now = java.time.OffsetDateTime.ofInstant(d.clock.now(), java.time.ZoneOffset.UTC)
     try {
         d.db!!.jdbi.useHandle<Exception> { h ->
             h.createUpdate(
                 """
-                UPDATE app.device SET pending_rows_reported = coalesce(:p, pending_rows_reported), app_version = coalesce(:v, app_version), last_contact_at = :now
+                UPDATE app.device SET pending_rows_reported = coalesce(:p, pending_rows_reported), app_version = coalesce(:v, app_version),
+                       last_sync_error = coalesce(:e, last_sync_error), last_contact_at = :now
                  WHERE id = :d AND (last_contact_at IS NULL OR last_contact_at <= :now - interval '10 minutes' OR last_contact_at > :now)
                 """.trimIndent(),
-            ).bind("p", pending).bind("v", version).bind("now", now).bind("d", deviceId).execute()
+            ).bind("p", pending).bind("v", version).bind("e", lastError).bind("now", now).bind("d", deviceId).execute()
         }
     } catch (e: Exception) {
         telemetryLog.warn("device telemetry not recorded device_id=$deviceId cause=${e.javaClass.simpleName}")
@@ -262,6 +267,7 @@ private suspend fun getBundle(call: ApplicationCall, d: SyncDeps) {
         call.respond(HttpStatusCode.NotModified)
         return
     }
+    withContext(Dispatchers.IO) { d.bundles.recordDownload(r) }
     call.respond(r.bundle)
 }
 

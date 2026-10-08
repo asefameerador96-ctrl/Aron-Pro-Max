@@ -51,7 +51,10 @@ data class MediaSasTarget(
 @Serializable
 data class MediaSasResponse(val items: List<MediaSasTarget>)
 
-class MediaDeps(val db: Database, val sas: PhotoSasIssuer, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
+class MediaDeps(
+    val db: Database, val sas: PhotoSasIssuer, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM,
+    val blobs: PhotoBlobWriter = UnconfiguredPhotoBlobWriter,
+)
 
 /**
  * POST /v1/media/sas (F-API-057, contract createMediaUploadUrls): up to 10 write-only URLs, one blob each, pinned to
@@ -65,6 +68,13 @@ fun Route.mediaRoutes(d: MediaDeps) {
         post("/media/sas") {
             val req = call.receiveStrict(MediaSasRequest.serializer())
             call.respond(withContext(Dispatchers.IO) { MediaSas(d).grant(call.principal, req) })
+        }
+    }
+    // F-API-007 multipart fallback: an access token only (feedback and support are online actions, not the queue).
+    authenticated(d.guard) {
+        post("/media/upload") {
+            val form = MediaUpload.parse(call)
+            call.respond(withContext(Dispatchers.IO) { MediaUpload(d).store(call.principal, form) })
         }
     }
 }

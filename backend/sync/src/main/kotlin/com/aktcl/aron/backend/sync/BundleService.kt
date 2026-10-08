@@ -54,7 +54,11 @@ class BundleService(
     private val fingerprints: FingerprintCache = FingerprintCache(),
 ) {
     /** [bundle] is what the wire carries (paged sections emptied); [full] holds every row (pages, delta). */
-    data class Result(val bundle: Bundle, val version: String, val full: Bundle = bundle, val seq: Long = 0)
+    data class Result(
+        val bundle: Bundle, val version: String, val full: Bundle = bundle, val seq: Long = 0,
+        /** The route-days the bundle carries (F-SYS-025 download log); none for a pre-fetch. */
+        val routeIds: List<Long> = emptyList(), val date: LocalDate? = null,
+    )
 
     private data class UserRow(
         val id: Long, val username: String, val fullName: String, val role: String, val designation: String?, val locale: String,
@@ -140,7 +144,8 @@ class BundleService(
             user_id = user.id, role = user.role, config_version = bundle.config.config_version, schema_version = ContractInfo.SCHEMA_VERSION,
             cursor = cursor(date, seq, now), is_prefetch = prefetch, paged_sections = paged,
         )
-        return Result(BundlePaging.strip(bundle, paged).copy(meta = meta), version, bundle.copy(meta = meta), seq)
+        return Result(BundlePaging.strip(bundle, paged).copy(meta = meta), version, bundle.copy(meta = meta), seq,
+            if (prefetch) emptyList() else plans.map { it.routeId }.distinct(), date)
     }
 
     private fun pageThreshold(): Int = runCatching { config.int("cfg.bundle.page_threshold_rows") }.getOrDefault(2000).coerceIn(500, 10_000)
@@ -312,6 +317,29 @@ class BundleService(
      * and, unless this is a pre-fetch, stamps `logged_in_at` and moves `not_started` to `logged_in` (states never move
      * backwards, s4.9). The primary or cover holder is recorded whichever fetched first.
      */
+    /**
+     * F-SYS-025 (V0065): a full bundle download that was served (not a 304, not a delta or page, not a pre-fetch:
+     * the first download is `target_frozen_at`, which a pre-fetch never sets) counts on each route-day it carries:
+     * `bundle_count + 1`, `last_bundle_at` = the later of the two. Telemetry: a failure is logged, never fails the
+     * download, and one short UPDATE per download.
+     */
+    fun recordDownload(r: Result) {
+        if (r.routeIds.isEmpty() || r.date == null) return
+        val at = OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)
+        try {
+            db.jdbi.useHandle<Exception> { h ->
+                h.createUpdate(
+                    """
+                    UPDATE app.route_day SET bundle_count = bundle_count + 1, last_bundle_at = greatest(last_bundle_at, :at)
+                     WHERE route_id = ANY(:r) AND business_date = :d
+                    """.trimIndent(),
+                ).bindArray("r", Long::class.javaObjectType, r.routeIds).bind("d", r.date).bind("at", at).execute()
+            }
+        } catch (e: Exception) {
+            org.slf4j.LoggerFactory.getLogger("aron.sync.bundle").warn("bundle download not counted routes=${r.routeIds.size} business_date=${r.date} cause=${e.javaClass.simpleName}")
+        }
+    }
+
     private fun recordFirstBundle(h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, prefetch: Boolean, now: Instant) {
         val at = OffsetDateTime.ofInstant(now, ZoneOffset.UTC)
         for (r in plans) {
