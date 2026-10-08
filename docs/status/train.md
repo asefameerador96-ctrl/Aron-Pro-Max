@@ -68,6 +68,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 | 2026-10-08 01:20 | see git log | candidate lane/train-20261008T0110-zza, ALL JOBS GREEN (run 37711489076): infra 0a715d1f (dev-seed app_release self-check), lead-docs 3d827ca5, handover docs | ancestor check passed, fast-forward. Dev deploy 37709998876 of 2b76764f was green (slice smoke passed) before this push. No backend-core/db heads yet. |
 | 2026-10-08 01:50 | see git log | candidate lane/train-20261008T0136-zzb, ALL JOBS GREEN (run 37713598747): backend-core d49df202 (POST /v1/media/upload on V0061, route-day bundle_count/last_bundle_at, X-Last-Sync-Error) | ancestor check passed, fast-forward. Dev deploy 37712489080 of 17a8cea4 was green before the push. |
 | 2026-10-08 03:30 | see git log | candidate lane/train-20261008T0318-zzc, ALL JOBS GREEN (run 37722035656): backend-core f9e20f76 (F-API-055 outlet change requests, BC-84), lead-docs 96642d54 | ancestor check passed, fast-forward. Dev deploy 37715348623 of ec9f0dfe was green before the push. |
+| 2026-10-08 03:52 | see git log | candidate lane/train-20261008T0334-zze, ALL JOBS GREEN (run 37723242024): backend-core 694065b9 (F-SYS-091 config_stamp_regress, checkout_too_early flag, BC-85, ingest retry test) + docs-only lead-docs 59672b08 | ancestor check passed, fast-forward. Dev deploy 37723476650 of 11e618d8 was green before the push. zzd (53246921 alone) cancelled, superseded by zze. |
 
 ## Open reds
 
