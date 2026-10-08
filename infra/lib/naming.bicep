@@ -49,6 +49,8 @@ var secretNames = {
   dbDirectUrl: 'aron-db-direct-url'
   dbReadUrl: 'aron-db-read-url'
   webSessionSecret: 'aron-web-session-secret'
+  // MFA key (F-WEB-043): seals web admins' TOTP secrets; independent of the JWT key so a key rotation locks nobody out.
+  mfaKey: 'aron-mfa-key'
   // Per-app logins (infra/scripts/db-login-secrets.sh writes these; infra/sql/runtime-logins.sql creates the logins).
   dbPwAppApi: 'aron-db-pw-app-api'
   dbPwAppWorker: 'aron-db-pw-app-worker'

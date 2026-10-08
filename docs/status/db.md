@@ -138,6 +138,20 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     for the regress count. Answer `docs/requests/db-working-day-keys-and-flags-answer.md`; break-override item checks asked
     of backend-admin (`db-break-overrides-validation.md`). Opus checker PASS (round 5; should-fix applied).
 
+## Session 5, 2026-10-08 (lead's two backend-core requests)
+
+- `V0069` `app.client_error` (answers `backend-core-client-error-table.md`, F-SYS-032). **Deviation (D-DB-S5-01, for
+  DECISIONS.md):** the request asked for a BEFORE UPDATE OR DELETE trigger and a retention job that deletes old rows;
+  both cannot hold. UPDATE and TRUNCATE are refused by trigger, DELETE is granted only to worker_rw (jobs_rw inherits
+  it; RetentionJob runs as jobs_rw); api_rw cannot update or delete. Retention class telemetry like `app_error`.
+  **Open for backend-core:** RetentionJob today only manages partitions and archive manifests; nothing deletes
+  `client_error` rows (nor `app_error`, whose V0007 trigger refuses DELETE). Add a step deleting `client_error` by
+  business_date past the telemetry window of `app.retention_policy`.
+  **Closed 05:44 UTC:** backend-core added it to RetentionJob (lane/backend-core dc0c6f26; past telemetry keep_months,
+  10k rows per run). `app_error` stays undeleted (V0007 trigger) by design.
+- `V0070`/`V0071` `security_event.kind` + `mfa_enrol`, `mfa_verify_failure` (answers `backend-core-mfa-security-events.md`).
+- Opus checker PASS (test nit applied: the retention DELETE runs under SET ROLE worker_rw, api_rw refused).
+
 ## Session 5 (2026-10-07, from ~23:00 UTC)
 
 **Pushed lane/db 59de9f29: V0061-V0068 on top of the INT merge (f4945a81).** db 226, backend 727/0, squawk ok. Opus

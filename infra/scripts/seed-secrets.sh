@@ -8,6 +8,8 @@
 #                              PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON; " " (one space) when not set: the API reads that as
 #                              absent and decodes with the FCM account. The gate cfg.device.require_integrity is NOT set here.
 #   aron-web-session-secret    48 random characters sealing the web BFF session cookies (ARON_SESSION_SECRET)
+#   aron-mfa-key               32 random bytes, base64, sealing web admins' TOTP secrets (ARON_MFA_KEY, api only);
+#                              created once and never replaced by a deploy (rotation: docs/runbooks/rotate-mfa-key.md)
 # Idempotent: an existing value is kept, except the FCM and Play Integrity accounts, which follow their GitHub secrets
 # when given.
 # Usage: infra/scripts/seed-secrets.sh <key-vault-name>
@@ -74,6 +76,18 @@ else
   openssl rand -hex 24 > "$tmp/session"
   put_file aron-web-session-secret "$tmp/session" text/plain
   note "aron-web-session-secret created"
+fi
+
+# Never regenerated: a new value would make every enrolled admin's TOTP secret unreadable (rotation is a runbook step).
+# Only a definite "not found" creates it; any other error (throttling, network, rights) stops the deploy instead.
+if mfa_err="$(az keyvault secret show --vault-name "$kv" --name aron-mfa-key --query id -o tsv 2>&1 >/dev/null)"; then
+  note "aron-mfa-key present (kept)"
+elif ! grep -q "SecretNotFound" <<<"$mfa_err"; then
+  die "could not read aron-mfa-key (not creating a new one): ${mfa_err:0:300}"
+else
+  openssl rand -base64 32 | tr -d '\n' > "$tmp/mfa"
+  put_file aron-mfa-key "$tmp/mfa" text/plain
+  note "aron-mfa-key created"
 fi
 
 # Dev seed accounts (db/seed: sr1001 and the other pilot test accounts) for the SR slice smoke: only when the dev
