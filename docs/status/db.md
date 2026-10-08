@@ -147,6 +147,8 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   **Open for backend-core:** RetentionJob today only manages partitions and archive manifests; nothing deletes
   `client_error` rows (nor `app_error`, whose V0007 trigger refuses DELETE). Add a step deleting `client_error` by
   business_date past the telemetry window of `app.retention_policy`.
+  **Closed 05:44 UTC:** backend-core added it to RetentionJob (lane/backend-core dc0c6f26; past telemetry keep_months,
+  10k rows per run). `app_error` stays undeleted (V0007 trigger) by design.
 - `V0070`/`V0071` `security_event.kind` + `mfa_enrol`, `mfa_verify_failure` (answers `backend-core-mfa-security-events.md`).
 - Opus checker PASS (test nit applied: the retention DELETE runs under SET ROLE worker_rw, api_rw refused).
 
