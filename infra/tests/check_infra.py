@@ -218,6 +218,23 @@ class StackIsComplete(unittest.TestCase):
             for key in ("require_integrity", "require_enrolled"):
                 self.assertNotRegex(text, key + r"['\"]?\s*,\s*'true'", f"{f} turns {key} on (lead ruling: dev gates stay at their defaults)")
 
+    def test_mfa_key_is_api_only_generated_once_and_never_printed(self):
+        """docs/requests/backend-core-mfa-key.md: aron-mfa-key seals admins' TOTP secrets; independent of the JWT key."""
+        apps = (ROOT / "infra" / "apps.bicep").read_text(encoding="utf-8")
+        self.assertIn("mfaKey: 'aron-mfa-key'", (ROOT / "infra" / "lib" / "naming.bicep").read_text(encoding="utf-8"))
+        self.assertIn("{ name: 'ARON_MFA_KEY', secretRef: 'mfa-key' }", apps[apps.index("var apiOnlySecretRefs"):])
+        self.assertEqual(apps.count("kvSecret('mfa-key', secretNames.mfaKey, kvSecretUrl, idApi.id)"), 1, "api only")
+        self.assertNotIn("idWorker.id)\n        kvSecret('mfa-key'", apps)
+        self.assertNotRegex(apps, r"name: 'ARON_MFA_KEY_PREVIOUS'", "wired only during a rotation (a blank value stops the API)")
+        seed = (ROOT / "infra" / "scripts" / "seed-secrets.sh").read_text(encoding="utf-8")
+        block = seed[seed.index("aron-mfa-key --query id"):seed.index('note "aron-mfa-key created"')]
+        self.assertIn('note "aron-mfa-key present (kept)"', block, "generate once, keep if present")
+        self.assertIn('grep -q "SecretNotFound"', block, "only a definite not-found creates a new key")
+        self.assertIn("die ", block, "any other read error stops the deploy instead of replacing the key")
+        self.assertIn("openssl rand -base64 32 | tr -d '\\n' > \"$tmp/mfa\"", block, "32 random bytes to a temp file")
+        self.assertNotRegex(block, r"echo[^\n]*\$tmp/mfa|cat \"\$tmp/mfa\"|--value", "the key is never printed or put on a command line")
+        self.assertTrue((ROOT / "docs" / "runbooks" / "rotate-mfa-key.md").is_file(), "rotation runbook")
+
     def test_front_door_references_are_conditional(self):
         # An unconditional `existing` node is read at deployment time and fails in the TEST profile (no Front Door).
         res = load("apps.json")["resources"]

@@ -141,6 +141,8 @@ var jwtSecretRefs = [
 // placeholder is one space, which the API reads as absent and then decodes with the FCM account (same Google project).
 var apiOnlySecretRefs = [
   { name: 'ARON_PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON', secretRef: 'play-integrity-service-account' }
+  // ARON_MFA_KEY_PREVIOUS is wired only during a real rotation (docs/runbooks/rotate-mfa-key.md): the API refuses a blank value.
+  { name: 'ARON_MFA_KEY', secretRef: 'mfa-key' }
 ]
 var appSecretRefs = [
   { name: 'ARON_FCM_SERVICE_ACCOUNT_JSON', secretRef: 'fcm-service-account' }
@@ -283,6 +285,7 @@ resource api 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
         kvSecret('jwt-kid', secretNames.jwtKid, kvSecretUrl, idApi.id)
         kvSecret('fcm-service-account', secretNames.fcmServiceAccount, kvSecretUrl, idApi.id)
         kvSecret('play-integrity-service-account', secretNames.playIntegrityServiceAccount, kvSecretUrl, idApi.id)
+        kvSecret('mfa-key', secretNames.mfaKey, kvSecretUrl, idApi.id)
       ]
     }
     template: {
