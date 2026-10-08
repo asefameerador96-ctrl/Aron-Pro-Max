@@ -63,8 +63,12 @@ class ClientErrorMfaKindsV0069Test {
             assertEquals("23502", refused("INSERT INTO app.client_error (error_uuid, source, occurred_at, business_date, message) SELECT gen_random_uuid(), 'web', occurred_at, business_date, message FROM app.client_error LIMIT 1"))
             assertEquals(DENIED, refused("UPDATE app.client_error SET message = 'changed' WHERE error_uuid = '$uuid'"))
             assertEquals(DENIED, refused("TRUNCATE app.client_error"))
-            // Retention deletes old rows by business date (worker login).
+            // The API login cannot delete; retention deletes old rows by business date as the worker login.
+            exec("SET LOCAL ROLE api_rw")
+            assertEquals(DENIED, refused("DELETE FROM app.client_error WHERE business_date < DATE '2026-10-09'"))
+            exec("SET LOCAL ROLE worker_rw")
             exec("DELETE FROM app.client_error WHERE business_date < DATE '2026-10-09'")
+            exec("RESET ROLE")
             assertEquals("0", scalar("SELECT count(*) FROM app.client_error"))
         }
     }
