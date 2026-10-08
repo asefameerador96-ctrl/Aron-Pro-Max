@@ -56,7 +56,8 @@ Updated 2026-10-07 16:50 UTC (session 5 of the lane, recycled at ~580k tokens). 
 
 ## Session 10 (2026-10-08, start here)
 - Merged INT 2b76764f (db V0061-V0068). Pushed: **F-API-007** POST /v1/media/upload (BC-81, `media/MediaUpload.kt`, `MediaUploadTest`; Sonnet checker, fixes in), **F-SYS-025** route-day download count and last time (BC-82), **F-SYS-050** `X-Last-Sync-Error` (BC-82; the row is complete apart from a separate test of the daily device object), V0062 (no change needed), V0067 asserted.
-- **Lead ruling on the dev device gate (option 2) NOT DONE:** the auto-mode permission classifier refused the IngestService edit (a severity-1 / score-0 `DEVICE_INTEGRITY_FAIL` flag plus one log line per batch for an `unevaluated`/`stale` verdict while `require_integrity` is off, and the pinning test). Reported to the lead. With the registry defaults (V0006 `require_enrolled` true) unenrolled phones are QUARANTINED `device_not_enrolled` on dev unless the owner's audited config change turns it off.
+- **Unchecked-verdict low flag DEFERRED (BC-83, lead 00:56Z): do not retry it or work around the classifier.** Original note: the auto-mode permission classifier refused the IngestService edit (a severity-1 / score-0 `DEVICE_INTEGRITY_FAIL` flag plus one log line per batch for an `unevaluated`/`stale` verdict while `require_integrity` is off, and the pinning test). Reported to the lead. With the registry defaults (V0006 `require_enrolled` true) unenrolled phones are QUARANTINED `device_not_enrolled` on dev unless the owner's audited config change turns it off.
+- Integrator is now session_01DrpAFbHEdU2moUPcEGurmS (session 6); infra session_01UEbF12bqtfDvVQ8snuPMt8.
 - Next: the remaining unrouted contract operations (compare `backend/app/build/route-inventory.txt` with the contract), then F-SYS-091, F-API-055.
 
 ## Session 9 close-out: next rows (session 10 starts here)
