@@ -34,7 +34,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | web-config | session_0146veK2iXvmHGwiPBpbBJ2k | Sonnet | 2026-10-07 | |
 | web-dashboard | session_01RM4v6DRfjmfAbfrDi17Jzo | Sonnet | 2026-10-07 | recycled 05:01; previous session_01Sk9wwEshZ57sQafoEyccP7 is retired (READY TO RECYCLE 04:51) |
 | infra | session_01UEbF12bqtfDvVQ8snuPMt8 | Opus | 2026-10-08 | recycled 00:48 (sixth session; handover at the top of docs/status/infra.md, lane/infra 3156ca75): first job is to confirm the SR slice smoke (steps 4, 7b, 8) after the deploy of INT 2b76764f; retired session_01SKX3AbtdmchLizM6ikT4VF (READY TO RECYCLE 00:47), session_017... and earlier sessions retired |
-| integrator | session_01AK8FquE86UGRgzqgJii4zg | Sonnet | 2026-10-08 | recycled 04:49 (seventh session; handover at the top of docs/status/train.md on lane/train-20261008T0452-handover 235d68a6; INT 97fead81; in flight candidate lane/train-20261008T0450-zzf with backend-core ee9755c0); retired session_01DrpAFbHEdU2moUPcEGurmS (READY TO RECYCLE 04:49), session_016uXu7QkPQGGTn3FmR92YHu and earlier |
+| integrator | session_01SQjqrsGtBm5Fe5JkrgJoDP | Sonnet | 2026-10-08 | recycled 08:03 (eighth session; handover at the top of docs/status/train.md on lane/train-20261008T0805-handover 4c2be577; INT 1852c8ed, CI run 37747194603 + dev deploy in flight); retired session_01AK8FquE86UGRgzqgJii4zg (READY TO RECYCLE 08:05), session_01DrpAFbHEdU2moUPcEGurmS, session_016uXu7QkPQGGTn3FmR92YHu and earlier |
 | laptop operator | session_01UbRHnSorx4s1XARa6aN1Tg | Opus | 2026-10-06 | never nudged; runs only owner-approved laptop tasks |
 
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
