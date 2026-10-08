@@ -86,3 +86,6 @@
 | 2026-10-08 02:50 | db (session 5) | - | 205 | n/a | seven_day allowed_warning | idle (open rows empty) |
 | 2026-10-08 02:50 | android-core / android-sr-a / android-sr-b / android-core-ui / android-print | - | parked | n/a | seven_day allowed_warning | parked or no rows |
 - 2026-10-08 02:50 UTC: SR slice smoke green on dev since deploy 37709998876 (1-10); dev deploys 37712489080 and 37715348623 green. Wave 2 waits only for usage `allowed`.
+| 2026-10-08 04:50 | integrator (session 6 -> 7) | - | 470 -> new | n/a | seven_day allowed_warning | recycled at 470k; candidate zzf (backend-core ee9755c0) in CI |
+| 2026-10-08 04:50 | backend-core (session 11) | - | new | n/a | seven_day allowed_warning | running; queue (a) done (MFA verify, media read-url, client-errors, geo-validation), on F-API-010/011 |
+| 2026-10-08 04:50 | infra (session 6) | - | 154 | n/a | seven_day allowed_warning | idle; awaiting backend-core MFA answer for the device-day section |
