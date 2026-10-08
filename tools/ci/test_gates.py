@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import zipfile
 from pathlib import Path
@@ -35,6 +36,32 @@ MB = 1024 * 1024
 
 def tool(name):
     return os.environ.get(name.upper()) or shutil.which(name)
+
+
+def temp_repo(test, prefix):
+    """A unique temporary git repository that cannot race its own cleanup: no background gc, maintenance or fsmonitor
+    keeps writing into .git after the test (the flake behind test_deleting_a_shipped_migration_fails), and the
+    removal is retried. Plain git commands in it (including the gate scripts' own) read these settings."""
+    repo = tempfile.mkdtemp(prefix=f"aron-{prefix}-")
+    test.addCleanup(rmtree_retry, repo)
+    subprocess.run(["git", "init", "-q", repo], check=True, capture_output=True)
+    for key, value in (("gc.auto", "0"), ("maintenance.auto", "false"), ("core.fsmonitor", "false"),
+                       ("commit.gpgsign", "false"), ("user.email", "t@t"), ("user.name", "t")):
+        subprocess.run(["git", "-C", repo, "config", key, value], check=True)
+    return repo
+
+
+def rmtree_retry(path, attempts=5):
+    for i in range(attempts):
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.2 * (i + 1))
 
 
 def make_apk(path, lib_bytes_per_abi=0, dex_bytes=1000, abis=("arm64-v8a",)):
@@ -101,11 +128,9 @@ class ApkSizeGate(unittest.TestCase):
 class MigrationsCheck(unittest.TestCase):
     def setUp(self):
         self.squawk = tool("squawk")
-        self.repo = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.repo)
+        self.repo = temp_repo(self, "migrations")
         os.makedirs(os.path.join(self.repo, "db/migrations"))
         shutil.copytree(HERE, os.path.join(self.repo, "tools/ci"))
-        self.git("init", "-q")
         for v in (1, 2):
             self.write(f"V000{v}__t{v}.sql", f"SET lock_timeout = '5s';\nCREATE TABLE t{v} (id bigint PRIMARY KEY);\n")
         self.git("add", "-A")
@@ -166,10 +191,8 @@ class SecretScan(unittest.TestCase):
     FAKE = "ghp_" + "Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF3hJ6"
 
     def scan(self, rel_path):
-        repo = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, repo)
+        repo = temp_repo(self, "gitleaks")
         git = ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false"]
-        subprocess.run(git + ["init", "-q"], cwd=repo, check=True)
         f = Path(repo, rel_path)
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(f"token: {self.FAKE}\n")
@@ -210,11 +233,9 @@ paths:
 """
 
     def setUp(self):
-        self.repo = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.repo)
+        self.repo = temp_repo(self, "contract")
         os.makedirs(os.path.join(self.repo, "contract"))
         shutil.copytree(HERE, os.path.join(self.repo, "tools/ci"))
-        self.git("init", "-q")
         self.spec("1.0.0", "a, b")
         self.git("add", "-A")
         self.git("commit", "-qm", "base")
