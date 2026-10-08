@@ -18,6 +18,10 @@ enum class SecurityEventKind(val wire: String) {
     SCOPE_CHANGED("scope_changed"),
     PASSWORD_CHANGE("password_change"),
     FORCE_LOGOUT("force_logout"),
+    /** An MFA enrolment was started (V0070). */
+    MFA_ENROL("mfa_enrol"),
+    /** A wrong TOTP or recovery code, or a secret no key opens (`detail.reason` = `unreadable`) (V0070). */
+    MFA_VERIFY_FAILURE("mfa_verify_failure"),
 }
 
 class SecurityEvent(

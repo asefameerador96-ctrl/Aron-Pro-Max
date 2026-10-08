@@ -215,5 +215,19 @@ class MfaTest {
         now.set(now.get().plusSeconds(30))
         val tk = client.mfaToken(name)
         repeat(11) { assertEquals(HttpStatusCode.ServiceUnavailable, client.verify(tk, Totp.code(secret, Totp.step(now.get()))).status) }
+
+        // V0070 kinds in app.security_event (the sink writes off the request path, so wait for it).
+        val uid = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.app_user WHERE username = :n").bind("n", name).mapTo(Long::class.java).one() }
+        fun kinds() = fresh.db.jdbi.withHandle<List<String>, Exception> { h ->
+            h.createQuery("SELECT kind || ':' || coalesce(detail->>'reason', '') FROM app.security_event WHERE user_id = :u ORDER BY id").bind("u", uid).mapTo(String::class.java).list()
+        }
+        val deadline = System.currentTimeMillis() + 15_000
+        while (kinds().count { it == "mfa_verify_failure:unreadable" } < 11 && System.currentTimeMillis() < deadline) Thread.sleep(200)
+        val k = kinds()
+        assertEquals(1, k.count { it.startsWith("mfa_enrol:") }, k.toString())
+        assertEquals(10, k.count { it == "mfa_verify_failure:wrong_totp" }, "every wrong code is one event, never deduped: $k")
+        assertEquals(11, k.count { it == "mfa_verify_failure:unreadable" }, k.toString())
+        assertTrue(k.none { it.startsWith("login_failure") }, "MFA failures are not login failures: $k")
+        assertTrue(k.any { it.startsWith("lockout") })
     }
 }
