@@ -123,6 +123,30 @@ class OutletRequestsTest {
     }
 
     @Test
+    fun approvingACloseClosesTheOutletOnceAndThePhoneNumberNeedsThePiiClaim() = env.app {
+        val outlet = id("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id DESC OFFSET 1 LIMIT 1")
+        val u = UUID.randomUUID()
+        assertEquals(HttpStatusCode.Created, sendA1(HttpMethod.Post, "/outlet-requests", tso, """{"request_uuid":"$u","request_type":"close","outlet_id":$outlet,"proposed":{"close_reason_code":"owner_moved"}}""").status)
+        sendA1(HttpMethod.Post, "/outlet-requests/$u/verify", amo, """{"sub_channel_id":$sub}""")
+        val approve = """{"change_reason":"The owner moved away last week"}"""
+        val a = sendA1(HttpMethod.Post, "/outlet-requests/$u/approve", dmo, approve)
+        assertEquals(HttpStatusCode.OK, a.status, a.objA1().toString())
+        assertEquals("closed|true", env.sql("SELECT status || '|' || (closed_at IS NOT NULL) FROM app.outlet WHERE id = $outlet"))
+        assertEquals(outlet, a.objA1().lng("resulting_outlet_id"))
+        assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Post, "/outlet-requests/$u/approve", dmo, approve).status)
+        assertEquals(1, env.audit("outlet", outlet, "update"), "applied once")
+
+        // An info request with a phone number: the requester and a pii reader see it, an AMO without the claim does not.
+        val other = id("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id LIMIT 1")
+        val u2 = UUID.randomUUID()
+        assertEquals(HttpStatusCode.Created, sendA1(HttpMethod.Post, "/outlet-requests", tso, """{"request_uuid":"$u2","request_type":"info","outlet_id":$other,"proposed":{"owner_name":"New Owner","contact_number":"01812345678"}}""").status)
+        assertEquals(null, sendA1(HttpMethod.Get, "/outlet-requests/$u2", amo).objA1().getValue("proposed").let { (it as kotlinx.serialization.json.JsonObject).strA1("contact_number") })
+        assertEquals("01812345678", sendA1(HttpMethod.Get, "/outlet-requests/$u2", tso).objA1().getValue("proposed").let { (it as kotlinx.serialization.json.JsonObject).strA1("contact_number") })
+        assertEquals("01812345678", sendA1(HttpMethod.Get, "/outlet-requests/$u2", env.token("amo1001", Role.AMO, pii = true)).objA1().getValue("proposed").let { (it as kotlinx.serialization.json.JsonObject).strA1("contact_number") })
+        assertEquals("ERR_CONFLICT", sendA1(HttpMethod.Post, "/outlet-requests", tso, """{"request_uuid":"$u2","request_type":"info","outlet_id":$other,"proposed":{"owner_name":"Another Owner"}}""").code(), "same uuid, other content")
+    }
+
+    @Test
     fun theAmoAppVerificationRecordMovesAPendingRequestOnce() {
         val u = appRequest("cluster", id("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1"), """{"cluster_id":$cluster}""")
         fun rec(user: String, decision: String) = com.aktcl.aron.backend.platform.IngestRecord(

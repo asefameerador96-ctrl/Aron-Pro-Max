@@ -229,7 +229,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
     }
 
     fun get(call: ApplicationCall, p: AronPrincipal, u: UUID): OutletRequestDto =
-        d.db.readJdbi.withHandle<OutletRequestDto, Exception> { h -> one(h, u, reachOf(p), lock = false)?.let { dto(h, it) } ?: admNotFound("request not found") }
+        d.db.readJdbi.withHandle<OutletRequestDto, Exception> { h -> one(h, u, reachOf(p), lock = false)?.let { dto(h, it, p) } ?: admNotFound("request not found") }
 
     /** The request row when it is in reach (out of reach and unknown are the same 404). */
     private fun one(h: Handle, u: UUID, reach: Reach, lock: Boolean): Map<String, Any?>? {
@@ -245,9 +245,11 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         else -> null
     }
 
-    private fun dto(h: Handle, r: Map<String, Any?>): OutletRequestDto {
+    private fun dto(h: Handle, r: Map<String, Any?>, viewer: AronPrincipal): OutletRequestDto {
         val u = r["client_uuid"].toString()
-        val proposed = Json.parseToJsonElement(r["proposed"].toString()).jsonObject
+        val raw = Json.parseToJsonElement(r["proposed"].toString()).jsonObject
+        // The owner's phone number only with the pii claim (as the admin outlet reads), or to the requester.
+        val proposed = if (viewer.pii || (r["user_id"] as Number).toLong() == viewer.userId) raw else JsonObject(raw.filterKeys { it != "contact_number" })
         val events = h.createQuery("SELECT event, actor_user_id, at, note, via FROM app.outlet_request_event WHERE request_uuid = :u AND voided_at IS NULL ORDER BY at, id")
             .bind("u", UUID.fromString(u)).mapToMap().list()
         val trail = ArrayList<OutletRequestEventDto>()
@@ -255,13 +257,9 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         events.filter { it["event"] != "created" && it["actor_user_id"] != null }.take(49).forEach {
             trail += OutletRequestEventDto(it["event"] as String, (it["actor_user_id"] as Number).toLong(), ts(it["at"])!!, it["note"] as String?)
         }
-        val fix = (r["fix_status"] as String?)?.let { st ->
-            JsonObject(buildMap {
-                put("status", JsonPrimitive(st))
-                (r["fix_lat"] as Double?)?.let { put("lat", JsonPrimitive(it)) }; (r["fix_lng"] as Double?)?.let { put("lng", JsonPrimitive(it)) }
-                (r["fix_accuracy_m"] as Double?)?.let { put("accuracy_m", JsonPrimitive(it)) }; (r["fix_is_mock"] as Boolean?)?.let { put("is_mock", JsonPrimitive(it)) }
-            })
-        }
+        // The request row keeps only the fix's status, position and mock flag; a full contract GeoFix (provider, device,
+        // reuse) lives in app.geo_fix and is not rebuilt here yet, so the member is null (BC-84) and the mock flag rides `flags`.
+        val fix: JsonObject? = null
         val (moved, tso) = movement(h, r)
         val status = r["status"] as String
         val verifiedVia = events.lastOrNull { it["event"] == "verified" }?.get("via")?.let { if (it == "device") "app" else "web" }
@@ -303,11 +301,11 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         return admWrite {
             d.db.jdbi.inTransaction<Pair<HttpStatusCode, OutletRequestDto>, Exception> { h ->
                 h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 4))", "outlet_request:$u")
-                h.row("SELECT user_id, outlet_id, request_type FROM app.outlet_change_request WHERE client_uuid = :u", "u" to u)?.let { prior ->
-                    if ((prior["user_id"] as Number).toLong() != p.userId || (prior["outlet_id"] as Number?)?.toLong() != req.outlet_id || prior["request_type"] != req.request_type) {
+                h.row("SELECT user_id, outlet_id, request_type, proposed = CAST(:p AS jsonb) AS same FROM app.outlet_change_request WHERE client_uuid = :u", "u" to u, "p" to req.proposed.toString())?.let { prior ->
+                    if ((prior["user_id"] as Number).toLong() != p.userId || (prior["outlet_id"] as Number?)?.toLong() != req.outlet_id || prior["request_type"] != req.request_type || prior["same"] != true) {
                         throw ApiProblem(ProblemCode.ERR_CONFLICT, "request_uuid is already used for another request")
                     }
-                    return@inTransaction HttpStatusCode.Created to dto(h, one(h, u, reach, lock = false) ?: admNotFound("request not found"))
+                    return@inTransaction HttpStatusCode.Created to dto(h, one(h, u, reach, lock = false) ?: admNotFound("request not found"), p)
                 }
                 val outlet = h.row("SELECT zone_id, route_id, status FROM app.outlet WHERE id = :o", "o" to req.outlet_id) ?: admNotFound("outlet not found")
                 if (!reach.coversZone((outlet["zone_id"] as Number).toLong())) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "the outlet is outside your reach")
@@ -323,7 +321,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                     .bind("p", req.proposed.toString()).bindAny("note", req.note).bind("ref", u.toString()).execute()
                 h.createUpdate("INSERT INTO app.outlet_request_event (request_uuid, event, actor_user_id, via, business_date, at, note) VALUES (:u, 'created', :me, 'web', :bd, :at, :note)")
                     .bind("u", u).bind("me", p.userId).bind("bd", today).bind("at", odt(now)).bindAny("note", req.note).execute()
-                HttpStatusCode.Created to dto(h, one(h, u, reach, lock = false)!!)
+                HttpStatusCode.Created to dto(h, one(h, u, reach, lock = false)!!, p)
             }
         }
     }
@@ -378,14 +376,14 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         return admWrite {
             d.db.jdbi.inTransaction<OutletRequestDto, Exception> { h ->
                 val r = one(h, u, reach, lock = true) ?: admNotFound("request not found")
-                if (r["status"] == "verified" && (r["verified_by"] as Number?)?.toLong() == p.userId) return@inTransaction dto(h, r)
+                if (r["status"] == "verified" && (r["verified_by"] as Number?)?.toLong() == p.userId) return@inTransaction dto(h, r, p)
                 if (r["status"] != "pending") throw ApiProblem(ProblemCode.ERR_CONFLICT, "the request is ${r["status"]}")
                 if ((r["user_id"] as Number).toLong() == p.userId) throw ApiProblem(ProblemCode.ERR_SEPARATION_OF_DUTIES, "the requester cannot verify their own request")
                 if (h.row("SELECT id FROM app.sub_channel WHERE id = :s AND status = 'active'", "s" to req.sub_channel_id) == null) bad("/sub_channel_id", "unknown_sub_channel")
                 h.createUpdate("UPDATE app.outlet_change_request SET status = 'verified', status_changed_at = :at, verified_by = :me, verified_at = :at WHERE client_uuid = :u")
                     .bind("at", odt(d.clock.now())).bind("me", p.userId).bind("u", u).execute()
                 event(h, u, "verified", p, req.note, req.sub_channel_id, req.geo_class)
-                dto(h, one(h, u, reach, lock = false)!!)
+                dto(h, one(h, u, reach, lock = false)!!, p)
             }
         }
     }
@@ -397,7 +395,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         return admWrite {
             d.db.jdbi.inTransaction<OutletRequestDto, Exception> { h ->
                 val r = one(h, u, reach, lock = true) ?: admNotFound("request not found")
-                if (r["status"] == "rejected" && (r["decided_by"] as Number?)?.toLong() == p.userId) return@inTransaction dto(h, r)
+                if (r["status"] == "rejected" && (r["decided_by"] as Number?)?.toLong() == p.userId) return@inTransaction dto(h, r, p)
                 if (r["status"] !in setOf("pending", "verified")) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the request is ${r["status"]}")
                 // A verified request is decided by the approvers; a pending one may also be turned down by a verifier.
                 if (r["status"] == "verified" && p.role !in DECIDERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a verified request is decided by the DMO or an admin")
@@ -405,7 +403,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 h.createUpdate("UPDATE app.outlet_change_request SET status = 'rejected', status_changed_at = :at, decided_by = :me, decided_at = :at, decision_reason = :why WHERE client_uuid = :u")
                     .bind("at", odt(d.clock.now())).bind("me", p.userId).bind("why", req.reason).bind("u", u).execute()
                 event(h, u, "rejected", p, req.reason)
-                dto(h, one(h, u, reach, lock = false)!!)
+                dto(h, one(h, u, reach, lock = false)!!, p)
             }
         }
     }
@@ -418,7 +416,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         val outcome = admWrite {
             d.db.jdbi.inTransaction<OutletRequestDto, Exception> { h ->
                 val r = one(h, u, ctx.reach, lock = true) ?: admNotFound("request not found")
-                if (r["status"] == "approved" && (r["decided_by"] as Number?)?.toLong() == p.userId) return@inTransaction dto(h, r)
+                if (r["status"] == "approved" && (r["decided_by"] as Number?)?.toLong() == p.userId) return@inTransaction dto(h, r, p)
                 if (r["status"] != "verified") throw ApiProblem(ProblemCode.ERR_CONFLICT, "only a verified request can be approved (it is ${r["status"]})")
                 sod(p, r)
                 val (_, tso) = movement(h, r)
@@ -428,7 +426,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 h.createUpdate("UPDATE app.outlet_change_request SET status = 'approved', status_changed_at = :at, decided_by = :me, decided_at = :at, decision_reason = :why, created_outlet_id = :co WHERE client_uuid = :u")
                     .bind("at", odt(d.clock.now())).bind("me", p.userId).bind("why", req.change_reason).bindAny("co", created).bind("u", u).execute()
                 event(h, u, "approved", p, req.change_reason)
-                dto(h, one(h, u, ctx.reach, lock = false)!!)
+                dto(h, one(h, u, ctx.reach, lock = false)!!, p)
             }
         }
         d.geo.invalidate()
@@ -442,6 +440,10 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
             val prim = v as? JsonPrimitive ?: bad("/proposed/$k")
             when { prim is JsonNull -> null; prim.isString -> prim.content; else -> prim.longOrNull ?: prim.doubleOrNull ?: prim.booleanOrNull }
         }
+        // Typed reads: an app proposal is not re-validated at ingest, so a wrong type is a 400, never a cast failure.
+        fun id(k: String): Long? = s(k)?.let { v -> (v as? Long) ?: (v as? Double)?.takeIf { it % 1.0 == 0.0 }?.toLong() ?: bad("/proposed/$k") }
+        fun num(k: String): Double? = s(k)?.let { v -> (v as? Number)?.toDouble() ?: bad("/proposed/$k") }
+        fun text(k: String): String? = s(k)?.let { v -> v as? String ?: bad("/proposed/$k") }
         val verification = h.row(
             "SELECT sub_channel_id, geo_class FROM app.outlet_request_event WHERE request_uuid = :u AND event = 'verified' AND voided_at IS NULL ORDER BY at DESC, id DESC LIMIT 1",
             "u" to r["client_uuid"],
@@ -455,15 +457,15 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         }
         when (r["request_type"]) {
             "new" -> {
-                val sub = (verification?.get("sub_channel_id") as Number?)?.toLong() ?: (s("sub_channel_id") as Long?) ?: bad("/proposed/sub_channel_id", "required")
+                val sub = (verification?.get("sub_channel_id") as Number?)?.toLong() ?: id("sub_channel_id") ?: bad("/proposed/sub_channel_id", "required")
                 val channel = h.row("SELECT channel FROM app.sub_channel WHERE id = :s", "s" to sub)?.get("channel") ?: bad("/proposed/sub_channel_id", "unknown_sub_channel")
-                val cluster = s("cluster_id") as Long? ?: bad("/proposed/cluster_id", "required")
+                val cluster = id("cluster_id") ?: bad("/proposed/cluster_id", "required")
                 val zone = h.row("SELECT zone_id FROM app.cluster WHERE id = :c", "c" to cluster)?.get("zone_id") ?: bad("/proposed/cluster_id", "unknown_cluster")
                 val route = req.route_id ?: (r["route_id"] as Number?)?.toLong() ?: bad("/route_id", "required")
                 val vals = linkedMapOf<String, Any?>(
-                    "name" to s("name"), "name_bn" to s("name_bn"), "owner_name" to s("owner_name"), "contact_number" to s("contact_number"),
-                    "address" to s("address"), "zone_id" to (zone as Number).toLong(), "route_id" to route, "cluster_id" to cluster, "channel" to channel,
-                    "sub_channel_id" to sub, "geo_class" to (verification?.get("geo_class") ?: s("geo_class")), "lat" to s("lat"), "lng" to s("lng"),
+                    "name" to text("name"), "name_bn" to text("name_bn"), "owner_name" to text("owner_name"), "contact_number" to text("contact_number"),
+                    "address" to text("address"), "zone_id" to (zone as Number).toLong(), "route_id" to route, "cluster_id" to cluster, "channel" to channel,
+                    "sub_channel_id" to sub, "geo_class" to (verification?.get("geo_class") ?: text("geo_class")), "lat" to num("lat"), "lng" to num("lng"),
                     "outlet_kind" to "retail",
                 )
                 req.outlet_code?.let { vals["code"] = it }
@@ -474,11 +476,11 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 return id
             }
             "close" -> update(mapOf("status" to "closed"))
-            "info" -> update(p.keys.filter { it in setOf("name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id") }.associateWith { s(it) })
-            "cluster" -> update(mapOf("cluster_id" to s("cluster_id")))
-            "route_add" -> update(mapOf("cluster_id" to s("cluster_id"), "route_id" to (req.route_id ?: (r["route_id"] as Number?)?.toLong() ?: bad("/route_id", "required"))))
+            "info" -> update(p.keys.filter { it in setOf("name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id") }.associateWith { if (it == "sub_channel_id") id(it) else text(it) })
+            "cluster" -> update(mapOf("cluster_id" to (id("cluster_id") ?: bad("/proposed/cluster_id", "required"))))
+            "route_add" -> update(mapOf("cluster_id" to (id("cluster_id") ?: bad("/proposed/cluster_id", "required")), "route_id" to (req.route_id ?: (r["route_id"] as Number?)?.toLong() ?: bad("/route_id", "required"))))
             "location" -> {
-                update(mapOf("lat" to s("lat"), "lng" to s("lng")))
+                update(mapOf("lat" to (num("lat") ?: bad("/proposed/lat", "required")), "lng" to (num("lng") ?: bad("/proposed/lng", "required"))))
                 h.createUpdate("UPDATE app.outlet SET location_confirmed = true WHERE id = :o").bind("o", outletId).execute()
             }
         }
@@ -501,16 +503,18 @@ class OutletRequestVerificationHandler : RecordHandler {
     override val types: Set<String> = setOf("outlet_request_verification")
 
     override fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {
+        // Only the AMO verifies from the app (docs/24 s12.2); another role's record stays in the trail and moves nothing.
+        if (rec.role != Role.AMO) return
         val u = rec.payload["request_uuid"]?.jsonPrimitive?.contentOrNull ?: return
         val decision = rec.payload["decision"]?.jsonPrimitive?.contentOrNull ?: return
         val at = rec.envelope["captured_at"]?.jsonPrimitive?.contentOrNull?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() } ?: return
         when (decision) {
             "verified" -> h.createUpdate(
-                "UPDATE app.outlet_change_request SET status = 'verified', status_changed_at = :at, verified_by = :me, verified_at = :at WHERE client_uuid = CAST(:u AS uuid) AND status = 'pending' AND user_id <> :me",
-            ).bind("at", at).bind("me", rec.userId).bind("u", u).execute()
+                "UPDATE app.outlet_change_request SET status = 'verified', status_changed_at = :now, verified_by = :me, verified_at = :at WHERE client_uuid = CAST(:u AS uuid) AND status = 'pending' AND user_id <> :me",
+            ).bind("at", at).bind("now", OffsetDateTime.ofInstant(rec.receivedAt, java.time.ZoneOffset.UTC)).bind("me", rec.userId).bind("u", u).execute()
             "discarded" -> h.createUpdate(
-                "UPDATE app.outlet_change_request SET status = 'discarded', status_changed_at = :at WHERE client_uuid = CAST(:u AS uuid) AND status = 'pending' AND user_id <> :me",
-            ).bind("at", at).bind("me", rec.userId).bind("u", u).execute()
+                "UPDATE app.outlet_change_request SET status = 'discarded', status_changed_at = :now WHERE client_uuid = CAST(:u AS uuid) AND status = 'pending' AND user_id <> :me",
+            ).bind("now", OffsetDateTime.ofInstant(rec.receivedAt, java.time.ZoneOffset.UTC)).bind("me", rec.userId).bind("u", u).execute()
         }
     }
 }
