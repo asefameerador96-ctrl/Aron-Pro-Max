@@ -204,9 +204,14 @@ private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps, pro
     val user = d.users.findById(fam.userId) ?: throw ApiProblem(ProblemCode.ERR_AUTH_REFRESH_INVALID)
     // The upload grant survives user disable so captured rows always reach the server (docs/24 s8.1, D24-57).
     if (grant == Grant.FULL && user.status != "active") throw ApiProblem(ProblemCode.ERR_AUTH_USER_DISABLED)
+    // A web family opened without TOTP never refreshes for a user who needs it now (promoted into an MFA role, or
+    // enrolled since): the next login asks for the code (BC-89). Only where the store knows the family's amr.
+    if (fam.flavour == "web" && fam.amr != null && "mfa" !in fam.amr && (user.role.wire in d.login.mfaRoles() || user.mfaEnabled)) {
+        throw ApiProblem(ProblemCode.ERR_AUTH_REFRESH_INVALID, "a login with the second factor is required")
+    }
     val rotated = d.refresh.rotate(token, grant)
     val access = d.issuer.access(
-        TokenSubject(user, fam.deviceId, deviceUuid, fam.flavour),
+        TokenSubject(user, fam.deviceId, deviceUuid, fam.flavour, amr = fam.amr ?: listOf("pwd")),
         if (grant == Grant.UPLOAD) Audience.UPLOAD else Audience.API,
     )
     return TokenPair(

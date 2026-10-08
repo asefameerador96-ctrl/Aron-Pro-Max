@@ -52,6 +52,18 @@ class JdbiSecurityEventsTest {
         }
     }
 
+    /** V0070: the database accepts every kind the API emits (one unknown kind would lose its whole batch). */
+    @Test
+    fun everyKindIsAcceptedByTheTable() {
+        FreshDb.create().use { fresh ->
+            val sink = JdbiSecurityEvents(fresh.db, startWriter = false)
+            SecurityEventKind.entries.forEach { sink.record(SecurityEvent(it, at, 1)) }
+            assertEquals(SecurityEventKind.entries.size, sink.drainNow())
+            assertEquals(0, sink.dropped.get())
+            assertEquals(SecurityEventKind.entries.map { it.wire }, rows(fresh.db).map { it["kind"] })
+        }
+    }
+
     @Test
     fun anOverLongDetailLosesKeysNotTheEvent() {
         val big = (1..40).associate { "k%02d".format(it) to "অ".repeat(300) } // 40 x 200 chars x 3 bytes: far over 2000

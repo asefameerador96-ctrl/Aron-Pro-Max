@@ -8,6 +8,7 @@ import com.aktcl.aron.backend.platform.Settings
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -62,6 +63,8 @@ class MfaTest {
             val k = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().private
             writeText("-----BEGIN " + "PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(k.encoded) + "\n-----END PRIVATE KEY-----\n")
         }
+        // BC-89: the column docs/requests/backend-core-refresh-family-amr.md asks for (no-op once the db lane ships it).
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("ALTER TABLE app.refresh_family ADD COLUMN IF NOT EXISTS amr text[] NOT NULL DEFAULT '{pwd}' CHECK (amr <@ '{pwd,mfa}'::text[] AND 'pwd' = ANY (amr))") }
         wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to key.absolutePath)), clock)
     }
 
@@ -134,6 +137,12 @@ class MfaTest {
         assertTrue(ok.headers.getAll("Set-Cookie")!!.any { it.startsWith("aron_rt=") })
         val access = body["access_token"]!!.jsonPrimitive.content
         assertEquals(listOf("pwd", "mfa"), claims(access)["amr"]!!.jsonArray.map { it.jsonPrimitive.content })
+        // BC-89: a refresh of the family keeps the login's amr.
+        val rt = ok.headers.getAll("Set-Cookie")!!.single { it.startsWith("aron_rt=") }.substringAfter("aron_rt=").substringBefore(';')
+        val refreshed = client.post("/v1/auth/refresh") { contentType(ContentType.Application.Json); header("Cookie", "aron_rt=$rt"); setBody("""{"grant":"full"}""") }
+        assertEquals(HttpStatusCode.OK, refreshed.status, refreshed.bodyAsText())
+        assertEquals(listOf("pwd", "mfa"), claims(json(refreshed.bodyAsText())["access_token"]!!.jsonPrimitive.content)["amr"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals("{pwd,mfa}", fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT amr::text FROM app.refresh_family WHERE user_id = :u ORDER BY id DESC LIMIT 1").bind("u", id).mapTo(String::class.java).one() })
         client.verify(client.mfaToken(name), good).let { assertEquals("ERR_AUTH_MFA_INVALID", code(it, it.bodyAsText()), "a used code is never accepted again") }
 
         val me = client.get("/v1/me") { bearerAuth(access) }
@@ -155,6 +164,26 @@ class MfaTest {
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.app_user SET scope_version = scope_version + 1 WHERE id = ?", id) }
         now.set(now.get().plusSeconds(30))
         client.verify(stale, Totp.code(secret, Totp.step(now.get()))).let { assertEquals("ERR_AUTH_MFA_INVALID", code(it, it.bodyAsText())) }
+    }
+
+    /** BC-89 (checker): a web session opened without TOTP does not refresh once its user is promoted into an MFA role. */
+    @Test
+    fun aPromotionIntoAnMfaRoleEndsTheRefreshOfAPasswordOnlySession() = testApplication {
+        application { aronApi(wiring) }
+        val (id, name) = user("TSO")
+        val login = client.post("/v1/auth/login") { contentType(ContentType.Application.Json); setBody("""{"username":"$name","password":"$password","client":"web"}""") }
+        assertEquals("ok", json(login.bodyAsText())["status"]!!.jsonPrimitive.content, login.bodyAsText())
+        var rt = login.headers.getAll("Set-Cookie")!!.single { it.startsWith("aron_rt=") }.substringAfter("aron_rt=").substringBefore(';')
+        suspend fun refresh() = client.post("/v1/auth/refresh") { contentType(ContentType.Application.Json); header("Cookie", "aron_rt=$rt"); setBody("""{"grant":"full"}""") }
+        val r1 = refresh()
+        assertEquals(HttpStatusCode.OK, r1.status, r1.bodyAsText())
+        assertEquals(listOf("pwd"), claims(json(r1.bodyAsText())["access_token"]!!.jsonPrimitive.content)["amr"]!!.jsonArray.map { it.jsonPrimitive.content })
+        rt = r1.headers.getAll("Set-Cookie")!!.single { it.startsWith("aron_rt=") }.substringAfter("aron_rt=").substringBefore(';')
+
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.app_user SET role = 'ADMIN', scope_version = scope_version + 1 WHERE id = ?", id) }
+        val r2 = refresh()
+        assertEquals(HttpStatusCode.Unauthorized, r2.status, r2.bodyAsText())
+        assertEquals("ERR_AUTH_REFRESH_INVALID", code(r2, r2.bodyAsText()))
     }
 
     @Test
@@ -186,5 +215,19 @@ class MfaTest {
         now.set(now.get().plusSeconds(30))
         val tk = client.mfaToken(name)
         repeat(11) { assertEquals(HttpStatusCode.ServiceUnavailable, client.verify(tk, Totp.code(secret, Totp.step(now.get()))).status) }
+
+        // V0070 kinds in app.security_event (the sink writes off the request path, so wait for it).
+        val uid = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT id FROM app.app_user WHERE username = :n").bind("n", name).mapTo(Long::class.java).one() }
+        fun kinds() = fresh.db.jdbi.withHandle<List<String>, Exception> { h ->
+            h.createQuery("SELECT kind || ':' || coalesce(detail->>'reason', '') FROM app.security_event WHERE user_id = :u ORDER BY id").bind("u", uid).mapTo(String::class.java).list()
+        }
+        val deadline = System.currentTimeMillis() + 15_000
+        while (kinds().count { it == "mfa_verify_failure:unreadable" } < 11 && System.currentTimeMillis() < deadline) Thread.sleep(200)
+        val k = kinds()
+        assertEquals(1, k.count { it.startsWith("mfa_enrol:") }, k.toString())
+        assertEquals(10, k.count { it == "mfa_verify_failure:wrong_totp" }, "every wrong code is one event, never deduped: $k")
+        assertEquals(11, k.count { it == "mfa_verify_failure:unreadable" }, k.toString())
+        assertTrue(k.none { it.startsWith("login_failure") }, "MFA failures are not login failures: $k")
+        assertTrue(k.any { it.startsWith("lockout") })
     }
 }

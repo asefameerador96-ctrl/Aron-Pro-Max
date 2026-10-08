@@ -219,6 +219,7 @@ class LoginService(
         if (!store.enrol(user.id, cipher.seal(secret, user.id), codes.map { cipher.recoveryMac(it, user.id) }, clock.now(), p)) {
             throw ApiProblem(ProblemCode.ERR_CONFLICT, "MFA is already set up; an administrator can reset it")
         }
+        securityEvents.safely(SecurityEvent(SecurityEventKind.MFA_ENROL, clock.now(), user.id, null, detail = mapOf("client" to "web", "via" to if (p.audience == Audience.MFA) "login" else "session")))
         return MfaEnrolment(Totp.uri(user.username, secret), codes)
     }
 
@@ -259,13 +260,14 @@ class LoginService(
         }
         if (outcome == MfaUpdate.Unreadable) {
             // A lost or rotated-away key (checker finding 1): not the user's fault, so no lockout count; an admin resets MFA.
-            securityEvents.safely(SecurityEvent(SecurityEventKind.LOGIN_FAILURE, now, user.id, null, detail = mapOf("flow" to "mfa_unreadable", "client" to "web")))
+            securityEvents.safely(SecurityEvent(SecurityEventKind.MFA_VERIFY_FAILURE, now, user.id, null, detail = mapOf("reason" to "unreadable", "client" to "web")))
             throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "the authenticator setup cannot be read; ask an administrator to reset MFA")
         }
         if (outcome == MfaUpdate.None) {
             val n = lockouts.recordFailure(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_window_min").toLong()))
             val facts = mapOf("flow" to "mfa", "client" to "web")
-            securityEvents.safely(SecurityEvent(SecurityEventKind.LOGIN_FAILURE, now, user.id, null, detail = facts))
+            // Its own kind (V0070), not login_failure: that kind is deduped by username hash, which this step does not carry.
+            securityEvents.safely(SecurityEvent(SecurityEventKind.MFA_VERIFY_FAILURE, now, user.id, null, detail = facts + ("reason" to if (code.length == 6) "wrong_totp" else "wrong_recovery")))
             if (n >= config.int("cfg.auth.lockout_attempts")) {
                 lockouts.lock(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_min").toLong()))
                 securityEvents.safely(SecurityEvent(SecurityEventKind.LOCKOUT, now, user.id, null, detail = facts + ("failures" to n.toString())))
@@ -372,8 +374,8 @@ class LoginService(
             // it logs in again when the access token expires, and its grant can never be replayed from another phone.
             return base("ok").copy(access_token = access.token, access_expires_at = access.expiresAt.wire())
         }
-        val full = refresh.issue(user.id, device?.id, Grant.FULL, flavour)
-        val upload = if (phone) refresh.issue(user.id, device?.id, Grant.UPLOAD, flavour) else null
+        val full = refresh.issue(user.id, device?.id, Grant.FULL, flavour, subject.amr)
+        val upload = if (phone) refresh.issue(user.id, device?.id, Grant.UPLOAD, flavour, subject.amr) else null
         return base("ok").copy(
             access_token = access.token,
             access_expires_at = access.expiresAt.wire(),
@@ -397,7 +399,7 @@ class LoginService(
         return d
     }
 
-    private fun mfaRoles(): Set<String> =
+    internal fun mfaRoles(): Set<String> =
         config.value("cfg.auth.mfa_required_roles").jsonArray.mapNotNull { it.jsonPrimitive.contentOrNull }.toSet()
 
     private fun minVersionCode(flavour: String): Int? =

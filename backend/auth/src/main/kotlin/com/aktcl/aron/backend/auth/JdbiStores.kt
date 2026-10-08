@@ -80,15 +80,30 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
 
 /** Refresh families and hashed tokens; rotation is atomic (the unused-token update and the child insert commit together). */
 class JdbiRefreshStore(private val db: Database) : RefreshStore {
+    /**
+     * Whether app.refresh_family has the `amr` column (BC-89, docs/requests/backend-core-refresh-family-amr.md). Until
+     * the db lane ships it, families are stored without it and every refresh says ["pwd"], as before. Looked up once
+     * per process: the migration runs before the API restarts on a deploy.
+     */
+    private val hasAmr: Boolean by lazy {
+        db.jdbi.withHandle<Boolean, Exception> { h ->
+            h.createQuery("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'refresh_family' AND column_name = 'amr')")
+                .mapTo(Boolean::class.java).one()
+        }
+    }
+
     override fun createFamily(family: NewFamily, tokenHash: String, tokenExpiresAt: Instant): Long = db.jdbi.inTransaction<Long, Exception> { h ->
         // The upload grant has no absolute end (idle only); the column is NOT NULL, so it carries a far horizon.
         val absolute = family.absoluteExpiresAt ?: family.createdAt.plus(Duration.ofDays(UPLOAD_HORIZON_DAYS))
-        val id = h.createQuery(
-            """INSERT INTO app.refresh_family (user_id, device_id, client, grant_kind, created_at, sliding_expires_at, absolute_expires_at)
-               VALUES (:u, :d, :c, :g, :at, :sl, :abs) RETURNING id""",
+        val amrCol = if (hasAmr) ", amr" else ""
+        val amrVal = if (hasAmr) ", :amr" else ""
+        val q = h.createQuery(
+            """INSERT INTO app.refresh_family (user_id, device_id, client, grant_kind, created_at, sliding_expires_at, absolute_expires_at$amrCol)
+               VALUES (:u, :d, :c, :g, :at, :sl, :abs$amrVal) RETURNING id""",
         ).bind("u", family.userId).bind("d", family.deviceId).bind("c", clientOf(family.flavour)).bind("g", family.grant.wire)
             .bind("at", family.createdAt.odt()).bind("sl", tokenExpiresAt.odt()).bind("abs", absolute.odt())
-            .mapTo(Long::class.java).one()
+        if (hasAmr) q.bindArray("amr", String::class.java, family.amr)
+        val id = q.mapTo(Long::class.java).one()
         insertToken(h, id, tokenHash, family.createdAt, tokenExpiresAt)
         id
     }
@@ -100,7 +115,8 @@ class JdbiRefreshStore(private val db: Database) : RefreshStore {
     override fun findToken(hash: String): TokenView? = db.jdbi.withHandle<TokenView?, Exception> { h ->
         h.createQuery(
             """SELECT t.expires_at, t.used_at, encode(c.token_sha256, 'hex') AS child,
-                      f.id AS fid, f.user_id, f.device_id, f.client, f.grant_kind, f.absolute_expires_at, f.revoked_at, f.revoke_reason
+                      f.id AS fid, f.user_id, f.device_id, f.client, f.grant_kind, f.absolute_expires_at, f.revoked_at, f.revoke_reason,
+                      ${if (hasAmr) "f.amr" else "NULL::text[] AS amr"}
                FROM app.refresh_token t
                JOIN app.refresh_family f ON f.id = t.family_id
                LEFT JOIN app.refresh_token c ON c.id = t.replaced_by_id
@@ -115,6 +131,7 @@ class JdbiRefreshStore(private val db: Database) : RefreshStore {
                     grant = grant, flavour = flavourOf(rs.getString("client")),
                     absoluteExpiresAt = if (grant == Grant.UPLOAD) null else abs,
                     revokedAt = rs.instant("revoked_at"), revokeReason = rs.getString("revoke_reason"),
+                    amr = if (hasAmr) amrOf(rs.getArray("amr")) else null,
                 ),
                 expiresAt = rs.instant("expires_at")!!, usedAt = rs.instant("used_at"), replacedByHash = rs.getString("child"),
             )
@@ -160,6 +177,11 @@ class JdbiRefreshStore(private val db: Database) : RefreshStore {
         const val UPLOAD_HORIZON_DAYS = 3650L
         fun clientOf(flavour: String) = if (flavour == "web") "web" else "app_$flavour"
         fun flavourOf(client: String) = client.removePrefix("app_")
+        /** The stored amr, known methods only and in the token's order; a family without one says ["pwd"]. */
+        fun amrOf(a: java.sql.Array?): List<String> {
+            val stored = (a?.array as Array<*>?)?.map { it.toString() }.orEmpty()
+            return if ("mfa" in stored) listOf("pwd", "mfa") else listOf("pwd")
+        }
     }
 }
 
