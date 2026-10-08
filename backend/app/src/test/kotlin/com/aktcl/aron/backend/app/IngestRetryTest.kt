@@ -18,6 +18,7 @@ import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -327,6 +328,34 @@ class IngestRetryTest {
             assertEquals(1L, signals(), "once per device and day")
         } finally {
             fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.cfg_ack SET voided_at = now() WHERE client_uuid = CAST('$ack' AS uuid)") }
+        }
+    }
+
+    /** BC-85: an ack sent in the same batch, even after the rows it judges, is seen; the answer keeps the request order. */
+    @Test
+    fun anAckInTheSameBatchJudgesItsRows() = testApplication {
+        application { aronApi(wiring) }
+        val outlet = newOutlet("RTY-CSR-2")
+        val appliedBefore = fresh.db.jdbi.withHandle<Long?, Exception> { h -> h.createQuery("SELECT config_version_applied FROM app.device WHERE device_uuid = '$devPhone'").mapTo(Long::class.javaObjectType).findOne().orElse(null) }
+        val ack = uuid()
+        val ackRec = buildJsonObject {
+            put("type", "config_ack"); put("client_uuid", ack); put("family_uuid", ack); put("rank", 0); put("schema_version", 1)
+            put("business_date", day); put("captured_at", "2027-01-02T23:30:00.000Z"); put("captured_elapsed_ms", 18000000); put("boot_count", 412)
+            put("clock_offset_ms", 0); put("captured_offline", true); put("bundle_version", "$day:3"); put("bundle_stale", false); put("config_version", 1)
+            put("payload", json("""{"config_version":1,"applied_at":"2027-01-02T23:30:00.000Z","keys":["cfg.geo.radius_m"]}"""))
+        }
+        try {
+            val row = JsonObject(visit(outlet, 10.0) + ("config_version" to JsonPrimitive(0))) // 0 < the applied 1, captured after the ack
+            val b = client.send(listOf(row, ackRec))
+            assertEquals(listOf(uuidOf(row), ack), b["acks"]!!.jsonArray.map { it.jsonObject["client_uuid"]!!.jsonPrimitive.content }, "request order kept")
+            assertEquals("{config_stamp_regress}", flagsText(uuidOf(row)))
+            // Leave the device-day count of the other stamp test untouched (test order is not fixed).
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.ingest_registry SET flags = array_remove(flags, 'config_stamp_regress') WHERE client_uuid = CAST(? AS uuid)", uuidOf(row)) }
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                h.execute("UPDATE app.cfg_ack SET voided_at = now() WHERE client_uuid = CAST('$ack' AS uuid)")
+                h.createUpdate("UPDATE app.device SET config_version_applied = :v WHERE device_uuid = '$devPhone'").bind("v", appliedBefore).execute()
+            }
         }
     }
 }

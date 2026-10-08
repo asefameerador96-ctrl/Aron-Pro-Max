@@ -149,11 +149,23 @@ class IngestService(
 
         val ctx = Ctx(up, req.batch_uuid, now, resyncWindow(req.trigger, now))
         val outcomes = arrayOfNulls<Outcome>(recs.size)
-        var i = 0
-        while (i < recs.size) {
-            var j = i
-            while (j + 1 < recs.size && recs[j + 1].family == recs[i].family) j++
-            val family = recs.subList(i, j + 1)
+        // Families as the phone sent them, except that families of config_ack records only go first: an ack has no
+        // parent or child, and F-SYS-091 must see an ack of this batch when it judges the batch's other rows (BC-85).
+        // The acks are read lazily on the first non-telemetry row, so after these families committed. Outcomes keep
+        // their index, so the response order does not change.
+        val families = ArrayList<List<Rec>>()
+        run {
+            var a = 0
+            while (a < recs.size) {
+                var b = a
+                while (b + 1 < recs.size && recs[b + 1].family == recs[a].family) b++
+                families += recs.subList(a, b + 1)
+                a = b + 1
+            }
+        }
+        val ordered = families.filter { f -> f.all { it.type == "config_ack" } } + families.filterNot { f -> f.all { it.type == "config_ack" } }
+        for (family in ordered) {
+            val i = family.first().index
             ctx.arith = MemoChecks.familyMismatches(family.map { it.json }) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
             ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
             try {
@@ -179,7 +191,6 @@ class IngestService(
                 log.error("family failed batch_uuid=${req.batch_uuid} family=${recs[i].family}", e)
                 db.jdbi.useTransaction<Exception> { h -> family.forEach { r -> outcomes[r.index] = park(h, ctx, r, RecordOutcomeCode.SERVER_ERROR, e.javaClass.simpleName) } }
             }
-            i = j + 1
         }
 
         // Day states move forward from what this batch brought (F-SYS-016, s4.9); a failure here never fails the batch.
