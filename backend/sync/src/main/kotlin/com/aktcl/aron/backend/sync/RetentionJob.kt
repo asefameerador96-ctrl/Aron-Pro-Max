@@ -32,7 +32,10 @@ class RetentionJob(
 ) {
     private val log = LoggerFactory.getLogger("aron.retention")
 
-    data class Report(val partitionsCreated: Int, val failedParents: Map<String, String>, val defaultRows: Map<String, Long>, val manifestsPlanned: Int)
+    data class Report(
+        val partitionsCreated: Int, val failedParents: Map<String, String>, val defaultRows: Map<String, Long>, val manifestsPlanned: Int,
+        val clientErrorsDeleted: Int = 0,
+    )
 
     /** Each step on its own: a failure in one is logged and never skips the others. */
     fun tick(): Report {
@@ -70,7 +73,22 @@ class RetentionJob(
                 ).bind("today", today).execute()
             }
         }
-        return Report(created, failed, defaults, planned)
+        // 4. Web error reports (app.client_error, db V0069, retention class telemetry): not partitioned and never archived,
+        // so rows past the class's keep window are deleted, at most 10 000 per run. A no-op while the table is missing.
+        // (app.app_error refuses DELETE by trigger since V0007: its retention waits on the archive job.)
+        val clientErrors = step("client errors", 0) {
+            db.jdbi.inTransaction<Int, Exception> { h ->
+                val exists = h.createQuery("SELECT to_regclass('app.client_error') IS NOT NULL").mapTo(Boolean::class.java).one()
+                if (!exists) return@inTransaction 0
+                val keep = h.createQuery("SELECT keep_months FROM app.retention_policy WHERE retention_class = 'telemetry'").mapTo(Int::class.javaObjectType).findOne().orElse(null)
+                    ?: return@inTransaction 0
+                h.createUpdate(
+                    "DELETE FROM app.client_error WHERE id IN (SELECT id FROM app.client_error WHERE business_date < :cutoff ORDER BY id LIMIT 10000)",
+                ).bind("cutoff", today.minusMonths(keep.toLong())).execute()
+            }
+        }
+        if (clientErrors > 0) log.info("retention: {} client error report(s) past the telemetry window deleted", clientErrors)
+        return Report(created, failed, defaults, planned, clientErrors)
     }
 
     private fun <T> step(name: String, fallback: T, body: () -> T): T = runCatching(body).getOrElse { e ->

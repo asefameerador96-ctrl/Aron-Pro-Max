@@ -54,6 +54,14 @@ Updated 2026-10-08 (session 11; earlier: session 10, earlier header text from se
   registry flags) are on lane/db 2205ff98, not yet on INT. Once INT carries them: F-SYS-091, write `checkout_too_early`
   in ingest, and check BC-74's `cfg.calendar.window_unit` reads (see `docs/requests/db-working-day-keys-and-flags-answer.md`).
 
+## Session 11 close-out: next rows (session 12 starts here)
+1. Lane head: see `git log origin/lane/backend-core` (session 11 heads ee9755c0, 843044fb, 6541cf94, 228172cd and the close-out commit). Integrator is now **session_01AK8FquE86UGRgzqgJii4zg** (session 7); send it each pushed head.
+2. **Do not touch the device gate or config defaults** (BC-83).
+3. When db V0069-V0071 reach INT (lane/db d9cf3332): drop the test-side `CREATE TABLE IF NOT EXISTS app.client_error` (ClientErrorsTest, RetentionJobTest) or leave it (it no-ops); add `SecurityEventKind.MFA_ENROL` and `MFA_VERIFY_FAILURE` (`mfa_enrol`, `mfa_verify_failure`) and emit them in `LoginService.enrolMfa/verifyMfa` beside the audit rows (today failures are `login_failure` with `flow=mfa`).
+4. Open backend-core items: BC-84 `request_fix` (rebuild a contract GeoFix from `app.geo_fix` for outlet requests); BC-89 keep `amr` ["pwd","mfa"] on refresh (store it on the refresh family; matters once a step-up check reads it); F-SYS-086 waits on backend-admin; N-027 follow-ups only if the owner changes the gate ruling.
+5. Waiting on others: infra `backend-core-mfa-key.md` (Key Vault `aron-mfa-key` as `ARON_MFA_KEY`), web-dashboard `backend-core-mfa-enrol-web.md` (enrolment screen; held lane).
+6. Dev MFA facts (lead relayed to infra): MFA roles ADMIN, SUPERADMIN, SUPPORT (`cfg.auth.mfa_required_roles`); tso1001 needs none; an admin enrols by API with the login's mfa_token (TOFU), then verifies a TOTP code.
+
 ## Session 11 (2026-10-08, start here)
 - Merged INT at the start. Queue (a) done, independent checkers run, findings fixed:
   - **GET /v1/media/{media_uuid}/read-url** (BC-87, `media/MediaRead.kt`; Sonnet checker): 5-min read SAS, captor's reach on the photo's date.
