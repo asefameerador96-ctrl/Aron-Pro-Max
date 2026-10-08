@@ -146,6 +146,36 @@ class OutletRequestsTest {
         assertEquals("ERR_CONFLICT", sendA1(HttpMethod.Post, "/outlet-requests", tso, """{"request_uuid":"$u2","request_type":"info","outlet_id":$other,"proposed":{"owner_name":"Another Owner"}}""").code(), "same uuid, other content")
     }
 
+    /** N-044: an approved cluster request moves the outlet, writes placement history, and yesterday's memo keeps its cluster. */
+    @Test
+    fun anApprovedClusterRequestLeavesYesterdaysMemoInTheOldCluster() = env.app {
+        val outlet = id("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id OFFSET 2 LIMIT 1")
+        val old = id("SELECT cluster_id FROM app.outlet WHERE id = $outlet")
+        val target = id("SELECT c.id FROM app.cluster c JOIN app.outlet o ON o.zone_id = c.zone_id WHERE o.id = $outlet AND c.id <> $old ORDER BY c.id LIMIT 1")
+        val memo = UUID.randomUUID()
+        env.db.fresh.db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate(
+                """
+                INSERT INTO app.memo (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, visit_client_uuid, outlet_id, memo_no,
+                                      memo_kind, committed_at, price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, qc_deduction_mtk, round_adj_mtk,
+                                      net_mtk, paid_mtk, due_mtk, is_credit, line_count, discount_line_count, qc_line_count, status)
+                SELECT :m, :m, :d, u.id, :r, now() - interval '1 day', 1, gen_random_uuid(), :o, 'sr1001-' || to_char(:d, 'YYMMDD') || '-901',
+                       'zero_sale', now() - interval '1 day', :d, 'outlet', 0, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 'active'
+                  FROM app.app_user u WHERE u.username = 'sr1001'
+                """.trimIndent(),
+            ).bind("m", memo).bind("d", env.today.minusDays(1)).bind("r", route).bind("o", outlet).execute()
+        }
+        assertEquals(old, id("SELECT cluster_id FROM app.memo WHERE client_uuid = '$memo'"), "the memo froze its cluster at capture")
+
+        val u = appRequest("cluster", outlet, """{"cluster_id":$target}""")
+        sendA1(HttpMethod.Post, "/outlet-requests/$u/verify", amo, """{"sub_channel_id":$sub}""")
+        val a = sendA1(HttpMethod.Post, "/outlet-requests/$u/approve", dmo, """{"change_reason":"The outlet belongs to the next cluster"}""")
+        assertEquals(HttpStatusCode.OK, a.status, a.objA1().toString())
+        assertEquals(target, id("SELECT cluster_id FROM app.outlet WHERE id = $outlet"), "the outlet's current cluster changed")
+        assertEquals("$target", env.sql("SELECT cluster_id::text FROM app.outlet_placement_history WHERE outlet_id = $outlet AND valid_to IS NULL"), "a new open history row")
+        assertEquals(old, id("SELECT cluster_id FROM app.memo WHERE client_uuid = '$memo'"), "yesterday's memo stays in the old cluster")
+    }
+
     @Test
     fun theAmoAppVerificationRecordMovesAPendingRequestOnce() {
         val u = appRequest("cluster", id("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1"), """{"cluster_id":$cluster}""")

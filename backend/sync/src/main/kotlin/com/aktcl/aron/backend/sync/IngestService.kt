@@ -126,6 +126,11 @@ class IngestService(
         val signatureMode: SignatureMode = SignatureMode.of(runCatching { config.string("cfg.sec.record_signature_mode") }.getOrNull())
         /** N-027: the device's enrolment and Play Integrity standing and the two gates, read once per batch. */
         val gate: DeviceGate = deviceGate(up)
+        /** F-SYS-091: the device's applied config versions (ack capture time, version), read once per batch on first use. */
+        val acks: List<Pair<Instant, Long>> by lazy {
+            // A flag, never a gate: a failed read means "no acks" (no flag), never a parked sale.
+            runCatching { deviceAcks(up.deviceId) }.onFailure { log.warn("config acks not read device_id=${up.deviceId} cause=${it.javaClass.simpleName}") }.getOrDefault(emptyList())
+        }
         /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
         var arith: Map<String, String> = emptyMap()
         /** Memo content fingerprints of the current segment (s4.5: same outlet, lines and minute). */
@@ -351,9 +356,18 @@ class IngestService(
         // geography) is s4.5 `checkout_too_early`. The spec quarantines it, but no review path can release a quarantined
         // row yet (OpsApi's acceptor is not wired), so the rep's day would end without a check-out: until it can, the row
         // is accepted and flagged (BC-63; the phone enforces the same value offline, so only a hooked clock reaches it).
-        if (r.type == "attendance_event" && payload.str("kind") == "check_out" && checkoutTooEarly(h, ctx.up, captured, bd)) {
+        val tooEarly = r.type == "attendance_event" && payload.str("kind") == "check_out" && checkoutTooEarly(h, ctx.up, captured, bd)
+        if (tooEarly) {
+            // Stored in app.ingest_registry.flags (V0059); the log line stays.
             log.warn("checkout_too_early client_uuid=${r.clientUuid} user=${ctx.up.userId} business_date=$bd captured_at=$captured")
         }
+
+        // 3c. F-SYS-091 (s11.4): a row stamped with a config_version below one the device had already applied before the
+        // row's capture time is accepted and flagged `config_stamp_regress` (a rolled-back app or an edited stamp); the
+        // third such row of the device and business date raises CONFIG_STAMP_REGRESS. Telemetry rows are not judged.
+        val stampRegress = !rule.telemetry && env.long("config_version")?.let { cv ->
+            ctx.acks.filter { it.first.isBefore(captured) }.maxOfOrNull { it.second }?.let { cv < it }
+        } == true
 
         // 4. References that must exist (unknown ids are final rejections, s4.5).
         val routeId = env.long("route_id")
@@ -505,7 +519,9 @@ class IngestService(
         val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
-                register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp, if (resyncLate) listOf("resync_late") else emptyList())
+                val flags = listOfNotNull("resync_late".takeIf { resyncLate }, "checkout_too_early".takeIf { tooEarly }, "config_stamp_regress".takeIf { stampRegress })
+                register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp, flags)
+                if (stampRegress) stampRegressSignal(h, ctx, r, bd, routeId)
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
                 // Day states follow the record but never decide its outcome: a failure here is logged, the record stays stored.
@@ -587,6 +603,45 @@ class IngestService(
         } catch (e: Exception) {
             h.rollbackToSavepoint(sp)
             log.error("device flag failed client_uuid=${r.clientUuid}", e)
+        }
+    }
+
+    /** F-SYS-091: (capture time, applied version) of the device's config acks, oldest first. */
+    private fun deviceAcks(deviceId: Long): List<Pair<Instant, Long>> = db.jdbi.withHandle<List<Pair<Instant, Long>>, Exception> { h ->
+        h.createQuery("SELECT captured_at, acked_config_version FROM app.cfg_ack WHERE device_id = :d AND voided_at IS NULL ORDER BY captured_at")
+            .bind("d", deviceId).map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java).toInstant() to rs.getLong(2) }.list()
+    }
+
+    /**
+     * The third `config_stamp_regress` row of the device and business date raises CONFIG_STAMP_REGRESS (s11.4: severity 2,
+     * weight 20), once per device and day; counted through V0059's partial index. In its own savepoint: a failed signal
+     * never rolls the stored record back.
+     */
+    private fun stampRegressSignal(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?) {
+        val sp = "stamp_${r.index}"
+        h.savepoint(sp)
+        try {
+            // Concurrent batches of the same device and day count one after the other (READ COMMITTED would let two
+            // batches each see two rows and neither raise the signal).
+            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 5))", "stamp:${ctx.up.deviceId}:$bd")
+            val n = h.createQuery("SELECT count(*) FROM app.ingest_registry WHERE device_id = :d AND business_date = :bd AND 'config_stamp_regress' = ANY (flags)")
+                .bind("d", ctx.up.deviceId).bind("bd", bd).mapTo(Long::class.java).one()
+            if (n >= 3) {
+                h.createUpdate(
+                    """
+                    INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+                    VALUES ('CONFIG_STAMP_REGRESS', 2, :bd, 'device', :sid, :u, :route, 20, CAST(:ev AS jsonb), :cv)
+                    ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
+                    """.trimIndent(),
+                ).bind("bd", bd).bind("sid", ctx.up.deviceUuid).bind("u", ctx.up.userId).bind("route", routeId)
+                    .bind("ev", kotlinx.serialization.json.buildJsonObject {
+                        put("rows", JsonPrimitive(n)); put("record_type", JsonPrimitive(r.type)); put("client_uuid", JsonPrimitive(r.clientUuid))
+                    }.toString()).bind("cv", config.configVersion()).execute()
+            }
+            h.release(sp)
+        } catch (e: Exception) {
+            h.rollbackToSavepoint(sp)
+            log.error("config stamp signal failed client_uuid=${r.clientUuid}", e)
         }
     }
 
