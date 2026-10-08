@@ -51,6 +51,7 @@ GET /v1/app/home -> case TeamApiTest#appHomeGivesTheKpiStripAndTeamRowsOfTheCall
 GET /v1/app/update-check -> exempt: the caller's own account, token or phone only; no geography rows
 GET /v1/config/delta -> gap: backend-admin
 GET /v1/dashboards/daily-tracking -> gap: backend-reports
+GET /v1/dashboards/geo-validation -> case GeoValidationTest#aZoneCallerSeesOnlyItsZone
 GET /v1/dashboards/login-submit -> case OpsApiTest#v12AdditionsAreScopedAndConsistent
 GET /v1/dashboards/summary -> gap: backend-reports
 GET /v1/dashboards/sync-health -> case OpsApiTest#checker_syncHealthCountsOnlyRowsInsideTheViewersReach
@@ -58,9 +59,11 @@ GET /v1/day/final-submit/preview -> case DayApiTest#zoneDayOutsideReachAndFieldR
 GET /v1/feedback -> case FeedbackTest#randomisedListsNeverLeakFeedbackOutsideTheCallersReach
 GET /v1/leave -> case LeaveTest#randomisedListsNeverLeakLeaveOutsideTheCallersReach
 GET /v1/me -> exempt: the caller's own account, token or phone only; no geography rows
+GET /v1/media/{media_uuid}/read-url -> case MediaReadTest#aPhotoIsReadableOnlyInsideTheCallersReach
 GET /v1/memos -> case SyncReadsTest#memosAreReadByNumberOrOutletWithLinesAndNeverOutsideTheCallersReach
 GET /v1/outlets/nearby -> case NearbyOutletsTest#nearbyOutletsAreTheSeededOnesInsideTheCircleAndTheReachNearestFirst
 GET /v1/risk-signals -> case RiskSignalsTest#supervisorsSeeOnlySignalsInTheirReachAndFieldRepsNone
+POST /v1/client-errors -> exempt: stores the caller's own error report (user from the token); reads no rows
 POST /v1/risk-signals/{signal_id}/review -> case RiskSignalsTest#aReviewIsAnIdempotentEventAndOutOfReachIsNotFound
 GET /v1/outlet-requests -> case OutletRequestsTest#aNewOutletRequestIsVerifiedThenApprovedIntoTheMasterOnce
 GET /v1/outlet-requests/{request_uuid} -> case OutletRequestsTest#aNewOutletRequestIsVerifiedThenApprovedIntoTheMasterOnce
@@ -133,6 +136,7 @@ POST /v1/admin/users/{id}/credentials -> gap: backend-admin
 POST /v1/auth/bind-device -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/change-password -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/logout -> exempt: the caller's own account, token or phone only; no geography rows
+POST /v1/auth/mfa/enrol -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/dashboards/daily-tracking/actions -> case DailyTrackingTest#checker_sameUuidByAnotherUserIsAConflictAndNeverALeak
 POST /v1/day/final-submit -> case DayApiTest#zoneDayOutsideReachAndFieldRolesAreRefused
 POST /v1/day/sales-submit -> exempt: the caller's own route-day only; ingest re-checks the route against the uploader's assignment (BatchCheckerTest scope cases)

@@ -72,6 +72,12 @@ class AzureBlobSasIssuer internal constructor(
         blob.uploadWithResponse(options, Duration.ofSeconds(30), com.azure.core.util.Context.NONE)
     }
 
+    /** Read on that one blob until `expiresAt` (supervisor photo reads, GET /v1/media/{media_uuid}/read-url: 5 min). */
+    fun readSas(blobPath: String, expiresAt: Instant): String {
+        require(expiresAt.isAfter(now())) { "expiresAt must be in the future" }
+        return sign(blobPath, expiresAt.atOffset(ZoneOffset.UTC), BlobSasPermission().setReadPermission(true))
+    }
+
     override fun readUrl(blobPath: String): String =
         sign(blobPath, now().plus(readTtl).atOffset(ZoneOffset.UTC), BlobSasPermission().setReadPermission(true))
 

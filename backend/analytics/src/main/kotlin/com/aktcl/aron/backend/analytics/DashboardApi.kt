@@ -51,6 +51,17 @@ data class ChannelVolume(
 )
 
 @Serializable
+data class GeoValidationChild(val node: NodeRefDto, val visits: Int, val geo_valid_pct: Double?, val suspicious_visits: Int)
+
+/** Contract `GeoValidationSummary`. */
+@Serializable
+data class GeoValidationSummary(
+    val as_of: String, val from: String, val to: String, val node: NodeRefDto, val visits: Int, val geo_valid_pct: Double?,
+    val force_sale_pct: Double?, val mock_pct: Double?, val geo_mismatch_pct: Double?, val suspicious_pct: Double?,
+    val signals_by_code: Map<String, Int>, val children: List<GeoValidationChild>,
+)
+
+@Serializable
 data class DashboardChild(val node: NodeRefDto, val kpis: DashboardKpis)
 
 @Serializable
@@ -109,6 +120,83 @@ class DashboardService(
         return v
     }
 
+    /**
+     * GET /v1/dashboards/geo-validation (contract getGeoValidation, docs/05, docs/24 s11): for the node (the caller's top
+     * node by default, 403 outside the reach) and dates, the visits and the geo-valid, force-sale and mock rates of the
+     * `dw.agg_daily_zone` rollup (the same figures as the summary), the device/server verdict mismatch rate over the
+     * visits the server re-checked (`dw.fact_visit`), the suspicious-visit rate, and the risk signals raised on those
+     * dates in those zones by code (dismissed ones left out; a signal with no zone counts at national level only).
+     * Children as in the summary (routes under a zone). Cached 30 s per scope, node and range like the summary.
+     */
+    fun geoValidation(reach: Reach, level: String?, nodeId: Long?, from: LocalDate, to: LocalDate): GeoValidationSummary {
+        if (to.isBefore(from) || ChronoUnit.DAYS.between(from, to) > 92) {
+            throw ApiProblem(ProblemCode.ERR_VALIDATION, "to must be on or after from, at most 92 days", errors = listOf(FieldError("query.to", "out_of_range")))
+        }
+        val scope = ZoneScope(reach.national, reach.zoneIds.toList())
+        val node = resolveNode(reach, level, nodeId)
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to"
+        val now = clock.now()
+        geoCache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
+        val multi = level == null && nodeId == null && !reach.national && reach.topNodes.size > 1
+        val v = db.readJdbi.withHandle<GeoValidationSummary, Exception> { h -> computeGeo(h, nodeScope(h, reach, scope, node, multi), from, to) }
+        if (geoCache.size > 2_000) { geoCache.entries.removeIf { Duration.between(it.value.first, now) >= ttl }; if (geoCache.size > 2_000) geoCache.clear() }
+        geoCache[key] = now to v
+        return v
+    }
+
+    private val geoCache = ConcurrentHashMap<String, Pair<Instant, GeoValidationSummary>>()
+
+    private fun computeGeo(h: Handle, ns: NodeScope, from: LocalDate, to: LocalDate): GeoValidationSummary {
+        val eff = ns.eff
+        fun <T> q(sql: String, f: (org.jdbi.v3.core.statement.Query) -> T): T {
+            val st = h.createQuery(sql).bind("f", from).bind("t", to)
+            if (!eff.all) st.bindArray("zones", Long::class.javaObjectType, eff.zones)
+            return f(st)
+        }
+        data class Totals(val vis: Long, val gv: Long, val fs: Long, val mock: Long, val susp: Long)
+        val t = q(
+            "SELECT coalesce(sum(visits),0), coalesce(sum(geo_valid_visits),0), coalesce(sum(force_sale_visits),0), coalesce(sum(mock_visits),0), " +
+                "coalesce(sum(suspicious_visits),0) FROM dw.agg_daily_zone WHERE business_date BETWEEN :f AND :t AND ${eff.clause()}",
+        ) { it.map { rs, _ -> Totals(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5)) }.one() }
+        val asOf = q("SELECT max(updated_at) FROM dw.agg_daily_zone WHERE business_date BETWEEN :f AND :t AND ${eff.clause()}") {
+            it.map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java)?.toInstant() }.one()
+        } ?: clock.now()
+        // Same visits as the rollup (SR calls, not voided); only those the server re-checked have a verdict to compare.
+        val (checked, mismatched) = q(
+            "SELECT count(*) FILTER (WHERE server_verdict IS NOT NULL), count(*) FILTER (WHERE server_verdict IS NOT NULL AND server_verdict <> device_verdict) " +
+                "FROM dw.fact_visit WHERE business_date BETWEEN :f AND :t AND NOT voided AND visit_kind = 'sr_call' AND ${eff.clause()}",
+        ) { it.map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.one() }
+        val signals = q(
+            "SELECT code, count(*) FROM app.risk_signal WHERE business_date BETWEEN :f AND :t AND status <> 'dismissed' AND " +
+                (if (eff.all) "true" else "zone_id = ANY(:zones)") + " GROUP BY code ORDER BY code",
+        ) { it.map { rs, _ -> rs.getString(1) to rs.getInt(2) }.list().toMap() }
+        val lv = ns.lv
+        val children: List<GeoValidationChild> = if (lv.childCol != null && lv.childName != null) {
+            q(
+                """
+                WITH zg AS (SELECT DISTINCT zone_id, zone_name, territory_id, territory_name, division_id, division_name, wing_id, wing_name FROM dw.dim_geo)
+                SELECT zg.${lv.childCol} cid, zg.${lv.childName} cname, coalesce(sum(a.visits),0) vis, coalesce(sum(a.geo_valid_visits),0) gv,
+                       coalesce(sum(a.suspicious_visits),0) susp
+                  FROM dw.agg_daily_zone a JOIN zg ON zg.zone_id = a.zone_id
+                 WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("a.zone_id")} GROUP BY 1, 2 ORDER BY 1
+                """,
+            ) { it.map { rs, _ -> GeoValidationChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), rs.getInt("vis"), pct(rs.getLong("gv"), rs.getLong("vis")), rs.getInt("susp")) }.list() }
+        } else {
+            q(
+                """
+                SELECT g.route_id cid, g.route_name cname, g.route_code ccode, coalesce(sum(a.visits),0) vis, coalesce(sum(a.geo_valid_visits),0) gv,
+                       coalesce(sum(a.suspicious_visits),0) susp
+                  FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
+                 WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("a.zone_id")} GROUP BY 1, 2, 3 ORDER BY 1
+                """,
+            ) { it.map { rs, _ -> GeoValidationChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), rs.getInt("vis"), pct(rs.getLong("gv"), rs.getLong("vis")), rs.getInt("susp")) }.list() }
+        }
+        return GeoValidationSummary(
+            asOf.wire(), from.toString(), to.toString(), ns.ref, t.vis.toInt(), pct(t.gv, t.vis), pct(t.fs, t.vis), pct(t.mock, t.vis),
+            pct(mismatched, checked), pct(t.susp, t.vis), signals, children,
+        )
+    }
+
     /** (level, id): the requested node, or the caller's top reach node. Outside the reach, or unknown, is 403 (no existence leak). */
     private fun resolveNode(reach: Reach, level: String?, nodeId: Long?): Pair<String, Long> {
         val out = ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
@@ -126,7 +214,10 @@ class DashboardService(
         return lv to (nodeId?.takeIf { it > 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "node_id required", errors = listOf(FieldError("query.node_id", "required"))))
     }
 
-    private fun compute(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, from: LocalDate, to: LocalDate, multi: Boolean): DashboardSummary {
+    private class NodeScope(val lv: Level, val eff: ZoneScope, val ref: NodeRefDto)
+
+    /** The zones a node covers, narrowed to the reach (403 outside it), and its label; shared by the summary and geo-validation reads. */
+    private fun nodeScope(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, multi: Boolean): NodeScope {
         val lv = LEVELS.getValue(node.first)
         // Zones of the node, narrowed to the reach. A caller with several top nodes and no selector reads the whole reach (labelled by the first node).
         val nodeZones: List<Long> = if (lv.col == null || multi) emptyList() else
@@ -142,6 +233,14 @@ class DashboardService(
         val nodeRef = if (lv.col == null) NodeRefDto("national", 0, "national", "National") else
             h.createQuery("SELECT DISTINCT ${lv.nameCol} FROM dw.dim_geo WHERE ${lv.col} = :id").bind("id", node.second).mapTo(String::class.java).first()
                 .let { NodeRefDto(node.first, node.second, null, it) }
+        return NodeScope(lv, eff, nodeRef)
+    }
+
+    private fun compute(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, from: LocalDate, to: LocalDate, multi: Boolean): DashboardSummary {
+        val ns = nodeScope(h, reach, scope, node, multi)
+        val lv = ns.lv
+        val eff = ns.eff
+        val nodeRef = ns.ref
 
         fun <T> Handle.q(sql: String, f: (org.jdbi.v3.core.statement.Query) -> T): T {
             val st = createQuery(sql).bind("f", from).bind("t", to)
@@ -256,6 +355,20 @@ fun Route.dashboardRoutes(d: DashboardDeps) {
             val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
             val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
             call.respond(d.service.summary(reach, q["level"], nodeId, from, to))
+        }
+        get("/dashboards/geo-validation") {
+            val p = call.principal
+            if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
+            val q = call.request.queryParameters
+            val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+            fun date(n: String, default: LocalDate) = q[n]?.let { s ->
+                runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
+            } ?: default
+            val from = date("from", today)
+            val to = date("to", from)
+            val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
+            val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
+            call.respond(d.service.geoValidation(reach, q["level"], nodeId, from, to))
         }
     }
 }

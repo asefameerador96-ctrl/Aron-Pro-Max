@@ -60,6 +60,9 @@ class LoginService(
     private val webLimiter: HashLimiter = HashLimiter(concurrency = 1, queueMax = 8),
     /** login_failure, lockout and password_change events (AUD-SEC-03); best effort, never fails the call. */
     private val securityEvents: SecurityEvents = SecurityEvents.LOG,
+    /** TOTP enrolment and the second login step (F-WEB-043); null where a test wires no database (503). */
+    private val mfa: MfaStore? = null,
+    private val mfaCipher: MfaCipher? = null,
 ) {
     private val perUsername = RateLimiter(10, 15 * 60, clock)
     private val perDevice = RateLimiter(30, 15 * 60, clock)
@@ -71,6 +74,8 @@ class LoginService(
      */
     private val webPerIpClass = RateLimiter(30, 60, clock)
     private val anonGlobal = RateLimiter(300, 60, clock)
+    /** Enrolments and codes per user (a backstop per replica; the lockout counts only wrong codes). */
+    private val mfaLimiter = RateLimiter(30, 15 * 60, clock)
 
     suspend fun login(req: LoginRequest, ctx: LoginContext): LoginResponse {
         val now = clock.now()
@@ -190,6 +195,89 @@ class LoginService(
         return complete(fresh, null, null, "web", minVersionCode("web"), afterPasswordChange = true)
     }
 
+    /**
+     * POST /v1/auth/mfa/enrol (contract enrolMfa, F-WEB-043, docs/21 s2.8): a new TOTP secret (RFC 6238, SHA-1, 6
+     * digits, 30 s; sealed with [MfaCipher]) and ten single-use recovery codes, shown once; only their keyed verifiers
+     * are stored. Web only. The caller is a full web session, or, for the first enrolment of an MFA role (which has no
+     * full session before TOTP), the login's `mfa_token`: an unenrolled MFA user enrols from the login itself
+     * (trust on first use; DECISIONS.md). The enrolment stays unconfirmed, and a later enrol replaces it, until the first
+     * TOTP code verifies; once confirmed, enrol answers 409 and only an ADMIN's `reset_mfa` starts over.
+     */
+    fun enrolMfa(p: AronPrincipal): MfaEnrolment {
+        val store = mfa ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "MFA is not available")
+        val cipher = mfaCipher ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "MFA is not available")
+        if (p.isPhone) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "MFA is for web sign-in only")
+        val user = users.findById(p.userId) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED)
+        if (user.status != "active") throw ApiProblem(ProblemCode.ERR_AUTH_USER_DISABLED, "user is disabled")
+        // Only the MFA roles: confirmation happens in the login's TOTP step, which other roles never reach (checker finding 3).
+        if (user.role.wire !in mfaRoles()) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "MFA is required only for the admin roles (cfg.auth.mfa_required_roles)")
+        // An mfa_token minted before an admin's reset_mfa (which bumps scope_version) is spent.
+        if (p.audience == Audience.MFA && p.scopeVersion != user.scopeVersion) throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "sign in again")
+        mfaLimiter.tryAcquire("e:${user.id}").let { if (!it.allowed) throw it.toProblem("too many enrolments") }
+        val secret = cipher.newSecret()
+        val codes = cipher.recoveryCodes()
+        if (!store.enrol(user.id, cipher.seal(secret, user.id), codes.map { cipher.recoveryMac(it, user.id) }, clock.now(), p)) {
+            throw ApiProblem(ProblemCode.ERR_CONFLICT, "MFA is already set up; an administrator can reset it")
+        }
+        return MfaEnrolment(Totp.uri(user.username, secret), codes)
+    }
+
+    /**
+     * POST /v1/auth/mfa/verify (contract verifyMfa): the second step of a web login, with the login's `mfa_token`
+     * (verified by the route) and a TOTP code or a recovery code. A TOTP code is accepted in the steps now - 1 .. now + 1
+     * and only above the last used step (no replay); the first good code confirms the enrolment. A recovery code works
+     * only on a confirmed enrolment and is spent. Wrong codes count towards `cfg.auth.lockout_attempts` per user
+     * (then 403 ERR_AUTH_ACCOUNT_LOCKED for `cfg.auth.lockout_min`, doubling); every failure is the same 401
+     * ERR_AUTH_MFA_INVALID. Success continues the login with `amr` ["pwd","mfa"].
+     */
+    fun verifyMfa(p: AronPrincipal, rawCode: String): LoginResponse {
+        val code = rawCode.trim().uppercase()
+        val store = mfa ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "MFA is not available")
+        val cipher = mfaCipher ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "MFA is not available")
+        if (p.audience != Audience.MFA || p.isPhone) throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "not an mfa_token")
+        if (!MFA_CODE.matches(code)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "6 digits or a recovery code XXXX-XXXX", errors = listOf(FieldError("/code", "pattern")))
+        val now = clock.now()
+        val user = users.findById(p.userId) ?: throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "sign in again")
+        if (user.status != "active") throw ApiProblem(ProblemCode.ERR_AUTH_USER_DISABLED, "user is disabled")
+        if (p.scopeVersion != user.scopeVersion) throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "sign in again")
+        val lockKey = "mfa|${user.id}"
+        lockouts.lockedUntil(lockKey, now)?.let { until ->
+            val sec = Duration.between(now, until).seconds.coerceAtLeast(1).toInt()
+            throw ApiProblem(ProblemCode.ERR_AUTH_ACCOUNT_LOCKED, "too many wrong codes", retryAfterS = sec, headers = mapOf("Retry-After" to sec.toString()))
+        }
+        mfaLimiter.tryAcquire("m:${user.id}").let { if (!it.allowed) throw it.toProblem("too many codes") }
+        val outcome = store.verify(user.id, now, p) { state ->
+            val secret = state?.let { cipher.open(it.secretCipher, user.id) }
+            when {
+                state == null -> MfaUpdate.None
+                secret == null -> MfaUpdate.Unreadable
+                code.length == 6 -> Totp.matchingStep(secret, code, now)?.takeIf { s -> state.lastUsedStep == null || s > state.lastUsedStep }
+                    ?.let { MfaUpdate.TotpUsed(it) } ?: MfaUpdate.None
+                !state.confirmed -> MfaUpdate.None
+                else -> cipher.matchRecovery(code, user.id, state.recoveryMacs)?.let { MfaUpdate.RecoverySpent(state.recoveryMacs - it) } ?: MfaUpdate.None
+            }
+        }
+        if (outcome == MfaUpdate.Unreadable) {
+            // A lost or rotated-away key (checker finding 1): not the user's fault, so no lockout count; an admin resets MFA.
+            securityEvents.safely(SecurityEvent(SecurityEventKind.LOGIN_FAILURE, now, user.id, null, detail = mapOf("flow" to "mfa_unreadable", "client" to "web")))
+            throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "the authenticator setup cannot be read; ask an administrator to reset MFA")
+        }
+        if (outcome == MfaUpdate.None) {
+            val n = lockouts.recordFailure(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_window_min").toLong()))
+            val facts = mapOf("flow" to "mfa", "client" to "web")
+            securityEvents.safely(SecurityEvent(SecurityEventKind.LOGIN_FAILURE, now, user.id, null, detail = facts))
+            if (n >= config.int("cfg.auth.lockout_attempts")) {
+                lockouts.lock(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_min").toLong()))
+                securityEvents.safely(SecurityEvent(SecurityEventKind.LOCKOUT, now, user.id, null, detail = facts + ("failures" to n.toString())))
+            }
+            throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "the code is wrong")
+        }
+        lockouts.reset(lockKey)
+        users.invalidate(user.id)
+        val fresh = users.findById(user.id) ?: throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "sign in again")
+        return complete(fresh, null, null, "web", minVersionCode("web"), afterPasswordChange = false, afterMfa = true)
+    }
+
     private fun cfgInt(key: String, default: Int): Int = runCatching { config.int(key) }.getOrDefault(default)
 
     /**
@@ -234,13 +322,16 @@ class LoginService(
      * device binding, phone temporary password, then the tokens. [afterPasswordChange] continues a web login after
      * POST /v1/auth/change-password with the password_change_token (the password is no longer temporary).
      */
-    private fun complete(user: UserRecord, device: DeviceRecord?, deviceUuid: String?, flavour: String, minVersion: Int?, afterPasswordChange: Boolean): LoginResponse {
+    private fun complete(
+        user: UserRecord, device: DeviceRecord?, deviceUuid: String?, flavour: String, minVersion: Int?, afterPasswordChange: Boolean,
+        afterMfa: Boolean = false,
+    ): LoginResponse {
         val now = clock.now()
         val phone = flavour != "web"
         val summary = UserSummary(user.id, user.username, user.fullName, user.role, user.designation, user.locale)
         val scope = reach.reach(user.id, user.role, user.scopeVersion, BusinessDate.of(now.toEpochMilli()).toJavaLocalDate())
         val scopeSummary = ScopeSummary(user.scopeVersion, scope.topNodes.take(16).map { NodeRef(it.type, it.id, it.code, it.name) })
-        val subject = TokenSubject(user, device?.id, deviceUuid, flavour)
+        val subject = TokenSubject(user, device?.id, deviceUuid, flavour, amr = if (afterMfa) listOf("pwd", "mfa") else listOf("pwd"))
         val blockSize = config.int("cfg.memo.seq_block_size")
         fun base(status: String) = LoginResponse(
             status = status, access_token = null, access_expires_at = null, refresh_token = null, refresh_expires_at = null,
@@ -254,7 +345,8 @@ class LoginService(
             val t = issuer.mint(subject, Audience.PWCHANGE, Duration.ofMinutes(10))
             return base("password_change_required").copy(password_change_token = t.token, scope = null)
         }
-        if (!phone && user.role.wire in mfaRoles()) {
+        // TOTP for the MFA roles and for anyone who confirmed an enrolment of their own (F-WEB-043).
+        if (!phone && !afterMfa && (user.role.wire in mfaRoles() || user.mfaEnabled)) {
             val mfa = issuer.access(subject, Audience.MFA)
             return base("mfa_required").copy(mfa_token = mfa.token, scope = null)
         }
@@ -320,6 +412,7 @@ class LoginService(
 
     companion object {
         private val PHONE_ROLE = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
+        private val MFA_CODE = Regex("^([0-9]{6}|[A-Z0-9]{4}-[A-Z0-9]{4})$")
 
         /** IPv4 /24 or IPv6 /48 of the client (the lockout key's IP class); "-" when unknown. */
         private val IPV6_LITERAL = Regex("^[0-9A-Fa-f:.]{2,45}$")

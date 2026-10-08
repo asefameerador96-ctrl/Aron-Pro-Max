@@ -154,13 +154,14 @@ private suspend fun credentials(call: ApplicationCall, d: AdminMasterDeps) {
                     h.revokeFull(id, "password_changed", ctx.now)
                     unlock(h, u["username"] as String)
                 }
-                "unlock" -> unlock(h, u["username"] as String)
+                "unlock" -> { unlock(h, u["username"] as String); unlockMfa(h, id) }
                 "force_logout" -> {
                     h.revokeFull(id, "admin_force_logout", ctx.now)
                     h.createUpdate("UPDATE app.app_user SET scope_version = scope_version + 1 WHERE id = :id").bind("id", id).execute()
                 }
                 else -> {
                     h.createUpdate("DELETE FROM app.mfa_secret WHERE user_id = :id").bind("id", id).execute()
+                    unlockMfa(h, id)
                     h.createUpdate("UPDATE app.app_user SET mfa_enabled = false, scope_version = scope_version + 1 WHERE id = :id").bind("id", id).execute()
                     h.revokeFull(id, "admin_force_logout", ctx.now)
                 }
@@ -179,6 +180,11 @@ private suspend fun credentials(call: ApplicationCall, d: AdminMasterDeps) {
 private fun unlock(h: Handle, username: String) {
     val u = username.lowercase().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     h.createUpdate("DELETE FROM app.auth_lockout WHERE lower(lock_key) = :u OR lower(lock_key) LIKE :p").bind("u", username.lowercase()).bind("p", "$u|%").execute()
+}
+
+/** The TOTP step's lockout (backend-core F-WEB-043, key `mfa|<user id>`): cleared by unlock and by reset_mfa. */
+private fun unlockMfa(h: Handle, userId: Long) {
+    h.createUpdate("DELETE FROM app.auth_lockout WHERE lock_key = :k").bind("k", "mfa|$userId").execute()
 }
 
 // ---- scope -------------------------------------------------------------------------------------------------------

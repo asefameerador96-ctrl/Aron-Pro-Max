@@ -7,13 +7,19 @@ import com.aktcl.aron.backend.platform.Audience
 import com.aktcl.aron.backend.platform.AuthGuardDeps
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FieldError
+import com.aktcl.aron.backend.platform.RateLimiter
+import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.authenticated
 import com.aktcl.aron.backend.platform.principal
 import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,7 +29,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
-/** backend:media (docs/24 s4.11, s6.2): photo upload grants. */
+/** backend:media (docs/24 s4.11, s6.2): photo upload grants, photo read URLs and web error reports. */
 object MediaModule {
     const val NAME: String = "media"
 }
@@ -54,6 +60,9 @@ data class MediaSasResponse(val items: List<MediaSasTarget>)
 class MediaDeps(
     val db: Database, val sas: PhotoSasIssuer, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM,
     val blobs: PhotoBlobWriter = UnconfiguredPhotoBlobWriter,
+    /** Caller reach for photo reads; null answers the read 503 (fail closed). */
+    val reach: ReachResolver? = null,
+    val reader: PhotoReadIssuer = UnconfiguredPhotoReadIssuer,
 )
 
 /**
@@ -75,6 +84,17 @@ fun Route.mediaRoutes(d: MediaDeps) {
         post("/media/upload") {
             val form = MediaUpload.parse(call)
             call.respond(withContext(Dispatchers.IO) { MediaUpload(d).store(call.principal, form) })
+        }
+        val errorLimiter = RateLimiter(ClientErrors.PER_MIN, 60, d.clock)
+        post("/client-errors") {
+            val report = call.receiveStrict(ClientErrorReport.serializer())
+            withContext(Dispatchers.IO) { ClientErrors(d, errorLimiter).report(call.principal, report) }
+            call.respond(HttpStatusCode.Accepted)
+        }
+        get("/media/{media_uuid}/read-url") {
+            val answer = withContext(Dispatchers.IO) { MediaRead(d).readUrl(call.principal, call.parameters["media_uuid"]) }
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            call.respond(answer)
         }
     }
 }

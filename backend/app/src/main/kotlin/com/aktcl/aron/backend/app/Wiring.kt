@@ -206,6 +206,7 @@ class Wiring(
                 users, devices, PasswordHasher(), HashLimiter(s.hashConcurrency, s.hashQueueMax), JdbiLockoutStore(db), issuer, refresh, reach, config, clock,
                 passwords = com.aktcl.aron.backend.auth.JdbiPasswordStore(db), minPasswordLen = minPasswordLen,
                 binds = com.aktcl.aron.backend.auth.JdbiBindStore(db), otpSealer = otpSealer, securityEvents = securityEvents,
+                mfa = com.aktcl.aron.backend.auth.JdbiMfaStore(db), mfaCipher = com.aktcl.aron.backend.auth.MfaCipher(mfaKeyRing(s, keys)),
             )
             val permDeps = ConfigPermissionsDeps(permissions, guard)
             val auth = AuthDeps(
@@ -289,7 +290,8 @@ class Wiring(
                 nearbyRoutes(com.aktcl.aron.backend.sync.NearbyDeps(db, config, reach, guard, clock))
                 riskSignalRoutes(com.aktcl.aron.backend.sync.RiskSignalDeps(db, config, reach, guard, clock))
                 mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock,
-                    (blob as? AzureBlobSasIssuer)?.let { az -> com.aktcl.aron.backend.media.PhotoBlobWriter(az::putBytes) } ?: com.aktcl.aron.backend.media.UnconfiguredPhotoBlobWriter))
+                    (blob as? AzureBlobSasIssuer)?.let { az -> com.aktcl.aron.backend.media.PhotoBlobWriter(az::putBytes) } ?: com.aktcl.aron.backend.media.UnconfiguredPhotoBlobWriter,
+                    reach, (blob as? AzureBlobSasIssuer)?.let { az -> com.aktcl.aron.backend.media.PhotoReadIssuer(az::readSas) } ?: com.aktcl.aron.backend.media.UnconfiguredPhotoReadIssuer))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
@@ -297,4 +299,18 @@ class Wiring(
                 securityEvents = securityEvents, securityStore = securityStore)
         }
     }
+}
+
+/**
+ * The MFA key ring, current first (F-WEB-043): Key Vault `aron-mfa-key` and its previous value (base64, at least 32
+ * bytes each), then the key derived from the token signing key, so enrolments made before a dedicated key existed stay
+ * readable. A malformed key stops the start-up rather than sealing secrets nobody can open later.
+ */
+internal fun mfaKeyRing(s: Settings, keys: com.aktcl.aron.backend.platform.JwtKeys): List<ByteArray> {
+    fun decode(name: String, v: com.aktcl.aron.backend.platform.Secret?): ByteArray? = v?.let {
+        val b = runCatching { java.util.Base64.getDecoder().decode(it.reveal().trim()) }.getOrNull()
+        if (b == null || b.size < 32) throw com.aktcl.aron.backend.platform.SettingsException("$name must be base64 of at least 32 random bytes")
+        b
+    }
+    return listOfNotNull(decode("ARON_MFA_KEY", s.mfaKey), decode("ARON_MFA_KEY_PREVIOUS", s.mfaKeyPrevious), keys.derivedSecret("aron-mfa-totp-v1"))
 }
