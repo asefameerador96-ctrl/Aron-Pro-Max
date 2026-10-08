@@ -74,3 +74,9 @@
 | 2026-10-07 22:50 | android-sr-a | - | 434 | n/a | seven_day allowed_warning | finishing F-SR-020/021, then handover and park |
 | 2026-10-07 22:50 | android-core | - | - | n/a | seven_day allowed_warning | parked (restart for the gate re-send request) |
 | 2026-10-07 22:50 | android-sr-b / android-core-ui / android-print | - | 398 / 196 / 379 | n/a | seven_day allowed_warning | idle (no rows) |
+| 2026-10-08 00:50 | integrator (session 5) | - | 343 | n/a | seven_day allowed_warning | running; INT 2b76764f, CI/deploy in progress; asked to hand over after this promotion |
+| 2026-10-08 00:50 | backend-core (session 10) | - | 133 | n/a | seven_day allowed_warning | was blocked 23:41 to 00:47 on the dev device-gate ruling; told option 2, building on db V0061-V0068 |
+| 2026-10-08 00:50 | db (session 5) | - | 188 | n/a | seven_day allowed_warning | idle (V0061-V0068 on INT) |
+| 2026-10-08 00:50 | infra (session 5) | - | 476 | n/a | seven_day allowed_warning | smoke confirmation pending, then handover and recycle |
+| 2026-10-08 00:50 | android-core / android-sr-a | - | parked | n/a | seven_day allowed_warning | both parked after clean handovers (1d48cddb / b8e083a1) |
+| 2026-10-08 00:50 | android-sr-b / android-core-ui / android-print | - | 398 / 196 / 379 | n/a | seven_day allowed_warning | idle (no rows) |
