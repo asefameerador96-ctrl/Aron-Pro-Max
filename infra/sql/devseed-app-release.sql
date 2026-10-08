@@ -21,3 +21,19 @@ SELECT r.flavour, '0.1.516', 516, 'universal', decode(r.apk_sha256, 'hex'), 2000
   JOIN app.app_user maker ON maker.username = 'superadmin1001'
   JOIN app.app_user checker ON checker.username = 'admin1001'
 ON CONFLICT (flavour, version_code, abi) DO NOTHING;
+
+-- Self-check (infra 2026-10-08): the INSERT above inserts nothing, silently, when a maker or checker account is
+-- missing. Fail the dev seed (deploy summary "Dev seed Failed") unless each flavour has a published release with the
+-- CI certificate, so token minting on dev is proven by every deploy, not assumed.
+DO $$
+DECLARE missing text;
+BEGIN
+  SELECT string_agg(f, ', ') INTO missing
+    FROM unnest(ARRAY['sr', 'amo', 'tso']) AS f
+   WHERE NOT EXISTS (SELECT 1 FROM app.app_release r
+                      WHERE r.flavour = f AND r.status = 'published'
+                        AND r.signing_cert_sha256 = decode('468d9b4eccb776e9f40e20e20aaf0f14627e2316e901d53af3fc9aa4e393a4fb', 'hex'));
+  IF missing IS NOT NULL THEN
+    RAISE EXCEPTION 'dev seed: no published app_release with the CI certificate for: %', missing;
+  END IF;
+END $$;

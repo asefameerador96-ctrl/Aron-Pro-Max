@@ -1679,6 +1679,10 @@ class SliceSmoke(unittest.TestCase):
         self.assertIn("ON CONFLICT (flavour, version_code, abi) DO NOTHING", rel, "idempotent")
         self.assertEqual(sorted(re.findall(r"\('(sr|amo|tso)',\s+'[0-9a-f]{64}'\)", rel)), ["amo", "sr", "tso"])
         self.assertNotRegex(rel, r"require_enrolled|require_integrity|lockdown|cfg_value", "no gate or config change")
+        check = rel[rel.index("DO $$"):]
+        self.assertIn("ARRAY['sr', 'amo', 'tso']", check, "the seed fails unless every flavour has a published release")
+        self.assertIn("RAISE EXCEPTION", check)
+        self.assertIn("decode('468d9b4eccb776e9f40e20e20aaf0f14627e2316e901d53af3fc9aa4e393a4fb', 'hex')", check)
         # N-027 gate: the smoke device is recorded as enrolled (single-use dev token) only when it carries the real
         # Key Vault key; nothing else is touched.
         run = (ROOT / "infra/scripts/devseed-run.sh").read_text(encoding="utf-8")
