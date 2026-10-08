@@ -3289,6 +3289,71 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /v1/outlets:
+    get:
+      tags: [team]
+      operationId: listOutletsInReach
+      summary: Outlets in the caller's reach for every role (F-API-010); PII columns only with the pii claim.
+      description: |
+        The read of `listOutlets` for every role, field roles included: an SR sees the outlets of its own routes, an
+        AMO or TSO those of its zones, national roles all. Reach comes from the token on today's Dhaka business date;
+        a selector outside it is 403 and the filters only narrow it. With `updated_since` the page is ordered by
+        `(updated_at, id)` for incremental pulls. `contact_number` is null without the `pii` claim.
+      parameters:
+        - $ref: '#/components/parameters/ZoneIdQuery'
+        - name: route_id
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: cluster_id
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/OutletStatus' }
+        - $ref: '#/components/parameters/UpdatedSince'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of outlets.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OutletPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/routes:
+    get:
+      tags: [team]
+      operationId: listRoutesInReach
+      summary: Routes in the caller's reach with their current assignees, for every role (F-API-011).
+      description: |
+        The read of `listRoutes` for every role, field roles included, always with `assignees` (the users assigned
+        today, Dhaka business date): an SR sees its own routes, an AMO or TSO the routes of its zones, national roles
+        all. A selector outside the reach is 403. With `updated_since` the page is ordered by `(updated_at, id)`.
+      parameters:
+        - $ref: '#/components/parameters/ZoneIdQuery'
+        - $ref: '#/components/parameters/TerritoryIdQuery'
+        - $ref: '#/components/parameters/StatusQuery'
+        - $ref: '#/components/parameters/UpdatedSince'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of routes, each with `assignees`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoutePage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /v1/dashboards/daily-tracking/actions:
     post:
       tags: [dashboards]
@@ -9286,7 +9351,7 @@ components:
             status: { $ref: '#/components/schemas/ActiveStatus' }
             assignees:
               type: array
-              description: Users assigned to the route; returned only by GET /v1/admin/routes with `include=assignees`, absent otherwise.
+              description: Users assigned to the route today; returned by GET /v1/routes always and by GET /v1/admin/routes with `include=assignees`, absent otherwise.
               items:
                 type: object
                 required: [user_id, full_name, role, username]

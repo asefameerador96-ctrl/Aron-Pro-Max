@@ -42,13 +42,15 @@ class OutletsDeps(val db: Database, val geo: GeoRepository, val reach: ReachReso
 private val OUTLET_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 
 /**
- * GET /v1/admin/outlets (contract listOutlets): outlets in the caller's server-side reach, narrowed by `zone_id`,
+ * GET /v1/admin/outlets (contract listOutlets) and GET /v1/outlets (listOutletsInReach, every role): outlets in the caller's server-side reach, narrowed by `zone_id`,
  * `route_id`, `cluster_id`, `status`, `updated_since`, `q`; keyset-paged. Any other query parameter (for example a
  * list of scope ids sent by a client) is ignored: reach comes only from the token's user (docs/24 s3.5, s8.4).
  */
 fun Route.outletRoutes(d: OutletsDeps) {
     authenticated(d.guard) {
-        get("/admin/outlets") { call.respond(listOutlets(call, d)) }
+        get("/admin/outlets") { call.respond(listOutlets(call, d, OUTLET_READERS)) }
+        // F-API-010 (contract listOutletsInReach): the same read for every role; the reach alone decides the rows.
+        get("/outlets") { call.respond(listOutlets(call, d, Role.entries.toSet())) }
     }
 }
 
@@ -56,9 +58,9 @@ private fun ApplicationCall.longParam(name: String): Long? = request.queryParame
     it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "$name must be a positive integer", errors = listOf(FieldError("query.$name", "invalid_value")))
 }
 
-private fun listOutlets(call: ApplicationCall, d: OutletsDeps): OutletPage {
+private fun listOutlets(call: ApplicationCall, d: OutletsDeps, readers: Set<Role>): OutletPage {
     val p = call.principal
-    if (p.role !in OUTLET_READERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "outlet master data is not available to this role")
+    if (p.role !in readers) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "outlet master data is not available to this role")
     val q = call.request.queryParameters
     val limit = q["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..500 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "limit must be 1..500", errors = listOf(FieldError("query.limit", "out_of_range"))) } ?: 100
     val status = q["status"]?.also { if (it !in setOf("active", "closed", "merged", "archived")) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad status", errors = listOf(FieldError("query.status", "invalid_value"))) }

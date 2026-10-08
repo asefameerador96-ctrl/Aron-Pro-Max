@@ -130,6 +130,47 @@ class ScopeDbTest {
         assertEquals(HttpStatusCode.BadRequest, client.get("/v1/admin/outlets?cursor=%21%21") { bearerAuth(TestTokens.web(tsoId, Role.TSO)) }.status)
     }
 
+    /**
+     * F-API-010, GET /v1/outlets (contract listOutletsInReach): an SR reads exactly the outlets of its assigned route, a
+     * TSO those of its territory, and every item equals the seeded row; `contact_number` only with the pii claim.
+     */
+    @Test
+    fun theFieldReadServesEveryRoleTheSeededRowsWithThePiiGate() = app {
+        val route = world.routeZone.keys.first()
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT $route, $srId, 'cover', DATE '2026-01-01', 'test' WHERE NOT EXISTS (SELECT 1 FROM app.route_assignment WHERE user_id = $srId)")
+        }
+        try {
+            suspend fun items(token: String): List<kotlinx.serialization.json.JsonObject> {
+                val r = client.get("/v1/outlets?limit=500") { bearerAuth(token) }
+                assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+                return Json.parseToJsonElement(r.bodyAsText()).jsonObject["items"]!!.jsonArray.map { it.jsonObject }
+            }
+            fun dbRows(where: String) = fresh.db.jdbi.withHandle<Map<Long, Map<String, Any?>>, Exception> { h ->
+                h.createQuery("SELECT id, code, name, zone_id, route_id, contact_number, status FROM app.outlet WHERE $where").mapToMap().list().associateBy { (it["id"] as Number).toLong() }
+            }
+            val srRows = dbRows("route_id = $route")
+            val sr = items(TestTokens.web(srId, Role.SR))
+            assertEquals(srRows.keys, sr.map { it["id"]!!.jsonPrimitive.long }.toSet(), "the SR's route only")
+            val (_, zones) = tsoTerritory
+            val tsoRows = dbRows("zone_id IN (${zones.joinToString(",")})")
+            val tso = items(TestTokens.web(tsoId, Role.TSO, pii = true))
+            assertEquals(tsoRows.keys, tso.map { it["id"]!!.jsonPrimitive.long }.toSet())
+            for (o in sr + tso) {
+                val row = (srRows + tsoRows).getValue(o["id"]!!.jsonPrimitive.long)
+                assertEquals(row["code"], o["code"]!!.jsonPrimitive.content); assertEquals(row["name"], o["name"]!!.jsonPrimitive.content)
+                assertEquals((row["zone_id"] as Number).toLong(), o["zone_id"]!!.jsonPrimitive.long)
+                assertEquals((row["route_id"] as Number?)?.toLong(), (o["route_id"] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it !is JsonNull }?.long)
+                assertEquals(row["status"], o["status"]!!.jsonPrimitive.content)
+            }
+            assertTrue(sr.all { it["contact_number"] == JsonNull }, "no pii claim, no phone number")
+            assertTrue(tso.isNotEmpty() && tso.all { o -> o["contact_number"]!!.jsonPrimitive.content == tsoRows.getValue(o["id"]!!.jsonPrimitive.long)["contact_number"] })
+            assertEquals(HttpStatusCode.Unauthorized, client.get("/v1/outlets").status)
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DELETE FROM app.route_assignment WHERE user_id = $srId") }
+        }
+    }
+
     @Test
     fun reachFollowsTheBusinessDate() {
         val r = resolver.reach(tsoId, Role.TSO, 1, LocalDate.parse("2025-12-31"))

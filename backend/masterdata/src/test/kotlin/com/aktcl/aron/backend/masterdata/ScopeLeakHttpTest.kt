@@ -33,7 +33,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * F-SYS-005: the scope-leak harness through GET /v1/admin/outlets itself (not only the reach functions): 200
+ * F-SYS-005: the scope-leak harness through GET /v1/admin/outlets and, for every role including SR and AMO, GET
+ * /v1/outlets (F-API-010, contract listOutletsInReach) themselves (not only the reach functions): 200
  * randomised queries with random users, business dates, narrowing selectors, filters (status, q, cluster_id,
  * updated_since), injected client scope ids and page sizes, every page followed, each answer checked against the
  * independent oracle (rows and refusals).
@@ -51,12 +52,17 @@ class ScopeLeakHttpTest {
     fun tearDown() = fresh.close()
 
     @Test
-    fun twoHundredRandomisedHttpQueriesFindZeroCrossScopeRows() {
+    fun twoHundredRandomisedHttpQueriesFindZeroCrossScopeRows() = harness("/v1/admin/outlets", readers)
+
+    @Test
+    fun theFieldReadForEveryRoleFindsZeroCrossScopeRows() = harness("/v1/outlets", Role.entries.toSet())
+
+    private fun harness(path: String, roles: Set<Role>) {
         var today = LocalDate.parse("2026-10-05")
         val clock = AronClock { today.atTime(6, 0).toInstant(ZoneOffset.UTC) } // 12:00 Dhaka on `today`
         val geo = GeoRepository(fresh.db, clock)
         val deps = OutletsDeps(fresh.db, geo, SqlReachResolver(fresh.db, geo, clock), AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, RegistryDefaults(overrides = mapOf("cfg.api.rl.user_per_min" to kotlinx.serialization.json.JsonPrimitive(2000)))), clock)
-        val users = world.users.filter { it.role in readers }
+        val users = world.users.filter { it.role in roles }
         val problems = mutableListOf<String>()
         var refused = 0
         testApplication {
@@ -73,7 +79,7 @@ class ScopeLeakHttpTest {
                 val since = world.rnd.nextInt(5) == 0
                 val limit = world.rnd.nextInt(25, 61) // small pages still page several times; the per-user limit is raised for the run
                 val base = buildString {
-                    append("/v1/admin/outlets?limit=$limit&scope_ids=1,2,3&zone_ids=${world.zoneTerritory.keys.joinToString(",")}")
+                    append("$path?limit=$limit&scope_ids=1,2,3&zone_ids=${world.zoneTerritory.keys.joinToString(",")}")
                     sel.zoneId?.let { append("&zone_id=$it") }; sel.routeId?.let { append("&route_id=$it") }
                     // wing/division/territory are not query parameters of this operation: they are ignored like any unknown one
                     cluster?.let { append("&cluster_id=$it") }

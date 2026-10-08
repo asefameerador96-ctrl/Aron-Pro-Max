@@ -1,0 +1,36 @@
+path: /v1/routes
+method: get
+operation:
+  tags:
+  - team
+  operationId: listRoutesInReach
+  summary: Routes in the caller's reach with their current assignees, for every role (F-API-011).
+  description: 'The read of `listRoutes` for every role, field roles included, always with `assignees` (the users
+    assigned
+
+    today, Dhaka business date): an SR sees its own routes, an AMO or TSO the routes of its zones, national roles
+
+    all. A selector outside the reach is 403. With `updated_since` the page is ordered by `(updated_at, id)`.
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/ZoneIdQuery'
+  - $ref: '#/components/parameters/TerritoryIdQuery'
+  - $ref: '#/components/parameters/StatusQuery'
+  - $ref: '#/components/parameters/UpdatedSince'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of routes, each with `assignees`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoutePage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

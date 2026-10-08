@@ -2137,6 +2137,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/outlets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Outlets in the caller's reach for every role (F-API-010); PII columns only with the pii claim.
+         * @description The read of `listOutlets` for every role, field roles included: an SR sees the outlets of its own routes, an
+         *     AMO or TSO those of its zones, national roles all. Reach comes from the token on today's Dhaka business date;
+         *     a selector outside it is 403 and the filters only narrow it. With `updated_since` the page is ordered by
+         *     `(updated_at, id)` for incremental pulls. `contact_number` is null without the `pii` claim.
+         */
+        get: operations["listOutletsInReach"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Routes in the caller's reach with their current assignees, for every role (F-API-011).
+         * @description The read of `listRoutes` for every role, field roles included, always with `assignees` (the users assigned
+         *     today, Dhaka business date): an SR sees its own routes, an AMO or TSO the routes of its zones, national roles
+         *     all. A selector outside the reach is 403. With `updated_since` the page is ordered by `(updated_at, id)`.
+         */
+        get: operations["listRoutesInReach"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/dashboards/daily-tracking/actions": {
         parameters: {
             query?: never;
@@ -6158,7 +6203,7 @@ export interface components {
             visit_days_mask: number;
             sequence_no?: number | null;
             status: components["schemas"]["ActiveStatus"];
-            /** @description Users assigned to the route; returned only by GET /v1/admin/routes with `include=assignees`, absent otherwise. */
+            /** @description Users assigned to the route today; returned by GET /v1/routes always and by GET /v1/admin/routes with `include=assignees`, absent otherwise. */
             assignees?: {
                 user_id: components["schemas"]["Id"];
                 full_name: string;
@@ -12561,6 +12606,80 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listOutletsInReach: {
+        parameters: {
+            query?: {
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                zone_id?: components["parameters"]["ZoneIdQuery"];
+                route_id?: components["schemas"]["Id"];
+                cluster_id?: components["schemas"]["Id"];
+                status?: components["schemas"]["OutletStatus"];
+                /** @description Only rows with `updated_at` strictly after this instant (deactivated rows included, status shows it). */
+                updated_since?: components["parameters"]["UpdatedSince"];
+                /** @description Case-insensitive search on code and name (trigram for outlets). */
+                q?: components["parameters"]["Search"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of outlets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutletPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listRoutesInReach: {
+        parameters: {
+            query?: {
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                zone_id?: components["parameters"]["ZoneIdQuery"];
+                /** @description Narrowing selector; must be inside the caller's reach. */
+                territory_id?: components["parameters"]["TerritoryIdQuery"];
+                status?: components["parameters"]["StatusQuery"];
+                /** @description Only rows with `updated_at` strictly after this instant (deactivated rows included, status shows it). */
+                updated_since?: components["parameters"]["UpdatedSince"];
+                /** @description Case-insensitive search on code and name (trigram for outlets). */
+                q?: components["parameters"]["Search"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of routes, each with `assignees`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     createTrackingAction: {
