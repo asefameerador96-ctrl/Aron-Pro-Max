@@ -38,15 +38,15 @@ class OutletRequestsTest {
     private val sub get() = id("SELECT id FROM app.sub_channel WHERE code = 'GT-TEA'")
 
     /** An app request as ingest stores it (outlet_change_request record of sr1001). */
-    private fun appRequest(type: String, outletId: Long?, proposed: String): UUID {
+    private fun appRequest(type: String, outletId: Long?, proposed: String, ageDays: Int = 0): UUID {
         val u = UUID.randomUUID()
         env.db.fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate(
                 """
                 INSERT INTO app.outlet_change_request (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, request_type, outlet_id, proposed, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock)
-                VALUES (:u, :u, current_date, (SELECT id FROM app.app_user WHERE username = 'sr1001'), :r, now(), 1, :t, :o, CAST(:p AS jsonb), 'ok', 23.81, 90.41, 12, false)
+                VALUES (:u, :u, current_date, (SELECT id FROM app.app_user WHERE username = 'sr1001'), :r, now() - make_interval(days => :age), 1, :t, :o, CAST(:p AS jsonb), 'ok', 23.81, 90.41, 12, false)
                 """.trimIndent(),
-            ).bind("u", u).bind("r", route).bind("t", type).bind("o", outletId).bind("p", proposed).execute()
+            ).bind("age", ageDays).bind("u", u).bind("r", route).bind("t", type).bind("o", outletId).bind("p", proposed).execute()
         }
         return u
     }
@@ -193,5 +193,62 @@ class OutletRequestsTest {
         assertEquals("verified|${env.db.ids.getValue("amo1001")}", status())
         env.db.fresh.db.jdbi.useHandle<Exception> { h -> hd.afterStored(h, rec("amo1001", "discarded"), null) }
         assertEquals("verified|${env.db.ids.getValue("amo1001")}", status(), "only a pending request moves")
+
+        // BC-84: an AMO whose reach does not hold the request's zone is quarantined scope_out_of_reach.
+        env.db.fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.app_user (username, full_name, role, locale, home_zone_id, pilot, must_change_password) SELECT 'amo2001', 'Other AMO', 'AMO', 'bn', z.id, true, false FROM app.zone z WHERE z.code = 'Z-OTHER'")
+            h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from) SELECT u.id, 'zone', z.id, DATE '2026-01-01' FROM app.app_user u, app.zone z WHERE u.username = 'amo2001' AND z.code = 'Z-OTHER'")
+        }
+        val geo = GeoRepository(env.db.fresh.db)
+        val scoped = OutletRequestVerificationHandler(SqlReachResolver(env.db.fresh.db, geo))
+        fun recOf(user: String) = rec("amo1001", "verified").copy(userId = env.db.fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery("SELECT id FROM app.app_user WHERE username = :u").bind("u", user).mapTo(Long::class.java).one()
+        }, businessDate = java.time.LocalDate.parse("2027-01-03"))
+        env.db.fresh.db.jdbi.useHandle<Exception> { h ->
+            assertEquals(com.aktcl.aron.contract.RecordOutcomeCode.SCOPE_OUT_OF_REACH, scoped.check(h, recOf("amo2001"))?.code)
+            assertEquals(null, scoped.check(h, recOf("amo1001")), "the zone's AMO is in reach")
+        }
+    }
+
+    /** BC-84: pending and verified requests lapse 30 days after capture, once, with a `lapsed` event; decided ones never. */
+    @Test
+    fun undecidedRequestsLapseAfterThirtyDays() {
+        val outlet = id("SELECT id FROM app.outlet WHERE route_id = $route ORDER BY id LIMIT 1")
+        val old = appRequest("close", outlet, """{"close_reason_code":"shop_closed"}""", ageDays = 31)
+        val oldVerified = appRequest("close", outlet, """{"close_reason_code":"shop_closed"}""", ageDays = 31)
+        val oldDecided = appRequest("close", outlet, """{"close_reason_code":"shop_closed"}""", ageDays = 31)
+        val young = appRequest("close", outlet, """{"close_reason_code":"shop_closed"}""", ageDays = 29)
+        env.db.fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("UPDATE app.outlet_change_request SET status = 'verified' WHERE client_uuid = '$oldVerified'")
+            h.execute("UPDATE app.outlet_change_request SET status = 'discarded' WHERE client_uuid = '$oldDecided'")
+        }
+        val job = OutletRequestLapseJob(env.db.fresh.db)
+        assertTrue(job.runOnce() >= 2)
+        fun st(u: UUID) = env.sql("SELECT status FROM app.outlet_change_request WHERE client_uuid = '$u'")
+        assertEquals(listOf("lapsed", "lapsed", "discarded", "pending"), listOf(st(old), st(oldVerified), st(oldDecided), st(young)))
+        assertEquals(0, job.runOnce(), "idempotent")
+        assertEquals("1", env.sql("SELECT count(*) FROM app.outlet_request_event WHERE request_uuid = '$old' AND event = 'lapsed' AND via = 'job'"))
+    }
+
+    /**
+     * BC-84: another AMO's offline `verified` record that reached an already verified request stays stored but is no
+     * step of the trail, and its classification never overrides the real verifier's at approval.
+     */
+    @Test
+    fun aNoOpVerificationIsNotInTheTrailAndDoesNotClassify() = env.app {
+        val u = appRequest("new", null, """{"name":"Noop Store","owner_name":"Karim Mia","contact_number":"01712345670","cluster_id":$cluster,"sub_channel_id":$sub,"lat":23.8112,"lng":90.4112}""")
+        assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Post, "/outlet-requests/$u/verify", amo, """{"sub_channel_id":$sub,"geo_class":"Urban"}""").status)
+        env.db.fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.app_user (username, full_name, role, locale, pilot, must_change_password) SELECT 'amo3003', 'Late AMO', 'AMO', 'bn', true, false WHERE NOT EXISTS (SELECT 1 FROM app.app_user WHERE username = 'amo3003')")
+            h.execute(
+                "INSERT INTO app.outlet_request_event (client_uuid, family_uuid, config_version, request_uuid, event, actor_user_id, via, business_date, at, geo_class) " +
+                    "SELECT g, g, 1, CAST('$u' AS uuid), 'verified', id, 'device', current_date, now() + interval '1 minute', 'Rural' FROM app.app_user, gen_random_uuid() g WHERE username = 'amo3003'",
+            )
+        }
+        val trail = sendA1(HttpMethod.Get, "/outlet-requests/$u", dmo).objA1().arr("events").map { (it as kotlinx.serialization.json.JsonObject).strA1("event") }
+        assertEquals(listOf("requested", "verified"), trail, "the late no-op verification is not a step")
+        val a = sendA1(HttpMethod.Post, "/outlet-requests/$u/approve", dmo, """{"change_reason":"Verified on site by the AMO"}""")
+        assertEquals(HttpStatusCode.OK, a.status, a.objA1().toString())
+        assertEquals("Urban", env.sql("SELECT geo_class FROM app.outlet WHERE id = ${a.objA1().lng("resulting_outlet_id")}"), "the real verifier's class")
     }
 }

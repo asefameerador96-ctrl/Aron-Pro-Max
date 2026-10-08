@@ -6,6 +6,8 @@ import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.IngestRecord
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.RecordHandler
+import com.aktcl.aron.backend.platform.ReachResolver
+import com.aktcl.aron.backend.platform.RecordRefusal
 import com.aktcl.aron.backend.platform.authenticated
 import com.aktcl.aron.backend.platform.principal
 import com.aktcl.aron.backend.platform.receiveStrict
@@ -250,11 +252,23 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         val raw = Json.parseToJsonElement(r["proposed"].toString()).jsonObject
         // The owner's phone number only with the pii claim (as the admin outlet reads), or to the requester.
         val proposed = if (viewer.pii || (r["user_id"] as Number).toLong() == viewer.userId) raw else JsonObject(raw.filterKeys { it != "contact_number" })
-        val events = h.createQuery("SELECT event, actor_user_id, at, note, via FROM app.outlet_request_event WHERE request_uuid = :u AND voided_at IS NULL ORDER BY at, id")
+        val events = h.createQuery("SELECT id, event, actor_user_id, at, note, via FROM app.outlet_request_event WHERE request_uuid = :u AND voided_at IS NULL ORDER BY at, id")
             .bind("u", UUID.fromString(u)).mapToMap().list()
         val trail = ArrayList<OutletRequestEventDto>()
         trail += OutletRequestEventDto("requested", (r["user_id"] as Number).toLong(), ts(r["captured_at"])!!, r["note"] as String?)
-        events.filter { it["event"] != "created" && it["actor_user_id"] != null }.take(49).forEach {
+        // A `verified` event counts only from the recorded verifier, a `discarded` one only on a discarded request and
+        // only the first stored (the one that moved it): an AMO's offline record that reached a request already moved on
+        // stays stored but is no step of the trail (BC-84).
+        val verifier = (r["verified_by"] as Number?)?.toLong()
+        val discardId = if (r["status"] == "discarded") events.filter { it["event"] == "discarded" }.minOfOrNull { (it["id"] as Number).toLong() } else null
+        events.filter { e ->
+            e["actor_user_id"] != null && when (e["event"]) {
+                "created" -> false
+                "verified" -> (e["actor_user_id"] as Number).toLong() == verifier
+                "discarded" -> (e["id"] as Number).toLong() == discardId
+                else -> true
+            }
+        }.take(49).forEach {
             trail += OutletRequestEventDto(it["event"] as String, (it["actor_user_id"] as Number).toLong(), ts(it["at"])!!, it["note"] as String?)
         }
         // The request row keeps only the fix's status, position and mock flag; a full contract GeoFix (provider, device,
@@ -445,8 +459,9 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         fun num(k: String): Double? = s(k)?.let { v -> (v as? Number)?.toDouble() ?: bad("/proposed/$k") }
         fun text(k: String): String? = s(k)?.let { v -> v as? String ?: bad("/proposed/$k") }
         val verification = h.row(
-            "SELECT sub_channel_id, geo_class FROM app.outlet_request_event WHERE request_uuid = :u AND event = 'verified' AND voided_at IS NULL ORDER BY at DESC, id DESC LIMIT 1",
-            "u" to r["client_uuid"],
+            "SELECT sub_channel_id, geo_class FROM app.outlet_request_event WHERE request_uuid = :u AND event = 'verified' AND voided_at IS NULL " +
+                "AND actor_user_id IS NOT DISTINCT FROM :v ORDER BY at DESC, id DESC LIMIT 1",
+            "u" to r["client_uuid"], "v" to r["verified_by"],
         )
         val outletId = (r["outlet_id"] as Number?)?.toLong()
         val reason = req.change_reason
@@ -499,8 +514,32 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
  * verifier is not the requester (otherwise the event stays in the trail and the request is unchanged). A guarded UPDATE
  * in the record's transaction, so a resend or a second verification never moves it twice.
  */
-class OutletRequestVerificationHandler : RecordHandler {
+class OutletRequestVerificationHandler(private val reach: ReachResolver? = null) : RecordHandler {
     override val types: Set<String> = setOf("outlet_request_verification")
+
+    /**
+     * BC-84: an AMO's verification of a request outside its reach on the record's business date is quarantined
+     * `scope_out_of_reach` (stored nowhere, reviewable), as the web verify answers 404. The request's zone is the one
+     * the web reads use (outlet, route, proposed cluster, requester's home zone); a request on one of the AMO's own
+     * routes is in reach. An unknown request is left to the trail (nothing moves).
+     */
+    override fun check(h: Handle, rec: IngestRecord): RecordRefusal? {
+        val resolver = reach ?: return null
+        if (rec.role != Role.AMO) return null
+        val u = rec.payload["request_uuid"]?.jsonPrimitive?.contentOrNull?.let { runCatching { UUID.fromString(it) }.getOrNull() } ?: return null
+        val where = h.createQuery(
+            """
+            SELECT coalesce(o.zone_id, rt.zone_id, pc.zone_id, ru.home_zone_id) AS zone_id, q.route_id
+              FROM app.outlet_change_request q LEFT JOIN app.outlet o ON o.id = q.outlet_id LEFT JOIN app.route rt ON rt.id = q.route_id
+              LEFT JOIN app.cluster pc ON pc.id = CASE WHEN q.proposed ->> 'cluster_id' ~ '^[0-9]{1,18}$' THEN (q.proposed ->> 'cluster_id')::bigint END
+              LEFT JOIN app.app_user ru ON ru.id = q.user_id
+             WHERE q.client_uuid = :u AND q.voided_at IS NULL
+            """.trimIndent(),
+        ).bind("u", u).map { rs, _ -> (rs.getObject("zone_id") as Long?) to (rs.getObject("route_id") as Long?) }.findOne().orElse(null) ?: return null
+        val r = resolver.reach(rec.userId, rec.role, 0, rec.businessDate)
+        val inReach = r.national || (where.first != null && where.first in r.zoneIds) || (where.second != null && where.second in r.routeIds)
+        return if (inReach) null else RecordRefusal(com.aktcl.aron.contract.RecordOutcomeCode.SCOPE_OUT_OF_REACH, "outlet request $u is outside the AMO's reach")
+    }
 
     override fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {
         // Only the AMO verifies from the app (docs/24 s12.2); another role's record stays in the trail and moves nothing.

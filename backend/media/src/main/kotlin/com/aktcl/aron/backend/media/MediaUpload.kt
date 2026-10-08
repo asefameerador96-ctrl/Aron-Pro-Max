@@ -5,10 +5,8 @@ import com.aktcl.aron.backend.platform.AronPrincipal
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.contract.ProblemCode
 import io.ktor.http.ContentType
-import io.ktor.http.content.PartData
-import io.ktor.http.content.forEachPart
 import io.ktor.server.request.contentType
-import io.ktor.server.request.receiveMultipart
+import io.ktor.server.request.receiveChannel
 import io.ktor.server.routing.RoutingCall
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.readByteArray
@@ -93,6 +91,7 @@ internal class MediaUpload(private val d: MediaDeps) {
         private const val PART_LIMIT = MAX_BYTES + 1L
         /** media_uuid, purpose, sha256, file, plus slack for a client that adds a field. */
         private const val MAX_PARTS = 8
+        private const val MAX_FIELD_BYTES = 200
         /** The whole body: the file plus room for the three fields and the part headers. */
         private const val BODY_LIMIT = MAX_BYTES + 16_384L
         private val PURPOSES = setOf("feedback", "support")
@@ -105,38 +104,89 @@ internal class MediaUpload(private val d: MediaDeps) {
 
         /** Reads the multipart body; a file part longer than [MAX_BYTES] is cut at one byte over (then 413). */
         internal suspend fun parse(call: RoutingCall): MediaUploadForm {
-            if (!call.request.contentType().match(ContentType.MultiPart.FormData)) {
+            // A malformed Content-Type header is a 415 like any other type, never a parser exception.
+            val contentType = runCatching { call.request.contentType() }.getOrNull()
+            if (contentType == null || !contentType.match(ContentType.MultiPart.FormData)) {
                 throw ApiProblem(ProblemCode.ERR_UNSUPPORTED_MEDIA_TYPE, "multipart/form-data only")
             }
             var uuid: String? = null; var purpose: String? = null; var sha: String? = null
             var file: ByteArray? = null; var type: ContentType? = null
-            // A part past Ktor's formFieldLimit fails the whole call, so a body that is too long is refused from its
-            // Content-Length first (413); the limit then only guards a chunked body.
+            // A declared body that is too long is refused before reading (413).
             val declared = call.request.headers[io.ktor.http.HttpHeaders.ContentLength]?.toLongOrNull()
             if (declared != null && declared > BODY_LIMIT) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "at most $MAX_BYTES bytes")
-            // Ktor's parser runs as a child of the call, so its own failures (a part past formFieldLimit, a broken
-            // boundary) cannot be caught here; Content-Length above and the part count below are the bounds we own.
-            var parts = 0
-            call.receiveMultipart(formFieldLimit = BODY_LIMIT).forEachPart { part ->
-                try {
-                    if (++parts > MAX_PARTS) throw invalid("/", "at most $MAX_PARTS parts")
-                    when (part) {
-                        is PartData.FormItem -> when (part.name) {
-                            "media_uuid" -> uuid = part.value
-                            "purpose" -> purpose = part.value
-                            "sha256" -> sha = part.value
-                        }
-                        is PartData.FileItem -> if (part.name == "file") {
-                            type = part.contentType
-                            file = part.provider().readRemaining(PART_LIMIT).readByteArray()
-                        }
-                        else -> {}
+            // BC-81: the body is read here, at most one byte over the limit (a chunked body has no Content-Length), and
+            // parsed by [Multipart] below: Ktor's receiveMultipart runs its parser as a child of the call, so a broken
+            // boundary or an oversized part failed the call with a 500. Now an oversized body is 413 and a malformed one 400.
+            val body = call.receiveChannel().readRemaining(BODY_LIMIT + 1).readByteArray()
+            if (body.size > BODY_LIMIT) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "at most $MAX_BYTES bytes")
+            val boundary = contentType.parameter("boundary") ?: throw invalid("/", "multipart boundary missing")
+            val parts = Multipart.parse(body, boundary, MAX_PARTS) ?: throw invalid("/", "malformed multipart body")
+            for (part in parts) {
+                when {
+                    part.filename != null -> if (part.name == "file") {
+                        type = part.contentType?.let { runCatching { ContentType.parse(it) }.getOrNull() }
+                        file = if (part.data.size > PART_LIMIT) part.data.copyOf(PART_LIMIT.toInt()) else part.data
                     }
-                } finally {
-                    part.dispose()
+                    part.data.size > MAX_FIELD_BYTES -> throw invalid("/${part.name}", "field too long")
+                    part.name == "media_uuid" -> uuid = String(part.data, Charsets.UTF_8)
+                    part.name == "purpose" -> purpose = String(part.data, Charsets.UTF_8)
+                    part.name == "sha256" -> sha = String(part.data, Charsets.UTF_8)
                 }
             }
             return MediaUploadForm(uuid, purpose, sha, file, type)
         }
+    }
+}
+
+/**
+ * A strict, in-memory multipart/form-data reader for the small bounded body of POST /v1/media/upload (BC-81): parts
+ * between `--boundary` delimiters (RFC 7578, CRLF line ends), each with its header block; `name` and `filename` from
+ * Content-Disposition, the part's Content-Type kept as text. Anything else (no opening delimiter, no closing one,
+ * headers without an end, more than [maxParts] parts, a part without a name) is null: the caller answers 400.
+ */
+internal object Multipart {
+    class Part(val name: String, val filename: String?, val contentType: String?, val data: ByteArray)
+
+    private val CRLF = byteArrayOf(13, 10)
+    private val HEADER_END = byteArrayOf(13, 10, 13, 10)
+    private val NAME = Regex("(?:^|;)\\s*name=\"([^\"]*)\"", RegexOption.IGNORE_CASE)
+    private val FILENAME = Regex("(?:^|;)\\s*filename=\"([^\"]*)\"", RegexOption.IGNORE_CASE)
+
+    fun parse(body: ByteArray, boundary: String, maxParts: Int): List<Part>? {
+        if (boundary.isEmpty() || boundary.length > 70) return null
+        val delim = "--$boundary".toByteArray(Charsets.ISO_8859_1)
+        val inner = byteArrayOf(13, 10) + delim
+        var pos = indexOf(body, delim, 0).takeIf { it >= 0 } ?: return null
+        pos += delim.size
+        val parts = ArrayList<Part>()
+        while (true) {
+            if (startsWith(body, pos, "--".toByteArray())) return parts // closing delimiter
+            while (pos < body.size && (body[pos] == 32.toByte() || body[pos] == 9.toByte())) pos++ // transport padding (RFC 2046 5.1.1)
+            if (!startsWith(body, pos, CRLF)) return null
+            pos += 2
+            val headerEnd = indexOf(body, HEADER_END, pos).takeIf { it >= 0 } ?: return null
+            val headers = String(body, pos, headerEnd - pos, Charsets.UTF_8).split("\r\n")
+            val dataStart = headerEnd + HEADER_END.size
+            val next = indexOf(body, inner, dataStart).takeIf { it >= 0 } ?: return null
+            if (parts.size >= maxParts) return null
+            val disposition = headers.firstOrNull { it.startsWith("content-disposition:", ignoreCase = true) }?.substringAfter(':')?.trim() ?: return null
+            if (!disposition.startsWith("form-data", ignoreCase = true)) return null
+            val name = NAME.find(disposition)?.groupValues?.get(1) ?: return null
+            val filename = FILENAME.find(disposition)?.groupValues?.get(1)
+            val type = headers.firstOrNull { it.startsWith("content-type:", ignoreCase = true) }?.substringAfter(':')?.trim()
+            parts += Part(name, filename, type, body.copyOfRange(dataStart, next))
+            pos = next + inner.size
+        }
+    }
+
+    private fun startsWith(a: ByteArray, at: Int, p: ByteArray): Boolean = at + p.size <= a.size && p.indices.all { a[at + it] == p[it] }
+
+    private fun indexOf(a: ByteArray, p: ByteArray, from: Int): Int {
+        var i = from
+        while (i <= a.size - p.size) {
+            if (a[i] == p[0] && startsWith(a, i, p)) return i
+            i++
+        }
+        return -1
     }
 }

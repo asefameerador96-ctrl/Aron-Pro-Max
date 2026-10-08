@@ -61,7 +61,10 @@ Updated 2026-10-08 (session 11; earlier: session 10, earlier header text from se
   - **POST /v1/auth/mfa/enrol, /verify** (BC-89, `auth/Mfa.kt`; Opus checker): MFA roles could not finish a web login before. Requests: infra `backend-core-mfa-key.md` (Key Vault `aron-mfa-key`), db `backend-core-mfa-security-events.md`, web-dashboard `backend-core-mfa-enrol-web.md` (enrolment screen). Admin `unlock`/`reset_mfa` now clear the MFA lock (two lines in backend-admin's `AdminUsers.kt`).
   - **GET /v1/dashboards/geo-validation** (BC-90, `DashboardService.geoValidation`).
 - Not mine and left unrouted: admin releases/audit/devices policy/sales-plans (backend-admin, on hold), day DROP rows, deferred programmes (docs/27).
-- Next: (b) F-API-010 `GET /v1/outlets` and F-API-011 `GET /v1/routes` as additive contract operations (lead ruling), then (c) BC-81, BC-84, BC-85 checker items.
+- (b) done: **F-API-010 `GET /v1/outlets`, F-API-011 `GET /v1/routes`** as additive contract operations (BC-91, 843044fb; Sonnet checker).
+- (c) done: **BC-85** same-batch ack (BC-92, 6541cf94), **BC-81** multipart 500s (BC-93, own strict parser), **BC-84** zone check, trail and classification of no-op verifications, 30-day lapse job (BC-94). All Sonnet-checked.
+- Integrator session_01DrpAFbHEdU2moUPcEGurmS was INACTIVE at 843044fb; heads reported to the lead instead.
+- Still open: BC-84 `request_fix` (rebuild GeoFix from `app.geo_fix`); BC-89 `amr` not kept on refresh; db/infra/web requests listed above; F-SYS-086 (waits on backend-admin); N-027 follow-ups only if the owner changes the gate ruling (BC-83: do not touch the device gate or config defaults).
 
 ## Session 10 close-out: next rows (session 11 starts here)
 1. Lane head 53246921 + this close-out commit; everything pushed and sent to the integrator (session_01DrpAFbHEdU2moUPcEGurmS). Rows done this session: F-API-007 (BC-81), F-SYS-025 and F-SYS-050 (BC-82), F-API-055 (BC-84), F-SYS-091 (BC-85), N-044 (BC-86); V0062/V0067 taken up.

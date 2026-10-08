@@ -250,7 +250,7 @@ class Wiring(
                     (configResolver.resolve(key, chain, clock.now()).value as kotlinx.serialization.json.JsonPrimitive).content == "true"
                 }.getOrDefault(false)
             }
-            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler() + extraRecordHandlers)), db, config, clock)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + extraRecordHandlers)), db, config, clock)
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
                 ingestCapacity = runCatching { config.int("cfg.api.inflight_batches_per_replica") }.getOrDefault(64),

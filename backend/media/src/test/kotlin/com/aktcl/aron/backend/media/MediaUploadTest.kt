@@ -12,6 +12,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.utils.io.writeFully
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -144,5 +145,40 @@ class MediaUploadParseTest {
         assertEquals("${MediaUpload.MAX_BYTES + 1}", c.upload(MediaUpload.MAX_BYTES + 1).split('|')[3], "one byte over is read (then 413 in store)")
         assertEquals("ERR_PAYLOAD_TOO_LARGE", c.upload(MediaUpload.MAX_BYTES + 20_000), "a longer body is refused from its Content-Length")
         assertEquals("ERR_UNSUPPORTED_MEDIA_TYPE", c.post("/t") { setBody("{}"); contentType(ContentType.Application.Json) }.bodyAsText())
+    }
+
+    /** BC-81: a chunked body over the limit is 413 and a broken multipart body 400, never a 500 from Ktor's parser. */
+    @Test
+    fun chunkedAndMalformedBodiesAreRefusedNeverA500() = app { c ->
+        val mp = ContentType.MultiPart.FormData.withParameter("boundary", "XyZ")
+        val chunked = c.post("/t") {
+            setBody(object : io.ktor.http.content.OutgoingContent.WriteChannelContent() {
+                override val contentType = mp
+                override suspend fun writeTo(channel: io.ktor.utils.io.ByteWriteChannel) {
+                    val head = "--XyZ\r\nContent-Disposition: form-data; name=\"file\"; filename=\"p.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".toByteArray()
+                    channel.writeFully(head)
+                    repeat(40) { channel.writeFully(ByteArray(10_000)) } // 400 KB, no Content-Length
+                    channel.writeFully("\r\n--XyZ--\r\n".toByteArray())
+                }
+            })
+        }
+        assertEquals("ERR_PAYLOAD_TOO_LARGE", chunked.bodyAsText(), "status ${chunked.status}")
+        val truncated = c.post("/t") {
+            setBody(io.ktor.http.content.ByteArrayContent("--XyZ\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\nsupp".toByteArray(), mp))
+        }
+        assertEquals("ERR_VALIDATION", truncated.bodyAsText(), "status ${truncated.status}")
+        for (junk in listOf("garbage", "--XyZ\r\nno headers end", "", "--XyZ\r\nContent-Type: text/plain\r\n\r\nx\r\n--XyZ--\r\n")) {
+            val r = c.post("/t") { setBody(io.ktor.http.content.ByteArrayContent(junk.toByteArray(), mp)) }
+            assertEquals(io.ktor.http.HttpStatusCode.OK to "ERR_VALIDATION", r.status to r.bodyAsText(), "'$junk'")
+        }
+        val nine = (1..9).joinToString("") { "--XyZ\r\nContent-Disposition: form-data; name=\"f$it\"\r\n\r\nv\r\n" } + "--XyZ--\r\n"
+        assertEquals("ERR_VALIDATION", c.post("/t") { setBody(io.ktor.http.content.ByteArrayContent(nine.toByteArray(), mp)) }.bodyAsText(), "at most 8 parts")
+        // A quoted boundary, transport padding, and the boundary text inside the file bytes (not after CRLF) still parse.
+        val quoted = ContentType.parse("multipart/form-data; boundary=\"a b\"")
+        val good = "--a b  \r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\nsupport\r\n" +
+            "--a b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"p.jpg\"\r\nContent-Type: image/jpeg\r\n\r\nxx--a byy\r\n--a b--\r\n"
+        assertEquals("null|support|null|9|image/jpeg", c.post("/t") { setBody(io.ktor.http.content.ByteArrayContent(good.toByteArray(), quoted)) }.bodyAsText())
+        val badType = c.post("/t") { setBody(io.ktor.http.content.ByteArrayContent(ByteArray(3), ContentType.Application.OctetStream)); headers.remove(io.ktor.http.HttpHeaders.ContentType) }
+        assertEquals("ERR_UNSUPPORTED_MEDIA_TYPE", badType.bodyAsText())
     }
 }
