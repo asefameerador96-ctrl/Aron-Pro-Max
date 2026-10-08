@@ -251,4 +251,39 @@ class OutletRequestsTest {
         assertEquals(HttpStatusCode.OK, a.status, a.objA1().toString())
         assertEquals("Urban", env.sql("SELECT geo_class FROM app.outlet WHERE id = ${a.objA1().lng("resulting_outlet_id")}"), "the real verifier's class")
     }
+
+    /** BC-84: request_fix is the contract GeoFix rebuilt from the request's own app.geo_fix row; radio needs pii or the requester. */
+    @Test
+    fun theRequestFixIsRebuiltFromItsGeoFixRow() = env.app {
+        val u = appRequest("new", null, """{"name":"Fix Store","cluster_id":$cluster,"sub_channel_id":$sub,"lat":23.8111,"lng":90.4111}""")
+        suspend fun fixOf(token: String) = sendA1(HttpMethod.Get, "/outlet-requests/$u", token).objA1()["request_fix"] ?: kotlinx.serialization.json.JsonNull
+        assertEquals(kotlinx.serialization.json.JsonNull, fixOf(amo), "no geo_fix row: null")
+        env.db.fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                """
+                INSERT INTO app.geo_fix (business_date, source_type, source_client_uuid, slot, user_id, route_id, captured_at, purpose, fix_status, lat, lng, accuracy_m,
+                    provider, fix_time, fix_age_ms, request_priority, is_mock, reused, refresh_count, gnss, radio, device_owner, dev_options_enabled, adb_enabled, auto_time_enabled, mock_app_present)
+                SELECT business_date, 'outlet_change_request', client_uuid, 'fix', user_id, route_id, captured_at, 'outlet_capture', 'ok', 23.81, 90.41, 12.5,
+                    'fused', captured_at, 900, 'balanced', false, false, 1, '{"window_ms":5000,"satellites_visible":11,"satellites_used":7,"constellations_used":["GPS"],"extra":1}',
+                    '{"cells":[{"mcc":470,"mnc":1,"tac":7,"ci":9,"serving":true,"x":1}],"wifi_hashes":["0123456789abcdef","bad"],"x":2}', true, false, false, true, false
+                FROM app.outlet_change_request WHERE client_uuid = ?
+                """.trimIndent(), u,
+            )
+        }
+        val f = fixOf(amo) as kotlinx.serialization.json.JsonObject
+        assertEquals("outlet_capture|ok|fused|balanced", listOf("purpose", "fix_status", "provider", "request_priority").joinToString("|") { f.strA1(it)!! })
+        assertEquals("23.81|90.41|12.5|900|1", listOf("lat", "lng", "accuracy_m", "fix_age_ms", "refresh_count").joinToString("|") { f.getValue(it).toString() })
+        assertEquals("false|false", f.getValue("is_mock").toString() + "|" + f.getValue("reused"))
+        assertEquals("7", (f.getValue("gnss") as kotlinx.serialization.json.JsonObject).getValue("satellites_used").toString())
+        assertEquals("""{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false,"integrity_ref":null}""", f.getValue("device").toString())
+        assertNotNull(f.strA1("fix_time"))
+        assertEquals(kotlinx.serialization.json.JsonNull, f["radio"], "an AMO without the pii claim gets no radio environment")
+        assertEquals(null, (f.getValue("gnss") as kotlinx.serialization.json.JsonObject)["extra"], "gnss is cut to its schema")
+        val expectRadio = json("""{"cells":[{"mcc":470,"mnc":1,"tac":7,"ci":9,"serving":true}],"wifi_hashes":["0123456789abcdef"]}""")
+        assertEquals(expectRadio, (fixOf(sr) as kotlinx.serialization.json.JsonObject)["radio"], "the requester sees its own radio, cut to its schema")
+        assertEquals(expectRadio, (fixOf(env.token("amo1001", Role.AMO, pii = true)) as kotlinx.serialization.json.JsonObject)["radio"], "a pii reader sees it")
+
+        env.db.fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.geo_fix SET voided_at = now() WHERE source_client_uuid = ?", u) }
+        assertEquals(kotlinx.serialization.json.JsonNull, fixOf(amo), "a voided fix is not shown")
+    }
 }

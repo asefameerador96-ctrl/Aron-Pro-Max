@@ -54,6 +54,8 @@ data class NewFamily(
     val createdAt: Instant,
     /** Absolute end of the family (full grant: 90 ± 15 days); null for the idle-only upload grant. */
     val absoluteExpiresAt: Instant?,
+    /** How the login that opened the family authenticated (`amr`); every refresh of it carries the same (BC-89). */
+    val amr: List<String> = listOf("pwd"),
 )
 
 data class FamilyView(
@@ -65,6 +67,8 @@ data class FamilyView(
     val absoluteExpiresAt: Instant?,
     val revokedAt: Instant?,
     val revokeReason: String?,
+    /** The family's amr; null when the store cannot know it (no `amr` column yet, BC-89). */
+    val amr: List<String>? = listOf("pwd"),
 )
 
 data class TokenView(

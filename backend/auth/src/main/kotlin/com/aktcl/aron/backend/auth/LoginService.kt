@@ -372,8 +372,8 @@ class LoginService(
             // it logs in again when the access token expires, and its grant can never be replayed from another phone.
             return base("ok").copy(access_token = access.token, access_expires_at = access.expiresAt.wire())
         }
-        val full = refresh.issue(user.id, device?.id, Grant.FULL, flavour)
-        val upload = if (phone) refresh.issue(user.id, device?.id, Grant.UPLOAD, flavour) else null
+        val full = refresh.issue(user.id, device?.id, Grant.FULL, flavour, subject.amr)
+        val upload = if (phone) refresh.issue(user.id, device?.id, Grant.UPLOAD, flavour, subject.amr) else null
         return base("ok").copy(
             access_token = access.token,
             access_expires_at = access.expiresAt.wire(),
@@ -397,7 +397,7 @@ class LoginService(
         return d
     }
 
-    private fun mfaRoles(): Set<String> =
+    internal fun mfaRoles(): Set<String> =
         config.value("cfg.auth.mfa_required_roles").jsonArray.mapNotNull { it.jsonPrimitive.contentOrNull }.toSet()
 
     private fun minVersionCode(flavour: String): Int? =
