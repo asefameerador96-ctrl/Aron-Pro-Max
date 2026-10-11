@@ -213,7 +213,7 @@ jobs:
         run: tools/ci/contract-breaking.sh "${CHECK_BASE}" oasdiff
       # Contract lint lives here since 2026-10-07 (CI audit s5 item 8: the tiny gate jobs folded into one; the required
       # check "Contract lint" is gone from tools/github-governance.ps1 in the same commit).
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: needs.changes.outputs.contract == 'true'
         with:
           node-version: "22"
@@ -268,7 +268,7 @@ jobs:
           :backend:app:build -x :backend:app:test
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jvm-test-reports
           path: |
@@ -288,7 +288,7 @@ jobs:
           fi
       - name: Publish the data dictionary for BI readers (main only)
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: data-dictionary-${{ github.sha }}
           path: docs/data-dictionary.md
@@ -331,7 +331,7 @@ jobs:
         run: ./gradlew --console=plain :backend:app:test
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jvm-app-test-reports
           path: |
@@ -390,7 +390,7 @@ jobs:
         if: always()
         run: rm -f android/app-sr/google-services.json android/app-amo/google-services.json android/app-tso/google-services.json
       - name: Upload debug APKs (every successful Android run)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aron-debug-apks-${{ github.sha }}
           path: |
@@ -401,7 +401,7 @@ jobs:
           retention-days: 14
       - name: Upload Android test reports
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-test-reports
           path: |
@@ -484,7 +484,7 @@ jobs:
           echo "signed=true" >> "${GITHUB_OUTPUT}"
       - name: Upload the release-signed dev APKs
         if: steps.sign.outputs.signed == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aron-release-signed-dev-${{ github.run_number }}
           path: signed/
@@ -503,7 +503,7 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: npm
@@ -547,7 +547,7 @@ jobs:
           PY
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-playwright-results
           path: web/test-results/
@@ -608,7 +608,7 @@ jobs:
             echo "${img}: $(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["packages"]))' "sbom-${img}.spdx.json") packages"
           done
       - name: Upload the SBOMs
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-${{ github.sha }}
           path: sbom-*.spdx.json
