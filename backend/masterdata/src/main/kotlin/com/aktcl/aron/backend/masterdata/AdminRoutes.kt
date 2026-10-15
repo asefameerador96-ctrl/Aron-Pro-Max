@@ -153,11 +153,11 @@ private fun listAssignments(call: ApplicationCall, d: AdminMasterDeps): JsonObje
 
 /**
  * F-SYS-086: a new or ended assignment changes who a route-day belongs to, so the dashboard tile of every route-day it
- * touches is rebuilt (dirty key `route_day_agg`, same transaction). Changes start today or later and only days up to
- * today have an `app.route_day` row, so today is the only day to mark (future days are built fresh).
+ * touches is rebuilt (dirty key `route_day_agg`, same transaction). Changes start today or later, so every existing
+ * `app.route_day` row from today on is marked (a prefetched bundle creates tomorrow's row; later days are built fresh).
  */
 private fun Handle.markAssignmentDirty(routeId: Long, today: LocalDate) {
-    createQuery("SELECT app.mark_dirty('route_day_agg', route_id, business_date, 'route_assignment') FROM app.route_day WHERE route_id = :r AND business_date = :d")
+    createQuery("SELECT app.mark_dirty('route_day_agg', route_id, business_date, 'route_assignment') FROM app.route_day WHERE route_id = :r AND business_date >= :d")
         .bind("r", routeId).bind("d", today).mapToMap().list()
 }
 
