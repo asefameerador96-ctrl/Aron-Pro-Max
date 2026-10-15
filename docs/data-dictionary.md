@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 148 | 2564 |
+| `app` | 149 | 2578 |
 | `dw` | 33 | 512 |
 
 ## Index
@@ -63,6 +63,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.domain_event_type`](#appdomain_event_type) | table | db | REFERENCE | master | none | Catalogue of domain-event types and payload versions; every outbox row must name one (docs/data-events.md). |
 | [`app.due_collection`](#appdue_collection) | table | backend:sync | OFFLINE | transaction | personal | Cash collected against an earlier credit memo, with the collecting location fix. |
 | [`app.due_ledger`](#appdue_ledger) | table | backend:sync | SERVER | transaction | none | Append-only ledger of an outlet's outstanding dues: credit memos and opening balances raise it, collections and voids lower it. |
+| [`app.dues_adjustment`](#appdues_adjustment) | table | backend:admin | ONLINE | audit | personal | One row is a proposed correction or write-off of an outlet's dues, decided once by a checker other than the maker; an approval adds the due_ledger adjustment row (F-ADM-036). |
 | [`app.enrolment_token`](#appenrolment_token) | table | backend:auth | ONLINE | session | none | A one-time or limited-use token that lets a phone enrol; only its hash is stored. |
 | [`app.entry_unlock`](#appentry_unlock) | table | backend:masterdata | ONLINE | transaction | none | One row is a time-limited unlock that lets web entry be back-dated for a zone or route over a date range. |
 | [`app.event_consumer`](#appevent_consumer) | table | backend:platform | SERVER | ops | none | Read position of each domain-event consumer. |
@@ -1495,6 +1496,32 @@ Append-only ledger of an outlet's outstanding dues: credit memos and opening bal
 Keys: `UNIQUE (source_client_uuid, entry_kind)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.dues_adjustment
+
+One row is a proposed correction or write-off of an outlet's dues, decided once by a checker other than the maker; an approval adds the due_ledger adjustment row (F-ADM-036).
+
+`owner: backend:admin | capture: ONLINE | retention: audit | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key (adjustment_id in the API). |
+| `client_uuid` | uuid | not null |  | UUID v4 the browser generated; idempotency key of the create and source_client_uuid of the ledger row on approval. |
+| `outlet_id` | bigint | not null |  | Outlet whose dues change (app.outlet). |
+| `memo_client_uuid` | uuid | null |  | client_uuid of the memo the adjustment corrects; null when it corrects the balance as a whole. |
+| `kind` | text | not null |  | correction (either sign) or write_off (always negative). |
+| `amount_mtk` | bigint | not null |  | Signed change of the outlet balance in milli-taka; never zero, negative for a write-off. |
+| `reason` | text | not null | personal | Why the maker proposes the change (10 to 500 characters). |
+| `status` | text | not null |  | pending, approved or rejected; decided once. |
+| `created_by` | bigint | not null |  | Maker: user who proposed the adjustment (app.app_user). |
+| `created_at` | timestamp with time zone | not null |  | UTC time the adjustment was proposed. |
+| `decided_by` | bigint | null |  | Checker: user who approved or rejected it, never the maker; null while pending. |
+| `decided_at` | timestamp with time zone | null |  | UTC time of the decision; null while pending. |
+| `decision_note` | text | null | personal | Checker's note on the decision (at most 500 characters). |
+
+Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (decided_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`
 
 ## app.enrolment_token
 
@@ -3715,10 +3742,11 @@ A sellable product with unit, pack size, names and category.
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `updated_by` | bigint | null |  | User who last updated the row. |
+| `image_asset_id` | uuid | null |  | Admin asset of the pack image (app.admin_asset, purpose sku_image); null when none. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (variant_id) REFERENCES app.product_node(id)`
+References: `FOREIGN KEY (image_asset_id) REFERENCES app.admin_asset(asset_id)`; `FOREIGN KEY (variant_id) REFERENCES app.product_node(id)`
 
 ## app.sku_price
 
