@@ -39,6 +39,7 @@ import com.aktcl.aron.backend.platform.DayPlan
 import kotlinx.serialization.json.jsonArray
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.UUID
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
@@ -113,7 +114,9 @@ class IngestService(
     }
 
     /** Per-batch caches. */
-    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null, val manual: Manual? = null) {
+    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null, val manual: Manual? = null, val release: RecordOutcomeCode? = null) {
+        /** A reviewer's accept ([acceptQuarantined]) overrides the check that raised [release], and only that one. */
+        fun overrides(vararg codes: RecordOutcomeCode): Boolean = release != null && release in codes
         /** Handlers' after-commit calls of the current family, by record index (dropped when the record rolls back). */
         val afterCommit = ArrayList<Triple<Int, com.aktcl.aron.backend.platform.RecordHandler, IngestRecord>>()
         /** Route-days this batch touched (F-SYS-016), settled at its end. */
@@ -318,6 +321,145 @@ class IngestService(
     /** Rolls a paper backfill back whole (no stack trace: it is control flow). */
     private class ManualRollback : RuntimeException(null, null, false, false)
 
+    /**
+     * The ingest hook of `POST /v1/admin/quarantine/{id}/resolve` with `accept` or `accept_with_fix` (docs/24 s4.5,
+     * `QuarantineAcceptor` in analytics; docs/requests/backend-reports-db-indexes-and-events.md item 1).
+     *
+     * Re-runs the quarantined record (or [fixedRecord], which keeps its `client_uuid`, `type`, `family_uuid` and
+     * `business_date`) through the same per-record path as the original uploader and device, with only the check that
+     * raised the item's code overridden by the reviewer: the backdate window, scope (`scope_out_of_reach`,
+     * `no_assignment_on_date`), the device gate and record signature, the content fingerprint, or a handler's own
+     * quarantine code. Money is never overridden: `arithmetic_mismatch` and `memo_no_duplicate` need a fix that passes,
+     * and a `payload_conflict` copy cannot be accepted (the first copy keeps the uuid).
+     *
+     * Runs in the caller's transaction when one is open on this thread (Jdbi reuses the thread's handle; OpsService holds
+     * the item's row lock): stored means the registry row is `accepted` under the same uuid, user and device (so the
+     * phone's resend is `duplicate` and its digest reconciles) and the item is `accepted` / `accepted_with_fix`.
+     * Children held with it (`parent <uuid> is quarantined`, same code) are released in the same transaction, each in
+     * its own savepoint: one that fails for its own reason stays open. If the record itself is not stored, nothing
+     * changes and the answer is 409 `ERR_REQUEST_STATE` naming the outcome.
+     */
+    fun acceptQuarantined(quarantineId: Long, fixedRecord: JsonObject?, resolverUserId: Long, reason: String) {
+        val now = clock.now()
+        db.jdbi.inTransaction<Unit, Exception> { h ->
+            val item = heldItem(h, "id = :id", quarantineId) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such quarantine item")
+            if (item.status != "open") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "already resolved as ${item.status}")
+            val code = code(item.code) ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "unknown quarantine code ${item.code}")
+            if (code == RecordOutcomeCode.PAYLOAD_CONFLICT) {
+                throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "a payload_conflict copy cannot be accepted: the first copy keeps client_uuid ${item.clientUuid}")
+            }
+            if (fixedRecord != null) {
+                for (k in listOf("client_uuid", "type", "family_uuid", "business_date")) {
+                    if (fixedRecord[k] != item.payload[k]) {
+                        throw ApiProblem(ProblemCode.ERR_VALIDATION, "fixed_record keeps the record's $k", errors = listOf(FieldError("/fixed_record/$k", "invalid_value")))
+                    }
+                }
+            }
+            val up = uploaderOf(h, item.userId, item.deviceId)
+            val batch = item.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:$quarantineId".toByteArray()).toString()
+            val ctx = Ctx(up, batch, now, release = code)
+            val rec = Rec(0, fixedRecord ?: item.payload)
+            // The children held with it, parents before children, so a memo's equations see its lines (s7.4).
+            val children = heldChildren(h, item.clientUuid, item.code)
+            val family = listOf(rec.json) + children.map { it.payload }
+            ctx.arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
+            ctx.memoFps = MemoChecks.memoFingerprints(family)
+
+            val outcome = release(h, ctx, rec)
+            if (outcome.status != "accepted" && outcome.status != "duplicate") {
+                throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the record is still not stored: ${outcome.status} ${outcome.code?.wire ?: ""}".trim())
+            }
+            closeItem(h, item.id, if (fixedRecord != null) "accepted_with_fix" else "accepted", fixedRecord, resolverUserId, reason, now)
+            for (child in children) {
+                val sp = "release_${child.id}"
+                h.savepoint(sp)
+                val o = runCatching { release(h, ctx, Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
+                    closeItem(h, child.id, "accepted", null, resolverUserId, "released with parent ${item.clientUuid}", now)
+                    h.release(sp)
+                } else {
+                    // Held for a reason of its own (or a failure): it stays open for its own review.
+                    h.rollbackToSavepoint(sp)
+                    log.info("held child stays quarantined client_uuid=${child.clientUuid} parent=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
+                }
+            }
+            // Day states follow but never decide the outcome (as after a batch).
+            DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
+            h.savepoint("release_day")
+            try {
+                DayStates.afterBatch(h, up.userId, ctx.touched, now)
+                h.release("release_day")
+            } catch (e: Exception) {
+                if (isTransientDbFailure(e)) throw e
+                h.rollbackToSavepoint("release_day")
+                log.error("day states failed quarantine_id=$quarantineId", e)
+            }
+        }
+        // Inside the caller's transaction this runs before its commit; the handlers' after-commit work is notification only.
+        log.info("quarantine accepted id=$quarantineId resolver=$resolverUserId fix=${fixedRecord != null}")
+    }
+
+    /** One quarantine item as stored. */
+    private class HeldItem(val id: Long, val clientUuid: String, val code: String, val status: String, val payload: JsonObject, val userId: Long, val deviceId: Long?, val batchUuid: String?)
+
+    private fun heldItem(h: Handle, where: String, id: Long): HeldItem? = h.createQuery(
+        "SELECT id, client_uuid::text, code, status, payload::text, user_id, device_id, batch_uuid::text FROM app.sync_quarantine WHERE $where FOR UPDATE",
+    ).bind("id", id).map { rs, _ ->
+        HeldItem(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), ResponseJson.parseToJsonElement(rs.getString(5)) as JsonObject,
+            rs.getLong(6), rs.getObject(7) as Long?, rs.getString(8))
+    }.findOne().orElse(null)
+
+    /**
+     * Open items held only because [parentUuid] was, breadth first: same code, and detail `parent <uuid> is quarantined`
+     * or, for a memo's lines judged with it (s7.4 family equations, unknown SKU), `memo <uuid>: ...`.
+     */
+    private fun heldChildren(h: Handle, parentUuid: String, code: String): List<HeldItem> {
+        val out = ArrayList<HeldItem>()
+        val queue = ArrayDeque(listOf(parentUuid))
+        val seen = HashSet<String>(listOf(parentUuid))
+        while (queue.isNotEmpty() && out.size < MANUAL_MAX_RECORDS) {
+            val p = queue.removeFirst()
+            val ids = h.createQuery("SELECT id FROM app.sync_quarantine WHERE status = 'open' AND code = :code AND (detail LIKE :d OR detail LIKE :m) AND client_uuid <> CAST(:p AS uuid) ORDER BY id")
+                .bind("code", code).bind("d", "parent $p is quarantined (%").bind("m", "memo $p: %").bind("p", p).mapTo(Long::class.java).list()
+            for (id in ids) {
+                val c = heldItem(h, "id = :id", id) ?: continue
+                if (c.status != "open" || !seen.add(c.clientUuid)) continue
+                out += c
+                queue += c.clientUuid
+            }
+        }
+        return out
+    }
+
+    /** The registry row goes back to `parked` (with a fix's hash), then the record runs the per-record path again. */
+    private fun release(h: Handle, ctx: Ctx, r: Rec): Outcome {
+        h.createUpdate("UPDATE app.ingest_registry SET status = 'parked', payload_sha256 = :h WHERE client_uuid = CAST(:c AS uuid) AND status = 'quarantined'")
+            .bind("h", r.hash).bind("c", r.clientUuid).execute()
+        return processInSavepoint(h, ctx, r)
+    }
+
+    private fun closeItem(h: Handle, id: Long, status: String, fixed: JsonObject?, resolver: Long, note: String, now: Instant) {
+        h.createUpdate(
+            """
+            UPDATE app.sync_quarantine SET status = :s, fixed_payload = CAST(:fp AS jsonb), resolved_by_user_id = :u, resolved_at = :now,
+                   resolution_note = :note, resolution_uuid = :ru
+            WHERE id = :id AND status = 'open'
+            """.trimIndent(),
+        ).bind("s", status).bind("fp", fixed?.let { storable(it) }).bind("u", resolver).bind("now", ts(now)).bind("note", note.take(500))
+            .bind("ru", UUID.nameUUIDFromBytes("quarantine:$id:$status:$resolver".toByteArray())).bind("id", id).execute()
+    }
+
+    /** The original uploader and device of a held record: role and scope from the user, key from the device. */
+    private fun uploaderOf(h: Handle, userId: Long, deviceId: Long?): Uploader {
+        val u = h.createQuery("SELECT role, scope_version FROM app.app_user WHERE id = :u").bind("u", userId)
+            .map { rs, _ -> Role.entries.first { it.wire == rs.getString(1) } to rs.getLong(2) }.one()
+        val d = deviceId?.let { id ->
+            h.createQuery("SELECT device_uuid::text, public_key_jwk::text FROM app.device WHERE id = :d").bind("d", id)
+                .map { rs, _ -> rs.getString(1) to rs.getString(2) }.findOne().orElse(null)
+        }
+        return Uploader(userId, u.first, u.second, deviceId, d?.first, d?.second?.let { com.aktcl.aron.backend.platform.DeviceProof.publicKey(it) })
+    }
+
     /** Whether the ingest_registry flags CHECK allows `manual_entry` (docs/requests/backend-core-memo-source.md); read once. */
     private val manualFlagAllowed: Boolean by lazy {
         db.jdbi.withHandle<Boolean, Exception> { h ->
@@ -516,7 +658,7 @@ class IngestService(
         // `resync`, docs/24 s4.8). One captured before the new lineage started may be older than the window: it is
         // accepted and flagged `resync_late`, never quarantined (idempotency by client_uuid keeps the re-send safe).
         val resyncLate = tooOld && ctx.resync?.let { w -> !captured.isAfter(w.startedAt) && !bd.isBefore(w.oldestDate) } == true
-        if ((tooOld && !resyncLate) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) {
+        if (((tooOld && !resyncLate) || bd.isAfter(ctx.today) || captured.isAfter(ctx.now.plusSeconds(600))) && !ctx.overrides(RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW)) {
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.BUSINESS_DATE_OUT_OF_WINDOW, "business_date $bd, today ${ctx.today}")
         }
         if (resyncLate) {
@@ -561,7 +703,8 @@ class IngestService(
         }
 
         // 5. Scope on the record's business date (s8.4): from the token's user, never from the body.
-        if (!rule.telemetry) {
+        val scopeAccepted = ctx.overrides(RecordOutcomeCode.SCOPE_OUT_OF_REACH, RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE)
+        if (!rule.telemetry && !scopeAccepted) {
             val reach = ctx.reachOn(bd)
             if (routeId != null && !reach.coversRoute(routeId, routeZone!!)) {
                 val code = if (reach.ownRecordsOnly) RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE else RecordOutcomeCode.SCOPE_OUT_OF_REACH
@@ -574,7 +717,7 @@ class IngestService(
             }
         }
 
-        env.long("acting_for_user_id")?.let { a ->
+        if (!scopeAccepted) env.long("acting_for_user_id")?.let { a ->
             if (!actingForValid(h, ctx, routeId, a, bd)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "acting_for_user_id $a without a cover of route $routeId")
         }
 
@@ -587,7 +730,10 @@ class IngestService(
         // while the review item is open (step 2). Children of a held parent are held with it (step 7).
         val g = ctx.gate
         val gated = r.type in GATED_TYPES
-        if (g.notEnrolled && (gated || (g.requireEnrolled && ctx.up.deviceKey == null && !rule.telemetry))) {
+        val deviceAccepted = ctx.overrides(RecordOutcomeCode.DEVICE_NOT_ENROLLED, RecordOutcomeCode.DEVICE_INTEGRITY_FAILED)
+        if (deviceAccepted) {
+            // A reviewer accepted a record the device checks held: neither the gate nor the signature applies again.
+        } else if (g.notEnrolled && (gated || (g.requireEnrolled && ctx.up.deviceKey == null && !rule.telemetry))) {
             flagDevice(h, ctx, r, bd, routeId, "device_not_enrolled")
             if (g.requireEnrolled) return quarantine(h, ctx, r, bd, RecordOutcomeCode.DEVICE_NOT_ENROLLED, "device not enrolled")
         } else if (gated && g.verdict != "pass" && (g.requireIntegrity || g.verdict == "fail")) {
@@ -597,7 +743,7 @@ class IngestService(
 
         // 6. Record signature on header records when the device has a key (s8.3), by cfg.sec.record_signature_mode
         // (docs/19: off < record < enforce; F-SYS-072): off skips, record accepts and flags, only enforce quarantines.
-        if (rule.signedHeader && ctx.up.deviceKey != null && ctx.signatureMode != SignatureMode.OFF) {
+        if (rule.signedHeader && ctx.up.deviceKey != null && ctx.signatureMode != SignatureMode.OFF && !deviceAccepted) {
             val sig = env.str("sig")
             val unsigned = JsonObject(env.filterKeys { it != "sig" })
             val msg = listOf("aron-sig-v1", r.type, r.clientUuid, sha256Hex(Jcs.canonicalize(unsigned).toByteArray())).joinToString("\n")
@@ -614,7 +760,7 @@ class IngestService(
         // Not for a paper backfill: its memo number is the identity (checked before the run), and two real paper memos
         // of one outlet with the same lines are often keyed with the same placeholder time.
         val contentFp = if (ctx.manual != null) null else ctx.memoFps[r.clientUuid] ?: if (rule.signedHeader) contentFingerprint(r) else null
-        if (contentFp != null) {
+        if (contentFp != null && !ctx.overrides(RecordOutcomeCode.CONTENT_DUPLICATE)) {
             // Serialise re-mints carrying the same content under different uuids (the uuid lock does not cover them).
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 2))", "cfp:" + contentFp.joinToString("") { "%02x".format(it) })
             val twin = h.createQuery(
@@ -632,7 +778,7 @@ class IngestService(
         handlers.forType(r.type).let { early ->
             if (early.isNotEmpty()) {
                 val rec = IngestRecord(r.type, r.clientUuid, bd, env, payload, ctx.up.userId, ctx.up.role, ctx.up.deviceId, ctx.batchUuid, ctx.now)
-                for (hd in early) hd.checkEarly(h, rec)?.let { return refuse(h, ctx, r, bd, it.code, it.detail) }
+                for (hd in early) hd.checkEarly(h, rec)?.let { if (!ctx.overrides(it.code)) return refuse(h, ctx, r, bd, it.code, it.detail) }
             }
         }
 
@@ -663,7 +809,7 @@ class IngestService(
             PARENT_TYPES[field]?.let { want -> if (parentType != want) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "$field names a $parentType, not a $want") }
             // A child reaches its parent's rows: the parent must be the uploader's own, except where the protocol lets
             // one user act on another's record within reach (dues on a memo, an assigned task, an outlet request).
-            if (owner != ctx.up.userId && !crossUserParentAllowed(h, ctx, field, parent, bd)) {
+            if (owner != ctx.up.userId && !scopeAccepted && !crossUserParentAllowed(h, ctx, field, parent, bd)) {
                 return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "$field $parent belongs to another user")
             }
         }
@@ -671,7 +817,7 @@ class IngestService(
         // 10. Visit-kind policy (F-SYS-078): a phone books only its role's kinds; web_entry comes from the web only.
         if (r.type == "visit") payload.str("visit_kind")?.let { k ->
             val allowed = if (ctx.manual != null) setOf("web_entry") else DEVICE_VISIT_KINDS[ctx.up.role] ?: emptySet()
-            if (k !in allowed) {
+            if (k !in allowed && !scopeAccepted) {
                 return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "visit_kind $k is not a ${ctx.up.role.wire} device kind")
             }
         }
@@ -683,6 +829,7 @@ class IngestService(
         )
         for (hd in hs) {
             val refusal = hd.check(h, ingestRec!!) ?: continue
+            if (ctx.overrides(refusal.code)) continue
             return refuse(h, ctx, r, bd, refusal.code, refusal.detail)
         }
         // A domain duplicate (the same fact under a new client_uuid): registered as accepted with the first row's id,
@@ -698,6 +845,7 @@ class IngestService(
                     "manual_entry".takeIf { ctx.manual != null && manualFlagAllowed })
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp, flags)
                 if (stampRegress) stampRegressSignal(h, ctx, r, bd, routeId)
+                if (r.type == "memo") memoDuplicateSuspect(h, ctx, r, payload, bd, routeId)
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
                 // Day states follow the record but never decide its outcome: a failure here is logged, the record stays stored.
@@ -818,6 +966,51 @@ class IngestService(
         } catch (e: Exception) {
             h.rollbackToSavepoint(sp)
             log.error("config stamp signal failed client_uuid=${r.clientUuid}", e)
+        }
+    }
+
+    /**
+     * MEMO_DUPLICATE_SUSPECT (lead ruling 2026-10-15, V0077): a memo stored while another live memo of the same outlet,
+     * gross and business date exists under a different memo number, one of the two keyed on paper (`entry_source =
+     * manual`), is flagged on the newer memo for review: typically a mistyped number on the paper copy of a memo the
+     * phone had stored, or the phone's copy arriving after such a keying. A flag, never a block; zero sales are not
+     * judged. In its own savepoint: a failed signal never rolls the stored memo back.
+     */
+    private fun memoDuplicateSuspect(h: Handle, ctx: Ctx, r: Rec, p: JsonObject, bd: LocalDate, routeId: Long?) {
+        val gross = p.long("gross_mtk") ?: return
+        val outlet = p.long("outlet_id") ?: return
+        if (gross <= 0) return
+        val sp = "memodup_${r.index}"
+        h.savepoint(sp)
+        try {
+            val twin = h.createQuery(
+                """
+                SELECT client_uuid::text AS cu, memo_no, entry_source FROM app.memo
+                WHERE business_date = :bd AND outlet_id = :o AND gross_mtk = :g AND memo_no <> :n AND status = 'active' AND voided_at IS NULL
+                  AND client_uuid <> CAST(:c AS uuid) AND (:manual OR entry_source = 'manual')
+                ORDER BY id LIMIT 1
+                """.trimIndent(),
+            ).bind("bd", bd).bind("o", outlet).bind("g", gross).bind("n", p.str("memo_no")).bind("c", r.clientUuid).bind("manual", ctx.manual != null)
+                .mapToMap().findOne().orElse(null)
+            if (twin != null) {
+                val weight: Double = runCatching<Double?> { (config.value("cfg.geo.integrity_weight") as JsonObject)["MEMO_DUPLICATE_SUSPECT"]?.jsonPrimitive?.content?.toDoubleOrNull() }.getOrNull() ?: 30.0
+                h.createUpdate(
+                    """
+                    INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+                    VALUES ('MEMO_DUPLICATE_SUSPECT', 2, :bd, 'memo', :sid, :u, :route, :score, CAST(:ev AS jsonb), :cv)
+                    ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
+                    """.trimIndent(),
+                ).bind("bd", bd).bind("sid", r.clientUuid).bind("u", ctx.up.userId).bind("route", routeId).bind("score", weight.coerceIn(0.0, 300.0))
+                    .bind("ev", kotlinx.serialization.json.buildJsonObject {
+                        put("memo_no", JsonPrimitive(p.str("memo_no"))); put("entry_source", JsonPrimitive(if (ctx.manual != null) "manual" else "device"))
+                        put("twin_client_uuid", JsonPrimitive(twin["cu"] as String)); put("twin_memo_no", JsonPrimitive(twin["memo_no"] as String))
+                        put("twin_entry_source", JsonPrimitive(twin["entry_source"] as String)); put("outlet_id", JsonPrimitive(outlet)); put("gross_mtk", JsonPrimitive(gross))
+                    }.toString()).bind("cv", config.configVersion()).execute()
+            }
+            h.release(sp)
+        } catch (e: Exception) {
+            h.rollbackToSavepoint(sp)
+            log.error("memo duplicate signal failed client_uuid=${r.clientUuid}", e)
         }
     }
 
