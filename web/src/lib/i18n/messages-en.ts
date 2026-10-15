@@ -546,6 +546,16 @@ export const en = {
   "error.ERR_CFG_FREEZE_WINDOW": "Changes are paused right now (freeze window). Try later.",
   "error.ERR_CFG_REASON_REQUIRED": "A reason is required for this change.",
   "prices.per_base": "per {n} units",
+  "auth.mfa.setup": "Set up an authenticator",
+  "auth.mfa.setup.hint": "First sign-in with no authenticator app yet? Set one up here, then enter its first code above.",
+  "auth.mfa.setup.already": "An authenticator is already set up for this account. Use its code, or ask an administrator to reset it.",
+  "auth.mfa.setup.scan": "Scan this code with an authenticator app",
+  "auth.mfa.setup.key": "Or type this key:",
+  "auth.mfa.setup.codes": "Recovery codes",
+  "auth.mfa.setup.codes_hint": "Write these down now. Each works once if you lose the phone. They are shown only this time.",
+  "enr.no_release": "There is no published app release for this app type yet. Publish one on the Releases page, then create the code again.",
+  "auth.mfa.use_recovery": "Use a recovery code instead",
+  "auth.mfa.use_code": "Use the 6-digit code instead",
 } as const;
 
 export type MessageKey = keyof typeof en;
