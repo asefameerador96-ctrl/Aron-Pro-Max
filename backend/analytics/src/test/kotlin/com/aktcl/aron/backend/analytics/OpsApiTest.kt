@@ -133,6 +133,8 @@ class OpsApiTest : ReportFixture() {
         assertEquals(HttpStatusCode.OK, r.status)
         val done = r.obj(); assertEquals("discarded", done.s("status")); assertEquals(13, done.i("resolved_by_user_id")); assertEquals("duplicate row", done.s("resolution_note"))
         assertEquals(1, fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery("SELECT count(*) FROM app.audit_log WHERE entity = 'quarantine' AND entity_id = '$id' AND action = 'discard'").mapTo(Int::class.java).one() })
+        // AuditLog.write: one row with the actor and the scope the action ran under.
+        assertEquals("13|ADMIN|true", fresh.db.jdbi.withHandle<String, Exception> { it.createQuery("SELECT actor_user_id || '|' || actor_role || '|' || (after->'scope'->>'national') || coalesce(':' || (after->'scope'->>'zone_ids'), '') FROM app.audit_log WHERE entity = 'quarantine' AND entity_id = '$id' AND action = 'discard'").mapTo(String::class.java).one() })
         assertEquals(HttpStatusCode.OK, post(13, Role.ADMIN, "/v1/admin/quarantine/$id/resolve", """{"action":"discard","reason":"again again"}""").status)   // same actor, same decision: the stored outcome
         assertEquals(HttpStatusCode.Conflict, post(13, Role.ADMIN, "/v1/admin/quarantine/$id/resolve", """{"action":"return_to_device","reason":"change of mind"}""").status)
         assertEquals(1, get(13, Role.ADMIN, "/v1/admin/quarantine?status=open").obj()["items"]!!.jsonArray.size)
