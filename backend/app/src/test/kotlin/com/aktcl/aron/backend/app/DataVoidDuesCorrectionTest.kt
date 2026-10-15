@@ -130,4 +130,30 @@ class DataVoidDuesCorrectionTest {
         val late = client.correction(admin, sup, b)
         assertEquals(HttpStatusCode.Conflict, late.status, late.bodyAsText())
     }
+
+    /**
+     * Residual (found by the Opus checker of BA-33): the SR voided the memo, then a collection captured before the void arrived late and gave back part
+     * of the closure (an `adjustment` row, note late_collection_reopens_closure). A data void of the memo's route-day netted every ledger row of the memo
+     * except `adjustment` rows, so it posted a reversal that ignored the give-back and left that amount on the outlet balance.
+     */
+    @Test
+    fun aDataVoidNetsTheLateCollectionGiveBackToo() = testApplication {
+        application { aronApi(wiring) }
+        val admin = client.webToken("admin1001")
+        val memo = client.keyMemo(admin, "2027-01-01")
+        val due = count("SELECT sum(amount_mtk) FROM app.due_ledger WHERE memo_client_uuid = '$memo'")
+        val before = count("SELECT COALESCE(sum(amount_mtk),0) FROM app.due_ledger WHERE outlet_id = $outletId") - due
+        val collection = uuid(); val giveBack = uuid(); val sv = uuid()
+        fresh.db.jdbi.useTransaction<Exception> { h ->
+            // The ledger as DuesLedger leaves it: due, memo_void closure, a late collection of 30 and its give-back of 30.
+            h.execute("UPDATE app.memo SET status = 'voided', status_changed_at = now(), voided_by_client_uuid = CAST('$sv' AS uuid) WHERE client_uuid = CAST('$memo' AS uuid)")
+            h.execute("INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, memo_client_uuid, source_client_uuid) VALUES ($outletId, DATE '2027-01-01', 'memo_void', -$due, CAST('$memo' AS uuid), CAST('$sv' AS uuid))")
+            h.execute("INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, memo_client_uuid, source_client_uuid) VALUES ($outletId, DATE '2027-01-01', 'collection', -30, CAST('$memo' AS uuid), CAST('$collection' AS uuid))")
+            h.execute("INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, memo_client_uuid, source_client_uuid, note) VALUES ($outletId, DATE '2027-01-01', 'adjustment', 30, CAST('$memo' AS uuid), CAST('$giveBack' AS uuid), 'late_collection_reopens_closure')")
+        }
+        assertEquals(before, count("SELECT COALESCE(sum(amount_mtk),0) FROM app.due_ledger WHERE outlet_id = $outletId"), "the memo nets to zero before the data void")
+        assertEquals(HttpStatusCode.OK, client.void(admin, "2027-01-01").status)
+        assertEquals(0, count("SELECT COALESCE(sum(amount_mtk),0) FROM app.due_ledger WHERE memo_client_uuid = '$memo'"), "the voided memo leaves nothing on the ledger")
+        assertEquals(before, count("SELECT COALESCE(sum(amount_mtk),0) FROM app.due_ledger WHERE outlet_id = $outletId"))
+    }
 }
