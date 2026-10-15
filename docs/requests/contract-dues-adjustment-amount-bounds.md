@@ -1,5 +1,7 @@
 # Request: bound `DuesAdjustmentWrite.amount_mtk` in the contract (backend-admin to lead)
 
+**Status: declined 2026-10-15 by the lead; bundle into the next planned contract version (v1.4) if wanted. The contract is unchanged.**
+
 From: backend-admin, 2026-10-15. Needs lead approval (oasdiff counts it as breaking).
 
 db added CHECK `|amount_mtk| <= 10^13` on `app.dues_adjustment` and `app.due_ledger` (lane/db 20040eb7). The handler
