@@ -221,6 +221,37 @@ class ReportEngine(
     private fun scopeHash(ctx: ReportContext): String = java.security.MessageDigest.getInstance("SHA-256")
         .digest("${ctx.zoneIds?.sorted()}|${ctx.routeIds?.sorted()}".toByteArray()).joinToString("") { "%02x".format(it) }
 
+    /**
+     * Opens an export in the log and, for a personal-column export, reserves its rows against the daily budget in the same transaction: a per-user advisory
+     * lock serialises the check and the insert, so parallel exports cannot all pass the same remaining budget. [status] is `queued` (job) or `running` (sync).
+     */
+    fun beginExport(exportId: String, key: String, format: String, ctx: ReportContext, rows: Int, status: String) {
+        db.jdbi.useTransaction<Exception> { h ->
+            if (readsPii(key, ctx)) {
+                h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "pii-export:" + ctx.principal.userId)
+                checkExportBudget(h, ctx, rows)
+            }
+            recordExport(h, exportId, key, format, ctx, rows, status)
+        }
+    }
+
+    /** A synchronous export that produced its file: `running` becomes `done` with its row count. */
+    fun finishExport(exportId: String, rows: Int) {
+        db.jdbi.useHandle<Exception> { h ->
+            h.createUpdate("UPDATE app.report_export SET status = 'done', row_count = :n, finished_at = :f WHERE export_id = CAST(:id AS uuid) AND status = 'running'")
+                .bind("n", rows).bind("f", OffsetDateTime.ofInstant(clock.now(), java.time.ZoneOffset.UTC)).bind("id", exportId).execute()
+        }
+    }
+
+    fun failExport(exportId: String, why: String) {
+        runCatching {
+            db.jdbi.useHandle<Exception> { h ->
+                h.createUpdate("UPDATE app.report_export SET status = 'failed', error = :e, finished_at = :f WHERE export_id = CAST(:id AS uuid) AND status = 'running'")
+                    .bind("e", why.take(280)).bind("f", OffsetDateTime.ofInstant(clock.now(), java.time.ZoneOffset.UTC)).bind("id", exportId).execute()
+            }
+        }
+    }
+
     /** One row of `app.report_export` (the export log, F-SYS-058 / AUD-DA-05): [status] `done` for a synchronous export, `queued` for a job. */
     fun recordExport(h: Handle, exportId: String, key: String, format: String, ctx: ReportContext, rows: Int?, status: String) {
         h.createUpdate(
@@ -229,48 +260,23 @@ class ReportEngine(
             VALUES (CAST(:id AS uuid), :key, :uid, :fmt, :st, CAST(:f AS jsonb), :sh, :rows, :pii, CASE WHEN :st = 'done' THEN :now END, :now)
             ON CONFLICT (export_id) DO NOTHING
             """,
+        // The resolved period is stored (not the relative one): a job run later exports the days the screen showed.
         ).bind("id", exportId).bind("key", key).bind("uid", ctx.principal.userId).bind("fmt", format).bind("st", status)
-            .bind("f", kotlinx.serialization.json.Json.encodeToString(ReportQuery.serializer(), ctx.query)).bind("sh", scopeHash(ctx))
+            .bind("f", kotlinx.serialization.json.Json.encodeToString(ReportQuery.serializer(), ctx.query.copy(period = PeriodDto(from = ctx.from.toString(), to = ctx.to.toString())))).bind("sh", scopeHash(ctx))
             .bind("rows", rows).bind("pii", readsPii(key, ctx)).bind("now", OffsetDateTime.ofInstant(clock.now(), java.time.ZoneOffset.UTC)).execute()
     }
 
     // ---------------- PII read budgets (F-SYS-058, docs/21 s4.5) ----------------
 
-    private fun hourlyLimit(h: Handle, role: com.aktcl.aron.contract.Role): Int =
-        h.createQuery(
-            """
-            SELECT (v.value #>> '{}')::int FROM app.cfg_value v JOIN app.role_def r ON r.ordinal = v.scope_id
-             WHERE v.key = 'cfg.pii.list_rows_per_hour' AND v.scope_type = 'role' AND r.role = :role AND v.superseded_in_version IS NULL AND v.effective_from <= :now
-             ORDER BY v.config_version DESC LIMIT 1
-            """,
-        ).bind("role", role.wire).bind("now", OffsetDateTime.ofInstant(clock.now(), java.time.ZoneOffset.UTC)).mapTo(Int::class.java).findOne().orElse(null)
-            ?: runCatching { config.int("cfg.pii.list_rows_per_hour") }.getOrDefault(2000)
-
     private fun tooMany(what: String, retryAfterS: Long): Nothing =
-        throw ApiProblem(ProblemCode.ERR_RATE_LIMITED, what, retryAfterS = retryAfterS.coerceIn(1, 86_400).toInt(), headers = mapOf("Retry-After" to retryAfterS.coerceAtLeast(1).toString()))
+        throw ApiProblem(ProblemCode.ERR_RATE_LIMITED, what, retryAfterS = retryAfterS.coerceIn(1, 86_400).toInt(), headers = mapOf("Retry-After" to retryAfterS.coerceIn(1, 86_400).toString()))
 
-    /**
-     * Counts [rows] unmasked personal rows against the caller's clock-hour budget (`cfg.pii.list_rows_per_hour`, a role value for the TSO). Atomic:
-     * a read that would pass the limit is refused with 429 and not counted, so a refused read does not eat the budget.
-     */
-    fun chargeListRead(ctx: ReportContext, rows: Int) {
-        if (rows <= 0) return
-        val now = clock.now(); val hour = OffsetDateTime.ofInstant(now.truncatedTo(java.time.temporal.ChronoUnit.HOURS), java.time.ZoneOffset.UTC)
-        val ok = db.jdbi.inTransaction<Boolean, Exception> { h ->
-            val limit = hourlyLimit(h, ctx.principal.role)
-            rows <= limit && h.createQuery(
-                """
-                INSERT INTO app.pii_read_budget (user_id, hour_start, rows_read) VALUES (:u, :h, :n)
-                ON CONFLICT (user_id, hour_start) DO UPDATE SET rows_read = app.pii_read_budget.rows_read + :n WHERE app.pii_read_budget.rows_read + :n <= :lim
-                RETURNING rows_read
-                """,
-            ).bind("u", ctx.principal.userId).bind("h", hour).bind("n", rows).bind("lim", limit).mapTo(Int::class.java).findOne().isPresent
-        }
-        if (!ok) tooMany("hourly limit of personal-data rows reached", java.time.Duration.between(now, hour.toInstant().plusSeconds(3600)).seconds)
-    }
+    /** The hourly budget lives in the platform ([com.aktcl.aron.backend.platform.PiiReadBudget]) so every list endpoint shares it. */
+    fun chargeListRead(ctx: ReportContext, rows: Int) =
+        com.aktcl.aron.backend.platform.PiiReadBudget.charge(db, config, clock, ctx.principal.userId, ctx.principal.role, rows)
 
     /** `cfg.pii.export_rows_per_day`: rows exported with personal columns by this user since the Dhaka midnight, plus [rows], must stay within the limit. */
-    fun checkExportBudget(h: Handle, ctx: ReportContext, rows: Int) {
+    private fun checkExportBudget(h: Handle, ctx: ReportContext, rows: Int) {
         val limit = runCatching { config.int("cfg.pii.export_rows_per_day") }.getOrDefault(5000)
         val now = clock.now()
         val dhakaDay = now.atZone(java.time.ZoneId.of("Asia/Dhaka")).toLocalDate()

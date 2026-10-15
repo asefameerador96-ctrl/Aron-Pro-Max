@@ -24,6 +24,9 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
+/** A refusal whose message is safe to show the owner (no personal data, no infrastructure detail); any other failure is shown by class only. */
+class ExportRefused(message: String) : RuntimeException(message)
+
 /** Where finished export files live (Azure Blob in production, a map in tests). The link handed to the user is short-lived and read-only. */
 interface ExportStore {
     fun put(path: String, bytes: ByteArray)
@@ -50,7 +53,7 @@ class ExportJobService(
 
     override fun enqueue(key: String, format: String, ctx: ReportContext, rows: Int): ExportJob {
         val id = UUID.randomUUID().toString()
-        db.jdbi.useHandle<Exception> { h -> engine.recordExport(h, id, key, format, ctx, rows, "queued") }
+        engine.beginExport(id, key, format, ctx, rows, "queued")
         return ExportJob(id, key, "queued", null, clock.now().wire())
     }
 
@@ -75,17 +78,21 @@ class ExportJobService(
             val out = produce(job)
             val expires = clock.now().plus(linkTtl)
             store.put(out.path, out.bytes)
+            // Only the worker that still holds the lease may finish the job; one whose lease was swept (a takeover is running or done) drops its result.
             db.jdbi.useHandle<Exception> { h ->
-                h.createUpdate("UPDATE app.report_export SET status = 'done', row_count = :n, blob_path = :p, finished_at = :f, expires_at = :e WHERE export_id = CAST(:id AS uuid)")
-                    .bind("n", out.rows).bind("p", out.path).bind("f", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)).bind("e", OffsetDateTime.ofInstant(expires, ZoneOffset.UTC)).bind("id", job.id).execute()
+                h.createUpdate("UPDATE app.report_export SET status = 'done', row_count = :n, blob_path = :p, finished_at = :f, expires_at = :e WHERE export_id = CAST(:id AS uuid) AND status = 'running' AND claimed_by = :w")
+                    .bind("n", out.rows).bind("p", out.path).bind("f", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)).bind("e", OffsetDateTime.ofInstant(expires, ZoneOffset.UTC))
+                    .bind("id", job.id).bind("w", workerId).execute()
             }
         } catch (e: Exception) {
-            // A short, personal-data-free reason; the details stay in the log.
-            val why = (if (e is com.aktcl.aron.backend.platform.ApiProblem) e.message else e.javaClass.simpleName + ": " + e.message).orEmpty().take(280)
-            org.slf4j.LoggerFactory.getLogger(ExportJobService::class.java).warn("export {} failed: {}", job.id, e.javaClass.simpleName)
-            db.jdbi.useHandle<Exception> { h ->
-                h.createUpdate("UPDATE app.report_export SET status = 'failed', error = :err, finished_at = :f WHERE export_id = CAST(:id AS uuid)")
-                    .bind("err", why).bind("f", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)).bind("id", job.id).execute()
+            // The owner sees a refusal's own safe text, or only the exception class; details (URLs, SAS signatures, filter values) stay in the log.
+            val why = if (e is ExportRefused) e.message.orEmpty().take(280) else "export failed (${e.javaClass.simpleName})"
+            org.slf4j.LoggerFactory.getLogger(ExportJobService::class.java).warn("export {} failed: {}", job.id, e.toString().take(500))
+            runCatching {
+                db.jdbi.useHandle<Exception> { h ->
+                    h.createUpdate("UPDATE app.report_export SET status = 'failed', error = :err, finished_at = :f WHERE export_id = CAST(:id AS uuid) AND status = 'running' AND claimed_by = :w")
+                        .bind("err", why).bind("f", OffsetDateTime.ofInstant(clock.now(), ZoneOffset.UTC)).bind("id", job.id).bind("w", workerId).execute()
+                }
             }
         }
         return true
@@ -104,23 +111,24 @@ class ExportJobService(
     private class Produced(val bytes: ByteArray, val path: String, val rows: Int)
 
     private fun produce(job: Claimed): Produced {
-        if (job.format != "xlsx") throw IllegalStateException("format ${job.format} is not produced by the export job yet")
+        if (job.format != "xlsx") throw ExportRefused("format ${job.format} is not produced by the export job yet")
         val today = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
         val query = Json.decodeFromString(ReportQuery.serializer(), job.filters)
         return db.readJdbi.withHandle<Produced, Exception> { h ->
             val (username, role, sv) = h.createQuery("SELECT username, role, scope_version FROM app.app_user WHERE id = :u AND status = 'active'").bind("u", job.userId)
-                .map { rs, _ -> Triple(rs.getString(1), Role.entries.first { it.wire == rs.getString(2) }, rs.getLong(3)) }.findOne().orElse(null) ?: error("the requesting user is no longer active")
+                .map { rs, _ -> Triple(rs.getString(1), Role.entries.first { it.wire == rs.getString(2) }, rs.getLong(3)) }.findOne().orElse(null) ?: throw ExportRefused("the requesting user is no longer active")
             val principal = AronPrincipal(job.userId, username, role, sv, "aron-api", null, null, "web", emptyList(), job.pii, listOf("job"), "export-" + job.id, clock.now().plusSeconds(3600))
             val ctx = engine.context(h, job.key, query, reach.reach(job.userId, role, sv, today), principal, today)
             val def = engine.handler(job.key).definition
             val rows = engine.count(h, job.key, ctx)
-            if (rows > engine.exportMaxRows()) error("the report has $rows rows; narrow the filters")
+            if (rows > engine.exportMaxRows()) throw ExportRefused("the report has $rows rows; narrow the filters")
             val cols = engine.visibleColumns(def, ctx.pii)
             val watermark = "Exported by $username (${role.wire}) at ${clock.now().wire()} · export ${job.id}"
-            val all = ArrayList<Map<String, JsonElement>>(rows)
-            engine.stream(h, job.key, ctx) { all += it }
-            val bytes = ByteArrayOutputStream().also { ReportOutputs.xlsx(it, def, cols, all.iterator(), watermark) }.toByteArray()
-            Produced(bytes, "exports/$today/${job.id}.xlsx", all.size)
+            // Rows go straight from the cursor into the workbook (compressed on the fly): no list of rows is held, so 200,000 rows cost the file, not the heap.
+            val out = ByteArrayOutputStream()
+            var n = 0
+            ReportOutputs.XlsxWriter(out, def, cols, watermark).use { w -> n = engine.stream(h, job.key, ctx) { w.row(it) } }
+            Produced(out.toByteArray(), "exports/$today/${job.id}.xlsx", n)
         }
     }
 

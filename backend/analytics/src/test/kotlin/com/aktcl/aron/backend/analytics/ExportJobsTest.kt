@@ -80,7 +80,7 @@ class ExportJobsTest : ReportFixture() {
         val id = run(10, Role.ANALYST, "route-memo", body(format = "xlsx")).result().str("export_id")!!
         assertEquals(1, failing.runUntilIdle())
         val j = Json.parseToJsonElement(job(10, Role.ANALYST, id).bodyAsText()).jsonObject
-        assertEquals("failed", j.str("status")); assertTrue(j.str("error")!!.contains("disk full")); assertNull(j.str("download_url"))
+        assertEquals("failed", j.str("status")); assertEquals("export failed (IllegalStateException)", j.str("error"))   // class only: no raw message; assertNull(j.str("download_url"))
         assertEquals(0, failing.runUntilIdle())   // nothing left to run; a failed job is not retried
     }
 

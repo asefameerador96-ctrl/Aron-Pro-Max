@@ -72,7 +72,6 @@ fun Route.reportRoutes(d: ReportDeps) {
                 if (format == "json") return@withHandle d.engine.json(h, key, ctx)
                 val rows = d.engine.count(h, key, ctx)
                 if (rows > d.engine.exportMaxRows()) throw ApiProblem(ProblemCode.ERR_REPORT_TOO_LARGE, "the report has $rows rows; narrow the filters")
-                if (d.engine.readsPii(key, ctx)) d.db.readJdbi.withHandle<Unit, Exception> { b -> d.engine.checkExportBudget(b, ctx, rows) }
                 val exportId = UUID.randomUUID().toString()
                 val def = handler.definition
                 val cols = d.engine.visibleColumns(def, ctx.pii)
@@ -84,16 +83,20 @@ fun Route.reportRoutes(d: ReportDeps) {
                         job
                     }
                     format == "xlsx" -> {
+                        d.engine.beginExport(exportId, key, format, ctx, rows, "running")
                         val all = ArrayList<Map<String, JsonElement>>(rows)
-                        d.engine.stream(h, key, ctx) { all += it }
-                        d.db.jdbi.useHandle<Exception> { w -> d.engine.recordExport(w, exportId, key, format, ctx, all.size, "done"); d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
+                        try { d.engine.stream(h, key, ctx) { all += it } } catch (e: Exception) { d.engine.failExport(exportId, "export failed (${e.javaClass.simpleName})"); throw e }
+                        d.engine.finishExport(exportId, all.size)
+                        d.db.jdbi.useHandle<Exception> { w -> d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
                         XlsxBody(ReportOutputs.xlsxBytes(def, cols, all, watermark), "$key-${ctx.from}_${ctx.to}.xlsx")
                     }
                     else -> {   // print: a screen-sized view; bigger sets are xlsx
                         if (rows > d.engine.syncMaxRows()) throw ApiProblem(ProblemCode.ERR_REPORT_TOO_LARGE, "the print view is limited to ${d.engine.syncMaxRows()} rows; narrow the filters or export xlsx")
+                        d.engine.beginExport(exportId, key, format, ctx, rows, "running")
                         val all = ArrayList<Map<String, JsonElement>>(rows)
-                        d.engine.stream(h, key, ctx) { all += it }
-                        d.db.jdbi.useHandle<Exception> { w -> d.engine.recordExport(w, exportId, key, format, ctx, all.size, "done"); d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
+                        try { d.engine.stream(h, key, ctx) { all += it } } catch (e: Exception) { d.engine.failExport(exportId, "export failed (${e.javaClass.simpleName})"); throw e }
+                        d.engine.finishExport(exportId, all.size)
+                        d.db.jdbi.useHandle<Exception> { w -> d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
                         ReportOutputs.printHtml(def, cols, all.iterator(), watermark).first
                     }
                 }

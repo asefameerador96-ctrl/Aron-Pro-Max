@@ -122,9 +122,8 @@ class CheckerF058DefectsTest : ReportFixture() {
             val ctx = engine.context(h, "sr-efficiency", q, reaches.getValue(10), p, day)
             val rows = engine.count(h, "sr-efficiency", ctx)
             var refused = 0
-            for (i in 0..1) runCatching { engine.checkExportBudget(h, ctx, rows) }.onFailure { refused++ }
-            engine.recordExport(h, java.util.UUID.randomUUID().toString(), "sr-efficiency", "xlsx", ctx, rows, "queued")
-            engine.recordExport(h, java.util.UUID.randomUUID().toString(), "sr-efficiency", "xlsx", ctx, rows, "queued")
+            // The check and the reservation are one step now: the second of two exports of 3 rows against a budget of 3 is refused.
+            for (i in 0..1) runCatching { engine.beginExport(java.util.UUID.randomUUID().toString(), "sr-efficiency", "xlsx", ctx, rows, "queued") }.onFailure { refused++ }
             refused
         }
         assertEquals(1, refused, "the second of two concurrent exports of 3 rows must be refused (budget 3), but nothing reserves the first one's rows")
