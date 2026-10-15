@@ -50,6 +50,8 @@ import com.aktcl.aron.backend.config.configAdminRoutes
 import com.aktcl.aron.backend.config.configDeltaRoutes
 import com.aktcl.aron.backend.masterdata.DataVoidDeps
 import com.aktcl.aron.backend.masterdata.dataVoidRoutes
+import com.aktcl.aron.backend.masterdata.EntryUnlockDeps
+import com.aktcl.aron.backend.masterdata.entryUnlockRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
 import com.aktcl.aron.backend.masterdata.GeoRepository
 import com.aktcl.aron.backend.masterdata.AdminPricesDeps
@@ -276,6 +278,7 @@ class Wiring(
                 supportUploadRoutes(SupportUploadDeps(db, blob, config, guard, clock))
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
                 dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
+                entryUnlockRoutes(EntryUnlockDeps(db, reach, config, guard, clock))
                 adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
                 adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock, config = config))
                 adminProductsRoutes(AdminProductsDeps(db, guard, clock))
