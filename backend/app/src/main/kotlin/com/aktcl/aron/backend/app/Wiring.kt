@@ -57,6 +57,10 @@ import com.aktcl.aron.backend.masterdata.PaperBackfillDeps
 import com.aktcl.aron.backend.masterdata.PaperIngest
 import com.aktcl.aron.backend.masterdata.PaperIngestResult
 import com.aktcl.aron.backend.masterdata.paperBackfillRoutes
+import com.aktcl.aron.backend.masterdata.BackfillMatchDeps
+import com.aktcl.aron.backend.masterdata.BackfillMatchOut
+import com.aktcl.aron.backend.masterdata.BackfillMatcher
+import com.aktcl.aron.backend.masterdata.backfillMatchRoutes
 import com.aktcl.aron.backend.masterdata.DuesAdjustmentDeps
 import com.aktcl.aron.backend.masterdata.duesAdjustmentRoutes
 import com.aktcl.aron.backend.masterdata.WebEntryDeps
@@ -297,6 +301,12 @@ class Wiring(
                 dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
                 entryUnlockRoutes(EntryUnlockDeps(db, reach, config, guard, clock))
                 duesAdjustmentRoutes(DuesAdjustmentDeps(db, reach, guard, clock))
+                backfillMatchRoutes(BackfillMatchDeps(db, reach, guard, sync.ingest?.let { svc ->
+                    BackfillMatcher { qid, resolver, why ->
+                        val m = svc.matchBackfill(qid, resolver, why)
+                        BackfillMatchOut(m.paperMemoId, m.paperMemoUuid, m.released, m.keptOpen, m.voidedPaperVisitUuid, m.phoneVisitUuid)
+                    }
+                }, clock))
                 paperBackfillRoutes(PaperBackfillDeps(db, guard, sync.ingest?.let { svc ->
                     PaperIngest { actor, forUser, entry, recs ->
                         val r = svc.ingestManual(actor, forUser, entry, recs)

@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.3.1.
 
 
-## Schemas (496)
+## Schemas (497)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -255,6 +255,7 @@ Source: contract/openapi.yaml, version 1.3.1.
 - `schemas/DayException.yaml` (1008 B)
 - `schemas/DayExceptionPage.yaml` (306 B)
 - `schemas/DecisionRequest.yaml` (250 B)
+- `schemas/BackfillMatchResult.yaml` (992 B)
 - `schemas/ReasonRequest.yaml` (157 B)
 - `schemas/ChangeReason.yaml` (144 B)
 - `schemas/DataVoidRequest.yaml` (482 B)
@@ -502,7 +503,7 @@ Source: contract/openapi.yaml, version 1.3.1.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (209)
+## Operations (210)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -573,6 +574,7 @@ Source: contract/openapi.yaml, version 1.3.1.
 - `operations/getExportJob.yaml`  GET /v1/report-exports/{export_id} (634 B)
 - `operations/listQuarantine.yaml`  GET /v1/admin/quarantine (949 B)
 - `operations/resolveQuarantine.yaml`  POST /v1/admin/quarantine/{quarantine_id}/resolve (1156 B)
+- `operations/matchQuarantineBackfill.yaml`  POST /v1/admin/quarantine/{quarantine_id}/match-backfill (1531 B)
 - `operations/postDataVoid.yaml`  POST /v1/admin/data-void (1011 B)
 - `operations/listGeoNodes.yaml`  GET /v1/admin/geo/{level} (861 B)
 - `operations/createGeoNode.yaml`  POST /v1/admin/geo/{level} (742 B)
