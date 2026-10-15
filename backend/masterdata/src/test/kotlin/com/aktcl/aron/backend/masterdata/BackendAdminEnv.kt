@@ -130,6 +130,8 @@ class BackendAdminEnv : AutoCloseable {
                     tutorialRoutes(TutorialsDeps(db, blob, guard))
                     supportUploadRoutes(SupportUploadDeps(db, blob, cfg, guard))
                     feedbackRoutes(FeedbackDeps(db, reach, cfg, guard))
+                    entryUnlockRoutes(EntryUnlockDeps(db, reach, cfg, guard))
+                    webEntryRoutes(WebEntryDeps(db, reach, cfg, guard))
                     adminContentRoutes(AdminContentDeps(db, blob, cfg, guard))
                 }
             }

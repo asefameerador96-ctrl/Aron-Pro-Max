@@ -71,6 +71,8 @@ fun Route.feedbackRoutes(d: FeedbackDeps) {
     }
 }
 
+private val FEEDBACK_STATUSES = setOf("new", "in_progress", "resolved", "closed") // contract FeedbackStatus
+
 private const val FB_COLS = "f.client_uuid, f.user_id, f.category_code, f.title, f.description, f.photo_uuid, f.created_at, COALESCE(s.status, 'new') AS status"
 private const val FB_FROM = "app.feedback f LEFT JOIN app.feedback_status s ON s.feedback_client_uuid = f.client_uuid"
 
@@ -85,17 +87,23 @@ private fun listFeedback(call: ApplicationCall, d: FeedbackDeps): FeedbackPageDt
     val limit = AdminSupport.limit(call)
     val (from, to) = AdminSupport.window(call)
     val cursor = AdminSupport.decodeCursor(call, 1)?.let { (a) -> a.toLongOrNull()?.takeIf { it >= 1 } ?: bad("query.cursor") }
+    val category = call.request.queryParameters["category_code"]?.also { if (!AdminSupport.CODE.matches(it)) bad("query.category_code") }
+    val statusSel = call.request.queryParameters["status"]?.also { if (it !in FEEDBACK_STATUSES) bad("query.status") }
     val today = AdminSupport.today(d.clock)
     val reach = AdminSupport.reach(d.reach, call, d.clock)
     return d.db.jdbi.withHandle<FeedbackPageDto, Exception> { h ->
         val where = mutableListOf("f.voided_at IS NULL")
         where += if (p.role == Role.TSO) "f.user_id = :me" else AdminSupport.ownerInReach(reach, "ow")
+        if (category != null) where += "f.category_code = :cat"
+        if (statusSel != null) where += "COALESCE(s.status, 'new') = :st"
         if (from != null) where += "f.business_date >= :from"
         if (to != null) where += "f.business_date <= :to"
         if (cursor != null) where += "f.id < :c"
         val q = h.createQuery("SELECT f.id, $FB_COLS FROM $FB_FROM JOIN app.app_user ow ON ow.id = f.user_id WHERE ${where.joinToString(" AND ")} ORDER BY f.id DESC LIMIT :lim")
             .bindOwnerReach(reach, today).bind("lim", limit + 1)
         if (p.role == Role.TSO) q.bind("me", p.userId)
+        if (category != null) q.bind("cat", category)
+        if (statusSel != null) q.bind("st", statusSel)
         if (from != null) q.bind("from", from)
         if (to != null) q.bind("to", to)
         if (cursor != null) q.bind("c", cursor)

@@ -541,7 +541,8 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                     "sub_channel_id" to sub, "geo_class" to (verification?.get("geo_class") ?: text("geo_class")), "lat" to num("lat"), "lng" to num("lng"),
                     "outlet_kind" to "retail",
                 )
-                req.outlet_code?.let { vals["code"] = it }
+                // F-ADM-037: the code of an approved outlet is the explicit one, else the next of its zone's sequence; it never changes afterwards (code is not patchable).
+                vals["code"] = req.outlet_code ?: nextOutletCode(h, zone.toLong())
                 val row = adminInsert(h, ctx, OUTLET, vals, null, reason)
                 val id = (row["id"] as Number).toLong()
                 // The pin was taken on site and verified: confirmed (docs/24 s12.2).
@@ -622,3 +623,17 @@ private val GNSS_KEYS = setOf(
 )
 private val CELL_KEYS = setOf("mcc", "mnc", "tac", "ci", "rsrp_dbm", "serving")
 private val WIFI_HASH = Regex("^[0-9a-f]{16}$")
+
+/**
+ * F-ADM-037 outlet code rule (the Apsis rule is unknown, docs/15; smallest correct version, logged in DECISIONS.md): `<ZONE CODE>-<NNN>`, NNN the next number
+ * after the highest numeric suffix of the zone's codes with that prefix, three digits at least, under a per-zone lock so two approvals never take the same one.
+ * A zone code that does not fit the outlet code form is cleaned (other characters become `-`) and the code is kept within 32 characters.
+ */
+internal fun nextOutletCode(h: Handle, zoneId: Long): String {
+    h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 7))", "outlet_code:$zoneId")
+    val zoneCode = h.createQuery("SELECT code FROM app.zone WHERE id = :z").bind("z", zoneId).mapTo(String::class.java).one()
+    val prefix = zoneCode.replace(Regex("[^0-9A-Za-z]"), "-").take(27)
+    val used = h.createQuery("SELECT code FROM app.outlet WHERE code LIKE :p").bind("p", "$prefix-%").mapTo(String::class.java).list()
+    val next = (used.mapNotNull { it.removePrefix("$prefix-").toIntOrNull()?.takeIf { n -> n >= 0 } }.maxOrNull() ?: 0) + 1
+    return "$prefix-" + next.toString().padStart(3, '0')
+}

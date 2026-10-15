@@ -77,7 +77,7 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
     if (req.scope != "web_entry" && p.role == Role.TSO) throw AdminSupport.forbidden("voiding app memos needs an administrator")
     AdminSupport.noNul("body.reason", req.reason)
     val reason = req.reason.trim()
-    if (req.reason.length > 500 || reason.length < 10) bad("body.reason", "length")
+    if (reason.length > 500 || reason.length < 10) bad("body.reason", "length")
     if (date.isAfter(AdminSupport.today(d.clock))) bad("body.business_date", "future")
     val reach = AdminSupport.reach(d.reach, call, d.clock)
     val now = AdminSupport.utc(d.clock)
