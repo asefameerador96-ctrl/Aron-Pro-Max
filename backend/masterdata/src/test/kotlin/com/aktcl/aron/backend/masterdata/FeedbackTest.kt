@@ -63,6 +63,18 @@ class FeedbackTest {
         assertEquals("closed", sendA3(HttpMethod.Patch, path, env.tok("admin1001"), """{"status":"closed","reason":"Fixed in 1.2.0, closing"}""").objA3().strA3("status"))
         assertEquals(2, env.count("SELECT count(*) FROM app.audit_log WHERE entity = 'feedback' AND entity_id = '$id'"))
         assertEquals(HttpStatusCode.NotFound, sendA3(HttpMethod.Patch, "/v1/feedback/${uuid()}", env.tok("admin1001"), """{"status":"closed","reason":"Fixed in 1.2.0, closing"}""").status)
+
+        // Contract v1.3 filters: category_code and status narrow the list; a bad value is a 400.
+        suspend fun ids(q: String) = sendA3(HttpMethod.Get, "/v1/feedback?$q", env.tok("support1001")).objA3().itemsA3().map { it.strA3("feedback_uuid") }
+        val other = uuid()
+        assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/feedback", env.tok("tso1001"), fb(other, category = "app_issue")).status)
+        assertTrue(id in ids("status=closed") && other !in ids("status=closed"))
+        assertTrue(other in ids("status=new") && id !in ids("status=new"))
+        assertTrue(id in ids("category_code=app_issue") && other in ids("category_code=app_issue"))
+        assertTrue(ids("category_code=no_such_category").isEmpty())
+        assertTrue(ids("category_code=app_issue&status=new").let { other in it && id !in it })
+        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Get, "/v1/feedback?status=bogus", env.tok("support1001")).status)
+        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Get, "/v1/feedback?category_code=Bad-Code", env.tok("support1001")).status)
     }
 
     @Test

@@ -78,6 +78,7 @@ class AdminContentTest {
         assertEquals(HttpStatusCode.Created, c1.status); assertEquals("\"1\"", etag(c1))
         val t1 = c1.objA3(); val id1 = t1.strA3("tutorial_id")
         assertEquals("https://blob.test/assets/tutorial_video/$video.mp4", t1.strA3("url"))
+        assertEquals(video, t1.strA3("asset_id"), "contract v1.3: the admin read returns the current file so a PATCH can keep it")
         val id2 = sendA3(HttpMethod.Post, "/v1/admin/tutorials", adm, body("manual", manual, """["SR"]""", 1)).objA3().strA3("tutorial_id")
         assertEquals(1, audits("tutorial", id1, "create"))
         // Audit row carries the reason and was written with the row.
@@ -153,6 +154,16 @@ class AdminContentTest {
         val s1 = c.objA3(); val id = s1.strA3("survey_id")
         assertEquals(listOf("1", "2", "3"), s1.getValue("questions").jsonArray.map { it.strA3("question_id") })
         assertEquals("true", s1.getValue("questions").jsonArray[2].jsonObject.getValue("requires_photo").jsonPrimitive.content)
+        // Contract v1.3: the admin read returns the write members, so a definition round-trips into SurveyWrite.
+        val q2 = s1.getValue("questions").jsonArray[1].jsonObject
+        assertEquals("price_tag", q2.strA3("key")); assertEquals("shelf", q2.strA3("show_if_key")); assertEquals("true", q2.getValue("show_if_bool").jsonPrimitive.content)
+        assertEquals("false", q2.getValue("required").jsonPrimitive.content); assertEquals("false", q2.getValue("photo").jsonPrimitive.content); assertEquals(0, q2.getValue("option_codes").jsonArray.size)
+        val opt = sendA3(HttpMethod.Post, "/v1/admin/surveys", adm, survey(listOf(q("brand", "option", extra = ""","option_codes":["alpha","beta"],"required":true,"photo":true"""))))
+        assertEquals(HttpStatusCode.Created, opt.status, opt.bodyAsText())
+        val oq = opt.objA3().getValue("questions").jsonArray[0].jsonObject
+        assertEquals(listOf("alpha", "beta"), oq.getValue("option_codes").jsonArray.map { it.jsonPrimitive.content }); assertEquals("true", oq.getValue("required").jsonPrimitive.content); assertEquals("true", oq.getValue("photo").jsonPrimitive.content)
+        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/admin/surveys", adm, survey(listOf(q("brand", "bool", extra = ""","option_codes":["alpha"]""")))).status, "option_codes only on an option question")
+        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/admin/surveys", adm, survey(listOf(q("brand", "option", extra = ""","option_codes":["alpha","alpha"]""")))).status)
         assertEquals(1, audits("survey", id, "create")); assertEquals(reason, env.scalar("SELECT reason FROM app.audit_log WHERE entity = 'survey' AND entity_id = '$id'"))
         // Version 2: drop `price_tag`, keep `shelf` and `photo` (ids stable), add `display` (next id, never reusing 2).
         val p = sendA3(HttpMethod.Patch, "/v1/admin/surveys/$id", adm, survey(listOf(q("photo", "photo_only"), q("shelf"), q("display", "num")), to = "2026-12-31", why = "Display count added for November"), mapOf("If-Match" to "\"1\""))
@@ -214,7 +225,10 @@ class AdminContentTest {
         assertEquals(HttpStatusCode.PreconditionFailed, sendA3(HttpMethod.Patch, "/v1/admin/rubrics/$id", adm, rubric(listOf(crit("aa"))), mapOf("If-Match" to "\"1\"")).status)
         assertEquals(HttpStatusCode.NotFound, sendA3(HttpMethod.Patch, "/v1/admin/rubrics/987654", adm, rubric(listOf(crit("aa"))), mapOf("If-Match" to "\"1\"")).status)
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/admin/rubrics", adm, rubric(emptyList())).status)
-        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/admin/rubrics", adm, rubric(listOf(crit("aa", "score_1_5")))).status)
+        // One answer_type enum (contract v1.3): score_1_5 is canonical and stars_1_5 the older spelling, both stored as score_1_5.
+        assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/admin/rubrics", adm, rubric(listOf(crit("aa", "score_1_5")))).status)
+        assertEquals(listOf("greeting", "stock_check", "notes"), r1.getValue("criteria").jsonArray.map { it.strA3("key") })
+        assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/admin/rubrics", adm, rubric(listOf(crit("aa", "stars_5")))).status)
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/admin/rubrics", adm, rubric(listOf(crit("aa"), crit("aa")))).status)
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/admin/rubrics", adm, rubric(listOf(crit("aa")), kind = "exam")).status)
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/admin/rubrics", adm, rubric(listOf(crit("aa")), why = "tiny")).status)
@@ -238,6 +252,7 @@ class AdminContentTest {
         val c1 = c.objA3(); val id = c1.strA3("content_id")
         assertEquals("https://blob.test/assets/content_av/$av.mp4", c1.strA3("asset_url")); assertEquals("3000000", c1.getValue("bytes").jsonPrimitive.content); assertEquals("c".repeat(64), c1.strA3("sha256"))
         assertEquals(60, c1.getValue("outlet_ids").jsonArray.size)
+        assertEquals(av, c1.strA3("asset_id"), "contract v1.3: an edit can keep the current file")
         assertEquals(1, audits("content_item", id, "create")); assertEquals(reason, env.scalar("SELECT reason FROM app.audit_log WHERE entity = 'content_item' AND entity_id = '$id'"))
         // Narrow to one route, replace the asset (kind av needs an AV asset): version 2.
         val av2 = asset("content_av", "video/mp4", 2_000_000)

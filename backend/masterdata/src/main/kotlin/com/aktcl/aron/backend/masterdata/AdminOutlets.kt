@@ -119,9 +119,14 @@ internal val OUTLET = MasterEntity(
                     .bind("o", id).bindAny("r", row["route_id"]).bind("c", row["cluster_id"]).bind("f", ctx.today).bind("by", ctx.p.userId).execute()
             }
         }
-        val pinSet = row["lat"] != null && (cur == null || changes.containsKey("lat") || changes.containsKey("lng"))
-        if (pinSet) h.createUpdate("INSERT INTO app.outlet_location_history (outlet_id, lat, lng, source, basis, created_by) VALUES (:o, :la, :ln, 'web_edit', 'master', :by)")
-            .bind("o", id).bind("la", row["lat"]).bind("ln", row["lng"]).bind("by", ctx.p.userId).execute()
+        // Every basis change is a history row (docs/requests/backend-core-location-history-basis.md): a set pin is 'master', a cleared or
+        // never-set pin is 'none' (no coordinates), so the visit re-check reads the basis in force at capture from the history alone.
+        val basisChanged = cur == null || changes.containsKey("lat") || changes.containsKey("lng")
+        if (basisChanged) {
+            val pinned = row["lat"] != null
+            h.createUpdate("INSERT INTO app.outlet_location_history (outlet_id, lat, lng, source, basis, created_by) VALUES (:o, :la, :ln, 'web_edit', :basis, :by)")
+                .bind("o", id).bindAny("la", row["lat"]).bindAny("ln", row["lng"]).bind("basis", if (pinned) "master" else "none").bind("by", ctx.p.userId).execute()
+        }
     },
 )
 
@@ -134,7 +139,7 @@ private suspend fun getOutlet(call: ApplicationCall, d: AdminMasterDeps) {
         Triple(
             r,
             h.createQuery("SELECT route_id, cluster_id, valid_from, valid_to FROM app.outlet_placement_history WHERE outlet_id = :o ORDER BY valid_from, id").bind("o", id).mapToMap().list(),
-            h.createQuery("SELECT lat, lng, accuracy_m, source, valid_from FROM app.outlet_location_history WHERE outlet_id = :o ORDER BY valid_from, id").bind("o", id).mapToMap().list(),
+            h.createQuery("SELECT lat, lng, accuracy_m, source, valid_from FROM app.outlet_location_history WHERE outlet_id = :o AND lat IS NOT NULL ORDER BY valid_from, id").bind("o", id).mapToMap().list(),
         )
     }
     val body = JsonObject(outletJson(row, p.pii) + mapOf(

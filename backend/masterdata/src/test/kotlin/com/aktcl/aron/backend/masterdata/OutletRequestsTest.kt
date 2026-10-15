@@ -72,7 +72,15 @@ class OutletRequestsTest {
         assertEquals(HttpStatusCode.OK, a.status, a.objA1().toString())
         val outlet = a.objA1().lng("resulting_outlet_id")
         assertEquals("approved", a.objA1().strA1("status"))
-        assertEquals("AD-$outlet", env.sql("SELECT code FROM app.outlet WHERE id = $outlet"))
+        val code = env.sql("SELECT code FROM app.outlet WHERE id = $outlet")!!
+        val zoneCode = env.sql("SELECT z.code FROM app.zone z JOIN app.outlet o ON o.zone_id = z.id WHERE o.id = $outlet")!!.replace(Regex("[^0-9A-Za-z]"), "-")
+        assertTrue(Regex("^${Regex.escape(zoneCode)}-[0-9]{3,}$").matches(code), "F-ADM-037 code rule, got $code")
+        // The next code of the zone follows the highest taken suffix, and an approved outlet never changes its code.
+        val zoneId = env.sql("SELECT zone_id FROM app.outlet WHERE id = $outlet")!!.toLong()
+        val nextCode = env.db.fresh.db.jdbi.inTransaction<String, Exception> { h -> nextOutletCode(h, zoneId) }
+        assertEquals((code.substringAfterLast('-').toInt() + 1).toString().padStart(3, '0'), nextCode.substringAfterLast('-'))
+        assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Patch, "/admin/outlets/$outlet", env.token("admin1001", Role.ADMIN), """{"code":"OTHER-1"}""", ifMatch = env.sql("SELECT version FROM app.outlet WHERE id = $outlet")!!).status)
+        assertEquals(code, env.sql("SELECT code FROM app.outlet WHERE id = $outlet"))
         assertEquals("true|$route|Urban", env.sql("SELECT location_confirmed || '|' || route_id || '|' || geo_class FROM app.outlet WHERE id = $outlet"))
         assertEquals(listOf("requested", "verified", "approved"), a.objA1().arr("events").map { (it as kotlinx.serialization.json.JsonObject).strA1("event") })
         assertEquals(1, env.audit("outlet", outlet, "create"))

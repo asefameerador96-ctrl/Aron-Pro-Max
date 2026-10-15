@@ -114,14 +114,14 @@ private fun attrsOf(x: Any?): JsonObject = x?.toString()?.let { kotlinx.serializ
 private fun itemJson(r: Map<String, Any?>): JsonObject {
     val attrs = attrsOf(r["attrs"])
     return JsonObject(mapOf(
-        "code" to jv(r["code"]), "label_bn" to jv(r["label_bn"]), "label_en" to jv(r["label_en"]), "sort" to jv(r["sort"]), "attrs" to attrs,
+        "id" to jv(r["id"]), "code" to jv(r["code"]), "label_bn" to jv(r["label_bn"]), "label_en" to jv(r["label_en"]), "sort" to jv(r["sort"]), "attrs" to attrs,
         "valid_from" to jv(r["valid_from"]), "valid_to" to jv(r["valid_to"]),
     ))
 }
 
 private fun loadList(h: Handle, key: String): JsonObject =
     JsonObject(mapOf("list_key" to JsonPrimitive(key), "items" to JsonArray(
-        h.createQuery("SELECT code, label_bn, label_en, sort, attrs, valid_from, valid_to FROM app.code_list_item WHERE list_key = :k ORDER BY sort, code").bind("k", key).mapToMap().list().map(::itemJson),
+        h.createQuery("SELECT id, code, label_bn, label_en, sort, attrs, valid_from, valid_to FROM app.code_list_item WHERE list_key = :k ORDER BY sort, code").bind("k", key).mapToMap().list().map(::itemJson),
     )))
 
 private fun listCodeLists(call: ApplicationCall, d: AdminMasterDeps): JsonObject {
@@ -133,7 +133,7 @@ private class ItemIn(val code: String, val labelEn: String, val labelBn: String?
 
 private fun parseItem(el: JsonElement, i: Int): ItemIn {
     val o = el as? JsonObject ?: admBad("body.items/$i", "invalid_type")
-    val allowed = setOf("code", "label_bn", "label_en", "sort", "attrs", "valid_from", "valid_to")
+    val allowed = setOf("id", "code", "label_bn", "label_en", "sort", "attrs", "valid_from", "valid_to") // id is read-only: accepted and ignored (items are matched by code)
     o.keys.firstOrNull { it !in allowed }?.let { admBad("body.items/$i/$it", "unknown_member") }
     val f = Fields(o, allowed)
     fun req(k: String) { if (!f.has(k)) admBad("body.items/$i/$k", "required") }

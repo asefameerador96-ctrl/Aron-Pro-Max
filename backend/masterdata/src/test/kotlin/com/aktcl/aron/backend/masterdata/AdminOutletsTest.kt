@@ -48,6 +48,7 @@ class AdminOutletsTest {
         val detail = sendA1(HttpMethod.Get, "/admin/outlets/$id", env.token("admin1001", Role.ADMIN, pii = true))
         assertEquals("01712345678", detail.objA1().strA1("contact_number"))
         assertEquals(1, detail.objA1().arr("placement_history").size); assertEquals(1, detail.objA1().arr("location_history").size)
+        assertEquals("master", env.sql("SELECT basis FROM app.outlet_location_history WHERE outlet_id = $id"))
         // An explicit code is kept; a duplicate code is 409 and writes nothing.
         assertEquals(HttpStatusCode.Created, sendA1(HttpMethod.Post, "/admin/outlets", admin, body("Admin Store 2", ""","code":"ADM/2"""")).status)
         val audits = env.count("SELECT count(*) FROM app.audit_log")
@@ -101,8 +102,13 @@ class AdminOutletsTest {
         assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Patch, "/admin/outlets/$id", admin, """{"lat":23.7}""", ifMatch = v4).status)
         val pin = sendA1(HttpMethod.Patch, "/admin/outlets/$id", admin, """{"lat":23.7,"lng":90.3}""", ifMatch = v4)
         assertEquals(HttpStatusCode.OK, pin.status)
-        assertEquals("1", env.sql("SELECT count(*) FROM app.outlet_location_history WHERE outlet_id = $id"))
+        // Every basis change is a history row: the outlet was created without a pin ('none'), then pinned ('master').
+        assertEquals("none,master", env.sql("SELECT string_agg(basis, ',' ORDER BY id) FROM app.outlet_location_history WHERE outlet_id = $id"))
         assertEquals("master", env.sql("SELECT location_basis FROM app.outlet WHERE id = $id"))
+        assertEquals(1, sendA1(HttpMethod.Get, "/admin/outlets/$id", admin).objA1().arr("location_history").size, "the contract read lists pins only")
+        val vClear = env.sql("SELECT version FROM app.outlet WHERE id = $id")!!
+        assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Patch, "/admin/outlets/$id", admin, """{"lat":null,"lng":null}""", ifMatch = vClear).status)
+        assertEquals("none,master,none", env.sql("SELECT string_agg(basis, ',' ORDER BY id) FROM app.outlet_location_history WHERE outlet_id = $id"))
         // Closing is a status change (never a delete) and stamps closed_at; reopening clears it.
         val v5 = env.sql("SELECT version FROM app.outlet WHERE id = $id")!!
         val closed = sendA1(HttpMethod.Patch, "/admin/outlets/$id", admin, """{"status":"closed","change_reason":"Shop shut permanently"}""", ifMatch = v5)
