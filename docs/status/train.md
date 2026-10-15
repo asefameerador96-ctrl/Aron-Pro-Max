@@ -103,6 +103,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 | 2026-10-15 07:30 | see git log | candidate lane/train-20261015T0716-zze, ALL JOBS GREEN (run 38697464596, bd865037): web-config a3418829 (carries web-admin 16a1adc7 MFA authenticator step + web-dashboard a12b464f), backend-reports 600ec391 | ancestor check passed, fast-forward. Earlier candidates: zza red Web e2e config-tiers stale baselines (fixed by web-config), zzb red Web on INT's date-dependent price-grid test (fixed by web-admin), zzd red Backend RouteInventoryTest scope lines for entry-unlocks/web-entry (backend-admin f5a3e647 fixes; next candidate). |
 | 2026-10-15 07:58 | see git log | candidate lane/train-20261015T0732-zzf, ALL JOBS GREEN (run 38699083599, d819e58d): backend-admin f5a3e647 (RouteInventoryTest scope lines for entry-unlocks/web-entry) | ancestor check passed, fast-forward; INT 2326c128 deploy 38700181682 green first. |
 | 2026-10-15 09:30 | see git log | candidate lane/train-20261015T0920-zzg, ALL JOBS GREEN (run 38712074266, fc0d86d9): web-admin cb2255f1 (+ docs-only backend-admin f7ee8a93, lead-docs fc86b1f0) | ancestor check passed, fast-forward; INT 950ddbff deploy 38703582838 green first. web-dashboard 5589436b not taken (lead has not named it). |
+| 2026-10-15 09:50 | see git log | candidate lane/train-20261015T0930-zzh, ALL JOBS GREEN (run 38713088804, a87dd4c3): web-dashboard 5589436b (DSS route drill dropped) | ancestor check passed, fast-forward; INT 8c80265a deploy 38713827722 green first. |
 
 ## Open reds
 
