@@ -10,4 +10,4 @@ ALTER TABLE app.sku ADD COLUMN image_asset_id uuid;
 ALTER TABLE app.sku ADD CONSTRAINT sku_image_asset_id_fkey
   FOREIGN KEY (image_asset_id) REFERENCES app.admin_asset(asset_id) NOT VALID;
 
-COMMENT ON COLUMN app.sku.image_asset_id IS 'Admin asset of the pack image (app.admin_asset, purpose sku_image); null when none.';
+COMMENT ON COLUMN app.sku.image_asset_id IS 'Admin asset of the pack image (app.admin_asset; backend-admin accepts only purpose sku_image); null when none.';

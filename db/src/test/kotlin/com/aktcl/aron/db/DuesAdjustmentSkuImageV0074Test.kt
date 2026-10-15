@@ -60,6 +60,7 @@ class DuesAdjustmentSkuImageV0074Test {
             assertEquals("23514", refused("UPDATE app.dues_adjustment SET status = 'approved', decided_by = created_by, decided_at = now() WHERE $row"))
             // A decision needs both decided_by and decided_at.
             assertEquals("23514", refused("UPDATE app.dues_adjustment SET status = 'approved', decided_by = ${user("superadmin1001")} WHERE $row"))
+            assertEquals("23514", refused("UPDATE app.dues_adjustment SET status = 'approved', decided_by = ${user("superadmin1001")}, decided_at = created_at - interval '1 hour' WHERE $row"))
             exec("UPDATE app.dues_adjustment SET status = 'approved', decided_by = ${user("superadmin1001")}, decided_at = now(), decision_note = 'Checked against the memo' WHERE $row")
             assertEquals("approved", scalar("SELECT status FROM app.dues_adjustment WHERE $row"))
             // Decided once: no second decision, no reopening, no edit.
@@ -93,7 +94,9 @@ class DuesAdjustmentSkuImageV0074Test {
             assertEquals("23514", refused(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c08", reason = "too short")))
             assertEquals("23505", refused(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c03")))
             // A row cannot be created already decided by its maker, nor pending with a decision.
-            assertEquals("23514", refused("INSERT INTO app.dues_adjustment (client_uuid, outlet_id, kind, amount_mtk, reason, created_by, status, decided_by, decided_at) VALUES ('a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c09', $outlet, 'correction', 1000, 'Created already approved', ${user("admin1001")}, 'approved', ${user("admin1001")}, now())"))
+            assertEquals(DENIED, refused("INSERT INTO app.dues_adjustment (client_uuid, outlet_id, kind, amount_mtk, reason, created_by, status, decided_by, decided_at) VALUES ('a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c09', $outlet, 'correction', 1000, 'Created already approved', ${user("admin1001")}, 'approved', ${user("admin1001")}, now())"))
+            // Nor already decided by a checker: every row starts pending (guard trigger).
+            assertEquals(DENIED, refused("INSERT INTO app.dues_adjustment (client_uuid, outlet_id, kind, amount_mtk, reason, created_by, status, decided_by, decided_at) VALUES ('a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c11', $outlet, 'correction', 1000, 'Created already approved', ${user("admin1001")}, 'approved', ${user("superadmin1001")}, now())"))
             assertEquals("23514", refused("INSERT INTO app.dues_adjustment (client_uuid, outlet_id, kind, amount_mtk, reason, created_by, decided_by, decided_at) VALUES ('a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c10', $outlet, 'correction', 1000, 'Pending with a decision', ${user("admin1001")}, ${user("superadmin1001")}, now())"))
         }
     }

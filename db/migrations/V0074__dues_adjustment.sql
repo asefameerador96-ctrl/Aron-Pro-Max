@@ -6,6 +6,8 @@
 --
 -- A row is created pending; it is decided once (approved or rejected) by a user other than its maker; after that it
 -- never changes, and no row is ever deleted (guard trigger below, plus a TRUNCATE guard).
+-- On approval backend-admin writes the ledger row with business_date = app.dhaka_date(now()) (due_ledger.business_date
+-- is NOT NULL) and user_id = the checker.
 
 SET lock_timeout = '5s';
 
@@ -26,16 +28,23 @@ CREATE TABLE app.dues_adjustment (
   CONSTRAINT dues_adjustment_write_off_negative CHECK (kind <> 'write_off' OR amount_mtk < 0),
   CONSTRAINT dues_adjustment_decided_iff_not_pending CHECK ((status = 'pending') = (decided_by IS NULL AND decided_at IS NULL)),
   CONSTRAINT dues_adjustment_decided_together CHECK ((decided_by IS NULL) = (decided_at IS NULL)),
-  CONSTRAINT dues_adjustment_maker_checker CHECK (decided_by IS NULL OR decided_by <> created_by)
+  CONSTRAINT dues_adjustment_maker_checker CHECK (decided_by IS NULL OR decided_by <> created_by),
+  CONSTRAINT dues_adjustment_decided_after_created CHECK (decided_at IS NULL OR decided_at >= created_at)
 );
 CREATE INDEX dues_adjustment_outlet ON app.dues_adjustment (outlet_id, created_at);
 CREATE INDEX dues_adjustment_status ON app.dues_adjustment (status, id);
 
--- Only the decision columns change, once, from pending; nothing is deleted.
+-- Rows are inserted pending; only the decision columns change, once, from pending; nothing is deleted.
 CREATE FUNCTION app.dues_adjustment_guard() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'pending' THEN
+      RAISE EXCEPTION 'app.dues_adjustment: an adjustment is created pending and decided later by a checker' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'app.dues_adjustment: adjustments are never deleted' USING ERRCODE = 'insufficient_privilege';
   END IF;
@@ -51,8 +60,8 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-COMMENT ON FUNCTION app.dues_adjustment_guard() IS 'Lets a pending dues adjustment be decided once (status, decided_by, decided_at, decision_note) and refuses every other change and any delete.';
-CREATE TRIGGER dues_adjustment_guard BEFORE UPDATE OR DELETE ON app.dues_adjustment
+COMMENT ON FUNCTION app.dues_adjustment_guard() IS 'Creates every dues adjustment pending, lets it be decided once (status, decided_by, decided_at, decision_note) and refuses every other change and any delete.';
+CREATE TRIGGER dues_adjustment_guard BEFORE INSERT OR UPDATE OR DELETE ON app.dues_adjustment
   FOR EACH ROW EXECUTE FUNCTION app.dues_adjustment_guard();
 CREATE TRIGGER dues_adjustment_no_truncate BEFORE TRUNCATE ON app.dues_adjustment
   FOR EACH STATEMENT EXECUTE FUNCTION app.deny_mutation();
