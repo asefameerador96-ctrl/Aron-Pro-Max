@@ -264,6 +264,18 @@ class ManualIngestTest {
         assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${memoUuid(d)}'"))
         // The corrected entry (same uuids for the good rows, fixed line) then stores.
         assertTrue(ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), d).stored)
+        // Re-check: stored visit and memo resent with new line uuids would over-fill the memo: 409, nothing written.
+        // Same line numbers: the line index refuses them and the entry rolls back.
+        val refill = d.take(2) + d.drop(2).map { JsonObject(it + ("client_uuid" to JsonPrimitive(uuid()))) }
+        assertTrue(!ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), refill).stored)
+        // New line numbers: stored records mixed with new ones are 409.
+        val renumbered = d.take(2) + d.drop(2).mapIndexed { i, l -> JsonObject(l + ("client_uuid" to JsonPrimitive(uuid())) + ("payload" to JsonObject((l["payload"] as JsonObject) + ("line_no" to JsonPrimitive(10 + i))))) }
+        assertEquals(ProblemCode.ERR_CONFLICT, assertFailsWith<ApiProblem> { ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), renumbered) }.code)
+        assertEquals(2, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${memoUuid(d)}'"))
+        // Re-check: a memo stating a discount or QC line would escape the family check: 400.
+        val e = paper()
+        val disc = e.mapIndexed { i, r -> if (i == 1) JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("discount_line_count" to JsonPrimitive(1))))) else r }
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), disc) }.code)
     }
 
     /** Checker B3: two keyings of one printed number at once store one memo and leave no orphan visit. */

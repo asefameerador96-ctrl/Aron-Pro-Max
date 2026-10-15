@@ -195,13 +195,14 @@ class IngestService(
      * batch (registry by client_uuid, references, the SR's scope on the date, money, parents, the writer).
      *
      * One entry is exactly one `visit` (`visit_kind` web_entry, no `fix`, `geo.verdict` no_fix), its one new `memo`
-     * (never an edit) and that memo's `memo_line`s (`line_count` of them): one `family_uuid`, one `route_id`, one
+     * (never an edit; no discount or QC lines) and that memo's `memo_line`s (`line_count` of them): one `family_uuid`, one `route_id`, one
      * business date, the memo naming the visit and every line the memo, the same outlet; anything else is 400. The
      * actor's own reach must cover the route and the outlet on the date (403).
      *
      * All or nothing, in one transaction: the memo number is locked and checked inside it; a number already stored under
      * another uuid (phone or an earlier backfill) or any record not accepted (window, scope, money, payload conflict)
-     * rolls the whole entry back ([ManualResult.stored] false). A resend of a stored entry is all `duplicate`.
+     * rolls the whole entry back ([ManualResult.stored] false). A resend of a stored entry is all `duplicate`; stored
+     * records resent with new ones (new line uuids under a stored memo) are 409 and nothing is written.
      * No device: no batch replay row, device gate, signature or config-ack checks, no content fingerprint (the memo
      * number is the identity). Rows are marked `entry_source = manual` / `entered_by_user_id` once db adds the columns
      * (docs/requests/backend-core-memo-source.md), and the registry carries the flag `manual_entry` once allowed.
@@ -230,6 +231,8 @@ class IngestService(
         if (vp.long("outlet_id") == null || mp.long("outlet_id") != vp.long("outlet_id")) bad("/records/${memo.index}/payload/outlet_id", "the memo's outlet is the visit's")
         lines.forEach { l -> if (p(l).str("memo_client_uuid") != memo.clientUuid) bad("/records/${l.index}/payload/memo_client_uuid", "every line names the entry's memo") }
         if (mp.long("line_count") != lines.size.toLong()) bad("/records/${memo.index}/payload/line_count", "line_count is the number of lines sent")
+        // Discounts are deferred (docs/27) and QC is keyed elsewhere: a paper memo has neither, so the family check covers it all.
+        for (k in listOf("discount_line_count", "qc_line_count")) if (mp.long(k) != 0L) bad("/records/${memo.index}/payload/$k", "$k is 0 on a paper memo")
         // One family, one route, one date: the whole memo is judged and stored together (money checks see every line).
         if (recs.map { it.family }.toSet().size != 1) bad("/records", "one family_uuid for the entry")
         val routeId = recs.map { it.json.long("route_id") }.toSet().singleOrNull() ?: bad("/records", "one route_id on every record")
@@ -285,6 +288,10 @@ class IngestService(
                         throw ManualRollback()
                     }
                     if (outcomes.any { it!!.status !in setOf("accepted", "duplicate") }) throw ManualRollback()
+                    // A stored entry is resent whole or not at all: new lines under a stored memo would over-fill it.
+                    if (outcomes.any { it!!.status == "duplicate" } && outcomes.any { it!!.status == "accepted" }) {
+                        throw ApiProblem(ProblemCode.ERR_CONFLICT, "this memo is already stored with other records; resend the stored entry unchanged")
+                    }
                 }
                 stored = true
                 break
