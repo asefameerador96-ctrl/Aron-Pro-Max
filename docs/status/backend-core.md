@@ -54,6 +54,22 @@ Updated 2026-10-08 (session 11; earlier: session 10, earlier header text from se
   registry flags) are on lane/db 2205ff98, not yet on INT. Once INT carries them: F-SYS-091, write `checkout_too_early`
   in ingest, and check BC-74's `cfg.calendar.window_unit` reads (see `docs/requests/db-working-day-keys-and-flags-answer.md`).
 
+## Session 12, part 2 (2026-10-15): F-API-038 paper backfill entry point (for backend-admin)
+Lead ruling: backend-admin keeps the endpoint `POST /v1/admin/data-entry` (role gate, pricing qty-only lines at the business date with the outlet's price type, building the records, mapping to `PaperBackfillResult`); backend-core owns the ingest entry point:
+
+```kotlin
+// backend/sync IngestService (Wiring builds it inside SyncDeps; expose it to backend-admin's deps the same way)
+fun ingestManual(actor: AronPrincipal, forUserId: Long, entryUuid: String, records: List<JsonObject>): IngestService.ManualResult
+data class ManualResult(val acks: List<RecordAck>, val duplicateMemoNo: Boolean)
+```
+- **records**: contract sync envelopes (same as a phone batch), browser `client_uuid`s, `route_id` = the SR's route, `business_date` = the printed memo's date. Exactly: one `visit` (`visit_kind` `web_entry`, **no `fix`**, `geo` with `verdict` `no_fix` and the other required geo members), its `memo` (new memo only: no `supersedes_client_uuid`/`edit_fix`), its `memo_line`s with server-computed prices and `gross_mtk`. Any order; the entry point puts parents first. Max 200 records.
+- **Idempotent**: by `client_uuid` (resend → every ack `duplicate`; same uuid, other content → `quarantined payload_conflict`). The browser must keep its uuids across retries.
+- **duplicate_memo_no**: a memo number already stored under another uuid (phone or earlier backfill) → nothing written, every ack `duplicate` with code `memo_no_duplicate`, `duplicateMemoNo = true` (memo ack carries the stored memo's id). Map to `PaperBackfillResult.status = duplicate_memo_no`. If two backfills of one number race, the second is quarantined `memo_no_duplicate` (unique index); a phone that comes back to life with that memo is quarantined the same way. Either way the memo is stored once.
+- **Refusals (ApiProblem)**: 403 when the actor is not SUPPORT/ADMIN/SUPERADMIN on the web, or a route/outlet is outside the actor's reach on the record's date; 400 `ERR_VALIDATION` for a non-SR `forUserId`, other record types, a visit with a fix or another kind/verdict, a memo edit, duplicate uuids, more than 200 records; 404 for an unknown user.
+- **Per-record outcomes** (acks, like a phone batch): `business_date_out_of_window` (older than `cfg.entry.paper_backfill_window_days`, or in the future), `no_assignment_on_date` (route not the SR's that day), `arithmetic_mismatch` (memo money equations), unknown outlet/route/SKU, `parent_missing` (rejected, retryable, when a child came without its parent). The endpoint should answer 409/400 with the codes instead of a partial success.
+- **Marking**: rows get `entry_source = manual`, `entered_by_user_id = actor` and the registry flag `manual_entry` once db lands `docs/requests/backend-core-memo-source.md` (detected automatically; until then rows are stored but reports cannot tell them apart; do not enable the screen for the owner before that). No device id on manual rows; no `sync_batch` row; no content fingerprint (the memo number is the identity).
+- Tests: `ManualIngestTest` (stored once and marked, out-of-order and split entries converge, memo number from the phone stored once, actor reach / roles / shape / window, payload conflict).
+
 ## Session 12 (2026-10-08)
 - Merged INT d596637f, then INT again once db V0069-V0071 landed (lead, 06:34Z).
 - **(a) MFA security events done**: `SecurityEventKind.MFA_ENROL` (on a started enrolment, `via` login or session) and `MFA_VERIFY_FAILURE` (`reason` wrong_totp, wrong_recovery or unreadable) replace the former `login_failure` with flow=mfa. That old row was deduped by a username hash the MFA step never carries, so all users' MFA failures shared one dedupe key. LOCKOUT keeps flow=mfa. Tests: `JdbiSecurityEventsTest.everyKindIsAcceptedByTheTable`, `MfaTest` (rows in app.security_event). The test-side `CREATE TABLE IF NOT EXISTS app.client_error` now no-ops (left in).

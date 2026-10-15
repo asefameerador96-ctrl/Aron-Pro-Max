@@ -30,13 +30,17 @@ object RecordWriter {
 
     private val columnCache = ConcurrentHashMap<String, Set<String>>()
 
+    /** Forgets the cached column lists (a test that adds a column the db lane has requested but not shipped yet). */
+    fun forgetColumns() = columnCache.clear()
+
     private fun columns(h: Handle, table: String): Set<String> = columnCache.getOrPut(table) {
         h.createQuery(
             "SELECT column_name FROM information_schema.columns WHERE table_schema = 'app' AND table_name = :t AND is_identity = 'NO' AND is_generated = 'NEVER'",
         ).bind("t", table).mapTo(String::class.java).set()
     }
 
-    fun write(h: Handle, type: String, rule: TypeRule, env: JsonObject, payload: JsonObject, up: Uploader, batchUuid: String, now: Instant): Result {
+    /** [enteredBy]: the web user of a paper backfill (F-API-038); the row is marked `entry_source = manual` where the table has it. */
+    fun write(h: Handle, type: String, rule: TypeRule, env: JsonObject, payload: JsonObject, up: Uploader, batchUuid: String, now: Instant, enteredBy: Long? = null): Result {
         val clientUuid = env.str("client_uuid")!!
         return when (type) {
             "visit_close" -> closeVisit(h, clientUuid, env, payload, now)
@@ -86,6 +90,11 @@ object RecordWriter {
                 doc["external_ref"] = JsonPrimitive(clientUuid) // N-049: stable external reference (ignored by tables without the column)
                 doc["user_id"] = JsonPrimitive(up.userId)
                 doc["device_id"] = JsonPrimitive(up.deviceId)
+                if (enteredBy != null) {
+                    // Dropped by [insert] on tables without the columns (db request backend-core-memo-source.md).
+                    doc["entry_source"] = JsonPrimitive("manual")
+                    doc["entered_by_user_id"] = JsonPrimitive(enteredBy)
+                }
                 doc["first_batch_uuid"] = JsonPrimitive(batchUuid)
                 doc["received_at"] = JsonPrimitive(now.wire())
                 val result = insert(h, rule.table, clientUuid, doc)
