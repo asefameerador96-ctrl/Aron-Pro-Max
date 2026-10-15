@@ -42,7 +42,7 @@ export function EnrolmentForm() {
         setCreated(data.data);
         setV((s) => ({ ...s, wifi_password: "" }));
         router.refresh();
-      } else setError(problem(data.code));
+      } else setError(data.code === "ERR_NOT_FOUND" ? t("enr.no_release") : problem(data.code)); // the API answers 404 when no release of this app is published
     } catch {
       setError(t("error.network"));
     } finally {

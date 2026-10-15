@@ -47,3 +47,9 @@ Known trap: a failed lint leaves a stale .next, then e2e shows 403 pages for new
 
 ## Update (prices checker)
 F-ADM-005 Opus (money) checker found 14 (6 in the grid and page, 8 in the mock); all fixed. Not changed: no stale-data guard between two admins (contract has no version on publish), future and pending prices are not listed on the page.
+
+## Update (2026-10-15, released by the lead)
+Priority /admin/enrolment: the page (web-config, N-045) matches createEnrolmentToken and the backend (DeviceService.createToken): flavour sr/amo/tso, lockdown dev/prod, QR from qr_text, secret shown once. Two things stood in the way on the live API, both fixed here:
+1. A new admin (ADMIN/SUPERADMIN/SUPPORT) with no authenticator could not sign in on the web: the login had no TOTP setup step. Added "Set up an authenticator" at the second step (POST /api/bff/mfa/enrol with the sealed mfa cookie, QR of the otpauth URI, the key, ten recovery codes, all shown once). A second enrolment answers the API's 409 with a clear text.
+2. Creating a code when no app release is published answers 404 from the API (backend: "no published release of this flavour to provision"); the form now says so and points to the Releases page. For the owner's phone test: a published SR release (and its APK download URL) must exist on dev before a code can be made.
+Not verified live: I have no admin credentials; I read the API code instead. Gate: lint, tsc, vitest 824, Playwright 97.

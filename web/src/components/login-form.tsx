@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import type { Problem } from "@/contract/types";
 import { ChangePasswordForm } from "./change-password-form";
 import { useI18n } from "./i18n-provider";
+import { MfaSetup } from "./mfa-setup";
 
 type Step = "password" | "mfa" | "password_change_required" | "password_reset_by_support" | "no_web_access";
 
@@ -126,6 +127,7 @@ export function LoginForm({ next }: { next: string }) {
           <button type="submit" disabled={busy} className={button}>
             {t("auth.mfa.submit")}
           </button>
+          <MfaSetup />
         </form>
       )}
       {error ? (
