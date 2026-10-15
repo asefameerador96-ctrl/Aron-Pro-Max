@@ -1,7 +1,5 @@
 // Checker ADM-3 (F-ADM-010, F-ADM-070, F-ADM-056, F-WEB-003, F-WEB-032): behaviour of the outlet pages and BFF that the
 // builder's tests do not pin down. A failing test here is a confirmed defect against the cited rule, not a style opinion.
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls: { path: string; query: Record<string, unknown> }[] = [];
@@ -83,11 +81,19 @@ describe("F-ADM-010 / F-WEB-003: retailer detail", () => {
     expect(calls.some((c) => c.path === "/v1/admin/geo/zone")).toBe(false);
   });
 
-  it("CA3-5: outlets.ts points at a request file that exists (docs/requests/web-admin-sub-channel-ids.md)", () => {
-    const src = readFileSync(join(process.cwd(), "src/app/admin/_entities/outlets.ts"), "utf8");
-    const m = /docs\/requests\/([a-z0-9-]+\.md)/.exec(src);
-    expect(m).not.toBeNull();
-    expect(existsSync(join(process.cwd(), "..", "docs", "requests", m![1]!))).toBe(true);
+  it("CA3-5: the sub-channel is a select filled from the sub_channel code list (CodeItem.id, contract v1.3), not a plain number", async () => {
+    const f = outlets.fields.find((x) => x.name === "sub_channel_id")!;
+    expect(f.kind).toBe("ref");
+    expect(f.ref?.codeList).toBe("sub_channel");
+    handler = (p) =>
+      p === "/v1/admin/outlets/1" ? { id: 1, code: "A", name: "Banani", status: "active", version: 1, zone_id: 14, cluster_id: 1, owner_name: "Md R", channel: "GT", outlet_kind: "retail", sub_channel_id: 11 }
+      : p === "/v1/admin/code-lists" ? { lists: [{ list_key: "sub_channel", items: [{ id: 11, code: "grocery", label_en: "Grocery", label_bn: "মুদি", sort: 1 }, { code: "legacy", label_en: "No id", sort: 2 }] }] }
+      : { items: [], next_cursor: null };
+    renderToStaticMarkup(await EntityEditPage({ meta: outlets, id: "1", searchParams: {} }));
+    expect(calls.some((c) => c.path === "/v1/admin/code-lists")).toBe(true);
+    const { loadRefOptionsChecked } = await import("@/components/admin/crud/server");
+    const r = await loadRefOptionsChecked(f.ref!, "tok");
+    expect(r.options).toEqual([{ value: "11", label: "Grocery · মুদি" }]); // an item without an id cannot be chosen
   });
 });
 

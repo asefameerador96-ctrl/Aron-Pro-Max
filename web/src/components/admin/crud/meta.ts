@@ -19,7 +19,9 @@ export interface RefMeta {
   get?: ApiPath;
   /** Path parameters of that list path, e.g. { level: "zone" }. */
   params?: Record<string, string>;
-  /** Member holding the value (default "id"). */
+  /** Options come from the code list with this key (GET /v1/admin/code-lists, one call for all lists) instead of a paged table. Items without a value member are left out. */
+  codeList?: string;
+  /** Member holding the value (default "id"; "code" for a filter by code). */
   value?: string;
   /** Members shown, joined with " · " (default ["name"]). */
   label?: readonly string[];

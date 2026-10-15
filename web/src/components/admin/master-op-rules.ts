@@ -48,7 +48,9 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
       // Only SUPERADMIN writes ADMIN-role users (docs/24 s8.5).
       if ((u.data.role === "ADMIN" || u.data.role === "SUPERADMIN") && actor !== "SUPERADMIN") out.push({ pointer: "/params/id", code: "forbidden_target" });
       nodes.forEach((n, i) => {
-        if (!isObj(n) || Object.keys(n).some((k) => k !== "node_type" && k !== "node_id")) out.push({ pointer: `/body/nodes/${i}`, code: "invalid" });
+        if (!isObj(n) || Object.keys(n).some((k) => k !== "node_type" && k !== "node_id" && k !== "valid_to")) out.push({ pointer: `/body/nodes/${i}`, code: "invalid" });
+        // Acting cover: the exclusive end date, after the date the new scope starts (the contract answers 400 otherwise).
+        else if (n.valid_to !== undefined && n.valid_to !== null && (typeof n.valid_to !== "string" || !isRealDate(n.valid_to) || typeof body.valid_from !== "string" || n.valid_to <= body.valid_from)) out.push({ pointer: `/body/nodes/${i}/valid_to`, code: "invalid" });
         else if (typeof n.node_type !== "string" || !scopeNodeAllowed(u.data.role!, n.node_type)) out.push({ pointer: `/body/nodes/${i}/node_type`, code: "role_node_mismatch" });
         else if (typeof n.node_id !== "number" || !Number.isSafeInteger(n.node_id) || n.node_id < (n.node_type === "national" ? 0 : 1)) out.push({ pointer: `/body/nodes/${i}/node_id`, code: "invalid" });
       });

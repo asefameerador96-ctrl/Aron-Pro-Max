@@ -398,8 +398,13 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
       if (typeof i.label_en !== "string" || !i.label_en) errors.push({ pointer: `/items/${n}/label_en`, code: "required" });
     });
     if (errors.length) return send(res, 400, problem(400, "ERR_VALIDATION", { errors }));
-    const before = state.codeLists[key] ?? [];
-    state.codeLists[key] = b!.items!;
+    const before = (state.codeLists[key] ?? []) as { code: string; id?: number }[];
+    // The read-only item id is the server's: items are matched by code and keep their id.
+    state.codeLists[key] = b!.items!.map((i) => {
+      const old = before.find((o) => o.code === i.code);
+      const { id: _ignored, ...rest } = i as { id?: number };
+      return old?.id !== undefined ? { ...rest, id: old.id } : rest;
+    }) as unknown[] as typeof before;
     audit(state, user, "code_list", 0, `code_list.${key}.put`, { items: before.length }, { items: b!.items!.length }, b!.change_reason!);
     return send(res, 200, { list_key: key, items: state.codeLists[key] });
   }
@@ -477,8 +482,8 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     const { change_reason: _r, questions, criteria, ...rest } = b;
     void _r;
     const shaped: Record<string, unknown> = { ...rest };
-    if (questions) shaped.questions = (questions as Record<string, unknown>[]).map((q, i) => ({ question_id: i + 1, answer_type: q.answer_type, label_en: q.label_en, label_bn: q.label_bn ?? null, option_codes: [], requires_photo: q.photo === true, key: q.key }));
-    if (criteria) shaped.criteria = (criteria as Record<string, unknown>[]).map((c, i) => ({ criterion_id: i + 1, label_en: c.label_en, label_bn: c.label_bn ?? null, answer_type: c.answer_type, enabled: true, key: c.key }));
+    if (questions) shaped.questions = (questions as Record<string, unknown>[]).map((q, i) => ({ question_id: i + 1, answer_type: q.answer_type, label_en: q.label_en, label_bn: q.label_bn ?? null, option_codes: Array.isArray(q.option_codes) ? q.option_codes : [], requires_photo: q.photo === true || q.answer_type === "photo_only", key: q.key, required: q.required === true, show_if_key: q.show_if_key ?? null, show_if_bool: q.show_if_bool ?? null, photo: q.photo === true }));
+    if (criteria) shaped.criteria = (criteria as Record<string, unknown>[]).map((c, i) => ({ criterion_id: i + 1, label_en: c.label_en, label_bn: c.label_bn ?? null, answer_type: c.answer_type === "stars_1_5" ? "score_1_5" : c.answer_type, enabled: true, key: c.key }));
     if (kind === "content") {
       if (!state.blobs.has(String(b.asset_id))) return send(res, 400, problem(400, "ERR_VALIDATION"));
       Object.assign(shaped, { asset_url: `https://blob.example/content/${b.asset_id}`, sha256: "b".repeat(64), bytes: state.blobs.get(String(b.asset_id)), duration_s: null, outlet_ids: [], updated_at: new Date().toISOString() });

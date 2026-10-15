@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { MessageKey } from "@/lib/i18n";
+import { isRealDate } from "./crud/validation";
 import { callMasterOp } from "./master-op-client";
 import { Field, inputClass } from "./kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "./kit/reason-field";
@@ -60,10 +61,11 @@ export function ScopeEditor({ userId, allowedTypes, current, options, minDate, c
     if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
     if (!validFrom || validFrom < minDate) e.valid_from = t("error.field.past");
     if (nodes.length === 0 && allowedTypes.length > 0) e.nodes = t("error.field.required");
+    if (nodes.some((n) => n.validTo && (!isRealDate(n.validTo) || n.validTo <= validFrom))) e.nodes = t("scope.valid_to_after");
     setErrors(e);
     if (Object.keys(e).length) return;
     setBusy(true);
-    const r = await callMasterOp("user-scope.put", { params: { id: userId }, body: { valid_from: validFrom, nodes: nodes.map((n) => ({ node_type: n.type, node_id: n.id })) }, reason: reason.trim() });
+    const r = await callMasterOp("user-scope.put", { params: { id: userId }, body: { valid_from: validFrom, nodes: nodes.map((n) => ({ node_type: n.type, node_id: n.id, ...(n.validTo ? { valid_to: n.validTo } : {}) })) }, reason: reason.trim() }); 
     setBusy(false);
     if (r.ok) {
       setBanner({ ok: true, text: t("scope.saved") });
@@ -90,7 +92,14 @@ export function ScopeEditor({ userId, allowedTypes, current, options, minDate, c
           <li key={`${n.type}-${n.id}`} className="flex items-center justify-between rounded border border-slate-200 bg-white px-3 py-2">
             <span>
               {t(TYPE_KEY[n.type] ?? "scope.national")} · {n.label}
+              {!canWrite && n.validTo ? ` · ${t("scope.until")} ${n.validTo}` : ""}
             </span>
+            {canWrite ? (
+              <label className="flex items-center gap-2 text-sm">
+                <span>{t("scope.until")}</span>
+                <input type="date" aria-label={`${t("scope.until")}: ${n.label}`} data-testid={`until-${n.type}-${n.id}`} min={validFrom} value={n.validTo ?? ""} onChange={(ev) => setNodes(nodes.map((x) => (x === n ? { ...x, validTo: ev.target.value || null } : x)))} className={`${inputClass} w-44`} />
+              </label>
+            ) : null}
             {canWrite ? (
               <button type="button" aria-label={`${t("common.clear")} ${n.label}`} onClick={() => setNodes(nodes.filter((x) => x !== n))} className="text-sm text-red-700 underline">
                 {t("common.clear")}
@@ -134,6 +143,7 @@ export function ScopeEditor({ userId, allowedTypes, current, options, minDate, c
               {t("scope.add")}
             </button>
           </div>
+          <p className="text-xs text-slate-600">{t("scope.until_hint")}</p>
           <Field label={t("entity.field.valid_from")} htmlFor="f-valid_from" required error={errors.valid_from}>
             <input id="f-valid_from" type="date" min={minDate} value={validFrom} onChange={(e) => setValidFrom(e.target.value)} className={`${inputClass} w-48`} />
           </Field>

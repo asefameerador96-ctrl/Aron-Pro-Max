@@ -38,9 +38,10 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
     if (method === "GET") return ctx.send(res, 200, { user_id: id, scope_version: cur.version, nodes: cur.nodes }), true;
     if (method === "PUT") {
       if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
-      const b = (await ctx.readJson(req)) as { valid_from?: string; nodes?: { node_type: string; node_id: number }[]; change_reason?: string } | undefined;
+      const b = (await ctx.readJson(req)) as { valid_from?: string; nodes?: { node_type: string; node_id: number; valid_to?: string | null }[]; change_reason?: string } | undefined;
       if (!b || !Array.isArray(b.nodes) || typeof b.valid_from !== "string" || !reasonOk(b.change_reason)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
-      st.scopes[id] = { version: cur.version + 1, nodes: b.nodes.map((n) => ({ node_type: n.node_type, node_id: n.node_id, valid_from: b.valid_from!, valid_to: null })) };
+      if (b.nodes.some((n) => n.valid_to != null && n.valid_to <= b.valid_from!)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/nodes", code: "invalid" }] })), true;
+      st.scopes[id] = { version: cur.version + 1, nodes: b.nodes.map((n) => ({ node_type: n.node_type, node_id: n.node_id, valid_from: b.valid_from!, valid_to: n.valid_to ?? null })) };
       ctx.audit("user_scope", id, "user_scope.put", { nodes: cur.nodes.length }, { nodes: b.nodes.length, valid_from: b.valid_from }, b.change_reason!);
       return ctx.send(res, 200, { user_id: id, scope_version: st.scopes[id]!.version, nodes: st.scopes[id]!.nodes }), true;
     }

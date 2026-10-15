@@ -38,6 +38,13 @@ export async function loadRefOptionsChecked(ref: RefMeta, token: string): Promis
   const valueKey = ref.value ?? "id";
   const labelKeys = ref.label ?? ["name"];
   const options: RefOption[] = [];
+  if (ref.codeList) {
+    const r = await rawRequest<{ lists: { list_key: string; items: Record<string, unknown>[] }[] }>({ method: "GET", path: resolvePath(String(ref.path), ref.params), token });
+    if (!r.ok) return { options, failed: true };
+    const items = ((r.data.lists ?? []).find((l) => l.list_key === ref.codeList)?.items ?? []).filter((i) => i[valueKey] !== undefined && i[valueKey] !== null).sort((a, b) => Number(a.sort ?? 0) - Number(b.sort ?? 0));
+    for (const row of items) options.push({ value: String(row[valueKey]), label: (ref.label ?? ["label_en"]).map((k) => String(row[k] ?? "")).filter(Boolean).join(" · ") });
+    return { options, failed: false };
+  }
   let cursor: string | undefined;
   for (let page = 0; page < REF_MAX_PAGES; page++) {
     const r = await rawRequest<RowPage>({ method: "GET", path: resolvePath(String(ref.path), ref.params), token, query: { limit: REF_PAGE, cursor } });
@@ -82,7 +89,8 @@ export function sanitizeFilters(meta: AnyEntity, raw: Record<string, string | un
     const v = raw[f.param]?.trim();
     if (!v) continue;
     if (f.kind === "search" && Array.from(v).length >= 2) out[f.param] = v;
-    else if ((f.kind === "int" || f.kind === "ref") && /^[0-9]{1,15}$/.test(v)) out[f.param] = v;
+    else if (f.kind === "ref" && f.ref?.value === "code" && /^[a-z][a-z0-9_]{1,40}$/.test(v)) out[f.param] = v;
+    else if ((f.kind === "int" || f.kind === "ref") && f.ref?.value !== "code" && /^[0-9]{1,15}$/.test(v)) out[f.param] = v;
     else if (f.kind === "date" && /^\d{4}-\d{2}-\d{2}$/.test(v)) out[f.param] = v;
     else if (f.kind === "enum" && f.options?.includes(v)) out[f.param] = v;
   }

@@ -73,13 +73,13 @@ export function seedTables(): Record<string, Row[]> {
       row(5, { code: "DHK-335-005", name: "Uttara Pan Shop", name_bn: null, owner_name: "Kamal Hossain", contact_number: null, address: null, zone_id: 15, route_id: null, cluster_id: 4, channel: "GT", sub_channel_id: null, geo_class: null, lat: null, lng: null, location_confirmed: false, outlet_kind: "retail", price_type: "regular", status: "active", visit_sequence: null, external_ref: null }),
     ],
     surveys: [
-      { survey_id: 1, version: 1, kind: "posm", title_en: "POSM check", title_bn: "পসম যাচাই", status: "active", valid_from: "2026-10-01", valid_to: null, points_per_photo: null, questions: [{ question_id: 1, answer_type: "bool", label_en: "Is the POSM displayed?", label_bn: null, option_codes: [], requires_photo: true }] },
+      { survey_id: 1, version: 1, kind: "posm", title_en: "POSM check", title_bn: "পসম যাচাই", status: "active", valid_from: "2026-10-01", valid_to: null, points_per_photo: null, questions: [{ question_id: 1, answer_type: "bool", label_en: "Is the POSM displayed?", label_bn: null, option_codes: [], requires_photo: true, key: "posm_displayed", required: true, show_if_key: null, show_if_bool: null, photo: true }] },
     ] as unknown as Row[],
     rubrics: [
-      { rubric_id: 1, version: 1, kind: "joint_call", status: "active", criteria: [{ criterion_id: 1, label_en: "Greets the retailer", label_bn: null, answer_type: "score_1_5", enabled: true }] },
+      { rubric_id: 1, version: 1, kind: "joint_call", status: "active", criteria: [{ criterion_id: 1, label_en: "Greets the retailer", label_bn: null, answer_type: "score_1_5", enabled: true, key: "greets" }] },
     ] as unknown as Row[],
     content: [
-      { content_id: 1, version: 1, kind: "av", title_en: "Brand film", title_bn: null, asset_url: "https://blob.example/av/film.mp4", sha256: "a".repeat(64), bytes: 5_000_000, duration_s: 30, valid_from: "2026-10-01", valid_to: "2026-12-31", sequence: 1, outlet_ids: [], status: "active", assigned_scope: [], updated_at: "2026-10-01T04:00:00.000Z" },
+      { content_id: 1, version: 1, kind: "av", title_en: "Brand film", title_bn: null, asset_url: "https://blob.example/av/film.mp4", sha256: "a".repeat(64), bytes: 5_000_000, asset_id: "7c9e6679-7425-4f0e-9b6b-1c8f0a5d3e21", duration_s: 30, valid_from: "2026-10-01", valid_to: "2026-12-31", sequence: 1, outlet_ids: [], status: "active", assigned_scope: [], updated_at: "2026-10-01T04:00:00.000Z" },
     ] as unknown as Row[],
     tutorials: [
       { tutorial_id: 1, kind: "video", title_en: "Taking a first order", title_bn: "প্রথম অর্ডার নেওয়া", url: "https://blob.example/tutorials/first-order.mp4", bytes: 5_000_000, duration_s: 120, sort: 1, roles: ["SR"], status: "active", version: 1 },
@@ -317,14 +317,14 @@ export function tableDefs(h: Holder): TableDef[] {
   ];
 }
 
-type Item = { code: string; label_en: string; label_bn: string | null; sort: number; attrs?: Record<string, string | number | boolean | null>; valid_from?: string; valid_to?: string | null };
+type Item = { id?: number; code: string; label_en: string; label_bn: string | null; sort: number; attrs?: Record<string, string | number | boolean | null>; valid_from?: string; valid_to?: string | null };
 const it = (code: string, label_en: string, label_bn: string | null, sort: number, attrs?: Item["attrs"]): Item => ({ code, label_en, label_bn, sort, ...(attrs ? { attrs } : {}), valid_from: "2026-01-01", valid_to: null });
 
 export function seedCodeLists(): Record<string, Item[]> {
   const qc = (code: string, en: string, bn: string, sort: number, group: string, applies_to = "app") => it(code, en, bn, sort, { group, applies_to });
   return {
     channel: [it("retail", "Retail", "খুচরা", 1), it("wholesale", "Wholesale", "পাইকারি", 2)],
-    sub_channel: [it("grocery", "Grocery", "মুদি", 1), it("tea_stall", "Tea stall", "চায়ের দোকান", 2)],
+    sub_channel: [{ ...it("grocery", "Grocery", "মুদি", 1), id: 11 }, { ...it("tea_stall", "Tea stall", "চায়ের দোকান", 2), id: 12 }],
     geo_class: [it("urban", "Urban", "শহর", 1), it("semi_urban", "Semi-urban", "উপশহর", 2), it("rural", "Rural", "গ্রাম", 3), it("hill", "Hill", "পাহাড়", 4)],
     task_type: [it("oos", "Out of stock", "স্টক নেই", 1, { roles: "AMO,TSO" }), it("general", "General", "সাধারণ", 2, { roles: "AMO,TSO" }), it("irregular_visit", "Irregular visit", "অনিয়মিত ভিজিট", 3, { roles: "TSO" })],
     qc_fault_type: [
@@ -348,7 +348,7 @@ export function seedCodeLists(): Record<string, Item[]> {
     day_exception_reason: [it("rain", "Heavy rain", "ভারী বৃষ্টি", 1), it("hartal", "Hartal", "হরতাল", 2)],
     stock_variance_reason: [it("damaged", "Damaged", "নষ্ট", 1)],
     leave_type: [it("casual", "Casual", "নৈমিত্তিক", 1)],
-    feedback_category: [it("app", "App problem", "অ্যাপের সমস্যা", 1)],
+    feedback_category: [it("app", "App problem", "অ্যাপের সমস্যা", 1), it("route", "Route problem", "রুটের সমস্যা", 2)],
     payment_mode: [it("cash", "Cash", "নগদ", 1)],
     outlet_close_reason: [it("permanent", "Closed for good", "চিরতরে বন্ধ", 1)],
     submit_void_reason: [it("mistake", "Submitted by mistake", "ভুলে সাবমিট", 1)],
