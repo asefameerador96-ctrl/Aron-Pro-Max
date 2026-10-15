@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import type { AuditPage, Problem } from "@/contract/types";
 import { apiClient, outcome, type ApiOutcome } from "@/lib/api/client";
 import { authenticate, problemResponse } from "@/lib/api/guard";
+import { businessDate } from "@/lib/i18n";
 import { rawRequest } from "@/lib/api/raw";
 import { entityCanEdit, isWritable, canWrite, resolvePath, validId, type AnyEntity, type RefMeta } from "./meta";
 import type { WriteRequest } from "./types";
@@ -41,7 +42,12 @@ export async function loadRefOptionsChecked(ref: RefMeta, token: string): Promis
   if (ref.codeList) {
     const r = await rawRequest<{ lists: { list_key: string; items: Record<string, unknown>[] }[] }>({ method: "GET", path: resolvePath(String(ref.path), ref.params), token });
     if (!r.ok) return { options, failed: true };
-    const items = ((r.data.lists ?? []).find((l) => l.list_key === ref.codeList)?.items ?? []).filter((i) => i[valueKey] !== undefined && i[valueKey] !== null).sort((a, b) => Number(a.sort ?? 0) - Number(b.sort ?? 0));
+    const all = ((r.data.lists ?? []).find((l) => l.list_key === ref.codeList)?.items ?? []).filter((i) => i[valueKey] !== undefined && i[valueKey] !== null);
+    // A missing list, or no item with its value member (a server older than v1.3), is a failure the page reports, not an empty required select.
+    if (all.length === 0) return { options, failed: true };
+    const today = businessDate();
+    // valid_to is the exclusive end like every effective-dated range: an item ending today or earlier is retired.
+    const items = all.filter((i) => typeof i.valid_to !== "string" || i.valid_to > today).sort((a, b) => Number(a.sort ?? 0) - Number(b.sort ?? 0));
     for (const row of items) options.push({ value: String(row[valueKey]), label: (ref.label ?? ["label_en"]).map((k) => String(row[k] ?? "")).filter(Boolean).join(" · ") });
     return { options, failed: false };
   }

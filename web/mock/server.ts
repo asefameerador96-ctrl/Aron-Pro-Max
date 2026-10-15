@@ -40,6 +40,7 @@ function users(): Record<string, MockUser> {
     analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
     madmin1: { ...u(3101, "madmin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true), master: true },
     msupport1: { ...u(3102, "msupport1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true), master: true },
+    mdmo1: { ...u(3104, "mdmo1", "Habib Rahman", "DMO", "dmo-pass-2", { scope_version: 4, nodes: [{ type: "division", id: 10, code: "D-10", name: "Dhaka North" }] }), master: true },
     mtso1: { ...u(3103, "mtso1", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 6, code: "T-334", name: "Banani" }] }), master: true },
     admin1: u(3001, "admin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true),
     super1: u(3003, "super1", "Rafiq Chowdhury", "SUPERADMIN", "super-pass-1", nationalScope, true),
@@ -523,6 +524,38 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
       audit(state, user, "feedback", String(fb[1]), "feedback.status", before, { status: row.status as string }, reason);
       return send(res, 200, row);
     }
+  }
+
+  // Outlets in the caller's reach (every role); the mock's reach: a TSO sees zone 14 (its territory), a DMO and national roles all.
+  if (path === "/v1/outlets" && method === "GET" && user.master) {
+    const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    const limit = Math.min(500, Number(url.searchParams.get("limit") ?? 100));
+    const items = state.tables.outlets!.filter((o) => (user.summary.role !== "TSO" || o.zone_id === 14) && (!q || [o.name, o.code, o.owner_name].some((x) => String(x ?? "").toLowerCase().includes(q))));
+    return send(res, 200, { items: items.slice(0, limit), next_cursor: null });
+  }
+
+  // POST /v1/outlet-requests: the web source of an outlet change request (TSO and DMO, idempotent by request_uuid).
+  if (path === "/v1/outlet-requests" && method === "POST" && user.master) {
+    if (!["TSO", "DMO"].includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const b = (await readJson(req)) as Record<string, unknown> | undefined;
+    const proposed = b?.proposed as Record<string, unknown> | undefined;
+    const members: Record<string, string[]> = { info: ["name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id"], location: ["lat", "lng"], cluster: ["cluster_id"], close: ["close_reason_code"] };
+    const type = String(b?.request_type);
+    const okShape = b && typeof b.request_uuid === "string" && /^[0-9a-f-]{36}$/.test(b.request_uuid) && members[type] && typeof b.outlet_id === "number" && proposed && typeof proposed === "object" && Object.keys(proposed).length > 0 && Object.keys(proposed).every((k) => members[type]!.includes(k)) && Object.keys(b).every((k) => ["request_uuid", "request_type", "outlet_id", "proposed", "note"].includes(k));
+    if (!okShape) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    const outlet = state.tables.outlets!.find((o) => o.id === b.outlet_id);
+    if (!outlet) return send(res, 404, problem(404, "ERR_NOT_FOUND"));
+    if (user.summary.role === "TSO" && outlet.zone_id !== 14) return send(res, 403, problem(403, "ERR_OUT_OF_SCOPE"));
+    const rows = state.tables.outletRequests!;
+    const seen = rows.find((r) => r.request_uuid === b.request_uuid);
+    if (seen) {
+      if (seen.requested_by_user_id !== user.summary.user_id || seen.outlet_id !== b.outlet_id || seen.request_type !== type) return send(res, 409, problem(409, "ERR_CONFLICT"));
+      return send(res, 201, seen);
+    }
+    const row = { request_uuid: b.request_uuid, request_type: type, status: "pending", outlet_id: outlet.id, outlet_name: outlet.name, route_id: outlet.route_id, cluster_id: outlet.cluster_id, requested_by_user_id: user.summary.user_id, requested_at: new Date().toISOString(), rejection_reason: null, proposed, note: b.note ?? null, request_fix: null, photos: [], events: [], version: 1 } as unknown as Row;
+    rows.push(row);
+    audit(state, user, "outlet_request", String(b.request_uuid), "outlet_request.create", {}, { request_type: type }, typeof b.note === "string" ? b.note : null);
+    return send(res, 201, row);
   }
 
   if (path.startsWith("/v1/outlet-requests")) {

@@ -30,6 +30,8 @@ interface Props {
   canWrite: boolean;
 }
 
+const nextDay = (d: string): string | undefined => (isRealDate(d) ? new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : undefined);
+
 const TYPE_KEY: Record<string, MessageKey> = { national: "scope.national", wing: "scope.wing", division: "scope.division", territory: "scope.territory", zone: "scope.zone" };
 
 /** Replaces a user's supervisory scope from a date. Only node types the role may hold are offered. */
@@ -97,7 +99,7 @@ export function ScopeEditor({ userId, allowedTypes, current, options, minDate, c
             {canWrite ? (
               <label className="flex items-center gap-2 text-sm">
                 <span>{t("scope.until")}</span>
-                <input type="date" aria-label={`${t("scope.until")}: ${n.label}`} data-testid={`until-${n.type}-${n.id}`} min={validFrom} value={n.validTo ?? ""} onChange={(ev) => setNodes(nodes.map((x) => (x === n ? { ...x, validTo: ev.target.value || null } : x)))} className={`${inputClass} w-44`} />
+                <input type="date" aria-label={`${t("scope.until")}: ${n.label}`} data-testid={`until-${n.type}-${n.id}`} min={nextDay(validFrom)} value={n.validTo ?? ""} onChange={(ev) => setNodes(nodes.map((x) => (x === n ? { ...x, validTo: ev.target.value || null } : x)))} className={`${inputClass} w-44`} />
               </label>
             ) : null}
             {canWrite ? (

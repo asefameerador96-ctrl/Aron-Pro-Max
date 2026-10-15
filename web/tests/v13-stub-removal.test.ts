@@ -45,3 +45,25 @@ describe("feedback filters (category_code by code, status)", () => {
     expect(sanitizeFilters(feedback, { category_code: "12", status: "" })).toEqual({});
   });
 });
+
+describe("outlet-request.create rules (POST /v1/outlet-requests)", () => {
+  const U = "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e";
+  const make = (request_type: string, proposed: unknown, extra: Record<string, unknown> = {}) => masterOpRules("outlet-request.create", { request_uuid: U, request_type, outlet_id: 5, proposed, note: REASON, ...extra }, {}, "t", "TSO");
+  it("accepts each type with exactly its members", async () => {
+    expect(await make("info", { owner_name: "Md. Rahim", contact_number: "01712345678", sub_channel_id: 11 })).toEqual([]);
+    expect(await make("location", { lat: 23.8, lng: 90.4 })).toEqual([]);
+    expect(await make("cluster", { cluster_id: 4 })).toEqual([]);
+    expect(await make("close", { close_reason_code: "permanent" })).toEqual([]);
+  });
+  it("refuses new and route_add (app only), foreign members, a missing member and a bad uuid", async () => {
+    for (const t of ["new", "route_add", "x"]) expect((await make(t, { name: "A" })).map((e) => e.pointer), t).toContain("/body/request_type");
+    expect((await make("cluster", { cluster_id: 4, lat: 1 })).length).toBeGreaterThan(0);
+    expect((await make("location", { lat: 23.8 })).map((e) => e.pointer)).toContain("/body/proposed/lng");
+    expect((await make("location", { lat: 91, lng: 90 })).length).toBeGreaterThan(0);
+    expect((await make("info", {})).map((e) => e.pointer)).toContain("/body/proposed");
+    expect((await make("info", { contact_number: "0123" })).length).toBeGreaterThan(0);
+    expect((await make("close", { close_reason_code: "Closed For Good" })).length).toBeGreaterThan(0);
+    expect((await make("cluster", { cluster_id: 4 }, { request_uuid: "nope" })).map((e) => e.pointer)).toContain("/body/request_uuid");
+    expect((await make("cluster", { cluster_id: 4 }, { fix: {} })).map((e) => e.pointer)).toContain("/body/fix");
+  });
+});

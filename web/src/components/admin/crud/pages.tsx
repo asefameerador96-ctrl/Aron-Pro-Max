@@ -60,7 +60,7 @@ async function loadAllRefs(meta: AnyEntity, token: string, scope: "list" | "crea
   for (const f of fields) if (f.kind === "ref" && f.ref) wanted.push({ slot: f.name, ref: f.ref });
   if (scope === "list") for (const f of meta.filters) if (f.kind === "ref" && f.ref) wanted.push({ slot: `filter:${f.param}`, ref: f.ref });
   const byTable = new Map<string, Promise<{ options: RefOption[]; failed: boolean }>>();
-  const tableKey = (r: NonNullable<AnyField["ref"]>) => JSON.stringify([r.path, r.params, r.value, r.label]);
+  const tableKey = (r: NonNullable<AnyField["ref"]>) => JSON.stringify([r.path, r.params, r.value, r.label, r.codeList]);
   for (const w of wanted) if (!byTable.has(tableKey(w.ref))) byTable.set(tableKey(w.ref), loadRefOptionsChecked(w.ref, token));
   const refs: RefOptions = {};
   let failed = false;

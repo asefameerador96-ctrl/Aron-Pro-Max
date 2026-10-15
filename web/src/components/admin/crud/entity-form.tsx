@@ -138,6 +138,9 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
           return;
         }
         setVersion(data.row?.version ?? version);
+        // A saved file is the stored one now: clear the "ready" / "removed" state so the next save does not re-send it.
+        setValues((x) => Object.fromEntries(Object.entries(x).map(([k, val]) => [k, fields.find((f) => f.name === k)?.kind === "asset" ? "" : val])));
+        setPicked({});
         setReason("");
         setBanner({ kind: "ok", text: t("admin.save.ok") });
         router.refresh();
@@ -275,7 +278,7 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
         </p>
       ) : null}
       <div className="flex gap-3">
-        <button type="submit" disabled={busy} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+        <button type="submit" disabled={busy || uploading !== null} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
           {mode === "action" && submitLabel ? submitLabel : t(mode === "create" ? "common.create" : "common.save")}
         </button>
         <a href={listHref} className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">
