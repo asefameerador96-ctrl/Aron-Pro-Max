@@ -152,6 +152,8 @@ class ReportApiTest {
         val mine = Json.parseToJsonElement(client.get("/v1/report-exports") { bearerAuth(TestTokens.web(10, Role.ANALYST)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.single().jsonObject
         assertEquals("print", mine["format"]!!.jsonPrimitive.content); assertEquals(3, mine["rows"]!!.jsonPrimitive.content.toInt())
         assertEquals("route-memo", mine["report_key"]!!.jsonPrimitive.content); assertFalse(mine["pii_included"]!!.jsonPrimitive.content.toBoolean())
+        // AuditLog.write: one row with the actor and the scope the action ran under.
+        assertEquals("10|ANALYST|true", fresh.db.jdbi.withHandle<String, Exception> { it.createQuery("SELECT actor_user_id || '|' || actor_role || '|' || (after->'scope'->>'national') || coalesce(':' || (after->'scope'->>'zone_ids'), '') FROM app.audit_log WHERE entity = 'report_export'").mapTo(String::class.java).one() })
         assertEquals(0, Json.parseToJsonElement(client.get("/v1/report-exports") { bearerAuth(TestTokens.web(11, Role.TSO)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
         assertEquals(1, Json.parseToJsonElement(client.get("/v1/report-exports?user_id=10") { bearerAuth(TestTokens.web(13, Role.ADMIN)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
     }

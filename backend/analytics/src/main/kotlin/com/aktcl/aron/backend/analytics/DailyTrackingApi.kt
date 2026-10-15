@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.analytics
 
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.AuditLog
 import com.aktcl.aron.backend.platform.AuthGuardDeps
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FieldError
@@ -183,13 +184,13 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
             ).bind("d", date).bind("z", geo.first).bind("t", geo.second).mapTo(Long::class.java).list()
             val body = buildJsonObject {
                 put("route_id", req.route_id); put("business_date", req.business_date); put("note", req.note)
+                put("scope", auditScope(reach))
                 put("notified_user_ids", buildJsonArray { notified.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
             }
             // The stored row's own timestamp is the action's created_at, so a replay answers with exactly the same value.
-            val now = h.createQuery(
-                "INSERT INTO app.audit_log (actor_user_id, actor_username, actor_role, via, entity, entity_id, action, after, request_id) VALUES (:u, :n, :r, 'api', 'tracking_action', :id, 'create', CAST(:a AS jsonb), CAST(:rid AS uuid)) RETURNING at",
-            ).bind("u", p.userId).bind("n", p.username.take(40)).bind("r", p.role.wire).bind("id", req.action_uuid).bind("a", body.toString())
-                .bind("rid", requestId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }).map { rs, _ -> rs.getObject(1, OffsetDateTime::class.java).toInstant() }.one()
+            AuditLog.write(h, p, "tracking_action", req.action_uuid, "create", null, body, null, requestId, via = "api")
+            val now = h.createQuery("SELECT at FROM app.audit_log WHERE entity = 'tracking_action' AND entity_id = :id ORDER BY id LIMIT 1").bind("id", req.action_uuid)
+                .map { rs, _ -> rs.getObject(1, OffsetDateTime::class.java).toInstant() }.one()
             // The FCM nudge to the route's TSO and AMO is the notify module's: it needs `tracking_action.created` in app.domain_event_type
             // (docs/requests/backend-reports-db-indexes-and-events.md); no unregistered event is written meanwhile. `notified_user_ids` names who it will reach.
             TrackingAction(req.action_uuid, req.route_id, req.business_date, req.note, p.userId, now.wire(), notified)
