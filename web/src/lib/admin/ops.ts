@@ -86,7 +86,7 @@ export const TEAM_OPS = {
 export type TeamOpKey = keyof typeof TEAM_OPS;
 export type OpKey = keyof typeof OPS;
 
-export const PARAM_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
+export const PARAM_PATTERN = /^[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,63}$/; // never starts with a dot: ".." must not climb out of the path
 
 export function isOpKey(k: unknown): k is OpKey {
   return typeof k === "string" && Object.prototype.hasOwnProperty.call(OPS, k);

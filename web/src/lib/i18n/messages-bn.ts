@@ -313,6 +313,7 @@ export const bn: Record<MessageKey, string> = {
   "shown.temporary_password": "অস্থায়ী পাসওয়ার্ড",
   "shown.temporary_password_expires_at": "মেয়াদ",
   "error.field.window": "কাগজ থেকে শুধু শেষ ৭ দিনের তথ্য ঢোকানো যায়।",
+  "error.ERR_ENTRY_WINDOW_CLOSED": "এই দিনটি এন্ট্রির সময়সীমার বাইরে। অ্যাডমিনের কাছে আনলক চান।",
   "error.field.zero": "পরিমাণ শূন্য হতে পারবে না।",
   "error.field.above_max": "পরিমাণ সীমার (১০,০০,০০,০০,০০০ টাকা, ধনাত্মক বা ঋণাত্মক) বেশি।",
   "error.field.write_off_must_be_negative": "অবলোপনে বাকি কমে: ঋণাত্মক পরিমাণ লিখুন।",

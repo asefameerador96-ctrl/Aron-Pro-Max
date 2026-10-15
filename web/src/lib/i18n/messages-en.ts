@@ -310,6 +310,7 @@ export const en = {
   "shown.temporary_password": "Temporary password",
   "shown.temporary_password_expires_at": "Valid until",
   "error.field.window": "Only the last 7 days can be keyed from paper.",
+  "error.ERR_ENTRY_WINDOW_CLOSED": "That day is outside the entry window. Ask an administrator for an unlock.",
   "error.field.zero": "The amount cannot be zero.",
   "error.field.above_max": "The amount is above the limit of 10,000,000,000 taka (either sign).",
   "error.field.write_off_must_be_negative": "A write-off lowers the due: enter a negative amount.",

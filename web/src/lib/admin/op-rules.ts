@@ -51,7 +51,7 @@ export function opRules(op: string, body: Record<string, unknown>): FieldProblem
     if (!Array.isArray(lines) || lines.length < 1 || lines.length > 60) out.push({ pointer: "/lines", code: "invalid" });
     else
       lines.forEach((l, i) => {
-        const ok = typeof l === "object" && l !== null && isId((l as Record<string, unknown>).sku_id) && Number.isInteger((l as Record<string, unknown>).qty_base) && (l as { qty_base: number }).qty_base >= 1 && (l as { qty_base: number }).qty_base <= 10_000_000 && ["sale", "drp_reward", "promo_free", "free_sample"].includes(String((l as Record<string, unknown>).line_kind));
+        const ok = typeof l === "object" && l !== null && isId((l as Record<string, unknown>).sku_id) && Number.isInteger((l as Record<string, unknown>).qty_base) && (l as { qty_base: number }).qty_base >= 1 && (l as { qty_base: number }).qty_base <= 10_000_000 && ["sale"].includes(String((l as Record<string, unknown>).line_kind));
         if (!ok) out.push({ pointer: `/lines/${i}`, code: "invalid" });
       });
     return out;

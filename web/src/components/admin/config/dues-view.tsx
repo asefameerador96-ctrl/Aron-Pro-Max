@@ -5,7 +5,7 @@ import { OpForm, type OpFieldDef } from "@/components/admin/kit/op-form";
 import { OpInline } from "@/components/admin/kit/op-inline";
 import { Card, NextLink, PageHeading } from "@/components/admin/kit/page";
 import { MAX_ADJUSTMENT_MTK } from "@/lib/admin/op-rules";
-import { formatMtk } from "@/lib/admin/money";
+import { formatMtkExact } from "@/lib/admin/money";
 import type { DuesAdjustment } from "@/lib/admin/types";
 import { formatDateTime, formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
 
@@ -13,7 +13,7 @@ export function DuesView({ locale, rows, status, outlet, nextHref, userId, canCr
   const columns: Column<DuesAdjustment>[] = [
     { key: "o", header: t(locale, "dues.col.outlet"), render: (a) => formatNumber(locale, a.outlet_id, { useGrouping: false }) },
     { key: "k", header: t(locale, "cfgc.col.kind"), render: (a) => t(locale, `dues.kind.${a.kind}` as MessageKey) },
-    { key: "a", header: t(locale, "dues.col.amount"), render: (a) => formatMtk(locale, a.amount_mtk), align: "right" },
+    { key: "a", header: t(locale, "dues.col.amount"), render: (a) => formatMtkExact(locale, a.amount_mtk), align: "right" },
     { key: "r", header: t(locale, "cfgh.col.reason"), render: (a) => a.reason },
     { key: "s", header: t(locale, "cfgc.col.status"), render: (a) => t(locale, `dues.status.${a.status}` as MessageKey) },
     { key: "c", header: t(locale, "cfgc.col.created"), render: (a) => formatDateTime(locale, a.created_at) },
