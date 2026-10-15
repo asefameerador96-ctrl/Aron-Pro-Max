@@ -188,6 +188,11 @@ private suspend fun decideAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
             throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the adjustment is already ${row.status}")
         }
         if (row.created_by_user_id == p.userId) throw ApiProblem(ProblemCode.ERR_SEPARATION_OF_DUTIES, "the checker of a dues adjustment is not its maker")
+        if (approve && cur.second != null && row.memo_client_uuid != null) {
+            // The memo row is held while the approval commits, so a data void of its route-day waits for it and then refuses (DataVoidApi).
+            val voided = h.createQuery("SELECT voided_at IS NOT NULL FROM app.memo WHERE client_uuid = CAST(:m AS uuid) FOR SHARE").bind("m", row.memo_client_uuid).mapTo(Boolean::class.java).findOne().orElse(false)
+            if (voided) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the memo was voided; the adjustment cannot be approved")
+        }
         if (approve && row.kind == "write_off") {
             val balance = h.createQuery("SELECT COALESCE(SUM(amount_mtk), 0) FROM app.due_ledger WHERE outlet_id = :o").bind("o", row.outlet_id).mapTo(Long::class.java).one()
             if (-row.amount_mtk > balance) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the write-off is larger than the outlet's open balance")
@@ -201,8 +206,11 @@ private suspend fun decideAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
             ).bind("o", row.outlet_id).bind("a", row.amount_mtk).bind("m", row.memo_client_uuid).bind("src", cur.second).bind("by", p.userId)
                 .bind("n", "${row.kind}: ${row.reason}").execute()
         }
+        // The flag the approval screen reads from the audit trail: an approved negative correction that takes the balance below zero.
+        val after = if (approve) h.createQuery("SELECT COALESCE(SUM(amount_mtk), 0) FROM app.due_ledger WHERE outlet_id = :o").bind("o", row.outlet_id).mapTo(Long::class.java).one() else null
         AuditWriter.write(h, p, "dues_adjustment", id.toString(), req.decision, buildJsonObject { put("status", "pending") }, buildJsonObject {
             put("status", if (approve) "approved" else "rejected"); put("outlet_id", row.outlet_id); put("kind", row.kind); put("amount_mtk", row.amount_mtk)
+            if (after != null) { put("balance_after_mtk", after); put("balance_below_zero", after < 0) }
         }, note ?: row.reason, call.requestId)
         h.createQuery("SELECT $COLS FROM app.dues_adjustment a WHERE a.id = :i").bind("i", id).map { rs, _ -> map(rs) }.one()
     }

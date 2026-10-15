@@ -112,6 +112,14 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
             voidedUuids += uuids
             if (t == "memo") voidedMemos += uuids
         }
+        // An approved dues correction attached to a tombstoned memo would survive the void and leave the balance wrong: refuse the whole void
+        // (smallest safe version; reversal through a ledger row is a later row, DECISIONS.md). Read after the tombstoning UPDATE, which waited
+        // for any approval holding the memo row, so a concurrent approval is seen (the approval takes FOR SHARE on the memo).
+        if (voidedMemos.isNotEmpty()) {
+            val attached = h.createQuery("SELECT a.id FROM app.dues_adjustment a WHERE a.status = 'approved' AND a.memo_client_uuid IN (<u>) LIMIT 1")
+                .bindList("u", voidedMemos.map { java.util.UUID.fromString(it) }).mapTo(Long::class.java).findOne().orElse(null)
+            if (attached != null) throw ApiProblem(ProblemCode.ERR_DAY_DATA_VOID_NOT_ALLOWED, "a memo of this route-day has an approved dues adjustment (#$attached); a data void is not allowed")
+        }
         // geo_fix has no client_uuid of its own: it follows its route-day.
         val fixes = h.createUpdate("UPDATE app.geo_fix SET voided_at = :now WHERE route_id = :r AND business_date = :d AND voided_at IS NULL").bind("now", now).bind("r", req.route_id).bind("d", date).execute()
         if (fixes > 0) counts["geo_fix"] = fixes
