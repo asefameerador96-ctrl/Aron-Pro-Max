@@ -7,3 +7,5 @@ Lane: web-admin.
 Proposed: `image_asset_id` (Uuid or null) on `SkuWrite` and `SkuPatch`, and `image_url` (uri or null) on `Sku`, like `GiftWrite.image_asset_id` and `Gift.image_url`.
 
 Stub: F-ADM-065 is parked (DEPENDENCY-WAIT). The upload ticket flow of F-ADM-026 (`web/src/components/admin/tutorial-manager.tsx`, `web/src/lib/admin/tutorials.ts`) is the pattern; the SKU form will reuse it with the 300 KB image limit.
+
+**State (2026-10-15, web-admin):** done in the web portal against contract v1.3; server half to be confirmed live.

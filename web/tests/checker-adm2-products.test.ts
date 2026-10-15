@@ -57,3 +57,19 @@ describe("ProductNodeWrite / Patch members", () => {
     expect(valuesSchema(seg, "create").safeParse({ parent_id: "2", name: "n".repeat(121), sort: "1" }).success).toBe(false);
   });
 });
+
+describe("F-ADM-065 pack image (image_asset_id)", () => {
+  const id = "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e";
+  it("accepts an asset UUID on create and update; empty means null (remove)", () => {
+    for (const mode of ["create", "update"] as const) {
+      const s = valuesSchema(skus, mode);
+      const base = mode === "create" ? sku : {};
+      expect(s.parse({ ...base, image_asset_id: id }).image_asset_id).toBe(id);
+      expect(s.parse({ ...base, image_asset_id: "" }).image_asset_id).toBeNull();
+    }
+  });
+  it("refuses anything that is not a v4 UUID", () => {
+    const s = valuesSchema(skus, "update");
+    for (const v of ["x", "123", "../../etc", id.toUpperCase().replace(/4/g, "1"), 5, true]) expect(s.safeParse({ image_asset_id: v }).success, String(v)).toBe(false);
+  });
+});

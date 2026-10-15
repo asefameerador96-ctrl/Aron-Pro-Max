@@ -60,7 +60,7 @@ async function loadAllRefs(meta: AnyEntity, token: string, scope: "list" | "crea
   for (const f of fields) if (f.kind === "ref" && f.ref) wanted.push({ slot: f.name, ref: f.ref });
   if (scope === "list") for (const f of meta.filters) if (f.kind === "ref" && f.ref) wanted.push({ slot: `filter:${f.param}`, ref: f.ref });
   const byTable = new Map<string, Promise<{ options: RefOption[]; failed: boolean }>>();
-  const tableKey = (r: NonNullable<AnyField["ref"]>) => JSON.stringify([r.path, r.params, r.value, r.label]);
+  const tableKey = (r: NonNullable<AnyField["ref"]>) => JSON.stringify([r.path, r.params, r.value, r.label, r.codeList]);
   for (const w of wanted) if (!byTable.has(tableKey(w.ref))) byTable.set(tableKey(w.ref), loadRefOptionsChecked(w.ref, token));
   const refs: RefOptions = {};
   let failed = false;
@@ -125,14 +125,14 @@ function hidden(meta: AnyEntity | undefined, role: string | undefined, field: st
   return (meta?.restrictedValues ?? []).some((r) => r.field === field && r.values.includes(value) && !(r.unlessRoles as readonly string[]).includes(role ?? ""));
 }
 
-function toFormField(locale: Locale, f: AnyField, refs: RefOptions = {}, meta?: AnyEntity, role?: string): FormFieldDef {
+function toFormField(locale: Locale, f: AnyField, refs: RefOptions = {}, meta?: AnyEntity, role?: string, row?: Record<string, unknown>): FormFieldDef {
   const kind: FormFieldDef["kind"] = f.kind === "timestamp" ? "text" : f.kind === "ref" || f.kind === "bool" ? "enum" : f.kind;
   const maskBits = f.kind === "mask" ? f.maskBits?.map((k) => t(locale, k)) : undefined;
   const options =
     f.kind === "ref" ? refs[f.name]
     : f.kind === "bool" ? [{ value: "true", label: t(locale, "common.yes") }, { value: "false", label: t(locale, "common.no") }]
     : f.options?.filter((o) => !hidden(meta, role, f.name, o)).map((o) => ({ value: o, label: optionLabel(locale, f, o) }));
-  return { name: f.name, label: t(locale, f.labelKey), section: f.section ? t(locale, f.section) : undefined, kind, required: Boolean(f.required), nullable: Boolean(f.nullable), maxLength: f.maxLength, options, maskBits };
+  return { name: f.name, label: t(locale, f.labelKey), section: f.section ? t(locale, f.section) : undefined, kind, required: Boolean(f.required), nullable: Boolean(f.nullable), maxLength: f.maxLength, options, maskBits, assetPurpose: f.kind === "asset" ? f.asset?.purpose : undefined, previewUrl: f.kind === "asset" && f.asset && typeof row?.[f.asset.previewKey] === "string" ? (row[f.asset.previewKey] as string) : undefined };
 }
 
 export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; searchParams: SearchParams }) {
@@ -248,7 +248,7 @@ export async function EntityEditPage({ meta, id, searchParams }: { meta: AnyEnti
   if (!row.data) notFound();
   const [hist, { refs, failed }] = await Promise.all([history(meta, session.at, id), loadAllRefs(meta, session.at, "update")]);
 
-  const fields = meta.fields.filter((f) => isWritable(f, "update")).map((f) => toFormField(locale, f, refs, meta, session.user.role));
+  const fields = meta.fields.filter((f) => isWritable(f, "update")).map((f) => toFormField(locale, f, refs, meta, session.user.role, row.data as Record<string, unknown>));
   const initial = Object.fromEntries(fields.map((f) => [f.name, row.data?.[f.name] === null || row.data?.[f.name] === undefined ? "" : String(row.data[f.name])]));
   const version = Number(row.data.version);
   return (

@@ -13,3 +13,5 @@ Add an optional `valid_to` (date, Asia/Dhaka business date) to each node entry o
 
 ## Stub
 The page sets scope without an end date. See the `REQUEST` comment in `web/src/app/admin/user-scope/[id]/page.tsx`.
+
+**State (2026-10-15, web-admin):** done in the web portal against contract v1.3; server half to be confirmed live.
