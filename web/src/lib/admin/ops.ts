@@ -49,6 +49,8 @@ export const OPS = {
   "release.update": { method: "PATCH", path: "/v1/admin/releases/{release_id}", roles: ADMINS, reason: "change_reason", ifMatch: true, forbid: { member: "status", values: ["published"] } },
   "release.publish": { method: "PATCH", path: "/v1/admin/releases/{release_id}", roles: SUPERS, reason: "change_reason", ifMatch: true },
   // F-ADM-030 / P14 quarantine review: accept, accept with fix (re-map), discard, return to device
+  // F-ADM-030b: a held phone memo that is the same memo as a paper backfill (same SR, outlet, lines and money): releases its held collections onto the paper memo
+  "quarantine.match-backfill": { method: "POST", path: "/v1/admin/quarantine/{quarantine_id}/match-backfill", roles: SUPPORT_UP, reason: "reason" },
   "quarantine.resolve": { method: "POST", path: "/v1/admin/quarantine/{quarantine_id}/resolve", roles: ADMINS, reason: "reason" },
   // N-045 enrolment QR: tokens carry a note, not a reason; the secret is shown once
   "enrolment.create": { method: "POST", path: "/v1/admin/enrolment-tokens", roles: SUPPORT_UP, reason: null },
