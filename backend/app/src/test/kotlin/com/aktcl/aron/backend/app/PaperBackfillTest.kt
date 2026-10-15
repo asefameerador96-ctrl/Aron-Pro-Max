@@ -146,7 +146,7 @@ class PaperBackfillTest {
         assertEquals(HttpStatusCode.BadRequest, status(body(uuid(), "bad memo number")))
         assertEquals(HttpStatusCode.BadRequest, status(body(uuid(), memoNo(), extra = ""","price_mtk":1""")), "the browser never sends a price")
         assertEquals(HttpStatusCode.BadRequest, status(body(uuid(), memoNo(), user = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.app_user WHERE username = 'tso1001'").mapTo(Long::class.java).one() })), "not an SR")
-        assertEquals(HttpStatusCode.Conflict, status(body(uuid(), memoNo(), date = "2026-12-01")), "past the paper window")
+        assertEquals(HttpStatusCode.Conflict, status(body(uuid(), "sr1001-261201-${seq.incrementAndGet()}", date = "2026-12-01")), "past the paper window")
         assertEquals(0, count("SELECT count(*) FROM app.memo WHERE business_date = DATE '2026-12-01'"))
     }
 }

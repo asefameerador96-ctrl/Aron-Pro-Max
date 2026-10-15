@@ -78,7 +78,7 @@ private fun derived(entry: String, part: String): String {
     return "${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}"
 }
 
-private class Priced(val skuId: Long, val baseUnit: String, val qty: Long, val kind: String, val price: Long, val per: Long, val from: LocalDate, val gross: Long)
+private class Priced(val skuId: Long, val baseUnit: String, val perPack: Int, val qty: Long, val kind: String, val price: Long, val per: Long, val from: LocalDate, val gross: Long)
 
 private fun createBackfill(p: AronPrincipal, req: PaperBackfillIn, requestId: String?, d: PaperBackfillDeps): PaperBackfillOut {
     if (p.isPhone || p.role !in ROLES) throw AdminSupport.forbidden("paper backfill is keyed by SUPPORT, ADMIN or SUPERADMIN on the web")
@@ -86,6 +86,9 @@ private fun createBackfill(p: AronPrincipal, req: PaperBackfillIn, requestId: St
     val entry = AdminSupport.uuid(req.client_uuid, "body.client_uuid").toString()
     if (!MEMO_NO.matches(req.memo_no)) bad("body.memo_no")
     val bd = AdminSupport.date(req.business_date, "body.business_date")
+    // The printed number is <username>-<yyMMdd>-<seq> (docs/24 s7.5): its date is the business date, so the same paper memo cannot be keyed
+    // under another date (the table is unique on memo_no + business_date only) and the number belongs to the SR it is keyed for.
+    if (req.memo_no.split('-')[1] != "%02d%02d%02d".format(bd.year % 100, bd.monthValue, bd.dayOfMonth)) bad("body.memo_no", "memo_no_date_mismatch")
     if (req.user_id < 1) bad("body.user_id"); if (req.route_id < 1) bad("body.route_id"); if (req.outlet_id < 1) bad("body.outlet_id")
     if (req.lines.isEmpty() || req.lines.size > 60) bad("body.lines", "length")
     req.lines.forEachIndexed { i, l ->
@@ -98,17 +101,21 @@ private fun createBackfill(p: AronPrincipal, req: PaperBackfillIn, requestId: St
     AdminSupport.noNul("body.reason", req.reason)
     val reason = AdminSupport.reason(req.reason, "body.reason")
 
+    val username = d.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery("SELECT username FROM app.app_user WHERE id = :u").bind("u", req.user_id).mapTo(String::class.java).findOne().orElse(null) }
+        ?: bad("body.user_id", "unknown_user")
+    if (req.memo_no.substringBefore('-') != username) bad("body.memo_no", "memo_no_user_mismatch")
+
     // Prices from the database at the business date for the outlet's price type; unknown outlet answers like an unreachable one.
     val (priced, priceType) = d.db.jdbi.withHandle<Pair<List<Priced>, String>, Exception> { h ->
         val type = h.createQuery("SELECT price_type FROM app.outlet WHERE id = :o").bind("o", req.outlet_id).mapTo(String::class.java).findOne().orElse(null)
             ?: throw AdminSupport.forbidden("the outlet does not exist or is outside your reach")
         req.lines.mapIndexed { i, l ->
-            val sku = h.createQuery("SELECT base_unit FROM app.sku WHERE id = :s").bind("s", l.sku_id).mapTo(String::class.java).findOne().orElse(null) ?: bad("body.lines[$i].sku_id", "unknown_sku")
+            val sku = h.createQuery("SELECT base_unit, base_per_pack FROM app.sku WHERE id = :s").bind("s", l.sku_id).map { rs, _ -> rs.getString(1) to rs.getInt(2) }.findOne().orElse(null) ?: bad("body.lines[$i].sku_id", "unknown_sku")
             val pr = h.createQuery("SELECT amount_mtk, per_base_qty, valid_from FROM app.sku_price WHERE sku_id = :s AND price_type = :t AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
                 .bind("s", l.sku_id).bind("t", type).bind("d", bd).map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getObject(3, LocalDate::class.java)) }.findOne().orElse(null)
                 ?: bad("body.lines[$i].sku_id", "no_price_on_date")
             val gross = try { Money.lineGrossMtk(l.qty_base, pr.first, pr.second) } catch (e: ArithmeticException) { bad("body.lines[$i].qty_base", "amount_overflow") }
-            Priced(l.sku_id, sku, l.qty_base, l.line_kind, pr.first, pr.second, pr.third, gross)
+            Priced(l.sku_id, sku.first, sku.second, l.qty_base, l.line_kind, pr.first, pr.second, pr.third, gross)
         } to type
     }
     val gross = try { priced.fold(0L) { a, l -> Math.addExact(a, l.gross) } } catch (e: ArithmeticException) { bad("body.lines", "amount_overflow") }
@@ -141,7 +148,7 @@ private fun createBackfill(p: AronPrincipal, req: PaperBackfillIn, requestId: St
     priced.forEachIndexed { i, l ->
         records += env("memo_line", derived(entry, "line:$i"), 2, 1, buildJsonObject {
             put("memo_client_uuid", memoId); put("line_no", i + 1); put("sku_id", l.skuId); put("line_kind", l.kind); put("qty_entered", l.qty); put("unit_entered", l.baseUnit)
-            put("pack_factor", 1); put("qty_base", l.qty); put("price_type", priceType); put("price_valid_from", l.from.toString()); put("base_price_mtk", l.price)
+            put("pack_factor", l.perPack); put("qty_base", l.qty); put("price_type", priceType); put("price_valid_from", l.from.toString()); put("base_price_mtk", l.price)
             put("price_per_qty", l.per); put("gross_mtk", l.gross)
         })
     }
