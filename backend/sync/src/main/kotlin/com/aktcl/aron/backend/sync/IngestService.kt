@@ -114,7 +114,7 @@ class IngestService(
     }
 
     /** Per-batch caches. */
-    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null, val manual: Manual? = null, val release: RecordOutcomeCode? = null) {
+    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null, val manual: Manual? = null, val release: RecordOutcomeCode? = null, val reviewed: Boolean = release != null) {
         /** A reviewer's accept ([acceptQuarantined]) overrides the check that raised [release], and only that one. */
         fun overrides(vararg codes: RecordOutcomeCode): Boolean = release != null && release in codes
         /** Handlers' after-commit calls of the current family, by record index (dropped when the record rolls back). */
@@ -371,10 +371,13 @@ class IngestService(
             val arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
             val fps = MemoChecks.memoFingerprints(family)
             // Every held record runs as its own uploader and device (a TSO's collection on an SR's memo stays the TSO's).
+            // The reviewer judged the item's own record: a child of another uploader gets no override of its own checks
+            // (its reach, cross-user parent rule, device gate), only the window it was inside when received.
             val ctxs = HashMap<Pair<Long, Long?>, Ctx>()
             fun ctxOf(it: HeldItem): Ctx = ctxs.getOrPut(it.userId to it.deviceId) {
                 val batch = it.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:${it.id}".toByteArray()).toString()
-                Ctx(uploaderOf(h, it.userId, it.deviceId), batch, now, release = code).also { c -> c.arith = arith; c.memoFps = fps }
+                val same = it.userId == item.userId && it.deviceId == item.deviceId
+                Ctx(uploaderOf(h, it.userId, it.deviceId), batch, now, release = code.takeIf { same }, reviewed = true).also { c -> c.arith = arith; c.memoFps = fps }
             }
             val ctx = ctxOf(item)
             val up = ctx.up
@@ -675,7 +678,7 @@ class IngestService(
         val captured = Instant.parse(env.str("captured_at")!!)
         // A released signature quarantine was inside the window when first received: it is not too old now (item 2).
         // A reviewer's accept judges a record that was inside the window when it was received and held for another reason.
-        val tooOld = !released && ctx.release == null && bd.isBefore(ctx.backdateFloor)
+        val tooOld = !released && !ctx.reviewed && bd.isBefore(ctx.backdateFloor)
         // F-SYS-089: after a failover or restore the phone re-sends rows the lost lineage had acknowledged (trigger
         // `resync`, docs/24 s4.8). One captured before the new lineage started may be older than the window: it is
         // accepted and flagged `resync_late`, never quarantined (idempotency by client_uuid keeps the re-send safe).

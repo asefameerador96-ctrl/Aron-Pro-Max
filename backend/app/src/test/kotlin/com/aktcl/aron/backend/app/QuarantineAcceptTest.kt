@@ -241,15 +241,18 @@ class QuarantineAcceptTest {
         val m = client.resolve(item(memo).first, "accept")
         assertEquals(HttpStatusCode.OK, m.status, m.bodyAsText())
         for (c in listOf(visit, memo, l2, close)) assertEquals("accepted/$registered", registry(c), "same uuid, user and device: $c")
-        assertEquals("accepted/$tso/-", registry(l1))
-        assertEquals(tso, count("SELECT user_id FROM app.memo_line WHERE client_uuid = '$l1'"), "stored as its own uploader's")
-        assertEquals(listOf("accepted", "accepted"), listOf(item(l1).second, item(l2).second))
+        // The reviewer accepted the SR's memo, not the TSO's line: it runs as the TSO with no override, and a line on
+        // another user's memo is outside the TSO's own rules, so it stays held for its own review.
+        assertEquals("open", item(l1).second)
+        assertEquals("quarantined/$tso/-", registry(l1))
+        assertEquals(0L, count("SELECT count(*) FROM app.memo_line WHERE client_uuid = '$l1'"))
+        assertEquals("accepted", item(l2).second)
         assertEquals(1L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
-        assertEquals(2L, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$memo'"))
+        assertEquals(1L, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$memo'"))
 
         // The phone resends (a new batch): every record is a duplicate; nothing is stored twice.
-        val again = json(client.send(client.token(), batch(fam)).bodyAsText())
-        assertEquals(List(5) { "duplicate" }, statuses(again), again.toString())
+        val again = json(client.send(client.token(), batch(fam.filter { cu(it) != l1 })).bodyAsText())
+        assertEquals(List(4) { "duplicate" }, statuses(again), again.toString())
         assertEquals(1L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
         // The same decision again is the stored answer; another one is a state conflict.
         assertEquals(HttpStatusCode.OK, client.resolve(item(visit).first, "accept").status)
