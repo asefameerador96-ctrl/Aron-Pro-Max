@@ -52,6 +52,11 @@ import com.aktcl.aron.backend.masterdata.DataVoidDeps
 import com.aktcl.aron.backend.masterdata.dataVoidRoutes
 import com.aktcl.aron.backend.masterdata.EntryUnlockDeps
 import com.aktcl.aron.backend.masterdata.entryUnlockRoutes
+import com.aktcl.aron.backend.masterdata.PaperAck
+import com.aktcl.aron.backend.masterdata.PaperBackfillDeps
+import com.aktcl.aron.backend.masterdata.PaperIngest
+import com.aktcl.aron.backend.masterdata.PaperIngestResult
+import com.aktcl.aron.backend.masterdata.paperBackfillRoutes
 import com.aktcl.aron.backend.masterdata.DuesAdjustmentDeps
 import com.aktcl.aron.backend.masterdata.duesAdjustmentRoutes
 import com.aktcl.aron.backend.masterdata.WebEntryDeps
@@ -284,6 +289,12 @@ class Wiring(
                 dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
                 entryUnlockRoutes(EntryUnlockDeps(db, reach, config, guard, clock))
                 duesAdjustmentRoutes(DuesAdjustmentDeps(db, reach, guard, clock))
+                paperBackfillRoutes(PaperBackfillDeps(db, guard, sync.ingest?.let { svc ->
+                    PaperIngest { actor, forUser, entry, recs ->
+                        val r = svc.ingestManual(actor, forUser, entry, recs)
+                        PaperIngestResult(r.acks.map { PaperAck(it.client_uuid, it.type, it.status, it.code, it.server_id) }, r.duplicateMemoNo, r.stored)
+                    }
+                }, clock))
                 webEntryRoutes(WebEntryDeps(db, reach, config, guard, clock))
                 adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
                 adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock, config = config))
