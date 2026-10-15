@@ -182,100 +182,133 @@ class IngestService(
     /** A paper backfill run: the web user who keys it and the cfg.entry.paper_backfill_window_days window. */
     class Manual(val actorUserId: Long, val windowDays: Long)
 
-    /** The acks of a paper backfill in request order; [duplicateMemoNo] when a memo number was already stored (nothing written). */
-    data class ManualResult(val acks: List<RecordAck>, val duplicateMemoNo: Boolean)
+    /**
+     * The acks of a paper backfill in request order. [stored] is false when nothing of the entry was written: one record
+     * was not accepted (its ack says why; the others' acks say what they would have been) or the memo number was taken
+     * ([duplicateMemoNo], every ack `duplicate` with code `memo_no_duplicate`, the memo ack carrying the stored memo's id).
+     */
+    data class ManualResult(val acks: List<RecordAck>, val duplicateMemoNo: Boolean, val stored: Boolean)
 
     /**
-     * F-API-038 paper backfill (docs/24 s8.5 item 4, D24-73): a web [actor] (SUPPORT, ADMIN, SUPERADMIN) keys a
-     * dead-phone day for the SR [forUserId] from the printed memo, through the same per-record path as a phone batch:
-     * registry by client_uuid (a repeat is `duplicate`, the same uuid with other content is `payload_conflict`),
-     * references, the SR's scope on the business date, money checks, parents before children, the writer.
+     * F-API-038 paper backfill (docs/24 s8.5 item 4, D24-73): a web [actor] (SUPPORT, ADMIN, SUPERADMIN) keys one
+     * printed memo of a dead-phone day for the active SR [forUserId], through the same per-record checks as a phone
+     * batch (registry by client_uuid, references, the SR's scope on the date, money, parents, the writer).
      *
-     * The caller (backend-admin's POST /v1/admin/data-entry) builds contract records with server-priced lines and
-     * browser `client_uuid`s: one `visit` (`visit_kind` web_entry, no `fix`, `geo.verdict` no_fix), its `memo` (a new
-     * memo, never an edit) and the `memo_line`s. Differences from a phone batch:
-     * - the actor's own reach must cover every route and outlet on the record's business date (403 otherwise), on
-     *   top of the SR's (a route not the SR's that day is quarantined `no_assignment_on_date` as on a phone);
-     * - the window is `cfg.entry.paper_backfill_window_days` back from today (older is quarantined out of window);
-     * - no device: no batch replay store (every record is idempotent by its uuid), no device gate, signature or
-     *   config-ack checks; rows carry no device_id;
-     * - no content fingerprint (F-SYS-055): the memo number is the identity;
-     * - a memo number already stored under another uuid (from the phone or an earlier backfill) stores nothing of this
-     *   entry and answers every record `duplicate` with code `memo_no_duplicate` ([ManualResult.duplicateMemoNo]);
-     * - rows are marked `entry_source = manual` with `entered_by_user_id` once db adds the columns
-     *   (docs/requests/backend-core-memo-source.md), and the registry row carries the flag `manual_entry` once allowed.
+     * One entry is exactly one `visit` (`visit_kind` web_entry, no `fix`, `geo.verdict` no_fix), its one new `memo`
+     * (never an edit) and that memo's `memo_line`s (`line_count` of them): one `family_uuid`, one `route_id`, one
+     * business date, the memo naming the visit and every line the memo, the same outlet; anything else is 400. The
+     * actor's own reach must cover the route and the outlet on the date (403).
+     *
+     * All or nothing, in one transaction: the memo number is locked and checked inside it; a number already stored under
+     * another uuid (phone or an earlier backfill) or any record not accepted (window, scope, money, payload conflict)
+     * rolls the whole entry back ([ManualResult.stored] false). A resend of a stored entry is all `duplicate`.
+     * No device: no batch replay row, device gate, signature or config-ack checks, no content fingerprint (the memo
+     * number is the identity). Rows are marked `entry_source = manual` / `entered_by_user_id` once db adds the columns
+     * (docs/requests/backend-core-memo-source.md), and the registry carries the flag `manual_entry` once allowed.
      */
     fun ingestManual(actor: AronPrincipal, forUserId: Long, entryUuid: String, records: List<JsonObject>): ManualResult {
         if (actor.isPhone || actor.role !in MANUAL_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "paper backfill is keyed by SUPPORT, ADMIN or SUPERADMIN on the web")
         fun bad(ptr: String, why: String): Nothing = throw ApiProblem(ProblemCode.ERR_VALIDATION, why, errors = listOf(FieldError(ptr, "invalid_value")))
         if (!UUID_V4.matches(entryUuid)) bad("/entry_uuid", "entry_uuid is not a UUID v4")
-        if (records.isEmpty() || records.size > MANUAL_MAX_RECORDS) bad("/records", "1..$MANUAL_MAX_RECORDS records")
+        if (records.size < 3 || records.size > MANUAL_MAX_RECORDS) bad("/records", "a visit, a memo and 1..${MANUAL_MAX_RECORDS - 2} lines")
         val now = clock.now()
         val recs = records.mapIndexed { i, r -> Rec(i, r) }
         if (recs.map { it.clientUuid }.toSet().size != recs.size) bad("/records", "a client_uuid appears twice")
-        for (r in recs) {
-            if (r.type !in MANUAL_TYPES) bad("/records/${r.index}/type", "a paper backfill holds visit, memo and memo_line records only")
-            val p = r.json["payload"] as? JsonObject ?: continue // the shape check answers it per record
-            when (r.type) {
-                "visit" -> {
-                    if (p.str("visit_kind") != "web_entry") bad("/records/${r.index}/payload/visit_kind", "a paper visit is web_entry")
-                    if (p["fix"].let { it != null && it !is JsonNull }) bad("/records/${r.index}/payload/fix", "a paper visit has no fix")
-                    if ((p["geo"] as? JsonObject)?.str("verdict") != "no_fix") bad("/records/${r.index}/payload/geo/verdict", "a paper visit's verdict is no_fix")
-                }
-                "memo" -> for (k in listOf("supersedes_client_uuid", "edit_fix", "edit_reason_code")) {
-                    if (p[k].let { it != null && it !is JsonNull }) bad("/records/${r.index}/payload/$k", "a paper backfill keys a new memo, never an edit")
-                }
-            }
+        recs.forEach { r -> if (r.type !in MANUAL_TYPES) bad("/records/${r.index}/type", "a paper backfill holds visit, memo and memo_line records only") }
+        val visit = recs.singleOrNull { it.type == "visit" } ?: bad("/records", "exactly one visit")
+        val memo = recs.singleOrNull { it.type == "memo" } ?: bad("/records", "exactly one memo")
+        val lines = recs.filter { it.type == "memo_line" }
+        fun p(r: Rec) = r.json["payload"] as? JsonObject ?: bad("/records/${r.index}/payload", "payload must be an object")
+        val vp = p(visit); val mp = p(memo)
+        if (vp.str("visit_kind") != "web_entry") bad("/records/${visit.index}/payload/visit_kind", "a paper visit is web_entry")
+        if (vp["fix"].let { it != null && it !is JsonNull }) bad("/records/${visit.index}/payload/fix", "a paper visit has no fix")
+        if ((vp["geo"] as? JsonObject)?.str("verdict") != "no_fix") bad("/records/${visit.index}/payload/geo/verdict", "a paper visit's verdict is no_fix")
+        for (k in listOf("supersedes_client_uuid", "edit_fix", "edit_reason_code")) {
+            if (mp[k].let { it != null && it !is JsonNull }) bad("/records/${memo.index}/payload/$k", "a paper backfill keys a new memo, never an edit")
         }
+        if (mp.str("visit_client_uuid") != visit.clientUuid) bad("/records/${memo.index}/payload/visit_client_uuid", "the memo names the entry's visit")
+        if (vp.long("outlet_id") == null || mp.long("outlet_id") != vp.long("outlet_id")) bad("/records/${memo.index}/payload/outlet_id", "the memo's outlet is the visit's")
+        lines.forEach { l -> if (p(l).str("memo_client_uuid") != memo.clientUuid) bad("/records/${l.index}/payload/memo_client_uuid", "every line names the entry's memo") }
+        if (mp.long("line_count") != lines.size.toLong()) bad("/records/${memo.index}/payload/line_count", "line_count is the number of lines sent")
+        // One family, one route, one date: the whole memo is judged and stored together (money checks see every line).
+        if (recs.map { it.family }.toSet().size != 1) bad("/records", "one family_uuid for the entry")
+        val routeId = recs.map { it.json.long("route_id") }.toSet().singleOrNull() ?: bad("/records", "one route_id on every record")
+        val bdText = recs.map { it.json.str("business_date") }.toSet().singleOrNull() ?: bad("/records", "one business_date for the entry")
+        val bd = runCatching { LocalDate.parse(bdText) }.getOrNull() ?: bad("/records/0/business_date", "business_date")
+        recs.forEach { r -> if (r.json["acting_for_user_id"].let { it != null && it !is JsonNull }) bad("/records/${r.index}/acting_for_user_id", "a paper backfill is keyed for the SR itself") }
+        val memoNo = mp.str("memo_no") ?: bad("/records/${memo.index}/payload/memo_no", "memo_no is required")
+
         val user = db.jdbi.withHandle<Triple<Role, Long, String>?, Exception> { h ->
             h.createQuery("SELECT role, scope_version, status FROM app.app_user WHERE id = :u").bind("u", forUserId)
                 .map { rs, _ -> Triple(Role.entries.first { it.wire == rs.getString(1) }, rs.getLong(2), rs.getString(3)) }.findOne().orElse(null)
         } ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "user not found")
         if (user.first != Role.SR) bad("/for_user_id", "a paper backfill is keyed for an SR")
+        if (user.third != "active") bad("/for_user_id", "the SR is not active")
 
-        // The actor's reach on each record's date (server-side scope, s8.4): out of reach is 403, nothing is written.
-        val reaches = HashMap<LocalDate, Reach>()
+        // The actor's reach on the date (server-side scope, s8.4): the route and the outlet, or 403 and nothing is written.
+        val rc = reach.reach(actor.userId, actor.role, actor.scopeVersion, bd)
         db.jdbi.useHandle<Exception> { h ->
-            for (r in recs) {
-                val bd = r.json.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: continue
-                val rc = reaches.getOrPut(bd) { reach.reach(actor.userId, actor.role, actor.scopeVersion, bd) }
-                r.json.long("route_id")?.let { rid ->
-                    val zone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", rid).mapTo(Long::class.java).findOne().orElse(null)
-                    if (zone != null && !rc.coversRoute(rid, zone)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route $rid is outside your reach on $bd")
-                }
-                (r.json["payload"] as? JsonObject)?.long("outlet_id")?.let { oid ->
-                    val o = h.createQuery("SELECT route_id, zone_id FROM app.outlet WHERE id = :o").bind("o", oid)
-                        .map { rs, _ -> (rs.getObject(1) as Long?) to rs.getLong(2) }.findOne().orElse(null)
-                    if (o != null && !(rc.coversZone(o.second) || (o.first != null && o.first in rc.routeIds))) {
-                        throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "outlet $oid is outside your reach on $bd")
-                    }
-                }
+            val zone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", routeId).mapTo(Long::class.java).findOne().orElse(null)
+            if (zone != null && !rc.coversRoute(routeId, zone)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route $routeId is outside your reach on $bd")
+            val o = h.createQuery("SELECT route_id, zone_id FROM app.outlet WHERE id = :o").bind("o", vp.long("outlet_id")!!)
+                .map { rs, _ -> (rs.getObject(1) as Long?) to rs.getLong(2) }.findOne().orElse(null)
+            if (o != null && !(rc.coversZone(o.second) || (o.first != null && o.first in rc.routeIds))) {
+                throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "outlet ${vp.long("outlet_id")} is outside your reach on $bd")
             }
         }
 
-        // A memo number already stored under another uuid: the entry is stored once (contract duplicate_memo_no).
-        val existing = db.jdbi.withHandle<Long?, Exception> { h ->
-            recs.filter { it.type == "memo" }.firstNotNullOfOrNull { r ->
-                val p = r.json["payload"] as? JsonObject ?: return@firstNotNullOfOrNull null
-                val no = p.str("memo_no") ?: return@firstNotNullOfOrNull null
-                val bd = r.json.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return@firstNotNullOfOrNull null
-                h.createQuery("SELECT id FROM app.memo WHERE memo_no = :n AND business_date = :d AND client_uuid <> CAST(:c AS uuid) LIMIT 1")
-                    .bind("n", no).bind("d", bd).bind("c", r.clientUuid).mapTo(Long::class.java).findOne().orElse(null)
-            }
-        }
-        if (existing != null) {
-            return ManualResult(recs.map { r ->
-                RecordAck(r.clientUuid, r.type, "duplicate", RecordOutcomeCode.MEMO_NO_DUPLICATE.wire, null, "sync.outcome.${RecordOutcomeCode.MEMO_NO_DUPLICATE.wire}", if (r.type == "memo") existing else null)
-            }, true)
-        }
-
-        val window = runCatching { config.int("cfg.entry.paper_backfill_window_days") }.getOrDefault(7).toLong()
+        val window = runCatching { config.int("cfg.entry.paper_backfill_window_days") }.getOrDefault(7).coerceIn(1, 30).toLong()
         val up = Uploader(forUserId, user.first, user.second, null, null, null)
         val ctx = Ctx(up, entryUuid, now, manual = Manual(actor.userId, window))
-        // Parents before children, whatever order the caller sent (each record keeps its index for the acks).
-        val outcomes = runFamilies(ctx, recs.sortedBy { MANUAL_TYPES.indexOf(it.type) })
-        return ManualResult(acksOf(recs, outcomes), false)
+        val ordered = recs.sortedBy { MANUAL_TYPES.indexOf(it.type) }
+        val all = ordered.map { it.json }
+        ctx.arith = MemoChecks.familyMismatches(all) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, all) }
+        ctx.memoFps = emptyMap()
+        val outcomes = arrayOfNulls<Outcome>(recs.size)
+        var taken: Long? = null
+        var stored = false
+        var attempt = 0
+        val start = clock.now()
+        while (true) {
+            ctx.afterCommit.clear()
+            taken = null
+            try {
+                db.jdbi.inTransaction<Unit, Exception> { h ->
+                    // One printed number at a time: two keyings of it, or a keying and the phone's upload, never both store.
+                    h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 6))", "memo_no:$memoNo:$bd")
+                    taken = h.createQuery("SELECT id FROM app.memo WHERE memo_no = :n AND business_date = :d AND client_uuid <> CAST(:c AS uuid) LIMIT 1")
+                        .bind("n", memoNo).bind("d", bd).bind("c", memo.clientUuid).mapTo(Long::class.java).findOne().orElse(null)
+                    if (taken != null) throw ManualRollback()
+                    ordered.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) }
+                    if (outcomes[memo.index]?.code == RecordOutcomeCode.MEMO_NO_DUPLICATE) {
+                        taken = h.createQuery("SELECT id FROM app.memo WHERE memo_no = :n AND business_date = :d LIMIT 1").bind("n", memoNo).bind("d", bd).mapTo(Long::class.java).findOne().orElse(null)
+                        throw ManualRollback()
+                    }
+                    if (outcomes.any { it!!.status !in setOf("accepted", "duplicate") }) throw ManualRollback()
+                }
+                stored = true
+                break
+            } catch (e: Exception) {
+                if (e is ManualRollback || e.cause is ManualRollback) { ctx.afterCommit.clear(); break }
+                if (++attempt >= FAMILY_TRIES || !isTransientDbFailure(e) || clock.now().isAfter(start.plusMillis(FAMILY_RETRY_BUDGET_MS))) throw e
+                Thread.sleep(java.util.concurrent.ThreadLocalRandom.current().nextLong(20, 101))
+            }
+        }
+        if (taken != null) {
+            val code = RecordOutcomeCode.MEMO_NO_DUPLICATE.wire
+            return ManualResult(recs.map { r -> RecordAck(r.clientUuid, r.type, "duplicate", code, null, "sync.outcome.$code", if (r === memo) taken else null) }, true, false)
+        }
+        if (stored) {
+            ctx.afterCommit.forEach { (_, hd, rec) -> runCatching { hd.afterCommit(rec) }.onFailure { log.warn("afterCommit failed type=${rec.type}", it) } }
+            DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
+            runCatching { db.jdbi.useTransaction<Exception> { h -> DayStates.afterBatch(h, up.userId, ctx.touched, now) } }
+                .onFailure { log.error("day states failed entry_uuid=$entryUuid", it) }
+        }
+        return ManualResult(acksOf(recs, outcomes), false, stored)
     }
+
+    /** Rolls a paper backfill back whole (no stack trace: it is control flow). */
+    private class ManualRollback : RuntimeException(null, null, false, false)
 
     /** Whether the ingest_registry flags CHECK allows `manual_entry` (docs/requests/backend-core-memo-source.md); read once. */
     private val manualFlagAllowed: Boolean by lazy {

@@ -161,14 +161,14 @@ class ManualIngestTest {
         // Children first in one call: the entry point puts parents first.
         val e = paper()
         assertTrue(ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), e.reversed()).acks.all { it.status == "accepted" })
-        // The lines alone first (parent missing, parked), then the whole entry: every row stored once.
+        // A shuffled entry is stored whole; lines alone (aimed at a stored memo, no route) are refused (checker B2).
         val s = paper()
-        val lines = ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), s.drop(2))
-        assertEquals(listOf("rejected", "rejected"), lines.acks.map { it.status }, lines.acks.toString())
-        assertEquals(listOf("parent_missing", "parent_missing"), lines.acks.map { it.code })
         val whole = ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), s.shuffled())
-        assertTrue(whole.acks.all { it.status == "accepted" }, whole.acks.toString())
+        assertTrue(whole.stored && whole.acks.all { it.status == "accepted" }, whole.acks.toString())
         assertEquals(2, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${memoUuid(s)}'"))
+        val extra = JsonObject(s[3] + ("client_uuid" to JsonPrimitive(uuid())) + ("payload" to JsonObject((s[3]["payload"] as JsonObject) + ("line_no" to JsonPrimitive(9)))))
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), listOf(extra, JsonObject(extra - "route_id"), extra)) }.code)
+        assertEquals(2, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${memoUuid(s)}'"), "nothing appended to the stored memo")
     }
 
     @Test
@@ -219,6 +219,14 @@ class ManualIngestTest {
         val old = paper(memoNo = "sr1001-261222-${seq.incrementAndGet()}", bd = "2026-12-22")
         val r = ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), old)
         assertEquals("quarantined|business_date_out_of_window", r.acks[1].status + "|" + r.acks[1].code, r.acks.toString())
+        assertTrue(!r.stored)
+        assertEquals(0, count("SELECT count(*) FROM app.visit WHERE client_uuid = '${(old[0]["client_uuid"] as JsonPrimitive).content}'"), "all or nothing: no visit left behind")
+        // A future date is out of window too.
+        val future = paper(memoNo = "sr1001-270104-${seq.incrementAndGet()}", bd = "2027-01-04")
+        assertTrue(!ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), future).stored)
+        // An inactive SR is refused.
+        val sr2 = count("INSERT INTO app.app_user (username, full_name, role, password_hash, status) VALUES ('srgone', 'Gone', 'SR', 'x', 'disabled') RETURNING id")
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ingest.ingestManual(web(admin, Role.ADMIN), sr2, uuid(), paper()) }.code)
         // Inside the window (2 days back): stored.
         val back = paper(memoNo = "sr1001-270101-${seq.incrementAndGet()}", bd = "2027-01-01")
         assertTrue(ingest.ingestManual(web(admin, Role.SUPPORT), sr, uuid(), back).acks.all { it.status == "accepted" })
@@ -233,5 +241,43 @@ class ManualIngestTest {
         assertEquals("quarantined|payload_conflict", r.acks[1].status + "|" + r.acks[1].code)
         assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${memoUuid(e)}'"))
         assertEquals("0", str("SELECT due_mtk::text FROM app.memo WHERE client_uuid = '${memoUuid(e)}'"), "the first copy stands")
+    }
+
+    /** Checker B1: one memo per entry, its stated line count, its money, every SKU known; anything else stores nothing. */
+    @Test
+    fun theWholeMemoIsJudgedTogetherAndNothingIsLeftBehind() {
+        val a = paper(); val b = paper()
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), a + b) }.code, "two memos")
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), a.dropLast(1)) }.code, "line_count 2, one line sent")
+        // Gross that the lines do not back: quarantined, and the visit is not stored either.
+        val c = paper()
+        val wrong = c.mapIndexed { i, r -> if (i == 1) JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("gross_mtk" to JsonPrimitive(1)) + ("net_mtk" to JsonPrimitive(1)) + ("paid_mtk" to JsonPrimitive(1))))) else r }
+        val w = ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), wrong)
+        assertTrue(!w.stored && w.acks.any { it.code == "arithmetic_mismatch" }, w.acks.toString())
+        assertEquals(0, count("SELECT count(*) FROM app.visit WHERE client_uuid = '${(c[0]["client_uuid"] as JsonPrimitive).content}'"))
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${memoUuid(c)}'"))
+        // An unknown SKU on one line: nothing stored.
+        val d = paper()
+        val unknown = d.mapIndexed { i, r -> if (i == 3) JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("sku_id" to JsonPrimitive(999_999))))) else r }
+        val u = ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), unknown)
+        assertTrue(!u.stored, u.acks.toString())
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${memoUuid(d)}'"))
+        // The corrected entry (same uuids for the good rows, fixed line) then stores.
+        assertTrue(ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), d).stored)
+    }
+
+    /** Checker B3: two keyings of one printed number at once store one memo and leave no orphan visit. */
+    @Test
+    fun concurrentKeyingsOfOneNumberStoreOnce() {
+        val no = "sr1001-270103-${seq.incrementAndGet()}"
+        val entries = List(4) { paper(memoNo = no) }
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+        val results = entries.map { e -> pool.submit<IngestService.ManualResult> { ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), e) } }.map { it.get() }
+        pool.shutdown()
+        assertEquals(1, results.count { it.stored }, results.toString())
+        assertEquals(3, results.count { it.duplicateMemoNo })
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE memo_no = '$no'"))
+        val visits = entries.joinToString(",") { "'" + (it[0]["client_uuid"] as JsonPrimitive).content + "'" }
+        assertEquals(1, count("SELECT count(*) FROM app.visit WHERE client_uuid IN ($visits)"), "no orphan visit")
     }
 }
