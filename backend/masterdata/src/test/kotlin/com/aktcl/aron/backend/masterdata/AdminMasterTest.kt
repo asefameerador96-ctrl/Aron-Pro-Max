@@ -228,6 +228,8 @@ class AdminMasterTest {
         assertEquals(HttpStatusCode.OK, r1.status)
         val item = r1.objA1().arr("items").map { it as kotlinx.serialization.json.JsonObject }.first { it.strA1("code") == "fault_seal" }
         assertEquals("MFC", (item.getValue("attrs") as kotlinx.serialization.json.JsonObject).strA1("group"))
+        // Contract v1.3 (R20): every item carries its read-only id; a PUT that sends an id ignores it (items are matched by code).
+        assertEquals(env.sql("SELECT id FROM app.code_list_item WHERE code = 'fault_seal'"), item.lng("id").toString())
         assertEquals(versions0 + 1, env.count("SELECT count(*) FROM app.cfg_version WHERE kind = 'content'"))
         assertEquals(1, env.audit("code_list", "qc_fault_type", "put"))
         // The same request replayed changes nothing: no new audit row, no new config version.
@@ -236,7 +238,7 @@ class AdminMasterTest {
         assertEquals(1, env.audit("code_list", "qc_fault_type", "put"))
         assertEquals(versions0 + 1, env.count("SELECT count(*) FROM app.cfg_version WHERE kind = 'content'"))
         // Labels are editable; the code and valid_from are not; retire with valid_to.
-        val edit = sendA1(HttpMethod.Put, "/admin/code-lists/qc_fault_type", admin, """{"items":[{"code":"fault_seal","label_en":"Seal broken","sort":11,"valid_to":"${env.today.plusDays(10)}"}],"change_reason":"Rename and retire later"}""")
+        val edit = sendA1(HttpMethod.Put, "/admin/code-lists/qc_fault_type", admin, """{"items":[{"id":999999,"code":"fault_seal","label_en":"Seal broken","sort":11,"valid_to":"${env.today.plusDays(10)}"}],"change_reason":"Rename and retire later"}""")
         assertEquals(HttpStatusCode.OK, edit.status)
         assertEquals("Seal broken", env.sql("SELECT label_en FROM app.code_list_item WHERE code = 'fault_seal'"))
         assertEquals("সিল ভাঙা", env.sql("SELECT label_bn FROM app.code_list_item WHERE code = 'fault_seal'"))
