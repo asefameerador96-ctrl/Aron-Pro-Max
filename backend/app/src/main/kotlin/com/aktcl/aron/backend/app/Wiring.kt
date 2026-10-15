@@ -52,6 +52,8 @@ import com.aktcl.aron.backend.masterdata.DataVoidDeps
 import com.aktcl.aron.backend.masterdata.dataVoidRoutes
 import com.aktcl.aron.backend.masterdata.EntryUnlockDeps
 import com.aktcl.aron.backend.masterdata.entryUnlockRoutes
+import com.aktcl.aron.backend.masterdata.DuesAdjustmentDeps
+import com.aktcl.aron.backend.masterdata.duesAdjustmentRoutes
 import com.aktcl.aron.backend.masterdata.WebEntryDeps
 import com.aktcl.aron.backend.masterdata.webEntryRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
@@ -281,6 +283,7 @@ class Wiring(
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
                 dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
                 entryUnlockRoutes(EntryUnlockDeps(db, reach, config, guard, clock))
+                duesAdjustmentRoutes(DuesAdjustmentDeps(db, reach, guard, clock))
                 webEntryRoutes(WebEntryDeps(db, reach, config, guard, clock))
                 adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
                 adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock, config = config))
