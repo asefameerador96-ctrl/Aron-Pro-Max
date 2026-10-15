@@ -136,6 +136,29 @@ class AdminUsersRoutesTest {
     }
 
     @Test
+    fun putScopeNodeValidToIsAnExclusiveEndReturnedOnReadAndEditableOnReplace() = env.app {
+        val u = (sendA1(HttpMethod.Post, "/admin/users", admin, userBody("scoped02", "DMO")).objA1()["user"] as JsonObject).lng("id")
+        val terr = env.sql("SELECT id FROM app.territory WHERE code = 'T-DHK-N'")
+        val end = env.today.plusDays(10)
+        fun body(to: String?) = """{"valid_from":"${env.today}","nodes":[{"node_type":"territory","node_id":$terr${to?.let { ""","valid_to":$it""" } ?: ""}}],"change_reason":"Temporary cover until the end date"}"""
+        val r1 = sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"$end\""))
+        assertEquals(HttpStatusCode.OK, r1.status)
+        assertEquals("$end", (r1.objA1().arr("nodes").single() as JsonObject).strA1("valid_to"))
+        assertEquals("$end", env.sql("SELECT upper(daterange(valid_from, valid_to, '[)'))::text FROM app.user_scope WHERE user_id = $u"), "exclusive end, as the reach calculator reads it")
+        val sv = scopeVersion(u)
+        assertEquals(r1.objA1(), sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"$end\"")).objA1(), "a replay changes nothing")
+        assertEquals(sv, scopeVersion(u)); assertEquals(1, env.audit("user_scope", u, "put"))
+        // Changing the end date edits the open row; null removes the end.
+        val moved = env.today.plusDays(20)
+        assertEquals("$moved", (sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"$moved\"")).objA1().arr("nodes").single() as JsonObject).strA1("valid_to"))
+        assertNull((sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body(null)).objA1().arr("nodes").single() as JsonObject).strA1("valid_to"))
+        assertEquals("1", env.sql("SELECT count(*) FROM app.user_scope WHERE user_id = $u"))
+        // valid_to must be after valid_from.
+        assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"${env.today}\"")).status)
+        assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"nope\"")).status)
+    }
+
+    @Test
     fun putScopeReplacesFromADateAndAReplayChangesNothing() = env.app {
         val u = (sendA1(HttpMethod.Post, "/admin/users", admin, userBody("scoped01", "DMO")).objA1()["user"] as JsonObject).lng("id")
         val body = """{"valid_from":"${env.today}","nodes":[{"node_type":"territory","node_id":${env.sql("SELECT id FROM app.territory WHERE code = 'T-DHK-N'")}},{"node_type":"zone","node_id":${zone("Z-OTHER")}}],"change_reason":"Cover both territories"}"""
