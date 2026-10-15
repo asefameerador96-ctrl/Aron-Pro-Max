@@ -83,7 +83,7 @@ object QcReport : ReportHandler {
         "qc-report", "QC Report", "sales", "QC line",
         listOf(
             col("business_date", "Date", "date"), col("route_code", "Route", "string"), col("username", "SR", "string"), col("outlet_code", "Outlet code", "string"), col("outlet_name", "Outlet", "string"),
-            col("sku_code", "SKU", "string"), col("fault_type_code", "Fault", "string"), col("fault_group", "QC type", "string"), col("qty_base", "Quantity", "integer"),
+            col("sku_code", "SKU", "string"), col("fault_type_code", "Fault", "string"), col("fault_group", "QC type", "string"), col("source", "Source", "string"), col("qty_base", "Quantity", "integer"),
             col("unit_price_mtk", "Unit price", "mtk", unit = "mtk"), col("settlement_mtk", "Settlement", "mtk", unit = "mtk"), col("applied_to_memo", "Applied to memo", "bool"),
         ),
         listOf("period", "geo", "category", "product_type", "products"),
@@ -93,7 +93,7 @@ object QcReport : ReportHandler {
         val (prod, binds) = productClause(ctx, "p")
         return SqlSpec(
             """
-            SELECT l.business_date, g.route_code, u.username, o.outlet_code, o.outlet_name, p.sku_code, l.fault_type_code, l.fault_group, l.qty_base, l.unit_price_mtk, l.settlement_mtk, l.applied_to_memo
+            SELECT l.business_date, g.route_code, u.username, o.outlet_code, o.outlet_name, p.sku_code, l.fault_type_code, l.fault_group, CASE l.fault_group WHEN 'MKT' THEN 'market' ELSE 'warehouse' END AS source, l.qty_base, l.unit_price_mtk, l.settlement_mtk, l.applied_to_memo
               FROM app.qc_entry_line l JOIN app.qc_entry e ON e.id = l.qc_entry_id JOIN dw.dim_geo g ON g.route_id = l.route_id JOIN app.app_user u ON u.id = l.user_id
               JOIN dw.dim_outlet o ON o.outlet_id = e.outlet_id JOIN dw.dim_product p ON p.sku_id = l.sku_id
              WHERE ${qcScope(ctx)} AND $prod

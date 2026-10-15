@@ -155,7 +155,9 @@ class ReportEngine(
         return query(h, "SELECT count(*) FROM $from", ctx, spec).mapTo(Int::class.java).one()
     }
 
-    fun json(h: Handle, key: String, ctx: ReportContext): ReportResult {
+    fun json(h: Handle, key: String, ctx: ReportContext): ReportResult = jsonUncharged(h, key, ctx).also { if (readsPii(key, ctx)) chargeListRead(ctx, it.rows.size) }
+
+    private fun jsonUncharged(h: Handle, key: String, ctx: ReportContext): ReportResult {
         val handler = handler(key); val def = handler.definition; val q = ctx.query
         val (from, spec) = wrapped(handler, ctx)
         val total = count(h, key, ctx)
@@ -211,6 +213,71 @@ class ReportEngine(
             put("scope", auditScope(ctx.zoneIds == null, ctx.zoneIds, ctx.routeIds))
         }
         AuditLog.write(h, ctx.principal, "report_export", exportId, "export.$format", null, after, null, requestId, via = "api")
+    }
+
+    /** True when the result would carry unmasked personal columns to this caller. */
+    fun readsPii(key: String, ctx: ReportContext): Boolean = ctx.pii && handler(key).definition.columns.any { it.pii }
+
+    private fun scopeHash(ctx: ReportContext): String = java.security.MessageDigest.getInstance("SHA-256")
+        .digest("${ctx.zoneIds?.sorted()}|${ctx.routeIds?.sorted()}".toByteArray()).joinToString("") { "%02x".format(it) }
+
+    /** One row of `app.report_export` (the export log, F-SYS-058 / AUD-DA-05): [status] `done` for a synchronous export, `queued` for a job. */
+    fun recordExport(h: Handle, exportId: String, key: String, format: String, ctx: ReportContext, rows: Int?, status: String) {
+        h.createUpdate(
+            """
+            INSERT INTO app.report_export (export_id, report_key, user_id, format, status, filters, scope_hash, row_count, pii_included, finished_at, created_at)
+            VALUES (CAST(:id AS uuid), :key, :uid, :fmt, :st, CAST(:f AS jsonb), :sh, :rows, :pii, CASE WHEN :st = 'done' THEN :now END, :now)
+            ON CONFLICT (export_id) DO NOTHING
+            """,
+        ).bind("id", exportId).bind("key", key).bind("uid", ctx.principal.userId).bind("fmt", format).bind("st", status)
+            .bind("f", kotlinx.serialization.json.Json.encodeToString(ReportQuery.serializer(), ctx.query)).bind("sh", scopeHash(ctx))
+            .bind("rows", rows).bind("pii", readsPii(key, ctx)).bind("now", OffsetDateTime.ofInstant(clock.now(), java.time.ZoneOffset.UTC)).execute()
+    }
+
+    // ---------------- PII read budgets (F-SYS-058, docs/21 s4.5) ----------------
+
+    private fun hourlyLimit(h: Handle, role: com.aktcl.aron.contract.Role): Int =
+        h.createQuery(
+            """
+            SELECT (v.value #>> '{}')::int FROM app.cfg_value v JOIN app.role_def r ON r.ordinal = v.scope_id
+             WHERE v.key = 'cfg.pii.list_rows_per_hour' AND v.scope_type = 'role' AND r.role = :role AND v.superseded_in_version IS NULL AND v.effective_from <= :now
+             ORDER BY v.config_version DESC LIMIT 1
+            """,
+        ).bind("role", role.wire).bind("now", OffsetDateTime.ofInstant(clock.now(), java.time.ZoneOffset.UTC)).mapTo(Int::class.java).findOne().orElse(null)
+            ?: runCatching { config.int("cfg.pii.list_rows_per_hour") }.getOrDefault(2000)
+
+    private fun tooMany(what: String, retryAfterS: Long): Nothing =
+        throw ApiProblem(ProblemCode.ERR_RATE_LIMITED, what, retryAfterS = retryAfterS.coerceIn(1, 86_400).toInt(), headers = mapOf("Retry-After" to retryAfterS.coerceAtLeast(1).toString()))
+
+    /**
+     * Counts [rows] unmasked personal rows against the caller's clock-hour budget (`cfg.pii.list_rows_per_hour`, a role value for the TSO). Atomic:
+     * a read that would pass the limit is refused with 429 and not counted, so a refused read does not eat the budget.
+     */
+    fun chargeListRead(ctx: ReportContext, rows: Int) {
+        if (rows <= 0) return
+        val now = clock.now(); val hour = OffsetDateTime.ofInstant(now.truncatedTo(java.time.temporal.ChronoUnit.HOURS), java.time.ZoneOffset.UTC)
+        val ok = db.jdbi.inTransaction<Boolean, Exception> { h ->
+            val limit = hourlyLimit(h, ctx.principal.role)
+            rows <= limit && h.createQuery(
+                """
+                INSERT INTO app.pii_read_budget (user_id, hour_start, rows_read) VALUES (:u, :h, :n)
+                ON CONFLICT (user_id, hour_start) DO UPDATE SET rows_read = app.pii_read_budget.rows_read + :n WHERE app.pii_read_budget.rows_read + :n <= :lim
+                RETURNING rows_read
+                """,
+            ).bind("u", ctx.principal.userId).bind("h", hour).bind("n", rows).bind("lim", limit).mapTo(Int::class.java).findOne().isPresent
+        }
+        if (!ok) tooMany("hourly limit of personal-data rows reached", java.time.Duration.between(now, hour.toInstant().plusSeconds(3600)).seconds)
+    }
+
+    /** `cfg.pii.export_rows_per_day`: rows exported with personal columns by this user since the Dhaka midnight, plus [rows], must stay within the limit. */
+    fun checkExportBudget(h: Handle, ctx: ReportContext, rows: Int) {
+        val limit = runCatching { config.int("cfg.pii.export_rows_per_day") }.getOrDefault(5000)
+        val now = clock.now()
+        val dhakaDay = now.atZone(java.time.ZoneId.of("Asia/Dhaka")).toLocalDate()
+        val startOfDay = dhakaDay.atStartOfDay(java.time.ZoneId.of("Asia/Dhaka")).toInstant()
+        val used = h.createQuery("SELECT coalesce(sum(coalesce(row_count, 0)), 0)::bigint FROM app.report_export WHERE user_id = :u AND pii_included AND status <> 'failed' AND created_at >= :s")
+            .bind("u", ctx.principal.userId).bind("s", OffsetDateTime.ofInstant(startOfDay, java.time.ZoneOffset.UTC)).mapTo(Long::class.java).one()
+        if (used + rows > limit) tooMany("daily limit of exported personal-data rows reached", java.time.Duration.between(now, startOfDay.plusSeconds(86_400)).seconds)
     }
 
     private fun filtersText(q: ReportQuery): String = kotlinx.serialization.json.Json.encodeToString(ReportQuery.serializer(), q.copy(output = q.output.copy(sort = emptyList()))).take(1900)

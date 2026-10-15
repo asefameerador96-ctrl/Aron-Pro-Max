@@ -295,5 +295,5 @@ object ReportHandlers {
     val all: List<ReportHandler> = listOf(RouteMemoReport, StdMemoReport, SrEfficiencyReport, RouteStdReport, RouteBsrCprReport, ByOutletReport, ByOutletByDayReport, OnlineOfflineReport, TaskPlannerReport, ByRouteGeoCaptureReport, MemoNumberGapsReport, SuspiciousLocationReport,
         DataEntryLogReport, FinalSubmitLogReport, FinalSubmitStatusReport, GigoReport, DssReport, DsRrsReport, TsoTopSheetReport, DailyTrackingReport, LeaderboardReport,
         AmoCallReport, SrOutletsReport, DiscountReport, FreeSampleReport, SalesSummaryReport,
-        QcReport, SettlementReport, RouteQcReport)
+        QcReport, SettlementReport, RouteQcReport, RetailerListReport, SkuListReport, GeofenceCalibrationReport)
 }

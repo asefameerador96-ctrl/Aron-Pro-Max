@@ -44,7 +44,7 @@ fun interface ExportJobs {
 
 class ReportDeps(
     val db: Database, val engine: ReportEngine, val reach: ReachResolver, val guard: AuthGuardDeps,
-    val clock: AronClock = AronClock.SYSTEM, val jobs: ExportJobs = ExportJobs.UNAVAILABLE,
+    val clock: AronClock = AronClock.SYSTEM, val jobs: ExportJobs = ExportJobs.UNAVAILABLE, val exportService: ExportJobService? = null,
 )
 
 private val XLSX = ContentType.parse("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -72,6 +72,7 @@ fun Route.reportRoutes(d: ReportDeps) {
                 if (format == "json") return@withHandle d.engine.json(h, key, ctx)
                 val rows = d.engine.count(h, key, ctx)
                 if (rows > d.engine.exportMaxRows()) throw ApiProblem(ProblemCode.ERR_REPORT_TOO_LARGE, "the report has $rows rows; narrow the filters")
+                if (d.engine.readsPii(key, ctx)) d.db.readJdbi.withHandle<Unit, Exception> { b -> d.engine.checkExportBudget(b, ctx, rows) }
                 val exportId = UUID.randomUUID().toString()
                 val def = handler.definition
                 val cols = d.engine.visibleColumns(def, ctx.pii)
@@ -85,14 +86,14 @@ fun Route.reportRoutes(d: ReportDeps) {
                     format == "xlsx" -> {
                         val all = ArrayList<Map<String, JsonElement>>(rows)
                         d.engine.stream(h, key, ctx) { all += it }
-                        d.db.jdbi.useHandle<Exception> { w -> d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
+                        d.db.jdbi.useHandle<Exception> { w -> d.engine.recordExport(w, exportId, key, format, ctx, all.size, "done"); d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
                         XlsxBody(ReportOutputs.xlsxBytes(def, cols, all, watermark), "$key-${ctx.from}_${ctx.to}.xlsx")
                     }
                     else -> {   // print: a screen-sized view; bigger sets are xlsx
                         if (rows > d.engine.syncMaxRows()) throw ApiProblem(ProblemCode.ERR_REPORT_TOO_LARGE, "the print view is limited to ${d.engine.syncMaxRows()} rows; narrow the filters or export xlsx")
                         val all = ArrayList<Map<String, JsonElement>>(rows)
                         d.engine.stream(h, key, ctx) { all += it }
-                        d.db.jdbi.useHandle<Exception> { w -> d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
+                        d.db.jdbi.useHandle<Exception> { w -> d.engine.recordExport(w, exportId, key, format, ctx, all.size, "done"); d.engine.logExport(w, exportId, key, format, ctx, all.size, call.requestId) }
                         ReportOutputs.printHtml(def, cols, all.iterator(), watermark).first
                     }
                 }
@@ -117,21 +118,19 @@ fun Route.reportRoutes(d: ReportDeps) {
             fun date(n: String) = q[n]?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value"))) }
             val from = date("from"); val to = date("to")
             val page = d.db.readJdbi.withHandle<ExportLogPage, Exception> { h ->
-                val sql = StringBuilder("SELECT id, entity_id, actor_user_id, actor_username, after, at FROM app.audit_log WHERE entity = 'report_export'")
-                if (userFilter != null) sql.append(" AND actor_user_id = :uid")
-                if (key != null) sql.append(" AND after->>'report_key' = :key")
-                if (from != null) sql.append(" AND business_date >= :from")
-                if (to != null) sql.append(" AND business_date <= :to")
-                if (cursor != null) sql.append(" AND id < :cur")
-                sql.append(" ORDER BY id DESC LIMIT :lim")
+                val sql = StringBuilder("SELECT e.seq, e.export_id::text, e.report_key, e.user_id, u.username, e.format, e.filters::text, coalesce(e.row_count, 0), e.pii_included, e.created_at FROM (SELECT *, row_number() OVER (ORDER BY created_at, export_id) AS seq FROM app.report_export) e JOIN app.app_user u ON u.id = e.user_id WHERE true")
+                if (userFilter != null) sql.append(" AND e.user_id = :uid")
+                if (key != null) sql.append(" AND e.report_key = :key")
+                if (from != null) sql.append(" AND (e.created_at AT TIME ZONE 'Asia/Dhaka')::date >= :from")
+                if (to != null) sql.append(" AND (e.created_at AT TIME ZONE 'Asia/Dhaka')::date <= :to")
+                if (cursor != null) sql.append(" AND e.seq < :cur")
+                sql.append(" ORDER BY e.seq DESC LIMIT :lim")
                 val st = h.createQuery(sql.toString()).bind("lim", limit + 1)
                 userFilter?.let { st.bind("uid", it) }; key?.let { st.bind("key", it) }; from?.let { st.bind("from", it) }; to?.let { st.bind("to", it) }; cursor?.let { st.bind("cur", it) }
                 val rows = st.map { rs, _ ->
-                    val after = Json.parseToJsonElement(rs.getString("after")).jsonObject
-                    rs.getLong("id") to ExportLogEntry(
-                        rs.getString("entity_id"), after.str("report_key"), rs.getLong("actor_user_id"), rs.getString("actor_username"), after.str("format"),
-                        (after["filters"] as? JsonObject)?.toMap() ?: emptyMap(), after["rows"]?.jsonPrimitive?.content?.toInt() ?: 0,
-                        after["pii"]?.jsonPrimitive?.content == "true", rs.getObject("at", java.time.OffsetDateTime::class.java).toInstant().wire(),
+                    rs.getLong(1) to ExportLogEntry(
+                        rs.getString(2), rs.getString(3), rs.getLong(4), rs.getString(5), rs.getString(6),
+                        Json.parseToJsonElement(rs.getString(7)).jsonObject.toMap(), rs.getInt(8), rs.getBoolean(9), rs.getObject(10, java.time.OffsetDateTime::class.java).toInstant().wire(),
                     )
                 }.list()
                 ExportLogPage(rows.take(limit).map { it.second }, if (rows.size > limit) rows[limit - 1].first.toString() else null)
@@ -140,8 +139,10 @@ fun Route.reportRoutes(d: ReportDeps) {
         }
 
         get("/report-exports/{export_id}") {
-            // Job status arrives with F-SYS-064 (asynchronous exports).
-            throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such export job")
+            val p = call.principal
+            val job = d.exportService?.job(call.parameters["export_id"].orEmpty(), p, p.role in ADMIN_VIEWERS)
+                ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such export job")
+            call.respond(job)
         }
     }
 }
