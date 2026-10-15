@@ -44,3 +44,9 @@ F-ADM-046: the master-data hub, the generated entities and the code-list pages c
 ## Device-pending
 - N-045: scan the QR on a factory-reset phone (owner's phone).
 - F-ADM-039 map: needs `NEXT_PUBLIC_MAPS_WEB_KEY` (GitHub secret) to show the real map; N-047 (web-dashboard) will replace the loader in `radius-map.tsx`.
+
+## Later changes (2026-10-15, released by the lead)
+- Design v1 applied to the shared web tokens (`web/src/app/globals.css`, docs/design/tokens.md s2 and s11): page gradient, text, surface, border, status (ink = onContainer) and accent values; `--accent` is accent.text, fills use `--accent-fill`/`--accent-pressed`, `bg-brand-50/100` and `border-brand-*` resolve through tokens. Sunlight theme (needs the user switch) and the `data-glass` stamp from `cfg.app.ui_glass` are not built here.
+- Contrast unit test (`tests/contrast-tokens.test.ts`) and web-dashboard's `css-contrast.test.ts` pass on the new values; axe A/AA passes on all 29 config pages in light and dark; tier A/B/C baselines regenerated.
+- Quality bar (docs/31): Playwright journeys, axe pass, tier screenshots in `web/e2e/config-*.spec.ts` against `web/mock/config.ts` (mock-only rules: rollback applies at once, no freeze window).
+- Known unrelated red: `tests/checker-adm9-price-grid.test.tsx` (web-admin PriceGrid per_base_qty defect test) fails on INT.
