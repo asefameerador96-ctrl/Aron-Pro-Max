@@ -1,5 +1,28 @@
 # backend-admin lane status
 
+## HANDOVER (2026-10-15, session 3, about 300k tokens; next session starts here)
+Lane head 91e385b5 on lane/backend-admin (backend-core 025e0ed and INT merged). Full :backend:app/:masterdata/:config suite: 541 tests, 0 failures. Every row below had its checker (keep the checkers' regression tests).
+
+Done this session (all checked, rows in `backend-admin.csv`, decisions BA-33, BA-34):
+- **F-ADM-036** `/v1/admin/dues-adjustments` (`DuesAdjustments.kt`): ADMIN proposes, SUPERADMIN decides (never the maker), idempotent by client_uuid (replay 201), one ledger row on approval, cap |amount| 1e13 mtk (400 above_max; db CHECK 20040eb7), approval audit carries `balance_after_mtk` / `balance_below_zero`.
+- **SKU image** `image_asset_id` / `image_url` (audit stores the asset id, never the signed URL).
+- **F-API-038** `POST /v1/admin/data-entry` (`PaperBackfill.kt`): server prices qty-only lines, memo_no date and user must match, goes through `IngestService.ingestManual`, `duplicate_memo_no`, audit once per entry. Dark for the owner until backend-reports copies `entry_source` into dw.
+- **Data void** (`DataVoidApi.kt`): refused (409 ERR_DAY_DATA_VOID_NOT_ALLOWED) while an approved dues correction is attached; marks `route_day_agg` dirty (F-SYS-086); `reverseDues` nets late-collection give-backs, untouched-day collections stay as credit (BA-34).
+- **Same memo as backfill** `POST /v1/admin/quarantine/{id}/match-backfill` (`BackfillMatchApi.kt`) on `IngestService.matchBackfill`; audit row `backfill_matched` in the same transaction.
+- Contract duplicate-key fix and slices regenerated (run `python3 tools/slice-contract.py` after every openapi.yaml edit; regenerate web types with `npx openapi-typescript@7.13.0 ../contract/openapi.yaml -o src/contract/openapi.d.ts`; Redocly lint and oasdiff via `tools/ci/install-tool.sh oasdiff <dir>`).
+
+Open / ideas for the next session:
+- Negative `correction` has no balance bound (owner policy pending via the lead). `adjust_approval_mtk` threshold deferred (every correction needs SUPERADMIN).
+- `docs/requests/contract-dues-adjustment-amount-bounds.md` DECLINED, bundle into contract v1.4 if wanted.
+- Known edge BA-34: SR-voided and later data-voided memo with a late collection from another day keeps the give-back net (needs backend-core `DuesLedger` to treat `voided_at` as a closure).
+- A data void can fail as a whole if approved collections push a memo balance above 1e13 (accepted, rare).
+- 503 `ERR_SERVICE_UNAVAILABLE` is not listed on match-backfill (nor on resolveQuarantine); admin roles are all national in `ReachCalculator`, so reach checks on admin endpoints never refuse today.
+- Still open from before: zone-scoped `cfg.web.*` overrides not read; web-entry class keys unchecked; overlap policy treated as exclusive_flag; unlock create not idempotent; remaining RiskRules (PERFECT_ACCURACY, SAME_POINT, STALE_FIX, GNSS_*, SHORT_VISIT_GAPS, DEVICE_*); data-void maker-checker ruling (`docs/requests/backend-admin-data-void-second-person.md`).
+- Queue from the lead: none; ask the lead for the next row.
+
+Traps (new): `service postgresql start` after any pause; local test env is `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&password=postgres` (set a postgres password first: `su postgres -c "psql -c \"ALTER ROLE postgres PASSWORD 'postgres'\""`); `ANDROID_HOME=/opt/android-sdk` after `tools/android-sdk.sh` for android tests; the first gradle run needs network (no `--offline`); never `git add -A` (it embeds `.claude/worktrees/`: use `git add backend docs ...` and keep `.claude/worktrees/` in `.git/info/exclude`); never `git stash` while a Gradle run is going; the stop hook demands a push, so tell the integrator which sha is checked.
+
+
 Updated 2026-10-07 (evening). Local lane tests: config 48, masterdata 105, app 24, all green on the pushed state.
 
 ## Done (built, checked, pushed to INT)
