@@ -438,7 +438,11 @@ class IngestService(
     }
 
     /** What [matchBackfill] did: the paper memo, and the held records it released or left open for their own review. */
-    data class BackfillMatch(val paperMemoId: Long, val paperMemoUuid: String, val released: List<String>, val keptOpen: List<String>)
+    data class BackfillMatch(
+        val paperMemoId: Long, val paperMemoUuid: String, val released: List<String>, val keptOpen: List<String>,
+        /** Step 3: the paper `web_entry` visit voided in favour of the phone visit (null when already voided); the caller's audit row names both. */
+        val voidedPaperVisitUuid: String? = null, val phoneVisitUuid: String? = null,
+    )
 
     /**
      * Release helper of the review action "same memo as backfill" (docs/requests/backend-core-backfill-vs-phone-memo-review.md
@@ -471,7 +475,7 @@ class IngestService(
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 6))", "memo_no:$memoNo:$bd")
             val paper = h.createQuery(
                 """
-                SELECT id, client_uuid::text AS cu, user_id, outlet_id, status, voided_at, entry_source, gross_mtk, offer_discount_mtk, drp_discount_mtk,
+                SELECT id, client_uuid::text AS cu, visit_client_uuid::text AS vcu, user_id, outlet_id, status, voided_at, entry_source, gross_mtk, offer_discount_mtk, drp_discount_mtk,
                        qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, line_count, discount_line_count, qc_line_count
                 FROM app.memo WHERE memo_no = :n AND business_date = :d AND client_uuid <> CAST(:c AS uuid) FOR UPDATE
                 """.trimIndent(),
@@ -527,7 +531,20 @@ class IngestService(
                     log.info("held record stays quarantined client_uuid=${child.clientUuid} memo=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
                 }
             }
-            item.payload.long("route_id")?.let { h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'backfill_matched')", it, bd) }
+            // Step 3 (db-backend-core-visit-supersede.md, V0081): the phone visit carries the geo evidence, so the paper
+            // web_entry visit is voided (tombstone, idempotent) and its registry row turns `voided`, as a data void does.
+            // The paper memo keeps its visit_client_uuid (the memo guard refuses a re-point).
+            val paperVisit = paper["vcu"] as String?
+            val voidedRoute = paperVisit?.let { v ->
+                h.createQuery("UPDATE app.visit SET voided_at = :now WHERE client_uuid = CAST(:v AS uuid) AND business_date = :d AND visit_kind = 'web_entry' AND voided_at IS NULL RETURNING route_id")
+                    .bind("now", ts(now)).bind("v", v).bind("d", bd).mapTo(Long::class.java).findOne().orElse(null)
+            }
+            if (voidedRoute != null) {
+                h.createUpdate("UPDATE app.ingest_registry SET status = 'voided', last_seen_at = :now WHERE client_uuid = CAST(:v AS uuid) AND status = 'accepted'")
+                    .bind("now", ts(now)).bind("v", paperVisit).execute()
+            }
+            (listOfNotNull(item.payload.long("route_id"), voidedRoute)).distinct()
+                .forEach { h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'backfill_matched')", it, bd) }
             DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
             h.savepoint("match_day")
             try {
@@ -537,7 +554,7 @@ class IngestService(
                 if (isTransientDbFailure(e)) throw e
                 h.rollbackToSavepoint("match_day"); log.error("day states failed quarantine_id=$quarantineId", e)
             }
-            BackfillMatch(paperId, paperUuid, released, kept)
+            BackfillMatch(paperId, paperUuid, released, kept, paperVisit.takeIf { voidedRoute != null }, phone.str("visit_client_uuid"))
         }
     }
 

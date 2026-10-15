@@ -426,6 +426,13 @@ class ManualIngestTest {
         assertEquals(listOf("accepted"), upload(listOf(later)).acks.map { it.status })
         assertEquals(paperUuid, str("SELECT memo_client_uuid::text FROM app.due_ledger WHERE source_client_uuid = '${(later["client_uuid"] as JsonPrimitive).content}'"))
         assertEquals(due - 1_500, count("SELECT coalesce(sum(amount_mtk), 0) FROM app.due_ledger WHERE memo_client_uuid = '$paperUuid'"), "the paper memo's balance")
+        // Step 3: the paper web_entry visit is voided for the phone visit (one counted visit); the registry says voided.
+        val paperVisit = (keyed[0]["client_uuid"] as JsonPrimitive).content
+        assertEquals(paperVisit, m.voidedPaperVisitUuid)
+        assertEquals((phone[0]["client_uuid"] as JsonPrimitive).content, m.phoneVisitUuid)
+        assertEquals("true|voided", str("SELECT (v.voided_at IS NOT NULL) || '|' || g.status FROM app.visit v JOIN app.ingest_registry g ON g.client_uuid = v.client_uuid WHERE v.client_uuid = '$paperVisit'"))
+        assertEquals(1, count("SELECT count(*) FROM app.visit WHERE client_uuid = '${(phone[0]["client_uuid"] as JsonPrimitive).content}' AND voided_at IS NULL"))
+        assertEquals(paperVisit, str("SELECT visit_client_uuid::text FROM app.memo WHERE client_uuid = '$paperUuid'"), "the memo keeps its visit")
         // Matching again is a state conflict.
         assertEquals(ProblemCode.ERR_REQUEST_STATE, assertFailsWith<ApiProblem> { ingest.matchBackfill(item, admin, "again") }.code)
     }
