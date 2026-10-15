@@ -14,6 +14,7 @@ import com.aktcl.aron.backend.platform.principal
 import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
+import com.aktcl.aron.contract.RiskSignalCode
 import com.aktcl.aron.rules.BusinessDate
 import io.ktor.http.Parameters
 import io.ktor.server.response.respond
@@ -88,11 +89,8 @@ internal data class RiskQuery(
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val CURSOR = Regex("^[A-Za-z0-9_-]{1,512}$")
         val STATUSES = setOf("open", "reviewed", "dismissed", "confirmed")
-        val CODES = setOf(
-            "GEO_MOCK", "GEO_TELEPORT", "GEO_ZERO_JITTER", "GEO_PERFECT_ACCURACY", "GEO_SAME_POINT", "GEO_ROUTE_SINGLE_POINT", "GEO_STALE_FIX",
-            "GEO_GNSS_INCONSISTENT", "GEO_GNSS_TIME_SKEW", "GEO_DEVICE_SERVER_MISMATCH", "GEO_SHORT_VISIT_GAPS", "DEVICE_NOT_OWNER", "DEVICE_INTEGRITY_FAIL",
-            "DEVICE_DEBUG_ENABLED", "DEVICE_MOCK_APP_PRESENT", "DEVICE_POLICY_DRIFT", "CLOCK_SKEW", "GEO_OUT_OF_BOUNDS", "CONFIG_STAMP_REGRESS",
-        )
+        /** The server's own catalogue (contract `RiskSignalCode`, x-extensible-enum since 1.3.1). */
+        val CODES = RiskSignalCode.entries.map { it.wire }.toSet()
 
         private fun bad(field: String, code: String = "invalid_value"): Nothing =
             throw ApiProblem(ProblemCode.ERR_VALIDATION, "invalid $field", errors = listOf(FieldError("query.$field", code)))

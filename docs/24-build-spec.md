@@ -1236,6 +1236,7 @@ Signals are computed by the worker from fixes, visits and status reports of one 
 | `CLOCK_SKEW` | `captured_at` differs from the server-derived instant by > 10 min, or auto time off | `cfg.sync.max_clock_skew_min` | 2 | 10 |
 | `GEO_OUT_OF_BOUNDS` | a fix outside the Bangladesh bounding box (lat 20.5 to 26.7, lng 88.0 to 92.7) | — | 3 | 40 |
 | `CONFIG_STAMP_REGRESS` | a device stamps a third row with a config version below one it had already received (FS-34) | — | 2 | 20 |
+| `MEMO_DUPLICATE_SUSPECT` | a paper memo keyed on the web (`entry_source = manual`) has the same outlet, gross and business date as another live memo under a different memo number (flag, never a block; subject the newer memo) | — | 2 | 30 |
 
 The weights are the default of `cfg.geo.integrity_weight`. Thresholds are read at evaluation time; a change applies to signals computed after it and the evidence records which version was used.
 

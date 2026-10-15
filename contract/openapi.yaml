@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.3.0
+  version: 1.3.1
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -5279,8 +5279,11 @@ components:
       enum: [write_debounce, foreground, connectivity, workmanager_connectivity, periodic, manual, day_submit, checkout, resync, digest_resend, directive]
     RiskSignalCode:
       type: string
-      description: Risk signal catalogue (docs/24 s11.4).
-      enum: [GEO_MOCK, GEO_TELEPORT, GEO_ZERO_JITTER, GEO_PERFECT_ACCURACY, GEO_SAME_POINT, GEO_ROUTE_SINGLE_POINT, GEO_STALE_FIX, GEO_GNSS_INCONSISTENT, GEO_GNSS_TIME_SKEW, GEO_DEVICE_SERVER_MISMATCH, GEO_SHORT_VISIT_GAPS, DEVICE_NOT_OWNER, DEVICE_INTEGRITY_FAIL, DEVICE_DEBUG_ENABLED, DEVICE_MOCK_APP_PRESENT, DEVICE_POLICY_DRIFT, CLOCK_SKEW, GEO_OUT_OF_BOUNDS, CONFIG_STAMP_REGRESS]
+      description: |
+        Risk signal catalogue (docs/24 s11.4). Extensible (contract 1.3.1, docs/requests/contract-risk-signal-extensible-enum.md):
+        the server may add codes without a new contract version, so every client must accept a code it does not know
+        (show it by its code, never fail the response or the bundle).
+      x-extensible-enum: [GEO_MOCK, GEO_TELEPORT, GEO_ZERO_JITTER, GEO_PERFECT_ACCURACY, GEO_SAME_POINT, GEO_ROUTE_SINGLE_POINT, GEO_STALE_FIX, GEO_GNSS_INCONSISTENT, GEO_GNSS_TIME_SKEW, GEO_DEVICE_SERVER_MISMATCH, GEO_SHORT_VISIT_GAPS, DEVICE_NOT_OWNER, DEVICE_INTEGRITY_FAIL, DEVICE_DEBUG_ENABLED, DEVICE_MOCK_APP_PRESENT, DEVICE_POLICY_DRIFT, CLOCK_SKEW, GEO_OUT_OF_BOUNDS, CONFIG_STAMP_REGRESS, MEMO_DUPLICATE_SUSPECT]
     RiskSignalStatus:
       type: string
       enum: [open, reviewed, dismissed, confirmed]
