@@ -159,6 +159,10 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
 - `V0081` (lead, T1): a paper web_entry visit matched to the phone's memo is superseded with the existing data-void
   tombstone `app.visit.voided_at` (no new column); `docs/requests/db-backend-core-visit-supersede.md` gives
   `matchBackfill` the UPDATE (RETURNING route_id for the dirty key), the registry status and the audit fields.
+- `V0082`/`V0083` (answers `backend-reports-db-entered-by.md`; lead row 13:40): `dw.fact_memo`/`fact_visit.entered_by_user_id`
+  (one-way CHECK: device rows name no web user; the reverse is not enforced until the projector copies the column),
+  `dw.fact_supervisor_day` (unpartitioned, no role CHECK so re-roled users still rebuild), dirty kind
+  `supervisor_day_agg` (callers of app.mark_dirty enqueue it; no trigger). backend 788/0, db 246/0 + rerun 11/0.
 - Checks: backend 788/0 and db 243/0 on V0079-V0081, changed classes rerun green after checker fixes; squawk ok.
 - Checks: db classes 152/0 after the last fixes (full db 240 with 2 test bugs, fixed), backend 781/0, squawk ok;
   Opus checker per batch (V0074 one should-fix closed; V0077 PASS, test fixes applied).
