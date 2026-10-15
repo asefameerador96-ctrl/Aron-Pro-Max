@@ -82,7 +82,7 @@ internal class AdminHarness : AutoCloseable {
             val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, base)
             routing {
                 route("/v1") {
-                    adminProductsRoutes(AdminProductsDeps(env.fresh.db, guard))
+                    adminProductsRoutes(AdminProductsDeps(env.fresh.db, guard, blob = FakeBlob()))
                     adminPricesRoutes(AdminPricesDeps(env.fresh.db, priceConfig, guard, requirePreview = requirePreview))
                 }
             }
