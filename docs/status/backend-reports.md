@@ -1,6 +1,6 @@
 # backend-reports lane status
 
-Updated 2026-10-07.
+Updated 2026-10-15. Released by the lead; wall-clock test offenders fixed (scan: 0 in analytics); audit writes now go through `AuditLog.write` (tracking action, quarantine resolve, report export) with the actor and `after.scope` recorded and tested.
 
 ## Done (pushed to INT)
 - **F-SYS-015** aggregation worker: outbox projector (gap-safe), dirty-key claim/lease, route-day and zone-day rebuilds, facts, SKU/brand/outlet/hourly aggregates. Opus checker found 4 defects, all fixed with tests. Wired into `ARON_ROLE=worker`.
