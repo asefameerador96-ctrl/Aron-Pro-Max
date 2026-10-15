@@ -342,7 +342,7 @@ class QuarantineAcceptTest {
         app()
         val t = client.token()
         val good = saleFamily()
-        val bad = saleFamily(priceDelta = 1_000_000_000_000) // lines of 2*10^13 and a memo of 3*10^13 milli-taka
+        val bad = saleFamily(priceDelta = 1_000_000_000_000, dueMtk = 20_000_000_000_000) // lines of 2*10^13, a credit memo of 3*10^13 with 2*10^13 due (the ledger's memo_due)
         val body = batch(good + bad)
         val first = json(client.send(t, body).bodyAsText())
         fun outcomes(r: JsonObject) = r["acks"]!!.jsonArray.map { a -> a.jsonObject["status"]!!.jsonPrimitive.content + ":" + (a.jsonObject["code"]?.jsonPrimitive?.contentOrNull ?: "-") }
