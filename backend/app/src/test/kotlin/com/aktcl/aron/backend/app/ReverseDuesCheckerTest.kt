@@ -163,7 +163,7 @@ class ReverseDuesCheckerTest {
         collectionRow(c, "2026-12-31", memo, 30_000)
         ledger("collection", "2026-12-31", -30_000, memo, c)
         assertEquals(HttpStatusCode.OK, client.void(admin, "2026-12-30").status)
-        assertEquals(0, memoSum(memo), "after the memo-day void")
+        assertEquals(-30_000, memoSum(memo), "after the memo-day void the day-2 cash stays as a credit (policy: cash of an untouched day is real and independent of upload order)")
         assertEquals(HttpStatusCode.OK, client.void(admin, "2026-12-31").status)
         assertEquals(0, memoSum(memo), "after the collection-day void the dead memo still nets to zero")
         assertEquals(base, outletSum())
