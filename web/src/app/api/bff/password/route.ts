@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { authenticate, problemResponse } from "@/lib/api/guard";
+import { clientIpHeaders } from "@/lib/api/client-ip";
 import { rawRequest } from "@/lib/api/raw";
+import { RT_COOKIE } from "@/lib/auth/cookies";
 import { MAX_LENGTH, checkPasswords, isValid } from "@/lib/auth/password-policy";
 
 const body = z.object({ current_password: z.string().min(1).max(MAX_LENGTH), new_password: z.string().min(1).max(MAX_LENGTH) }).strict();
@@ -14,7 +16,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!p.success) return auth.finish(problemResponse(400, "ERR_VALIDATION"));
   const check = checkPasswords(p.data.current_password, p.data.new_password, p.data.new_password);
   if (!isValid(check)) return auth.finish(problemResponse(400, "ERR_AUTH_PASSWORD_POLICY"));
-  const r = await rawRequest<undefined>({ method: "POST", path: "/v1/auth/change-password", token: auth.session.at, body: p.data });
+  const r = await rawRequest<undefined>({ method: "POST", path: "/v1/auth/change-password", token: auth.session.at, body: p.data, headers: clientIpHeaders((n) => req.headers.get(n), crypto.randomUUID()), ...(auth.rt ? { cookie: `${RT_COOKIE}=${auth.rt}` } : {}) });
   if (!r.ok) return auth.finish(NextResponse.json(r.problem, { status: r.status, headers: { "Content-Type": "application/problem+json" } }));
   return auth.finish(NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } }));
 }

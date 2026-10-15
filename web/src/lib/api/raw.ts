@@ -10,6 +10,10 @@ export interface RawRequest {
   query?: Record<string, string | number | undefined>;
   body?: unknown;
   ifMatch?: string;
+  /** Extra request headers (for example the signed client IP, which carries its own X-Request-Id). */
+  headers?: Record<string, string>;
+  /** A `Cookie` header to forward (the BFF's own aron_rt on change-password, so that session's family survives). */
+  cookie?: string;
 }
 
 export async function rawRequest<T>(req: RawRequest): Promise<ApiOutcome<T>> {
@@ -18,6 +22,8 @@ export async function rawRequest<T>(req: RawRequest): Promise<ApiOutcome<T>> {
   const headers: Record<string, string> = { Authorization: `Bearer ${req.token}`, Accept: "application/json", "X-Request-Id": crypto.randomUUID() };
   if (req.body !== undefined) headers["Content-Type"] = "application/json";
   if (req.ifMatch) headers["If-Match"] = req.ifMatch;
+  if (req.cookie) headers.Cookie = req.cookie;
+  Object.assign(headers, req.headers);
   let response: Response;
   try {
     response = await fetch(url, { method: req.method, headers, body: req.body === undefined ? undefined : JSON.stringify(req.body), cache: "no-store" });
