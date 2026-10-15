@@ -430,6 +430,43 @@ class ManualIngestTest {
         assertEquals(ProblemCode.ERR_REQUEST_STATE, assertFailsWith<ApiProblem> { ingest.matchBackfill(item, admin, "again") }.code)
     }
 
+    /** Checker B2: an edit of the phone memo held behind it is stored with its own lines after the match. */
+    @Test
+    fun aHeldEditOfTheMatchedPhoneMemoKeepsItsLines() {
+        val device = fresh.db.jdbi.withHandle<Pair<Long, String>, Exception> { h ->
+            h.createQuery("SELECT id, device_uuid::text FROM app.device ORDER BY id LIMIT 1").map { rs, _ -> rs.getLong(1) to rs.getString(2) }.one()
+        }
+        fun phoneOf(e: List<JsonObject>) = e.map { r ->
+            if ((r["type"] as JsonPrimitive).content == "visit") JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("visit_kind" to JsonPrimitive("sr_call")) + ("geo" to json(
+                """{"verdict":"in_range","distance_m":10,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}""",
+            )) + ("fix" to json(
+                """{"purpose":"visit_open","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                   "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}""",
+            ))))) else r
+        }
+        fun upload(recs: List<JsonObject>) = ingest.ingest(Uploader(sr, Role.SR, 1, device.first, device.second, null), SyncBatchRequest(
+            batch_uuid = uuid(), device_uuid = device.second, schema_version = 1, app_version = "1.0.9+9", trigger = "manual",
+            sent_at_device = now.toString(), pending_rows = 0, time_anchors = emptyList(), device_counts = emptyMap(), records = recs,
+        ))
+        val outlet = count("SELECT id FROM app.outlet WHERE route_id = $routeId AND status = 'active' ORDER BY id DESC OFFSET 2 LIMIT 1")
+        val keyed = paper(outlet = outlet)
+        assertTrue(ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), keyed).stored)
+        val phone = phoneOf(paper(memoNo = memoNo(keyed), outlet = outlet))
+        // The SR edited the held memo on the phone: a new number superseding it, with its own two lines.
+        val edit = phoneOf(paper(outlet = outlet)).map { r ->
+            if ((r["type"] as JsonPrimitive).content != "memo") r
+            else JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + mapOf("supersedes_client_uuid" to JsonPrimitive(memoUuid(phone)), "edit_reason_code" to JsonPrimitive("wrong_quantity")))))
+        }
+        upload(phone)
+        val held = upload(edit)
+        assertEquals(listOf("accepted", "quarantined", "quarantined", "quarantined"), held.acks.map { it.status }, held.acks.toString())
+        val m = ingest.matchBackfill(count("SELECT id FROM app.sync_quarantine WHERE client_uuid = '${memoUuid(phone)}'"), admin, "same printed memo, then edited")
+        assertEquals(emptyList(), m.keptOpen, m.toString())
+        assertEquals(2, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${memoUuid(edit)}'"), "the edit keeps its lines")
+        assertEquals("superseded", str("SELECT status FROM app.memo WHERE client_uuid = '${memoUuid(keyed)}'"), "the edit supersedes the paper memo")
+        assertEquals(0, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${memoUuid(phone)}'"))
+    }
+
     private var outletFor = 0L
     private fun outletOf(@Suppress("UNUSED_PARAMETER") memo: String) = outletFor.toString()
 }

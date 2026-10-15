@@ -424,10 +424,13 @@ class IngestService(
         val field = MEMO_ALIAS_FIELDS[type] ?: return env
         val p = env["payload"] as? JsonObject ?: return env
         val target = p.str(field)?.takeIf { UUID_V4.matches(it) } ?: return env
+        // A match in flight holds the memo's registry row: wait for it, so a collection sent meanwhile is never held behind
+        // a memo that is matched a moment later (nothing would release it).
+        h.createQuery("SELECT 1 FROM app.ingest_registry WHERE client_uuid = CAST(:u AS uuid) FOR SHARE").bind("u", target).mapTo(Int::class.java).list()
         // A memo uuid registered accepted with another memo row's id has no row of its own: it was matched (or deduplicated).
         val twin = h.createQuery(
             """
-            SELECT m.client_uuid::text FROM app.ingest_registry g JOIN app.memo m ON m.id = g.server_id
+            SELECT m.client_uuid::text FROM app.ingest_registry g JOIN app.memo m ON m.id = g.server_id AND m.business_date = g.business_date
             WHERE g.client_uuid = CAST(:u AS uuid) AND g.record_type = 'memo' AND g.status = 'accepted' AND m.client_uuid <> g.client_uuid
             """.trimIndent(),
         ).bind("u", target).mapTo(String::class.java).findOne().orElse(null) ?: return env
@@ -501,7 +504,8 @@ class IngestService(
             val ctxs = HashMap<Pair<Long, Long?>, Ctx>()
             for (child in children) {
                 val type = child.payload.str("type")
-                if (type in lineTypes) {
+                // Only the phone memo's own lines are absorbed by the paper memo's; a held edit's lines are stored with it.
+                if (type in lineTypes && (child.payload["payload"] as? JsonObject)?.str("memo_client_uuid") == item.clientUuid) {
                     h.createUpdate("UPDATE app.ingest_registry SET status = 'accepted', outcome_code = NULL, last_seen_at = :now WHERE client_uuid = CAST(:c AS uuid) AND status = 'quarantined'")
                         .bind("now", ts(now)).bind("c", child.clientUuid).execute()
                     closeItem(h, child.id, "accepted", null, resolverUserId, "same_as_backfill: the paper memo's lines stand", now)
@@ -892,8 +896,9 @@ class IngestService(
         // 6. Record signature on header records when the device has a key (s8.3), by cfg.sec.record_signature_mode
         // (docs/19: off < record < enforce; F-SYS-072): off skips, record accepts and flags, only enforce quarantines.
         if (rule.signedHeader && ctx.up.deviceKey != null && ctx.signatureMode != SignatureMode.OFF && !deviceAccepted) {
-            val sig = env.str("sig")
-            val unsigned = JsonObject(env.filterKeys { it != "sig" })
+            // The phone signed what it sent: never the memo-aliased envelope.
+            val sig = r.json.str("sig")
+            val unsigned = JsonObject(r.json.filterKeys { it != "sig" })
             val msg = listOf("aron-sig-v1", r.type, r.clientUuid, sha256Hex(Jcs.canonicalize(unsigned).toByteArray())).joinToString("\n")
             if (sig == null || !com.aktcl.aron.backend.platform.DeviceProof.verify(ctx.up.deviceKey, msg, sig)) {
                 if (ctx.signatureMode == SignatureMode.ENFORCE) {
