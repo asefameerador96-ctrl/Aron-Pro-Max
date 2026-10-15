@@ -10,7 +10,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-/** V0077/V0078: entry_source and entered_by_user_id on memo and visit (docs/requests/backend-core-memo-source.md). */
+/**
+ * V0077/V0078: entry_source and entered_by_user_id on memo and visit (docs/requests/backend-core-memo-source.md),
+ * plus the addendum: risk code MEMO_DUPLICATE_SUSPECT with integrity weight 30.
+ */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class EntrySourceV0077Test {
     private lateinit var db: TestDatabase
@@ -109,5 +112,16 @@ class EntrySourceV0077Test {
             assertEquals("memos_entered_manually", scalar("SELECT column_name FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_daily_sr' ORDER BY ordinal_position DESC LIMIT 1"))
         }
         assertEquals("true", c.scalar("SELECT has_table_privilege('web_ro', 'dw.v_daily_sr', 'SELECT')::text"))
+    }
+
+    @Test
+    fun theDuplicateMemoRiskCodeIsKnownAndWeighted() = db.connect().use { c ->
+        assertEquals("30|100", c.scalar("SELECT concat_ws('|', default_value->>'MEMO_DUPLICATE_SUSPECT', default_value->>'GEO_MOCK') FROM app.cfg_key WHERE key = 'cfg.geo.integrity_weight'"))
+        c.tx {
+            val sr = "(SELECT id FROM app.app_user WHERE username = 'sr1001')"
+            exec("INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score) VALUES ('MEMO_DUPLICATE_SUSPECT', 2, DATE '2026-10-05', 'memo', '42', $sr, 30)")
+            assertEquals("23514", refused("INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score) VALUES ('MEMO_DUPLICATE', 2, DATE '2026-10-05', 'memo', '42', $sr, 30)"))
+        }
+        assertEquals("t", c.scalar("SELECT convalidated FROM pg_constraint WHERE conname = 'risk_signal_code_check'"))
     }
 }

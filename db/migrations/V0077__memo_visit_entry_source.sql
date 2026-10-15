@@ -5,6 +5,9 @@
 -- Both columns are written once at insert; the V0007 immutability guards keep them (they are not free columns).
 -- The ingest registry gains the flag manual_entry. dw.fact_memo and dw.fact_visit carry entry_source (the projector
 -- copies it: docs/requests/db-backend-reports-entry-source.md), and dw.v_daily_sr gains memos_entered_manually.
+-- Addendum (lead ruling 2026-10-15): risk code MEMO_DUPLICATE_SUSPECT (subject memo; a second memo of the same outlet,
+-- gross and business date under another memo_no, one of them manual) with integrity weight 30. A flag for review,
+-- never a block; backend-core raises it.
 --
 -- Locks: constant defaults and nullable columns are catalogue-only on every partition; the CHECKs are added NOT VALID
 -- and validated in V0078. The FKs to app.app_user cannot be NOT VALID on a partitioned table (PostgreSQL 16), so they
@@ -33,6 +36,16 @@ ALTER TABLE app.ingest_registry ADD CONSTRAINT ingest_registry_flags_known
   CHECK (flags <@ ARRAY['resync_late', 'config_stamp_regress', 'checkout_too_early', 'manual_entry']::text[]
          AND cardinality(flags) = ('resync_late' = ANY (flags))::int + ('config_stamp_regress' = ANY (flags))::int
                                 + ('checkout_too_early' = ANY (flags))::int + ('manual_entry' = ANY (flags))::int) NOT VALID;
+
+ALTER TABLE app.risk_signal DROP CONSTRAINT risk_signal_code_check;
+ALTER TABLE app.risk_signal ADD CONSTRAINT risk_signal_code_check
+  CHECK (code IN ('GEO_MOCK', 'GEO_TELEPORT', 'GEO_ZERO_JITTER', 'GEO_PERFECT_ACCURACY', 'GEO_SAME_POINT',
+                  'GEO_ROUTE_SINGLE_POINT', 'GEO_STALE_FIX', 'GEO_GNSS_INCONSISTENT', 'GEO_GNSS_TIME_SKEW',
+                  'GEO_DEVICE_SERVER_MISMATCH', 'GEO_SHORT_VISIT_GAPS', 'DEVICE_NOT_OWNER', 'DEVICE_INTEGRITY_FAIL',
+                  'DEVICE_DEBUG_ENABLED', 'DEVICE_MOCK_APP_PRESENT', 'DEVICE_POLICY_DRIFT', 'CLOCK_SKEW',
+                  'GEO_OUT_OF_BOUNDS', 'CONFIG_STAMP_REGRESS', 'MEMO_DUPLICATE_SUSPECT')) NOT VALID;
+UPDATE app.cfg_key SET default_value = default_value || '{"MEMO_DUPLICATE_SUSPECT": 30}'::jsonb, updated_at = now()
+ WHERE key = 'cfg.geo.integrity_weight' AND NOT default_value ? 'MEMO_DUPLICATE_SUSPECT';
 
 ALTER TABLE dw.fact_memo ADD COLUMN entry_source text NOT NULL DEFAULT 'device';
 ALTER TABLE dw.fact_visit ADD COLUMN entry_source text NOT NULL DEFAULT 'device';
@@ -73,6 +86,7 @@ COMMENT ON COLUMN app.memo.entered_by_user_id IS 'Web user who keyed in a manual
 COMMENT ON COLUMN app.visit.entry_source IS 'device = captured on the phone; manual = keyed on the web for a dead-phone day (paper backfill, F-API-038).';
 COMMENT ON COLUMN app.visit.entered_by_user_id IS 'Web user who keyed in a manual visit (app.app_user); null on device rows.';
 COMMENT ON COLUMN app.ingest_registry.flags IS 'Flags on the accepted record: resync_late (re-sent after a failover or restore, accepted past cfg.sync.max_backdate_days, F-SYS-089), config_stamp_regress (stamped with an older config_version than the device had applied, F-SYS-091), checkout_too_early (check-out before cfg.day.checkout_earliest_time, BC-63), manual_entry (keyed on the web from paper, F-API-038); empty when none.';
+COMMENT ON COLUMN app.risk_signal.code IS 'Risk rule that raised the signal (GEO_*, DEVICE_*, CLOCK_SKEW, CONFIG_STAMP_REGRESS, MEMO_DUPLICATE_SUSPECT); weights in cfg.geo.integrity_weight.';
 COMMENT ON COLUMN dw.fact_memo.entry_source IS 'device or manual (keyed on the web from the printed memo), copied from app.memo.';
 COMMENT ON COLUMN dw.fact_visit.entry_source IS 'device or manual (keyed on the web for a dead-phone day), copied from app.visit.';
 COMMENT ON COLUMN dw.v_daily_sr.memos_entered_manually IS 'Active memos keyed on the web from paper (entry_source manual).';
