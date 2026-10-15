@@ -29,6 +29,20 @@ class EntrySourceTest : ReportFixture() {
     }
 
     @Test
+    fun theFactsCarryTheWebUserWhoKeyedAManualRowAndDeviceRowsNameNoOne() = app {
+        val keyer = count("SELECT id FROM app.app_user WHERE username = 'sr002'")
+        fun check() {
+            assertEquals(1, count("SELECT count(*) FROM dw.fact_memo WHERE entry_source = 'manual' AND entered_by_user_id = $keyer"))
+            assertEquals(1, count("SELECT count(*) FROM dw.fact_visit WHERE entry_source = 'manual' AND entered_by_user_id = $keyer"))
+            assertEquals(0, count("SELECT count(*) FROM dw.fact_memo WHERE entry_source = 'device' AND entered_by_user_id IS NOT NULL"))
+            assertEquals(0, count("SELECT count(*) FROM dw.fact_visit WHERE entry_source = 'device' AND entered_by_user_id IS NOT NULL"))
+        }
+        check()
+        AggregationWorker(fresh.db).also { it.requestRebuild(day); it.runUntilIdle() }
+        check()
+    }
+
+    @Test
     fun onlineOfflineShowsManualMemosApartAndKeepsTheDeviceFigures() = app {
         val r = run(10, Role.ANALYST, "online-offline").result()
         val rows = r.rows()
