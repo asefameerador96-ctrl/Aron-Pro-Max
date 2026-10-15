@@ -91,6 +91,7 @@ export const skus = defineEntity<Sku, SkuWrite, SkuPatch>({
     { name: "entry_unit_default", labelKey: "entity.field.entry_unit", kind: "enum", mode: "create-only", required: true, ...ENTRY_UNITS },
     { name: "report_unit", labelKey: "entity.field.report_unit", kind: "enum", nullable: true, ...REPORT_UNITS },
     { name: "report_factor", labelKey: "entity.field.report_factor", kind: "text", required: true, maxLength: 18, pattern: "^-?\\d{1,13}(\\.\\d{1,3})?$", normalizeDigits: true },
+    { name: "image_asset_id", labelKey: "entity.field.sku_image", kind: "asset", mode: "write-only", nullable: true, asset: { purpose: "sku_image", previewKey: "image_url" } },
     { name: "sort", labelKey: "entity.field.sort", kind: "int", required: true, column: true },
     { name: "status", labelKey: "entity.field.status", kind: "enum", mode: "update-only", ...ACTIVE, column: true },
   ],

@@ -25,8 +25,10 @@ export const feedback = defineEntity<Feedback, Record<never, never>, Record<neve
     { name: "user_id", labelKey: "entity.field.user", kind: "int", mode: "readonly", column: true },
     { name: "created_at", labelKey: "entity.field.created_at", kind: "timestamp", mode: "readonly", column: true },
   ],
-  // REQUEST: docs/requests/web-admin-feedback-filters.md (listFeedback has no category or status parameter yet).
-  filters: [],
+  filters: [
+    { param: "category_code", kind: "ref", labelKey: "entity.field.category", ref: { path: "/v1/admin/code-lists", codeList: "feedback_category", value: "code", label: ["label_en", "label_bn"] } },
+    { param: "status", kind: "enum", labelKey: "entity.field.status", ...STATUS },
+  ],
   readRoles: ["ADMIN", "SUPERADMIN", "SUPPORT"],
   writeRoles: ["ADMIN", "SUPERADMIN"],
   detailFields: [

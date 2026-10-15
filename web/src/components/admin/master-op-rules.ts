@@ -4,7 +4,8 @@ import { rawRequest } from "@/lib/api/raw";
 import { scopeNodeAllowed } from "@/lib/admin/scope-rules";
 import type { MasterOpKey } from "@/lib/admin/master-ops";
 import { businessDate } from "@/lib/i18n";
-import { isRealDate } from "./crud/validation";
+import { codePoints, isRealDate } from "./crud/validation";
+import { UUID_V4 } from "@/lib/admin/tutorials";
 
 export interface RuleError {
   pointer: string;
@@ -48,7 +49,9 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
       // Only SUPERADMIN writes ADMIN-role users (docs/24 s8.5).
       if ((u.data.role === "ADMIN" || u.data.role === "SUPERADMIN") && actor !== "SUPERADMIN") out.push({ pointer: "/params/id", code: "forbidden_target" });
       nodes.forEach((n, i) => {
-        if (!isObj(n) || Object.keys(n).some((k) => k !== "node_type" && k !== "node_id")) out.push({ pointer: `/body/nodes/${i}`, code: "invalid" });
+        if (!isObj(n) || Object.keys(n).some((k) => k !== "node_type" && k !== "node_id" && k !== "valid_to")) out.push({ pointer: `/body/nodes/${i}`, code: "invalid" });
+        // Acting cover: the exclusive end date, after the date the new scope starts (the contract answers 400 otherwise).
+        else if (n.valid_to !== undefined && n.valid_to !== null && (typeof n.valid_to !== "string" || !isRealDate(n.valid_to) || typeof body.valid_from !== "string" || n.valid_to <= body.valid_from)) out.push({ pointer: `/body/nodes/${i}/valid_to`, code: "invalid" });
         else if (typeof n.node_type !== "string" || !scopeNodeAllowed(u.data.role!, n.node_type)) out.push({ pointer: `/body/nodes/${i}/node_type`, code: "role_node_mismatch" });
         else if (typeof n.node_id !== "number" || !Number.isSafeInteger(n.node_id) || n.node_id < (n.node_type === "national" ? 0 : 1)) out.push({ pointer: `/body/nodes/${i}/node_id`, code: "invalid" });
       });
@@ -123,6 +126,45 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
       if (!isId(c.scope_id)) out.push({ pointer: "/body/changes/0/scope_id", code: "invalid" });
       else if (!ownNodes.some((n) => n.type === "territory" && n.id === c.scope_id)) out.push({ pointer: "/body/changes/0/scope_id", code: "forbidden_scope" }); // the server decides reach; this refuses an id the session never had
       if (typeof c.value !== "number" || !Number.isInteger(c.value) || c.value < 10 || c.value > 5000) out.push({ pointer: "/body/changes/0/value", code: "invalid" });
+      break;
+    }
+    case "outlet-request.create": {
+      strict(["request_uuid", "request_type", "outlet_id", "proposed", "note"]);
+      if (typeof body.request_uuid !== "string" || !UUID_V4.test(body.request_uuid)) out.push({ pointer: "/body/request_uuid", code: "invalid" });
+      if (!isId(body.outlet_id)) out.push({ pointer: "/body/outlet_id", code: "invalid" });
+      const type = body.request_type;
+      if (type !== "info" && type !== "location" && type !== "cluster" && type !== "close") return [...out, { pointer: "/body/request_type", code: "invalid" }]; // new and route_add are raised in the apps (they need a field fix and photos)
+      const p = body.proposed;
+      if (!isObj(p)) return [...out, { pointer: "/body/proposed", code: "invalid" }];
+      const members: Record<string, readonly string[]> = {
+        info: ["name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id"],
+        location: ["lat", "lng"],
+        cluster: ["cluster_id"],
+        close: ["close_reason_code"],
+      };
+      for (const k of Object.keys(p)) if (!members[type]!.includes(k)) out.push({ pointer: `/body/proposed/${k}`, code: "unknown_member" });
+      const text = (k: string, min: number, max: number) => {
+        const v = p[k];
+        if (v !== undefined && (typeof v !== "string" || codePoints(v.trim()) < min || codePoints(v.trim()) > max)) out.push({ pointer: `/body/proposed/${k}`, code: "invalid" });
+      };
+      if (type === "info") {
+        if (Object.keys(p).length === 0) out.push({ pointer: "/body/proposed", code: "required" });
+        text("name", 2, 120);
+        text("owner_name", 2, 120);
+        if (p.address !== null) text("address", 0, 300);
+        if (p.name_bn !== undefined && p.name_bn !== null) text("name_bn", 1, 120);
+        if (p.contact_number !== undefined && (typeof p.contact_number !== "string" || !/^01[3-9][0-9]{8}$/.test(p.contact_number))) out.push({ pointer: "/body/proposed/contact_number", code: "invalid" });
+        if (p.sub_channel_id !== undefined && p.sub_channel_id !== null && !isId(p.sub_channel_id)) out.push({ pointer: "/body/proposed/sub_channel_id", code: "invalid" });
+      } else if (type === "location") {
+        const coord = (k: string, lim: number) => {
+          const v = p[k];
+          if (typeof v !== "number" || !Number.isFinite(v) || Math.abs(v) > lim) out.push({ pointer: `/body/proposed/${k}`, code: typeof v === "undefined" ? "required" : "invalid" });
+        };
+        coord("lat", 90);
+        coord("lng", 180);
+      } else if (type === "cluster") {
+        if (!isId(p.cluster_id)) out.push({ pointer: "/body/proposed/cluster_id", code: p.cluster_id === undefined ? "required" : "invalid" });
+      } else if (typeof p.close_reason_code !== "string" || !/^[a-z][a-z0-9_]{1,40}$/.test(p.close_reason_code)) out.push({ pointer: "/body/proposed/close_reason_code", code: p.close_reason_code === undefined ? "required" : "invalid" });
       break;
     }
     case "assignment.end": {
