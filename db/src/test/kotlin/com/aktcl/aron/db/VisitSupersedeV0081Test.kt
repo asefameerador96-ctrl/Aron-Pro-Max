@@ -78,13 +78,17 @@ class VisitSupersedeV0081Test {
     }
 
     @Test
-    fun aVoidedVisitDropsOutOfTheDailySrView() = db.connect().use { c ->
+    fun aVoidedPaperVisitDropsOutOfTheVisitViews() = db.connect().use { c ->
         c.tx {
             val sr = "(SELECT id FROM app.app_user WHERE username = 'sr1001')"
             val fact = "INSERT INTO dw.fact_visit (business_date, visit_client_uuid, user_id, outlet_id, visit_kind, opened_at, planned, voided, last_event_id, " +
-                "geo_action, device_verdict) VALUES (DATE '2026-10-05', '%s', $sr, (SELECT min(id) FROM app.outlet), 'sr_call', now(), true, %s, 1, 'sale_allowed', 'in_range')"
-            exec(fact.format(phone, "false"))
-            exec(fact.format(paper, "true"))
+                "geo_action, device_verdict) VALUES (DATE '2026-10-05', '%s', $sr, (SELECT min(id) FROM app.outlet), '%s', now(), true, %s, 1, 'sale_allowed', '%s')"
+            exec(fact.format(phone, "sr_call", "false", "in_range"))
+            exec(fact.format(paper, "web_entry", "false", "no_fix"))
+            val geo = "SELECT visits || '|' || no_fix FROM dw.v_geo_integrity WHERE business_date = DATE '2026-10-05' AND user_id = $sr"
+            assertEquals("2|1", scalar(geo), "an unmatched paper visit counts in the geo view")
+            exec("UPDATE dw.fact_visit SET voided = true WHERE visit_client_uuid = '$paper'")   // the projector after the match
+            assertEquals("1|0", scalar(geo))
             assertEquals("1", scalar("SELECT visits FROM dw.v_daily_sr WHERE business_date = DATE '2026-10-05' AND user_id = $sr"))
         }
     }
