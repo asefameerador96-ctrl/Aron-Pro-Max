@@ -334,11 +334,21 @@ class ManualIngestTest {
         val res = upload(phone)
         assertTrue(res.acks.all { it.status == "accepted" }, res.acks.toString())
         assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND subject_id = '${memoUuid(phone)}'"))
-        // A second phone memo of the same sale value at the same outlet: two device memos are not judged.
-        val again = upload(phoneOf(paper(outlet = outlet)).map { r ->
+        // A second phone memo of the same sale at that outlet is flagged against the paper twin, not against the first phone memo.
+        val second = phoneOf(paper(outlet = outlet)).map { r ->
             if ((r["type"] as JsonPrimitive).content == "memo") JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("committed_at" to JsonPrimitive("2027-01-03T03:50:00.000Z"))))) else r
-        })
-        assertTrue(again.acks.all { it.status == "accepted" }, again.acks.toString())
-        assertEquals(0, count("SELECT count(*) FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND business_date = '$day' AND (evidence->>'outlet_id')::bigint = $outlet AND (evidence->>'twin_entry_source') = 'device' AND (evidence->>'entry_source') = 'device'"))
+        }
+        assertTrue(upload(second).acks.all { it.status == "accepted" })
+        assertEquals("manual", str("SELECT evidence->>'twin_entry_source' FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND subject_id = '${memoUuid(second)}'"))
+        // Two phone memos of one sale value at an outlet with no paper memo are never judged.
+        val plain = count("SELECT min(id) FROM app.outlet WHERE route_id = $routeId AND status = 'active' AND id NOT IN ($outletId, $outlet)")
+        val p1 = phoneOf(paper(outlet = plain)); val p2 = phoneOf(paper(outlet = plain)).map { r ->
+            if ((r["type"] as JsonPrimitive).content == "memo") JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("committed_at" to JsonPrimitive("2027-01-03T03:55:00.000Z"))))) else r
+        }
+        assertTrue(upload(p1).acks.all { it.status == "accepted" } && upload(p2).acks.all { it.status == "accepted" })
+        assertEquals(0, count("SELECT count(*) FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND subject_id IN ('${memoUuid(p1)}', '${memoUuid(p2)}')"))
+        // A replay of the flagged phone memo raises nothing new.
+        upload(phone)
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND subject_id = '${memoUuid(phone)}'"))
     }
 }
