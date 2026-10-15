@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.analytics
 
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.AuditLog
 import com.aktcl.aron.backend.platform.AronPrincipal
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FieldError
@@ -207,13 +208,9 @@ class ReportEngine(
             put("report_key", key); put("format", format); put("rows", rows); put("pii", ctx.pii && handler(key).definition.columns.any { it.pii })
             put("from", ctx.from.toString()); put("to", ctx.to.toString())
             put("filters", buildJsonObject { put("query", filtersText(ctx.query)) })
+            put("scope", auditScope(ctx.zoneIds == null, ctx.zoneIds, ctx.routeIds))
         }
-        h.createUpdate(
-            "INSERT INTO app.audit_log (actor_user_id, actor_username, actor_role, via, entity, entity_id, action, after, request_id) " +
-                "VALUES (:uid, :uname, :role, 'api', 'report_export', :eid, :action, CAST(:after AS jsonb), CAST(:rid AS uuid))",
-        ).bind("uid", ctx.principal.userId).bind("uname", ctx.principal.username.take(40)).bind("role", ctx.principal.role.wire)
-            .bind("eid", exportId).bind("action", "export.$format").bind("after", after.toString())
-            .bind("rid", requestId?.takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }).execute()
+        AuditLog.write(h, ctx.principal, "report_export", exportId, "export.$format", null, after, null, requestId, via = "api")
     }
 
     private fun filtersText(q: ReportQuery): String = kotlinx.serialization.json.Json.encodeToString(ReportQuery.serializer(), q.copy(output = q.output.copy(sort = emptyList()))).take(1900)

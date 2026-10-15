@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.analytics
 
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.AuditLog
 import com.aktcl.aron.backend.platform.AuthGuardDeps
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FieldError
@@ -286,12 +287,15 @@ class OpsService(
                     "UPDATE app.sync_quarantine SET status = 'discarded', resolution_uuid = :ru, resolved_by_user_id = :u, resolved_at = now(), resolution_note = :note WHERE id = :id",
                 ).bind("ru", UUID.nameUUIDFromBytes("quarantine:$id:${req.action}:${p.userId}".toByteArray())).bind("u", p.userId).bind("note", (if (req.action == "return_to_device") "return_to_device: " else "") + req.reason.take(470)).bind("id", id).execute()
             }
-            h.createUpdate(
-                "INSERT INTO app.audit_log (actor_user_id, actor_username, actor_role, via, entity, entity_id, action, before, after, reason, request_id) VALUES (:u, :n, :r, 'api', 'quarantine', :id, :a, CAST(:b AS jsonb), CAST(:af AS jsonb), :reason, CAST(:rid AS uuid))",
-            ).bind("u", p.userId).bind("n", p.username.take(40)).bind("r", p.role.wire).bind("id", id.toString()).bind("a", req.action)
-                .bind("b", buildJsonObject { put("status", "open"); put("code", row.first.code); put("client_uuid", row.first.client_uuid) }.toString())
-                .bind("af", buildJsonObject { put("status", if (req.action.startsWith("accept")) (if (req.action == "accept") "accepted" else "accepted_with_fix") else "discarded"); put("action", req.action) }.toString())
-                .bind("reason", req.reason.take(500)).bind("rid", requestId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }).execute()
+            AuditLog.write(
+                h, p, "quarantine", id.toString(), req.action,
+                buildJsonObject { put("status", "open"); put("code", row.first.code); put("client_uuid", row.first.client_uuid) },
+                buildJsonObject {
+                    put("status", if (req.action.startsWith("accept")) (if (req.action == "accept") "accepted" else "accepted_with_fix") else "discarded"); put("action", req.action)
+                    put("scope", auditScope(reach))
+                },
+                req.reason, requestId, via = "api",
+            )
             h.createQuery("SELECT * FROM app.sync_quarantine WHERE id = :id").bind("id", id).map { rs, _ -> toDto(rs) }.one()
         }
     }
