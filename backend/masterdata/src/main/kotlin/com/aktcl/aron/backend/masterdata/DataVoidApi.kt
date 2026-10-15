@@ -139,6 +139,8 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
         val affected = buildJsonObject { put("scope", req.scope); put("total", total); counts.forEach { (k, v) -> put(k, v) } }
         h.createUpdate("INSERT INTO app.route_day_void_barrier (client_uuid, route_id, business_date, barrier_at, voided_by, reason, affected) VALUES (:u, :r, :d, :at, :by, :why, CAST(:a AS jsonb))")
             .bind("u", id).bind("r", req.route_id).bind("d", date).bind("at", now).bind("by", p.userId).bind("why", reason).bind("a", affected.toString()).execute()
+        // F-SYS-086: the day tile follows every void, not only memo voids (those also reach the projector as memo.voided events).
+        h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'data_void')", req.route_id, date)
         AuditWriter.write(h, p, "data_void", req.client_uuid, "void", null, buildJsonObject { put("route_id", req.route_id); put("business_date", date.toString()); put("scope", req.scope); put("tombstoned", total) }, reason, call.requestId)
         DataVoidOut(req.route_id, date.toString(), req.scope, now.toInstant().wire(), total, pending)
     }

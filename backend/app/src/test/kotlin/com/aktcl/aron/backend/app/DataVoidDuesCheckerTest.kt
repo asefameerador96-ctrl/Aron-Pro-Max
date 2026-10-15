@@ -152,8 +152,9 @@ class DataVoidDuesCheckerTest {
             val a = async(Dispatchers.IO) { client.approve(sup, adj).let { it.status to it.bodyAsText() } }
             waitForLockWait("%FROM app.dues_adjustment a WHERE a.id%FOR UPDATE%")
             val v = async(Dispatchers.IO) { client.void(admin, "2027-01-01").let { it.status to it.bodyAsText() } }
-            // The void has tombstoned the memo and waits on the outlet for its ledger reversal.
-            waitForLockWait("%data void%")
+            // Fixed lock order: the approval holds the memo (FOR SHARE) while it waits for the adjustment row, so the void waits on the memo UPDATE
+            // and can never hold the memo while waiting for the outlet.
+            waitForLockWait("%UPDATE app.memo SET voided_at%")
             gate.commit(); gate.close()
             a.await() to v.await()
         }

@@ -176,6 +176,12 @@ private suspend fun decideAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
             ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "dues adjustment $id")
         val zone = outletZone(h, cur.first.outlet_id)
         if (zone == null || !reach.coversZone(zone)) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "dues adjustment $id")
+        // Lock order (void vs approval, no deadlock): the memo row first, then the outlet. The memo must be live: not tombstoned by a data void and
+        // not voided or superseded by the SR (an approved correction on a dead memo would move the balance for a sale that no longer exists).
+        if (req.decision == "approve" && cur.first.memo_client_uuid != null) {
+            val live = h.createQuery("SELECT voided_at IS NULL AND status = 'active' FROM app.memo WHERE client_uuid = CAST(:m AS uuid) FOR SHARE").bind("m", cur.first.memo_client_uuid).mapTo(Boolean::class.java).findOne().orElse(false)
+            if (!live) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the memo is voided or superseded; the adjustment cannot be approved")
+        }
         // One decision at a time per outlet: balance check, status change and ledger row are one serial step.
         lock(h, "dues-outlet:${cur.first.outlet_id}")
         // A ledger insert (a synced collection) holds FOR KEY SHARE on the outlet row; FOR UPDATE here serialises with it, so the balance read is final.
@@ -188,11 +194,6 @@ private suspend fun decideAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
             throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the adjustment is already ${row.status}")
         }
         if (row.created_by_user_id == p.userId) throw ApiProblem(ProblemCode.ERR_SEPARATION_OF_DUTIES, "the checker of a dues adjustment is not its maker")
-        if (approve && cur.second != null && row.memo_client_uuid != null) {
-            // The memo row is held while the approval commits, so a data void of its route-day waits for it and then refuses (DataVoidApi).
-            val voided = h.createQuery("SELECT voided_at IS NOT NULL FROM app.memo WHERE client_uuid = CAST(:m AS uuid) FOR SHARE").bind("m", row.memo_client_uuid).mapTo(Boolean::class.java).findOne().orElse(false)
-            if (voided) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the memo was voided; the adjustment cannot be approved")
-        }
         if (approve && row.kind == "write_off") {
             val balance = h.createQuery("SELECT COALESCE(SUM(amount_mtk), 0) FROM app.due_ledger WHERE outlet_id = :o").bind("o", row.outlet_id).mapTo(Long::class.java).one()
             if (-row.amount_mtk > balance) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the write-off is larger than the outlet's open balance")

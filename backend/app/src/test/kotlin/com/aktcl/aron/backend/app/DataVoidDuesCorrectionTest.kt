@@ -124,7 +124,9 @@ class DataVoidDuesCorrectionTest {
         assertEquals(before, count("SELECT COALESCE(sum(amount_mtk),0) FROM app.due_ledger WHERE outlet_id = $outletId"))
         // Day B: no correction -> the void works; a correction proposed for the voided memo cannot be approved.
         val b = client.keyMemo(admin, "2027-01-02")
+        fresh.db.jdbi.useHandle<Exception> { it.execute("DELETE FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = $routeId AND business_date = DATE '2027-01-02'") }
         assertEquals(HttpStatusCode.OK, client.void(admin, "2027-01-02").status)
+        assertEquals(1, count("SELECT count(*) FROM app.dirty_key WHERE kind = 'route_day_agg' AND subject_id = $routeId AND business_date = DATE '2027-01-02'"), "a void marks the route-day dirty (F-SYS-086)")
         val late = client.correction(admin, sup, b)
         assertEquals(HttpStatusCode.Conflict, late.status, late.bodyAsText())
     }
