@@ -64,13 +64,20 @@ private suspend fun match(call: io.ktor.server.application.ApplicationCall, d: B
     val reason = AdminSupport.reason(req.reason, "body.reason")
     val reach = AdminSupport.reach(d.reach, call, d.clock)
     return d.db.jdbi.inTransaction<BackfillMatchOut, Exception> { h ->
-        // Reach on the item's route, from the database. An unknown item and one outside the reach answer alike (404).
-        val item = h.createQuery("SELECT route_id, business_date FROM app.sync_quarantine WHERE id = :i").bind("i", id)
-            .map { rs, _ -> (rs.getObject(1) as Long?) to rs.getObject(2, java.time.LocalDate::class.java) }.findOne().orElse(null)
+        // Reach on the item, from the database. The envelope's route_id is optional, so a held memo without one is judged by its outlet's zone.
+        // An unknown item and one outside the reach answer alike (404).
+        val item = h.createQuery("SELECT route_id, (payload->'payload'->>'outlet_id') FROM app.sync_quarantine WHERE id = :i").bind("i", id)
+            .map { rs, _ -> (rs.getObject(1) as Long?) to rs.getString(2)?.toLongOrNull() }.findOne().orElse(null)
             ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "quarantine item $id")
         val routeId = item.first
-        val zone = routeId?.let { r -> h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", r).mapTo(Long::class.java).findOne().orElse(null) }
-        if (routeId == null || zone == null || !reach.coversRoute(routeId, zone)) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "quarantine item $id")
+        val covered = if (routeId != null) {
+            val zone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", routeId).mapTo(Long::class.java).findOne().orElse(null)
+            zone != null && reach.coversRoute(routeId, zone)
+        } else {
+            val zone = item.second?.let { o -> h.createQuery("SELECT zone_id FROM app.outlet WHERE id = :o").bind("o", o).mapTo(Long::class.java).findOne().orElse(null) }
+            zone != null && reach.coversZone(zone)
+        }
+        if (!covered) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "quarantine item $id")
         val phoneMemo = h.createQuery("SELECT client_uuid::text FROM app.sync_quarantine WHERE id = :i").bind("i", id).mapTo(String::class.java).one()
         val out = matcher.match(id, p.userId, reason)
         AuditWriter.write(h, p, "memo", out.paper_memo_uuid, "backfill_matched", buildJsonObject {
