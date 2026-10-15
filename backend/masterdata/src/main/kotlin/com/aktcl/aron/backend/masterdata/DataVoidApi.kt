@@ -156,7 +156,7 @@ private fun pendingRows(h: Handle, routeId: Long): Int? = h.createQuery(
 
 /**
  * The dues ledger is append-only. A tombstoned memo is taken off it by ONE `adjustment` (source = the memo) that nets every
- * ledger row of that memo (its due, collections against it, an earlier `memo_void` or supersession), so a memo already
+ * ledger row of that memo (its due, collections against it, an earlier `memo_void` or supersession, the late-collection give-backs; only a data void's own reversal row is left out), so a memo already
  * voided elsewhere nets to zero and posts nothing. A tombstoned collection whose memo is not tombstoned in this void is
  * reversed on its own. `memo_void` and supersession records are not reversed: the memo's status was set by them and stays.
  */
@@ -166,7 +166,7 @@ private fun reverseDues(h: Handle, voided: List<String>, voidUuid: String) {
         """
         INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, memo_client_uuid, memo_no, source_client_uuid, note)
         SELECT l.outlet_id, min(l.business_date), 'adjustment', -sum(l.amount_mtk), l.memo_client_uuid, max(l.memo_no), l.memo_client_uuid, 'data void ' || CAST(:v AS text)
-        FROM app.due_ledger l WHERE l.memo_client_uuid IN (<u>) AND l.entry_kind <> 'adjustment'
+        FROM app.due_ledger l WHERE l.memo_client_uuid IN (<u>) AND NOT (l.entry_kind = 'adjustment' AND l.note LIKE 'data void %')
         GROUP BY l.outlet_id, l.memo_client_uuid HAVING sum(l.amount_mtk) <> 0
         ON CONFLICT (source_client_uuid, entry_kind) DO NOTHING
         """.trimIndent(),
