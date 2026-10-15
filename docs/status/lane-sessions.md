@@ -83,3 +83,12 @@ way.
 - Docs from the lead reach INT through the integrator's next code candidate (branch lane/lead-docs), so a docs push never starts a dev deploy of its own.
 
 Leftover branches that cannot be deleted (the remote refuses ref deletions; list for the owner's cleanup when the repository goes private): claude/bc-s5-salvage, lane/lead-pushprobe, lane/lead-contract-v1-3.
+
+## 2026-10-15 06:20 UTC: build restarted by the owner ("let's start from now")
+The stall (INT unchanged at 26cfb26a from 2026-10-08 08:37 UTC to now, Day 10 cap missed) ended when the owner came back with the Honor X5c Plus in hand.
+Released and messaged: web-config session_0146veK2iXvmHGwiPBpbBJ2k, web-admin session_018iHvNJSMqCk8eLitCk9wzU (priority: /admin/enrolment against live dev),
+web-dashboard session_01RM4v6DRfjmfAbfrDi17Jzo (priority: /device-otp and login on live dev), backend-admin session_01TogQKB1R6sgWVTafC9DMYG,
+backend-reports session_019WhVDAstm1xPBBrp6FPKM9. Integrator session_01SQjqrsGtBm5Fe5JkrgJoDP told to resume its wake loop (369k tokens: recycle at its next clean handover).
+Still parked: android-sys (done, leftover is low priority). Wave 2 (android-amo, android-tso, qa) starts when the owner's phone test shows the SR slice end to end on dev AND usage is `allowed`.
+Dev checked 06:04 UTC: `GET /v1/health` 200, build 1852c8ed (last code promotion zzo; INT 26cfb26a adds only docs and tools/ci/test_gates.py), web login answers 200 on the same Front Door address.
+Newest release-signed APK: CI run 722 (id 37736394003), artifact `aron-release-signed-dev-722`, not expired; no Android file changed on INT since.

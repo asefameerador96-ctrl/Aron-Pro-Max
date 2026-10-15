@@ -2,6 +2,18 @@
 
 Only what needs the owner's account, approval or hands (CLAUDE.md rule 7). Newest first.
 
+## 2026-10-15 (owner back; Honor X5c Plus in hand)
+
+| # | What | Why |
+|---|---|---|
+| A | Download `aron-release-signed-dev-722` (GitHub, Actions run 722, https://github.com/asefameerador96-ctrl/Aron-Pro-Max/actions/runs/37736394003), unzip, install `aron-sr-0.1.722-dev.apk` on the Honor | first real-phone run of the SR slice (D-01, D-02) |
+| B | Say `owner approves dev enrolment off` (path A) **or** start the laptop session so a token can be minted (path B) | the phone must pass enrolment before login; path A is fastest and is flipped back on for D-04 |
+| C | Read `aron-dev-seed-password` in the Azure portal (Key Vault in rg-aron-dev); never paste it in chat | login sr1001 and tso1001 |
+| D | Confirm or change the proposed target (feature-complete on dev 2026-10-20, buffer 2026-10-22) | forecast |
+| E | Tell the lead the weekly usage percentage; turn ultracode off for the lead session | pacing of the released lanes |
+
+Older items below still stand unless a row above replaces them (rows 4, 5, 6, 11, 12 become live once the laptop session exists).
+
 | # | Since | What | Why | Who helps |
 |---|---|---|---|---|
 | 1 | 2026-10-07 | Tell the lead the **weekly usage percentage** (Claude usage settings) | the seven-day window shows a warning; the plan is sized from it | lead |
