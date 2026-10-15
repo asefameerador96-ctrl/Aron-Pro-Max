@@ -48,16 +48,19 @@ private val store = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 
 @Serializable data class SurveyQuestionIn(
     val key: String, val answer_type: String, val label_en: String, val label_bn: String? = null, val required: Boolean? = null,
-    val show_if_key: String? = null, val show_if_bool: Boolean? = null, val photo: Boolean? = null,
+    val show_if_key: String? = null, val show_if_bool: Boolean? = null, val photo: Boolean? = null, val option_codes: List<String>? = null,
 )
 @Serializable data class SurveyWriteIn(
     val kind: String, val title_en: String, val title_bn: String? = null, val questions: List<SurveyQuestionIn>, val valid_from: String, val valid_to: String? = null,
     val points_per_photo: Int? = null, val status: String? = null, val change_reason: String,
 )
 @Serializable private data class StoredQuestion(
-    val question_id: Long, val key: String, val answer_type: String, val label_en: String, val label_bn: String?, val required: Boolean, val show_if_key: String?, val show_if_bool: Boolean?, val photo: Boolean,
+    val question_id: Long, val key: String, val answer_type: String, val label_en: String, val label_bn: String?, val required: Boolean, val show_if_key: String?, val show_if_bool: Boolean?, val photo: Boolean, val option_codes: List<String> = emptyList(),
 )
-@Serializable data class SurveyQuestionOut(val question_id: Long, val answer_type: String, val label_en: String, val label_bn: String?, val requires_photo: Boolean)
+@Serializable data class SurveyQuestionOut(
+    val question_id: Long, val answer_type: String, val label_en: String, val label_bn: String?, val requires_photo: Boolean,
+    val key: String, val required: Boolean, val show_if_key: String?, val show_if_bool: Boolean?, val photo: Boolean, val option_codes: List<String>,
+)
 @Serializable data class SurveyAdminDto(
     val survey_id: Long, val version: Int, val title_en: String, val title_bn: String?, val questions: List<SurveyQuestionOut>, val kind: String, val status: String,
     val valid_from: String, val valid_to: String?, val points_per_photo: Int?,
@@ -67,7 +70,7 @@ private val store = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 @Serializable data class RubricCriterionIn(val key: String, val label_en: String, val label_bn: String? = null, val answer_type: String)
 @Serializable data class RubricWriteIn(val kind: String, val criteria: List<RubricCriterionIn>, val status: String? = null, val change_reason: String)
 @Serializable private data class StoredCriterion(val criterion_id: Long, val key: String, val label_en: String, val label_bn: String?, val answer_type: String)
-@Serializable data class RubricCriterionOut(val criterion_id: Long, val label_en: String, val label_bn: String?, val answer_type: String, val enabled: Boolean)
+@Serializable data class RubricCriterionOut(val criterion_id: Long, val label_en: String, val label_bn: String?, val answer_type: String, val enabled: Boolean, val key: String)
 @Serializable data class RubricAdminDto(val rubric_id: Long, val version: Int, val kind: String, val criteria: List<RubricCriterionOut>, val status: String)
 @Serializable data class RubricPageDto(val items: List<RubricAdminDto>, val next_cursor: String?)
 
@@ -79,6 +82,7 @@ private val store = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 @Serializable data class ContentAdminDto(
     val content_id: Long, val version: Int, val kind: String, val title_en: String, val title_bn: String?, val asset_url: String, val sha256: String, val bytes: Long, val duration_s: Int?,
     val valid_from: String, val valid_to: String, val sequence: Int, val outlet_ids: List<Long>, val status: String, val assigned_scope: List<ScopeNode>, val updated_at: String,
+    val asset_id: String? = null,
 )
 @Serializable data class ContentPageDto(val items: List<ContentAdminDto>, val next_cursor: String?)
 
@@ -184,7 +188,7 @@ private fun mapSurvey(rs: java.sql.ResultSet): SurveyAdminDto {
     val qs = store.decodeFromString(ListSerializer(StoredQuestion.serializer()), rs.getString("questions"))
     return SurveyAdminDto(
         rs.getLong("id"), rs.getInt("version"), rs.getString("title_en"), rs.getString("title_bn"),
-        qs.map { SurveyQuestionOut(it.question_id, it.answer_type, it.label_en, it.label_bn, it.photo || it.answer_type == "photo_only") },
+        qs.map { SurveyQuestionOut(it.question_id, it.answer_type, it.label_en, it.label_bn, it.photo || it.answer_type == "photo_only", it.key, it.required, it.show_if_key, it.show_if_bool, it.photo, it.option_codes) },
         rs.getString("kind"), rs.getString("status"), rs.getObject("valid_from", LocalDate::class.java).toString(), rs.getObject("valid_to", LocalDate::class.java)?.toString(), rs.getObject("points_per_photo") as Int?,
     )
 }
@@ -215,6 +219,9 @@ private fun validSurvey(req: SurveyWriteIn): Triple<LocalDate, LocalDate?, Strin
         if (q.answer_type !in ANSWER_TYPES) bad("$at.answer_type")
         text(q.label_en, "$at.label_en", 300)
         if (q.label_bn != null && q.label_bn.length > 300) bad("$at.label_bn", "length")
+        if (q.option_codes != null) {
+            if (q.answer_type != "option" || q.option_codes.size > 20 || q.option_codes.toSet().size != q.option_codes.size || q.option_codes.any { !AdminSupport.CODE.matches(it) }) bad("$at.option_codes")
+        }
         if (q.show_if_key != null) {
             // A condition points at an earlier question and says which bool answer shows this one.
             if (q.show_if_key !in seen || q.show_if_key == q.key || q.show_if_bool == null) bad("$at.show_if_key")
@@ -236,7 +243,7 @@ private fun numberQuestions(h: Handle, surveyId: Long?, qs: List<SurveyQuestionI
             store.decodeFromString(ListSerializer(StoredQuestion.serializer()), json).forEach { known[it.key] = it.question_id; if (it.question_id > max) max = it.question_id }
         }
     }
-    return qs.map { q -> StoredQuestion(known[q.key] ?: ++max, q.key, q.answer_type, q.label_en.trim(), q.label_bn?.trim()?.ifEmpty { null }, q.required ?: false, q.show_if_key, q.show_if_bool, q.photo ?: false) }
+    return qs.map { q -> StoredQuestion(known[q.key] ?: ++max, q.key, q.answer_type, q.label_en.trim(), q.label_bn?.trim()?.ifEmpty { null }, q.required ?: false, q.show_if_key, q.show_if_bool, q.photo ?: false, q.option_codes.orEmpty()) }
 }
 
 private fun surveyAudit(s: SurveyAdminDto) = buildJsonObject { put("version", s.version); put("status", s.status); put("valid_from", s.valid_from); put("valid_to", s.valid_to); put("questions", s.questions.size) }
@@ -286,11 +293,11 @@ private suspend fun updateSurvey(call: ApplicationCall, d: AdminContentDeps): Ve
 // ------------------------------------------------------------------------------------------------ rubrics
 
 private val RUBRIC_KINDS = setOf("joint_call", "retailer_questionnaire")
-private val CRITERION_TYPES = mapOf("stars_1_5" to "score_1_5", "bool" to "bool", "text" to "text")
+private val CRITERION_TYPES = mapOf("stars_1_5" to "score_1_5", "score_1_5" to "score_1_5", "bool" to "bool", "text" to "text") // stars_1_5 is the older spelling, stored as score_1_5
 
 private fun mapRubric(rs: java.sql.ResultSet): RubricAdminDto {
     val cs = store.decodeFromString(ListSerializer(StoredCriterion.serializer()), rs.getString("criteria"))
-    return RubricAdminDto(rs.getLong("id"), rs.getInt("version"), rs.getString("kind"), cs.map { RubricCriterionOut(it.criterion_id, it.label_en, it.label_bn, it.answer_type, true) }, rs.getString("status"))
+    return RubricAdminDto(rs.getLong("id"), rs.getInt("version"), rs.getString("kind"), cs.map { RubricCriterionOut(it.criterion_id, it.label_en, it.label_bn, it.answer_type, true, it.key) }, rs.getString("status"))
 }
 
 private const val RUBRIC_SQL = "SELECT r.id, r.version, r.kind, r.status, v.criteria::text AS criteria FROM app.rubric r JOIN app.rubric_version v ON v.rubric_id = r.id AND v.version = r.version"
@@ -430,13 +437,14 @@ private fun assetOf(h: Handle, id: UUID, pointer: String, purposes: Set<String>)
 
 private val CONTENT_KINDS = setOf("av", "kv")
 private val NODE_TYPES = setOf("wing", "division", "territory", "zone", "route", "outlet")
-private const val CONTENT_COLS = "c.id, c.version, c.kind, c.title_en, c.title_bn, c.asset_url, c.sha256, c.bytes, c.duration_s, c.valid_from, c.valid_to, c.sequence, c.outlet_ids, c.status, c.assigned_scope::text AS scope, c.updated_at"
+private const val CONTENT_COLS = "c.id, c.version, c.kind, c.title_en, c.title_bn, c.asset_url, c.sha256, c.bytes, c.duration_s, c.valid_from, c.valid_to, c.sequence, c.outlet_ids, c.status, c.assigned_scope::text AS scope, c.updated_at, c.asset_id"
 
 private fun mapContent(rs: java.sql.ResultSet) = ContentAdminDto(
     rs.getLong("id"), rs.getInt("version"), rs.getString("kind"), rs.getString("title_en"), rs.getString("title_bn"), rs.getString("asset_url"), hex(rs.getBytes("sha256")), rs.getLong("bytes"),
     rs.getObject("duration_s") as Int?, rs.getObject("valid_from", LocalDate::class.java).toString(), rs.getObject("valid_to", LocalDate::class.java).toString(), rs.getInt("sequence"),
     (rs.getArray("outlet_ids").array as Array<*>).map { it as Long }, rs.getString("status"),
     store.decodeFromString(ListSerializer(ScopeNode.serializer()), rs.getString("scope")), rs.getObject("updated_at", OffsetDateTime::class.java).toInstant().wire(),
+    rs.getObject("asset_id", UUID::class.java)?.toString(),
 )
 
 private fun contentOf(h: Handle, id: Long): ContentAdminDto? = h.createQuery("SELECT $CONTENT_COLS FROM app.content_item c WHERE c.id = :i").bind("i", id).map { rs, _ -> mapContent(rs) }.findOne().orElse(null)
