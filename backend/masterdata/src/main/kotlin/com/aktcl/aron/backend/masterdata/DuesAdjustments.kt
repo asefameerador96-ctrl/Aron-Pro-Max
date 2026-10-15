@@ -60,13 +60,14 @@ fun Route.duesAdjustmentRoutes(d: DuesAdjustmentDeps) {
     authenticated(d.guard) {
         get("/admin/dues-adjustments") { call.respond(listAdjustments(call, d)) }
         post("/admin/dues-adjustments") {
-            val (dto, created) = createAdjustment(call, d)
-            call.respond(if (created) HttpStatusCode.Created else HttpStatusCode.OK, dto)
+            // A replay answers what the first call answered: 201 with the stored row.
+            call.respond(HttpStatusCode.Created, createAdjustment(call, d))
         }
         post("/admin/dues-adjustments/{adjustment_id}/decision") { call.respond(decideAdjustment(call, d)) }
     }
 }
 
+private const val MAX_ADJUSTMENT_MTK = 10_000_000_000_000L
 private val MAKERS = setOf(Role.ADMIN, Role.SUPERADMIN)
 private val CHECKERS = setOf(Role.SUPERADMIN)
 private const val COLS = "a.id, a.outlet_id, a.memo_client_uuid, a.kind, a.amount_mtk, a.reason, a.status, a.created_by, a.created_at, a.decided_by, a.decided_at"
@@ -110,7 +111,7 @@ private fun listAdjustments(call: ApplicationCall, d: DuesAdjustmentDeps): DuesA
     }
 }
 
-private suspend fun createAdjustment(call: ApplicationCall, d: DuesAdjustmentDeps): Pair<DuesAdjustmentDto, Boolean> {
+private suspend fun createAdjustment(call: ApplicationCall, d: DuesAdjustmentDeps): DuesAdjustmentDto {
     val p = call.principal
     if (p.role !in MAKERS) throw AdminSupport.forbidden("only ADMIN and SUPERADMIN propose dues adjustments")
     val req = call.receiveStrict(DuesAdjustmentIn.serializer())
@@ -119,11 +120,13 @@ private suspend fun createAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
     if (req.outlet_id < 1) bad("body.outlet_id")
     if (req.kind !in setOf("correction", "write_off")) bad("body.kind")
     if (req.amount_mtk == 0L) bad("body.amount_mtk", "zero")
+    // 10^13 mtk = 10 billion Tk per adjustment: far above any real due, far below int64, so no sum or negation can overflow.
+    if (req.amount_mtk > MAX_ADJUSTMENT_MTK || req.amount_mtk < -MAX_ADJUSTMENT_MTK) bad("body.amount_mtk", "above_max")
     if (req.kind == "write_off" && req.amount_mtk > 0) bad("body.amount_mtk", "write_off_must_be_negative")
     AdminSupport.noNul("body.reason", req.reason)
     val reason = AdminSupport.reason(req.reason, "body.reason")
     val reach = AdminSupport.reach(d.reach, call, d.clock)
-    return d.db.jdbi.inTransaction<Pair<DuesAdjustmentDto, Boolean>, Exception> { h ->
+    return d.db.jdbi.inTransaction<DuesAdjustmentDto, Exception> { h ->
         // Unknown and out-of-reach outlets answer alike: the server never confirms an outlet outside the caller's reach.
         val zone = outletZone(h, req.outlet_id)
         if (zone == null || !reach.coversZone(zone)) throw AdminSupport.outOfScope("the outlet does not exist or is outside your reach")
@@ -132,6 +135,12 @@ private suspend fun createAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
             if (!ok) bad("body.memo_client_uuid", "not_an_outlet_memo")
         }
         lock(h, "dues-adj-create:$uuid")
+        // The uuid becomes the ledger row's source: it must not already be the source of another record (memo, collection, ledger row).
+        val adjExists = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.dues_adjustment WHERE client_uuid = :u)").bind("u", uuid).mapTo(Boolean::class.java).one()
+        if (!adjExists && h.createQuery(
+                "SELECT EXISTS (SELECT 1 FROM app.due_ledger WHERE source_client_uuid = :u OR memo_client_uuid = :u) OR EXISTS (SELECT 1 FROM app.memo WHERE client_uuid = :u) OR EXISTS (SELECT 1 FROM app.due_collection WHERE client_uuid = :u)",
+            ).bind("u", uuid).mapTo(Boolean::class.java).one()
+        ) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid is already used by another record")
         val inserted = h.createQuery(
             "INSERT INTO app.dues_adjustment (client_uuid, outlet_id, memo_client_uuid, kind, amount_mtk, reason, created_by) VALUES (:u, :o, CAST(:m AS uuid), :k, :a, :r, :by) " +
                 "ON CONFLICT (client_uuid) DO NOTHING RETURNING id",
@@ -141,14 +150,14 @@ private suspend fun createAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
             AuditWriter.write(h, p, "dues_adjustment", inserted.toString(), "create", null, buildJsonObject {
                 put("outlet_id", req.outlet_id); put("kind", req.kind); put("amount_mtk", req.amount_mtk); put("client_uuid", uuid.toString())
             }, reason, call.requestId)
-            return@inTransaction h.createQuery("SELECT $COLS FROM app.dues_adjustment a WHERE a.id = :i").bind("i", inserted).map { rs, _ -> map(rs) }.one() to true
+            return@inTransaction h.createQuery("SELECT $COLS FROM app.dues_adjustment a WHERE a.id = :i").bind("i", inserted).map { rs, _ -> map(rs) }.one()
         }
         // A replay of the same proposal by the same maker answers the stored row; the same uuid with other content is a conflict.
         val row = h.createQuery("SELECT $COLS FROM app.dues_adjustment a WHERE a.client_uuid = :u").bind("u", uuid).map { rs, _ -> map(rs) }.one()
         val same = row.created_by_user_id == p.userId && row.outlet_id == req.outlet_id && row.kind == req.kind && row.amount_mtk == req.amount_mtk &&
             row.reason == reason && row.memo_client_uuid == memo?.toString()
         if (!same) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid was already used for a different proposal")
-        row to false
+        row
     }
 }
 
@@ -169,10 +178,16 @@ private suspend fun decideAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
         if (zone == null || !reach.coversZone(zone)) throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "dues adjustment $id")
         // One decision at a time per outlet: balance check, status change and ledger row are one serial step.
         lock(h, "dues-outlet:${cur.first.outlet_id}")
+        // A ledger insert (a synced collection) holds FOR KEY SHARE on the outlet row; FOR UPDATE here serialises with it, so the balance read is final.
+        h.createQuery("SELECT 1 FROM app.outlet WHERE id = :o FOR UPDATE").bind("o", cur.first.outlet_id).mapTo(Int::class.java).findOne()
         val row = h.createQuery("SELECT $COLS FROM app.dues_adjustment a WHERE a.id = :i FOR UPDATE").bind("i", id).map { rs, _ -> map(rs) }.one()
-        if (row.created_by_user_id == p.userId) throw ApiProblem(ProblemCode.ERR_SEPARATION_OF_DUTIES, "the checker of a dues adjustment is not its maker")
-        if (row.status != "pending") throw ApiProblem(ProblemCode.ERR_CONFLICT, "the adjustment is already ${row.status}")
         val approve = req.decision == "approve"
+        // Decided once: the same checker repeating the same decision gets the stored outcome; anything else is a request-state conflict.
+        if (row.status != "pending") {
+            if (row.decided_by_user_id == p.userId && row.status == (if (approve) "approved" else "rejected")) return@inTransaction row
+            throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the adjustment is already ${row.status}")
+        }
+        if (row.created_by_user_id == p.userId) throw ApiProblem(ProblemCode.ERR_SEPARATION_OF_DUTIES, "the checker of a dues adjustment is not its maker")
         if (approve && row.kind == "write_off") {
             val balance = h.createQuery("SELECT COALESCE(SUM(amount_mtk), 0) FROM app.due_ledger WHERE outlet_id = :o").bind("o", row.outlet_id).mapTo(Long::class.java).one()
             if (-row.amount_mtk > balance) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the write-off is larger than the outlet's open balance")

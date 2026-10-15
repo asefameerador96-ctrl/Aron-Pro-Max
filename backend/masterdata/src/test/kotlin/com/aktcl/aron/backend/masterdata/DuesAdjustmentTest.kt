@@ -34,7 +34,7 @@ class DuesAdjustmentTest {
         assertEquals(HttpStatusCode.Created, c.status, c.bodyAsText())
         val id = c.objA3().strA3("adjustment_id"); assertEquals("pending", c.objA3().strA3("status"))
         // Replay: same content answers the stored row (200), nothing doubles; other content under the same uuid is a conflict.
-        assertEquals(HttpStatusCode.OK, sendA3(HttpMethod.Post, "/v1/admin/dues-adjustments", admin, body(u, outlet, amount = 7_000)).status)
+        assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/admin/dues-adjustments", admin, body(u, outlet, amount = 7_000)).status)
         assertEquals(HttpStatusCode.Conflict, sendA3(HttpMethod.Post, "/v1/admin/dues-adjustments", admin, body(u, outlet, amount = 8_000)).status)
         assertEquals(HttpStatusCode.Conflict, sendA3(HttpMethod.Post, "/v1/admin/dues-adjustments", sup, body(u, outlet, amount = 7_000)).status, "another maker cannot adopt the uuid")
         assertEquals(1, env.count("SELECT count(*) FROM app.dues_adjustment WHERE client_uuid = '$u'"))
@@ -48,7 +48,7 @@ class DuesAdjustmentTest {
         assertEquals(1, env.count("SELECT count(*) FROM app.due_ledger WHERE source_client_uuid = '$u' AND entry_kind = 'adjustment' AND user_id = ${env.ids.getValue("superadmin1001")} AND business_date = app.dhaka_date(now())"))
         assertEquals(1, env.count("SELECT count(*) FROM app.audit_log WHERE entity = 'dues_adjustment' AND entity_id = '$id' AND action = 'approve' AND reason = 'checked with the depot'"))
         // Decided once.
-        assertEquals(HttpStatusCode.Conflict, sendA3(HttpMethod.Post, "/v1/admin/dues-adjustments/$id/decision", sup, """{"decision":"approve"}""").status)
+        assertEquals(HttpStatusCode.OK, sendA3(HttpMethod.Post, "/v1/admin/dues-adjustments/$id/decision", sup, """{"decision":"approve"}""").status, "same decision by the same checker is a replay")
         assertEquals(HttpStatusCode.Conflict, sendA3(HttpMethod.Post, "/v1/admin/dues-adjustments/$id/decision", sup, """{"decision":"reject"}""").status)
         assertEquals(before + 7_000, balance(outlet))
         // A replay of the create after the decision still answers the stored (approved) row, no new pending row.
