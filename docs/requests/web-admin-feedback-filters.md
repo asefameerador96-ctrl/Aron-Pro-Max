@@ -10,3 +10,5 @@ Add optional query parameters `category_code` (string, pattern of FeedbackPayloa
 
 ## Stub
 The inbox shows category and status as columns, with no filters. The status can be set (PATCH /v1/feedback/{feedback_uuid}, with a reason).
+
+**State (2026-10-15, web-admin):** done in the web portal against contract v1.3; server half to be confirmed live.

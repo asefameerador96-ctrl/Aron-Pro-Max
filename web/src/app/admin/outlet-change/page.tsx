@@ -19,7 +19,7 @@ export default async function OutletChangePage({ searchParams }: { searchParams:
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
   if (!hasRole(session.user.role, OUTLET_REQUEST_RAISE_ROLES)) return <Forbidden locale={locale} />;
   const q = one(sp.q).trim();
-  const pick = /^[0-9]{1,15}$/.test(one(sp.outlet, 15)) ? one(sp.outlet, 15) : "";
+  const pick = /^[0-9]{1,15}$/.test(one(sp.outlet, 40)) ? one(sp.outlet, 40) : "";
 
   let rows: Record<string, unknown>[] = [];
   if (Array.from(q).length >= 2) {
@@ -30,6 +30,7 @@ export default async function OutletChangePage({ searchParams }: { searchParams:
   const chosen = pick ? rows.find((o) => String(o.id) === pick) : undefined;
 
   let form = null;
+  let failedLoads = false;
   if (chosen) {
     const zone = str(chosen.zone_id);
     const [codeLists, clusters] = await Promise.all([
@@ -39,6 +40,7 @@ export default async function OutletChangePage({ searchParams }: { searchParams:
       ]),
       /^[0-9]{1,15}$/.test(zone) ? loadAllRows("/v1/admin/clusters", session.at, { zone_id: zone }) : Promise.resolve({ rows: [], failed: false }),
     ]);
+    failedLoads = codeLists[0].failed || codeLists[1].failed || clusters.failed;
     const facts: OutletFacts = {
       id: Number(chosen.id),
       code: str(chosen.code),
@@ -63,6 +65,7 @@ export default async function OutletChangePage({ searchParams }: { searchParams:
     );
   }
 
+  const loadFailed = chosen ? failedLoads : false;
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{t(locale, "menu.admin.outlet_change")}</h1>
@@ -89,6 +92,7 @@ export default async function OutletChangePage({ searchParams }: { searchParams:
         </ul>
       ) : null}
       {pick && !chosen && rows.length > 0 ? <p role="alert" className="text-red-700">{t(locale, "och.not_found")}</p> : null}
+      {loadFailed ? <p role="alert" data-testid="api-error" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{t(locale, "error.ref_load")}</p> : null}
       {form}
     </div>
   );

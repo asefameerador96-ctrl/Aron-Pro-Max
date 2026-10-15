@@ -8,3 +8,5 @@ contract lists sub-channels only as code-list items of `GET /v1/admin/code-lists
 (id, code, label_en, label_bn), so the form can show a select with Bangla labels.
 
 **Local stub.** `sub_channel_id` is `kind: "int"` in `web/src/app/admin/_entities/outlets.ts`. State: open.
+
+**State (2026-10-15, web-admin):** done in the web portal against contract v1.3; server half to be confirmed live.

@@ -151,7 +151,7 @@ export async function masterOpRules(op: MasterOpKey, body: Record<string, unknow
         if (Object.keys(p).length === 0) out.push({ pointer: "/body/proposed", code: "required" });
         text("name", 2, 120);
         text("owner_name", 2, 120);
-        text("address", 0, 300);
+        if (p.address !== null) text("address", 0, 300);
         if (p.name_bn !== undefined && p.name_bn !== null) text("name_bn", 1, 120);
         if (p.contact_number !== undefined && (typeof p.contact_number !== "string" || !/^01[3-9][0-9]{8}$/.test(p.contact_number))) out.push({ pointer: "/body/proposed/contact_number", code: "invalid" });
         if (p.sub_channel_id !== undefined && p.sub_channel_id !== null && !isId(p.sub_channel_id)) out.push({ pointer: "/body/proposed/sub_channel_id", code: "invalid" });

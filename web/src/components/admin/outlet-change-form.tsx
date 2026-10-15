@@ -36,6 +36,7 @@ interface Props {
 }
 
 const PHONE = /^01[3-9][0-9]{8}$/;
+const inv = (errs: Record<string, string>, k: string) => (errs[k] ? { "aria-invalid": true as const, "aria-describedby": `error-f-${k}` } : {});
 const num = (s: string) => Number(String(asciiDigits(s)).trim());
 
 /** Propose a change to one outlet (info, location, cluster or closure). The mandatory reason travels as the request note. */
@@ -44,6 +45,8 @@ export function OutletChangeForm({ outlet, clusters, subChannels, closeReasons }
   const [type, setType] = useState<ChangeType>("info");
   // The browser makes the idempotency key when the form opens; a retry after a failure reuses it, a new request gets a new one.
   const [requestUuid, setRequestUuid] = useState(() => crypto.randomUUID());
+  // What the last send was for: the key is reused only for an identical retry (a stored request would otherwise answer an edited proposal).
+  const [lastSent, setLastSent] = useState<string | null>(null);
   const [v, setV] = useState<Record<string, string>>({ name: outlet.name, name_bn: outlet.name_bn, owner_name: outlet.owner_name, contact_number: "", address: outlet.address, sub_channel_id: outlet.sub_channel_id, cluster_id: outlet.cluster_id, lat: outlet.lat, lng: outlet.lng, close_reason_code: "" });
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -80,7 +83,7 @@ export function OutletChangeForm({ outlet, clusters, subChannels, closeReasons }
         if (!addr || codePoints(addr) > 300) e.address = bad;
         else p.address = addr;
       }
-      if (v.sub_channel_id && v.sub_channel_id !== outlet.sub_channel_id) p.sub_channel_id = Number(v.sub_channel_id);
+      if (v.sub_channel_id !== outlet.sub_channel_id) p.sub_channel_id = v.sub_channel_id ? Number(v.sub_channel_id) : null;
       if (Object.keys(e).length === 0 && Object.keys(p).length === 0) e.form = t("och.no_change");
     } else if (type === "location") {
       const lat = num(v.lat!);
@@ -111,7 +114,11 @@ export function OutletChangeForm({ outlet, clusters, subChannels, closeReasons }
     setMsg(null);
     if (Object.keys(e).length) return;
     setBusy(true);
-    const r = await callMasterOp("outlet-request.create", { body: { request_uuid: requestUuid, request_type: type, outlet_id: outlet.id, proposed }, reason: reason.trim() });
+    const signature = JSON.stringify([type, proposed, reason.trim()]);
+    const uuid = lastSent === null || lastSent === signature ? requestUuid : crypto.randomUUID();
+    setRequestUuid(uuid);
+    setLastSent(signature);
+    const r = await callMasterOp("outlet-request.create", { body: { request_uuid: uuid, request_type: type, outlet_id: outlet.id, proposed }, reason: reason.trim() });
     setBusy(false);
     if (!r.ok) {
       setMsg({ ok: false, text: problem(r.problem.code) });
@@ -120,6 +127,7 @@ export function OutletChangeForm({ outlet, clusters, subChannels, closeReasons }
     setMsg({ ok: true, text: t("och.sent") });
     setReason("");
     setRequestUuid(crypto.randomUUID()); // the next proposal is a new request
+    setLastSent(null);
   }
 
   const typeHint: Record<ChangeType, MessageKey> = { info: "och.type_hint.info", location: "och.type_hint.location", cluster: "och.type_hint.cluster", close: "och.type_hint.close" };
@@ -144,19 +152,19 @@ export function OutletChangeForm({ outlet, clusters, subChannels, closeReasons }
       {type === "info" ? (
         <>
           <Field label={t("entity.field.name")} htmlFor="f-name" error={errors.name}>
-            <input id="f-name" maxLength={120} value={v.name} onChange={(ev) => set("name", ev.target.value)} className={inputClass} />
+            <input id="f-name" {...inv(errors, "name")} maxLength={120} value={v.name} onChange={(ev) => set("name", ev.target.value)} className={inputClass} />
           </Field>
           <Field label={t("entity.field.name_bn")} htmlFor="f-name_bn" error={errors.name_bn}>
-            <input id="f-name_bn" maxLength={120} value={v.name_bn} onChange={(ev) => set("name_bn", ev.target.value)} className={inputClass} />
+            <input id="f-name_bn" {...inv(errors, "name_bn")} maxLength={120} value={v.name_bn} onChange={(ev) => set("name_bn", ev.target.value)} className={inputClass} />
           </Field>
           <Field label={t("entity.field.owner_name")} htmlFor="f-owner_name" error={errors.owner_name}>
-            <input id="f-owner_name" maxLength={120} value={v.owner_name} onChange={(ev) => set("owner_name", ev.target.value)} className={inputClass} />
+            <input id="f-owner_name" {...inv(errors, "owner_name")} maxLength={120} value={v.owner_name} onChange={(ev) => set("owner_name", ev.target.value)} className={inputClass} />
           </Field>
           <Field label={t("entity.field.contact_number")} htmlFor="f-contact_number" hint={t("och.contact_hint")} error={errors.contact_number}>
-            <input id="f-contact_number" inputMode="numeric" maxLength={11} value={v.contact_number} onChange={(ev) => set("contact_number", ev.target.value)} className={`${inputClass} w-48`} />
+            <input id="f-contact_number" {...inv(errors, "contact_number")} inputMode="numeric" maxLength={11} value={v.contact_number} onChange={(ev) => set("contact_number", ev.target.value)} className={`${inputClass} w-48`} />
           </Field>
           <Field label={t("entity.field.address")} htmlFor="f-address" error={errors.address}>
-            <input id="f-address" maxLength={300} value={v.address} onChange={(ev) => set("address", ev.target.value)} className={inputClass} />
+            <input id="f-address" {...inv(errors, "address")} maxLength={300} value={v.address} onChange={(ev) => set("address", ev.target.value)} className={inputClass} />
           </Field>
           {subChannels.length > 0 ? (
             <Field label={t("entity.field.sub_channel_id")} htmlFor="f-sub_channel_id">
@@ -173,37 +181,38 @@ export function OutletChangeForm({ outlet, clusters, subChannels, closeReasons }
       {type === "location" ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t("entity.field.lat")} htmlFor="f-lat" required error={errors.lat}>
-            <input id="f-lat" inputMode="decimal" value={v.lat} onChange={(ev) => set("lat", ev.target.value)} aria-required="true" className={inputClass} />
+            <input id="f-lat" {...inv(errors, "lat")} inputMode="decimal" value={v.lat} onChange={(ev) => set("lat", ev.target.value)} aria-required="true" className={inputClass} />
           </Field>
           <Field label={t("entity.field.lng")} htmlFor="f-lng" required error={errors.lng}>
-            <input id="f-lng" inputMode="decimal" value={v.lng} onChange={(ev) => set("lng", ev.target.value)} aria-required="true" className={inputClass} />
+            <input id="f-lng" {...inv(errors, "lng")} inputMode="decimal" value={v.lng} onChange={(ev) => set("lng", ev.target.value)} aria-required="true" className={inputClass} />
           </Field>
         </div>
       ) : null}
       {type === "cluster" ? (
         <Field label={t("entity.field.cluster")} htmlFor="f-cluster_id" required error={errors.cluster_id}>
           {clusters.length > 0 ? (
-            <select id="f-cluster_id" value={v.cluster_id} onChange={(ev) => set("cluster_id", ev.target.value)} aria-required="true" className={`${inputClass} w-80`}>
+            <select id="f-cluster_id" {...inv(errors, "cluster_id")} value={v.cluster_id} onChange={(ev) => set("cluster_id", ev.target.value)} aria-required="true" className={`${inputClass} w-80`}>
+              {clusters.some((o) => o.value === v.cluster_id) ? null : <option value="">{t("common.none")}</option>}
               {clusters.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           ) : (
-            <input id="f-cluster_id" inputMode="numeric" value={v.cluster_id} onChange={(ev) => set("cluster_id", ev.target.value)} aria-required="true" className={`${inputClass} w-40`} />
+            <input id="f-cluster_id" {...inv(errors, "cluster_id")} inputMode="numeric" value={v.cluster_id} onChange={(ev) => set("cluster_id", ev.target.value)} aria-required="true" className={`${inputClass} w-40`} />
           )}
         </Field>
       ) : null}
       {type === "close" ? (
         <Field label={t("och.close_reason")} htmlFor="f-close_reason_code" required error={errors.close_reason_code}>
           {closeReasons.length > 0 ? (
-            <select id="f-close_reason_code" value={v.close_reason_code} onChange={(ev) => set("close_reason_code", ev.target.value)} aria-required="true" className={`${inputClass} w-80`}>
+            <select id="f-close_reason_code" {...inv(errors, "close_reason_code")} value={v.close_reason_code} onChange={(ev) => set("close_reason_code", ev.target.value)} aria-required="true" className={`${inputClass} w-80`}>
               <option value="">{t("common.none")}</option>
               {closeReasons.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           ) : (
-            <input id="f-close_reason_code" value={v.close_reason_code} onChange={(ev) => set("close_reason_code", ev.target.value)} aria-required="true" className={`${inputClass} w-64`} />
+            <input id="f-close_reason_code" {...inv(errors, "close_reason_code")} value={v.close_reason_code} onChange={(ev) => set("close_reason_code", ev.target.value)} aria-required="true" className={`${inputClass} w-64`} />
           )}
         </Field>
       ) : null}
