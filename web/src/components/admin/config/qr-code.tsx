@@ -17,7 +17,7 @@ export function QrCode({ text, label, size = 280 }: { text: string; label: strin
   const dim = n + quiet * 2;
   const px = Math.max(size, dim * 4); // at least four pixels per module so a phone camera can read it
   return (
-    <svg role="img" aria-label={label} viewBox={`0 0 ${dim} ${dim}`} width={px} height={px} className="rounded border border-slate-300 bg-white" shapeRendering="crispEdges" data-testid="qr-svg" data-modules={n}>
+    <svg role="img" aria-label={label} viewBox={`0 0 ${dim} ${dim}`} width={px} height={px} className="h-auto max-w-full rounded border border-slate-300 bg-white" style={{ maxWidth: "100%", height: "auto" }} shapeRendering="crispEdges" data-testid="qr-svg" data-modules={n}>
       <rect width={dim} height={dim} fill="#fff" />
       <g fill="#000">{rects}</g>
     </svg>

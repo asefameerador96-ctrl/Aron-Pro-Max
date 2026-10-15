@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import type { Problem } from "@/contract/types";
 import { ChangePasswordForm } from "./change-password-form";
 import { useI18n } from "./i18n-provider";
+import { MfaSetup } from "./mfa-setup";
 
 type Step = "password" | "mfa" | "password_change_required" | "password_reset_by_support" | "no_web_access";
 
@@ -18,6 +19,7 @@ export function LoginForm({ next }: { next: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [show, setShow] = useState(false);
+  const [recovery, setRecovery] = useState(false); // a recovery code has letters: the numeric keypad is for the 6-digit code
 
   async function run(path: string, body: unknown) {
     setBusy(true);
@@ -121,11 +123,15 @@ export function LoginForm({ next }: { next: string }) {
           <p className="text-sm text-slate-600">{t("auth.mfa.hint")}</p>
           <label className="block text-sm font-medium">
             {t("auth.mfa.code")}
-            <input name="code" inputMode="text" autoComplete="one-time-code" required maxLength={9} className={`${input} tracking-widest`} />
+            <input name="code" inputMode={recovery ? "text" : "numeric"} autoComplete="one-time-code" required maxLength={recovery ? 9 : 6} pattern={recovery ? undefined : "[0-9]{6}"} data-testid="mfa-code" className={`${input} tracking-widest`} />
           </label>
           <button type="submit" disabled={busy} className={button}>
             {t("auth.mfa.submit")}
           </button>
+          <button type="button" onClick={() => setRecovery(!recovery)} data-testid="mfa-toggle-recovery" className="text-sm text-brand-700 underline">
+            {t(recovery ? "auth.mfa.use_code" : "auth.mfa.use_recovery")}
+          </button>
+          <MfaSetup />
         </form>
       )}
       {error ? (
