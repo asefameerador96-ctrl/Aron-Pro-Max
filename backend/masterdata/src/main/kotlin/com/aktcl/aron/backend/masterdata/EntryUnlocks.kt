@@ -70,7 +70,7 @@ private fun mapUnlock(rs: ResultSet, now: OffsetDateTime): EntryUnlockDto {
     val effectiveEnd = if (closed != null && closed.isBefore(expiresAt)) closed else expiresAt
     return EntryUnlockDto(
         rs.getLong("id"), rs.getString("scope_type"), rs.getLong("scope_id"), rs.getObject("from_date", java.time.LocalDate::class.java).toString(), rs.getObject("to_date", java.time.LocalDate::class.java).toString(),
-        rs.getString("reason"), effectiveEnd.toInstant().wire(), rs.getLong("created_by"), if (effectiveEnd.isAfter(now)) "active" else "expired",
+        rs.getString("reason"), effectiveEnd.toInstant().wire(), rs.getLong("created_by"), if (closed == null && expiresAt.isAfter(now)) "active" else "expired",
     )
 }
 
@@ -122,11 +122,12 @@ private suspend fun createUnlock(call: ApplicationCall, d: EntryUnlockDeps): Ent
     val from = AdminSupport.date(req.from, "body.from"); val to = AdminSupport.date(req.to, "body.to")
     AdminSupport.noNul("body.reason", req.reason)
     val reason = req.reason.trim()
-    if (req.reason.length > 500 || reason.length < 10) bad("body.reason", "length")
+    if (reason.length > 500 || reason.length < 10) bad("body.reason", "length")
     val today = AdminSupport.today(d.clock)
     val maxDays = runCatching { d.config.int("cfg.web.entry_unlock_max_days") }.getOrDefault(7)
+    // "to is at most cfg.web.entry_unlock_max_days after from" (contract EntryUnlockWrite)
     if (to.isBefore(from)) bad("body.to", "before_from")
-    if (ChronoUnit.DAYS.between(from, to) + 1 > maxDays) bad("body.to", "above_max_days")
+    if (ChronoUnit.DAYS.between(from, to) > maxDays) bad("body.to", "above_max_days")
     if (to.isAfter(today)) bad("body.to", "future")
     val ttl = req.ttl_h ?: runCatching { d.config.int("cfg.web.entry_unlock_ttl_h") }.getOrDefault(24)
     if (ttl !in 1..168) bad("body.ttl_h", "out_of_range")

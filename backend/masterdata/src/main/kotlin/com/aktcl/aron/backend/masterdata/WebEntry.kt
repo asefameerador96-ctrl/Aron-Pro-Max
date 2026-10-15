@@ -98,14 +98,14 @@ private fun requireWindow(d: WebEntryDeps, h: Handle, routeId: Long?, zone: Long
 }
 
 private fun targetOutlets(h: Handle, routeId: Long, date: LocalDate): Int =
-    h.createQuery("SELECT target_outlets FROM app.route_day WHERE route_id = :r AND business_date = :d").bind("r", routeId).bind("d", date).mapTo(Int::class.java).findOne().orElse(null)
+    h.createQuery("SELECT target_outlets FROM app.route_day WHERE route_id = :r AND business_date = :d AND target_outlets IS NOT NULL").bind("r", routeId).bind("d", date).mapTo(Int::class.java).findOne().orElse(null)
         ?: h.createQuery("SELECT count(*) FROM app.outlet WHERE route_id = :r AND status = 'active'").bind("r", routeId).mapTo(Int::class.java).one()
 
 private fun appOverlap(h: Handle, routeId: Long, date: LocalDate): Boolean =
     h.createQuery("SELECT count(*) FROM app.memo WHERE route_id = :r AND business_date = :d AND voided_at IS NULL").bind("r", routeId).bind("d", date).mapTo(Int::class.java).one() > 0
 
-private fun linesOf(h: Handle, entry: UUID): List<WebEntryLineDto> =
-    h.createQuery("SELECT sku_id, issue_qty_base, return_qty_base, memo_count, class_qty_base::text AS cls FROM app.web_entry_line WHERE entry_client_uuid = :e AND voided_at IS NULL ORDER BY sku_id").bind("e", entry)
+private fun linesOf(h: Handle, entry: UUID, includeVoided: Boolean = false): List<WebEntryLineDto> =
+    h.createQuery("SELECT sku_id, issue_qty_base, return_qty_base, memo_count, class_qty_base::text AS cls FROM app.web_entry_line WHERE entry_client_uuid = :e ${if (includeVoided) "" else "AND voided_at IS NULL"} ORDER BY sku_id").bind("e", entry)
         .map { rs, _ ->
             val issue = rs.getLong("issue_qty_base"); val ret = rs.getLong("return_qty_base")
             val cls = (kotlinx.serialization.json.Json.parseToJsonElement(rs.getString("cls")) as kotlinx.serialization.json.JsonObject).mapValues { (it.value as kotlinx.serialization.json.JsonPrimitive).content.toLong() }
@@ -139,7 +139,7 @@ private fun validateLines(h: Handle, lines: List<WebEntryLineDto>) {
         if (l.issue_qty_base !in 0..10_000_000 || l.return_qty_base !in 0..10_000_000) bad("$at.issue_qty_base", "out_of_range")
         if (l.return_qty_base > l.issue_qty_base) bad("$at.return_qty_base", "above_issue")
         if (l.memo_count !in 0..100_000) bad("$at.memo_count", "out_of_range")
-        if (l.class_qty_base.keys.any { !Regex("^[1-9][0-9]{0,17}$").matches(it) } || l.class_qty_base.values.any { it < 0 } || l.class_qty_base.values.sum() > l.issue_qty_base - l.return_qty_base) bad("$at.class_qty_base")
+        if (l.class_qty_base.keys.any { !Regex("^[1-9][0-9]{0,17}$").matches(it) } || l.class_qty_base.values.any { it < 0 || it > 10_000_000 } || l.class_qty_base.values.sum() > l.issue_qty_base - l.return_qty_base) bad("$at.class_qty_base")
     }
     if (skus.isNotEmpty()) {
         val known = h.createQuery("SELECT id FROM app.sku WHERE id IN (<ids>)").bindList("ids", skus.toList()).mapTo(Long::class.java).set()
@@ -158,9 +158,12 @@ private suspend fun saveRouteDay(call: ApplicationCall, d: WebEntryDeps): WebEnt
     AdminSupport.noNul("body.change_reason", req.change_reason)
     val reason = req.change_reason?.trim()?.also { if (it.length !in 10..500) bad("body.change_reason", "length") }
     val now = AdminSupport.utc(d.clock)
-    return d.db.jdbi.inTransaction<WebEntryRouteDayOut, Exception> { h ->
+    return uniqueAsConflict { d.db.jdbi.inTransaction<WebEntryRouteDayOut, Exception> { h ->
         val zone = requireRouteReach(d, call, h, req.route_id)
+        h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "webentry-uuid:$cu").mapTo(String::class.java).findOne()
         h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "webentry:${req.route_id}:$date").mapTo(String::class.java).findOne()
+        // Shared with Final Submit's exclusive lock (DayApi): an entry in flight finishes before the zone-day is submitted, and one after sees it.
+        h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 3))").bind("k", "final:$zone:$date").mapTo(String::class.java).findOne()
         // Shared with the data void's exclusive lock: a void of this route-day waits for an entry in flight, and an entry after it sees the tombstones.
         h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 0))").bind("k", "voidday:${req.route_id}:$date").mapTo(String::class.java).findOne()
         validateLines(h, req.lines)
@@ -168,7 +171,7 @@ private suspend fun saveRouteDay(call: ApplicationCall, d: WebEntryDeps): WebEnt
             .map { rs, _ -> arrayOf<Any?>(rs.getLong(1), rs.getObject(2, LocalDate::class.java), rs.getInt(3), rs.getLong(4)) }.findOne().orElse(null)
         if (prior != null) {
             val same = prior[0] == req.route_id && prior[1] == date && prior[2] == req.successful_calls && prior[3] == p.userId &&
-                linesOf(h, cu).map { it.copy(sale_qty_base = null) } == req.lines.map { it.copy(sale_qty_base = null) }.sortedBy { it.sku_id }
+                linesOf(h, cu, includeVoided = true).map { it.copy(sale_qty_base = null) } == req.lines.map { it.copy(sale_qty_base = null) }.sortedBy { it.sku_id }
             if (!same) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid already stores a different entry")
             return@inTransaction WebEntryRouteDayOut(req.route_id, date.toString(), linesOf(h, cu), req.successful_calls, h.createQuery("SELECT target_outlets FROM app.web_entry_route_day WHERE client_uuid = :u").bind("u", cu).mapTo(Int::class.java).one(),
                 h.createQuery("SELECT app_overlap FROM app.web_entry_route_day WHERE client_uuid = :u").bind("u", cu).mapTo(Boolean::class.java).one(), client_uuid = cu.toString(), saved_at = null, saved_by_user_id = p.userId)
@@ -194,7 +197,7 @@ private suspend fun saveRouteDay(call: ApplicationCall, d: WebEntryDeps): WebEnt
             if (live != null) put("supersedes", live.toString())
         }, reason, call.requestId)
         liveEntry(h, req.route_id, date)!!
-    }
+    } }
 }
 
 private suspend fun saveQc(call: ApplicationCall, d: WebEntryDeps): QcEntryOut {
@@ -220,7 +223,7 @@ private suspend fun saveQc(call: ApplicationCall, d: WebEntryDeps): QcEntryOut {
         if (!triples.add(Triple(r.sku_id, r.fault_type_code, Unit))) bad("$at.fault_type_code", "duplicate")
     }
     val now = AdminSupport.utc(d.clock)
-    return d.db.jdbi.inTransaction<QcEntryOut, Exception> { h ->
+    return uniqueAsConflict { d.db.jdbi.inTransaction<QcEntryOut, Exception> { h ->
         h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "qcentry:$cu").mapTo(String::class.java).findOne()
         val reach = AdminSupport.reach(d.reach, call, d.clock)
         if (!reach.coversZone(req.zone_id) || h.createQuery("SELECT count(*) FROM app.zone WHERE id = :z").bind("z", req.zone_id).mapTo(Int::class.java).one() == 0) throw AdminSupport.outOfScope("zone outside your reach")
@@ -232,9 +235,13 @@ private suspend fun saveQc(call: ApplicationCall, d: WebEntryDeps): QcEntryOut {
         val prior = h.createQuery("SELECT qc_source, zone_id, route_id, business_date, (SELECT count(*) FROM app.qc_summary_entry_line l WHERE l.entry_client_uuid = e.client_uuid) AS n, entered_by FROM app.qc_summary_entry e WHERE client_uuid = :u").bind("u", cu)
             .map { rs, _ -> arrayOf<Any?>(rs.getString(1), rs.getLong(2), rs.getObject(3) as Long?, rs.getObject(4, LocalDate::class.java), rs.getInt(5), rs.getLong(6)) }.findOne().orElse(null)
         if (prior != null) {
-            if (prior[0] != req.source || prior[1] != req.zone_id || prior[2] != req.route_id || prior[3] != date || prior[4] != req.rows.size || prior[5] != p.userId) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid already stores a different QC entry")
+            val storedRows = h.createQuery("SELECT sku_id, fault_type_code, qty_base FROM app.qc_summary_entry_line WHERE entry_client_uuid = :u").bind("u", cu).map { rs, _ -> Triple(rs.getLong(1), rs.getString(2), rs.getLong(3)) }.set()
+            val storedReason = h.createQuery("SELECT reason FROM app.qc_summary_entry WHERE client_uuid = :u").bind("u", cu).mapTo(String::class.java).findOne().orElse(null)
+            if (prior[0] != req.source || prior[1] != req.zone_id || prior[2] != req.route_id || prior[3] != date || prior[4] != req.rows.size || prior[5] != p.userId ||
+                storedRows != req.rows.map { Triple(it.sku_id, it.fault_type_code, it.qty_base) }.toSet() || storedReason != reason) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid already stores a different QC entry")
             return@inTransaction QcEntryOut(cu.toString(), req.rows.size, true)
         }
+        h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 3))").bind("k", "final:${req.zone_id}:$date").mapTo(String::class.java).findOne()
         if (finalSubmitted(h, req.zone_id, date)) throw ApiProblem(ProblemCode.ERR_DAY_ALREADY_FINAL_SUBMITTED, "the zone-day is Final Submitted")
         requireWindow(d, h, req.route_id, req.zone_id, date, now)
         val skus = req.rows.map { it.sku_id }.toSet(); val faults = req.rows.map { it.fault_type_code }.toSet()
@@ -249,5 +256,11 @@ private suspend fun saveQc(call: ApplicationCall, d: WebEntryDeps): QcEntryOut {
             put("source", req.source); put("zone_id", req.zone_id); put("business_date", date.toString()); put("rows", req.rows.size)
         }, reason, call.requestId)
         QcEntryOut(cu.toString(), req.rows.size, false)
-    }
+    } }
+}
+
+/** A unique-key race the advisory locks cannot see (a competing commit of the same client_uuid) is a 409 the browser can retry as a replay, never a 500. */
+private fun <T> uniqueAsConflict(block: () -> T): T = try { block() } catch (e: org.jdbi.v3.core.JdbiException) {
+    if (generateSequence<Throwable>(e) { it.cause }.filterIsInstance<java.sql.SQLException>().any { it.sqlState == "23505" }) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the entry was saved by a concurrent request; retry")
+    throw e
 }
