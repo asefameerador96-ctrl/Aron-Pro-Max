@@ -26,6 +26,8 @@ export const MASTER_OPS = {
   "credential.manage": { method: "POST", path: "/v1/admin/users/{id}/credentials", roles: ["TSO", "SUPPORT", "ADMIN", "SUPERADMIN"], reason: "reason" },
   // F-TSO-025: a TSO proposes a geofence radius for its own territory (cfg.geo.tso_radius_mode = propose, D24-59); the registry decides the status.
   "radius.propose": { method: "POST", path: "/v1/admin/config/changes", roles: ["TSO"], reason: "reason" },
+  // F-WEB-003: a TSO or DMO proposes a change to an outlet in its reach (info, location, cluster, close). The mandatory reason is the request note.
+  "outlet-request.create": { method: "POST", path: "/v1/outlet-requests", roles: ["TSO", "DMO"], reason: "note" },
   "assignment.end": { method: "POST", path: "/v1/admin/route-assignments/{id}/end", roles: ADMINS, reason: "reason", reasonMax: 300 },
 } as const satisfies Record<string, MasterOpDef>;
 

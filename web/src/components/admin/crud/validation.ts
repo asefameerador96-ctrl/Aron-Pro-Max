@@ -4,6 +4,7 @@ import { businessDate } from "@/lib/i18n";
 import type { FieldError } from "./types";
 import { isWritable, type AnyEntity, type AnyField } from "./meta";
 
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export const REASON_MIN = 10; // ChangeReason in the contract
 export const REASON_MAX = 500;
 
@@ -40,6 +41,11 @@ function fieldSchema(f: AnyField): z.ZodType {
     let d: z.ZodType<string> = z.preprocess(asciiDigits, z.string().refine(isRealDate, "invalid")) as unknown as z.ZodType<string>;
     if (f.futureOnly) d = d.refine((v) => v >= businessDate(), "past");
     return f.nullable ? z.preprocess((v) => (v === "" ? null : v), d.nullable()) : d;
+  }
+  if (f.kind === "asset") {
+    // The asset UUID of an upload ticket; empty means "no image" (null), which removes it on update.
+    const u = z.string().trim().regex(UUID_V4, "invalid");
+    return z.preprocess((x) => (typeof x === "string" && x.trim() === "" ? null : x), u.nullable());
   }
   if (f.kind === "mask") {
     const bits = f.maskBits?.length ?? 7;

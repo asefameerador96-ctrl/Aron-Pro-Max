@@ -66,7 +66,7 @@ export const WEB_REPORTS: readonly WebReport[] = [
   { row: "F-WEB-044", slug: "suspicious-location", key: "suspicious-location", titleKey: "report.suspicious_location", area: "geo", filters: [...RANGE, "date_grouping"], grouping: "day", geoStrip: true, chart: { label: "business_date", value: "suspicious" } },
   { row: "F-WEB-053", slug: "ds-rrs", key: "ds-rrs", titleKey: "report.ds_rrs", area: "finance", filters: DAY, singleDate: true, print: true },
   { row: "F-WEB-054", slug: "amo-call", key: "amo-call", titleKey: "report.amo_call", area: "field_force", filters: [...RANGE, "date_grouping"], grouping: "day" },
-  { row: "F-WEB-055", slug: "dss", key: "dss", titleKey: "report.dss", area: "sales", filters: [...RANGE, "category", "products", "sub_channels", "location"], drill: { column: "route_name", idColumn: "route_id", to: "by-outlet", param: "route" } },
+  { row: "F-WEB-055", slug: "dss", key: "dss", titleKey: "report.dss", area: "sales", filters: [...RANGE, "category", "products", "sub_channels", "location"] },
   { row: "F-WEB-056", slug: "route-memo", key: "route-memo", titleKey: "report.route_memo", area: "sales", filters: [...RANGE, "category", "products"] },
   { row: "F-WEB-061", slug: "qc", key: "qc-report", titleKey: "report.qc", area: "ops", filters: RANGE, pdf: true, splitBy: "source" },
   { row: "F-WEB-062", slug: "route-qc", key: "route-qc", titleKey: "report.route_qc", area: "ops", filters: RANGE },

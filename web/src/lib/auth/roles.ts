@@ -25,9 +25,13 @@ export const OUTLET_REQUEST_ACT_ROLES = ["DMO", "WM", "ADMIN", "SUPERADMIN"] as 
 /** Roles that reset a password or unlock an SR or AMO on the team page (docs/24 s8.5); a TSO only for its own zones (server side). */
 export const TEAM_CREDENTIAL_ROLES = ["TSO", "SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 
+/** Roles that raise an outlet change request from the web (the others edit directly or have no outlet write). */
+export const OUTLET_REQUEST_RAISE_ROLES = ["TSO", "DMO"] as const satisfies readonly Role[];
+
 export const ADMIN_PATH_ROLES: readonly { prefix: string; roles: RoleList }[] = [
   { prefix: "/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
   { prefix: "/api/bff/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
+  { prefix: "/admin/outlet-change", roles: OUTLET_REQUEST_RAISE_ROLES },
   { prefix: "/admin/team", roles: TEAM_CREDENTIAL_ROLES },
   { prefix: "/admin/radius", roles: ["TSO"] },
 ];

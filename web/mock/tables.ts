@@ -38,6 +38,8 @@ export interface TableDef {
   validateCreate?: (b: Record<string, unknown>, rows: Row[]) => { status: number; code: ProblemCode } | null;
   /** Members computed from the created row (selling_day...). */
   derive?: (row: Row) => Record<string, unknown>;
+  /** After a create or patch: fold write-only members into the shape of a read (SKU image_asset_id becomes image_url). */
+  afterWrite?: (row: Row) => void;
   /** Wrap the created row in the response (e.g. { user, temporary_password }). */
   createResponse?: (row: Row) => unknown;
   /** Row actions: POST <item path>/<suffix>. */
@@ -120,6 +122,7 @@ export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, ur
       const now = new Date().toISOString();
       const row: Row = { ...(def.defaults ?? {}), ...Object.fromEntries((def.nullables ?? []).map((k) => [k, null])), ...def.stamp?.(pathParams), ...Object.fromEntries(Object.entries(b).filter(([k]) => k !== "change_reason" && k !== def.create.reasonMember)), id: def.nextId(), version: 1, created_at: now, updated_at: now };
       Object.assign(row, def.derive?.(row));
+      def.afterWrite?.(row);
       def.rows().push(row);
       ctx.audit(def.auditEntity, row[def.idField ?? "id"] as string | number, `${def.auditEntity}.create`, {}, scalar(row, Object.keys(b).filter((k) => k !== "change_reason" && k !== def.create.reasonMember)), def.create.reason ? ((b.change_reason as string | null | undefined) ?? null) : def.create.reasonMember ? ((b[def.create.reasonMember] as string | null | undefined) ?? null) : null);
       return ctx.send(res, 201, def.createResponse ? def.createResponse(row) : row, { ETag: `"1"` }), true;
@@ -135,6 +138,7 @@ export async function handleTable(defs: TableDef[], ctx: Ctx, method: string, ur
       const keys = Object.keys(b).filter((k) => k !== "change_reason");
       const before = scalar(row, keys);
       for (const k of keys) row[k] = b[k];
+      def.afterWrite?.(row);
       row.version++;
       row.updated_at = new Date().toISOString();
       ctx.audit(def.auditEntity, row[def.idField ?? "id"] as string | number, `${def.auditEntity}.update`, before, scalar(row, keys), (b.change_reason as string | null | undefined) ?? null);

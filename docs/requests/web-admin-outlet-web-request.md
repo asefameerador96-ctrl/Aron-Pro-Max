@@ -8,3 +8,5 @@ edit control.
 **Ask.** If non-approvers (TSO, DMO) must edit these fields on the web, add `POST /v1/outlet-requests` (web source, same
 `OutletProposal`, `request_uuid` from the client, idempotent) so the portal can offer "propose change". State: open; no portal
 code is waiting on it.
+
+**State (2026-10-15, web-admin):** done in the web portal against contract v1.3; server half to be confirmed live.

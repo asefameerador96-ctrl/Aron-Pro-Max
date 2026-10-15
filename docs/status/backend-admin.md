@@ -23,6 +23,22 @@ Updated 2026-10-07 (evening). Local lane tests: config 48, masterdata 105, app 2
 - Not built: F-API-038 (paper backfill through ingest: the server must price the memo and create its visit; large, T1). F-ADM-036 dues adjustments waits on db: `docs/requests/backend-admin-dues-adjustment-table.md` (lead approved the row, Opus checker). Unproven risks of the web-entry check are in the checker report summary: zone-scoped cfg overrides not read, class keys unchecked, overlap policy treated as exclusive_flag, unlock create not idempotent.
 - Wall-clock gate: the intended real-clock reads in config and masterdata tests are annotated `wall-clock-ok`.
 
+## HANDOVER (2026-10-15, session 2 recycling at about 610k tokens)
+Lane head f5a3e647 is on INT (950ddbff). Tests: masterdata, config, app all green on it.
+
+Done this session (all checked; see the sections above and DECISIONS BA-30..32): config_ack handler, data void (+ checker fixes), domain-event producer + external_ref, risk signals (F-SYS-013), temp-password TTL 24 h, wall-clock annotations, contract v1.3 server side (items 1, 3, 6, 7, 8; item 2 existed), location-history rows, F-ADM-037 code rule, entry unlocks, web route-day and QC entry.
+
+Left:
+- **F-ADM-036 dues adjustments** (`/v1/admin/dues-adjustments` list/create/decision): NOT started. Blocked on db: `app.dues_adjustment` does not exist yet (`docs/requests/backend-admin-dues-adjustment-table.md`; check `grep dues_adjustment db/migrations`). Lead approved the row as T1 (money, Opus checker). Shape: create pending idempotent by `client_uuid`; list by `outlet_id`/`status`, reach-scoped; decide: checker is not the maker (409 `ERR_SEPARATION_OF_DUTIES`), approval inserts `app.due_ledger` kind `adjustment` (source = client_uuid, amount signed, `write_off` negative) in the same transaction, audit with the note; roles: finance in docs/15 = ADMIN/SUPERADMIN (TSO may propose? decide from docs/24 s8.5); add lines to `backend/app/src/test/resources/scope-cases.txt`.
+- **Contract v1.3 item 5 (SKU image)**: blocked on db (`docs/requests/backend-admin-sku-image-asset.md`); then `image_asset_id` on SkuWrite/SkuPatch (purpose `sku_image`) and `image_url` on Sku.
+- **F-API-038 paper backfill** (`POST /v1/admin/data-entry`): T1, large. The server must price a memo from qty-only lines at the business date (price type of the outlet), create the visit (`visit_kind web_entry`) and memo through the ingest path with `source = manual`, memo-number duplicate answered `duplicate_memo_no`, window `cfg.entry.paper_backfill_window_days` (7), roles SUPPORT/ADMIN/SUPERADMIN (docs/24 s8.5). Needs an `IngestService` entry point from backend-core.
+- **F-API-051** is a TRIM. **Data-void maker-checker** ruling pending (`docs/requests/backend-admin-data-void-second-person.md`).
+- Unproven risks to revisit: zone-scoped `cfg.web.*` overrides not read; web-entry class keys unchecked; overlap policy treated as exclusive_flag; unlock create not idempotent; remaining RiskRules (PERFECT_ACCURACY, SAME_POINT, STALE_FIX, GNSS_*, SHORT_VISIT_GAPS, DEVICE_*).
+
+Next three rows: (1) F-ADM-036 once the table lands; (2) SKU image once the column lands; (3) F-API-038 (agree the ingest entry point with backend-core first).
+
+Traps: `service postgresql start` after any pause (it stops); never two Gradle builds in one worktree (EOFException); checker worktrees live in `.claude/worktrees/` (excluded locally via .git/info/exclude; do not commit); ADMIN logins need MFA in app tests (override `cfg.auth.mfa_required_roles` to `[]` as in DataVoidAcceptanceTest); admin tests use the SYSTEM clock, annotate real-clock reads `// wall-clock-ok:`; push only to lane/backend-admin after merging INT.
+
 ## Blocked, with requests filed
 - F-API-049, 050, 052, 038 (web half) and the `web_entry` void scope need db tables: `docs/requests/backend-admin-web-entry-tables.md`.
 - F-API-051 is a TRIM (docs/27, no Astha quantity path): nothing to build.

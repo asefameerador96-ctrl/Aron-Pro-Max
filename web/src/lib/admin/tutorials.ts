@@ -25,6 +25,7 @@ export const ASSET_RULES = {
   tutorial_manual: { mimes: ["application/pdf"], max: MAX_ASSET_BYTES },
   content_av: { mimes: ["video/mp4"], max: 20_971_520 },
   content_kv: { mimes: ["image/jpeg", "image/png"], max: 307_200 },
+  sku_image: { mimes: ["image/jpeg", "image/png"], max: 307_200 },
 } as const;
 export type AssetPurpose = keyof typeof ASSET_RULES;
 
