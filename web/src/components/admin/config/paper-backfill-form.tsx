@@ -11,7 +11,7 @@ import { Field, inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 
 const MEMO_NO = /^[a-z][a-z0-9]{3,31}-\d{6}-\d{3,4}$/;
-const KINDS = ["sale", "drp_reward", "promo_free", "free_sample"] as const;
+const KINDS = ["sale"] as const; // promotion and free lines are deferred (docs/27); the server accepts only sale
 type Line = { sku_id: string; qty: string; kind: (typeof KINDS)[number] };
 
 export function PaperBackfillForm() {
@@ -54,7 +54,16 @@ export function PaperBackfillForm() {
         setUuid(crypto.randomUUID());
         setReason("");
         router.refresh();
-      } else setBanner({ ok: false, text: problem(data.code) });
+      } else {
+        const fe: Record<string, string> = {};
+        for (const err of data.errors ?? []) {
+          const name = err.pointer.replace(/^\/?(body[./])?/, "").replace(/^paid_mtk$/, "paid");
+          if (name in v) fe[name] = t(["above_max", "window", "required"].includes(err.code) ? (`error.field.${err.code}` as MessageKey) : "error.field.invalid");
+          else if (name.startsWith("lines")) fe[`line${/lines(?:\[|\/|\.)(\d+)/.exec(name)?.[1] ?? "0"}`] = t("error.field.invalid");
+        }
+        setErrors(fe);
+        setBanner({ ok: false, text: problem(data.code) });
+      }
     } catch {
       setBanner({ ok: false, text: t("error.network") });
     } finally {
