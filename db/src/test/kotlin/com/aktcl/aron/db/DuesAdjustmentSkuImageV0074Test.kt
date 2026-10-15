@@ -12,6 +12,7 @@ import kotlin.test.assertFailsWith
 /**
  * V0074: app.dues_adjustment (docs/requests/backend-admin-dues-adjustment-table.md, F-ADM-036).
  * V0075/V0076: app.sku.image_asset_id (docs/requests/backend-admin-sku-image-asset.md).
+ * V0079/V0080: |amount_mtk| at most 10^13 on dues_adjustment and due_ledger.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DuesAdjustmentSkuImageV0074Test {
@@ -127,6 +128,24 @@ class DuesAdjustmentSkuImageV0074Test {
         assertEquals("0", c.scalar("SELECT count(*) FROM app.sku WHERE image_asset_id IS NOT NULL"))
         assertEquals("t", c.scalar("SELECT convalidated FROM pg_constraint WHERE conname = 'sku_image_asset_id_fkey'"))
         assertEquals("true", c.scalar("SELECT has_column_privilege('api_rw', 'app.sku', 'image_asset_id', 'UPDATE')::text"))
+    }
+
+    @Test
+    fun amountsAreCappedAtTenToTheThirteenMilliTaka() = db.connect().use { c ->
+        c.tx {
+            exec(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c21", amount = 10_000_000_000_000))
+            exec(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c22", kind = "write_off", amount = -10_000_000_000_000))
+            assertEquals("23514", refused(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c23", amount = 10_000_000_000_001)))
+            assertEquals("23514", refused(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c24", kind = "write_off", amount = Long.MIN_VALUE)))
+            assertEquals("23514", refused(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c25", kind = "write_off", amount = -10_000_000_000_001)))
+            val ledger = "INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, source_client_uuid) " +
+                "VALUES ($outlet, DATE '2026-10-15', 'adjustment', %d, gen_random_uuid())"
+            exec(ledger.format(10_000_000_000_000))
+            exec(ledger.format(-10_000_000_000_000))
+            assertEquals("23514", refused(ledger.format(10_000_000_000_001)))
+            assertEquals("23514", refused(ledger.format(-10_000_000_000_001)))
+        }
+        assertEquals("t|t", c.scalar("SELECT string_agg(convalidated::text::char::text, '|' ORDER BY conname) FROM pg_constraint WHERE conname IN ('dues_adjustment_amount_cap', 'due_ledger_amount_cap')"))
     }
 
     private companion object {

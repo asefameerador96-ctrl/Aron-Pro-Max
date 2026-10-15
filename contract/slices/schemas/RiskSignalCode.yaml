@@ -1,7 +1,13 @@
 RiskSignalCode:
   type: string
-  description: Risk signal catalogue (docs/24 s11.4).
-  enum:
+  description: 'Risk signal catalogue (docs/24 s11.4). Extensible (contract 1.3.1, docs/requests/contract-risk-signal-extensible-enum.md):
+
+    the server may add codes without a new contract version, so every client must accept a code it does not know
+
+    (show it by its code, never fail the response or the bundle).
+
+    '
+  x-extensible-enum:
   - GEO_MOCK
   - GEO_TELEPORT
   - GEO_ZERO_JITTER
@@ -21,3 +27,4 @@ RiskSignalCode:
   - CLOCK_SKEW
   - GEO_OUT_OF_BOUNDS
   - CONFIG_STAMP_REGRESS
+  - MEMO_DUPLICATE_SUSPECT

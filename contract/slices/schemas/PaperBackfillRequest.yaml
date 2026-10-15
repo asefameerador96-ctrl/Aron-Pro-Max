@@ -26,7 +26,7 @@ PaperBackfillRequest:
       $ref: '#/components/schemas/Id'
     lines:
       type: array
-      minItems: 0
+      minItems: 1
       maxItems: 60
       items:
         type: object

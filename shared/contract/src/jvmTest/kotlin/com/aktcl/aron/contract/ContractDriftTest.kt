@@ -81,7 +81,9 @@ internal object OpenApi {
             ?: error("schema $name missing in openapi.yaml")
 
     @Suppress("UNCHECKED_CAST")
-    fun enumOf(name: String): List<String> = (schema(name)["enum"] as List<Any?>).map { it.toString() }
+    /** `enum`, or `x-extensible-enum` for a catalogue that may grow (RiskSignalCode). */
+    fun enumOf(name: String): List<String> =
+        ((schema(name)["enum"] ?: schema(name)["x-extensible-enum"]) as List<Any?>).map { it.toString() }
 
     /** Every operation as "METHOD /path". */
     val operations: Set<String> by lazy {

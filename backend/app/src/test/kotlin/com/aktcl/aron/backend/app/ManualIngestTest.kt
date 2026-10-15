@@ -81,12 +81,7 @@ class ManualIngestTest {
             // Working-day windows (F-SYS-090): the paper window counts them like the phone path (lead ruling 2026-10-15).
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'working days' FROM app.cfg_version")
             h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.calendar.window_unit', 'global', 0, '\"working_days\"'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
-            // The columns and the registry flag docs/requests/backend-core-memo-source.md asks db for.
-            for (t in listOf("memo", "visit")) {
-                h.execute("ALTER TABLE app.$t ADD COLUMN IF NOT EXISTS entry_source text NOT NULL DEFAULT 'device' CHECK (entry_source IN ('device','manual')), ADD COLUMN IF NOT EXISTS entered_by_user_id bigint REFERENCES app.app_user(id)")
-            }
-            h.execute("ALTER TABLE app.ingest_registry DROP CONSTRAINT ingest_registry_flags_known")
-            h.execute("ALTER TABLE app.ingest_registry ADD CONSTRAINT ingest_registry_flags_known CHECK (flags <@ ARRAY['resync_late','config_stamp_regress','checkout_too_early','manual_entry']::text[])")
+            // entry_source, entered_by_user_id, the manual_entry flag and MEMO_DUPLICATE_SUSPECT come from db V0077/V0078.
         }
         RecordWriter.forgetColumns()
         val config = DbServerConfig(fresh.db, RegistryDefaults(), clock)
@@ -206,6 +201,12 @@ class ManualIngestTest {
             sent_at_device = now.toString(), pending_rows = 0, time_anchors = emptyList(), device_counts = emptyMap(), records = forged.drop(1),
         ))
         assertEquals("rejected|schema_invalid", f.acks[0].status + "|" + f.acks[0].code, f.acks.toString())
+        // A mistyped number on the paper copy of the phone's memo is stored (a flag, never a block) and flagged.
+        val typo = paper(memoNo = memoNo(phone).dropLast(3) + "999")
+        val t = ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), typo)
+        assertTrue(t.stored, t.acks.toString())
+        // (Other tests key the same outlet and lines, so the named twin may be any live memo of that sale value.)
+        assertEquals("2|30.00|true", str("SELECT severity || '|' || score || '|' || EXISTS (SELECT 1 FROM app.memo m WHERE m.client_uuid::text = evidence->>'twin_client_uuid' AND m.gross_mtk = (evidence->>'gross_mtk')::bigint) FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND subject_id = '${memoUuid(typo)}'"))
     }
 
     @Test
@@ -306,4 +307,173 @@ class ManualIngestTest {
         val visits = entries.joinToString(",") { "'" + (it[0]["client_uuid"] as JsonPrimitive).content + "'" }
         assertEquals(1, count("SELECT count(*) FROM app.visit WHERE client_uuid IN ($visits)"), "no orphan visit")
     }
+
+    /** MEMO_DUPLICATE_SUSPECT the other way: the phone's copy under another number after a paper keying; two phone memos are never judged. */
+    @Test
+    fun aPhoneMemoAfterAPaperTwinIsFlaggedButStored() {
+        val device = fresh.db.jdbi.withHandle<Pair<Long, String>, Exception> { h ->
+            h.createQuery("SELECT id, device_uuid::text FROM app.device ORDER BY id LIMIT 1").map { rs, _ -> rs.getLong(1) to rs.getString(2) }.one()
+        }
+        fun phoneOf(e: List<JsonObject>) = e.map { r ->
+            if ((r["type"] as JsonPrimitive).content == "visit") JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("visit_kind" to JsonPrimitive("sr_call")) + ("geo" to json(
+                """{"verdict":"in_range","distance_m":10,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}""",
+            )) + ("fix" to json(
+                """{"purpose":"visit_open","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                   "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}""",
+            ))))) else r
+        }
+        fun upload(recs: List<JsonObject>) = ingest.ingest(Uploader(sr, Role.SR, 1, device.first, device.second, null), SyncBatchRequest(
+            batch_uuid = uuid(), device_uuid = device.second, schema_version = 1, app_version = "1.0.9+9", trigger = "manual",
+            sent_at_device = now.toString(), pending_rows = 0, time_anchors = emptyList(), device_counts = emptyMap(), records = recs,
+        ))
+        // Another outlet of the route keeps this test's memos apart from the others'.
+        val outlet = count("SELECT max(id) FROM app.outlet WHERE route_id = $routeId AND status = 'active'")
+        val keyed = paper(outlet = outlet)
+        assertTrue(ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), keyed).stored)
+        val phone = phoneOf(paper(outlet = outlet))
+        val res = upload(phone)
+        assertTrue(res.acks.all { it.status == "accepted" }, res.acks.toString())
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND subject_id = '${memoUuid(phone)}'"))
+        // A second phone memo of the same sale at that outlet is flagged against the paper twin, not against the first phone memo.
+        val second = phoneOf(paper(outlet = outlet)).map { r ->
+            if ((r["type"] as JsonPrimitive).content == "memo") JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("committed_at" to JsonPrimitive("2027-01-03T03:50:00.000Z"))))) else r
+        }
+        assertTrue(upload(second).acks.all { it.status == "accepted" })
+        assertEquals("manual", str("SELECT evidence->>'twin_entry_source' FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND subject_id = '${memoUuid(second)}'"))
+        // Two phone memos of one sale value at an outlet with no paper memo are never judged.
+        val plain = count("SELECT min(id) FROM app.outlet WHERE route_id = $routeId AND status = 'active' AND id NOT IN ($outletId, $outlet)")
+        val p1 = phoneOf(paper(outlet = plain)); val p2 = phoneOf(paper(outlet = plain)).map { r ->
+            if ((r["type"] as JsonPrimitive).content == "memo") JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("committed_at" to JsonPrimitive("2027-01-03T03:55:00.000Z"))))) else r
+        }
+        assertTrue(upload(p1).acks.all { it.status == "accepted" } && upload(p2).acks.all { it.status == "accepted" })
+        assertEquals(0, count("SELECT count(*) FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND subject_id IN ('${memoUuid(p1)}', '${memoUuid(p2)}')"))
+        // A replay of the flagged phone memo raises nothing new.
+        upload(phone)
+        assertEquals(1, count("SELECT count(*) FROM app.risk_signal WHERE code = 'MEMO_DUPLICATE_SUSPECT' AND subject_id = '${memoUuid(phone)}'"))
+    }
+
+    /** docs/requests/backend-core-backfill-vs-phone-memo-review.md steps 1, 2, 4, 5: IngestService.matchBackfill. */
+    @Test
+    fun aPhoneMemoHeldBehindItsPaperTwinIsMatchedAndItsCashPostsOnce() {
+        val device = fresh.db.jdbi.withHandle<Pair<Long, String>, Exception> { h ->
+            h.createQuery("SELECT id, device_uuid::text FROM app.device ORDER BY id LIMIT 1").map { rs, _ -> rs.getLong(1) to rs.getString(2) }.one()
+        }
+        fun phoneOf(e: List<JsonObject>) = e.map { r ->
+            if ((r["type"] as JsonPrimitive).content == "visit") JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("visit_kind" to JsonPrimitive("sr_call")) + ("geo" to json(
+                """{"verdict":"in_range","distance_m":10,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}""",
+            )) + ("fix" to json(
+                """{"purpose":"visit_open","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                   "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}""",
+            ))))) else r
+        }
+        fun upload(recs: List<JsonObject>) = ingest.ingest(Uploader(sr, Role.SR, 1, device.first, device.second, null), SyncBatchRequest(
+            batch_uuid = uuid(), device_uuid = device.second, schema_version = 1, app_version = "1.0.9+9", trigger = "manual",
+            sent_at_device = now.toString(), pending_rows = 0, time_anchors = emptyList(), device_counts = emptyMap(), records = recs,
+        ))
+        /** A credit memo: [due] of the gross left open. */
+        fun credit(e: List<JsonObject>, due: Long) = e.map { r ->
+            if ((r["type"] as JsonPrimitive).content != "memo") r else {
+                val p = r["payload"] as JsonObject
+                val gross = (p["gross_mtk"] as JsonPrimitive).content.toLong()
+                JsonObject(r + ("payload" to JsonObject(p + mapOf("paid_mtk" to JsonPrimitive(gross - due), "due_mtk" to JsonPrimitive(due), "is_credit" to JsonPrimitive(due > 0)))))
+            }
+        }
+        fun collection(memo: String, memoNo: String, amount: Long, before: Long): JsonObject {
+            val cu = uuid()
+            return envelope("due_collection", cu, cu, 0, json(
+                """{"outlet_id":${'$'}OUTLET,"against_memo_client_uuid":"$memo","against_memo_no":"$memoNo","against_memo_business_date":"$day","amount_mtk":$amount,
+                   "is_full_settlement":${amount >= before},"outstanding_before_mtk":$before,"payment_mode":"cash"}""".replace("${'$'}OUTLET", outletOf(memo)),
+            ))
+        }
+        val outlet = count("SELECT id FROM app.outlet WHERE route_id = $routeId AND status = 'active' ORDER BY id DESC OFFSET 1 LIMIT 1")
+        outletFor = outlet
+        val due = 3_000L
+        val keyed = credit(paper(outlet = outlet), due)
+        assertTrue(ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), keyed).stored)
+        val paperUuid = memoUuid(keyed); val no = memoNo(keyed)
+
+        // The phone comes back with its own copy of the printed memo and a collection against it: memo, lines and cash held.
+        val phone = phoneOf(credit(paper(memoNo = no, outlet = outlet), due))
+        val cash = collection(memoUuid(phone), no, 1_000, due)
+        val res = upload(phone + cash)
+        assertEquals(listOf("accepted", "quarantined", "quarantined", "quarantined", "quarantined"), res.acks.map { it.status }, res.acks.toString())
+        val item = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = '${memoUuid(phone)}'")
+
+        // Different money is refused, naming the difference; nothing changes.
+        val other = phoneOf(paper(outlet = outlet)).let { o -> credit(paper(memoNo = memoNo(o), outlet = outlet), 0) }
+        assertTrue(ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), credit(paper(memoNo = memoNo(other), outlet = outlet), 500)).stored)
+        upload(phoneOf(other))
+        val otherItem = count("SELECT id FROM app.sync_quarantine WHERE client_uuid = '${memoUuid(other)}'")
+        val diff = assertFailsWith<ApiProblem> { ingest.matchBackfill(otherItem, admin, "same printed memo") }
+        assertEquals(ProblemCode.ERR_CONFLICT, diff.code)
+        assertTrue(diff.errors.any { it.pointer == "/payload/due_mtk" }, diff.errors.toString())
+        assertEquals("open", str("SELECT status FROM app.sync_quarantine WHERE id = $otherItem"))
+
+        val m = ingest.matchBackfill(item, admin, "same printed memo, checked with the TSO")
+        assertEquals(paperUuid, m.paperMemoUuid)
+        assertEquals(emptyList(), m.keptOpen)
+        assertEquals(3, m.released.size, m.toString())
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE memo_no = '$no'"), "never a second memo")
+        assertEquals("accepted|${m.paperMemoId}", str("SELECT status || '|' || server_id FROM app.ingest_registry WHERE client_uuid = '${memoUuid(phone)}'"))
+        val cashUuid = (cash["client_uuid"] as JsonPrimitive).content
+        assertEquals(paperUuid, str("SELECT against_memo_client_uuid::text FROM app.due_collection WHERE client_uuid = '$cashUuid'"))
+        assertEquals(1, count("SELECT count(*) FROM app.due_ledger WHERE source_client_uuid = '$cashUuid' AND memo_client_uuid = '$paperUuid'"), "the cash posts once, to the paper memo")
+        // The phone resends everything: duplicates, nothing new.
+        assertTrue(upload(phone + cash).acks.all { it.status == "duplicate" })
+        assertEquals(1, count("SELECT count(*) FROM app.due_ledger WHERE source_client_uuid = '$cashUuid'"))
+        // A later collection naming the phone memo follows to the paper memo.
+        val later = collection(memoUuid(phone), no, 500, due - 1_000)
+        assertEquals(listOf("accepted"), upload(listOf(later)).acks.map { it.status })
+        assertEquals(paperUuid, str("SELECT memo_client_uuid::text FROM app.due_ledger WHERE source_client_uuid = '${(later["client_uuid"] as JsonPrimitive).content}'"))
+        assertEquals(due - 1_500, count("SELECT coalesce(sum(amount_mtk), 0) FROM app.due_ledger WHERE memo_client_uuid = '$paperUuid'"), "the paper memo's balance")
+        // Step 3: the paper web_entry visit is voided for the phone visit (one counted visit); the registry says voided.
+        val paperVisit = (keyed[0]["client_uuid"] as JsonPrimitive).content
+        assertEquals(paperVisit, m.voidedPaperVisitUuid)
+        assertEquals((phone[0]["client_uuid"] as JsonPrimitive).content, m.phoneVisitUuid)
+        assertEquals("true|voided", str("SELECT (v.voided_at IS NOT NULL) || '|' || g.status FROM app.visit v JOIN app.ingest_registry g ON g.client_uuid = v.client_uuid WHERE v.client_uuid = '$paperVisit'"))
+        assertEquals(1, count("SELECT count(*) FROM app.visit WHERE client_uuid = '${(phone[0]["client_uuid"] as JsonPrimitive).content}' AND voided_at IS NULL"))
+        assertEquals(paperVisit, str("SELECT visit_client_uuid::text FROM app.memo WHERE client_uuid = '$paperUuid'"), "the memo keeps its visit")
+        // Matching again is a state conflict.
+        assertEquals(ProblemCode.ERR_REQUEST_STATE, assertFailsWith<ApiProblem> { ingest.matchBackfill(item, admin, "again") }.code)
+    }
+
+    /** Checker B2: an edit of the phone memo held behind it is stored with its own lines after the match. */
+    @Test
+    fun aHeldEditOfTheMatchedPhoneMemoKeepsItsLines() {
+        val device = fresh.db.jdbi.withHandle<Pair<Long, String>, Exception> { h ->
+            h.createQuery("SELECT id, device_uuid::text FROM app.device ORDER BY id LIMIT 1").map { rs, _ -> rs.getLong(1) to rs.getString(2) }.one()
+        }
+        fun phoneOf(e: List<JsonObject>) = e.map { r ->
+            if ((r["type"] as JsonPrimitive).content == "visit") JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("visit_kind" to JsonPrimitive("sr_call")) + ("geo" to json(
+                """{"verdict":"in_range","distance_m":10,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}""",
+            )) + ("fix" to json(
+                """{"purpose":"visit_open","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                   "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}""",
+            ))))) else r
+        }
+        fun upload(recs: List<JsonObject>) = ingest.ingest(Uploader(sr, Role.SR, 1, device.first, device.second, null), SyncBatchRequest(
+            batch_uuid = uuid(), device_uuid = device.second, schema_version = 1, app_version = "1.0.9+9", trigger = "manual",
+            sent_at_device = now.toString(), pending_rows = 0, time_anchors = emptyList(), device_counts = emptyMap(), records = recs,
+        ))
+        val outlet = count("SELECT id FROM app.outlet WHERE route_id = $routeId AND status = 'active' ORDER BY id DESC OFFSET 2 LIMIT 1")
+        val keyed = paper(outlet = outlet)
+        assertTrue(ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), keyed).stored)
+        val phone = phoneOf(paper(memoNo = memoNo(keyed), outlet = outlet))
+        // The SR edited the held memo on the phone: a new number superseding it, with its own two lines.
+        val edit = phoneOf(paper(outlet = outlet)).map { r ->
+            if ((r["type"] as JsonPrimitive).content != "memo") r
+            else JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + mapOf("supersedes_client_uuid" to JsonPrimitive(memoUuid(phone)), "edit_reason_code" to JsonPrimitive("wrong_quantity")))))
+        }
+        upload(phone)
+        val held = upload(edit)
+        assertEquals(listOf("accepted", "quarantined", "quarantined", "quarantined"), held.acks.map { it.status }, held.acks.toString())
+        val m = ingest.matchBackfill(count("SELECT id FROM app.sync_quarantine WHERE client_uuid = '${memoUuid(phone)}'"), admin, "same printed memo, then edited")
+        assertEquals(emptyList(), m.keptOpen, m.toString())
+        assertEquals(2, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${memoUuid(edit)}'"), "the edit keeps its lines")
+        assertEquals("superseded", str("SELECT status FROM app.memo WHERE client_uuid = '${memoUuid(keyed)}'"), "the edit supersedes the paper memo")
+        assertEquals(0, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${memoUuid(phone)}'"))
+    }
+
+    private var outletFor = 0L
+    private fun outletOf(@Suppress("UNUSED_PARAMETER") memo: String) = outletFor.toString()
 }

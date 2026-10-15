@@ -3305,10 +3305,11 @@ export interface components {
         /** @enum {string} */
         SyncTrigger: "write_debounce" | "foreground" | "connectivity" | "workmanager_connectivity" | "periodic" | "manual" | "day_submit" | "checkout" | "resync" | "digest_resend" | "directive";
         /**
-         * @description Risk signal catalogue (docs/24 s11.4).
-         * @enum {string}
+         * @description Risk signal catalogue (docs/24 s11.4). Extensible (contract 1.3.1, docs/requests/contract-risk-signal-extensible-enum.md):
+         *     the server may add codes without a new contract version, so every client must accept a code it does not know
+         *     (show it by its code, never fail the response or the bundle).
          */
-        RiskSignalCode: "GEO_MOCK" | "GEO_TELEPORT" | "GEO_ZERO_JITTER" | "GEO_PERFECT_ACCURACY" | "GEO_SAME_POINT" | "GEO_ROUTE_SINGLE_POINT" | "GEO_STALE_FIX" | "GEO_GNSS_INCONSISTENT" | "GEO_GNSS_TIME_SKEW" | "GEO_DEVICE_SERVER_MISMATCH" | "GEO_SHORT_VISIT_GAPS" | "DEVICE_NOT_OWNER" | "DEVICE_INTEGRITY_FAIL" | "DEVICE_DEBUG_ENABLED" | "DEVICE_MOCK_APP_PRESENT" | "DEVICE_POLICY_DRIFT" | "CLOCK_SKEW" | "GEO_OUT_OF_BOUNDS" | "CONFIG_STAMP_REGRESS";
+        RiskSignalCode: string;
         /** @enum {string} */
         RiskSignalStatus: "open" | "reviewed" | "dismissed" | "confirmed";
         /** @enum {string} */
@@ -13534,6 +13535,7 @@ export interface operations {
                     "application/json": components["schemas"]["DuesAdjustmentPage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };
@@ -13563,6 +13565,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     decideDuesAdjustment: {

@@ -153,6 +153,13 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
   pre-staging batch should add such FKs in their own migration. Open for backend-reports:
   `docs/requests/db-backend-reports-entry-source.md` (Aggregator copies entry_source). backend-core closed the
   device-path spoofing gap the checker found (RecordWriter sets the source itself, lane/backend-core 89c1765a).
+- `V0079`/`V0080` (lead, T1): |amount_mtk| <= 10^13 on dues_adjustment and due_ledger (BETWEEN, NOT VALID + VALIDATE).
+  Checker notes routed to the lead: backend-admin has no API cap on the adjustment amount yet (contract `Mtk` is a plain
+  int64), and memo money has no upper bound, so a memo with due_mtk > 10^13 would fail its ledger insert (sync lane cap).
+- `V0081` (lead, T1): a paper web_entry visit matched to the phone's memo is superseded with the existing data-void
+  tombstone `app.visit.voided_at` (no new column); `docs/requests/db-backend-core-visit-supersede.md` gives
+  `matchBackfill` the UPDATE (RETURNING route_id for the dirty key), the registry status and the audit fields.
+- Checks: backend 788/0 and db 243/0 on V0079-V0081, changed classes rerun green after checker fixes; squawk ok.
 - Checks: db classes 152/0 after the last fixes (full db 240 with 2 test bugs, fixed), backend 781/0, squawk ok;
   Opus checker per batch (V0074 one should-fix closed; V0077 PASS, test fixes applied).
 

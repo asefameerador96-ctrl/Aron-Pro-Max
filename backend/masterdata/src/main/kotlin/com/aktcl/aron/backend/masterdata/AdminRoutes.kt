@@ -151,6 +151,16 @@ private fun listAssignments(call: ApplicationCall, d: AdminMasterDeps): JsonObje
     ))
 }
 
+/**
+ * F-SYS-086: a new or ended assignment changes who a route-day belongs to, so the dashboard tile of every route-day it
+ * touches is rebuilt (dirty key `route_day_agg`, same transaction). Changes start today or later, so every existing
+ * `app.route_day` row from today on is marked (a prefetched bundle creates tomorrow's row; later days are built fresh).
+ */
+private fun Handle.markAssignmentDirty(routeId: Long, today: LocalDate) {
+    createQuery("SELECT app.mark_dirty('route_day_agg', route_id, business_date, 'route_assignment') FROM app.route_day WHERE route_id = :r AND business_date >= :d")
+        .bind("r", routeId).bind("d", today).mapToMap().list()
+}
+
 private suspend fun createAssignment(call: ApplicationCall, d: AdminMasterDeps) {
     val p = call.admPrincipal(MASTER_WRITERS, "route assignment changes")
     val f = call.admBody(setOf("route_id", "user_id", "kind", "valid_from", "valid_to", "reason"))
@@ -177,6 +187,7 @@ private suspend fun createAssignment(call: ApplicationCall, d: AdminMasterDeps) 
                 "INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, valid_to, reason, created_by) VALUES (:r, :u, :k, :f, :t, :why, :by) RETURNING *",
             ).bind("r", routeId).bind("u", userId).bind("k", kind).bind("f", from).bindAny("t", to).bindAny("why", reason).bind("by", p.userId).mapToMap().one()
             h.createUpdate("UPDATE app.app_user SET scope_version = scope_version + 1 WHERE id = :u").bind("u", userId).execute()
+            h.markAssignmentDirty(routeId, ctx.today)
             ctx.audit(h, "route_assignment", r["id"].toString(), "create", null, assignmentJson(r), reason)
             r
         }
@@ -209,6 +220,7 @@ private suspend fun endAssignment(call: ApplicationCall, d: AdminMasterDeps) {
             val r = h.createQuery("UPDATE app.route_assignment SET valid_to = :t, ended_at = :at, ended_by = :by WHERE id = :i RETURNING *")
                 .bind("t", to).bind("at", odt(ctx.now)).bind("by", p.userId).bind("i", id).mapToMap().one()
             h.createUpdate("UPDATE app.app_user SET scope_version = scope_version + 1 WHERE id = :u").bind("u", cur["user_id"]).execute()
+            h.markAssignmentDirty(cur["route_id"] as Long, ctx.today)
             ctx.audit(h, "route_assignment", id.toString(), "end", JsonObject(mapOf("valid_to" to jv(cur["valid_to"]))), JsonObject(mapOf("valid_to" to jv(to))), reason)
             r
         }

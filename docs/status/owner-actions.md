@@ -11,6 +11,8 @@ Only what needs the owner's account, approval or hands (CLAUDE.md rule 7). Newes
 | C | Read `aron-dev-seed-password` in the Azure portal (Key Vault in rg-aron-dev); never paste it in chat | login sr1001 and tso1001 |
 | D | Confirm or change the proposed target (feature-complete on dev 2026-10-20, buffer 2026-10-22) | forecast |
 | E | Tell the lead the weekly usage percentage; turn ultracode off for the lead session | pacing of the released lanes |
+| F | Policy (low priority, not blocking): may an **approved negative dues correction** take an outlet balance below zero (a credit)? | backend-admin built dues corrections (ADMIN proposes, SUPERADMIN decides) with no balance floor. Default until you answer: allowed, and the approval response flags it when the balance goes negative. |
+
 
 Older items below still stand unless a row above replaces them (rows 4, 5, 6, 11, 12 become live once the laptop session exists).
 
