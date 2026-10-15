@@ -138,6 +138,24 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     for the regress count. Answer `docs/requests/db-working-day-keys-and-flags-answer.md`; break-override item checks asked
     of backend-admin (`db-break-overrides-validation.md`). Opus checker PASS (round 5; should-fix applied).
 
+## Session 5, 2026-10-15 (build restart; lead's backend-admin rows and backend-core memo source)
+
+- `V0074` `app.dues_adjustment` (answers `backend-admin-dues-adjustment-table.md`, F-ADM-036, T1 money): signed
+  milli-taka, write_off < 0, maker-checker CHECK, guard trigger (insert pending only; decided once, only status/
+  decided_by/decided_at/decision_note change; no delete, no truncate), decided_at >= created_at. On approval
+  backend-admin writes the due_ledger `adjustment` row (source_client_uuid = client_uuid, business_date =
+  app.dhaka_date(now()), user_id = the checker). api_rw SELECT/INSERT/UPDATE, no DELETE for anyone.
+- `V0075`/`V0076` `app.sku.image_asset_id` -> `app.admin_asset` (FK NOT VALID + VALIDATE).
+- `V0077`/`V0078` (answers `backend-core-memo-source.md` + addendum, F-API-038): `entry_source` device|manual and
+  `entered_by_user_id` on memo and visit (CHECK manual iff entered_by), registry flag `manual_entry`, risk code
+  `MEMO_DUPLICATE_SUSPECT` (weight 30), `dw.fact_memo`/`fact_visit.entry_source`, `dw.v_daily_sr.memos_entered_manually`.
+  The two FKs on partitioned tables cannot be NOT VALID (PG16): added directly at pilot size; the D-DB-PART-01
+  pre-staging batch should add such FKs in their own migration. Open for backend-reports:
+  `docs/requests/db-backend-reports-entry-source.md` (Aggregator copies entry_source). backend-core closed the
+  device-path spoofing gap the checker found (RecordWriter sets the source itself, lane/backend-core 89c1765a).
+- Checks: db classes 152/0 after the last fixes (full db 240 with 2 test bugs, fixed), backend 781/0, squawk ok;
+  Opus checker per batch (V0074 one should-fix closed; V0077 PASS, test fixes applied).
+
 ## Session 5, 2026-10-08 (lead's two backend-core requests)
 
 - `V0069` `app.client_error` (answers `backend-core-client-error-table.md`, F-SYS-032). **Deviation (D-DB-S5-01, for
