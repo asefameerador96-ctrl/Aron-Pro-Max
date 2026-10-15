@@ -126,6 +126,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 | 2026-10-15 10:20 | see git log | candidate lane/train-20261015T0950-zzi, ALL JOBS GREEN (run 38715794593, 561f0fb8): backend-core 89c1765a (IngestService.ingestManual F-API-038 paper backfill, working-day window F-SYS-090, device rows entry_source=device) | ancestor check passed, fast-forward; INT 2c2317cc deploy 38716577073 green first. |
 | 2026-10-15 10:55 | see git log | candidate lane/train-20261015T1022-zzj, ALL JOBS GREEN (run 38719639216): db a9c6de3d (V0074-V0078); docs-only: handover 956174ef, lead-docs e289511e | INT 258c4022 deploy green first; ancestor gate passed. |
 | 2026-10-15 13:00 | see git log | candidate lane/train-20261015T1236-zzt, ALL JOBS GREEN (run 38735718023): backend-core 025e0edb, db 20040eb7, backend-admin 81b754e9 (+81866db7 slices fix); docs-only: lead-docs | INT 8eb43660 deploy green first; ancestor gate passed. zzs (1dc598f5) also green but superseded by zzt. |
+| 2026-10-15 13:42 | see git log | candidate lane/train-20261015T1302-zzu, ALL GREEN (run 38738760735): backend-reports 26f5bef0 (DECISIONS.md conflict resolved keep-both) | INT cb03ff58 CI 38738514687 and deploy 38742880328 green first; ancestor gate passed. zzv (backend-admin 01d8a92b, run 38740211806) green, next. |
 
 ## Open reds
 
