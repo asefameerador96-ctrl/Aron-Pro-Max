@@ -90,11 +90,10 @@ object RecordWriter {
                 doc["external_ref"] = JsonPrimitive(clientUuid) // N-049: stable external reference (ignored by tables without the column)
                 doc["user_id"] = JsonPrimitive(up.userId)
                 doc["device_id"] = JsonPrimitive(up.deviceId)
-                if (enteredBy != null) {
-                    // Dropped by [insert] on tables without the columns (db request backend-core-memo-source.md).
-                    doc["entry_source"] = JsonPrimitive("manual")
-                    doc["entered_by_user_id"] = JsonPrimitive(enteredBy)
-                }
+                // Never from the body (the shape check already refuses the members): only ingestManual marks a row
+                // manual; every device row is `device`. Dropped by [insert] on tables without the columns (V0077).
+                doc["entry_source"] = JsonPrimitive(if (enteredBy != null) "manual" else "device")
+                doc["entered_by_user_id"] = JsonPrimitive(enteredBy)
                 doc["first_batch_uuid"] = JsonPrimitive(batchUuid)
                 doc["received_at"] = JsonPrimitive(now.wire())
                 val result = insert(h, rule.table, clientUuid, doc)

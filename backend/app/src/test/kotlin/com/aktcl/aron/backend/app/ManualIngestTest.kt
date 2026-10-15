@@ -198,7 +198,14 @@ class ManualIngestTest {
         assertEquals(setOf("duplicate|memo_no_duplicate"), m.acks.map { "${it.status}|${it.code}" }.toSet())
         assertEquals(1, count("SELECT count(*) FROM app.memo WHERE memo_no = '${memoNo(phone)}'"))
         assertEquals(0, count("SELECT count(*) FROM app.visit WHERE client_uuid = '${(keyed[0]["client_uuid"] as JsonPrimitive).content}'"), "nothing of the entry is written")
-        assertEquals("device", str("SELECT entry_source FROM app.memo WHERE memo_no = '${memoNo(phone)}'"))
+        assertEquals("device|-", str("SELECT entry_source || '|' || coalesce(entered_by_user_id::text, '-') FROM app.memo WHERE memo_no = '${memoNo(phone)}'"))
+        // A phone cannot claim to be a paper entry: the members are not in the contract (schema_invalid), never copied.
+        val forged = paper().map { r -> if ((r["type"] as JsonPrimitive).content == "memo") JsonObject(r + ("payload" to JsonObject((r["payload"] as JsonObject) + ("entry_source" to JsonPrimitive("manual")) + ("entered_by_user_id" to JsonPrimitive(admin))))) else r }
+        val f = ingest.ingest(Uploader(sr, Role.SR, 1, device.first, device.second, null), SyncBatchRequest(
+            batch_uuid = uuid(), device_uuid = device.second, schema_version = 1, app_version = "1.0.9+9", trigger = "manual",
+            sent_at_device = now.toString(), pending_rows = 0, time_anchors = emptyList(), device_counts = emptyMap(), records = forged.drop(1),
+        ))
+        assertEquals("rejected|schema_invalid", f.acks[0].status + "|" + f.acks[0].code, f.acks.toString())
     }
 
     @Test
