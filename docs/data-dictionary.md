@@ -1485,7 +1485,7 @@ Append-only ledger of an outlet's outstanding dues: credit memos and opening bal
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
 | `entry_kind` | text | not null |  | Kind of entry: memo_due, collection, memo_void, memo_superseded or opening_balance. |
-| `amount_mtk` | bigint | not null |  | Signed change of the outlet balance in milli-taka (+ raises, - lowers); never zero, \|amount\| at most 10^13 (V0079). |
+| `amount_mtk` | bigint | not null |  | Signed change of the outlet balance in milli-taka (1 Tk = 1000 mtk; + raises, - lowers); never zero, \|amount\| at most 10^13 (V0079). |
 | `memo_client_uuid` | uuid | null |  | client_uuid of the memo the row belongs to. |
 | `memo_no` | text | null |  | Printed memo number <username>-<yyMMdd>-<seq>. |
 | `source_client_uuid` | uuid | not null |  | Client UUID of the memo, due_collection, memo_void or adjustment that caused the entry. |
@@ -4405,7 +4405,7 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `first_batch_uuid` | uuid | null |  | batch_uuid of the sync batch that first delivered the record. |
 | `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
-| `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
+| `voided_at` | timestamp with time zone | null |  | UTC time the row was tombstoned (admin data void, or a paper web_entry visit superseded by the phone's visit for the same memo); write-once, the row is never deleted, voided visits never count. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
