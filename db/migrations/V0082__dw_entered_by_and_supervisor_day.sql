@@ -23,7 +23,7 @@ ALTER TABLE dw.fact_visit ADD CONSTRAINT fact_visit_entered_by_manual_only
 CREATE TABLE dw.fact_supervisor_day (
   user_id             bigint NOT NULL,
   business_date       date NOT NULL,
-  role                text NOT NULL CHECK (role IN ('AMO', 'TSO')),
+  role                text NOT NULL,
   zone_id             bigint,
   checked_in_at       timestamptz,
   checked_out_at      timestamptz,
@@ -47,7 +47,7 @@ COMMENT ON TABLE dw.fact_supervisor_day IS 'One row per AMO or TSO and business 
 owner: worker | capture: SERVER | retention: event_fact | pii: none';
 COMMENT ON COLUMN dw.fact_supervisor_day.user_id IS 'Supervisor (app.app_user).';
 COMMENT ON COLUMN dw.fact_supervisor_day.business_date IS 'Asia/Dhaka business date of the supervisor-day.';
-COMMENT ON COLUMN dw.fact_supervisor_day.role IS 'AMO or TSO, from app.app_user at projection time.';
+COMMENT ON COLUMN dw.fact_supervisor_day.role IS 'Role code of the user at projection time (app.role_def, upper case: AMO or TSO for a supervisor-day); no CHECK, so a rebuild after a re-role still succeeds.';
 COMMENT ON COLUMN dw.fact_supervisor_day.zone_id IS 'Home zone of the supervisor that day; null when the user has none (a TSO over several zones).';
 COMMENT ON COLUMN dw.fact_supervisor_day.checked_in_at IS 'UTC time of the day''s check-in; null when the supervisor did not check in.';
 COMMENT ON COLUMN dw.fact_supervisor_day.checked_out_at IS 'UTC time of the day''s check-out.';

@@ -51,11 +51,16 @@ class DwEnteredBySupervisorDayV0082Test {
             exec(fact(2, "manual", admin))
             exec(fact(3, "manual", "NULL"))   // the projector before it copies entered_by_user_id: still accepted
             assertEquals("23514", refused(fact(4, "device", admin)))
+            val visit = "INSERT INTO dw.fact_visit (business_date, visit_client_uuid, user_id, outlet_id, visit_kind, opened_at, planned, last_event_id, geo_action, " +
+                "device_verdict, entry_source, entered_by_user_id) VALUES (DATE '2026-10-05', gen_random_uuid(), $sr, (SELECT min(id) FROM app.outlet), 'web_entry', now(), true, 1, " +
+                "'sale_allowed', 'no_fix', '%s', %s)"
+            exec(visit.format("manual", admin))
+            assertEquals("23514", refused(visit.format("device", admin)))
         }
         for (t in listOf("fact_memo", "fact_visit")) {
             assertEquals(
                 "t",
-                c.scalar("SELECT convalidated FROM pg_constraint WHERE conname = '${t}_entered_by_manual_only' AND conrelid = 'dw.$t'::regclass"),
+                c.scalar("SELECT bool_and(convalidated)::text::char FROM pg_constraint WHERE conname = '${t}_entered_by_manual_only'"),
             )
         }
     }
@@ -67,7 +72,8 @@ class DwEnteredBySupervisorDayV0082Test {
             exec("INSERT INTO dw.fact_supervisor_day (user_id, business_date, role, checked_in_at) VALUES ($amo, DATE '2026-10-05', 'AMO', now())")
             assertEquals("1|1|f", scalar("SELECT count(*) || '|' || max(submit_cycle) || '|' || bool_or(submit_voided)::text::char FROM dw.fact_supervisor_day"))
             assertEquals("23505", refused("INSERT INTO dw.fact_supervisor_day (user_id, business_date, role) VALUES ($amo, DATE '2026-10-05', 'AMO')"))
-            assertEquals("23514", refused("INSERT INTO dw.fact_supervisor_day (user_id, business_date, role) VALUES ($amo, DATE '2026-10-06', 'SR')"))
+            // No role CHECK: a rebuild after the user was re-roled (e.g. to DMO) still writes the row.
+            exec("INSERT INTO dw.fact_supervisor_day (user_id, business_date, role) VALUES ($amo, DATE '2026-10-06', 'DMO')")
         }
         fun can(role: String, priv: String) = c.scalar("SELECT has_table_privilege('$role', 'dw.fact_supervisor_day', '$priv')::text")
         assertEquals("true|true|true|true", listOf("SELECT", "INSERT", "UPDATE", "DELETE").joinToString("|") { can("worker_rw", it)!! })
@@ -75,7 +81,7 @@ class DwEnteredBySupervisorDayV0082Test {
     }
 
     @Test
-    fun theWorkerCanQueueASupervisorDayRebuild() = db.connect().use { c ->
+    fun aSupervisorDayRebuildCanBeQueued() = db.connect().use { c ->
         c.tx {
             exec("SELECT app.mark_dirty('supervisor_day_agg', 42, DATE '2026-10-05', 'test')")
             assertEquals("1", scalar("SELECT count(*) FROM app.dirty_key WHERE kind = 'supervisor_day_agg'"))
