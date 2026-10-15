@@ -15,6 +15,7 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -227,16 +228,19 @@ private suspend fun putScope(call: ApplicationCall, d: AdminMasterDeps) {
     if (arr.size > 100) admBad("body.nodes", "length")
     val wanted = arr.mapIndexed { i, el ->
         val o = el as? JsonObject ?: admBad("body.nodes/$i", "invalid_type")
-        o.keys.firstOrNull { it !in setOf("node_type", "node_id") }?.let { admBad("body.nodes/$i/$it", "unknown_member") }
-        val nf = Fields(o, setOf("node_type", "node_id"))
+        o.keys.firstOrNull { it !in setOf("node_type", "node_id", "valid_to") }?.let { admBad("body.nodes/$i/$it", "unknown_member") }
+        val nf = Fields(o, setOf("node_type", "node_id", "valid_to"))
         if (!nf.has("node_type")) admBad("body.nodes/$i/node_type", "required")
         if (!nf.has("node_id")) admBad("body.nodes/$i/node_id", "required")
         val type = nf.value(Col("node_type", Kind.ENUM, values = SCOPE_TYPES)) as String
         val nid = nf.value(Col("node_id", Kind.LONG, min = 0)) as Long
         if ((type == "national") != (nid == 0L)) admBad("body.nodes/$i/node_id", "scope_mismatch", "national has node_id 0 and every other type a node id")
-        type to nid
+        // valid_to (contract v1.3, R20) is an EXCLUSIVE end: the first Dhaka business date the node is no longer in scope.
+        val to = o["valid_to"]?.takeIf { it !is JsonNull }?.let { parseDate("body.nodes/$i/valid_to", it) }
+        if (to != null && !to.isAfter(from)) admBad("body.nodes/$i/valid_to", "before_valid_from", "valid_to is exclusive and must be after valid_from")
+        Triple(type, nid, to)
     }
-    if (wanted.toSet().size != wanted.size) admBad("body.nodes", "duplicate_node")
+    if (wanted.map { it.first to it.second }.toSet().size != wanted.size) admBad("body.nodes", "duplicate_node")
     val reason = f.reason(true)
     val ctx = d.ctx(call, p)
     if (from.isBefore(ctx.today)) throw ApiProblem(ProblemCode.ERR_MASTER_EFFECTIVE_DATE_PAST, "the scope change must take effect today or later", errors = listOf(FieldError("body.valid_from", "past")))
@@ -253,7 +257,7 @@ private suspend fun putScope(call: ApplicationCall, d: AdminMasterDeps) {
                 val exists = h.count("SELECT count(*) FROM ${SCOPE_TABLES.getValue(type)} WHERE id = :i", "i" to nid) > 0
                 if (!exists || (!ctx.reach.national && geo.zonesUnder(type, nid).none { it in ctx.reach.zoneIds })) admBad("body.nodes/$i/node_id", "unknown_node", "the node does not exist or is outside your reach")
             }
-            val pending = wanted.toMutableSet()
+            val pending = wanted.associate { (it.first to it.second) to it.third }.toMutableMap()
             val existing = h.createQuery("SELECT id, node_type, node_id, valid_from, valid_to FROM app.user_scope WHERE user_id = :u AND (valid_to IS NULL OR valid_to > :f) ORDER BY id FOR UPDATE")
                 .bind("u", id).bind("f", from).mapToMap().list()
             val before = ArrayList<JsonElement>(); val after = ArrayList<JsonElement>()
@@ -263,10 +267,15 @@ private suspend fun putScope(call: ApplicationCall, d: AdminMasterDeps) {
                 val rf = (row["valid_from"] as java.sql.Date).toLocalDate()
                 val rt = (row["valid_to"] as java.sql.Date?)?.toLocalDate()
                 val inNew = key in pending
+                val wantedTo = pending[key]
                 if (!rf.isAfter(from)) {
                     if (inNew) {
                         pending.remove(key)
-                        if (rt != null) { before += node(row); h.createUpdate("UPDATE app.user_scope SET valid_to = NULL WHERE id = :i").bind("i", row["id"]).execute() }
+                        if (rt != wantedTo) {
+                            before += node(row)
+                            h.createUpdate("UPDATE app.user_scope SET valid_to = :t WHERE id = :i").bind("t", wantedTo).bind("i", row["id"]).execute()
+                            after += JsonObject(mapOf("node_type" to jv(row["node_type"]), "node_id" to jv(row["node_id"]), "valid_from" to jv(row["valid_from"]), "valid_to" to jv(wantedTo)))
+                        }
                     } else {
                         before += node(row)
                         if (rf == from) h.createUpdate("DELETE FROM app.user_scope WHERE id = :i").bind("i", row["id"]).execute()
@@ -276,10 +285,11 @@ private suspend fun putScope(call: ApplicationCall, d: AdminMasterDeps) {
                     before += node(row); h.createUpdate("DELETE FROM app.user_scope WHERE id = :i").bind("i", row["id"]).execute()
                 }
             }
-            for ((type, nid) in pending) {
-                h.createUpdate("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, created_by, reason) VALUES (:u, :t, :n, :f, :by, :r)")
-                    .bind("u", id).bind("t", type).bind("n", nid).bind("f", from).bind("by", p.userId).bind("r", reason).execute()
-                after += JsonObject(mapOf("node_type" to JsonPrimitive(type), "node_id" to JsonPrimitive(nid), "valid_from" to JsonPrimitive(from.toString()), "valid_to" to jv(null)))
+            for ((key, to) in pending) {
+                val (type, nid) = key
+                h.createUpdate("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, valid_to, created_by, reason) VALUES (:u, :t, :n, :f, :to, :by, :r)")
+                    .bind("u", id).bind("t", type).bind("n", nid).bind("f", from).bind("to", to).bind("by", p.userId).bind("r", reason).execute()
+                after += JsonObject(mapOf("node_type" to JsonPrimitive(type), "node_id" to JsonPrimitive(nid), "valid_from" to JsonPrimitive(from.toString()), "valid_to" to jv(to)))
             }
             if (before.isNotEmpty() || after.isNotEmpty()) {
                 h.createUpdate("UPDATE app.app_user SET scope_version = scope_version + 1 WHERE id = :u").bind("u", id).execute()

@@ -252,6 +252,26 @@ class DataVoidAcceptanceTest {
     }
 
     @Test
+    fun aWebEntryVoidTombstonesTheWebRowsAndAllowsAFreshEntryWithoutBarrier() = testApplication {
+        application { aronApi(wiring) }
+        val tso = client.webToken("tso1001")
+        val sku = skus[0].first
+        suspend fun save(cu: String) = client.post("/v1/web-entry/route-day") {
+            bearerAuth(tso); contentType(ContentType.Application.Json)
+            setBody("""{"client_uuid":"$cu","route_id":$routeId,"business_date":"$day","successful_calls":2,"lines":[{"sku_id":$sku,"issue_qty_base":10,"return_qty_base":1,"memo_count":3}]}""")
+        }
+        val first = uuid()
+        assertEquals(HttpStatusCode.OK, save(first).status)
+        val v = client.voidDay(tso, uuid(), scope = "web_entry")
+        assertEquals(HttpStatusCode.OK, v.status, v.bodyAsText())
+        assertEquals(0, count("SELECT count(*) FROM app.web_entry_route_day WHERE route_id = $routeId AND business_date = '$day' AND voided_at IS NULL"))
+        assertEquals(0, count("SELECT count(*) FROM app.web_entry_line WHERE entry_client_uuid = '$first' AND voided_at IS NULL"))
+        // The tombstoned entry no longer counts as live: a fresh entry needs no change reason, and the web void left no barrier for app rows.
+        assertEquals(HttpStatusCode.OK, save(uuid()).status)
+        assertEquals(0, count("SELECT count(*) FROM app.route_day_void_barrier WHERE route_id = $routeId AND business_date = '$day' AND affected->>'scope' <> 'web_entry'"))
+    }
+
+    @Test
     fun aVoidIsRefusedAfterFinalSubmitOutsideReachAndForTheWrongRole() = testApplication {
         application { aronApi(wiring) }
         val admin = client.webToken("tso1001")
