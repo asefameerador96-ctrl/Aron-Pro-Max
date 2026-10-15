@@ -198,7 +198,9 @@ class Wiring(
             val ops = OpsDeps(OpsService(db, config, clock, acceptor), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
             val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
-            val reports = ReportDeps(db, ReportEngine(db, config, clock, ReportHandlers.all), reach, guard, clock)
+            val reportEngine = ReportEngine(db, config, clock, ReportHandlers.all)
+            val exportService = com.aktcl.aron.backend.analytics.ExportJobService(db, reportEngine, reach, exportStoreFromEnvironment(), clock)
+            val reports = ReportDeps(db, reportEngine, reach, guard, clock, exportService, exportService)
             val configResolver = ConfigResolver(db, clock)
             val toolsReach = com.aktcl.aron.backend.config.NodeReach { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
             val configService = ConfigService(db, configResolver, clock, toolsReach)

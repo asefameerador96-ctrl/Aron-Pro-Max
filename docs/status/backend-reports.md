@@ -1,5 +1,13 @@
 # backend-reports lane status
 
+## HANDOVER (2026-10-15, session recycling at about 450k tokens)
+- Lane head is the commit that carries this note. **Checked** (independent checker finished, findings fixed): everything up to and including `403e6146` (aggregation, dashboards, reports engine + batches A/B/C, ops, team, tracking, N-031 devices, entry_source copy needs no checker, retailer-list/sku-list/geofence-calibration/qc `source`: own tests only, no checker needed per lead). **Not independently re-reviewed**: the last three commits before this note: the Opus F-SYS-058 and Sonnet F-SYS-064 checkers' failing tests (kept as regression tests) and `80565e8b`, the fixes for them. Each checker defect has its test green on the head; the full `:backend:analytics:test` re-run was still in progress when I stopped (targeted ExportJobs*, CheckerF058*, ReportApiTest, ReportBatchC/D, EntrySource all green; the earlier full run before these fixes was green except one test of mine, fixed).
+- Open rows: F-AMO-039 (supervisor day state), F-AMO-044 (zone-wide AMO bundle), F-SYS-067 (bundle pre-generation, D+1 pre-fetch): their blockers (backend-core F-SYS-016 / F-API-005) are landed per docs/status/backend.csv; not started.
+- dw entry_source: done (Aggregator copies `entry_source` into dw.fact_memo / fact_visit, online-offline shows `manual_memos`). `entered_by_user_id` is NOT a dw column (V0077 added only entry_source); copying it needs a db migration first.
+- Known gaps, all logged: PDF export (docs/requests/backend-reports-pdf-export.md, D-REP-06); other lanes' list endpoints must call `PiiReadBudget.charge` (docs/requests/backend-reports-pii-budget-list-endpoints.md); export-job poison guard needs a `report_export.attempts` column (D-REP-08); memo-gap lost block tail (D-REP-05).
+- Env for the worker: ARON_BLOB_ACCOUNT + ARON_BLOB_CONTAINER_EXPORTS (default `exports`); N-031 needs ARON_PUBLIC_API_URL, ARON_ATTESTATION_ROOTS.
+- Traps: Postgres in the container stops now and then (`pg_ctlcluster 16 main start`); `:backend:analytics:test` takes 20+ min; run it in the background with the longest timeout; a `//` comment after a chained `.bind(...)` swallows the rest of the line.
+
 Updated 2026-10-15. Released by the lead; wall-clock test offenders fixed (scan: 0 in analytics); audit writes now go through `AuditLog.write` (tracking action, quarantine resolve, report export) with the actor and `after.scope` recorded and tested.
 
 ## Done (pushed to INT)

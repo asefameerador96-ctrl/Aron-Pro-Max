@@ -60,6 +60,13 @@ fun main() {
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
             val workerDb = Database.fromSettings(settings)
             AggregationWorker(workerDb).start()
+            run {
+                val workerClock = com.aktcl.aron.backend.platform.AronClock.SYSTEM
+                val workerConfig = com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))
+                val engine = com.aktcl.aron.backend.analytics.ReportEngine(workerDb, workerConfig, workerClock, com.aktcl.aron.backend.analytics.ReportHandlers.all)
+                val reach = com.aktcl.aron.backend.masterdata.SqlReachResolver(workerDb, com.aktcl.aron.backend.masterdata.GeoRepository(workerDb, workerClock), workerClock)
+                com.aktcl.aron.backend.analytics.ExportJobService(workerDb, engine, reach, com.aktcl.aron.backend.app.exportStoreFromEnvironment(), workerClock).start()
+            }
             com.aktcl.aron.backend.masterdata.RiskSignalJob(com.aktcl.aron.backend.masterdata.RiskSignalEvaluator(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)))).start()
             com.aktcl.aron.backend.sync.RouteDayPlanningJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
             com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
