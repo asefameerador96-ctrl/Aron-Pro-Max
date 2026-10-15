@@ -95,3 +95,5 @@
 | 2026-10-08 06:50 | db (session 5) | - | - | n/a | seven_day allowed_warning | amr column (refresh_family) on lane/db 93789a03 |
 
 2026-10-15 06:50 UTC (lead check, restart day): usage five_hour allowed (resets 11:00 UTC); no per-lane token counts read this round to save usage. Active: integrator session 9, web-config (idle, head 30cf961f), web-admin (16a1adc7), web-dashboard (a12b464f), backend-admin (8964ddb5), backend-reports (600ec391). INT 26cfb26a; candidate zza red in web e2e only (no web-admin fix in it).
+
+2026-10-15 10:47 UTC (lead check): five_hour allowed (resets 11:00 UTC). Sessions: integrator 10 (new), web-config (idle, a3418829), web-admin 3 (idle, cb2255f1), web-dashboard (idle, 5589436b), backend-admin 3 (working, e422a66f), backend-reports (checkers, 403e6146), backend-core (90fab81b, ~350k), db (a9c6de3d). INT 258c4022; dev on 2c2317cc while the 258c4022 deploy runs; candidate zzk in CI.
