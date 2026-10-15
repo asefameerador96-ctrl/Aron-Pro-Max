@@ -34,7 +34,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | web-config | session_0146veK2iXvmHGwiPBpbBJ2k | Sonnet | 2026-10-07 | |
 | web-dashboard | session_01RM4v6DRfjmfAbfrDi17Jzo | Sonnet | 2026-10-07 | recycled 05:01; previous session_01Sk9wwEshZ57sQafoEyccP7 is retired (READY TO RECYCLE 04:51) |
 | infra | session_01UEbF12bqtfDvVQ8snuPMt8 | Opus | 2026-10-08 | recycled 00:48 (sixth session; handover at the top of docs/status/infra.md, lane/infra 3156ca75): first job is to confirm the SR slice smoke (steps 4, 7b, 8) after the deploy of INT 2b76764f; retired session_01SKX3AbtdmchLizM6ikT4VF (READY TO RECYCLE 00:47), session_017... and earlier sessions retired |
-| integrator | session_01F6nMLE9VLyNh7zf4JSVj4u | Sonnet | 2026-10-15 | tenth session, started 10:36 UTC on the handover at the top of docs/status/train.md on lane/train-20261015T1040-handover (956174ef); predecessor session_01FP3UqHMD3DgT58J3iUjfEm (505k tokens) archived 10:47 UTC. INT 258c4022 at 10:47. |
+| integrator | session_01Tnq7EdCPTGyqe5XvTS3QCj | Sonnet | 2026-10-15 | eleventh session, started 12:57 UTC on the handover at the top of docs/status/train.md on INT cb03ff58 (zzt: backend-core 025e0edb incl. db 20040eb7, backend-admin 81b754e9); predecessor session_01F6nMLE9VLyNh7zf4JSVj4u (tenth, 364k, READY TO RECYCLE 12:56) archived; session_01FP3UqHMD3DgT58J3iUjfEm (ninth) and earlier archived. Next: backend-reports 26f5bef0 alone |
 | laptop operator | session_01UbRHnSorx4s1XARa6aN1Tg | Opus | 2026-10-06 | never nudged; runs only owner-approved laptop tasks |
 
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
