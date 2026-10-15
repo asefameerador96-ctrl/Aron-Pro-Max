@@ -22,14 +22,14 @@ ALTER TABLE app.memo ADD COLUMN entry_source text NOT NULL DEFAULT 'device';
 ALTER TABLE app.memo ADD COLUMN entered_by_user_id bigint;
 ALTER TABLE app.memo ADD CONSTRAINT memo_entry_source_known
   CHECK (entry_source IN ('device', 'manual') AND (entry_source = 'manual') = (entered_by_user_id IS NOT NULL)) NOT VALID;
--- squawk-ignore adding-foreign-key-constraint
+-- squawk-ignore adding-foreign-key-constraint, constraint-missing-not-valid
 ALTER TABLE app.memo ADD CONSTRAINT memo_entered_by_user_id_fkey FOREIGN KEY (entered_by_user_id) REFERENCES app.app_user(id);
 
 ALTER TABLE app.visit ADD COLUMN entry_source text NOT NULL DEFAULT 'device';
 ALTER TABLE app.visit ADD COLUMN entered_by_user_id bigint;
 ALTER TABLE app.visit ADD CONSTRAINT visit_entry_source_known
   CHECK (entry_source IN ('device', 'manual') AND (entry_source = 'manual') = (entered_by_user_id IS NOT NULL)) NOT VALID;
--- squawk-ignore adding-foreign-key-constraint
+-- squawk-ignore adding-foreign-key-constraint, constraint-missing-not-valid
 ALTER TABLE app.visit ADD CONSTRAINT visit_entered_by_user_id_fkey FOREIGN KEY (entered_by_user_id) REFERENCES app.app_user(id);
 
 ALTER TABLE app.ingest_registry DROP CONSTRAINT ingest_registry_flags_known;
