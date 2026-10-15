@@ -5289,7 +5289,7 @@ One row per AMO or TSO and business date with the day's check-in, check-out and 
 |---|---|---|---|---|
 | `user_id` | bigint | not null |  | Supervisor (app.app_user). |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the supervisor-day. |
-| `role` | text | not null |  | AMO or TSO, from app.app_user at projection time. |
+| `role` | text | not null |  | Role code of the user at projection time (app.role_def, upper case: AMO or TSO for a supervisor-day); no CHECK, so a rebuild after a re-role still succeeds. |
 | `zone_id` | bigint | null |  | Home zone of the supervisor that day; null when the user has none (a TSO over several zones). |
 | `checked_in_at` | timestamp with time zone | null |  | UTC time of the day's check-in; null when the supervisor did not check in. |
 | `checked_out_at` | timestamp with time zone | null |  | UTC time of the day's check-out. |
