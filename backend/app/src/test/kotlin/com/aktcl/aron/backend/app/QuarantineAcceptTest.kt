@@ -24,6 +24,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -332,5 +333,27 @@ class QuarantineAcceptTest {
         val res = client.resolve(item(cu(close)).first, "accept")
         assertEquals(HttpStatusCode.Conflict, res.status, res.bodyAsText())
         assertEquals("open", item(cu(close)).second)
+    }
+
+    // Kept here (no device rate limit in this class): the batch path, not quarantine.
+    /** db V0079/V0080 bound the ledger at |amount| <= 10^13 milli-taka: a memo above it is refused per record, never the batch. */
+    @Test
+    fun moneyAboveTheLedgerBoundIsRefusedPerRecordAndTheBatchGoesOn() = testApplication {
+        app()
+        val t = client.token()
+        val good = saleFamily()
+        val bad = saleFamily(priceDelta = 1_000_000_000_000) // lines of 2*10^13 and a memo of 3*10^13 milli-taka
+        val body = batch(good + bad)
+        val first = json(client.send(t, body).bodyAsText())
+        fun outcomes(r: JsonObject) = r["acks"]!!.jsonArray.map { a -> a.jsonObject["status"]!!.jsonPrimitive.content + ":" + (a.jsonObject["code"]?.jsonPrimitive?.contentOrNull ?: "-") }
+        assertEquals(List(5) { "accepted:-" } + listOf("accepted:-", "rejected:schema_invalid", "rejected:schema_invalid", "rejected:schema_invalid", "accepted:-"), outcomes(first), first.toString())
+        val badMemo = bad[1]["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$badMemo'"))
+        assertEquals(0L, count("SELECT count(*) FROM app.due_ledger WHERE memo_client_uuid = '$badMemo'"))
+        // The same batch again is the stored answer; the records resent in a new batch keep their outcome.
+        val replay = json(client.send(t, body).bodyAsText())
+        assertEquals(true, replay["replayed"]!!.jsonPrimitive.boolean)
+        assertEquals(outcomes(first), outcomes(replay))
+        assertEquals(outcomes(first).drop(5), outcomes(json(client.send(t, batch(bad)).bodyAsText())).map { it.replace("duplicate", "accepted") })
     }
 }

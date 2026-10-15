@@ -768,7 +768,7 @@ class IngestService(
 
     private fun process(h: Handle, ctx: Ctx, r: Rec): Outcome {
         // 1. Shape: envelope and payload members of the contract (unevaluatedProperties false).
-        val shapeError = shapeError(r, manual = ctx.manual != null)
+        val shapeError = shapeError(r, manual = ctx.manual != null) ?: moneyOutOfRange(r.json)
         if (shapeError != null) {
             if (!UUID_V4.matches(r.clientUuid)) {
                 // Without a valid client_uuid the record cannot be registered or kept; it is acked and logged only.
@@ -1432,6 +1432,21 @@ class IngestService(
         return Outcome.of(code)
     }
 
+    /**
+     * Money members (`*_mtk`, integer milli-taka) above the ledger's bound (db V0079/V0080: |amount| <= 10^13, i.e. 10
+     * billion taka): refused per record as `schema_invalid` with the member named, before anything is written, so a
+     * crafted memo never reaches the ledger insert. Non-integers are left to the shape and money checks.
+     */
+    private fun moneyOutOfRange(env: JsonObject): String? {
+        val p = env["payload"] as? JsonObject ?: return null
+        for ((k, v) in p) {
+            if (!k.endsWith("_mtk") || v !is JsonPrimitive || v.isString) continue
+            val n = v.content.toBigDecimalOrNull() ?: continue
+            if (n.abs() > MAX_MTK) return "$k is above the money bound (|value| <= 10^13 milli-taka)"
+        }
+        return null
+    }
+
     /** Envelope and payload members against the contract (required present, nothing unknown); null when the shape is fine. */
     private fun shapeError(r: Rec, manual: Boolean = false): String? {
         val env = r.json
@@ -1672,6 +1687,7 @@ class IngestService(
         private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")
         /** N-027: the attendance and sales records the device gate holds (s10.4). */
         val GATED_TYPES = setOf("attendance_event", "memo", "memo_void", "due_collection")
+        private val MAX_MTK = java.math.BigDecimal.TEN.pow(13)
         /** Memo references that follow a matched phone memo to its paper twin ([memoAlias]). */
         private val MEMO_ALIAS_FIELDS = mapOf("due_collection" to "against_memo_client_uuid", "memo_void" to "memo_client_uuid", "memo" to "supersedes_client_uuid")
         /** Data-entry (money and stock) records: a reviewer's fix of one needs a second person (docs/24 s8.6). */
