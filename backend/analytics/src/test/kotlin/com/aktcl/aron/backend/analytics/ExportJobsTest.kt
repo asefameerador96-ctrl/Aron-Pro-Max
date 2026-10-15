@@ -116,6 +116,71 @@ class ExportJobsTest : ReportFixture() {
     }
 }
 
+/** Checker F-SYS-064 defects: each test fails on the current code and states the expected behaviour. */
+class ExportJobsCheckerTest : ReportFixture() {
+    override val configOverrides: Map<String, JsonElement> = mapOf("cfg.ops.report_sync_max_rows" to JsonPrimitive(1))
+
+    private fun service(store: ExportStore, clock: com.aktcl.aron.backend.platform.AronClock, id: String) = ExportJobService(
+        fresh.db, ReportEngine(fresh.db, object : com.aktcl.aron.backend.platform.ServerConfig by com.aktcl.aron.backend.platform.RegistryDefaults() {}, clock, handlers),
+        ReachResolverOf(reaches), store, clock, workerId = id,
+    )
+    private fun state(id: String) = fresh.db.jdbi.withHandle<Pair<String, String?>, Exception> { h ->
+        h.createQuery("SELECT status, error FROM app.report_export WHERE export_id = CAST(:i AS uuid)").bind("i", id).map { rs, _ -> rs.getString(1) to rs.getString(2) }.one()
+    }
+
+    @Test
+    fun aLateWorkerWhoseLeaseWasSweptDoesNotMarkTheJobFailed() = app {
+        val id = run(10, Role.ANALYST, "route-memo", body(format = "xlsx")).result().str("export_id")!!
+        // While worker A is writing the file, another worker's sweep puts the lapsed job back in the queue.
+        val a = service(object : ExportStore {
+            override fun put(path: String, bytes: ByteArray) { fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.report_export SET status = 'queued', claimed_by = NULL, claimed_at = NULL WHERE export_id = '$id'") } }
+            override fun readUrl(path: String, expiresAt: java.time.Instant) = ""
+        }, testClock, "A")
+        a.runNext()
+        val (status, err) = state(id)
+        assertTrue(status != "failed", "late worker A turned a re-queued job into failed: $status / $err")
+    }
+
+    @Test
+    fun aLateWorkerFinishingAfterTheTakeoverWorkerDoesNotThrowOrChangeTheJob() = app {
+        val id = run(10, Role.ANALYST, "route-memo", body(format = "xlsx")).result().str("export_id")!!
+        val later = com.aktcl.aron.backend.platform.AronClock { java.time.Instant.parse("2026-10-04T13:00:00Z") }
+        val b = service(exportStore, later, "B")
+        val a = service(object : ExportStore {
+            override fun put(path: String, bytes: ByteArray) { assertTrue(b.runNext()) }   // B takes over the lapsed lease and finishes first
+            override fun readUrl(path: String, expiresAt: java.time.Instant) = ""
+        }, testClock, "A")
+        val threw = runCatching { a.runNext() }.exceptionOrNull()
+        assertNull(threw, "worker A's late finish escaped runNext: $threw")
+        assertEquals("done", state(id).first)
+    }
+
+    @Test
+    fun theFailureReasonDoesNotCarryTheRawExceptionMessage() = app {
+        val id = run(10, Role.ANALYST, "route-memo", body(format = "xlsx")).result().str("export_id")!!
+        service(object : ExportStore {
+            override fun put(path: String, bytes: ByteArray) = throw java.io.IOException("PUT https://acct.blob.core.windows.net/exports/x.xlsx?sig=SECRET failed for +8801711000000")
+            override fun readUrl(path: String, expiresAt: java.time.Instant) = ""
+        }, testClock, "A").runNext()
+        val err = state(id).second.orEmpty()
+        assertTrue(!err.contains("SECRET") && !err.contains("8801711000000"), "error served to the user: $err")
+    }
+
+    @Test
+    fun aJobWithoutExplicitPeriodExportsTheDayTheScreenShowedNotTheDayTheWorkerRuns() = app {
+        val q = """{"period":{},"output":{"format":"xlsx","page_size":500}}"""
+        val screen = run(10, Role.ANALYST, "route-memo", """{"period":{},"output":{"format":"json","page_size":500}}""").result()["total_rows"]!!.jsonPrimitive.content.toInt()
+        val id = run(10, Role.ANALYST, "route-memo", q).result().str("export_id")!!
+        val nextDay = com.aktcl.aron.backend.platform.AronClock { java.time.Instant.parse("2026-10-05T12:00:00Z") }
+        service(exportStore, nextDay, "A").runNext()
+        val path = fresh.db.jdbi.withHandle<String, Exception> { it.createQuery("SELECT blob_path FROM app.report_export WHERE export_id = CAST(:i AS uuid)").bind("i", id).mapTo(String::class.java).one() }
+        val f = java.io.File.createTempFile("export", ".xlsx").also { it.writeBytes(storedExports.getValue(path)) }
+        val rows = java.util.zip.ZipFile(f).use { z -> Regex("<row ").findAll(z.getInputStream(z.getEntry("xl/worksheets/sheet1.xml")).readBytes().decodeToString()).count() - 1 }
+        f.delete()
+        assertEquals(screen, rows, "screen showed $screen rows, the job exported $rows")
+    }
+}
+
 private class ReachResolverOf(val m: Map<Long, com.aktcl.aron.backend.platform.Reach>) : com.aktcl.aron.backend.platform.ReachResolver {
     override fun reach(userId: Long, role: Role, scopeVersion: Long, businessDate: java.time.LocalDate) = m.getValue(userId)
 }
