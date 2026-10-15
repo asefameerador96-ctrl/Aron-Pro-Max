@@ -78,6 +78,7 @@ class AdminContentTest {
         assertEquals(HttpStatusCode.Created, c1.status); assertEquals("\"1\"", etag(c1))
         val t1 = c1.objA3(); val id1 = t1.strA3("tutorial_id")
         assertEquals("https://blob.test/assets/tutorial_video/$video.mp4", t1.strA3("url"))
+        assertEquals(video, t1.strA3("asset_id"), "contract v1.3: the admin read returns the current file so a PATCH can keep it")
         val id2 = sendA3(HttpMethod.Post, "/v1/admin/tutorials", adm, body("manual", manual, """["SR"]""", 1)).objA3().strA3("tutorial_id")
         assertEquals(1, audits("tutorial", id1, "create"))
         // Audit row carries the reason and was written with the row.

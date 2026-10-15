@@ -87,7 +87,7 @@ private val store = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 )
 @Serializable data class TutorialAdminDto(
     val tutorial_id: Long, val kind: String, val title_en: String, val title_bn: String?, val url: String, val bytes: Long?, val duration_s: Int?, val sort: Int,
-    val roles: List<String>, val status: String, val version: Int,
+    val roles: List<String>, val status: String, val version: Int, val asset_id: String? = null,
 )
 @Serializable data class TutorialAdminListDto(val items: List<TutorialAdminDto>)
 
@@ -548,11 +548,11 @@ private suspend fun updateContent(call: ApplicationCall, d: AdminContentDeps): V
 
 private val TUTORIAL_KINDS = setOf("video", "manual")
 
-private const val TUT_SQL = "SELECT t.id, t.version, t.kind, t.title_en, t.title_bn, t.sort, t.status, t.roles, a.blob_path, a.bytes FROM app.tutorial t JOIN app.admin_asset a ON a.asset_id = t.asset_id"
+private const val TUT_SQL = "SELECT t.id, t.version, t.kind, t.title_en, t.title_bn, t.sort, t.status, t.roles, t.asset_id, a.blob_path, a.bytes FROM app.tutorial t JOIN app.admin_asset a ON a.asset_id = t.asset_id"
 
 private fun mapTutorial(rs: java.sql.ResultSet, d: AdminContentDeps) = TutorialAdminDto(
     rs.getLong("id"), rs.getString("kind"), rs.getString("title_en"), rs.getString("title_bn"), d.blob.readUrl(rs.getString("blob_path")), rs.getLong("bytes"), null, rs.getInt("sort"),
-    (rs.getArray("roles").array as Array<*>).map { it as String }, rs.getString("status"), rs.getInt("version"),
+    (rs.getArray("roles").array as Array<*>).map { it as String }, rs.getString("status"), rs.getInt("version"), rs.getObject("asset_id", UUID::class.java).toString(),
 )
 
 private fun tutorialOf(h: Handle, d: AdminContentDeps, id: Long) = h.createQuery("$TUT_SQL WHERE t.id = :i").bind("i", id).map { rs, _ -> mapTutorial(rs, d) }.findOne().orElse(null)
