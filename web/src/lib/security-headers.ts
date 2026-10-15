@@ -19,7 +19,7 @@ export function csp(nonce: string): string {
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${maps}`,
     "style-src 'self' 'unsafe-inline'", // Tailwind and the Maps widget set inline styles; scripts stay nonce-only
-    `img-src 'self' data: blob: ${maps} https://*.googleapis.com https://*.ggpht.com`,
+    `img-src 'self' data: blob: ${maps} https://*.googleapis.com https://*.ggpht.com${blob ? ` ${blob}` : ""}`,
     `connect-src 'self' ${maps} https://*.googleapis.com${blob ? ` ${blob}` : ""}`,
     "font-src 'self' data:",
     "frame-ancestors 'none'",

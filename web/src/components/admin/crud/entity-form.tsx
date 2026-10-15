@@ -5,6 +5,8 @@ import { useI18n } from "@/components/i18n-provider";
 import type { MessageKey } from "@/lib/i18n";
 import { en } from "@/lib/i18n/messages-en";
 import type { Problem } from "@/contract/types";
+import type { AssetPurpose } from "@/lib/admin/tutorials";
+import { fileProblem, uploadAsset } from "../asset-upload";
 import { Field, inputClass } from "../kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 import type { FieldError, WriteRequest } from "./types";
@@ -12,7 +14,7 @@ import type { FieldError, WriteRequest } from "./types";
 export interface FormFieldDef {
   name: string;
   label: string;
-  kind: "text" | "int" | "enum" | "date" | "mask" | "number";
+  kind: "text" | "int" | "enum" | "date" | "mask" | "number" | "asset";
   /** Translated section heading; consecutive fields with the same heading are grouped. */
   section?: string;
   /** Labels of the bits of a `mask` field, bit 0 first. */
@@ -21,6 +23,9 @@ export interface FormFieldDef {
   nullable: boolean;
   maxLength?: number;
   options?: { value: string; label: string }[];
+  /** `asset`: purpose of the upload ticket, and the URL of the file now stored (shown as a preview). */
+  assetPurpose?: AssetPurpose;
+  previewUrl?: string;
 }
 
 interface Props {
@@ -39,6 +44,9 @@ interface Props {
   listHref: string;
 }
 
+/** Value of an asset field the user removed: sent as "" (null) even when the stored value is not in the row. */
+const CLEAR = "-";
+
 function fieldMessage(t: ReturnType<typeof useI18n>["t"], code: string): string {
   const key = `error.field.${code}` as MessageKey;
   return t(["required", "too_short", "too_long", "unknown_member", "past"].includes(code) ? key : "error.field.invalid");
@@ -54,7 +62,33 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [shown, setShown] = useState<Record<string, unknown> | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+
+  async function onPick(f: FormFieldDef, file: File | undefined) {
+    if (!file || !f.assetPurpose) return;
+    const bad = fileProblem(file, f.assetPurpose);
+    if (bad) {
+      setErrors((x) => ({ ...x, [f.name]: t(bad === "type" ? "asset.bad_type" : bad === "big" ? "asset.too_big" : "asset.empty") }));
+      return;
+    }
+    setErrors((x) => ({ ...x, [f.name]: "" }));
+    setUploading(f.name);
+    try {
+      const r = await uploadAsset(file, f.assetPurpose);
+      if (r.ok) {
+        setValues((v) => ({ ...v, [f.name]: r.assetId }));
+        setPicked((p) => ({ ...p, [f.name]: file.name }));
+      } else {
+        setErrors((x) => ({ ...x, [f.name]: r.code === "upload_failed" ? t("tut.upload_failed") : problem(r.code) }));
+      }
+    } catch {
+      setErrors((x) => ({ ...x, [f.name]: t("tut.upload_failed") }));
+    } finally {
+      setUploading(null);
+    }
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -63,6 +97,10 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
     const sent: Record<string, unknown> = {};
     for (const f of fields) {
       const v = values[f.name] ?? "";
+      if (f.kind === "asset" && v === CLEAR) {
+        sent[f.name] = "";
+        continue;
+      }
       if (mode === "update" && v === (initial[f.name] ?? "")) continue;
       if (mode !== "update" && v === "" && !f.required) continue;
       sent[f.name] = v;
@@ -159,6 +197,38 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
                 </option>
               ))}
             </select>
+          ) : f.kind === "asset" ? (
+            <div className="space-y-2" data-testid={`asset-${f.name}`}>
+              {values[f.name] === CLEAR ? (
+                <p className="text-sm text-amber-800">{t("asset.removed")}</p>
+              ) : values[f.name] && picked[f.name] ? (
+                <p className="text-sm text-green-800">{t("asset.ready", { name: picked[f.name] ?? "" })}</p>
+              ) : f.previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- a 300 KB admin thumbnail from the storage origin; next/image would proxy it
+                <img src={f.previewUrl} alt={t("asset.current")} width={96} height={96} className="h-24 w-24 rounded border border-slate-200 object-contain" />
+              ) : (
+                <p className="text-sm text-slate-600">{t("asset.none")}</p>
+              )}
+              <input
+                type="file"
+                id={`f-${f.name}`}
+                name={`${f.name}-file`}
+                accept="image/jpeg,image/png"
+                disabled={uploading !== null}
+                onChange={(e) => {
+                  void onPick(f, e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+                className="block text-sm"
+              />
+              {uploading === f.name ? <p role="status" className="text-sm">{t("tut.uploading")}</p> : null}
+              {(values[f.name] && values[f.name] !== CLEAR) || (mode === "update" && f.previewUrl && values[f.name] !== CLEAR) ? (
+                <button type="button" onClick={() => { setValues({ ...values, [f.name]: mode === "update" ? CLEAR : "" }); setPicked({ ...picked, [f.name]: "" }); }} className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100">
+                  {t("asset.clear")}
+                </button>
+              ) : null}
+              <p className="text-xs text-slate-600">{t("asset.hint_image")}</p>
+            </div>
           ) : f.kind === "mask" ? (
             <div id={`f-${f.name}`} role="group" aria-label={f.label} className="flex flex-wrap gap-3">
               {f.maskBits?.map((label, bit) => {

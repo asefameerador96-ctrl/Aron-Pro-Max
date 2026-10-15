@@ -556,6 +556,17 @@ export const en = {
   "enr.no_release": "There is no published app release for this app type yet. Publish one on the Releases page, then create the code again.",
   "auth.mfa.use_recovery": "Use a recovery code instead",
   "auth.mfa.use_code": "Use the 6-digit code instead",
+  "entity.field.sku_image": "Pack image",
+  "asset.choose": "Choose a file",
+  "asset.clear": "Remove",
+  "asset.ready": "Ready to save: {name}",
+  "asset.current": "Current file",
+  "asset.none": "No file",
+  "asset.hint_image": "JPEG or PNG, up to 300 KB. Compress it first: field phones download this picture.",
+  "asset.bad_type": "Only JPEG or PNG files are accepted.",
+  "asset.too_big": "The file is larger than 300 KB.",
+  "asset.empty": "The file is empty.",
+  "asset.removed": "The image will be removed when you save.",
 } as const;
 
 export type MessageKey = keyof typeof en;

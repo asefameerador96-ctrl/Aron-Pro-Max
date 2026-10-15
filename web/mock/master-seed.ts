@@ -153,15 +153,22 @@ export function tableDefs(h: Holder): TableDef[] {
       collection: /^\/v1\/admin\/skus$/,
       item: /^\/v1\/admin\/skus\/(\d+)$/,
       rows: () => h.tables.skus!,
-      create: { allowed: ["code", "variant_id", "category_code", "name", "short_name", "name_bn", "base_unit", "base_per_pack", "entry_unit_default", "report_unit", "report_factor", "sort"], required: ["code", "variant_id", "category_code", "name", "short_name", "base_unit", "base_per_pack", "entry_unit_default", "report_factor", "sort"], reason: false },
-      patch: { allowed: ["name", "short_name", "name_bn", "report_unit", "report_factor", "sort", "status", "thumbnail_media_uuid"] },
+      create: { allowed: ["code", "variant_id", "category_code", "name", "short_name", "name_bn", "base_unit", "base_per_pack", "entry_unit_default", "report_unit", "report_factor", "sort", "image_asset_id"], required: ["code", "variant_id", "category_code", "name", "short_name", "base_unit", "base_per_pack", "entry_unit_default", "report_factor", "sort"], reason: false },
+      patch: { allowed: ["name", "short_name", "name_bn", "report_unit", "report_factor", "sort", "status", "thumbnail_media_uuid", "image_asset_id"] },
       unique: [["code"]],
       maxLength: { name: 120, short_name: 20 },
       patterns: { code: /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/, report_factor: /^-?\d{1,13}(\.\d{1,3})?$/ },
       auditEntity: "sku",
       filters: { status: (r, v) => r.status === v, q: (r, v) => like("name")(r, v) || like("code")(r, v) },
       defaults: { status: "active" },
-      nullables: ["name_bn", "report_unit"],
+      nullables: ["name_bn", "report_unit", "image_asset_id"],
+      afterWrite: (r) => {
+        // The real API stores the asset id and returns only the URL (SkuWrite.image_asset_id / Sku.image_url).
+        if ("image_asset_id" in r) {
+          r.image_url = r.image_asset_id ? `https://blob.example/sku/${String(r.image_asset_id)}` : null;
+          delete r.image_asset_id;
+        }
+      },
       nextId,
     },
     {
