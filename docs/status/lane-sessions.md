@@ -34,7 +34,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | web-config | session_0146veK2iXvmHGwiPBpbBJ2k | Sonnet | 2026-10-07 | |
 | web-dashboard | session_01RM4v6DRfjmfAbfrDi17Jzo | Sonnet | 2026-10-07 | recycled 05:01; previous session_01Sk9wwEshZ57sQafoEyccP7 is retired (READY TO RECYCLE 04:51) |
 | infra | session_01UEbF12bqtfDvVQ8snuPMt8 | Opus | 2026-10-08 | recycled 00:48 (sixth session; handover at the top of docs/status/infra.md, lane/infra 3156ca75): first job is to confirm the SR slice smoke (steps 4, 7b, 8) after the deploy of INT 2b76764f; retired session_01SKX3AbtdmchLizM6ikT4VF (READY TO RECYCLE 00:47), session_017... and earlier sessions retired |
-| integrator | session_01SQjqrsGtBm5Fe5JkrgJoDP | Sonnet | 2026-10-08 | recycled 08:03 (eighth session; handover at the top of docs/status/train.md on lane/train-20261008T0805-handover 4c2be577; INT 1852c8ed, CI run 37747194603 + dev deploy in flight); retired session_01AK8FquE86UGRgzqgJii4zg (READY TO RECYCLE 08:05), session_01DrpAFbHEdU2moUPcEGurmS, session_016uXu7QkPQGGTn3FmR92YHu and earlier |
+| integrator | session_01FP3UqHMD3DgT58J3iUjfEm | Sonnet | 2026-10-15 | ninth session, started 06:09 UTC on the handover at the top of docs/status/train.md on lane/train-20261015T0610-handover; predecessor session_01SQjqrsGtBm5Fe5JkrgJoDP (eighth, 388k tokens) archived 06:09 UTC. INT 26cfb26a. |
 | laptop operator | session_01UbRHnSorx4s1XARa6aN1Tg | Opus | 2026-10-06 | never nudged; runs only owner-approved laptop tasks |
 
 Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
@@ -83,3 +83,14 @@ way.
 - Docs from the lead reach INT through the integrator's next code candidate (branch lane/lead-docs), so a docs push never starts a dev deploy of its own.
 
 Leftover branches that cannot be deleted (the remote refuses ref deletions; list for the owner's cleanup when the repository goes private): claude/bc-s5-salvage, lane/lead-pushprobe, lane/lead-contract-v1-3.
+
+## 2026-10-15 06:20 UTC: build restarted by the owner ("let's start from now")
+The stall (INT unchanged at 26cfb26a from 2026-10-08 08:37 UTC to now, Day 10 cap missed) ended when the owner came back with the Honor X5c Plus in hand.
+Released and messaged: web-config session_0146veK2iXvmHGwiPBpbBJ2k, web-admin session_018iHvNJSMqCk8eLitCk9wzU (priority: /admin/enrolment against live dev),
+web-dashboard session_01RM4v6DRfjmfAbfrDi17Jzo (priority: /device-otp and login on live dev), backend-admin session_01TogQKB1R6sgWVTafC9DMYG,
+backend-reports session_019WhVDAstm1xPBBrp6FPKM9. Integrator session_01SQjqrsGtBm5Fe5JkrgJoDP told to resume its wake loop (369k tokens: recycle at its next clean handover).
+Still parked: android-sys (done, leftover is low priority). Wave 2 (android-amo, android-tso, qa) starts when the owner's phone test shows the SR slice end to end on dev AND usage is `allowed`.
+Dev checked 06:04 UTC: `GET /v1/health` 200, build 1852c8ed (last code promotion zzo; INT 26cfb26a adds only docs and tools/ci/test_gates.py), web login answers 200 on the same Front Door address.
+Newest release-signed APK: CI run 722 (id 37736394003), artifact `aron-release-signed-dev-722`, not expired; no Android file changed on INT since.
+
+Usage state read 2026-10-15 06:09 UTC from the archived integrator's live turn: `five_hour` status `allowed`, resets 2026-10-15 11:00 UTC (1792062000). The seven-day window reset on 2026-10-13 18:00 UTC; its live status is not yet read (stored records older than 2026-10-13 are stale).
