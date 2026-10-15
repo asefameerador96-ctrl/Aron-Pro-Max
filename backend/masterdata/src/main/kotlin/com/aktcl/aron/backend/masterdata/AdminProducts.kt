@@ -59,13 +59,13 @@ data class ProductNodePageOut(val items: List<ProductNodeOut>, val next_cursor: 
 data class SkuOut(
     val id: Long, val code: String, val variant_id: Long, val category_code: String, val name: String, val short_name: String, val name_bn: String?,
     val base_unit: String, val base_per_pack: Int, val entry_unit_default: String, val report_unit: String?, val report_factor: String, val sort: Int,
-    val status: String, val thumbnail_media_uuid: String?, val updated_at: String, val version: Int,
+    val status: String, val thumbnail_media_uuid: String?, val image_url: String?, val updated_at: String, val version: Int,
 )
 
 @Serializable
 data class SkuPageOut(val items: List<SkuOut>, val next_cursor: String?)
 
-class AdminProductsDeps(val db: Database, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
+class AdminProductsDeps(val db: Database, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM, val blob: BlobSasIssuer = UnconfiguredBlobSasIssuer)
 
 /** Master data is read by every web role of docs/24 s8.5 and written by ADMIN and SUPERADMIN only. */
 
@@ -152,7 +152,7 @@ private fun ts(rs: ResultSet, col: String): String = rs.getObject(col, OffsetDat
 internal fun OffsetDateTime.wireTs(): String = toInstant().wire()
 
 private const val NODE_COLS = "id, level, parent_id, code, name, name_bn, sort, status, created_at, updated_at, version"
-private const val SKU_COLS = "id, code, variant_id, category_code, name, short_name, name_bn, base_unit, base_per_pack, entry_unit_default, report_unit, report_factor, sort, status, thumbnail_media_uuid, updated_at, version"
+private const val SKU_COLS = "id, code, variant_id, category_code, name, short_name, name_bn, base_unit, base_per_pack, entry_unit_default, report_unit, report_factor, sort, status, thumbnail_media_uuid, updated_at, version, (SELECT a.blob_path FROM app.admin_asset a WHERE a.asset_id = sku.image_asset_id) AS image_blob_path"
 private val LEVELS = listOf("category", "segment", "brand", "variant")
 private val PARENT_LEVEL = mapOf("segment" to "category", "brand" to "segment", "variant" to "brand")
 private val STATUSES = setOf("active", "inactive")
@@ -168,10 +168,12 @@ private fun nodeOf(rs: ResultSet) = ProductNodeOut(
     rs.getInt("sort"), rs.getString("status"), ts(rs, "created_at"), ts(rs, "updated_at"), rs.getInt("version"),
 )
 
-private fun skuOf(rs: ResultSet) = SkuOut(
+/** The pack image URL is a read URL of the asset's blob; a missing or unconfigured store gives no URL rather than failing the whole listing. */
+private fun skuOf(rs: ResultSet, blob: BlobSasIssuer) = SkuOut(
     rs.getLong("id"), rs.getString("code"), rs.getLong("variant_id"), rs.getString("category_code"), rs.getString("name"), rs.getString("short_name"), rs.getString("name_bn"),
     rs.getString("base_unit"), rs.getInt("base_per_pack"), rs.getString("entry_unit_default"), rs.getString("report_unit"), rs.getBigDecimal("report_factor").toPlainString(),
-    rs.getInt("sort"), rs.getString("status"), rs.getString("thumbnail_media_uuid"), ts(rs, "updated_at"), rs.getInt("version"),
+    rs.getInt("sort"), rs.getString("status"), rs.getString("thumbnail_media_uuid"),
+    rs.getString("image_blob_path")?.let { runCatching { blob.readUrl(it) }.getOrNull() }, ts(rs, "updated_at"), rs.getInt("version"),
 )
 
 private fun json(o: Any): JsonElement = when (o) {
@@ -303,7 +305,7 @@ private fun listSkus(call: ApplicationCall, d: AdminProductsDeps): SkuPageOut {
         if (since != null) q.bind("since", since)
         if (cursor != null) q.bind("cursor", cursor)
         if (search != null) q.bind("s", "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
-        q.map { rs, _ -> skuOf(rs) }.list()
+        q.map { rs, _ -> skuOf(rs, d.blob) }.list()
     }
     val page = rows.take(limit)
     return SkuPageOut(page, if (rows.size > limit) page.last().id.toString() else null)
@@ -318,7 +320,7 @@ private fun decimal3(b: JsonObject, k: String, required: Boolean): BigDecimal? {
 private suspend fun createSku(call: ApplicationCall, d: AdminProductsDeps) {
     val p = call.masterWriter()
     val b = call.bodyObject()
-    b.only(setOf("code", "variant_id", "category_code", "name", "short_name", "name_bn", "base_unit", "base_per_pack", "entry_unit_default", "report_unit", "report_factor", "sort"))
+    b.only(setOf("code", "variant_id", "category_code", "name", "short_name", "name_bn", "base_unit", "base_per_pack", "entry_unit_default", "report_unit", "report_factor", "sort", "image_asset_id"))
     val code = b.str("code", 1, 40, required = true)!!.also { if (!SKU_CODE.matches(it)) adminBad("body.code", "pattern") }
     val variant = b.id("variant_id", required = true)!!
     val category = b.enum("category_code", CATEGORY_UNIT.keys, required = true)!!
@@ -331,6 +333,7 @@ private suspend fun createSku(call: ApplicationCall, d: AdminProductsDeps) {
     val reportUnit = b.enum("report_unit", REPORT_UNITS, required = false, nullable = true)
     val factor = decimal3(b, "report_factor", required = true)!!
     val sort = b.int("sort", -1_000_000, 1_000_000, required = true)!!
+    val imageAsset = imageAssetId(b)
     // Cigarettes and bidi count in sticks, lighters in pieces and matches in dozens (CLAUDE.md rule 5); lighter and match have no pack of sticks.
     if (CATEGORY_UNIT.getValue(category) != baseUnit) adminBad("body.base_unit", "wrong_unit_for_category")
     if (category in setOf("lighter", "match") && perPack != 1) adminBad("body.base_per_pack", "must_be_1")
@@ -338,12 +341,13 @@ private suspend fun createSku(call: ApplicationCall, d: AdminProductsDeps) {
         d.db.jdbi.inTransaction<SkuOut, Exception> { h ->
             val isVariant = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.product_node WHERE id = :v AND level = 'variant')").bind("v", variant).mapTo(Boolean::class.java).one()
             if (!isVariant) adminBad("body.variant_id", "not_a_variant")
+            if (imageAsset != null) checkSkuImage(h, imageAsset)
             val s = h.createQuery(
-                "INSERT INTO app.sku (code, variant_id, category_code, name, short_name, name_bn, base_unit, base_per_pack, entry_unit_default, report_unit, report_factor, sort, created_by, updated_by) " +
-                    "VALUES (:code, :v, :cat, :n, :sn, :nb, :bu, :pp, :eu, :ru, :rf, :s, :by, :by) RETURNING $SKU_COLS",
-            ).bind("code", code).bind("v", variant).bind("cat", category).bind("n", name).bind("sn", shortName).bind("nb", nameBn).bind("bu", baseUnit).bind("pp", perPack)
-                .bind("eu", entry).bind("ru", reportUnit).bind("rf", factor).bind("s", sort).bind("by", p.userId).map { rs, _ -> skuOf(rs) }.one()
-            AuditWriter.write(h, p, "sku", s.id.toString(), "create", null, json(s), null, call.requestId)
+                "INSERT INTO app.sku (code, variant_id, category_code, name, short_name, name_bn, base_unit, base_per_pack, entry_unit_default, report_unit, report_factor, sort, image_asset_id, created_by, updated_by) " +
+                    "VALUES (:code, :v, :cat, :n, :sn, :nb, :bu, :pp, :eu, :ru, :rf, :s, CAST(:img AS uuid), :by, :by) RETURNING $SKU_COLS",
+            ).bind("img", imageAsset).bind("code", code).bind("v", variant).bind("cat", category).bind("n", name).bind("sn", shortName).bind("nb", nameBn).bind("bu", baseUnit).bind("pp", perPack)
+                .bind("eu", entry).bind("ru", reportUnit).bind("rf", factor).bind("s", sort).bind("by", p.userId).map { rs, _ -> skuOf(rs, d.blob) }.one()
+            AuditWriter.write(h, p, "sku", s.id.toString(), "create", null, skuAudit(h, s), null, call.requestId)
             s
         }
     }
@@ -355,8 +359,9 @@ private suspend fun updateSku(call: ApplicationCall, d: AdminProductsDeps) {
     val p = call.masterWriter()
     val id = call.pathId(); val expected = call.ifMatch()
     val b = call.bodyObject()
-    b.only(setOf("name", "short_name", "name_bn", "report_unit", "report_factor", "sort", "status", "thumbnail_media_uuid", "change_reason"))
+    b.only(setOf("name", "short_name", "name_bn", "report_unit", "report_factor", "sort", "status", "thumbnail_media_uuid", "image_asset_id", "change_reason"))
     if (b.isEmpty()) adminBad("body", "empty_patch")
+    val imageAsset = imageAssetId(b)
     val name = b.str("name", 1, 120, required = false)?.trim()
     val shortName = b.str("short_name", 1, 20, required = false)?.trim()
     val nameBn = b.str("name_bn", 0, 120, required = false, nullable = true)
@@ -368,9 +373,10 @@ private suspend fun updateSku(call: ApplicationCall, d: AdminProductsDeps) {
     val reason = b.str("change_reason", 10, 500, required = false, nullable = true)
     val out = mapDb {
         d.db.jdbi.inTransaction<SkuOut, Exception> { h ->
-            val cur = h.createQuery("SELECT $SKU_COLS FROM app.sku WHERE id = :i FOR UPDATE").bind("i", id).map { rs, _ -> skuOf(rs) }.findOne().orElse(null)
+            val cur = h.createQuery("SELECT $SKU_COLS FROM app.sku WHERE id = :i FOR UPDATE").bind("i", id).map { rs, _ -> skuOf(rs, d.blob) }.findOne().orElse(null)
                 ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no SKU with this id")
             if (cur.version != expected) preconditionFailed(cur.version)
+            val curAudit = skuAudit(h, cur)
             val set = mutableListOf<String>(); val args = mutableMapOf<String, Any?>()
             if (name != null && name != cur.name) { set += "name = :name"; args["name"] = name }
             if (shortName != null && shortName != cur.short_name) { set += "short_name = :sn"; args["sn"] = shortName }
@@ -380,16 +386,42 @@ private suspend fun updateSku(call: ApplicationCall, d: AdminProductsDeps) {
             if (sort != null && sort != cur.sort) { set += "sort = :sort"; args["sort"] = sort }
             if (status != null && status != cur.status) { set += "status = :status"; args["status"] = status }
             if (b.containsKey("thumbnail_media_uuid") && thumb != cur.thumbnail_media_uuid) { set += "thumbnail_media_uuid = CAST(:tm AS uuid)"; args["tm"] = thumb }
+            if (b.containsKey("image_asset_id")) {
+                val curImage = h.createQuery("SELECT image_asset_id::text FROM app.sku WHERE id = :i").bind("i", id).mapTo(String::class.java).findOne().orElse(null)
+                if (imageAsset != curImage) {
+                    if (imageAsset != null) checkSkuImage(h, imageAsset)
+                    set += "image_asset_id = CAST(:img AS uuid)"; args["img"] = imageAsset
+                }
+            }
             if (set.isEmpty()) return@inTransaction cur
             val q = h.createQuery("UPDATE app.sku SET ${set.joinToString(", ")}, updated_by = :by WHERE id = :i RETURNING $SKU_COLS").bind("by", p.userId).bind("i", id)
             args.forEach { (k, v) -> q.bind(k, v) }
-            val s = q.map { rs, _ -> skuOf(rs) }.one()
-            AuditWriter.write(h, p, "sku", id.toString(), "update", json(cur), json(s), reason, call.requestId)
+            val s = q.map { rs, _ -> skuOf(rs, d.blob) }.one()
+            AuditWriter.write(h, p, "sku", id.toString(), "update", curAudit, skuAudit(h, s), reason, call.requestId)
             s
         }
     }
     call.etag(out.version)
     call.respond(out)
+}
+
+/** `image_asset_id`: absent or null is no image; otherwise a lowercase UUID v4 (the asset store's key). */
+private fun imageAssetId(b: JsonObject): String? =
+    b.str("image_asset_id", 36, 36, required = false, nullable = true)?.also { if (!UUID_V4.matches(it)) adminBad("body.image_asset_id", "not_a_uuid") }
+
+/** The asset must exist, be a pack image (purpose `sku_image`) and respect the 300 KB image cap the asset store enforces on upload. */
+private fun checkSkuImage(h: Handle, asset: String) {
+    val row = h.createQuery("SELECT purpose, bytes FROM app.admin_asset WHERE asset_id = CAST(:a AS uuid)").bind("a", asset).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.findOne().orElse(null)
+        ?: adminBad("body.image_asset_id", "unknown_asset")
+    if (row.first != "sku_image") adminBad("body.image_asset_id", "wrong_asset_purpose")
+    if (row.second > 300L * 1024) adminBad("body.image_asset_id", "above_cap")
+}
+
+/** Audit image of a SKU: the stable `image_asset_id`, never the signed `image_url` (a time-limited SAS signature must not be stored). */
+private fun skuAudit(h: Handle, s: SkuOut): JsonElement {
+    val asset = h.createQuery("SELECT image_asset_id::text FROM app.sku WHERE id = :i").bind("i", s.id).mapTo(String::class.java).findOne().orElse(null)
+    val base = json(s.copy(image_url = null)) as JsonObject
+    return JsonObject(base + ("image_asset_id" to (asset?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)))
 }
 
 internal fun auditObj(vararg pairs: Pair<String, Any?>): JsonObject = buildJsonObject {
