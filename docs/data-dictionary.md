@@ -12,8 +12,8 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 149 | 2578 |
-| `dw` | 33 | 512 |
+| `app` | 149 | 2582 |
+| `dw` | 33 | 515 |
 
 ## Index
 
@@ -1980,7 +1980,7 @@ Global register of every device record's client_uuid and payload hash; the uniqu
 | `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
 | `last_seen_at` | timestamp with time zone | not null |  | UTC time the same client_uuid was last received. |
 | `seen_count` | integer | not null |  | Number of times the client_uuid was received. |
-| `flags` | text[] | not null |  | Flags on the accepted record: resync_late (re-sent after a failover or restore, accepted past cfg.sync.max_backdate_days, F-SYS-089), config_stamp_regress (stamped with an older config_version than the device had applied, F-SYS-091), checkout_too_early (check-out before cfg.day.checkout_earliest_time, BC-63); empty when none. |
+| `flags` | text[] | not null |  | Flags on the accepted record: resync_late (re-sent after a failover or restore, accepted past cfg.sync.max_backdate_days, F-SYS-089), config_stamp_regress (stamped with an older config_version than the device had applied, F-SYS-091), checkout_too_early (check-out before cfg.day.checkout_earliest_time, BC-63), manual_entry (keyed on the web from paper, F-API-038); empty when none. |
 
 Keys: `PRIMARY KEY (client_uuid)`
 
@@ -2195,10 +2195,12 @@ One sales memo header (or zero-sale record) for an outlet visit, with gross, dis
 | `cluster_id` | bigint | null |  | Cluster of the outlet on the business date, frozen at capture (null without an outlet). |
 | `outlet_channel` | text | null |  | Outlet channel code at capture (as the outlet master held it at ingest). |
 | `outlet_geo_class` | text | null |  | Outlet geo class code at capture (as the outlet master held it at ingest). |
+| `entry_source` | text | not null |  | device = captured on the phone; manual = keyed on the web from the printed memo (paper backfill, F-API-038). |
+| `entered_by_user_id` | bigint | null |  | Web user who keyed in a manual memo (app.app_user); null on device rows. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
-References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (entered_by_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.memo_discount
 
@@ -3277,7 +3279,7 @@ A risk signal (for example mock location or teleport) computed by the worker for
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
-| `code` | text | not null |  | Stable business code of the row, unique within its table. |
+| `code` | text | not null |  | Risk rule that raised the signal (GEO_*, DEVICE_*, CLOCK_SKEW, CONFIG_STAMP_REGRESS, MEMO_DUPLICATE_SUSPECT); weights in cfg.geo.integrity_weight. |
 | `severity` | smallint | not null |  | Severity of the signal on a small integer scale. |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
 | `subject_type` | text | not null |  | What the signal is about: user, device, visit, outlet, route or memo. |
@@ -3742,7 +3744,7 @@ A sellable product with unit, pack size, names and category.
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `updated_by` | bigint | null |  | User who last updated the row. |
-| `image_asset_id` | uuid | null |  | Admin asset of the pack image (app.admin_asset, purpose sku_image); null when none. |
+| `image_asset_id` | uuid | null |  | Admin asset of the pack image (app.admin_asset; backend-admin accepts only purpose sku_image); null when none. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4443,10 +4445,12 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `cluster_id` | bigint | null |  | Cluster of the outlet on the business date, frozen at capture (null without an outlet). |
 | `outlet_channel` | text | null |  | Outlet channel code at capture (as the outlet master held it at ingest). |
 | `outlet_geo_class` | text | null |  | Outlet geo class code at capture (as the outlet master held it at ingest). |
+| `entry_source` | text | not null |  | device = captured on the phone; manual = keyed on the web for a dead-phone day (paper backfill, F-API-038). |
+| `entered_by_user_id` | bigint | null |  | Web user who keyed in a manual visit (app.app_user); null on device rows. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
-References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (assessed_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (assessed_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (entered_by_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.visit_plan
 
@@ -5269,6 +5273,7 @@ One row per memo with its money totals, for reports.
 | `geo_key` | bigint | null |  | dim_geo_version key valid on the business date (dw.geo_key_on). |
 | `outlet_key` | bigint | null |  | dim_outlet_version key valid on the business date (dw.outlet_key_on). |
 | `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
+| `entry_source` | text | not null |  | device or manual (keyed on the web from the printed memo), copied from app.memo. |
 
 Keys: `PRIMARY KEY (memo_client_uuid, business_date)`
 
@@ -5303,6 +5308,7 @@ One row per visit with device and server verdicts, distance and void flag.
 | `geo_key` | bigint | null |  | dim_geo_version key valid on the business date (dw.geo_key_on). |
 | `outlet_key` | bigint | null |  | dim_outlet_version key valid on the business date (dw.outlet_key_on). |
 | `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
+| `entry_source` | text | not null |  | device or manual (keyed on the web for a dead-phone day), copied from app.visit. |
 
 Keys: `PRIMARY KEY (visit_client_uuid, business_date)`
 
@@ -5476,6 +5482,7 @@ Stable view: per field user and business date, SR calls, successful calls, geo v
 | `memos_captured_offline` | bigint | null |  | Memos captured while the phone was offline. |
 | `first_visit_at` | timestamp with time zone | null |  | UTC instant the first call opened. |
 | `last_visit_end_at` | timestamp with time zone | null |  | UTC instant the last call ended. |
+| `memos_entered_manually` | bigint | null |  | Active memos keyed on the web from paper (entry_source manual). |
 
 ## dw.v_geo_integrity
 

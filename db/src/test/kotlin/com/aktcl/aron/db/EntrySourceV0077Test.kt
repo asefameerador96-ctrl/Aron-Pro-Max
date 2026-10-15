@@ -70,7 +70,7 @@ class EntrySourceV0077Test {
         c.tx {
             exec(memo("001", "device", "NULL"))
             exec(memo("002", "manual", admin))
-            assertEquals("device:|manual:t", column("SELECT entry_source || ':' || coalesce((entered_by_user_id IS NOT NULL)::text::char, '') FROM app.memo ORDER BY memo_no").joinToString("|"))
+            assertEquals("device:|manual:t", column("SELECT entry_source || ':' || coalesce((entered_by_user_id IS NOT NULL)::text::char, '') FROM app.memo WHERE memo_no IN ('sr1001-261005-001', 'sr1001-261005-002') ORDER BY memo_no").joinToString("|"))
             exec("INSERT INTO app.memo (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, visit_client_uuid, outlet_id, memo_no, memo_kind, committed_at, price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, is_credit, line_count, discount_line_count, qc_line_count) SELECT gen_random_uuid(), gen_random_uuid(), business_date, user_id, captured_at, config_version, gen_random_uuid(), outlet_id, 'sr1001-261005-003', memo_kind, committed_at, price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, is_credit, line_count, discount_line_count, qc_line_count FROM app.memo WHERE memo_no = 'sr1001-261005-001'")
             assertEquals("device", scalar("SELECT entry_source FROM app.memo WHERE memo_no = 'sr1001-261005-003'"), "a phone insert that names neither column is a device row")
             assertEquals("23514", refused(memo("004", "manual", "NULL")))
@@ -78,7 +78,7 @@ class EntrySourceV0077Test {
             assertEquals("23514", refused(memo("006", "web", "NULL")))
             assertEquals("23503", refused(memo("007", "manual", "-1")))
             // Written once: the V0007 guard keeps the source after insert.
-            assertTrue(refused("UPDATE app.memo SET entry_source = 'device', entered_by_user_id = NULL WHERE memo_no = 'sr1001-261005-002'").isNotEmpty())
+            assertEquals("42501", refused("UPDATE app.memo SET entry_source = 'device', entered_by_user_id = NULL WHERE memo_no = 'sr1001-261005-002'"))
         }
     }
 
@@ -87,7 +87,12 @@ class EntrySourceV0077Test {
         val def = c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'ingest_registry_flags_known' AND conrelid = 'app.ingest_registry'::regclass")!!
         assertTrue("manual_entry" in def && "resync_late" in def && "checkout_too_early" in def, def)
         c.tx {
-            assertEquals("true", scalar("SELECT (ARRAY['manual_entry']::text[] <@ ARRAY['resync_late', 'config_stamp_regress', 'checkout_too_early', 'manual_entry']::text[])::text"))
+            val reg = "INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, status, user_id, first_batch_uuid, flags) " +
+                "SELECT gen_random_uuid(), 'memo', decode(repeat('ab', 32), 'hex'), 'accepted', id, gen_random_uuid(), %s FROM app.app_user WHERE username = 'sr1001'"
+            exec(reg.format("'{manual_entry}'"))
+            exec(reg.format("'{resync_late,manual_entry}'"))
+            assertEquals("23514", refused(reg.format("'{manual_entry,manual_entry}'")))
+            assertEquals("23514", refused(reg.format("'{manual}'")))
         }
         assertEquals("t", c.scalar("SELECT convalidated FROM pg_constraint WHERE conname = 'ingest_registry_flags_known' AND conrelid = 'app.ingest_registry'::regclass"))
     }

@@ -12,8 +12,9 @@
 -- Locks: constant defaults and nullable columns are catalogue-only on every partition; the CHECKs are added NOT VALID
 -- and validated in V0078. The FKs to app.app_user cannot be NOT VALID on a partitioned table (PostgreSQL 16), so they
 -- are added directly: the new column is NULL on every row, so the validation finds nothing, but it reads each
--- partition under the lock. memo and visit are pilot-sized in the test account and empty in a new account; before the
--- staging migration with imported history, this belongs to the D-DB-PART-01 pre-staging batch (build per partition).
+-- partition while this transaction holds ACCESS EXCLUSIVE on memo and visit (and SHARE ROW EXCLUSIVE on app_user). memo and visit are pilot-sized in the test account and empty in a new account; before the
+-- staging migration with imported history, the D-DB-PART-01 pre-staging batch should add these FKs in their own
+-- migration per partition.
 
 SET lock_timeout = '5s';
 
