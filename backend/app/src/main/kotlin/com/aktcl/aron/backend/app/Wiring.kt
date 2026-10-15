@@ -287,7 +287,7 @@ class Wiring(
                 webEntryRoutes(WebEntryDeps(db, reach, config, guard, clock))
                 adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
                 adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock, config = config))
-                adminProductsRoutes(AdminProductsDeps(db, guard, clock))
+                adminProductsRoutes(AdminProductsDeps(db, guard, clock, blob))
                 adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
