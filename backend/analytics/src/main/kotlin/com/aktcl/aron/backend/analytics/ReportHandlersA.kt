@@ -217,7 +217,7 @@ object OnlineOfflineReport : ReportHandler {
     override val definition = definition(
         "online-offline", "Online / Offline", "ops", "route x period",
         listOf(
-            col("route_code", "Route", "string"), col("period", "Period", "string"), col("online_memos", "Online memos", "integer"), col("offline_memos", "Offline memos", "integer"),
+            col("route_code", "Route", "string"), col("period", "Period", "string"), col("online_memos", "Online memos", "integer"), col("offline_memos", "Offline memos", "integer"), col("manual_memos", "Manual (backfilled) memos", "integer"),
             col("offline_pct", "Offline %", "pct", unit = "%"), col("avg_sync_delay_min", "Average sync delay (min)", "decimal", unit = "min"), col("max_sync_delay_min", "Longest sync delay (min)", "decimal", unit = "min"),
         ),
         listOf("period", "date_grouping", "geo"),
@@ -225,15 +225,16 @@ object OnlineOfflineReport : ReportHandler {
 
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
-        SELECT g.route_code, ${periodExpr(ctx, "m.business_date")} AS period, count(*) FILTER (WHERE NOT m.captured_offline)::int AS online_memos,
-               count(*) FILTER (WHERE m.captured_offline)::int AS offline_memos, round(100.0 * count(*) FILTER (WHERE m.captured_offline) / count(*), 2) AS offline_pct,
-               round((avg(extract(epoch FROM m.received_at - m.committed_at)) FILTER (WHERE m.captured_offline) / 60.0)::numeric, 2) AS avg_sync_delay_min,
-               round((max(extract(epoch FROM m.received_at - m.committed_at)) FILTER (WHERE m.captured_offline) / 60.0)::numeric, 2) AS max_sync_delay_min
+        SELECT g.route_code, ${periodExpr(ctx, "m.business_date")} AS period, count(*) FILTER (WHERE m.entry_source = 'device' AND NOT m.captured_offline)::int AS online_memos,
+               count(*) FILTER (WHERE m.entry_source = 'device' AND m.captured_offline)::int AS offline_memos, count(*) FILTER (WHERE m.entry_source = 'manual')::int AS manual_memos,
+               round(100.0 * count(*) FILTER (WHERE m.entry_source = 'device' AND m.captured_offline) / nullif(count(*) FILTER (WHERE m.entry_source = 'device'), 0), 2) AS offline_pct,
+               round((avg(extract(epoch FROM m.received_at - m.committed_at)) FILTER (WHERE m.captured_offline AND m.entry_source = 'device') / 60.0)::numeric, 2) AS avg_sync_delay_min,
+               round((max(extract(epoch FROM m.received_at - m.committed_at)) FILTER (WHERE m.captured_offline AND m.entry_source = 'device') / 60.0)::numeric, 2) AS max_sync_delay_min
           FROM dw.fact_memo m JOIN dw.dim_geo g ON g.route_id = m.route_id
          WHERE ${ctx.dateClause("m.business_date")} AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")} AND m.status = 'active' AND m.line_count > 0
          GROUP BY 1, 2
         """,
-        totalColumns = listOf("online_memos", "offline_memos"),
+        totalColumns = listOf("online_memos", "offline_memos", "manual_memos"),
     )
 }
 
