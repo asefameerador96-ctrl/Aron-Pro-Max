@@ -13,12 +13,13 @@
 
 :root {
   color-scheme: light dark;
-  /* "Calm Glass" tokens v1 (docs/design/tokens.md s2, s11). Pages use the token names, never raw values. `--accent` is accent.text (text and links); fills use --accent-fill. */
-  --bg-gradient: linear-gradient(160deg, #d8e7fb 0%, #e8effa 50%, #f3f5fb 100%);
-  --surface-glass: rgb(255 255 255 / 0.62);
+  /* "Calm Glass" tokens v1 (docs/design/tokens.md s2, s11). Pages use the token names, never raw values. `--accent` is accent.text (text and links); `--accent-graphic` is for icons and rings; fills use --accent-fill. Cards are translucent at the 92 percent tier alpha; text on them is computed (tests/css-contrast.test.ts). */
+  --bg-gradient: linear-gradient(168deg, #d8e7fb 0%, #e8effa 50%, #f3f5fb 100%);
+  --surface-glass: rgb(255 255 255 / 0.92);
   --surface-solid: #ffffff;
   --border-hairline: rgb(255 255 255 / 0.45);
-  --border-line: rgb(11 27 51 / 0.12);
+  --border-line: rgb(11 27 51 / 0.14);
+  --border-input: #66768f;
   --text-primary: #0b1b33;
   --text-secondary: #303d52;
   --accent: #063b84;
@@ -26,6 +27,7 @@
   --accent-fill: #052e6b;
   --accent-pressed: #031734;
   --accent-wash: #dce9fd;
+  --accent-on-wash: #0a3f94;
   --on-accent: #ffffff;
   /* Status words use the role's onContainer ink (tokens.md s2.5); the pure role colours are for icons and bars only. */
   --success: #0a5a33;
@@ -34,7 +36,7 @@
   --radius-chip: 12px;
   --radius-card: 20px;
   --radius-sheet: 28px;
-  --elev-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.05);
+  --elev-1: 0 1px 2px rgb(11 27 51 / 0.07), 0 4px 12px rgb(11 27 51 / 0.06);
   /* Chart series colours: colour-blind safe (blue plus a dark orange that differs in lightness too; at least 3:1 on the surface; values are always printed, never colour-only). */
   --chart-1: #123f94;
   --chart-2: #c2620a;
@@ -44,11 +46,12 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-gradient: linear-gradient(160deg, #16233f 0%, #0f1a2e 50%, #0a1220 100%);
-    --surface-glass: rgb(255 255 255 / 0.12);
+    --bg-gradient: linear-gradient(168deg, #16233f 0%, #0f1a2e 50%, #0a1220 100%);
+    --surface-glass: rgb(26 36 56 / 0.92);
     --surface-solid: #141d30;
     --border-hairline: rgb(255 255 255 / 0.14);
-    --border-line: rgb(255 255 255 / 0.14);
+    --border-line: rgb(255 255 255 / 0.18);
+    --border-input: #8394b0;
     --text-primary: #f8fafd;
     --text-secondary: #c2ccdd;
     --accent: #a8cfff;
@@ -56,6 +59,7 @@
     --accent-fill: #c9e1ff;
     --accent-pressed: #ddebff;
     --accent-wash: #1b3568;
+    --accent-on-wash: #bbd6ff;
     --on-accent: #010712;
     --chart-1: #5b9bff;
     --chart-2: #ffd166;
@@ -70,8 +74,11 @@
   :root {
     --surface-glass: #ffffff;
     --text-secondary: #1e293b;
-    --accent: #123f94;
-    --border-line: rgb(15 23 42 / 0.55);
+    --accent: #0b2a66;
+    --accent-graphic: #123f94;
+    --accent-fill: #052e6b;
+    --border-line: rgb(11 27 51 / 0.55);
+    --border-input: #2b3648;
     --chart-1: #0b2a66;
     --chart-2: #b34700;
     --glass-blur: none;
@@ -81,8 +88,11 @@
   :root {
     --surface-glass: #141d30;
     --text-secondary: #e2e8f0;
-    --accent: #a9ccff;
+    --accent: #c9e1ff;
+    --accent-graphic: #a9ccff;
+    --accent-fill: #c9e1ff;
     --border-line: rgb(255 255 255 / 0.6);
+    --border-input: #c2ccdd;
     --chart-1: #7fb0ff;
     --chart-2: #ffe08a;
   }
@@ -111,14 +121,15 @@ body {
 .hover\:bg-brand-700:hover { background-color: var(--accent-pressed); }
 .hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, .hover\:bg-slate-200:hover { background-color: color-mix(in srgb, var(--accent) 14%, var(--surface-solid)); }
 .bg-slate-100 { background-color: color-mix(in srgb, var(--surface) 70%, transparent); }
-.border-slate-200, .border-slate-300, .divide-slate-200 > * + *, .divide-slate-100 > * + * { border-color: var(--border-line); }
+.border-slate-200, .divide-slate-200 > * + *, .divide-slate-100 > * + * { border-color: var(--border-line); }
+.border-slate-300 { border-color: var(--border-input); }
 .rounded-lg { border-radius: var(--radius-card); }
 .rounded { border-radius: var(--radius-chip); }
 .shadow-sm { box-shadow: var(--elev-1); }
 .text-slate-500, .text-slate-600 { color: var(--text-secondary); }
 .text-slate-700, .text-slate-800, .text-slate-900 { color: var(--text-primary); }
+.bg-brand-50, .bg-brand-100 { background-color: var(--accent-wash); color: var(--accent-on-wash); }
 .text-brand-700, .text-brand-600, .text-brand-900 { color: var(--accent); }
-.bg-brand-50, .bg-brand-100 { background-color: var(--accent-wash); }
 .border-brand-100 { border-color: var(--border-line); }
 .ring-brand-600 { --tw-ring-color: var(--accent-graphic); }
 .border-brand-600, .hover\:border-brand-600:hover, .focus\:border-brand-600:focus { border-color: var(--accent-graphic); }

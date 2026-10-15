@@ -81,3 +81,36 @@ describe("F-WEB-033 BFF", () => {
     expect((await pwPost(req("/api/bff/password", { current_password: "a", new_password: "GoodPassword123" }))).status).toBe(401);
   });
 });
+
+describe("hold-notes: change-password keeps this session's refresh family, and the signed client IP", () => {
+  it("forwards the BFF's own aron_rt cookie and, with a key file, the signed X-Azure-ClientIP", async () => {
+    const { writeFileSync, mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { createHmac } = await import("node:crypto");
+    const { resetClientIpKey } = await import("@/lib/api/client-ip");
+    const dir = mkdtempSync(`${tmpdir()}/ipkey-`);
+    writeFileSync(`${dir}/k`, "0123456789abcdef0123456789abcdef");
+    process.env.ARON_BFF_IP_HMAC_KEY_FILE = `${dir}/k`;
+    resetClientIpKey();
+    try {
+      const c = await tso();
+      let seen: { cookie?: string; ip?: string; sig?: string; rid?: string } = {};
+      mock.state.stubs.push({ method: "POST", path: "/v1/auth/change-password", fn: (call) => { seen = { cookie: call.headers.cookie, ip: call.headers["x-aron-client-ip"] as string, sig: call.headers["x-aron-client-ip-sig"] as string, rid: call.headers["x-request-id"] as string }; return { status: 204 }; } });
+      const res = await pwPost(req("/api/bff/password", { current_password: "tso-pass-1", new_password: "Brand-new-Pass-42" }, c, { "x-azure-clientip": "203.0.113.7", "x-forwarded-for": "6.6.6.6" }));
+      expect(res.status).toBe(200);
+      expect(seen.cookie).toBe(`${RT_COOKIE}=${c[RT_COOKIE]}`);
+      expect(seen.ip).toBe("203.0.113.7"); // never the browser-supplied x-forwarded-for
+      expect(seen.sig).toBe(createHmac("sha256", "0123456789abcdef0123456789abcdef").update(`203.0.113.7\n${seen.rid}`).digest("base64url"));
+    } finally {
+      delete process.env.ARON_BFF_IP_HMAC_KEY_FILE;
+      resetClientIpKey();
+    }
+  });
+  it("sends no client-ip headers without a key file", async () => {
+    const c = await tso();
+    let ip: unknown = "unset";
+    mock.state.stubs.push({ method: "POST", path: "/v1/auth/change-password", fn: (call) => { ip = call.headers["x-aron-client-ip"]; return { status: 204 }; } });
+    await pwPost(req("/api/bff/password", { current_password: "tso-pass-1", new_password: "Brand-new-Pass-42" }, c, { "x-azure-clientip": "203.0.113.7" }));
+    expect(ip).toBeUndefined();
+  });
+});
