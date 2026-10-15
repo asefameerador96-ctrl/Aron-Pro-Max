@@ -23,3 +23,7 @@ N-031,T1,2026-10-07T09:00Z,2026-10-07T07:30Z,~60,pushed; Opus checker pending,de
 F-SYS-059-use,M,2026-10-15T07:00Z,2026-10-15T06:10Z,~30,done,audit writes via AuditLog.write in DailyTracking/Ops/ReportEngine with actor+scope tests; wall-clock offenders fixed
 F-API-017b,S,2026-10-07T00:00Z,2026-10-07T00:00Z,0,"done in N-051 batch B; ReportBatchBTest asserts AMO scope + seeded totals","covered by POST /v1/reports/std-memo|sales-summary/query (contract has no GET paths)"
 F-API-013,S,2026-10-07T00:00Z,2026-10-07T00:00Z,0,"done in N-051 batch B; leaderboard report test + scope","covered by report key leaderboard"
+F-SYS-064,M,2026-10-15T10:30Z,2026-10-15T09:00Z,~60,"done: xlsx job with lease + takeover, link, failed path; pdf logged D-REP-06; checker pending","ExportJobService + ExportJobsTest"
+F-API-053,M,2026-10-15T10:30Z,2026-10-15T09:00Z,0,"done: print view + async export + logged (POST /reports/{key}/query, GET /report-exports/{id})","covered with F-SYS-064"
+F-SYS-058,M,2026-10-15T10:30Z,2026-10-15T09:00Z,~30,"done: hourly + daily PII budgets, export log in report_export; Opus checker pending","D-REP-07"
+WEB-GAPS,M,2026-10-15T10:30Z,2026-10-15T09:30Z,~40,"done: retailer-list, sku-list, geofence-calibration, qc-report source; dss route drill declined (zone-level per docs/24)","ReportBatchDTest"

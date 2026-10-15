@@ -56,7 +56,11 @@ class ReportBatchDTest : ReportFixture() {
         assertEquals(expected, got)
         // Scope: a TSO's histogram counts only the visits of their own zone's territory.
         val own = run(14, Role.TSO, "geofence-calibration").result().rows()
-        assertEquals(visits.count { it.territory == own.firstOrNull()?.str("territory") }, own.sumOf { it.num("visits").toInt() })
+        val zone2Visits = fresh.db.jdbi.withHandle<Int, Exception> { h ->
+            h.createQuery("SELECT count(*) FROM dw.fact_visit v JOIN dw.dim_geo g ON g.route_id = v.route_id WHERE v.visit_kind = 'sr_call' AND NOT v.voided AND v.distance_m IS NOT NULL AND g.zone_id = :z").bind("z", z2).mapTo(Int::class.java).one()
+        }
+        assertTrue(zone2Visits in 1 until visits.size, "zone 2 holds some but not all visits")
+        assertEquals(zone2Visits, own.sumOf { it.num("visits").toInt() })
         assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "geofence-calibration", body(""","geo":{"zone":[$z2]}""")).status)
     }
 }
