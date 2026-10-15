@@ -114,7 +114,7 @@ class IngestService(
     }
 
     /** Per-batch caches. */
-    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null, val manual: Manual? = null, val release: RecordOutcomeCode? = null) {
+    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null, val manual: Manual? = null, val release: RecordOutcomeCode? = null, val reviewed: Boolean = release != null) {
         /** A reviewer's accept ([acceptQuarantined]) overrides the check that raised [release], and only that one. */
         fun overrides(vararg codes: RecordOutcomeCode): Boolean = release != null && release in codes
         /** Handlers' after-commit calls of the current family, by record index (dropped when the record rolls back). */
@@ -349,21 +349,38 @@ class IngestService(
                 throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "a payload_conflict copy cannot be accepted: the first copy keeps client_uuid ${item.clientUuid}")
             }
             if (fixedRecord != null) {
-                for (k in listOf("client_uuid", "type", "family_uuid", "business_date")) {
+                // docs/24 s8.6: a fix of a data-entry (money) record needs a second person; the contract's resolve request
+                // has no approver yet, so such a fix is refused rather than applied by one person.
+                if (item.payload.str("type") in MONEY_TYPES) {
+                    throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "a fix of a ${item.payload.str("type")} needs a second person (maker-checker), which is not available yet; discard it and have the record keyed again")
+                }
+                for (k in listOf("client_uuid", "type", "family_uuid", "business_date", "route_id", "acting_for_user_id")) {
                     if (fixedRecord[k] != item.payload[k]) {
                         throw ApiProblem(ProblemCode.ERR_VALIDATION, "fixed_record keeps the record's $k", errors = listOf(FieldError("/fixed_record/$k", "invalid_value")))
                     }
                 }
+                // Neither a fix nor its scope override moves a record to another outlet.
+                if ((fixedRecord["payload"] as? JsonObject)?.get("outlet_id") != (item.payload["payload"] as? JsonObject)?.get("outlet_id")) {
+                    throw ApiProblem(ProblemCode.ERR_VALIDATION, "fixed_record keeps the record's outlet_id", errors = listOf(FieldError("/fixed_record/payload/outlet_id", "invalid_value")))
+                }
             }
-            val up = uploaderOf(h, item.userId, item.deviceId)
-            val batch = item.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:$quarantineId".toByteArray()).toString()
-            val ctx = Ctx(up, batch, now, release = code)
             val rec = Rec(0, fixedRecord ?: item.payload)
             // The children held with it, parents before children, so a memo's equations see its lines (s7.4).
             val children = heldChildren(h, item.clientUuid, item.code)
             val family = listOf(rec.json) + children.map { it.payload }
-            ctx.arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
-            ctx.memoFps = MemoChecks.memoFingerprints(family)
+            val arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
+            val fps = MemoChecks.memoFingerprints(family)
+            // Every held record runs as its own uploader and device (a TSO's collection on an SR's memo stays the TSO's).
+            // The reviewer judged the item's own record: a child of another uploader gets no override of its own checks
+            // (its reach, cross-user parent rule, device gate), only the window it was inside when received.
+            val ctxs = HashMap<Pair<Long, Long?>, Ctx>()
+            fun ctxOf(it: HeldItem): Ctx = ctxs.getOrPut(it.userId to it.deviceId) {
+                val batch = it.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:${it.id}".toByteArray()).toString()
+                val same = it.userId == item.userId && it.deviceId == item.deviceId
+                Ctx(uploaderOf(h, it.userId, it.deviceId), batch, now, release = code.takeIf { same }, reviewed = true).also { c -> c.arith = arith; c.memoFps = fps }
+            }
+            val ctx = ctxOf(item)
+            val up = ctx.up
 
             val outcome = release(h, ctx, rec)
             if (outcome.status != "accepted" && outcome.status != "duplicate") {
@@ -373,7 +390,7 @@ class IngestService(
             for (child in children) {
                 val sp = "release_${child.id}"
                 h.savepoint(sp)
-                val o = runCatching { release(h, ctx, Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
                 if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
                     closeItem(h, child.id, "accepted", null, resolverUserId, "released with parent ${item.clientUuid}", now)
                     h.release(sp)
@@ -387,7 +404,7 @@ class IngestService(
             DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
             h.savepoint("release_day")
             try {
-                DayStates.afterBatch(h, up.userId, ctx.touched, now)
+                ctxs.values.forEach { c -> DayStates.afterBatch(h, c.up.userId, c.touched, now) }
                 h.release("release_day")
             } catch (e: Exception) {
                 if (isTransientDbFailure(e)) throw e
@@ -398,6 +415,11 @@ class IngestService(
         // Inside the caller's transaction this runs before its commit; the handlers' after-commit work is notification only.
         log.info("quarantine accepted id=$quarantineId resolver=$resolverUserId fix=${fixedRecord != null}")
     }
+
+    /** Whether [r] is the original of an item a reviewer accepted with a fix (same uuid, the original's hash). */
+    private fun fixedCopy(h: Handle, r: Rec): Boolean = h.createQuery(
+        "SELECT EXISTS (SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND status = 'accepted_with_fix' AND payload_sha256 IN (:h, :f))",
+    ).bind("c", r.clientUuid).bind("h", r.hash).bind("f", r.fullHash).mapTo(Boolean::class.java).one()
 
     /** One quarantine item as stored. */
     private class HeldItem(val id: Long, val clientUuid: String, val code: String, val status: String, val payload: JsonObject, val userId: Long, val deviceId: Long?, val batchUuid: String?)
@@ -626,6 +648,8 @@ class IngestService(
             .bind("c", r.clientUuid).map { rs, _ -> Prior(rs.getString(1), rs.getString(2), rs.getBytes(3), rs.getObject(4) as Long?) }.findOne().orElse(null)
         var released = false
         if (prior != null) {
+            // The phone's own copy of a record a reviewer accepted with a fix is that record (its resend is a duplicate).
+            if (!prior.hash.contentEquals(r.hash) && prior.status == "accepted" && fixedCopy(h, r)) { touch(h, r); return Outcome.duplicate(prior.serverId) }
             if (!prior.hash.contentEquals(r.hash) && !prior.hash.contentEquals(r.fullHash)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.PAYLOAD_CONFLICT, "same client_uuid, different payload", register = false)
             // Registered before the hash left `sig` out: re-key it, so the parked upsert and the stored_at mark match (BC-53).
             if (!prior.hash.contentEquals(r.hash)) rekey(h, r)
@@ -653,7 +677,8 @@ class IngestService(
         // 3. Business-date window (s3.8 item 4): too old or in the future is quarantined, never dropped.
         val captured = Instant.parse(env.str("captured_at")!!)
         // A released signature quarantine was inside the window when first received: it is not too old now (item 2).
-        val tooOld = !released && bd.isBefore(ctx.backdateFloor)
+        // A reviewer's accept judges a record that was inside the window when it was received and held for another reason.
+        val tooOld = !released && !ctx.reviewed && bd.isBefore(ctx.backdateFloor)
         // F-SYS-089: after a failover or restore the phone re-sends rows the lost lineage had acknowledged (trigger
         // `resync`, docs/24 s4.8). One captured before the new lineage started may be older than the window: it is
         // accepted and flagged `resync_late`, never quarantined (idempotency by client_uuid keeps the re-send safe).
@@ -1502,6 +1527,8 @@ class IngestService(
         private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")
         /** N-027: the attendance and sales records the device gate holds (s10.4). */
         val GATED_TYPES = setOf("attendance_event", "memo", "memo_void", "due_collection")
+        /** Data-entry (money and stock) records: a reviewer's fix of one needs a second person (docs/24 s8.6). */
+        val MONEY_TYPES = setOf("memo", "memo_line", "memo_discount", "qc_line", "memo_void", "due_collection", "stock_movement", "redemption", "redemption_line", "day_submit")
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")

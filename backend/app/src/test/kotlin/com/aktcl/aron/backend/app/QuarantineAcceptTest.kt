@@ -232,16 +232,27 @@ class QuarantineAcceptTest {
         assertEquals("accepted", json(v.bodyAsText())["status"]!!.jsonPrimitive.content)
         assertEquals("accepted", item(close).second, "the visit close was held only for its visit")
         assertEquals("open", item(memo).second, "the memo was held for its own outlet: its own decision")
+        // A held child keeps its own uploader (B1): pretend the first line came from the TSO's upload.
+        val tso = count("SELECT id FROM app.app_user WHERE username = 'tso1001'")
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("UPDATE app.sync_quarantine SET user_id = ?, device_id = NULL WHERE client_uuid = CAST(? AS uuid)", tso, l1)
+            h.execute("UPDATE app.ingest_registry SET user_id = ?, device_id = NULL WHERE client_uuid = CAST(? AS uuid)", tso, l1)
+        }
         val m = client.resolve(item(memo).first, "accept")
         assertEquals(HttpStatusCode.OK, m.status, m.bodyAsText())
-        for (c in listOf(visit, memo, l1, l2, close)) assertEquals("accepted/$registered", registry(c), "same uuid, user and device: $c")
-        assertEquals(listOf("accepted", "accepted"), listOf(item(l1).second, item(l2).second))
+        for (c in listOf(visit, memo, l2, close)) assertEquals("accepted/$registered", registry(c), "same uuid, user and device: $c")
+        // The reviewer accepted the SR's memo, not the TSO's line: it runs as the TSO with no override, and a line on
+        // another user's memo is outside the TSO's own rules, so it stays held for its own review.
+        assertEquals("open", item(l1).second)
+        assertEquals("quarantined/$tso/-", registry(l1))
+        assertEquals(0L, count("SELECT count(*) FROM app.memo_line WHERE client_uuid = '$l1'"))
+        assertEquals("accepted", item(l2).second)
         assertEquals(1L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
-        assertEquals(2L, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$memo'"))
+        assertEquals(1L, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$memo'"))
 
         // The phone resends (a new batch): every record is a duplicate; nothing is stored twice.
-        val again = json(client.send(client.token(), batch(fam)).bodyAsText())
-        assertEquals(List(5) { "duplicate" }, statuses(again), again.toString())
+        val again = json(client.send(client.token(), batch(fam.filter { cu(it) != l1 })).bodyAsText())
+        assertEquals(List(4) { "duplicate" }, statuses(again), again.toString())
         assertEquals(1L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
         // The same decision again is the stored answer; another one is a state conflict.
         assertEquals(HttpStatusCode.OK, client.resolve(item(visit).first, "accept").status)
@@ -260,21 +271,53 @@ class QuarantineAcceptTest {
         assertEquals("open", item(memo).second)
         assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
 
-        // A fix must keep the record's identity.
-        val renamed = JsonObject(memoRec + ("client_uuid" to JsonPrimitive(uuid())))
-        assertEquals(HttpStatusCode.BadRequest, client.resolve(item(memo).first, "accept_with_fix", renamed).status)
-        // A fix that still does not add up is refused and changes nothing.
+        // docs/24 s8.6: a money fix needs a second person, which the contract cannot carry yet: refused, nothing changes.
         val p = memoRec["payload"]!!.jsonObject
         val gross = p["gross_mtk"]!!.jsonPrimitive.long
-        fun withGross(g: Long) = JsonObject(memoRec + ("payload" to JsonObject(p + mapOf("gross_mtk" to JsonPrimitive(g), "net_mtk" to JsonPrimitive(g), "paid_mtk" to JsonPrimitive(g)))))
-        assertEquals(HttpStatusCode.Conflict, client.resolve(item(memo).first, "accept_with_fix", withGross(gross + 5)).status)
-        val fixed = client.resolve(item(memo).first, "accept_with_fix", withGross(gross - 1))
-        assertEquals(HttpStatusCode.OK, fixed.status, fixed.bodyAsText())
-        assertEquals("accepted_with_fix", item(memo).second)
-        assertEquals(listOf("accepted", "accepted"), listOf(item(cu(fam[2])).second, item(cu(fam[3])).second), "its lines follow it")
-        assertEquals(gross - 1, count("SELECT gross_mtk FROM app.memo WHERE client_uuid = '$memo'"))
-        assertEquals(gross - 1, count("SELECT sum(gross_mtk) FROM app.memo_line WHERE memo_client_uuid = '$memo'"))
-        assertEquals(1L, count("SELECT count(*) FROM app.ingest_registry WHERE client_uuid = '$memo' AND status = 'accepted'"))
+        val fix = JsonObject(memoRec + ("payload" to JsonObject(p + mapOf("gross_mtk" to JsonPrimitive(gross - 1), "net_mtk" to JsonPrimitive(gross - 1), "paid_mtk" to JsonPrimitive(gross - 1)))))
+        val one = client.resolve(item(memo).first, "accept_with_fix", fix)
+        assertEquals(HttpStatusCode.Conflict, one.status, one.bodyAsText())
+        assertEquals("open", item(memo).second)
+        assertEquals(0L, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo'"))
+    }
+
+    @Test
+    fun aFixKeepsItsIdentityAndThePhonesOriginalIsADuplicateAfterIt() = testApplication {
+        app()
+        val fam = saleFamily(outlet = otherOutletId)
+        assertEquals(List(5) { "quarantined" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
+        val visitRec = fam[0]
+        val vp = visitRec["payload"]!!.jsonObject
+        val moved = JsonObject(visitRec + ("payload" to JsonObject(vp + ("outlet_id" to JsonPrimitive(outletId)))))
+        assertEquals(HttpStatusCode.BadRequest, client.resolve(item(cu(visitRec)).first, "accept_with_fix", moved).status, "a fix never moves the outlet")
+        val renamed = JsonObject(visitRec + ("client_uuid" to JsonPrimitive(uuid())))
+        assertEquals(HttpStatusCode.BadRequest, client.resolve(item(cu(visitRec)).first, "accept_with_fix", renamed).status)
+        val fixed = JsonObject(visitRec + ("payload" to JsonObject(vp + ("sequence_no" to JsonPrimitive(7)))))
+        val r = client.resolve(item(cu(visitRec)).first, "accept_with_fix", fixed)
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        assertEquals("accepted_with_fix", item(cu(visitRec)).second)
+        val again = json(client.send(client.token(), batch(listOf(visitRec))).bodyAsText())
+        assertEquals(listOf("duplicate"), statuses(again), "the phone's own copy of the fixed record: $again")
+    }
+
+    @Test
+    fun anItemHeldForAnotherReasonIsStillAcceptedAfterTheWindowPassed() = testApplication {
+        app()
+        val fam = saleFamily(outlet = otherOutletId)
+        assertEquals(List(5) { "quarantined" }, statuses(json(client.send(client.token(), batch(fam)).bodyAsText())))
+        val visit = cu(fam[0])
+        // Reviewed 12 days later (after a holiday): the record was inside the window when it arrived.
+        val later = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)),
+            AronClock { Instant.parse("2027-01-15T04:00:00Z") })
+        tokens.remove("admin1001") // the cached token expired under the later clock
+        try {
+            testApplication {
+                application { aronApi(later) }
+                val res = client.resolve(item(visit).first, "accept")
+                assertEquals(HttpStatusCode.OK, res.status, res.bodyAsText())
+            }
+        } finally { later.database?.close(); tokens.remove("admin1001") }
+        assertEquals("accepted", item(visit).second)
     }
 
     @Test
