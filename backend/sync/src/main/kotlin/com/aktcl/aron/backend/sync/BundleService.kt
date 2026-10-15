@@ -6,6 +6,7 @@ import com.aktcl.aron.backend.platform.AronPrincipal
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.DayPlan
 import com.aktcl.aron.backend.platform.FieldError
+import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.ResponseJson
 import com.aktcl.aron.backend.platform.RouteDayPlan
 import com.aktcl.aron.backend.platform.RoutePlanner
@@ -15,6 +16,7 @@ import com.aktcl.aron.contract.CodeListKey
 import com.aktcl.aron.contract.ConfigScopeType
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.ProblemCode
+import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.BusinessDate
 import kotlinx.datetime.toJavaLocalDate
 import kotlinx.serialization.json.Json
@@ -52,7 +54,12 @@ class BundleService(
     private val planner: RoutePlanner,
     private val clock: AronClock = AronClock.SYSTEM,
     private val fingerprints: FingerprintCache = FingerprintCache(),
+    /** F-AMO-044: resolves the AMO and TSO reach for the zone-wide outlets and the `supervisor` section; null leaves both off. */
+    private val reach: ReachResolver? = null,
 ) {
+    /** F-AMO-044: pages of a bundle version stay servable for a few minutes (a syncing sale moves the seq; a page is not a rebuild). */
+    private val pageCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Result, Instant>>()
+
     /** [bundle] is what the wire carries (paged sections emptied); [full] holds every row (pages, delta). */
     data class Result(
         val bundle: Bundle, val version: String, val full: Bundle = bundle, val seq: Long = 0,
@@ -105,7 +112,13 @@ class BundleService(
 
         val configVersion = config.configVersion() // one read: config.version and device_policy_version agree
         val bundle = db.jdbi.withHandle<Bundle, Exception> { h ->
-            val routes = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal)
+            val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal)
+            // F-AMO-044: the AMO also carries every route of the zone (outlets for a Control Call anywhere in airplane mode).
+            val supReach = if (reach != null && SupervisorBundle.isSupervisor(p.role)) reach.reach(user.id, p.role, p.scopeVersion, date) else null
+            val zonePlans = if (supReach != null && p.role == Role.AMO) SupervisorBundle.zoneRoutePlans(h, supReach, plans.map { it.routeId }.toSet()) else emptyList()
+            val zoneStates = loadDayStates(h, zonePlans.map { it.routeId }, date)
+            val zoneRoutes = routeSnapshots(h, user.id, zonePlans, date, zoneStates, cfg, roleOrdinal, openMemos = false)
+            val routes = own + zoneRoutes
             val zones = (plans.map { it.zoneId } + listOfNotNull(user.homeZoneId)).distinct()
             Bundle(
                 meta = PLACEHOLDER_META,
@@ -127,7 +140,7 @@ class BundleService(
                 tasks = tasks(h, user.id),
                 surveys = BundleContent.surveys(h, user.role, date),
                 rubrics = emptyList(),
-                supervisor = null,
+                supervisor = supReach?.let { SupervisorBundle.section(h, user.id, p.role, it, date, (plans.map { r -> r.routeId } + zonePlans.map { r -> r.routeId }).distinct()) },
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,
                 programmes = null,
@@ -144,8 +157,19 @@ class BundleService(
             user_id = user.id, role = user.role, config_version = bundle.config.config_version, schema_version = ContractInfo.SCHEMA_VERSION,
             cursor = cursor(date, seq, now), is_prefetch = prefetch, paged_sections = paged,
         )
-        return Result(BundlePaging.strip(bundle, paged).copy(meta = meta), version, bundle.copy(meta = meta), seq,
+        val result = Result(BundlePaging.strip(bundle, paged).copy(meta = meta), version, bundle.copy(meta = meta), seq,
             if (prefetch) emptyList() else plans.map { it.routeId }.distinct(), date)
+        if (paged.isNotEmpty()) cachePages(p, result, now)
+        return result
+    }
+
+    private fun pageKey(p: AronPrincipal, version: String) = "${p.userId}|${p.scopeVersion}|$version"
+
+    /** Keeps the full bundle of a paged version for [PAGE_CACHE_TTL_S] seconds, at most [PAGE_CACHE_MAX] versions (zone-wide AMO bundles are MBs). */
+    private fun cachePages(p: AronPrincipal, r: Result, now: Instant) {
+        pageCache.entries.removeIf { it.value.second.isBefore(now.minusSeconds(PAGE_CACHE_TTL_S)) }
+        while (pageCache.size >= PAGE_CACHE_MAX) pageCache.entries.minByOrNull { it.value.second }?.let { pageCache.remove(it.key) } ?: break
+        pageCache[pageKey(p, r.version)] = r to now
     }
 
     private fun pageThreshold(): Int = runCatching { config.int("cfg.bundle.page_threshold_rows") }.getOrDefault(2000).coerceIn(500, 10_000)
@@ -195,7 +219,8 @@ class BundleService(
             ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "page must be 1..1000", errors = listOf(FieldError("query.page", if (pageRaw == null) "required" else "out_of_range")))
         val today = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
         if (date.isBefore(today)) throw expired("the snapshot of $date is gone")
-        val r = bundle(p, date, null)
+        val cached = pageCache[pageKey(p, versionRaw!!)]?.takeIf { !it.second.isBefore(clock.now().minusSeconds(PAGE_CACHE_TTL_S)) }?.first
+        val r = cached ?: bundle(p, date, null)
         if (r.version != versionRaw) throw expired("the bundle changed; fetch it again")
         val paged = r.bundle.meta.paged_sections.firstOrNull { it.section == section }
             ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "section $section is not paged in this bundle")
@@ -401,6 +426,7 @@ class BundleService(
 
     private fun routeSnapshots(
         h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?,
+        openMemos: Boolean = true,
     ): List<RouteSnapshot> {
         if (plans.isEmpty()) return emptyList()
         val ids = plans.map { it.routeId }
@@ -417,7 +443,7 @@ class BundleService(
             "SELECT route_id, user_id FROM app.route_assignment WHERE route_id = ANY(:r) AND kind = 'primary' AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)",
         ).bindArray("r", Long::class.javaObjectType, ids).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
         val outlets = outlets(h, ids, cfg, roleOrdinal)
-        val openMemos = openMemos(h, outlets.values.flatten().map { it.outlet_id })
+        val openMemoRows = if (openMemos) openMemos(h, outlets.values.flatten().map { it.outlet_id }) else emptyList()
         val plan = h.createQuery("SELECT zone_id, sku_id FROM app.sales_plan WHERE zone_id = ANY(:z) AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d) ORDER BY sku_id")
             .bindArray("z", Long::class.javaObjectType, plans.map { it.zoneId }.distinct()).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             .groupBy({ it.first }, { it.second })
@@ -430,7 +456,7 @@ class BundleService(
                 route_id = r.routeId, route_snapshot_version = day?.snapshotVersion ?: 1, route = routes.getValue(r.routeId),
                 assignment_kind = r.assignmentKind, acting_for_user_id = if (r.assignmentKind == "cover") primaries[r.routeId]?.takeIf { it != userId } else null,
                 planned_today = r.plannedToday, target_outlets = target, outlets = routeOutlets,
-                open_memos = openMemos.filter { it.outlet_id in outletIds }, sales_plan_sku_ids = plan[r.zoneId].orEmpty(),
+                open_memos = openMemoRows.filter { it.outlet_id in outletIds }, sales_plan_sku_ids = plan[r.zoneId].orEmpty(),
                 targets = emptyList(), achievement_mtd = emptyList(),
                 day_state = day?.state ?: RouteDayStateDto(r.routeId, date.toString(), "not_started", r.plannedToday, 1, false, null, null, null, null),
             )
@@ -603,6 +629,8 @@ class BundleService(
     companion object {
         private val RADIUS_KEYS = arrayOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m")
 
+        private const val PAGE_CACHE_TTL_S = 300L
+        private const val PAGE_CACHE_MAX = 32
         private val SECTION_NAMES = setOf("outlets", "open_memos", "prices", "offers", "tasks", "team", "pending_outlet_requests", "programmes", "content")
 
         private val PHONE_BD = Regex("^01[3-9]\\d{8}$")
