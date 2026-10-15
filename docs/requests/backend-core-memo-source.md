@@ -28,3 +28,14 @@ ALTER TABLE app.ingest_registry  -- replace the flags CHECK (V0059) to also allo
 and `entered_by_user_id` when the columns exist (detected once per process, like `refresh_family.amr`) and stamps the
 registry flag `manual_entry` once the flags CHECK allows it. Until then manual rows are still stored correctly and
 idempotently, but reports cannot tell them apart; the endpoint should not go live for the owner before this lands.
+
+## Addendum (2026-10-15, lead ruling): a risk signal for a second memo of the same sale
+Please add, in the same migration pair:
+- `app.risk_signal.code` CHECK: add `'MEMO_DUPLICATE_SUSPECT'` (subject_type `memo`).
+- `cfg.geo.integrity_weight` default (V0009 list): add `"MEMO_DUPLICATE_SUSPECT": 30`, and its row in the risk-code
+  catalogue / data dictionary if there is one.
+
+Use (backend-core builds it once this lands): when a memo is stored and another live memo of the same outlet, the same
+`gross_mtk` and the same business date exists under a different `memo_no`, and at least one of the two is
+`entry_source = manual`, the newer memo gets `MEMO_DUPLICATE_SUSPECT` (severity 2, evidence: both memo ids and numbers).
+A flag for review, never a block (a mistyped number on a paper copy of a memo the phone already stored).

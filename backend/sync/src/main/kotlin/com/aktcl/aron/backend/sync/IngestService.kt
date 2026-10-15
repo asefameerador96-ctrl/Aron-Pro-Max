@@ -123,7 +123,8 @@ class IngestService(
         fun reachOn(d: LocalDate): Reach = reaches.getOrPut(d) { reach.reach(up.userId, up.role, up.scopeVersion, d) }
         val backdateDays: Long = runCatching { config.int("cfg.sync.max_backdate_days") }.getOrDefault(7).toLong()
         /** The oldest business date inside the backdate window (F-SYS-090: calendar or working days), read once per batch. */
-        val backdateFloor: LocalDate = manual?.let { today.minusDays(it.windowDays) } ?: backdateFloor(up.userId, today, backdateDays)
+        // A paper backfill counts its own window the same way (calendar or working days, F-SYS-090; lead 2026-10-15).
+        val backdateFloor: LocalDate = backdateFloor(up.userId, today, manual?.windowDays ?: backdateDays)
         val parkedTtlDays: Long = runCatching { config.int("cfg.sync.parked_ttl_days") }.getOrDefault(7).toLong()
         /** Read once per batch; a missing or unknown value is `record`, which never drops a sale. */
         val signatureMode: SignatureMode = SignatureMode.of(runCatching { config.string("cfg.sec.record_signature_mode") }.getOrNull())

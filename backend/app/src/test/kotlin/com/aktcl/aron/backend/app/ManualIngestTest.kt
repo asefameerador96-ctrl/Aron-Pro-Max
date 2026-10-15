@@ -78,6 +78,9 @@ class ManualIngestTest {
             otherOutletId = id("SELECT id FROM app.outlet WHERE code = 'OTH-1'")
             narrowAdmin = id("INSERT INTO app.app_user (username, full_name, role, password_hash) VALUES ('adminother', 'Other Admin', 'ADMIN', 'x') RETURNING id")
             h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT $narrowAdmin, 'territory', id, DATE '2026-01-01', 'test' FROM app.territory WHERE code = 'T-OTHER'")
+            // Working-day windows (F-SYS-090): the paper window counts them like the phone path (lead ruling 2026-10-15).
+            h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'working days' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.calendar.window_unit', 'global', 0, '\"working_days\"'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
             // The columns and the registry flag docs/requests/backend-core-memo-source.md asks db for.
             for (t in listOf("memo", "visit")) {
                 h.execute("ALTER TABLE app.$t ADD COLUMN IF NOT EXISTS entry_source text NOT NULL DEFAULT 'device' CHECK (entry_source IN ('device','manual')), ADD COLUMN IF NOT EXISTS entered_by_user_id bigint REFERENCES app.app_user(id)")
@@ -227,6 +230,10 @@ class ManualIngestTest {
         // An inactive SR is refused.
         val sr2 = count("INSERT INTO app.app_user (username, full_name, role, password_hash, status) VALUES ('srgone', 'Gone', 'SR', 'x', 'disabled') RETURNING id")
         assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { ingest.ingestManual(web(admin, Role.ADMIN), sr2, uuid(), paper()) }.code)
+        // 2026-12-26 is 8 calendar days back but 7 working days (Friday off): inside the paper window.
+        val friday = paper(memoNo = "sr1001-261226-${seq.incrementAndGet()}", bd = "2026-12-26")
+        val fr = ingest.ingestManual(web(admin, Role.ADMIN), sr, uuid(), friday)
+        assertTrue(fr.stored, fr.acks.toString())
         // Inside the window (2 days back): stored.
         val back = paper(memoNo = "sr1001-270101-${seq.incrementAndGet()}", bd = "2027-01-01")
         assertTrue(ingest.ingestManual(web(admin, Role.SUPPORT), sr, uuid(), back).acks.all { it.status == "accepted" })
