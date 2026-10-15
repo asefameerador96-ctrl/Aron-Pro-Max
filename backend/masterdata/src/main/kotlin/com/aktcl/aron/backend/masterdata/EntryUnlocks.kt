@@ -115,7 +115,7 @@ private fun listUnlocks(call: ApplicationCall, d: EntryUnlockDeps): EntryUnlockP
 
 private suspend fun createUnlock(call: ApplicationCall, d: EntryUnlockDeps): EntryUnlockDto {
     val p = call.principal
-    if (p.role !in grantRoles(d)) throw AdminSupport.forbidden("only ${grantRoles(d).joinToString { it.wire }} grant back-dated entry")
+    if (p.role !in grantRoles(d) + Role.SUPERADMIN) throw AdminSupport.forbidden("only ${grantRoles(d).joinToString { it.wire }} grant back-dated entry")
     val req = call.receiveStrict(EntryUnlockIn.serializer())
     if (req.scope_type !in setOf("zone", "route")) bad("body.scope_type")
     if (req.scope_id < 1) bad("body.scope_id")
