@@ -183,7 +183,12 @@ class Wiring(
                     .onFailure { org.slf4j.LoggerFactory.getLogger("aron.wiring").error("play integrity service account unreadable (${it.javaClass.simpleName}); verdicts stay unevaluated") }.getOrNull()
             }
             val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder), reach, guard, clock)
-            val ops = OpsDeps(OpsService(db, config, clock), dashboardService, reach, guard, clock)
+            // Accepting a quarantined record re-runs it through ingest (the sync service is built below).
+            var ingestForReview: com.aktcl.aron.backend.sync.IngestService? = null
+            val acceptor = com.aktcl.aron.backend.analytics.QuarantineAcceptor { id, fix, resolver, why ->
+                (ingestForReview ?: throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_SERVICE_UNAVAILABLE, "ingest is not ready")).acceptQuarantined(id, fix, resolver, why)
+            }
+            val ops = OpsDeps(OpsService(db, config, clock, acceptor), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
             val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
             val reports = ReportDeps(db, ReportEngine(db, config, clock, ReportHandlers.all), reach, guard, clock)
@@ -255,6 +260,7 @@ class Wiring(
                 }.getOrDefault(false)
             }
             val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + extraRecordHandlers)), db, config, clock)
+            ingestForReview = sync.ingest
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
                 ingestCapacity = runCatching { config.int("cfg.api.inflight_batches_per_replica") }.getOrDefault(64),
