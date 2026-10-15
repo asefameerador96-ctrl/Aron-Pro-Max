@@ -72,9 +72,11 @@ interface Props {
   testId?: string;
 }
 
+const SPECIFIC_FIELD_CODES = ["required", "too_short", "too_long", "unknown_member", "zero", "above_max", "write_off_must_be_negative", "not_an_outlet_memo", "window"];
+
 function fieldMessage(t: ReturnType<typeof useI18n>["t"], code: string): string {
   const key = `error.field.${code}` as MessageKey;
-  return t(["required", "too_short", "too_long", "unknown_member"].includes(code) ? key : "error.field.invalid");
+  return t(SPECIFIC_FIELD_CODES.includes(code) ? key : "error.field.invalid");
 }
 
 function toValue(f: OpFieldDef, raw: string): unknown {
@@ -170,7 +172,7 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
       }
       const fieldErrors: Record<string, string> = {};
       for (const err of data.errors ?? []) {
-        const name = err.pointer.startsWith("/body/") ? err.pointer.slice("/body/".length) : err.pointer.replace(/^\//, "");
+        const name = err.pointer.startsWith("/body/") ? err.pointer.slice("/body/".length) : err.pointer.replace(/^\/?(body[./])?/, "");
         fieldErrors[name === "reason" || fields.some((f) => f.name === name) ? name : ""] = fieldMessage(t, err.code);
       }
       delete fieldErrors[""];

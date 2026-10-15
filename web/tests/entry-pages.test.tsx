@@ -122,12 +122,23 @@ describe("data entry and paper backfill", () => {
     expect(takaToMtk("9".repeat(14))).toBeNull();
   });
   it("backfill passes through the proxy as manual source; duplicate memo is a success status; TSO cannot", async () => {
+    vi.stubEnv("ARON_FEATURE_PAPER_ENTRY", "1");
+    const yesterday = new Date(Date.now() + 6 * 3600_000 - 86_400_000).toISOString().slice(0, 10); // Dhaka yesterday: inside the 7-day window
     h.stub({ method: "POST", path: "/v1/admin/data-entry", fn: () => ({ status: 200, body: { memo_client_uuid: "x", status: "duplicate_memo_no", net_mtk: 0 } }) });
-    const body = { client_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", memo_no: "sr334001-261005-017", business_date: "2026-10-05", user_id: 5, route_id: 9, outlet_id: 55, lines: [{ sku_id: 1, qty_base: 10, line_kind: "sale" }], paid_mtk: 500000 };
+    const body = { client_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", memo_no: "sr334001-261005-017", business_date: yesterday, user_id: 5, route_id: 9, outlet_id: 55, lines: [{ sku_id: 1, qty_base: 10, line_kind: "sale" }], paid_mtk: 500000 };
     expect((await op(await support(), { op: "paper-backfill.create", body, reason: "Phone died in the field" })).status).toBe(200);
     expect(h.calls()[0]?.body).toEqual({ ...body, reason: "Phone died in the field" });
     expect((await op(await admin(), { op: "paper-backfill.create", body, reason: "Phone died in the field" })).status).toBe(200);
     expect((await op(await tso(), { op: "paper-backfill.create", body, reason: "Phone died in the field" })).status).toBe(403);
+    vi.unstubAllEnvs();
+  });
+  it("is dark by default: the BFF answers 404 and no API call is made while ARON_FEATURE_PAPER_ENTRY is off", async () => {
+    vi.stubEnv("ARON_FEATURE_PAPER_ENTRY", "");
+    h.stub({ method: "POST", path: "/v1/admin/data-entry", fn: () => ({ status: 200, body: {} }) });
+    const body = { client_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", memo_no: "sr334001-261005-017", business_date: "2026-10-14", user_id: 5, route_id: 9, outlet_id: 55, lines: [{ sku_id: 1, qty_base: 10, line_kind: "sale" }], paid_mtk: 0 };
+    expect((await op(await admin(), { op: "paper-backfill.create", body, reason: "Phone died in the field" })).status).toBe(404);
+    expect(h.calls()).toHaveLength(0);
+    vi.unstubAllEnvs();
   });
 });
 

@@ -4,6 +4,7 @@ import { FilterBar } from "@/components/admin/kit/filter-bar";
 import { OpForm, type OpFieldDef } from "@/components/admin/kit/op-form";
 import { OpInline } from "@/components/admin/kit/op-inline";
 import { Card, NextLink, PageHeading } from "@/components/admin/kit/page";
+import { MAX_ADJUSTMENT_MTK } from "@/lib/admin/op-rules";
 import { formatMtk } from "@/lib/admin/money";
 import type { DuesAdjustment } from "@/lib/admin/types";
 import { formatDateTime, formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
@@ -16,6 +17,7 @@ export function DuesView({ locale, rows, status, outlet, nextHref, userId, canCr
     { key: "r", header: t(locale, "cfgh.col.reason"), render: (a) => a.reason },
     { key: "s", header: t(locale, "cfgc.col.status"), render: (a) => t(locale, `dues.status.${a.status}` as MessageKey) },
     { key: "c", header: t(locale, "cfgc.col.created"), render: (a) => formatDateTime(locale, a.created_at) },
+    { key: "d", header: t(locale, "dues.col.decided"), render: (a) => (a.decided_at ? `${formatNumber(locale, a.decided_by_user_id ?? 0, { useGrouping: false })} · ${formatDateTime(locale, a.decided_at)}` : <span className="text-slate-400">—</span>) },
     {
       key: "act",
       header: t(locale, "common.actions"),
@@ -34,7 +36,8 @@ export function DuesView({ locale, rows, status, outlet, nextHref, userId, canCr
   const fields: OpFieldDef[] = [
     { name: "outlet_id", label: t(locale, "dues.col.outlet"), kind: "int", required: true },
     { name: "kind", label: t(locale, "cfgc.col.kind"), kind: "enum", required: true, options: [{ value: "correction", label: t(locale, "dues.kind.correction") }, { value: "write_off", label: t(locale, "dues.kind.write_off") }] },
-    { name: "amount_mtk", label: t(locale, "dues.amount_tk"), kind: "int", required: true, scale: 1000, hint: t(locale, "dues.amount.hint") },
+    { name: "amount_mtk", label: t(locale, "dues.amount_tk"), kind: "int", required: true, scale: 1000, min: -MAX_ADJUSTMENT_MTK, max: MAX_ADJUSTMENT_MTK, hint: t(locale, "dues.amount.hint") },
+    { name: "memo_client_uuid", label: t(locale, "dues.memo"), kind: "text", pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$", nullable: true, maxLength: 36, hint: t(locale, "dues.memo.hint") },
   ];
   return (
     <div className="space-y-4">

@@ -54,7 +54,16 @@ export function PaperBackfillForm() {
         setUuid(crypto.randomUUID());
         setReason("");
         router.refresh();
-      } else setBanner({ ok: false, text: problem(data.code) });
+      } else {
+        const fe: Record<string, string> = {};
+        for (const err of data.errors ?? []) {
+          const name = err.pointer.replace(/^\/?(body[./])?/, "").replace(/^paid_mtk$/, "paid");
+          if (name in v) fe[name] = t(["above_max", "window", "required"].includes(err.code) ? (`error.field.${err.code}` as MessageKey) : "error.field.invalid");
+          else if (name.startsWith("lines")) fe.line0 = t("error.field.invalid");
+        }
+        setErrors(fe);
+        setBanner({ ok: false, text: problem(data.code) });
+      }
     } catch {
       setBanner({ ok: false, text: t("error.network") });
     } finally {
