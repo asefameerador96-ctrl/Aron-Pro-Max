@@ -347,7 +347,7 @@ private suspend fun createSku(call: ApplicationCall, d: AdminProductsDeps) {
                     "VALUES (:code, :v, :cat, :n, :sn, :nb, :bu, :pp, :eu, :ru, :rf, :s, CAST(:img AS uuid), :by, :by) RETURNING $SKU_COLS",
             ).bind("img", imageAsset).bind("code", code).bind("v", variant).bind("cat", category).bind("n", name).bind("sn", shortName).bind("nb", nameBn).bind("bu", baseUnit).bind("pp", perPack)
                 .bind("eu", entry).bind("ru", reportUnit).bind("rf", factor).bind("s", sort).bind("by", p.userId).map { rs, _ -> skuOf(rs, d.blob) }.one()
-            AuditWriter.write(h, p, "sku", s.id.toString(), "create", null, json(s), null, call.requestId)
+            AuditWriter.write(h, p, "sku", s.id.toString(), "create", null, skuAudit(h, s), null, call.requestId)
             s
         }
     }
@@ -376,6 +376,7 @@ private suspend fun updateSku(call: ApplicationCall, d: AdminProductsDeps) {
             val cur = h.createQuery("SELECT $SKU_COLS FROM app.sku WHERE id = :i FOR UPDATE").bind("i", id).map { rs, _ -> skuOf(rs, d.blob) }.findOne().orElse(null)
                 ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no SKU with this id")
             if (cur.version != expected) preconditionFailed(cur.version)
+            val curAudit = skuAudit(h, cur)
             val set = mutableListOf<String>(); val args = mutableMapOf<String, Any?>()
             if (name != null && name != cur.name) { set += "name = :name"; args["name"] = name }
             if (shortName != null && shortName != cur.short_name) { set += "short_name = :sn"; args["sn"] = shortName }
@@ -396,7 +397,7 @@ private suspend fun updateSku(call: ApplicationCall, d: AdminProductsDeps) {
             val q = h.createQuery("UPDATE app.sku SET ${set.joinToString(", ")}, updated_by = :by WHERE id = :i RETURNING $SKU_COLS").bind("by", p.userId).bind("i", id)
             args.forEach { (k, v) -> q.bind(k, v) }
             val s = q.map { rs, _ -> skuOf(rs, d.blob) }.one()
-            AuditWriter.write(h, p, "sku", id.toString(), "update", json(cur), json(s), reason, call.requestId)
+            AuditWriter.write(h, p, "sku", id.toString(), "update", curAudit, skuAudit(h, s), reason, call.requestId)
             s
         }
     }
@@ -413,7 +414,14 @@ private fun checkSkuImage(h: Handle, asset: String) {
     val row = h.createQuery("SELECT purpose, bytes FROM app.admin_asset WHERE asset_id = CAST(:a AS uuid)").bind("a", asset).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.findOne().orElse(null)
         ?: adminBad("body.image_asset_id", "unknown_asset")
     if (row.first != "sku_image") adminBad("body.image_asset_id", "wrong_asset_purpose")
-    if (row.second > 300L * 1024) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "the pack image is above 300 KB", errors = listOf(FieldError("body.image_asset_id", "above_cap")))
+    if (row.second > 300L * 1024) adminBad("body.image_asset_id", "above_cap")
+}
+
+/** Audit image of a SKU: the stable `image_asset_id`, never the signed `image_url` (a time-limited SAS signature must not be stored). */
+private fun skuAudit(h: Handle, s: SkuOut): JsonElement {
+    val asset = h.createQuery("SELECT image_asset_id::text FROM app.sku WHERE id = :i").bind("i", s.id).mapTo(String::class.java).findOne().orElse(null)
+    val base = json(s.copy(image_url = null)) as JsonObject
+    return JsonObject(base + ("image_asset_id" to (asset?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)))
 }
 
 internal fun auditObj(vararg pairs: Pair<String, Any?>): JsonObject = buildJsonObject {

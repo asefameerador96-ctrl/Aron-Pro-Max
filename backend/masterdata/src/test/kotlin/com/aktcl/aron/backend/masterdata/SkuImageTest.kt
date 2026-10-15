@@ -47,7 +47,7 @@ class SkuImageTest {
             assertEquals(status, send(HttpMethod.Post, "/v1/admin/skus", t.admin, body(code, variant, extra)).status, extra)
         bad("IMG-2", ""","image_asset_id":"${asset("gift_image")}"""")
         bad("IMG-3", ""","image_asset_id":"${UUID.randomUUID()}"""")
-        bad("IMG-4", ""","image_asset_id":"${asset("sku_image", 300L * 1024 + 1)}"""", HttpStatusCode.PayloadTooLarge)
+        bad("IMG-4", ""","image_asset_id":"${asset("sku_image", 300L * 1024 + 1)}"""")
         bad("IMG-5", ""","image_asset_id":"not-a-uuid"""")
         // Patch: set, same value (no new version), another, remove with null, omitted keeps.
         val id = plain.obj()["id"]!!.jsonPrimitive.content
@@ -64,6 +64,6 @@ class SkuImageTest {
         // The list carries the url; the audit row records the change.
         val listed = send(HttpMethod.Get, "/v1/admin/skus?limit=500", t.admin).obj()["items"].toString()
         assert(listed.contains("https://blob.test/assets/sku_image/$img.png"))
-        assertEquals(1, t.count("SELECT count(*) FROM app.audit_log WHERE entity = 'sku' AND entity_id = '$id' AND action = 'update' AND (after->>'image_url') IS NULL AND (before->>'image_url') IS NOT NULL"))
+        assertEquals(1, t.count("SELECT count(*) FROM app.audit_log WHERE entity = 'sku' AND entity_id = '$id' AND action = 'update' AND (after->>'image_asset_id') IS NULL AND (before->>'image_asset_id') = '$img'"))
     }
 }
