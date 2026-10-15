@@ -13,7 +13,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 149 | 2582 |
-| `dw` | 33 | 515 |
+| `dw` | 34 | 528 |
 
 ## Index
 
@@ -192,6 +192,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`dw.fact_device_integrity`](#dwfact_device_integrity) | partitioned table | backend:analytics | SERVER | event_fact | none | One row is a phone's integrity and readiness state observed at a login or bundle download. |
 | [`dw.fact_geo_fix`](#dwfact_geo_fix) | partitioned table | worker | SERVER | event_fact | personal | One row per location fix copied for analysis, with slot and satellite count. |
 | [`dw.fact_memo`](#dwfact_memo) | partitioned table | worker | SERVER | event_fact | none | One row per memo with its money totals, for reports. |
+| [`dw.fact_supervisor_day`](#dwfact_supervisor_day) | table | worker | SERVER | event_fact | none | One row per AMO or TSO and business date with the day's check-in, check-out and Sales Submit, filled by the worker from app.supervisor_day (F-AMO-039). |
 | [`dw.fact_visit`](#dwfact_visit) | partitioned table | worker | SERVER | event_fact | none | One row per visit with device and server verdicts, distance and void flag. |
 | [`dw.v_attendance`](#dwv_attendance) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, check-in and check-out times, hours in field and mock-location flags (no coordinates or accuracy). |
 | [`dw.v_collections`](#dwv_collections) | view | worker | SERVER | event_fact | none | Stable view: outlet-days with new credit or dues collected (credit and collection movements). |
@@ -1255,7 +1256,7 @@ Work queue entry naming a bundle snapshot or aggregate row that the worker must 
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
-| `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. |
+| `kind` | text | not null |  | Rebuild kind: bundle_user, route_day_agg, zone_day_agg, outlet_day_agg, device_day_agg, route_snapshot, risk_user_day or supervisor_day_agg. |
 | `subject_id` | bigint | not null |  | Id of the subject to rebuild; its meaning depends on kind (user, route, zone, outlet or device). |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
 | `first_dirtied_at` | timestamp with time zone | not null |  | UTC time the key was first marked dirty. |
@@ -5274,8 +5275,31 @@ One row per memo with its money totals, for reports.
 | `outlet_key` | bigint | null |  | dim_outlet_version key valid on the business date (dw.outlet_key_on). |
 | `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
 | `entry_source` | text | not null |  | device or manual (keyed on the web from the printed memo), copied from app.memo. |
+| `entered_by_user_id` | bigint | null |  | Web user who keyed the memo (entry_source manual), copied from app.memo; null for device rows. |
 
 Keys: `PRIMARY KEY (memo_client_uuid, business_date)`
+
+## dw.fact_supervisor_day
+
+One row per AMO or TSO and business date with the day's check-in, check-out and Sales Submit, filled by the worker from app.supervisor_day (F-AMO-039).
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_id` | bigint | not null |  | Supervisor (app.app_user). |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the supervisor-day. |
+| `role` | text | not null |  | AMO or TSO, from app.app_user at projection time. |
+| `zone_id` | bigint | null |  | Home zone of the supervisor that day; null when the user has none (a TSO over several zones). |
+| `checked_in_at` | timestamp with time zone | null |  | UTC time of the day's check-in; null when the supervisor did not check in. |
+| `checked_out_at` | timestamp with time zone | null |  | UTC time of the day's check-out. |
+| `sales_submitted_at` | timestamp with time zone | null |  | UTC time the supervisor's Sales Submit was accepted. |
+| `submit_cycle` | integer | not null |  | Submit cycle of the day (a voided submit opens the next cycle). |
+| `submit_voided` | boolean | not null |  | True when the day's submit was voided. |
+| `last_event_id` | bigint | null |  | Domain event id the projection last applied (watermark). |
+| `updated_at` | timestamp with time zone | not null |  | UTC time the row was last rebuilt. |
+
+Keys: `PRIMARY KEY (user_id, business_date)`
 
 ## dw.fact_visit
 
@@ -5309,6 +5333,7 @@ One row per visit with device and server verdicts, distance and void flag.
 | `outlet_key` | bigint | null |  | dim_outlet_version key valid on the business date (dw.outlet_key_on). |
 | `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
 | `entry_source` | text | not null |  | device or manual (keyed on the web for a dead-phone day), copied from app.visit. |
+| `entered_by_user_id` | bigint | null |  | Web user who keyed the visit (entry_source manual), copied from app.visit; null for device rows. |
 
 Keys: `PRIMARY KEY (visit_client_uuid, business_date)`
 
