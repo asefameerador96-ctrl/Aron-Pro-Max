@@ -46,7 +46,7 @@ describe.each(themes)("web tokens, %s", (_name, v) => {
     for (const s of surfaces()) expect(ratio(hex(v["text-primary"]!), s)).toBeGreaterThanOrEqual(7);
   });
   it("secondary text and status colours reach 4.5:1 on every surface", () => {
-    for (const k of ["text-secondary", "accent-text", "success", "warning", "danger"]) for (const s of surfaces()) expect(ratio(hex(v[k]!), s), `${k}`).toBeGreaterThanOrEqual(4.5);
+    for (const k of ["text-secondary", "accent", "success", "warning", "danger"]) for (const s of surfaces()) expect(ratio(hex(v[k]!), s), `${k}`).toBeGreaterThanOrEqual(4.5);
   });
   // Sunlight is a light-theme concern (docs/32 s2a item 2: dark is a user choice, not the default); office dark themes are covered by the ratios above.
   it.skipIf(_name.startsWith("dark"))("glare proxy (35 percent toward white): figures keep 4.5:1, secondary text 3:1", () => {
@@ -57,11 +57,11 @@ describe.each(themes)("web tokens, %s", (_name, v) => {
     }
   });
   it("the graphic accent reaches 3:1 and the primary fill carries its label at 7:1", () => {
-    for (const s of surfaces()) expect(ratio(hex(v["accent"]!), s)).toBeGreaterThanOrEqual(3);
+    for (const s of surfaces()) expect(ratio(hex(v["accent-graphic"]!), s)).toBeGreaterThanOrEqual(3);
     expect(ratio(hex(v["on-accent"]!), hex(v["accent-fill"]!))).toBeGreaterThanOrEqual(7);
   });
   it("the selected-state container carries its text at 7:1", () => {
-    expect(ratio(hex(v["accent-on-container"]!), hex(v["accent-container"]!))).toBeGreaterThanOrEqual(7);
+    expect(ratio(hex(v["accent-on-wash"]!), hex(v["accent-wash"]!))).toBeGreaterThanOrEqual(7);
   });
   it("chart series are at least 3:1 on every surface, and distinct from each other", () => {
     for (const k of ["chart-1", "chart-2"]) for (const s of surfaces()) expect(ratio(hex(v[k]!), s), k).toBeGreaterThanOrEqual(3);

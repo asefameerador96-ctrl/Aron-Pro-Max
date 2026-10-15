@@ -13,7 +13,7 @@
 
 :root {
   color-scheme: light dark;
-  /* "Calm Glass" tokens v1 (docs/design/tokens.md s2 and s11). Pages use the token names, never raw values. Web is office use: translucent cards at the 92 percent tier alpha, text on them still computed (tests/css-contrast.test.ts). */
+  /* "Calm Glass" tokens v1 (docs/design/tokens.md s2, s11). Pages use the token names, never raw values. `--accent` is accent.text (text and links); `--accent-graphic` is for icons and rings; fills use --accent-fill. Cards are translucent at the 92 percent tier alpha; text on them is computed (tests/css-contrast.test.ts). */
   --bg-gradient: linear-gradient(168deg, #d8e7fb 0%, #e8effa 50%, #f3f5fb 100%);
   --surface-glass: rgb(255 255 255 / 0.92);
   --surface-solid: #ffffff;
@@ -22,15 +22,17 @@
   --border-input: #66768f;
   --text-primary: #0b1b33;
   --text-secondary: #303d52;
-  --accent: #0a58cc; /* graphic: icons, rings, meters, selection */
-  --accent-text: #063b84; /* text, links, text buttons */
-  --accent-fill: #052e6b; /* primary button fill */
-  --accent-container: #dce9fd; /* selected chip, row, tile: opaque, with a check or edge, never colour alone */
-  --accent-on-container: #0a3f94;
+  --accent: #063b84;
+  --accent-graphic: #0a58cc;
+  --accent-fill: #052e6b;
+  --accent-pressed: #031734;
+  --accent-wash: #dce9fd;
+  --accent-on-wash: #0a3f94;
   --on-accent: #ffffff;
-  --success: #0b7a45;
-  --warning: #9a5200;
-  --danger: #c0182d;
+  /* Status words use the role's onContainer ink (tokens.md s2.5); the pure role colours are for icons and bars only. */
+  --success: #0a5a33;
+  --warning: #7a4300;
+  --danger: #8e1224;
   --radius-chip: 12px;
   --radius-card: 20px;
   --radius-sheet: 28px;
@@ -52,17 +54,18 @@
     --border-input: #8394b0;
     --text-primary: #f8fafd;
     --text-secondary: #c2ccdd;
-    --accent: #84b6ff;
-    --accent-text: #a8cfff;
+    --accent: #a8cfff;
+    --accent-graphic: #84b6ff;
     --accent-fill: #c9e1ff;
-    --accent-container: #1b3568;
-    --accent-on-container: #bbd6ff;
+    --accent-pressed: #ddebff;
+    --accent-wash: #1b3568;
+    --accent-on-wash: #bbd6ff;
     --on-accent: #010712;
     --chart-1: #5b9bff;
     --chart-2: #ffd166;
-    --success: #4cd38b;
-    --warning: #ffb84d;
-    --danger: #ff7a8a;
+    --success: #9be7bf;
+    --warning: #ffd58f;
+    --danger: #ffb3be;
     --elev-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);
   }
 }
@@ -71,8 +74,8 @@
   :root {
     --surface-glass: #ffffff;
     --text-secondary: #1e293b;
-    --accent: #123f94;
-    --accent-text: #0b2a66;
+    --accent: #0b2a66;
+    --accent-graphic: #123f94;
     --accent-fill: #052e6b;
     --border-line: rgb(11 27 51 / 0.55);
     --border-input: #2b3648;
@@ -83,10 +86,10 @@
 }
 @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
   :root {
-    --surface-glass: #16213a;
+    --surface-glass: #141d30;
     --text-secondary: #e2e8f0;
-    --accent: #a9ccff;
-    --accent-text: #c9e1ff;
+    --accent: #c9e1ff;
+    --accent-graphic: #a9ccff;
     --accent-fill: #c9e1ff;
     --border-line: rgb(255 255 255 / 0.6);
     --border-input: #c2ccdd;
@@ -115,7 +118,7 @@ body {
 .bg-white, .bg-slate-50 { background-color: var(--surface); -webkit-backdrop-filter: var(--glass-blur, none); backdrop-filter: var(--glass-blur, none); }
 .min-h-screen.bg-slate-50 { background-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 /* Hover fills resolve through the tokens too: the light slate hover turned dark-theme rows near-white under light text. */
-.hover\:bg-brand-700:hover { background-color: color-mix(in srgb, var(--accent-fill) 88%, #000); }
+.hover\:bg-brand-700:hover { background-color: var(--accent-pressed); }
 .hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, .hover\:bg-slate-200:hover { background-color: color-mix(in srgb, var(--accent) 14%, var(--surface-solid)); }
 .bg-slate-100 { background-color: color-mix(in srgb, var(--surface) 70%, transparent); }
 .border-slate-200, .divide-slate-200 > * + *, .divide-slate-100 > * + * { border-color: var(--border-line); }
@@ -125,8 +128,11 @@ body {
 .shadow-sm { box-shadow: var(--elev-1); }
 .text-slate-500, .text-slate-600 { color: var(--text-secondary); }
 .text-slate-700, .text-slate-800, .text-slate-900 { color: var(--text-primary); }
-.bg-brand-50, .bg-brand-100 { background-color: var(--accent-container); color: var(--accent-on-container); }
-.text-brand-700, .text-brand-600 { color: var(--accent-text); }
+.bg-brand-50, .bg-brand-100 { background-color: var(--accent-wash); color: var(--accent-on-wash); }
+.text-brand-700, .text-brand-600, .text-brand-900 { color: var(--accent); }
+.border-brand-100 { border-color: var(--border-line); }
+.ring-brand-600 { --tw-ring-color: var(--accent-graphic); }
+.border-brand-600, .hover\:border-brand-600:hover, .focus\:border-brand-600:focus { border-color: var(--accent-graphic); }
 .bg-brand-700, .bg-brand-600 { background-color: var(--accent-fill); }
 /* Text on the accent fill keeps AA contrast in both themes (white on the light-blue dark accent was 2.4:1). */
 .bg-brand-600.text-white, .bg-brand-700.text-white { color: var(--on-accent); }
