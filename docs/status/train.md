@@ -104,6 +104,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 | 2026-10-15 07:58 | see git log | candidate lane/train-20261015T0732-zzf, ALL JOBS GREEN (run 38699083599, d819e58d): backend-admin f5a3e647 (RouteInventoryTest scope lines for entry-unlocks/web-entry) | ancestor check passed, fast-forward; INT 2326c128 deploy 38700181682 green first. |
 | 2026-10-15 09:30 | see git log | candidate lane/train-20261015T0920-zzg, ALL JOBS GREEN (run 38712074266, fc0d86d9): web-admin cb2255f1 (+ docs-only backend-admin f7ee8a93, lead-docs fc86b1f0) | ancestor check passed, fast-forward; INT 950ddbff deploy 38703582838 green first. web-dashboard 5589436b not taken (lead has not named it). |
 | 2026-10-15 09:50 | see git log | candidate lane/train-20261015T0930-zzh, ALL JOBS GREEN (run 38713088804, a87dd4c3): web-dashboard 5589436b (DSS route drill dropped) | ancestor check passed, fast-forward; INT 8c80265a deploy 38713827722 green first. |
+| 2026-10-15 10:20 | see git log | candidate lane/train-20261015T0950-zzi, ALL JOBS GREEN (run 38715794593, 561f0fb8): backend-core 89c1765a (IngestService.ingestManual F-API-038 paper backfill, working-day window F-SYS-090, device rows entry_source=device) | ancestor check passed, fast-forward; INT 2c2317cc deploy 38716577073 green first. |
 
 ## Open reds
 
