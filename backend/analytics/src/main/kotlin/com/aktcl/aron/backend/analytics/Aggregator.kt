@@ -96,34 +96,34 @@ object Aggregator {
         h.createUpdate(
             """
             INSERT INTO dw.fact_visit (business_date, visit_client_uuid, user_id, route_id, zone_id, outlet_id, visit_kind, opened_at, ended_at, outcome_code,
-                                       call_declined, device_verdict, server_verdict, geo_action, distance_m, is_mock, planned, voided, last_event_id, updated_at)
+                                       call_declined, device_verdict, server_verdict, geo_action, distance_m, is_mock, planned, voided, entry_source, last_event_id, updated_at)
             SELECT v.business_date, v.client_uuid, v.user_id, v.route_id, :z, v.outlet_id, v.visit_kind, v.opened_at, v.ended_at, v.outcome_code,
                    v.call_declined, v.verdict, v.server_verdict, v.geo_action, v.distance_m, (v.fix_is_mock IS TRUE OR v.verdict = 'mocked'),
-                   v.planned, v.voided_at IS NOT NULL, :wm, now()
+                   v.planned, v.voided_at IS NOT NULL, v.entry_source, :wm, now()
               FROM app.visit v WHERE v.route_id = :r AND v.business_date = :d
             ON CONFLICT (visit_client_uuid, business_date) DO UPDATE SET user_id = excluded.user_id, route_id = excluded.route_id, zone_id = excluded.zone_id,
               outlet_id = excluded.outlet_id, visit_kind = excluded.visit_kind, opened_at = excluded.opened_at, ended_at = excluded.ended_at,
               outcome_code = excluded.outcome_code, call_declined = excluded.call_declined, device_verdict = excluded.device_verdict,
               server_verdict = excluded.server_verdict, geo_action = excluded.geo_action, distance_m = excluded.distance_m, is_mock = excluded.is_mock,
-              planned = excluded.planned, voided = excluded.voided, last_event_id = excluded.last_event_id, updated_at = now()
+              planned = excluded.planned, voided = excluded.voided, entry_source = excluded.entry_source, last_event_id = excluded.last_event_id, updated_at = now()
             """,
         ).bind("r", routeId).bind("z", zoneId).bind("d", date).bind("wm", wm).execute()
         h.createUpdate(
             """
             INSERT INTO dw.fact_memo (business_date, memo_client_uuid, memo_no, user_id, route_id, zone_id, outlet_id, status, committed_at, line_count,
                                       gross_mtk, offer_discount_mtk, drp_discount_mtk, qc_deduction_mtk, net_mtk, paid_mtk, due_mtk, is_credit,
-                                      captured_offline, received_at, last_event_id, updated_at)
+                                      captured_offline, received_at, entry_source, last_event_id, updated_at)
             SELECT m.business_date, m.client_uuid, m.memo_no, m.user_id, m.route_id, :z, m.outlet_id,
                    CASE WHEN m.voided_at IS NOT NULL THEN 'voided' ELSE m.status END, m.committed_at, m.line_count,
                    m.gross_mtk, m.offer_discount_mtk, m.drp_discount_mtk, m.qc_deduction_mtk, m.net_mtk, m.paid_mtk, m.due_mtk, m.is_credit,
-                   m.captured_offline, m.received_at, :wm, now()
+                   m.captured_offline, m.received_at, m.entry_source, :wm, now()
               FROM app.memo m WHERE m.route_id = :r AND m.business_date = :d
             ON CONFLICT (memo_client_uuid, business_date) DO UPDATE SET memo_no = excluded.memo_no, user_id = excluded.user_id, route_id = excluded.route_id,
               zone_id = excluded.zone_id, outlet_id = excluded.outlet_id, status = excluded.status, committed_at = excluded.committed_at,
               line_count = excluded.line_count, gross_mtk = excluded.gross_mtk, offer_discount_mtk = excluded.offer_discount_mtk,
               drp_discount_mtk = excluded.drp_discount_mtk, qc_deduction_mtk = excluded.qc_deduction_mtk, net_mtk = excluded.net_mtk,
               paid_mtk = excluded.paid_mtk, due_mtk = excluded.due_mtk, is_credit = excluded.is_credit, captured_offline = excluded.captured_offline,
-              received_at = excluded.received_at, last_event_id = excluded.last_event_id, updated_at = now()
+              received_at = excluded.received_at, entry_source = excluded.entry_source, last_event_id = excluded.last_event_id, updated_at = now()
             """,
         ).bind("r", routeId).bind("z", zoneId).bind("d", date).bind("wm", wm).execute()
     }
