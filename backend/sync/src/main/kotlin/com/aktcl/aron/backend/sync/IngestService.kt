@@ -114,7 +114,7 @@ class IngestService(
     }
 
     /** Per-batch caches. */
-    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null, val manual: Manual? = null, val release: RecordOutcomeCode? = null) {
+    private inner class Ctx(val up: Uploader, val batchUuid: String, val now: Instant, val resync: ResyncWindow? = null, val manual: Manual? = null, val release: RecordOutcomeCode? = null, val reviewed: Boolean = release != null) {
         /** A reviewer's accept ([acceptQuarantined]) overrides the check that raised [release], and only that one. */
         fun overrides(vararg codes: RecordOutcomeCode): Boolean = release != null && release in codes
         /** Handlers' after-commit calls of the current family, by record index (dropped when the record rolls back). */
@@ -349,21 +349,38 @@ class IngestService(
                 throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "a payload_conflict copy cannot be accepted: the first copy keeps client_uuid ${item.clientUuid}")
             }
             if (fixedRecord != null) {
-                for (k in listOf("client_uuid", "type", "family_uuid", "business_date")) {
+                // docs/24 s8.6: a fix of a data-entry (money) record needs a second person; the contract's resolve request
+                // has no approver yet, so such a fix is refused rather than applied by one person.
+                if (item.payload.str("type") in MONEY_TYPES) {
+                    throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "a fix of a ${item.payload.str("type")} needs a second person (maker-checker), which is not available yet; discard it and have the record keyed again")
+                }
+                for (k in listOf("client_uuid", "type", "family_uuid", "business_date", "route_id", "acting_for_user_id")) {
                     if (fixedRecord[k] != item.payload[k]) {
                         throw ApiProblem(ProblemCode.ERR_VALIDATION, "fixed_record keeps the record's $k", errors = listOf(FieldError("/fixed_record/$k", "invalid_value")))
                     }
                 }
+                // Neither a fix nor its scope override moves a record to another outlet.
+                if ((fixedRecord["payload"] as? JsonObject)?.get("outlet_id") != (item.payload["payload"] as? JsonObject)?.get("outlet_id")) {
+                    throw ApiProblem(ProblemCode.ERR_VALIDATION, "fixed_record keeps the record's outlet_id", errors = listOf(FieldError("/fixed_record/payload/outlet_id", "invalid_value")))
+                }
             }
-            val up = uploaderOf(h, item.userId, item.deviceId)
-            val batch = item.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:$quarantineId".toByteArray()).toString()
-            val ctx = Ctx(up, batch, now, release = code)
             val rec = Rec(0, fixedRecord ?: item.payload)
             // The children held with it, parents before children, so a memo's equations see its lines (s7.4).
             val children = heldChildren(h, item.clientUuid, item.code)
             val family = listOf(rec.json) + children.map { it.payload }
-            ctx.arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
-            ctx.memoFps = MemoChecks.memoFingerprints(family)
+            val arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
+            val fps = MemoChecks.memoFingerprints(family)
+            // Every held record runs as its own uploader and device (a TSO's collection on an SR's memo stays the TSO's).
+            // The reviewer judged the item's own record: a child of another uploader gets no override of its own checks
+            // (its reach, cross-user parent rule, device gate), only the window it was inside when received.
+            val ctxs = HashMap<Pair<Long, Long?>, Ctx>()
+            fun ctxOf(it: HeldItem): Ctx = ctxs.getOrPut(it.userId to it.deviceId) {
+                val batch = it.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:${it.id}".toByteArray()).toString()
+                val same = it.userId == item.userId && it.deviceId == item.deviceId
+                Ctx(uploaderOf(h, it.userId, it.deviceId), batch, now, release = code.takeIf { same }, reviewed = true).also { c -> c.arith = arith; c.memoFps = fps }
+            }
+            val ctx = ctxOf(item)
+            val up = ctx.up
 
             val outcome = release(h, ctx, rec)
             if (outcome.status != "accepted" && outcome.status != "duplicate") {
@@ -373,7 +390,7 @@ class IngestService(
             for (child in children) {
                 val sp = "release_${child.id}"
                 h.savepoint(sp)
-                val o = runCatching { release(h, ctx, Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                val o = runCatching { release(h, ctxOf(child), Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
                 if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
                     closeItem(h, child.id, "accepted", null, resolverUserId, "released with parent ${item.clientUuid}", now)
                     h.release(sp)
@@ -387,7 +404,7 @@ class IngestService(
             DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
             h.savepoint("release_day")
             try {
-                DayStates.afterBatch(h, up.userId, ctx.touched, now)
+                ctxs.values.forEach { c -> DayStates.afterBatch(h, c.up.userId, c.touched, now) }
                 h.release("release_day")
             } catch (e: Exception) {
                 if (isTransientDbFailure(e)) throw e
@@ -398,6 +415,153 @@ class IngestService(
         // Inside the caller's transaction this runs before its commit; the handlers' after-commit work is notification only.
         log.info("quarantine accepted id=$quarantineId resolver=$resolverUserId fix=${fixedRecord != null}")
     }
+
+    /**
+     * The memo references that follow a matched phone memo to its paper twin: a collection, a void or an edit naming the
+     * phone memo's uuid. Lines, discounts, QC lines and print events never do (the paper memo's own lines stand).
+     */
+    private fun memoAlias(h: Handle, type: String, env: JsonObject): JsonObject {
+        val field = MEMO_ALIAS_FIELDS[type] ?: return env
+        val p = env["payload"] as? JsonObject ?: return env
+        val target = p.str(field)?.takeIf { UUID_V4.matches(it) } ?: return env
+        // A match in flight holds the memo's registry row: wait for it, so a collection sent meanwhile is never held behind
+        // a memo that is matched a moment later (nothing would release it).
+        h.createQuery("SELECT 1 FROM app.ingest_registry WHERE client_uuid = CAST(:u AS uuid) FOR SHARE").bind("u", target).mapTo(Int::class.java).list()
+        // A memo uuid registered accepted with another memo row's id has no row of its own: it was matched (or deduplicated).
+        val twin = h.createQuery(
+            """
+            SELECT m.client_uuid::text FROM app.ingest_registry g JOIN app.memo m ON m.id = g.server_id AND m.business_date = g.business_date
+            WHERE g.client_uuid = CAST(:u AS uuid) AND g.record_type = 'memo' AND g.status = 'accepted' AND m.client_uuid <> g.client_uuid
+            """.trimIndent(),
+        ).bind("u", target).mapTo(String::class.java).findOne().orElse(null) ?: return env
+        return JsonObject(env + ("payload" to JsonObject(p + (field to JsonPrimitive(twin)))))
+    }
+
+    /** What [matchBackfill] did: the paper memo, and the held records it released or left open for their own review. */
+    data class BackfillMatch(
+        val paperMemoId: Long, val paperMemoUuid: String, val released: List<String>, val keptOpen: List<String>,
+        /** Step 3: the paper `web_entry` visit voided in favour of the phone visit (null when already voided); the caller's audit row names both. */
+        val voidedPaperVisitUuid: String? = null, val phoneVisitUuid: String? = null,
+    )
+
+    /**
+     * Release helper of the review action "same memo as backfill" (docs/requests/backend-core-backfill-vs-phone-memo-review.md
+     * steps 1, 2, 4, 5 and 7; the endpoint, its roles, reach and audit row are the caller's). The item is an open
+     * `memo_no_duplicate` phone memo whose twin (same memo_no and business date, same SR) is a live paper backfill
+     * (`entry_source = manual`). In one transaction (the caller's, when one is open on this thread):
+     * - **Compare**: outlet, gross, discounts, QC, rounding, net, paid, due, line counts and the lines (sku, qty_base,
+     *   base price, gross) of the phone memo and its held lines against the paper memo. Any difference is 409
+     *   `ERR_CONFLICT` naming each one, and nothing changes (the reviewer corrects the paper memo or keeps the item).
+     * - **Memo**: its registry row turns `accepted` with the paper memo's id (its resends are `duplicate`, the digest
+     *   reconciles); the item is `accepted` with the note `same_as_backfill`. No second memo is stored.
+     * - **Lines, discounts, QC lines, print events** held with it: registry `accepted`, no rows, items closed.
+     * - **Collections and voids** held with it: re-run through the record path as their own uploader; the memo alias in
+     *   `process()` points them at the paper memo, so the ledger posts once against it (idempotent by their own uuid). One
+     *   refused for a reason of its own stays open. Later uploads naming the phone memo follow the same alias.
+     * - **Dirty key**: the route-day's `route_day_agg`.
+     */
+    fun matchBackfill(quarantineId: Long, resolverUserId: Long, reason: String): BackfillMatch {
+        val now = clock.now()
+        return db.jdbi.inTransaction<BackfillMatch, Exception> { h ->
+            val item = heldItem(h, "id = :id", quarantineId) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such quarantine item")
+            if (item.status != "open") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "already resolved as ${item.status}")
+            if (item.code != RecordOutcomeCode.MEMO_NO_DUPLICATE.wire || item.payload.str("type") != "memo") {
+                throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "only a memo held as memo_no_duplicate can be matched to its paper twin")
+            }
+            val phone = item.payload["payload"] as JsonObject
+            val memoNo = phone.str("memo_no") ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the held memo has no memo_no")
+            val bd = LocalDate.parse(item.payload.str("business_date")!!)
+            // The same lock as a paper keying of this number (ingestManual): the twin cannot change under the match.
+            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 6))", "memo_no:$memoNo:$bd")
+            val paper = h.createQuery(
+                """
+                SELECT id, client_uuid::text AS cu, visit_client_uuid::text AS vcu, user_id, outlet_id, status, voided_at, entry_source, gross_mtk, offer_discount_mtk, drp_discount_mtk,
+                       qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, line_count, discount_line_count, qc_line_count
+                FROM app.memo WHERE memo_no = :n AND business_date = :d AND client_uuid <> CAST(:c AS uuid) FOR UPDATE
+                """.trimIndent(),
+            ).bind("n", memoNo).bind("d", bd).bind("c", item.clientUuid).mapToMap().findOne().orElse(null)
+                ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "memo $memoNo of $bd has no stored twin")
+            if (paper["entry_source"] != "manual") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the stored memo $memoNo is not a paper backfill")
+            if ((paper["user_id"] as Number).toLong() != item.userId) throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the paper memo $memoNo belongs to another SR")
+            if (paper["status"] != "active" || paper["voided_at"] != null) throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the paper memo $memoNo is ${paper["status"]}; correct it first")
+            val paperId = (paper["id"] as Number).toLong(); val paperUuid = paper["cu"] as String
+
+            val children = heldChildren(h, item.clientUuid, item.code)
+            val lineTypes = setOf("memo_line", "memo_discount", "qc_line", "print_event")
+            val diffs = ArrayList<FieldError>()
+            fun cmp(k: String, phoneV: Any?, paperV: Any?) { if (phoneV?.toString() != paperV?.toString()) diffs += FieldError("/payload/$k", "mismatch", "phone $phoneV, paper $paperV") }
+            cmp("outlet_id", phone.long("outlet_id"), paper["outlet_id"])
+            for (k in listOf("gross_mtk", "offer_discount_mtk", "drp_discount_mtk", "qc_deduction_mtk", "round_adj_mtk", "net_mtk", "paid_mtk", "due_mtk",
+                "line_count", "discount_line_count", "qc_line_count")) cmp(k, phone.long(k), paper[k])
+            val phoneLines = children.filter { it.payload.str("type") == "memo_line" && (it.payload["payload"] as JsonObject).str("memo_client_uuid") == item.clientUuid }
+                .map { c -> (c.payload["payload"] as JsonObject).let { "${it.long("sku_id")}:${it.long("qty_base")}:${it.long("base_price_mtk")}:${it.long("gross_mtk")}" } }.sorted()
+            val paperLines = h.createQuery("SELECT sku_id || ':' || qty_base || ':' || base_price_mtk || ':' || gross_mtk FROM app.memo_line WHERE memo_client_uuid = CAST(:m AS uuid)")
+                .bind("m", paperUuid).mapTo(String::class.java).list().sorted()
+            if (phoneLines != paperLines) diffs += FieldError("/lines", "mismatch", "phone ${phoneLines.joinToString(",")}, paper ${paperLines.joinToString(",")} (sku:qty_base:price:gross)")
+            if (diffs.isNotEmpty()) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the phone memo differs from the paper memo $memoNo", errors = diffs)
+
+            // The memo: matched, never stored twice.
+            h.createUpdate("UPDATE app.ingest_registry SET status = 'accepted', outcome_code = NULL, server_id = :sid, last_seen_at = :now WHERE client_uuid = CAST(:c AS uuid) AND status = 'quarantined'")
+                .bind("sid", paperId).bind("now", ts(now)).bind("c", item.clientUuid).execute()
+            closeItem(h, item.id, "accepted", null, resolverUserId, "same_as_backfill: paper memo $paperUuid; $reason", now)
+            val released = ArrayList<String>(); val kept = ArrayList<String>()
+            val ctxs = HashMap<Pair<Long, Long?>, Ctx>()
+            for (child in children) {
+                val type = child.payload.str("type")
+                // Only the phone memo's own lines are absorbed by the paper memo's; a held edit's lines are stored with it.
+                if (type in lineTypes && (child.payload["payload"] as? JsonObject)?.str("memo_client_uuid") == item.clientUuid) {
+                    h.createUpdate("UPDATE app.ingest_registry SET status = 'accepted', outcome_code = NULL, last_seen_at = :now WHERE client_uuid = CAST(:c AS uuid) AND status = 'quarantined'")
+                        .bind("now", ts(now)).bind("c", child.clientUuid).execute()
+                    closeItem(h, child.id, "accepted", null, resolverUserId, "same_as_backfill: the paper memo's lines stand", now)
+                    released += child.clientUuid
+                    continue
+                }
+                // Collections, voids and anything else held with it: their own path, their own uploader, no override.
+                val ctx = ctxs.getOrPut(child.userId to child.deviceId) {
+                    Ctx(uploaderOf(h, child.userId, child.deviceId), child.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:${child.id}".toByteArray()).toString(), now, reviewed = true)
+                }
+                val sp = "match_${child.id}"
+                h.savepoint(sp)
+                val o = runCatching { release(h, ctx, Rec(0, child.payload)) }.getOrElse { e -> if (isTransientDbFailure(e) || e is ApiProblem) throw e; null }
+                if (o != null && (o.status == "accepted" || o.status == "duplicate")) {
+                    closeItem(h, child.id, "accepted", null, resolverUserId, "same_as_backfill: posted to paper memo $paperUuid", now)
+                    h.release(sp); released += child.clientUuid
+                } else {
+                    h.rollbackToSavepoint(sp); kept += child.clientUuid
+                    log.info("held record stays quarantined client_uuid=${child.clientUuid} memo=${item.clientUuid} outcome=${o?.status} ${o?.code?.wire}")
+                }
+            }
+            // Step 3 (db-backend-core-visit-supersede.md, V0081): the phone visit carries the geo evidence, so the paper
+            // web_entry visit is voided (tombstone, idempotent) and its registry row turns `voided`, as a data void does.
+            // The paper memo keeps its visit_client_uuid (the memo guard refuses a re-point).
+            val paperVisit = paper["vcu"] as String?
+            val voidedRoute = paperVisit?.let { v ->
+                h.createQuery("UPDATE app.visit SET voided_at = :now WHERE client_uuid = CAST(:v AS uuid) AND business_date = :d AND visit_kind = 'web_entry' AND voided_at IS NULL RETURNING route_id")
+                    .bind("now", ts(now)).bind("v", v).bind("d", bd).mapTo(Long::class.java).findOne().orElse(null)
+            }
+            if (voidedRoute != null) {
+                h.createUpdate("UPDATE app.ingest_registry SET status = 'voided', last_seen_at = :now WHERE client_uuid = CAST(:v AS uuid) AND status = 'accepted'")
+                    .bind("now", ts(now)).bind("v", paperVisit).execute()
+            }
+            (listOfNotNull(item.payload.long("route_id"), voidedRoute)).distinct()
+                .forEach { h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'backfill_matched')", it, bd) }
+            DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
+            h.savepoint("match_day")
+            try {
+                ctxs.values.forEach { c -> DayStates.afterBatch(h, c.up.userId, c.touched, now) }
+                h.release("match_day")
+            } catch (e: Exception) {
+                if (isTransientDbFailure(e)) throw e
+                h.rollbackToSavepoint("match_day"); log.error("day states failed quarantine_id=$quarantineId", e)
+            }
+            BackfillMatch(paperId, paperUuid, released, kept, paperVisit.takeIf { voidedRoute != null }, phone.str("visit_client_uuid"))
+        }
+    }
+
+    /** Whether [r] is the original of an item a reviewer accepted with a fix (same uuid, the original's hash). */
+    private fun fixedCopy(h: Handle, r: Rec): Boolean = h.createQuery(
+        "SELECT EXISTS (SELECT 1 FROM app.sync_quarantine WHERE client_uuid = CAST(:c AS uuid) AND status = 'accepted_with_fix' AND payload_sha256 IN (:h, :f))",
+    ).bind("c", r.clientUuid).bind("h", r.hash).bind("f", r.fullHash).mapTo(Boolean::class.java).one()
 
     /** One quarantine item as stored. */
     private class HeldItem(val id: Long, val clientUuid: String, val code: String, val status: String, val payload: JsonObject, val userId: Long, val deviceId: Long?, val batchUuid: String?)
@@ -604,7 +768,7 @@ class IngestService(
 
     private fun process(h: Handle, ctx: Ctx, r: Rec): Outcome {
         // 1. Shape: envelope and payload members of the contract (unevaluatedProperties false).
-        val shapeError = shapeError(r, manual = ctx.manual != null)
+        val shapeError = shapeError(r, manual = ctx.manual != null) ?: moneyOutOfRange(r.json)
         if (shapeError != null) {
             if (!UUID_V4.matches(r.clientUuid)) {
                 // Without a valid client_uuid the record cannot be registered or kept; it is acked and logged only.
@@ -615,7 +779,9 @@ class IngestService(
             return finalReject(h, ctx, r, code, shapeError)
         }
         val rule = TypeRules.BY_TYPE.getValue(r.type)
-        val env = r.json
+        // A dues record or edit aimed at a phone memo matched to its paper twin follows to the paper memo (matchBackfill);
+        // the registry keeps the phone's own hash, so its resends stay duplicates.
+        val env = memoAlias(h, r.type, r.json)
         val payload = env["payload"] as JsonObject
         val bd = LocalDate.parse(env.str("business_date")!!)
 
@@ -626,6 +792,8 @@ class IngestService(
             .bind("c", r.clientUuid).map { rs, _ -> Prior(rs.getString(1), rs.getString(2), rs.getBytes(3), rs.getObject(4) as Long?) }.findOne().orElse(null)
         var released = false
         if (prior != null) {
+            // The phone's own copy of a record a reviewer accepted with a fix is that record (its resend is a duplicate).
+            if (!prior.hash.contentEquals(r.hash) && prior.status == "accepted" && fixedCopy(h, r)) { touch(h, r); return Outcome.duplicate(prior.serverId) }
             if (!prior.hash.contentEquals(r.hash) && !prior.hash.contentEquals(r.fullHash)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.PAYLOAD_CONFLICT, "same client_uuid, different payload", register = false)
             // Registered before the hash left `sig` out: re-key it, so the parked upsert and the stored_at mark match (BC-53).
             if (!prior.hash.contentEquals(r.hash)) rekey(h, r)
@@ -653,7 +821,8 @@ class IngestService(
         // 3. Business-date window (s3.8 item 4): too old or in the future is quarantined, never dropped.
         val captured = Instant.parse(env.str("captured_at")!!)
         // A released signature quarantine was inside the window when first received: it is not too old now (item 2).
-        val tooOld = !released && bd.isBefore(ctx.backdateFloor)
+        // A reviewer's accept judges a record that was inside the window when it was received and held for another reason.
+        val tooOld = !released && !ctx.reviewed && bd.isBefore(ctx.backdateFloor)
         // F-SYS-089: after a failover or restore the phone re-sends rows the lost lineage had acknowledged (trigger
         // `resync`, docs/24 s4.8). One captured before the new lineage started may be older than the window: it is
         // accepted and flagged `resync_late`, never quarantined (idempotency by client_uuid keeps the re-send safe).
@@ -744,8 +913,9 @@ class IngestService(
         // 6. Record signature on header records when the device has a key (s8.3), by cfg.sec.record_signature_mode
         // (docs/19: off < record < enforce; F-SYS-072): off skips, record accepts and flags, only enforce quarantines.
         if (rule.signedHeader && ctx.up.deviceKey != null && ctx.signatureMode != SignatureMode.OFF && !deviceAccepted) {
-            val sig = env.str("sig")
-            val unsigned = JsonObject(env.filterKeys { it != "sig" })
+            // The phone signed what it sent: never the memo-aliased envelope.
+            val sig = r.json.str("sig")
+            val unsigned = JsonObject(r.json.filterKeys { it != "sig" })
             val msg = listOf("aron-sig-v1", r.type, r.clientUuid, sha256Hex(Jcs.canonicalize(unsigned).toByteArray())).joinToString("\n")
             if (sig == null || !com.aktcl.aron.backend.platform.DeviceProof.verify(ctx.up.deviceKey, msg, sig)) {
                 if (ctx.signatureMode == SignatureMode.ENFORCE) {
@@ -1262,6 +1432,21 @@ class IngestService(
         return Outcome.of(code)
     }
 
+    /**
+     * Money members (`*_mtk`, integer milli-taka) above the ledger's bound (db V0079/V0080: |amount| <= 10^13, i.e. 10
+     * billion taka): refused per record as `schema_invalid` with the member named, before anything is written, so a
+     * crafted memo never reaches the ledger insert. Non-integers are left to the shape and money checks.
+     */
+    private fun moneyOutOfRange(env: JsonObject): String? {
+        val p = env["payload"] as? JsonObject ?: return null
+        for ((k, v) in p) {
+            if (!k.endsWith("_mtk") || v !is JsonPrimitive || v.isString) continue
+            val n = v.content.toBigDecimalOrNull() ?: continue
+            if (n.abs() > MAX_MTK) return "$k is above the money bound (|value| <= 10^13 milli-taka)"
+        }
+        return null
+    }
+
     /** Envelope and payload members against the contract (required present, nothing unknown); null when the shape is fine. */
     private fun shapeError(r: Rec, manual: Boolean = false): String? {
         val env = r.json
@@ -1502,6 +1687,11 @@ class IngestService(
         private val VOLATILE = setOf("sig", "bundle_version", "bundle_stale", "config_version", "client_uuid", "family_uuid")
         /** N-027: the attendance and sales records the device gate holds (s10.4). */
         val GATED_TYPES = setOf("attendance_event", "memo", "memo_void", "due_collection")
+        private val MAX_MTK = java.math.BigDecimal.TEN.pow(13)
+        /** Memo references that follow a matched phone memo to its paper twin ([memoAlias]). */
+        private val MEMO_ALIAS_FIELDS = mapOf("due_collection" to "against_memo_client_uuid", "memo_void" to "memo_client_uuid", "memo" to "supersedes_client_uuid")
+        /** Data-entry (money and stock) records: a reviewer's fix of one needs a second person (docs/24 s8.6). */
+        val MONEY_TYPES = setOf("memo", "memo_line", "memo_discount", "qc_line", "memo_void", "due_collection", "stock_movement", "redemption", "redemption_line", "day_submit")
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
