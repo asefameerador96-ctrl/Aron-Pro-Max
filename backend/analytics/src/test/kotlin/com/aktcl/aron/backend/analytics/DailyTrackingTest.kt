@@ -125,6 +125,8 @@ class DailyTrackingTest : ReportFixture() {
         val again = Json.parseToJsonElement(act(11, Role.TSO, body).bodyAsText()).jsonObject
         assertEquals(a.s("created_at"), again.s("created_at"))
         assertEquals(1, fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery("SELECT count(*) FROM app.audit_log WHERE entity = 'tracking_action'").mapTo(Int::class.java).one() })
+        // AuditLog.write: one row with the actor and the scope the action ran under.
+        assertEquals("11|TSO|false:[" + z1 + "]", fresh.db.jdbi.withHandle<String, Exception> { it.createQuery("SELECT actor_user_id || '|' || actor_role || '|' || (after->'scope'->>'national') || coalesce(':' || (after->'scope'->>'zone_ids'), '') FROM app.audit_log WHERE entity = 'tracking_action'").mapTo(String::class.java).one() })
         // The same uuid with another note is a conflict; another user's uuid reuse too.
         assertEquals(HttpStatusCode.Conflict, act(11, Role.TSO, body.replace("Why not", "Where is")).status)
         // Too early (business date of the future: the cutoff 17:00 Dhaka of that date has not come), outside reach, wrong role, bad body.
