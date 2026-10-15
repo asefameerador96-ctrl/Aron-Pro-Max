@@ -45,7 +45,7 @@ export function QuarantineView({ locale, rows, filters, basePath, nextHref, canW
           <p className="text-sm">{selected.code}{selected.detail ? ` · ${selected.detail}` : ""}</p>
           <p className="text-xs text-slate-600">{t(locale, "qr.masked")}</p>
           <pre className="max-h-72 overflow-auto rounded bg-slate-100 p-2 text-xs" data-testid="masked-payload">{JSON.stringify(maskPayload(selected.payload), null, 2)}</pre>
-          {canMatch && selected.status === "open" && selected.code === "memo_no_duplicate" ? <BackfillMatchForm quarantineId={selected.quarantine_id} /> : null}
+          {canMatch && selected.type === "memo" && selected.code === "memo_no_duplicate" ? <BackfillMatchForm quarantineId={selected.quarantine_id} open={selected.status === "open"} /> : null}
           {canWrite && selected.status === "open" ? <OpForm op="quarantine.resolve" params={{ quarantine_id: String(selected.quarantine_id) }} fields={fields} submitLabel={t(locale, "qr.resolve")} successKey="qr.done" testId="resolve-form" /> : null}
         </Card>
       ) : null}

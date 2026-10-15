@@ -95,7 +95,7 @@ describe("backfill match form", () => {
     await go([{ status: 409, body: { code: "ERR_CONFLICT", errors: [{ pointer: "/lines/0/qty_base", code: "mismatch", message: "phone 10, paper 12" }, { pointer: "/paid_mtk", code: "mismatch", message: "phone 500, paper 400" }] } }]);
     const txt = textOf(render().by("bm-diffs")!.props.children);
     expect(txt).toContain("/lines/0/qty_base");
-    expect(txt).toContain("phone 10, paper 12");
+    expect(txt).toContain("Phone: 10 · Paper: 12");
     expect(txt).toContain("/paid_mtk");
     expect(textOf(render().by("bm-error")!.props.children)).toContain("Differences");
   });
