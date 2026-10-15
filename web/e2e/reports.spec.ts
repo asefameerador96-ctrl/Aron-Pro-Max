@@ -1,4 +1,4 @@
-// Report page specifics in a browser: SKU prices, DSS drill, QC split and PDF, suspicious strip and trend, geofence histogram, DS-RRS print.
+// Report page specifics in a browser: SKU prices, DSS (zone-level, no drill), QC split and PDF, suspicious strip and trend, geofence histogram, DS-RRS print.
 import { expect, test, type Page } from "@playwright/test";
 import { loginOk, resetMock } from "./helpers";
 
@@ -22,13 +22,11 @@ test("SKU shows prices to three decimals and only the price types the role may s
   await expect(page.locator('th[data-col="trade_price_mtk"]')).toBeVisible();
 });
 
-test("DSS drills from a route row to its outlet-wise sales", async ({ page }) => {
+test("DSS is zone-level (docs/24 s12): its rows carry no route drill", async ({ page }) => {
   await start(page);
   await page.goto("/reports/dss");
   await expect(page.getByTestId("tile-meta")).toContainText("As of");
-  await page.getByTestId("drill-link").first().click();
-  await expect(page).toHaveURL(/\/reports\/by-outlet\?route=/);
-  await expect(page.getByTestId("report-by-outlet")).toBeVisible();
+  await expect(page.getByTestId("drill-link")).toHaveCount(0);
 });
 
 test("QC report shows Market and Warehouse apart with Get Excel and Download PDF", async ({ page }) => {
