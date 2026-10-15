@@ -119,8 +119,8 @@ class EntrySourceV0077Test {
         assertEquals("30|100", c.scalar("SELECT concat_ws('|', default_value->>'MEMO_DUPLICATE_SUSPECT', default_value->>'GEO_MOCK') FROM app.cfg_key WHERE key = 'cfg.geo.integrity_weight'"))
         c.tx {
             val sr = "(SELECT id FROM app.app_user WHERE username = 'sr1001')"
-            exec("INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score) VALUES ('MEMO_DUPLICATE_SUSPECT', 2, DATE '2026-10-05', 'memo', '42', $sr, 30)")
-            assertEquals("23514", refused("INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score) VALUES ('MEMO_DUPLICATE', 2, DATE '2026-10-05', 'memo', '42', $sr, 30)"))
+            exec("INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score, config_version) VALUES ('MEMO_DUPLICATE_SUSPECT', 2, DATE '2026-10-05', 'memo', '42', $sr, 30, 0)")
+            assertEquals("23514", refused("INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score, config_version) VALUES ('MEMO_DUPLICATE', 2, DATE '2026-10-05', 'memo', '42', $sr, 30, 0)"))
         }
         assertEquals("t", c.scalar("SELECT convalidated FROM pg_constraint WHERE conname = 'risk_signal_code_check'"))
     }
