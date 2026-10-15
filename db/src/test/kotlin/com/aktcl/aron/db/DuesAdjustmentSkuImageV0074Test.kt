@@ -137,6 +137,7 @@ class DuesAdjustmentSkuImageV0074Test {
             exec(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c22", kind = "write_off", amount = -10_000_000_000_000))
             assertEquals("23514", refused(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c23", amount = 10_000_000_000_001)))
             assertEquals("23514", refused(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c24", kind = "write_off", amount = Long.MIN_VALUE)))
+            assertEquals("23514", refused(propose("a1d5e0c2-3b4f-4a6e-8c7d-9e0f1a2b3c25", kind = "write_off", amount = -10_000_000_000_001)))
             val ledger = "INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, source_client_uuid) " +
                 "VALUES ($outlet, DATE '2026-10-15', 'adjustment', %d, gen_random_uuid())"
             exec(ledger.format(10_000_000_000_000))

@@ -11,4 +11,4 @@ ALTER TABLE app.due_ledger ADD CONSTRAINT due_ledger_amount_cap
   CHECK (amount_mtk BETWEEN -10000000000000 AND 10000000000000) NOT VALID;
 
 COMMENT ON COLUMN app.dues_adjustment.amount_mtk IS 'Signed change of the outlet balance in milli-taka; never zero, negative for a write-off, |amount| at most 10^13 (V0079).';
-COMMENT ON COLUMN app.due_ledger.amount_mtk IS 'Signed change of the outlet balance in milli-taka (+ raises, - lowers); never zero, |amount| at most 10^13 (V0079).';
+COMMENT ON COLUMN app.due_ledger.amount_mtk IS 'Signed change of the outlet balance in milli-taka (1 Tk = 1000 mtk; + raises, - lowers); never zero, |amount| at most 10^13 (V0079).';
