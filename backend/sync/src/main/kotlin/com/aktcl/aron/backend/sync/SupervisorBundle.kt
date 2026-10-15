@@ -30,7 +30,7 @@ data class BundleOutletRequest(
 @Serializable
 data class SupervisorSectionDto(
     val zone_ids: List<Long>, val route_ids: List<Long>, val team: List<BundleTeamMember>, val pending_outlet_requests: List<BundleOutletRequest>,
-    val risk_signals: List<RiskSignalDto>? = null, val supervisor_day: SupervisorDayStateDto? = null,
+    val risk_signals: List<RiskSignalDto> = emptyList(), val supervisor_day: SupervisorDayStateDto? = null,
 )
 
 /**
@@ -53,7 +53,7 @@ internal object SupervisorBundle {
     fun zoneRoutePlans(h: Handle, reach: Reach, own: Set<Long>): List<RouteDayPlan> {
         if (reach.national || reach.zoneIds.isEmpty()) return emptyList() // an AMO's reach is never national; refuse a mis-scoped one
         return h.createQuery(
-            "SELECT id, code, name, zone_id, visit_kind, visit_days_mask, display_label FROM app.route WHERE zone_id = ANY(:z) AND status = 'active' ORDER BY id LIMIT :lim",
+            "SELECT id, code, name, zone_id, visit_kind, visit_days_mask, display_label FROM app.route r WHERE r.status = 'active' AND (r.zone_id = ANY(:z) OR EXISTS (SELECT 1 FROM app.outlet o WHERE o.route_id = r.id AND o.zone_id = ANY(:z) AND o.status = 'active')) ORDER BY id LIMIT :lim",
         ).bindArray("z", Long::class.javaObjectType, reach.zoneIds.toList()).bind("lim", MAX_ROUTES + own.size).map { rs, _ ->
             RouteDayPlan(rs.getLong("id"), rs.getString("code"), rs.getString("name"), rs.getLong("zone_id"), rs.getString("visit_kind"),
                 rs.getInt("visit_days_mask"), rs.getString("display_label"), "cover", false, 0, 0)
@@ -65,7 +65,7 @@ internal object SupervisorBundle {
         val dto = SupervisorSectionDto(
             zone_ids = zones.take(100), route_ids = routeIds.take(MAX_ROUTES),
             team = team(h, userId, routeIds, date), pending_outlet_requests = pendingRequests(h, reach),
-            risk_signals = if (role == Role.AMO) openSignals(h, reach) else null,
+            risk_signals = if (role == Role.AMO) openSignals(h, reach) else emptyList(),
             supervisor_day = supervisorDayState(h, userId, date),
         )
         return ResponseJson.encodeToJsonElement(SupervisorSectionDto.serializer(), dto).jsonObject

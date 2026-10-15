@@ -239,7 +239,15 @@ class AmoZoneBundleTest {
         client.amoBundle(amoToken)
         val v = version
         val srToken = client.login("sr1001", "app_sr", devPhone)
+        // Version numbers are per user and can coincide: the SR gets a page only when the version is the SR's own.
+        val srVersion = json(client.call(srToken, devPhone, "/v1/sync/bundle").bodyAsText())["meta"]!!.jsonObject["bundle_version"]!!.jsonPrimitive.content
         val r = client.call(srToken, devPhone, "/v1/sync/bundle/page?bundle_version=$v&section=outlets&page=1")
-        assertTrue(r.status == HttpStatusCode.Gone || r.status == HttpStatusCode.NotFound, "an SR must not get the AMO's cached page: ${r.status}")
+        if (srVersion == v) {
+            assertEquals(HttpStatusCode.OK, r.status)
+            val sr = ids("SELECT route_id FROM app.route_assignment WHERE user_id = (SELECT id FROM app.app_user WHERE username = 'sr1001')").toSet()
+            assertTrue(json(r.bodyAsText())["rows"]!!.jsonArray.all { it.jsonObject["route_id"]!!.jsonPrimitive.long in sr }, "the SR's own page")
+        } else {
+            assertEquals(HttpStatusCode.Gone, r.status, "an SR must not get the AMO's cached page")
+        }
     }
 }
