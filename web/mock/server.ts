@@ -255,7 +255,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     const username = tok ? state.mfaTokens.get(tok) : undefined;
     if (!username) return send(res, 401, problem(401, "ERR_UNAUTHENTICATED"));
     if (state.mfaEnrolled.has(username)) return send(res, 409, problem(409, "ERR_CONFLICT"));
-    state.mfaEnrolled.add(username);
+    // Like the backend: an unconfirmed enrolment is replaced; only a confirmed one (a good code at the verify step) is a conflict.
     return send(res, 200, { otpauth_uri: `otpauth://totp/Aron:${username}?secret=JBSWY3DPEHPK3PXP&issuer=Aron`, recovery_codes: Array.from({ length: 10 }, (_, i) => `AB${i}C-D${i}EF`) });
   }
 
@@ -265,6 +265,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     if (!b || !username) return send(res, 401, problem(401, "ERR_AUTH_MFA_INVALID"));
     if (b.code !== "123456" && b.code !== "AAAA-BBBB") return send(res, 401, problem(401, "ERR_AUTH_MFA_INVALID"));
     state.mfaTokens.delete(b.mfa_token as string);
+    state.mfaEnrolled.add(username);
     const u = state.users[username]!;
     const t = newTokens(state, username);
     return send(res, 200, loginBody(state, u, { access_token: t.at, access_expires_at: new Date(t.exp).toISOString(), refresh_expires_at: "2027-01-02T00:00:00.000Z", scope: u.scope }), { "Set-Cookie": rtCookie(t.rt, 86400) });

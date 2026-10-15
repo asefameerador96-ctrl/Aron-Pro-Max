@@ -22,13 +22,16 @@ describe("authenticator setup at the TOTP step (first admin sign-in)", () => {
     const ok = await verifyPost(req("/api/bff/mfa/verify", "POST", { code: "123456" }, { [MFA_COOKIE]: c[MFA_COOKIE]! }));
     expect(ok.status).toBe(200);
   });
-  it("a second enrolment is a 409 (an administrator resets it); no mfa cookie is 401; a cross-site call is 403", async () => {
+  it("before the first code an enrolment is replaced (200); after a confirmed code it is a 409; no mfa cookie is 401; cross-site is 403", async () => {
     const c = await login("newadmin1", "newadmin-pass-1");
     expect((await enrolPost(req("/api/bff/mfa/enrol", "POST", undefined, { [MFA_COOKIE]: c[MFA_COOKIE]! }))).status).toBe(200);
     const c2 = await login("newadmin1", "newadmin-pass-1");
-    expect((await enrolPost(req("/api/bff/mfa/enrol", "POST", undefined, { [MFA_COOKIE]: c2[MFA_COOKIE]! }))).status).toBe(409);
+    expect((await enrolPost(req("/api/bff/mfa/enrol", "POST", undefined, { [MFA_COOKIE]: c2[MFA_COOKIE]! }))).status).toBe(200);
+    expect((await verifyPost(req("/api/bff/mfa/verify", "POST", { code: "123456" }, { [MFA_COOKIE]: c2[MFA_COOKIE]! }))).status).toBe(200);
+    const c3 = await login("newadmin1", "newadmin-pass-1");
+    expect((await enrolPost(req("/api/bff/mfa/enrol", "POST", undefined, { [MFA_COOKIE]: c3[MFA_COOKIE]! }))).status).toBe(409);
     expect((await enrolPost(req("/api/bff/mfa/enrol", "POST", undefined))).status).toBe(401);
-    const cross = new NextRequest(`${ORIGIN}/api/bff/mfa/enrol`, { method: "POST", headers: { host: "localhost:3000", origin: "https://evil.example", "sec-fetch-site": "cross-site", cookie: `${MFA_COOKIE}=${c2[MFA_COOKIE]!}` } });
+    const cross = new NextRequest(`${ORIGIN}/api/bff/mfa/enrol`, { method: "POST", headers: { host: "localhost:3000", origin: "https://evil.example", "sec-fetch-site": "cross-site", cookie: `${MFA_COOKIE}=${c3[MFA_COOKIE]!}` } });
     expect((await enrolPost(cross)).status).toBe(403);
   });
   it("an already enrolled administrator gets the conflict, never a new secret", async () => {

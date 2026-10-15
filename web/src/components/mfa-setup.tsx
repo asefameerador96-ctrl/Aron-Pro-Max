@@ -46,7 +46,7 @@ export function MfaSetup() {
     );
   }
   return (
-    <section className="mt-4 space-y-3 rounded border border-amber-300 bg-amber-50 p-3" data-testid="mfa-setup-result">
+    <section role="status" aria-live="polite" className="mt-4 space-y-3 rounded border border-amber-300 bg-amber-50 p-3" data-testid="mfa-setup-result">
       <h3 className="font-semibold">{t("auth.mfa.setup.scan")}</h3>
       <QrCode text={data.otpauth_uri} label={t("auth.mfa.setup.scan")} size={220} />
       <p className="text-sm">
