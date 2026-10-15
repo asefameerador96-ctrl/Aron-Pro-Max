@@ -554,6 +554,8 @@ export const en = {
   "auth.mfa.setup.codes": "Recovery codes",
   "auth.mfa.setup.codes_hint": "Write these down now. Each works once if you lose the phone. They are shown only this time.",
   "enr.no_release": "There is no published app release for this app type yet. Publish one on the Releases page, then create the code again.",
+  "auth.mfa.use_recovery": "Use a recovery code instead",
+  "auth.mfa.use_code": "Use the 6-digit code instead",
 } as const;
 
 export type MessageKey = keyof typeof en;
