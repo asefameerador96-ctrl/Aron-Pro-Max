@@ -13,23 +13,28 @@
 
 :root {
   color-scheme: light dark;
-  /* "Calm Glass" tokens v0 (docs/32 s3). Pages use the token names, never raw values; docs/design/ v1 replaces the values only. */
-  --bg-gradient: linear-gradient(160deg, #eaf2ff 0%, #f6f8fc 45%, #eef3fb 100%);
-  --surface-glass: rgb(255 255 255 / 0.62);
+  /* "Calm Glass" tokens v1 (docs/design/tokens.md s2 and s11). Pages use the token names, never raw values. Web is office use: translucent cards at the 92 percent tier alpha, text on them still computed (tests/css-contrast.test.ts). */
+  --bg-gradient: linear-gradient(168deg, #d8e7fb 0%, #e8effa 50%, #f3f5fb 100%);
+  --surface-glass: rgb(255 255 255 / 0.92);
   --surface-solid: #ffffff;
   --border-hairline: rgb(255 255 255 / 0.45);
-  --border-line: rgb(15 23 42 / 0.1);
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --accent: #1d5fd1;
+  --border-line: rgb(11 27 51 / 0.14);
+  --border-input: #66768f;
+  --text-primary: #0b1b33;
+  --text-secondary: #303d52;
+  --accent: #0a58cc; /* graphic: icons, rings, meters, selection */
+  --accent-text: #063b84; /* text, links, text buttons */
+  --accent-fill: #052e6b; /* primary button fill */
+  --accent-container: #dce9fd; /* selected chip, row, tile: opaque, with a check or edge, never colour alone */
+  --accent-on-container: #0a3f94;
   --on-accent: #ffffff;
-  --success: #15803d;
-  --warning: #b45309;
-  --danger: #b91c1c;
+  --success: #0b7a45;
+  --warning: #9a5200;
+  --danger: #c0182d;
   --radius-chip: 12px;
   --radius-card: 20px;
   --radius-sheet: 28px;
-  --elev-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.05);
+  --elev-1: 0 1px 2px rgb(11 27 51 / 0.07), 0 4px 12px rgb(11 27 51 / 0.06);
   /* Chart series colours: colour-blind safe (blue plus a dark orange that differs in lightness too; at least 3:1 on the surface; values are always printed, never colour-only). */
   --chart-1: #123f94;
   --chart-2: #c2620a;
@@ -39,20 +44,25 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-gradient: linear-gradient(160deg, #0b1220 0%, #101a2e 50%, #0d1526 100%);
-    --surface-glass: rgb(255 255 255 / 0.12);
-    --surface-solid: #16213a;
+    --bg-gradient: linear-gradient(168deg, #16233f 0%, #0f1a2e 50%, #0a1220 100%);
+    --surface-glass: rgb(26 36 56 / 0.92);
+    --surface-solid: #141d30;
     --border-hairline: rgb(255 255 255 / 0.14);
-    --border-line: rgb(255 255 255 / 0.12);
-    --text-primary: #f1f5f9;
-    --text-secondary: #b6c2d4;
-    --accent: #6ea8ff;
-    --on-accent: #0b1220;
+    --border-line: rgb(255 255 255 / 0.18);
+    --border-input: #8394b0;
+    --text-primary: #f8fafd;
+    --text-secondary: #c2ccdd;
+    --accent: #84b6ff;
+    --accent-text: #a8cfff;
+    --accent-fill: #c9e1ff;
+    --accent-container: #1b3568;
+    --accent-on-container: #bbd6ff;
+    --on-accent: #010712;
     --chart-1: #5b9bff;
     --chart-2: #ffd166;
-    --success: #4ade80;
-    --warning: #fbbf24;
-    --danger: #fca5a5;
+    --success: #4cd38b;
+    --warning: #ffb84d;
+    --danger: #ff7a8a;
     --elev-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);
   }
 }
@@ -62,7 +72,10 @@
     --surface-glass: #ffffff;
     --text-secondary: #1e293b;
     --accent: #123f94;
-    --border-line: rgb(15 23 42 / 0.55);
+    --accent-text: #0b2a66;
+    --accent-fill: #052e6b;
+    --border-line: rgb(11 27 51 / 0.55);
+    --border-input: #2b3648;
     --chart-1: #0b2a66;
     --chart-2: #b34700;
     --glass-blur: none;
@@ -73,7 +86,10 @@
     --surface-glass: #16213a;
     --text-secondary: #e2e8f0;
     --accent: #a9ccff;
+    --accent-text: #c9e1ff;
+    --accent-fill: #c9e1ff;
     --border-line: rgb(255 255 255 / 0.6);
+    --border-input: #c2ccdd;
     --chart-1: #7fb0ff;
     --chart-2: #ffe08a;
   }
@@ -99,17 +115,19 @@ body {
 .bg-white, .bg-slate-50 { background-color: var(--surface); -webkit-backdrop-filter: var(--glass-blur, none); backdrop-filter: var(--glass-blur, none); }
 .min-h-screen.bg-slate-50 { background-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 /* Hover fills resolve through the tokens too: the light slate hover turned dark-theme rows near-white under light text. */
-.hover\:bg-brand-700:hover { background-color: color-mix(in srgb, var(--accent) 88%, #000); }
+.hover\:bg-brand-700:hover { background-color: color-mix(in srgb, var(--accent-fill) 88%, #000); }
 .hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, .hover\:bg-slate-200:hover { background-color: color-mix(in srgb, var(--accent) 14%, var(--surface-solid)); }
 .bg-slate-100 { background-color: color-mix(in srgb, var(--surface) 70%, transparent); }
-.border-slate-200, .border-slate-300, .divide-slate-200 > * + *, .divide-slate-100 > * + * { border-color: var(--border-line); }
+.border-slate-200, .divide-slate-200 > * + *, .divide-slate-100 > * + * { border-color: var(--border-line); }
+.border-slate-300 { border-color: var(--border-input); }
 .rounded-lg { border-radius: var(--radius-card); }
 .rounded { border-radius: var(--radius-chip); }
 .shadow-sm { box-shadow: var(--elev-1); }
 .text-slate-500, .text-slate-600 { color: var(--text-secondary); }
 .text-slate-700, .text-slate-800, .text-slate-900 { color: var(--text-primary); }
-.text-brand-700 { color: var(--accent); }
-.bg-brand-700, .bg-brand-600 { background-color: var(--accent); }
+.bg-brand-50, .bg-brand-100 { background-color: var(--accent-container); color: var(--accent-on-container); }
+.text-brand-700, .text-brand-600 { color: var(--accent-text); }
+.bg-brand-700, .bg-brand-600 { background-color: var(--accent-fill); }
 /* Text on the accent fill keeps AA contrast in both themes (white on the light-blue dark accent was 2.4:1). */
 .bg-brand-600.text-white, .bg-brand-700.text-white { color: var(--on-accent); }
 a, button, summary, select, input { transition: background-color var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out, box-shadow var(--motion-base) ease-out; }
