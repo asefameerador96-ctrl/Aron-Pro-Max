@@ -128,6 +128,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 | 2026-10-15 13:00 | see git log | candidate lane/train-20261015T1236-zzt, ALL JOBS GREEN (run 38735718023): backend-core 025e0edb, db 20040eb7, backend-admin 81b754e9 (+81866db7 slices fix); docs-only: lead-docs | INT 8eb43660 deploy green first; ancestor gate passed. zzs (1dc598f5) also green but superseded by zzt. |
 | 2026-10-15 13:42 | see git log | candidate lane/train-20261015T1302-zzu, ALL GREEN (run 38738760735): backend-reports 26f5bef0 (DECISIONS.md conflict resolved keep-both) | INT cb03ff58 CI 38738514687 and deploy 38742880328 green first; ancestor gate passed. zzv (backend-admin 01d8a92b, run 38740211806) green, next. |
 | 2026-10-15 14:41 | see git log | candidate lane/train-20261015T1408-zzc, ALL GREEN (run 38748465593): backend-admin 01d8a92b, web-admin a51b3ccc, db bcb241f9 (V0082/V0083), backend-reports f3b629fd | INT 93e146f0 deploy 38748404145 green first; ancestor gate passed. Combined single run per lead (CI queue contention). |
+| 2026-10-15 15:33 | see git log | lane head backend-reports fcf19e1a promoted directly (own run 38754100534 green, INT 6e45b770 is its ancestor): Aggregator copies entered_by_user_id into dw.fact_memo/dw.fact_visit | INT 6e45b770 CI 38753516094 and deploy 38758373585 green first; Sonnet T2 checker no defects. |
 
 ## Open reds
 
