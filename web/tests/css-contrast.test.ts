@@ -56,6 +56,13 @@ describe.each(themes)("web tokens, %s", (_name, v) => {
       expect(ratio(blend(hex(v["text-secondary"]!), 0.65, white), blend(s, 0.65, white))).toBeGreaterThanOrEqual(3);
     }
   });
+  it("the graphic accent reaches 3:1 and the primary fill carries its label at 7:1", () => {
+    for (const s of surfaces()) expect(ratio(hex(v["accent-graphic"]!), s)).toBeGreaterThanOrEqual(3);
+    expect(ratio(hex(v["on-accent"]!), hex(v["accent-fill"]!))).toBeGreaterThanOrEqual(7);
+  });
+  it("the selected-state container carries its text at 7:1", () => {
+    expect(ratio(hex(v["accent-on-wash"]!), hex(v["accent-wash"]!))).toBeGreaterThanOrEqual(7);
+  });
   it("chart series are at least 3:1 on every surface, and distinct from each other", () => {
     for (const k of ["chart-1", "chart-2"]) for (const s of surfaces()) expect(ratio(hex(v[k]!), s), k).toBeGreaterThanOrEqual(3);
     expect(ratio(hex(v["chart-1"]!), hex(v["chart-2"]!))).toBeGreaterThanOrEqual(1.3); // lightness differs as well as hue

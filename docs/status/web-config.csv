@@ -39,3 +39,4 @@ F-WEB-052,M,2026-10-07T08:50Z,2026-10-07T09:10Z,0,2,fault order, exclusive valid
 F-WEB-060,S,2026-10-07T08:50Z,2026-10-07T09:10Z,0,0,
 F-ADM-024,M,2026-10-07T08:50Z,2026-10-07T09:10Z,0,1,
 F-ADM-046,L,2026-10-07T09:10Z,2026-10-07T09:20Z,10,0,hub from web-admin; calendar link added
+DESIGN-V1-WEB-TOKENS,M,2026-10-15T06:10Z,2026-10-15T07:00Z,50,0,tokens.md s11 applied to globals.css; contrast + axe + tier baselines re-run

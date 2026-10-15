@@ -67,7 +67,7 @@ for (const [name, t] of [["light", light], ["dark", dark]] as const) {
       }
     }
     it("text on the accent fill is at least 4.5:1", () => {
-      expect(ratio(parse(t["--on-accent"]!), parse(t["--accent"]!))).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(parse(t["--on-accent"]!), parse(t["--accent-fill"]!))).toBeGreaterThanOrEqual(4.5);
     });
     it("tier C and the reduced-transparency fallback resolve to the solid surface", () => {
       expect(css).toMatch(/prefers-reduced-transparency: reduce\), \(prefers-contrast: more\) \{ :root \{ --surface: var\(--surface-solid\)/);

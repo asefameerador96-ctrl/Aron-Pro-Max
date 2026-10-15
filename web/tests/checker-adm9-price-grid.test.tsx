@@ -166,7 +166,7 @@ describe("checker-adm9 PriceGrid: what is previewed is what is published", () =>
     const shown = String(byLabel(render(p), "MaxR-10S Outlet").props.placeholder);
     const raised = (Number(shown) * 1.01).toFixed(3);
     hooks.slots = [];
-    const els = fill(p, [["MaxR-10S Outlet", raised]], "2026-10-10");
+    const els = fill(p, [["MaxR-10S Outlet", raised]], "2099-01-01");
     replies.push(json(200, PREVIEW_OK));
     await click(els, "price-preview");
     const row = sent[0]!.body.prices[0]!;

@@ -34,6 +34,8 @@ export function sameOrigin(req: NextRequest): boolean {
 
 export interface Authed {
   session: SessionData;
+  /** The refresh token in force after this call (rotated if the access token was refreshed); null when the browser sent none. */
+  rt: string | null;
   /** Apply to the response when the access token was refreshed during this call. */
   finish: (res: NextResponse) => NextResponse;
 }
@@ -62,5 +64,5 @@ export async function authenticate(req: NextRequest, pathname: string): Promise<
   const access = accessFor(session.user.role, pathname);
   if (access !== "ok") return problemResponse(403, "ERR_FORBIDDEN");
   const fresh = refreshed && refreshed.ok ? refreshed.data : null;
-  return { session, finish: (res) => { if (fresh) setAuthCookies(res, fresh); return res; } };
+  return { session, rt: fresh?.refreshToken ?? rt ?? null, finish: (res) => { if (fresh) setAuthCookies(res, fresh); return res; } };
 }
