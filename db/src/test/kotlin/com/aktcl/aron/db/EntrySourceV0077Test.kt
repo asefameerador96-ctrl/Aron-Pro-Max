@@ -49,10 +49,10 @@ class EntrySourceV0077Test {
                         "WHERE table_schema = 'app' AND table_name = '$t' AND column_name IN ('entry_source', 'entered_by_user_id') ORDER BY column_name DESC",
                 ).joinToString(";"),
             )
-            val def = c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = '${t}_entry_source_known'")!!
+            val def = c.scalar("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = '${t}_entry_source_known' AND conrelid = 'app.$t'::regclass")!!
             assertTrue("'manual'" in def && "entered_by_user_id IS NOT NULL" in def, def)
-            assertEquals("t", c.scalar("SELECT convalidated FROM pg_constraint WHERE conname = '${t}_entry_source_known'"))
-            assertEquals("app_user", c.scalar("SELECT confrelid::regclass::text FROM pg_constraint WHERE conname = '${t}_entered_by_user_id_fkey'")!!.removePrefix("app."))
+            assertEquals("t", c.scalar("SELECT convalidated FROM pg_constraint WHERE conname = '${t}_entry_source_known' AND conrelid = 'app.$t'::regclass"))
+            assertEquals("app_user", c.scalar("SELECT confrelid::regclass::text FROM pg_constraint WHERE conname = '${t}_entered_by_user_id_fkey' AND conrelid = 'app.$t'::regclass")!!.removePrefix("app."))
         }
     }
 
@@ -70,7 +70,7 @@ class EntrySourceV0077Test {
         c.tx {
             exec(memo("001", "device", "NULL"))
             exec(memo("002", "manual", admin))
-            assertEquals("device:|manual:t", column("SELECT entry_source || ':' || coalesce((entered_by_user_id IS NOT NULL)::text::char, '') FROM app.memo WHERE memo_no IN ('sr1001-261005-001', 'sr1001-261005-002') ORDER BY memo_no").joinToString("|"))
+            assertEquals("device:f|manual:t", column("SELECT entry_source || ':' || coalesce((entered_by_user_id IS NOT NULL)::text::char, '') FROM app.memo WHERE memo_no IN ('sr1001-261005-001', 'sr1001-261005-002') ORDER BY memo_no").joinToString("|"))
             exec("INSERT INTO app.memo (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, visit_client_uuid, outlet_id, memo_no, memo_kind, committed_at, price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, is_credit, line_count, discount_line_count, qc_line_count) SELECT gen_random_uuid(), gen_random_uuid(), business_date, user_id, captured_at, config_version, gen_random_uuid(), outlet_id, 'sr1001-261005-003', memo_kind, committed_at, price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, is_credit, line_count, discount_line_count, qc_line_count FROM app.memo WHERE memo_no = 'sr1001-261005-001'")
             assertEquals("device", scalar("SELECT entry_source FROM app.memo WHERE memo_no = 'sr1001-261005-003'"), "a phone insert that names neither column is a device row")
             assertEquals("23514", refused(memo("004", "manual", "NULL")))
