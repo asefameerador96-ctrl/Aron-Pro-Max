@@ -72,7 +72,7 @@ class BundlePreGenerationTest {
         assertEquals(100.0, gen.coverage(d1).pct)
         // Again: nobody lacks a snapshot, so nothing is built and no snapshot row is added.
         val again = gen.generate(d1)!!
-        assertEquals(0, again.total)
+        assertEquals(0, again.built)
         assertEquals(fieldUsers, snapshots())
     }
 

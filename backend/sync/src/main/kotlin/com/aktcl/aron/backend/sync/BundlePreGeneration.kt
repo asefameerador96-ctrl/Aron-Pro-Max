@@ -69,26 +69,40 @@ class BundlePreGenerator(
         }.map { rs, _ -> FieldUser(rs.getLong(1), rs.getString(2), Role.valueOf(rs.getString(3)), rs.getLong(4)) }.list()
     }
 
-    private fun build(u: FieldUser, date: LocalDate): Boolean = try {
-        val now = clock.now()
-        bundles.bundle(
-            AronPrincipal(u.id, u.username, u.role, u.scopeVersion, "web", null, null, "web", emptyList(), false, emptyList(), "pregen-${u.id}", now.plusSeconds(600)),
-            date, null,
-        )
-        true
-    } catch (e: Exception) {
-        log.warn("bundle pre-generation failed user={} date={} cause={}", u.id, date, e.javaClass.simpleName)
-        false
+    private fun hasSnapshot(userId: Long, date: LocalDate): Boolean = db.jdbi.withHandle<Boolean, Exception> { h ->
+        h.createQuery("SELECT EXISTS (SELECT 1 FROM app.bundle_snapshot WHERE user_id = :u AND business_date = :d)").bind("u", userId).bind("d", date).mapTo(Boolean::class.java).one()
     }
 
-    private fun run(users: List<FieldUser>, date: LocalDate): PreGenResult {
-        var built = 0; var failed = 0
-        val rate = perSecond()
-        for (u in users) {
-            if (build(u, date)) built++ else failed++
-            pace(rate)
+    /** Builds [dates] (or [date] plus the user's next working day when [withNextWorkingDay]) for [u]; true when none failed. Builds only lacking dates unless [force]. */
+    private fun build(u: FieldUser, date: LocalDate, withNextWorkingDay: Boolean, force: Boolean): Pair<Boolean, Int> = try {
+        val now = clock.now()
+        var built = 0
+        val (device, dates) = if (withNextWorkingDay) bundles.prebuildPlan(u.id, date.minusDays(1)).let { (d, ds) -> d to (listOf(date) + ds.filter { it.isAfter(date) }).distinct() } else null to listOf(date)
+        val p = AronPrincipal(u.id, u.username, u.role, u.scopeVersion, "web", device, null, "web", emptyList(), false, emptyList(), "pregen-${u.id}", now.plusSeconds(600))
+        for (d in dates) {
+            if (!force && hasSnapshot(u.id, d)) continue
+            bundles.bundle(p, d, null, prebuild = true); built++
         }
-        return PreGenResult(users.size, built, failed)
+        true to built
+    } catch (e: Exception) {
+        log.warn("bundle pre-generation failed user={} date={} cause={}", u.id, date, e.javaClass.simpleName)
+        false to 0
+    }
+
+    private val lastOk = HashSet<Long>()
+
+    /** Builds for [users]; [lastOk] is left with the ids whose builds all succeeded. */
+    private fun run(users: List<FieldUser>, date: LocalDate, withNextWorkingDay: Boolean = false, force: Boolean = false): PreGenResult {
+        var built = 0; var failed = 0; var total = 0
+        val rate = perSecond()
+        lastOk.clear()
+        for (u in users) {
+            val (ok, n) = build(u, date, withNextWorkingDay, force)
+            if (ok) lastOk += u.id else failed++
+            if (n > 0) { built++; pace(rate) }
+            total++
+        }
+        return PreGenResult(total, built, failed)
     }
 
     /** The one worker holding the lock does the phase; the others return null. The lock is per phase and date, released at the end. */
@@ -100,7 +114,7 @@ class BundlePreGenerator(
     }
 
     /** 22:00: [date] (the next business day) for every active field user that has no snapshot of it yet. */
-    fun generate(date: LocalDate): PreGenResult? = exclusive("d1", date) { run(fieldUsers(lacking = date), date) }
+    fun generate(date: LocalDate): PreGenResult? = exclusive("d1", date) { run(fieldUsers(), date, withNextWorkingDay = true) }
 
     /** 03:30: users with a `bundle_user` dirty key for [date] are rebuilt and the key leaves the queue unless it was dirtied again meanwhile. */
     fun refresh(date: LocalDate): PreGenResult? = exclusive("refresh", date) {
@@ -108,9 +122,10 @@ class BundlePreGenerator(
             h.createQuery("SELECT subject_id, dirty_count FROM app.dirty_key WHERE kind = 'bundle_user' AND business_date = :d ORDER BY subject_id")
                 .bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getInt(2) }.list().toMap()
         }
-        val result = run(fieldUsers(only = keys.keys), date)
+        val result = run(fieldUsers(only = keys.keys), date, force = true)
+        val okIds = lastOk.toSet()
         db.jdbi.useHandle<Exception> { h ->
-            keys.forEach { (id, count) ->
+            keys.filterKeys { it in okIds }.forEach { (id, count) ->
                 h.execute("DELETE FROM app.dirty_key WHERE kind = 'bundle_user' AND subject_id = ? AND business_date = ? AND dirty_count = ?", id, date, count)
             }
         }
@@ -146,13 +161,13 @@ class BundlePreGenerator(
         fun mark(key: String) { done += "$key:$d"; done.removeIf { !it.endsWith(":$d") } }
         // Before 22:00 the cutoff for D+1 has not come; after 23:59 the date rolls and the 03:30 / 04:30 phases belong to the new day.
         if (due("refresh", timeOf("cfg.bundle.refresh_time", "03:30")) && local.toLocalTime().isBefore(NIGHT_START)) {
-            mark("refresh"); refresh(d)
+            if (refresh(d) != null) mark("refresh") // a null (another replica holds the phase) or a throw is retried next minute
         }
         if (due("coverage", timeOf("cfg.bundle.coverage_check_time", "04:30")) && local.toLocalTime().isBefore(NIGHT_START)) {
-            mark("coverage"); coverageCheck(d)
+            if (coverageCheck(d) != null) mark("coverage")
         }
         if (due("d1", timeOf("cfg.bundle.d1_generation_time", "22:00"))) {
-            mark("d1"); generate(d.plusDays(1))
+            if (generate(d.plusDays(1)) != null) mark("d1")
         }
     }
 

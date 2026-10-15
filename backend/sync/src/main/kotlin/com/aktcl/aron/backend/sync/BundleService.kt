@@ -76,7 +76,34 @@ class BundleService(
         fun dayPlan() = DayPlan.ZoneChain(zoneId, territoryId, divisionId, wingId)
     }
 
-    fun bundle(p: AronPrincipal, forDate: LocalDate?, appVersion: String?): Result {
+    /**
+     * What the worker builds for [userId] at 22:00 on [today]: the phone binding whose bundle it pre-builds (the user's lowest active
+     * `bind_ordinal`, so `user.bind_ordinal` and device-scoped config match that phone's digest) and the dates a phone will ask for
+     * (tomorrow, and the next working day when that is later: Thursday night also covers Saturday).
+     */
+    fun prebuildPlan(userId: Long, today: LocalDate): Pair<Long?, List<LocalDate>> {
+        val now = clock.now()
+        val user = db.jdbi.withHandle<UserRow, Exception> { h -> loadUser(h, userId) }
+        val home = user.homeZoneId?.let { z -> db.jdbi.withHandle<Map<Long, GeoChain>, Exception> { h -> chains(h, listOf(z)) }[z] }
+        val cfg = db.jdbi.withHandle<ScopedConfig, Exception> { h -> ScopedConfig.load(h, now, now) }
+        val roleOrdinal = db.jdbi.withHandle<Long?, Exception> { h ->
+            h.createQuery("SELECT ordinal FROM app.role_def WHERE role = :r").bind("r", user.role).mapTo(Long::class.java).findOne().orElse(null)
+        }
+        val chain = ScopedConfig.Chain.of(
+            ConfigScopeType.ROLE to roleOrdinal, ConfigScopeType.WING to home?.wingId, ConfigScopeType.DIVISION to home?.divisionId,
+            ConfigScopeType.TERRITORY to home?.territoryId, ConfigScopeType.ZONE to home?.zoneId, ConfigScopeType.USER to user.id,
+        )
+        val weekend = weekendOf(cfg, chain)
+        val device = db.jdbi.withHandle<Long?, Exception> { h ->
+            h.createQuery("SELECT device_id FROM app.device_binding WHERE user_id = :u AND status = 'active' ORDER BY bind_ordinal, bound_at DESC LIMIT 1")
+                .bind("u", userId).mapTo(Long::class.java).findOne().orElse(null)
+        }
+        val tomorrow = today.plusDays(1)
+        return device to listOf(tomorrow, nextWorkingDay(today, home, weekend)).distinct()
+    }
+
+    /** [prebuild] (the worker's pre-generation) never records a download: it only creates the day's rows and the snapshot, like a pre-fetch. */
+    fun bundle(p: AronPrincipal, forDate: LocalDate?, appVersion: String?, prebuild: Boolean = false): Result {
         val now = clock.now()
         val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
         val user = db.jdbi.withHandle<UserRow, Exception> { h -> loadUser(h, p.userId) }
@@ -101,7 +128,7 @@ class BundleService(
             val next = nextWorkingDay(today, home, weekend)
             if (date.isAfter(next)) throw badFor("for must be at most the next working day ($next)")
         }
-        val prefetch = date.isAfter(today)
+        val prefetch = date.isAfter(today) || prebuild
         val plans = db.jdbi.withHandle<List<RouteDayPlan>, Exception> { h -> withScopedWeekend(h, planner.routesFor(user.id, date), date, cfg, roleOrdinal, user.id) }
 
         val dayStates = db.jdbi.inTransaction<Map<Long, DayRow>, Exception> { h ->

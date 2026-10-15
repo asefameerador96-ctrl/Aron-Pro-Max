@@ -96,7 +96,7 @@ class BundlePreGenerationCheckerTest {
     @Test
     fun preBuiltSeqEqualsWhatABoundPhoneGets() {
         val d = LocalDate.parse("2027-01-14")
-        now.set(Instant.parse("2027-01-12T16:00:00Z")) // 22:00 on the 13th... D+1 = 14th
+        now.set(Instant.parse("2027-01-13T14:00:00Z")) // 20:00 on the 13th Dhaka: D+1 = 14th
         val sr = count("SELECT id FROM app.app_user WHERE username = 'sr1001'")
         val dev = count("SELECT id FROM app.device WHERE device_uuid = '00000000-0000-4000-8000-000000000001'")
         exec("UPDATE app.device_binding SET bind_ordinal = 1 WHERE user_id = $sr AND device_id = $dev AND status = 'active'")
