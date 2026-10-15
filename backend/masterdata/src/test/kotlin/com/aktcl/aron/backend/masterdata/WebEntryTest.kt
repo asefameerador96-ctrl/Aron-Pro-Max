@@ -64,6 +64,9 @@ class WebEntryTest {
         // Scope and role: another territory's TSO and a DMO get 403; the read of an empty day has no lines.
         assertEquals(HttpStatusCode.Forbidden, post(entry(uuid(), listOf(line(s1))), env.tok("tso2001")).status)
         assertEquals(HttpStatusCode.Forbidden, post(entry(uuid(), listOf(line(s1))), env.tok("dmo1001")).status)
+        // Reads follow the same reach: another territory's TSO neither reads nor learns whether the route exists.
+        assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Get, "/v1/web-entry/route-day?route_id=$route&business_date=$today", env.tok("tso2001")).status)
+        assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Get, "/v1/web-entry/route-day?route_id=987654&business_date=$today", env.tok("tso2001")).status)
         assertEquals(0, sendA3(HttpMethod.Get, "/v1/web-entry/route-day?route_id=$route&business_date=${today.minusDays(30)}", tso).objA3().getValue("lines").jsonArray.size)
     }
 

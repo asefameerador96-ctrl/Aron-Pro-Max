@@ -64,6 +64,8 @@ class EntryUnlockTest {
         assertEquals(HttpStatusCode.Forbidden, post(body("zone", 987654)).status)
         for (u in listOf("tso1001", "dmo1001", "sr1001")) assertEquals(HttpStatusCode.Forbidden, post(body("zone", zone), env.tok(u)).status, u)
         assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Get, "/v1/admin/entry-unlocks", env.tok("tso1001")).status)
+        val someGrant = post(body("zone", zone)).objA3().strA3("unlock_id")
+        for (u in listOf("tso1001", "tso2001", "dmo1001")) assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Post, "/v1/admin/entry-unlocks/$someGrant/expire", env.tok(u), "{}").status, u)
         assertEquals(HttpStatusCode.OK, sendA3(HttpMethod.Get, "/v1/admin/entry-unlocks", env.tok("support1001")).status)
     }
 }
