@@ -16,7 +16,7 @@ export class TransportError extends Error {
 
 const aronMarker: Middleware = {
   onRequest({ request }) {
-    request.headers.set("X-Request-Id", crypto.randomUUID());
+    if (!request.headers.has("X-Request-Id")) request.headers.set("X-Request-Id", crypto.randomUUID());
     return request;
   },
   onResponse({ response }) {

@@ -46,6 +46,7 @@ function users(): Record<string, MockUser> {
     support1: u(3002, "support1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true),
     sr334001: u(1001, "sr334001", "Testing Banani", "SR", "sr-pass-1", { scope_version: 7, nodes: [{ type: "route", id: 10231, code: "R-334-01", name: "RouteDaily" }] }),
     locked1: u(4001, "locked1", "Locked User", "TSO", "locked-pass-1", nationalScope, false, "locked"),
+    newadmin1: u(4004, "newadmin1", "Fresh Admin", "ADMIN", "newadmin-pass-1", nationalScope, true), // no authenticator yet: enrols at the TOTP step
     pwmfa1: u(4003, "pwmfa1", "New Admin", "ADMIN", "pwmfa-pass-1", nationalScope, true, "password_change"),
     pwchange1: u(4002, "pwchange1", "New User", "TSO", "pwchange-pass-1", nationalScope, false, "password_change"),
   };
@@ -72,6 +73,8 @@ interface State {
   access: Map<string, { userId: string; exp: number }>;
   refresh: Map<string, { userId: string }>;
   mfaTokens: Map<string, string>;
+  /** Usernames that already confirmed an authenticator; the others may enrol one. */
+  mfaEnrolled: Set<string>;
   pwcTokens: Map<string, string>;
   refreshCount: number;
   nextId: number;
@@ -98,7 +101,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
+  return { stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["admin1", "madmin1", "msupport1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -246,12 +249,23 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     return send(res, 200, loginBody(state, u, { access_token: t.at, access_expires_at: new Date(t.exp).toISOString(), refresh_expires_at: "2027-01-02T00:00:00.000Z", scope: u.scope }), { "Set-Cookie": rtCookie(t.rt, 86400) });
   }
 
+  if (path === "/v1/auth/mfa/enrol" && method === "POST") {
+    // The mfa_token of the login step is accepted (audience aron-mfa); a second enrolment is a conflict (an admin resets it).
+    const tok = /^Bearer (.+)$/.exec(String(req.headers.authorization ?? ""))?.[1];
+    const username = tok ? state.mfaTokens.get(tok) : undefined;
+    if (!username) return send(res, 401, problem(401, "ERR_UNAUTHENTICATED"));
+    if (state.mfaEnrolled.has(username)) return send(res, 409, problem(409, "ERR_CONFLICT"));
+    // Like the backend: an unconfirmed enrolment is replaced; only a confirmed one (a good code at the verify step) is a conflict.
+    return send(res, 200, { otpauth_uri: `otpauth://totp/Aron:${username}?secret=JBSWY3DPEHPK3PXP&issuer=Aron`, recovery_codes: Array.from({ length: 10 }, (_, i) => `AB${i}C-D${i}EF`) });
+  }
+
   if (path === "/v1/auth/mfa/verify" && method === "POST") {
     const b = (await readJson(req)) as Record<string, unknown> | undefined;
     const username = typeof b?.mfa_token === "string" ? state.mfaTokens.get(b.mfa_token) : undefined;
     if (!b || !username) return send(res, 401, problem(401, "ERR_AUTH_MFA_INVALID"));
     if (b.code !== "123456" && b.code !== "AAAA-BBBB") return send(res, 401, problem(401, "ERR_AUTH_MFA_INVALID"));
     state.mfaTokens.delete(b.mfa_token as string);
+    state.mfaEnrolled.add(username);
     const u = state.users[username]!;
     const t = newTokens(state, username);
     return send(res, 200, loginBody(state, u, { access_token: t.at, access_expires_at: new Date(t.exp).toISOString(), refresh_expires_at: "2027-01-02T00:00:00.000Z", scope: u.scope }), { "Set-Cookie": rtCookie(t.rt, 86400) });
