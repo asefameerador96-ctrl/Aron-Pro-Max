@@ -112,4 +112,17 @@ class DuesAdjustmentTest {
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Get, "/v1/admin/dues-adjustments?cursor=!!", admin).status)
         assertEquals(HttpStatusCode.BadRequest, sendA3(HttpMethod.Post, "/v1/admin/dues-adjustments/$id/decision", env.tok("superadmin1001"), """{"decision":"maybe"}""").status)
     }
+
+    @Test
+    fun theAmountCapIsInclusiveAndAnswers400BeforeAnyInsert() = env.app {
+        val outlet = env.outletIds("MIR-SR-D", 1).single()
+        val admin = env.tok("admin1001")
+        val cap = 10_000_000_000_000L
+        suspend fun post(a: Long, kind: String = "correction") = sendA3(HttpMethod.Post, "/v1/admin/dues-adjustments", admin, body(UUID.randomUUID(), outlet, kind, a))
+        assertEquals(HttpStatusCode.Created, post(cap).status)
+        assertEquals(HttpStatusCode.Created, post(-cap).status)
+        assertEquals(HttpStatusCode.Created, post(-cap, "write_off").status)
+        for (a in listOf(cap + 1, -cap - 1, Long.MAX_VALUE, Long.MIN_VALUE)) assertEquals(HttpStatusCode.BadRequest, post(a).status, "$a")
+        assertEquals(HttpStatusCode.BadRequest, post(-cap - 1, "write_off").status)
+    }
 }
