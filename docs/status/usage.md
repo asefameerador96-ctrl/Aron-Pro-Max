@@ -93,3 +93,5 @@
 | 2026-10-08 06:50 | backend-core (session 12) | - | 232 | n/a | seven_day allowed_warning | parked, queue empty (only F-SYS-086 left, waits on backend-admin) |
 | 2026-10-08 06:50 | infra (session 6) | - | 224 | n/a | seven_day allowed_warning | idle; waits for owner's enrolment words (path A) |
 | 2026-10-08 06:50 | db (session 5) | - | - | n/a | seven_day allowed_warning | amr column (refresh_family) on lane/db 93789a03 |
+
+2026-10-15 06:50 UTC (lead check, restart day): usage five_hour allowed (resets 11:00 UTC); no per-lane token counts read this round to save usage. Active: integrator session 9, web-config (idle, head 30cf961f), web-admin (16a1adc7), web-dashboard (a12b464f), backend-admin (8964ddb5), backend-reports (600ec391). INT 26cfb26a; candidate zza red in web e2e only (no web-admin fix in it).
