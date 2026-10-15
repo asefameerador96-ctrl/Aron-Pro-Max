@@ -698,6 +698,7 @@ class IngestService(
                     "manual_entry".takeIf { ctx.manual != null && manualFlagAllowed })
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp, flags)
                 if (stampRegress) stampRegressSignal(h, ctx, r, bd, routeId)
+                if (r.type == "memo") memoDuplicateSuspect(h, ctx, r, payload, bd, routeId)
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
                 // Day states follow the record but never decide its outcome: a failure here is logged, the record stays stored.
@@ -818,6 +819,51 @@ class IngestService(
         } catch (e: Exception) {
             h.rollbackToSavepoint(sp)
             log.error("config stamp signal failed client_uuid=${r.clientUuid}", e)
+        }
+    }
+
+    /**
+     * MEMO_DUPLICATE_SUSPECT (lead ruling 2026-10-15, V0077): a memo stored while another live memo of the same outlet,
+     * gross and business date exists under a different memo number, one of the two keyed on paper (`entry_source =
+     * manual`), is flagged on the newer memo for review: typically a mistyped number on the paper copy of a memo the
+     * phone had stored, or the phone's copy arriving after such a keying. A flag, never a block; zero sales are not
+     * judged. In its own savepoint: a failed signal never rolls the stored memo back.
+     */
+    private fun memoDuplicateSuspect(h: Handle, ctx: Ctx, r: Rec, p: JsonObject, bd: LocalDate, routeId: Long?) {
+        val gross = p.long("gross_mtk") ?: return
+        val outlet = p.long("outlet_id") ?: return
+        if (gross <= 0) return
+        val sp = "memodup_${r.index}"
+        h.savepoint(sp)
+        try {
+            val twin = h.createQuery(
+                """
+                SELECT client_uuid::text AS cu, memo_no, entry_source FROM app.memo
+                WHERE business_date = :bd AND outlet_id = :o AND gross_mtk = :g AND memo_no <> :n AND status = 'active' AND voided_at IS NULL
+                  AND client_uuid <> CAST(:c AS uuid) AND (:manual OR entry_source = 'manual')
+                ORDER BY id LIMIT 1
+                """.trimIndent(),
+            ).bind("bd", bd).bind("o", outlet).bind("g", gross).bind("n", p.str("memo_no")).bind("c", r.clientUuid).bind("manual", ctx.manual != null)
+                .mapToMap().findOne().orElse(null)
+            if (twin != null) {
+                val weight: Double = runCatching<Double?> { (config.value("cfg.geo.integrity_weight") as JsonObject)["MEMO_DUPLICATE_SUSPECT"]?.jsonPrimitive?.content?.toDoubleOrNull() }.getOrNull() ?: 30.0
+                h.createUpdate(
+                    """
+                    INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+                    VALUES ('MEMO_DUPLICATE_SUSPECT', 2, :bd, 'memo', :sid, :u, :route, :score, CAST(:ev AS jsonb), :cv)
+                    ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
+                    """.trimIndent(),
+                ).bind("bd", bd).bind("sid", r.clientUuid).bind("u", ctx.up.userId).bind("route", routeId).bind("score", weight.coerceIn(0.0, 300.0))
+                    .bind("ev", kotlinx.serialization.json.buildJsonObject {
+                        put("memo_no", JsonPrimitive(p.str("memo_no"))); put("entry_source", JsonPrimitive(if (ctx.manual != null) "manual" else "device"))
+                        put("twin_client_uuid", JsonPrimitive(twin["cu"] as String)); put("twin_memo_no", JsonPrimitive(twin["memo_no"] as String))
+                        put("twin_entry_source", JsonPrimitive(twin["entry_source"] as String)); put("outlet_id", JsonPrimitive(outlet)); put("gross_mtk", JsonPrimitive(gross))
+                    }.toString()).bind("cv", config.configVersion()).execute()
+            }
+            h.release(sp)
+        } catch (e: Exception) {
+            h.rollbackToSavepoint(sp)
+            log.error("memo duplicate signal failed client_uuid=${r.clientUuid}", e)
         }
     }
 
