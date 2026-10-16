@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MOCK, login, loginOk, resetMock } from "./helpers";
+import { MOCK, login, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -154,7 +154,10 @@ test("support can read but not change master data", async ({ page }) => {
 
 test("logout clears the session", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
-  await page.getByRole("button", { name: "সাইন আউট" }).click();
+  // The sign-out button is a client component: a click before hydration is a native no-op (seen once in a long run).
+  const signOut = page.getByRole("button", { name: "সাইন আউট" });
+  await hydrated(signOut);
+  await signOut.click();
   await expect(page).toHaveURL(/\/login/);
   await page.goto("/");
   await expect(page).toHaveURL(/\/login/);

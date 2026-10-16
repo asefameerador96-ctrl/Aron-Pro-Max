@@ -101,7 +101,11 @@ object AronTokens {
     /** Elevation levels: page, card, sheet, dialog (soft, low-opacity shadows only). */
     object Elevation { val Page: Dp = 0.dp; val Card: Dp = 4.dp; val Sheet: Dp = 12.dp; val Dialog: Dp = 24.dp }
 
-    /** Glass and state alphas of the Calm Glass v1 recipes (tokens s3, android-glass s2 and s3), so no component carries a literal. Every constant here is used by the kit. */
+    /**
+     * Glass and state alphas of the Calm Glass v1 recipes (tokens s3, android-glass s2 and s3), so no component carries a
+     * literal. [BarTierA] and [BarTintA] are the tier A top bar OVER A BLUR BACKDROP and are reserved until that backdrop
+     * exists (android-glass s2 item 4); until then the top bar paints the tier B recipe on every tier.
+     */
     object Alpha {
         const val BarTierA = 0.86f; const val BarTierB = 0.96f; const val BarTintA = 0.04f
         const val TileTop = 0.66f; const val TileBottom = 0.58f; const val TileSheen = 0.30f; const val TileDark = 0.12f
@@ -132,8 +136,8 @@ object AronTokens {
         val ChipSlotCompact: Dp = 112.dp; val ChipSlotFull: Dp = 168.dp
         /** The widest a bottom-bar summary may be beside the buttons, and the least a primary may get (android-glass s6.7). */
         val BarSummaryMax: Dp = 96.dp; val BarPrimaryMin: Dp = 144.dp
-        /** The narrowest a banner's text may be before its action stacks under it. */
-        val BannerTextMin: Dp = 160.dp
+        /** Below this window width a banner's action sits under its text (a 360 dp phone has no room for Bangla beside it). */
+        val BannerInlineActionMinWidth: Dp = 400.dp
         /** Below this font scale tiles and bars keep their fixed heights; from it they reflow (tokens s6 `fontScale.tiles2`, `.stack`). */
         const val ReflowFontScale = 1.3f
         /** From this font scale the segmented control is a stack of radio rows and a banner's action sits under its text (tokens s6 `fontScale.vertical`). */

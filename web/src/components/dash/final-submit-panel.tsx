@@ -28,13 +28,13 @@ export function FinalSubmitPanel({ locale, kpis, zones, zoneFinal }: { locale: L
       <dl className="grid grid-cols-2 gap-2">
         <div>
           <dt className="text-caption text-secondary">{t(locale, "finalsubmit.submit_pct")}</dt>
-          <dd className="text-numeral text-primary tabular-nums" data-testid="submit-pct">
+          <dd className="whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="submit-pct">
             {pctText(locale, kpis.submit_pct_of_logged_in)}
           </dd>
         </div>
         <div>
           <dt className="text-caption text-secondary">{t(locale, "finalsubmit.completion_pct")}</dt>
-          <dd className="text-numeral text-primary tabular-nums" data-testid="completion-pct">
+          <dd className="whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="completion-pct">
             {pctText(locale, kpis.day_completion_pct)}
           </dd>
         </div>
@@ -60,7 +60,7 @@ export function FinalSubmitPicker({ locale, zones, selected, zoneFinal }: { loca
     <form method="get" className="flex flex-wrap items-end gap-2" data-testid="final-submit-picker">
       <label className="text-label text-secondary">
         <span className="block">{t(locale, "scope.zone")}</span>
-        <select name="node" defaultValue={selected ?? ""} className="mt-1 min-h-(--ctl-h) rounded-chip border border-input bg-raised px-3 text-body text-primary focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
+        <select name="node" defaultValue={selected ?? ""} className="mt-1 min-h-(--ctl-h) rounded-chip border border-input bg-raised px-3 text-body text-primary focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
           <option value="">{t(locale, "common.all")}</option>
           {zones.map((c) => (
             <option key={`${c.node.type}-${c.node.id}`} value={c.node.id} data-state={finishedNode(c, zoneFinal) ? "done" : "pending"}>
@@ -70,7 +70,7 @@ export function FinalSubmitPicker({ locale, zones, selected, zoneFinal }: { loca
           ))}
         </select>
       </label>
-      <button type="submit" className="inline-flex min-h-(--ctl-h) items-center gap-2 rounded-full border border-divider bg-raised px-5 text-body-strong text-accent hover:bg-pressed focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
+      <button type="submit" className="inline-flex min-h-(--ctl-h) items-center gap-2 rounded-full border border-divider bg-raised px-5 text-body-strong text-accent hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
         {t(locale, "common.filter")}
       </button>
     </form>

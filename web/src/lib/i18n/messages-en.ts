@@ -579,7 +579,7 @@ export const en = {
   "search.soon": "Search is not available yet.",
   "conn.live": "Live",
   "conn.offline": "Offline, data as of {at}",
-  "common.retry": "Try again",
+  "conn.offline_nostamp": "Offline, nothing loaded yet",
 } as const;
 
 export type MessageKey = keyof typeof en;

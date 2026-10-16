@@ -13,12 +13,14 @@
   --color-brand-900: var(--accent-on-container);
 }
 
+/* The canvas is the flat --bg-solid (html). The body stays transparent: in the root stacking context the body background would
+   paint over the fixed `.bg-page -z-10` gradient layer of layout.tsx and the page gradient and glows (web-glass s2.2) would never show. */
 html {
   background: var(--bg-solid);
   scroll-padding-top: calc(var(--topbar-h) + var(--head-h) + 8px);
 }
 body {
-  background: var(--bg-solid);
+  background: transparent;
   color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: 1rem;
@@ -39,7 +41,7 @@ button,
 summary,
 select,
 input {
-  transition: background-color var(--motion-fast) var(--ease-out-soft), border-color var(--motion-fast) var(--ease-out-soft), color var(--motion-fast) var(--ease-out-soft), box-shadow var(--motion-base) var(--ease-out-soft);
+  transition: background-color var(--motion-fast) var(--easing-out-soft), border-color var(--motion-fast) var(--easing-out-soft), color var(--motion-fast) var(--easing-out-soft), box-shadow var(--motion-base) var(--easing-out-soft);
 }
 @media (prefers-reduced-motion: reduce) {
   *,

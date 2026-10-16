@@ -25,3 +25,7 @@ secrets/
 # Node (web/ and contract lint)
 node_modules/
 .next/
+
+# Python build output (tools/)
+__pycache__/
+*.pyc

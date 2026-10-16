@@ -98,7 +98,13 @@ The portal follows `docs/design/web-glass.md` (binding values in `docs/design/to
 - **Colours only through tokens.** Use the Tailwind utilities of `src/styles/glass.css` (`text-primary`, `text-secondary`, `text-accent`
   for links and labels, `bg-accent-graphic` for icons and meters, `bg-success-container text-success-on-container` and the warning /
   danger / offline pairs for status, `bg-raised`, `border-input`, `rounded-chip|card|sheet`, `shadow-card|sheet|dialog`). No raw hex,
-  no `slate-*`, no `bg-white` in new code; the overrides in `globals.css` keep the untouched pages on the tokens for one release.
+  no `slate-*`, no `bg-white`, no `dark:` on a colour in new code: the ESLint rule `colors/no-raw-colors`
+  (`eslint-rules/no-raw-colors.mjs`) fails `npm run lint` for the Calm Glass files listed in `eslint.config.mjs`; add a page to
+  that list when it is restyled. The overrides in `globals.css` keep the untouched pages on the tokens for one release.
+- **Controls:** heights follow `--ctl-h` (`min-h-(--ctl-h)`, `size-(--ctl-h)` for round icon buttons): 40 px desk, 48 px on a
+  coarse pointer (tokens.css `@media (pointer: coarse)`, asserted by `e2e/calm-glass.spec.ts`). Never a fixed `h-10`.
+- **Money:** cards, hero figures and ranked bars print two decimals from integer milli-taka (`formatTakaDisplay`, half up);
+  report cells keep three (`formatTaka`, docs/24 s12.3). The taka sign is 0.8 em with a 14 px floor in the Bengali face (`.taka`).
 - **Surfaces:** `glass-card` (cards; never blurred), `glass-data` (tables, charts, key rows: near-opaque), `glass-bar` (top bar and
   stuck table headers: blur in tier A only), `glass-sheet` / `glass-panel` / `glass-dialog` / `glass-pop`.
 - **Type roles:** `text-hero`, `text-display`, `text-numeral`, `text-title`, `text-heading`, `text-body`, `text-body-strong`,

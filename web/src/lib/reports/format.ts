@@ -33,6 +33,21 @@ export function formatTaka(locale: Locale, mtk: number | string | bigint): strin
   return `${neg ? "-" : ""}${grouped}.${localiseDecimal(locale, frac)}`;
 }
 
+/** Money on cards, hero figures and ranked bars (docs/24 s7, tokens.md s7.1, web-glass s4): taka with exactly two decimals,
+ *  rounded half away from zero on the integer milli-taka (never `n / 1000`), locale digit grouping. Report cells keep the
+ *  three decimals of `formatTaka` (docs/24 s12.3: unit prices such as 7.935 must not be hidden). */
+export function formatTakaDisplay(locale: Locale, mtk: number | string | bigint): string {
+  const raw = typeof mtk === "number" ? (Number.isSafeInteger(mtk) ? String(mtk) : "") : String(mtk);
+  if (!/^-?\d+$/.test(raw)) return "—";
+  const neg = raw.startsWith("-");
+  const paisa = (BigInt(raw.replace(/^-/, "")) + 5n) / 10n; // milli-taka to paisa, half up on the magnitude
+  const whole = paisa / 100n;
+  const frac = String(paisa % 100n).padStart(2, "0");
+  const grouped = new Intl.NumberFormat(locale === "bn" ? "bn-BD-u-nu-beng" : "en-US", { useGrouping: true }).format(whole);
+  const sign = neg && paisa > 0n ? "-" : "";
+  return `${sign}${grouped}.${localiseDecimal(locale, frac)}`;
+}
+
 export const PII_MASK = "••••";
 
 export function formatCell(locale: Locale, col: ReportColumn, v: Cell, labels: { yes: string; no: string }): string {

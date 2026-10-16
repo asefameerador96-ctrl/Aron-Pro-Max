@@ -29,13 +29,13 @@ export function SearchField() {
       }}
     >
       <Icon name="search" size={18} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-secondary" />
-      <input ref={ref} type="search" name="command" placeholder={t("search.placeholder")} aria-label={t("search.label")} aria-describedby="search-note" autoComplete="off" className="h-10 w-full rounded-full border border-input bg-raised ps-10 pe-16 text-body text-primary placeholder:text-placeholder focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus" onFocus={() => setNote(false)} />
+      <input ref={ref} type="search" name="command" placeholder={t("search.placeholder")} aria-label={t("search.label")} aria-describedby="search-note" autoComplete="off" className="h-(--ctl-h) w-full rounded-full border border-input bg-raised ps-10 pe-16 text-body text-primary placeholder:text-placeholder focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" onFocus={() => setNote(false)} />
       {/* A key cap, not prose: keyboard keys are never translated. */}
       {/* eslint-disable-next-line local/no-hardcoded-text */}
       <kbd className="pointer-events-none absolute end-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-divider bg-raised px-1.5 text-[13px] leading-5 text-secondary md:inline" aria-hidden="true">
         Ctrl K
       </kbd>
-      <p id="search-note" role="status" className={`absolute start-0 top-11 z-40 ${note ? "glass-pop px-3 py-2" : "sr-only"} text-caption text-secondary`}>
+      <p id="search-note" role="status" className={`absolute start-0 top-[calc(var(--ctl-h)+4px)] z-40 ${note ? "glass-pop px-3 py-2" : "sr-only"} text-caption text-secondary`}>
         {t("search.soon")}
       </p>
     </form>

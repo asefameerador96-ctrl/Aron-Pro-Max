@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -42,23 +43,30 @@ import androidx.compose.ui.unit.sp
 const val TAKA_SIGN = '৳'
 private const val NBSP = ' '
 
+/** The smallest the taka sign and the decimals may render (tokens s7.1: "0.8 em, floor 14 sp"). */
+private const val MONEY_SPAN_FLOOR_SP = 14f
+
 /**
  * Builds the annotated amount of tokens s7.1: the `৳` after the amount at 0.8 em (floor 14 sp) in [AronFonts.Bengali],
- * joined with U+00A0 so it never wraps alone; on display and numeral sizes (26 sp and up) the two decimals at 0.75 em.
- * Pure, so a row model can precompute it off the main thread. [baseSp] is the style's font size in sp.
+ * joined with U+00A0 so it never wraps alone; on display and numeral sizes (26 sp and up) the two decimals at 0.75 em
+ * (floor 14 sp). The em values are relative to the SMALLEST size the text may shrink to ([moneyFloorSp] of [baseSp]), so
+ * the floors hold at the last auto-size step. Pure, so a row model can precompute it off the main thread. [baseSp] is the
+ * style's font size in sp.
  */
 fun moneyAnnotated(text: String, baseSp: Float, largeDecimals: Boolean): AnnotatedString {
     val signAt = text.indexOf(TAKA_SIGN)
     val amount = (if (signAt >= 0) text.substring(0, signAt) else text).trimEnd()
     val hasSign = signAt >= 0
-    val signEm = if (baseSp > 0f) maxOf(0.8f, 14f / baseSp) else 0.8f
+    val smallest = moneyFloorSp(baseSp)
+    val signEm = if (smallest > 0f) maxOf(0.8f, MONEY_SPAN_FLOOR_SP / smallest) else 0.8f
+    val decimalsEm = if (smallest > 0f) maxOf(0.75f, MONEY_SPAN_FLOOR_SP / smallest) else 0.75f
     // the decimals: the last '.' followed by exactly two digits (ASCII or Bengali)
     val dot = amount.lastIndexOf('.')
     val decimals = largeDecimals && dot >= 0 && amount.length - dot == 3 && amount.substring(dot + 1).all { it in '0'..'9' || it in '০'..'৯' }
     return buildAnnotatedString {
         if (decimals) {
             append(amount.substring(0, dot))
-            withStyle(SpanStyle(fontSize = 0.75.em)) { append(amount.substring(dot)) }
+            withStyle(SpanStyle(fontSize = decimalsEm.em)) { append(amount.substring(dot)) }
         } else {
             append(amount)
         }
@@ -77,9 +85,18 @@ fun moneyFloorSp(baseSp: Float): Float = when {
 }
 
 /**
- * A pre-formatted amount such as "4,391.00 ৳" (tokens s7.1, s7.3): single line, no ellipsis, shrink-to-fit down to the
- * style's floor; the sign at 0.8 em (floor 14 sp) in the Bengali face; `.00` at 0.75 em on display and numeral sizes.
- * Works for any number too (a count has no sign and no decimals). Formatting and digits are the caller's job.
+ * The size a large-text role renders at under the system font scale (tokens s7.3 `fontScale.cap`): `min(base x fontScale,
+ * base x 1.5)` expressed in sp (Compose multiplies sp by the font scale itself), so display and numeral stop growing at 1.5.
+ * Roles below 26 sp are not capped. Pure.
+ */
+fun moneyCappedSp(baseSp: Float, fontScale: Float): Float =
+    if (baseSp >= 26f && fontScale > AronTokens.Size.LargeTextCap) baseSp * AronTokens.Size.LargeTextCap / fontScale else baseSp
+
+/**
+ * A pre-formatted amount such as "4,391.00 ৳" (tokens s7.1, s7.3): single line, no ellipsis, capped at 1.5 x the base size
+ * under the system font scale, then shrink-to-fit down to the style's floor; the sign at 0.8 em (floor 14 sp) in the
+ * Bengali face; `.00` at 0.75 em on display and numeral sizes. Works for any number too (a count has no sign and no
+ * decimals). Formatting and digits are the caller's job.
  */
 @Composable
 fun MoneyText(
@@ -89,14 +106,16 @@ fun MoneyText(
     color: Color = LocalAronColors.current.textPrimary,
     textAlign: TextAlign = TextAlign.Start,
 ) {
-    val baseSp = if (style.fontSize.isSp) style.fontSize.value else 16f
-    val annotated = remember(text, baseSp) { moneyAnnotated(text, baseSp, largeDecimals = baseSp >= 26f) }
-    val floor = moneyFloorSp(baseSp)
+    val roleSp = if (style.fontSize.isSp) style.fontSize.value else 16f
+    val fontScale = LocalDensity.current.fontScale
+    val baseSp = moneyCappedSp(roleSp, fontScale)
+    val annotated = remember(text, roleSp) { moneyAnnotated(text, roleSp, largeDecimals = roleSp >= 26f) }
+    val floor = minOf(moneyFloorSp(roleSp), baseSp)
     val autoSize = if (floor < baseSp) TextAutoSize.StepBased(minFontSize = floor.sp, maxFontSize = baseSp.sp, stepSize = 1.sp) else null
     BasicText(
         text = annotated,
         modifier = modifier,
-        style = style.copy(color = color, textAlign = textAlign),
+        style = style.copy(color = color, textAlign = textAlign, fontSize = baseSp.sp),
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Clip,

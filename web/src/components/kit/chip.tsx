@@ -19,7 +19,8 @@ export function StatusChip({ tone, icon, children, className = "", testId, ...re
   const name = icon === undefined ? t.icon : icon;
   return (
     <span className={`inline-flex min-h-7 items-center gap-1.5 rounded-chip px-2.5 py-0.5 text-label ${t.cls} ${className}`} data-testid={testId} data-tone={tone} {...rest}>
-      {name ? <Icon name={name} size={16} className={tone === "quiet" ? "text-success" : ""} /> : null}
+      {/* The quiet dot inherits text-secondary: a nominal state carries no status colour (tokens s1, web-glass s12.5). */}
+      {name ? <Icon name={name} size={16} /> : null}
       <span>{children}</span>
     </span>
   );

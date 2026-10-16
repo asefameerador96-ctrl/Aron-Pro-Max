@@ -107,12 +107,12 @@ export function LoginForm({ next }: { next: string }) {
             <label htmlFor="login-password">{t("auth.password")}</label>
             <div className="relative">
               <input id="login-password" name="password" type={show ? "text" : "password"} autoComplete="current-password" required maxLength={128} className={`${input} pe-20`} />
-              <button type="button" onClick={() => setShow((v) => !v)} aria-pressed={show} data-testid="toggle-password" className="absolute inset-y-0 end-1.5 my-auto h-8 rounded-chip px-2 text-label text-accent hover:bg-pressed focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
+              <button type="button" onClick={() => setShow((v) => !v)} aria-pressed={show} data-testid="toggle-password" className="absolute inset-y-0 end-0 rounded-e-chip px-3 text-label text-accent hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:-outline-offset-2 outline-focus">
                 {t(show ? "auth.hide" : "auth.show")}
               </button>
             </div>
           </div>
-          <label className="flex min-h-10 items-center gap-2 text-body text-primary">
+          <label className="flex min-h-(--ctl-h) items-center gap-2 text-body text-primary">
             <input type="checkbox" name="remember" defaultChecked={false} data-testid="remember-me" className="size-5 accent-accent-graphic" />
             {t("auth.remember")}
           </label>

@@ -89,6 +89,20 @@ describe("themes and tiers", () => {
     expect(util("glass-sheet")).toMatch(/backdrop-filter: var\(--bf-sheet\)/);
     expect(util("glass-panel")).toMatch(/backdrop-filter: var\(--bf-bar\)/);
   });
+  it("the coarse-pointer floor is a :root rule (an html rule would lose to :root) and lifts controls and rows to 48 px", () => {
+    const coarse = block(css, /@media \(pointer: coarse\) \{/);
+    expect(coarse).toMatch(/^\s*:root \{/);
+    expect(coarse).not.toMatch(/\bhtml\s*\{/);
+    const v = vars(block(coarse, /:root \{/));
+    expect(v["--ctl-h"]).toBe("max(var(--ctl-h-base), 48px)");
+    expect(v["--row-h"]).toBe("max(var(--row-h-base), 48px)");
+  });
+  it("the taka sign is 0.8 em with a 14 px floor (tokens s7.1) and the kit has no self-referencing @theme entries", () => {
+    const glass = readFileSync(new URL("../src/styles/glass.css", import.meta.url), "utf8");
+    expect(block(glass, /\n\.taka \{/)).toMatch(/font-size: max\(0\.8em, 14px\);/);
+    const theme = block(glass, /@theme inline \{/);
+    for (const m of theme.matchAll(/(--[a-z0-9-]+):\s*var\((--[a-z0-9-]+)\)/g)) expect(m[1], `${m[1]} maps to itself`).not.toBe(m[2]);
+  });
   it("reduced motion caps every duration at 120 ms", () => {
     const rm = block(css, /@media \(prefers-reduced-motion: reduce\) \{/);
     for (const k of ["--motion-fast", "--motion-base", "--motion-sheet"]) expect(vars(rm)[k], k).toBe("120ms");

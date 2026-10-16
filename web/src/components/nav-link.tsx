@@ -11,7 +11,7 @@ export function NavLink({ href, icon, label, children, onNavigate }: { href: str
   const active = href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`);
   const text = label ?? children;
   return (
-    <Link href={href} aria-current={active ? "page" : undefined} title={label} className="nv rail-item focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus" onClick={onNavigate}>
+    <Link href={href} aria-current={active ? "page" : undefined} title={label} className="nv rail-item focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" onClick={onNavigate}>
       {icon ? <Icon name={icon} /> : null}
       <span className="rail-label min-w-0 flex-1 [overflow-wrap:anywhere]">{text}</span>
     </Link>

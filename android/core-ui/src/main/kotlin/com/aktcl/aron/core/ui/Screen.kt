@@ -37,7 +37,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 
 /**
  * The frame of every screen (screens-sr s0): the page background, the top bar, the content, and the bottom bar as a
@@ -141,9 +140,6 @@ fun AronBarIconButton(icon: ImageVector, text: String, onClick: () -> Unit, modi
     }
 }
 
-/** The widest a bar summary may be before the buttons (tokens s6: the primary keeps at least 144 dp). */
-private val SummaryMaxWidth = 128.dp
-
 /** One action of the bottom bar. */
 @Immutable
 data class AronBarAction(
@@ -199,7 +195,9 @@ fun AronBottomBar(
             } else {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                     if (hasSummary) {
-                        Column(Modifier.widthIn(max = SummaryMaxWidth)) {
+                        // the summary is capped at `size.barSummaryMax` (96 dp; MoneyText shrinks to its floor) so the primary keeps
+                        // `size.barPrimaryMin` (144 dp) on the 360 dp phone: 328 - 96 - 12 - 56 - 12 = 152 (android-glass s6.7)
+                        Column(Modifier.widthIn(max = AronTokens.Size.BarSummaryMax)) {
                             if (summaryLabel != null) Text(summaryLabel, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 2)
                             if (summaryValue != null) MoneyText(summaryValue, style = MaterialTheme.typography.headlineMedium)
                         }
@@ -210,7 +208,12 @@ fun AronBottomBar(
                         // beside a summary there is no room for a labelled secondary on 360 dp: an icon-only 56 dp button named by its text
                         AronBarIconButton(secondary.icon, secondary.text, secondary.onClick, enabled = secondary.enabled && !secondary.busy)
                     }
-                    AronPrimaryButton(primary.text, primary.onClick, Modifier.weight(if (secondary != null && !hasSummary) 0.6f else 1f), enabled = primary.enabled, icon = primary.icon, busy = primary.busy)
+                    AronPrimaryButton(
+                        primary.text, primary.onClick,
+                        Modifier.weight(if (secondary != null && !hasSummary) 0.6f else 1f).widthIn(min = AronTokens.Size.BarPrimaryMin),
+                        enabled = primary.enabled, icon = primary.icon, busy = primary.busy,
+                        horizontalPadding = if (hasSummary) AronTokens.Space.L else AronTokens.Space.Xl,
+                    )
                 }
                 // a secondary without an icon cannot sit beside a summary: it becomes a 48 dp text button under the primary (android-glass s6.7)
                 if (secondary != null && hasSummary && secondary.icon == null) {

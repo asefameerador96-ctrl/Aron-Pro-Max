@@ -3,7 +3,6 @@
 
 @theme inline {
   --font-sans: var(--font-ui);
-  --font-bengali: var(--font-bengali);
   --color-solid-page: var(--bg-solid);
   --color-glass: var(--glass-flat);
   --color-glass-field: var(--surface-glass-field);
@@ -93,10 +92,10 @@
   --text-table--font-weight: 400;
   --breakpoint-xs: 22.5rem;
   --breakpoint-3xl: 120rem;
-  --ease-out-soft: var(--ease-out-soft);
-  --ease-in-soft: var(--ease-in-soft);
-  --ease-in-out-soft: var(--ease-in-out-soft);
-  --ease-spring: var(--ease-spring);
+  --ease-out-soft: var(--easing-out-soft);
+  --ease-in-soft: var(--easing-in-soft);
+  --ease-in-out-soft: var(--easing-in-out-soft);
+  --ease-spring: var(--easing-spring);
 }
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *)); /* images and the map only; colours flip by variable */
 
@@ -205,11 +204,11 @@ html[data-overlay] .table-scroll thead th {
 }
 .shell-rail {
   width: var(--rail-w);
-  transition: width var(--motion-base) var(--ease-out-soft);
+  transition: width var(--motion-base) var(--easing-out-soft);
 }
 .shell-main {
   padding-inline-start: var(--rail-w);
-  transition: padding-inline-start var(--motion-base) var(--ease-out-soft);
+  transition: padding-inline-start var(--motion-base) var(--easing-out-soft);
 }
 /* Rail mode (md, and lg when collapsed): icons only, labels in the accessible name and the tooltip. */
 @media (min-width: 48rem) and (max-width: 63.99rem) {
@@ -246,7 +245,7 @@ html[data-overlay] .table-scroll thead th {
   font-size: 1rem;
   line-height: var(--lh-body);
   color: var(--text-secondary);
-  transition: background-color var(--motion-fast) var(--ease-out-soft), color var(--motion-fast) var(--ease-out-soft);
+  transition: background-color var(--motion-fast) var(--easing-out-soft), color var(--motion-fast) var(--easing-out-soft);
 }
 .nv:hover {
   background-color: var(--state-pressed);
@@ -258,7 +257,9 @@ html[data-overlay] .table-scroll thead th {
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
-/* Segmented control (web-glass s6): selected segment is accent-container with a 1.5 px accent ring and a check. */
+/* Segmented control (web-glass s6): selected segment is accent-container with a 1.5 px accent ring and a check. The control is
+   --ctl-h tall on a desk (segments 8 px shorter inside its padding); on a coarse pointer each segment is itself the 48 px target
+   (web-glass s13, s14), so the control grows by its padding instead. */
 .seg {
   display: inline-flex;
   min-height: var(--ctl-h);
@@ -271,6 +272,7 @@ html[data-overlay] .table-scroll thead th {
 }
 .seg > * {
   display: inline-flex;
+  min-height: calc(var(--ctl-h) - 8px);
   align-items: center;
   gap: 0.375rem;
   border-radius: 11px;
@@ -279,7 +281,7 @@ html[data-overlay] .table-scroll thead th {
   line-height: var(--lh-caption);
   font-weight: 600;
   color: var(--text-secondary);
-  transition: background-color var(--motion-fast) var(--ease-out-soft), color var(--motion-fast) var(--ease-out-soft);
+  transition: background-color var(--motion-fast) var(--easing-out-soft), color var(--motion-fast) var(--easing-out-soft);
 }
 .seg > :hover {
   background: var(--state-pressed);
@@ -337,7 +339,7 @@ html[data-overlay] .table-scroll thead th {
   background-color: var(--state-skeleton);
   background-image: linear-gradient(90deg, transparent 0%, var(--state-skeleton-sweep) 50%, transparent 100%);
   background-size: 200% 100%;
-  animation: skeleton-sweep 1.4s var(--ease-in-out-soft) 2;
+  animation: skeleton-sweep 1.4s var(--easing-in-out-soft) 2;
 }
 @keyframes page-in {
   from {
@@ -350,7 +352,7 @@ html[data-overlay] .table-scroll thead th {
   }
 }
 .page-in {
-  animation: page-in var(--motion-base) var(--ease-out-soft) both;
+  animation: page-in var(--motion-base) var(--easing-out-soft) both;
 }
 @keyframes sheet-in {
   from {
@@ -363,7 +365,7 @@ html[data-overlay] .table-scroll thead th {
   }
 }
 dialog.sheet-start[open] {
-  animation: sheet-in var(--motion-sheet) var(--ease-spring) both;
+  animation: sheet-in var(--motion-sheet) var(--easing-spring) both;
 }
 dialog.sheet-start::backdrop {
   background: var(--surface-scrim);
@@ -389,7 +391,7 @@ dialog.sheet-start::backdrop {
 /* Money (web-glass s4): the taka sign sits after the amount in the Bengali face, joined by a no-break space. */
 .taka {
   font-family: var(--font-bengali);
-  font-size: 0.6em;
+  font-size: max(0.8em, 14px);
   font-weight: 600;
   margin-inline-start: 0.2em;
 }
@@ -399,4 +401,26 @@ dialog.sheet-start::backdrop {
 }
 .money .frac {
   font-size: 0.75em;
+}
+
+/* Numbers never wrap or clip (tokens s7.3): a figure on a card shrinks to the card's inline size (the card is a `@container`)
+   instead of breaking inside the number. Unlayered, so it wins over the text-* utility's font-size; line heights stay. */
+.fit-number.text-hero {
+  font-size: min(var(--text-hero, 3rem), 12.5cqi);
+}
+.fit-number.text-display {
+  font-size: min(var(--text-display, 2.125rem), 10cqi);
+}
+.fit-number.text-numeral {
+  font-size: min(var(--text-numeral, 1.625rem), 8cqi);
+}
+
+/* Coarse pointer: each segment is the 48 px target; the control grows by its 3 px padding and 1 px border on each side. */
+@media (pointer: coarse) {
+  .seg {
+    min-height: calc(var(--ctl-h) + 8px);
+  }
+  .seg > * {
+    min-height: var(--ctl-h);
+  }
 }

@@ -17,7 +17,7 @@ export default async function AdminHome() {
       <ul className="grid gap-(--gap) sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map((x) => (
           <li key={x.href}>
-            <Link href={x.href} className="glass-card flex min-h-28 items-center gap-4 p-(--card-pad) text-primary transition-[box-shadow,transform] duration-fast ease-out-soft hover:shadow-sheet focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
+            <Link href={x.href} className="glass-card flex min-h-28 items-center gap-4 p-(--card-pad) text-primary transition-[box-shadow,transform] duration-fast ease-out-soft hover:shadow-sheet focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-accent-container text-accent-on-container" aria-hidden="true">
                 <Icon name={x.icon} size={24} />
               </span>

@@ -17,7 +17,7 @@ export function LogoutButton() {
         await fetch("/api/bff/logout", { method: "POST" }).catch(() => undefined);
         window.location.replace("/login");
       }}
-      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-divider bg-raised px-3 text-label text-accent hover:bg-pressed focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus aria-disabled:bg-disabled-fill aria-disabled:text-disabled-label"
+      className="inline-flex min-h-(--ctl-h) items-center gap-2 rounded-full border border-divider bg-raised px-3 text-label text-accent hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus aria-disabled:bg-disabled-fill aria-disabled:text-disabled-label"
     >
       <Icon name="logout" size={18} />
       <span className="hidden sm:inline">{t("auth.logout")}</span>

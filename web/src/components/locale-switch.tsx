@@ -9,7 +9,7 @@ export function LocaleSwitch() {
   const qs = useSearchParams().toString();
   const next = encodeURIComponent(path + (qs ? `?${qs}` : ""));
   return (
-    <nav aria-label={t("common.language")} className="seg min-h-10">
+    <nav aria-label={t("common.language")} className="seg">
       {(["bn", "en"] as const).map((l) => (
         <a key={l} href={`/api/bff/locale?l=${l}&next=${next}`} lang={l} aria-current={l === locale ? "true" : undefined}>
           {t(l === "bn" ? "common.language.bn" : "common.language.en")}

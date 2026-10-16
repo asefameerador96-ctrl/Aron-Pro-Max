@@ -55,7 +55,8 @@ object AronEasing {
 /**
  * Pressed scale (tokens s8 `motion.press`): [pressedScale] over 90 ms linear while pressed, back over `motion.fast`
  * ease-out on release; no transform under reduced motion. The scale is applied in the layer phase only, so a press
- * never recomposes the control. Place it after the shadow and before the paint so the shadow scales with the control.
+ * never recomposes the control. Place it BEFORE the shadow in the chain (outermost): the shadow layer is then inside
+ * the scaled layer and shrinks with the control.
  */
 @Composable
 fun Modifier.pressScale(interactionSource: InteractionSource, pressedScale: Float): Modifier {
@@ -68,7 +69,12 @@ fun Modifier.pressScale(interactionSource: InteractionSource, pressedScale: Floa
     return graphicsLayer { scaleX = scale; scaleY = scale }
 }
 
-/** Forward screen enter (tokens s8 `motion.base`): 8 dp from the end plus a 220 ms ease-out fade; reduced motion: a 120 ms fade. */
+/**
+ * Enter transition for SMALL IN-SCREEN CONTENT (a banner, a chip state, a row that appears; `AnimatedVisibility` or
+ * `AnimatedContent` of a leaf): 8 dp from the end plus a 220 ms ease-out fade; reduced motion: a 120 ms fade. It is built
+ * from `fadeIn`, which renders through an offscreen layer, so it is NEVER used for a whole screen, sheet or dialog
+ * (android-glass s1 item 3): screen-to-screen navigation uses [AronScreenTransition], whose fade is `ModulateAlpha`.
+ */
 @Composable
 fun aronEnterTransition(forward: Boolean = true): EnterTransition {
     if (LocalReducedMotion.current) return fadeIn(tween(AronTokens.Motion.Reduced, easing = LinearEasing))
@@ -79,7 +85,7 @@ fun aronEnterTransition(forward: Boolean = true): EnterTransition {
     return fadeIn(spec) + slideInHorizontally(slide) { if (fromEnd) offset else -offset }
 }
 
-/** Screen exit: the leaving screen only fades (180 ms ease-in on back, 220 ms ease-out forward); reduced motion: 120 ms. */
+/** The exit twin of [aronEnterTransition], for small in-screen content only: a fade (180 ms ease-in on back, 220 ms ease-out forward); reduced motion: 120 ms. Whole screens use [AronScreenTransition]. */
 @Composable
 fun aronExitTransition(forward: Boolean = true): ExitTransition {
     if (LocalReducedMotion.current) return fadeOut(tween(AronTokens.Motion.Reduced, easing = LinearEasing))

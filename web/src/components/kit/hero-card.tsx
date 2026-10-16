@@ -1,6 +1,8 @@
 // Hero card (web-glass s7.3, screens-web s1): the one text-hero figure of a dashboard. Money keeps the formatter's string
-// (integer milli-taka, three decimals, locale digits); the decimals are set at 0.75 em and the taka sign at 0.6 em in the
-// Bengali face, joined to the amount so it never wraps alone. The sparkline is optional and only drawn from real numbers.
+// (integer milli-taka shown with two decimals, locale digits; lib/reports/format formatTakaDisplay); the decimals are set at
+// 0.75 em and the taka sign at 0.8 em with a 14 px floor (tokens.md s7.1 wins over the 0.6 em of screens-web) in the Bengali
+// face, joined to the amount so it never wraps alone. The figure shrinks to the card (`fit-number`) rather than wrapping.
+// The sparkline is optional and only drawn from real numbers.
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { STRETCHED_LINK } from "./stat-card";
@@ -42,10 +44,10 @@ export function Sparkline({ points, label }: { points: readonly number[]; label:
 
 export function HeroCard({ label, amount, sub, delta, sparkline, sparklineLabel, href, testId, valueTestId, caption, className = "" }: { label: string; amount: string; sub?: ReactNode; delta?: ReactNode; sparkline?: readonly number[]; sparklineLabel?: string; href?: string; testId?: string; valueTestId?: string; caption?: ReactNode; className?: string }) {
   return (
-    <section data-testid={testId} className={`glass-card relative flex min-h-42 flex-col gap-2 p-(--card-pad) text-primary ${className}`}>
+    <section data-testid={testId} className={`glass-card @container relative flex min-h-42 flex-col gap-2 p-(--card-pad) text-primary ${className}`}>
       <h2 className="text-label text-secondary">{href ? <Link href={href} className={STRETCHED_LINK}>{label}</Link> : label}</h2>
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <p className="text-hero text-primary [overflow-wrap:anywhere]">
+        <p className="fit-number min-w-0 text-hero text-primary">
           <Money amount={amount} testId={valueTestId} />
         </p>
         {sparkline && sparklineLabel ? <Sparkline points={sparkline} label={sparklineLabel} /> : null}

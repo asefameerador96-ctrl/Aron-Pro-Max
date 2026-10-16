@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { TileMeta, type StaleReason } from "@/components/reports/tile-meta";
 import { formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
-import { formatTaka } from "@/lib/reports/format";
+import { formatTakaDisplay } from "@/lib/reports/format";
 
 export interface TileDate {
   businessDate: string;
@@ -36,6 +36,7 @@ export function pctText(locale: Locale, v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : `${formatNumber(locale, v, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
-export const takaText = (locale: Locale, mtk: number): string => formatTaka(locale, mtk);
+/** Card and bar money: two decimals (docs/24 s7, tokens s7.1); report cells keep three through formatTaka. */
+export const takaText = (locale: Locale, mtk: number): string => formatTakaDisplay(locale, mtk);
 
 export const n = (locale: Locale, v: number): string => formatNumber(locale, v);

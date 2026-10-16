@@ -99,13 +99,13 @@ export function ThemeMenu() {
     notify();
   }
 
-  const option = "flex h-10 w-full items-center gap-2 rounded-chip px-3 text-body text-secondary hover:bg-pressed aria-[checked=true]:bg-accent-container aria-[checked=true]:text-accent-on-container aria-[checked=true]:font-semibold";
+  const option = "flex min-h-(--ctl-h) w-full items-center gap-2 rounded-chip px-3 text-body text-secondary hover:bg-pressed aria-[checked=true]:bg-accent-container aria-[checked=true]:text-accent-on-container aria-[checked=true]:font-semibold";
   return (
     <details ref={details} className="relative" data-testid="theme-menu">
-      <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full text-secondary hover:bg-pressed [&::-webkit-details-marker]:hidden" title={t("theme.label")} aria-label={t("theme.label")}>
+      <summary className="flex size-(--ctl-h) cursor-pointer list-none items-center justify-center rounded-full text-secondary hover:bg-pressed [&::-webkit-details-marker]:hidden" title={t("theme.label")} aria-label={t("theme.label")}>
         <Icon name={THEME_ICON[theme]} />
       </summary>
-      <div className="glass-pop absolute end-0 top-12 z-40 w-64 p-2" role="group" aria-label={t("theme.label")}>
+      <div className="glass-pop absolute end-0 top-[calc(var(--ctl-h)+8px)] z-40 w-64 p-2" role="group" aria-label={t("theme.label")}>
         <p className="px-3 pb-1 pt-2 text-label text-secondary">{t("theme.label")}</p>
         <div role="radiogroup" aria-label={t("theme.label")}>
           {THEMES.map((v) => (

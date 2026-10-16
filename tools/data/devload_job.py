@@ -6,8 +6,10 @@ path from a laptop is the environment's psql job `caj-aron-dev-dblogins` (infra/
 the per-app logins and the dev seed. A job execution cannot mount a new file, so the SQL travels through a private
 blob: this script uploads it (your Entra login), starts one execution with a template override whose command fetches
 the blob with the job's managed identity (a token from the Container Apps identity endpoint; no SAS, no key, nothing
-secret in the execution record), runs psql with ON_ERROR_STOP, waits, prints the console log from Log Analytics and
-deletes the blob. Roles needed while it runs (test account, removed afterwards): you = Storage Blob Data Contributor
+secret in the execution record), runs psql with ON_ERROR_STOP (VERBOSITY=terse: a failing statement logs only the
+error message, never the statement text or its LINE context, so an outlet batch with names and phones cannot land in
+Log Analytics; the command tags INSERT n / UPDATE n stay, they are the run's evidence),
+waits, prints the console log from Log Analytics and deletes the blob. Roles needed while it runs (test account, removed afterwards): you = Storage Blob Data Contributor
 on the account, the job identity = Storage Blob Data Reader on the container.
 
     python -P tools/data/devload_job.py FILE.sql [FILE2.sql ...] [--rg rg-aron-dev] [--keep-blob] [--no-wait]
@@ -37,7 +39,7 @@ FETCH_AND_RUN = (
     "wget -q -O /tmp/load.sql --header \"Authorization: Bearer $tok\" --header 'x-ms-version: 2020-04-08' \"$ARON_BLOB_URL\" "
     "|| { echo 'devload: blob download failed'; exit 3; }; "
     "echo \"devload: `wc -c < /tmp/load.sql` bytes of SQL\"; "
-    "psql \"${ARON_DB_URL#jdbc:}\" -X -v ON_ERROR_STOP=1 -f /tmp/load.sql; "
+    "psql \"${ARON_DB_URL#jdbc:}\" -X -v ON_ERROR_STOP=1 -v VERBOSITY=terse -f /tmp/load.sql; "
     "echo devload: psql exit $?"
 )
 

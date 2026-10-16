@@ -41,7 +41,7 @@ export function NextLink({ href, label }: { href: string | null; label: string }
   if (!href) return null;
   return (
     <p>
-      <Link href={href} data-testid="next-page" className="inline-flex min-h-10 items-center gap-1 rounded-chip text-body-strong text-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
+      <Link href={href} data-testid="next-page" className="inline-flex min-h-(--ctl-h) items-center gap-1 rounded-chip text-body-strong text-accent hover:underline focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
         {label}
         <Icon name="chevron-right" size={18} />
       </Link>

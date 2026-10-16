@@ -22,7 +22,7 @@ export function RankedBars({ rows, label, testId, max: maxIn, className = "" }: 
         return (
           <li key={r.key} data-label={r.label} data-value={r.value} className="grid grid-cols-[minmax(5.5rem,min(220px,30%))_1fr] items-center gap-x-3 gap-y-0.5">
             {r.href ? (
-              <Link href={r.href} className="rounded-chip hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
+              <Link href={r.href} className="rounded-chip hover:underline focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
                 {name}
               </Link>
             ) : (

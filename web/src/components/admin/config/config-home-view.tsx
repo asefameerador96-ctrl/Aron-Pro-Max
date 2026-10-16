@@ -35,7 +35,7 @@ export function ConfigHomeView({ locale, version, pending, recent, reach }: { lo
         <ul className="grid gap-(--gap) sm:grid-cols-2 lg:grid-cols-4">
           {HOME_LINKS.map((l) => (
             <li key={l.href}>
-              <Link href={l.href} className="glass-card flex min-h-20 items-center gap-3 p-4 text-primary transition-[box-shadow] duration-fast ease-out-soft hover:shadow-sheet focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
+              <Link href={l.href} className="glass-card flex min-h-20 items-center gap-3 p-4 text-primary transition-[box-shadow] duration-fast ease-out-soft hover:shadow-sheet focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-container text-accent-on-container" aria-hidden="true">
                   <Icon name={l.icon} size={20} />
                 </span>

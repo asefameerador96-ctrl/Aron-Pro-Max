@@ -393,8 +393,9 @@ html:lang(bn):not([data-density]) {
 html:lang(bn)[data-density="compact"] {
   --table-fs: 0.875rem;
 }
+/* `:root`, not `html`: the base rule above is `:root` (0,1,0) and an `html` rule (0,0,1) would lose to it, leaving the floor dead. */
 @media (pointer: coarse) {
-  html {
+  :root {
     --ctl-h: max(var(--ctl-h-base), 48px);
     --row-h: max(var(--row-h-base), 48px);
   }
@@ -407,10 +408,10 @@ html:lang(bn)[data-density="compact"] {
   --motion-base: 220ms;
   --motion-sheet: 320ms;
   --motion-reduced: 120ms;
-  --ease-out-soft: cubic-bezier(0.2, 0, 0, 1);
-  --ease-in-soft: cubic-bezier(0.4, 0, 1, 1);
-  --ease-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-spring: linear(0, 0.086 10%, 0.263 20%, 0.454 30%, 0.622 40%, 0.754 50%, 0.851 60%, 0.916 70%, 0.958 80%, 0.983 90%, 1);
+  --easing-out-soft: cubic-bezier(0.2, 0, 0, 1);
+  --easing-in-soft: cubic-bezier(0.4, 0, 1, 1);
+  --easing-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-spring: linear(0, 0.086 10%, 0.263 20%, 0.454 30%, 0.622 40%, 0.754 50%, 0.851 60%, 0.916 70%, 0.958 80%, 0.983 90%, 1);
 }
 @media (prefers-reduced-motion: reduce) {
   :root {

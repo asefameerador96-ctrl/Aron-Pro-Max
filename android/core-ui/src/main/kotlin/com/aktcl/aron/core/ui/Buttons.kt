@@ -1,10 +1,7 @@
 package com.aktcl.aron.core.ui
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -23,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -63,6 +61,8 @@ fun AronPrimaryButton(
     enabled: Boolean = true,
     icon: ImageVector? = null,
     busy: Boolean = false,
+    /** 24 dp (android-glass s6.1); the bottom bar passes 16 dp beside a summary so an English label like "Submit sales" keeps one line in its 152 dp. */
+    horizontalPadding: androidx.compose.ui.unit.Dp = AronTokens.Space.Xl,
 ) {
     val c = LocalAronColors.current
     val tier = LocalGlassTier.current
@@ -99,13 +99,14 @@ fun AronPrimaryButton(
             .fillMaxWidth()
             .heightIn(min = AronTokens.Touch.Primary)
             .aronFocusRing(shape)
-            .then(shadow)
+            // the press scale is OUTSIDE the shadow layer so the spot shadow shrinks with the button (Motion.kt)
             .pressScale(interaction, AronTokens.Motion.ButtonPressScale)
+            .then(shadow)
             .then(paint)
             .clip(shape)
             .semantics { if (busy) stateDescription = busyText }
             .clickable(interactionSource = interaction, indication = null, enabled = active, role = Role.Button, onClick = onClick)
-            .padding(horizontal = AronTokens.Space.Xl, vertical = AronTokens.Space.M),
+            .padding(horizontal = horizontalPadding, vertical = AronTokens.Space.M),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -225,16 +226,20 @@ fun AronTextButton(
     }
 }
 
-/** A 20 dp three-quarter arc that turns while busy (static under reduced motion). Functional, not decorative. */
+/**
+ * A 20 dp three-quarter arc that turns while busy: like the sync chip's arc (tokens s8), one turn per 1.2 s for at most
+ * three turns after entering busy, then it holds (the word beside it carries the meaning; no unbounded loop). Static
+ * under reduced motion. Functional, not decorative.
+ */
 @Composable
 internal fun BusyArc(color: Color, size: androidx.compose.ui.unit.Dp) {
     val reduced = LocalReducedMotion.current
-    val angle: Float = if (reduced) 0f else {
-        val t = rememberInfiniteTransition()
-        val a by t.animateFloat(0f, 360f, infiniteRepeatable(tween(AronTokens.Motion.SyncTurnMillis, easing = LinearEasing), RepeatMode.Restart))
-        a
+    val rotation = remember { Animatable(0f) }
+    LaunchedEffect(reduced) {
+        rotation.snapTo(0f)
+        if (!reduced) rotation.animateTo(360f * AronTokens.Motion.SyncMaxTurns, tween(AronTokens.Motion.SyncTurnMillis * AronTokens.Motion.SyncMaxTurns, easing = LinearEasing))
     }
-    Canvas(Modifier.size(size).graphicsLayer { rotationZ = angle }) {
+    Canvas(Modifier.size(size).graphicsLayer { rotationZ = rotation.value }) {
         val w = 2.dp.toPx()
         drawArc(color, startAngle = 0f, sweepAngle = 270f, useCenter = false, topLeft = Offset(w / 2, w / 2), size = Size(this.size.width - w, this.size.height - w), style = Stroke(w, cap = StrokeCap.Round))
     }

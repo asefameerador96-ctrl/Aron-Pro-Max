@@ -22,7 +22,13 @@ Updated 2026-10-17 (data package, lane/ui-calm-glass worktree). Dev = the test a
 Mirpur division by territory (outlets, all with coordinates): 1208 Gabtoli 2,409 (2,173 confirmed pins), 1209 Mirpur
 3,618 (3,589), 1210 Pallabi 2,881 (2,780), 1214 Uttara Model 2,886 (2,869), 1218 Dokhin Khan 2,245 (2,169).
 459 outlets sit on a 6-decimal point shared by 3 or more outlets and are `location_confirmed = false` (DQ-48,
-`cfg.outlet.placeholder_pin_min_shared` = 3); their first visit takes the correction path, not a geo-fail.
+`cfg.outlet.placeholder_pin_min_shared` = 3). They are **flagged, not spared**: the importer stores them with
+`location_basis = master` and the shared coordinates, so the phone (basis `provisional` for an unconfirmed pin,
+`SrDay`) and the server re-check (`GeoRecheck`, `master` is usable) both give a normal distance verdict against the
+shared pin; a visit at the real shop then comes out `out_of_range` and Force Sale with a photo is the correction path
+(the force-sale fix feeds the location request of docs/16 s4.4). The no-verdict path (`no_outlet_location`,
+`force_sale_required`) would need `location_basis = placeholder` instead; that is a spec decision for DECISIONS.md,
+not taken here. None of the six test outlets below is on a shared pin.
 
 A second run of the whole load (hierarchy, outlets, seed 06, radii) changed nothing: identical counts, no row with
 `version > 1`, still one radii version (job execution `caj-aron-dev-dblogins-ydmd7c9`).
@@ -44,20 +50,23 @@ database or archive the rows; the repo holds only scripts, this page and the PII
 | `tools/data/test_retailers_to_sql.py` | 16 unit tests of the cleaning rules on synthetic values (`python -P tools/data/test_retailers_to_sql.py`) |
 | `tools/data/geofence_radius_to_csv.py` | PDF (word positions, pymupdf) -> `docs/evidence/geofence-radius-2026-09.csv`, checked against every subtotal |
 | `tools/data/geofence_radius_to_sql.py` | the CSV -> one audited config version with 291 territory values (`cfg.geo.radius_m`) |
-| `tools/data/devload_job.py` | runs a SQL file on dev through the psql job (see "DB path") |
+| `tools/data/devload_job.py` | runs a SQL file on dev through the psql job (see "DB path"); psql `VERBOSITY=terse`, so a failing statement logs its message only, never the statement text (no outlet batch can reach Log Analytics) |
 | `db/seed/06_dev_real_route.sql` | sr1001 primary on the two real routes, `route_planned`, zone 5747 sales plan; no-op where the routes are absent (CI, local) |
 | `docs/evidence/geofence-radius-2026-09.csv` | 291 rows: wing, division, territory, territory_code, current_radius_m, proposed_radius_m, wing_code, division_code |
 | `%USERPROFILE%\AronData\in\*` (laptop only) | the xlsx (95 MB) and the PDF; outputs under `AronData\out\` (SQL with PII, stats, nearest routes) |
 
-Reproduce (laptop, about 7 minutes for the sheet):
+Reproduce (Git Bash in the worktree, about 7 minutes for the sheet; `D=$USERPROFILE/AronData`):
 
+```bash
+D="$USERPROFILE/AronData"
+python -P tools/data/geofence_radius_to_csv.py "$D/in/geofence-radius-2026-09.pdf" docs/evidence/geofence-radius-2026-09.csv
+python -P tools/data/retailers_to_sql.py "$D/in/retailers-2026-10-11.xlsx" --out "$D/out/mirpur-load.sql" \
+    --division Mirpur --codes-csv docs/evidence/geofence-radius-2026-09.csv --stats-out "$D/out/stats.md" --nearest 23.8069,90.3687
+python -P tools/data/geofence_radius_to_sql.py docs/evidence/geofence-radius-2026-09.csv --out "$D/out/radii.sql"
+python -P tools/data/devload_job.py "$D/out/mirpur-load.sql" db/seed/06_dev_real_route.sql "$D/out/radii.sql"
 ```
-python -P tools/data/geofence_radius_to_csv.py %USERPROFILE%\AronData\in\geofence-radius-2026-09.pdf docs/evidence/geofence-radius-2026-09.csv
-python -P tools/data/retailers_to_sql.py %USERPROFILE%\AronData\in\retailers-2026-10-11.xlsx --out %USERPROFILE%\AronData\out\mirpur-load.sql ^
-    --division Mirpur --codes-csv docs/evidence/geofence-radius-2026-09.csv --stats-out %USERPROFILE%\AronData\out\stats.md --nearest 23.8069,90.3687
-python -P tools/data/geofence_radius_to_sql.py docs/evidence/geofence-radius-2026-09.csv --out %USERPROFILE%\AronData\out\radii.sql
-python -P tools/data/devload_job.py %USERPROFILE%\AronData\out\mirpur-load.sql db/seed/06_dev_real_route.sql %USERPROFILE%\AronData\out\radii.sql
-```
+
+(PowerShell: the same lines with `$env:USERPROFILE` and a backtick in place of the backslash continuation.)
 
 ## DB path used (test account)
 
@@ -78,6 +87,14 @@ account scope) and "Storage Blob Data Reader" (`id-aron-dev-migrate`, container 
 Executions (all Succeeded, 2026-10-16 17:43 to 18:08 UTC): `u1eojui` (read-only probe), `jq11gxk` (schema probe),
 `bcigzjc` (hierarchy + outlets), `l48fzuo` (seed 06 + radii + verification), `ydmd7c9` (second run and the
 nearest-outlet listing). Dev migrations at load time: V0083.
+
+Review fix, 2026-10-16 18:56 UTC, execution `ua9lq59` (Succeeded; the same two role assignments and the container
+were re-created for the run and removed again afterwards): the corrected `geofence_radius_to_sql.py` re-run as a
+**no-op** (no version made, `UPDATE 0`, `INSERT 0 0`, still 3 versions and 291 open values) followed by a
+**changed-proposal proof inside a rolled-back transaction** (a scratch CSV with one territory at 25 m: version 4
+created with summary "... (1 territories)", the territory's version-3 row closed with `superseded_in_version = 4`,
+the new row open under version 4, 291 open values; then `ROLLBACK`), and an after-check: 3 versions, 0 closed
+territory values, 51/108/71/34/5/22. Nothing of the proof persists on dev.
 
 ## Mapping decisions
 
@@ -101,6 +118,11 @@ nearest-outlet listing). Dev migrations at load time: V0083.
 - Phone: Bengali digits transliterated, `880` dropped, leading `0` restored; 1,225 Mirpur values do not fit
   `^01[3-9][0-9]{8}$` and are stored as null (counted, never altered).
 - Outlet code: the stray `:` / `*` / danda prefix is stripped (P-07); duplicates keep the first row (0 in Mirpur).
+- Parent conflicts: a territory printed under two divisions, a zone under two territories or a route under two zones
+  keeps the majority parent and is counted in the statistics (whole sheet: see the quality counters below).
+- Placement history: an open `outlet_placement_history` row is closed (`valid_to = today`) when a re-import moves the
+  outlet to another route or cluster, and corrected in place when the move happens on the day the open row started
+  (a same-day close would violate `valid_to > valid_from`), so the history never diverges from `outlet.route_id`.
 - `location_basis = master`, `location_confirmed = true` except shared points (above); `visit_sequence` = row order
   within the route; no `house` rows (the sheet has none; `zone.house_id` stays null).
 - Radii: **one** audited config version for the whole table (the db/seed/04 pattern: a version is a change set,
@@ -108,8 +130,13 @@ nearest-outlet listing). Dev migrations at load time: V0083.
   C2 (territory scope, docs/19 s3.2.1), bounds checked against `cfg.geo.radius_min_m` / `radius_max_m` (20 .. 2000)
   in the SQL itself. The current radius 100 is not written anywhere: it is the registry default of `cfg.geo.radius_m`
   and remains the fallback for every node without a territory value (verified: seeded outlet MIR-D-001 resolves 100).
-  A re-run that finds a changed proposal closes the open row (`effective_to`, `superseded_in_version`) and inserts
-  the new value under a new version; it never edits an old version.
+  A re-run that finds at least one territory whose open value differs from the CSV (or is missing) opens a **new**
+  `cfg_version` (its number captured with `RETURNING` into a temp table; the summary carries the count of changed
+  territories), closes each differing open row (`effective_to = now()`, `superseded_in_version = the new version`)
+  and inserts the new value under the new version, so `config_version` advances and phones at the old version pull
+  the delta; a re-run that finds nothing to change creates no version and touches no row. A committed version is
+  never reused or edited (the first revision of the script looked the version up by its summary and would have
+  written a changed proposal under the existing version 3: fixed before any re-run with changed radii).
 - Resolution verified in SQL with the ConfigResolver precedence (outlet 100 > route 90 > zone 80 > geo_class 70 >
   territory 50 > division 40 > wing 30 > global 0): the Mirpur outlets below resolve **20 m, winning scope
   territory**. The bundle resolves `radius_m` per outlet with the same chain (`BundleService.outlets`) and the server
@@ -150,7 +177,8 @@ Steps:
    better; a worse fix shows "Your location is not accurate enough. Refresh and try again." (up to 3 refreshes).
 3. **Out of range.** Open the next outlet from 50 m or more away. Expected: "You are outside the shop's allowed
    distance. Move closer, refresh your location, or use Force Sale." with the distance line "(allowed 20 m)"; Force
-   Sale asks for a reason (Internet problem / The shop location has changed) and a shop photo, then the sale continues
+   Sale asks for a reason (the `force_reason` code list: "Internet problem" / "Location change", in Bangla on the
+   phone) and a shop photo, then the sale continues
    with `verdict out_of_range`, `geo_action force_sale`, `force_reason_code` set, photo attached; the memo is never
    counted as a clean geo sale.
 4. **Mock location.** Developer options -> select a mock-location app (any fake-GPS app), set a point at the shop,
@@ -195,6 +223,13 @@ spot shows the difference between the proposal and today's radius.
 - Sub-channel and geo-class master lists are system reference data (V0027); the importer only maps onto them.
 - The dev seed image copies `db/seed/0*.sql`, so `06_dev_real_route.sql` ships with the next deploy's seed run: a
   no-op until the real routes exist, the assignment itself once they do (they do on dev now).
+- Outside this package's ownership (for the orchestrator / infra lane): `db/seed/README.md` has no row for
+  `06_dev_real_route.sql`; `infra/validate.sh` does not run `python3 tools/data/test_retailers_to_sql.py` (18 tests,
+  synthetic values only); `.gitignore` has no `__pycache__/` / `*.pyc` rule (the `tools/data/__pycache__` folder
+  that an earlier commit carried has been deleted from the worktree; `shared/contract/tools/__pycache__` is another
+  lane's).
+- Pilot size: 14,039 Mirpur outlets are loaded (the brief's "all outlets of the division"); if the orchestrator
+  prefers "low thousands", `--territory-code 1209` gives 3,618 and holds both real routes.
 
 ## Sheet statistics (whole file, counts only)
 
@@ -273,6 +308,9 @@ Generated by `tools/data/retailers_to_sql.py` on 2026-10-16 (counts only).
 Quality counters:
 
 - routes whose name carries no visit pattern (mask 127, no visit_kind): 2
+- territories listed under more than one division (majority kept): 0
+- zones listed under more than one territory (majority kept): 0
+- routes listed under more than one zone (majority kept): 0
 - rows without coordinates (whole sheet): 1,100
 - subset outlets on a shared point (location_confirmed false): 459
 - subset outlets with an unmapped sub channel (channel kept, sub_channel_id null): 15

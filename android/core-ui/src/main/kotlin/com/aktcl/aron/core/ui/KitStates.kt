@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
@@ -154,7 +155,8 @@ fun Modifier.skeleton(visible: Boolean): Modifier {
         }
     }
     val fill = c.stateSkeleton; val band = c.stateSkeletonSweep
-    return drawWithContent {
+    // the hidden content's words must not reach TalkBack either: the block has no semantics while it is a skeleton
+    return clearAndSetSemantics { }.drawWithContent {
         // the content underneath is not drawn: a skeleton has the geometry of the real thing, not its words
         val r = CornerRadius(AronTokens.Radius.Chip.toPx())
         drawRoundRect(fill, cornerRadius = r)

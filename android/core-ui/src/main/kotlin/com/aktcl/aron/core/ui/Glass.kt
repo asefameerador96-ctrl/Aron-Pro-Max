@@ -244,7 +244,11 @@ internal fun Modifier.glassPaint(kind: GlassKind, tier: GlassTier, shape: Shape,
         spotColor = if (c.dark) AronTokens.ShadowTint.Dark else AronTokens.ShadowTint.Light,
     )
     val dark = c.dark
-    val tierA = tier == GlassTier.A
+    // Tier A's 86 percent bar with a 4 percent tint is only legible over a BLURRED backdrop (tokens s3: without blur, ghost
+    // text under a translucent bar reads as a rendering bug). The kit has no blur backdrop yet (android-glass s2 item 4:
+    // a library behind a request file, AMO and TSO only), so the top bar is painted with the tier B recipe on every tier
+    // until `LocalGlassBackdrop` exists; `Alpha.BarTierA` and `Alpha.BarTintA` are reserved for that backdrop.
+    val tierA = false
     return this.then(shadow).drawWithCache {
         val h = size.height; val w = size.width
         val hairline = AronTokens.Stroke.Hairline.toPx()

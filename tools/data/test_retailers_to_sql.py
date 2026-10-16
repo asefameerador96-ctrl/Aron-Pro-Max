@@ -2,6 +2,8 @@
 """Unit tests of the retailer-list cleaning rules (tools/data/retailers_to_sql.py) on synthetic values: no real row,
 name or number of a person is used.  Run: python -P -m unittest tools/data/test_retailers_to_sql.py
 """
+import argparse
+import io
 import os
 import sys
 import unittest
@@ -98,6 +100,60 @@ class SqlLiteral(unittest.TestCase):
         self.assertEqual(m.q(None), "NULL")
         self.assertEqual(m.q(True), "true")
         self.assertEqual(m.q(23.5), "23.5")
+
+
+def synthetic_row(**over):
+    """One sheet row of made-up values (a test shop, no real person)."""
+    row = {c: "" for c in m.COLUMNS}
+    row.update({"Wing": "Test Wing", "Division": "Test Division", "Territory Code": "9001", "Territory": "Test T",
+                "Zone Code": "9101", "Zone Name": "Test Z", "Route Code": "9201", "Route": "Test R(Sat, Mon, Wed)",
+                "Outlet Code": ":9900001", "Outlet Name": "Test shop", "Owner Name": "Test owner",
+                "Contact Number": "01712345678", "Cluster Type": "Market", "Cluster Name": "Test cluster",
+                "Address": "Test road", "Latitude": "23.8", "Longitude": "90.37", "Geo Classification": "Urban",
+                "Sub Channel": "GT"})
+    row.update(over)
+    return row
+
+
+class ImporterRules(unittest.TestCase):
+    """The Importer on synthetic rows: parent conflicts are counted (majority kept) and the SQL keeps the placement
+    history in step with the outlet, including a change on the day the open row started."""
+
+    @staticmethod
+    def importer(rows):
+        a = argparse.Namespace(
+            division=None, territory_code=None, zone_code=None, route_code=None, limit=None, hierarchy="all",
+            codes_csv=None, placeholder_min_shared=3)
+        imp = m.Importer(a)
+        imp.run(rows)
+        return imp
+
+    def test_parent_conflicts_counted_majority_kept(self):
+        rows = [synthetic_row(**{"Outlet Code": "9900001"}),
+                synthetic_row(**{"Outlet Code": "9900002", "Territory Code": "9002", "Latitude": "23.81"}),
+                synthetic_row(**{"Outlet Code": "9900003", "Territory Code": "9002", "Latitude": "23.82"}),
+                synthetic_row(**{"Outlet Code": "9900004", "Zone Code": "9102", "Latitude": "23.83"})]
+        imp = self.importer(rows)
+        self.assertEqual(imp.counter["zones listed under more than one territory (majority kept)"], 1)
+        self.assertEqual(imp.zones["9101"][1], "9002")
+        self.assertEqual(imp.counter["routes listed under more than one zone (majority kept)"], 1)
+        self.assertEqual(imp.routes["9201"]["zone"], "9101")
+        self.assertEqual(imp.counter["territories listed under more than one division (majority kept)"], 0)
+        self.assertEqual(len(imp.outlets), 4)
+
+    def test_sql_placement_history_same_day(self):
+        imp = self.importer([synthetic_row()])
+        buf = io.StringIO()
+        imp.write_sql(buf)
+        sql = buf.getvalue()
+        self.assertIn("SET valid_to = current_date", sql)
+        self.assertIn("h.valid_from < current_date", sql)
+        self.assertIn("SET route_id = o.route_id, cluster_id = o.cluster_id", sql)
+        self.assertIn("h.valid_from = current_date", sql)
+        self.assertIn("INSERT INTO app.outlet_placement_history", sql)
+        self.assertNotIn("NID", sql)
+        self.assertIn("'9900001'", sql)            # the stray prefix is gone in the emitted code
+        self.assertNotIn("':9900001'", sql)
 
 
 if __name__ == "__main__":

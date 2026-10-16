@@ -582,5 +582,5 @@ export const bn: Record<MessageKey, string> = {
   "search.soon": "খোঁজার সুবিধা এখনো চালু হয়নি।",
   "conn.live": "লাইভ",
   "conn.offline": "অফলাইন, ডেটা {at} পর্যন্ত",
-  "common.retry": "আবার চেষ্টা করুন",
+  "conn.offline_nostamp": "অফলাইন, এখনো কিছু লোড হয়নি",
 };

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -91,9 +90,10 @@ fun AronStatusChip(state: SyncChipState, modifier: Modifier = Modifier, form: Ch
     }
     val target = Modifier.sizeIn(minWidth = MinTouch, minHeight = MinTouch)
     val click = if (onClick != null) Modifier.clip(RoundedCornerShape(AronTokens.Radius.Chip)).clickable(role = Role.Button, onClickLabel = openLabel, onClick = onClick) else Modifier
+    // a FIXED slot per form (android-glass s6.6): a longer label wraps inside it (maxLines 2) instead of widening the chip and reflowing the title
     val slot: Dp = when (form) { ChipForm.Full -> AronTokens.Size.ChipSlotFull; ChipForm.Compact -> AronTokens.Size.ChipSlotCompact; ChipForm.Dot -> MinTouch }
     Box(
-        modifier.semantics(mergeDescendants = true) { contentDescription = look.label }.then(target).widthIn(min = slot).then(click),
+        modifier.semantics(mergeDescendants = true) { contentDescription = look.label }.then(target).width(slot).then(click),
         contentAlignment = if (form == ChipForm.Dot) Alignment.Center else Alignment.CenterStart,
     ) {
         if (form == ChipForm.Dot) {
@@ -113,7 +113,7 @@ fun AronStatusChip(state: SyncChipState, modifier: Modifier = Modifier, form: Ch
             ) {
                 Icon(look.icon, contentDescription = null, tint = look.ink, modifier = Modifier.size(AronTokens.Space.L).graphicsLayer { rotationZ = rotation.value })
                 Spacer(Modifier.width(AronTokens.Space.S))
-                Text(look.label, style = MaterialTheme.typography.labelMedium, color = look.ink, maxLines = 2)
+                Text(look.label, style = MaterialTheme.typography.labelMedium, color = look.ink, maxLines = 2, modifier = Modifier.weight(1f, fill = false))
             }
         }
     }

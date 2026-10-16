@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { TableScroll } from "./table-scroll";
 
 export interface Column<Row> {
   key: string;
@@ -18,8 +19,9 @@ export function DataTable<Row>({ columns, rows, rowKey, empty, caption }: { colu
     );
   }
   return (
-    // The scroll region is keyboard reachable (axe scrollable-region-focusable) and named after the caption.
-    <div className="glass-data table-scroll max-h-[calc(100dvh-var(--topbar-h)-8rem)] min-h-0 text-primary focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus" tabIndex={0} role="region" aria-label={caption}>
+    // The scroll region is keyboard reachable (axe scrollable-region-focusable) and named after the caption; it stamps data-stuck
+    // while rows scroll under the sticky header (TableScroll).
+    <TableScroll className="glass-data max-h-[calc(100dvh-var(--topbar-h)-8rem)] min-h-0 text-primary focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" tabIndex={0} role="region" aria-label={caption}>
       <table className="min-w-full text-table" data-testid="data-table">
         <caption className="sr-only">{caption}</caption>
         <thead>
@@ -43,6 +45,6 @@ export function DataTable<Row>({ columns, rows, rowKey, empty, caption }: { colu
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

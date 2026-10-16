@@ -24,6 +24,10 @@ Rules (docs/16 s4.1, docs/22 P-07, P-09, P-14):
   * rows without coordinates or outside Bangladesh (lat 20.5..26.7, lon 88.0..92.7) are rejected and counted
   * a 6-decimal point shared by at least --placeholder-min-shared (3) outlets marks location_confirmed = false (DQ-48)
   * duplicate outlet codes: the first row wins, the rest are counted
+  * a territory printed under two divisions, a zone under two territories or a route under two zones keeps the
+    majority parent; each case is counted
+  * placement history: an open row is closed when the placement changed since an earlier day, and corrected in place
+    when it changed again on the day it started (valid_to must exceed valid_from), so it never diverges from the outlet
 Statistics (--stats-out) hold counts only, never a name or a number of a person.
 """
 from __future__ import annotations
@@ -197,6 +201,8 @@ class Importer:
         self.by_division = collections.Counter()
         self.by_wing_coords = collections.Counter()
         self.territory_division = collections.defaultdict(collections.Counter)   # territory code -> division key counts
+        self.zone_territory = collections.defaultdict(collections.Counter)       # zone code -> territory code counts
+        self.route_zone = collections.defaultdict(collections.Counter)           # route code -> zone code counts
         self.codes = self.load_codes(a.codes_csv) if a.codes_csv else {}
 
     @staticmethod
@@ -249,11 +255,13 @@ class Importer:
                 self.territories.setdefault(t_code, (clean_name(r["Territory"]) or t_code, (wing, division)))
                 self.territory_division[t_code][(wing, division)] += 1
                 self.zones.setdefault(z_code, (clean_name(r["Zone Name"]) or z_code, t_code))
+                self.zone_territory[z_code][t_code] += 1
                 if r_code not in self.routes:
                     name, kind, mask, label, ok = parse_route_name(r["Route"])
                     self.routes[r_code] = {"name": name or r_code, "kind": kind, "mask": mask, "label": label, "zone": z_code}
                     if not ok:
                         self.counter["routes whose name carries no visit pattern (mask 127, no visit_kind)"] += 1
+                self.route_zone[r_code][z_code] += 1
             if not in_subset:
                 continue
             if self.a.limit and len(self.outlets) >= self.a.limit:
@@ -312,12 +320,27 @@ class Importer:
             if used[code] > 1:                                  # two sheet divisions voted the same PDF code
                 self.counter["divisions sharing a radius division code (slug code used)"] += 1
                 self.divisions[dkey] = "D-" + slug(dkey[1])
-        # a territory printed under two divisions keeps the majority one
+        # a territory printed under two divisions keeps the majority one (the counters print even at zero)
+        for key in ("territories listed under more than one division (majority kept)",
+                    "zones listed under more than one territory (majority kept)",
+                    "routes listed under more than one zone (majority kept)"):
+            self.counter[key] += 0
         for t_code, (name, _) in self.territories.items():
             votes = self.territory_division[t_code]
             if len(votes) > 1:
                 self.counter["territories listed under more than one division (majority kept)"] += 1
             self.territories[t_code] = (name, votes.most_common(1)[0][0])
+        # the same rule one level down: a zone printed under two territories, a route under two zones (majority kept)
+        for z_code, (name, _) in self.zones.items():
+            votes = self.zone_territory[z_code]
+            if len(votes) > 1:
+                self.counter["zones listed under more than one territory (majority kept)"] += 1
+            self.zones[z_code] = (name, votes.most_common(1)[0][0])
+        for r_code, route in self.routes.items():
+            votes = self.route_zone[r_code]
+            if len(votes) > 1:
+                self.counter["routes listed under more than one zone (majority kept)"] += 1
+            route["zone"] = votes.most_common(1)[0][0]
         # placeholder pins: a 6-decimal point shared by n >= min outlets of the subset
         points = collections.Counter((o["lat"], o["lng"]) for o in self.outlets)
         shared = {p for p, n in points.items() if n >= self.a.placeholder_min_shared}
@@ -373,6 +396,12 @@ class Importer:
         w("UPDATE app.outlet_placement_history h SET valid_to = current_date\n"
           "  FROM app.outlet o JOIN imp_outlet_code c ON c.code = o.code\n"
           " WHERE h.outlet_id = o.id AND h.valid_to IS NULL AND h.valid_from < current_date\n"
+          "   AND (h.route_id, h.cluster_id) IS DISTINCT FROM (o.route_id, o.cluster_id);\n")
+        # a placement that changed again on the day its open row started cannot be closed (valid_to > valid_from):
+        # the same-day row is corrected in place so the history never diverges from outlet.route_id / cluster_id
+        w("UPDATE app.outlet_placement_history h SET route_id = o.route_id, cluster_id = o.cluster_id\n"
+          "  FROM app.outlet o JOIN imp_outlet_code c ON c.code = o.code\n"
+          " WHERE h.outlet_id = o.id AND h.valid_to IS NULL AND h.valid_from = current_date\n"
           "   AND (h.route_id, h.cluster_id) IS DISTINCT FROM (o.route_id, o.cluster_id);\n")
         w("INSERT INTO app.outlet_placement_history (outlet_id, route_id, cluster_id, valid_from)\n"
           "  SELECT o.id, o.route_id, o.cluster_id, current_date FROM app.outlet o JOIN imp_outlet_code c ON c.code = o.code\n"

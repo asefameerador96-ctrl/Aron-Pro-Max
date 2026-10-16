@@ -43,7 +43,7 @@
     <string name="core_ui_chip_synced_at">Synced %1$s</string>
     <string name="core_ui_chip_open_sync">View sync status</string>
     <string name="core_ui_tile_badge">%1$s open items</string>
-    <string name="core_ui_kit_gallery_subtitle">Apsis RouteDaily · 2026-10-05</string>
+    <string name="core_ui_kit_gallery_subtitle">Route Daily · 2026-10-05</string>
     <string name="core_ui_kit_gallery_section_today">Today\'s work</string>
     <string name="core_ui_kit_gallery_section_others">Others</string>
     <string name="core_ui_kit_gallery_hero_label">Today\'s total</string>

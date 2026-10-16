@@ -34,7 +34,7 @@ function minusDays(ymd: string, days: number): string {
   return new Date(Date.UTC(y!, m! - 1, d! - days)).toISOString().slice(0, 10);
 }
 
-const STAT = "glass-card relative flex min-h-32 flex-col gap-2 p-(--card-pad) text-primary";
+const STAT = "glass-card @container relative flex min-h-32 flex-col gap-2 p-(--card-pad) text-primary";
 
 // The role-aware home dashboard (F-WEB-001) on the Calm Glass layout (docs/design/screens-web.md s1): hero (net sales), stat
 // cards with meters, channel and zone ranked bars, the needs-attention list and the team map plate. Everything comes from the
@@ -61,7 +61,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const d = (a: string | null = asOf) => ({ businessDate: date, asOf: a, today, reason: reasonFor(date === today) });
   const meta = (a: string | null = asOf) => <TileMeta locale={locale} businessDate={date} asOf={a} today={today} reason={reasonFor(date === today)} />;
 
-  // Delta against yesterday, only when both days have a figure (never a fake comparison).
+  // Delta against the previous day, only when both days have a figure (never a fake comparison); the label says "vs yesterday"
+  // only when the page shows today, otherwise "vs previous day".
   const prevNet = previous.ok && previous.data.kpis.target_routes > 0 ? previous.data.kpis.net_mtk : null;
   const deltaPct = k && prevNet !== null && prevNet > 0 ? ((k.net_mtk - prevNet) / prevNet) * 100 : null;
 
@@ -115,9 +116,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <form method="get" className="glass-pop absolute end-0 top-12 z-40 flex w-72 flex-col gap-3 p-4">
               <label className="text-label text-secondary">
                 {t(locale, "dashboard.business_date")}
-                <input type="date" name="date" defaultValue={date} max={today} className="mt-1 min-h-(--ctl-h) w-full rounded-chip border border-input bg-raised px-3 text-body text-primary focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus" />
+                <input type="date" name="date" defaultValue={date} max={today} className="mt-1 min-h-(--ctl-h) w-full rounded-chip border border-input bg-raised px-3 text-body text-primary focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" />
               </label>
-              <button type="submit" className="inline-flex min-h-(--ctl-h) items-center justify-center gap-2 rounded-full border border-divider bg-raised px-5 text-body-strong text-accent hover:bg-pressed focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
+              <button type="submit" className="inline-flex min-h-(--ctl-h) items-center justify-center gap-2 rounded-full border border-divider bg-raised px-5 text-body-strong text-accent hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
                 <Icon name="filter" size={18} />
                 {t(locale, "common.filter")}
               </button>
@@ -155,7 +156,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               deltaPct !== null ? (
                 <StatusChip tone={deltaPct >= 0 ? "success" : "warning"} icon={deltaPct >= 0 ? "arrow-up" : "arrow-down"} testId="sales-delta">
                   {deltaPct >= 0 ? "+" : "−"}
-                  {pctText(locale, Math.abs(deltaPct))} {t(locale, "dashboard.delta.vs_yesterday")}
+                  {pctText(locale, Math.abs(deltaPct))} {t(locale, date === today ? "dashboard.delta.vs_yesterday" : "dashboard.delta.vs_previous_day")}
                 </StatusChip>
               ) : null
             }
@@ -163,7 +164,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           />
           <section data-testid="tile-strike" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
             <h2 className="text-label text-secondary">{t(locale, "dashboard.kpi.strike")}</h2>
-            <p className="text-display text-primary tabular-nums" data-testid="strike-rate">
+            <p className="fit-number whitespace-nowrap text-display text-primary tabular-nums" data-testid="strike-rate">
               {pctText(locale, k.strike_rate_pct)}
             </p>
             <Meter pct={k.strike_rate_pct} valueText={pctText(locale, k.strike_rate_pct)} label={t(locale, "dashboard.kpi.strike")} />
@@ -174,7 +175,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </section>
           <section data-testid="tile-visits" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
             <h2 className="text-label text-secondary">{t(locale, "dashboard.kpi.outlets_visited")}</h2>
-            <p className="text-display text-primary tabular-nums">
+            <p className="fit-number whitespace-nowrap text-display text-primary tabular-nums">
               {n(locale, k.visited_outlets)}
               <span className="text-body text-secondary">/{n(locale, k.target_outlets)}</span>
             </p>
@@ -189,7 +190,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {geo.ok ? (
               <dl data-testid="geo-fencing" className="contents">
                 <dt className="sr-only">{t(locale, "dashboard.geo_valid")}</dt>
-                <dd className="text-display text-primary tabular-nums" data-testid="geo-valid">
+                <dd className="fit-number whitespace-nowrap text-display text-primary tabular-nums" data-testid="geo-valid">
                   {pctText(locale, geo.data.geo_valid_pct)}
                 </dd>
                 <dd>
@@ -224,7 +225,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <dl className="flex flex-col gap-2" data-testid="login-submit">
                 <div>
                   <dt className="text-caption text-secondary">{t(locale, "dashboard.login_pct")}</dt>
-                  <dd className="text-numeral text-primary tabular-nums" data-testid="login-pct">
+                  <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="login-pct">
                     {pctText(locale, ls.kpis.login_pct)}
                   </dd>
                   <dd>
@@ -234,7 +235,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 </div>
                 <div>
                   <dt className="text-caption text-secondary">{t(locale, "finalsubmit.submit_pct")}</dt>
-                  <dd className="text-numeral text-primary tabular-nums" data-testid="submit-pct-ls">
+                  <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="submit-pct-ls">
                     {pctText(locale, ls.kpis.submit_pct_of_logged_in)}
                   </dd>
                   <dd>
@@ -262,7 +263,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <ul className="-mx-2 flex flex-col">
                 {attention.map((a) => (
                   <li key={a.id}>
-                    <Link href={a.href} className="flex min-h-12 items-center gap-3 rounded-chip px-2 text-body text-primary hover:bg-pressed focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
+                    <Link href={a.href} className="flex min-h-12 items-center gap-3 rounded-chip px-2 text-body text-primary hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
                       <Icon name={a.count === 0 ? "check-circle" : a.icon} className={a.count === 0 ? "text-success" : "text-secondary"} />
                       <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{t(locale, a.key)}</span>
                       <span className="text-body-strong text-primary tabular-nums" data-testid={a.id}>
@@ -281,8 +282,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {meta(ls ? ls.as_of : null)}
           </section>
 
-          {/* Row C: channels (ranked bars) and zone ranking */}
-          <Tile id="channels" locale={locale} titleKey="dashboard.channels" date={d()} data className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-8">
+          {/* Row C: channels (ranked bars, span 4) and the zone ranking (span 8, screens-web s1) */}
+          <Tile id="channels" locale={locale} titleKey="dashboard.channels" date={d()} data className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-4">
             {summary.data.by_channel && summary.data.by_channel.length > 0 ? (
               <RankedBars
                 testId="channel-list"
@@ -299,7 +300,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <p className="text-body text-secondary">{t(locale, "dashboard.channels.empty")}</p>
             )}
           </Tile>
-          <Tile id="zones" locale={locale} titleKey="dashboard.zones" date={d()} data className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-4" actions={<span className="text-caption text-secondary">{t(locale, "dashboard.zones.by_net")}</span>}>
+          <Tile id="zones" locale={locale} titleKey="dashboard.zones" date={d()} data className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-8" actions={<span className="text-caption text-secondary">{t(locale, "dashboard.zones.by_net")}</span>}>
             {ranked.length > 0 ? (
               <RankedBars label={t(locale, "dashboard.zones")} rows={ranked.map((c) => ({ key: `${c.node.type}-${c.node.id}`, label: c.node.name ?? c.node.code ?? String(c.node.id), value: Math.max(0, c.kpis.net_mtk), valueText: takaText(locale, c.kpis.net_mtk) }))} />
             ) : (

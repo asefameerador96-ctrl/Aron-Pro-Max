@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -40,9 +44,11 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /** Minimum touch target everywhere in the kit (docs/24 s5.6: 48 dp). */
 val MinTouch = AronTokens.Touch.Min
@@ -91,19 +97,23 @@ fun AronListRow(
     val dividerColor = c.borderDivider
     val dividerWidth = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
     val inset = AronTokens.Space.L
-    val paint = Modifier.drawBehind {
-        if (flat) {
-            val r = radius.toPx()
-            val top = if (position == RowPosition.First || position == RowPosition.Only) r else 0f
-            val bottom = if (position == RowPosition.Last || position == RowPosition.Only) r else 0f
-            val path = androidx.compose.ui.graphics.Path().apply {
-                addRoundRect(androidx.compose.ui.geometry.RoundRect(0f, 0f, size.width, size.height, CornerRadius(top), CornerRadius(top), CornerRadius(bottom), CornerRadius(bottom)))
+    // one drawRoundRect per flat row, no allocation per draw (android-glass s6.3); the asymmetric first/last shape is one Path cached per size
+    val paint = Modifier.drawWithCache {
+        val r = radius.toPx()
+        val top = if (position == RowPosition.First || position == RowPosition.Only) r else 0f
+        val bottom = if (position == RowPosition.Last || position == RowPosition.Only) r else 0f
+        val uniform = top == bottom
+        val corner = CornerRadius(top)
+        val path: androidx.compose.ui.graphics.Path? = if (flat && !uniform) androidx.compose.ui.graphics.Path().apply {
+            addRoundRect(androidx.compose.ui.geometry.RoundRect(0f, 0f, size.width, size.height, CornerRadius(top), CornerRadius(top), CornerRadius(bottom), CornerRadius(bottom)))
+        } else null
+        val w = dividerWidth.toPx()
+        val insetPx = inset.toPx()
+        onDrawBehind {
+            if (flat) {
+                if (path != null) drawPath(path, fill) else drawRoundRect(fill, cornerRadius = corner)
             }
-            drawPath(path, fill)
-        }
-        if (divider) {
-            val w = dividerWidth.toPx()
-            drawRect(dividerColor, Offset(inset.toPx(), size.height - w), Size(size.width - inset.toPx(), w))
+            if (divider) drawRect(dividerColor, Offset(insetPx, size.height - w), Size(size.width - insetPx, w))
         }
     }
     val click = if (onClick != null) Modifier.clip(shape).clickable(role = Role.Button, onClick = onClick) else Modifier
@@ -155,8 +165,10 @@ fun AronBanner(
     val shape = RoundedCornerShape(AronTokens.Radius.Card)
     val stroke = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
     val edgeColor = edge.copy(alpha = AronTokens.Alpha.BannerEdge)
-    // the action sits at the end only when the banner is wide enough for Bangla beside it; a 360 dp phone stacks it under the text
-    val stacked = LocalDensity.current.fontScale >= 1.5f || androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 400
+    // the action sits at the end only when the banner is wide enough for Bangla beside it; a 360 dp phone stacks it under the text,
+    // and so does every width from `fontScale.vertical` (tokens s6)
+    val stacked = LocalDensity.current.fontScale >= AronTokens.Size.VerticalFontScale ||
+        androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp < AronTokens.Size.BannerInlineActionMinWidth
     val click = if (onClick != null) Modifier.clip(shape).clickable(role = Role.Button, onClick = onClick) else Modifier
     Row(
         modifier
@@ -204,12 +216,23 @@ fun OfflineBanner(modifier: Modifier = Modifier) =
 fun AronTile(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Int = 0, enabled: Boolean = true) =
     AronTile(label = label, icon = AronIcons.Dashboard, onClick = onClick, modifier = modifier, badge = badge, enabled = enabled)
 
+/** The top and bottom inset of a tile's content and of its label plate (android-glass s6.4: "6 dp inset"; the sides are 4 dp). */
+private val TileInset = 6.dp
+
+/** The label's own side padding inside the plate (1 dp: the plate itself already stands 4 dp in from the tile edge, tokens s6: 93 dp inner). */
+private val PlateTextPadding = 1.dp
+
+/** In the fixed-height form a label that does not fit one line at `type.label` shrinks step by step to this floor before it ellipsises. */
+private val TileLabelFloorSp = 12.sp
+
 /**
  * One tile of the Home grid (android-glass s6.4): the glass Tile recipe (translucent, sheen, lit edge, no shadow), a
  * squircle icon well (44 dp, radius 14; compact 36 dp, radius 11) in `accent.container`, and the label on an OPAQUE
- * `surface.solid` plate (6 dp inset), so the reading never depends on the glass (docs/32 s2a item 1). [badge] is a top-end
- * pill in `accent.hi` capped at 99+; [target] adds the 2 dp `accent` ring of the tile the Home dock opens. 96 dp (compact 84)
- * below font scale 1.3, a minimum from there; press scale 0.96.
+ * `surface.solid` plate (6 dp inset, 4 dp side padding, 32 dp for one line), so the reading never depends on the glass
+ * (docs/32 s2a item 1). [badge] is a top-end pill in `accent.hi` capped at 99+; [target] adds the 2 dp `accent` ring of the
+ * tile the Home dock opens. Height: FIXED 96 dp (compact 84) below font scale 1.3 (tokens s6 `size.tile`; the label is one
+ * line, labels are measured to fit), `heightIn(min)` from 1.3 (the grid row then shares the tallest tile), and from 1.9
+ * (`fontScale.tiles1`) a 64 dp ROW with the well at the start and the plate beside it. Press scale 0.96.
  */
 @Composable
 fun AronTile(
@@ -226,15 +249,21 @@ fun AronTile(
     val tier = LocalGlassTier.current
     val shape = RoundedCornerShape(AronTokens.Radius.Card)
     val interaction = remember { MutableInteractionSource() }
-    val height = if (compact) AronTokens.Size.TileCompact else AronTokens.Size.Tile
+    val fontScale = LocalDensity.current.fontScale
+    val rowForm = fontScale >= AronTokens.Size.OneColumnFontScale
+    val fixed = fontScale < AronTokens.Size.ReflowFontScale
+    val height = if (rowForm) AronTokens.Size.TileRow else if (compact) AronTokens.Size.TileCompact else AronTokens.Size.Tile
     val well = if (compact) AronTokens.Size.WellCompact else AronTokens.Size.Well
     val wellRadius = if (compact) AronTokens.Radius.WellCompact else AronTokens.Radius.Well
     val ring = c.accent
     val badgeText = if (badge > 99) localizedDigits("99+") else localizedNumber(badge.toLong())
     val badgeDescription = if (badge > 0) stringResource(R.string.core_ui_tile_badge, badgeText) else null
+    val plate = c.surfaceSolid
+    val wellFill = if (enabled) c.accentContainer else c.stateDisabledFill
+    val heightModifier = if (fixed) Modifier.height(height) else Modifier.heightIn(min = height)
     Box(
         modifier
-            .heightIn(min = height)
+            .then(heightModifier)
             .aronFocusRing(shape)
             .pressScale(interaction, AronTokens.Motion.TilePressScale)
             .glassPaint(GlassKind.Tile, tier, shape, AronTokens.Elevation.Page)
@@ -247,20 +276,37 @@ fun AronTile(
             .clip(shape)
             .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick),
     ) {
-        // 6 + (well + 4) + 4 + plate 32 + 6 = 96 (compact: 6 + 40 + 0 + 32 + 6 = 84); no weight, which collapses in a scroll column
-        Column(Modifier.fillMaxWidth().padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (compact) 0.dp else AronTokens.Space.Xs)) {
-            Box(Modifier.fillMaxWidth().heightIn(min = well + AronTokens.Space.Xs), contentAlignment = Alignment.Center) {
-                val wellFill = if (enabled) c.accentContainer else c.stateDisabledFill
-                Box(Modifier.size(well).drawBehind { drawRoundRect(wellFill, cornerRadius = CornerRadius(wellRadius.toPx())) }, contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, tint = if (enabled) c.accentOnContainer else c.stateDisabledLabel, modifier = Modifier.size(if (compact) AronTokens.Size.IconSmall else AronTokens.Size.Icon))
-                }
+        val wellBox: @Composable () -> Unit = {
+            Box(Modifier.size(well).drawBehind { drawRoundRect(wellFill, cornerRadius = CornerRadius(wellRadius.toPx())) }, contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, tint = if (enabled) c.accentOnContainer else c.stateDisabledLabel, modifier = Modifier.size(if (compact) AronTokens.Size.IconSmall else AronTokens.Size.Icon))
             }
-            val plate = c.surfaceSolid
+        }
+        val plateBox: @Composable (Modifier) -> Unit = { m ->
             Box(
-                Modifier.fillMaxWidth().drawBehind { drawRoundRect(plate, cornerRadius = CornerRadius(AronTokens.Radius.Chip.toPx())) }.padding(horizontal = AronTokens.Space.S, vertical = 6.dp),
+                m.heightIn(min = AronTokens.Size.TilePlate).drawBehind { drawRoundRect(plate, cornerRadius = CornerRadius(AronTokens.Radius.Chip.toPx())) }.padding(horizontal = PlateTextPadding, vertical = TileInset),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, style = MaterialTheme.typography.labelMedium, color = if (enabled) c.textPrimary else c.textDisabled, textAlign = TextAlign.Center, maxLines = 3)
+                // fixed-height form: one line (the plate is 32 dp for one line), shrinking to 12 sp for a long Latin label such as
+                // "Task delegation" before any ellipsis; reflow forms: up to 3 lines, breaking at spaces only
+                val labelStyle = MaterialTheme.typography.labelMedium
+                val shrink = if (fixed && labelStyle.fontSize.isSp && labelStyle.fontSize > TileLabelFloorSp) TextAutoSize.StepBased(minFontSize = TileLabelFloorSp, maxFontSize = labelStyle.fontSize, stepSize = 1.sp) else null
+                Text(
+                    label, style = labelStyle, color = if (enabled) c.textPrimary else c.textDisabled, textAlign = TextAlign.Center,
+                    maxLines = if (fixed) 1 else 3, overflow = TextOverflow.Ellipsis, autoSize = shrink,
+                )
+            }
+        }
+        if (rowForm) {
+            Row(Modifier.fillMaxWidth().padding(TileInset), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                Box(Modifier.padding(start = AronTokens.Space.Xs)) { wellBox() }
+                plateBox(Modifier.weight(1f))
+            }
+        } else {
+            // 6 + (well + 4) + 4 + plate 32 + 6 = 96 (compact: 6 + 40 + 0 + 32 + 6 = 84); no weight, which collapses in a scroll column.
+            // Sides: 4 dp (tokens s6: a 93 dp plate on the 101 dp tile), so "টিউটোরিয়াল" (75 dp) and "টাস্ক ডেলিগেশন" fit one line
+            Column(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Xs, vertical = TileInset), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (compact) 0.dp else AronTokens.Space.Xs)) {
+                Box(Modifier.fillMaxWidth().heightIn(min = well + AronTokens.Space.Xs), contentAlignment = Alignment.Center) { wellBox() }
+                plateBox(Modifier.fillMaxWidth())
             }
         }
         if (badge > 0 && badgeDescription != null) {
@@ -282,23 +328,34 @@ fun AronTile(
 }
 
 /**
- * Columns for a tile grid (docs/design/tokens.md s6): floor((width - 32 + 12) / (96 + 12)) between 2 and 4 (3 on a 360 dp
- * phone), and 2 at font scale 1.5 or more, so Bangla labels never break inside a word or conjunct.
+ * Columns for a tile grid (docs/design/tokens.md s6 `fontScale.tiles2` and `.tiles1`): floor((width - 32 + 12) / (96 + 12))
+ * between 2 and 4 (3 on a 360 dp phone) below font scale 1.3, 2 from 1.3, 1 from 1.9 (a 64 dp tile row), so Bangla labels
+ * never break inside a word or conjunct.
  */
-fun autoTileColumns(widthDp: Float, fontScale: Float): Int =
-    if (fontScale >= 1.5f) 2 else ((widthDp - 32f + 12f) / (96f + 12f)).toInt().coerceIn(2, 4)
+fun autoTileColumns(widthDp: Float, fontScale: Float): Int = when {
+    fontScale >= AronTokens.Size.OneColumnFontScale -> 1
+    fontScale >= AronTokens.Size.ReflowFontScale -> 2
+    else -> ((widthDp - 32f + 12f) / (96f + 12f)).toInt().coerceIn(2, 4)
+}
 
-/** A tile grid. [columns] null means [autoTileColumns] from the window width and font scale. Plain rows (a home grid has a handful of tiles). */
+/**
+ * A tile grid. [columns] null means [autoTileColumns] from the window width and font scale. Plain rows (a home grid has a
+ * handful of tiles). Below font scale 1.3 the tiles are fixed-height, so a row needs no intrinsic pass; from 1.3 each row
+ * is `IntrinsicSize.Max` high so a wrapped label stretches its whole row (android-glass s6.4).
+ */
 @Composable
 fun <T> AronTileGrid(items: List<T>, columns: Int? = null, modifier: Modifier = Modifier, tile: @Composable (T, Modifier) -> Unit) {
     val config = androidx.compose.ui.platform.LocalConfiguration.current
     val fontScale = LocalDensity.current.fontScale
     val cols = columns ?: autoTileColumns(config.screenWidthDp.toFloat(), fontScale)
     require(cols > 0)
+    val reflow = fontScale >= AronTokens.Size.ReflowFontScale
+    val rowModifier = if (reflow) Modifier.fillMaxWidth().height(IntrinsicSize.Max) else Modifier.fillMaxWidth()
     Column(modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         items.chunked(cols).forEach { rowItems ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                rowItems.forEach { tile(it, Modifier.weight(1f)) }
+            Row(rowModifier, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                val tileModifier = if (reflow) Modifier.weight(1f).fillMaxHeight() else Modifier.weight(1f)
+                rowItems.forEach { tile(it, tileModifier) }
                 repeat(cols - rowItems.size) { Box(Modifier.weight(1f)) }
             }
         }
@@ -321,11 +378,14 @@ fun AronStepper(
     step: Int = 1,
 ) {
     val c = LocalAronColors.current
+    val minusInteraction = remember { MutableInteractionSource() }
+    val plusInteraction = remember { MutableInteractionSource() }
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(
             onClick = { onValueChange((value - step).coerceAtLeast(min)) },
             enabled = value > min,
-            modifier = Modifier.sizeIn(minWidth = MinTouch, minHeight = MinTouch).semantics { contentDescription = minusLabel },
+            modifier = Modifier.sizeIn(minWidth = MinTouch, minHeight = MinTouch).pressScale(minusInteraction, AronTokens.Motion.StepperPressScale).semantics { contentDescription = minusLabel },
+            interactionSource = minusInteraction,
             border = outlineStroke(value > min),
             contentPadding = PaddingValues(0.dp),
         ) { Icon(AronIcons.Remove, contentDescription = null, tint = if (value > min) c.textPrimary else c.stateDisabledLabel, modifier = Modifier.size(AronTokens.Size.Icon).clearAndSetSemantics { }) }
@@ -341,7 +401,8 @@ fun AronStepper(
         OutlinedButton(
             onClick = { onValueChange((value + step).coerceAtMost(max)) },
             enabled = value < max,
-            modifier = Modifier.sizeIn(minWidth = MinTouch, minHeight = MinTouch).semantics { contentDescription = plusLabel },
+            modifier = Modifier.sizeIn(minWidth = MinTouch, minHeight = MinTouch).pressScale(plusInteraction, AronTokens.Motion.StepperPressScale).semantics { contentDescription = plusLabel },
+            interactionSource = plusInteraction,
             border = outlineStroke(value < max),
             contentPadding = PaddingValues(0.dp),
         ) { Icon(AronIcons.Add, contentDescription = null, tint = if (value < max) c.accentText else c.stateDisabledLabel, modifier = Modifier.size(AronTokens.Size.Icon).clearAndSetSemantics { }) }

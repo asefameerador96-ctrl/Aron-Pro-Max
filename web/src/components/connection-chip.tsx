@@ -31,7 +31,8 @@ export function ConnectionChip() {
   }, [locale, online]);
   return (
     <div role="status" aria-live="polite" data-testid="connection-chip" data-online={online ? "true" : "false"}>
-      {online ? <StatusChip tone="quiet">{t("conn.live")}</StatusChip> : <StatusChip tone="offline">{t("conn.offline", { at: asOf })}</StatusChip>}
+      {/* Offline before anything was ever loaded has no stamp to quote, so the clause is dropped rather than left dangling. */}
+      {online ? <StatusChip tone="quiet">{t("conn.live")}</StatusChip> : <StatusChip tone="offline">{asOf ? t("conn.offline", { at: asOf }) : t("conn.offline_nostamp")}</StatusChip>}
     </div>
   );
 }

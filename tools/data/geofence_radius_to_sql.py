@@ -5,11 +5,15 @@ database: cfg.geo.radius_m at territory scope, the way db/seed/04 writes config.
     python -P tools/data/geofence_radius_to_sql.py docs/evidence/geofence-radius-2026-09.csv --out radii.sql
 
 The SQL (idempotent, one transaction):
-  * one new app.cfg_version (the next number, author aron.system, kind change, max_risk_class 2 = C2 at territory
-    scope per docs/19 s3.2.1) found again by its summary on a re-run; never an edit of an old version
+  * a NEW app.cfg_version (the next number, author aron.system, kind change, max_risk_class 2 = C2 at territory
+    scope per docs/19 s3.2.1) on every run that finds at least one territory whose open value differs from the CSV
+    or is missing; a run that finds nothing to change creates no version and touches no row (idempotent). The
+    version number is captured with RETURNING into a temp table and every close / insert below binds to it, so a
+    changed proposal always advances config_version (phones at the old version then pull the delta) and no
+    committed version is ever reused or edited
   * for every territory whose code exists in app.territory: the open territory value is left alone when it already
-    equals the proposed radius; a differing open value is closed (effective_to = now(), superseded_in_version) and
-    a new row is inserted into the new version; a territory without an open value gets one
+    equals the proposed radius; a differing open value is closed (effective_to = now(), superseded_in_version = the
+    new version) and a new row is inserted under the new version; a territory without an open value gets one
   * a guard raises when a radius lies outside the global rails cfg.geo.radius_min_m .. cfg.geo.radius_max_m
     (registry defaults 20 and 2000, or their open global override), the check the admin API makes (ConfigValidator)
 Territory codes absent from app.territory are skipped and reported by the summary query at the end.
@@ -56,32 +60,43 @@ BEGIN
     RAISE EXCEPTION 'geofence radii: % value(s) outside the global rails % .. % m', bad, lo, hi;
   END IF;
 END $$;
--- one audited version for the change set (db/seed/04 pattern), found again by its summary
-INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class)
-  SELECT coalesce((SELECT max(config_version) FROM app.cfg_version), 0) + 1, 'change', u.id, '{SUMMARY}', 2
-    FROM app.app_user u
-   WHERE u.username = 'aron.system'
-     AND EXISTS (SELECT 1 FROM imp_radius r JOIN app.territory t ON t.code = r.territory_code
-                  WHERE NOT EXISTS (SELECT 1 FROM app.cfg_value x WHERE x.key = 'cfg.geo.radius_m' AND x.scope_type = 'territory'
-                                      AND x.scope_id = t.id AND x.effective_to IS NULL AND x.value = to_jsonb(r.radius_m)))
-     AND NOT EXISTS (SELECT 1 FROM app.cfg_version WHERE summary = '{SUMMARY}');
+-- the territories whose open value differs from the proposal or is missing (empty = nothing to do)
+CREATE TEMP TABLE imp_radius_change (territory_id bigint PRIMARY KEY, radius_m int NOT NULL) ON COMMIT DROP;
+INSERT INTO imp_radius_change (territory_id, radius_m)
+  SELECT t.id, r.radius_m
+    FROM imp_radius r JOIN app.territory t ON t.code = r.territory_code
+   WHERE NOT EXISTS (SELECT 1 FROM app.cfg_value x WHERE x.key = 'cfg.geo.radius_m' AND x.scope_type = 'territory'
+                       AND x.scope_id = t.id AND x.effective_to IS NULL AND x.value = to_jsonb(r.radius_m));
+-- one NEW audited version for this change set (db/seed/04 pattern: a version is a change set); its number is kept in
+-- imp_version so the close and the insert below bind to it; no row when there is nothing to change
+CREATE TEMP TABLE imp_version (config_version bigint PRIMARY KEY) ON COMMIT DROP;
+WITH ins AS (
+  INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class)
+    SELECT coalesce((SELECT max(config_version) FROM app.cfg_version), 0) + 1, 'change', u.id,
+           '{SUMMARY}' || ' (' || (SELECT count(*) FROM imp_radius_change) || ' territories)', 2
+      FROM app.app_user u
+     WHERE u.username = 'aron.system'
+       AND EXISTS (SELECT 1 FROM imp_radius_change)
+    RETURNING config_version
+)
+INSERT INTO imp_version (config_version) SELECT config_version FROM ins;
 -- close an open territory value that differs from the proposal (only effective_to and superseded_in_version may change)
 UPDATE app.cfg_value cv
    SET effective_to = now(), superseded_in_version = ver.config_version
-  FROM app.territory t
-  JOIN imp_radius r ON r.territory_code = t.code
-  CROSS JOIN (SELECT config_version FROM app.cfg_version WHERE summary = '{SUMMARY}') ver
- WHERE cv.key = 'cfg.geo.radius_m' AND cv.scope_type = 'territory' AND cv.scope_id = t.id
-   AND cv.effective_to IS NULL AND cv.value <> to_jsonb(r.radius_m);
+  FROM imp_radius_change c
+  CROSS JOIN imp_version ver
+ WHERE cv.key = 'cfg.geo.radius_m' AND cv.scope_type = 'territory' AND cv.scope_id = c.territory_id
+   AND cv.effective_to IS NULL AND cv.value <> to_jsonb(c.radius_m);
+-- the new value for every changed or missing territory, under the new version
 INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, created_by, reason)
-  SELECT 'cfg.geo.radius_m', 'territory', t.id, to_jsonb(r.radius_m), now(), ver.config_version, u.id, '{REASON}'
-    FROM imp_radius r
-    JOIN app.territory t ON t.code = r.territory_code
-    JOIN app.app_user u ON u.username = 'aron.system'
-    JOIN app.cfg_version ver ON ver.summary = '{SUMMARY}'
-   WHERE NOT EXISTS (SELECT 1 FROM app.cfg_value x WHERE x.key = 'cfg.geo.radius_m' AND x.scope_type = 'territory'
-                       AND x.scope_id = t.id AND x.effective_to IS NULL);
--- summary: applied per radius, and the CSV territories the database does not know
+  SELECT 'cfg.geo.radius_m', 'territory', c.territory_id, to_jsonb(c.radius_m), now(), ver.config_version, u.id, '{REASON}'
+    FROM imp_radius_change c
+    CROSS JOIN imp_version ver
+    JOIN app.app_user u ON u.username = 'aron.system';
+-- summary: the version created by this run (none = nothing changed), applied per radius, and the CSV territories the
+-- database does not know
+SELECT ver.config_version AS new_config_version, (SELECT count(*) FROM imp_radius_change) AS territories_changed
+  FROM imp_version ver;
 SELECT (x.value #>> '{{}}')::int AS radius_m, count(*) AS territories
   FROM app.cfg_value x WHERE x.key = 'cfg.geo.radius_m' AND x.scope_type = 'territory' AND x.effective_to IS NULL
  GROUP BY 1 ORDER BY 1;
