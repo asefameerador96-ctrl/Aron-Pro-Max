@@ -2,46 +2,56 @@ import type { ReactNode } from "react";
 import type { SessionData } from "@/lib/auth/session";
 import { t, type Locale } from "@/lib/i18n";
 import { menuFor } from "@/lib/menu/menu";
+import { ConnectionChip } from "./connection-chip";
+import { Icon } from "./kit/icons";
 import { LocaleSwitch } from "./locale-switch";
 import { LogoutButton } from "./logout-button";
-import { NavLink } from "./nav-link";
 import { ScopeBadge } from "./scope-badge";
+import { SearchField } from "./search-field";
+import { NavDrawer, Sidebar, type NavSection } from "./sidebar";
+import { ThemeMenu } from "./theme-menu";
+import { TopBarSentinel } from "./top-bar-sentinel";
 
-/** Header (identity, scope, language), role-driven menu and content area, shared by the dashboards and the admin portal. */
+/** The Calm Glass shell (docs/design/web-glass.md s5, s6): glass sidebar, 56 px glass top bar (scope, search, connection,
+ *  language, theme, user), content column over the page gradient. Shared by the dashboards and the admin portal.
+ *  Below md the scope badge wraps to a second line of the same bar (one node, so tests and screen readers see it once). */
 export function Shell({ session, locale, children, allowedMenus = null }: { session: SessionData; locale: Locale; children: ReactNode; allowedMenus?: ReadonlySet<string> | null }) {
-  const sections = menuFor(session.user.role, undefined, allowedMenus);
+  const sections: NavSection[] = menuFor(session.user.role, undefined, allowedMenus).map((s) => ({ id: s.group, label: t(locale, s.labelKey), items: s.items.map((i) => ({ id: i.id, href: i.href, label: t(locale, i.labelKey) })) }));
+  const appName = t(locale, "app.name");
+  const who = `${session.user.full_name} · ${t(locale, `role.${session.user.role}`)}`;
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <div className="flex items-baseline gap-3">
-          <span className="text-lg font-bold text-brand-700">{t(locale, "app.name")}</span>
-          <span className="hidden text-sm text-slate-500 sm:inline">{t(locale, "app.tagline")}</span>
-        </div>
-        <ScopeBadge scope={session.scope} locale={locale} />
-        <div className="flex items-center gap-3">
-          <LocaleSwitch />
-          <span className="text-sm" data-testid="who">
-            {session.user.full_name} · {t(locale, `role.${session.user.role}`)}
+    <div className="min-h-dvh text-primary">
+      <a href="#content" className="sr-only z-50 rounded-chip bg-accent-container px-3 py-2 text-body-strong text-accent-on-container focus:not-sr-only focus:fixed focus:start-3 focus:top-3">
+        {t(locale, "nav.skip")}
+      </a>
+      <Sidebar sections={sections} appName={appName} tagline={t(locale, "app.tagline")} />
+      <div className="shell-main flex min-h-dvh flex-col">
+        <header className="glass-bar sticky top-0 z-30 flex min-h-(--topbar-h) flex-wrap items-center gap-x-2 gap-y-1 border-b border-transparent px-3 py-1 data-[scrolled]:border-divider data-[scrolled]:shadow-card sm:gap-x-3 sm:px-4" data-testid="top-bar">
+          <NavDrawer sections={sections} appName={appName} who={who} />
+          <span className="flex items-center gap-2 md:hidden">
+            <Icon name="dashboard" className="text-accent-graphic" />
+            <span className="text-heading text-primary">{appName}</span>
           </span>
-          <LogoutButton />
-        </div>
-      </header>
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 md:flex-row">
-        <nav aria-label={t(locale, "menu.group.main")} className="w-full shrink-0 md:w-56">
-          {sections.map((s) => (
-            <div key={s.group} className="mb-4">
-              <h2 className="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{t(locale, s.labelKey)}</h2>
-              <ul>
-                {s.items.map((i) => (
-                  <li key={i.id}>
-                    <NavLink href={i.href}>{t(locale, i.labelKey)}</NavLink>
-                  </li>
-                ))}
-              </ul>
+          <div className="order-last min-w-0 basis-full pb-1 md:order-none md:basis-auto md:pb-0">
+            <ScopeBadge scope={session.scope} locale={locale} />
+          </div>
+          <SearchField />
+          <div className="ms-auto flex items-center gap-1 sm:gap-2">
+            <ConnectionChip />
+            <div className="hidden sm:block">
+              <LocaleSwitch />
             </div>
-          ))}
-        </nav>
-        <main className="min-w-0 flex-1">{children}</main>
+            <ThemeMenu />
+            <span className="hidden max-w-56 truncate text-caption text-secondary lg:inline" data-testid="who" title={who}>
+              {who}
+            </span>
+            <LogoutButton />
+          </div>
+        </header>
+        <TopBarSentinel />
+        <main id="content" tabIndex={-1} className="page-in mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 md:px-6 xl:px-8">
+          {children}
+        </main>
       </div>
     </div>
   );

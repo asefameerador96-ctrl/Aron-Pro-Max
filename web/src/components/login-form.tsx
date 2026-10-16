@@ -3,6 +3,8 @@ import { useState, type FormEvent } from "react";
 import type { Problem } from "@/contract/types";
 import { ChangePasswordForm } from "./change-password-form";
 import { useI18n } from "./i18n-provider";
+import { Banner } from "./kit/banner";
+import { INPUT_CLASS, buttonClass } from "./kit/button";
 import { MfaSetup } from "./mfa-setup";
 
 type Step = "password" | "mfa" | "password_change_required" | "password_reset_by_support" | "no_web_access";
@@ -72,21 +74,22 @@ export function LoginForm({ next }: { next: string }) {
     void run("/api/bff/mfa/verify", { code: String(f.get("code") ?? "").trim().toUpperCase() });
   }
 
-  const input = "mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600";
-  const button = "w-full rounded bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700 disabled:opacity-50";
+  const input = `mt-1 ${INPUT_CLASS}`;
+  const label = "block text-label text-secondary";
+  const button = buttonClass("primary", "w-full");
 
   if (step === "password_reset_by_support" || step === "no_web_access") {
     return (
-      <p role="alert" data-testid="login-blocked" className="rounded border border-amber-300 bg-amber-50 p-3 text-amber-900">
+      <Banner tone="warning" role="alert" testId="login-blocked">
         {t(step === "no_web_access" ? "auth.no_web_access" : "auth.password_change_required")}
-      </p>
+      </Banner>
     );
   }
   if (step === "password_change_required") {
     return (
       <div className="space-y-3" data-testid="login-password-change">
-        <h2 className="text-lg font-semibold">{t("auth.password_change.title")}</h2>
-        <p className="text-sm text-slate-600">{t("auth.password_change.hint")}</p>
+        <h2 className="text-heading text-primary">{t("auth.password_change.title")}</h2>
+        <p className="text-body text-secondary">{t("auth.password_change.hint")}</p>
         <ChangePasswordForm endpoint="/api/bff/login/change-password" onResponse={(b) => void afterChange(b)} />
       </div>
     );
@@ -96,48 +99,48 @@ export function LoginForm({ next }: { next: string }) {
     <div>
       {step === "password" ? (
         <form onSubmit={onPassword} className="space-y-4" data-testid="login-form">
-          <label className="block text-sm font-medium">
+          <label className={label}>
             {t("auth.username")}
             <input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required maxLength={40} className={input} />
           </label>
-          <div className="text-sm font-medium">
+          <div className={label}>
             <label htmlFor="login-password">{t("auth.password")}</label>
             <div className="relative">
-              <input id="login-password" name="password" type={show ? "text" : "password"} autoComplete="current-password" required maxLength={128} className={`${input} pr-20`} />
-              <button type="button" onClick={() => setShow((v) => !v)} aria-pressed={show} data-testid="toggle-password" className="absolute inset-y-0 right-2 my-auto h-8 rounded px-2 text-sm font-semibold text-brand-700">
+              <input id="login-password" name="password" type={show ? "text" : "password"} autoComplete="current-password" required maxLength={128} className={`${input} pe-20`} />
+              <button type="button" onClick={() => setShow((v) => !v)} aria-pressed={show} data-testid="toggle-password" className="absolute inset-y-0 end-1.5 my-auto h-8 rounded-chip px-2 text-label text-accent hover:bg-pressed focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus">
                 {t(show ? "auth.hide" : "auth.show")}
               </button>
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="remember" defaultChecked={false} data-testid="remember-me" />
+          <label className="flex min-h-10 items-center gap-2 text-body text-primary">
+            <input type="checkbox" name="remember" defaultChecked={false} data-testid="remember-me" className="size-5 accent-accent-graphic" />
             {t("auth.remember")}
           </label>
-          <button type="submit" disabled={busy} className={button}>
+          <button type="submit" disabled={busy} aria-busy={busy || undefined} className={button}>
             {t("auth.submit")}
           </button>
         </form>
       ) : (
         <form onSubmit={onMfa} className="space-y-4" data-testid="mfa-form">
-          <h2 className="text-lg font-semibold">{t("auth.mfa.title")}</h2>
-          <p className="text-sm text-slate-600">{t("auth.mfa.hint")}</p>
-          <label className="block text-sm font-medium">
+          <h2 className="text-heading text-primary">{t("auth.mfa.title")}</h2>
+          <p className="text-body text-secondary">{t("auth.mfa.hint")}</p>
+          <label className={label}>
             {t("auth.mfa.code")}
             <input name="code" inputMode={recovery ? "text" : "numeric"} autoComplete="one-time-code" required maxLength={recovery ? 9 : 6} pattern={recovery ? undefined : "[0-9]{6}"} data-testid="mfa-code" className={`${input} tracking-widest`} />
           </label>
-          <button type="submit" disabled={busy} className={button}>
+          <button type="submit" disabled={busy} aria-busy={busy || undefined} className={button}>
             {t("auth.mfa.submit")}
           </button>
-          <button type="button" onClick={() => setRecovery(!recovery)} data-testid="mfa-toggle-recovery" className="text-sm text-brand-700 underline">
+          <button type="button" onClick={() => setRecovery(!recovery)} data-testid="mfa-toggle-recovery" className={buttonClass("text", "w-full")}>
             {t(recovery ? "auth.mfa.use_code" : "auth.mfa.use_recovery")}
           </button>
           <MfaSetup />
         </form>
       )}
       {error ? (
-        <p role="alert" data-testid="login-error" className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <Banner tone="danger" role="alert" testId="login-error" className="mt-4">
           {error}
-        </p>
+        </Banner>
       ) : null}
     </div>
   );

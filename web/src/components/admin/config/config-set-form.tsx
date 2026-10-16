@@ -148,7 +148,7 @@ export function ConfigSetForm({ keyName, valueType, bounds, scopeLevels, scope, 
       ) : null}
       <ReasonField value={reason} onChange={setReason} error={errors.reason} id={`r-${keyName}`} />
       {banner ? (
-        <p role={banner.kind === "error" ? "alert" : "status"} data-testid={banner.kind === "ok" ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.kind === "ok" ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>
+        <p role={banner.kind === "error" ? "alert" : "status"} data-testid={banner.kind === "ok" ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.kind === "ok" ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-success-on-container" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger-on-container"}`}>
           {banner.text}
         </p>
       ) : null}

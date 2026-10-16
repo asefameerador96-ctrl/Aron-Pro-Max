@@ -63,7 +63,7 @@ export function PackageListEditor({ keyName, title, initial, max, canWrite, also
             <span className="font-mono">{p}</span>
             <span className="text-slate-500">{t(`ab.group.${groupOf(p)}` as MessageKey)}</span>
             {canWrite ? (
-              <button type="button" onClick={() => setList(list.filter((x) => x !== p))} className="rounded border border-[var(--danger)] px-2 py-0.5 text-xs text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]">
+              <button type="button" onClick={() => setList(list.filter((x) => x !== p))} className="rounded border border-[var(--danger)] px-2 py-0.5 text-xs text-danger-on-container hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]">
                 {t("ab.remove")}
               </button>
             ) : null}
@@ -78,17 +78,17 @@ export function PackageListEditor({ keyName, title, initial, max, canWrite, also
               {t("ab.add.button")}
             </button>
           </div>
-          {err ? <p role="alert" className="text-xs font-medium text-[var(--danger)]">{err}</p> : null}
+          {err ? <p role="alert" className="text-xs font-medium text-danger-on-container">{err}</p> : null}
           {changed ? (
             <>
-              <p className="text-xs text-[var(--warning)]">{t("ab.changed")}</p>
+              <p className="text-xs text-warning-on-container">{t("ab.changed")}</p>
               <ReasonField value={reason} onChange={setReason} id={`r-${keyName}`} />
               <button type="button" disabled={busy} onClick={save} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
                 {t("ab.save")}
               </button>
             </>
           ) : null}
-          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>{banner.text}</p> : null}
+          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-success-on-container" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger-on-container"}`}>{banner.text}</p> : null}
         </>
       ) : null}
     </section>

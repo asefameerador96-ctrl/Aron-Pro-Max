@@ -92,9 +92,9 @@ export function QcGrid({ source, zoneId, routeId, date, skus, faults }: { source
           </tbody>
         </table>
       </div>
-      {err.cells ? <p role="alert" className="text-xs text-[var(--danger)]">{err.cells}</p> : null}
+      {err.cells ? <p role="alert" className="text-xs text-danger-on-container">{err.cells}</p> : null}
       {source === "warehouse" ? <ReasonField value={reason} onChange={setReason} error={err.reason} /> : null}
-      {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>{banner.text}</p> : null}
+      {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-success-on-container" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger-on-container"}`}>{banner.text}</p> : null}
       <button type="button" disabled={busy} onClick={save} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("common.save")}</button>
     </div>
   );

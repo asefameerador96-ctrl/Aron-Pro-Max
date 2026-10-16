@@ -5,7 +5,7 @@ export function QrCode({ text, label, size = 280 }: { text: string; label: strin
   const qr = makeQr(text);
   if (!qr) {
     return (
-      <p role="alert" data-testid="qr-too-long" className="rounded bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-[var(--danger)]">
+      <p role="alert" data-testid="qr-too-long" className="rounded bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-danger-on-container">
         {label}
       </p>
     );

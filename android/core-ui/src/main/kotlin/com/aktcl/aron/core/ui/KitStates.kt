@@ -1,10 +1,8 @@
 package com.aktcl.aron.core.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -14,18 +12,30 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
@@ -70,26 +80,91 @@ fun AronInfoDialog(title: String, message: String, okLabel: String, onDismiss: (
     )
 }
 
-/** Empty list or empty day: a title, an optional hint and an optional action. */
+/**
+ * Empty list or empty day (android-glass s6.11): a 96 dp illustration (an `accent.container` circle with a 40 dp
+ * `accent.onContainer` glyph), the title in `type.heading` centred, the body at most 280 dp wide, an optional action, and
+ * a "synced at" caption so an empty list is not mistaken for a stale one.
+ */
 @Composable
-fun AronEmptyState(title: String, modifier: Modifier = Modifier, hint: String? = null, actionLabel: String? = null, onAction: (() -> Unit)? = null) =
-    CenteredState(title, hint, actionLabel, onAction, modifier, MaterialTheme.colorScheme.onSurface)
+fun AronEmptyState(
+    title: String,
+    modifier: Modifier = Modifier,
+    hint: String? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    icon: ImageVector = AronIcons.Search,
+    syncedAt: String? = null,
+) {
+    val c = LocalAronColors.current
+    CenteredState(title, hint, actionLabel, onAction, modifier, c.textPrimary, icon, c.accentContainer, c.accentOnContainer, syncedAt)
+}
 
 /** Error state: what went wrong in words, with a retry action. Never shows a raw code to the user. */
 @Composable
-fun AronErrorState(message: String, retryLabel: String, onRetry: () -> Unit, modifier: Modifier = Modifier, hint: String? = null) =
-    CenteredState(message, hint, retryLabel, onRetry, modifier, MaterialTheme.colorScheme.onSurface)   // 7:1 key-figure ink: the danger red is only 3:1 (docs/32 s2a item 3)
+fun AronErrorState(message: String, retryLabel: String, onRetry: () -> Unit, modifier: Modifier = Modifier, hint: String? = null) {
+    val c = LocalAronColors.current
+    // 7:1 key-figure ink for the words: the danger red is only 3:1 (docs/32 s2a item 3); the glyph carries the danger colour
+    CenteredState(message, hint, retryLabel, onRetry, modifier, c.textPrimary, AronIcons.Warning, c.dangerContainer, c.dangerOnContainer, null)
+}
+
+/** The 96 dp vector of an empty or error state: a disc with a 40 dp glyph. Decorative; the title carries the meaning. */
+@Composable
+fun AronIllustration(icon: ImageVector, disc: Color, glyph: Color, modifier: Modifier = Modifier) {
+    Box(modifier.size(AronTokens.Size.Illustration).drawBehind { drawCircle(disc) }, contentAlignment = Alignment.Center) {
+        Icon(icon, contentDescription = null, tint = glyph, modifier = Modifier.size(AronTokens.Size.IllustrationGlyph))
+    }
+}
 
 @Composable
-private fun CenteredState(title: String, hint: String?, actionLabel: String?, onAction: (() -> Unit)?, modifier: Modifier, titleColor: androidx.compose.ui.graphics.Color) {
+private fun CenteredState(
+    title: String, hint: String?, actionLabel: String?, onAction: (() -> Unit)?, modifier: Modifier, titleColor: Color,
+    icon: ImageVector, disc: Color, glyph: Color, syncedAt: String?,
+) {
+    val c = LocalAronColors.current
     Column(
-        modifier.fillMaxWidth().padding(AronTokens.Space.Xl),
+        modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Xl, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M, Alignment.CenterVertically),
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = titleColor, textAlign = TextAlign.Center)
-        if (hint != null) Text(hint, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-        if (actionLabel != null && onAction != null) AronSecondaryButton(actionLabel, onAction)
+        AronIllustration(icon, disc, glyph)
+        Text(title, style = MaterialTheme.typography.titleMedium, color = titleColor, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 280.dp))
+        if (hint != null) Text(hint, style = MaterialTheme.typography.bodyMedium, color = c.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 280.dp))
+        if (actionLabel != null && onAction != null) AronSecondaryButton(actionLabel, onAction, Modifier.widthIn(max = 280.dp))
+        if (syncedAt != null) Text(androidx.compose.ui.res.stringResource(R.string.core_ui_chip_synced_at, syncedAt), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, textAlign = TextAlign.Center)
+    }
+}
+
+/**
+ * Loading skeleton (android-glass s6.11): while [visible], the content is covered by a `state.skeleton` block of its own
+ * geometry (`radius.chip`), with a 40 percent-wide `state.skeleton.sweep` band that crosses twice (1.2 s per cycle) and
+ * then holds; no sweep under reduced motion, on tier C or in sunlight. Read in the draw phase only.
+ */
+@Composable
+fun Modifier.skeleton(visible: Boolean): Modifier {
+    if (!visible) return this
+    val c = LocalAronColors.current
+    val reduced = LocalReducedMotion.current
+    val tier = LocalGlassTier.current
+    val sweep = c.stateSkeletonSweep.alpha > 0f && !reduced && tier != GlassTier.C
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(sweep) {
+        if (sweep) {
+            progress.snapTo(0f)
+            progress.animateTo(AronTokens.Motion.SkeletonMaxCycles.toFloat(), tween(AronTokens.Motion.SkeletonCycleMillis * AronTokens.Motion.SkeletonMaxCycles, easing = LinearEasing))
+        }
+    }
+    val fill = c.stateSkeleton; val band = c.stateSkeletonSweep
+    return drawWithContent {
+        // the content underneath is not drawn: a skeleton has the geometry of the real thing, not its words
+        val r = CornerRadius(AronTokens.Radius.Chip.toPx())
+        drawRoundRect(fill, cornerRadius = r)
+        if (sweep) {
+            val bandW = size.width * AronTokens.Alpha.SkeletonBand
+            val cycle = progress.value - progress.value.toInt()
+            val x = -bandW + (size.width + bandW) * (if (progress.value >= AronTokens.Motion.SkeletonMaxCycles) 1f else cycle)
+            val brush = Brush.horizontalGradient(listOf(band.copy(alpha = 0f), band, band.copy(alpha = 0f)), startX = x, endX = x + bandW)
+            drawRoundRect(brush, cornerRadius = r)
+        }
     }
 }
 
@@ -106,16 +181,25 @@ fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modi
     val currentEnabled by rememberUpdatedState(enabled)
     val c = LocalAronColors.current
     val trackColor = if (enabled) c.accentContainer else c.stateDisabledFill
+    val ringColor = if (enabled) c.accent else c.stateDisabledLabel
     val barColor = c.accent
     val textColor = if (enabled) c.accentOnContainer else c.stateDisabledLabel
+    val ring = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Strong
     Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = AronTokens.Touch.Primary)
+            .aronFocusRing(AronTokens.ButtonShape)
             .clip(AronTokens.ButtonShape)
-            .background(trackColor, AronTokens.ButtonShape)
-            // progress is a bar along the bottom edge, never a translucent fill under the label (docs/32 s2a item 1)
-            .drawBehind { val h = AronTokens.Space.S.toPx(); drawRect(barColor, topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - h), size = androidx.compose.ui.geometry.Size(size.width * progress.value, h)) }
+            .drawBehind {
+                val r = CornerRadius(size.height / 2f)
+                drawRoundRect(trackColor, cornerRadius = r)
+                val w = ring.toPx()
+                drawRoundRect(ringColor, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2), style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+                // progress is a bar along the bottom edge, never a translucent fill under the label (docs/32 s2a item 1)
+                val h = AronTokens.Space.S.toPx()
+                drawRect(barColor, topLeft = Offset(0f, size.height - h), size = Size(size.width * progress.value, h))
+            }
             .semantics(mergeDescendants = true) {
                 role = Role.Button
                 if (!enabled) disabled()

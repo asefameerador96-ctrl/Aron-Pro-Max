@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useI18n } from "./i18n-provider";
+import { Icon } from "./kit/icons";
 
 export function LogoutButton() {
   const { t } = useI18n();
@@ -8,15 +9,19 @@ export function LogoutButton() {
   return (
     <button
       type="button"
-      disabled={busy}
+      aria-disabled={busy || undefined}
+      aria-busy={busy || undefined}
       onClick={async () => {
+        if (busy) return;
         setBusy(true);
         await fetch("/api/bff/logout", { method: "POST" }).catch(() => undefined);
         window.location.replace("/login");
       }}
-      className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-divider bg-raised px-3 text-label text-accent hover:bg-pressed focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus aria-disabled:bg-disabled-fill aria-disabled:text-disabled-label"
     >
-      {t("auth.logout")}
+      <Icon name="logout" size={18} />
+      <span className="hidden sm:inline">{t("auth.logout")}</span>
+      <span className="sr-only sm:hidden">{t("auth.logout")}</span>
     </button>
   );
 }

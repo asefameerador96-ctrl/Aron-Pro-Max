@@ -1,0 +1,402 @@
+/* Calm Glass for Tailwind v4 (docs/design/web-glass.md s2.5, s3, s7, s8, s11). `@theme inline` makes every utility read the
+   variable at runtime, so themes, tiers and density flip with no component code. Utilities avoid @apply: each is one rule. */
+
+@theme inline {
+  --font-sans: var(--font-ui);
+  --font-bengali: var(--font-bengali);
+  --color-solid-page: var(--bg-solid);
+  --color-glass: var(--glass-flat);
+  --color-glass-field: var(--surface-glass-field);
+  --color-glass-strong: var(--glass-fill-strong);
+  --color-solid: var(--surface-solid);
+  --color-raised: var(--surface-solid-raised);
+  --color-data: var(--surface-data);
+  --color-scrim: var(--surface-scrim);
+  --color-hairline: var(--border-hairline);
+  --color-divider: var(--border-divider);
+  --color-outline: var(--border-solid);
+  --color-input: var(--border-input);
+  --color-focus: var(--border-focus);
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-disabled: var(--text-disabled);
+  --color-placeholder: var(--text-placeholder);
+  --color-on-accent: var(--text-on-accent);
+  --color-accent: var(--accent-text); /* text-accent is the safe text colour */
+  --color-accent-graphic: var(--accent); /* bg, ring, stroke and fill: icons, meters, switch tracks */
+  --color-accent-hi: var(--accent-hi);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-pressed: var(--accent-pressed);
+  --color-accent-container: var(--accent-container);
+  --color-accent-on-container: var(--accent-on-container);
+  --color-success: var(--success);
+  --color-success-container: var(--success-container);
+  --color-success-on-container: var(--success-on-container);
+  --color-warning: var(--warning);
+  --color-warning-container: var(--warning-container);
+  --color-warning-on-container: var(--warning-on-container);
+  --color-danger: var(--danger);
+  --color-danger-container: var(--danger-container);
+  --color-danger-on-container: var(--danger-on-container);
+  --color-danger-fill: var(--danger-fill);
+  --color-offline: var(--offline);
+  --color-offline-container: var(--offline-container);
+  --color-offline-on-container: var(--offline-on-container);
+  --color-pressed: var(--state-pressed);
+  --color-disabled-fill: var(--state-disabled-fill);
+  --color-disabled-label: var(--state-disabled-label);
+  --color-skeleton: var(--state-skeleton);
+  --color-viz-1: var(--viz-1);
+  --color-viz-2: var(--viz-2);
+  --color-viz-3: var(--viz-3);
+  --color-viz-4: var(--viz-4);
+  --color-viz-5: var(--viz-5);
+  --color-viz-6: var(--viz-6);
+  --color-viz-7: var(--viz-7);
+  --color-viz-8: var(--viz-8);
+  --radius-chip: 12px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
+  --shadow-card: var(--elev-card);
+  --shadow-sheet: var(--elev-sheet);
+  --shadow-dialog: var(--elev-dialog);
+  --shadow-accent: 0 4px 10px color-mix(in srgb, var(--accent) 28%, transparent);
+  --text-hero: 3rem;
+  --text-hero--line-height: var(--lh-hero);
+  --text-hero--font-weight: 700;
+  --text-display: 2.125rem;
+  --text-display--line-height: var(--lh-display);
+  --text-display--font-weight: 700;
+  --text-numeral: 1.625rem;
+  --text-numeral--line-height: var(--lh-numeral);
+  --text-numeral--font-weight: 700;
+  --text-title: 1.375rem;
+  --text-title--line-height: var(--lh-title);
+  --text-title--font-weight: 700;
+  --text-heading: 1.125rem;
+  --text-heading--line-height: 1.625rem;
+  --text-heading--font-weight: 600;
+  --text-body: 1rem;
+  --text-body--line-height: var(--lh-body);
+  --text-body--font-weight: 400;
+  --text-body-strong: 1rem;
+  --text-body-strong--line-height: var(--lh-body);
+  --text-body-strong--font-weight: 600;
+  --text-caption: var(--fs-caption);
+  --text-caption--line-height: var(--lh-caption);
+  --text-caption--font-weight: 400;
+  --text-label: var(--fs-caption);
+  --text-label--line-height: var(--lh-caption);
+  --text-label--font-weight: 600;
+  --text-table: var(--table-fs);
+  --text-table--line-height: var(--table-lh);
+  --text-table--font-weight: 400;
+  --breakpoint-xs: 22.5rem;
+  --breakpoint-3xl: 120rem;
+  --ease-out-soft: var(--ease-out-soft);
+  --ease-in-soft: var(--ease-in-soft);
+  --ease-in-out-soft: var(--ease-in-out-soft);
+  --ease-spring: var(--ease-spring);
+}
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *)); /* images and the map only; colours flip by variable */
+
+/* Surfaces (web-glass s3). Cards never blur; bars, sheets and the map panel blur in tier A only. */
+@utility bg-page {
+  background: var(--bg-gradient), var(--bg-solid);
+}
+@utility glass-card {
+  background: var(--card-fill);
+  border: var(--edge-w) solid var(--card-edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--elev-card), var(--lit);
+}
+@utility glass-data {
+  background: var(--surface-data);
+  border: var(--edge-w) solid var(--card-edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--elev-card), var(--lit);
+}
+@utility glass-bar {
+  background: linear-gradient(var(--vibrancy-tint), var(--vibrancy-tint)), var(--glass-fill-strong);
+  -webkit-backdrop-filter: var(--bf-bar);
+  backdrop-filter: var(--bf-bar);
+}
+@utility glass-rail {
+  background: linear-gradient(var(--vibrancy-tint), var(--vibrancy-tint)), var(--glass-fill-strong);
+}
+@utility glass-sheet {
+  background: linear-gradient(var(--vibrancy-tint), var(--vibrancy-tint)), var(--glass-fill-strong);
+  border: var(--edge-w) solid var(--card-edge);
+  border-radius: var(--radius-sheet);
+  box-shadow: var(--elev-sheet), var(--lit);
+  -webkit-backdrop-filter: var(--bf-sheet);
+  backdrop-filter: var(--bf-sheet);
+}
+@utility glass-panel {
+  background: linear-gradient(var(--vibrancy-tint), var(--vibrancy-tint)), var(--glass-fill-strong);
+  border: var(--edge-w) solid var(--card-edge);
+  border-radius: var(--radius-sheet);
+  box-shadow: var(--elev-sheet), var(--lit);
+  -webkit-backdrop-filter: var(--bf-bar);
+  backdrop-filter: var(--bf-bar);
+}
+@utility glass-dialog {
+  background: var(--glass-fill-dialog);
+  border: var(--edge-w) solid var(--card-edge);
+  border-radius: var(--radius-sheet);
+  box-shadow: var(--elev-dialog), var(--lit);
+}
+@utility glass-pop {
+  background: var(--glass-fill-dialog);
+  border: var(--edge-w) solid var(--card-edge);
+  border-radius: var(--radius-chip);
+  box-shadow: var(--elev-sheet), var(--lit);
+}
+@utility duration-fast {
+  transition-duration: var(--motion-fast);
+}
+@utility duration-base {
+  transition-duration: var(--motion-base);
+}
+@utility duration-sheet {
+  transition-duration: var(--motion-sheet);
+}
+/* The one focus treatment (web-glass s7.1): outlines follow the radius and the gap stays transparent. */
+@utility outline-focus {
+  outline-color: var(--border-focus);
+}
+@utility font-bengali {
+  font-family: var(--font-bengali);
+}
+
+/* Glass never nests (web-glass s2.3): a card inside a card or data surface becomes a raised solid box. */
+.glass-card .glass-card,
+.glass-data .glass-card,
+.glass-card .glass-data {
+  background: var(--surface-solid-raised);
+  border-color: var(--border-divider);
+  box-shadow: none;
+}
+
+html[data-overlay] .glass-bar,
+html[data-overlay] .table-scroll thead th {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  .bg-page {
+    background: var(--bg-solid);
+  }
+}
+
+/* Shell geometry (web-glass s5, s6): the rail width is one variable so the content column and the sidebar move together. */
+@media (min-width: 48rem) {
+  :root {
+    --rail-w: 72px;
+  }
+}
+@media (min-width: 64rem) {
+  :root {
+    --rail-w: 264px;
+  }
+  :root[data-nav="rail"] {
+    --rail-w: 72px;
+  }
+}
+.shell-rail {
+  width: var(--rail-w);
+  transition: width var(--motion-base) var(--ease-out-soft);
+}
+.shell-main {
+  padding-inline-start: var(--rail-w);
+  transition: padding-inline-start var(--motion-base) var(--ease-out-soft);
+}
+/* Rail mode (md, and lg when collapsed): icons only, labels in the accessible name and the tooltip. */
+@media (min-width: 48rem) and (max-width: 63.99rem) {
+  .rail-label,
+  .rail-group,
+  .rail-wordmark {
+    display: none;
+  }
+  .rail-item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+}
+@media (min-width: 64rem) {
+  :root[data-nav="rail"] .rail-label,
+  :root[data-nav="rail"] .rail-group,
+  :root[data-nav="rail"] .rail-wordmark {
+    display: none;
+  }
+  :root[data-nav="rail"] .rail-item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+}
+
+/* Nav item (web-glass s7.1 recipe), shared by the sidebar, the rail and the drawer. */
+.nv {
+  display: flex;
+  min-height: max(2.5rem, var(--ctl-h));
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: var(--radius-chip);
+  padding: 0.375rem 0.75rem;
+  font-size: 1rem;
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  transition: background-color var(--motion-fast) var(--ease-out-soft), color var(--motion-fast) var(--ease-out-soft);
+}
+.nv:hover {
+  background-color: var(--state-pressed);
+}
+.nv[aria-current="page"] {
+  background-color: var(--accent-container);
+  color: var(--accent-on-container);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+/* Segmented control (web-glass s6): selected segment is accent-container with a 1.5 px accent ring and a check. */
+.seg {
+  display: inline-flex;
+  min-height: var(--ctl-h);
+  align-items: stretch;
+  gap: 2px;
+  border-radius: 14px;
+  background: var(--surface-solid-raised);
+  padding: 3px;
+  border: 1px solid var(--border-divider);
+}
+.seg > * {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 11px;
+  padding: 0 0.75rem;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: background-color var(--motion-fast) var(--ease-out-soft), color var(--motion-fast) var(--ease-out-soft);
+}
+.seg > :hover {
+  background: var(--state-pressed);
+}
+.seg > [aria-current],
+.seg > [aria-checked="true"],
+.seg > [aria-selected="true"] {
+  background: var(--accent-container);
+  color: var(--accent-on-container);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+/* Data tables (web-glass s8.1): the region is the only scroller; the header blurs only while stuck. */
+.table-scroll {
+  overflow: auto;
+  scroll-padding-top: var(--head-h);
+  overscroll-behavior: contain;
+}
+.table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--head-h);
+  background: var(--glass-fill-strong);
+  border-bottom: 1px solid var(--border-divider);
+}
+.table-scroll[data-stuck] thead th {
+  -webkit-backdrop-filter: var(--bf-bar);
+  backdrop-filter: var(--bf-bar);
+  box-shadow: var(--elev-card);
+}
+.table-scroll tbody tr {
+  height: var(--row-h);
+  border-bottom: 1px solid var(--border-divider);
+}
+.table-scroll tbody tr:hover {
+  background: var(--state-pressed);
+}
+.table-scroll td,
+.table-scroll th {
+  font-size: var(--table-fs);
+  line-height: var(--table-lh);
+}
+
+/* States (web-glass s12): skeleton sweep capped at 2 cycles, page content fades in once. */
+@keyframes skeleton-sweep {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+.skeleton {
+  background-color: var(--state-skeleton);
+  background-image: linear-gradient(90deg, transparent 0%, var(--state-skeleton-sweep) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.4s var(--ease-in-out-soft) 2;
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.page-in {
+  animation: page-in var(--motion-base) var(--ease-out-soft) both;
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+dialog.sheet-start[open] {
+  animation: sheet-in var(--motion-sheet) var(--ease-spring) both;
+}
+dialog.sheet-start::backdrop {
+  background: var(--surface-scrim);
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-in,
+  dialog.sheet-start[open] {
+    animation: opacity-in var(--motion-reduced) linear both;
+  }
+  .skeleton {
+    animation: none;
+  }
+  @keyframes opacity-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/* Money (web-glass s4): the taka sign sits after the amount in the Bengali face, joined by a no-break space. */
+.taka {
+  font-family: var(--font-bengali);
+  font-size: 0.6em;
+  font-weight: 600;
+  margin-inline-start: 0.2em;
+}
+.money {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.money .frac {
+  font-size: 0.75em;
+}

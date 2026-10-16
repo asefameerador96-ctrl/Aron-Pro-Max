@@ -87,7 +87,7 @@ export function EnrolmentForm() {
             {t("enr.create")}
           </button>
         </div>
-        {error ? <p role="alert" data-testid="form-error" className="rounded bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-[var(--danger)] sm:col-span-2">{error}</p> : null}
+        {error ? <p role="alert" data-testid="form-error" className="rounded bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-danger-on-container sm:col-span-2">{error}</p> : null}
       </form>
       {created ? (
         <section className="space-y-2 rounded-lg border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] p-4" data-testid="qr-result">

@@ -95,9 +95,9 @@ export function PermissionEditor({ role, menuIds: knownMenus, initial, canWrite 
             <input aria-label={t("pm.add_menu")} name="menu_id" value={newMenu} onChange={(e) => setNewMenu(e.target.value)} placeholder={MENU_EXAMPLE} className="rounded border border-slate-300 px-2 py-1.5 text-sm" />
             <button type="button" onClick={addMenu} className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100">{t("pm.add")}</button>
           </div>
-          <p className="text-xs text-[var(--warning)]">{t("pm.c3")}</p>
+          <p className="text-xs text-warning-on-container">{t("pm.c3")}</p>
           <ReasonField value={reason} onChange={setReason} error={err} id={`reason-${role}`} />
-          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>{banner.text}</p> : null}
+          {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-success-on-container" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger-on-container"}`}>{banner.text}</p> : null}
           <button type="button" disabled={busy} onClick={save} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("pm.request")}</button>
         </>
       ) : (

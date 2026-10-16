@@ -1,0 +1,292 @@
+wing,division,territory,territory_code,current_radius_m,proposed_radius_m,wing_code,division_code
+Ctg. North,Agrabad,Agrabad,1001,100,20,1,21
+Ctg. North,Agrabad,Portmarket,1004,100,20,1,21
+Ctg. North,Agrabad,Katgor,1002,100,20,1,21
+Ctg. North,Agrabad,Bandartila,1003,100,20,1,21
+Ctg. North,Pahartali,Pahartali,1005,100,20,1,22
+Ctg. North,Pahartali,Alonkar,1006,100,20,1,22
+Ctg. North,Pahartali,Madambibi,1007,100,50,1,22
+Ctg. North,Pahartali,Sitakundo,1008,100,50,1,22
+Ctg. North,Pahartali,Sandwip,1009,100,30,1,22
+Ctg. North,Oxygen,Oxygen,1010,100,20,1,23
+Ctg. North,Oxygen,Bibirhat,1011,100,20,1,23
+Ctg. North,Oxygen,Kaptai,1013,100,50,1,23
+Ctg. North,Oxygen,Rajusthali,1014,100,100,1,23
+Ctg. North,Oxygen,Phatherhat,1012,100,30,1,23
+Ctg. North,Hathazari,Hathazari,1015,100,20,1,24
+Ctg. North,Hathazari,Rawzan,1025,100,30,1,24
+Ctg. North,Hathazari,Rangamati,1027,100,30,1,24
+Ctg. North,Hathazari,Ranirhat,1026,100,50,1,24
+Ctg. North,Ramgar,Ramgar,1018,100,30,1,25
+Ctg. North,Ramgar,Nazirhat,1016,100,30,1,25
+Ctg. North,Ramgar,Fatickchari,1017,100,50,1,25
+Ctg. North,Ramgar,Manikchori,1020,100,100,1,25
+Ctg. North,Khagrachari,Khagrachari,1021,100,50,1,26
+Ctg. North,Khagrachari,Matiranga,1019,100,50,1,26
+Ctg. North,Khagrachari,Mainy,1024,100,100,1,26
+Ctg. North,Khagrachari,Diginala,1022,100,100,1,26
+Ctg. North,Khagrachari,Marisha,1023,100,100,1,26
+Ctg. South,Nasirabad,Nasirabad,1028,100,20,2,28
+Ctg. South,Nasirabad,Chaktai,1029,100,30,2,28
+Ctg. South,Nasirabad,Kadomtali,1030,100,20,2,28
+Ctg. South,Nasirabad,Kamalbazar,1031,100,30,2,28
+Ctg. South,Nasirabad,Chandgaon,1032,100,30,2,28
+Ctg. South,Potiya,Potiya,1037,100,50,2,30
+Ctg. South,Potiya,Boalkhali,1038,100,80,2,30
+Ctg. South,Potiya,Anowara,1034,100,80,2,30
+Ctg. South,Potiya,Karnafuli,1033,100,80,2,30
+Ctg. South,Potiya,Banshkhali North,1036,100,100,2,30
+Ctg. South,Potiya,Banshkhali South,1035,100,100,2,30
+Ctg. South,Bandorban,Bandorban,1043,100,100,2,31
+Ctg. South,Bandorban,Satkania,1042,100,80,2,31
+Ctg. South,Bandorban,Chandanaish,1039,100,100,2,31
+Ctg. South,Bandorban,Amirabad,1040,100,100,2,31
+Ctg. South,Bandorban,Padua,1041,100,100,2,31
+Ctg. South,Chokoria,Chokoria,1044,100,100,2,32
+Ctg. South,Chokoria,Lama,1046,100,100,2,32
+Ctg. South,Chokoria,Dulhazra,1045,100,100,2,32
+Ctg. South,Chokoria,Eidgha,1047,100,100,2,32
+Ctg. South,Cox`sbazar,Cox`sbazar,1048,100,50,2,33
+Ctg. South,Cox`sbazar,Kolatoli,1049,100,50,2,33
+Ctg. South,Cox`sbazar,Ramu,1050,100,100,2,33
+Ctg. South,Cox`sbazar,Ukhia,1051,100,100,2,33
+Ctg. South,Cox`sbazar,Kutupalang,1053,100,100,2,33
+Ctg. South,Cox`sbazar,Taknaf,1052,100,100,2,33
+Ctg. South,Moheshkhali,Pekua,1057,100,80,2,34
+Ctg. South,Moheshkhali,Khtubdia,1056,100,100,2,34
+Ctg. South,Moheshkhali,Moheshkhali,1054,100,100,2,34
+Ctg. South,Moheshkhali,Kalamarchara,1055,100,100,2,34
+Noakhali,Chowmuhani,Chowmuhani,1058,100,30,3,35
+Noakhali,Chowmuhani,Kashipur,1059,100,40,3,35
+Noakhali,Chowmuhani,Chatkhil,1064,100,40,3,35
+Noakhali,Chowmuhani,Sonaimuri,1065,100,40,3,35
+Noakhali,Chowmuhani,Sonapur,1061,100,40,3,35
+Noakhali,Chowmuhani,Maijdee,1060,100,30,3,35
+Noakhali,Chowmuhani,Natherpetua,1066,100,40,3,35
+Noakhali,Chowmuhani,Chandragonj,1062,100,50,3,35
+Noakhali,Laxmipur,Laxmipur,1070,100,30,3,37
+Noakhali,Laxmipur,Ramgonj,1063,100,30,3,37
+Noakhali,Laxmipur,Mandari,1069,100,30,3,37
+Noakhali,Laxmipur,Hajirhat,1067,100,40,3,37
+Noakhali,Laxmipur,Ramgoti,1068,100,50,3,37
+Noakhali,Subarnochar,Subarnochar,1071,100,40,3,38
+Noakhali,Subarnochar,Charjobbar,1072,100,40,3,38
+Noakhali,Subarnochar,Hatia,1073,100,40,3,38
+Noakhali,Subarnochar,Jahajmara,1074,100,40,3,38
+Noakhali,Dagonbhuiyan,Dagonbhuiyan,1076,100,30,3,39
+Noakhali,Dagonbhuiyan,Chaprashirhat,1078,100,40,3,39
+Noakhali,Dagonbhuiyan,Basurhat,1077,100,40,3,39
+Noakhali,Dagonbhuiyan,Senbag,1075,100,30,3,39
+Noakhali,Dagonbhuiyan,Kankirhat,1252,100,40,3,39
+Noakhali,Dagonbhuiyan,Sonagaji,1079,100,40,3,39
+Noakhali,Feni,Feni,1081,100,20,3,40
+Noakhali,Feni,Academy,1084,100,20,3,40
+Noakhali,Feni,Loskorhat,1083,100,20,3,40
+Noakhali,Feni,Fulgaji,1085,100,30,3,40
+Noakhali,Feni,Chagolnaya,1086,100,30,3,40
+Noakhali,Feni,Barayarhat,1082,100,40,3,40
+Noakhali,Feni,Mirsarai,1080,100,40,3,40
+Comilla,Comilla,Nangalkot,1091,100,40,4,41
+Comilla,Comilla,Boxogonj,1253,100,40,4,41
+Comilla,Comilla,Laksam,1089,100,30,4,41
+Comilla,Comilla,Bagmara,1090,100,30,4,41
+Comilla,Comilla,Comilla,1087,100,40,4,41
+Comilla,Comilla,Choddogram,1088,100,40,4,41
+Comilla,Comilla,Mia Bazar,1092,100,40,4,41
+Comilla,Moynamoti,Moynamoti,1093,100,30,4,42
+Comilla,Moynamoti,Borura,1094,100,40,4,42
+Comilla,Moynamoti,Burichang,1095,100,40,4,42
+Comilla,Moynamoti,Chandina,1096,100,40,4,42
+Comilla,Moynamoti,Gowripur,1097,100,40,4,42
+Comilla,Moynamoti,Banchharampur,1304,100,50,4,42
+Comilla,Moynamoti,Nobinagar,1305,100,50,4,42
+Comilla,Moynamoti,Companigonj,1303,100,50,4,42
+Comilla,Chandpur,Chandpur,1098,100,30,4,43
+Comilla,Chandpur,Baburhat,1099,100,30,4,43
+Comilla,Chandpur,Motlab,1100,100,30,4,43
+Comilla,Chandpur,Changerchar,1101,100,40,4,43
+Comilla,Chandpur,Raypur,1107,100,50,4,43
+Comilla,Chandpur,Haidergonj,1108,100,50,4,43
+Comilla,Chandpur,Faridgonj,1109,100,40,4,43
+Comilla,Chandpur,Haimchar,1110,100,50,4,43
+Comilla,Hajigonj,Hajigonj,1103,100,30,4,44
+Comilla,Hajigonj,Mohamaya,1102,100,30,4,44
+Comilla,Hajigonj,Shaharasti,1104,100,40,4,44
+Comilla,Hajigonj,Kochua,1105,100,40,4,44
+Comilla,Hajigonj,Sachar,1106,100,40,4,44
+Sylhet,Sylhet,Shahparan,1182,100,20,5,62
+Sylhet,Sylhet,Shahjalal,1306,100,20,5,62
+Sylhet,Sylhet,Jointapur,1183,100,30,5,62
+Sylhet,Sylhet,Golapganj,1184,100,30,5,62
+Sylhet,Sylhet,Jokigonj,1185,100,30,5,62
+Sylhet,Sylhet,Sunamgonj,1186,100,20,5,62
+Sylhet,Sylhet,Dhirai,1187,100,30,5,62
+Sylhet,Sylhet,Gobindaganj,1188,100,30,5,62
+Sylhet,Sylhet,Komolgonj,1189,100,30,5,62
+Sylhet,Sylhet,Borolekha,1191,100,30,5,62
+Sylhet,B.Baria,B. Baria,1257,100,20,5,74
+Sylhet,B.Baria,Bhairab,1314,100,30,5,74
+Sylhet,B.Baria,Kishoreganj,1289,100,30,5,74
+Sylhet,B.Baria,Kasba,1193,100,30,5,74
+Sylhet,B.Baria,Habiganj,1315,100,30,5,74
+Sylhet,B.Baria,Moulvibazar,1294,100,30,5,74
+Sylhet,Mymensingh,Mymensingh,1264,100,20,5,64
+Sylhet,Mymensingh,Gouripur,1194,100,30,5,64
+Sylhet,Mymensingh,Netrokona,1195,100,30,5,64
+Sylhet,Mymensingh,Purbodholla,1196,100,30,5,64
+Sylhet,Mymensingh,Nandail,1198,100,30,5,64
+Sylhet,Jamalpur,Jamalpur,1316,100,20,5,49
+Sylhet,Jamalpur,Jhinaighati,1288,100,30,5,49
+Sylhet,Jamalpur,Roumari,1199,100,30,5,49
+Sylhet,Jamalpur,Modhupur,1312,100,30,5,49
+Sylhet,Jamalpur,Tangail,1280,100,20,5,49
+Dhaka North,Gushan,Gulshan,1212,100,20,6,76
+Dhaka North,Gushan,Badda,1213,100,20,6,76
+Dhaka North,Gushan,Tejgoan,1211,100,20,6,76
+Dhaka North,Gushan,Rampura,1205,100,20,6,76
+Dhaka North,Gushan,Basabo,1204,100,20,6,76
+Dhaka North,Mirpur,Mirpur,1209,100,20,6,66
+Dhaka North,Mirpur,Pallabi,1210,100,20,6,66
+Dhaka North,Mirpur,Gabtali,1208,100,20,6,66
+Dhaka North,Mirpur,Uttara,1214,100,20,6,66
+Dhaka North,Mirpur,Dokhin Khan,1218,100,30,6,66
+Dhaka North,Gazipur,Gazipur,1220,100,30,6,45
+Dhaka North,Gazipur,Tongi,1219,100,30,6,45
+Dhaka North,Gazipur,Shafipur,1223,100,40,6,45
+Dhaka North,Gazipur,Sreepur,1279,100,40,6,45
+Dhaka North,Gazipur,Valuka,1282,100,40,6,45
+Dhaka North,Savar,Savar,1215,100,20,6,67
+Dhaka North,Savar,Hemayetpur,1216,100,20,6,67
+Dhaka North,Savar,Ashulia,1217,100,40,6,67
+Dhaka North,Savar,EPZ,1221,100,20,6,67
+Dhaka North,Savar,Jirani,1222,100,20,6,67
+Dhaka North,Manikganj,Manikganj,1225,100,30,6,68
+Dhaka North,Manikganj,Jhitka,1227,100,40,6,68
+Dhaka North,Manikganj,Aricha,1228,100,40,6,68
+Dhaka North,Manikganj,Saturia,1226,100,40,6,68
+Dhaka North,Manikganj,Dhamrai,1224,100,40,6,68
+Dhaka South,Dhanmondi,Dhanmondi,1200,100,20,7,65
+Dhaka South,Dhanmondi,Kamrangirchar,1201,100,20,7,65
+Dhaka South,Dhanmondi,Mohamadpur,1202,100,20,7,65
+Dhaka South,Dhanmondi,Motijheel,1203,100,20,7,65
+Dhaka South,Dhanmondi,Sutrapur,1207,100,20,7,65
+Dhaka South,Jattrabari,Jatrabari,1120,100,30,7,48
+Dhaka South,Jattrabari,Demra,1121,100,20,7,48
+Dhaka South,Jattrabari,Shampur,1206,100,20,7,48
+Dhaka South,Jattrabari,Sreenagor,1117,100,40,7,48
+Dhaka South,Jattrabari,Abdullahpur,1116,100,40,7,48
+Dhaka South,Jattrabari,Zinzira,1119,100,30,7,48
+Dhaka South,Narayanganj,Narayanganj,1111,100,20,7,46
+Dhaka South,Narayanganj,Adamjee,1112,100,20,7,46
+Dhaka South,Narayanganj,Shibu Market,1113,100,20,7,46
+Dhaka South,Narayanganj,Fatullah,1114,100,20,7,46
+Dhaka South,Narayanganj,Munshigonj,1115,100,40,7,46
+Dhaka South,Narayanganj,Tongibari,1118,100,40,7,46
+Dhaka South,Bhulta,Bhulta,1130,100,30,7,50
+Dhaka South,Bhulta,Areahazar,1127,100,30,7,50
+Dhaka South,Bhulta,Rupganj,1122,100,30,7,50
+Dhaka South,Bhulta,Sonargaon,1123,100,30,7,50
+Dhaka South,Bhulta,Gojaria,1124,100,40,7,50
+Dhaka South,Bhulta,Bandar,1125,100,40,7,50
+Dhaka South,Bhulta,Kanchpur,1126,100,30,7,50
+Dhaka South,Narsinghdi,Narsinghdi,1132,100,30,7,51
+Dhaka South,Narsinghdi,Raypura,1133,100,40,7,51
+Dhaka South,Narsinghdi,Madobdi,1129,100,30,7,51
+Dhaka South,Narsinghdi,Gopaldhi,1128,100,30,7,51
+Dhaka South,Narsinghdi,Ghorasal,1134,100,40,7,51
+Dhaka South,Narsinghdi,Kaliganj,1131,100,40,7,51
+Gaibandha,Gaibandha,Gaibandha,1135,100,30,8,52
+Gaibandha,Gaibandha,Balashighat,1136,100,30,8,52
+Gaibandha,Gaibandha,Sundargonj,1142,100,50,8,52
+Gaibandha,Gaibandha,Dhorompur,1143,100,50,8,52
+Gaibandha,Polashbari,Polashbari,1139,100,20,8,53
+Gaibandha,Polashbari,Ghoraghat,1140,100,40,8,53
+Gaibandha,Polashbari,Gobindagonj,1141,100,40,8,53
+Gaibandha,Polashbari,Bonarpara,1137,100,40,8,53
+Gaibandha,Polashbari,Sahadullapur,1138,100,40,8,53
+Gaibandha,Kurigram,Kurigram,1144,100,30,8,54
+Gaibandha,Kurigram,Ulipur,1145,100,30,8,54
+Gaibandha,Kurigram,Chilmari,1146,100,50,8,54
+Gaibandha,Kurigram,Nagashori,1147,100,40,8,54
+Gaibandha,Kurigram,Fulbari,1256,100,40,8,54
+Gaibandha,Kurigram,Bhurungamari,1148,100,50,8,54
+Gaibandha,Lalmonirhat,Lalmonirhat,1149,100,30,8,55
+Gaibandha,Lalmonirhat,Aditmari,1150,100,40,8,55
+Gaibandha,Lalmonirhat,Kaligonj,1151,100,30,8,55
+Gaibandha,Lalmonirhat,Hatibanda,1152,100,50,8,55
+Gaibandha,Lalmonirhat,Patgram,1254,100,50,8,55
+Gaibandha,Lalmonirhat,Rajarhat,1153,100,30,8,55
+Gaibandha,Bogra,Ullapara,1240,100,40,8,71
+Gaibandha,Bogra,Bogra,1241,100,30,8,71
+Gaibandha,Bogra,Kortowa,1242,100,30,8,71
+Gaibandha,Bogra,Sherpur,1243,100,30,8,71
+Gaibandha,Bogra,Joypurhat,1244,100,40,8,71
+Gaibandha,Bogra,Sirajgonj,1267,100,40,8,71
+Gaibandha,Rajshahi,Rajshahi,1245,100,20,8,72
+Gaibandha,Rajshahi,Kansat,1247,100,20,8,72
+Gaibandha,Rajshahi,Rohonpur,1248,100,30,8,72
+Gaibandha,Rajshahi,Baneswar,1250,100,40,8,72
+Gaibandha,Rajshahi,Pabna,1251,100,30,8,72
+Gaibandha,Rajshahi,Natore (RMP),1266,100,50,8,72
+Gaibandha,Rajshahi,Noagaon (RMP),1277,100,50,8,72
+Rangpur,Rangpur,Rangpur,1154,100,20,9,56
+Rangpur,Rangpur,Badarganj,1156,100,30,9,56
+Rangpur,Rangpur,Gangachara,1155,100,30,9,56
+Rangpur,Rangpur,Taragonj,1173,100,30,9,56
+Rangpur,Rangpur,Sayedpur,1172,100,40,9,56
+Rangpur,Lalbag,Lalbag,1161,100,30,9,57
+Rangpur,Lalbag,Satmatha,1159,100,30,9,57
+Rangpur,Lalbag,Pirgacha,1160,100,40,9,57
+Rangpur,Lalbag,Kownia,1162,100,30,9,57
+Rangpur,Lalbag,Pirgonj,1157,100,30,9,57
+Rangpur,Lalbag,Mithapukur,1158,100,30,9,57
+Rangpur,Dinajpur,Dinajpur,1163,100,30,9,58
+Rangpur,Dinajpur,Birol,1164,100,40,9,58
+Rangpur,Dinajpur,Fulbari,1165,100,30,9,58
+Rangpur,Dinajpur,Berampur,1166,100,40,9,58
+Rangpur,Dinajpur,Cherirbondor,1167,100,30,9,58
+Rangpur,Dinajpur,Ranirbandar,1174,100,30,9,58
+Rangpur,Nilphamari,Nilphamari,1168,100,30,9,59
+Rangpur,Nilphamari,Textile,1175,100,30,9,59
+Rangpur,Nilphamari,Kishorgonj,1176,100,30,9,59
+Rangpur,Nilphamari,Joldhaka,1169,100,30,9,59
+Rangpur,Nilphamari,Domar,1170,100,30,9,59
+Rangpur,Nilphamari,Dimla,1171,100,50,9,59
+Rangpur,Thakurgoah,Thakurgaon,1177,100,30,9,61
+Rangpur,Thakurgoah,Panchagorh,1178,100,30,9,61
+Rangpur,Thakurgoah,Ranisankail,1179,100,50,9,61
+Rangpur,Thakurgoah,Kaharul,1180,100,30,9,61
+Rangpur,Thakurgoah,Baliadangi,1181,100,50,9,61
+South Bengal,Barisal,Barisal,1258,100,20,10,69
+South Bengal,Barisal,Muladi,1229,100,40,10,69
+South Bengal,Barisal,Monpura,1230,100,40,10,69
+South Bengal,Barisal,Tazumuddin,1231,100,40,10,69
+South Bengal,Barisal,Borguna,1232,100,20,10,69
+South Bengal,Barisal,Kuakata,1233,100,40,10,69
+South Bengal,Barisal,Gournadi (RMP),1310,100,40,10,69
+South Bengal,Barisal,Jhalokathi (RMP),1287,100,40,10,69
+South Bengal,Barisal,Patuakhali (RMP),1297,100,40,10,69
+South Bengal,Barisal,Bhola (RMP),1283,100,40,10,69
+South Bengal,Barisal,Amtoli (RMP),1309,100,40,10,69
+South Bengal,Shariatpur,Sariatpur,1236,100,30,10,70
+South Bengal,Shariatpur,Boalmari,1235,100,30,10,70
+South Bengal,Shariatpur,Damudda,1237,100,30,10,70
+South Bengal,Shariatpur,Shibchor,1298,100,30,10,70
+South Bengal,Shariatpur,Tekerhat,1301,100,30,10,70
+South Bengal,Shariatpur,Faridpur (RMP),1259,100,30,10,70
+South Bengal,Shariatpur,Vanga,1268,100,30,10,70
+South Bengal,Khulna,Khulna,1262,100,30,10,75
+South Bengal,Khulna,Jessore (RMP),1286,100,30,10,75
+South Bengal,Khulna,Benapole (RMP),1281,100,50,10,75
+South Bengal,Khulna,Bagerhat (RMP),1269,100,50,10,75
+South Bengal,Khulna,Moralgonj,1234,100,50,10,75
+South Bengal,Khulna,Narail,1296,100,30,10,75
+South Bengal,Khulna,Gopalganj,1285,100,30,10,75
+South Bengal,Khulna,Koira (RMP),1311,100,50,10,75
+South Bengal,Khulna,Sathkhira (RMP),1313,100,50,10,75
+South Bengal,Jhenaidah,Jhenaidah,1273,100,30,10,73
+South Bengal,Jhenaidah,Chuadanga,1270,100,30,10,73
+South Bengal,Jhenaidah,Meherpur,1238,100,30,10,73
+South Bengal,Jhenaidah,Kushtia,1263,100,30,10,73
+South Bengal,Jhenaidah,Pangsha,1278,100,30,10,73
+South Bengal,Jhenaidah,Magura (RMP),1292,100,30,10,73

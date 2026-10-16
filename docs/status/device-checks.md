@@ -205,3 +205,72 @@ On the Galaxy A06 (or the lab device), release-like build, laptop session with U
 
 ### D-SRA-6 First bundle on a new phone (F-SR-001; android-sr-a)
 Host proof: FirstBundleScreenTest, LoginScreenLocaleTest. On a wiped A06 log in online. Pass: "Getting your day ready" with a moving bar; airplane mode half-way shows "no connection"; back online, Try again finishes. Rotate or switch language during the download: no false failure and no second download. Skip: check-in still works. Login version equals Settings version; footer reads (c) AKTCL.
+
+### Device-owner preparation (laptop session, 2026-10-15)
+
+Prepared 2026-10-16 (every check below ran on 2026-10-16; the heading keeps the brief's title).
+Owner runbook: [`docs/runbooks/honor-device-owner.md`](../runbooks/honor-device-owner.md). The owner approved the factory
+reset and device owner for the Honor X5c Plus; the laptop session prepared and verified, the reset waits for the owner's
+hands. Nothing on the phone was installed, changed or reset. Dev API build `4085e0d0` at the time of the checks.
+
+**Headline: the first-boot QR path (D-ENR "Device-owner phone", docs/24 s10.4 steps 2 and 3) is blocked on dev today, by
+two defects outside this lane. The adb path (s10.4 step 5) is the one that works and the runbook leads with it.**
+
+1. **The published SR release on dev is the seed row, not build 722.** `GET /v1/admin/releases` answers 404 (the admin
+   releases API is not built; `backend/analytics` has only the enrolment-token and device routes), so the row was read
+   through `GET /v1/app/update-check?flavour=sr` as admin1001: `release_id` 1, **version 0.1.516 (code 516)**, sha256
+   `95bee189…`, `size_bytes` 20,000,000 (a placeholder, per the seed), `download_url` =
+   `https://github.com/asefameerador96-ctrl/Aron-Pro-Max/actions/runs/37652960567`, cert `468d9b4e…a4fb`, published
+   2026-10-07. That is exactly `infra/sql/devseed-app-release.sql` (09b), whose own comment says QR provisioning from it
+   is not possible. Expected 722 / `98f571c8…` / 12,542,325 bytes: **mismatch on version, sha256 and size**; the
+   signing certificate matches, which is the only field enrolment checks (the Honor enrolled with 722 on 2026-10-15 as
+   device 2, so that check is proven).
+2. **The QR's download location is not an APK.** `curl -I` of the `download_url` (anonymous, as Android's provisioning
+   downloads) returns `200 text/html` (the Actions run page). Android would fail the download. No anonymous APK URL
+   exists on dev yet: CI's `release-manifest.json` has no `download_url` ("added by the store upload", N-064), and the
+   release-signed APKs live only in the Actions artifact (login required, zip). **Fix (infra / backend-admin):** put
+   `aron-sr-0.1.722-dev.apk` on an anonymous HTTPS URL (blob behind Front Door) and publish a 722 release row (or
+   build `POST /v1/admin/releases`).
+3. **Build 722 lacks the Android 12+ provisioning activities.** `aapt dump xmltree` of the APK the owner has (sha256
+   `98f571c81f27d8666ea698d4d6adcef664ca69db25d73bf37f50a1cde27ef658`, 12,542,325 bytes, `versionCode` 722, signer
+   `468d9b4e…a4fb` by `apksigner verify --print-certs`, copied to `%USERPROFILE%\AronApk\do-check\`) declares
+   `AronDeviceAdminReceiver` (BIND_DEVICE_ADMIN, `PROFILE_PROVISIONING_COMPLETE`) but **no**
+   `android.app.action.GET_PROVISIONING_MODE` / `ADMIN_POLICY_COMPLIANCE` activity. The classes exist
+   (`android/dpc/.../ProvisioningActivities.kt`); the manifest entries wait on android-core's "allowlisted" reply to
+   `docs/requests/android-geo-dpc-provisioning-activities.md` (`AppCoexistenceTest` still lists only MainActivity and the
+   receiver). On Android 12+ a QR-triggered fully-managed setup aborts ("Can't set up device") when the DPC does not
+   resolve both; the Honor is Android 15.
+4. **What is right:** token minting works (admin1001 MFA login reused from the saved enrolment, enrol answers 409);
+   the QR payload names `com.aktcl.aron.sr/com.aktcl.aron.dpc.AronDeviceAdminReceiver`, `LEAVE_ALL_SYSTEM_APPS_ENABLED`
+   true, admin extras `aron.api_base_url` = the dev Front Door origin, `aron.env` dev, `aron.flavour` sr,
+   `aron.lockdown_level` dev; `PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM` base64url-decodes to
+   `468d9b4eccb776e9f40e20e20aaf0f14627e2316e901d53af3fc9aa4e393a4fb` = the certificate digest; `qr_text` is 961 chars.
+   The in-app enrolment screen (`DeviceEnrolment.readInput`) accepts the same QR text or the bare token, so the minted
+   token serves the adb path too. Dev lockdown (docs/24 s10.2 table, `PolicyApplier`): `adb_enabled` set to 1,
+   `no_debugging_features` off, uninstall and factory reset not blocked, permissions granted but not pinned.
+5. **Token minted for this run:** `token_id` **3**, flavour sr, lockdown dev, max_uses 2, used 0, expires
+   **2026-10-19 17:30 UTC**, note "Honor X5c Plus device-owner enrolment". Secret and QR only in
+   `%USERPROFILE%\AronSecrets\sr-do-token.txt` and `sr-do-qr.png` (owner-only ACL). No other active token on dev.
+6. **Phone facts (adb reads, 2026-10-16 17:33 UTC; screenshot in the session scratchpad):** HONOR `NLA-LX2P`
+   (X5c Plus), Android **15** (API 35), MagicOS 9.0.0, patch 2026-07-01; `dpm list-owners` = **no owners**,
+   `dumpsys device_policy` shows no device admin (only the Android 15 role holders
+   `com.google.android.devicelockcontroller` and `com.hihonor.realtimedevicemanager`, not owners); `com.aktcl.aron.sr`
+   0.1.722 installed (installer null); `adb_enabled` 1, developer options on; **Accounts: 0** (no Google, no HONOR ID),
+   one user; Facebook (`com.facebook.katana`) and TikTok (`com.ss.android.ugc.trill`) installed as Honor preloads
+   (`pm path` → `/preload/app/Facebook/Facebook.apk`, `/preload/app/TikTokSEA/TikTokSEA.apk`) and YouTube
+   (`com.google.android.youtube`) is a system package (`pm list packages -s`), so all three default-block-list apps
+   return by themselves after the reset (D-04 needs no reinstall); no mock-location app selected (`appops query-op android:mock_location allow`: none);
+   screen: Wi-Fi settings, connected, no SIM, battery 100 percent. Server view, device 2: `enrolled`, `device_owner`
+   false, lockdown dev, bound to sr1001, last status trigger `check_in` on 2026-10-15.
+7. **Also noted:** `docs/setup/device-owner-test-phone.md` says `adb uninstall` removes a dev device owner; Android
+   refuses to uninstall an active device admin, and there is no in-app unenrol yet, so the runbook names the factory
+   reset (allowed under dev) as the way out. Owner of that page to confirm on the phone and correct.
+8. **Review fixes applied to the runbook (2026-10-16):** D-04 now states its precondition (working day, before
+   `hard_end_time` 20:00 Dhaka: `BlockingEngine.shouldBlock` returns false otherwise, backend defaults
+   `working_days_only` true) and lists YouTube with Facebook and TikTok; the Google account for the D-05 Play installs
+   is added only after `dpm set-device-owner` succeeds (dev policy allows accounts and adb installs after); the bind code
+   must be typed within the 10-minute `bind_token` window (the OTP itself lasts 120 min); the battery-optimisation
+   prompt is hedged (`BatteryExemption.requestIfNeeded` is not wired in build 722); the adb error list names "already
+   several users" (second user / Private Space) and drops the "already set-up" message, which Android raises only for
+   non-shell callers; the QR path moved to an appendix. The runbook is about 1,500 words including the four adb blocks (the
+   brief's eight required parts plus the review's additions), a little over two printed pages.

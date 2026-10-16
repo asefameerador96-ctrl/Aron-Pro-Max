@@ -1,0 +1,438 @@
+/* Calm Glass tokens for the web (docs/design/web-glass.md s2.2, s2.6, s3, s4, s8.2, s11; values from docs/design/tokens.md s2
+   which wins on any difference). Three themes on <html data-theme>: light (default), dark, sunlight ("High contrast"); the
+   prefers-color-scheme fallback applies only when nothing is stamped (the pre-paint script in layout.tsx stamps it).
+   Tiers on <html data-glass>: full | lite | off (aliases a | b | c). Density on <html data-density>: comfortable | regular | compact.
+   Tests: tests/css-contrast.test.ts and tests/contrast-tokens.test.ts recompute the contrast ledger from this file. */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg-gradient: radial-gradient(circle 90vw at 12% 6%, rgb(156 194 255 / 0.5), rgb(156 194 255 / 0)), radial-gradient(circle 80vw at 95% 78%, rgb(201 184 255 / 0.3), rgb(201 184 255 / 0)), linear-gradient(168deg, #d8e7fb 0%, #e8effa 50%, #f3f5fb 100%);
+  --bg-solid: #e8effa;
+  --surface-glass: rgb(255 255 255 / 0.62);
+  --surface-glass-field: rgb(255 255 255 / 0.96);
+  --strong-rgb: 255 255 255;
+  --surface-solid: #ffffff;
+  --surface-solid-raised: #f2f5fa;
+  --scrim-a: 0.32;
+  --border-hairline: rgb(255 255 255 / 0.45);
+  --border-hairline-top: rgb(255 255 255 / 0.75);
+  --border-hairline-bottom: rgb(11 27 51 / 0.1);
+  --border-divider: rgb(11 27 51 / 0.08);
+  --border-solid: rgb(11 27 51 / 0.3);
+  --border-input: #66768f;
+  --border-focus: #0a58cc;
+  --text-primary: #0b1b33;
+  --text-secondary: #303d52;
+  --text-disabled: #738097;
+  --text-placeholder: #5f6d84;
+  --text-on-accent: #ffffff;
+  --accent: #0a58cc;
+  --accent-text: #063b84;
+  --accent-hi: #052e6b;
+  --accent-fill: #041f49;
+  --accent-pressed: #031734;
+  --accent-container: #dce9fd;
+  --accent-on-container: #0a3f94;
+  --success: #0b7a45;
+  --success-container: #d6f0e1;
+  --success-on-container: #0a5a33;
+  --warning: #9a5200;
+  --warning-container: #ffe9c7;
+  --warning-on-container: #7a4300;
+  --danger: #c0182d;
+  --danger-container: #fddde1;
+  --danger-on-container: #8e1224;
+  --danger-fill: #7a0e1c;
+  --offline: #53627c;
+  --offline-container: #e3e8f0;
+  --offline-on-container: #3f4c63;
+  --state-pressed: rgb(11 27 51 / 0.08);
+  --state-disabled-fill: #dce2eb;
+  --state-disabled-label: #515e73;
+  --state-skeleton: rgb(11 27 51 / 0.07);
+  --state-skeleton-sweep: rgb(255 255 255 / 0.45);
+  /* +web */
+  --surface-data: rgb(255 255 255 / 0.92);
+  --card-fill: linear-gradient(180deg, rgb(255 255 255 / 0.3) 0, rgb(255 255 255 / 0) 45%), linear-gradient(180deg, rgb(255 255 255 / 0.66), rgb(255 255 255 / 0.58));
+  --vibrancy-tint: rgb(10 88 204 / 0.04);
+  --lit: 0 0 0 0.5px var(--border-hairline-bottom), inset 0 1px 0 var(--border-hairline-top);
+  --elev-card: 0 1px 3px rgb(11 27 51 / 0.06), 0 2px 10px rgb(11 27 51 / 0.1);
+  --elev-sheet: 0 2px 6px rgb(11 27 51 / 0.08), 0 8px 24px rgb(11 27 51 / 0.14);
+  --elev-dialog: 0 4px 8px rgb(11 27 51 / 0.1), 0 8px 32px rgb(11 27 51 / 0.18);
+  --chart-baseline: rgb(11 27 51 / 0.22);
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-6: #008300;
+  --viz-7: #4a3aa7;
+  --viz-8: #e34948;
+}
+
+/* Dark: the block below and the media-query copy must stay identical (tests/contrast-tokens.test.ts asserts it). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-gradient: radial-gradient(circle 90vw at 12% 6%, rgb(29 78 216 / 0.18), rgb(29 78 216 / 0)), radial-gradient(circle 80vw at 95% 78%, rgb(91 53 213 / 0.1), rgb(91 53 213 / 0)), linear-gradient(168deg, #16233f 0%, #0f1a2e 50%, #0a1220 100%);
+  --bg-solid: #0f1a2e;
+  --surface-glass: rgb(255 255 255 / 0.12);
+  --surface-glass-field: rgb(20 29 48 / 0.96);
+  --strong-rgb: 26 36 56;
+  --surface-solid: #141d30;
+  --surface-solid-raised: #1c2740;
+  --scrim-a: 0.56;
+  --border-hairline: rgb(255 255 255 / 0.14);
+  --border-hairline-top: rgb(255 255 255 / 0.22);
+  --border-hairline-bottom: rgb(255 255 255 / 0.06);
+  --border-divider: rgb(255 255 255 / 0.08);
+  --border-solid: rgb(255 255 255 / 0.24);
+  --border-input: #8394b0;
+  --border-focus: #84b6ff;
+  --text-primary: #f8fafd;
+  --text-secondary: #c2ccdd;
+  --text-disabled: #6b7a93;
+  --text-placeholder: #8f9db5;
+  --text-on-accent: #010712;
+  --accent: #84b6ff;
+  --accent-text: #a8cfff;
+  --accent-hi: #c9e1ff;
+  --accent-fill: #b3d4ff;
+  --accent-pressed: #ddebff;
+  --accent-container: #1b3568;
+  --accent-on-container: #bbd6ff;
+  --success: #4cd38b;
+  --success-container: #12382a;
+  --success-on-container: #9be7bf;
+  --warning: #ffb84d;
+  --warning-container: #45330f;
+  --warning-on-container: #ffd58f;
+  --danger: #ff7a8a;
+  --danger-container: #4a1b25;
+  --danger-on-container: #ffb3be;
+  --danger-fill: #ffb3be;
+  --offline: #9fb0cb;
+  --offline-container: #27324a;
+  --offline-on-container: #c3d0e6;
+  --state-pressed: rgb(255 255 255 / 0.1);
+  --state-disabled-fill: #2a3550;
+  --state-disabled-label: #97a6bf;
+  --state-skeleton: rgb(255 255 255 / 0.1);
+  --state-skeleton-sweep: rgb(255 255 255 / 0.12);
+  --surface-data: rgb(20 29 48 / 0.94);
+  --card-fill: linear-gradient(180deg, rgb(0 0 0 / 0) 45%, rgb(0 0 0 / 0.14) 100%), rgb(255 255 255 / 0.12);
+  --vibrancy-tint: rgb(132 182 255 / 0.04);
+  --lit: 0 0 0 0.5px var(--border-hairline-bottom), inset 0 1px 0 var(--border-hairline-top);
+  --elev-card: 0 1px 3px rgb(0 0 0 / 0.25), 0 2px 10px rgb(0 0 0 / 0.35);
+  --elev-sheet: 0 2px 6px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.5);
+  --elev-dialog: 0 4px 8px rgb(0 0 0 / 0.45), 0 8px 32px rgb(0 0 0 / 0.55);
+  --chart-baseline: rgb(255 255 255 / 0.2);
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-6: #008300;
+  --viz-7: #9085e9;
+  --viz-8: #e66767;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg-gradient: radial-gradient(circle 90vw at 12% 6%, rgb(29 78 216 / 0.18), rgb(29 78 216 / 0)), radial-gradient(circle 80vw at 95% 78%, rgb(91 53 213 / 0.1), rgb(91 53 213 / 0)), linear-gradient(168deg, #16233f 0%, #0f1a2e 50%, #0a1220 100%);
+    --bg-solid: #0f1a2e;
+    --surface-glass: rgb(255 255 255 / 0.12);
+    --surface-glass-field: rgb(20 29 48 / 0.96);
+    --strong-rgb: 26 36 56;
+    --surface-solid: #141d30;
+    --surface-solid-raised: #1c2740;
+    --scrim-a: 0.56;
+    --border-hairline: rgb(255 255 255 / 0.14);
+    --border-hairline-top: rgb(255 255 255 / 0.22);
+    --border-hairline-bottom: rgb(255 255 255 / 0.06);
+    --border-divider: rgb(255 255 255 / 0.08);
+    --border-solid: rgb(255 255 255 / 0.24);
+    --border-input: #8394b0;
+    --border-focus: #84b6ff;
+    --text-primary: #f8fafd;
+    --text-secondary: #c2ccdd;
+    --text-disabled: #6b7a93;
+    --text-placeholder: #8f9db5;
+    --text-on-accent: #010712;
+    --accent: #84b6ff;
+    --accent-text: #a8cfff;
+    --accent-hi: #c9e1ff;
+    --accent-fill: #b3d4ff;
+    --accent-pressed: #ddebff;
+    --accent-container: #1b3568;
+    --accent-on-container: #bbd6ff;
+    --success: #4cd38b;
+    --success-container: #12382a;
+    --success-on-container: #9be7bf;
+    --warning: #ffb84d;
+    --warning-container: #45330f;
+    --warning-on-container: #ffd58f;
+    --danger: #ff7a8a;
+    --danger-container: #4a1b25;
+    --danger-on-container: #ffb3be;
+    --danger-fill: #ffb3be;
+    --offline: #9fb0cb;
+    --offline-container: #27324a;
+    --offline-on-container: #c3d0e6;
+    --state-pressed: rgb(255 255 255 / 0.1);
+    --state-disabled-fill: #2a3550;
+    --state-disabled-label: #97a6bf;
+    --state-skeleton: rgb(255 255 255 / 0.1);
+    --state-skeleton-sweep: rgb(255 255 255 / 0.12);
+    --surface-data: rgb(20 29 48 / 0.94);
+    --card-fill: linear-gradient(180deg, rgb(0 0 0 / 0) 45%, rgb(0 0 0 / 0.14) 100%), rgb(255 255 255 / 0.12);
+    --vibrancy-tint: rgb(132 182 255 / 0.04);
+    --lit: 0 0 0 0.5px var(--border-hairline-bottom), inset 0 1px 0 var(--border-hairline-top);
+    --elev-card: 0 1px 3px rgb(0 0 0 / 0.25), 0 2px 10px rgb(0 0 0 / 0.35);
+    --elev-sheet: 0 2px 6px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.5);
+    --elev-dialog: 0 4px 8px rgb(0 0 0 / 0.45), 0 8px 32px rgb(0 0 0 / 0.55);
+    --chart-baseline: rgb(255 255 255 / 0.2);
+    --viz-1: #3987e5;
+    --viz-2: #d95926;
+    --viz-3: #199e70;
+    --viz-4: #c98500;
+    --viz-5: #d55181;
+    --viz-6: #008300;
+    --viz-7: #9085e9;
+    --viz-8: #e66767;
+  }
+}
+
+/* Sunlight / high contrast (tokens.md s2, third column): flat page, opaque surfaces, 2 px solid edges, no shadows; forces tier C below. */
+:root[data-theme="sunlight"] {
+  color-scheme: light;
+  --bg-gradient: none;
+  --bg-solid: #f1f3f7;
+  --surface-glass: #ffffff;
+  --surface-glass-field: #ffffff;
+  --strong-rgb: 255 255 255;
+  --surface-solid: #ffffff;
+  --surface-solid-raised: #eef1f6;
+  --scrim-a: 0.56;
+  --border-hairline: rgb(5 10 20 / 0.72);
+  --border-hairline-top: rgb(5 10 20 / 0.72);
+  --border-hairline-bottom: rgb(5 10 20 / 0.72);
+  --border-divider: rgb(5 10 20 / 0.4);
+  --border-solid: rgb(5 10 20 / 0.72);
+  --border-input: #2b3648;
+  --border-focus: #000000;
+  --text-primary: #050a14;
+  --text-secondary: #2b3648;
+  --text-disabled: #5b6578;
+  --text-placeholder: #4a5568;
+  --text-on-accent: #ffffff;
+  --accent: #0041b3;
+  --accent-text: #0041b3;
+  --accent-hi: #002a73;
+  --accent-fill: #002a73;
+  --accent-pressed: #001b4d;
+  --accent-container: #cfe0ff;
+  --accent-on-container: #002a73;
+  --success: #005c2e;
+  --success-container: #cfebd9;
+  --success-on-container: #00391c;
+  --warning: #7a3e00;
+  --warning-container: #ffe0a8;
+  --warning-on-container: #4d2700;
+  --danger: #a30018;
+  --danger-container: #fad0d6;
+  --danger-on-container: #6b0010;
+  --danger-fill: #6b0010;
+  --offline: #3b4658;
+  --offline-container: #dde2ea;
+  --offline-on-container: #1f2937;
+  --state-pressed: rgb(5 10 20 / 0.12);
+  --state-disabled-fill: #d9dee7;
+  --state-disabled-label: #3b4658;
+  --state-skeleton: rgb(5 10 20 / 0.1);
+  --state-skeleton-sweep: transparent;
+  --surface-data: #ffffff;
+  --card-fill: #ffffff;
+  --vibrancy-tint: transparent;
+  --lit: 0 0 #0000;
+  --elev-card: 0 0 #0000;
+  --elev-sheet: 0 0 #0000;
+  --elev-dialog: 0 0 #0000;
+  --chart-baseline: rgb(5 10 20 / 0.72);
+  --edge-w: 2px;
+  --focus-w: 3px;
+}
+
+/* Glass tiers (web-glass s3). Default is A (full); the pre-paint script stamps lite when backdrop-filter is missing or
+   reduced transparency is set. Sunlight, prefers-contrast and forced-colors always give C. */
+:root {
+  --glass-flat: var(--surface-glass);
+  --strong-a: 0.86;
+  --dialog-a: 0.96;
+  --scrim-k: 0.55;
+  --card-edge: var(--border-hairline);
+  --edge-w: 1px;
+  --focus-w: 2px;
+  --glass-fill-strong: rgb(var(--strong-rgb) / var(--strong-a));
+  --glass-fill-dialog: rgb(var(--strong-rgb) / var(--dialog-a));
+  --glass-blur-bar: 16px;
+  --glass-blur-sheet: 28px;
+  --bf-bar: blur(var(--glass-blur-bar)) saturate(1.4);
+  --bf-sheet: blur(var(--glass-blur-sheet)) saturate(1.4);
+  --surface-scrim: rgb(0 0 0 / calc(var(--scrim-a) * var(--scrim-k)));
+}
+:root[data-glass="lite"],
+:root[data-glass="b"] {
+  --strong-a: 0.96;
+  --scrim-k: 1;
+  --bf-bar: none;
+  --bf-sheet: none;
+}
+:root[data-glass="off"],
+:root[data-glass="c"],
+:root[data-theme="sunlight"] {
+  --glass-flat: var(--surface-solid);
+  --card-fill: var(--surface-solid);
+  --card-edge: var(--border-solid);
+  --vibrancy-tint: transparent;
+  --glass-fill-strong: var(--surface-solid);
+  --glass-fill-dialog: var(--surface-solid);
+  --surface-data: var(--surface-solid);
+  --scrim-k: 1;
+  --bf-bar: none;
+  --bf-sheet: none;
+  --elev-card: 0 0 #0000;
+}
+/* Fallbacks. `:root:root` (specificity 0,2,0), placed last, beats the stamped tier. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root:root {
+    --strong-a: 0.96;
+    --scrim-k: 1;
+    --bf-bar: none;
+    --bf-sheet: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  :root:root {
+    --glass-flat: var(--surface-solid);
+    --card-fill: var(--surface-solid);
+    --card-edge: var(--border-solid);
+    --vibrancy-tint: transparent;
+    --glass-fill-strong: var(--surface-solid);
+    --glass-fill-dialog: var(--surface-solid);
+    --surface-data: var(--surface-solid);
+    --scrim-k: 1;
+    --bf-bar: none;
+    --bf-sheet: none;
+    --elev-card: 0 0 #0000;
+  }
+}
+
+/* Type (web-glass s4): Bangla line heights are at least 1.40 em, so the line-height roles are variables that :lang(bn) raises. */
+:root {
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Bengali Variable", sans-serif;
+  --font-bengali: "Noto Sans Bengali Variable", system-ui, sans-serif;
+  --fs-caption: 0.8125rem;
+  --lh-caption: 1.125rem;
+  --lh-body: 1.5rem;
+  --lh-title: 1.875rem;
+  --lh-numeral: 2rem;
+  --lh-display: 2.5rem;
+  --lh-hero: 3.5rem;
+}
+:lang(bn) {
+  --font-ui: "Noto Sans Bengali Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fs-caption: 0.875rem;
+  --lh-caption: 1.25rem;
+  --lh-body: 1.625rem;
+  --lh-title: 2rem;
+  --lh-numeral: 2.375rem;
+  --lh-display: 3rem;
+  --lh-hero: 4.25rem;
+  letter-spacing: 0;
+}
+
+/* Density (web-glass s8.2) and the coarse-pointer floor (48 px for every control). */
+:root {
+  --topbar-h: 56px;
+  --toolbar-h: 56px;
+  --footer-h: 48px;
+  --row-h-base: 44px;
+  --head-h: 40px;
+  --ctl-h-base: 40px;
+  --card-pad: 20px;
+  --gap: 20px;
+  --table-fs: 0.875rem;
+  --table-lh: 1.25rem;
+  --row-h: var(--row-h-base);
+  --ctl-h: var(--ctl-h-base);
+  --rail-w: 0px;
+}
+html[data-density="comfortable"] {
+  --row-h-base: 52px;
+  --head-h: 44px;
+  --ctl-h-base: 44px;
+  --card-pad: 24px;
+  --gap: 24px;
+  --table-fs: 0.9375rem;
+  --table-lh: 1.375rem;
+}
+html[data-density="compact"] {
+  --row-h-base: 36px;
+  --head-h: 36px;
+  --ctl-h-base: 32px;
+  --card-pad: 16px;
+  --gap: 12px;
+  --table-fs: 0.8125rem;
+  --table-lh: 1.25rem;
+}
+html:lang(bn)[data-density="regular"],
+html:lang(bn):not([data-density]) {
+  --table-lh: 1.375rem;
+}
+html:lang(bn)[data-density="compact"] {
+  --table-fs: 0.875rem;
+}
+@media (pointer: coarse) {
+  html {
+    --ctl-h: max(var(--ctl-h-base), 48px);
+    --row-h: max(var(--row-h-base), 48px);
+  }
+}
+
+/* Motion (web-glass s11). */
+:root {
+  --motion-press: 90ms;
+  --motion-fast: 150ms;
+  --motion-base: 220ms;
+  --motion-sheet: 320ms;
+  --motion-reduced: 120ms;
+  --ease-out-soft: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-soft: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: linear(0, 0.086 10%, 0.263 20%, 0.454 30%, 0.622 40%, 0.754 50%, 0.851 60%, 0.916 70%, 0.958 80%, 0.983 90%, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 120ms;
+    --motion-base: 120ms;
+    --motion-sheet: 120ms;
+  }
+}
+
+/* Aliases kept for one release (web-glass s14, migration): pages written against the v0 names keep working. */
+:root {
+  --surface: var(--glass-fill-strong);
+  --glass-blur: var(--bf-bar);
+  --border-line: var(--border-divider);
+  --elev-1: var(--elev-card);
+  --accent-graphic: var(--accent);
+  --accent-wash: var(--accent-container);
+  --accent-on-wash: var(--accent-on-container);
+  --on-accent: var(--text-on-accent);
+  --chart-1: var(--viz-1);
+  --chart-2: var(--viz-2);
+  --radius-chip: 12px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
+}

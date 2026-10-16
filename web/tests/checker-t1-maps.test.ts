@@ -1,6 +1,7 @@
 // Independent checker (docs/26 s4), N-047 Google Maps cost guard. Failing tests here are evidence of defects.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -68,8 +69,8 @@ describe("N-047 BFF", () => {
         else if (/\.(ts|tsx)$/.test(f)) files.push(p);
       }
     };
-    walk(new URL("../src", import.meta.url).pathname);
-    const src = files.map((f) => [f, readFileSync(f, "utf8")] as const);
+    walk(fileURLToPath(new URL("../src", import.meta.url))); // fileURLToPath: a Windows pathname would start with /C:
+    const src = files.map((f) => [f.split("\\").join("/"), readFileSync(f, "utf8")] as const); // forward slashes on Windows too
     expect(src.filter(([, s]) => /AIza[0-9A-Za-z_-]{20,}/.test(s)).map(([f]) => f)).toEqual([]); // (holds) no literal key
     expect(src.filter(([, s]) => s.includes("process.env.NEXT_PUBLIC_MAPS_WEB_KEY")).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual([]);
     expect(src.filter(([, s]) => s.includes("maps.googleapis.com")).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual(["components/map-panel.tsx", "lib/security-headers.ts"]); // the second is the CSP allow-list, not a load

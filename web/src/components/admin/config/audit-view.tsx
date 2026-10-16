@@ -32,7 +32,7 @@ export function AuditView({ locale, entries, filter, nextCursor, basePath, title
           <ul className="space-y-0.5 font-mono text-xs">
             {lines.map((l) => (
               <li key={l.key}>
-                {l.key}: <span className="text-[var(--danger)]">{l.from || "∅"}</span> → <span className="text-[var(--success)]">{l.to || "∅"}</span>
+                {l.key}: <span className="text-danger-on-container">{l.from || "∅"}</span> → <span className="text-success-on-container">{l.to || "∅"}</span>
               </li>
             ))}
           </ul>

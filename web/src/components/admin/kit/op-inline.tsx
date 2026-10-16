@@ -68,7 +68,7 @@ export function OpInline({ op, endpoint, uuidMembers, params, body, version, lab
     }
   }
 
-  const btn = danger ? "border-[var(--danger)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]" : "border-slate-300 text-slate-800 hover:bg-slate-100";
+  const btn = danger ? "border-[var(--danger)] text-danger-on-container hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]" : "border-slate-300 text-slate-800 hover:bg-slate-100";
   return (
     <div className="space-y-1" data-testid={testId}>
       {open ? (
@@ -89,7 +89,7 @@ export function OpInline({ op, endpoint, uuidMembers, params, body, version, lab
         </button>
       )}
       {msg ? (
-        <p role={msg.kind === "error" ? "alert" : "status"} data-testid={msg.kind === "ok" ? "form-ok" : "form-error"} className={`text-xs ${msg.kind === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
+        <p role={msg.kind === "error" ? "alert" : "status"} data-testid={msg.kind === "ok" ? "form-ok" : "form-error"} className={`text-xs ${msg.kind === "ok" ? "text-success-on-container" : "text-danger-on-container"}`}>
           {msg.text}
         </p>
       ) : null}

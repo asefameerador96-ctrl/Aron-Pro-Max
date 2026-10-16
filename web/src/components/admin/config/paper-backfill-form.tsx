@@ -86,14 +86,14 @@ export function PaperBackfillForm() {
             <select aria-label={t("cfgc.col.kind")} value={l.kind} onChange={(ev) => setLines((s) => s.map((x, j) => (j === i ? { ...x, kind: ev.target.value as Line["kind"] } : x)))} className={`${inputClass} w-44`}>
               {KINDS.map((k) => (<option key={k} value={k}>{t(`de.kind.${k}` as MessageKey)}</option>))}
             </select>
-            {lines.length > 1 ? <button type="button" onClick={() => setLines((s) => s.filter((_, j) => j !== i))} className="rounded border border-[var(--danger)] px-2 py-1 text-xs text-[var(--danger)]">{t("ab.remove")}</button> : null}
-            {errors[`line${i}`] ? <p role="alert" className="w-full text-xs text-[var(--danger)]">{errors[`line${i}`]}</p> : null}
+            {lines.length > 1 ? <button type="button" onClick={() => setLines((s) => s.filter((_, j) => j !== i))} className="rounded border border-[var(--danger)] px-2 py-1 text-xs text-danger-on-container">{t("ab.remove")}</button> : null}
+            {errors[`line${i}`] ? <p role="alert" className="w-full text-xs text-danger-on-container">{errors[`line${i}`]}</p> : null}
           </div>
         ))}
         {lines.length < 60 ? <button type="button" onClick={() => setLines((s) => [...s, { sku_id: "", qty: "", kind: "sale" }])} className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100">{t("de.add_line")}</button> : null}
       </div>
       <ReasonField value={reason} onChange={setReason} error={errors.reason} />
-      {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"}`}>{banner.text}</p> : null}
+      {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-success-on-container" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger-on-container"}`}>{banner.text}</p> : null}
       <button type="button" disabled={busy} onClick={save} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("de.save")}</button>
     </div>
   );

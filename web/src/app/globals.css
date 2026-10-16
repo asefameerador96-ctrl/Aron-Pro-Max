@@ -1,146 +1,192 @@
 @import "tailwindcss";
 @import "@fontsource-variable/noto-sans-bengali/index.css";
+/* Calm Glass (docs/design/web-glass.md): tokens (themes, tiers, density, type, motion) and the Tailwind mapping plus glass utilities. */
+@import "../styles/tokens.css";
+@import "../styles/glass.css";
 
-@theme {
-  /* Bengali font is bundled with the app (no runtime font CDN, docs/24 s5.6). Latin falls back to the system stack. */
-  --font-sans: "Noto Sans Bengali Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --color-brand-50: #eef6ff;
-  --color-brand-100: #d9eaff;
-  --color-brand-600: #1d5fd1;
-  --color-brand-700: #174ca8;
-  --color-brand-900: #0f2f6b;
+/* The brand aliases stay for one release (web-glass s14): text uses accent.text, fills use accent.hi. */
+@theme inline {
+  --color-brand-50: var(--accent-container);
+  --color-brand-100: var(--accent-container);
+  --color-brand-600: var(--accent-hi);
+  --color-brand-700: var(--accent-fill);
+  --color-brand-900: var(--accent-on-container);
 }
 
-:root {
-  color-scheme: light dark;
-  /* "Calm Glass" tokens v1 (docs/design/tokens.md s2, s11). Pages use the token names, never raw values. `--accent` is accent.text (text and links); `--accent-graphic` is for icons and rings; fills use --accent-fill. Cards are translucent at the 92 percent tier alpha; text on them is computed (tests/css-contrast.test.ts). */
-  --bg-gradient: linear-gradient(168deg, #d8e7fb 0%, #e8effa 50%, #f3f5fb 100%);
-  --surface-glass: rgb(255 255 255 / 0.92);
-  --surface-solid: #ffffff;
-  --border-hairline: rgb(255 255 255 / 0.45);
-  --border-line: rgb(11 27 51 / 0.14);
-  --border-input: #66768f;
-  --text-primary: #0b1b33;
-  --text-secondary: #303d52;
-  --accent: #063b84;
-  --accent-graphic: #0a58cc;
-  --accent-fill: #052e6b;
-  --accent-pressed: #031734;
-  --accent-wash: #dce9fd;
-  --accent-on-wash: #0a3f94;
-  --on-accent: #ffffff;
-  /* Status words use the role's onContainer ink (tokens.md s2.5); the pure role colours are for icons and bars only. */
-  --success: #0a5a33;
-  --warning: #7a4300;
-  --danger: #8e1224;
-  --radius-chip: 12px;
-  --radius-card: 20px;
-  --radius-sheet: 28px;
-  --elev-1: 0 1px 2px rgb(11 27 51 / 0.07), 0 4px 12px rgb(11 27 51 / 0.06);
-  /* Chart series colours: colour-blind safe (blue plus a dark orange that differs in lightness too; at least 3:1 on the surface; values are always printed, never colour-only). */
-  --chart-1: #123f94;
-  --chart-2: #c2620a;
-  --motion-fast: 150ms;
-  --motion-base: 220ms;
-  --surface: var(--surface-solid);
+html {
+  background: var(--bg-solid);
+  scroll-padding-top: calc(var(--topbar-h) + var(--head-h) + 8px);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-gradient: linear-gradient(168deg, #16233f 0%, #0f1a2e 50%, #0a1220 100%);
-    --surface-glass: rgb(26 36 56 / 0.92);
-    --surface-solid: #141d30;
-    --border-hairline: rgb(255 255 255 / 0.14);
-    --border-line: rgb(255 255 255 / 0.18);
-    --border-input: #8394b0;
-    --text-primary: #f8fafd;
-    --text-secondary: #c2ccdd;
-    --accent: #a8cfff;
-    --accent-graphic: #84b6ff;
-    --accent-fill: #c9e1ff;
-    --accent-pressed: #ddebff;
-    --accent-wash: #1b3568;
-    --accent-on-wash: #bbd6ff;
-    --on-accent: #010712;
-    --chart-1: #5b9bff;
-    --chart-2: #ffd166;
-    --success: #9be7bf;
-    --warning: #ffd58f;
-    --danger: #ffb3be;
-    --elev-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);
-  }
-}
-/* High contrast (docs/32 s2a): solid surfaces, no blur, secondary text as dark as primary text, stronger lines. Figures stay at least 7:1. */
-@media (prefers-contrast: more) {
-  :root {
-    --surface-glass: #ffffff;
-    --text-secondary: #1e293b;
-    --accent: #0b2a66;
-    --accent-graphic: #123f94;
-    --accent-fill: #052e6b;
-    --border-line: rgb(11 27 51 / 0.55);
-    --border-input: #2b3648;
-    --chart-1: #0b2a66;
-    --chart-2: #b34700;
-    --glass-blur: none;
-  }
-}
-@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
-  :root {
-    --surface-glass: #141d30;
-    --text-secondary: #e2e8f0;
-    --accent: #c9e1ff;
-    --accent-graphic: #a9ccff;
-    --accent-fill: #c9e1ff;
-    --border-line: rgb(255 255 255 / 0.6);
-    --border-input: #c2ccdd;
-    --chart-1: #7fb0ff;
-    --chart-2: #ffe08a;
-  }
-}
-/* Tier C (solid) is the default; tier A glass is for desktop browsers that support it and have not asked for less transparency. */
-:root { --surface: var(--surface-solid); }
-@media (hover: hover) and (pointer: fine) and (prefers-reduced-transparency: no-preference) and (prefers-contrast: no-preference) {
-  @supports (backdrop-filter: blur(1px)) {
-    :root { --surface: var(--surface-glass); --glass-blur: blur(16px) saturate(1.4); }
-  }
-}
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { :root { --surface: var(--surface-solid); --glass-blur: none; } }
-/* Tier B (glass-lite, docs/design/web-glass.md s3): the glass fills stay, the blur goes; tier C ("off") is solid. The tier is stamped on <html data-glass>. */
-:root[data-glass="lite"] { --surface: var(--surface-glass); --glass-blur: none; }
-:root[data-glass="off"] { --surface: var(--surface-solid); --glass-blur: none; }
-
 body {
-  background: var(--bg-gradient) fixed;
+  background: var(--bg-solid);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  line-height: var(--lh-body);
+  min-height: 100dvh;
+}
+/* Focus is one visible outline everywhere (web-glass s7.1, s13); sunlight widens it to 3 px. */
+:focus-visible {
+  outline: var(--focus-w) solid var(--border-focus);
+  outline-offset: 2px;
+}
+::placeholder {
+  color: var(--text-placeholder);
+  opacity: 1;
+}
+a,
+button,
+summary,
+select,
+input {
+  transition: background-color var(--motion-fast) var(--ease-out-soft), border-color var(--motion-fast) var(--ease-out-soft), color var(--motion-fast) var(--ease-out-soft), box-shadow var(--motion-base) var(--ease-out-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    transition-property: opacity, background-color !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media (forced-colors: active) {
+  .glass-card,
+  .glass-data,
+  .glass-dialog,
+  .glass-pop,
+  .glass-sheet,
+  .glass-panel {
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+}
+
+/* Pages written against Tailwind's default palette resolve through the tokens, so the whole portal shares one look while the
+   restyle lands page by page (web-glass s14, migration table). These rules are unlayered, so they win over the utilities. */
+.bg-white,
+.bg-slate-50 {
+  background: var(--card-fill);
+}
+input.bg-white,
+select.bg-white,
+textarea.bg-white,
+button.bg-white,
+input.bg-slate-50,
+select.bg-slate-50 {
+  background: var(--surface-solid-raised);
+}
+.min-h-screen.bg-slate-50 {
+  background: transparent;
+}
+thead.bg-slate-50 {
+  background: var(--glass-fill-strong);
+}
+.bg-slate-100 {
+  background: var(--surface-solid-raised);
+}
+.hover\:bg-brand-700:hover {
+  background: var(--accent-pressed);
+}
+.hover\:bg-slate-50:hover,
+.hover\:bg-slate-100:hover,
+.hover\:bg-slate-200:hover {
+  background: var(--state-pressed);
+}
+.border-slate-200,
+.divide-slate-200 > * + *,
+.divide-slate-100 > * + * {
+  border-color: var(--border-divider);
+}
+.border-slate-300 {
+  border-color: var(--border-input);
+}
+.border-dashed.border-slate-300 {
+  border-color: var(--border-solid);
+}
+.rounded-lg {
+  border-radius: var(--radius-card);
+}
+.rounded {
+  border-radius: var(--radius-chip);
+}
+.shadow-sm {
+  box-shadow: var(--elev-card), var(--lit);
+}
+.text-slate-500,
+.text-slate-600 {
+  color: var(--text-secondary);
+}
+.text-slate-700,
+.text-slate-800,
+.text-slate-900 {
   color: var(--text-primary);
 }
-
-/* The shared kit's existing utility classes now resolve through the tokens, so every page (dashboards, admin, config) shares one look. */
-.bg-white, .bg-slate-50 { background-color: var(--surface); -webkit-backdrop-filter: var(--glass-blur, none); backdrop-filter: var(--glass-blur, none); }
-.min-h-screen.bg-slate-50 { background-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
-/* Hover fills resolve through the tokens too: the light slate hover turned dark-theme rows near-white under light text. */
-.hover\:bg-brand-700:hover { background-color: var(--accent-pressed); }
-.hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, .hover\:bg-slate-200:hover { background-color: color-mix(in srgb, var(--accent) 14%, var(--surface-solid)); }
-.bg-slate-100 { background-color: color-mix(in srgb, var(--surface) 70%, transparent); }
-.border-slate-200, .divide-slate-200 > * + *, .divide-slate-100 > * + * { border-color: var(--border-line); }
-.border-slate-300 { border-color: var(--border-input); }
-.rounded-lg { border-radius: var(--radius-card); }
-.rounded { border-radius: var(--radius-chip); }
-.shadow-sm { box-shadow: var(--elev-1); }
-.text-slate-500, .text-slate-600 { color: var(--text-secondary); }
-.text-slate-700, .text-slate-800, .text-slate-900 { color: var(--text-primary); }
-.bg-brand-50, .bg-brand-100 { background-color: var(--accent-wash); color: var(--accent-on-wash); }
-.text-brand-700, .text-brand-600, .text-brand-900 { color: var(--accent); }
-.border-brand-100 { border-color: var(--border-line); }
-.ring-brand-600 { --tw-ring-color: var(--accent-graphic); }
-.border-brand-600, .hover\:border-brand-600:hover, .focus\:border-brand-600:focus { border-color: var(--accent-graphic); }
-.bg-brand-700, .bg-brand-600 { background-color: var(--accent-fill); }
-/* Text on the accent fill keeps AA contrast in both themes (white on the light-blue dark accent was 2.4:1). */
-.bg-brand-600.text-white, .bg-brand-700.text-white { color: var(--on-accent); }
-a, button, summary, select, input { transition: background-color var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out, box-shadow var(--motion-base) ease-out; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-
-body {
-  font-family: var(--font-sans);
-  /* Bangla glyphs have tall ascenders and deep matras; a slightly looser line height avoids clipping. */
-  line-height: 1.6;
+.bg-brand-50,
+.bg-brand-100 {
+  background: var(--accent-container);
+  color: var(--accent-on-container);
+}
+.text-brand-700,
+.text-brand-600,
+.text-brand-900 {
+  color: var(--accent-text);
+}
+.border-brand-100 {
+  border-color: var(--border-divider);
+}
+.ring-brand-600 {
+  --tw-ring-color: var(--accent);
+}
+.border-brand-600,
+.hover\:border-brand-600:hover,
+.focus\:border-brand-600:focus {
+  border-color: var(--accent);
+}
+.bg-brand-700,
+.bg-brand-600 {
+  background: linear-gradient(180deg, var(--accent-hi), var(--accent-fill));
+}
+.bg-brand-600.text-white,
+.bg-brand-700.text-white {
+  color: var(--text-on-accent);
+}
+/* Status words sit on their opaque container in both themes (tokens.md s2.5). */
+.bg-amber-50,
+.bg-amber-100 {
+  background: var(--warning-container);
+}
+.text-amber-800,
+.text-amber-900 {
+  color: var(--warning-on-container);
+}
+.border-amber-300 {
+  border-color: var(--warning);
+}
+.bg-red-50,
+.bg-red-100 {
+  background: var(--danger-container);
+}
+.text-red-600,
+.text-red-700,
+.text-red-800,
+.text-red-900 {
+  color: var(--danger-on-container);
+}
+.border-red-200,
+.border-red-300 {
+  border-color: var(--danger);
+}
+.bg-emerald-50,
+.bg-emerald-100 {
+  background: var(--success-container);
+}
+.text-emerald-800,
+.text-emerald-900 {
+  color: var(--success-on-container);
+}
+.animate-pulse.bg-slate-200\/70,
+.animate-pulse.bg-slate-200\/60,
+.animate-pulse.bg-\[var\(--surface-glass\)\] {
+  background: var(--state-skeleton);
 }

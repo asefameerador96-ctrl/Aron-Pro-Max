@@ -2,7 +2,8 @@ package com.aktcl.aron.core.ui
 
 import android.content.Context
 import android.provider.Settings
-import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,9 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -79,30 +77,22 @@ fun rememberSunlightSuggestion(sunlightOn: Boolean): Pair<Boolean, () -> Unit> {
     return (visible && !sunlightOn) to { visible = false }
 }
 
-/** The top-bar sun control: one tap, 48 dp, announced as a toggle with its state (not by colour alone). */
+/** The top-bar sun control: one tap, 48 dp, [AronIcons.Sun] in `accent` when on, announced as a toggle with its state (not by colour alone). */
 @Composable
 fun SunlightToggle(on: Boolean, onToggle: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     val c = LocalAronColors.current
     val label = stringResource(R.string.core_ui_sunlight_toggle)
     Box(
-        modifier.sizeIn(minWidth = AronTokens.Touch.Min, minHeight = AronTokens.Touch.Min)
+        modifier.size(AronTokens.Touch.Min)
             .aronFocusRing(androidx.compose.foundation.shape.CircleShape)
+            .clip(androidx.compose.foundation.shape.CircleShape)
             .toggleable(value = on, role = Role.Switch, onValueChange = onToggle)
             .semantics(mergeDescendants = true) { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        val ink = if (on) c.accent else c.textPrimary
-        Canvas(Modifier.size(AronTokens.Space.Xl)) {
-            val r = size.minDimension * 0.22f
-            val stroke = Stroke(width = (if (on) 3f else 2f) * density, cap = StrokeCap.Round)
-            drawCircle(ink, radius = r, style = if (on) androidx.compose.ui.graphics.drawscope.Fill else stroke)
-            for (i in 0 until 8) {
-                val a = Math.toRadians(i * 45.0)
-                val from = Offset(center.x + (r * 1.5f * Math.cos(a)).toFloat(), center.y + (r * 1.5f * Math.sin(a)).toFloat())
-                val to = Offset(center.x + (r * 2.2f * Math.cos(a)).toFloat(), center.y + (r * 2.2f * Math.sin(a)).toFloat())
-                drawLine(ink, from, to, strokeWidth = stroke.width, cap = StrokeCap.Round)
-            }
-        }
+        val wellColor = c.accentContainer
+        if (on) Box(Modifier.size(AronTokens.Size.IconLarge + AronTokens.Space.S).drawBehind { drawCircle(wellColor) })
+        androidx.compose.material3.Icon(AronIcons.Sun, contentDescription = null, tint = if (on) c.accentOnContainer else c.textPrimary, modifier = Modifier.size(AronTokens.Size.Icon))
     }
 }
 
@@ -110,11 +100,9 @@ fun SunlightToggle(on: Boolean, onToggle: (Boolean) -> Unit, modifier: Modifier 
 @Composable
 fun SunlightSuggestionChip(onSwitch: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalAronColors.current
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(AronTokens.Radius.Chip), color = c.accentContainer) {
-        Row(Modifier.padding(AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            Text(stringResource(R.string.core_ui_sunlight_suggest), color = c.accentOnContainer, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = onSwitch, modifier = Modifier.sizeIn(minHeight = AronTokens.Touch.Min)) { Text(stringResource(R.string.core_ui_sunlight_switch), color = c.accentOnContainer) }
-            TextButton(onClick = onDismiss, modifier = Modifier.sizeIn(minHeight = AronTokens.Touch.Min)) { Text(stringResource(R.string.core_ui_sunlight_not_now), color = c.accentOnContainer) }
-        }
-    }
+    AronBanner(
+        stringResource(R.string.core_ui_sunlight_suggest), modifier, BannerKind.Info,
+        actionLabel = stringResource(R.string.core_ui_sunlight_switch), onAction = onSwitch,
+        dismissLabel = stringResource(R.string.core_ui_sunlight_not_now), onDismiss = onDismiss,
+    )
 }

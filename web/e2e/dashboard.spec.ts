@@ -59,6 +59,10 @@ test("final-submit panel: zones submitted versus remaining, Submit %, Day comple
 test("map: without a Maps key the pins are listed; the BFF counts every load and refuses above the cap (N-047)", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  // Calm Glass (screens-web s1): the map loads only on "Show map", so a dashboard visit costs no Maps load.
+  await expect(page.getByTestId("map-plate")).toBeVisible();
+  expect(await page.evaluate(() => Array.from(document.scripts).some((s) => s.src.includes("maps.googleapis.com")))).toBe(false);
+  await page.getByTestId("map-show").click();
   const map = page.getByTestId("map-panel");
   await expect(map).toHaveAttribute("data-phase", "no_key");
   // Seeded outlets with coordinates (one per route in two zones) plus the last fixes of the team members who started their day.

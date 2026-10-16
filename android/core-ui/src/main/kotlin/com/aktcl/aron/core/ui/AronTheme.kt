@@ -88,6 +88,8 @@ val LocalSunlight = staticCompositionLocalOf { false }
 
 /**
  * [dark] is a user choice (light is the field default); [sunlight] is the outdoor switch and forces tier C.
+ * [reducedMotion] is the system "remove animations" setting (read once); tier C and sunlight also reduce motion
+ * (android-glass s9: tier C is a performance profile), so the kit never springs or scales on a phone that fell to C.
  */
 @Composable
 fun AronTheme(
@@ -95,15 +97,18 @@ fun AronTheme(
     dark: Boolean = false,
     sunlight: Boolean = false,
     tier: GlassTier = LocalGlassTier.current,
+    reducedMotion: Boolean = rememberSystemReducedMotion(),
     content: @Composable () -> Unit,
 ) {
     val mode = if (sunlight) AronMode.Sunlight else if (dark) AronMode.Dark else AronMode.Light
     val roles = AronTokens.forMode(mode)
+    val resolvedTier = if (sunlight) GlassTier.C else tier
     CompositionLocalProvider(
         LocalAppLanguage provides language,
         LocalAronColors provides roles,
         LocalSunlight provides sunlight,
-        LocalGlassTier provides (if (sunlight) GlassTier.C else tier),
+        LocalGlassTier provides resolvedTier,
+        LocalReducedMotion provides (reducedMotion || resolvedTier == GlassTier.C),
     ) {
         MaterialTheme(
             colorScheme = remember(mode) { roles.toMaterial() },

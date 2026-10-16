@@ -49,7 +49,7 @@ export function FinalSubmitView({ locale, options, selection, date, today, previ
       <PageHeading title={t(locale, "fs.title")} intro={t(locale, "fs.intro")} />
       <GeoCascade levels={levels} viewLabel={t(locale, "fs.get")} allLabel={t(locale, "common.all")} action="/final-submit/submit" extra={[{ name: "date", value: date, label: t(locale, "cfgc.col.date"), type: "date" }]} />
       {backdated ? (
-        <p role="status" data-testid="backdate-banner" className="rounded border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] p-3 text-sm text-[var(--warning)]">
+        <p role="status" data-testid="backdate-banner" className="rounded border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] p-3 text-sm text-warning-on-container">
           {t(locale, "fs.backdate", { date: formatBusinessDate(locale, date) })}
         </p>
       ) : null}
@@ -58,7 +58,7 @@ export function FinalSubmitView({ locale, options, selection, date, today, previ
       ) : (
         <>
           {preview.already_submitted ? (
-            <p role="alert" data-testid="already-submitted" className="rounded border border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-[var(--danger)]">
+            <p role="alert" data-testid="already-submitted" className="rounded border border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-danger-on-container">
               {t(locale, "fs.already", { by: preview.submitted_by ?? "—", at: preview.submitted_at ? formatDateTime(locale, preview.submitted_at) : "—" })}
             </p>
           ) : null}

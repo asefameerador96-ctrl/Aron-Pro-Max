@@ -12,7 +12,7 @@ describe("catalogues", () => {
     expect(Object.keys(bn).sort()).toEqual(Object.keys(en).sort());
   });
   it("every Bangla value is non-empty, uses the same placeholders, and (except brand/names) is Bangla script", () => {
-    const keep = new Set(["app.name", "common.language.en"]);
+    const keep = new Set(["app.name", "common.language.en", "app.copyright"]); // brand names stay Latin
     for (const [k, v] of Object.entries(bn)) {
       expect(v.trim(), k).not.toBe("");
       expect(placeholders(v), k).toEqual(placeholders(en[k as keyof typeof en]));

@@ -18,6 +18,7 @@ Binding rules: `docs/24-build-spec.md` s6.5 (BFF auth), s8 (roles), `docs/26-lan
 | `npm run mock` | the mock API on `http://127.0.0.1:4010` |
 | `npm run dev` / `npm start` | dev server / the standalone production server (`scripts/start-standalone.mjs`) |
 | `bash scripts/ci.sh <install\|generate\|lint\|typecheck\|test\|build\|e2e\|all>` | the steps the CI workflow calls |
+| `npx tsx scripts/calm-glass-shots.ts <outDir> [baseUrl]` | screenshot matrix of login, dashboard, admin and config (1366x768 and 390x844, light and dark) against a running server and mock, for look-and-fix rounds |
 
 `npm run dev` against the mock: `npm run mock` in one terminal, then
 `ARON_API_BASE_URL=http://127.0.0.1:4010 ARON_COOKIE_INSECURE=1 npm run dev`.
@@ -83,8 +84,31 @@ that reuse the kit in `src/components/admin/kit/` (`Field`, `ReasonField`, `Data
 
 ```
 src/contract/        openapi.d.ts (generated) + types.ts (aliases the app imports)
-src/lib/             i18n (bn/en catalogues, Bengali digits, Dhaka dates) · auth (roles, sealing, session) · api client · menu
-src/components/      shell, scope badge, locale switch, login form · admin/ (kit, crud engine)
+src/styles/          tokens.css (Calm Glass variables: themes, tiers, density, type, motion) · glass.css (Tailwind mapping, glass utilities)
+src/lib/             i18n (bn/en catalogues, Bengali digits, Dhaka dates) · auth (roles, sealing, session) · api client · menu · ui/theme (pre-paint stamp)
+src/components/      shell, sidebar, theme menu, connection chip, scope badge, locale switch, login form · kit/ (buttons, chips, stat and hero cards, meter, banner, empty state, icons) · admin/ (kit, crud engine)
 src/app/             (dashboards)/ · login/ · admin/ · api/bff/
 mock/server.ts       contract-typed mock API for development and tests
 ```
+
+## Design language: Calm Glass
+
+The portal follows `docs/design/web-glass.md` (binding values in `docs/design/tokens.md`). The rules that matter when adding a page:
+
+- **Colours only through tokens.** Use the Tailwind utilities of `src/styles/glass.css` (`text-primary`, `text-secondary`, `text-accent`
+  for links and labels, `bg-accent-graphic` for icons and meters, `bg-success-container text-success-on-container` and the warning /
+  danger / offline pairs for status, `bg-raised`, `border-input`, `rounded-chip|card|sheet`, `shadow-card|sheet|dialog`). No raw hex,
+  no `slate-*`, no `bg-white` in new code; the overrides in `globals.css` keep the untouched pages on the tokens for one release.
+- **Surfaces:** `glass-card` (cards; never blurred), `glass-data` (tables, charts, key rows: near-opaque), `glass-bar` (top bar and
+  stuck table headers: blur in tier A only), `glass-sheet` / `glass-panel` / `glass-dialog` / `glass-pop`.
+- **Type roles:** `text-hero`, `text-display`, `text-numeral`, `text-title`, `text-heading`, `text-body`, `text-body-strong`,
+  `text-caption`, `text-label`, `text-table`; Bangla line heights follow `:lang(bn)` automatically.
+- **Kit first:** `src/components/kit/` (`Button`, `ButtonLink`, `StatusChip`, `StatCard`, `HeroCard`, `Meter`, `Skeleton`,
+  `EmptyState`, `Banner`, `SegmentedLinks`, `RankedBars`, `Icon`) and `admin/kit` (`PageHeading`, `Card`, `Stat`, `DataTable`).
+  Icons are inline SVG path data (`kit/icons.tsx`); there is no icon library.
+- **Theme, tier and density** are stamped on `<html>` before first paint by the inline script in `app/layout.tsx` (nonce from the
+  proxy): `data-theme` light | dark | sunlight ("High contrast"), `data-glass` full | lite | off, `data-density` comfortable |
+  regular | compact, `data-nav` rail. The user's choice lives in `localStorage` (`aron.theme`, `aron.density`, `aron.glass`,
+  `aron.nav`); the default is light, tier A where `backdrop-filter` exists and no reduced-transparency or more-contrast setting is on.
+- **Tests:** `tests/css-contrast.test.ts` and `tests/contrast-tokens.test.ts` recompute the contrast ledger (raw and glare) from
+  `tokens.css` for all three themes; `tests/theme-script.test.ts` runs the pre-paint script against a fake document.

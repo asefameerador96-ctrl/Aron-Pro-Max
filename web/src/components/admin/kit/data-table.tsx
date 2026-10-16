@@ -7,33 +7,35 @@ export interface Column<Row> {
   align?: "left" | "right";
 }
 
-/** Presentational table: header, rows, empty state. Server rendered; sorting and paging belong to the list operation. */
+/** Presentational table on the data surface (web-glass s8.1): sticky glass header, density-driven rows, numeric columns
+ *  right-aligned with tabular digits, hover bg-pressed. Server rendered; sorting and paging belong to the list operation. */
 export function DataTable<Row>({ columns, rows, rowKey, empty, caption }: { columns: readonly Column<Row>[]; rows: readonly Row[]; rowKey: (row: Row) => string; empty: string; caption: string }) {
   if (rows.length === 0) {
     return (
-      <p data-testid="table-empty" className="rounded border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600">
+      <p data-testid="table-empty" className="glass-card border-dashed p-6 text-center text-body text-secondary">
         {empty}
       </p>
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-      <table className="min-w-full divide-y divide-slate-200 text-sm" data-testid="data-table">
+    // The scroll region is keyboard reachable (axe scrollable-region-focusable) and named after the caption.
+    <div className="glass-data table-scroll max-h-[calc(100dvh-var(--topbar-h)-8rem)] min-h-0 text-primary focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus" tabIndex={0} role="region" aria-label={caption}>
+      <table className="min-w-full text-table" data-testid="data-table">
         <caption className="sr-only">{caption}</caption>
-        <thead className="bg-slate-50">
+        <thead>
           <tr>
             {columns.map((c) => (
-              <th key={c.key} scope="col" className={`px-3 py-2 font-semibold text-slate-700 ${c.align === "right" ? "text-right" : "text-left"}`}>
+              <th key={c.key} scope="col" className={`whitespace-nowrap px-3 text-label text-secondary ${c.align === "right" ? "text-end" : "text-start"}`}>
                 {c.header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {rows.map((r) => (
-            <tr key={rowKey(r)} className="hover:bg-slate-50">
+            <tr key={rowKey(r)}>
               {columns.map((c) => (
-                <td key={c.key} className={`max-w-[32rem] break-words px-3 py-2 align-top ${c.align === "right" ? "text-right" : "text-left"}`}>
+                <td key={c.key} className={`max-w-[32rem] px-3 py-2 align-top break-words ${c.align === "right" ? "text-end tabular-nums" : "text-start"}`}>
                   {c.render(r)}
                 </td>
               ))}
