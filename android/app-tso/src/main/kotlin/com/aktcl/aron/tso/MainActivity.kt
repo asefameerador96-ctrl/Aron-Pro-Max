@@ -14,9 +14,9 @@ import com.aktcl.aron.core.system.logout.LogoutResult
 import com.aktcl.aron.core.system.logout.UnsentItemsDialog
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -29,9 +29,11 @@ import com.aktcl.aron.core.session.SessionState
 import com.aktcl.aron.core.session.UnlockMode
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
+import com.aktcl.aron.core.ui.SunlightPreference
+import com.aktcl.aron.core.ui.aronPageBackground
 import com.aktcl.aron.feature.auth.LoginScreen
 import com.aktcl.aron.feature.auth.LoginViewModel
-import com.aktcl.aron.feature.home.HomePlaceholderScreen
+import com.aktcl.aron.feature.tso.TsoApp
 import com.aktcl.aron.feature.home.HomePlaceholderViewModel
 import com.aktcl.aron.feature.home.HomeUser
 import dagger.hilt.android.AndroidEntryPoint
@@ -39,8 +41,9 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Single activity of ARON TSO (docs/24 s5.1). Day-1 shell (N-001): login, then the home placeholder. The language is
- * applied in [attachBaseContext] so every string resource resolves in Bangla or English (docs/24 s5.6).
+ * Single activity of ARON TSO (docs/24 s5.1): enrolment and login, then [TsoApp] (the Calm Glass Home frame, Settings and the
+ * section screens). The language is applied in [attachBaseContext] so every string resource resolves in Bangla or English
+ * (docs/24 s5.6); the page background is the root (no opaque surface over it) and the sunlight switch is remembered per user.
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -93,8 +96,9 @@ class MainActivity : ComponentActivity() {
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
         setContent {
-            AronTheme(language) {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            var sunlight by remember { mutableStateOf(false) }
+            AronTheme(language, sunlight = sunlight) {
+                Box(Modifier.fillMaxSize().aronPageBackground()) {
                     val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
                         SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore
@@ -133,9 +137,14 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                             }
+                            // The bundle head check of Day 1 stays the source of the status row; nothing on Home waits for it.
                             val vm = viewModel(key = "home-" + s.user.userId) {
                                 HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
                             }
+                            val home by vm.state.collectAsStateWithLifecycle()
+                            val sunlightPref = remember(s.user.userId) { SunlightPreference(applicationContext, s.user.userId.toString()) }
+                            LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
+                            val updateState by updateShell.state.collectAsStateWithLifecycle()
                             // F-SYS-075: the location notice first.
                             com.aktcl.aron.feature.auth.LocationNoticeGate(
                                 key = s.user.userId,
@@ -144,8 +153,7 @@ class MainActivity : ComponentActivity() {
                                 nowMs = components.trustedClock::nowMs,
                                 onLogout = { logoutTap() },
                             ) {
-                            UpdateHost(updateShell, dayOpen = { false }, serverSaidTooOld = s.updateRequired, onLogout = { logoutTap() }) { HomePlaceholderScreen(
-                                viewModel = vm,
+                            UpdateHost(updateShell, dayOpen = { false }, serverSaidTooOld = s.updateRequired, onLogout = { logoutTap() }) { TsoApp(
                                 user = HomeUser(
                                     fullName = s.user.fullName,
                                     username = s.user.username,
@@ -154,8 +162,17 @@ class MainActivity : ComponentActivity() {
                                     reauthRequired = s.reauthRequired,
                                     updateRequired = s.updateRequired,
                                 ),
-                                onLogout = { logoutTap() },
+                                businessDate = home.businessDate,
+                                bundle = home.bundle,
+                                versionText = versionName,
                                 onLanguageSelect = onLanguageSelect,
+                                onLogout = { logoutTap() },
+                                sunlight = sunlight,
+                                onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
+                                onUpdate = { updateShell.openPage() },
+                                updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
+                                // the dashboard origin from the build config (aron.webBaseUrl); empty until it is configured
+                                webOrigin = BuildConfig.WEB_BASE_URL.ifEmpty { null },
                             ) }
                             }
                         }

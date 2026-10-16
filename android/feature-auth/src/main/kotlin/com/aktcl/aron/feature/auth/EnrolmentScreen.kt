@@ -3,30 +3,23 @@ package com.aktcl.aron.feature.auth
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -34,10 +27,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronPrimaryButton
+import com.aktcl.aron.core.ui.AronCard
+import com.aktcl.aron.core.ui.AronSecondaryButton
+import com.aktcl.aron.core.ui.AronTextButton
+import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
-import com.aktcl.aron.core.ui.LanguageToggle
-import com.aktcl.aron.core.ui.LocalAppLanguage
+import com.aktcl.aron.core.ui.LocalAronColors
 
 /** Test tags of the enrolment screen. */
 object EnrolTags {
@@ -53,7 +48,7 @@ object EnrolTags {
  * Enrol this phone (docs/24 s10.4), shown instead of login while the phone is not enrolled. [onEnrolled] leads to login;
  * [onSkip] goes to login without enrolling (offline unlock of a known user, or a dev server without the gate): the server
  * still refuses an online login from an unknown phone, so skipping never weakens the gate. [scan] opens the QR scanner
- * (null hides the button).
+ * (null hides the button). [sunlight] and [onSunlight] wire the sun switch of the top row.
  */
 @Composable
 fun EnrolmentScreen(
@@ -63,6 +58,8 @@ fun EnrolmentScreen(
     onSkip: () -> Unit,
     onLanguageSelect: (AppLanguage) -> Unit,
     scan: ((Context, (EnrolmentQrScanner.Result) -> Unit) -> Unit)? = EnrolmentQrScanner::scan,
+    sunlight: Boolean = false,
+    onSunlight: ((Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.enrolled) { if (state.enrolled) onEnrolled() }
@@ -86,9 +83,17 @@ fun EnrolmentScreen(
         },
         onSkip = onSkip,
         onLanguageSelect = onLanguageSelect,
+        sunlight = sunlight,
+        onSunlight = onSunlight,
     )
 }
 
+/**
+ * The enrolment frame (screens-sr s1 frame): the top row, the brand block, the card with the explanation, the banner
+ * slot and the token field; the bar primary is "Scan QR" (or "Try again" while a token waits for the server) with
+ * "Enrol" as the secondary; "Log in without enrolling" is a text button that is never disabled, so a slow network
+ * never holds up the offline unlock at the start of a day.
+ */
 @Composable
 fun EnrolmentContent(
     state: EnrolUiState,
@@ -99,61 +104,55 @@ fun EnrolmentContent(
     onScan: (() -> Unit)?,
     onSkip: () -> Unit,
     onLanguageSelect: (AppLanguage) -> Unit,
+    sunlight: Boolean = false,
+    onSunlight: ((Boolean) -> Unit)? = null,
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            LanguageToggle(current = LocalAppLanguage.current, onSelect = onLanguageSelect)
+    val c = LocalAronColors.current
+    ScreenWithBar(Modifier.fillMaxSize(), bar = {
+        Column(Modifier.fillMaxWidth()) {
+            val enrolText = stringResource(if (state.busy && !state.pending) R.string.enrol_busy else R.string.enrol_submit)
+            when {
+                state.pending -> AuthBar(
+                    primaryText = stringResource(if (state.busy) R.string.enrol_busy else R.string.enrol_retry), onPrimary = onRetry, primaryTag = EnrolTags.RETRY,
+                    enabled = !state.busy, busy = state.busy,
+                    secondaryText = enrolText, onSecondary = onSubmit, secondaryTag = EnrolTags.SUBMIT, secondaryEnabled = !state.busy,
+                )
+                onScan != null -> AuthBar(
+                    primaryText = stringResource(R.string.enrol_scan), onPrimary = onScan, primaryTag = EnrolTags.SCAN, enabled = !state.busy,
+                    secondaryText = enrolText, onSecondary = onSubmit, secondaryTag = EnrolTags.SUBMIT, secondaryEnabled = !state.busy,
+                )
+                else -> AuthBar(primaryText = enrolText, onPrimary = onSubmit, primaryTag = EnrolTags.SUBMIT, enabled = !state.busy, busy = state.busy)
+            }
         }
-        Spacer(Modifier.height(32.dp))
-        Text(text = appTitle, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text(text = stringResource(R.string.enrol_title), style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(12.dp))
-        Text(text = stringResource(R.string.enrol_explain), style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(20.dp))
-        state.message?.let { m ->
-            // A solid banner (docs/32 s2a): readable in sun, never colour alone.
-            AronBanner(messageText(m), Modifier.testTag(EnrolTags.MESSAGE), kind = if (m is EnrolMessage.Waiting) BannerKind.Warning else BannerKind.Error)
-            Spacer(Modifier.height(12.dp))
-        }
-        if (state.pending) {
-            AronPrimaryButton(
-                text = stringResource(if (state.busy) R.string.enrol_busy else R.string.enrol_retry),
-                onClick = onRetry,
-                enabled = !state.busy,
-                modifier = Modifier.testTag(EnrolTags.RETRY),
-            )
-            Spacer(Modifier.height(20.dp))
-        }
-        if (onScan != null) {
-            AronPrimaryButton(
-                text = stringResource(R.string.enrol_scan),
-                onClick = onScan,
-                enabled = !state.busy,
-                modifier = Modifier.testTag(EnrolTags.SCAN),
-            )
-            Spacer(Modifier.height(16.dp))
-        }
-        OutlinedTextField(
-            value = state.input,
-            onValueChange = onInput,
-            label = { Text(stringResource(R.string.enrol_token_label)) },
-            enabled = !state.busy,
-            minLines = 2,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done, autoCorrectEnabled = false),
-            modifier = Modifier.fillMaxWidth().testTag(EnrolTags.INPUT),
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onSubmit, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(48.dp).testTag(EnrolTags.SUBMIT)) {
-            Text(stringResource(if (state.busy && !state.pending) R.string.enrol_busy else R.string.enrol_submit))
-        }
-        Spacer(Modifier.height(24.dp))
-        // Never disabled: a slow network must not hold up the offline unlock at the start of a day.
-        TextButton(onClick = onSkip, modifier = Modifier.testTag(EnrolTags.SKIP)) {
-            Text(stringResource(R.string.enrol_skip))
+    }) {
+        ScrollColumn(contentPadding = PaddingValues(horizontal = AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            AuthTopRow(onLanguageSelect, sunlight, onSunlight)
+            Spacer(Modifier.height(AronTokens.Space.L))
+            BrandBlock(appTitle)
+            Spacer(Modifier.height(AronTokens.Space.L))
+            AronCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.L)) {
+                    Text(stringResource(R.string.enrol_title), style = MaterialTheme.typography.titleLarge, color = c.textPrimary)
+                    Text(stringResource(R.string.enrol_explain), style = MaterialTheme.typography.bodyLarge, color = c.textSecondary)
+                    state.message?.let { m ->
+                        // A solid banner (docs/32 s2a): readable in sun, never colour alone.
+                        AronBanner(
+                            messageText(m), Modifier.testTag(EnrolTags.MESSAGE),
+                            kind = when { m is EnrolMessage.Waiting && m.offline -> BannerKind.Offline; m is EnrolMessage.Waiting -> BannerKind.Warning; else -> BannerKind.Error },
+                        )
+                    }
+                    AuthField(
+                        value = state.input, onValueChange = onInput, label = stringResource(R.string.enrol_token_label),
+                        modifier = Modifier.testTag(EnrolTags.INPUT), enabled = !state.busy, singleLine = false, minLines = 2,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+                    )
+                    if (state.pending && onScan != null) {
+                        AronSecondaryButton(stringResource(R.string.enrol_scan), onScan, Modifier.fillMaxWidth().testTag(EnrolTags.SCAN), enabled = !state.busy)
+                    }
+                }
+            }
+            // Never disabled: a slow network must not hold up the offline unlock at the start of a day.
+            AronTextButton(stringResource(R.string.enrol_skip), onSkip, Modifier.fillMaxWidth().testTag(EnrolTags.SKIP))
         }
     }
 }
@@ -179,6 +178,7 @@ data class EnrolStatus(val enrolled: Boolean, val pending: Boolean, val refusedC
 /**
  * The logged-out entry of every field app: the enrolment screen while the phone is not enrolled (a new install), then
  * [login]. [login] gets an "enrol this phone" action while the phone is still not enrolled (after a skip), null after.
+ * [sunlight] and [onSunlight] reach the enrolment screen's sun switch (the login screen takes its own through [login]).
  */
 @Composable
 fun EnrolmentGate(
@@ -186,6 +186,8 @@ fun EnrolmentGate(
     submit: suspend (String?) -> com.aktcl.aron.core.session.EnrolmentOutcome,
     appTitle: String,
     onLanguageSelect: (AppLanguage) -> Unit,
+    sunlight: Boolean = false,
+    onSunlight: ((Boolean) -> Unit)? = null,
     login: @Composable (onEnrol: (() -> Unit)?) -> Unit,
 ) {
     var show by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf<Boolean?>(null) }
@@ -206,6 +208,7 @@ fun EnrolmentGate(
             onEnrolled = { current = s.copy(enrolled = true, pending = false); show = false },
             onSkip = { show = false },
             onLanguageSelect = onLanguageSelect,
+            sunlight = sunlight, onSunlight = onSunlight,
         )
     } else {
         login(if (!s.enrolled) ({ current = null; epoch += 1; show = true }) else null)

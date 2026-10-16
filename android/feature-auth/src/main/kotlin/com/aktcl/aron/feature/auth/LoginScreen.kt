@@ -2,28 +2,20 @@ package com.aktcl.aron.feature.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -32,10 +24,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronPrimaryButton
+import com.aktcl.aron.core.ui.AronCard
+import com.aktcl.aron.core.ui.AronTextButton
+import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
-import com.aktcl.aron.core.ui.LanguageToggle
-import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
 import java.text.SimpleDateFormat
@@ -54,8 +46,9 @@ object LoginTags {
 }
 
 /**
- * The login screen of every field app (Day-1 shell, N-001). It works the same offline: the session decides between
- * online login and offline unlock. [appTitle] is the launcher label resource of the app (ARON SR, AMO, TSO).
+ * The login screen of every field app (Day-1 shell, N-001; screens-sr s1). It works the same offline: the session
+ * decides between online login and offline unlock. [appTitle] is the launcher label resource of the app (ARON SR, AMO,
+ * TSO). [sunlight] and [onSunlight] wire the sun switch of the top row (it works before sign-in; the host stores it).
  */
 @Composable
 fun LoginScreen(
@@ -65,11 +58,16 @@ fun LoginScreen(
     onLanguageSelect: (AppLanguage) -> Unit,
     /** Shown with the "not enrolled" refusal while this phone is not enrolled (see [EnrolmentGate]). */
     onEnrol: (() -> Unit)? = null,
+    sunlight: Boolean = false,
+    onSunlight: ((Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (state.bindToken != null) {
         androidx.activity.compose.BackHandler(onBack = viewModel::onOtpBack)
-        OtpContent(state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify, onBack = viewModel::onOtpBack)
+        OtpContent(
+            state.otp, viewModel::onOtpDigits, viewModel::onOtpVerify, onBack = viewModel::onOtpBack,
+            appTitle = appTitle, onLanguageSelect = onLanguageSelect, sunlight = sunlight, onSunlight = onSunlight,
+        )
         return
     }
     LoginContent(
@@ -82,9 +80,16 @@ fun LoginScreen(
         onSubmit = viewModel::onSubmit,
         onLanguageSelect = onLanguageSelect,
         onEnrol = onEnrol,
+        sunlight = sunlight,
+        onSunlight = onSunlight,
     )
 }
 
+/**
+ * The login frame (screens-sr s1): the language toggle and sun switch row, the brand block, the field card (username,
+ * password with show or hide), the banner slot, the footer caption and the bar primary riding above the keyboard.
+ * The primary is disabled with its reason until both fields are non-empty; while busy the label stays and the arc turns.
+ */
 @Composable
 fun LoginContent(
     state: LoginUiState,
@@ -96,70 +101,63 @@ fun LoginContent(
     onSubmit: () -> Unit,
     onLanguageSelect: (AppLanguage) -> Unit,
     onEnrol: (() -> Unit)? = null,
+    sunlight: Boolean = false,
+    onSunlight: ((Boolean) -> Unit)? = null,
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            LanguageToggle(current = LocalAppLanguage.current, onSelect = onLanguageSelect)
+    val filled = state.username.isNotBlank() && state.password.isNotEmpty()
+    val wrong = state.message == LoginMessage.InvalidCredentials || state.message == LoginMessage.OfflineWrongPassword
+    ScreenWithBar(Modifier.fillMaxSize(), bar = {
+        Column(Modifier.fillMaxWidth()) {
+            AuthBar(
+                primaryText = stringResource(if (state.busy) R.string.auth_logging_in else R.string.auth_login_button),
+                onPrimary = onSubmit, primaryTag = LoginTags.SUBMIT,
+                enabled = filled && !state.busy, busy = state.busy,
+                reason = stringResource(R.string.auth_error_empty),
+            )
         }
-        Spacer(Modifier.height(32.dp))
-        Text(text = appTitle, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text(text = stringResource(R.string.auth_login_title), style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(24.dp))
-        OutlinedTextField(
-            value = state.username,
-            onValueChange = onUsernameChange,
-            label = { Text(stringResource(R.string.auth_username)) },
-            singleLine = true,
-            enabled = !state.busy,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next, autoCorrectEnabled = false),
-            modifier = Modifier.fillMaxWidth().testTag(LoginTags.USERNAME),
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = state.password,
-            onValueChange = onPasswordChange,
-            label = { Text(stringResource(R.string.auth_password)) },
-            singleLine = true,
-            enabled = !state.busy,
-            visualTransformation = if (state.passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
-            keyboardActions = KeyboardActions(onDone = { onSubmit() }),
-            trailingIcon = {
-                TextButton(onClick = onTogglePasswordVisible) {
-                    Text(stringResource(if (state.passwordVisible) R.string.auth_password_hide else R.string.auth_password_show))
+    }) {
+        ScrollColumn(contentPadding = PaddingValues(horizontal = AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            AuthTopRow(onLanguageSelect, sunlight, onSunlight)
+            Spacer(Modifier.height(AronTokens.Space.L))
+            BrandBlock(appTitle)
+            Spacer(Modifier.height(AronTokens.Space.L))
+            AronCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.L)) {
+                    AuthField(
+                        value = state.username, onValueChange = onUsernameChange, label = stringResource(R.string.auth_username),
+                        modifier = Modifier.testTag(LoginTags.USERNAME), enabled = !state.busy, error = wrong,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                    )
+                    AuthField(
+                        value = state.password, onValueChange = onPasswordChange, label = stringResource(R.string.auth_password),
+                        modifier = Modifier.testTag(LoginTags.PASSWORD), enabled = !state.busy, error = wrong,
+                        visualTransformation = if (state.passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+                        keyboardActions = KeyboardActions(onDone = { if (filled && !state.busy) onSubmit() }),
+                        trailing = {
+                            AronTextButton(stringResource(if (state.passwordVisible) R.string.auth_password_hide else R.string.auth_password_show), onTogglePasswordVisible)
+                        },
+                    )
+                    state.message?.let { message ->
+                        // A solid banner (docs/32 s2a): readable in sun, never colour alone; the kind says how serious it is.
+                        AronBanner(messageText(message), Modifier.testTag(LoginTags.MESSAGE), kind = bannerKind(message))
+                        if (message == LoginMessage.DeviceNotEnrolled && onEnrol != null) {
+                            AronTextButton(stringResource(R.string.enrol_title), onEnrol, Modifier.fillMaxWidth().testTag(LoginTags.ENROL))
+                        }
+                    }
                 }
-            },
-            modifier = Modifier.fillMaxWidth().testTag(LoginTags.PASSWORD),
-        )
-        Spacer(Modifier.height(20.dp))
-        state.message?.let { message ->
-            // A solid banner (docs/32 s2a): readable in sun, never colour alone.
-            AronBanner(messageText(message), Modifier.testTag(LoginTags.MESSAGE), kind = BannerKind.Error)
-            Spacer(Modifier.height(12.dp))
-            if (message == LoginMessage.DeviceNotEnrolled && onEnrol != null) {
-                TextButton(onClick = onEnrol, modifier = Modifier.testTag(LoginTags.ENROL)) { Text(stringResource(R.string.enrol_title)) }
-                Spacer(Modifier.height(12.dp))
             }
+            AuthFooter(localizedDigits(stringResource(R.string.auth_version, versionName)), Modifier.testTag(LoginTags.VERSION))
         }
-        // The kit's primary button (48 dp+, wraps at large fonts); while busy the label says so and the button is off.
-        AronPrimaryButton(
-            text = stringResource(if (state.busy) R.string.auth_logging_in else R.string.auth_login_button),
-            onClick = onSubmit,
-            enabled = !state.busy,
-            modifier = Modifier.testTag(LoginTags.SUBMIT),
-        )
-        Spacer(Modifier.height(48.dp))
-        Text(
-            text = localizedDigits(stringResource(R.string.auth_version, versionName)),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.testTag(LoginTags.VERSION),
-        )
-        Text(text = stringResource(com.aktcl.aron.core.ui.R.string.core_ui_brand_footer), style = MaterialTheme.typography.bodySmall)
     }
+}
+
+/** Danger only for a wrong password or a refusal; a lock, a rate limit, an update or a bind step warn; never-online is the offline note. */
+private fun bannerKind(message: LoginMessage): BannerKind = when (message) {
+    LoginMessage.InvalidCredentials, LoginMessage.OfflineWrongPassword, LoginMessage.UserDisabled, LoginMessage.DeviceBlocked,
+    LoginMessage.PasswordChangeRequired, LoginMessage.EmptyFields, is LoginMessage.Refused -> BannerKind.Error
+    LoginMessage.OfflineNeverOnline -> BannerKind.Offline
+    else -> BannerKind.Warning
 }
 
 @Composable

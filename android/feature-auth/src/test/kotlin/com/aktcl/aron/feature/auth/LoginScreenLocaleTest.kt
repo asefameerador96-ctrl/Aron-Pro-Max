@@ -23,7 +23,7 @@ import org.robolectric.annotation.Config
 
 /** F-SYS-018 on the login screen: Bangla strings, Bengali digits and the bundled Bengali font; English the same in ASCII. */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [36])
+@Config(sdk = [34], qualifiers = "w360dp-h800dp") // the field phone: the banner under the fields is on screen without scrolling (screens-sr s0)
 class LoginScreenLocaleTest {
     @get:Rule val compose = createComposeRule()
 
@@ -62,6 +62,21 @@ class LoginScreenLocaleTest {
         compose.onNodeWithText("Username").assertIsDisplayed()
         compose.onNodeWithText("Version 0.1.0 (12)").assertExists()
         compose.onNodeWithText("বাংলা").assertIsDisplayed()
+    }
+
+    @Test
+    fun busyLoginKeepsTheLabelAndShowsNoReason() {
+        // screens-sr s1 Busy: the label stays with the arc, and the empty-fields reason never shows while a login is in flight
+        render(AppLanguage.EN, LoginUiState(username = "sr334001", password = "secret", busy = true))
+        compose.onNodeWithTag(LoginTags.SUBMIT).assertExists()
+        compose.onNodeWithText("Logging in...").assertIsDisplayed()
+        compose.onNodeWithText("Enter your username and password.").assertDoesNotExist()
+    }
+
+    @Test
+    fun emptyFieldsShowTheReasonAboveTheDisabledPrimary() {
+        render(AppLanguage.EN)
+        compose.onNodeWithText("Enter your username and password.").assertIsDisplayed()
     }
 
     @Test

@@ -29,6 +29,13 @@ check(testCopySuffix == null || Regex("^\\.[a-z][a-z0-9_]{0,20}$").matches(testC
     "aron.applicationIdSuffix must look like .copy, got: $testCopySuffix"
 }
 
+// Web dashboard origin (optional): shown on the TSO Device OTP page as the address to type on a computer. Empty means
+// not configured and the page shows the path alone. Same shape rule as the API origin: scheme and host, no path.
+val webBaseUrl: String = ((findProperty("aron.webBaseUrl") as String?) ?: "").trim().trimEnd('/')
+check(webBaseUrl.isEmpty() || Regex("^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$").matches(webBaseUrl)) {
+    "aron.webBaseUrl must be empty or a bare origin such as https://aron.example.com, got: $webBaseUrl"
+}
+
 val playIntegrityProjectNumber: Long = ((findProperty("aron.playIntegrityProjectNumber") as String?)?.trim()?.ifEmpty { null } ?: "0").toLong()
 
 // A release build never talks plain HTTP (docs/24 s5.8): fail it here instead of crashing the app at launch.
@@ -47,6 +54,7 @@ android {
         versionName = (findProperty("aron.versionName") as String?) ?: "0.1.0"
         buildConfigField("String", "ARON_ROLE", "\"TSO\"")
         buildConfigField("String", "API_BASE_URL", "\"" + apiBaseUrl + "\"")
+        buildConfigField("String", "WEB_BASE_URL", "\"" + webBaseUrl + "\"")
         // Play Integrity (docs/24 s8.7): the Google Cloud project number, not a secret; 0 means not configured and the
         // status report carries the not_configured marker (R12).
         buildConfigField("long", "PLAY_INTEGRITY_PROJECT_NUMBER", playIntegrityProjectNumber.toString() + "L")

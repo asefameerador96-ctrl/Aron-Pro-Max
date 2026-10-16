@@ -20,7 +20,7 @@ import org.robolectric.annotation.Config
 
 /** F-SR-002 screen. */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 class OtpScreenTest {
     @get:Rule val compose = createComposeRule()
 

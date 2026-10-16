@@ -119,6 +119,8 @@ class SrDay(
     fun iso(ms: Long): String = isoMillis.format(Instant.ofEpochMilli(ms))
     fun currentMs(): Long = clock.nowMs()
     fun requestSync() = scheduler.requestSync(userId, SyncTrigger.WRITE_DEBOUNCE)
+    /** The sync sheet's "sync now" (screens-sr s19): a manual trigger, scheduled, never awaited. */
+    fun requestSyncNow() = scheduler.requestSync(userId, SyncTrigger.MANUAL)
     fun businessDate(): String = BusinessDate.of(clock.nowMs()).toString()
     /** Milliseconds until the next 17:00 or the next midnight on Dhaka trusted time (at least one second). */
     fun millisToNextBoundary(): Long {

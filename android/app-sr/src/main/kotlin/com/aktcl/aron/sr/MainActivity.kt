@@ -5,8 +5,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+
+import com.aktcl.aron.core.ui.aronPageBackground
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -129,7 +129,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             var sunlight by remember { mutableStateOf(false) }
             AronTheme(language, sunlight = sunlight) {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                // The page (tokens s2.1): the calm gradient and glows behind every screen; no Surface colour may paint over it.
+                androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().aronPageBackground()) {
                     val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
                         SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore

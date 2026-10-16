@@ -2,13 +2,12 @@ package com.aktcl.aron.feature.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,15 +17,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronPrimaryButton
-import com.aktcl.aron.core.ui.BannerKind
-import com.aktcl.aron.core.ui.AronSecondaryButton
+import com.aktcl.aron.core.ui.AronCard
+import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.BannerKind
+import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.aronPageBackground
+import com.aktcl.aron.core.ui.skeleton
+import kotlinx.coroutines.launch
 
 object LocationNoticeTags {
     const val ACCEPT = "location_notice_accept"
@@ -39,8 +43,9 @@ object LocationNoticeTags {
 
 /**
  * Employee-location notice (F-SYS-075, owner android-core; new file in feature-auth by request
- * docs/requests/android-core-sr-a-location-notice.md). Bangla and English together on one solid, scrollable surface
- * (outdoor-first, docs/32 s2a). [required]: no "Later" and a hint that selling waits for acceptance.
+ * docs/requests/android-core-sr-a-location-notice.md). Bangla and English together on one solid card (outdoor-first,
+ * docs/32 s2a), the kit buttons in the bar: Accept as the primary, Later as the secondary when not [required] (then a
+ * hint says selling waits for acceptance), and a Log out text button for a rep who signed in by mistake.
  */
 @Composable
 fun LocationNoticeContent(
@@ -52,22 +57,34 @@ fun LocationNoticeContent(
     busy: Boolean = false,
     onLogout: (() -> Unit)? = null,
 ) {
-    Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.L),
-        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
-    ) {
-        Text(stringResource(R.string.location_notice_title_bn), style = MaterialTheme.typography.headlineSmall)
-        Text(stringResource(R.string.location_notice_body_bn), style = MaterialTheme.typography.bodyLarge)
-        Text(stringResource(R.string.location_notice_title_en), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.location_notice_body_en), style = MaterialTheme.typography.bodyLarge)
-        if (required) Text(stringResource(R.string.location_notice_required_hint), style = MaterialTheme.typography.bodyMedium)
-        if (acceptFailed) {
-            AronBanner(stringResource(R.string.location_notice_failed), Modifier.testTag(LocationNoticeTags.FAILED), kind = BannerKind.Error)
+    val c = LocalAronColors.current
+    ScreenWithBar(modifier.fillMaxSize(), bar = {
+        Column(Modifier.fillMaxWidth()) {
+            AuthBar(
+                primaryText = stringResource(R.string.location_notice_accept), onPrimary = onAccept, primaryTag = LocationNoticeTags.ACCEPT,
+                enabled = !busy, busy = busy,
+                secondaryText = if (!required) stringResource(R.string.location_notice_later) else null,
+                onSecondary = if (!required) onLater else null, secondaryTag = LocationNoticeTags.LATER,
+            )
         }
-        AronPrimaryButton(stringResource(R.string.location_notice_accept), onAccept, Modifier.testTag(LocationNoticeTags.ACCEPT), enabled = !busy)
-        if (!required) AronSecondaryButton(stringResource(R.string.location_notice_later), onLater, Modifier.testTag(LocationNoticeTags.LATER))
-        // A rep signed in by mistake on a shared phone leaves without accepting (checker).
-        onLogout?.let { AronSecondaryButton(stringResource(R.string.location_notice_logout), it, Modifier.testTag(LocationNoticeTags.LOGOUT)) }
+    }) {
+        ScrollColumn(contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            AronCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                    Text(stringResource(R.string.location_notice_title_bn), style = MaterialTheme.typography.titleLarge, color = c.textPrimary)
+                    Text(stringResource(R.string.location_notice_title_en), style = MaterialTheme.typography.titleSmall, color = c.textSecondary)
+                    Text(stringResource(R.string.location_notice_body_bn), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary)
+                    CardDivider()
+                    Text(stringResource(R.string.location_notice_body_en), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary)
+                }
+            }
+            if (required) Text(stringResource(R.string.location_notice_required_hint), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+            if (acceptFailed) {
+                AronBanner(stringResource(R.string.location_notice_failed), Modifier.testTag(LocationNoticeTags.FAILED), kind = BannerKind.Error)
+            }
+            // A rep signed in by mistake on a shared phone leaves without accepting (checker).
+            onLogout?.let { AronTextButton(stringResource(R.string.location_notice_logout), it, Modifier.fillMaxWidth().testTag(LocationNoticeTags.LOGOUT)) }
+        }
     }
 }
 
@@ -124,7 +141,10 @@ fun LocationNoticeGate(
     }
     val n = need
     if (n == null) {
-        Box(Modifier.fillMaxSize().testTag(LocationNoticeTags.LOADING), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        // a few ms: a skeleton card where the notice will stand (android-glass s6.11), never a spinner overlay
+        Box(Modifier.fillMaxSize().testTag(LocationNoticeTags.LOADING)) {
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(AronTokens.Space.Screen).height(200.dp).skeleton(true))
+        }
         return
     }
     if (!n.needed || later) {
@@ -133,7 +153,7 @@ fun LocationNoticeGate(
         Box(Modifier.fillMaxSize()) {
             content()
             if (reshow && n.needed) {
-                androidx.compose.material3.Surface(Modifier.fillMaxSize().testTag(LocationNoticeTags.OVERLAY)) {
+                Box(Modifier.fillMaxSize().aronPageBackground().testTag(LocationNoticeTags.OVERLAY)) {
                     androidx.activity.compose.BackHandler(enabled = true) { } // Back never reaches the day behind it
                     val shownAt = remember { nowMs() }
                     LocationNoticeContent(

@@ -91,4 +91,20 @@ class AttendanceFlowTest {
         assertEquals(AttendanceResult.Failed, f.checkIn())
         assertTrue(f.state.value.checkInEnabled); assertFalse(f.state.value.busy); assertNull(f.state.value.checkedInAt)
     }
+
+    @Test fun refreshIsDisplayOnlyAndFillsTheLocationCard() = runTest {
+        fixResult = FixReading("ok", 23.792580, 90.407830, 64.4, false)
+        val f = flow { _, _ -> "Gulshan, Dhaka" }
+        f.refreshFix()
+        val s = f.state.value
+        assertEquals(0, committed.size) // nothing stored, nothing committed
+        assertEquals("23.792580, 90.407830", s.coordinatesText); assertEquals(64, s.fixAccuracyM); assertFalse(s.fixFailed)
+        assertEquals("Gulshan, Dhaka", s.addressText); assertFalse(s.readingFix)
+        assertTrue(s.checkInEnabled) // the buttons never depend on the refresh
+        fixResult = FixReading("timeout", null, null, null, false)
+        f.refreshFix()
+        assertTrue(f.state.value.fixFailed); assertEquals("23.792580, 90.407830", f.state.value.coordinatesText) // the last good reading stays
+        f.checkIn()
+        assertEquals("attendance_in", committed.single().second.purpose) // the refresh never changes the event's purpose
+    }
 }

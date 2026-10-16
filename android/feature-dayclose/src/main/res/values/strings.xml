@@ -1,13 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- feature-dayclose strings (screens-sr s11). English default; Bangla in values-bn (docs/24 s5.6). -->
 <resources>
     <string name="submit_title">Sales submit</string>
+    <string name="submit_status_title">Device status</string>
     <string name="submit_status_online">Online</string>
     <string name="submit_status_offline">Offline</string>
+    <string name="submit_last_contact">Last contact %1$s</string>
+    <string name="submit_col_item">Item</string>
     <string name="submit_col_device">Device</string>
     <string name="submit_col_server">Server</string>
     <string name="submit_server_blank">—</string>
+    <string name="submit_no_counts">Nothing to compare yet</string>
+    <string name="submit_row_matched">Matched</string>
+    <string name="submit_row_waiting">Waiting</string>
+    <string name="submit_row_mismatch">Not matching</string>
+    <string name="submit_all_matched">All data matched</string>
+    <string name="submit_info">Submit is possible once all of today\'s data has synced. Sync runs by itself.</string>
     <string name="submit_sync">Sync data</string>
     <string name="submit_button">Submit sales</string>
+    <string name="submit_reason_unsynced">Enabled once the data has synced</string>
+    <string name="submit_reason_mismatch">The counts must match first</string>
+    <string name="submit_reason_queued">Submit saved; waiting for the network</string>
+    <string name="submit_hold_title">Submitting sales</string>
+    <string name="submit_hold_summary">%1$s records on this phone. Today\'s memos cannot be changed after this.</string>
+    <string name="submit_hold_label">Press and hold</string>
+    <string name="submit_hold_hint">Keep the button pressed for a moment to confirm.</string>
+    <string name="submit_cancel">Cancel</string>
     <string name="submit_blocked_unsynced">%1$s records are not synced yet.</string>
     <string name="submit_blocked_mismatch">%1$s: device %2$s, server %3$s.</string>
     <string name="submit_blocked_done">Today\'s sales are already submitted.</string>
@@ -16,4 +34,10 @@
     <string name="submit_dues_warning">%1$s retailers still owe %2$s. You can still submit.</string>
     <string name="submit_queued">Submit is saved and will be sent when you are online.</string>
     <string name="submit_success">Your sales for today are submitted.</string>
+    <string name="submit_success_records">%1$s records are on the server.</string>
+    <string name="submit_success_checkout">Check out after 5 PM when the day\'s work is done.</string>
+    <string name="submit_sync_again">Sync again</string>
+    <string name="submit_step_sync">Sync</string>
+    <string name="submit_step_match">Match</string>
+    <string name="submit_step_submit">Submit</string>
 </resources>

@@ -21,6 +21,7 @@ class OutletCardTest {
         assertEquals("Rahim Store", c.name); assertEquals("Rahim", c.ownerName); assertEquals("01712345678", c.phone)
         assertEquals("Apsis Cluster", c.clusterName); assertEquals("grocery", c.channel); assertEquals(125_000L, c.openDueMtk)
         assertEquals("2026-10-06", c.openDueAsOf); assertEquals("2026-10-06T08:00:00.000Z", c.lastVisitAt); assertEquals(true, c.pendingRequest)
+        assertEquals("DHK-1", c.code)
         assertEquals(0, OutletCard::class.java.declaredFields.count { it.name.contains("loyalty", ignoreCase = true) })
     }
 

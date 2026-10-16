@@ -23,7 +23,7 @@
     <string name="hm_tile_sales_submit">Sales Submit</string>
     <string name="hm_tile_outlet">Outlet</string>
     <string name="hm_tile_tutorial">Tutorial</string>
-    <string name="hm_tile_tasks">Task Delegation</string>
+    <string name="hm_tile_tasks">Tasks</string>
     <string name="hm_tile_photo_capture">Photo Capture</string>
     <string name="hm_tile_sales_journey">Sales Journey</string>
     <string name="hm_tile_kpi">KPI</string>
@@ -75,4 +75,47 @@
     <string name="tut_empty">No tutorial videos yet.</string>
     <string name="tut_online_only">Videos play online only. Connect to watch.</string>
     <string name="tut_play">Play</string>
+    <!-- Home, Calm Glass (screens-sr s2): hero, groups, KPI, stock and money cards, the next-step dock -->
+    <string name="hm_hero_total">Today\'s total</string>
+    <string name="hm_hero_meter">Outlets visited</string>
+    <string name="hm_meter_value">%1$s/%2$s</string>
+    <string name="hm_group_today">Today\'s work</string>
+    <string name="hm_group_others">Others</string>
+    <string name="hm_checkin_due">Check-in due</string>
+    <string name="hm_checkin_at">Checked in %1$s</string>
+    <string name="hm_kpi_strike">Strike rate</string>
+    <string name="hm_kpi_non_visit">Non-visit</string>
+    <string name="hm_kpi_no_sale">No sale</string>
+    <string name="hm_kpi_none">–</string>
+    <string name="hm_stock_title">Stock</string>
+    <string name="hm_stock_issue">Issue</string>
+    <string name="hm_stock_current">Current stock</string>
+    <string name="hm_qty_unit">%1$s %2$s</string>
+    <string name="hm_money_title">Today\'s sales</string>
+    <string name="hm_money_gross">Total</string>
+    <string name="hm_money_discount">Discount</string>
+    <string name="hm_money_qc">QC</string>
+    <string name="hm_money_grand">Grand total</string>
+    <string name="hm_dock_check_in">Check in</string>
+    <string name="hm_dock_take_stock">Take stock</string>
+    <string name="hm_dock_start_selling">Start selling</string>
+    <string name="hm_dock_submit">Sales submit</string>
+    <string name="hm_dock_check_out">Check out</string>
+    <string name="hm_day_complete">Today\'s work is done</string>
+    <string name="hm_no_route">No route is planned for today.</string>
+    <string name="hm_storage_low">Low storage on this phone. Free some space so your work can be saved.</string>
+    <string name="hm_sunlight">Sunlight mode</string>
+    <string name="hm_meter_spoken">%1$s of %2$s outlets visited</string>
+    <string name="hm_health_warn_word">Warning</string>
+    <!-- Settings (screens-sr s14): grouped rows -->
+    <string name="set_group_display">Display</string>
+    <string name="set_group_device">Device</string>
+    <string name="set_group_account">Account</string>
+    <string name="set_sunlight_hint">Larger text, thicker lines, full brightness</string>
+    <string name="set_update_hint">New version ready</string>
+    <string name="set_update_current">Up to date</string>
+    <!-- Tutorial rows (screens-sr s16) -->
+    <string name="tut_play_hint">Play online</string>
+    <!-- First bundle (F-SR-001) -->
+    <string name="fb_progress_unknown">Download in progress</string>
 </resources>

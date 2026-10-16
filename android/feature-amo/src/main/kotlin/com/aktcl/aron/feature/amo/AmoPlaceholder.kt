@@ -1,14 +1,6 @@
 package com.aktcl.aron.feature.amo
 
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-
-/** Placeholder for android:feature-amo (docs/24 s1.2, s2.1). Replace with the module's screens, view models and use cases. */
+/** Module marker of android:feature-amo (docs/24 s1.2, s2.1); the screens are in AmoApp. */
 object AmoPlaceholder {
     const val MODULE: String = "feature-amo"
-}
-
-@Composable
-fun AmoPlaceholderScreen() {
-    Text(text = AmoPlaceholder.MODULE)
 }

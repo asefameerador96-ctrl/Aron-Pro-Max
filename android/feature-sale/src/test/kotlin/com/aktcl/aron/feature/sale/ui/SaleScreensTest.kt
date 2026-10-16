@@ -9,6 +9,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -42,7 +44,7 @@ class SaleScreensTest {
         }
         compose.onNodeWithText("= 4 packs + 0").assertExists()
         compose.onNodeWithText("Only 25 in stock for Aster.").assertExists()
-        compose.onNodeWithText("Review").assertIsEnabled().performClick()
+        compose.onNodeWithText("Proceed").assertIsEnabled().performClick()
         assertEquals(true, reviewed)
     }
 
@@ -50,11 +52,21 @@ class SaleScreensTest {
         var zero = 0
         val review = SaleReviewCalculator.review(Fx.draft(), Fx.catalog)
         compose.setContent { AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { 0 }, { _, _ -> }, {}, { zero++ }) } }
-        compose.onNodeWithText("Review").assertIsNotEnabled()
-        compose.onNodeWithText("Sell nothing here").performClick()
+        // with no line entered the primary opens the zero-sale confirm instead of Review (screens-sr s7)
+        compose.onNodeWithText("Proceed").assertIsEnabled().performClick()
         assertEquals(0, zero)
         compose.onNodeWithText("Yes").performClick()
         assertEquals(1, zero)
+    }
+
+    @Test fun recentSkuIsListedFirstOnceAndNotAgainInItsCategory() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
+        val review = SaleReviewCalculator.review(d, Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { id -> d.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L)) } }
+        // one row and one stepper per SKU: the recent group owns the row, the category group does not repeat it (screens-sr s7)
+        compose.onNodeWithText("Sold here before").assertExists()
+        compose.onAllNodesWithText("MaxR 10S").assertCountEquals(1)
+        compose.onAllNodesWithText("Aster").assertCountEquals(1)
     }
 
     @Test fun banglaDigitsAndMoney() {
@@ -62,7 +74,8 @@ class SaleScreensTest {
         val review = SaleReviewCalculator.review(d, Fx.catalog)
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
         compose.setContent { CompositionLocalProvider(LocalContext provides context) { AronTheme(AppLanguage.BN) { SaleEntryScreen(skus, review, { 40 }, { _, _ -> }, {}, {}) } } }
-        compose.onNodeWithText("৩২০.০০ ৳").assertExists()
+        // MoneyText joins the amount and the sign with a no-break space (tokens s7.1); the line total and the bar total both show it
+        compose.onAllNodesWithText("৩২০.০০ ৳").assertCountEquals(2)
         compose.onNodeWithText("= ৪ প্যাকেট + ০").assertExists()
     }
 
@@ -70,15 +83,15 @@ class SaleScreensTest {
         var d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
         d = SaleDraftOps.setSlide(d, 100, 10)
         compose.setContent { AronTheme(AppLanguage.EN) { ReviewScreen(SaleReviewCalculator.review(d, Fx.catalog), {}) } }
-        compose.onNodeWithText("Slide discount").assertIsDisplayed()
+        compose.onNodeWithText("Slide").assertIsDisplayed()
         compose.onNodeWithText("Offer discount").assertDoesNotExist()
-        compose.onNodeWithText("Save sale").assertIsEnabled()
+        compose.onNodeWithText("Print").assertIsEnabled()
     }
 
     @Test fun reviewDisablesSaveWhenPaidIsNotBelowTheTotal() {
         val d = SaleDraftOps.setPaid(SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK), 160_000)
         compose.setContent { AronTheme(AppLanguage.EN) { ReviewScreen(SaleReviewCalculator.review(d, Fx.catalog), {}) } }
-        compose.onNodeWithText("Save sale").assertIsNotEnabled()
+        compose.onNodeWithText("Print").assertIsNotEnabled()
     }
 }
 
@@ -91,18 +104,22 @@ class SaleExtraScreensTest {
         val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 10, QtyUnit.STICK) // net 80.00
         var applied: Long? = -1
         compose.setContent { AronTheme(AppLanguage.EN) { CreditPrompt(SaleReviewCalculator.review(d, Fx.catalog), { applied = it }) } }
-        compose.onNodeWithText("Apply").assertIsNotEnabled()
-        compose.onNodeWithText("Paid now").performTextInput("30.5")
+        compose.onNodeWithText("Confirm").assertIsNotEnabled()
+        // the bar says what to do while the field is empty; the field is found by its label (placeholder while empty)
+        compose.onNodeWithText("Enter the amount collected").assertExists()
+        compose.onNodeWithText("Amount collected").performTextInput("30.5")
         compose.onNodeWithText("Due: 49.50 ৳").assertExists()
-        compose.onNodeWithText("Apply").assertIsEnabled().performClick()
+        compose.onNodeWithText("Confirm").assertIsEnabled().performClick()
         assertEquals(30_500L, applied)
     }
 
     @Test fun creditRefusesPaidEqualToTheNet() {
         val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 10, QtyUnit.STICK)
         compose.setContent { AronTheme(AppLanguage.EN) { CreditPrompt(SaleReviewCalculator.review(d, Fx.catalog), {}) } }
-        compose.onNodeWithText("Paid now").performTextInput("80")
-        compose.onNodeWithText("Apply").assertIsNotEnabled()
+        compose.onNodeWithText("Amount collected").performTextInput("80")
+        compose.onNodeWithText("Confirm").assertIsNotEnabled()
+        // a wrong value gets the inline error once, not the same sentence twice (the bar reason is gone)
+        compose.onAllNodesWithText("The amount collected must be less than the total.").assertCountEquals(1)
     }
 
     @Test fun slideListsOnlyOfferedSkusAndShowsTheEightyTakaReward() {
@@ -119,7 +136,7 @@ class SaleExtraScreensTest {
         var done = 0
         compose.setContent { AronTheme(AppLanguage.EN) { QcScreen(listOf(Fx.aster), SaleReviewCalculator.review(d, Fx.catalog), { _, _ -> 0 }, { _, _, _ -> }, false, { done++ }) } }
         compose.onNodeWithText("Deduction: − 25.00 ৳").assertExists()
-        compose.onNodeWithText("QC done").performClick()
+        compose.onNodeWithText("Submit QC").performClick()
         assertEquals(1, done)
     }
 }

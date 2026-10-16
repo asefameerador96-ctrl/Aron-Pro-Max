@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- RoleHome Bangla (docs/07 and docs/08 wording where given). -->
+<resources>
+    <string name="rh_section_today">আজকের কাজ</string>
+    <string name="rh_section_others">অন্যান্য</string>
+    <string name="rh_section_day_close">দিন শেষ ও রিপোর্ট</string>
+
+    <string name="rh_amo_attendance">অ্যাটেনডেন্স</string>
+    <string name="rh_amo_control_call">কন্ট্রোল কল</string>
+    <string name="rh_amo_joint_call">জয়েন্ট কল</string>
+    <string name="rh_amo_sale">বিক্রয়</string>
+    <string name="rh_amo_team">টিম</string>
+    <string name="rh_amo_outlet">আউটলেট</string>
+    <string name="rh_amo_sales_submit">বিক্রয় জমা</string>
+    <string name="rh_amo_report">রিপোর্ট</string>
+
+    <string name="rh_tso_dashboard">ড্যাশবোর্ড</string>
+    <string name="rh_tso_leave">ছুটি</string>
+    <string name="rh_tso_final_submit">ফাইনাল সাবমিট</string>
+    <string name="rh_tso_periphery">আমার পরিধি</string>
+    <string name="rh_tso_my_call">আমার কল</string>
+    <string name="rh_tso_feedback">আমার মতামত</string>
+    <string name="rh_tso_device_otp">ডিভাইস ওটিপি</string>
+
+    <string name="rh_hero_amo_sales">আজ টিমের বিক্রয়</string>
+    <string name="rh_hero_amo_visits">আজকের ভিজিট</string>
+    <string name="rh_hero_amo_visits_of">পরিকল্পিত %1$s টির মধ্যে</string>
+    <string name="rh_hero_tso_zones">জোন জমা হয়েছে</string>
+    <string name="rh_hero_tso_zones_of">আজ %1$s টি জোনের মধ্যে</string>
+
+    <string name="rh_empty_title">%1$s শিগগিরই আসছে</string>
+    <string name="rh_empty_hint">এই অংশটি তার লেনের সাথে আসবে। বাকি সব কাজ আগের মতোই চলবে।</string>
+
+    <string name="rh_tso_otp_title">বাইন্ড কোড ওয়েবে দেওয়া হয়</string>
+    <string name="rh_tso_otp_hint">কম্পিউটারে এই পাতাটি খুলুন, TSO হিসেবে সাইন ইন করে যে ফোনটি বাইন্ড হচ্ছে তার জন্য আজকের ৪ অঙ্কের কোডটি দেখুন।</string>
+    <string name="rh_tso_otp_url_label">ARON ওয়েব ড্যাশবোর্ডের পাতা</string>
+    <string name="rh_tso_otp_menu_hint">ড্যাশবোর্ডে এটি মেনুর ডিভাইস ওটিপি পাতা।</string>
+
+    <string name="rh_set_display">প্রদর্শন</string>
+    <string name="rh_set_sunlight">রোদ মোড</string>
+    <string name="rh_set_sunlight_hint">বাইরে পড়ার জন্য সলিড সারফেস ও বেশি কনট্রাস্ট</string>
+    <string name="rh_set_about">অ্যাপ সম্পর্কে</string>
+    <string name="rh_set_logout_wipe">লগআউট করলে এই ফোন থেকে অ্যাপের সব তথ্য মুছে যাবে। যা পাঠানো হয়নি তা আগে আপলোড করতে হবে।</string>
+</resources>

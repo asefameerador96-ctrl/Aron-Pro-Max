@@ -1,27 +1,61 @@
 package com.aktcl.aron.feature.stock
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronCard
+import com.aktcl.aron.core.ui.AronEmptyState
+import com.aktcl.aron.core.ui.AronIcons
+import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronStepper
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
+import com.aktcl.aron.core.ui.GlassKind
+import com.aktcl.aron.core.ui.GlassSurface
+import com.aktcl.aron.core.ui.GlassTier
+import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.LocalGlassTier
+import com.aktcl.aron.core.ui.MoneyText
+import com.aktcl.aron.core.ui.RowPosition
 import com.aktcl.aron.core.ui.localizedNumber
 
 object StockTags {
@@ -32,8 +66,11 @@ object StockTags {
     fun row(skuId: Long) = "stk_row_$skuId"
 }
 
-/** What the last Save said, shown under the list. */
-enum class StockMessage { SAVED, REFUSED_SAME_VALUES, NOTHING_ENTERED, SAVE_FAILED }
+/** What the last Save (or print) said, shown as a banner above the list. */
+enum class StockMessage { SAVED, REFUSED_SAME_VALUES, NOTHING_ENTERED, SAVE_FAILED, PRINT_FAILED }
+
+/** Why the Print secondary is disabled (screens-sr s4): the reason is shown as a caption in the bar. */
+enum class StockPrintBlock { SAVE_FIRST, PRINTER_OFF }
 
 @Composable
 private fun categoryLabel(code: String): String = when (code) {
@@ -44,9 +81,21 @@ private fun categoryLabel(code: String): String = when (code) {
     else -> code
 }
 
+@Composable
+private fun unitLabel(unit: String): String = when (unit) {
+    "piece" -> stringResource(R.string.stk_unit_piece)
+    "dozen" -> stringResource(R.string.stk_unit_dozen)
+    else -> stringResource(R.string.stk_unit_stick)
+}
+
+/** The order the groups appear in (screens-sr s4): cigarette, bidi, lighter, match, then anything else by code. */
+private fun categoryRank(code: String): Int = when (code) { "cigarette" -> 0; "bidi" -> 1; "lighter" -> 2; "match" -> 3; else -> 4 }
+
 /**
- * The Stock screen (F-SR-014): one row per SKU with a stepped Issue and today's loaded total (read-only), the category
- * totals, and Save. Save never waits for the printer or the network (Q-UI-03): the slip is flagged not printed.
+ * The Stock screen content (F-SR-014, screens-sr s4): a column head, SKU groups by category with the unit once, flat
+ * rows (thumbnail, name, "loaded today" caption, the derived stock as a numeral, the Issue stepper on the second line),
+ * the category dock above the bar, and the bar with Print (secondary) and Save (primary). It renders its own bar, so the
+ * host puts nothing in the frame's bottom slot. Save never waits for the printer or the network (Q-UI-03).
  */
 @Composable
 fun StockContent(
@@ -60,43 +109,241 @@ fun StockContent(
     softCeiling: Long = StockLoad.DEFAULT_SOFT_CEILING,
     onPrint: (() -> Unit)? = null,
     printEnabled: Boolean = true,
+    /** Why Print is disabled; null derives it from [printEnabled] (false reads as the printer being off). */
+    printBlock: StockPrintBlock? = null,
+    /** "synced at" caption of the empty state, when the host knows it. */
+    syncedAt: String? = null,
 ) {
-    Column(modifier.fillMaxSize().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        Text(stringResource(R.string.stk_title), style = MaterialTheme.typography.headlineSmall)
-        Row {
-            Text(stringResource(R.string.stk_col_sku), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-            Text(stringResource(R.string.stk_col_issue), Modifier.weight(1.4f), style = MaterialTheme.typography.labelLarge)
-            Text(stringResource(R.string.stk_col_loaded), Modifier.weight(0.6f), style = MaterialTheme.typography.labelLarge)
-        }
-        LazyColumn(Modifier.weight(1f)) {
-            items(rows, key = { it.sku.skuId }) { r ->
-                Row(Modifier.testTag(StockTags.row(r.sku.skuId)), verticalAlignment = Alignment.CenterVertically) {
-                    Text(r.sku.shortName, Modifier.weight(1f))
-                    AronStepper(
-                        value = r.entered.toInt(), onValueChange = { onIssue(r.sku.skuId, it) },
-                        minusLabel = stringResource(R.string.stk_less), plusLabel = stringResource(R.string.stk_more),
-                        modifier = Modifier.weight(1.4f),
+    val c = LocalAronColors.current
+    val groups = rows.groupBy { it.sku.categoryCode }.toList().sortedBy { categoryRank(it.first) }
+    val unitByCategory = groups.associate { (code, rs) -> code to rs.first().sku.baseUnit }
+    val hasChange = rows.any { it.entered > 0 }
+    // the key figure is the stock in the bag only when the host supplies it; otherwise it is the total load, and says so
+    val hasStock = rows.any { it.stockBase != null }
+    val block = printBlock ?: if (printEnabled) null else StockPrintBlock.PRINTER_OFF
+    Column(modifier.fillMaxSize()) {
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            Column(Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                when (message) {
+                    StockMessage.SAVED -> AronBanner(
+                        stringResource(R.string.stk_saved), Modifier.testTag(StockTags.MESSAGE), BannerKind.Success,
+                        actionLabel = if (onPrint != null) stringResource(R.string.stk_print_short) else null, onAction = onPrint,
                     )
-                    Text(localizedNumber(r.loadedBase), Modifier.weight(0.6f))
+                    StockMessage.REFUSED_SAME_VALUES -> AronBanner(stringResource(R.string.stk_refused), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
+                    StockMessage.NOTHING_ENTERED -> AronBanner(stringResource(R.string.stk_nothing), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
+                    StockMessage.SAVE_FAILED -> AronBanner(stringResource(R.string.stk_save_failed), Modifier.testTag(StockTags.MESSAGE), BannerKind.Error)
+                    StockMessage.PRINT_FAILED -> AronBanner(
+                        stringResource(R.string.stk_print_failed), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning,
+                        actionLabel = if (onPrint != null) stringResource(R.string.stk_retry) else null, onAction = onPrint,
+                    )
+                    null -> Unit
                 }
-                if (r.entered > softCeiling) AronBanner(stringResource(R.string.stk_high), kind = BannerKind.Warning)
+                if (slipNotPrinted && message != StockMessage.SAVED) AronBanner(stringResource(R.string.stk_slip_not_printed), kind = BannerKind.Warning)
+            }
+            if (rows.isEmpty()) {
+                AronEmptyState(stringResource(R.string.stk_empty), icon = AronIcons.Stock, syncedAt = syncedAt)
+            } else {
+                ColumnHead(hasStock)
+                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = AronTokens.Space.L)) {
+                    groups.forEach { (code, group) ->
+                        item(key = "head_$code", contentType = "head") {
+                            Text(
+                                stringResource(R.string.stk_group, categoryLabel(code), unitLabel(unitByCategory.getValue(code))),
+                                style = MaterialTheme.typography.labelMedium, color = c.textSecondary,
+                                modifier = Modifier.fillMaxWidth().padding(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, top = AronTokens.Space.L, bottom = AronTokens.Space.S).semantics { heading() },
+                            )
+                        }
+                        group.forEachIndexed { i, r ->
+                            val position = when {
+                                group.size == 1 -> RowPosition.Only
+                                i == 0 -> RowPosition.First
+                                i == group.lastIndex -> RowPosition.Last
+                                else -> RowPosition.Middle
+                            }
+                            item(key = r.sku.skuId, contentType = "sku") {
+                                StockSkuRow(r, position, divider = i != group.lastIndex, softCeiling = softCeiling, onIssue = onIssue)
+                            }
+                        }
+                    }
+                }
             }
         }
-        AronCard(Modifier.fillMaxWidth().testTag(StockTags.TOTALS)) {
-            Column(Modifier.padding(AronTokens.Space.M)) {
-                Text(stringResource(R.string.stk_totals), style = MaterialTheme.typography.labelLarge)
-                totals.forEach { Text(stringResource(R.string.stk_total_row, categoryLabel(it.categoryCode), localizedNumber(it.issuedBase))) }
+        if (totals.isNotEmpty()) CategoryDock(totals, unitByCategory)
+        StockBar(
+            hasChange = hasChange, onSave = onSave, onPrint = onPrint, printBlock = block,
+        )
+    }
+}
+
+/** The column head (screens-sr s4): SKU, Issue, then Stock when the rows carry the on-hand figure, else Total load, in `type.label`. */
+@Composable
+private fun ColumnHead(hasStock: Boolean) {
+    val c = LocalAronColors.current
+    Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S), verticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(R.string.stk_col_sku), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
+        Text(stringResource(R.string.stk_col_issue), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
+        Spacer(Modifier.size(AronTokens.Space.Xl))
+        Text(stringResource(if (hasStock) R.string.stk_col_stock else R.string.stk_col_loaded), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End)
+    }
+}
+
+/** The flat row paint of a long list (android-glass s6.3): `surface.glass.field`, `radius.card` on the first and last row. */
+@Composable
+private fun Modifier.flatRow(position: RowPosition): Modifier {
+    val c = LocalAronColors.current
+    val solid = LocalGlassTier.current == GlassTier.C || c.sunlight
+    val r = AronTokens.Radius.Card
+    val shape = when (position) {
+        RowPosition.Only -> RoundedCornerShape(r)
+        RowPosition.First -> RoundedCornerShape(topStart = r, topEnd = r)
+        RowPosition.Last -> RoundedCornerShape(bottomStart = r, bottomEnd = r)
+        RowPosition.Middle -> RoundedCornerShape(0.dp)
+    }
+    return background(if (solid) c.surfaceSolid else c.surfaceField, shape)
+}
+
+/**
+ * One SKU row (screens-sr s4, 136 dp): line 1 is the thumbnail slot, the name in `type.bodyStrong`, the "loaded today"
+ * caption and the key figure as a numeral over its label: the stock in the bag plus the increment being entered when the
+ * host supplies [StockRow.stockBase], else the total load (loaded today plus the increment), labelled as such so a
+ * number under "Stock" never misstates the bag after a sale. Line 2 is the Issue stepper at the trailing edge with the
+ * unit beside it. Step 1 in the SKU's own unit (unchanged rule).
+ */
+@Composable
+private fun StockSkuRow(r: StockRow, position: RowPosition, divider: Boolean, softCeiling: Long, onIssue: (Long, Int) -> Unit) {
+    val c = LocalAronColors.current
+    val unit = unitLabel(r.sku.baseUnit)
+    val dividerColor = c.borderDivider
+    val dividerWidth = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AronTokens.Space.Screen)
+            .flatRow(position)
+            .testTag(StockTags.row(r.sku.skuId)),
+    ) {
+        AronListRow(
+            title = r.sku.shortName,
+            subtitle = stringResource(R.string.stk_loaded_today, localizedNumber(r.loadedBase), unit),
+            leading = { SkuThumb(r.sku.shortName) },
+            trailingContent = {
+                Column(horizontalAlignment = Alignment.End) {
+                    val stock = r.stockBase
+                    MoneyText(localizedNumber((stock ?: r.loadedBase) + r.entered), style = MaterialTheme.typography.headlineLarge)
+                    Text(
+                        stringResource(if (stock != null) R.string.stk_stock_unit else R.string.stk_load_total_unit, unit),
+                        style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1,
+                    )
+                }
+            },
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(start = AronTokens.Space.L, end = AronTokens.Space.L, bottom = AronTokens.Space.M),
+            horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AronStepper(
+                value = r.entered.toInt(), onValueChange = { onIssue(r.sku.skuId, it) },
+                minusLabel = stringResource(R.string.stk_less), plusLabel = stringResource(R.string.stk_more),
+                max = StockLoad.MAX_ENTRY.toInt(),
+            )
+            Spacer(Modifier.size(AronTokens.Space.S))
+            Text(unit, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1)
+        }
+        if (r.entered > softCeiling) {
+            AronBanner(stringResource(R.string.stk_high), Modifier.padding(start = AronTokens.Space.L, end = AronTokens.Space.L, bottom = AronTokens.Space.M), BannerKind.Warning)
+        }
+        if (divider) {
+            Spacer(
+                Modifier.fillMaxWidth().padding(start = AronTokens.Space.L).height(dividerWidth)
+                    .drawBehind { drawRect(dividerColor) },
+            )
+        }
+    }
+}
+
+/** The 48 dp thumbnail slot: no pack image is bundled yet, so an `accent.container` disc carries the SKU's initial (decorative). */
+@Composable
+private fun SkuThumb(name: String) {
+    val c = LocalAronColors.current
+    val fill = c.accentContainer
+    Box(
+        Modifier.size(AronTokens.Touch.Min).drawBehind { drawRoundRect(fill, cornerRadius = CornerRadius(AronTokens.Radius.Chip.toPx())) }.clearAndSetSemantics { },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(name.trim().take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = c.accentOnContainer)
+    }
+}
+
+/** The category dock (android-glass s6.17): opaque `surface.solid.raised` chips, one per category, with the unit. */
+@Composable
+private fun CategoryDock(totals: List<CategoryTotal>, unitByCategory: Map<String, String>) {
+    val c = LocalAronColors.current
+    val fill = c.surfaceSolidRaised; val edge = c.borderDivider
+    val stroke = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
+    Row(
+        Modifier.fillMaxWidth().testTag(StockTags.TOTALS).horizontalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs),
+        horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+    ) {
+        totals.sortedBy { categoryRank(it.categoryCode) }.forEach { t ->
+            Box(
+                Modifier
+                    .heightIn(min = MinChip)
+                    .drawBehind {
+                        val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = stroke.toPx()
+                        drawRoundRect(fill, cornerRadius = r)
+                        drawRoundRect(edge, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2), style = Stroke(w))
+                    }
+                    .padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stringResource(R.string.stk_dock_chip, categoryLabel(t.categoryCode), localizedNumber(t.issuedBase), unitLabel(unitByCategory[t.categoryCode] ?: "stick")),
+                    style = MaterialTheme.typography.labelMedium, color = c.textPrimary, maxLines = 1,
+                )
             }
         }
-        when (message) {
-            StockMessage.SAVED -> AronBanner(stringResource(R.string.stk_saved), Modifier.testTag(StockTags.MESSAGE), BannerKind.Info)
-            StockMessage.REFUSED_SAME_VALUES -> AronBanner(stringResource(R.string.stk_refused), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
-            StockMessage.NOTHING_ENTERED -> AronBanner(stringResource(R.string.stk_nothing), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
-            StockMessage.SAVE_FAILED -> AronBanner(stringResource(R.string.stk_save_failed), Modifier.testTag(StockTags.MESSAGE), BannerKind.Error)
-            null -> Unit
+    }
+}
+
+private val MinChip = 40.dp
+
+/**
+ * The action bar of Stock (android-glass s6.7): the `ActionBar` recipe, the 104 dp height reserved for the reason caption,
+ * Print (secondary, 40 percent, printer icon) and Save (primary, 60 percent). Built from the kit's surface and buttons
+ * because the host's tests find Save and Print by their test tags.
+ */
+@Composable
+private fun StockBar(hasChange: Boolean, onSave: () -> Unit, onPrint: (() -> Unit)?, printBlock: StockPrintBlock?) {
+    val c = LocalAronColors.current
+    val reason = when {
+        !hasChange -> stringResource(R.string.stk_reason_no_change)
+        onPrint != null && printBlock == StockPrintBlock.SAVE_FIRST -> stringResource(R.string.stk_reason_save_first)
+        onPrint != null && printBlock == StockPrintBlock.PRINTER_OFF -> stringResource(R.string.stk_reason_connect_printer)
+        else -> null
+    }
+    GlassSurface(modifier = Modifier.fillMaxWidth(), kind = GlassKind.ActionBar) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                .imePadding()
+                .heightIn(min = AronTokens.Size.BottomBarWithReason)
+                .padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M),
+            verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+        ) {
+            if (reason != null) Text(reason, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically) {
+                if (onPrint != null) {
+                    AronSecondaryButton(
+                        stringResource(R.string.stk_print_short), onPrint, Modifier.weight(0.4f).testTag(StockTags.PRINT),
+                        enabled = printBlock == null, icon = AronIcons.Print, tall = true,
+                    )
+                }
+                AronPrimaryButton(
+                    stringResource(R.string.stk_save), onSave, Modifier.weight(if (onPrint != null) 0.6f else 1f).testTag(StockTags.SAVE),
+                    enabled = hasChange, icon = AronIcons.Save,
+                )
+            }
         }
-        if (slipNotPrinted) AronBanner(stringResource(R.string.stk_slip_not_printed), kind = BannerKind.Warning)
-        AronPrimaryButton(stringResource(R.string.stk_save), onSave, Modifier.testTag(StockTags.SAVE))
-        if (onPrint != null) AronSecondaryButton(stringResource(R.string.stk_print), onPrint, Modifier.testTag(StockTags.PRINT), enabled = printEnabled)
     }
 }

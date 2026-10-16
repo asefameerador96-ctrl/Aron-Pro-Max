@@ -5,8 +5,12 @@ import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.SkuEntity
 import com.aktcl.aron.core.database.entity.StockMovementEntity
 
-/** One SKU row of the Stock screen (F-SR-014): [loadedBase] is today's loaded total, read-only. */
-data class StockRow(val sku: SkuEntity, val loadedBase: Long, val entered: Long)
+/**
+ * One SKU row of the Stock screen (F-SR-014): [loadedBase] is today's loaded total, read-only. [stockBase] is the stock
+ * in the bag now (`StockTracker.StockBalance.current`, in the SKU's base unit) when the host supplies it; without it the
+ * row's key figure is the total load, never called stock.
+ */
+data class StockRow(val sku: SkuEntity, val loadedBase: Long, val entered: Long, val stockBase: Long? = null)
 
 /** The purple totals panel: per category, total issued today in base units (sticks, pieces, dozens). */
 data class CategoryTotal(val categoryCode: String, val issuedBase: Long)

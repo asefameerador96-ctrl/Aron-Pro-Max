@@ -1,7 +1,11 @@
 package com.aktcl.aron.feature.home
 
-/** Header (F-SR-008): `SR - name (username)` and `<route name (visit days)>, ISO date`. */
-data class HomeHeader(val title: String, val subtitle: String, val routeKind: RouteKind?)
+/**
+ * Header (F-SR-008): `SR - name (username)`, the one-line `<route name (visit days)>, ISO date` ([subtitle], kept for
+ * earlier callers) and its parts ([routeName], [isoDate]) so the screen can print the two caption lines of screens-sr s2:
+ * the route name over `<ISO date> · <route kind>`.
+ */
+data class HomeHeader(val title: String, val subtitle: String, val routeKind: RouteKind?, val routeName: String? = null, val isoDate: String? = null)
 
 /** Daily, 3F (three days a week) or 2F (two days a week); the label itself is a string resource. */
 enum class RouteKind(val wire: String) {
@@ -17,6 +21,7 @@ object HomeModel {
             title = "$rolePrefix - ${name.trim()} ($username)",
             subtitle = if (route.isEmpty()) isoDate else "$route, $isoDate",
             routeKind = RouteKind.of(visitKind),
+            routeName = route.takeIf { it.isNotEmpty() }, isoDate = isoDate,
         )
     }
 }
@@ -70,3 +75,70 @@ object DeviceHealthModel {
         )
     }
 }
+
+/**
+ * Where the SR's day stands, from local state only (screens-sr s2 "next-step dock" table). The order of the checks is the
+ * table's precedence: a day that is not checked in is NOT_CHECKED_IN whatever else happened.
+ */
+enum class HomeDayState {
+    NOT_CHECKED_IN, NO_STOCK, IN_FIELD, READY_TO_SUBMIT,
+    /** Submitted before the check-out time: no dock yet (the table names no step), no success chip either. */
+    SUBMITTED,
+    READY_TO_CHECK_OUT, COMPLETE,
+}
+
+/** The next-step dock of Home: its label is a string resource, [target] the tile it opens (that tile carries the accent ring). */
+enum class HomeDock(val target: HomeTile) {
+    CHECK_IN(HomeTile.ATTENDANCE), TAKE_STOCK(HomeTile.STOCK), START_SELLING(HomeTile.SALE), SUBMIT(HomeTile.SALES_SUBMIT), CHECK_OUT(HomeTile.ATTENDANCE),
+}
+
+object HomeDayModel {
+    /**
+     * [routeDone] is every planned outlet visited or skipped; [afterCheckoutTime] is `cfg.day.checkout_earliest_time` (17:00)
+     * reached on trusted Dhaka time. Pure, so the dock is testable without a database.
+     */
+    fun dayState(
+        checkedIn: Boolean, checkedOut: Boolean, stockIssued: Boolean, routeDone: Boolean, afterCheckoutTime: Boolean, submitted: Boolean,
+    ): HomeDayState = when {
+        !checkedIn -> HomeDayState.NOT_CHECKED_IN
+        submitted && checkedOut -> HomeDayState.COMPLETE
+        submitted && afterCheckoutTime -> HomeDayState.READY_TO_CHECK_OUT
+        submitted -> HomeDayState.SUBMITTED
+        routeDone || afterCheckoutTime -> HomeDayState.READY_TO_SUBMIT
+        !stockIssued -> HomeDayState.NO_STOCK
+        else -> HomeDayState.IN_FIELD
+    }
+
+    /** The dock of a day state; null when the day shows no dock (complete, or submitted before check-out time). */
+    fun dock(state: HomeDayState): HomeDock? = when (state) {
+        HomeDayState.NOT_CHECKED_IN -> HomeDock.CHECK_IN
+        HomeDayState.NO_STOCK -> HomeDock.TAKE_STOCK
+        HomeDayState.IN_FIELD -> HomeDock.START_SELLING
+        HomeDayState.READY_TO_SUBMIT -> HomeDock.SUBMIT
+        HomeDayState.READY_TO_CHECK_OUT -> HomeDock.CHECK_OUT
+        HomeDayState.SUBMITTED, HomeDayState.COMPLETE -> null
+    }
+}
+
+/**
+ * The Home hero (screens-sr s2): the day's grand total pre-formatted ("4,391.00 ৳", digits per language), outlets visited
+ * of the planned count, the Dhaka check-in time ("08:52", null before check-in) and the day state for the success chip.
+ */
+data class HomeHero(val grandTotalText: String, val visited: Int, val target: Int, val checkInText: String?, val dayState: HomeDayState)
+
+/** One stock line of the Home stock card: issue and current stock in the category's own unit; hidden when both are zero. */
+data class HomeStockLine(val categoryLabel: String, val issueBase: Long, val currentBase: Long, val unitLabel: String) {
+    val zero: Boolean get() = issueBase == 0L && currentBase == 0L
+}
+
+/** The KPI row and the stock card (F-SR-010). [strikeRateText] is pre-formatted ("10%"); null when nothing is planned. */
+data class HomeKpis(val strikeRateText: String?, val nonVisit: Int, val noSale: Int, val stock: List<HomeStockLine>)
+
+/** One category line of the money card: label and its pre-formatted net amount (zero categories are not passed). */
+data class HomeMoneyLine(val label: String, val amountText: String)
+
+/**
+ * The Home money card (F-SR-069) with canonical words: category lines, gross (`মোট`), the deductions only when non-zero
+ * (pre-formatted with a true minus by the caller) and the grand total (`সর্বমোট`).
+ */
+data class HomeMoneyLines(val categories: List<HomeMoneyLine>, val grossText: String, val discountText: String?, val qcText: String?, val grandTotalText: String)

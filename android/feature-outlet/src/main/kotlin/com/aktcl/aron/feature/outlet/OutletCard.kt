@@ -20,13 +20,15 @@ data class OutletCard(
     val openDueAsOf: String?,
     val lastVisitAt: String?,
     val pendingRequest: Boolean,
+    /** The outlet code of the "code · phone · cluster" line (screens-sr s6); trailing default keeps older callers compiling. */
+    val code: String? = null,
 ) {
     companion object {
         fun of(o: OutletEntity, lastVisitAt: String?) = OutletCard(
             name = o.name, nameBn = o.nameBn, ownerName = o.ownerName,
             phone = o.contactNumber?.let { TextRules.normalisePhone(it)?.value },
             clusterName = o.clusterName, channel = o.channel, openDueMtk = o.openDueMtk, openDueAsOf = o.openDueAsOf,
-            lastVisitAt = lastVisitAt, pendingRequest = o.pendingRequest,
+            lastVisitAt = lastVisitAt, pendingRequest = o.pendingRequest, code = o.code,
         )
     }
 }

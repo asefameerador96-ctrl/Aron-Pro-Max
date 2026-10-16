@@ -4,11 +4,14 @@
     <string name="tsk_empty">আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেনি।</string>
     <string name="tsk_synced_at">সিঙ্ক হয়েছে %1$s</string>
     <string name="tsk_never_synced">এখনো সিঙ্ক হয়নি</string>
+    <string name="tsk_tab_open">চলমান %1$s</string>
+    <string name="tsk_tab_done">সম্পন্ন %1$s</string>
+    <string name="tsk_none_open">কোনো চলমান কাজ নেই</string>
+    <string name="tsk_none_done">এখনো কোনো কাজ সম্পন্ন হয়নি</string>
     <string name="tsk_status_ongoing">চলমান</string>
     <string name="tsk_status_completed">সম্পন্ন</string>
     <string name="tsk_due">শেষ তারিখ %1$s</string>
     <string name="tsk_outlet">আউটলেট: %1$s</string>
-    <string name="tsk_resolve">সম্পন্ন করুন</string>
-    <string name="tsk_swipe_hint">কাজ সম্পন্ন করতে টাস্কটি সোয়াইপ করুন।</string>
+    <string name="tsk_resolve">সমাধান করুন</string>
     <string name="tsk_badge_open">%1$s টি চলমান</string>
 </resources>

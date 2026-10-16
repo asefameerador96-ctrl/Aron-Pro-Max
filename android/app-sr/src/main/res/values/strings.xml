@@ -48,4 +48,15 @@
     <string name="sr_edit_checking">Checking that you are at the shop…</string>
     <string name="sr_skip_outlet">Skip a shop</string>
     <string name="sr_skip_cancel">Cancel skip</string>
+    <!-- Route kinds are AKTCL's wording, kept in English in every language (screens-sr s2). -->
+    <string name="sr_route_kind_daily" translatable="false">Daily</string>
+    <string name="sr_route_kind_3f" translatable="false">3F</string>
+    <string name="sr_route_kind_2f" translatable="false">2F</string>
+    <!-- Sync detail sheet (screens-sr s19) -->
+    <string name="sr_sync_title">Sync status</string>
+    <string name="sr_sync_pending">%1$s records waiting to upload</string>
+    <string name="sr_sync_all_done">Everything is synced.</string>
+    <string name="sr_sync_last">Last sync %1$s</string>
+    <string name="sr_sync_offline_reason">No internet, but selling continues. It syncs by itself when a connection returns.</string>
+    <string name="sr_sync_now">Sync now</string>
 </resources>

@@ -43,7 +43,9 @@ class VisitScreensTest {
     @Test fun outOfRangeShowsTheBanglaMessageWithRefreshAndNoForceYet() {
         var refreshed = 0
         show(AppLanguage.BN) { VisitCheckContent(needs(GeoVerdict.OUT_OF_RANGE, GeoAction.REFRESH_OFFERED, true, false), { refreshed++ }, {}, {}, null) }
-        compose.onNodeWithText("আপনি দোকানের অনুমোদিত দূরত্বের বাইরে আছেন। কাছে যান, অবস্থান রিফ্রেশ করুন, অথবা ফোর্স সেল ব্যবহার করুন।").assertExists()
+        compose.onNodeWithText("আপনি নির্বাচিত খুচরা বিক্রেতার সীমার মধ্যে নেই।").assertExists()
+        // out of range shows how far to walk and the limit (screens-sr s6 distance disclosure)
+        compose.onNodeWithText("আনুমানিক ২৫০ মি দূরে · সীমা ১০০ মি").assertExists()
         compose.onNodeWithTag(OutletTags.REFRESH).performClick(); assertEquals(1, refreshed)
         compose.onNodeWithTag(OutletTags.FORCE).assertDoesNotExist()
     }
@@ -57,7 +59,7 @@ class VisitScreensTest {
 
     @Test fun locationBlockedAndCommitFailedHaveTheirOwnMessages() {
         show(AppLanguage.EN) { VisitCheckContent(VisitUiState.LocationBlocked("location_off"), {}, {}, {}, null) }
-        compose.onNodeWithText("Location is switched off. Switch it on to continue.").assertExists()
+        compose.onNodeWithText("Location is off. Turn it on to start selling.").assertExists()
     }
 
     private fun o(id: Long, name: String) = OutletEntity(
@@ -72,7 +74,9 @@ class VisitScreensTest {
         val rows = OutletPicker.rows(listOf(o(1, "Rahim Store"), o(2, "Karim")))
         var picked: Long? = null
         show(AppLanguage.EN) { OutletPickerContent(rows, OutletPicker.chips(rows), OutletPicker.ALL_CHIP, {}, { picked = it.outlet.outletId }) }
-        compose.onNodeWithText("Rahim Store (DHK-1-01712345678-C)").performClick()
+        // the row shows the name over "code · phone · cluster" (screens-sr s5); tapping the row is the pick
+        compose.onNodeWithText("DHK-1 · 01712345678 · C").assertExists()
+        compose.onNodeWithText("Rahim Store").performClick()
         assertEquals(1L, picked)
         compose.onNodeWithText("K").assertExists()
     }

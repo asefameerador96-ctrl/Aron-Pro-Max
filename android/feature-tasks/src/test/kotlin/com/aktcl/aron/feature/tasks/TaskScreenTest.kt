@@ -6,8 +6,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,7 +20,7 @@ import org.robolectric.annotation.Config
 
 /** F-SR-046 / F-SR-047 screen. */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 class TaskScreenTest {
     @get:Rule val compose = createComposeRule()
 
@@ -40,14 +38,22 @@ class TaskScreenTest {
         compose.onNodeWithText("সিঙ্ক হয়েছে ২০২৬-১০-০৭ ০৯:০০").assertExists()
     }
 
-    @Test fun swipeRevealsResolveAndTapResolves() {
+    @Test fun resolveIsOnTheCardAndTapResolves() {
         var resolved: String? = null
         show(AppLanguage.EN, TaskListState(listOf(t("a")), 1), onResolve = { resolved = it })
-        compose.onNodeWithTag(TaskTags.resolve("a")).assertDoesNotExist()
-        compose.onNodeWithTag(TaskTags.item("a")).performTouchInput { swipeLeft() }
-        compose.waitForIdle()
+        // Resolve is always on the card (screens-sr s12: discoverable and TalkBack-friendly); no swipe is needed (DECISIONS: swipe parity deferred)
+        compose.onNodeWithTag(TaskTags.resolve("a")).assertExists()
         compose.onNodeWithTag(TaskTags.resolve("a")).performClick()
         assertEquals("a", resolved)
+    }
+
+    @Test fun aLongListKeepsEveryCardAndItsResolveButton() {
+        // past the eighth card the cards are flat (no shadow per row); every one still lists and resolves
+        val many = (1..12).map { t("t$it") }
+        show(AppLanguage.EN, TaskListState(many, many.size))
+        compose.onNodeWithTag(TaskTags.LIST).assertExists()
+        compose.onNodeWithTag(TaskTags.resolve("t1")).assertExists()
+        compose.onNodeWithText("Ongoing 12").assertExists()
     }
 
     @Test fun completedTasksStayWithoutAResolveButton() {

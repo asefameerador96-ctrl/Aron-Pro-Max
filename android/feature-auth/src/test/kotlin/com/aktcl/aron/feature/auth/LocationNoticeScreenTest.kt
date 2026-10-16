@@ -28,7 +28,7 @@ import org.robolectric.annotation.Config
 
 /** F-SYS-075 gate: the notice (Bangla and English) stands in front of the day until accepted. */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 class LocationNoticeScreenTest {
     @get:Rule val compose = createComposeRule()
     private val accepted = mutableListOf<Long>()

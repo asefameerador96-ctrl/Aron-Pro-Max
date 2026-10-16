@@ -1,18 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- feature-attendance strings (screens-sr s3). English default; Bangla in values-bn (docs/24 s5.6). -->
 <resources>
     <string name="att_title">Attendance</string>
-    <string name="att_location">Location</string>
+    <string name="att_location_title">Your current location</string>
     <string name="att_location_none">No location yet</string>
+    <string name="att_refresh">Refresh location</string>
+    <string name="att_reading_fix">Getting your location…</string>
+    <string name="att_fix_none">Location not found</string>
+    <string name="att_fix_retry">Try again</string>
+    <string name="att_fix_good">Good</string>
+    <string name="att_fix_fair">Fair</string>
+    <string name="att_fix_weak">Weak</string>
+    <string name="att_fix_quality">%1$s · ±%2$s m</string>
+    <string name="att_fix_line">Location ±%1$s m</string>
+    <string name="att_fix_line_none">No location reading</string>
     <string name="att_prompt_checkin">You have not checked in yet. Please check in before you start work.</string>
+    <string name="att_prompt_checkout">You have not checked out yet. Please check out when today\'s work is done.</string>
     <string name="att_checked_in">Checked in at %1$s</string>
     <string name="att_checked_out">Checked out at %1$s</string>
     <string name="att_check_in">Check in</string>
     <string name="att_check_out">Check out</string>
-    <string name="att_check_out_hold">Press and hold to check out</string>
     <string name="att_check_out_hint">Check-out opens at %1$s.</string>
-    <string name="att_mock_warning">A mock location was detected. This is recorded.</string>
-    <string name="att_day_complete_title">Day complete</string>
-    <string name="att_day_complete_message">You have checked out. Thank you for today.</string>
-    <string name="att_ok">OK</string>
+    <string name="att_mock_warning">Mock location found. Turn it off.</string>
+    <string name="att_day_complete_message">You have checked in and out for today. Thank you.</string>
+    <string name="att_hold_title_in">Checking in</string>
+    <string name="att_hold_title_out">Checking out</string>
+    <string name="att_hold_label">Press and hold</string>
+    <string name="att_hold_hint">Keep the button pressed for a moment to confirm.</string>
+    <string name="att_cancel">Cancel</string>
     <string name="att_offline_saved">Saved on this phone. It will upload when the network is back.</string>
 </resources>

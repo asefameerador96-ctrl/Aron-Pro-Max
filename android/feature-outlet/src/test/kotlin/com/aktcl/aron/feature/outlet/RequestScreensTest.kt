@@ -7,7 +7,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -50,7 +49,7 @@ class RequestScreensTest {
             OutletRequestContent(form, emptySet(), listOf(ClusterOption(7, "Apsis Cluster")), GeoPhotoState(), false, false, { form = it }, {}, { saves++ })
         }
         compose.onNodeWithTag(RequestTags.NAME).performTextInput("Rahim Store")
-        compose.onNodeWithTag(RequestTags.SAVE).performScrollTo().performClick()
+        compose.onNodeWithTag(RequestTags.SAVE).performClick()
         assertEquals(1, saves)
     }
 
@@ -60,7 +59,7 @@ class RequestScreensTest {
             OutletRequestContent(OutletRequestForm(OutletRequestKind.CLOSE, outletId = 5, openDueMtk = 100), emptySet(), emptyList(), GeoPhotoState(), false, true, {}, {}, { saves++ })
         }
         compose.onNodeWithText("This shop will be permanently closed.").assertExists(); compose.onNodeWithText("This shop still has unpaid dues.").assertExists()
-        compose.onNodeWithTag(RequestTags.SAVE).performScrollTo().performClick(); assertEquals(0, saves)
+        compose.onNodeWithTag(RequestTags.SAVE).performClick(); assertEquals(0, saves)
         compose.onNodeWithText("Yes").performClick(); assertEquals(1, saves)
     }
 

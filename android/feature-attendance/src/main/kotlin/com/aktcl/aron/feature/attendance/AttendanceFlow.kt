@@ -28,6 +28,14 @@ data class AttendanceState(
     val addressText: String? = null,
     val lastFixMock: Boolean = false,
     val busy: Boolean = false,
+    /** The last fix's coordinates as "lat, lng" (shown offline, always); [addressText] may then carry the resolved address. */
+    val coordinatesText: String? = null,
+    /** The last fix's accuracy in metres (the fix-quality chip: at most 30 good, to 100 fair, over 100 weak); null without a fix. */
+    val fixAccuracyM: Int? = null,
+    /** True when the last reading ended without a usable fix (timeout, location off): the screen shows the warning with a retry. */
+    val fixFailed: Boolean = false,
+    /** True while a display-only location refresh runs (the refresh icon is off, the card shows the reading line). */
+    val readingFix: Boolean = false,
 )
 
 /** Result of a check-in or check-out press. */
@@ -105,7 +113,7 @@ class AttendanceFlow(
                 if (kind == "check_in") at else cur.checkedInAt,
                 if (kind == "check_out") at else cur.checkedOutAt,
                 coords, fix.isMock,
-            ).copy(busy = false)
+            ).copy(busy = false).withFix(fix, coords)
             // Display only: resolved after the commit and after the button state is final; a failure keeps the coordinates.
             if (fix.isOk) runCatching { addressResolver(fix.lat!!, fix.lng!!) }.getOrNull()?.let { ui.value = ui.value.copy(addressText = it) }
             return AttendanceResult.Done(event, fix)
@@ -114,10 +122,39 @@ class AttendanceFlow(
         }
     }
 
+    /**
+     * The location card's refresh (screens-sr s3): one display-only reading, nothing stored, nothing committed. Ignored
+     * while a check-in or check-out is running. The buttons never wait for it.
+     */
+    suspend fun refreshFix() {
+        if (ui.value.busy || ui.value.readingFix) return
+        ui.value = ui.value.copy(readingFix = true)
+        try {
+            val fix = fixes.readFix("refresh") // contract `FixPurpose.REFRESH`: a display-only reading, never attached to an event
+            val coords = if (fix.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", fix.lat, fix.lng) else null
+            ui.value = ui.value.copy(readingFix = false, lastFixMock = fix.isMock).withFix(fix, coords)
+            if (coords != null) ui.value = ui.value.copy(addressText = coords)
+            if (fix.isOk) runCatching { addressResolver(fix.lat!!, fix.lng!!) }.getOrNull()?.let { ui.value = ui.value.copy(addressText = it) }
+        } catch (t: kotlinx.coroutines.CancellationException) {
+            throw t
+        } catch (_: Throwable) {
+            ui.value = ui.value.copy(fixFailed = true)
+        } finally {
+            ui.value = ui.value.copy(readingFix = false)
+        }
+    }
+
+    private fun AttendanceState.withFix(fix: FixReading, coords: String?): AttendanceState = copy(
+        coordinatesText = coords ?: coordinatesText,
+        fixAccuracyM = if (fix.isOk) fix.accuracyM?.let { kotlin.math.round(it).toInt() } else fixAccuracyM,
+        fixFailed = !fix.isOk,
+    )
+
     private fun recompute(inAt: String?, outAt: String?, address: String?, mock: Boolean) = AttendanceState(
         checkedInAt = inAt, checkedOutAt = outAt, showCheckInPrompt = inAt == null,
         checkInEnabled = inAt == null,
         checkOutEnabled = inAt != null && outAt == null && dhakaMinutesNow() >= checkoutEarliestMinutes(),
         addressText = address, lastFixMock = mock, busy = ui.value.busy,
+        coordinatesText = ui.value.coordinatesText, fixAccuracyM = ui.value.fixAccuracyM, fixFailed = ui.value.fixFailed, readingFix = ui.value.readingFix,
     )
 }

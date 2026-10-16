@@ -46,4 +46,10 @@
     <string name="sr_edit_checking">আপনি দোকানে আছেন কিনা দেখা হচ্ছে…</string>
     <string name="sr_skip_outlet">দোকান বাদ দিন</string>
     <string name="sr_skip_cancel">বাদ দেওয়া বাতিল</string>
+    <string name="sr_sync_title">সিঙ্কের অবস্থা</string>
+    <string name="sr_sync_pending">%1$sটি রেকর্ড আপলোডের অপেক্ষায়</string>
+    <string name="sr_sync_all_done">সব তথ্য সিঙ্ক হয়েছে।</string>
+    <string name="sr_sync_last">শেষ সিঙ্ক %1$s</string>
+    <string name="sr_sync_offline_reason">ইন্টারনেট নেই, কিন্তু বিক্রয় চলবে। সংযোগ পেলে নিজে থেকেই সিঙ্ক হবে।</string>
+    <string name="sr_sync_now">এখন সিঙ্ক করুন</string>
 </resources>
