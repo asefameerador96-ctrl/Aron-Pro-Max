@@ -40,4 +40,29 @@ reproduce functionally is already in the screen specs `docs/design/screens-sr.md
 
 ## Log
 
-See the bottom of this file (appended as the work lands).
+### 2026-10-16 to 2026-10-17: phase 1 (commit `886c76eb`, pre-review checkpoint)
+
+Four packages built in parallel by agents, each with two reviewers and a fix pass (the session limit interrupted the
+review and fix stages overnight; they were resumed on 2026-10-17):
+
+- **Kit** (`android/core-ui`): GlassKind recipes, page gradient and glows, `AronScreen`/`AronTopBar`/`AronBottomBar`,
+  gradient primary and opaque secondary buttons, `MoneyText`/`AronMeter`/`AronStatCard`/`AronHeroCard`, motion helpers
+  and `AronScreenTransition`, tiles with icon wells and badges, the quiet status chip, banners with icons, empty states
+  with illustrations, 36 new strings with Bangla twins. Every Android module compiles against it; core-ui tests green
+  except three pre-existing environmental failures on this laptop (JDK 17 vs Robolectric SDK 36; a Windows path assert).
+  Reviewers found two majors (ragged tile rows, bottom-bar primary width) and polish items; fix pass pending.
+- **Web**: `tokens.css` + `glass.css` (Tailwind v4 theme), pre-paint theme stamping, glass sidebar and top bar, kit
+  components, restyled dashboard home and login; lint, typecheck, 961 vitest tests and the build green; 35 Playwright
+  e2e checks green on this laptop. Review pending.
+- **Real data**: `tools/data/*` (data-free importer and radius parser), `db/seed/06_dev_real_route.sql`,
+  `docs/evidence/geofence-radius-2026-09.csv` (291 territories, totals match the PDF), `docs/status/real-data.md`.
+  Loaded into dev through the Container Apps job (no public DB access needed): the whole country hierarchy and all
+  14,039 Mirpur-division outlets with coordinates; the proposed radii as one audited config version (author
+  `aron.system`); sr1001 now also has two real Mirpur 11 routes (16685 Sat/Mon/Wed, 16686 Sun/Tue/Thu). Review pending.
+- **Device owner**: runbook `docs/runbooks/honor-device-owner.md` (adb path A is the working one), token 3 minted
+  (dev lockdown, 2 uses, expires 2026-10-19 17:30 UTC), facts appended to `docs/status/device-checks.md`. Two blockers
+  for the QR path filed: `docs/requests/laptop-dev-release-row-and-admin-releases.md` and the existing
+  `android-geo-dpc-provisioning-activities.md`.
+
+A production-readiness audit ran alongside (six dimensions, adversarial verification); its write-up is
+`docs/audit/production-readiness-2026-10-15.md` once the resumed run completes.
