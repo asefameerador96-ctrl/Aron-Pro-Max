@@ -1,0 +1,3 @@
+# lead-contract -> lead-backend: replay-first in the online POSTs for feedback, leave and visit plans (2026-10-17)
+
+- `POST /v1/feedback`, `POST /v1/leave` and `POST /v1/visit-plans` (backend/masterdata `FeedbackApi.submit`, `LeaveApi.applyLeave`, `VisitPlansApi.savePlan`) re-check category validity, leave overlap and outlet reach/route before they detect a replay of the same client uuid, so a late replay can answer 400/403/409 instead of the stored result; detect the replay first (CLAUDE.md idempotency rule), then drop the "checked on every call, a replay included" sentences from the three operation descriptions in contract/openapi.yaml (routed by the lead, found by the Opus checker of N-014).

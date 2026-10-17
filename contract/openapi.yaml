@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.3.2
+  version: 1.3.3
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -10438,7 +10438,11 @@ components:
         area: { type: string, pattern: '^[a-z]+$' }
         kind: { type: string, enum: [S, T, O], description: 'S setting, T time-shaped, O operational switch (auto-expires).' }
         value_type: { type: string, enum: [int, number, bool, time, text, url, pct, money_mtk, enum, list, json] }
-        default_value: { $ref: '#/components/schemas/ConfigValueJson' }
+        default_value:
+          description: The registry default; null for a key whose default is no value (`cfg.ops.maintenance_banner`, no banner).
+          oneOf:
+            - { $ref: '#/components/schemas/ConfigValueJson' }
+            - type: 'null'
         bounds: { $ref: '#/components/schemas/ConfigBounds' }
         scope_levels:
           type: array

@@ -44,7 +44,11 @@ ConfigKey:
       - list
       - json
     default_value:
-      $ref: '#/components/schemas/ConfigValueJson'
+      description: The registry default; null for a key whose default is no value (`cfg.ops.maintenance_banner`,
+        no banner).
+      oneOf:
+      - $ref: '#/components/schemas/ConfigValueJson'
+      - type: 'null'
     bounds:
       $ref: '#/components/schemas/ConfigBounds'
     scope_levels:

@@ -2,4 +2,3 @@
 # One line per finding key: `METHOD shape status kind[ error]` (a schema error is `<instance path> <keyword>[ <property>]`,
 # so a NEW error on an operation already listed still fails). May only SHRINK: remove a line when its deviation is fixed.
 # Routed in docs/requests/qa-contract-conformance.md.
-GET /v1/admin/config/keys 200 schema /items/*/default_value type

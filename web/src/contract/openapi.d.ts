@@ -6922,7 +6922,8 @@ export interface components {
             kind: "S" | "T" | "O";
             /** @enum {string} */
             value_type: "int" | "number" | "bool" | "time" | "text" | "url" | "pct" | "money_mtk" | "enum" | "list" | "json";
-            default_value: components["schemas"]["ConfigValueJson"];
+            /** @description The registry default; null for a key whose default is no value (`cfg.ops.maintenance_banner`, no banner). */
+            default_value: components["schemas"]["ConfigValueJson"] | null;
             bounds: components["schemas"]["ConfigBounds"];
             scope_levels: components["schemas"]["ConfigScopeType"][];
             risk_class: number;

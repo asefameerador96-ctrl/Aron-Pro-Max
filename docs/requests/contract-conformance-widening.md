@@ -1,4 +1,4 @@
-# Contract 1.3.2: code-list attrs and config values widened to what the server stores (one approved break)
+# Contract 1.3.2 and 1.3.3: code-list attrs and config values widened to what the server stores (approved breaks)
 
 - **Lead approval:** session_01MbUQSxrP7AB9tbyANjUTPS, 2026-10-17 ("approve widening"; D-CONTRACT-WIDEN-01). Found by qa's
   `ContractConformanceTest` (docs/requests/qa-contract-conformance.md, section C).
@@ -23,3 +23,15 @@
   `attrs.group` and treats config values as JSON. Recoding stored config would be riskier than correcting the contract.
 - **Generated outputs in the same push:** `contract/slices`, web `src/contract/openapi.d.ts`, `WireDtos.kt` (unchanged
   by the generator), conformance baseline shrunk by the fixed findings.
+
+## 1.3.3 follow-up (lead approval, session_01MbUQSxrP7AB9tbyANjUTPS, 2026-10-17, D-CONTRACT-WIDEN-01)
+
+- **Change 3, `ConfigKeyDef.default_value`:** `oneOf` [`ConfigValueJson`, null]. The shipped registry
+  (`V0006__cfg_key_registry.sql`) stores `cfg.ops.maintenance_banner` with default `null` (no banner), and
+  `GET /v1/admin/config/keys` already answers it. `info.version` 1.3.2 -> 1.3.3.
+- **Why it is a break for oasdiff:** one `response-property-one-of-added` on `GET /v1/admin/config/keys`
+  (`items/items/default_value`).
+- **Why no client is exposed:** the server already sends null for that key; the web config editor is the only reader
+  of the registry read (phones get resolved values, not the registry).
+- **Generated outputs in the same push:** `contract/slices`, web `src/contract/openapi.d.ts`; the last line of
+  `contract-conformance-baseline.txt` is removed.
