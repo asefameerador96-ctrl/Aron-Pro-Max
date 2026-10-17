@@ -400,3 +400,20 @@ build-tools on the laptop.
    output. It states that Google's developer-verification rule is not exercised by these installs (first rollout
    September 2026 in Brazil, Indonesia, Singapore and Thailand). Copy the lines into `docs/status/laptop.md`. N-042
    stays open until the Galaxy A06 and A07 runs are logged.
+
+### D-QA-6 Day 5 ten-minute check script (N-055; qa) — DEVICE-PENDING, laptop session + owner
+
+Script: `tools/checks/day5-check.ps1`. It was tested in the cloud against a mock API on every path: all pass, a
+failed verification, a Final Submit whose replay is refused, and `-WebVerify`. Run it at the **end** of a test day,
+because Final Submit closes the zone-day.
+1. On the laptop: `powershell -ExecutionPolicy Bypass -File .\tools\checks\day5-check.ps1`. It asks for the passwords
+   of dmo1001 (the approver) and tso1001, once each. For an unattended run, set `ARON_CHECK_PASSWORD_DMO1001` and
+   `ARON_CHECK_PASSWORD_TSO1001`; each is cleared as soon as it is read.
+2. On the enrolled SR phone (the Honor): Outlet, New shop, fill it in, Save, Sync. Then press Enter.
+3. AMO verification. There is no AMO phone in hand (the Honor holds the SR device owner), so add
+   `-WebVerify -SubChannelId <id>`: amo1001 verifies on the web, and its password is asked once. With an AMO phone,
+   verify in the app and press Enter.
+4. The script approves as dmo1001, reads the Final Submit preview as tso1001, and asks before submitting. Answer y
+   only when the zone-day may be closed.
+5. Copy the window into `docs/status/laptop.md`. The TSO app's own Final Submit screen (F-TSO-010) is checked when it
+   ships; this run uses the same API from the laptop.

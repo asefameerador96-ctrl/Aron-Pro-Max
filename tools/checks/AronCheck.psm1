@@ -49,14 +49,33 @@ function Test-PackageInstalled([string]$Serial, [string]$Package) {
 
 # POST /v1/auth/login for a web user; returns the access token or $null (after reporting). The password is never shown.
 function Get-WebToken([string]$ApiHost, [string]$User, [string]$CheckName = 'web login') {
-  $secure = if ($env:ARON_CHECK_PASSWORD) { ConvertTo-SecureString $env:ARON_CHECK_PASSWORD -AsPlainText -Force } else { Read-Host "Password for $User (not shown)" -AsSecureString }
-  Remove-Item Env:ARON_CHECK_PASSWORD -ErrorAction SilentlyContinue  # not left in the window's environment
+  # ARON_CHECK_PASSWORD_<USER> (e.g. ARON_CHECK_PASSWORD_TSO1001) for scripts that sign in as several users, else
+  # ARON_CHECK_PASSWORD, else asked; whichever was used is cleared at once (not left in the window's environment).
+  $perUser = "ARON_CHECK_PASSWORD_$($User.ToUpper())"
+  $plain = [Environment]::GetEnvironmentVariable($perUser)
+  if ($plain) { Remove-Item "Env:$perUser" -ErrorAction SilentlyContinue }
+  elseif ($env:ARON_CHECK_PASSWORD) { $plain = $env:ARON_CHECK_PASSWORD; Remove-Item Env:ARON_CHECK_PASSWORD -ErrorAction SilentlyContinue }
+  $secure = if ($plain) { ConvertTo-SecureString $plain -AsPlainText -Force } else { Read-Host "Password for $User (not shown)" -AsSecureString }
+  $plain = $null
   $script:Login = @{ ApiHost = $ApiHost; User = $User; Secure = $secure }
   $token = New-WebToken
   $script:Token = $token
+  $script:Sessions[$User] = @{ Login = $script:Login; Token = $token }
   if ($token) { Write-CheckResult $CheckName $true "$User answered ok (token not shown)" }
   else { Write-CheckResult $CheckName $false "$User failed: $script:LoginError" }
   return $token
+}
+
+# Signed-in users of this run, so a script that acts as several people asks each password once.
+$script:Sessions = @{}
+
+# Makes [User] (signed in earlier with Get-WebToken) the one Get-Aron and Send-Aron act as; false when not signed in.
+function Use-AronUser([string]$User) {
+  if ($script:Login -and $script:Sessions.ContainsKey($script:Login.User)) { $script:Sessions[$script:Login.User].Token = $script:Token }
+  $s = $script:Sessions[$User]
+  if (-not $s) { return $false }
+  $script:Login = $s.Login; $script:Token = $s.Token
+  return $true
 }
 
 # Logs in again with the kept credentials; the token, or $null with $script:LoginError set.
@@ -99,6 +118,32 @@ function Get-Aron([string]$PathAndQuery) {
       $status = $null
       try { $status = [int]$_.Exception.Response.StatusCode } catch { }
       $script:GetError = "$status $($_.Exception.Message)"
+      $script:GetStatus = $status
+      if ($status -eq 401) { $script:Token = New-WebToken }
+      elseif ($status -ge 400 -and $status -lt 500) { return $null }
+      Start-Sleep -Seconds (2 * $i)
+    }
+  }
+  return $null
+}
+
+# POST (or another method) with a JSON body; never throws: logs in again on 401, retries a transport failure three
+# times; returns the parsed body, or $null with Get-AronStatus / Get-AronError set (a 4xx is returned at once).
+function Send-Aron([string]$PathAndQuery, $Body, [string]$Method = 'Post') {
+  $l = $script:Login
+  if (-not $l) { $script:GetError = 'not logged in'; return $null }
+  if (-not $script:Token) { $script:Token = New-WebToken }
+  $json = $Body | ConvertTo-Json -Compress -Depth 8
+  for ($i = 1; $i -le 4; $i++) {
+    try {
+      $script:GetStatus = 200
+      return Invoke-RestMethod -Method $Method -Uri "$($l.ApiHost)$PathAndQuery" -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 30 -Headers @{ Authorization = "Bearer $script:Token"; 'X-App-Version' = '1.0.0+1' }
+    } catch {
+      $status = $null
+      try { $status = [int]$_.Exception.Response.StatusCode } catch { }
+      $code = $null
+      try { $code = (($_.ErrorDetails.Message | ConvertFrom-Json).code) } catch { }
+      $script:GetError = "$status $(if ($code) { $code } else { $_.Exception.Message })"
       $script:GetStatus = $status
       if ($status -eq 401) { $script:Token = New-WebToken }
       elseif ($status -ge 400 -and $status -lt 500) { return $null }
@@ -169,4 +214,4 @@ function Test-PhoneOnline([string]$Serial) {
   return $c -match 'NetworkAgentInfo\{.*state: CONNECTED'
 }
 
-Export-ModuleMember -Function Get-AronError, Get-AronStatus, Get-BuildTool, Get-PackageState, Get-EffectiveRestrictions, Write-CheckResult, Test-AdbPresent, Invoke-Adb, Get-PhoneSerial, Test-PackageInstalled, Get-WebToken, New-WebToken, Invoke-AronGet, Get-Aron, Get-DhakaDate, Read-YesNo, Test-PhoneOnline, Complete-Check
+Export-ModuleMember -Function Get-AronError, Get-AronStatus, Get-BuildTool, Get-PackageState, Get-EffectiveRestrictions, Write-CheckResult, Test-AdbPresent, Invoke-Adb, Get-PhoneSerial, Test-PackageInstalled, Get-WebToken, New-WebToken, Invoke-AronGet, Get-Aron, Send-Aron, Use-AronUser, Get-DhakaDate, Read-YesNo, Test-PhoneOnline, Complete-Check
