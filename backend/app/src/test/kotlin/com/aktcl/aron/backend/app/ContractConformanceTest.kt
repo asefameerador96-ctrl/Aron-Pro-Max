@@ -64,6 +64,8 @@ class ContractConformanceTest {
     /** Operations that answered 2xx at least once, and every operation called. */
     private val succeeded = sortedSetOf<String>()
     private val called = sortedSetOf<String>()
+    /** Fixture request bodies the contract's request schema refuses. */
+    private val fixtureFindings = mutableListOf<Finding>()
     /** Refusals of the operations without a 2xx answer, for the report (which fixture each one needs). */
     private val refusals = HashMap<String, MutableList<String>>()
 
@@ -105,9 +107,11 @@ class ContractConformanceTest {
                 return world.call(
                     client, contract, op, c, t,
                     bodyEdit = { n -> fx.body(n as com.fasterxml.jackson.databind.node.ObjectNode, c, ctx) },
-                    query = fx.query(c, ctx), pathValues = fx.path(c, ctx), headers = fx.headers(c, ctx),
+                    queryOverrides = fx.query(c, ctx), pathValues = fx.path(c, ctx), headers = fx.headers(c, ctx),
                     proof = fx.proof.takeIf { c.device == ApiWorld.SR_PHONE }?.let { f -> { m: String, path: String, sent: ByteArray, json: String? -> f(world, m, path, sent, json) } },
                     rawBody = fx.raw?.invoke(c, ctx),
+                    // A fixture's body must still be a request the contract allows (a 2xx to an invalid request proves nothing).
+                    afterEdit = FX[op.key]?.let { { n -> op.requestSchema?.let { rs -> contract.errorKeys(rs, n).forEach { e -> fixtureFindings += Finding(op.method, ContractModel.shape(op.path), 0, "fixture-invalid", e, keyed = true) } } } },
                 ).also { checkedCalls++ }
             }
             // Reads first, then writes; an operation after its producers ([Fx.after]); the session-ending
@@ -134,7 +138,7 @@ class ContractConformanceTest {
                 }
             }
         }
-        findings = out.distinctBy { it.key }
+        findings = (out + fixtureFindings).distinctBy { it.key }
         File("build").mkdirs()
         File("build/contract-conformance.txt").writeText(
             "calls=$checkedCalls bodies_validated=$validatedBodies statuses=$statusSeen operations=${called.size} with_2xx=${succeeded.size}\n" +
@@ -325,18 +329,18 @@ class ContractConformanceTest {
                 n.putArray("lines").addObject().put("sku_id", x.id("skus")).put("issue_qty_base", 0).put("return_qty_base", 0).put("memo_count", 0)
             }),
             // Admin content: each PATCH after its create, on the id the create answered (version 1, If-Match "1").
-            "PATCH /v1/admin/content/{}" to Fx(after = listOf("POST /v1/admin/content"), path = { _, x -> mapOf("id" to x["content_id"].orEmpty()) }),
+            "PATCH /v1/admin/content/{}" to Fx(after = listOf("POST /v1/admin/content"), path = { _, x -> mapOf("id" to x.need("content_id")) }),
             "POST /v1/admin/content" to Fx(capture = { _, b, x -> if (x["content_id"] == null) x["content_id"] = b.path("content_id").asText() }),
-            "PATCH /v1/admin/rubrics/{}" to Fx(after = listOf("POST /v1/admin/rubrics"), path = { _, x -> mapOf("id" to x["rubric_id"].orEmpty()) }),
+            "PATCH /v1/admin/rubrics/{}" to Fx(after = listOf("POST /v1/admin/rubrics"), path = { _, x -> mapOf("id" to x.need("rubric_id")) }),
             "POST /v1/admin/rubrics" to Fx(capture = { _, b, x -> if (x["rubric_id"] == null) x["rubric_id"] = b.path("rubric_id").asText() }),
-            "PATCH /v1/admin/surveys/{}" to Fx(after = listOf("POST /v1/admin/surveys"), path = { _, x -> mapOf("id" to x["survey_id"].orEmpty()) }),
+            "PATCH /v1/admin/surveys/{}" to Fx(after = listOf("POST /v1/admin/surveys"), path = { _, x -> mapOf("id" to x.need("survey_id")) }),
             "POST /v1/admin/surveys" to Fx(capture = { _, b, x -> if (x["survey_id"] == null) x["survey_id"] = b.path("survey_id").asText() }),
             // A tutorial video needs a tutorial_video asset (seeded; the sample asset is content_av).
             "POST /v1/admin/tutorials" to Fx(
                 body = { n, _, _ -> n.put("asset_id", ApiWorld.TUTORIAL_ASSET) },
                 capture = { _, b, x -> if (x["tutorial_id"] == null) x["tutorial_id"] = b.path("tutorial_id").asText() },
             ),
-            "PATCH /v1/admin/tutorials/{}" to Fx(after = listOf("POST /v1/admin/tutorials"), path = { _, x -> mapOf("id" to x["tutorial_id"].orEmpty()) }, body = { n, _, _ -> n.put("asset_id", ApiWorld.TUTORIAL_ASSET) }),
+            "PATCH /v1/admin/tutorials/{}" to Fx(after = listOf("POST /v1/admin/tutorials"), path = { _, x -> mapOf("id" to x.need("tutorial_id")) }, body = { n, _, _ -> n.put("asset_id", ApiWorld.TUTORIAL_ASSET) }),
             // Sending zone_id at all is a move (409 while the cluster has outlets); a rename is the patch.
             "PATCH /v1/admin/clusters/{}" to Fx(body = { n, _, _ -> n.remove("zone_id"); n.put("name", "Contract Check Cluster") }),
             "POST /v1/admin/skus" to Fx(body = { n, c, x -> n.put("variant_id", x.id("variants")); n.put("code", "QA-${c.user}") }),
@@ -374,17 +378,17 @@ class ContractConformanceTest {
             ),
             "POST /v1/admin/route-assignments/{}/end" to Fx(
                 after = listOf("POST /v1/admin/route-assignments"),
-                path = { _, x -> mapOf("id" to x["assignment_id"].orEmpty()) }, body = { n, _, _ -> n.put("valid_to", "2027-01-11") },
+                path = { _, x -> mapOf("id" to x.need("assignment_id")) }, body = { n, _, _ -> n.put("valid_to", "2027-01-11") },
             ),
             // Device admin on the throwaway SR and phone (OTPs revoke its previous OTP only; upload_first changes no state).
             "POST /v1/admin/device-otps" to Fx(body = { n, _, x -> n.put("user_id", x.id("users")) }),
             "POST /v1/admin/devices/{}/replace" to Fx(body = { n, _, x -> n.put("new_device_user_id", x.id("users")) }),
-            // The first token is revoked; the last one enrols a phone.
-            "POST /v1/admin/enrolment-tokens" to Fx(capture = { _, b, x ->
-                if (x["token_id"] == null) x["token_id"] = b.path("token").path("token_id").asText()
-                x["enrol_secret"] = b.path("enrolment_token").asText()
+            // admin1001's token is revoked; superadmin1001's enrols a phone.
+            "POST /v1/admin/enrolment-tokens" to Fx(capture = { c, b, x ->
+                if (c.user == "admin1001") x["token_id"] = b.path("token").path("token_id").asText()
+                if (c.user == "superadmin1001") x["enrol_secret"] = b.path("enrolment_token").asText()
             }),
-            "POST /v1/admin/enrolment-tokens/{}/revoke" to Fx(after = listOf("POST /v1/admin/enrolment-tokens"), path = { _, x -> mapOf("token_id" to x["token_id"].orEmpty()) }),
+            "POST /v1/admin/enrolment-tokens/{}/revoke" to Fx(after = listOf("POST /v1/admin/enrolment-tokens"), path = { _, x -> mapOf("token_id" to x.need("token_id")) }),
             // Devices: a proof phone with the harness key (its trust may move; the SR phone's must not).
             "GET /v1/devices/me/policy" to Fx(headers = { _, _ -> mapOf("X-Device-Id" to ApiWorld.PROOF_PHONE) }, proof = deviceProof(ApiWorld.PROOF_PHONE)),
             "POST /v1/devices/nonce" to Fx(headers = { _, _ -> mapOf("X-Device-Id" to ApiWorld.PROOF_PHONE) }, proof = deviceProof(ApiWorld.PROOF_PHONE)),
@@ -392,7 +396,7 @@ class ContractConformanceTest {
             // Enrolment with a dev token (no Google root needed): a new phone and key, a self-built chain attesting the
             // token, the SR package and the seeded release's signing certificate.
             "POST /v1/devices/enrol" to Fx(after = listOf("POST /v1/admin/enrolment-tokens"), body = { n, _, x ->
-                val token = x["enrol_secret"].orEmpty()
+                val token = x.need("enrol_secret")
                 val key = AttestationChains.keyPair()
                 val certHex = ApiWorld.RELEASE_CERT.joinToString("") { "%02x".format(it) }
                 val desc = AttestationChains.keyDescription(java.security.MessageDigest.getInstance("SHA-256").digest(token.toByteArray()), "com.aktcl.aron.sr", ApiWorld.RELEASE_CERT)
@@ -413,17 +417,17 @@ class ContractConformanceTest {
                     x["bind_otp"] = ContractModel.json.readTree(r.bodyAsText()).path("otp").asText()
                 },
                 headers = { c, x -> if (c.user == "sr1001") mapOf("Authorization" to "Bearer " + x.world.logins[ApiWorld.BIND_USER]?.path("bind_token")?.asText(), "X-Device-Id" to ApiWorld.BIND_PHONE) else emptyMap() },
-                body = { n, c, x -> if (c.user == "sr1001") { n.put("device_uuid", ApiWorld.BIND_PHONE); n.put("otp", x["bind_otp"].orEmpty()) } },
+                body = { n, c, x -> if (c.user == "sr1001") { n.put("device_uuid", ApiWorld.BIND_PHONE); n.put("otp", x.need("bind_otp")) } },
             ),
             // MFA: DMO is MFA-required in this world only; dmo1001's login answers mfa_required, the enrolment's secret gives the TOTP.
             "POST /v1/auth/mfa/enrol" to Fx(
                 prepare = { client, x -> x.world.login(client, ApiWorld.Caller("dmo1001", "web", null)) },
                 headers = { c, x -> if (c.user == "admin1001") mapOf("Authorization" to "Bearer " + x.world.logins["dmo1001"]?.path("mfa_token")?.asText()) else emptyMap() },
-                capture = { _, b, x -> x["mfa_secret"] = Regex("[?&]secret=([A-Z2-7]+)").find(b.path("otpauth_uri").asText())?.groupValues?.get(1).orEmpty() },
+                capture = { c, b, x -> if (c.user == "admin1001") x["mfa_secret"] = Regex("[?&]secret=([A-Z2-7]+)").find(b.path("otpauth_uri").asText())?.groupValues?.get(1).orEmpty() },
             ),
             "POST /v1/auth/mfa/verify" to Fx(after = listOf("POST /v1/auth/mfa/enrol"), body = { n, _, x ->
                 n.put("mfa_token", x.world.logins["dmo1001"]?.path("mfa_token")?.asText().orEmpty())
-                n.put("code", com.aktcl.aron.backend.auth.Totp.code(base32Decode(x["mfa_secret"].orEmpty()), com.aktcl.aron.backend.auth.Totp.step(x.world.clock.now())))
+                n.put("code", com.aktcl.aron.backend.auth.Totp.code(base32Decode(x.need("mfa_secret")), com.aktcl.aron.backend.auth.Totp.step(x.world.clock.now())))
             }),
             // Refresh the SR phone's latest login, with its refresh proof.
             "POST /v1/auth/refresh" to Fx(proof = REFRESH_PROOF, body = { n, _, x ->
@@ -485,6 +489,8 @@ class Ctx(val world: ApiWorld) {
     val vars = HashMap<String, String>()
     operator fun get(k: String): String? = vars[k]
     operator fun set(k: String, v: String) { vars[k] = v }
+    /** A value an earlier answer must have given (fails fast: an empty path segment would test nothing). */
+    fun need(k: String): String = vars[k]?.takeIf { it.isNotEmpty() } ?: error("no $k captured: its producer never answered 2xx")
     /** A seeded id of the home world ([ApiWorld.ids]). */
     fun id(k: String): Long = world.ids[k] ?: error("no seeded id $k")
 }

@@ -65,6 +65,9 @@ class ContractModel private constructor(private val doc: ObjectNode) {
         root = factory.getSchema(SchemaLocation.of(BASE), config)
     }
 
+    /** A component schema by name (for samples of record payloads). */
+    fun component(name: String): JsonNode = doc.path("components").path("schemas").path(name)
+
     fun operation(method: String, path: String): Operation? = operations["${method.uppercase()} ${shape(path)}"]
 
     val allOperations: Collection<Operation> get() = operations.values

@@ -30,7 +30,8 @@ import java.util.Base64
 /**
  * N-014: the world the contract and scope-leak harnesses drive through the PRODUCTION wiring: a migrated database with
  * the db lane's seed (db/seed), a throwaway SR and phone for the admin writes (suspend, reset, deactivate) so the callers
- * keep their sessions, the per-minute limits lifted and TOTP off for the web roles. Each tag in [mirrors] loads the seed
+ * keep their sessions, the per-minute limits lifted, TOTP off for the web roles (the contract suite's world makes DMO
+ * MFA-required for its MFA fixture) and an in-memory blob store behind every blob port ([FakeBlobs]). Each tag in [mirrors] loads the seed
  * again under other codes (for `LKX`: division D-LKX, territory T-LKX, zone Z-LKX, routes and outlets LKX-*, users
  * lkx*): a complete division no scoped seed user may ever see, with its own SR (`lkxsr1001`, primary on LKX-SR-*).
  */
@@ -56,10 +57,12 @@ class ApiWorld(
     val blobs = FakeBlobs()
     /** The key pair of the seeded SR phone ([SR_PHONE]): its public JWK replaces the seed placeholder, so the harness signs device proofs. */
     val phoneKey: java.security.KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+    /** The API's signing key (a throwaway per world): a second wiring over a restored copy accepts the same tokens. */
+    val jwtKeyFile: File
 
     init {
-        // The blob issuer reads its account from the process environment, not from Settings: with it set the harness
-        // would call real Azure and its 503 baseline would go stale (checker finding, N-014).
+        // The blob ports are the harness's in-memory store, but other Azure wiring (exports) still reads the process
+        // environment: with ARON_BLOB_ACCOUNT set the harness would reach real Azure (checker finding, N-014).
         check(System.getenv("ARON_BLOB_ACCOUNT").isNullOrEmpty()) { "unset ARON_BLOB_ACCOUNT for the qa harness" }
         val seed = repoRoot.resolve("db/seed").listFiles { f -> f.name.matches(Regex("0\\d_.*\\.sql")) }!!.sortedBy { it.name }
         fresh.dataSource.connection.use { c ->
@@ -96,12 +99,12 @@ class ApiWorld(
             if (conformance) conformanceSeed(h)
             mirrors.firstOrNull()?.let { tag -> load(otherIds, "Z-$tag", tag, "${tag.lowercase()}sr1001", null) }
         }
-        val key = File.createTempFile("aron-jwt", ".pem").apply {
+        jwtKeyFile = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
             val k = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().private
             writeText("-----BEGIN " + "PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(k.encoded) + "\n-----END PRIVATE KEY-----\n")
         }
-        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to key.absolutePath)), clock, extraRecordHandlers, blobPorts = blobs.ports())
+        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to jwtKeyFile.absolutePath)), clock, extraRecordHandlers, blobPorts = blobs.ports())
     }
 
     /**
@@ -242,7 +245,7 @@ class ApiWorld(
         client: HttpClient, contract: ContractModel, op: ContractModel.Operation, c: Caller, token: String?,
         pathIds: Map<String, Long> = ids, extraQuery: String = "", onInvalidBody: (List<String>) -> Unit = {},
         includeOptionalIds: Boolean = false, bodyEdit: ((com.fasterxml.jackson.databind.JsonNode) -> Unit)? = null,
-        query: Map<String, String> = emptyMap(),
+        queryOverrides: Map<String, String> = emptyMap(),
         /** Path parameter values by name (uuids and ids an earlier answer created), before [pathIds] and samples. */
         pathValues: Map<String, String> = emptyMap(),
         headers: Map<String, String> = emptyMap(),
@@ -250,10 +253,12 @@ class ApiWorld(
         proof: ((method: String, path: String, sent: ByteArray, json: String?) -> String)? = null,
         /** A body sent as is (multipart) instead of the generated JSON sample. */
         rawBody: io.ktor.http.content.OutgoingContent.ByteArrayContent? = null,
+        /** Sees the JSON body after [bodyEdit] (the contract suite checks a fixture's body against the request schema). */
+        afterEdit: ((com.fasterxml.jackson.databind.JsonNode) -> Unit)? = null,
     ): HttpResponse {
         val path = pathFor(contract, op, pathIds, pathValues)
         val query = (
-            op.parameters.filter { it.where == "query" && it.required }.map { p -> p.name + "=" + URLEncoder.encode(query[p.name] ?: paramValue(p.name, pathIds) ?: contract.sampleText(p.schema, p.name), "UTF-8") } +
+            op.parameters.filter { it.where == "query" && it.required }.map { p -> p.name + "=" + URLEncoder.encode(queryOverrides[p.name] ?: paramValue(p.name, pathIds) ?: contract.sampleText(p.schema, p.name), "UTF-8") } +
                 listOfNotNull(extraQuery.ifEmpty { null })
             ).joinToString("&")
         val body = op.requestSchema?.let { s ->
@@ -262,18 +267,19 @@ class ApiWorld(
             // The device_uuid of a body is the caller's phone (the server checks it against the token).
             if (c.device != null) (sample as? com.fasterxml.jackson.databind.node.ObjectNode)?.takeIf { it.has("device_uuid") }?.put("device_uuid", c.device)
             bodyEdit?.invoke(sample)
+            afterEdit?.invoke(sample)
             ContractModel.json.writeValueAsString(sample)
         }
         val gzip = op.parameters.any { it.where == "header" && it.name == "Content-Encoding" && it.required }
         val sent: ByteArray = rawBody?.bytes() ?: body?.let { if (gzip) gz(it) else it.toByteArray() } ?: ByteArray(0)
         return client.request(path + if (query.isEmpty()) "" else "?$query") {
             method = HttpMethod.parse(op.method)
-            header("X-App-Version", APP_VERSION)
+            if ("X-App-Version" !in headers) header("X-App-Version", APP_VERSION)
             headers.forEach { (k, v) -> header(k, v) }
             proof?.let { header("X-Device-Proof", it(op.method, path, sent, body)) }
             if (token != null && "Authorization" !in headers) header("Authorization", "Bearer $token")
             if ("X-Device-Id" !in headers) c.device?.let { header("X-Device-Id", it) }
-            for (p in op.parameters.filter { it.where == "header" && it.required }) {
+            for (p in op.parameters.filter { it.where == "header" && it.required && it.name !in headers }) {
                 when (p.name) {
                     "X-Device-Id" -> if (c.device == null) header(p.name, SR_PHONE)
                     "If-Match" -> header(p.name, "\"1\"")
@@ -283,11 +289,20 @@ class ApiWorld(
             }
             if (rawBody != null) setBody(rawBody)
             else if (body != null) {
-                if (gzip) setBody(io.ktor.http.content.ByteArrayContent(gz(body), ContentType.Application.Json))
+                if (gzip) setBody(io.ktor.http.content.ByteArrayContent(sent, ContentType.Application.Json)) // the bytes the proof hashed
                 else { contentType(ContentType.Application.Json); setBody(body) }
             }
         }
     }
+
+    /**
+     * Path parameters named by a record uuid or row id (`request_uuid`, `unlock_id`), set by a suite to the other
+     * division's rows: used only when the path is built from [otherIds], so the own call keeps its sample value.
+     */
+    val otherPathValues = HashMap<String, String>()
+
+    /** The value a required query parameter gets for [pathIds] (null when it names no resource). */
+    fun queryValue(name: String, pathIds: Map<String, Long>): String? = paramValue(name, pathIds)
 
     /** The concrete request path of [op] with its parameters filled from [pathIds] (or samples). */
     fun pathFor(contract: ContractModel, op: ContractModel.Operation, pathIds: Map<String, Long>, values: Map<String, String> = emptyMap()): String =
@@ -325,6 +340,11 @@ class ApiWorld(
 
     private fun pathValue(contract: ContractModel, op: ContractModel.Operation, name: String, pathIds: Map<String, Long>): String {
         paramValue(name, pathIds)?.let { return it }
+        if (pathIds === otherIds) otherPathValues[name]?.let { return it }
+        // Reads of /v1/admin/geo/{level}/{id}: the division level, so the harness's two divisions tell the answers apart.
+        val geoRead = op.method == "GET" && op.path.startsWith("/v1/admin/geo/")
+        if (geoRead && name == "level") return "division"
+        if (geoRead && name == "id") pathIds["divisions"]?.let { return it.toString() }
         if (name == "id") {
             val segs = op.path.split('/')
             pathIds[segs.getOrNull(segs.indexOf("{$name}") - 1)]?.let { return it.toString() }
