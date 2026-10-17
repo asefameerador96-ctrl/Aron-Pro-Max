@@ -73,6 +73,7 @@
     <string name="history_title">Sale history</string>
     <string name="history_offline">No connection: showing the last 7 days from this phone, or the server list when it was loaded.</string>
     <string name="history_col_memo">Memo</string>
+    <string name="history_pick_date">Choose a date</string>
     <string name="history_footer">Total</string>
     <string name="history_empty">No sales for this outlet.</string>
 </resources>

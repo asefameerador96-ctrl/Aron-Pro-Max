@@ -129,7 +129,7 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
         val sel = st.selected
         val h = history
         when {
-            h != null -> SaleHistoryScreen(h, offlineBanner = true)
+            h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName)
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
                 MemoDetailView(sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid)

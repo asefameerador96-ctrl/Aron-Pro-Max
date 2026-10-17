@@ -25,7 +25,7 @@ class SaleReviewTest {
         d = SaleDraftOps.setQuantity(d, 105, 3, QtyUnit.DOZEN)    // 84,000
         d = SaleDraftOps.setQuantity(d, 106, 1, QtyUnit.STICK)    // 7,935 -> 7,935
         d = SaleDraftOps.setSlide(d, 100, 10)                      // 1 reward pack = 10 sticks x 8,000 = 80,000
-        d = SaleDraftOps.setQc(d, QcEntry(103, "torn_pack", "MFC", 2)) // 2 x 12,500 = 25,000
+        d = SaleDraftOps.setQc(d, QcEntry(103, "damaged_crushed", "MFC", 2)) // 2 x 12,500 = 25,000
         val r = review(d)
         assertEquals(listOf("cigarette", "lighter", "match"), r.categories.map { it.categoryCode })
         assertEquals(167_935, r.categories[0].grossMtk)
@@ -97,8 +97,8 @@ class SaleReviewTest {
 
     @Test fun qcDeductionIsDefectSticksTimesPriceAndCapsAreEnforced() {
         var d = SaleDraftOps.setQuantity(Fx.draft(), 100, 50, QtyUnit.STICK)
-        d = SaleDraftOps.setQc(d, QcEntry(100, "torn_pack", "MFC", 3))
-        d = SaleDraftOps.setQc(d, QcEntry(100, "wet", "TFC", 2))
+        d = SaleDraftOps.setQc(d, QcEntry(100, "damaged_crushed", "MFC", 3))
+        d = SaleDraftOps.setQc(d, QcEntry(100, "taste", "MKT", 2))
         assertEquals(40_000, review(d).totals.qcDeductionMtk)
         assertTrue(review(d, mapOf(100L to 39_999L)).problems.single() is ReviewProblem.QcAboveCap)
         assertTrue(review(d, mapOf(100L to 40_000L)).canCommit)
@@ -107,7 +107,7 @@ class SaleReviewTest {
     @Test fun afterQcCompletesTheSaleIsLocked() {
         val d = SaleDraftOps.completeQc(SaleDraftOps.setQuantity(Fx.draft(), 100, 5, QtyUnit.STICK))
         assertThrows(IllegalStateException::class.java) { SaleDraftOps.setQuantity(d, 100, 6, QtyUnit.STICK) }
-        assertThrows(IllegalStateException::class.java) { SaleDraftOps.setQc(d, QcEntry(100, "x", "MFC", 1)) }
+        assertThrows(IllegalStateException::class.java) { SaleDraftOps.setQc(d, QcEntry(100, "taste", "MKT", 1)) }
     }
 
     @Test fun unknownSkuIsAProblemNotACrash() {

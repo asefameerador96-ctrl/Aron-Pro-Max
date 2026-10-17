@@ -9,6 +9,9 @@
 - 5 SR Home/Sale/Review/Memo state coverage: 21 new goldens (`SrStateScreenshotTests`), matrix and 5 presentation gaps in `docs/requests/android-tso-sr-state-coverage.md`; no SR logic edited.
 - 6 Accessibility pass: `A11yAudit` (feature-tso tests: every clickable >= 48 dp and has a name, toggles say their state; self-tested to fail on a bad control) swept over every Home tile screen, the drawer and 8 screen states (Leave, Feedback, Final Submit, Visit Query, Set Plan, Assign Task); it found real defects, all fixed: text fields had no spoken name (`TsoTextField(name=...)` on Feedback, Leave, Assign Task, Visit Query answers, Change Password). Kit sweep in `KitGalleryTest` now also asserts every control has a name (clean). Colour-only status: chips and banners carry icon and words (kit). Known: reading order follows layout order, no explicit traversal index used; real TalkBack run is a device check.
 - 7 SR parity audit (Opus): `docs/requests/android-tso-sr-parity-audit.md` (0 blockers, 11 majors, 62 minors); first batch of presentation fixes done (pack badge, stick word, picker wording, outlet on Sale/Review, memo number), goldens re-recorded.
+- 7b Q2 six-type QC entry (lead ruling): done, awaiting the Opus checker; request for the max-QC source and a contract-value defect found in `docs/requests/android-tso-qc-max-source.md`.
+- 7c SH2 per-SKU Sale History (shared feature-memo, SR + AMO): done (pick a date, per-SKU table, exact total, goldens, tests); the GET /memos online fallback is not wired (no API client in the SR/AMO apps), proposal in `docs/requests/android-tso-sale-history-fallback.md`.
+- 7d Q4 QC submit confirm (green Yes / red No): done inside the QC screen.
 
 ## Done (all pushed to lane/android-tso, each with a fresh checker; defects fixed with tests)
 F-TSO-001 (Opus), 008, 009, 010+021 (Opus), 011, 012, 013-016, 018 (with photo), 024, 028, 029 (Sonnet).

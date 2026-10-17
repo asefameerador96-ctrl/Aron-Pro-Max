@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
@@ -138,11 +140,21 @@ class HistoryScreenTest {
     @get:Rule val compose = createComposeRule()
     private fun memo(id: String, date: String, net: Long) = StoredMemo(id, "no-$id", 1, date, "${date}T04:00:00.000Z", null, emptyList(), emptyList(), emptyList(), net, 0, 0, 0, net, net, 0)
 
-    @Test fun footerEqualsTheSumOfTheRowsAndFallbackShowsTheBanner() {
-        val h = com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder.build(listOf(memo("a", "2026-10-05", 10_010), memo("b", "2026-10-04", 20_020)), 1, fromServer = true)
-        compose.setContent { AronTheme(AppLanguage.EN) { SaleHistoryScreen(h, false) } }
-        compose.onNodeWithText("30.03", substring = true).assertExists()
-        compose.onAllNodesWithText("10.01", substring = true).assertCountEquals(2) // the day subtotal and the memo row
+    @Test fun pickADateThenThePerSkuTableAndTheExactTotal() {
+        fun m(id: String, date: String, vararg l: com.aktcl.aron.feature.memo.domain.MemoItem) = StoredMemo(id, "no-$id", 1, date, "${date}T04:00:00.000Z", null, l.toList(), emptyList(), emptyList(), 0, 0, 0, 0, 0, 0, 0)
+        val h = com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder.build(
+            listOf(
+                m("a", "2026-10-05", com.aktcl.aron.feature.memo.domain.MemoItem(100, 40, 8_000, 320_000), com.aktcl.aron.feature.memo.domain.MemoItem(103, 3, 12_500, 37_500)),
+                m("b", "2026-10-04", com.aktcl.aron.feature.memo.domain.MemoItem(100, 10, 8_000, 80_000)),
+            ), 1, fromServer = true,
+        )
+        compose.setContent { AronTheme(AppLanguage.EN) { SaleHistoryScreen(h, false, skuName = { if (it == 100L) "MaxR 10S" else "Aster" }, skuUnit = { if (it == 100L) "stick" else "piece" }) } }
+        compose.onNodeWithText("MaxR 10S").assertExists(); compose.onNodeWithText("Aster").assertExists()
+        compose.onNodeWithText("40 stick").assertExists()
+        compose.onNodeWithTag(HistoryTags.TOTAL).assertTextContains("357.50", substring = true) // the newest date is picked: 320.00 + 37.50
+        compose.onNodeWithTag(HistoryTags.date("2026-10-04")).performClick()
+        compose.onNodeWithText("Aster").assertDoesNotExist()
+        compose.onNodeWithTag(HistoryTags.TOTAL).assertTextContains("80.00", substring = true)
         compose.onNodeWithText("No connection: showing the last 7 days from this phone, or the server list when it was loaded.").assertExists()
     }
 

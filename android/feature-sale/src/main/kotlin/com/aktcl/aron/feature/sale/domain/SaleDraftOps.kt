@@ -23,7 +23,9 @@ object SaleDraftOps {
 
     /** Replaces the QC entries of one SKU and fault type; 0 removes it. */
     fun setQc(d: SaleDraft, entry: QcEntry): SaleDraft {
-        require(entry.defectQty in 0..MAX_QTY) { "defect quantity out of range" }
+        require(entry.defectQty in 0..QcEntryModel.MAX_QTY) { "defect quantity out of range" }
+        // the server takes only the six app fault types and the group that belongs to each (the contract enum is MFC or MKT)
+        require(QcEntryModel.groupOf(entry.faultTypeCode) == entry.faultGroup) { "unknown QC fault type or group" }
         check(!d.qcCompleted) { "QC is locked once completed" }
         val rest = d.qc.filterNot { it.skuId == entry.skuId && it.faultTypeCode == entry.faultTypeCode }
         return d.copy(qc = if (entry.defectQty == 0L) rest else rest + entry)

@@ -19,6 +19,7 @@ import com.aktcl.aron.core.printing.ui.PrinterIcon
 import com.aktcl.aron.core.printing.ui.SaveAndPrintDialogs
 import com.aktcl.aron.core.ui.AronScreenTransition
 import com.aktcl.aron.feature.sale.domain.QcEntry
+import com.aktcl.aron.feature.sale.domain.QcEntryModel
 import com.aktcl.aron.rules.QtyUnit
 
 enum class SaleStage { Entry, Credit, Slide, Qc, Review }
@@ -30,7 +31,7 @@ enum class SaleStage { Entry, Credit, Slide, Qc, Review }
  * the stage lists an unbounded height).
  */
 @Composable
-fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> String, onFinished: (printed: Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> String, onFinished: (printed: Boolean) -> Unit, modifier: Modifier = Modifier, qcCapMtkOf: (skuId: Long) -> Long? = { null }) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
     val draft = ui.draft
@@ -53,8 +54,10 @@ fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> S
                     SaleStage.Slide -> if (review != null) SlideScreen(skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) })
                     SaleStage.Qc -> if (review != null) QcScreen(
                         skus.filter { s -> draft?.lines?.any { it.skuId == s.skuId } == true }, review,
-                        qtyOf = { id, g -> draft?.qc?.firstOrNull { it.skuId == id && it.faultGroup == g }?.defectQty ?: 0L },
-                        onQty = { id, g, q -> vm.setQc(QcEntry(id, if (g == PRODUCTION) "production_fault" else "transport_fault", g, q)) },
+                        qtyOf = { id, code -> draft?.qc?.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L },
+                        onQty = { id, code, q -> QcEntryModel.groupOf(code)?.let { g -> vm.setQc(QcEntry(id, code, g, q)) } },
+                        capMtkOf = qcCapMtkOf,
+                        onClearSku = { id -> QcEntryModel.APP_TYPES.forEach { t -> vm.setQc(QcEntry(id, t.code, t.group, 0)) } },
                         locked = draft?.qcCompleted == true, onDone = { vm.completeQc(); stage = SaleStage.Review },
                         onCancel = { stage = SaleStage.Review },
                     )

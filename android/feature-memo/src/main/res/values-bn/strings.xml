@@ -72,6 +72,7 @@
     <string name="history_title">বিক্রয়ের ইতিহাস</string>
     <string name="history_offline">সংযোগ নেই: এই ফোনের শেষ ৭ দিনের তথ্য, অথবা আগে নামানো সার্ভারের তালিকা দেখানো হচ্ছে।</string>
     <string name="history_col_memo">মেমো</string>
+    <string name="history_pick_date">তারিখ বেছে নিন</string>
     <string name="history_footer">মোট</string>
     <string name="history_empty">এই আউটলেটের কোনো বিক্রয় নেই।</string>
 </resources>

@@ -132,11 +132,16 @@ class SaleExtraScreensTest {
 
     @Test fun qcShowsTheDeductionAndLocksWhenDone() {
         var d = SaleDraftOps.setQuantity(Fx.draft(), 103, 10, QtyUnit.PIECE)
-        d = SaleDraftOps.setQc(d, com.aktcl.aron.feature.sale.domain.QcEntry(103, "torn", PRODUCTION, 2))
+        d = SaleDraftOps.setQc(d, com.aktcl.aron.feature.sale.domain.QcEntry(103, "damaged_crushed", com.aktcl.aron.feature.sale.domain.QcEntryModel.PRODUCTION, 2))
         var done = 0
         compose.setContent { AronTheme(AppLanguage.EN) { QcScreen(listOf(Fx.aster), SaleReviewCalculator.review(d, Fx.catalog), { _, _ -> 0 }, { _, _, _ -> }, false, { done++ }) } }
         compose.onNodeWithText("Deduction: − 25.00 ৳").assertExists()
         compose.onNodeWithText("Submit QC").performClick()
+        assertEquals("QC is not submitted before the confirm", 0, done)
+        compose.onNodeWithText("No").performClick()
+        assertEquals(0, done)
+        compose.onNodeWithText("Submit QC").performClick()
+        compose.onNodeWithText("Yes").performClick()
         assertEquals(1, done)
     }
 }
