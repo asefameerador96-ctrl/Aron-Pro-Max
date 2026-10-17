@@ -23,7 +23,6 @@ GET /v1/admin/config/keys 200 schema /items/*/default_value/TSO type
 GET /v1/admin/config/keys 200 schema /items/*/default_value/TSO/* type
 GET /v1/admin/config/keys 200 schema /items/*/default_value/WM type
 GET /v1/admin/config/keys 200 schema /items/*/default_value/WM/* type
-GET /v1/reports 200 schema /items/*/area enum
 GET /v1/sync/bundle 200 schema /code_lists/*/items/*/attrs/applies_to type
 GET /v1/sync/bundle 200 schema /code_lists/*/items/*/attrs/roles type
 PUT /v1/admin/code-lists/{} 200 schema /items/*/attrs/roles type
