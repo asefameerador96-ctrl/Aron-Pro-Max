@@ -93,8 +93,11 @@ class TsoChromeTest {
     @Test fun dateFormatsOfTheManual() {
         assertEquals("2026-04-26", TsoDates.iso("2026-04-26", AppLanguage.EN))
         assertEquals("২০২৬-০৪-২৬", TsoDates.iso("2026-04-26", AppLanguage.BN))
-        assertEquals("April 26, 2026", TsoDates.long("2026-04-26", AppLanguage.EN))
-        assertEquals("২৬ এপ্রিল ২০২৬", TsoDates.long("2026-04-26", AppLanguage.BN))
-        assertEquals("not a date", TsoDates.long("not a date", AppLanguage.EN))
+        assertEquals("April 26, 2026", TsoDates.long("2026-04-26", AppLanguage.EN, EN_MONTHS))
+        assertEquals("২৬ এপ্রিল ২০২৬", TsoDates.long("2026-04-26", AppLanguage.BN, BN_MONTHS))
+        assertEquals("not a date", TsoDates.long("not a date", AppLanguage.EN, EN_MONTHS))
     }
 }
+
+private val EN_MONTHS = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+private val BN_MONTHS = listOf("জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর")

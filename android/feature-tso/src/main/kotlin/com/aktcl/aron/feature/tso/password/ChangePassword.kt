@@ -47,7 +47,7 @@ class ChangePasswordState(private val api: ChangePasswordApi) {
     private var busy = false
 
     data class Ui(val current: String = "", val new: String = "", val confirm: String = "", val phase: CpPhase = CpPhase.Editing, val visible: Boolean = false) {
-        override fun toString() = "Ui(phase=$phase)" // never prints the passwords
+        override fun toString() = "Ui(phase=$phase)" // i18n-ignore: debug text that never prints the passwords
     }
 
     private fun edit(f: (Ui) -> Ui) { if (_s.value.phase is CpPhase.Sending || _s.value.phase is CpPhase.Done) return; _s.value = f(_s.value).copy(phase = CpPhase.Editing) }

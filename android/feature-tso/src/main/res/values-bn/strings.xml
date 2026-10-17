@@ -236,4 +236,18 @@
     <string name="tso_fs_success_title">সফল</string>
     <string name="tso_fs_routes">রুটসমূহ</string>
     <string name="tso_unit_m">%1$s মি.</string>
+    <string-array name="tso_months">
+        <item>জানুয়ারি</item>
+        <item>ফেব্রুয়ারি</item>
+        <item>মার্চ</item>
+        <item>এপ্রিল</item>
+        <item>মে</item>
+        <item>জুন</item>
+        <item>জুলাই</item>
+        <item>আগস্ট</item>
+        <item>সেপ্টেম্বর</item>
+        <item>অক্টোবর</item>
+        <item>নভেম্বর</item>
+        <item>ডিসেম্বর</item>
+    </string-array>
 </resources>

@@ -236,4 +236,18 @@
     <string name="tso_fs_success_title">Success</string>
     <string name="tso_fs_routes">Routes</string>
     <string name="tso_unit_m">%1$s m</string>
+    <string-array name="tso_months">
+        <item>January</item>
+        <item>February</item>
+        <item>March</item>
+        <item>April</item>
+        <item>May</item>
+        <item>June</item>
+        <item>July</item>
+        <item>August</item>
+        <item>September</item>
+        <item>October</item>
+        <item>November</item>
+        <item>December</item>
+    </string-array>
 </resources>

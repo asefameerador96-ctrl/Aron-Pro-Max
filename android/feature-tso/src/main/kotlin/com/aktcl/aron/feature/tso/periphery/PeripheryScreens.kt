@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -108,6 +109,7 @@ fun RetailerScreen(state: RetailerState, online: () -> Boolean, nowMs: () -> Lon
     val cache = androidx.compose.runtime.remember(userKey) { MapTileCache(File(context.cacheDir, "map_tso_$userKey")) { settings.tileCacheBytes } }
     val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) scope.launch { state.find() } else state.permissionRefused() }
     val phase = ui.phase
+    val resources = LocalResources.current
     val language = com.aktcl.aron.core.ui.LocalAppLanguage.current
     AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_pe_retailer), onBack = onBack) }) {
         Column(Modifier.fillMaxSize()) {
@@ -140,7 +142,7 @@ fun RetailerScreen(state: RetailerState, online: () -> Boolean, nowMs: () -> Lon
                 if (phase.result.fromCache) AronBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = BannerKind.Offline)
                 if (n.truncated) AronBanner(stringResource(R.string.tso_pe_truncated, MAX_SHOWN), Modifier.testTag(PeripheryTags.TRUNCATED), kind = BannerKind.Info)
                 Text(localizedDigits(stringResource(R.string.tso_as_of, phase.result.asOf)), Modifier.padding(horizontal = AronTokens.Space.Screen).testTag(PeripheryTags.ASOF), style = MaterialTheme.typography.bodySmall)
-                LiteMapScreen(nearbyPoints(n) { d -> context.getString(R.string.tso_unit_m, com.aktcl.aron.core.common.LocaleDigits.localize(d.toString(), language)) }, settings, online(), MapsKey.present(context), nowMs(), cache, "near_${userKey}_${phase.zoneId}_${phase.radiusM}_${positionKey(phase.lat, phase.lng)}", Modifier.weight(1f))
+                LiteMapScreen(nearbyPoints(n) { d -> resources.getString(R.string.tso_unit_m, com.aktcl.aron.core.common.LocaleDigits.localize(d.toString(), language)) }, settings, online(), MapsKey.present(context), nowMs(), cache, "near_${userKey}_${phase.zoneId}_${phase.radiusM}_${positionKey(phase.lat, phase.lng)}", Modifier.weight(1f))
             }
         }
     }
