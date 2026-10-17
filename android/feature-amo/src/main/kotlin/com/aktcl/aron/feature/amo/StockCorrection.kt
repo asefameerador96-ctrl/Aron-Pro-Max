@@ -16,6 +16,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronPrimaryButton
+import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronColors
@@ -62,18 +63,18 @@ fun StockCorrectionContent(
             items(rows, key = { it.skuId }) { r ->
                 val chosen = r.skuId == selected
                 val rowModifier = Modifier.fillMaxWidth().testTag(CorrectionTags.row(r.skuId))
-                val label = r.name + "  " + r.currentBase + " " + r.unit
+                val label = r.name + "  " + localizedNumber(r.currentBase) + " " + unitWord(r.unit)
                 if (chosen) AronPrimaryButton(label, { onSelect(r.skuId) }, rowModifier) else AronSecondaryButton(label, { onSelect(r.skuId) }, rowModifier, enabled = !saving)
             }
         }
         if (sel != null) {
             Column(Modifier.padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 KitTextField(
-                    text, { if (!saving && !saved) onText(it) }, stringResource(R.string.amo_sc_total, sel.unit),
+                    text, { if (!saving && !saved) onText(it) }, stringResource(R.string.amo_sc_total, unitWord(sel.unit)),
                     isError = text.isNotBlank() && StockCorrection.parseTotal(text) == null, keyboardType = KeyboardType.Number,
                     fieldModifier = Modifier.testTag(CorrectionTags.TOTAL),
                 )
-                if (delta != null) Text(stringResource(R.string.amo_sc_delta, (if (delta > 0) "+" else "") + delta, sel.unit), style = MaterialTheme.typography.labelLarge, color = c.textPrimary)
+                if (delta != null) Text(stringResource(R.string.amo_sc_delta, (if (delta > 0) "+" else "") + localizedNumber(delta), unitWord(sel.unit)), style = MaterialTheme.typography.labelLarge, color = c.textPrimary)
                 else if (text.isNotBlank() && StockCorrection.parseTotal(text) != null) Text(stringResource(R.string.amo_sc_same), style = MaterialTheme.typography.labelLarge, color = c.textSecondary)
                 CorrectionReason.entries.forEach { r ->
                     val label = stringResource(when (r) { CorrectionReason.COUNT_ERROR -> R.string.amo_sc_r_count; CorrectionReason.DAMAGED -> R.string.amo_sc_r_damaged; CorrectionReason.LOST -> R.string.amo_sc_r_lost; CorrectionReason.OTHER -> R.string.amo_sc_r_other })
@@ -88,4 +89,10 @@ fun StockCorrectionContent(
             }
         }
     }
+}
+
+/** The unit as a word in the user's language (sticks, pieces, dozens); an unknown unit is shown as sent. */
+@Composable
+private fun unitWord(unit: String): String = when (unit) {
+    "stick" -> stringResource(R.string.amo_unit_stick); "piece" -> stringResource(R.string.amo_unit_piece); "dozen" -> stringResource(R.string.amo_unit_dozen); else -> unit
 }

@@ -277,4 +277,7 @@
     <string name="amo_perf_watch">Watch</string>
     <string name="amo_perf_low">Behind</string>
     <string name="amo_perf_offline">Could not load the targets. Check the connection and open this again.</string>
+    <string name="amo_verify_reject_title">Reject this request?</string>
+    <string name="amo_verify_reject_message">The request goes back as rejected. The SR will not get it approved.</string>
+    <string name="amo_verify_reject_yes">Yes, reject</string>
 </resources>
