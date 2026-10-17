@@ -162,4 +162,21 @@
     <string name="amo_exc_code_memo_duplicate_suspect">সম্ভাব্য ডুপ্লিকেট মেমো</string>
     <string name="amo_exc_failed">সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
     <string name="amo_exc_severity">মাত্রা %1$d</string>
+    <string name="amo_leaf_update_base">আপডেট বেস</string>
+    <string name="amo_base_title">আপডেট বেস</string>
+    <string name="amo_base_confirm_title">এই দোকানের অবস্থান বদলাবেন?</string>
+    <string name="amo_base_confirm_message">আপনি দোকানের ছবি তুলে এর সঠিক বিন্দু ঠিক করবেন। পরিবর্তনটি অনুমোদনের জন্য যাবে।</string>
+    <string name="amo_base_confirm_yes">হ্যাঁ, এগিয়ে যান</string>
+    <string name="amo_base_confirm_no">না</string>
+    <string name="amo_base_point_title">দোকানের সঠিক বিন্দু</string>
+    <string name="amo_base_point_offset">পিনটি আপনার অবস্থান থেকে %1$s মিটার দূরে (সর্বোচ্চ %2$s মিটার)।</string>
+    <string name="amo_base_point_nofix">আগে ছবি তুলুন: পিন আপনার অবস্থানেই শুরু হবে।</string>
+    <string name="amo_base_north">%1$s মি. উত্তরে</string>
+    <string name="amo_base_south">%1$s মি. দক্ষিণে</string>
+    <string name="amo_base_west">%1$s মি. পশ্চিমে</string>
+    <string name="amo_base_east">%1$s মি. পূর্বে</string>
+    <string name="amo_base_reset">আমার অবস্থানে ফিরুন</string>
+    <string name="amo_base_save">অনুমোদনের জন্য পাঠান</string>
+    <string name="amo_base_saved">এই ফোনে সংরক্ষিত হয়েছে। অনুমোদনের জন্য পাঠানো হবে।</string>
+    <string name="amo_base_moved">নতুন বিন্দুটি দোকানের বর্তমান বিন্দু থেকে %1$s মিটার দূরে।</string>
 </resources>

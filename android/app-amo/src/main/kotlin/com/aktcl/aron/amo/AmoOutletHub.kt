@@ -3,9 +3,11 @@ package com.aktcl.aron.amo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Text
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -91,6 +93,11 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                     )
                 }
                 AronListRow(
+                    stringResource(AmoR.string.amo_leaf_update_base),
+                    onClick = { day.requestKind = OutletRequestKind.LOCATION; savedKind = OutletRequestKind.LOCATION.name; day.requestOutlet = null; leaf = OutletLeaf.PICK_ROUTE },
+                    position = RowPosition.Middle, divider = true, flat = true,
+                )
+                AronListRow(
                     stringResource(AmoR.string.amo_verify_open), onClick = { leaf = OutletLeaf.VERIFY_LIST },
                     position = RowPosition.Middle, divider = true, flat = true,
                 )
@@ -136,7 +143,9 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                     ?: Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
             }
             OutletLeaf.VERIFY_FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = back) { AmoVerifyHost(day, verifyUuid, onDone = { leaf = OutletLeaf.VERIFY_LIST }, onGone = { leaf = OutletLeaf.VERIFY_LIST }) }
-            OutletLeaf.FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = back) { AmoRequestHost(day, onDone = { leaf = OutletLeaf.LIST }) }
+            OutletLeaf.FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = back) {
+                if (day.requestKind == OutletRequestKind.LOCATION) AmoUpdateBaseHost(day, onDone = { leaf = OutletLeaf.LIST }) else AmoRequestHost(day, onDone = { leaf = OutletLeaf.LIST })
+            }
         }
     }
 }
@@ -246,4 +255,84 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
         errors = errors, noFix = noFix, busy = busy, onSubChannel = { subId = it }, onGeoClass = { geo = it }, onNote = { note = it },
         onSave = { decide(true) }, onCancel = onGone, onReject = { decide(false) },
     )
+}
+
+/**
+ * F-AMO-028 Update Base: confirm, photo with the AMO's fix, the exact point (moved in steps from where the AMO stands, within the limit),
+ * then a `location` outlet request that goes for approval. Works offline: the fix and the photo are local and the request queues.
+ * The server applies the move limit, the monthly cap and the mock guard again.
+ */
+@Composable
+private fun AmoUpdateBaseHost(day: AmoDay, onDone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val outlet: OutletEntity? = day.requestOutlet
+    var confirmed by rememberSaveable(outlet?.outletId) { mutableStateOf(false) }
+    if (outlet == null) { LaunchedEffect(Unit) { onDone() }; return }
+    if (!confirmed) {
+        com.aktcl.aron.core.ui.AronConfirmDialog(
+            stringResource(AmoR.string.amo_base_confirm_title), stringResource(AmoR.string.amo_base_confirm_message),
+            stringResource(AmoR.string.amo_base_confirm_yes), stringResource(AmoR.string.amo_base_confirm_no),
+            onConfirm = { confirmed = true }, onDismiss = onDone,
+        )
+        return
+    }
+    val uuid = rememberSaveable(outlet.outletId) { day.outletRequests.newRequestUuid() }
+    val capture = remember(outlet.outletId) { day.newCapture("outlet_capture") }
+    val cap by capture.state.collectAsState()
+    var north by rememberSaveable(outlet.outletId) { mutableStateOf(0) }
+    var east by rememberSaveable(outlet.outletId) { mutableStateOf(0) }
+    var errors by remember { mutableStateOf<Set<RequestError>>(emptySet()) }
+    var busy by remember { mutableStateOf(false) }
+    val fix = cap.fix?.takeIf { it.isOk }
+    val point = fix?.let { com.aktcl.aron.feature.amo.UpdateBasePoint.move(it.lat!!, it.lng!!, north, east) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val savedText = stringResource(AmoR.string.amo_base_saved)
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(AronTokens.Space.M),
+        ) {
+            AronListRow(outlet.name, subtitle = stringResource(AmoR.string.amo_base_title), flat = true)
+            com.aktcl.aron.feature.outlet.GeoPhotoBlock(cap, onShutter = { scope.launch { capture.shutter(); north = 0; east = 0 } }, note = stringResource(OutR.string.out_req_photo_note))
+            com.aktcl.aron.feature.amo.UpdateBasePointContent(north, east, day.updateBaseMaxM, fix != null, { dn, de -> north += dn; east += de }, { north = 0; east = 0 })
+            val oldLat = outlet.lat; val oldLng = outlet.lng
+            if (point != null && oldLat != null && oldLng != null) {
+                val moved = com.aktcl.aron.rules.Geo.haversineM(oldLat, oldLng, point.first, point.second).toLong()
+                Text(stringResource(AmoR.string.amo_base_moved, com.aktcl.aron.core.ui.localizedNumber(moved)), style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+            }
+            errors.forEach { e ->
+                com.aktcl.aron.core.ui.AronBanner(
+                    stringResource(when (e) {
+                        RequestError.POINT_TOO_FAR -> OutR.string.out_req_err_point_far
+                        RequestError.MOCK_FIX -> OutR.string.out_req_err_mock
+                        RequestError.PHOTO_REQUIRED -> OutR.string.out_req_err_photo
+                        else -> OutR.string.out_req_err_geo
+                    }),
+                    kind = com.aktcl.aron.core.ui.BannerKind.Error,
+                )
+            }
+        }
+        Box(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen)) {
+            com.aktcl.aron.core.ui.AronPrimaryButton(
+                stringResource(AmoR.string.amo_base_save),
+                {
+                    if (!busy) {
+                        busy = true
+                        scope.launch {
+                            val form = OutletRequestForm(
+                                kind = OutletRequestKind.LOCATION, outletId = outlet.outletId, requestUuid = uuid, fix = cap.fix,
+                                photoUuids = listOfNotNull(cap.photo?.photoUuid), pointLat = point?.first, pointLng = point?.second,
+                            )
+                            when (val r = day.outletRequests.submit(form)) {
+                                is RequestValidation.Invalid -> errors = r.errors
+                                is RequestValidation.Ok -> { errors = emptySet(); android.widget.Toast.makeText(context, savedText, android.widget.Toast.LENGTH_SHORT).show(); onDone() }
+                            }
+                            busy = false
+                        }
+                    }
+                },
+                Modifier.fillMaxWidth(), enabled = !busy, busy = busy,
+            )
+        }
+    }
 }
