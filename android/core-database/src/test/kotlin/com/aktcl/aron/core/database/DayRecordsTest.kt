@@ -174,8 +174,9 @@ class DayRecordsTest {
         val numbering = MemoNumbering("sr334001", 0)
         val good = TestRows.sale(visit.clientUuid)
         assertEquals("sr334001-261005-001", repo.recordNumberedSale(good, numbering))
-        val bad = TestRows.sale(visit.clientUuid, memoUuid = good.memo.clientUuid) // duplicate uuid: the save fails
-        assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { repo.recordNumberedSale(bad, numbering) } }
+        assertEquals("a replay of the stored memo returns its number and burns none", "sr334001-261005-001", repo.recordNumberedSale(good, numbering))
+        val bad = TestRows.sale("00000000-0000-4000-8000-0000000000ff") // no such visit: the save fails after the number was reserved
+        assertTrue(runCatching { repo.recordNumberedSale(bad, numbering) }.isFailure)
         assertEquals("sr334001-261005-003", repo.recordNumberedSale(TestRows.sale(visit.clientUuid), numbering))
         assertEquals(listOf("sr334001-261005-001", "sr334001-261005-003"), db.captureDao().memosOn("2026-10-05").map { it.memoNo }.sorted())
         val memoRow = db.outboxDao().nextPending(100).first { it.recordType == "memo" && it.clientUuid != good.memo.clientUuid }
