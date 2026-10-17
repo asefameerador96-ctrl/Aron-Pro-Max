@@ -45,7 +45,7 @@ import com.aktcl.aron.feature.home.R as HomeR
 import com.aktcl.aron.feature.outlet.R as OutR
 import kotlinx.coroutines.launch
 
-private enum class OutletLeaf { LIST, OWN_LIST, PICK_ROUTE, PICK_OUTLET, FORM }
+private enum class OutletLeaf { LIST, OWN_LIST, PICK_ROUTE, PICK_OUTLET, FORM, VERIFY_LIST, VERIFY_FORM }
 
 /**
  * The AMO Outlet hub (docs/07): the AMO's own New shop (F-AMO-025), Permanent close (026) and Change information (027), which
@@ -56,6 +56,7 @@ private enum class OutletLeaf { LIST, OWN_LIST, PICK_ROUTE, PICK_OUTLET, FORM }
 fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubExtras) -> Unit = {}) {
     var leaf by rememberSaveable { mutableStateOf(OutletLeaf.LIST) }
     var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var verifyUuid by rememberSaveable { mutableStateOf<String?>(null) }
     var savedKind by rememberSaveable { mutableStateOf(OutletRequestKind.NEW.name) }
     // After process death AmoDay is rebuilt: the chosen kind is restored, and a Close/Info step whose outlet is gone starts over.
     day.requestKind = OutletRequestKind.valueOf(savedKind)
@@ -66,6 +67,7 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
         when (leaf) {
             OutletLeaf.LIST -> onBack()
             OutletLeaf.PICK_OUTLET -> leaf = OutletLeaf.PICK_ROUTE
+            OutletLeaf.VERIFY_FORM -> leaf = OutletLeaf.VERIFY_LIST
             OutletLeaf.FORM -> leaf = if (day.requestKind == OutletRequestKind.NEW) OutletLeaf.LIST else OutletLeaf.PICK_OUTLET
             else -> leaf = OutletLeaf.LIST
         }
@@ -88,6 +90,10 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                         position = if (i == 0) RowPosition.First else RowPosition.Middle, divider = true, flat = true,
                     )
                 }
+                AronListRow(
+                    stringResource(AmoR.string.amo_verify_open), onClick = { leaf = OutletLeaf.VERIFY_LIST },
+                    position = RowPosition.Middle, divider = true, flat = true,
+                )
                 AronListRow(stringResource(OutR.string.out_own_open), onClick = { leaf = OutletLeaf.OWN_LIST }, position = RowPosition.Last, divider = false, flat = true)
             }
             OutletLeaf.OWN_LIST -> {
@@ -119,6 +125,17 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                 val all = OutletPicker.rows(outlets)
                 OutletPickerContent(OutletPicker.rows(outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r -> day.requestOutlet = r.outlet; leaf = OutletLeaf.FORM })
             }
+            OutletLeaf.VERIFY_LIST -> {
+                var rows by remember { mutableStateOf<List<com.aktcl.aron.feature.amo.PendingRequest>?>(null) }
+                var names by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
+                LaunchedEffect(day) {
+                    rows = runCatching { day.pendingVerifications() }.getOrDefault(emptyList())
+                    names = com.aktcl.aron.feature.amo.OutletVerify.teamNames(runCatching { day.reference.section("supervisor") }.getOrNull())
+                }
+                rows?.let { com.aktcl.aron.feature.amo.VerifyListContent(it, names, { r -> verifyUuid = r.uuid; leaf = OutletLeaf.VERIFY_FORM }) }
+                    ?: Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+            }
+            OutletLeaf.VERIFY_FORM -> AmoVerifyHost(day, verifyUuid, onDone = { leaf = OutletLeaf.VERIFY_LIST }, onGone = { leaf = OutletLeaf.VERIFY_LIST })
             OutletLeaf.FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = back) { AmoRequestHost(day, onDone = { leaf = OutletLeaf.LIST }) }
         }
     }
@@ -159,5 +176,57 @@ private fun AmoRequestHost(day: AmoDay, onDone: () -> Unit) {
                 }
             }
         },
+    )
+}
+
+/** F-AMO-022/023/024 host: loads the pending request from the bundle, its details from the server (kept copy offline), queues the decision. */
+@Composable
+private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var request by remember(uuid) { mutableStateOf<com.aktcl.aron.feature.amo.PendingRequest?>(null) }
+    var detail by remember(uuid) { mutableStateOf<com.aktcl.aron.feature.amo.VerifyDetailState>(com.aktcl.aron.feature.amo.VerifyDetailState.Loading) }
+    var subs by remember { mutableStateOf<List<com.aktcl.aron.feature.amo.SubChannel>>(emptyList()) }
+    var gone by remember(uuid) { mutableStateOf(false) }
+    LaunchedEffect(uuid) {
+        val r = runCatching { day.pendingVerifications() }.getOrDefault(emptyList()).firstOrNull { it.uuid == uuid }
+        if (r == null) { gone = true; return@LaunchedEffect }
+        request = r
+        subs = runCatching { day.subChannels() }.getOrDefault(emptyList())
+        detail = when (val f = day.api.outletRequest(r.uuid)) {
+            is AmoFetch.Fresh -> com.aktcl.aron.feature.amo.OutletVerify.detail(f.json)?.let { com.aktcl.aron.feature.amo.VerifyDetailState.Loaded(it, true) }
+            is AmoFetch.Cached -> com.aktcl.aron.feature.amo.OutletVerify.detail(f.json)?.let { com.aktcl.aron.feature.amo.VerifyDetailState.Loaded(it, false) }
+            AmoFetch.Unavailable -> null
+        } ?: com.aktcl.aron.feature.amo.VerifyDetailState.Unavailable
+    }
+    if (gone) { LaunchedEffect(Unit) { onGone() }; return }
+    val req = request ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
+    // Fixed when the form opens: a double tap or a replay queues one decision.
+    val recordUuid = rememberSaveable(uuid) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+    var subId by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
+    var geo by rememberSaveable(uuid) { mutableStateOf<String?>(null) }
+    var note by rememberSaveable(uuid) { mutableStateOf("") }
+    var errors by remember { mutableStateOf<Set<com.aktcl.aron.feature.amo.VerifyError>>(emptySet()) }
+    var noFix by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val bangla = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
+    val current = remember(req.outletId, day.zoneOutlets) {
+        day.zoneOutlets.firstOrNull { it.outletId == req.outletId }?.let { mapOf("name" to it.name, "owner_name" to it.ownerName, "contact_number" to it.contactNumber) }.orEmpty()
+    }
+    val changes = (detail as? com.aktcl.aron.feature.amo.VerifyDetailState.Loaded)?.let { com.aktcl.aron.feature.amo.OutletVerify.changes(it.detail.proposed, current) }.orEmpty()
+    fun decide(verify: Boolean) {
+        val e = com.aktcl.aron.feature.amo.OutletVerify.validate(req.type, verify, subId, geo)
+        errors = e
+        if (e.isNotEmpty() || busy) return
+        busy = true; noFix = false
+        scope.launch {
+            val ok = runCatching { day.decideRequest(recordUuid, req.uuid, verify, subId, geo, note.trim().ifEmpty { null }, null) }.getOrDefault(false)
+            busy = false
+            if (ok) onDone() else noFix = true
+        }
+    }
+    com.aktcl.aron.feature.amo.VerifyFormContent(
+        request = req, detail = detail, changes = changes, subChannels = subs, bangla = bangla, subChannelId = subId, geoClass = geo, note = note,
+        errors = errors, noFix = noFix, busy = busy, onSubChannel = { subId = it }, onGeoClass = { geo = it }, onNote = { note = it },
+        onSave = { decide(true) }, onCancel = onGone, onReject = { decide(false) },
     )
 }

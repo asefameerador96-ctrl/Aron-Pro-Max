@@ -71,6 +71,7 @@ class AmoDay(
     fun routeName(): String = zoneRoutes[visitSession.current.value?.routeId ?: routeId ?: 0L].orEmpty()
 
     private val clock = components.trustedClock
+    val api: AmoApi by lazy { AmoApi(components.apiClient, context, userId) }
     val capture = CaptureRepository(db) { iso(clock.nowMs()) }
     val reference = ReferenceRepository(db)
 
@@ -417,6 +418,44 @@ class AmoDay(
             )
         }
         runCatching { requestSync() }
+    }
+
+    // ---- Verify SR outlet requests (F-AMO-022/023/024)
+
+    /** Request uuids this phone has already decided (queued or sent), so they leave the pending list at once. */
+    suspend fun decidedRequests(): Set<String> = db.captureDao().amoRecordsOfType("outlet_request_verification").mapNotNull {
+        runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["request_uuid"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content } }.getOrNull()
+    }.toSet()
+
+    /** Pending requests of the SRs in the zone (bundle), minus those decided on this phone. */
+    suspend fun pendingVerifications(): List<com.aktcl.aron.feature.amo.PendingRequest> =
+        com.aktcl.aron.feature.amo.OutletVerify.pending(runCatching { reference.section("supervisor") }.getOrNull(), userId, decidedRequests())
+
+    suspend fun subChannels(): List<com.aktcl.aron.feature.amo.SubChannel> =
+        com.aktcl.aron.feature.amo.OutletVerify.subChannels(runCatching { reference.section("code_lists") }.getOrNull())
+
+    /**
+     * Queues the AMO's decision on one request: `verified` (Save) or `discarded` (Cancel on a request they reject), with a fresh fix read
+     * now (the server applies the 100 m, move-limit and mock guards). [recordUuid] is fixed when the form opens, so a double tap or a replay
+     * queues one record. Returns false when the phone has no usable fix (nothing is queued).
+     */
+    suspend fun decideRequest(recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?): Boolean {
+        if (requestUuid in decidedRequests()) return true // already decided on this phone: nothing to queue twice
+        val reading = fixSource.readFix("outlet_verification")
+        if (!reading.isOk || reading.isMock) return false
+        val fixEntity = reading.toEntity(newUuid(), recordUuid, "outlet_verification", 0)
+        val fix = com.aktcl.aron.core.database.record.RecordMapping.json.encodeToJsonElement(
+            com.aktcl.aron.contract.GeoFix.serializer(), com.aktcl.aron.core.database.record.RecordMapping.fix(fixEntity),
+        ) as kotlinx.serialization.json.JsonObject
+        val payload = com.aktcl.aron.core.database.record.AmoPayloads.outletRequestVerification(
+            requestUuid, if (verify) "verified" else "discarded", subChannelId, geoClass, fix, photoUuid, note,
+        )
+        photoUuid?.let { runCatching { claimPhoto(it, "outlet_verification", "outlet_request_verification", recordUuid, fixEntity) } }
+        capture.recordAmo(
+            com.aktcl.aron.core.database.entity.AmoRecordEntity(recordUuid, metaProvider.meta(0L), "outlet_request_verification", recordUuid, 0, payload.toString()),
+        )
+        runCatching { requestSync() }
+        return true
     }
 
     // ---- Survey (F-AMO-043): the SR's POSM survey component without points
