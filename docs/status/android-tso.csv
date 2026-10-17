@@ -1,0 +1,2 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+F-TSO-001,S,2026-10-17T00:00Z,2026-10-17T00:00Z,30,1,"Opus checker: login had no sun switch and sunlight carried over from the last user; fixed with a device-level sunlight pref and Restoring uses the dark page; device check pending"
