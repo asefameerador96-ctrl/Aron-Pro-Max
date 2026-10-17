@@ -14,14 +14,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import com.aktcl.aron.core.ui.AronListRow
+import com.aktcl.aron.core.ui.AronSecondaryButton
+import com.aktcl.aron.feature.amo.R as AmoR
 import com.aktcl.aron.core.ui.AronScreen
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.RowPosition
 import com.aktcl.aron.feature.home.R as HomeR
 
-private enum class SaleLeaf { LIST, SALE, STOCK, MEMO, EDIT, SUMMARY }
+private enum class SaleLeaf { LIST, SALE, STOCK, CORRECT, MEMO, EDIT, SUMMARY }
 
 /**
  * The AMO Sale hub (docs/07): Sale (the geo-gated Control Call path with Sale preselected, F-AMO-012; there is no un-gated AMO
@@ -35,6 +39,7 @@ fun AmoSaleHub(day: AmoDay, onBack: () -> Unit) {
         when (leaf) {
             SaleLeaf.LIST -> onBack()
             SaleLeaf.EDIT -> leaf = SaleLeaf.MEMO
+            SaleLeaf.CORRECT -> leaf = SaleLeaf.STOCK
             else -> leaf = SaleLeaf.LIST
         }
     }
@@ -46,7 +51,7 @@ fun AmoSaleHub(day: AmoDay, onBack: () -> Unit) {
                 AronTopBar(
                     stringResource(
                         when (leaf) {
-                            SaleLeaf.STOCK -> HomeR.string.hm_tile_stock; SaleLeaf.MEMO, SaleLeaf.EDIT -> HomeR.string.hm_tile_memo
+                            SaleLeaf.STOCK -> HomeR.string.hm_tile_stock; SaleLeaf.CORRECT -> AmoR.string.amo_sc_title; SaleLeaf.MEMO, SaleLeaf.EDIT -> HomeR.string.hm_tile_memo
                             SaleLeaf.SUMMARY -> HomeR.string.hm_tile_summary; else -> HomeR.string.hm_tile_sale
                         },
                     ),
@@ -63,7 +68,11 @@ fun AmoSaleHub(day: AmoDay, onBack: () -> Unit) {
                             )
                         }
                     }
-                    SaleLeaf.STOCK -> AmoStockHost(day)
+                    SaleLeaf.STOCK -> Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.weight(1f)) { AmoStockHost(day) }
+                        AronSecondaryButton(stringResource(AmoR.string.amo_sc_title), { leaf = SaleLeaf.CORRECT }, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen))
+                    }
+                    SaleLeaf.CORRECT -> AmoStockCorrectHost(day, onDone = { leaf = SaleLeaf.STOCK })
                     SaleLeaf.MEMO -> AmoMemoHost(day, onEdit = { editing = it; leaf = SaleLeaf.EDIT })
                     SaleLeaf.EDIT -> editing?.let { AmoEditHost(day, it, onDone = { leaf = SaleLeaf.MEMO }) }
                     SaleLeaf.SUMMARY -> AmoSummaryHost(day)

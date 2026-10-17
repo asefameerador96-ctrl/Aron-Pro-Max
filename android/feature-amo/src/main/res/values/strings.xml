@@ -57,4 +57,14 @@
     <string name="amo_rec_due_collection">Dues collected</string>
     <string name="amo_rec_attendance_event">Attendance</string>
     <string name="amo_rec_visit_skip">Skipped shops</string>
+    <string name="amo_sc_title">Correct total</string>
+    <string name="amo_sc_empty">No stock to correct</string>
+    <string name="amo_sc_empty_hint">Load stock first; the product list downloads with the day\'s data.</string>
+    <string name="amo_sc_total">Right total (%1$s)</string>
+    <string name="amo_sc_delta">Adjustment %1$s %2$s</string>
+    <string name="amo_sc_same">Same as the stock now: nothing to correct</string>
+    <string name="amo_sc_r_count">Counting mistake</string>
+    <string name="amo_sc_r_damaged">Damaged</string>
+    <string name="amo_sc_r_lost">Lost</string>
+    <string name="amo_sc_r_other">Other</string>
 </resources>
