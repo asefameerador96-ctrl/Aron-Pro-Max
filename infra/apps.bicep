@@ -378,6 +378,17 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
             { name: 'APPLICATIONINSIGHTS_ROLE_NAME', value: 'aron-worker' }
             { name: 'AZURE_CLIENT_ID', value: idWorker.properties.clientId }
           ])
+          probes: [
+            {
+              // OPS-02: the worker beats once a minute (WorkerHealth); /health/live answers 503 once the last beat is
+              // 3 minutes old, so a hung replica is restarted. No ingress: the probe reaches the container port.
+              type: 'Liveness'
+              httpGet: { path: '/health/live', port: 8080 }
+              initialDelaySeconds: 90
+              periodSeconds: 30
+              failureThreshold: 3
+            }
+          ]
         }
       ]
       scale: {

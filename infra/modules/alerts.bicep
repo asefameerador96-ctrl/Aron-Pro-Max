@@ -74,6 +74,69 @@ union traces, exceptions
 | where failed >= 3
 '''
   }
+  // OPS-02 / OPS-03 (audit 2026-10-15): the worker logs a heartbeat line a minute on aron.worker (WorkerHealth) and the
+  // api an ingest_minute line on aron.sync.metrics (IngestMetricsReporter); the rules below read their integers.
+  workerHeartbeat: {
+    description: 'Worker liveness (OPS-02): no heartbeat line from aron.worker in 5 minutes. Every replica beats once a minute; the liveness probe restarts a hung replica, this fires when none is running. Owner: infra + backend-core. Runbook: RB-01.'
+    severity: 1
+    window: 'PT5M'
+    frequency: 'PT1M'
+    query: '''
+traces
+| where tostring(customDimensions.LoggerName) == "aron.worker" and message startswith "heartbeat"
+| summarize beats = count()
+| where beats == 0
+'''
+  }
+  outboxLag: {
+    description: 'Worker lag (OPS-03, docs/18 s6.6): the oldest unprojected domain event waited more than 300 s in every heartbeat of the last 10 minutes (the dashboards fall behind). Owner: backend-core. Runbook: RB-01.'
+    severity: 2
+    window: 'PT10M'
+    query: '''
+traces
+| where tostring(customDimensions.LoggerName) == "aron.worker" and message startswith "heartbeat"
+| extend age = toint(extract("outbox_age_s=([0-9]+)", 1, message))
+| summarize beats = count(), minAge = min(age)
+| where beats > 0 and minAge > 300
+'''
+  }
+  syncSuccess: {
+    description: 'Sync success below 97 % over 15 minutes (OPS-03, docs/18 s6.6; at least 200 records): accepted plus duplicate over records of the ingest_minute lines. Owner: backend-core. Runbook: RB-01.'
+    severity: 2
+    window: 'PT15M'
+    query: '''
+traces
+| where tostring(customDimensions.LoggerName) == "aron.sync.metrics" and message startswith "ingest_minute"
+| extend records = tolong(extract("records=([0-9]+)", 1, message)), ok = tolong(extract("accepted=([0-9]+)", 1, message)) + tolong(extract("duplicate=([0-9]+)", 1, message))
+| summarize records = sum(records), ok = sum(ok)
+| where records >= 200 and ok * 100.0 / records < 97
+'''
+  }
+  syncRejected: {
+    description: 'Rejected plus quarantined records above 5 % over 15 minutes (OPS-03; at least 200 records). Owner: backend-core. Runbook: RB-01.'
+    severity: 3
+    window: 'PT15M'
+    query: '''
+traces
+| where tostring(customDimensions.LoggerName) == "aron.sync.metrics" and message startswith "ingest_minute"
+| extend records = tolong(extract("records=([0-9]+)", 1, message)), bad = tolong(extract("rejected=([0-9]+)", 1, message)) + tolong(extract("quarantined=([0-9]+)", 1, message))
+| summarize records = sum(records), bad = sum(bad)
+| where records >= 200 and bad * 100.0 / records > 5
+'''
+  }
+  retentionBehind: {
+    description: 'Retention (DB-01): the oldest ingest_registry row is more than 2 days past cfg.retention.ingest_registry_days in every heartbeat of the last hour (the night pruning did not run or was capped). Owner: backend-core. Runbook: RB-01.'
+    severity: 3
+    window: 'PT1H'
+    frequency: 'PT15M'
+    query: '''
+traces
+| where tostring(customDimensions.LoggerName) == "aron.worker" and message startswith "heartbeat"
+| extend days = toint(extract("registry_oldest_days=([0-9]+)", 1, message)), window = toint(extract("registry_window_days=([0-9]+)", 1, message))
+| summarize beats = count(), behind = min(days - window)
+| where beats > 0 and behind > 2
+'''
+  }
 }
 
 resource queryAlerts 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = [for a in items(appRequests): if (enableLogAlerts) {

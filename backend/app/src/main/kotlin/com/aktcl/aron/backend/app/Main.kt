@@ -54,11 +54,17 @@ fun main() {
         }
         ServerRole.API -> {
             val wiring = Wiring.production(settings)
+            // OPS-03: the per-minute ingest line the sync-health alerts read (IngestMetricsReporter).
+            wiring.database?.let { com.aktcl.aron.backend.sync.IngestMetricsReporter(it).start() }
             apiServer(wiring, settings.port).start(wait = true)
         }
         ServerRole.WORKER -> {
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
             val workerDb = Database.fromSettings(settings)
+            // OPS-02 / OPS-03: the heartbeat (gauges a minute on aron.worker) and the liveness probe the Container Apps
+            // worker app calls on this port (infra/apps.bicep); a hung replica is restarted.
+            val health = WorkerHealth(workerDb).also { it.start() }
+            workerServer(health, settings.port).start(wait = false)
             AggregationWorker(workerDb).start()
             run {
                 val workerClock = com.aktcl.aron.backend.platform.AronClock.SYSTEM
@@ -83,7 +89,7 @@ fun main() {
             com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
             com.aktcl.aron.backend.sync.RetentionJob(workerDb).start()
             com.aktcl.aron.backend.masterdata.OutletRequestLapseJob(workerDb).start()
-            log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse)")
+            log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse; heartbeat and /health/live on port {})", settings.port)
             Thread.currentThread().join()
         }
     }
