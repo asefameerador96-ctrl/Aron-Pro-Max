@@ -71,6 +71,7 @@ class AmoDay(
     fun routeName(): String = zoneRoutes[visitSession.current.value?.routeId ?: routeId ?: 0L].orEmpty()
 
     private val clock = components.trustedClock
+    val api: AmoApi by lazy { AmoApi(components.apiClient, context, userId) }
     val capture = CaptureRepository(db) { iso(clock.nowMs()) }
     val reference = ReferenceRepository(db)
 
@@ -98,6 +99,10 @@ class AmoDay(
         refreshZone()
         bundleVersion = reference.bundleVersion()
         configVersion = db.referenceDao().meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull() ?: 0L
+        updateBaseMaxM = runCatching { reference.config("cfg.geo.update_base_max_distance_m", iso(clock.nowMs())) }.getOrNull()
+            ?.trim('"')?.toIntOrNull()?.takeIf { it in 20..500 } ?: com.aktcl.aron.feature.outlet.OutletRequests.DEFAULT_UPDATE_BASE_MAX_M
+        updateBaseMaxMoveM = runCatching { reference.config("cfg.geo.update_base_max_move_m", iso(clock.nowMs())) }.getOrNull()
+            ?.trim('"')?.toIntOrNull()?.takeIf { it in 50..20000 } ?: com.aktcl.aron.feature.outlet.OutletRequests.DEFAULT_UPDATE_BASE_MAX_MOVE_M
         overrideMax = runCatching { reference.config("cfg.amo.manual_override_max_per_day", iso(clock.nowMs())) }.getOrNull()
             ?.trim('"')?.toIntOrNull()?.takeIf { it in 0..100 } ?: com.aktcl.aron.feature.amo.ManualOverrideCap.DEFAULT_MAX
     }
@@ -202,7 +207,13 @@ class AmoDay(
             capture.recordOutletRequest(entity, fixEntity)
             runCatching { requestSync() }
         },
+        updateBaseMaxM = { updateBaseMaxM },
+        updateBaseMaxMoveM = { updateBaseMaxMoveM },
     )
+
+    /** `cfg.geo.update_base_max_distance_m` (default 100): how far the chosen Update Base point may be from the AMO. */
+    @Volatile var updateBaseMaxMoveM: Int = com.aktcl.aron.feature.outlet.OutletRequests.DEFAULT_UPDATE_BASE_MAX_MOVE_M
+    @Volatile var updateBaseMaxM: Int = com.aktcl.aron.feature.outlet.OutletRequests.DEFAULT_UPDATE_BASE_MAX_M
 
     // Outlet request in progress (kept here so a language switch does not lose the chosen kind and outlet).
     @Volatile var requestKind: com.aktcl.aron.feature.outlet.OutletRequestKind = com.aktcl.aron.feature.outlet.OutletRequestKind.NEW
@@ -417,6 +428,116 @@ class AmoDay(
             )
         }
         runCatching { requestSync() }
+    }
+
+    // ---- Verify SR outlet requests (F-AMO-022/023/024)
+
+    /** Request uuids this phone has already decided (queued or sent), so they leave the pending list at once. */
+    suspend fun decidedRequests(): Set<String> = db.captureDao().amoRecordsOfType("outlet_request_verification").filter { r ->
+        // A decision the server refused (rejected, quarantined) does not hide the request: the AMO can decide it again.
+        db.outboxDao().byClientUuid(r.clientUuid)?.state.let { it != com.aktcl.aron.core.database.entity.OutboxState.REJECTED && it != com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED }
+    }.mapNotNull {
+        runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["request_uuid"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content } }.getOrNull()
+    }.toSet()
+
+    /** Pending requests of the SRs in the zone (bundle), minus those decided on this phone. */
+    suspend fun pendingVerifications(): List<com.aktcl.aron.feature.amo.PendingRequest> =
+        com.aktcl.aron.feature.amo.OutletVerify.pending(runCatching { reference.section("supervisor") }.getOrNull(), userId, decidedRequests())
+
+    suspend fun subChannels(): List<com.aktcl.aron.feature.amo.SubChannel> =
+        com.aktcl.aron.feature.amo.OutletVerify.subChannels(runCatching { reference.section("code_lists") }.getOrNull())
+
+    /**
+     * Queues the AMO's decision on one request: `verified` (Save) or `discarded` (Cancel on a request they reject), with a fresh fix read
+     * now (the server applies the 100 m, move-limit and mock guards). [recordUuid] is fixed when the form opens, so a double tap or a replay
+     * queues one record. Returns false when the phone has no usable fix (nothing is queued).
+     */
+    suspend fun decideRequest(recordUuid: String, requestUuid: String, verify: Boolean, subChannelId: Long?, geoClass: String?, note: String?, photoUuid: String?): Boolean {
+        if (requestUuid in decidedRequests()) return true // already decided on this phone: nothing to queue twice
+        val reading = fixSource.readFix("outlet_verification")
+        if (!reading.isOk || reading.isMock) return false
+        val fixEntity = reading.toEntity(newUuid(), recordUuid, "outlet_verification", 0)
+        val fix = com.aktcl.aron.core.database.record.RecordMapping.json.encodeToJsonElement(
+            com.aktcl.aron.contract.GeoFix.serializer(), com.aktcl.aron.core.database.record.RecordMapping.fix(fixEntity),
+        ) as kotlinx.serialization.json.JsonObject
+        val payload = com.aktcl.aron.core.database.record.AmoPayloads.outletRequestVerification(
+            requestUuid, if (verify) "verified" else "discarded", subChannelId, geoClass, fix, photoUuid, note,
+        )
+        photoUuid?.let { runCatching { claimPhoto(it, "outlet_verification", "outlet_request_verification", recordUuid, fixEntity) } }
+        try {
+            capture.recordAmo(
+                com.aktcl.aron.core.database.entity.AmoRecordEntity(recordUuid, metaProvider.meta(0L), "outlet_request_verification", recordUuid, 0, payload.toString()),
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A concurrent second call with the same record uuid hit the primary key: the decision is queued once.
+            if (requestUuid !in decidedRequests()) throw e
+        }
+        runCatching { requestSync() }
+        return true
+    }
+
+    // ---- Exceptions (F-AMO-038): risk signals of the zone, reviewed offline
+
+    private suspend fun decidedSignals(): Set<Long> = db.captureDao().amoRecordsOfType("risk_review").filter { r ->
+        // A review the server refused (rejected, quarantined) does not hide the signal: it can be reviewed again.
+        db.outboxDao().byClientUuid(r.clientUuid)?.state.let { it != com.aktcl.aron.core.database.entity.OutboxState.REJECTED && it != com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED }
+    }.mapNotNull {
+        runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["signal_id"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content.toLong() } }.getOrNull()
+    }.toSet()
+
+    /** Today's open signals of the zone that this phone has not reviewed yet (local read). */
+    suspend fun openSignals(): List<com.aktcl.aron.feature.amo.RiskSignalRow> =
+        com.aktcl.aron.feature.amo.Exceptions.open(runCatching { reference.section("supervisor") }.getOrNull(), businessDate(), decidedSignals())
+
+    /** Queues one review event for [signalId]; a signal already reviewed on this phone queues nothing (so a retry never doubles it). */
+    suspend fun reviewSignal(recordUuid: String, signalId: Long, action: String, note: String?): Boolean {
+        if (signalId in decidedSignals()) return false
+        val payload = com.aktcl.aron.core.database.record.AmoPayloads.riskReview(signalId, action, note)
+        val queued = capture.recordAmo(
+            com.aktcl.aron.core.database.entity.AmoRecordEntity(recordUuid, metaProvider.meta(0L), "risk_review", recordUuid, 0, payload.toString()),
+        )
+        runCatching { requestSync() }
+        return queued
+    }
+
+    /** `cfg.map.provider` and `cfg.map.tile_cache_mb` (defaults when the registry has none). */
+    suspend fun mapSettings(): com.aktcl.aron.core.map.MapSettings {
+        suspend fun cfg(k: String) = runCatching { reference.config(k, iso(clock.nowMs())) }.getOrNull()?.trim('"')
+        return com.aktcl.aron.core.map.MapSettings.of(cfg("cfg.map.provider"), cfg("cfg.map.tile_cache_mb")?.toIntOrNull())
+    }
+
+    suspend fun skuInfo(): Map<Long, com.aktcl.aron.feature.amo.SkuInfo> =
+        db.referenceDao().activeSkus().associate { it.skuId to com.aktcl.aron.feature.amo.SkuInfo(it.name, it.nameBn, it.categoryCode) }
+
+    // ---- Task Delegation (F-AMO-018/019)
+
+    suspend fun teamSrs(): List<com.aktcl.aron.feature.amo.TeamSr> = com.aktcl.aron.feature.amo.TaskDelegation.team(runCatching { reference.section("supervisor") }.getOrNull())
+
+    suspend fun taskTypes(): List<com.aktcl.aron.feature.amo.TaskType> = com.aktcl.aron.feature.amo.TaskDelegation.types(runCatching { reference.section("code_lists") }.getOrNull())
+
+    /** The tasks this AMO assigned on this phone (queued or sent), as list rows; an acked one stays until the server list has it. */
+    suspend fun localTasks(): List<com.aktcl.aron.feature.amo.AssignedTask> = db.captureDao().amoRecordsOfType("task").mapNotNull { r ->
+        val o = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(r.payloadJson) as kotlinx.serialization.json.JsonObject }.getOrNull() ?: return@mapNotNull null
+        fun s(k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        val state = db.outboxDao().byClientUuid(r.clientUuid)?.state
+        val refused = state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED || state == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED
+        com.aktcl.aron.feature.amo.AssignedTask(
+            r.clientUuid, s("task_type_code").orEmpty(), s("title").orEmpty(), s("outlet_id")?.toLongOrNull(), s("assignee_user_id")?.toLongOrNull() ?: return@mapNotNull null,
+            "ongoing", s("due_date"), null, null, r.meta.capturedAt,
+            waiting = state == com.aktcl.aron.core.database.entity.OutboxState.PENDING || state == com.aktcl.aron.core.database.entity.OutboxState.IN_FLIGHT, rejected = refused,
+        )
+    }
+
+    /** Queues one `task` record (offline too); [recordUuid] is fixed when the form opens, so a double tap queues one. */
+    suspend fun assignTask(recordUuid: String, typeCode: String, assigneeId: Long, outletId: Long?, title: String, description: String?, dueDate: String?): Boolean {
+        val payload = com.aktcl.aron.core.database.record.AmoPayloads.task(typeCode, assigneeId, outletId, title, description, dueDate, null)
+        val queued = capture.recordAmo(
+            com.aktcl.aron.core.database.entity.AmoRecordEntity(recordUuid, metaProvider.meta(0L), "task", recordUuid, 0, payload.toString()),
+        )
+        runCatching { requestSync() }
+        return queued
     }
 
     // ---- Survey (F-AMO-043): the SR's POSM survey component without points

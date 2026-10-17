@@ -51,6 +51,9 @@ private fun errorText(e: RequestError): String = stringResource(
         RequestError.GEO_REQUIRED -> R.string.out_req_err_geo
         RequestError.PHOTO_REQUIRED -> R.string.out_req_err_photo
         RequestError.DUES_BLOCK_CLOSE -> R.string.out_req_err_dues
+        RequestError.POINT_TOO_FAR -> R.string.out_req_err_point_far
+        RequestError.MOCK_FIX -> R.string.out_req_err_mock
+        RequestError.MOVE_TOO_FAR -> R.string.out_req_err_move_far
         else -> R.string.out_req_err_reason
     },
 )
