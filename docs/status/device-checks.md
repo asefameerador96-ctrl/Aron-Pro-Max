@@ -351,3 +351,16 @@ Steps (about 10 minutes; the Galaxy A06 or the Honor X5c Plus on USB):
    minute later.
 4. Pass = `ALL PASS (9 checks)`: phone, app, web login, airplane on, offline sale, printed memo, network on, on the
    server, still once. Paste the window into `docs/status/laptop.md`.
+
+### D-QA-3 Day 4 ten-minute check script (N-050; qa) — DEVICE-PENDING, laptop session + owner outdoors
+Script: `tools/checks/day4-check.ps1 -Outlet MIR-D-001`. It was tested in the cloud with a fake adb and a mock API,
+once with config readable and once with config refused for the TSO. You need an outlet you can stand about 70 m from.
+1. `git pull`; run the script. It asks for `tso1001`'s password and reads the zone's radius. When config is refused
+   for a TSO, the owner reads it from the portal and answers.
+2. In the web portal, set the zone's `cfg.geo.radius_m` to 50 m and approve it. Config changes are maker-checker, so
+   a second admin may be needed. The script waits up to 10 minutes for the new value.
+3. On the phone, Sync. Then stand about 70 m from the outlet and open it: Pass = the phone says too far, offering
+   Force Sale. Force-sell or close the visit so it syncs.
+4. Check 7, "stamped new radius", FAILS by design until `docs/requests/qa-visit-radius-read.md` is done. Until then
+   the laptop session reads `app.visit.radius_m_used` for that visit on dev.
+5. Afterwards, set the radius back to 100 m (another approved change).
