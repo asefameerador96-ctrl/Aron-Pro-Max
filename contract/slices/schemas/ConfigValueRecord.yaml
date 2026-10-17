@@ -1,0 +1,11 @@
+ConfigValueRecord:
+  description: An object inside a config value (a menu entry, a per-role rule); members are scalars or arrays of
+    scalars.
+  type: object
+  additionalProperties:
+    anyOf:
+    - $ref: '#/components/schemas/JsonScalar'
+    - type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/JsonScalar'
