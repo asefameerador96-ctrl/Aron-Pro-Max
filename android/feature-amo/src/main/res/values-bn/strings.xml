@@ -267,4 +267,9 @@
     <string name="amo_rep_net">নিট বিক্রি</string>
     <string name="amo_rep_brands">ব্র্যান্ড</string>
     <string name="amo_rep_no_brands">এখনও ব্র্যান্ডের বিক্রি নেই।</string>
+    <string name="amo_perf_monthly">মাসিক টার্গেট</string>
+    <string name="amo_perf_till_date">আজ পর্যন্ত</string>
+    <string name="amo_perf_empty">এখনও কোনো টার্গেট দেওয়া হয়নি</string>
+    <string name="amo_perf_empty_hint">এই সংস্করণে টার্গেট নেই। টার্গেট চালু হলে বারগুলো এখানে দেখা যাবে।</string>
+    <string name="amo_perf_line">টার্গেট %1$s · অর্জন %2$s · বাকি %3$s</string>
 </resources>

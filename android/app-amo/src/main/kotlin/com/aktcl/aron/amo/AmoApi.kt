@@ -40,6 +40,9 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
     suspend fun teamStock(businessDate: String): AmoFetch = get("/v1/team/stock", "team_stock_$businessDate", mapOf("business_date" to businessDate))
 
     /** `GET /v1/tasks` created from [fromDate] on (F-API-026), all pages up to a few; the caller keeps the ones it assigned. */
+    /** `GET /v1/dashboards/targets` for [month] (`yyyy-MM`) at category level (F-API-021a); empty while targets are deferred (docs/27). */
+    suspend fun targets(month: String): AmoFetch = get("/v1/dashboards/targets", "targets_$month", mapOf("month" to month, "product_level" to "category"))
+
     /** A report page by page (a few pages of 500 rows), joined; the kept copy is the joined answer when it is small enough. */
     suspend fun report(key: String, from: String, to: String): AmoFetch {
         val cacheKey = "rep_${key}_${from}_$to"
