@@ -11,7 +11,7 @@ test("the TSO dashboard loads without a button press and shows every tile with i
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
   await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
-  for (const id of ["sales", "strike", "visits", "channels", "finalsubmit", "loginsubmit", "geo", "ffgeo"]) {
+  for (const id of ["sales", "strike", "visits", "channels", "channels-std", "brands", "finalsubmit", "loginsubmit", "geo", "ffgeo"]) {
     const tile = page.getByTestId(`tile-${id}`);
     await expect(tile).toBeVisible();
     await expect(tile.getByTestId("tile-date")).toBeVisible();
@@ -24,7 +24,7 @@ test("the TSO dashboard loads without a button press and shows every tile with i
   await expect(page.getByTestId("strike-basis")).toContainText("37 successful of 108 visited");
   await expect(page.getByTestId("strike-rate")).toHaveText("34.3%");
   await expect(page.getByTestId("sales-net")).toHaveText("543,435.00");
-  await expect(page.getByTestId("tile-channels").getByTestId("channel-list")).toContainText("Grocery");
+  await expect(page.getByTestId("tile-channels-std").getByTestId("channel-std-donut")).toContainText("Grocery");
   await expect(page.getByTestId("geo-fencing")).toBeVisible();
 });
 
@@ -81,4 +81,34 @@ test("reports: filters, Get Excel and a user outside the scope sees no rows", as
   await page.goto("/reports/route-std");
   await expect(page.getByTestId("table-empty")).toBeVisible();
   void MOCK;
+});
+
+test("home follows the portal layout: four category cards, Live CPR, channel donuts, brand chart with the STD/Memo toggle, geo ring (completion pass)", async ({ page }) => {
+  await loginOk(page, "tso334", "tso-pass-1");
+  await page.getByRole("link", { name: "English" }).click();
+  for (const c of ["cigarette", "bidi", "lighter", "match"]) {
+    await expect(page.getByTestId(`tile-cat-${c}`)).toBeVisible();
+    await expect(page.getByTestId(`cat-ring-${c}`)).toBeVisible();
+  }
+  await expect(page.getByTestId("cat-qty-bidi")).toHaveText("65.00 Lakh");
+  await expect(page.getByTestId("cat-qty-match")).toHaveText("28,067");
+  await expect(page.getByTestId("cpr-ring")).toBeVisible();
+  await expect(page.getByTestId("channel-calls-donut")).toBeVisible();
+  await expect(page.getByTestId("channel-std-donut")).toContainText("Grocery");
+  await expect(page.getByTestId("geo-ring")).toBeVisible();
+  await expect(page.getByTestId("brand-chart")).toContainText("Sample");
+  await page.getByTestId("brand-mode-memo").click();
+  await expect(page).toHaveURL(/bm=memo/);
+  await expect(page.getByTestId("brand-chart")).toBeVisible();
+});
+
+test("the orange Filter narrows the home to a zone: bound levels are read-only, the choice cascades and is kept in the links", async ({ page }) => {
+  await loginOk(page, "tso334", "tso-pass-1");
+  await page.getByRole("link", { name: "English" }).click();
+  await page.getByTestId("home-filter").locator("summary").click();
+  await expect(page.getByTestId("scope-locked-territory")).toBeVisible();
+  await page.getByTestId("scope-select-zone").selectOption("3341");
+  await expect(page).toHaveURL(/zone=3341/);
+  await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
+  await expect(page.getByTestId("date-yesterday")).toHaveAttribute("href", /zone=3341/);
 });
