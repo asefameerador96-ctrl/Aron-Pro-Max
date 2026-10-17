@@ -308,6 +308,13 @@ object RecordMapping {
         ),
     )
 
+    /** An AMO record whose payload is already the contract object (see [AmoPayloads]); [AmoRecordEntity.recordType] is the wire name. */
+    fun amoRecord(e: com.aktcl.aron.core.database.entity.AmoRecordEntity, createdAt: String) = outbox(
+        requireNotNull(RecordType.entries.firstOrNull { it.wire == e.recordType }) { "unknown record type ${e.recordType}" },
+        e.clientUuid, e.familyUuid, e.rank, e.meta, createdAt, JsonObject.serializer(),
+        json.parseToJsonElement(e.payloadJson) as JsonObject,
+    )
+
     /** A print event; [payload] is the core-printing `PrintEvent.payload()` (required nullable members written as null). */
     fun printEvent(e: PrintEventEntity, familyUuid: String, rank: Int, payload: JsonObject, createdAt: String) = outbox(
         RecordType.PRINT_EVENT, e.clientUuid, familyUuid, rank, e.meta, createdAt, JsonObject.serializer(), payload,

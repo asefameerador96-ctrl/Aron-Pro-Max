@@ -165,6 +165,20 @@ class CaptureRepository(
         }
     }
 
+    /**
+     * One AMO record (F-AMO rows): the row and its outbox record in one transaction. A second call with the same client UUID
+     * changes nothing and returns false, so a retried tap or replay never doubles it. Only the AMO record types are accepted.
+     */
+    suspend fun recordAmo(record: com.aktcl.aron.core.database.entity.AmoRecordEntity): Boolean = db.withTransaction {
+        requireUuids(record.clientUuid, record.familyUuid)
+        require(record.recordType in AMO_RECORD_TYPES) { "not an AMO record type: ${record.recordType}" }
+        require(record.rank in 0..3) { "rank is 0 to 3" }
+        if (capture.amoRecordCount(record.clientUuid) > 0) return@withTransaction false
+        capture.insertAmoRecord(record)
+        outbox.insert(listOf(RecordMapping.amoRecord(record, nowIso())))
+        true
+    }
+
     /** An outlet skipped without a visit: no fix (F-SR-057). */
     suspend fun recordVisitSkip(skip: VisitSkipEntity) = db.withTransaction {
         requireUuids(skip.clientUuid)
@@ -333,7 +347,12 @@ class CaptureRepository(
         require(referencedFix == fix.clientUuid) { "the record must reference its fix" }
     }
 
-    private companion object {
+    companion object {
+        /** Record types [recordAmo] accepts. */
+        val AMO_RECORD_TYPES = setOf(
+            "distribution_check", "distribution_check_line", "call_assessment", "call_assessment_answer", "price_compliance_check",
+            "risk_review", "outlet_request_verification", "task",
+        )
         val REASON_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
         val CONTENT_OUTCOMES = setOf("viewed", "skipped_missing", "skipped_user")
 

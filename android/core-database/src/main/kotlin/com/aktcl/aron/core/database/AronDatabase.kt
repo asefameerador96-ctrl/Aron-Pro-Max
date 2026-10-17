@@ -43,13 +43,14 @@ import com.aktcl.aron.core.database.entity.VisitEntity
  * a Migration with a test, and destructive migration is never enabled.
  */
 @Database(
-    version = 5,
+    version = 6,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // v2 (F-SYS-006): price, config_value, bundle_section
         AutoMigration(from = 2, to = 3), // v3: due_collection, visit_skip, day_submit, outlet_change_request, task_event, task, memo_counter, print_event, print_job, memo.printed_at/print_count
         AutoMigration(from = 3, to = 4), // v4 (F-SYS-072): outbox.sig, the record signature made once per row
         AutoMigration(from = 4, to = 5), // v5 (F-SR-020/021): content_item, outlet_content_assignment, survey, survey_question, content_view, survey_response
+        AutoMigration(from = 5, to = 6), // v6 (F-AMO): amo_record, the AMO's own records (assessments, distribution, verifications, tasks, reviews)
     ],
     entities = [
         RouteEntity::class, OutletEntity::class, SkuEntity::class,
@@ -63,6 +64,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         com.aktcl.aron.core.database.entity.ContentItemEntity::class, com.aktcl.aron.core.database.entity.OutletContentAssignmentEntity::class,
         com.aktcl.aron.core.database.entity.SurveyEntity::class, com.aktcl.aron.core.database.entity.SurveyQuestionEntity::class,
         com.aktcl.aron.core.database.entity.ContentViewEntity::class, com.aktcl.aron.core.database.entity.SurveyResponseEntity::class,
+        com.aktcl.aron.core.database.entity.AmoRecordEntity::class,
     ],
 )
 abstract class AronDatabase : RoomDatabase() {

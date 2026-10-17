@@ -134,3 +134,18 @@ data class PrintJobEntity(
     @ColumnInfo(name = "at_ms") val atMs: Long,
     @ColumnInfo(name = "paper_out") val paperOut: Boolean,
 )
+
+/**
+ * A record the AMO captures that has no table of its own (F-AMO rows): distribution_check(+line), call_assessment(+answer),
+ * price_compliance_check, risk_review, outlet_request_verification and task. The payload is the contract's payload object as
+ * JSON, built by [com.aktcl.aron.core.database.record.AmoPayloads]; family and rank follow docs/24 s4.3. One row per client UUID.
+ */
+@Entity(tableName = "amo_record", indices = [Index("business_date"), Index("record_type"), Index("family_uuid")])
+data class AmoRecordEntity(
+    @PrimaryKey @ColumnInfo(name = "client_uuid") val clientUuid: String,
+    @Embedded val meta: CaptureMeta,
+    @ColumnInfo(name = "record_type") val recordType: String,
+    @ColumnInfo(name = "family_uuid") val familyUuid: String,
+    val rank: Int,
+    @ColumnInfo(name = "payload_json") val payloadJson: String,
+)
