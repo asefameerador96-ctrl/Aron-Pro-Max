@@ -95,6 +95,23 @@ class DayRecordsTest {
         assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { repo.recordVisitOpen(v2, f2) } }
     }
 
+    @Test fun aSupervisorDaySubmitClosesTheWholeDayEvenForRecordsThatCarryARouteUntilTheServerReopensIt() = runTest {
+        val noRoute = TestRows.meta(routeId = null)
+        repo.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), noRoute, "supervisor_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false))
+        assertTrue(repo.submitStands("2026-10-05"))
+        val (visit, fix) = TestRows.visit() // carries route R, a different lock key than the supervisor day's
+        assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { repo.recordVisitOpen(visit, fix) } }
+        // an AMO record with a route is refused as well
+        val rec = com.aktcl.aron.core.database.entity.AmoRecordEntity(
+            ClientIds.newUuid(), TestRows.meta(), "price_compliance_check", ClientIds.newUuid(), 2,
+            com.aktcl.aron.core.database.record.AmoPayloads.priceCompliance(ClientIds.newUuid(), 1, "outlet", 1000, 1000, true, null).toString(),
+        )
+        assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { repo.recordAmo(rec) } }
+        repo.reopenRouteDay("2026-10-05", null, voidedCycle = 1)
+        org.junit.Assert.assertFalse(repo.submitStands("2026-10-05"))
+        repo.recordVisitOpen(visit, fix)
+    }
+
     @Test fun anOutletRequestCarriesItsFixPhotosAndProposal() = runTest {
         val uuid = ClientIds.newUuid()
         val fix = TestRows.fix(uuid, "outlet_request")

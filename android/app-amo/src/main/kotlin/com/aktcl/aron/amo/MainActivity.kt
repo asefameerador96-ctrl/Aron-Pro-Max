@@ -34,6 +34,9 @@ import com.aktcl.aron.core.ui.aronPageBackground
 import com.aktcl.aron.feature.auth.LoginScreen
 import com.aktcl.aron.feature.auth.LoginViewModel
 import com.aktcl.aron.feature.amo.AmoApp
+import com.aktcl.aron.feature.amo.AmoScreen
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import com.aktcl.aron.feature.home.HomePlaceholderViewModel
 import com.aktcl.aron.feature.home.HomeUser
 import dagger.hilt.android.AndroidEntryPoint
@@ -57,6 +60,10 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
+    @Inject lateinit var mediaShell: MediaShell
+    @Inject lateinit var printerManager: com.aktcl.aron.core.printing.bt.PrinterManager
+    @Inject lateinit var fixManager: com.aktcl.aron.core.geo.FixManager
+    @Inject lateinit var deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
@@ -146,6 +153,45 @@ class MainActivity : ComponentActivity() {
                             val home by vm.state.collectAsStateWithLifecycle()
                             val sunlightPref = remember(s.user.userId) { SunlightPreference(applicationContext, s.user.userId.toString()) }
                             LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
+                            // F-AMO-001: the Outlet badge and the menu variant come from the stored supervisor section (local read).
+                            var reach by remember(s.user.userId) { mutableStateOf(com.aktcl.aron.feature.amo.AmoReach.NONE) }
+                            LaunchedEffect(s.user.userId, home.bundle) {
+                                reach = runCatching {
+                                    com.aktcl.aron.feature.amo.AmoReach.parse(com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(s.user.userId)).section("supervisor"), s.user.userId)
+                                }.getOrDefault(com.aktcl.aron.feature.amo.AmoReach.NONE)
+                            }
+                            // F-AMO-003: the day object (attendance first); one per user, restored from Room after a kill.
+                            var day by remember(s.user.userId) { mutableStateOf<AmoDay?>(null) }
+                            LaunchedEffect(s.user.userId) {
+                                val d = AmoDay(
+                                    s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
+                                    runCatching { com.aktcl.aron.core.database.repo.MemoNumbering(s.user.username, s.user.bindOrdinal ?: 0, s.user.memoSeqBlockSize ?: 500) }.getOrNull(), deviceRuntime,
+                                )
+                                runCatching { d.reload(); d.attendance.restore(d.attendanceToday()) }
+                                // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
+                                runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
+                                day = d
+                            }
+                            val dayScope = rememberCoroutineScope()
+                            val screens: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = day?.let { d ->
+                                mapOf<AmoScreen, @Composable (() -> Unit) -> Unit>(
+                                    AmoScreen.SALES_SUBMIT to { back ->
+                                        com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit), onBack = back) }) { AmoSubmitHost(d) }
+                                    },
+                                    AmoScreen.OUTLET to { back -> AmoOutletHub(d, back) },
+                                    AmoScreen.SALE to { back -> AmoSaleHub(d, back) },
+                                    AmoScreen.CONTROL_CALL to { back -> ControlCallHost(d, back) },
+                                    AmoScreen.JOINT_CALL to { back -> ControlCallHost(d, back, kind = com.aktcl.aron.feature.amo.AmoVisitKind.JOINT_CALL) },
+                                    AmoScreen.ATTENDANCE to { back ->
+                                        val attendance by d.attendance.state.collectAsStateWithLifecycle()
+                                        LaunchedEffect(d) { d.attendance.tick() }
+                                        com.aktcl.aron.feature.amo.AmoAttendance(
+                                            attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
+                                            onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
+                                        )
+                                    },
+                                )
+                            } ?: emptyMap()
                             val updateState by updateShell.state.collectAsStateWithLifecycle()
                             // F-SYS-075: the location notice first.
                             com.aktcl.aron.feature.auth.LocationNoticeGate(
@@ -172,6 +218,7 @@ class MainActivity : ComponentActivity() {
                                 sunlight = sunlight,
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
+                                reach = reach, screens = screens,
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                             ) }
                             }

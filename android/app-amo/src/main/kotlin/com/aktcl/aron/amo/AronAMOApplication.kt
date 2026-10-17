@@ -24,6 +24,7 @@ class AronAMOApplication : Application(), Configuration.Provider {
     @Inject lateinit var syncScheduler: WorkManagerSyncScheduler
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
+    @Inject lateinit var mediaShell: MediaShell
     @Inject lateinit var sessionComponents: com.aktcl.aron.core.session.SessionComponents
 
     override fun onCreate() {
@@ -47,6 +48,8 @@ class AronAMOApplication : Application(), Configuration.Provider {
         }
         // N-038: push nudges (token for the signed-in user, notices, jittered pulls); off without google-services.json.
         pushShell.install()
+        // Photos (F-SYS-010): every user's queue uploads on its own job; no network work here.
+        mediaShell.install()
     }
 
     override val workManagerConfiguration: Configuration

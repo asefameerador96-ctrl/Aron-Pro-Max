@@ -9,6 +9,10 @@
          otherwise. Breadcrumbs are off by default. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
+        <!-- Outlet photo for Manual Override, Update Base and outlet requests. The microphone is never declared or requested. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <application
         android:name=".AronAMOApplication"
         android:allowBackup="false"

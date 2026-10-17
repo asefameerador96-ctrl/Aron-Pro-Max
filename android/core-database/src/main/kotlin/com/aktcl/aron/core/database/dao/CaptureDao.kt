@@ -36,6 +36,12 @@ interface CaptureDao {
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertQcLines(rows: List<QcLineEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertDueCollection(row: DueCollectionEntity)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertVisitSkip(row: VisitSkipEntity)
+    @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertAmoRecord(row: com.aktcl.aron.core.database.entity.AmoRecordEntity)
+    @Query("SELECT COUNT(*) FROM amo_record WHERE client_uuid = :clientUuid") suspend fun amoRecordCount(clientUuid: String): Int
+    @Query("SELECT * FROM amo_record WHERE record_type = :type AND business_date = :businessDate ORDER BY captured_at")
+    suspend fun amoRecordsOn(type: String, businessDate: String): List<com.aktcl.aron.core.database.entity.AmoRecordEntity>
+    @Query("SELECT * FROM amo_record WHERE family_uuid = :familyUuid ORDER BY rank, captured_at")
+    suspend fun amoRecordsOfFamily(familyUuid: String): List<com.aktcl.aron.core.database.entity.AmoRecordEntity>
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertDaySubmit(row: DaySubmitEntity)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertOutletRequest(row: OutletChangeRequestEntity)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertTaskEvent(row: TaskEventEntity)

@@ -1,6 +1,8 @@
 package com.aktcl.aron.core.database.repo
 
 import androidx.room.withTransaction
+import com.aktcl.aron.core.database.record.AmoPayloads
+import kotlinx.serialization.json.JsonObject
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.CaptureMeta
@@ -165,6 +167,35 @@ class CaptureRepository(
         }
     }
 
+    /**
+     * One AMO record (F-AMO rows): the row and its outbox record in one transaction. A second call with the same client UUID
+     * changes nothing and returns false, so a retried tap or replay never doubles it. Only the AMO record types are accepted.
+     */
+    suspend fun recordAmo(record: com.aktcl.aron.core.database.entity.AmoRecordEntity): Boolean = db.withTransaction {
+        requireUuids(record.clientUuid, record.familyUuid)
+        require(record.recordType in AMO_RECORD_TYPES) { "not an AMO record type: ${record.recordType}" }
+        val payload = runCatching { Json.parseToJsonElement(record.payloadJson) as? JsonObject }.getOrNull()
+        require(payload != null) { "the payload is a JSON object" }
+        AmoPayloads.problem(record.recordType, payload)?.let { throw IllegalArgumentException(it) }
+        // docs/24 s4.2/s4.3: family and rank by type; visit-family records carry the route worked.
+        val own = record.familyUuid == record.clientUuid
+        val ok = when (record.recordType) {
+            "distribution_check" -> record.rank == 1 && !own
+            "distribution_check_line" -> record.rank == 2 && !own
+            "price_compliance_check" -> record.rank == 2 && !own
+            "call_assessment" -> (record.rank == 1 && !own) || (record.rank == 0 && own)
+            "call_assessment_answer" -> (record.rank == 2 || record.rank == 1) && !own
+            else -> record.rank == 0 && own // risk_review, outlet_request_verification, task
+        }
+        require(ok) { "${record.recordType}: wrong family or rank (rank ${record.rank}, own family $own)" }
+        if (!own && record.rank > 0 && record.recordType != "call_assessment_answer") requireRoute(record.meta)
+        if (capture.amoRecordCount(record.clientUuid) > 0) return@withTransaction false
+        requireOpenRouteDay(record.meta)
+        capture.insertAmoRecord(record)
+        outbox.insert(listOf(RecordMapping.amoRecord(record, nowIso())))
+        true
+    }
+
     /** An outlet skipped without a visit: no fix (F-SR-057). */
     suspend fun recordVisitSkip(skip: VisitSkipEntity) = db.withTransaction {
         requireUuids(skip.clientUuid)
@@ -199,7 +230,7 @@ class CaptureRepository(
     /**
      * One survey answer during an SR call (F-SR-021): in the visit's family, one per question per visit (a second answer is
      * refused with IllegalStateException). Exactly the member of [SurveyResponseEntity.answerType] is set; a `photo_only`
-     * answer carries the photo's media uuid, any other may carry one. SR calls only; no points ledger (docs/27).
+     * answer carries the photo's media uuid, any other may carry one. SR calls and AMO control calls; no points ledger (docs/27).
      */
     suspend fun recordSurveyResponse(answer: com.aktcl.aron.core.database.entity.SurveyResponseEntity) = db.withTransaction {
         requireUuids(answer.clientUuid, answer.visitClientUuid)
@@ -218,7 +249,7 @@ class CaptureRepository(
         answer.answerText?.let { require(it.length <= 1000) { "answer_text is at most 1000 characters" } }
         answer.answerNum?.let { require(it.isFinite()) { "answer_num is a finite number" } }
         requireOpenRouteDay(answer.meta)
-        requireSrCall(answer.visitClientUuid)
+        requireSurveyVisit(answer.visitClientUuid)
         check(capture.surveyResponsesOf(answer.visitClientUuid).none { it.surveyId == answer.surveyId && it.questionId == answer.questionId }) {
             "question ${answer.questionId} of survey ${answer.surveyId} is already answered in this visit"
         }
@@ -230,6 +261,12 @@ class CaptureRepository(
     private suspend fun requireSrCall(visitClientUuid: String) {
         val visit = checkNotNull(capture.visit(visitClientUuid)) { "the visit is not on this phone" }
         require(visit.visitKind == com.aktcl.aron.contract.VisitKind.SR_CALL.wire) { "content and surveys are for SR calls only" }
+    }
+
+    /** A survey belongs to an SR call or an AMO Control Call (F-AMO-043; the AMO survey earns no points). Never a Joint Call or a TSO visit. */
+    private suspend fun requireSurveyVisit(visitClientUuid: String) {
+        val visit = checkNotNull(capture.visit(visitClientUuid)) { "the visit is not on this phone" }
+        require(visit.visitKind == com.aktcl.aron.contract.VisitKind.SR_CALL.wire || visit.visitKind == "amo_control_call") { "surveys are for SR calls and AMO control calls only" }
     }
 
     /**
@@ -313,6 +350,9 @@ class CaptureRepository(
      */
     suspend fun reopenRouteDay(businessDate: String, routeId: Long?, voidedCycle: Int) = RouteDayLock.reopen(db, businessDate, routeId, voidedCycle)
 
+    /** True while a Sales Submit of the date stands (a server void of its cycle reopens the day). */
+    suspend fun submitStands(businessDate: String): Boolean = RouteDayLock.submitStands(db, businessDate)
+
     /** Refuses a route-day capture after its Sales Submit (docs/24 s4.2 rule 2: day_submit is the route-day's last record). */
     private suspend fun requireOpenRouteDay(meta: CaptureMeta) {
         check(RouteDayLock.isOpen(db, meta)) { "route-day ${meta.businessDate} is submitted; nothing more can be captured" }
@@ -333,7 +373,12 @@ class CaptureRepository(
         require(referencedFix == fix.clientUuid) { "the record must reference its fix" }
     }
 
-    private companion object {
+    companion object {
+        /** Record types [recordAmo] accepts. */
+        val AMO_RECORD_TYPES = setOf(
+            "distribution_check", "distribution_check_line", "call_assessment", "call_assessment_answer", "price_compliance_check",
+            "risk_review", "outlet_request_verification", "task",
+        )
         val REASON_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
         val CONTENT_OUTCOMES = setOf("viewed", "skipped_missing", "skipped_user")
 

@@ -52,6 +52,8 @@ fun AmoApp(
     hero: RoleHero? = null,
     health: DeviceHealth? = null,
     badges: Map<String, Int> = emptyMap(),
+    /** What the bundle's supervisor section says (F-AMO-001): drives the Outlet badge; from [AmoReach.parse]. */
+    reach: AmoReach = AmoReach.NONE,
     banners: List<RoleBanner> = emptyList(),
     /** Settings > App update (F-SYS-020); null in previews and tests (row hidden). */
     onUpdate: (() -> Unit)? = null,
@@ -60,10 +62,12 @@ fun AmoApp(
     syncedAt: String? = null,
     /** Opens the sync detail sheet from the Home chip; null until the AMO sheet lands (the chip is then not tappable). */
     onSync: (() -> Unit)? = null,
+    /** Real screens by destination, supplied by the app module (it owns the day wiring); a screen not listed shows the placeholder frame. */
+    screens: Map<AmoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
 ) {
     var screen by rememberSaveable { mutableStateOf(AmoScreen.HOME) }
     BackHandler(enabled = screen != AmoScreen.HOME) { screen = AmoScreen.HOME }
-    val tiles = remember(badges) { RoleHomes.amoTiles(badges) }
+    val tiles = remember(badges, reach) { RoleHomes.amoTiles(AmoMenu.badges(reach) + badges) }
     val sync = RoleHomes.syncState(bundle, user.offline).let { if (it == SyncChipState.Synced && syncedAt != null) SyncChipState.SyncedAt(syncedAt) else it }
     val header = remember(user, businessDate) { RoleHomes.header(RoleHomes.AMO_PREFIX, user, businessDate) }
     AronScreenTransition(screen, forward = { _, to -> to != AmoScreen.HOME }, modifier) { s ->
@@ -77,7 +81,7 @@ fun AmoApp(
                 versionText, stringResource(R.string.set_logout_message), onLanguageSelect, onLogout, onBack = { screen = AmoScreen.HOME },
                 sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
             )
-            else -> {
+            else -> if (screens[s] != null) screens.getValue(s)({ screen = AmoScreen.HOME }) else {
                 val tile = tiles.first { it.id == s.tileId }
                 RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = { screen = AmoScreen.HOME }, syncedAt = syncedAt)
             }

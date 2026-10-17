@@ -36,13 +36,19 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(kotlin("test"))
     testImplementation(libs.ktor.server.test.host)
+    // N-014 (qa): ContractConformanceTest validates live answers against contract/openapi.yaml (JSON Schema 2020-12).
+    testImplementation(libs.json.schema.validator)
+    testImplementation(libs.snakeyaml.engine)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.withType<Test>().configureEach {
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
     // AUD-TP-1: the sync convergence harness reads its seed and run count (SyncConvergenceFuzzTest).
-    System.getenv("ARON_FUZZ_SEED")?.let { environment("ARON_FUZZ_SEED", it) }
-    System.getenv("ARON_FUZZ_RUNS")?.let { environment("ARON_FUZZ_RUNS", it) }
+    System.getenv("ARON_FUZZ_SEED")?.let { environment("ARON_FUZZ_SEED", it); inputs.property("ARON_FUZZ_SEED", it) }
+    System.getenv("ARON_FUZZ_RUNS")?.let { environment("ARON_FUZZ_RUNS", it); inputs.property("ARON_FUZZ_RUNS", it) }
+    // N-024 (qa): SyncFaultScheduleFuzzTest size, seed and phone count (the acceptance run uses 10000 schedules).
+    // Test.environment is not an up-to-date input: declare the values, or a changed size reuses the last result.
+    listOf("ARON_SYNC_FUZZ_SCHEDULES", "ARON_SYNC_FUZZ_SEED", "ARON_SYNC_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
 }

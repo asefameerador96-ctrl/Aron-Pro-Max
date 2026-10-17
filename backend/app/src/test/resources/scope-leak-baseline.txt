@@ -1,0 +1,2 @@
+# N-014: cross-scope reads and writes known when ScopeLeakAcrossEndpointsTest was introduced (2026-10-17), one line per
+# `METHOD shape caller variant`. May only SHRINK; every line is a security defect routed to its owning lane.
