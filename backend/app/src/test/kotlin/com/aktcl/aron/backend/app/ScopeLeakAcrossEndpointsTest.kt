@@ -63,6 +63,12 @@ class ScopeLeakAcrossEndpointsTest {
     )
     private val national = ApiWorld.Caller("admin1001", "web", null)
 
+    /** The top node of each scoped supervisor in the seed (level, ids key): its dashboards must show exactly that node. */
+    private val topNode = mapOf("amo1001" to ("zone" to "zones"), "tso1001" to ("territory" to "territories"), "dmo1001" to ("division" to "divisions"))
+
+    /** National numbers of each dashboard read for each supervisor's top node: `<op> <user>` to numbers. */
+    private val nationalTop = HashMap<String, List<String>>()
+
     data class Leak(val method: String, val shape: String, val caller: String, val variant: String, val detail: String) {
         val key: String get() = "$method $shape $caller $variant"
     }
@@ -209,6 +215,7 @@ class ScopeLeakAcrossEndpointsTest {
             val shape = ContractModel.shape(op.path)
             val read = op.method == "GET" || READ_BY_POST.containsMatchIn(op.operationId)
             val resource = resourceOf(op)
+            val ownNumbers = HashMap<String, List<String>>()
             for (c in scoped) {
                 suspend fun once(variant: String, pathIds: Map<String, Long>, query: String = "", body: Boolean = false) {
                     var retargeted = !body
@@ -221,6 +228,18 @@ class ScopeLeakAcrossEndpointsTest {
                     shows(text, resource)?.let { found += Leak(op.method, shape, c.user, variant, "${r.status.value} $it") }
                     // An aggregate carries no ids: a scoped answer to an other-division selector that equals the national
                     // view of the other division (and that view differs from the caller's own division) is a leak.
+                    // Dashboards (a `level` selector): the own answer must be exactly the national view of the caller's top
+                    // node, and an other-division selector must be refused or ignored (the own answer again). This catches
+                    // an answer that mixes the divisions, which neither text nor ids show (checker N-014 A).
+                    if (isDashboard(op) && r.status.value in 200..299) {
+                        val n = numbers(text)
+                        if (variant == "own") {
+                            ownNumbers[c.user] = n
+                            nationalTop["${op.key} ${c.user}"]?.let { want -> if (n != want) found += Leak(op.method, shape, c.user, variant, "${r.status.value} the numbers differ from the national view of the caller's own node") }
+                        } else if (variant.startsWith("other-") && variant != "other-body") {
+                            ownNumbers[c.user]?.let { mine -> if (n != mine) found += Leak(op.method, shape, c.user, variant, "${r.status.value} an other-division selector changed the numbers (not refused, not ignored)") }
+                        }
+                    }
                     if (read && r.status.value in 200..299 && variant.startsWith("other-") && variant != "other-path" && variant != "other-body") {
                         nationalNumbers["${op.key} ${variant.removePrefix("other-")}"]?.let { (ownN, otherN) ->
                             if (otherN.isNotEmpty() && otherN != ownN && numbers(text) == otherN) found += Leak(op.method, shape, c.user, variant, "${r.status.value} the answer equals the national view of the other division")
@@ -243,6 +262,8 @@ class ScopeLeakAcrossEndpointsTest {
         }
         return found
     }
+
+    private fun isDashboard(op: ContractModel.Operation) = op.method == "GET" && op.parameters.any { it.name == "level" } && op.parameters.any { it.name == "node_id" }
 
     /** The query that selects [id] by [param] (a dashboard's node_id goes with its `level`, others with `node_type`). */
     private fun selector(op: ContractModel.Operation, param: String, id: Long): String {
@@ -295,12 +316,17 @@ class ScopeLeakAcrossEndpointsTest {
                 }
             }
             nationalSees[op.key] = sees
+            if (isDashboard(op)) for ((user, top) in topNode) {
+                val id = world.ids[top.second] ?: continue
+                val r2 = world.call(client, contract, op, national, token(national), extraQuery = "level=${top.first}&node_id=$id")
+                if (r2.status.value == 200) nationalTop["${op.key} $user"] = numbers(r2.bodyAsText())
+            }
         }
         leaks += client.probe(ops, stats) { c -> token(c) }
         File("build").mkdirs()
         File("build/scope-leak-endpoints.txt").writeText(
             "operations=${ops.size} calls=${stats.calls} other_id_calls=${stats.otherIdCalls} refused_403_404=${stats.refusedOtherIdCalls} " +
-                "national_sees=${nationalSees.count { it.value }}/${nationalSees.size} aggregate_pairs=${nationalNumbers.size} scoped_2xx_ops=${stats.scopedSuccess.size}\n" +
+                "national_sees=${nationalSees.count { it.value }}/${nationalSees.size} aggregate_pairs=${nationalNumbers.size} dashboard_top_views=${nationalTop.size} scoped_2xx_ops=${stats.scopedSuccess.size}\n" +
                 leaks.joinToString("\n") { "${it.key}  ${it.detail}" } + "\n# reads the national control cannot see the other division in:\n" +
                 nationalSees.filterValues { !it }.keys.joinToString("\n") + "\n",
         )
@@ -339,6 +365,7 @@ class ScopeLeakAcrossEndpointsTest {
         assertTrue(dashboards.count { it.value } >= 3, "dashboards the national control can tell the divisions apart on: $dashboards")
         // A scoped supervisor reads its own dashboard (the reads are not refused for everyone).
         assertTrue((stats.scopedSuccess["GET /v1/dashboards/summary"] ?: 0) >= 1, "no scoped caller got its own dashboard summary")
+        assertTrue(nationalTop.size >= 10, "national views of the supervisors' own nodes: ${nationalTop.keys}")
     }
 
     @Test
@@ -367,6 +394,7 @@ class ScopeLeakAcrossEndpointsTest {
         assertTrue("GET /v1/admin/outlets tso1001 own" in msg, "a seeded outlet leak (marker) must fail the test: $msg")
         assertTrue("GET /v1/admin/route-assignments tso1001 own" in msg, "a seeded assignment leak (ids only) must fail the test: $msg")
         assertTrue("GET /v1/dashboards/summary tso1001 other-node_id" in msg, "a seeded aggregate leak (numbers only) must fail the test: $msg")
+        assertTrue("GET /v1/dashboards/summary tso1001 own" in msg, "a TSO served the national view on its own read must fail the test: $msg")
         assertTrue(found.none { it.caller != "tso1001" }, "only the seeded caller leaks: $found")
     }
 

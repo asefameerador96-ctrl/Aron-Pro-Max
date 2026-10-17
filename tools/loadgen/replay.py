@@ -108,6 +108,9 @@ def capture_day(username, bundle, rnd, visit_rate, memo_rate):
     if len(skus) < 2:
         raise RuntimeError("the bundle has fewer than two priced SKUs")
     now = datetime.datetime.now(datetime.timezone.utc)
+    # Capture times stay inside the business day (Asia/Dhaka, UTC+6): never before its midnight, never in the future.
+    since_midnight = int((now + datetime.timedelta(hours=6)).timestamp()) % 86400
+    span = max(60, min(7200, since_midnight - 60))
     records, seq = [], 0
     for route in bundle["routes"]:
         if not route.get("planned_today"):
@@ -116,8 +119,7 @@ def capture_day(username, bundle, rnd, visit_rate, memo_rate):
             if rnd.random() >= visit_rate or o.get("lat") is None:
                 continue
             seq += 1
-            # Capture times spread over the last hours, one second apart, never in the future.
-            at = (now - datetime.timedelta(seconds=7200 - seq)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+            at = (now - datetime.timedelta(seconds=max(1, span - seq % span))).isoformat(timespec="milliseconds").replace("+00:00", "Z")
             visit = str(uuid.uuid4())
             records.append(envelope(day, "visit", visit, visit, 0, {
                 "visit_kind": "sr_call", "outlet_id": o["outlet_id"], "opened_at": at, "sequence_no": seq, "planned": True,
@@ -150,7 +152,7 @@ def capture_day(username, bundle, rnd, visit_rate, memo_rate):
                         "amount_mtk": due, "is_full_settlement": True, "outstanding_before_mtk": due, "payment_mode": "cash",
                     }, at, route["route_id"], bv, cv))
             records.append(envelope(day, "visit_close", str(uuid.uuid4()), visit, 1, {
-                "visit_client_uuid": visit, "outcome_code": "sold" if sold else "no_order", "call_declined": False, "ended_at": at, "is_zero_sale": not sold,
+                "visit_client_uuid": visit, "outcome_code": "sold" if sold else "owner_absent", "call_declined": False, "ended_at": at, "is_zero_sale": not sold,
             }, at, route["route_id"], bv, cv))
     counts = {}
     for r in records:
