@@ -29,5 +29,5 @@
     <string name="amo_jc_no_rubric">জয়েন্ট কলের ফর্ম এখনও নামানো হয়নি</string>
     <string name="amo_jc_sr">এসআর: %1$s</string>
     <string name="amo_jc_sr_none">নির্ধারিত নেই</string>
-    <string name="amo_jc_star">%1$s তারা</string>
+    <string name="amo_jc_star">৫-এর মধ্যে %1$s</string>
 </resources>

@@ -108,7 +108,7 @@ fun ControlCallHost(
                     )
                 }
                 CcStep.FORCE -> ManualOverrideStep(day, onStarted = { step = inCall }, onBack = { step = CcStep.CHECK })
-                CcStep.JOINT -> JointCallStep(day, routeId, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
+                CcStep.JOINT -> JointCallStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.ASSESS -> PerfAssessmentStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.MENU -> ControlCallMenu(
                     onSale = { onSale?.invoke() }, onAssessment = { step = CcStep.ASSESS }, onSurvey = onSurvey,
@@ -198,7 +198,9 @@ private fun PerfAssessmentStep(day: AmoDay, onSaved: () -> Unit) {
 
 /** F-AMO-011: the SR call assessment of an open Joint Call; the SR is the route's assigned one, read-only. */
 @Composable
-private fun JointCallStep(day: AmoDay, routeId: Long?, onSaved: () -> Unit) {
+private fun JointCallStep(day: AmoDay, onSaved: () -> Unit) {
+    // the open visit carries the route (it survives a kill and relaunch; the host's saved route does not)
+    val routeId = day.visitSession.current.value?.routeId?.takeIf { it != 0L }
     val scope = rememberCoroutineScope()
     var rubric by remember { mutableStateOf<com.aktcl.aron.feature.amo.JointRubric?>(null) }
     var sr by remember { mutableStateOf<com.aktcl.aron.feature.amo.AssignedSr?>(null) }

@@ -3,7 +3,7 @@
 ## HANDOVER (READY TO RECYCLE, 2026-10-17, session 1 of the lane)
 **State:** all on `lane/android-amo` (merged with INT; local Gradle works online: `echo sdk.dir=/opt/android-sdk > local.properties`; `./gradlew :android:feature-amo:testDebugUnitTest :android:app-amo:compileDebugKotlin :android:core-database:testDebugUnitTest -q 2>&1 | grep -v JAVA_TOOL`). CI on the lane head has not been looked at yet: check it first.
 
-**Done (see the csv):** F-AMO-001, 003, 004, 005, 007, 008, 009, 011, 036; plus the shared AMO record store. Checkers: Sonnet on 001 and 003-036 (fixes in), Opus T1 on the record store (3 of 4 findings fixed). **Not yet checked:** 007/008/009 and 011 (run a Sonnet checker first: files `feature-amo/.../PerfAssessment*.kt`, `JointCall*.kt`, `app-amo/.../ControlCallHost.kt`, `AmoDay.kt`).
+**Done (see the csv):** F-AMO-001, 003, 004, 005, 007, 008, 009, 011, 036; plus the shared AMO record store. Checkers: Sonnet on 001 and 003-036 (fixes in), Opus T1 on the record store (3 of 4 findings fixed). Sonnet checker ran on 007/008/009/011: one defect (Joint Call SR after relaunch), fixed. Known minor: closeVisit records `abandoned` with zero sale after a saved assessment.
 
 **Architecture decisions**
 - `app-amo/AmoDay.kt` is the thin AMO twin of `app-sr/SrDay.kt` (capture, reference, meta provider, fix source, attendance, visit flow, Force Sale = Manual Override, media, AMO records). SrDay/SrSaleKit/SrSaleHosts/MediaShell stay in app-sr (MediaShell was copied into app-amo). Reusing the SR *sale* needs SrSaleKit (app-sr): at F-AMO-006 either copy the wiring into app-amo or extract a shared module (SR lanes are idle; an extraction moves the sr_* string resources too, so prefer copying `SrSaleKit`/`RoomSaleReads` into app-amo with AMO strings).
