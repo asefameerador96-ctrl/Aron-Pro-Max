@@ -1,6 +1,7 @@
 # Web-dashboard lane status
 
-## Session 3 (2026-10-17 night): completion pass, in progress
+## Session 3 (2026-10-17 night): completion pass
+**State:** INT already carries 8a406e90 (promoted by the train with qa f5976bf6); lane head d4c24635 (Escape closes the Filter popover, keyboard e2e) is green (ci run 981) and promotable. Web-only; no contract change.
 **Changed:** dashboard home re-laid out to the owner's portal screenshot (`docs/evidence/web-dashboard-reference-2026-10-17.md`): row 1 four category cards (cigarette sticks, bidi, lighter pcs, match dozen; lakh/crore totals, big ring = share of net sales, chip = quantity vs same weekday last week), row 2 Live CPR (successful calls over planned outlets), calls-by-channel donut, final submit, login/submit; row 3 channel net donut with ranked bars, brand breakdown column chart with STD (net) / Memo toggle (`?bm=memo`); row 4 geo-fencing ring and the team map with "Filter by colour" (one Maps load per mount; filter only redraws markers); below, net hero, strike rate, needs attention, zone ranking. Tiles get the blue title and rule. New: `components/dash/charts.tsx` (Ring, Donut, ColumnChart), `filtered-map.tsx`, `lib/dash/lakh.ts`, tests `dash-lakh.test.ts`, new Playwright case.
 **Rulings kept:** target-based achievement rings are NOT built (docs/27, lead); rings show share and trend. Astha channel needs no special handling (it is simply a channel code if the server returns one).
 **Log in as:** `tso1001` (TSO), `dmo1001` (DMO), `admin1001` (admin); passwords in Key Vault.
