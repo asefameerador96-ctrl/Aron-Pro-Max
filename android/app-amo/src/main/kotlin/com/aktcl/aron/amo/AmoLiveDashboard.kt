@@ -38,19 +38,20 @@ fun AmoLiveDashboard(day: AmoDay, filtering: Boolean, onFiltering: (Boolean) -> 
     var stale by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     val zoneLabel = stringResource(AmoR.string.amo_live_zone_n, "%d")
+    val language = LocalAppLanguage.current
     LaunchedEffect(day) {
         val sup = runCatching { day.reference.section("supervisor") }.getOrNull()
-        zones = com.aktcl.aron.feature.amo.OutletVerify.zoneIds(sup).map { it to zoneLabel.format(it) }
+        zones = com.aktcl.aron.feature.amo.OutletVerify.zoneIds(sup).map { it to zoneLabel.replace("%d", com.aktcl.aron.core.common.LocaleDigits.formatInteger(it, language, grouping = false)) }
         routes = runCatching { day.routes() }.getOrDefault(emptyList()).map { it.route.routeId to it.route.name }
     }
     LaunchedEffect(day, applied) {
         loaded = false
         val date = day.businessDate()
-        val s = day.api.dashboardSummary(date, applied.first)
-        val l = day.api.loginSubmit(date, applied.first)
-        fun json(f: AmoFetch) = when (f) { is AmoFetch.Fresh -> f.json; is AmoFetch.Cached -> f.json; AmoFetch.Unavailable -> null }
-        stale = s is AmoFetch.Cached; failed = s is AmoFetch.Unavailable
-        figures = LiveDashboard.parse(json(s), json(l), applied.second)
+        val l = day.api.liveDashboard(date, applied.first)
+        val json = when (l) { is AmoFetch.Fresh -> l.json; is AmoFetch.Cached -> l.json; AmoFetch.Unavailable -> null }
+        stale = l is AmoFetch.Cached; failed = l is AmoFetch.Unavailable
+        // The login-submit answer carries the whole KPI block and the route lists: one call, and the stale flag is its own.
+        figures = LiveDashboard.parse(json, json, applied.second)
         loaded = true
     }
     if (filtering) {

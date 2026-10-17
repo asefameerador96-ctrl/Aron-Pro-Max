@@ -8,7 +8,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,7 +28,7 @@ fun AmoTeamStock(day: AmoDay, selected: Long?, onSelect: (Long) -> Unit, modifie
     var skus by remember { mutableStateOf<Map<Long, SkuInfo>>(emptyMap()) }
     var stale by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
-    val bangla = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
+    val bangla = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
     LaunchedEffect(day) {
         phones = TeamStock.phones(runCatching { day.reference.section("supervisor") }.getOrNull())
         skus = runCatching { day.skuInfo() }.getOrDefault(emptyMap())

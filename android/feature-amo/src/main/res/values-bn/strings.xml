@@ -244,4 +244,8 @@
     <string name="amo_live_all_zones">আমার সব জোন</string>
     <string name="amo_live_all_routes">সব রুট</string>
     <string name="amo_live_zone_n">জোন %1$s</string>
+    <string name="amo_loc_source_check_in">চেক-ইন</string>
+    <string name="amo_loc_source_check_out">চেক-আউট</string>
+    <string name="amo_loc_source_visit">ভিজিট</string>
+    <string name="amo_loc_source_sync">সিঙ্ক</string>
 </resources>

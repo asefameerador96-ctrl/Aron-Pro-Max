@@ -35,7 +35,7 @@ fun LiveDashboardContent(
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
             if (failed) AronBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning)
             else if (stale) AronBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
-            AronListRow(scopeLabel, subtitle = asOfLabel?.let { stringResource(R.string.amo_live_as_of, it) }, flat = true)
+            AronListRow(scopeLabel, subtitle = asOfLabel?.let { stringResource(R.string.amo_live_as_of, localizedDigits(it)) }, flat = true)
             if (f == null) {
                 AronBanner(stringResource(R.string.amo_live_none), kind = BannerKind.Info)
             } else {

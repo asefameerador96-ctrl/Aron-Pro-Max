@@ -1,6 +1,11 @@
 package com.aktcl.aron.amo
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.BannerKind
+import androidx.compose.ui.res.stringResource
+import com.aktcl.aron.feature.amo.R as AmoR
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -29,14 +34,25 @@ import java.io.File
 fun AmoTeamLocation(day: AmoDay, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var points by remember { mutableStateOf<List<MapPoint>?>(null) }
+    var kept by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    val sources = mapOf(
+        "check_in" to stringResource(AmoR.string.amo_loc_source_check_in), "check_out" to stringResource(AmoR.string.amo_loc_source_check_out),
+        "visit" to stringResource(AmoR.string.amo_loc_source_visit), "breadcrumb" to stringResource(AmoR.string.amo_loc_source_sync),
+    )
     var settings by remember { mutableStateOf(MapSettings()) }
     val cache = remember(day.userId) { MapTileCache(File(context.cacheDir, "map_amo_" + day.userId)) { settings.tileCacheBytes } }
     LaunchedEffect(day) {
         settings = day.mapSettings()
         val fetched = day.api.teamLocations(day.businessDate())
         val json = when (fetched) { is AmoFetch.Fresh -> fetched.json; is AmoFetch.Cached -> fetched.json; AmoFetch.Unavailable -> null }
-        points = TeamLocations.parse(json).map { MapPoint(it.userId.toString(), it.name, it.lat, it.lng, it.atMs, it.source) }
+        kept = fetched is AmoFetch.Cached; failed = fetched is AmoFetch.Unavailable
+        points = TeamLocations.parse(json).map { MapPoint(it.userId.toString(), it.name, it.lat, it.lng, it.atMs, it.source?.let { s -> sources[s] ?: s }) }
     }
     val list = points ?: run { Box(modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
-    LiteMapScreen(list, settings, day.online(), MapsKey.present(context), day.currentMs(), cache, "team_" + day.userId, modifier)
+    Column(modifier.fillMaxSize()) {
+        if (failed) AronBanner(stringResource(AmoR.string.amo_task_list_offline), kind = BannerKind.Warning)
+        else if (kept) AronBanner(stringResource(AmoR.string.amo_task_list_kept), kind = BannerKind.Info)
+        LiteMapScreen(list, settings, day.online(), MapsKey.present(context), day.currentMs(), cache, "team_" + day.userId + "_" + day.businessDate(), Modifier.weight(1f))
+    }
 }

@@ -244,4 +244,8 @@
     <string name="amo_live_all_zones">All my zones</string>
     <string name="amo_live_all_routes">All routes</string>
     <string name="amo_live_zone_n">Zone %1$s</string>
+    <string name="amo_loc_source_check_in">check-in</string>
+    <string name="amo_loc_source_check_out">check-out</string>
+    <string name="amo_loc_source_visit">visit</string>
+    <string name="amo_loc_source_sync">sync</string>
 </resources>
