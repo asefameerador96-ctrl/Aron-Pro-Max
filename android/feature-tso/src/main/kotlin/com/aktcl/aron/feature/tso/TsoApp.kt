@@ -1,6 +1,9 @@
 package com.aktcl.aron.feature.tso
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,13 +84,29 @@ fun TsoApp(
     val tiles = remember(badges) { RoleHomes.tsoTiles(badges) }
     val sync = RoleHomes.syncState(bundle, user.offline).let { if (it == SyncChipState.Synced && syncedAt != null) SyncChipState.SyncedAt(syncedAt) else it }
     val header = remember(user, businessDate) { RoleHomes.header(RoleHomes.TSO_PREFIX, user, businessDate) }
-    AronScreenTransition(screen, forward = { _, to -> to != TsoScreen.HOME }, modifier) { s ->
+    var confirmLogout by rememberSaveable { mutableStateOf(false) }
+    if (confirmLogout) {
+        com.aktcl.aron.core.ui.AronConfirmDialog(
+            stringResource(com.aktcl.aron.feature.tso.R.string.tso_chrome_logout), stringResource(R.string.rh_set_logout_wipe),
+            confirmLabel = stringResource(com.aktcl.aron.feature.home.R.string.set_logout_confirm), dismissLabel = stringResource(com.aktcl.aron.feature.home.R.string.set_cancel),
+            onConfirm = { confirmLogout = false; onLogout() }, onDismiss = { confirmLogout = false },
+        )
+    }
+    androidx.compose.foundation.layout.Box(modifier) {
+    AronScreenTransition(screen, forward = { _, to -> to != TsoScreen.HOME }, Modifier) { s ->
         when (s) {
-            TsoScreen.HOME -> RoleHomeContent(
-                header, user, bundle, tiles, sync,
-                onTile = { screen = TsoScreen.of(it) }, onSettings = { screen = TsoScreen.SETTINGS },
-                hero = hero, health = health, sunlight = sunlight, onSunlight = onSunlight, banners = banners, onSync = onSync,
-            )
+            TsoScreen.HOME -> TsoDrawer(user.fullName, remember { tsoDrawerEntries() }, onEntry = { screen = it }) { open ->
+                androidx.compose.foundation.layout.Column {
+                    TsoChromeBar(user.fullName, onMenu = open, onLogout = { confirmLogout = true })
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                        RoleHomeContent(
+                            header, user, bundle, tiles, sync,
+                            onTile = { screen = TsoScreen.of(it) }, onSettings = { screen = TsoScreen.SETTINGS },
+                            hero = hero, health = health, sunlight = sunlight, onSunlight = onSunlight, banners = banners, onSync = onSync,
+                        )
+                    }
+                }
+            }
             TsoScreen.SETTINGS -> RoleSettingsContent(
                 versionText, stringResource(R.string.rh_set_logout_wipe), onLanguageSelect, onLogout, onBack = { screen = TsoScreen.HOME },
                 sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
@@ -123,6 +142,15 @@ fun TsoApp(
             } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
             else -> TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
         }
+    }
+    if (screen != TsoScreen.HOME) {
+        // the blue Home button (bottom centre), above any screen's own bottom bar
+        TsoHomeButton(
+            { screen = TsoScreen.HOME },
+            Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(bottom = 96.dp)
+                .background(com.aktcl.aron.core.ui.LocalAronColors.current.accentFill, androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
+        )
+    }
     }
 }
 

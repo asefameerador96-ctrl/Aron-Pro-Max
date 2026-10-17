@@ -65,4 +65,23 @@
     <string name="tso_fb_err_title_long">শিরোনাম অনেক বড় (সর্বোচ্চ ১২০ অক্ষর)</string>
     <string name="tso_fb_err_description_empty">বিবরণ লিখুন</string>
     <string name="tso_fb_err_description_long">বিবরণ অনেক বড় (সর্বোচ্চ ২০০০ অক্ষর)</string>
+    <string name="tso_greeting">শুভ দিন, %1$s</string>
+    <string name="tso_chrome_menu">মেনু খুলুন</string>
+    <string name="tso_chrome_logout">লগ আউট</string>
+    <string name="tso_chrome_home">হোম</string>
+    <string name="tso_drawer_role">TSO</string>
+    <string name="tso_drawer_dashboard">ড্যাশবোর্ড</string>
+    <string name="tso_drawer_dashboard_sub">ড্যাশবোর্ড দেখুন</string>
+    <string name="tso_drawer_leave">ছুটি</string>
+    <string name="tso_drawer_leave_sub">আপনার ছুটি পরিচালনা করুন</string>
+    <string name="tso_drawer_final_submit">ফাইনাল সাবমিট</string>
+    <string name="tso_drawer_final_submit_sub">বিক্রয়ের তথ্য জমা দিন</string>
+    <string name="tso_drawer_periphery">আমার এলাকা</string>
+    <string name="tso_drawer_periphery_sub">আপনার দল ও দোকান দেখুন</string>
+    <string name="tso_drawer_my_call">আমার কল</string>
+    <string name="tso_drawer_my_call_sub">পরিকল্পনা তৈরি ও পরিচালনা করুন</string>
+    <string name="tso_drawer_feedback">আমার মতামত</string>
+    <string name="tso_drawer_feedback_sub">আপনার মতামত পরিচালনা করুন</string>
+    <string name="tso_drawer_settings">সেটিংস</string>
+    <string name="tso_drawer_settings_sub">ভাষা, সংস্করণ, আপডেট ও পাসওয়ার্ড</string>
 </resources>
