@@ -417,3 +417,11 @@ because Final Submit closes the zone-day.
    only when the zone-day may be closed.
 5. Copy the window into `docs/status/laptop.md`. The TSO app's own Final Submit screen (F-TSO-010) is checked when it
    ships; this run uses the same API from the laptop.
+
+Notes:
+- **The approval creates a real outlet in the dev master data.** Its code is shown as "new outlet"; delete or close
+  it in the admin portal afterwards if it should not stay.
+- **`-SubChannelId`** must be an active sub-channel: pick one in the admin portal (code lists, sub-channels). The
+  verification refuses an unknown one. With `-WebVerify`, set `ARON_CHECK_PASSWORD_AMO1001` for an unattended run.
+- **Reach:** dmo1001 and amo1001 must reach the request's zone, otherwise they get a 404. `-Zone` must be the zone of
+  the SR's route; the preview step checks that the request's route is listed.

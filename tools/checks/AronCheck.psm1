@@ -50,11 +50,13 @@ function Test-PackageInstalled([string]$Serial, [string]$Package) {
 # POST /v1/auth/login for a web user; returns the access token or $null (after reporting). The password is never shown.
 function Get-WebToken([string]$ApiHost, [string]$User, [string]$CheckName = 'web login') {
   # ARON_CHECK_PASSWORD_<USER> (e.g. ARON_CHECK_PASSWORD_TSO1001) for scripts that sign in as several users, else
-  # ARON_CHECK_PASSWORD, else asked; whichever was used is cleared at once (not left in the window's environment).
-  $perUser = "ARON_CHECK_PASSWORD_$($User.ToUpper())"
+  # ARON_CHECK_PASSWORD, else asked. The per-user one is cleared when used, and ARON_CHECK_PASSWORD at the first login
+  # either way, so nothing is left in the window's environment.
+  $perUser = "ARON_CHECK_PASSWORD_$($User.ToUpperInvariant())"
   $plain = [Environment]::GetEnvironmentVariable($perUser)
   if ($plain) { Remove-Item "Env:$perUser" -ErrorAction SilentlyContinue }
-  elseif ($env:ARON_CHECK_PASSWORD) { $plain = $env:ARON_CHECK_PASSWORD; Remove-Item Env:ARON_CHECK_PASSWORD -ErrorAction SilentlyContinue }
+  elseif ($env:ARON_CHECK_PASSWORD) { $plain = $env:ARON_CHECK_PASSWORD }
+  Remove-Item Env:ARON_CHECK_PASSWORD -ErrorAction SilentlyContinue
   $secure = if ($plain) { ConvertTo-SecureString $plain -AsPlainText -Force } else { Read-Host "Password for $User (not shown)" -AsSecureString }
   $plain = $null
   $script:Login = @{ ApiHost = $ApiHost; User = $User; Secure = $secure }
@@ -113,7 +115,7 @@ function Get-Aron([string]$PathAndQuery) {
   if (-not $l) { $script:GetError = 'not logged in'; return $null }
   if (-not $script:Token) { $script:Token = New-WebToken }
   for ($i = 1; $i -le 4; $i++) {
-    try { $script:GetStatus = 200; return Invoke-AronGet $l.ApiHost $script:Token $PathAndQuery }
+    try { $script:GetStatus = 200; $script:GetError = $null; return Invoke-AronGet $l.ApiHost $script:Token $PathAndQuery }
     catch {
       $status = $null
       try { $status = [int]$_.Exception.Response.StatusCode } catch { }
@@ -136,7 +138,7 @@ function Send-Aron([string]$PathAndQuery, $Body, [string]$Method = 'Post') {
   $json = $Body | ConvertTo-Json -Compress -Depth 8
   for ($i = 1; $i -le 4; $i++) {
     try {
-      $script:GetStatus = 200
+      $script:GetStatus = 200; $script:GetError = $null
       return Invoke-RestMethod -Method $Method -Uri "$($l.ApiHost)$PathAndQuery" -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 30 -Headers @{ Authorization = "Bearer $script:Token"; 'X-App-Version' = '1.0.0+1' }
     } catch {
       $status = $null

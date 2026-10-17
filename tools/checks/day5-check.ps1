@@ -15,15 +15,17 @@
    1. approver login       the approver (default dmo1001) logs in on the web; passwords are asked, never printed or
                            stored
    2. SR request arrived   you raise a NEW-outlet request in the SR app (Outlet, New shop) and sync; a pending "new"
-                           request made after the script started reaches the server (polled up to 5 minutes)
+                           request that was not in the list read before your step reaches the server (polled up to
+                           5 minutes; no clock is compared, so a slow phone clock or midnight does not matter)
    3. AMO verified         you verify it in the AMO app (Outlet, Verify) and sync, or, with -WebVerify, the AMO's web
                            login verifies it; the request turns "verified" (polled up to 5 minutes)
    4. web approved         the approver approves it (POST approve, a different person from the requester and the
                            verifier); the request turns "approved" and names the new outlet
    5. TSO login            the TSO (default tso1001) logs in on the web
-   6. preview read         GET /v1/day/final-submit/preview for the zone and today answers, with the zone's routes
+   6. preview read         GET /v1/day/final-submit/preview for the zone and today answers, not yet submitted, with
+                           routes, the request's route among them
    7. Final Submit         after you confirm, POST /v1/day/final-submit closes the zone-day; the same client_uuid
-                           sent again replays the first success, and a new client_uuid gets 409
+                           sent again replays the first answer (same submitted_at), and a new client_uuid gets 409
                            ERR_DAY_ALREADY_FINAL_SUBMITTED (once per zone and day)
   The TSO app's own Final Submit screen is F-TSO-010; until it ships, step 7 uses the same API from the laptop.
 
@@ -42,10 +44,21 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'AronCheck.psm1') -Force
-$start = (Get-Date).ToUniversalTime().AddMinutes(-1)
 $today = Get-DhakaDate
 Write-Host "Aron Day 5 check  $(Get-Date -Format 'yyyy-MM-dd HH:mm')  business date $today  API $ApiHost" -ForegroundColor Cyan
 if ($WebVerify -and $SubChannelId -le 0) { Write-Host '  -WebVerify needs -SubChannelId (the sub-channel the AMO picks).' -ForegroundColor Yellow; exit 1 }
+
+# Every item of a paged list (follows next_cursor); $null when a page cannot be read.
+function Get-AllItems([string]$Path) {
+  $items = @(); $cursor = $null
+  do {
+    $sep = if ($Path.Contains('?')) { '&' } else { '?' }
+    $page = Get-Aron ($Path + $(if ($cursor) { "${sep}cursor=$([uri]::EscapeDataString($cursor))" } else { '' }))
+    if (-not $page) { return $null }
+    $items += @($page.items); $cursor = $page.next_cursor
+  } while ($cursor)
+  return ,$items
+}
 
 # Polls GET <path> until $Test is true on the answer or the wait ends; returns the last answer.
 function Wait-Aron([string]$Path, [scriptblock]$Test) {
@@ -60,12 +73,24 @@ function Wait-Aron([string]$Path, [scriptblock]$Test) {
 
 # 1, 2: the approver's login, then the SR's request
 if (-not (Get-WebToken $ApiHost $Approver 'approver login')) { exit (Complete-Check) }
+# The pending new-outlet requests that exist BEFORE the SR's step: only a request not among them counts (no clocks).
+$listPath = '/v1/outlet-requests?status=pending&request_type=new&limit=100'
+$before = Get-AllItems $listPath
+if ($null -eq $before) { Write-CheckResult 'SR request arrived' $false "the pending list cannot be read: $(Get-AronError)"; exit (Complete-Check) }
+$known = @($before | ForEach-Object { $_.request_uuid })
+Write-Host "  $($known.Count) pending new-outlet requests already exist in reach; only a new one counts." -ForegroundColor DarkGray
 Write-Host '  On the SR phone: Outlet, New shop, fill it in, Save, then Sync.' -ForegroundColor Cyan
 [void](Read-Host '  Press Enter when the request is saved and synced')
-$fresh = { param($page) @($page.items | Where-Object { [DateTime]::Parse($_.requested_at).ToUniversalTime() -ge $start }).Count -gt 0 }
-$page = Wait-Aron "/v1/outlet-requests?status=pending&request_type=new&from=$today&to=$today&limit=100" $fresh
-$req = @($page.items | Where-Object { [DateTime]::Parse($_.requested_at).ToUniversalTime() -ge $start } | Sort-Object { [DateTime]::Parse($_.requested_at) } -Descending) | Select-Object -First 1
-Write-CheckResult 'SR request arrived' ([bool]$req) $(if ($req) { "request $($req.request_uuid) by user $($req.requested_by_user_id), $($req.outlet_name)" } else { "no new pending request after $($start.ToString('HH:mm')) UTC within $WaitMinutes min: $(Get-AronError)" })
+$req = $null
+$deadline = (Get-Date).AddMinutes($WaitMinutes)
+do {
+  $now = Get-AllItems $listPath
+  $new = @($now | Where-Object { $known -notcontains $_.request_uuid })
+  if ($new.Count -gt 0) { $req = $new[0]; break }
+  Start-Sleep -Seconds 10
+} while ((Get-Date) -lt $deadline)
+$detailText = if (-not $req) { "no pending new-outlet request appeared within $WaitMinutes min$(if ($null -eq $now) { ": $(Get-AronError)" })" } elseif ($new.Count -gt 1) { "$($new.Count) new requests appeared; checking $($req.request_uuid) by user $($req.requested_by_user_id), $($req.outlet_name)" } else { "request $($req.request_uuid) by user $($req.requested_by_user_id), $($req.outlet_name), route $($req.route_id)" }
+Write-CheckResult 'SR request arrived' ([bool]$req) $detailText
 if (-not $req) { exit (Complete-Check) }
 $uuid = $req.request_uuid
 
@@ -92,12 +117,14 @@ Write-CheckResult 'web approved' ([bool]$approved) $(if ($approved) { "approved 
 
 # 5, 6: the TSO, the zone and the preview
 if (-not (Get-WebToken $ApiHost $Tso 'TSO login')) { exit (Complete-Check) }
-$zones = Get-Aron "/v1/admin/geo/zone?search=$([uri]::EscapeDataString($Zone))&limit=10"
-$zoneId = @($zones.items | Where-Object { $_.code -eq $Zone } | ForEach-Object { $_.id }) | Select-Object -First 1
-if (-not $zoneId) { Write-CheckResult 'preview read' $false "zone $Zone not found for $Tso ($(Get-AronError))"; exit (Complete-Check) }
+$zones = Get-AllItems "/v1/admin/geo/zone?q=$([uri]::EscapeDataString($Zone))&limit=50"
+$zoneId = @($zones | Where-Object { $_.code -eq $Zone } | ForEach-Object { $_.id }) | Select-Object -First 1
+if (-not $zoneId) { Write-CheckResult 'preview read' $false "zone $Zone not found for $Tso among $(@($zones).Count) zones read$(if ($null -eq $zones) { ": $(Get-AronError)" })"; exit (Complete-Check) }
 $preview = Get-Aron "/v1/day/final-submit/preview?zone_id=$zoneId&business_date=$today"
-$previewOk = $preview -and -not $preview.already_submitted
-Write-CheckResult 'preview read' ([bool]$previewOk) $(if (-not $preview) { "refused: $(Get-AronError)" } elseif ($preview.already_submitted) { "zone $Zone is already Final Submitted for $today (at $($preview.submitted_at)): run on a day not yet closed" } else { "zone $Zone ($zoneId): $(@($preview.routes).Count) routes, $(@($preview.warnings).Count) warnings" })
+$routeIds = @($preview.routes | ForEach-Object { $_.route_id })
+$routeInZone = (-not $req.route_id) -or ($routeIds -contains $req.route_id)
+$previewOk = $preview -and -not $preview.already_submitted -and $routeIds.Count -gt 0 -and $routeInZone
+Write-CheckResult 'preview read' ([bool]$previewOk) $(if (-not $preview) { "refused: $(Get-AronError)" } elseif ($preview.already_submitted) { "zone $Zone is already Final Submitted for $today (at $($preview.submitted_at)): run on a day not yet closed" } elseif ($routeIds.Count -eq 0) { "zone $Zone ($zoneId) lists no route for $today" } elseif (-not $routeInZone) { "the request's route $($req.route_id) is not in $Zone (routes $($routeIds -join ', ')): pass -Zone with the SR's zone" } else { "zone $Zone ($zoneId): $($routeIds.Count) routes including the request's route, $(@($preview.warnings).Count) warnings" })
 if (-not $previewOk) { exit (Complete-Check) }
 
 # 7: Final Submit, its replay and a second attempt
@@ -112,6 +139,7 @@ $replay = Send-Aron '/v1/day/final-submit' @{ client_uuid = $cu; zone_id = $zone
 $replayStatus = Get-AronStatus
 $second = Send-Aron '/v1/day/final-submit' @{ client_uuid = [guid]::NewGuid().ToString(); zone_id = $zoneId; business_date = $today }
 $secondStatus = Get-AronStatus; $secondError = Get-AronError
-$ok = $first -and $replay -and $replayStatus -eq 200 -and -not $second -and $secondStatus -eq 409 -and $secondError -match 'ERR_DAY_ALREADY_FINAL_SUBMITTED'
-Write-CheckResult 'Final Submit' $ok ("first: {0}; same client_uuid again: {1}; a new client_uuid: {2}" -f $(if ($first) { 'ok' } else { $firstError }), $(if ($replay) { 'replayed ok' } else { "status $replayStatus" }), $(if ($second) { 'ACCEPTED (a second Final Submit)' } else { $secondError }))
+$sameAnswer = $first -and $replay -and "$($replay.submitted_at)" -eq "$($first.submitted_at)" -and "$($replay.zone_id)" -eq "$zoneId"
+$ok = $sameAnswer -and $replayStatus -eq 200 -and -not $second -and $secondStatus -eq 409 -and $secondError -match 'ERR_DAY_ALREADY_FINAL_SUBMITTED'
+Write-CheckResult 'Final Submit' $ok ("first: {0}; same client_uuid again: {1}; a new client_uuid: {2}" -f $(if ($first) { 'ok' } else { $firstError }), $(if (-not $replay) { "status $replayStatus" } elseif ($sameAnswer) { 'replayed the first answer' } else { "answered, but not the first answer (submitted_at $($replay.submitted_at) vs $($first.submitted_at))" }), $(if ($second) { 'ACCEPTED (a second Final Submit)' } else { $secondError }))
 exit (Complete-Check)
