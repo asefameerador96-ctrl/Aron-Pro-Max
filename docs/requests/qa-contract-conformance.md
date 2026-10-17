@@ -2,6 +2,27 @@
 
 **From:** qa lane. **To:** lead (contract owner), backend-core, backend-admin, backend-reports.
 
+> **Handover (lead-contract, 2026-10-17): all sections are closed.** The three baselines are empty: no contract
+> deviation, no unsatisfiable success schema, and every operation the production wiring serves answers 2xx at least once
+> (173 of 173), so every success body is validated. What a successor maintains:
+> - **A new operation** answers 2xx with the generated call, or gets an entry in `ContractConformanceTest.FX`. An `Fx`
+>   says only what the generator cannot know: `body`/`path`/`query`/`headers` edits; `after` (producers that run first;
+>   a read that needs a write moves to the write phase); `capture` (keep an id or token from a 2xx answer in `Ctx`,
+>   read it with `Ctx.need`, which fails fast); `proof` (`deviceProof(...)`, `BATCH_PROOF`, `REFRESH_PROOF`; the seeded SR
+>   phone holds `ApiWorld.phoneKey`); `raw` (multipart); `prepare` (a login or an issue once before the calls). A fixture's
+>   body is itself checked against the request schema (`fixture-invalid`). Rows no served operation creates go in
+>   `ApiWorld.conformanceSeed` (only the contract suite's world loads them). Blobs go through `FakeBlobs`
+>   (`Wiring.production(blobPorts = ...)`, tests only).
+> - **A new finding** is fixed in the code or, when the server is right, in the contract (oasdiff additive, or a version
+>   bump plus a `contract-*.md` request the lead approves); never added to a baseline. The report
+>   `backend/app/build/contract-conformance.txt` lists each caller's refusal under any operation without a 2xx.
+> - **A phone batch in any ApiWorld test** sends `X-Device-Proof` (`world.batchProof(device, gzBody)`): the seeded phone
+>   and its mirrored copies hold the harness key.
+> - **Date bomb (routed to qa):** the harness's seeded config overrides (`cfg_value.effective_from = now() - 1 day`) are
+>   activated against the database's real time while the harness clock is fixed at 2027-01-03; after real date
+>   2027-01-04 they no longer apply (rate limits, MFA roles, page threshold). A clock-relative date was tried and did not
+>   take effect; it needs a deliberate fix.
+
 `backend/app` now has `ContractConformanceTest`. It drives every operation the production wiring serves, as six seeded callers, and validates every answer against `contract/openapi.yaml` with a JSON Schema 2020-12 validator (status declared, body valid against the declared schema, problem `code` in ProblemCode). The run makes 970 calls and validates 902 bodies. It found the deviations below (28 operation and status pairs). They are frozen in `backend/app/src/test/resources/contract-conformance-baseline.txt` (96 keys). A schema finding is keyed per normalised error (`<path> <keyword>[ <property>]`), so a new error on an operation already listed still fails. The list may only shrink: a new deviation fails CI. **When you fix one, delete its lines from the baseline in the same commit**, or the test fails as stale. The full report of a run is `backend/app/build/contract-conformance.txt`.
 
 For each finding, decide whether the code or the contract is wrong. The column "likely fix" is qa's reading, not a ruling.
