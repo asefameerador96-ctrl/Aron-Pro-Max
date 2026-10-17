@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.amo
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -68,7 +69,6 @@ private fun cell(v: JsonPrimitive?, type: String, money: (Long) -> String): Stri
     }
 }
 
-private val STD_COLUMNS = listOf("memo_no", "business_date", "route_code", "outlet_name", "line_count", "gross_mtk", "net_mtk", "paid_mtk", "due_mtk")
 
 /**
  * F-AMO-032 STD Memo Report: the range (first of the month to yesterday), the per-route totals, then the memos in a table whose first
@@ -88,14 +88,16 @@ fun StdMemoReportContent(
             AronEmptyState(stringResource(R.string.amo_rep_empty), Modifier.fillMaxSize(), hint = stringResource(R.string.amo_rep_empty_hint))
             return@Column
         }
-        val cols = STD_COLUMNS.mapNotNull { k -> data.columns.firstOrNull { it.key == k } }
+        val cols = Reports.STD_COLUMNS.mapNotNull { k -> data.columns.firstOrNull { it.key == k } }
         val h = rememberScrollState()
         val c = LocalAronColors.current
         LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
             item {
                 Column(Modifier.padding(horizontal = AronTokens.Space.Screen)) {
-                    AronSectionLabel(stringResource(R.string.amo_rep_by_route))
-                    byRoute.forEachIndexed { i, r ->
+                    // The route totals are only true for a complete report: a truncated one shows the memos below and its note instead.
+                    if (data.truncated) AronBanner(stringResource(R.string.amo_rep_totals_hidden), kind = BannerKind.Info)
+                    else AronSectionLabel(stringResource(R.string.amo_rep_by_route))
+                    if (!data.truncated) byRoute.forEachIndexed { i, r ->
                         AronListRow(
                             r.code.ifBlank { stringResource(R.string.amo_live_dash) }, subtitle = stringResource(R.string.amo_rep_route_line, localizedNumber(r.memos.toLong()), money(r.grossMtk)),
                             trailing = money(r.netMtk), position = pos(i, byRoute.size), divider = i < byRoute.lastIndex, flat = true,
@@ -105,11 +107,11 @@ fun StdMemoReportContent(
                 }
             }
             stickyHeader(cols, bangla, h)
-            items(data.rows) { row ->
+            items(data.rows, key = { (it["memo_no"] as? JsonPrimitive)?.contentOrNull ?: it.hashCode().toString() }) { row ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen)) {
-                    cols.firstOrNull()?.let { Text(cell(row[it.key], it.type, money), Modifier.width(FIRST_W), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textPrimary) }
+                    cols.firstOrNull()?.let { Text(cell(row[it.key], it.type, money), Modifier.width(FIRST_W), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                     Row(Modifier.weight(1f).horizontalScroll(h), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        cols.drop(1).forEach { Text(cell(row[it.key], it.type, money), Modifier.width(CELL_W), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary) }
+                        cols.drop(1).forEach { Text(cell(row[it.key], it.type, money), Modifier.width(CELL_W), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                     }
                 }
             }
@@ -123,7 +125,7 @@ private val CELL_W = 104.dp
 private fun androidx.compose.foundation.lazy.LazyListScope.stickyHeader(cols: List<ReportCol>, bangla: Boolean, h: androidx.compose.foundation.ScrollState) {
     stickyHeader {
         val c = LocalAronColors.current
-        Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen)) {
+        Row(Modifier.fillMaxWidth().background(LocalAronColors.current.surfaceSolid).padding(horizontal = AronTokens.Space.Screen)) {
             cols.firstOrNull()?.let { Text(if (bangla) it.labelBn ?: it.labelEn else it.labelEn, Modifier.width(FIRST_W), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = c.textSecondary) }
             Row(Modifier.weight(1f).horizontalScroll(h), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 cols.drop(1).forEach { Text(if (bangla) it.labelBn ?: it.labelEn else it.labelEn, Modifier.width(CELL_W), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = c.textSecondary) }

@@ -134,10 +134,14 @@ class MainActivity : ComponentActivity() {
                                         try {
                                         when (val c = logoutFlow.check()) {
                                             is LogoutCheck.Refused -> unsent = c.unsent
-                                            is LogoutCheck.Proceed -> when (val r = logoutFlow.logout()) {
+                                            is LogoutCheck.Proceed -> {
+                                                // The kept copies of the zone's lists (sales, stock, tasks) do not outlive the sign-in.
+                                                (components.session.state.value as? SessionState.Active)?.user?.userId?.let { java.io.File(cacheDir, "amo_api_$it").deleteRecursively() }
+                                                when (val r = logoutFlow.logout()) {
                                                 is LogoutResult.Refused -> unsent = r.unsent
                                                 is LogoutResult.WipeIncomplete -> Toast.makeText(this@MainActivity, SystemR.string.logout_wipe_incomplete, Toast.LENGTH_LONG).show()
                                                 else -> Unit
+                                                }
                                             }
                                         }
                                         } catch (e: kotlinx.coroutines.CancellationException) {

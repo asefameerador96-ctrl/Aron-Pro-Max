@@ -43,29 +43,40 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
     /** `GET /v1/dashboards/targets` for [month] (`yyyy-MM`) at category level (F-API-021a); empty while targets are deferred (docs/27). */
     suspend fun targets(month: String): AmoFetch = get("/v1/dashboards/targets", "targets_$month", mapOf("month" to month, "product_level" to "category"))
 
-    /** A report page by page (a few pages of 500 rows), joined; the kept copy is the joined answer when it is small enough. */
+    /** A report page by page (a few pages of 500 rows), joined; the kept copy is the joined answer when it is complete and small enough. */
     suspend fun report(key: String, from: String, to: String): AmoFetch {
         val cacheKey = "rep_${key}_${from}_$to"
         val first = post("/v1/reports/$key/query", com.aktcl.aron.feature.amo.Reports.body(from, to, 1))
-        if (first !is AmoFetch.Fresh) return cached(cacheKey)
+        if (first.refused) { forget(cacheKey); return AmoFetch.Unavailable }
+        if (first.json == null) return cached(cacheKey)
         val pages = mutableListOf(first.json)
         val total = com.aktcl.aron.feature.amo.Reports.parse(first.json)?.totalRows ?: 0
         var page = 2
-        while (pages.size < MAX_PAGES && (pages.size * 500) < total) {
-            val next = post("/v1/reports/$key/query", com.aktcl.aron.feature.amo.Reports.body(from, to, page++)) as? AmoFetch.Fresh ?: break
-            pages += next.json
+        var complete = true
+        while ((pages.size * 500) < total) {
+            if (pages.size >= MAX_PAGES) { complete = false; break }
+            val next = post("/v1/reports/$key/query", com.aktcl.aron.feature.amo.Reports.body(from, to, page++)).json
+            if (next == null) { complete = false; break }
+            pages += next
         }
-        val all = com.aktcl.aron.feature.amo.Reports.combine(pages)
-        remember(cacheKey, all)
+        val all = com.aktcl.aron.feature.amo.Reports.combine(pages, if (key == "std-memo") com.aktcl.aron.feature.amo.Reports.STD_COLUMNS.toSet() else null)
+        // A short list (pages missing because of a failure or the page cap) never replaces a complete kept copy.
+        if (complete) remember(cacheKey, all)
         return AmoFetch.Fresh(all)
     }
 
-    private suspend fun post(path: String, body: String): AmoFetch {
+    private class PostResult(val json: String?, val refused: Boolean)
+
+    private suspend fun post(path: String, body: String): PostResult {
         val r = client.call(
             path = path, auth = CallAuth.Grant(Grant.FULL),
             build = { post(body.toRequestBody("application/json".toMediaType())) }, decode = { b, _ -> b },
         )
-        return if (r is ApiResult.Success) AmoFetch.Fresh(r.value) else AmoFetch.Unavailable
+        return when {
+            r is ApiResult.Success -> PostResult(r.value, false)
+            r is ApiResult.Failure && (r.httpStatus == 403 || r.httpStatus == 404) -> PostResult(null, true) // out of reach: no old copy either
+            else -> PostResult(null, false)
+        }
     }
 
     suspend fun tasks(fromDate: String): AmoFetch {

@@ -46,4 +46,10 @@ class ReportsTest {
         val r = Reports.parse(page("""{"route_code":"R1","gross_mtk":100,"net_mtk":90}""", """{"route_code":"R1","gross_mtk":50,"net_mtk":45}""", """{"route_code":"R2","gross_mtk":10,"net_mtk":9}"""))!!
         assertEquals(listOf(RouteStd("R1", 2, 150, 135), RouteStd("R2", 1, 10, 9)), Reports.stdByRoute(r))
     }
+
+    @Test fun combineCanKeepOnlyTheShownColumns() {
+        val p = """{"as_of":"x","columns":[{"key":"a","label_en":"A","type":"string"},{"key":"b","label_en":"B","type":"string"}],"rows":[{"a":"1","b":"long text"}],"total_rows":1}"""
+        val r = Reports.parse(Reports.combine(listOf(p), setOf("a")))!!
+        assertEquals(listOf("a"), r.columns.map { it.key }); assertEquals(setOf("a"), r.rows[0].keys)
+    }
 }

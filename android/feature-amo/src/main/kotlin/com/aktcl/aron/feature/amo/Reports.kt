@@ -52,12 +52,13 @@ object Reports {
     }
 
     /** Joins the pages of one report into one document (columns of the first page, all rows). */
-    fun combine(pages: List<String>): String {
+    fun combine(pages: List<String>, keep: Set<String>? = null): String {
         val parsed = pages.mapNotNull { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
         val first = parsed.firstOrNull() ?: return "{}"
         return buildJsonObject {
-            put("as_of", first["as_of"] ?: JsonNull); put("columns", first["columns"] ?: JsonArray(emptyList())); put("total_rows", first["total_rows"] ?: JsonNull)
-            put("rows", buildJsonArray { parsed.forEach { p -> (p["rows"] as? JsonArray)?.forEach { add(it) } } })
+            put("as_of", first["as_of"] ?: JsonNull); put("columns", if (keep == null) first["columns"] ?: JsonArray(emptyList()) else JsonArray((first["columns"] as? JsonArray).orEmpty().filter { ((it as? JsonObject)?.get("key") as? JsonPrimitive)?.contentOrNull in keep })); put("total_rows", first["total_rows"] ?: JsonNull)
+            // [keep] drops the columns the screens never show, so a long report still fits the kept copy and the phone's memory.
+            put("rows", buildJsonArray { parsed.forEach { p -> (p["rows"] as? JsonArray)?.forEach { r -> add(if (keep == null || r !is JsonObject) r else JsonObject(r.filterKeys { it in keep })) } } })
         }.toString()
     }
 
@@ -76,7 +77,9 @@ object Reports {
         )
     }.sortedBy { it.code }
 
-    /** Memos, gross and net per route from the `std-memo` rows. */
+    val STD_COLUMNS = listOf("memo_no", "business_date", "route_code", "outlet_name", "line_count", "gross_mtk", "net_mtk", "paid_mtk", "due_mtk")
+
+    /** Memos, gross and net per route from the `std-memo` rows; only meaningful when the report is complete (the screen hides it when [ReportData.truncated]). */
     fun stdByRoute(r: ReportData): List<RouteStd> = r.rows.groupBy { it.s("route_code").orEmpty() }.map { (code, rows) ->
         RouteStd(code, rows.size, rows.sumOf { it.l("gross_mtk") ?: 0 }, rows.sumOf { it.l("net_mtk") ?: 0 })
     }.sortedBy { it.code }

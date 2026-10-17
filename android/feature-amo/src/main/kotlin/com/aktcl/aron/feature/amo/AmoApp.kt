@@ -2,6 +2,7 @@ package com.aktcl.aron.feature.amo
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,7 +84,9 @@ fun AmoApp(
                 onSupport = screens[AmoScreen.SUPPORT]?.let { { screen = AmoScreen.SUPPORT } },
             )
             else -> if (screens[s] != null) screens.getValue(s)({ screen = if (s == AmoScreen.SUPPORT) AmoScreen.SETTINGS else AmoScreen.HOME }) else {
-                val tile = tiles.first { it.id == s.tileId }
+                // A screen without a tile (Support) whose host is not ready after a recreation goes back to Settings instead of crashing.
+                val tile = tiles.firstOrNull { it.id == s.tileId }
+                if (tile == null) { LaunchedEffect(s) { screen = AmoScreen.SETTINGS }; return@AronScreenTransition }
                 RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = { screen = AmoScreen.HOME }, syncedAt = syncedAt)
             }
         }
