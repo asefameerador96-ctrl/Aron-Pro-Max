@@ -275,6 +275,43 @@ two defects outside this lane. The adb path (s10.4 step 5) is the one that works
    non-shell callers; the QR path moved to an appendix. The runbook is about 1,500 words including the four adb blocks (the
    brief's eight required parts plus the review's additions), a little over two printed pages.
 
+### D-04 result, Honor X5c Plus (owner + laptop session, 2026-10-17 Dhaka 10:55 to 11:09)
+
+- Factory reset by the owner; `adb install -r aron-sr-0.1.724-dev.apk` (local release-signed build, cert `468d9b4e…a4fb`);
+  `adb shell dpm set-device-owner com.aktcl.aron.sr/com.aktcl.aron.dpc.AronDeviceAdminReceiver` → "Device owner set";
+  `dpm list-owners` lists it as DeviceOwner, Affiliated; USB debugging stayed on (dev lockdown). Path A of the runbook.
+- Enrolment: a token typed over adb was refused as unknown (the IME altered the injected text, most likely); token 4 scanned
+  with the in-app QR scanner from the laptop screen → enrolled. Login sr1001 and the bind code (Device OTP panel) → bound.
+  Location notice accepted and permissions granted by the owner.
+- **Check-in suspends the blocked apps: PASS.** Before: `com.facebook.katana`, `com.ss.android.ugc.trill`,
+  `com.google.android.youtube` not suspended. After the hold-to-confirm check-in (11:08:59): all three `suspended=true`,
+  `dumpsys device_policy` shows `suspendedPackages=[youtube, trill, facebook]`; YouTube Music and Chrome untouched.
+- Note for android-geo-dpc: at the same second PackageManager logged "Cannot suspend package" for `com.hihonor.ridemode`,
+  `com.android.vending`, `com.hihonor.contacts`, `com.hihonor.systemmanager` and `com.aktcl.aron.sr` (system-exempt,
+  verifier, default dialer, active admin). Harmless, but the policy apparently asks the OS to suspend packages that can
+  never be suspended; trim the list or filter by `PackageManager` exemptions to keep the log clean.
+- **Check-out releases them: PENDING** (the check-out gate opens at 17:00 Dhaka; run it this evening and re-check
+  `suspended=` on the three packages). **D-05 (mock-location apps): PENDING**; a Google account may now be added to the
+  phone (device owner is set) so Play can install the five mock apps and the cloning tool, or sideload them with adb.
+
+### D-05 result, mock-location detection (laptop session over adb, 2026-10-17 11:15 to 11:19 Dhaka)
+
+- Method: no third-party fake-GPS app was installed (Play needs the owner's Google account; APK mirrors are not a trusted
+  source). Instead the new device-lab test `android/core-geo/src/androidTest/.../MockGpsHoldTest.kt` (test APK with the
+  mock-location app-op, run with `am instrument`) held a fake fix at 23.8069, 90.3687 for 150 s: on the platform GPS test
+  provider AND on Google's fused client (`setMockMode` + `setMockLocation`), because the app reads the fused client
+  (`AndroidLocation.kt`) and a platform-only test provider never reaches it. A shell-created test provider cannot be used:
+  Android removes it when the `cmd location` process exits.
+- Visit check on "Mirpur 10 Store 1" (seeded route, radius 100 m): with the platform-only mock the app took the real
+  network fix (5,554 m away, no mock line). With the fused feed, Refresh gave **"নকল লোকেশন ধরা পড়েছে। নকল লোকেশন থেকে এই
+  দোকানে বিক্রয় করা যাবে না।"**, refresh count 2, the range view with the phone inside the circle, and the bar offered only
+  Force Sale and Refresh: **a mocked fix is never geo-valid (PASS for the mechanism; policy `warn_rep`)**.
+- Pending: the five real fake-GPS apps and the cloning tool (owner installs them from Play once a Google account is
+  added, or hands the APKs to the laptop); the server re-check of the stored visit flags (`is_mock`) after a sync.
+- Observation for android-sr-a / the real-data plan: on Saturday 2026-10-17 the picker opened the seeded "Mirpur 10 Daily"
+  route without offering the real route 16685 (Sat/Mon/Wed); check whether seed 06's plan rows mark it `plannedToday`
+  and whether the route picker (F-SR-065) is reached when two routes are planned.
+
 ## DD-01 (2026-10-17)
 
 - The phone database writer now runs `PRAGMA synchronous = FULL` (`AronDatabase.SynchronousFull`, `SynchronousFullTest` in CI). **Commit-time cost on the lab A06: not measured yet.** Measure with D-PERF-04 (sale save, 300 ms gate): record the median of `recordSale` before and after on the same build; expect a few milliseconds per commit (one extra fsync on eMMC). Do not trade back to NORMAL (PERF-08).

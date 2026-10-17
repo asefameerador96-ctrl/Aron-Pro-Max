@@ -1,0 +1,71 @@
+# Records the web e2e screenshot goldens (web/e2e/*-snapshots/*-chromium-linux.png) on the same Linux runner image that
+# ci.yml verifies them on, and uploads them as an artifact. Manual only: run it after an intended restyle, download the
+# artifact, copy the PNGs over web/e2e/**-snapshots/, look at them, commit. The laptop cannot produce them (Windows
+# renders differently, so Playwright names them chromium-win32 and CI would still compare against chromium-linux).
+# Actions are pinned by commit SHA (release tag in the comment), as in ci.yml.
+
+name: web-snapshots
+
+on:
+  # A push that touches this file records the goldens on that branch (workflow_dispatch only works once the file is on
+  # the default branch, after the train promotes it); edit the comment line below to re-record from a lane.
+  push:
+    paths: [".github/workflows/web-snapshots.yml"]
+  workflow_dispatch:
+    inputs:
+      spec:
+        description: "Playwright spec(s) whose snapshots to record (space separated)"
+        required: false
+        default: "e2e/config-tiers.spec.ts"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    name: Record the Linux screenshot goldens
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: web
+    env:
+      SPEC: ${{ inputs.spec }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: bash scripts/ci.sh install
+      - run: bash scripts/ci.sh generate
+      - name: next build
+        env:
+          NEXT_PUBLIC_MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
+        run: bash scripts/ci.sh build
+      - name: Playwright version (browser cache key)
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "${GITHUB_OUTPUT}"
+      - name: Cache the Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Chromium for e2e
+        timeout-minutes: 14
+        run: bash ../tools/ci/playwright-chromium.sh
+      - name: Record the goldens
+        run: |
+          # On a push there is no input: record the screenshot spec only, never the whole suite.
+          # shellcheck disable=SC2086
+          CI=1 npx playwright test ${SPEC:-e2e/config-tiers.spec.ts} --update-snapshots
+      - name: Upload the recorded goldens
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-snapshots
+          path: web/e2e/**/*-snapshots/*.png
+          if-no-files-found: error
+          retention-days: 7

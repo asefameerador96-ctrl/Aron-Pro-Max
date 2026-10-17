@@ -85,3 +85,12 @@ A production-readiness audit ran alongside (six dimensions, adversarial verifica
 - Deferred to save the owner's allowance: web page-by-page restyle (the theme, shell, kit, dashboard and login are
   done), kit polish items (bar label wrap at 360 dp, tile plate padding, segmented thumb animation), the hardening
   items of the audit (next phase, owner's call).
+
+### 2026-10-17 CI on the pushed branches
+
+ci #836/#838 (UI branch) failed on two things, both fixed: the `config-tiers` chromium-linux goldens were stale after the
+restyle (re-recorded on the runner through the new `web-snapshots` workflow, which runs on a push touching its own file
+because lanes cannot dispatch it; PNGs committed) and `HomeScreenTest.headerAndTilesInBangla` expected an ASCII date
+(now Bengali digits). The 48 px target e2e check measured 47.9999 on Linux and now compares whole pixels. The hardening
+branch's four own failures (script mode bit, Semgrep on load-smoke.yml, worker liveness port in the container smoke,
+`SynchronousFullTest` on Linux) are with the hardening session.

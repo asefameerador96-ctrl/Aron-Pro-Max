@@ -144,7 +144,7 @@ class HomeScreenTest {
         show(AppLanguage.BN)
         compose.onNodeWithText("SR - Testing Banani (sr334001)").assertExists()
         // the two caption lines of screens-sr s2: the route name over "<ISO date> · <route kind>"
-        compose.onNodeWithText("Apsis RouteDaily\n2026-10-05 · প্রতিদিন").assertExists()
+        compose.onNodeWithText("Apsis RouteDaily\n২০২৬-১০-০৫ · প্রতিদিন").assertExists()   // the date is a number: Bengali digits in Bangla (UI-SR-08)
         compose.onNodeWithText("অ্যাটেনডেন্স").assertExists(); compose.onNodeWithText("টাস্ক ডেলিগেশন").assertExists()
         compose.onNodeWithText("ফটো ক্যাপচার").assertDoesNotExist()
     }

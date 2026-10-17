@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Test APK only (never packaged into an app): the mock-location permission lets the device-lab test below hold a fake
+     GPS fix so the field app's mock detection (D-05) can be exercised over adb without installing a third-party app. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION" tools:ignore="MockLocation" xmlns:tools="http://schemas.android.com/tools" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+</manifest>
