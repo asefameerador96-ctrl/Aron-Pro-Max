@@ -10,9 +10,9 @@ type Q = Record<string, string | number | undefined>;
 const get = <T>(token: string, path: string, query?: Q): Promise<ApiOutcome<T>> => rawRequest<T>({ method: "GET", path, token, query });
 
 export const getSummary = (token: string, q: Q = {}) => get<Summary>(token, "/v1/dashboards/summary", q);
-export const getLoginSubmit = (token: string, date: string) => get<Schemas["LoginSubmitStatus"]>(token, "/v1/dashboards/login-submit", { business_date: date });
+export const getLoginSubmit = (token: string, date: string, node: Q = {}) => get<Schemas["LoginSubmitStatus"]>(token, "/v1/dashboards/login-submit", { business_date: date, ...node });
 export const getGeoValidation = (token: string, q: Q = {}) => get<Schemas["GeoValidationSummary"]>(token, "/v1/dashboards/geo-validation", q);
-export const getTeamLocations = (token: string, date: string) => get<Schemas["TeamLocationList"]>(token, "/v1/team/locations", { business_date: date });
+export const getTeamLocations = (token: string, date: string, zoneId?: number) => get<Schemas["TeamLocationList"]>(token, "/v1/team/locations", { business_date: date, zone_id: zoneId });
 /** Follow `next_cursor` to the end (bounded), so figures at fleet size are not computed from the first page only. */
 async function allPages<P extends { items: unknown[]; next_cursor: string | null }>(token: string, path: string, query: Q): Promise<ApiOutcome<P>> {
   let first: ApiOutcome<P> | null = null;
