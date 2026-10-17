@@ -83,6 +83,8 @@ fun TsoApp(
     myCall: com.aktcl.aron.feature.tso.mycall.MyCallDeps? = null,
     /** F-TSO-010/021: Final Submit (online only); null shows the placeholder. */
     finalSubmit: com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi? = null,
+    /** F-TSO-011/012: My Team and Retailer maps; null shows the placeholder. */
+    periphery: PeripheryDeps? = null,
     userId: Long = 0L,
     /** Real screens by destination, supplied by the app module; a screen not listed shows the placeholder frame. */
     screens: Map<TsoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
@@ -139,6 +141,9 @@ fun TsoApp(
                 val counter = rememberRetained("tso-${user.username}-fs-epoch") { RetainedCounter() }
                 val st = rememberRetained("tso-${user.username}-fs-${counter.n}") { com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitState(finalSubmit, userId, today) }
                 com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitScreen(st, onBack = { screen = TsoScreen.HOME; counter.n++ })
+            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
+            TsoScreen.PERIPHERY -> if (periphery != null) {
+                PeripheryFlow(periphery, user.username, today, onBack = { screen = TsoScreen.HOME })
             } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
             TsoScreen.MY_CALL -> if (myCall != null) {
                 MyCallFlow(myCall, user.username, today, onBack = { screen = TsoScreen.HOME })
@@ -234,5 +239,28 @@ private fun MyCallFlow(deps: com.aktcl.aron.feature.tso.mycall.MyCallDeps, userK
             }
         }
         else -> com.aktcl.aron.feature.tso.mycall.MyCallHub({ step = "set" }, { step = "plan" }, onBack)
+    }
+}
+
+/** What My Periphery needs from the host: the reads, one fix on demand, connectivity and trusted time. */
+class PeripheryDeps(
+    val source: com.aktcl.aron.feature.tso.periphery.PeripherySource, val fix: com.aktcl.aron.feature.tso.periphery.PeripheryFix,
+    val online: () -> Boolean, val nowMs: () -> Long, val settings: com.aktcl.aron.core.map.MapSettings = com.aktcl.aron.core.map.MapSettings(),
+)
+
+@Composable
+private fun PeripheryFlow(deps: PeripheryDeps, userKey: String, today: () -> String, onBack: () -> Unit) {
+    var step by rememberSaveable { mutableStateOf("hub") }
+    BackHandler(enabled = step != "hub") { step = "hub" }
+    when (step) {
+        "team" -> {
+            val st = rememberRetained("tso-$userKey-pe-team") { com.aktcl.aron.feature.tso.periphery.TeamState(deps.source, today) }
+            com.aktcl.aron.feature.tso.periphery.TeamScreen(st, deps.online, deps.nowMs, userKey, onBack = { step = "hub" }, settings = deps.settings)
+        }
+        "retailer" -> {
+            val st = rememberRetained("tso-$userKey-pe-retailer") { com.aktcl.aron.feature.tso.periphery.RetailerState(deps.source, deps.fix) }
+            com.aktcl.aron.feature.tso.periphery.RetailerScreen(st, deps.online, deps.nowMs, userKey, onBack = { step = "hub" }, settings = deps.settings)
+        }
+        else -> com.aktcl.aron.feature.tso.periphery.PeripheryHub({ step = "team" }, { step = "retailer" }, onBack)
     }
 }

@@ -190,4 +190,18 @@
     <string name="tso_mc_task_waiting">Assign task</string>
     <string name="tso_mc_no_task_types">The task types have not been downloaded yet. Connect once and open the app again.</string>
     <string name="tso_mc_no_rubric">The visit questions have not been downloaded yet. Connect once and open the app again.</string>
+    <string name="tso_pe_team">My Team</string>
+    <string name="tso_pe_team_sub">Last synced place of each SR</string>
+    <string name="tso_pe_retailer">Retailer</string>
+    <string name="tso_pe_retailer_sub">Outlets around you</string>
+    <string name="tso_pe_radius">Radius</string>
+    <string name="tso_pe_find">Find outlets here</string>
+    <string name="tso_pe_locating">Reading your location…</string>
+    <string name="tso_pe_loading">Finding outlets…</string>
+    <string name="tso_pe_need_permission">Allow location to find the outlets around you.</string>
+    <string name="tso_pe_allow">Allow location</string>
+    <string name="tso_pe_location_off">Location is switched off. Switch it on and try again.</string>
+    <string name="tso_pe_no_fix">Could not read your location. Try again outdoors.</string>
+    <string name="tso_pe_mock">This location looks like a fake location. The result is for information only.</string>
+    <string name="tso_pe_truncated">Showing the nearest %1$d outlets.</string>
 </resources>

@@ -88,6 +88,12 @@ class MainActivity : ComponentActivity() {
         activityLog.flushSoon(id) // the log's own scope: onDestroy right after must not cancel the write
     }
 
+    private fun isOnline(): Boolean {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLocale.wrap(newBase))
     }
@@ -197,6 +203,12 @@ class MainActivity : ComponentActivity() {
                                 feedback = remember(s.user.userId) { readModels.feedback(s.user.userId) },
                                 feedbackQueue = remember(s.user.userId) { readModels.feedbackQueue(s.user.userId) },
                                 userId = s.user.userId,
+                                periphery = remember(s.user.userId) {
+                                    com.aktcl.aron.feature.tso.PeripheryDeps(
+                                        readModels.periphery(s.user.userId, readModels.plan(s.user.userId)), readModels.fix(applicationContext),
+                                        online = { isOnline() }, nowMs = { components.trustedClock.nowMs() },
+                                    )
+                                },
                                 finalSubmit = remember(s.user.userId) { readModels.finalSubmit(s.user.userId, readModels.plan(s.user.userId)) },
                                 myCall = remember(s.user.userId) {
                                     val src = readModels.plan(s.user.userId)

@@ -282,6 +282,47 @@ class TsoReadModels(private val components: SessionComponents, private val datab
         done
     }
 
+    // ---- My Periphery (F-TSO-011/012) ----
+
+    fun periphery(userId: Long, plan: com.aktcl.aron.feature.tso.mycall.PlanSource): com.aktcl.aron.feature.tso.periphery.PeripherySource = object : com.aktcl.aron.feature.tso.periphery.PeripherySource {
+        private val J = com.aktcl.aron.feature.tso.periphery.PeripheryJson
+
+        override suspend fun zones() = runCatching { plan.routes() }.getOrNull()?.let { com.aktcl.aron.feature.tso.mycall.zonesOf(it) }
+
+        override suspend fun routeCodes(): Map<Long, String> = runCatching { plan.routes() }.getOrNull().orEmpty().associate { it.id to it.code }
+
+        override suspend fun nearby(lat: Double, lng: Double, radiusM: Int, zoneId: Long?): com.aktcl.aron.feature.tso.periphery.Stamped<com.aktcl.aron.feature.tso.periphery.Nearby>? {
+            val key = "nearby.${zoneId ?: 0}.$radiusM"
+            val path = "/v1/outlets/nearby?lat=$lat&lng=$lng&radius_m=$radiusM" + (zoneId?.let { "&zone_id=$it" } ?: "")
+            val fresh = get(path)?.let { J.nearby(it) }
+            if (fresh != null) { cachePut(userId, key, J.nearbyToCache(fresh), asOfNow()); return com.aktcl.aron.feature.tso.periphery.Stamped(fresh, asOfNow(), false) }
+            return cacheGet(userId, key)?.let { (body, asOf) -> J.nearby(body)?.let { com.aktcl.aron.feature.tso.periphery.Stamped(it, asOf, true) } }
+        }
+
+        override suspend fun team(zoneId: Long?, date: String): com.aktcl.aron.feature.tso.periphery.Stamped<List<com.aktcl.aron.feature.tso.periphery.TeamMember>>? {
+            val key = "team.${zoneId ?: 0}"
+            val fresh = get("/v1/team/locations?business_date=$date" + (zoneId?.let { "&zone_id=$it" } ?: ""))?.let { J.team(it) }
+            if (fresh != null) { cachePut(userId, key, J.teamToCache(fresh), asOfNow()); return com.aktcl.aron.feature.tso.periphery.Stamped(fresh, asOfNow(), false) }
+            return cacheGet(userId, key)?.let { (body, asOf) -> J.team(body)?.let { com.aktcl.aron.feature.tso.periphery.Stamped(it, asOf, true) } }
+        }
+    }
+
+    /** One balanced-power location on demand: Play services first, the platform provider as the fallback (core-geo). */
+    fun fix(context: android.content.Context): com.aktcl.aron.feature.tso.periphery.PeripheryFix {
+        val access = com.aktcl.aron.core.geo.AndroidLocationAccess(context)
+        val source = com.aktcl.aron.core.geo.FallbackLocationSource(com.aktcl.aron.core.geo.FusedLocationSource(context), com.aktcl.aron.core.geo.PlatformLocationSource(context))
+        return com.aktcl.aron.feature.tso.periphery.PeripheryFix {
+            when (access.state(requirePrecise = false)) {
+                com.aktcl.aron.core.geo.LocationAccessState.PERMISSION_DENIED -> com.aktcl.aron.feature.tso.periphery.FixResult.PermissionNeeded
+                com.aktcl.aron.core.geo.LocationAccessState.LOCATION_OFF -> com.aktcl.aron.feature.tso.periphery.FixResult.LocationOff
+                com.aktcl.aron.core.geo.LocationAccessState.OK -> when (val r = source.currentLocation(com.aktcl.aron.core.geo.FixPriority.BALANCED, 20_000L)) {
+                    is com.aktcl.aron.core.geo.SourceResult.Located -> com.aktcl.aron.feature.tso.periphery.FixResult.Ok(r.location.lat, r.location.lng, r.location.accuracyM, r.location.isMock)
+                    else -> com.aktcl.aron.feature.tso.periphery.FixResult.Failed
+                }
+            }
+        }
+    }
+
     /** F-TSO-010/021: preview read and the one online POST; no queue, scope from the token only. */
     fun finalSubmit(userId: Long, plan: com.aktcl.aron.feature.tso.mycall.PlanSource): com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi = object : com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi {
         private fun why(r: ApiResult<*>): com.aktcl.aron.feature.tso.finalsubmit.FsFailure = when (r) {
