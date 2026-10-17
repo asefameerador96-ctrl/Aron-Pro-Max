@@ -317,3 +317,14 @@ two defects outside this lane. The adb path (s10.4 step 5) is the one that works
   `suspended=true` counts were 0 and `dumpsys device_policy` no longer lists `suspendedPackages`. Note: the Home dock
   read "Sales submit" after 17:00 (day-state order: submit, then check out), so the check-out was taken from the
   Attendance bar. **D-04 complete** on the Honor X5c Plus (device owner by adb path A).
+
+### D-QA-1 Day 1 ten-minute check script (N-015; qa) — DEVICE-PENDING, laptop session
+Script: `tools/checks/day1-check.ps1` (tested in the cloud against a fake adb and a mock API: all-pass, wrong
+password and no-tools runs; check 4 passes against dev from the cloud: `/v1/health` 200 via Front Door, build f84b22b).
+Steps (laptop session, the Honor X5c Plus on USB, about 5 minutes):
+1. `git pull`, then in PowerShell from the repository folder: `.\tools\checks\day1-check.ps1` (add `-Apk <path>` to
+   install or update the SR APK first). It asks for the password of `tso1001` (not shown, never stored; or set
+   `$env:ARON_CHECK_PASSWORD` in that window only).
+2. When it says so, the owner logs in on the phone as `sr1001` and answers `y` if the home screen opened.
+3. Pass = `ALL PASS (5 checks)`: phone listed, APK installed, login succeeded (API), login on phone, /health from
+   Azure. Paste the window (it holds no secret) into `docs/status/laptop.md` and tell the lead.
