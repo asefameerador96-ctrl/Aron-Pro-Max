@@ -11,7 +11,6 @@ import com.aktcl.aron.core.database.entity.SurveyEntity
 import com.aktcl.aron.core.database.entity.VisitEntity
 import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.feature.amo.AmoBrand
-import com.aktcl.aron.feature.amo.AssignedSr
 import com.aktcl.aron.feature.amo.JointRubric
 import com.aktcl.aron.feature.amo.JointState
 import com.aktcl.aron.feature.amo.PerfState
@@ -28,13 +27,10 @@ import com.aktcl.aron.feature.outlet.OutletRequestKind
 import com.aktcl.aron.feature.outlet.SurveyAnswer
 import com.aktcl.aron.feature.outlet.SurveyQuestion
 import com.aktcl.aron.feature.outlet.SurveyResponseRow
-import com.aktcl.aron.feature.stock.StockAdjustments
-import com.aktcl.aron.feature.stock.StockTracker
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -60,6 +56,9 @@ class AmoRecordWriterReplayTest {
     private val date = "2026-10-17"
     private val route = 10231L
 
+    private val claims = mutableListOf<List<String>>()
+    private var stamped: String? = null
+
     private val metaProvider = CaptureMetaProvider { rid ->
         metaCalls++
         if (failMetaAt in 1..metaCalls) error("the process died while writing")
@@ -74,14 +73,16 @@ class AmoRecordWriterReplayTest {
         databases = UserDatabases(ApplicationProvider.getApplicationContext<Application>()) { null }
         val db = runBlocking { databases.of(user) }
         capture = CaptureRepository(db) { "2026-10-17T04:00:00.000Z" }
-        writer = AmoRecordWriter(db, capture, metaProvider, { route }, { ClientIds.newUuid() }, { syncs++ }, { ok }, { _, _, _, _, _ -> })
+        writer = AmoRecordWriter(db, capture, metaProvider, { route }, { ClientIds.newUuid() }, { syncs++ }, { ok },
+            { photo, purpose, _, ref, fix -> claims += listOf(photo, purpose, ref, fix?.clientUuid.orEmpty()) }, { _, _ -> stamped },
+        )
     }
 
     @Before fun start() = open()
     @After fun stop() { databases.close(user) }
 
     /** The process dies: the database handle and every host object are gone; the next launch opens the same file again. */
-    private fun relaunch() { databases.close(user); databases.allowOpen(user); open() }
+    private fun relaunch() { databases.close(user); open() } // a fresh UserDatabases and fresh host objects, as a new process has
 
     private val db get() = runBlocking { databases.of(user) }
     private fun outbox(type: String? = null) = runBlocking { db.outboxDao().nextPending(10_000) }.filter { type == null || it.recordType == type }
@@ -145,6 +146,8 @@ class AmoRecordWriterReplayTest {
         assertTrue(runCatching { writer.saveAssessment(v, brands, PerfState(present = setOf(1L, 2L), oos = setOf(2L), posm = true)) }.isFailure)
         failMetaAt = -1; relaunch()
         assertEquals(base, outbox().size)
+        writer.saveAssessment(v, brands, PerfState(present = setOf(1L, 2L), oos = setOf(2L), posm = true))
+        assertTrue("the replay after the rollback writes the whole assessment", outbox().size >= base + 3)
     }
 
     // ---------- survey ----------
@@ -157,6 +160,17 @@ class AmoRecordWriterReplayTest {
         val rows = payloads("survey_response"); assertEquals(1, rows.size)
         relaunch(); writer.saveSurvey(v, survey, surveyRows(v)) // the screen is rebuilt and Save is pressed again: new row uuids, same visit
         assertEquals(base + 1, outbox().size); assertEquals(rows, payloads("survey_response"))
+    }
+
+    @Test fun aSurveyPhotoNotClaimedBeforeAKillIsClaimedWhenSaveIsReplayed() = runBlocking {
+        val v = visit(); val survey = SurveyEntity(1, 1, "S", null); val photo = ClientIds.newUuid()
+        val rows = listOf(SurveyResponseRow(ClientIds.newUuid(), v, 1, 1, question, SurveyAnswer(bool = true, photoUuid = photo)))
+        writer.saveSurvey(v, survey, rows)
+        val first = claims.size; assertEquals(1, first)
+        relaunch(); claims.clear() // the process died before the claim: the new process has no claim, the row names the photo
+        writer.saveSurvey(v, survey, surveyRows(v))
+        assertEquals(listOf(photo, "survey", rows[0].clientUuid, ""), claims.single())
+        assertEquals(1, payloads("survey_response").size)
     }
 
     // ---------- price compliance ----------
@@ -178,7 +192,7 @@ class AmoRecordWriterReplayTest {
         assertTrue(writer.assignTask(u, "stock_check", 7L, 50001L, "Stock check", null, "2026-10-18"))
         val rows = payloads("task"); assertEquals(1, rows.size); assertEquals(1, syncs)
         relaunch()
-        assertFalse("the same form uuid after the kill queues nothing", writer.assignTask(u, "stock_check", 7L, 50001L, "Stock check", null, "2026-10-18"))
+        assertFalse("the same form uuid (restored by the system after a process death) queues nothing", writer.assignTask(u, "stock_check", 7L, 50001L, "Stock check", null, "2026-10-18"))
         assertEquals(rows, payloads("task"))
     }
 
@@ -226,16 +240,20 @@ class AmoRecordWriterReplayTest {
         assertEquals(1, db.captureDao().outletRequests().size)
     }
 
+    @Test fun updateBaseReusesTheFixUuidAlreadyStampedOnItsPhotoAfterARelaunch() = runBlocking {
+        val u = ClientIds.newUuid(); val photo = ClientIds.newUuid()
+        stamped = ClientIds.newUuid()
+        writer.commitOutletRequest(draft(u).copy(photoUuids = listOf(photo)))
+        assertEquals(stamped, claims.single()[3])
+        assertEquals(1, db.captureDao().outletRequests().size)
+    }
+
     // ---------- stock correction ----------
     @Test fun aStockCorrectionIsOneAdjustmentAndASecondSavePostsNothing() = runBlocking {
         val issue = StockMovementEntity(ClientIds.newUuid(), metaProvider.meta(0L), "issue", 100, 100, "stick", 1, 100, null, false)
         capture.recordStock(listOf(issue))
-        suspend fun correct(right: Long) {
-            val current = StockTracker.of(db, date)[100]?.current ?: 0L // a fresh read, as the screen does
-            StockAdjustments.correctTotal(100, current, right, "count_error", "stick", metaProvider.meta(0L))?.let { capture.recordStock(listOf(it)) }
-        }
-        correct(80); val rows = payloads("stock_movement"); assertEquals(2, rows.size)
-        relaunch(); correct(80) // the same Save again after the kill: the balance is already 80
+        assertTrue(writer.correctStock(date, 100, 80, "count_error", "stick")); val rows = payloads("stock_movement"); assertEquals(2, rows.size)
+        relaunch(); assertFalse(writer.correctStock(date, 100, 80, "count_error", "stick")) // the same Save again after the kill: the balance is already 80
         assertEquals(rows, payloads("stock_movement"))
     }
 
@@ -247,12 +265,13 @@ class AmoRecordWriterReplayTest {
         submitter().queue(date, gate, counts)
         val rows = payloads("day_submit"); assertEquals(1, rows.size)
         relaunch()
-        assertTrue("a replay is refused while the day stands submitted", runCatching { submitter().queue(date, gate, counts) }.isFailure)
+        val refused = runCatching { submitter().queue(date, gate, counts) }.exceptionOrNull()
+        assertTrue("a replay is refused while the day stands submitted: $refused", refused is IllegalStateException && refused.message.orEmpty().contains("submitted"))
         assertEquals(rows, payloads("day_submit")); assertTrue(capture.submitStands(date))
     }
 
     // ---------- the sale (SR stack on the AMO's stock) ----------
-    @Test fun aReplayedSaleWithTheSameMemoUuidIsRefusedAndLeavesOneMemo() = runBlocking {
+    @Test fun aReplayedNumberedSaleReturnsItsNumberAndBurnsNone() = runBlocking {
         val v = visit()
         val memo = com.aktcl.aron.core.database.entity.MemoEntity(
             clientUuid = ClientIds.newUuid(), meta = metaProvider.meta(route), visitClientUuid = v, outletId = 50001, memoNo = "amo5001-261017-001", memoKind = "sale",
@@ -262,10 +281,17 @@ class AmoRecordWriterReplayTest {
         )
         val line = com.aktcl.aron.core.database.entity.MemoLineEntity(ClientIds.newUuid(), metaProvider.meta(route), memo.clientUuid, 1, 100, "sale", 1, "pack", 1, 1, "outlet", date, 1000, 1, 1000)
         val sale = com.aktcl.aron.core.database.repo.SaleCapture(memo, listOf(line), emptyList(), emptyList())
-        capture.recordSale(sale)
+        val numbering = com.aktcl.aron.core.database.repo.MemoNumbering("amo5001", 0, 500)
+        val no = capture.recordNumberedSale(sale, numbering)
         val rows = payloads("memo") + payloads("memo_line"); assertEquals(2, rows.size)
+        val counter = counterDump()
         relaunch()
-        assertTrue("the replay is refused, not doubled", runCatching { capture.recordSale(sale) }.isFailure)
-        assertEquals(rows, payloads("memo") + payloads("memo_line")); assertNull(null)
+        assertEquals("the replay returns the number it got", no, capture.recordNumberedSale(sale, numbering))
+        assertEquals("no number was burnt", counter, counterDump())
+        assertEquals(rows, payloads("memo") + payloads("memo_line"))
+    }
+
+    private fun counterDump(): String = db.openHelper.readableDatabase.query("SELECT * FROM memo_counter").use { c ->
+        buildList { while (c.moveToNext()) add((0 until c.columnCount).joinToString(",") { c.getString(it) ?: "" }) }.joinToString(";")
     }
 }

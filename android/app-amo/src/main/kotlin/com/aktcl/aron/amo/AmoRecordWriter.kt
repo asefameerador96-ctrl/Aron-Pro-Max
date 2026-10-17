@@ -24,6 +24,8 @@ class AmoRecordWriter(
     private val requestSync: () -> Unit,
     private val readFix: suspend (purpose: String) -> FixReading,
     private val claimPhoto: suspend (photoUuid: String, purpose: String, refType: String, refUuid: String, fix: GeoFixEntity?) -> Unit,
+    /** The fix uuid already stamped on a photo that belongs to this request (a claim of an earlier attempt), or null. */
+    private val stampedFixUuid: suspend (photoUuid: String, requestUuid: String) -> String? = { _, _ -> null },
 ) {
     /** Joint Call assessment (F-AMO-011): one assessment and its answers, family = the visit; a second Save for the visit writes nothing. */
     suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?) {
@@ -106,7 +108,13 @@ class AmoRecordWriter(
 
     /** Writes the confirmed answers all or nothing (one per question per visit; a kill mid-way keeps none) and claims the photos for them. */
     suspend fun saveSurvey(visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity, rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>) {
-        if (rows.isEmpty() || db.captureDao().surveyResponsesOf(visitUuid).isNotEmpty()) return
+        if (rows.isEmpty()) return
+        val stored = db.captureDao().surveyResponsesOf(visitUuid)
+        if (stored.isNotEmpty()) {
+            // A replay after a kill between the commit and the claim: the answers are there, so only the photos they name are claimed again (idempotent per record).
+            for (r in stored) r.photoUuid?.let { runCatching { claimPhoto(it, "survey", "survey_response", r.clientUuid, null) } }
+            return
+        }
         val meta = meta.meta(routeOfCall())
         db.withTransaction {
             for (r in rows) {
@@ -157,10 +165,25 @@ class AmoRecordWriter(
      */
     suspend fun commitOutletRequest(draft: com.aktcl.aron.feature.outlet.OutletRequestDraft) {
         val fix = draft.fix ?: readFix("outlet_capture")
-        val fixUuid = requestFixUuids.getOrPut(draft.requestUuid) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+        // After a relaunch the photo may already carry the fix uuid of the first attempt; reuse it so the media meta keeps its geo link.
+        val fixUuid = requestFixUuids.getOrPut(draft.requestUuid) {
+            draft.photoUuids.firstNotNullOfOrNull { stampedFixUuid(it, draft.requestUuid) } ?: com.aktcl.aron.core.common.ClientIds.newUuid()
+        }
         val (entity, fixEntity) = draft.toEntities(meta.meta(0L), fix, fixUuid)
         draft.photoUuids.forEach { claimPhoto(it, "outlet_capture", "outlet_change_request", entity.clientUuid, fixEntity) }
         capture.recordOutletRequest(entity, fixEntity)
         requestSync()
+    }
+
+    /**
+     * Stock correction (F-AMO-049): reads today's balance fresh (never a stale delta), posts one adjustment to reach [right], and posts nothing
+     * when the balance is already there, so the same Save again after a kill and relaunch writes nothing. Returns whether a row was written.
+     */
+    suspend fun correctStock(businessDate: String, skuId: Long, right: Long, reasonCode: String, unit: String): Boolean {
+        val current = com.aktcl.aron.feature.stock.StockTracker.of(db, businessDate)[skuId]?.current ?: 0L
+        val adj = com.aktcl.aron.feature.stock.StockAdjustments.correctTotal(skuId, current, right, reasonCode, unit, meta.meta(0L)) ?: return false
+        capture.recordStock(listOf(adj))
+        runCatching { requestSync() }
+        return true
     }
 }

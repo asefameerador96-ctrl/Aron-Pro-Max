@@ -177,6 +177,13 @@ class AmoDay(
         }
     }
 
+    private suspend fun stampedFixUuid(photoUuid: String, requestUuid: String): String? {
+        val m = media ?: return null
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            m.store.get(photoUuid)?.takeIf { it.ref?.refClientUuid == requestUuid }?.stamp?.fixClientUuid
+        }
+    }
+
     fun newCapture(purpose: String) = GeoPhotoCapture(fixSource, object : PhotoPipeline {
         override suspend fun captureAndCompress(photoUuid: String) = photoPipeline.captureAndCompress(photoUuid)
         override suspend fun discard(photoUuid: String) = photoPipeline.discard(photoUuid)
@@ -417,10 +424,13 @@ class AmoDay(
         AmoRecordWriter(
             db, capture, metaProvider, { visitSession.current.value?.routeId ?: 0L }, ::newUuid, { runCatching { requestSync() } },
             { purpose -> fixSource.readFix(purpose) }, { photo, purpose, refType, refUuid, fix -> claimPhoto(photo, purpose, refType, refUuid, fix) },
+            { photo, requestUuid -> stampedFixUuid(photo, requestUuid) },
         )
     }
 
     // ---- Verify SR outlet requests (F-AMO-022/023/024)
+
+    suspend fun correctStock(skuId: Long, right: Long, reasonCode: String, unit: String): Boolean = writer.correctStock(businessDate(), skuId, right, reasonCode, unit)
 
     suspend fun decidedRequests(): Set<String> = writer.decidedRequests()
 
