@@ -49,6 +49,7 @@ class BundleDownloaderTest {
     private val requests = ArrayList<RecordedRequest>()
     private var paged = false
     private var dropPage2 = 0
+    private var badRowOnPage2 = false
     private var bundleBody: () -> String = { fullBundle() }
     private var deltaAnswer: (RecordedRequest) -> MockResponse = { MockResponse.Builder().code(304).addHeader("X-Aron-Api", "1").build() }
 
@@ -82,7 +83,7 @@ class BundleDownloaderTest {
 
     private fun page(n: Int): String {
         val all = fixture()["routes"]!!.jsonArray.flatMap { it.jsonObject["outlets"]!!.jsonArray }
-        val rows = all.chunked(100)[n - 1]
+        val rows = all.chunked(100)[n - 1].let { r -> if (badRowOnPage2 && n == 2) r.mapIndexed { i, e -> if (i == 0) JsonObject(e.jsonObject - "outlet_id") else e } else r }
         return buildJsonObject {
             put("bundle_version", JsonPrimitive("2026-10-05:3")); put("section", JsonPrimitive("outlets"))
             put("page", JsonPrimitive(n)); put("pages", JsonPrimitive(2)); put("rows", buildJsonArray { rows.forEach { add(it) } })
@@ -177,6 +178,20 @@ class BundleDownloaderTest {
         paged = false
         downloader().download() // a later full re-apply of the same snapshot replaces, never adds
         assertEquals(200, db.referenceDao().outletCount())
+    }
+
+    @Test fun aStagedPageWithAnUnreadableRowAppliesNothingAndKeepsTheHeldSnapshot() = runBlocking {
+        downloader().download() // today's snapshot, 200 outlets, inline
+        assertEquals(200, db.referenceDao().outletCount())
+        paged = true
+        badRowOnPage2 = true
+        bundleBody = { fullBundle().replace("2026-10-05:3", "2026-10-05:4") }
+        db.referenceDao().deleteMeta(ReferenceRepository.KEY_BUNDLE_ETAG) // an unconditional request: no 304
+        val r = downloader().download()
+        assertEquals(BundleOutcome.FAILED, r.outcome)
+        assertEquals("malformed_page", r.code)
+        assertEquals(200, db.referenceDao().outletCount()) // the whole previous snapshot, no half of the new one
+        assertEquals("2026-10-05:3", ReferenceRepository(db).bundleVersion())
     }
 
     @Test fun anEveningPrefetchStartsTomorrowOfflineAndNeverReplacesToday() = runBlocking {

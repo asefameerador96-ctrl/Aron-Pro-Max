@@ -30,6 +30,27 @@ import kotlinx.serialization.json.Json
 /** The route of the day as the SR app reads it offline. */
 data class RouteDay(val route: RouteEntity, val outlets: List<OutletEntity>)
 
+/**
+ * The outlet rows of a paged bundle, one page at a time (F-AMO-044: an AMO zone is up to 11,000 outlets). [ReferenceRepository.apply]
+ * parses and inserts one page and drops it before it asks for the next, so the whole outlet list is never in memory.
+ */
+interface OutletPages {
+    val count: Int
+
+    /** The raw outlet rows (`BundleOutlet` JSON) of page [index], 0-based. Called inside the apply transaction. */
+    suspend fun rows(index: Int): List<JsonObject>
+}
+
+/** Outlet pages staged as files `{"rows": [...]}` (the download keeps them per bundle version until the snapshot is applied). */
+class FileOutletPages(private val files: List<java.io.File>) : OutletPages {
+    override val count: Int get() = files.size
+    override suspend fun rows(index: Int): List<JsonObject> {
+        val page = Json.parseToJsonElement(files[index].readText()) as? JsonObject ?: throw IllegalArgumentException("outlet page ${index + 1} is not an object")
+        val rows = page["rows"] as? JsonArray ?: throw IllegalArgumentException("outlet page ${index + 1} has no rows")
+        return rows.map { it as? JsonObject ?: throw IllegalArgumentException("outlet page ${index + 1} holds a row that is not an object") }
+    }
+}
+
 /** What [ReferenceRepository.applyConfigDelta] did. */
 enum class DeltaResult { APPLIED, STALE, GAP }
 
@@ -74,10 +95,19 @@ class ReferenceRepository(private val db: AronDatabase) {
      * Applies [bundle]. [raw] is the whole bundle JSON (with paged sections merged in): every top-level section without a
      * table of its own, and each route's open memos, plan, targets and day state, are stored as raw JSON. [etag] is kept
      * for the next `If-None-Match`.
+     *
+     * [outletPages]: the paged `outlets` section of a large (AMO/TSO) bundle, streamed one page at a time INSIDE the one apply
+     * transaction (parse a page, insert it, drop it), so heap stays at one page and the apply is still all-or-nothing: a kill
+     * or a bad page rolls the whole snapshot back and the previous one stays readable (WAL), and the staged pages let the next
+     * run apply again. A malformed page throws [IllegalArgumentException] with nothing written. Rows of a route that is not in
+     * `routes[]` go to the raw section `outlets_other_routes`, as the in-memory merge did.
      */
-    suspend fun apply(bundle: BundleReference, raw: JsonObject? = null, etag: String? = null, asDay: Boolean = !bundle.meta.isPrefetch): ApplyResult {
+    suspend fun apply(
+        bundle: BundleReference, raw: JsonObject? = null, etag: String? = null, asDay: Boolean = !bundle.meta.isPrefetch,
+        outletPages: OutletPages? = null,
+    ): ApplyResult {
         val date = bundle.meta.validForBusinessDate
-        if (!asDay) return storePrefetch(bundle, requireNotNull(raw) { "a prefetch is stored as raw JSON" }, etag)
+        if (!asDay) return storePrefetch(bundle, requireNotNull(raw) { "a prefetch is stored as raw JSON" }, etag, outletPages)
         val version = bundle.meta.bundleVersion
         val routes = bundle.routes.map { routeRow(it, date, version) }
         val outlets = bundle.routes.flatMap { it.outlets }.map(::outletRow)
@@ -106,6 +136,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             dao.clearSections()
             routes.inChunks { dao.insertRoutes(it) }
             outlets.inChunks { dao.insertOutlets(it) }
+            if (outletPages != null) streamOutlets(outletPages, bundle.routes.map { it.routeId }.toSet())
             skus.inChunks { dao.insertSkus(it) }
             prices.inChunks { dao.insertPrices(it) }
             if (!keepConfig) config.inChunks { dao.insertConfig(it) }
@@ -134,12 +165,33 @@ class ReferenceRepository(private val db: AronDatabase) {
         }
     }
 
-    /** Keeps a later day's snapshot aside (sync_meta), replacing an older prefetch; today's tables are not touched. */
-    private suspend fun storePrefetch(bundle: BundleReference, raw: JsonObject, etag: String?): ApplyResult = db.withTransaction {
+    /** Inserts the paged outlets one page at a time; rows of unknown routes are kept raw (see [apply]). Runs inside the apply transaction. */
+    private suspend fun streamOutlets(pages: OutletPages, knownRoutes: Set<Long>) {
+        val orphans = ArrayList<JsonObject>()
+        for (i in 0 until pages.count) {
+            val mine = ArrayList<OutletEntity>()
+            for (row in pages.rows(i)) {
+                val route = (row["route_id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()
+                if (route != null && route in knownRoutes) mine += outletRow(DELTA_JSON.decodeFromJsonElement(BundleOutlet.serializer(), row)) else orphans += row
+            }
+            mine.inChunks { dao.insertOutlets(it) }
+        }
+        if (orphans.isNotEmpty()) {
+            chunks(JsonArray(orphans).toString()).forEachIndexed { i, part -> dao.insertSections(listOf(BundleSectionEntity(chunkName("outlets_other_routes", i), part))) }
+        }
+    }
+
+    /** Keeps a later day's snapshot aside (sync_meta), replacing an older prefetch; today's tables are not touched. Outlet pages are kept one page per entry. */
+    private suspend fun storePrefetch(bundle: BundleReference, raw: JsonObject, etag: String?, outletPages: OutletPages?): ApplyResult = db.withTransaction {
         val version = bundle.meta.bundleVersion
         if (compare(version, dao.meta(KEY_BUNDLE_VERSION)) <= 0) return@withTransaction ApplyResult.OLDER_IGNORED
         if (compare(version, dao.meta(KEY_PREFETCH_VERSION)) < 0) return@withTransaction ApplyResult.OLDER_IGNORED
         putChunked(KEY_PREFETCH_JSON, raw.toString())
+        deletePrefetchPages()
+        if (outletPages != null) {
+            for (i in 0 until outletPages.count) putChunked(prefetchPageKey(i), JsonArray(outletPages.rows(i)).toString())
+            dao.putMeta(SyncMetaEntity(KEY_PREFETCH_OUTLET_PAGES, outletPages.count.toString()))
+        }
         dao.putMeta(SyncMetaEntity(KEY_PREFETCH_VERSION, version))
         dao.putMeta(SyncMetaEntity(KEY_PREFETCH_DATE, bundle.meta.validForBusinessDate))
         putOrDelete(KEY_PREFETCH_ETAG, etag)
@@ -376,12 +428,29 @@ class ReferenceRepository(private val db: AronDatabase) {
         if (date != businessDate) return null
         val text = getChunked(KEY_PREFETCH_JSON) ?: run { clearPrefetch(); return null }
         val raw = Json.parseToJsonElement(text) as JsonObject
-        val result = apply(BundleReference.json.decodeFromJsonElement(BundleReference.serializer(), raw), raw, dao.meta(KEY_PREFETCH_ETAG), asDay = true)
+        val pageCount = dao.meta(KEY_PREFETCH_OUTLET_PAGES)?.toIntOrNull()
+        val pages = pageCount?.let {
+            object : OutletPages {
+                override val count = it
+                override suspend fun rows(index: Int): List<JsonObject> =
+                    (Json.parseToJsonElement(getChunked(prefetchPageKey(index)) ?: throw IllegalArgumentException("prefetch outlet page $index is missing")) as JsonArray)
+                        .map { r -> r as JsonObject }
+            }
+        }
+        val result = apply(BundleReference.json.decodeFromJsonElement(BundleReference.serializer(), raw), raw, dao.meta(KEY_PREFETCH_ETAG), asDay = true, outletPages = pages)
         clearPrefetch()
         return result
     }
 
+    private suspend fun deletePrefetchPages() {
+        dao.meta(KEY_PREFETCH_OUTLET_PAGES)?.toIntOrNull()?.let { n -> for (i in 0 until n) deleteChunked(prefetchPageKey(i)) }
+        dao.deleteMeta(KEY_PREFETCH_OUTLET_PAGES)
+    }
+
+    private fun prefetchPageKey(i: Int) = "prefetch.outlets.$i"
+
     private suspend fun clearPrefetch() = db.withTransaction {
+        deletePrefetchPages()
         deleteChunked(KEY_PREFETCH_JSON)
         listOf(KEY_PREFETCH_VERSION, KEY_PREFETCH_DATE, KEY_PREFETCH_ETAG).forEach { dao.deleteMeta(it) }
     }
@@ -472,6 +541,7 @@ class ReferenceRepository(private val db: AronDatabase) {
         private const val KEY_PREFETCH_VERSION = "prefetch.version"
         private const val KEY_PREFETCH_DATE = "prefetch.date"
         private const val KEY_PREFETCH_ETAG = "prefetch.etag"
+        private const val KEY_PREFETCH_OUTLET_PAGES = "prefetch.outlet_pages"
 
         /** Config keys the bundle resolves per outlet into `outlet.radius_m` / `max_accuracy_m`. */
         val OUTLET_RESOLVED_KEYS = setOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m")
