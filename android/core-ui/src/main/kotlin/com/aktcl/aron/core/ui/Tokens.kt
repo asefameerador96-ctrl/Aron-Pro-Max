@@ -29,6 +29,8 @@ data class AronColorRoles(
     val offline: Color, val offlineContainer: Color, val offlineOnContainer: Color,
     val statePressed: Color, val stateDisabledFill: Color, val stateDisabledLabel: Color,
     val textPlaceholder: Color, val accentText: Color, val accentFill: Color, val dangerFill: Color, val surfaceField: Color, val stateSkeleton: Color,
+    /** Yes / confirm is green and No / cancel is red (owner 2026-10-17); the label on both is [textOnAccent] (7:1, TokenContrastTest). */
+    val yesFill: Color, val noFill: Color,
     /** The two static page glows (tokens s2.1): A at (12% w, 6% h) radius 90% w, B at (95% w, 78% h) radius 80% w; none in sunlight. */
     val bgGlowA: Color = Color(0f, 0f, 0f, 0f), val bgGlowB: Color = Color(0f, 0f, 0f, 0f),
     /** The lower stop of the light field-card body (`#F6F9FE` 96%); dark cards are flat and shaded instead. */
@@ -40,36 +42,51 @@ data class AronColorRoles(
     val sunlight: Boolean get() = mode == AronMode.Sunlight
 }
 
+/** A soft container colour with the ink that is read on it. */
+@Immutable
+data class AronHue(val container: Color, val ink: Color)
+
+/** The tile hue palette per theme. */
+@Immutable
+class AronHues(val light: List<AronHue>, val dark: List<AronHue>) {
+    fun forMode(mode: AronMode): List<AronHue> = if (mode == AronMode.Dark) dark else light
+}
+
+/** Which hue the next tile takes; the tile grid sets it per tile, a lone tile falls back to its label. */
+val LocalTileHue = androidx.compose.runtime.compositionLocalOf { -1 }
+
 object AronTokens {
     val Light = AronColorRoles(
         AronMode.Light,
-        hex(0xD8E7FB), hex(0xE8EFFA), hex(0xF3F5FB), hex(0xE8EFFA),
-        hex(0xFFFFFF, 62), hex(0xFFFFFF, 92), hex(0xFFFFFF), hex(0xF2F5FA), hex(0x000000, 32),
-        hex(0xFFFFFF, 75), hex(0x0B1B33, 10), hex(0x0B1B33, 8), hex(0x0B1B33, 30), hex(0x66768F), hex(0x0A58CC),
+        hex(0xA8C6FF), hex(0xD0BCFF), hex(0xFFC4DC), hex(0xD0BCFF),
+        hex(0xFFFFFF, 62), hex(0xFFFFFF, 92), hex(0xFFFFFF), hex(0xF3F0FF), hex(0x000000, 32),
+        hex(0xFFFFFF, 75), hex(0x1B2A8F, 12), hex(0x1B2A8F, 10), hex(0x1B2A8F, 30), hex(0x5F6BB0), hex(0x3B57F0),
         hex(0x0B1B33), hex(0x303D52), hex(0x738097), hex(0xFFFFFF),
-        hex(0x0A58CC), hex(0x052E6B), hex(0x031734), hex(0xDCE9FD), hex(0x0A3F94),
-        hex(0x0B7A45), hex(0xD6F0E1), hex(0x0A5A33),
-        hex(0x9A5200), hex(0xFFE9C7), hex(0x7A4300),
-        hex(0xC0182D), hex(0xFDDDE1), hex(0x8E1224),
-        hex(0x53627C), hex(0xE3E8F0), hex(0x3F4C63),
-        hex(0x0B1B33, 8), hex(0xDCE2EB), hex(0x515E73),
-        hex(0x5F6D84), hex(0x063B84), hex(0x041F49), hex(0x7A0E1C), hex(0xFFFFFF, 96), hex(0x0B1B33, 7),
-        bgGlowA = hex(0x9CC2FF, 50), bgGlowB = hex(0xC9B8FF, 30), surfaceFieldBottom = hex(0xF6F9FE, 96), stateSkeletonSweep = hex(0xFFFFFF, 45),
+        hex(0x2230A8), hex(0x18248A), hex(0x0F1858), hex(0xDCE3FF), hex(0x1E2C9E),
+        hex(0x0A9250), hex(0xBDF5D6), hex(0x04532B),
+        hex(0xE06A00), hex(0xFFE2B0), hex(0x6B3500),
+        hex(0xE0213F), hex(0xFFD0D8), hex(0x7F0F22),
+        hex(0x0E8FA6), hex(0xC4F1F7), hex(0x0B4A57),
+        hex(0x1B2A8F, 10), hex(0xE3E6F3), hex(0x4F5A78),
+        hex(0x5F6D84), hex(0x1D2A9E), hex(0x16217A), hex(0x7A0E1C), hex(0xFFFFFF, 96), hex(0x1B2A8F, 8),
+        hex(0x0A6434), hex(0xAE1128),
+        bgGlowA = hex(0x6EA2FF, 55), bgGlowB = hex(0xFF7FC0, 40), surfaceFieldBottom = hex(0xF7F4FF, 96), stateSkeletonSweep = hex(0xFFFFFF, 45),
     )
     val Dark = AronColorRoles(
         AronMode.Dark,
-        hex(0x16233F), hex(0x0F1A2E), hex(0x0A1220), hex(0x0F1A2E),
-        hex(0xFFFFFF, 12), hex(0x1A2438, 92), hex(0x141D30), hex(0x1C2740), hex(0x000000, 56),
-        hex(0xFFFFFF, 22), hex(0xFFFFFF, 6), hex(0xFFFFFF, 8), hex(0xFFFFFF, 24), hex(0x8394B0), hex(0x84B6FF),
-        hex(0xF8FAFD), hex(0xC2CCDD), hex(0x6B7A93), hex(0x010712),
-        hex(0x84B6FF), hex(0xC9E1FF), hex(0xDDEBFF), hex(0x1B3568), hex(0xBBD6FF),
-        hex(0x4CD38B), hex(0x12382A), hex(0x9BE7BF),
-        hex(0xFFB84D), hex(0x45330F), hex(0xFFD58F),
-        hex(0xFF7A8A), hex(0x4A1B25), hex(0xFFB3BE),
-        hex(0x9FB0CB), hex(0x27324A), hex(0xC3D0E6),
-        hex(0xFFFFFF, 10), hex(0x2A3550), hex(0x97A6BF),
-        hex(0x8F9DB5), hex(0xA8CFFF), hex(0xB3D4FF), hex(0xFFB3BE), hex(0x141D30, 96), hex(0xFFFFFF, 10),
-        bgGlowA = hex(0x1D4ED8, 18), bgGlowB = hex(0x5B35D5, 10), surfaceFieldBottom = hex(0x141D30, 96), stateSkeletonSweep = hex(0xFFFFFF, 12),
+        hex(0x14265C), hex(0x26175C), hex(0x3A1450), hex(0x26175C),
+        hex(0xFFFFFF, 12), hex(0x1C1E42, 92), hex(0x17193A), hex(0x20245A), hex(0x000000, 56),
+        hex(0xFFFFFF, 22), hex(0xFFFFFF, 6), hex(0xFFFFFF, 8), hex(0xFFFFFF, 24), hex(0x8D9AD6), hex(0x8FA3FF),
+        hex(0xF8FAFD), hex(0xC9D0F0), hex(0x7580A8), hex(0x010712),
+        hex(0xB9C6FF), hex(0xC9D3FF), hex(0xDDE3FF), hex(0x27337A), hex(0xC7D1FF),
+        hex(0x5BE39B), hex(0x0F3D2A), hex(0xA6F0C8),
+        hex(0xFFB060), hex(0x4A3010), hex(0xFFD9A8),
+        hex(0xFF7A8A), hex(0x4F1830), hex(0xFFB8C2),
+        hex(0x4FD8EE), hex(0x0F3B47), hex(0xA8EAF6),
+        hex(0xFFFFFF, 10), hex(0x2A2F5E), hex(0xA3ADD6),
+        hex(0x9AA5CF), hex(0xB3C1FF), hex(0xC9D3FF), hex(0xFFB3BE), hex(0x17193A, 96), hex(0xFFFFFF, 10),
+        hex(0x5BE39B), hex(0xFF7A8A),
+        bgGlowA = hex(0x4F6BFF, 26), bgGlowB = hex(0xD946EF, 16), surfaceFieldBottom = hex(0x17193A, 96), stateSkeletonSweep = hex(0xFFFFFF, 12),
     )
     val Sunlight = AronColorRoles(
         AronMode.Sunlight,
@@ -77,14 +94,35 @@ object AronTokens {
         hex(0xFFFFFF), hex(0xFFFFFF), hex(0xFFFFFF), hex(0xEEF1F6), hex(0x000000, 56),
         hex(0x050A14, 72), hex(0x050A14, 72), hex(0x050A14, 40), hex(0x050A14, 72), hex(0x2B3648), hex(0x000000),
         hex(0x050A14), hex(0x2B3648), hex(0x5B6578), hex(0xFFFFFF),
-        hex(0x0041B3), hex(0x002A73), hex(0x001B4D), hex(0xCFE0FF), hex(0x002A73),
-        hex(0x005C2E), hex(0xCFEBD9), hex(0x00391C),
-        hex(0x7A3E00), hex(0xFFE0A8), hex(0x4D2700),
-        hex(0xA30018), hex(0xFAD0D6), hex(0x6B0010),
-        hex(0x3B4658), hex(0xDDE2EA), hex(0x1F2937),
+        hex(0x1A2AA8), hex(0x131D78), hex(0x0C1250), hex(0xD6DCFF), hex(0x131D78),
+        hex(0x00642F), hex(0xC4F2D8), hex(0x00391C),
+        hex(0x8A3F00), hex(0xFFD9A0), hex(0x4D2200),
+        hex(0xB0001C), hex(0xFFCDD5), hex(0x6B0010),
+        hex(0x085B6B), hex(0xC2EEF5), hex(0x053640),
         hex(0x050A14, 12), hex(0xD9DEE7), hex(0x3B4658),
-        hex(0x4A5568), hex(0x0041B3), hex(0x002A73), hex(0x6B0010), hex(0xFFFFFF), hex(0x050A14, 10),
+        hex(0x4A5568), hex(0x1A2AA8), hex(0x131D78), hex(0x6B0010), hex(0xFFFFFF), hex(0x050A14, 10),
+        hex(0x00522A), hex(0x960014),
         bgGlowA = hex(0xF1F3F7, 0), bgGlowB = hex(0xF1F3F7, 0), surfaceFieldBottom = hex(0xFFFFFF), stateSkeletonSweep = hex(0xFFFFFF, 0),
+    )
+
+    /**
+     * Ten tile hues (owner 2026-10-17: the three field apps must be vibrant and colourful): indigo, emerald, orange, rose, teal, violet,
+     * magenta, sky, lime, gold. Each is a soft container for the icon well with a deep ink for the glyph, at least 7:1 (TokenContrastTest).
+     * Home tiles take them in turn (the tile grid sets [LocalTileHue]); sunlight uses the light set (its inks are far above 7:1).
+     */
+    val Hues = AronHues(
+        light = listOf(
+            AronHue(hex(0xDCE3FF), hex(0x18248A)), AronHue(hex(0xBDF5D6), hex(0x04532B)), AronHue(hex(0xFFE2B0), hex(0x5E3000)),
+            AronHue(hex(0xFFD0D8), hex(0x7F0F22)), AronHue(hex(0xC4F1F7), hex(0x0B4A57)), AronHue(hex(0xE6D9FF), hex(0x3A1485)),
+            AronHue(hex(0xFFD3EC), hex(0x7A0E52)), AronHue(hex(0xCDEEFF), hex(0x06384F)), AronHue(hex(0xE0F8A8), hex(0x283F00)),
+            AronHue(hex(0xFFF0A0), hex(0x4D3700)),
+        ),
+        dark = listOf(
+            AronHue(hex(0x27337A), hex(0xC7D1FF)), AronHue(hex(0x0F3D2A), hex(0xA6F0C8)), AronHue(hex(0x4A3010), hex(0xFFD9A8)),
+            AronHue(hex(0x4F1830), hex(0xFFB8C2)), AronHue(hex(0x0F3B47), hex(0xA8EAF6)), AronHue(hex(0x33206B), hex(0xD9C8FF)),
+            AronHue(hex(0x4A1540), hex(0xFFC2E6)), AronHue(hex(0x0F3550), hex(0xB5E0FF)), AronHue(hex(0x2B3B0F), hex(0xD4F08A)),
+            AronHue(hex(0x4A3D0A), hex(0xFFE88A)),
+        ),
     )
 
     fun forMode(mode: AronMode): AronColorRoles = when (mode) { AronMode.Light -> Light; AronMode.Dark -> Dark; AronMode.Sunlight -> Sunlight }

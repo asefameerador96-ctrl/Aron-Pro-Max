@@ -259,7 +259,9 @@ fun AronTile(
     val badgeText = if (badge > 99) localizedDigits("99+") else localizedNumber(badge.toLong())
     val badgeDescription = if (badge > 0) stringResource(R.string.core_ui_tile_badge, badgeText) else null
     val plate = c.surfaceSolid
-    val wellFill = if (enabled) c.accentContainer else c.stateDisabledFill
+    val hues = AronTokens.Hues.forMode(c.mode)
+    val hue = hues[(LocalTileHue.current.takeIf { it >= 0 } ?: (label.hashCode() and Int.MAX_VALUE)) % hues.size]
+    val wellFill = if (enabled) hue.container else c.stateDisabledFill
     val heightModifier = if (fixed) Modifier.height(height) else Modifier.heightIn(min = height)
     Box(
         modifier
@@ -278,7 +280,7 @@ fun AronTile(
     ) {
         val wellBox: @Composable () -> Unit = {
             Box(Modifier.size(well).drawBehind { drawRoundRect(wellFill, cornerRadius = CornerRadius(wellRadius.toPx())) }, contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, tint = if (enabled) c.accentOnContainer else c.stateDisabledLabel, modifier = Modifier.size(if (compact) AronTokens.Size.IconSmall else AronTokens.Size.Icon))
+                Icon(icon, contentDescription = null, tint = if (enabled) hue.ink else c.stateDisabledLabel, modifier = Modifier.size(if (compact) AronTokens.Size.IconSmall else AronTokens.Size.Icon))
             }
         }
         val plateBox: @Composable (Modifier) -> Unit = { m ->
@@ -352,10 +354,12 @@ fun <T> AronTileGrid(items: List<T>, columns: Int? = null, modifier: Modifier = 
     val reflow = fontScale >= AronTokens.Size.ReflowFontScale
     val rowModifier = if (reflow) Modifier.fillMaxWidth().height(IntrinsicSize.Max) else Modifier.fillMaxWidth()
     Column(modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        items.chunked(cols).forEach { rowItems ->
+        items.chunked(cols).forEachIndexed { rowIndex, rowItems ->
             Row(rowModifier, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                 val tileModifier = if (reflow) Modifier.weight(1f).fillMaxHeight() else Modifier.weight(1f)
-                rowItems.forEach { tile(it, tileModifier) }
+                rowItems.forEachIndexed { colIndex, item ->
+                    androidx.compose.runtime.CompositionLocalProvider(LocalTileHue provides rowIndex * cols + colIndex) { tile(item, tileModifier) }
+                }
                 repeat(cols - rowItems.size) { Box(Modifier.weight(1f)) }
             }
         }
