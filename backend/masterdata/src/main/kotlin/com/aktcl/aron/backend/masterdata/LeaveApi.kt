@@ -130,6 +130,13 @@ private suspend fun applyLeave(call: ApplicationCall, d: LeaveDeps): Pair<Boolea
     val cfgVersion = d.config.configVersion()
     val today = AdminSupport.today(d.clock)
     return d.db.jdbi.inTransaction<Pair<Boolean, LeaveDto>, Exception> { h ->
+        fun same(row: LeaveDto) = row.user_id == p.userId && row.leave_type_code == req.leave_type_code && row.from_date == from.toString() && row.days == req.days && row.reason == reason
+        // Replay first: a stored leave_uuid answers the stored application (its current status), before the leave type or
+        // the overlap is re-judged, so a late replay never turns into a 400 or 409.
+        h.createQuery("SELECT l.id, $COLS FROM app.leave_application l WHERE l.client_uuid = :u").bind("u", id).map { rs, _ -> mapLeave(rs) }.findOne().orElse(null)?.let { row ->
+            if (same(row)) return@inTransaction false to row
+            throw ApiProblem(ProblemCode.ERR_CONFLICT, "leave_uuid already stores a different application")
+        }
         if (!codeKnown(h, "leave_type", req.leave_type_code, from)) bad("body.leave_type_code", "unknown_code")
         // A TSO cannot hold two pending or approved applications over the same days (a replay of the same uuid is not an overlap).
         val overlap = h.createQuery("SELECT count(*) FROM app.leave_application l WHERE l.user_id = :uid AND l.client_uuid <> :u AND l.voided_at IS NULL AND l.status IN ('pending','approved') AND l.from_date <= :to AND l.to_date >= :f")
@@ -141,7 +148,7 @@ private suspend fun applyLeave(call: ApplicationCall, d: LeaveDeps): Pair<Boolea
         ).bind("u", id).bind("bd", today).bind("uid", p.userId).bind("at", now).bind("cv", cfgVersion).bind("t", req.leave_type_code).bind("f", from).bind("days", req.days).bind("r", reason).execute()
         val row = h.createQuery("SELECT l.id, $COLS FROM app.leave_application l WHERE l.client_uuid = :u").bind("u", id).map { rs, _ -> mapLeave(rs) }.one()
         // The same uuid with different content, or another user's uuid, is a conflict, never a silent overwrite.
-        if (row.user_id != p.userId || row.leave_type_code != req.leave_type_code || row.from_date != from.toString() || row.days != req.days || row.reason != reason) {
+        if (!same(row)) {
             throw ApiProblem(ProblemCode.ERR_CONFLICT, "leave_uuid already stores a different application")
         }
         (inserted > 0) to row

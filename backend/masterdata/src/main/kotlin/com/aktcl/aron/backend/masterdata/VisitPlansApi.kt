@@ -138,6 +138,25 @@ private suspend fun savePlan(call: ApplicationCall, d: VisitPlanDeps): Pair<Bool
     return d.db.jdbi.inTransaction<Pair<Boolean, VisitPlanDto>, Exception> { h ->
         // One writer per planner and date: concurrent saves of the same union serialise instead of racing.
         h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "visit_plan:${p.userId}:$planDate").mapToMap().list()
+        // Replay first: when a live plan of the caller and date already holds every posted outlet (this plan_uuid's own
+        // plan, or the plan a second uuid of the same route and date was merged into), nothing would be written: answer
+        // that plan before reach, route or date are re-judged, so a late replay after a scope change, a re-routing or
+        // midnight still gets its 200. A plan_uuid stored for another user or date goes on to the 409 below.
+        val stored = h.createQuery("SELECT user_id, plan_date FROM app.visit_plan WHERE client_uuid = :u").bind("u", planUuid)
+            .map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.findOne().orElse(null)
+        if (stored == null || (stored.first == p.userId && stored.second == planDate)) {
+            val holder = h.createQuery(
+                """
+                SELECT p.client_uuid FROM app.visit_plan p
+                 WHERE p.user_id = :me AND p.plan_date = :d AND p.voided_at IS NULL AND (NOT :own OR p.client_uuid = :pu)
+                   AND NOT EXISTS (SELECT 1 FROM unnest(CAST(:ids AS bigint[])) AS x(oid) WHERE NOT EXISTS (
+                         SELECT 1 FROM app.visit_plan_outlet po WHERE po.plan_client_uuid = p.client_uuid AND po.outlet_id = x.oid AND po.voided_at IS NULL))
+                 ORDER BY (p.client_uuid = :pu) DESC, p.id LIMIT 1
+                """.trimIndent(),
+            ).bind("me", p.userId).bind("d", planDate).bind("own", stored != null).bind("pu", planUuid)
+                .bindArray("ids", Long::class.javaObjectType, outletIds).mapTo(UUID::class.java).findOne().orElse(null)
+            if (holder != null) loadPlans(h, listOf(holder))[holder]?.let { return@inTransaction false to it }
+        }
         data class OutletRow(val id: Long, val route: Long?, val zone: Long)
         val outlets = h.createQuery("SELECT o.id, o.route_id, o.zone_id FROM app.outlet o WHERE o.id = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, outletIds)
             .map { rs, _ -> OutletRow(rs.getLong(1), rs.getObject(2) as Long?, rs.getLong(3)) }.list()
