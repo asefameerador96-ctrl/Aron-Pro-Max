@@ -72,9 +72,11 @@ interface Props {
   testId?: string;
 }
 
+const SPECIFIC_FIELD_CODES = ["required", "too_short", "too_long", "unknown_member", "zero", "above_max", "write_off_must_be_negative", "not_an_outlet_memo", "window"];
+
 function fieldMessage(t: ReturnType<typeof useI18n>["t"], code: string): string {
   const key = `error.field.${code}` as MessageKey;
-  return t(["required", "too_short", "too_long", "unknown_member"].includes(code) ? key : "error.field.invalid");
+  return t(SPECIFIC_FIELD_CODES.includes(code) ? key : "error.field.invalid");
 }
 
 function toValue(f: OpFieldDef, raw: string): unknown {
@@ -84,7 +86,8 @@ function toValue(f: OpFieldDef, raw: string): unknown {
     const text = latinDigits(raw.trim());
     if (f.scale) {
       const v = scaledInt(text, f.scale);
-      return v === null || v === 0 ? Symbol.for("invalid-int") : v; // a zero amount changes nothing
+      if (v === 0) return Symbol.for("zero-int"); // a zero amount changes nothing
+      return v === null ? Symbol.for("invalid-int") : v;
     }
     const n = /^\d{1,15}$/.test(text) ? Number(text) : NaN;
     if (!Number.isSafeInteger(n)) return Symbol.for("invalid-int");
@@ -127,10 +130,11 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
       if (f.kind === "number" && raw.trim() !== "" && !Number.isFinite(Number(raw))) local[f.name] = t("error.field.invalid");
       const v = toValue(f, raw);
       if (v === Symbol.for("invalid-int")) local[f.name] = t("error.field.invalid");
+      if (v === Symbol.for("zero-int")) local[f.name] = t("error.field.zero");
       if (f.kind === "int" && raw.trim() !== "" && !f.scale && /^-/.test(raw.trim())) local[f.name] = t("error.field.invalid");
       if (typeof v === "number" && f.min !== undefined && v < f.min) local[f.name] = t("cfgc.error.too_small");
       if (v === Symbol.for("invalid-json")) local[f.name] = t("error.field.invalid");
-      if (typeof v === "number" && f.max !== undefined && v > f.max) local[f.name] = t("cfgc.error.too_big");
+      if (typeof v === "number" && f.max !== undefined && v > f.max) local[f.name] = t(f.name === "amount_mtk" ? "error.field.above_max" : "cfgc.error.too_big");
       if (f.minDate && raw !== "" && raw < f.minDate) local[f.name] = t("error.field.invalid");
       if (f.jsonString && raw.trim() !== "") {
         try {
@@ -170,7 +174,7 @@ export function OpForm({ op, endpoint, uuidMembers, params, fields, fixed, versi
       }
       const fieldErrors: Record<string, string> = {};
       for (const err of data.errors ?? []) {
-        const name = err.pointer.startsWith("/body/") ? err.pointer.slice("/body/".length) : err.pointer.replace(/^\//, "");
+        const name = err.pointer.startsWith("/body/") ? err.pointer.slice("/body/".length) : err.pointer.replace(/^\/?(body[./])?/, "");
         fieldErrors[name === "reason" || fields.some((f) => f.name === name) ? name : ""] = fieldMessage(t, err.code);
       }
       delete fieldErrors[""];

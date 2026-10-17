@@ -8,6 +8,7 @@ const CHANNELS = { options: ["GT", "DCC", "Astha", "RCC", "MT", "HoReCa"], optio
 const GEO = { options: ["Hill", "Urban", "SemiUrban", "Rural"], optionKeys: { Hill: "geoclass.Hill", Urban: "geoclass.Urban", SemiUrban: "geoclass.SemiUrban", Rural: "geoclass.Rural" } } as const;
 const KINDS = { options: ["retail", "wholesale"], optionKeys: { retail: "outlet.kind.retail", wholesale: "outlet.kind.wholesale" } } as const;
 const STATUS = { options: ["active", "closed", "merged", "archived"], optionKeys: { active: "outlet.status.active", closed: "outlet.status.closed", merged: "outlet.status.merged", archived: "outlet.status.archived" } } as const;
+const SUB_CHANNEL_REF = { path: "/v1/admin/code-lists", codeList: "sub_channel", label: ["label_en", "label_bn"] } as const;
 const ZONE_REF = { path: "/v1/admin/geo/{level}", params: { level: "zone" }, label: ["code", "name"] } as const;
 const CLUSTER_REF = { path: "/v1/admin/clusters", label: ["name"] } as const;
 const ROUTE_REF = { path: "/v1/admin/routes", label: ["code", "name"] } as const;
@@ -37,8 +38,7 @@ export const outlets = defineEntity<Outlet, OutletWrite, OutletPatch>({
     { name: "lng", labelKey: "entity.field.lng", kind: "number", min: -180, max: 180, section: "outlet.section.address" },
     { name: "geo_class", labelKey: "entity.field.geo_class", kind: "enum", nullable: true, ...GEO, section: "outlet.section.address" },
     { name: "channel", labelKey: "entity.field.channel", kind: "enum", required: true, ...CHANNELS, column: true, section: "outlet.section.business" },
-    // sub_channel_id is an id, but the contract lists sub-channels only as code-list CODES: a plain number until docs/requests/web-admin-sub-channel-ids.md is answered.
-    { name: "sub_channel_id", labelKey: "entity.field.sub_channel_id", kind: "int", nullable: true, min: 1, section: "outlet.section.business" },
+    { name: "sub_channel_id", labelKey: "entity.field.sub_channel_id", kind: "ref", nullable: true, min: 1, ref: SUB_CHANNEL_REF, section: "outlet.section.business" },
     { name: "outlet_kind", labelKey: "entity.field.outlet_kind", kind: "enum", required: true, ...KINDS, column: true, section: "outlet.section.business" },
     { name: "price_type", labelKey: "entity.field.price_type", kind: "text", mode: "readonly", section: "outlet.section.business" },
     { name: "visit_sequence", labelKey: "entity.field.visit_sequence", kind: "int", mode: "update-only", nullable: true, min: 1, section: "outlet.section.business" },
@@ -123,7 +123,7 @@ export const outletRequests = defineEntity<OutletRequestSummary, Record<never, n
       labelKey: "action.verify_request",
       path: "/v1/outlet-requests/{request_uuid}/verify",
       fields: [
-        { name: "sub_channel_id", labelKey: "entity.field.sub_channel_id", kind: "int", required: true, min: 1 },
+        { name: "sub_channel_id", labelKey: "entity.field.sub_channel_id", kind: "ref", required: true, min: 1, ref: SUB_CHANNEL_REF },
         { name: "geo_class", labelKey: "entity.field.geo_class", kind: "enum", nullable: true, required: false, ...GEO },
       ],
       reasonMember: "note", // note (<= 500) doubles as the mandatory reason

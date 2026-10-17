@@ -11,3 +11,5 @@ The read and write schemas of the definition pages do not match, so an edit cann
 Proposed: return the write members on the admin read (`key`, `show_if_*`, `required`, `photo`, `option_codes` as writable, `asset_id`), and use one answer_type enum.
 
 Stub: the pages create a definition (full write body) and publish a new version by re-entering the questions; an existing definition is shown read-only with a "Use as a template" action that copies the labels and generates keys from the order (`q1`, `q2`, ...), which the admin can edit. Marked `// REQUEST: web-admin-definition-reads`.
+
+**State (2026-10-15, web-admin):** done in the web portal against contract v1.3; server half to be confirmed live.

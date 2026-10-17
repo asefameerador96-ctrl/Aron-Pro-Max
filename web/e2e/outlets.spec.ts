@@ -55,7 +55,7 @@ test("outlet approval panel: a DMO sees only the panel, verifies then approves a
   // verify the pending new outlet, then reject the info request with a reason
   await page.goto("/admin/outlet-requests?request_type=new");
   await page.getByRole("row", { name: /New Corner Mart/ }).getByTestId("action-verify").click();
-  await page.locator("#f-sub_channel_id").fill("11");
+  await page.locator("#f-sub_channel_id").selectOption("11");
   await page.locator("#reason").fill("Checked the photos and the address");
   await page.getByRole("button", { name: "যাচাই" }).click();
   await page.waitForURL(/\/admin\/outlet-requests$/);

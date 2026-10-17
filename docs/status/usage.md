@@ -95,3 +95,9 @@
 | 2026-10-08 06:50 | db (session 5) | - | - | n/a | seven_day allowed_warning | amr column (refresh_family) on lane/db 93789a03 |
 
 2026-10-15 06:50 UTC (lead check, restart day): usage five_hour allowed (resets 11:00 UTC); no per-lane token counts read this round to save usage. Active: integrator session 9, web-config (idle, head 30cf961f), web-admin (16a1adc7), web-dashboard (a12b464f), backend-admin (8964ddb5), backend-reports (600ec391). INT 26cfb26a; candidate zza red in web e2e only (no web-admin fix in it).
+
+2026-10-15 10:47 UTC (lead check): five_hour allowed (resets 11:00 UTC). Sessions: integrator 10 (new), web-config (idle, a3418829), web-admin 3 (idle, cb2255f1), web-dashboard (idle, 5589436b), backend-admin 3 (working, e422a66f), backend-reports (checkers, 403e6146), backend-core (90fab81b, ~350k), db (a9c6de3d). INT 258c4022; dev on 2c2317cc while the 258c4022 deploy runs; candidate zzk in CI.
+
+2026-10-15 12:47 UTC (lead check): five_hour allowed on every session read (resets 16:00 UTC); no rejected or warning state. Sessions: integrator 10 335k (idle between CI waits; asked to hand over after zzs), backend-core 13 396k (idle, no row queued), backend-admin 3 442k (finishing, handover next), backend-reports 490k (told to push, hand over), web-admin 3 336k (idle, done), db idle (lane/db 20040eb7), web-config and web-dashboard idle. Wave 2 still held.
+
+2026-10-15 14:47 UTC (lead check): five_hour allowed (resets 16:00 UTC), no warning. Sessions: integrator 11 265k (promoting; INT 6e45b770 at 14:40, zzc all 9 jobs green), backend-core 13 ~400k (idle, no row queued), backend-admin 3 ~300k (idle), web-admin 3 ~340k (idle, rows 1-4 done), db idle, backend-reports 2 (idle; fcf19e1 checked, waits for the integrator), web-config and web-dashboard idle. Dev health 200. Wave 2 still held.

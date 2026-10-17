@@ -1240,6 +1240,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/quarantine/{quarantine_id}/match-backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a held phone memo as the same memo as a paper backfill (same SR, outlet, lines and money); releases its held collections onto the paper memo.
+         * @description The held item is an open `memo_no_duplicate` memo whose stored twin is a live `source = manual` paper backfill. Any difference between the two is 409 `ERR_CONFLICT` with one `errors[]` entry per difference and nothing changes. The phone's visit is kept and the paper visit is voided (`superseded_by_device_visit`). A repeat of a done match is 409 `ERR_REQUEST_STATE` (the item is no longer open). SUPPORT, ADMIN, SUPERADMIN; the item's route must be in the caller's reach.
+         */
+        post: operations["matchQuarantineBackfill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/data-void": {
         parameters: {
             query?: never;
@@ -3305,10 +3325,11 @@ export interface components {
         /** @enum {string} */
         SyncTrigger: "write_debounce" | "foreground" | "connectivity" | "workmanager_connectivity" | "periodic" | "manual" | "day_submit" | "checkout" | "resync" | "digest_resend" | "directive";
         /**
-         * @description Risk signal catalogue (docs/24 s11.4).
-         * @enum {string}
+         * @description Risk signal catalogue (docs/24 s11.4). Extensible (contract 1.3.1, docs/requests/contract-risk-signal-extensible-enum.md):
+         *     the server may add codes without a new contract version, so every client must accept a code it does not know
+         *     (show it by its code, never fail the response or the bundle).
          */
-        RiskSignalCode: "GEO_MOCK" | "GEO_TELEPORT" | "GEO_ZERO_JITTER" | "GEO_PERFECT_ACCURACY" | "GEO_SAME_POINT" | "GEO_ROUTE_SINGLE_POINT" | "GEO_STALE_FIX" | "GEO_GNSS_INCONSISTENT" | "GEO_GNSS_TIME_SKEW" | "GEO_DEVICE_SERVER_MISMATCH" | "GEO_SHORT_VISIT_GAPS" | "DEVICE_NOT_OWNER" | "DEVICE_INTEGRITY_FAIL" | "DEVICE_DEBUG_ENABLED" | "DEVICE_MOCK_APP_PRESENT" | "DEVICE_POLICY_DRIFT" | "CLOCK_SKEW" | "GEO_OUT_OF_BOUNDS" | "CONFIG_STAMP_REGRESS";
+        RiskSignalCode: string;
         /** @enum {string} */
         RiskSignalStatus: "open" | "reviewed" | "dismissed" | "confirmed";
         /** @enum {string} */
@@ -5449,6 +5470,17 @@ export interface components {
             /** @enum {string} */
             decision: "approve" | "reject";
             note?: string | null;
+        };
+        BackfillMatchResult: {
+            paper_memo_id: components["schemas"]["Id"];
+            paper_memo_uuid: components["schemas"]["Uuid"];
+            /** @description client_uuids of the held records closed or released onto the paper memo. */
+            released: components["schemas"]["Uuid"][];
+            /** @description client_uuids of held records that stay open for a review of their own. */
+            kept_open: components["schemas"]["Uuid"][];
+            /** @description The paper web_entry visit voided in favour of the phone visit; null when already voided. */
+            voided_paper_visit_uuid: components["schemas"]["Uuid"] | null;
+            phone_visit_uuid: components["schemas"]["Uuid"] | null;
         };
         ReasonRequest: {
             reason: components["schemas"]["ChangeReason"];
@@ -10441,6 +10473,37 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    matchQuarantineBackfill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quarantine_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Matched. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackfillMatchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     postDataVoid: {
         parameters: {
             query?: never;
@@ -13534,6 +13597,7 @@ export interface operations {
                     "application/json": components["schemas"]["DuesAdjustmentPage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };
@@ -13563,6 +13627,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     decideDuesAdjustment: {

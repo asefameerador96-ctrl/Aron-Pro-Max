@@ -12,8 +12,8 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 148 | 2564 |
-| `dw` | 33 | 512 |
+| `app` | 149 | 2582 |
+| `dw` | 34 | 528 |
 
 ## Index
 
@@ -63,6 +63,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.domain_event_type`](#appdomain_event_type) | table | db | REFERENCE | master | none | Catalogue of domain-event types and payload versions; every outbox row must name one (docs/data-events.md). |
 | [`app.due_collection`](#appdue_collection) | table | backend:sync | OFFLINE | transaction | personal | Cash collected against an earlier credit memo, with the collecting location fix. |
 | [`app.due_ledger`](#appdue_ledger) | table | backend:sync | SERVER | transaction | none | Append-only ledger of an outlet's outstanding dues: credit memos and opening balances raise it, collections and voids lower it. |
+| [`app.dues_adjustment`](#appdues_adjustment) | table | backend:admin | ONLINE | audit | personal | One row is a proposed correction or write-off of an outlet's dues, decided once by a checker other than the maker; an approval adds the due_ledger adjustment row (F-ADM-036). |
 | [`app.enrolment_token`](#appenrolment_token) | table | backend:auth | ONLINE | session | none | A one-time or limited-use token that lets a phone enrol; only its hash is stored. |
 | [`app.entry_unlock`](#appentry_unlock) | table | backend:masterdata | ONLINE | transaction | none | One row is a time-limited unlock that lets web entry be back-dated for a zone or route over a date range. |
 | [`app.event_consumer`](#appevent_consumer) | table | backend:platform | SERVER | ops | none | Read position of each domain-event consumer. |
@@ -191,6 +192,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`dw.fact_device_integrity`](#dwfact_device_integrity) | partitioned table | backend:analytics | SERVER | event_fact | none | One row is a phone's integrity and readiness state observed at a login or bundle download. |
 | [`dw.fact_geo_fix`](#dwfact_geo_fix) | partitioned table | worker | SERVER | event_fact | personal | One row per location fix copied for analysis, with slot and satellite count. |
 | [`dw.fact_memo`](#dwfact_memo) | partitioned table | worker | SERVER | event_fact | none | One row per memo with its money totals, for reports. |
+| [`dw.fact_supervisor_day`](#dwfact_supervisor_day) | table | worker | SERVER | event_fact | none | One row per AMO or TSO and business date with the day's check-in, check-out and Sales Submit, filled by the worker from app.supervisor_day (F-AMO-039). |
 | [`dw.fact_visit`](#dwfact_visit) | partitioned table | worker | SERVER | event_fact | none | One row per visit with device and server verdicts, distance and void flag. |
 | [`dw.v_attendance`](#dwv_attendance) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, check-in and check-out times, hours in field and mock-location flags (no coordinates or accuracy). |
 | [`dw.v_collections`](#dwv_collections) | view | worker | SERVER | event_fact | none | Stable view: outlet-days with new credit or dues collected (credit and collection movements). |
@@ -1254,7 +1256,7 @@ Work queue entry naming a bundle snapshot or aggregate row that the worker must 
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
-| `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. |
+| `kind` | text | not null |  | Rebuild kind: bundle_user, route_day_agg, zone_day_agg, outlet_day_agg, device_day_agg, route_snapshot, risk_user_day or supervisor_day_agg. |
 | `subject_id` | bigint | not null |  | Id of the subject to rebuild; its meaning depends on kind (user, route, zone, outlet or device). |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
 | `first_dirtied_at` | timestamp with time zone | not null |  | UTC time the key was first marked dirty. |
@@ -1484,7 +1486,7 @@ Append-only ledger of an outlet's outstanding dues: credit memos and opening bal
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
 | `entry_kind` | text | not null |  | Kind of entry: memo_due, collection, memo_void, memo_superseded or opening_balance. |
-| `amount_mtk` | bigint | not null |  | Amount in milli-taka (1 Tk = 1000 mtk). |
+| `amount_mtk` | bigint | not null |  | Signed change of the outlet balance in milli-taka (1 Tk = 1000 mtk; + raises, - lowers); never zero, \|amount\| at most 10^13 (V0079). |
 | `memo_client_uuid` | uuid | null |  | client_uuid of the memo the row belongs to. |
 | `memo_no` | text | null |  | Printed memo number <username>-<yyMMdd>-<seq>. |
 | `source_client_uuid` | uuid | not null |  | Client UUID of the memo, due_collection, memo_void or adjustment that caused the entry. |
@@ -1495,6 +1497,32 @@ Append-only ledger of an outlet's outstanding dues: credit memos and opening bal
 Keys: `UNIQUE (source_client_uuid, entry_kind)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.dues_adjustment
+
+One row is a proposed correction or write-off of an outlet's dues, decided once by a checker other than the maker; an approval adds the due_ledger adjustment row (F-ADM-036).
+
+`owner: backend:admin | capture: ONLINE | retention: audit | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key (adjustment_id in the API). |
+| `client_uuid` | uuid | not null |  | UUID v4 the browser generated; idempotency key of the create and source_client_uuid of the ledger row on approval. |
+| `outlet_id` | bigint | not null |  | Outlet whose dues change (app.outlet). |
+| `memo_client_uuid` | uuid | null |  | client_uuid of the memo the adjustment corrects; null when it corrects the balance as a whole. |
+| `kind` | text | not null |  | correction (either sign) or write_off (always negative). |
+| `amount_mtk` | bigint | not null |  | Signed change of the outlet balance in milli-taka; never zero, negative for a write-off, \|amount\| at most 10^13 (V0079). |
+| `reason` | text | not null | personal | Why the maker proposes the change (10 to 500 characters). |
+| `status` | text | not null |  | pending, approved or rejected; decided once. |
+| `created_by` | bigint | not null |  | Maker: user who proposed the adjustment (app.app_user). |
+| `created_at` | timestamp with time zone | not null |  | UTC time the adjustment was proposed. |
+| `decided_by` | bigint | null |  | Checker: user who approved or rejected it, never the maker; null while pending. |
+| `decided_at` | timestamp with time zone | null |  | UTC time of the decision; null while pending. |
+| `decision_note` | text | null | personal | Checker's note on the decision (at most 500 characters). |
+
+Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (decided_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`
 
 ## app.enrolment_token
 
@@ -1953,7 +1981,7 @@ Global register of every device record's client_uuid and payload hash; the uniqu
 | `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
 | `last_seen_at` | timestamp with time zone | not null |  | UTC time the same client_uuid was last received. |
 | `seen_count` | integer | not null |  | Number of times the client_uuid was received. |
-| `flags` | text[] | not null |  | Flags on the accepted record: resync_late (re-sent after a failover or restore, accepted past cfg.sync.max_backdate_days, F-SYS-089), config_stamp_regress (stamped with an older config_version than the device had applied, F-SYS-091), checkout_too_early (check-out before cfg.day.checkout_earliest_time, BC-63); empty when none. |
+| `flags` | text[] | not null |  | Flags on the accepted record: resync_late (re-sent after a failover or restore, accepted past cfg.sync.max_backdate_days, F-SYS-089), config_stamp_regress (stamped with an older config_version than the device had applied, F-SYS-091), checkout_too_early (check-out before cfg.day.checkout_earliest_time, BC-63), manual_entry (keyed on the web from paper, F-API-038); empty when none. |
 
 Keys: `PRIMARY KEY (client_uuid)`
 
@@ -2168,10 +2196,12 @@ One sales memo header (or zero-sale record) for an outlet visit, with gross, dis
 | `cluster_id` | bigint | null |  | Cluster of the outlet on the business date, frozen at capture (null without an outlet). |
 | `outlet_channel` | text | null |  | Outlet channel code at capture (as the outlet master held it at ingest). |
 | `outlet_geo_class` | text | null |  | Outlet geo class code at capture (as the outlet master held it at ingest). |
+| `entry_source` | text | not null |  | device = captured on the phone; manual = keyed on the web from the printed memo (paper backfill, F-API-038). |
+| `entered_by_user_id` | bigint | null |  | Web user who keyed in a manual memo (app.app_user); null on device rows. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
-References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (entered_by_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.memo_discount
 
@@ -3250,7 +3280,7 @@ A risk signal (for example mock location or teleport) computed by the worker for
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
-| `code` | text | not null |  | Stable business code of the row, unique within its table. |
+| `code` | text | not null |  | Risk rule that raised the signal (GEO_*, DEVICE_*, CLOCK_SKEW, CONFIG_STAMP_REGRESS, MEMO_DUPLICATE_SUSPECT); weights in cfg.geo.integrity_weight. |
 | `severity` | smallint | not null |  | Severity of the signal on a small integer scale. |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
 | `subject_type` | text | not null |  | What the signal is about: user, device, visit, outlet, route or memo. |
@@ -3715,10 +3745,11 @@ A sellable product with unit, pack size, names and category.
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `updated_by` | bigint | null |  | User who last updated the row. |
+| `image_asset_id` | uuid | null |  | Admin asset of the pack image (app.admin_asset; backend-admin accepts only purpose sku_image); null when none. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (variant_id) REFERENCES app.product_node(id)`
+References: `FOREIGN KEY (image_asset_id) REFERENCES app.admin_asset(asset_id)`; `FOREIGN KEY (variant_id) REFERENCES app.product_node(id)`
 
 ## app.sku_price
 
@@ -4375,7 +4406,7 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `first_batch_uuid` | uuid | null |  | batch_uuid of the sync batch that first delivered the record. |
 | `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
-| `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
+| `voided_at` | timestamp with time zone | null |  | UTC time the row was tombstoned (admin data void, or a paper web_entry visit superseded by the phone's visit for the same memo); write-once, the row is never deleted, voided visits never count. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `visit_kind` | text | not null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
@@ -4415,10 +4446,12 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `cluster_id` | bigint | null |  | Cluster of the outlet on the business date, frozen at capture (null without an outlet). |
 | `outlet_channel` | text | null |  | Outlet channel code at capture (as the outlet master held it at ingest). |
 | `outlet_geo_class` | text | null |  | Outlet geo class code at capture (as the outlet master held it at ingest). |
+| `entry_source` | text | not null |  | device = captured on the phone; manual = keyed on the web for a dead-phone day (paper backfill, F-API-038). |
+| `entered_by_user_id` | bigint | null |  | Web user who keyed in a manual visit (app.app_user); null on device rows. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
-References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (assessed_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (assessed_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (entered_by_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.visit_plan
 
@@ -5241,8 +5274,32 @@ One row per memo with its money totals, for reports.
 | `geo_key` | bigint | null |  | dim_geo_version key valid on the business date (dw.geo_key_on). |
 | `outlet_key` | bigint | null |  | dim_outlet_version key valid on the business date (dw.outlet_key_on). |
 | `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
+| `entry_source` | text | not null |  | device or manual (keyed on the web from the printed memo), copied from app.memo. |
+| `entered_by_user_id` | bigint | null |  | Web user who keyed the memo (entry_source manual), copied from app.memo; null for device rows. |
 
 Keys: `PRIMARY KEY (memo_client_uuid, business_date)`
+
+## dw.fact_supervisor_day
+
+One row per AMO or TSO and business date with the day's check-in, check-out and Sales Submit, filled by the worker from app.supervisor_day (F-AMO-039).
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_id` | bigint | not null |  | Supervisor (app.app_user). |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the supervisor-day. |
+| `role` | text | not null |  | Role code of the user at projection time (app.role_def, upper case: AMO or TSO for a supervisor-day); no CHECK, so a rebuild after a re-role still succeeds. |
+| `zone_id` | bigint | null |  | Home zone of the supervisor that day; null when the user has none (a TSO over several zones). |
+| `checked_in_at` | timestamp with time zone | null |  | UTC time of the day's check-in; null when the supervisor did not check in. |
+| `checked_out_at` | timestamp with time zone | null |  | UTC time of the day's check-out. |
+| `sales_submitted_at` | timestamp with time zone | null |  | UTC time the supervisor's Sales Submit was accepted. |
+| `submit_cycle` | integer | not null |  | Submit cycle of the day (a voided submit opens the next cycle). |
+| `submit_voided` | boolean | not null |  | True when the day's submit was voided. |
+| `last_event_id` | bigint | null |  | Domain event id the projection last applied (watermark). |
+| `updated_at` | timestamp with time zone | not null |  | UTC time the row was last rebuilt. |
+
+Keys: `PRIMARY KEY (user_id, business_date)`
 
 ## dw.fact_visit
 
@@ -5275,6 +5332,8 @@ One row per visit with device and server verdicts, distance and void flag.
 | `geo_key` | bigint | null |  | dim_geo_version key valid on the business date (dw.geo_key_on). |
 | `outlet_key` | bigint | null |  | dim_outlet_version key valid on the business date (dw.outlet_key_on). |
 | `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
+| `entry_source` | text | not null |  | device or manual (keyed on the web for a dead-phone day), copied from app.visit. |
+| `entered_by_user_id` | bigint | null |  | Web user who keyed the visit (entry_source manual), copied from app.visit; null for device rows. |
 
 Keys: `PRIMARY KEY (visit_client_uuid, business_date)`
 
@@ -5448,6 +5507,7 @@ Stable view: per field user and business date, SR calls, successful calls, geo v
 | `memos_captured_offline` | bigint | null |  | Memos captured while the phone was offline. |
 | `first_visit_at` | timestamp with time zone | null |  | UTC instant the first call opened. |
 | `last_visit_end_at` | timestamp with time zone | null |  | UTC instant the last call ended. |
+| `memos_entered_manually` | bigint | null |  | Active memos keyed on the web from paper (entry_source manual). |
 
 ## dw.v_geo_integrity
 

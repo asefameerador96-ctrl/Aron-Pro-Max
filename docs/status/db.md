@@ -138,6 +138,35 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
     for the regress count. Answer `docs/requests/db-working-day-keys-and-flags-answer.md`; break-override item checks asked
     of backend-admin (`db-break-overrides-validation.md`). Opus checker PASS (round 5; should-fix applied).
 
+## Session 5, 2026-10-15 (build restart; lead's backend-admin rows and backend-core memo source)
+
+- `V0074` `app.dues_adjustment` (answers `backend-admin-dues-adjustment-table.md`, F-ADM-036, T1 money): signed
+  milli-taka, write_off < 0, maker-checker CHECK, guard trigger (insert pending only; decided once, only status/
+  decided_by/decided_at/decision_note change; no delete, no truncate), decided_at >= created_at. On approval
+  backend-admin writes the due_ledger `adjustment` row (source_client_uuid = client_uuid, business_date =
+  app.dhaka_date(now()), user_id = the checker). api_rw SELECT/INSERT/UPDATE, no DELETE for anyone.
+- `V0075`/`V0076` `app.sku.image_asset_id` -> `app.admin_asset` (FK NOT VALID + VALIDATE).
+- `V0077`/`V0078` (answers `backend-core-memo-source.md` + addendum, F-API-038): `entry_source` device|manual and
+  `entered_by_user_id` on memo and visit (CHECK manual iff entered_by), registry flag `manual_entry`, risk code
+  `MEMO_DUPLICATE_SUSPECT` (weight 30), `dw.fact_memo`/`fact_visit.entry_source`, `dw.v_daily_sr.memos_entered_manually`.
+  The two FKs on partitioned tables cannot be NOT VALID (PG16): added directly at pilot size; the D-DB-PART-01
+  pre-staging batch should add such FKs in their own migration. Open for backend-reports:
+  `docs/requests/db-backend-reports-entry-source.md` (Aggregator copies entry_source). backend-core closed the
+  device-path spoofing gap the checker found (RecordWriter sets the source itself, lane/backend-core 89c1765a).
+- `V0079`/`V0080` (lead, T1): |amount_mtk| <= 10^13 on dues_adjustment and due_ledger (BETWEEN, NOT VALID + VALIDATE).
+  Checker notes routed to the lead: backend-admin has no API cap on the adjustment amount yet (contract `Mtk` is a plain
+  int64), and memo money has no upper bound, so a memo with due_mtk > 10^13 would fail its ledger insert (sync lane cap).
+- `V0081` (lead, T1): a paper web_entry visit matched to the phone's memo is superseded with the existing data-void
+  tombstone `app.visit.voided_at` (no new column); `docs/requests/db-backend-core-visit-supersede.md` gives
+  `matchBackfill` the UPDATE (RETURNING route_id for the dirty key), the registry status and the audit fields.
+- `V0082`/`V0083` (answers `backend-reports-db-entered-by.md`; lead row 13:40): `dw.fact_memo`/`fact_visit.entered_by_user_id`
+  (one-way CHECK: device rows name no web user; the reverse is not enforced until the projector copies the column),
+  `dw.fact_supervisor_day` (unpartitioned, no role CHECK so re-roled users still rebuild), dirty kind
+  `supervisor_day_agg` (callers of app.mark_dirty enqueue it; no trigger). backend 788/0, db 246/0 + rerun 11/0.
+- Checks: backend 788/0 and db 243/0 on V0079-V0081, changed classes rerun green after checker fixes; squawk ok.
+- Checks: db classes 152/0 after the last fixes (full db 240 with 2 test bugs, fixed), backend 781/0, squawk ok;
+  Opus checker per batch (V0074 one should-fix closed; V0077 PASS, test fixes applied).
+
 ## Session 5, 2026-10-08 (lead's two backend-core requests)
 
 - `V0069` `app.client_error` (answers `backend-core-client-error-table.md`, F-SYS-032). **Deviation (D-DB-S5-01, for

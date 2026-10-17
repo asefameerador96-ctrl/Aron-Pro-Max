@@ -18,22 +18,30 @@ object ReportOutputs {
         return if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\t' || first == '\r' || first == '\n') "'$s" else s
     }
 
-    fun xlsx(out: OutputStream, def: ReportDefinition, columns: List<ReportColumn>, rows: Iterator<Map<String, JsonElement>>, watermark: String): Int {
-        var n = 0
-        Workbook(out, "Aron", "1.0").use { wb ->
-            val ws = wb.newWorksheet("Report")
-            columns.forEachIndexed { c, col -> ws.value(0, c, sanitize(col.label_en)) }
-            while (rows.hasNext()) {
-                val row = rows.next(); n++
-                columns.forEachIndexed { c, col -> cell(ws, n, c, row[col.key], col.type) }
-            }
+    /** Row-at-a-time xlsx writer: the header and the Info sheet are written with the first row and on [close]; rows are never held. */
+    class XlsxWriter(out: OutputStream, private val def: ReportDefinition, private val columns: List<ReportColumn>, private val watermark: String) : AutoCloseable {
+        private val wb = Workbook(out, "Aron", "1.0")
+        private val ws = wb.newWorksheet("Report")
+        private var n = 0
+
+        init { columns.forEachIndexed { c, col -> ws.value(0, c, sanitize(col.label_en)) } }
+
+        fun row(row: Map<String, JsonElement>) { n++; columns.forEachIndexed { c, col -> cell(ws, n, c, row[col.key], col.type) } }
+
+        override fun close() {
             val info = wb.newWorksheet("Info")
             info.value(0, 0, sanitize(def.title_en)); info.value(1, 0, sanitize(watermark)); info.value(2, 0, "rows: $n")
+            wb.close()
         }
+    }
+
+    fun xlsx(out: OutputStream, def: ReportDefinition, columns: List<ReportColumn>, rows: Iterator<Map<String, JsonElement>>, watermark: String): Int {
+        var n = 0
+        XlsxWriter(out, def, columns, watermark).use { w -> while (rows.hasNext()) { w.row(rows.next()); n++ } }
         return n
     }
 
-    private fun cell(ws: org.dhatim.fastexcel.Worksheet, r: Int, c: Int, v: JsonElement?, type: String) {
+    internal fun cell(ws: org.dhatim.fastexcel.Worksheet, r: Int, c: Int, v: JsonElement?, type: String) {
         val p = v as? JsonPrimitive
         when {
             v == null || v is JsonNull || p == null -> Unit

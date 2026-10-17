@@ -212,4 +212,25 @@ class DayStateTest {
         val after = fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT string_agg(route_id || ':' || state || ':' || COALESCE(sales_submitted_at::text, '-'), ',' ORDER BY route_id) FROM app.route_day").mapTo(String::class.java).one() ?: "" }
         assertEquals(before, after, "no route-day changed")
     }
+
+    /** F-AMO-039: an AMO's visit, sale-day records and submit on an SR's route never change that route's day (so its Login and Submit % stay the SR's). */
+    @Test
+    fun anAmoVisitOnAnSrRouteLeavesTheRouteDayAlone() {
+        val amo = count("SELECT id FROM app.app_user WHERE role = 'AMO' ORDER BY id LIMIT 1")
+        val up = Uploader(amo, Role.AMO, 1, 0, devPhone, null)
+        val job = RouteDayPlanningJob(fresh.db, DbServerConfig(fresh.db, RegistryDefaults(), clock), clock)
+        fun snapshot() = fresh.db.jdbi.withHandle<String, Exception> { h ->
+            h.createQuery("SELECT coalesce(string_agg(route_id || ':' || state || ':' || COALESCE(in_field_at::text, '-') || ':' || COALESCE(submit_received_at::text, '-'), ',' ORDER BY route_id), '') FROM app.route_day").mapTo(String::class.java).one()
+        }
+        val before = snapshot()
+        fresh.db.jdbi.useTransaction<Exception> { h ->
+            val touched = DayStates.Touched()
+            for (rec in listOf(visit(r1, outlet1), daySubmit(r1, mapOf("visit" to 1)))) {
+                DayStates.afterStored(h, rec["type"]!!.jsonPrimitive.content, rec, rec["payload"]!!.jsonObject, up, now.get(), job, touched)
+            }
+            DayStates.afterBatch(h, amo, touched, now.get())
+            assertEquals(0, touched.routeDays.size, "the AMO holds no route, so no route-day is touched")
+        }
+        assertEquals(before, snapshot())
+    }
 }

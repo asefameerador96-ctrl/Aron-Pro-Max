@@ -89,7 +89,7 @@ enum class FixPurpose(val wire: String) {
     @SerialName("redemption") REDEMPTION("redemption"),
 }
 
-/** Risk-signal catalogue (docs/24 s11.4). */
+/** Risk-signal catalogue (docs/24 s11.4). The contract marks it x-extensible-enum: never decode wire data with this enum on a phone. */
 @Serializable
 enum class RiskSignalCode(val wire: String) {
     @SerialName("GEO_MOCK") GEO_MOCK("GEO_MOCK"),
@@ -111,6 +111,7 @@ enum class RiskSignalCode(val wire: String) {
     @SerialName("CLOCK_SKEW") CLOCK_SKEW("CLOCK_SKEW"),
     @SerialName("GEO_OUT_OF_BOUNDS") GEO_OUT_OF_BOUNDS("GEO_OUT_OF_BOUNDS"),
     @SerialName("CONFIG_STAMP_REGRESS") CONFIG_STAMP_REGRESS("CONFIG_STAMP_REGRESS"),
+    @SerialName("MEMO_DUPLICATE_SUSPECT") MEMO_DUPLICATE_SUSPECT("MEMO_DUPLICATE_SUSPECT"),
 }
 
 /** Report registry (docs/24 s12.3). */

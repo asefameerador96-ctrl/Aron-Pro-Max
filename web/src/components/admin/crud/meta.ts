@@ -4,6 +4,7 @@
 import type { ApiPath, Role } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
 import type { RoleList } from "@/lib/auth/roles";
+import type { AssetPurpose } from "@/lib/admin/tutorials";
 
 export type MasterGroup = "geography" | "routes" | "products" | "people" | "outlets" | "lists";
 export const MASTER_GROUPS: readonly MasterGroup[] = ["geography", "routes", "products", "people", "outlets", "lists"];
@@ -18,7 +19,9 @@ export interface RefMeta {
   get?: ApiPath;
   /** Path parameters of that list path, e.g. { level: "zone" }. */
   params?: Record<string, string>;
-  /** Member holding the value (default "id"). */
+  /** Options come from the code list with this key (GET /v1/admin/code-lists, one call for all lists) instead of a paged table. Items without a value member are left out. */
+  codeList?: string;
+  /** Member holding the value (default "id"; "code" for a filter by code). */
   value?: string;
   /** Members shown, joined with " · " (default ["name"]). */
   label?: readonly string[];
@@ -27,12 +30,14 @@ export interface RefMeta {
 interface FieldBase {
   labelKey: MessageKey;
   /** `ref` stores an integer id and shows a select (see `ref`). `bool` is a yes/no select. */
-  kind: "text" | "int" | "enum" | "timestamp" | "ref" | "bool" | "date" | "mask" | "number";
+  kind: "text" | "int" | "enum" | "timestamp" | "ref" | "bool" | "date" | "mask" | "number" | "asset";
   /** Heading of the form section this field sits under (outlet detail: basic, address, business, additional). */
   section?: MessageKey;
   /** `mask`: one label per bit, bit 0 first; the value is the sum of the ticked bits. */
   maskBits?: readonly MessageKey[];
   ref?: RefMeta;
+  /** `asset`: purpose of the upload ticket (ASSET_RULES) and the row member holding the current file URL (preview). The stored value is the asset UUID. */
+  asset?: { purpose: AssetPurpose; previewKey: string };
   /** Minimum length in characters (code points), the contract's minLength. */
   minLength?: number;
   /** false: show a ref column as its plain id (no lookup of the whole referenced table just to label rows). */
@@ -60,7 +65,9 @@ export type FieldMeta<Row, Write, Patch> =
   | (FieldBase & { mode?: "rw"; name: Name<Row> & Name<Write> & Name<Patch> })
   | (FieldBase & { mode: "create-only"; name: Name<Row> & Name<Write> })
   | (FieldBase & { mode: "update-only"; name: Name<Patch> })
-  | (FieldBase & { mode: "readonly"; name: Name<Row> });
+  | (FieldBase & { mode: "readonly"; name: Name<Row> })
+  /** Accepted by create and update but not returned in the row (a file bound by id; the row carries only its URL). */
+  | (FieldBase & { mode: "write-only"; name: Name<Write> & Name<Patch> });
 
 export interface FilterMeta {
   /** Query parameter of the list operation (must exist in the contract; typed by the entity's list path). */
@@ -175,7 +182,7 @@ export function entityCanEdit(meta: AnyEntity): boolean {
 export function isWritable(f: AnyField, mode: "create" | "update"): boolean {
   const m = f.mode ?? "rw";
   if (m === "readonly") return false;
-  if (m === "rw") return true;
+  if (m === "rw" || m === "write-only") return true;
   return mode === "create" ? m === "create-only" : m === "update-only";
 }
 

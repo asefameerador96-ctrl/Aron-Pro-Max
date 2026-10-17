@@ -1,0 +1,34 @@
+BackfillMatchResult:
+  type: object
+  required:
+  - paper_memo_id
+  - paper_memo_uuid
+  - released
+  - kept_open
+  - voided_paper_visit_uuid
+  - phone_visit_uuid
+  additionalProperties: false
+  properties:
+    paper_memo_id:
+      $ref: '#/components/schemas/Id'
+    paper_memo_uuid:
+      $ref: '#/components/schemas/Uuid'
+    released:
+      type: array
+      description: client_uuids of the held records closed or released onto the paper memo.
+      items:
+        $ref: '#/components/schemas/Uuid'
+    kept_open:
+      type: array
+      description: client_uuids of held records that stay open for a review of their own.
+      items:
+        $ref: '#/components/schemas/Uuid'
+    voided_paper_visit_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+      description: The paper web_entry visit voided in favour of the phone visit; null when already voided.
+    phone_visit_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'

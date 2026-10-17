@@ -60,12 +60,30 @@ fun main() {
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
             val workerDb = Database.fromSettings(settings)
             AggregationWorker(workerDb).start()
+            run {
+                val workerClock = com.aktcl.aron.backend.platform.AronClock.SYSTEM
+                val workerConfig = com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))
+                val engine = com.aktcl.aron.backend.analytics.ReportEngine(workerDb, workerConfig, workerClock, com.aktcl.aron.backend.analytics.ReportHandlers.all)
+                val reach = com.aktcl.aron.backend.masterdata.SqlReachResolver(workerDb, com.aktcl.aron.backend.masterdata.GeoRepository(workerDb, workerClock), workerClock)
+                com.aktcl.aron.backend.analytics.ExportJobService(workerDb, engine, reach, com.aktcl.aron.backend.app.exportStoreFromEnvironment(), workerClock).start()
+            }
             com.aktcl.aron.backend.masterdata.RiskSignalJob(com.aktcl.aron.backend.masterdata.RiskSignalEvaluator(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env)))).start()
             com.aktcl.aron.backend.sync.RouteDayPlanningJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
+            run {
+                // F-SYS-067: D+1 bundles at 22:00, dirtied users at 03:30, coverage check at 04:30 (cfg.bundle.*).
+                val workerClock = com.aktcl.aron.backend.platform.AronClock.SYSTEM
+                val workerConfig = com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))
+                val geo = com.aktcl.aron.backend.masterdata.GeoRepository(workerDb, workerClock)
+                val bundles = com.aktcl.aron.backend.sync.BundleService(
+                    workerDb, workerConfig, com.aktcl.aron.backend.masterdata.SqlRoutePlanner(workerDb, geo, workerConfig), workerClock,
+                    reach = com.aktcl.aron.backend.masterdata.SqlReachResolver(workerDb, geo, workerClock),
+                )
+                com.aktcl.aron.backend.sync.BundlePreGenerator(workerDb, workerConfig, bundles, workerClock).start()
+            }
             com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
             com.aktcl.aron.backend.sync.RetentionJob(workerDb).start()
             com.aktcl.aron.backend.masterdata.OutletRequestLapseJob(workerDb).start()
-            log.info("aron worker started (aggregation, risk signals, route-day planning, geo re-check sweep, retention, outlet request lapse)")
+            log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse)")
             Thread.currentThread().join()
         }
     }
