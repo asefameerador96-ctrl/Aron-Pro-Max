@@ -58,6 +58,11 @@ class LocalPurge(private val db: AronDatabase) {
                 if (n > 0) counts[t] = n
             }
             // Fixes go with the capture rows purged here, never on their own (a photo's fix has no capture-row owner).
+            // Tombstones first: a replay of a purged UUID is then recognised and writes nothing (capture rows and outbox rows alike).
+            w.execSQL("INSERT OR IGNORE INTO purged_uuid(client_uuid, purged_at) SELECT client_uuid, ? FROM purge_uuid", arrayOf<Any>(nowIso))
+            w.execSQL("INSERT OR IGNORE INTO purged_uuid(client_uuid, purged_at) SELECT client_uuid, ? FROM purge_owner", arrayOf<Any>(nowIso))
+            val tombCutoff = CaptureRepository.ISO_MILLIS.format(java.time.Instant.parse(nowIso).minus(java.time.Duration.ofDays(TOMBSTONE_DAYS)))
+            w.execSQL("DELETE FROM purged_uuid WHERE purged_at < ?", arrayOf<Any>(tombCutoff))
             val fixes = w.compileStatement("DELETE FROM geo_fix WHERE owner_client_uuid IN (SELECT client_uuid FROM purge_owner)").use { it.executeUpdateDelete() }
             if (fixes > 0) counts["geo_fix"] = fixes
             val outbox = w.compileStatement("DELETE FROM outbox WHERE client_uuid IN (SELECT client_uuid FROM purge_uuid)").use { it.executeUpdateDelete() }
@@ -78,6 +83,9 @@ class LocalPurge(private val db: AronDatabase) {
         /** `cfg.app.outbox_keep_days` default: an acked row stays this long after its ack. */
         const val DEFAULT_KEEP_DAYS = 3
         const val CFG_KEEP_DAYS = "cfg.app.outbox_keep_days"
+
+        /** How long a purged UUID is remembered (a replay older than this is the server's to dedupe). */
+        const val TOMBSTONE_DAYS = 60L
 
         /** Capture tables with `client_uuid` and the capture envelope's `business_date`. */
         val CAPTURE_TABLES = listOf(

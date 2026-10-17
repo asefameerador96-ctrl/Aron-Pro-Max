@@ -215,7 +215,7 @@ class ErrorReporter(
         return database.withTransaction {
             var n = 0
             for (e in entries) {
-                if (database.outboxDao().byClientUuid(e.uuid) != null) continue // a drain cut short before the files went
+                if (database.outboxDao().byClientUuid(e.uuid) != null || database.outboxDao().anyPurged(listOf(e.uuid))) continue // a drain cut short before the files went, or already sent and purged
                 val r = e.report
                 val at = runCatching { java.time.Instant.parse(r.occurredAt).toEpochMilli() }.getOrElse { clock.nowMs() }
                 val date = com.aktcl.aron.rules.BusinessDate.of(at).toString()
