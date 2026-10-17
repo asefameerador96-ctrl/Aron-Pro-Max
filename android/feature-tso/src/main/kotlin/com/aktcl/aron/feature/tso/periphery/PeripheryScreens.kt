@@ -108,13 +108,14 @@ fun RetailerScreen(state: RetailerState, online: () -> Boolean, nowMs: () -> Lon
     val cache = androidx.compose.runtime.remember(userKey) { MapTileCache(File(context.cacheDir, "map_tso_$userKey")) { settings.tileCacheBytes } }
     val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) scope.launch { state.find() } else state.permissionRefused() }
     val phase = ui.phase
+    val language = com.aktcl.aron.core.ui.LocalAppLanguage.current
     AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_pe_retailer), onBack = onBack) }) {
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.padding(horizontal = AronTokens.Space.Screen).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 AronSectionLabel(stringResource(R.string.tso_mc_zone_label))
                 ZonePicker(ui.zones, ui.zoneId) { state.pickZone(it) }
                 AronSectionLabel(stringResource(R.string.tso_pe_radius))
-                AronSegmented(RADIUS_OPTIONS_M.map { localizedNumber(it.toLong()) + " m" }, RADIUS_OPTIONS_M.indexOf(ui.radiusM), { state.pickRadius(RADIUS_OPTIONS_M[it]) }, Modifier.testTag("tso_pe_radius"))
+                AronSegmented(RADIUS_OPTIONS_M.map { stringResource(R.string.tso_unit_m, localizedNumber(it.toLong())) }, RADIUS_OPTIONS_M.indexOf(ui.radiusM), { state.pickRadius(RADIUS_OPTIONS_M[it]) }, Modifier.testTag("tso_pe_radius"))
                 AronTextButton(stringResource(R.string.tso_pe_find), { scope.launch { state.find() } }, Modifier.testTag(PeripheryTags.FIND))
                 when (phase) {
                     RetailerUi.Locating -> AronBanner(stringResource(R.string.tso_pe_locating), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Info)
@@ -139,7 +140,7 @@ fun RetailerScreen(state: RetailerState, online: () -> Boolean, nowMs: () -> Lon
                 if (phase.result.fromCache) AronBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = BannerKind.Offline)
                 if (n.truncated) AronBanner(stringResource(R.string.tso_pe_truncated, MAX_SHOWN), Modifier.testTag(PeripheryTags.TRUNCATED), kind = BannerKind.Info)
                 Text(localizedDigits(stringResource(R.string.tso_as_of, phase.result.asOf)), Modifier.padding(horizontal = AronTokens.Space.Screen).testTag(PeripheryTags.ASOF), style = MaterialTheme.typography.bodySmall)
-                LiteMapScreen(nearbyPoints(n), settings, online(), MapsKey.present(context), nowMs(), cache, "near_${userKey}_${phase.zoneId}_${phase.radiusM}_${positionKey(phase.lat, phase.lng)}", Modifier.weight(1f))
+                LiteMapScreen(nearbyPoints(n) { d -> context.getString(R.string.tso_unit_m, com.aktcl.aron.core.common.LocaleDigits.localize(d.toString(), language)) }, settings, online(), MapsKey.present(context), nowMs(), cache, "near_${userKey}_${phase.zoneId}_${phase.radiusM}_${positionKey(phase.lat, phase.lng)}", Modifier.weight(1f))
             }
         }
     }

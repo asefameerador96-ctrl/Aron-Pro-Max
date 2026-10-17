@@ -235,4 +235,5 @@
     <string name="tso_mc_enter_answer">Enter your answer</string>
     <string name="tso_fs_success_title">Success</string>
     <string name="tso_fs_routes">Routes</string>
+    <string name="tso_unit_m">%1$s m</string>
 </resources>

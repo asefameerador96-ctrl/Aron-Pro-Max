@@ -1,5 +1,13 @@
 # Status: lane android-tso (wave 2, started 2026-10-17)
 
+
+## Package items (2026-10-17)
+- 1 Replay proof: kill-and-relaunch + duplicate/out-of-order replay for leave, feedback, visit plan, visit query, assigned task, my-call, password change (`TsoWriteReplayTest`, 14 tests; Opus checked).
+- 2 F-SR-048 Tutorial list in the SR app: cached list, empty text, online-only tap, https-only, no autoplay or download; Linux goldens `sr_tutorial_*` (Sonnet checked).
+- 3 Parity audit vs docs/08 and the manual (Opus): fixes applied; table and requests in `docs/requests/android-tso-parity-findings.md`.
+- 4 Bangla + long-text sweep: lint green on feature-tso/feature-home, units localized (`tso_unit_m`), 3-line and 200% font-scale goldens (Home, Leave apply, Final Submit).
+- 5 SR Home/Sale/Memo state-coverage check: not started.
+
 ## Done (all pushed to lane/android-tso, each with a fresh checker; defects fixed with tests)
 F-TSO-001 (Opus), 008, 009, 010+021 (Opus), 011, 012, 013-016, 018 (with photo), 024, 028, 029 (Sonnet).
 F-TSO-027, 002-007 were handed to the android-amo session by the lead (2026-10-18); not done by this lane.

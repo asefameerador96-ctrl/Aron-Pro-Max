@@ -235,4 +235,5 @@
     <string name="tso_mc_enter_answer">আপনার উত্তর লিখুন</string>
     <string name="tso_fs_success_title">সফল</string>
     <string name="tso_fs_routes">রুটসমূহ</string>
+    <string name="tso_unit_m">%1$s মি.</string>
 </resources>

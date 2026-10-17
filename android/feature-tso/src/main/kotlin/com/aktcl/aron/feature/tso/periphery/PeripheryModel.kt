@@ -77,7 +77,8 @@ fun interface PeripheryFix { suspend fun current(): FixResult }
 /** Markers are capped and the list is grouped: at most [MAX_SHOWN] pins, the rest only in the count (server also caps at 300). */
 const val MAX_SHOWN = 300
 
-fun nearbyPoints(n: Nearby): List<MapPoint> = n.items.take(MAX_SHOWN).map { MapPoint(it.id.toString(), it.name + "  ·  " + it.code + "  ·  " + it.distanceM.toInt() + " m", it.lat, it.lng) }
+fun nearbyPoints(n: Nearby, distance: (Int) -> String = { "$it m" }): List<MapPoint> =
+    n.items.take(MAX_SHOWN).map { MapPoint(it.id.toString(), it.name + "  ·  " + it.code + "  ·  " + distance(it.distanceM.toInt()), it.lat, it.lng) }
 
 /** Groups team members by their first route for the legend; members with no route fall under null. */
 fun legend(members: List<TeamMember>, codes: Map<Long, String>): List<Pair<String, Int>> =
