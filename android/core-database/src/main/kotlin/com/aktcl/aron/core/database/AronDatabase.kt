@@ -5,6 +5,7 @@ import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import com.aktcl.aron.core.database.dao.CaptureDao
 import com.aktcl.aron.core.database.dao.OutboxDao
@@ -85,13 +86,28 @@ abstract class AronDatabase : RoomDatabase() {
         }
 
         /**
+         * DD-01 (docs/17 s5: "a sale must survive a battery pull"): the writer syncs the WAL to storage on every commit
+         * (`synchronous = FULL`), not only at checkpoints (NORMAL, which SQLCipher sets while it switches a connection to
+         * WAL, so a pull before the checkpoint could roll a printed memo back). Set in `onOpen`, after that switch, on the
+         * connection Room writes through; readers keep NORMAL (they write nothing). Cost: one fsync per commit, a few
+         * milliseconds on eMMC; measured on the lab A06 (docs/status/device-checks.md), never traded back.
+         */
+        internal object SynchronousFull : RoomDatabase.Callback() {
+            override fun onOpen(db: SupportSQLiteDatabase) {
+                db.execSQL("PRAGMA synchronous = FULL")
+            }
+        }
+
+        /**
          * Opens the database of [userId]. Production passes the SQLCipher [openHelperFactory] keyed by a Keystore-wrapped
-         * passphrase (docs/24 s5.2; [SqlCipher.factory]); tests pass null for plain SQLite. WAL keeps a kill mid-write safe.
+         * passphrase (docs/24 s5.2; [SqlCipher.factory]); tests pass null for plain SQLite. WAL keeps a kill mid-write safe;
+         * [SynchronousFull] keeps a committed row safe through a power loss.
          */
         fun open(context: Context, userId: Long, openHelperFactory: SupportSQLiteOpenHelper.Factory?): AronDatabase =
             Room.databaseBuilder(context.applicationContext, AronDatabase::class.java, fileName(userId))
                 .openHelperFactory(IncrementalVacuumFactory(openHelperFactory)) // new files reclaim purged pages
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
+                .addCallback(SynchronousFull)
                 .build()
     }
 }
