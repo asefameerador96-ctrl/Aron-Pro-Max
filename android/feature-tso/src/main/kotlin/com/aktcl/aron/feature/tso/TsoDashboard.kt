@@ -25,6 +25,8 @@ data class TsoDash(
     val asOf: String, val categories: List<CategorySales>, val channels: List<SliceRow>, val segments: List<SliceRow>, val brands: List<SliceRow>,
     val targetOutlets: Long, val visitedOutlets: Long, val successfulCalls: Long, val strikeRatePct: Double?,
     val netMtk: Long, val activeMemos: Long, val zones: List<ZoneRef>,
+    /** The node the figures are for (the territory, or the chosen zone). */
+    val nodeName: String? = null,
 )
 
 /** A route that has not logged in or not uploaded, with the SR (the pair the drill-down shows). */
@@ -62,6 +64,7 @@ object TsoDashboards {
         return TsoDash(
             s(o, "as_of").orEmpty(), cats, slices(o["by_channel"] as? JsonArray), slices(o["by_segment"] as? JsonArray), slices(o["by_brand"] as? JsonArray),
             l(k, "target_outlets") ?: 0, l(k, "visited_outlets") ?: 0, l(k, "successful_calls") ?: 0, d(k, "strike_rate_pct"), l(k, "net_mtk") ?: 0, l(k, "active_memo_count") ?: 0, zones,
+            ((o["node"] as? JsonObject)?.let { s(it, "name") }),
         )
     }
 
@@ -84,6 +87,9 @@ object TsoDashboards {
 
     /** Call rate: successful calls over the territory's target outlets (the planned outlets, not a business target: the server's strike_rate_pct is the same ratio), percent; null without outlets. */
     fun strikeRate(successful: Long, targetOutlets: Long): Double? = if (targetOutlets <= 0) null else successful * 100.0 / targetOutlets
+
+    /** 1,110.5: the whole part grouped by the caller, then the decimal separator and one digit (never "0.0" for a small positive value). */
+    fun fractionDigit(v: Double): String = oneDecimal(v).substringAfter('.')
 
     /** The unit a category is reported in when the server sent none (an empty tile keeps its own unit). */
     fun defaultUnit(code: String): String = when (code) { "lighter" -> "piece"; "match" -> "dozen"; else -> "stick" }
