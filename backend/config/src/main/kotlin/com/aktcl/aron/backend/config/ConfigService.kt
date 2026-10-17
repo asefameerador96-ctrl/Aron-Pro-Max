@@ -44,6 +44,7 @@ fun interface NodeReach {
 
 class ConfigService(private val db: Database, val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM, private val nodeReach: NodeReach? = null) {
     private val dhaka = ZoneId.of("Asia/Dhaka")
+    internal val database: Database get() = db
 
     // ---------------------------------------------------------------- reads
 

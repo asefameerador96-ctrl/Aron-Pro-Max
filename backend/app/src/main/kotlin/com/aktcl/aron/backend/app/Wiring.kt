@@ -211,7 +211,7 @@ class Wiring(
             val configResolver = ConfigResolver(db, clock)
             val toolsReach = com.aktcl.aron.backend.config.NodeReach { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
             val configService = ConfigService(db, configResolver, clock, toolsReach)
-            val configDeps = ConfigDeps(configService, guard, clock)
+            val configDeps = ConfigDeps(configService, guard, clock, reach)
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
             val permissions = ConfigPermissions(db, configService, clock)
             // One cipher for the bind OTP: login creates it sealed with a keyed verifier, the TSO panel opens it (s8.1).
