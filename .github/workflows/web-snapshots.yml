@@ -7,6 +7,10 @@
 name: web-snapshots
 
 on:
+  # A push that touches this file records the goldens on that branch (workflow_dispatch only works once the file is on
+  # the default branch, after the train promotes it); edit the comment line below to re-record from a lane.
+  push:
+    paths: [".github/workflows/web-snapshots.yml"]
   workflow_dispatch:
     inputs:
       spec:
