@@ -10,13 +10,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronPressAndHoldButton
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronSectionLabel
 import com.aktcl.aron.core.ui.AronSecondaryButton
@@ -113,6 +114,14 @@ fun VerifyFormContent(
     onReject: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var confirmReject by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (confirmReject) {
+        com.aktcl.aron.core.ui.AronConfirmDialog(
+            stringResource(R.string.amo_verify_reject_title), stringResource(R.string.amo_verify_reject_message),
+            stringResource(R.string.amo_verify_reject_yes), stringResource(R.string.amo_base_confirm_no),
+            onConfirm = { confirmReject = false; onReject() }, onDismiss = { confirmReject = false },
+        )
+    }
     Column(modifier.fillMaxSize()) {
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
@@ -165,8 +174,8 @@ fun VerifyFormContent(
         }
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             AronPrimaryButton(stringResource(R.string.amo_verify_save), onSave, Modifier.fillMaxWidth(), enabled = !busy && decidable, busy = busy)
-            AronSecondaryButton(stringResource(R.string.amo_verify_cancel), onCancel, Modifier.fillMaxWidth(), enabled = !busy)
-            AronPressAndHoldButton(stringResource(R.string.amo_verify_reject), onReject, Modifier.fillMaxWidth(), enabled = !busy && decidable)
+            // docs/07: Cancel rejects the request (a `discarded` decision), after a confirmation; leaving with Back queues nothing.
+            AronSecondaryButton(stringResource(R.string.amo_verify_cancel), { confirmReject = true }, Modifier.fillMaxWidth(), enabled = !busy && decidable)
         }
     }
 }

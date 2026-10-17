@@ -277,4 +277,7 @@
     <string name="amo_perf_watch">নজর দিন</string>
     <string name="amo_perf_low">পিছিয়ে</string>
     <string name="amo_perf_offline">টার্গেট আনা যায়নি। সংযোগ দেখে আবার খুলুন।</string>
+    <string name="amo_verify_reject_title">এই অনুরোধ প্রত্যাখ্যান করবেন?</string>
+    <string name="amo_verify_reject_message">অনুরোধটি প্রত্যাখ্যাত হিসেবে ফিরে যাবে। এসআর এটি অনুমোদন পাবে না।</string>
+    <string name="amo_verify_reject_yes">হ্যাঁ, প্রত্যাখ্যান</string>
 </resources>
