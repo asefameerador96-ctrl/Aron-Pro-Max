@@ -190,10 +190,14 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     }
 
 
+    private suspend fun reconcileTypes(): List<String> =
+        com.aktcl.aron.feature.amo.AmoReconciliation.types(runCatching { day.reference.config(com.aktcl.aron.core.database.repo.ReconciliationRepository.CONFIG_KEY, day.iso(day.currentMs())) }.getOrNull())
+
     /** F-AMO-030: the extended reconciliation (fixed rows, zero when the type has no records) and a `supervisor_day` submit. */
     fun newSubmitViewModel() = SalesSubmitViewModel(
-        day.userId, day::businessDate, AmoDaySource(RoomDaySource(db)), AmoServerCounts(serverCounts),
-        RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }, scope = "supervisor_day"),
+        day.userId, day::businessDate, AmoDaySource(RoomDaySource(db), ::reconcileTypes), AmoServerCounts(serverCounts, ::reconcileTypes),
+        // the supervisor day has no route, whatever call happens to be open (the lock and the cycle key on date + route)
+        RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L).copy(routeId = null) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }, scope = "supervisor_day"),
         syncScheduler, online,
     )
 

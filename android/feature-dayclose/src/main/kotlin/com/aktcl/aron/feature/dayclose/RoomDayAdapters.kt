@@ -40,7 +40,8 @@ class RoomDaySource(private val db: AronDatabase) : DaySource {
         return DuesAtSubmit(owing.map { it.first }.toSet().size, owing.sumOf { it.second })
     }
 
-    override suspend fun alreadySubmitted(businessDate: String): Boolean = capture.daySubmitsOn(businessDate).isNotEmpty()
+    /** A submit stands unless the server voided its cycle (the day is reopened for the next cycle). */
+    override suspend fun alreadySubmitted(businessDate: String): Boolean = CaptureRepository(db) { businessDate }.submitStands(businessDate)
 
     override suspend fun submitSettled(businessDate: String): Boolean =
         capture.daySubmitsOn(businessDate).lastOrNull()?.let { outbox.byClientUuid(it.clientUuid)?.state == "acked" } == true

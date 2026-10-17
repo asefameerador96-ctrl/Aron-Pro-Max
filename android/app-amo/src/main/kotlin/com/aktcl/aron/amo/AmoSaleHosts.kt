@@ -123,6 +123,12 @@ fun AmoSummaryHost(day: AmoDay) {
 /** Sales Submit with the reconciliation table and the Sync data button (F-SR-034/035). */
 @Composable
 fun AmoSubmitHost(day: AmoDay) {
+    // a call in progress must be closed first: its records belong before the day's last record
+    val openCall by day.visitSession.current.collectAsState()
+    if (openCall != null) {
+        Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen)) { androidx.compose.material3.Text(stringResource(AmoR.string.amo_submit_open_call), style = androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
+        return
+    }
     val vm = viewModel(key = "submit-" + day.userId) { day.sale.newSubmitViewModel() }
     val st by vm.state.collectAsState()
     LaunchedEffect(Unit) { vm.refresh() }

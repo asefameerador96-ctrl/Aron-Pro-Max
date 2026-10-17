@@ -190,6 +190,7 @@ class CaptureRepository(
         require(ok) { "${record.recordType}: wrong family or rank (rank ${record.rank}, own family $own)" }
         if (!own && record.rank > 0 && record.recordType != "call_assessment_answer") requireRoute(record.meta)
         if (capture.amoRecordCount(record.clientUuid) > 0) return@withTransaction false
+        requireOpenRouteDay(record.meta)
         capture.insertAmoRecord(record)
         outbox.insert(listOf(RecordMapping.amoRecord(record, nowIso())))
         true
@@ -348,6 +349,9 @@ class CaptureRepository(
      * until a submit of a later cycle than [voidedCycle].
      */
     suspend fun reopenRouteDay(businessDate: String, routeId: Long?, voidedCycle: Int) = RouteDayLock.reopen(db, businessDate, routeId, voidedCycle)
+
+    /** True while a Sales Submit of the date stands (a server void of its cycle reopens the day). */
+    suspend fun submitStands(businessDate: String): Boolean = RouteDayLock.submitStands(db, businessDate)
 
     /** Refuses a route-day capture after its Sales Submit (docs/24 s4.2 rule 2: day_submit is the route-day's last record). */
     private suspend fun requireOpenRouteDay(meta: CaptureMeta) {
