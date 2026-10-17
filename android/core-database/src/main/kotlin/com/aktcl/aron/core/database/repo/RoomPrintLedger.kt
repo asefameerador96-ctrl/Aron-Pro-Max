@@ -36,7 +36,7 @@ class RoomPrintLedger(
     override suspend fun savePending(job: PendingPrint): Unit = db.withTransaction {
         val e = job.event
         validate(e)
-        if (dao.eventCount(e.clientUuid) > 0) return@withTransaction // already final
+        if (dao.eventCount(e.clientUuid) > 0 || db.outboxDao().anyPurged(listOf(e.clientUuid))) return@withTransaction // already final (or sent and purged)
         val paperOut = job.paperOut || dao.jobPaperOut(e.clientUuid) == true // a paper that came out never comes back
         dao.upsertJob(job.copy(paperOut = paperOut).toEntity())
         if (paperOut && e.documentKind !in ReprintPolicy.NOT_COPIES) markPrinted(e)
@@ -44,7 +44,7 @@ class RoomPrintLedger(
 
     override suspend fun record(event: PrintEvent): Unit = db.withTransaction {
         validate(event)
-        if (dao.eventCount(event.clientUuid) > 0) return@withTransaction // idempotent by client uuid
+        if (dao.eventCount(event.clientUuid) > 0 || db.outboxDao().anyPurged(listOf(event.clientUuid))) return@withTransaction // idempotent by client uuid, also after the purge
         val memo = event.memoClientUuid?.let { capture.memo(it) }
         val stock = if (memo == null) event.refClientUuid?.let { capture.stockMovement(it) } else null
         // A print of a memo whose route-day is still open joins the visit family (rank 3, docs/24 s4.2). Once the route-day is
