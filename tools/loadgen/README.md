@@ -19,7 +19,9 @@ or the shared dev database (docs/28: run small in the test account, full size in
    exactly the device's records per type and its money (active memos, gross, net, paid, due, collected). Every batch
    must be answered 200, and every record of the resend `duplicate`. An SR with nothing to send today (Friday, a
    holiday, only 3F/2F routes not planned today) fails unless `--allow-empty` is given. A run with fewer than
-   `--min-records` records (default 1) always fails.
+   `--min-records` records (default 1) always fails. With the real mix of route kinds about a third of the SRs have no
+   route planned on a given day, so a fleet replay normally runs with `--allow-empty` and a `--min-records` floor
+   that fits its size (for example 50 per SR).
 3. **Self-test** (offline): `python3 tools/loadgen/test_replay.py`.
 
 Measured on the qa container, 2026-10-17 (local PostgreSQL 16, other builds running at the same time):
