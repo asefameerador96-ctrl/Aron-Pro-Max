@@ -341,6 +341,14 @@ Steps (laptop session, the Honor X5c Plus on USB, about 5 minutes):
 3. Pass = `ALL PASS (5 checks)`: phone listed, APK installed, login succeeded (API), login on phone, /health from
    Azure. Paste the window (it holds no secret) into `docs/status/laptop.md` and tell the lead.
 
+## android-tso (wave 2, 2026-10-17): checks that need the phone
+- D-TSO-001 (F-TSO-001): on the Honor X5c Plus or Galaxy A06 the TSO login is dark navy in Bangla and English; the sun switch on the login row turns on Sunlight mode (light, solid); log out with unsent items is refused with the count, with nothing unsent it wipes and returns to the dark login.
+- D-TSO-008/009 (F-TSO-008/009): leave list in Bangla and English against the seeded zone; apply one leave in flight mode: the card shows "not sent yet"; switch the data on: it becomes "DMO approval pending" after the next list refresh.
+- D-TSO-018/029 (F-TSO-018/029): feedback saved offline shows "not sent yet" and becomes a server row after sync; the category list is the seeded one.
+- D-TSO-028 (F-TSO-028): the blue Home button sits bottom centre above any bottom bar on Leave apply / Feedback form and does not cover Send; drawer opens by the hamburger and lists seven entries with subtitles in Bangla and English.
+- D-TSO-011/012 (F-TSO-011/012): with the Maps key in the build, My Team shows one lite map with a pin per SR who has synced a fix, legend by route code, age of each fix; flight mode: last image and list stay with the cached banner. Retailer: Allow location prompt appears once, radius 50/100/300 each shows pins around the TSO, a mock location shows the warning.
+- D-TSO-024 (F-TSO-024): Settings: language switch recreates the screen in the other language; Send data file queues offline and uploads on Wi-Fi; change password with the shared dev user (never write the password anywhere).
+- D-TSO-018 (photo): feedback with one photo: the camera opens, the compressed photo (docs/04 budget) is queued, offline it waits, on Wi-Fi it uploads; logout is refused while the photo is unsent.
 ### D-QA-2 Day 2 ten-minute check script (N-022; qa) — DEVICE-PENDING, laptop session + owner
 Script: `tools/checks/day2-check.ps1` (shared helpers in `tools/checks/AronCheck.psm1`). It was tested in the cloud with
 a fake adb and a mock API: the all-pass path, a doubled memo (FAIL "2 new memos for one sale") and a run without
