@@ -83,6 +83,8 @@ class RoomDaySubmitWriter(
     private val categoryOf: (Long) -> String,
     private val stockSlipPrinted: suspend () -> Boolean = { false },
     private val newUuid: () -> String = ClientIds::newUuid,
+    /** `route_day` for the SR; the AMO submits its supervisor day (`supervisor_day`, no route). */
+    private val scope: String = "route_day",
 ) : DaySubmitWriter {
     override suspend fun queue(businessDate: String, gate: SubmitGate, counts: List<CountRow>) {
         val m = meta()
@@ -93,7 +95,7 @@ class RoomDaySubmitWriter(
         val dues = gate.duesWarning
         repo.recordDaySubmit(
             DaySubmitEntity(
-                clientUuid = newUuid(), meta = m, scope = "route_day", submitCycle = cycle,
+                clientUuid = newUuid(), meta = m, scope = scope, submitCycle = cycle,
                 deviceCountsJson = countsJson.toString(), deviceMoneyJson = MoneyTotalsJson.build(db, businessDate, categoryOf).toString(),
                 rejectedCount = rejected, quarantinedCount = quarantined, pendingCount = 0,
                 submittedWithDues = dues != null, duesOutstandingMtk = dues?.outstandingMtk ?: 0L, retailersWithDues = dues?.retailersWithDues ?: 0,

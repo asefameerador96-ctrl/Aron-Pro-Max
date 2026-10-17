@@ -48,11 +48,11 @@
     <string name="amo_pc_invalid">১২৫ বা ১২৫.৫-এর মতো মূল্য লিখুন</string>
     <string name="amo_edit_checking">আপনি দোকানে আছেন কিনা দেখা হচ্ছে…</string>
     <string name="amo_sale_history">এই দোকানের বিক্রয় ইতিহাস</string>
-    <string name="amo_rec_visit">ভিজিট</string>
-    <string name="amo_rec_memo">মেমো</string>
+    <string name="amo_rec_visit">আউটলেট</string>
+    <string name="amo_rec_memo">বিক্রি</string>
     <string name="amo_rec_stock_movement">স্টক</string>
-    <string name="amo_rec_qc_line">পণ্য কিউসি</string>
-    <string name="amo_rec_memo_discount">ছাড়</string>
+    <string name="amo_rec_qc_line">কিউসি</string>
+    <string name="amo_rec_memo_discount">প্রমোশন</string>
     <string name="amo_rec_visit_close">ভিজিট শেষ</string>
     <string name="amo_rec_due_collection">বাকি আদায়</string>
     <string name="amo_rec_attendance_event">হাজিরা</string>
@@ -69,4 +69,11 @@
     <string name="amo_sc_r_other">অন্যান্য</string>
     <string name="amo_sale_done_back">কলে ফিরে যান</string>
     <string name="amo_sale_done">এই কলে বিক্রি ইতিমধ্যে রেকর্ড করা আছে। বদলাতে মেমো ব্যবহার করুন।</string>
+    <string name="amo_rec_distribution_check">ডিস্ট্রিবিউশন ও ওওএস পারফরম্যান্স</string>
+    <string name="amo_rec_distribution_check_line">ডিস্ট্রিবিউশন ব্র্যান্ড লাইন</string>
+    <string name="amo_rec_price_compliance_check">মূল্য সম্মতি</string>
+    <string name="amo_rec_call_assessment">জয়েন্ট কল</string>
+    <string name="amo_rec_call_assessment_answer">জয়েন্ট কল উত্তর</string>
+    <string name="amo_rec_survey_response">সার্ভে</string>
+    <string name="amo_day_submitted">আজকের দিন জমা হয়েছে। সার্ভার দিন আবার খুললে নতুন কল করা যাবে।</string>
 </resources>

@@ -58,7 +58,9 @@ fun ControlCallHost(
     var step by rememberSaveable { mutableStateOf(CcStep.ROUTE) }
     var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var days by remember { mutableStateOf<List<RouteDay>?>(null) }
+    var submitted by remember { mutableStateOf(false) }
     LaunchedEffect(day) {
+        submitted = runCatching { day.daySubmitted() }.getOrDefault(false)
         days = runCatching { day.routes() }.getOrDefault(emptyList()); day.nextSequenceFromStore()
         // Kill and relaunch: a committed visit with no close is the call in progress; with none, a saved CHECK/MENU/FORCE step is dead.
         day.restoreOpenVisit()
@@ -81,7 +83,7 @@ fun ControlCallHost(
         PermissionGate(GatedFeature.SALE, onBack = onBack) {
             val list = days
             when (step) {
-                CcStep.ROUTE -> AmoRoutePick(ControlCall.routes(list.orEmpty()), { routeId = it.routeId; step = CcStep.OUTLET })
+                CcStep.ROUTE -> if (submitted && open == null) com.aktcl.aron.feature.amo.DaySubmittedNotice(onBack) else AmoRoutePick(ControlCall.routes(list.orEmpty()), { routeId = it.routeId; step = CcStep.OUTLET })
                 CcStep.OUTLET -> {
                     var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
                     var opening by remember { mutableStateOf(false) }

@@ -239,6 +239,9 @@ class AmoDay(
         routeId = null
     }
 
+    /** True once today's supervisor day is submitted: no new call starts until the server reopens it (the same fact the Submit screen reads). */
+    suspend fun daySubmitted(): Boolean = com.aktcl.aron.feature.dayclose.RoomDaySource(db).alreadySubmitted(businessDate())
+
     /** True when the open call already has a live memo with lines (a second sale on one call is refused; edit the memo instead). */
     suspend fun callHasSale(): Boolean {
         val v = visitSession.current.value ?: return false

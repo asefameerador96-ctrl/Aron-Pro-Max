@@ -21,3 +21,4 @@ F-AMO-015,S,2026-10-17T22:00Z,2026-10-17T22:05Z,0,0,"Summary + print = SR Summar
 F-AMO-029,S,2026-10-17T22:00Z,2026-10-17T22:05Z,0,0,"AMO Stock = SR StockHost (Issue, totals, Save, Print, re-save guard); DEVICE-PENDING print"
 F-AMO-049,S,2026-10-17T22:05Z,2026-10-17T22:40Z,35,0,"Correct total: StockAdjustments.correctTotal on the AMO stock, fresh balance at Save, reasons; logic tests"
 F-AMO-006-fix,S,2026-10-17T22:40Z,2026-10-17T23:00Z,20,0,"Sonnet checker on 006/012-015/029: zero-sale memo is not sold, one sale per call, serialised close, zone refresh (D-AMO-SALE-02)"
+F-AMO-030,M,2026-10-17T23:00Z,2026-10-18T00:00Z,60,0,"AMO Sales Submit: fixed reconciliation rows (zero-filled both sides), supervisor_day writer (RoomDaySubmitWriter scope param, test), dues warning from the SR gate, new calls refused once submitted; T1 Opus checker pending"

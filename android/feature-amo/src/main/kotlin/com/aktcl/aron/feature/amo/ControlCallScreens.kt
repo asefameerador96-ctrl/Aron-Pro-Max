@@ -25,7 +25,7 @@ import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.RowPosition
 import com.aktcl.aron.feature.outlet.VisitCheckTexts
 
-object AmoCallTags { const val ROUTE_LIST = "amo_cc_routes"; const val EMPTY = "amo_cc_empty"; const val MENU_SALE = "amo_cc_sale"; const val MENU_ASSESS = "amo_cc_assess"; const val MENU_SURVEY = "amo_cc_survey"; const val MENU_PRICE = "amo_cc_price"; const val OVERRIDE_LIMIT = "amo_cc_limit" }
+object AmoCallTags { const val ROUTE_LIST = "amo_cc_routes"; const val EMPTY = "amo_cc_empty"; const val MENU_SALE = "amo_cc_sale"; const val MENU_ASSESS = "amo_cc_assess"; const val MENU_SURVEY = "amo_cc_survey"; const val MENU_PRICE = "amo_cc_price"; const val OVERRIDE_LIMIT = "amo_cc_limit"; const val DAY_SUBMITTED = "amo_cc_submitted" }
 
 /** Route step of a Control or Joint Call (F-AMO-004): the zone's routes from the local bundle; empty state when none are downloaded. */
 @Composable
@@ -77,5 +77,14 @@ fun ControlCallMenu(onSale: () -> Unit, onAssessment: () -> Unit, onSurvey: (() 
         if (onSurvey != null) AronPrimaryButton(stringResource(R.string.amo_cc_menu_survey), onSurvey, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_SURVEY))
         if (onPrice != null) AronPrimaryButton(stringResource(R.string.amo_cc_menu_price), onPrice, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_PRICE))
         AronSecondaryButton(stringResource(R.string.amo_cc_back_to_picker), onDone, Modifier.fillMaxWidth())
+    }
+}
+
+/** Shown instead of the route list once the day is submitted (F-AMO-030): nothing more is captured until the server reopens the day. */
+@Composable
+fun DaySubmittedNotice(onBack: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+        Text(stringResource(R.string.amo_day_submitted), style = MaterialTheme.typography.bodyLarge, color = LocalAronColors.current.textPrimary, modifier = Modifier.testTag(AmoCallTags.DAY_SUBMITTED))
+        AronSecondaryButton(stringResource(R.string.amo_sale_done_back), onBack, Modifier.fillMaxWidth())
     }
 }

@@ -48,11 +48,11 @@
     <string name="amo_pc_invalid">Enter a price like 125 or 125.5</string>
     <string name="amo_edit_checking">Checking that you are at the shop…</string>
     <string name="amo_sale_history">Sale history of this shop</string>
-    <string name="amo_rec_visit">Visits</string>
-    <string name="amo_rec_memo">Memos</string>
+    <string name="amo_rec_visit">Outlet</string>
+    <string name="amo_rec_memo">Sale</string>
     <string name="amo_rec_stock_movement">Stock</string>
-    <string name="amo_rec_qc_line">Product QC</string>
-    <string name="amo_rec_memo_discount">Discounts</string>
+    <string name="amo_rec_qc_line">QC</string>
+    <string name="amo_rec_memo_discount">Promotion</string>
     <string name="amo_rec_visit_close">Visit ends</string>
     <string name="amo_rec_due_collection">Dues collected</string>
     <string name="amo_rec_attendance_event">Attendance</string>
@@ -69,4 +69,11 @@
     <string name="amo_sc_r_other">Other</string>
     <string name="amo_sale_done">A sale is already recorded for this call. To change it, use Memo.</string>
     <string name="amo_sale_done_back">Back to the call</string>
+    <string name="amo_rec_distribution_check">Distribution &amp; OOS performance</string>
+    <string name="amo_rec_distribution_check_line">Distribution brand lines</string>
+    <string name="amo_rec_price_compliance_check">Price compliance</string>
+    <string name="amo_rec_call_assessment">Joint call</string>
+    <string name="amo_rec_call_assessment_answer">Joint call answers</string>
+    <string name="amo_rec_survey_response">Survey</string>
+    <string name="amo_day_submitted">Today is submitted. New calls open when the server reopens the day.</string>
 </resources>

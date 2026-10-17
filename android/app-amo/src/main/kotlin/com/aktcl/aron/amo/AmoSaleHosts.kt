@@ -130,6 +130,9 @@ fun AmoSubmitHost(day: AmoDay) {
         "visit" to stringResource(AmoR.string.amo_rec_visit), "memo" to stringResource(AmoR.string.amo_rec_memo), "stock_movement" to stringResource(AmoR.string.amo_rec_stock_movement),
         "qc_line" to stringResource(AmoR.string.amo_rec_qc_line), "memo_discount" to stringResource(AmoR.string.amo_rec_memo_discount), "visit_close" to stringResource(AmoR.string.amo_rec_visit_close),
         "due_collection" to stringResource(AmoR.string.amo_rec_due_collection), "attendance_event" to stringResource(AmoR.string.amo_rec_attendance_event), "visit_skip" to stringResource(AmoR.string.amo_rec_visit_skip),
+        "distribution_check" to stringResource(AmoR.string.amo_rec_distribution_check), "distribution_check_line" to stringResource(AmoR.string.amo_rec_distribution_check_line),
+        "price_compliance_check" to stringResource(AmoR.string.amo_rec_price_compliance_check), "call_assessment" to stringResource(AmoR.string.amo_rec_call_assessment),
+        "call_assessment_answer" to stringResource(AmoR.string.amo_rec_call_assessment_answer), "survey_response" to stringResource(AmoR.string.amo_rec_survey_response),
     )
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },

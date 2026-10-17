@@ -190,9 +190,10 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     }
 
 
+    /** F-AMO-030: the extended reconciliation (fixed rows, zero when the type has no records) and a `supervisor_day` submit. */
     fun newSubmitViewModel() = SalesSubmitViewModel(
-        day.userId, day::businessDate, RoomDaySource(db), serverCounts,
-        RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }),
+        day.userId, day::businessDate, AmoDaySource(RoomDaySource(db)), AmoServerCounts(serverCounts),
+        RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }, scope = "supervisor_day"),
         syncScheduler, online,
     )
 
