@@ -52,5 +52,7 @@ tasks.withType<Test>().configureEach {
     listOf("ARON_SYNC_FUZZ_SCHEDULES", "ARON_SYNC_FUZZ_SEED", "ARON_SYNC_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
     // N-024 (qa): SupervisorSyncFaultFuzzTest (the AMO record types) size, seed and phone count, declared the same way.
     listOf("ARON_SUPERVISOR_FUZZ_SCHEDULES", "ARON_SUPERVISOR_FUZZ_SEED", "ARON_SUPERVISOR_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
+    // qa: DayCloseRaceTest (the zone-day close race fuzz) round count, seed and opt-in known-defect tolerance, declared the same way.
+    listOf("ARON_DAYCLOSE_FUZZ_ROUNDS", "ARON_DAYCLOSE_FUZZ_SEED", "ARON_DAYCLOSE_TOLERATE").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
 }
