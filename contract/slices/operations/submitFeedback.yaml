@@ -11,7 +11,9 @@ operation:
 
     uuid with different content, or another user''s uuid, is 409 `ERR_CONFLICT`. `category_code` must be a current
 
-    `feedback_category` code when that list has items (400 `unknown_code` otherwise).
+    `feedback_category` code when that list has items (400 `unknown_code` otherwise); the code is checked on every
+
+    call, so a replay after its category has ended is 400 too.
 
     '
   requestBody:

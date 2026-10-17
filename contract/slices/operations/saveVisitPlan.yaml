@@ -13,14 +13,15 @@ operation:
 
     reach (403 `ERR_OUT_OF_SCOPE` otherwise, the same answer as an unknown outlet) and on `route_id` (400
 
-    `not_on_route`). A new plan is for today or later (400 `in_past`). When the planner already has a plan for that
+    `not_on_route`); reach and route are checked on every call, a replay included. A `plan_uuid` not stored yet
 
-    route and date, the outlets join it and that plan is returned. Idempotent by `plan_uuid`: 201 when anything
-    was
+    needs `plan_date` today or later (400 `in_past`). When the planner already has a plan for that route and date
 
-    stored, 200 when nothing changed; a `plan_uuid` that already stores another user''s, another date''s or another
+    under another uuid, the outlets join it, the posted `plan_uuid` is not stored and the answer is that plan (its
 
-    route''s plan is 409 `ERR_CONFLICT`.
+    own `plan_uuid`). Idempotent by `plan_uuid`: 201 when anything was stored, 200 when nothing changed; a
+
+    `plan_uuid` that already stores another user''s, another date''s or another route''s plan is 409 `ERR_CONFLICT`.
 
     '
   requestBody:

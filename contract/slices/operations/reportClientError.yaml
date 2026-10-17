@@ -22,3 +22,5 @@ operation:
       $ref: '#/components/responses/Forbidden'
     '429':
       $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

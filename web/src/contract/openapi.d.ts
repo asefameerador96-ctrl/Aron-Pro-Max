@@ -951,7 +951,9 @@ export interface paths {
          *     `pending`. Idempotent by `leave_uuid`: the first call stores it (201), a replay with the same content returns it
          *     unchanged (200), and the same uuid with different content, or another user's uuid, is 409 `ERR_CONFLICT`.
          *     `to_date` = `from_date` + `days` - 1. A second pending or approved application over any of the same days is 409
-         *     `ERR_CONFLICT` (`body.from_date` `overlap`); an unknown `leave_type` code is 400 `unknown_code`.
+         *     `ERR_CONFLICT` (`body.from_date` `overlap`); a `leave_type_code` that is not a `leave_type` code valid on
+         *     `from_date` is 400 `unknown_code` when that list has items. The type and overlap checks run on every call, a
+         *     replay included.
          */
         post: operations["applyLeave"];
         delete?: never;
@@ -992,10 +994,11 @@ export interface paths {
          * @description TSO only (other roles get 403 `ERR_FORBIDDEN`); the planner is the token's user. The outlets are added to the
          *     plan as a union (an outlet already in the plan stays once; none is removed). Every outlet must be in the caller's
          *     reach (403 `ERR_OUT_OF_SCOPE` otherwise, the same answer as an unknown outlet) and on `route_id` (400
-         *     `not_on_route`). A new plan is for today or later (400 `in_past`). When the planner already has a plan for that
-         *     route and date, the outlets join it and that plan is returned. Idempotent by `plan_uuid`: 201 when anything was
-         *     stored, 200 when nothing changed; a `plan_uuid` that already stores another user's, another date's or another
-         *     route's plan is 409 `ERR_CONFLICT`.
+         *     `not_on_route`); reach and route are checked on every call, a replay included. A `plan_uuid` not stored yet
+         *     needs `plan_date` today or later (400 `in_past`). When the planner already has a plan for that route and date
+         *     under another uuid, the outlets join it, the posted `plan_uuid` is not stored and the answer is that plan (its
+         *     own `plan_uuid`). Idempotent by `plan_uuid`: 201 when anything was stored, 200 when nothing changed; a
+         *     `plan_uuid` that already stores another user's, another date's or another route's plan is 409 `ERR_CONFLICT`.
          */
         post: operations["saveVisitPlan"];
         delete?: never;
@@ -1022,7 +1025,8 @@ export interface paths {
          * @description TSO only (other roles get 403 `ERR_FORBIDDEN`); the author is the token's user. Idempotent by `feedback_uuid`:
          *     the first call stores the item (201), a replay with the same content returns it unchanged (200), and the same
          *     uuid with different content, or another user's uuid, is 409 `ERR_CONFLICT`. `category_code` must be a current
-         *     `feedback_category` code when that list has items (400 `unknown_code` otherwise).
+         *     `feedback_category` code when that list has items (400 `unknown_code` otherwise); the code is checked on every
+         *     call, so a replay after its category has ended is 400 too.
          */
         post: operations["submitFeedback"];
         delete?: never;
@@ -9304,6 +9308,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getConfigDelta: {
@@ -13101,6 +13106,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     uploadMediaMultipart: {
@@ -13129,6 +13135,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExportLog: {
