@@ -105,6 +105,9 @@ class ScopeLeakAcrossEndpointsTest {
         testApplication {
             application { aronApi(world.wiring) }
             client.sellADay(own, 7); client.sellADay(other, 11) // different days, so the two divisions' aggregates differ
+            // Rows of other kinds in the other division (outlet requests, feedback, tasks, ...), generated from the
+            // contract's payload schemas, so those reads are judged too (N-061). Types the server refuses stay blind.
+            otherRecords = client.sendGenerated(other)
         }
         // The dw projector and the route-day aggregates, as the worker role runs them, so dashboards and reports have
         // both divisions (dashboards resolve their node through dw.dim_geo).
@@ -122,6 +125,9 @@ class ScopeLeakAcrossEndpointsTest {
             otherIds["divisions"] = ids("SELECT id FROM app.division WHERE code = 'D-LKX'")
             otherIds["users"] = ids("SELECT id FROM app.app_user WHERE username LIKE 'lkx%'")
             otherIds["devices"] = setOf(other.deviceId)
+            fun pin(outlet: Long) = h.createQuery("SELECT lat::text || ',' || lng::text FROM app.outlet WHERE id = :o").bind("o", outlet).mapTo(String::class.java).one()
+                .split(',').let { mapOf("lat" to it[0], "lng" to it[1], "radius_m" to "500") }
+            ownPin = pin(own.outlets.first()); otherPin = pin(other.outlets.first())
             otherUuids += h.createQuery("SELECT client_uuid::text FROM app.visit WHERE user_id = :u UNION SELECT client_uuid::text FROM app.memo WHERE user_id = :u UNION SELECT client_uuid::text FROM app.due_collection WHERE user_id = :u")
                 .bind("u", other.userId).mapTo(String::class.java).list()
         }
@@ -133,6 +139,43 @@ class ScopeLeakAcrossEndpointsTest {
 
     @AfterAll
     fun tearDown() { world.close() }
+
+    /** A pin of each division (lat, lng): `outlets/nearby` is probed at the other division's outlets. */
+    private lateinit var ownPin: Map<String, String>
+    private lateinit var otherPin: Map<String, String>
+
+    /** Record types generated from the contract and sent by the other division's phone, with the server's answers. */
+    private var otherRecords: Map<String, String> = emptyMap()
+
+    /** Sends one generated record of each [GENERATED_TYPES] from [p] (ids pointed at its own division); type -> ack status. */
+    private suspend fun HttpClient.sendGenerated(p: SyncPhone): Map<String, String> {
+        val out = sortedMapOf<String, String>()
+        val outlet = p.outlets.first()
+        for (type in GENERATED_TYPES) {
+            val schema = contract.component(type.split('_').joinToString("") { it.replaceFirstChar(Char::uppercase) } + "Payload")
+            if (schema.isMissingNode) { out[type] = "no payload schema"; continue }
+            val payload = contract.sample(schema, optional = { it == "outlet_id" || it == "route_id" }) as ObjectNode
+            fun point(n: JsonNode) {
+                if (n is ObjectNode) n.fieldNames().asSequence().toList().forEach { f ->
+                    when (f) { "outlet_id" -> n.put(f, outlet); "route_id" -> n.put(f, p.routeId); else -> point(n.get(f)) }
+                } else if (n.isArray) n.forEach(::point)
+            }
+            point(payload)
+            val cu = java.util.UUID.randomUUID().toString()
+            val env = Json.parseToJsonElement(
+                """{"type":"$type","client_uuid":"$cu","family_uuid":"$cu","rank":0,"schema_version":1,"business_date":"$day","captured_at":"${day}T03:00:00Z",
+                   "captured_elapsed_ms":18330000,"boot_count":412,"clock_offset_ms":0,"captured_offline":true,"route_id":${p.routeId},"bundle_version":"$day:3",
+                   "bundle_stale":false,"config_version":1,"payload":${ContractModel.json.writeValueAsString(payload)}}""",
+            ).jsonObject
+            val r = post("/v1/sync/batch") {
+                bearerAuth(p.token); header("X-Device-Id", p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
+                setBody(ByteArrayContent(gz(p.batch(listOf(env))), ContentType.Application.Json))
+            }
+            val ack = runCatching { Json.parseToJsonElement(r.bodyAsText()).jsonObject["acks"]!!.jsonArray.single().jsonObject }.getOrNull()
+            out[type] = ack?.let { it["status"]!!.jsonPrimitive.content + (it["code"]?.jsonPrimitive?.content?.let { c -> " $c" } ?: "") } ?: "http ${r.status.value}"
+        }
+        return out
+    }
 
     /** Logs [p] in and delivers one selling day until every record is acknowledged. */
     private suspend fun HttpClient.sellADay(p: SyncPhone, seed: Int) {
@@ -217,10 +260,10 @@ class ScopeLeakAcrossEndpointsTest {
             val resource = resourceOf(op)
             val ownNumbers = HashMap<String, List<String>>()
             for (c in scoped) {
-                suspend fun once(variant: String, pathIds: Map<String, Long>, query: String = "", body: Boolean = false) {
+                suspend fun once(variant: String, pathIds: Map<String, Long>, query: String = "", body: Boolean = false, pins: Map<String, String> = ownPin) {
                     var retargeted = !body
                     val edit: ((JsonNode) -> Unit)? = if (body) { n -> retargeted = retarget(n) } else null
-                    val r = world.call(this, contract, op, c, tokenFor(c), pathIds, query, includeOptionalIds = body, bodyEdit = edit)
+                    val r = world.call(this, contract, op, c, tokenFor(c), pathIds, query, includeOptionalIds = body, bodyEdit = edit, queryOverrides = pins)
                     if (!retargeted) return // the body names no resource: nothing to learn beyond the own call
                     st.calls++
                     val text = r.bodyAsText()
@@ -258,6 +301,7 @@ class ScopeLeakAcrossEndpointsTest {
                     v?.let { once("other-${p.name}", world.ids, selector(op, p.name, it)) }
                 }
                 if (op.requestSchema != null) once("other-body", world.ids, body = true)
+                if (op.parameters.any { it.where == "query" && it.name == "lat" }) once("other-coords", world.ids, pins = otherPin)
             }
         }
         return found
@@ -297,8 +341,11 @@ class ScopeLeakAcrossEndpointsTest {
         for (c in scoped + national) check(token(c) != null) { "no token for ${c.user}" }
         // The positive control: does the national admin see the other division on this read (own or other ids)?
         for (op in ops.filter { it.method == "GET" }) {
-            val r = world.call(client, contract, op, national, token(national))
+            val r = world.call(client, contract, op, national, token(national), queryOverrides = ownPin)
             var sees = shows(r.bodyAsText(), resourceOf(op)) != null
+            if (!sees && op.parameters.any { it.where == "query" && it.name == "lat" }) {
+                sees = shows(world.call(client, contract, op, national, token(national), queryOverrides = otherPin).bodyAsText(), resourceOf(op)) != null
+            }
             if (!sees && world.pathFor(contract, op, world.ids) != world.pathFor(contract, op, world.otherIds)) {
                 sees = shows(world.call(client, contract, op, national, token(national), world.otherIds).bodyAsText(), resourceOf(op)) != null
             }
@@ -326,7 +373,7 @@ class ScopeLeakAcrossEndpointsTest {
         File("build").mkdirs()
         File("build/scope-leak-endpoints.txt").writeText(
             "operations=${ops.size} calls=${stats.calls} other_id_calls=${stats.otherIdCalls} refused_403_404=${stats.refusedOtherIdCalls} " +
-                "national_sees=${nationalSees.count { it.value }}/${nationalSees.size} aggregate_pairs=${nationalNumbers.size} dashboard_top_views=${nationalTop.size} scoped_2xx_ops=${stats.scopedSuccess.size}\n" +
+                "other_division_records=$otherRecords national_sees=${nationalSees.count { it.value }}/${nationalSees.size} aggregate_pairs=${nationalNumbers.size} dashboard_top_views=${nationalTop.size} scoped_2xx_ops=${stats.scopedSuccess.size}\n" +
                 leaks.joinToString("\n") { "${it.key}  ${it.detail}" } + "\n# reads the national control cannot see the other division in:\n" +
                 nationalSees.filterValues { !it }.keys.joinToString("\n") + "\n",
         )
@@ -411,6 +458,8 @@ class ScopeLeakAcrossEndpointsTest {
     companion object {
         val SESSION_ENDING = setOf("POST /v1/auth/logout", "POST /v1/auth/change-password")
         val TIMEISH = Regex("(_at|time|generation|version|cursor|_ms|_s|as_of)$")
+        /** Record types the other division's phone also sends (generated from their payload schemas). */
+        val GENERATED_TYPES = listOf("outlet_change_request", "feedback", "task", "leave_application", "visit_plan", "day_exception", "risk_review", "survey_response", "sale_abort", "app_error")
         val READ_BY_POST = Regex("^(query|search|list|get|preview|check|validate|compute|digest)", RegexOption.IGNORE_CASE)
     }
 }
