@@ -19,8 +19,10 @@ admin sees the other division on this read, so a leak would show. `blind` is on 
   `outlets/nearby` at the other division's pins.
 - **Configuration reads** that answer for another zone: `admin/config/resolve` (other-path) and `admin/config/values`
   (other `scope_id`), for TSO and DMO. Configuration is on the blind list as global by design: radius, thresholds,
-  windows, and no field data. **Question for the lead:** should a TSO see another zone's resolved configuration? If
-  not, it is a scope defect for the config owner.
+  windows, and no field data. **Lead, 2026-10-17 23:45Z: not intended (server-side
+  scope is a hard rule). It is a scope defect, queued with lead-backend after its replay-first work.** The harness did
+  not report it as a leak, because configuration answers carry neither the marker nor ids. When the fix lands, qa
+  marks these reads as scoped, drops them from the blind list and probes them for a refusal.
 - No dashboard answered 2xx to another division's selector.
 
 Whole run: 1,012 calls, 392 naming the other division, 103 of them refused for scope (out of scope or 404). The
