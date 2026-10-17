@@ -183,6 +183,7 @@ class MainActivity : ComponentActivity() {
                                         com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, d.userId, versionName) }
                                     },
                                     AmoScreen.OUTLET to { back -> AmoOutletHub(d, back) },
+                                    AmoScreen.REPORT to { back -> AmoReportHub(d, back) },
                                     AmoScreen.TEAM to { back -> AmoTeamHub(d, reach, back) },
                                     AmoScreen.SALE to { back -> AmoSaleHub(d, back) },
                                     AmoScreen.CONTROL_CALL to { back -> ControlCallHost(d, back) },

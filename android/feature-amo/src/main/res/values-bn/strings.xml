@@ -248,4 +248,23 @@
     <string name="amo_loc_source_check_out">চেক-আউট</string>
     <string name="amo_loc_source_visit">ভিজিট</string>
     <string name="amo_loc_source_sync">সিঙ্ক</string>
+    <string name="amo_rep_title">রিপোর্ট</string>
+    <string name="amo_rep_std">এসটিডি মেমো রিপোর্ট</string>
+    <string name="amo_rep_summary">এখন পর্যন্ত বিক্রির সারসংক্ষেপ</string>
+    <string name="amo_rep_truncated">রিপোর্টটি বড়: প্রথম অংশ দেখানো হচ্ছে।</string>
+    <string name="amo_rep_range">%1$s থেকে %2$s</string>
+    <string name="amo_rep_empty">এই রিপোর্টের জন্য কোনো তথ্য নেই</string>
+    <string name="amo_rep_empty_hint">মেমো পাঠানো হলে আপনার জোনের বিক্রি এখানে দেখা যাবে।</string>
+    <string name="amo_rep_by_route">রুট অনুযায়ী</string>
+    <string name="amo_rep_route_line">%1$s মেমো · মোট %2$s</string>
+    <string name="amo_rep_memos">মেমো</string>
+    <string name="amo_rep_cpr">সিপিআর %1$s</string>
+    <string name="amo_rep_memos_n">%1$s মেমো</string>
+    <string name="amo_rep_target">টার্গেট আউটলেট</string>
+    <string name="amo_rep_calls">সফল কল</string>
+    <string name="amo_rep_cpr_label">সিপিআর</string>
+    <string name="amo_rep_memos_label">মোট মেমো</string>
+    <string name="amo_rep_net">নিট বিক্রি</string>
+    <string name="amo_rep_brands">ব্র্যান্ড</string>
+    <string name="amo_rep_no_brands">এখনও ব্র্যান্ডের বিক্রি নেই।</string>
 </resources>

@@ -248,4 +248,23 @@
     <string name="amo_loc_source_check_out">check-out</string>
     <string name="amo_loc_source_visit">visit</string>
     <string name="amo_loc_source_sync">sync</string>
+    <string name="amo_rep_title">Report</string>
+    <string name="amo_rep_std">STD Memo Report</string>
+    <string name="amo_rep_summary">Sales Summary Up To Now</string>
+    <string name="amo_rep_truncated">A long report: the first part is shown.</string>
+    <string name="amo_rep_range">%1$s to %2$s</string>
+    <string name="amo_rep_empty">No data for this report</string>
+    <string name="amo_rep_empty_hint">Sales of your zone show up here once memos are sent.</string>
+    <string name="amo_rep_by_route">By route</string>
+    <string name="amo_rep_route_line">%1$s memos · gross %2$s</string>
+    <string name="amo_rep_memos">Memos</string>
+    <string name="amo_rep_cpr">CPR %1$s</string>
+    <string name="amo_rep_memos_n">%1$s memos</string>
+    <string name="amo_rep_target">Target outlets</string>
+    <string name="amo_rep_calls">Successful calls</string>
+    <string name="amo_rep_cpr_label">CPR</string>
+    <string name="amo_rep_memos_label">Total memos</string>
+    <string name="amo_rep_net">Net sales</string>
+    <string name="amo_rep_brands">Brands</string>
+    <string name="amo_rep_no_brands">No brand sales yet.</string>
 </resources>
