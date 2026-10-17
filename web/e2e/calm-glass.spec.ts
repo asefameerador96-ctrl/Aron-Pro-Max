@@ -87,8 +87,9 @@ test.describe("coarse pointer", () => {
     );
     expect(boxes.length, `${where}: controls found`).toBeGreaterThan(0);
     for (const b of boxes) {
-      expect(b.h, `${where}: ${b.tag} "${b.text}" height`).toBeGreaterThanOrEqual(48);
-      if (!b.text) expect(b.w, `${where}: ${b.tag} icon-only width`).toBeGreaterThanOrEqual(48);
+      // Layout rounding on the Linux runner reports 47.9999 for a 48 px control: compare whole pixels.
+      expect(Math.round(b.h), `${where}: ${b.tag} "${b.text}" height`).toBeGreaterThanOrEqual(48);
+      if (!b.text) expect(Math.round(b.w), `${where}: ${b.tag} icon-only width`).toBeGreaterThanOrEqual(48);
     }
   }
 

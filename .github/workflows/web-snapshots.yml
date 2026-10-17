@@ -58,9 +58,11 @@ jobs:
         run: bash ../tools/ci/playwright-chromium.sh
       - name: Record the goldens
         run: |
+          # On a push there is no input: record the screenshot spec only, never the whole suite.
           # shellcheck disable=SC2086
-          CI=1 npx playwright test $SPEC --update-snapshots
+          CI=1 npx playwright test ${SPEC:-e2e/config-tiers.spec.ts} --update-snapshots
       - name: Upload the recorded goldens
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web-snapshots
