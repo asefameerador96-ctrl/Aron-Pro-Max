@@ -30,9 +30,15 @@ CodeItem:
       type: integer
     attrs:
       type: object
-      description: List-specific attributes (for example `group` MFC or MKT on qc_fault_type).
+      description: List-specific attributes, each a scalar or an array of scalars (for example `group` MFC or MKT
+        and `applies_to` [app, web] on qc_fault_type, `roles` [AMO] on force_reason).
       additionalProperties:
-        $ref: '#/components/schemas/JsonScalar'
+        anyOf:
+        - $ref: '#/components/schemas/JsonScalar'
+        - type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/JsonScalar'
     valid_from:
       $ref: '#/components/schemas/BusinessDate'
     valid_to:

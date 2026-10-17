@@ -1,16 +1,2 @@
 # N-014: 2xx response schemas of the contract that reject their own generated instance (allOf over a closed branch
 # with additionalProperties or unevaluatedProperties false). Contract leads for the lead. May only SHRINK.
-GET /v1/admin/content 200
-GET /v1/admin/outlets/{} 200
-GET /v1/admin/rubrics 200
-GET /v1/admin/surveys 200
-GET /v1/admin/targets 200
-GET /v1/admin/tutorials 200
-PATCH /v1/admin/content/{} 200
-PATCH /v1/admin/rubrics/{} 200
-PATCH /v1/admin/surveys/{} 200
-PATCH /v1/admin/tutorials/{} 200
-POST /v1/admin/content 201
-POST /v1/admin/rubrics 201
-POST /v1/admin/surveys 201
-POST /v1/admin/tutorials 201

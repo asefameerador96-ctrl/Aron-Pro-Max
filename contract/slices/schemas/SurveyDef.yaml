@@ -1,10 +1,11 @@
 SurveyDef:
+  description: Open on purpose (N-014). `SurveyDef` is the `allOf` base of `SurveyAdmin`, which closes the combined
+    object, so `SurveyDef` carries no closing keyword.
   type: object
   required:
   - survey_id
   - version
   - questions
-  additionalProperties: false
   properties:
     survey_id:
       $ref: '#/components/schemas/Id'

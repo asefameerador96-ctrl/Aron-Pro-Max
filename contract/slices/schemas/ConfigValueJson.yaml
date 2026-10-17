@@ -1,6 +1,16 @@
 ConfigValueJson:
-  description: A config value; its shape is fixed by the key's `value_type` in the registry (validated by the registry,
-    not by this schema).
+  description: 'A config value; its shape is fixed by the key''s `value_type` in the registry (validated by the
+    registry, not by
+
+    this schema). A role map holds per role a scalar, an object (`cfg.bundle.outlet_fields`:
+
+    `{"SR": {"exclude": [...]}}`) or an array of scalars or objects (`cfg.web.menu_by_role`:
+
+    `{"TSO": [{"menu": ..., "page": ..., "actions": [...]}]}`); an object inside holds scalars or arrays of scalars
+
+    (`ConfigValueRecord`).
+
+    '
   anyOf:
   - type:
     - number
@@ -15,9 +25,7 @@ ConfigValueJson:
         - string
         - number
         maxLength: 200
-      - type: object
-        additionalProperties:
-          $ref: '#/components/schemas/JsonScalar'
+      - $ref: '#/components/schemas/ConfigValueRecord'
   - type: object
     additionalProperties:
       anyOf:
@@ -25,7 +33,7 @@ ConfigValueJson:
       - type: array
         maxItems: 200
         items:
-          $ref: '#/components/schemas/JsonScalar'
-      - type: object
-        additionalProperties:
-          $ref: '#/components/schemas/JsonScalar'
+          anyOf:
+          - $ref: '#/components/schemas/JsonScalar'
+          - $ref: '#/components/schemas/ConfigValueRecord'
+      - $ref: '#/components/schemas/ConfigValueRecord'

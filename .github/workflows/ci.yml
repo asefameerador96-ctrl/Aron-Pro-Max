@@ -165,6 +165,10 @@ jobs:
           echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
       - name: Gate self-tests (each gate fails on a deliberate violation; tools/ci/test_gates.py)
         run: python3 tools/ci/test_gates.py
+      - name: Done rows have tests (AUD-TP-8, warning)
+        run: |
+          python3 tools/ci/test_done_rows.py
+          python3 tools/ci/done-rows-check.py
       - name: Secret scan of the whole history (gitleaks; reviewed exceptions in tools/ci/gitleaksignore)
         run: |
           # Known base: only the new commits. Unknown base (manual run, new branch): the whole history.

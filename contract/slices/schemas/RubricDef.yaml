@@ -1,11 +1,12 @@
 RubricDef:
+  description: Open on purpose (N-014). `RubricDef` is the `allOf` base of `RubricAdmin`, which closes the combined
+    object, so `RubricDef` carries no closing keyword.
   type: object
   required:
   - rubric_id
   - version
   - kind
   - criteria
-  additionalProperties: false
   properties:
     rubric_id:
       $ref: '#/components/schemas/Id'
