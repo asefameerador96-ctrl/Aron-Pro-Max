@@ -24,16 +24,17 @@ import kotlinx.serialization.json.JsonObject
  * payload is built by the screen's own pure code; the envelope comes from trusted time exactly as the SR app's does.
  */
 class TsoOutbox(
-    private val context: Context,
-    private val components: SessionComponents,
+    private val env: TsoEnv,
     private val databases: UserDatabases,
     private val scheduler: SyncScheduler,
+    private val online: () -> Boolean,
 ) {
-    private fun online(): Boolean {
-        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-    }
+    constructor(context: Context, components: SessionComponents, databases: UserDatabases, scheduler: SyncScheduler) :
+        this(SessionTsoEnv(components), databases, scheduler, {
+            val cm = context.getSystemService(ConnectivityManager::class.java)
+            val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+            caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        })
 
     private fun iso(ms: Long) = java.time.Instant.ofEpochMilli(ms).toString()
 
@@ -51,17 +52,16 @@ class TsoOutbox(
      */
     suspend fun enqueueAll(userId: Long, recs: List<Rec>, mirrors: List<Pair<String, String>> = emptyList()): Int {
         val db = databases.of(userId)
-        val clock = components.trustedClock
         val added = db.withTransaction {
             val outbox = db.outboxDao()
             val dao = db.referenceDao()
             var n = 0
             for (r in recs) {
                 if (outbox.byClientUuid(r.clientUuid) != null) continue
-                val now = clock.nowMs()
+                val now = env.nowMs()
                 val meta = CaptureMeta(
-                    businessDate = clock.businessDate().toString(), capturedAt = iso(now), capturedElapsedMs = clock.elapsedRealtimeMs(),
-                    bootCount = clock.bootCountNow(), clockOffsetMs = clock.clockOffsetMs(), capturedOffline = !online(),
+                    businessDate = env.businessDate(), capturedAt = iso(now), capturedElapsedMs = env.elapsedRealtimeMs(),
+                    bootCount = env.bootCount(), clockOffsetMs = env.clockOffsetMs(), capturedOffline = !online(),
                     routeId = r.routeId, bundleVersion = dao.meta(ReferenceRepository.KEY_BUNDLE_VERSION),
                     configVersion = dao.meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull() ?: 0L,
                 )

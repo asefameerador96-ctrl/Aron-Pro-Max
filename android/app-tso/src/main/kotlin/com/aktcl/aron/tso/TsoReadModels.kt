@@ -21,11 +21,13 @@ import java.util.TimeZone
  * the user's encrypted database (`sync_meta`, key `tso.cache.*`), so it is wiped with the database at logout (F-SYS-022)
  * and a screen opens offline with "as of hh:mm". Never throws: an offline or refused call returns null.
  */
-class TsoReadModels(private val components: SessionComponents, private val databases: UserDatabases, private val outbox: TsoOutbox? = null) {
-    private val client: AronApiClient get() = components.apiClient
+class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabases, private val outbox: TsoOutbox? = null) {
+    constructor(components: SessionComponents, databases: UserDatabases, outbox: TsoOutbox? = null) : this(SessionTsoEnv(components), databases, outbox)
+
+    private val client: AronApiClient get() = env.client
 
     private fun asOfNow(): String =
-        SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Dhaka") }.format(Date(components.trustedClock.nowMs()))
+        SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Dhaka") }.format(Date(env.nowMs()))
 
     private suspend fun meta(userId: Long) = databases.of(userId).referenceDao()
 
@@ -39,7 +41,7 @@ class TsoReadModels(private val components: SessionComponents, private val datab
         runCatching {
             val dao = meta(userId)
             dao.putMeta(SyncMetaEntity("tso.cache.$key", body)); dao.putMeta(SyncMetaEntity("tso.cache.$key.asof", asOf))
-            dao.putMeta(SyncMetaEntity("tso.cache.$key.ts", components.trustedClock.nowMs().toString()))
+            dao.putMeta(SyncMetaEntity("tso.cache.$key.ts", env.nowMs().toString()))
         }
     }
 
@@ -47,7 +49,7 @@ class TsoReadModels(private val components: SessionComponents, private val datab
     private suspend fun cacheFresh(userId: Long, key: String, ttlMs: Long): String? = runCatching {
         val dao = meta(userId)
         val ts = dao.meta("tso.cache.$key.ts")?.toLongOrNull() ?: return null
-        if (components.trustedClock.nowMs() - ts in 0 until ttlMs) dao.meta("tso.cache.$key") else null
+        if (env.nowMs() - ts in 0 until ttlMs) dao.meta("tso.cache.$key") else null
     }.getOrNull()
 
     private suspend fun get(path: String): String? {
