@@ -71,21 +71,24 @@ cat backend/app/build/contract-conformance.txt
   four routes are contract operations (`submitFeedback`, `applyLeave`, `saveVisitPlan`, `listRouteAssignees`). C: the
   report area was a code fix (backend-reports); attrs, config role maps and the null `default_value` are contract
   widenings approved by the lead (contract 1.3.3, `docs/requests/contract-conformance-widening.md`).
-- **E: 63 -> 55.** New fixtures: feedback, leave (and so the leave decision), holidays, config change, price preview
-  and publish, product-node patch, client errors (sample timestamps carry milliseconds), nearby outlets. The report
-  (`backend/app/build/contract-conformance.txt`) now lists every caller's refusal under each operation without a 2xx.
-- **E, what the remaining 55 need** (none is a one-line body fix):
-  - *An id the run creates first* (create, then use the id): config changes, versions, reach, decision, rollback;
-    admin content, rubric, survey and tutorial PATCH; feedback PATCH; outlet requests (create needs a valid
-    `proposed`, then get, verify, approve and reject); tasks and cancel; report exports; quarantine items; price batch
-    decision; risk-signal review; enrolment token revoke.
-  - *A device proof* (signed request headers): devices/me/policy, devices/me/status, devices/nonce; and a P-256 key
-    for devices/enrol.
-  - *Blob storage* (503 by design in the harness): admin assets, admin content create, media SAS, PDA upload, and
-    media read-url (needs a stored photo).
-  - *Auth state*: a refresh token, an MFA challenge, the current password for change-password, a bind-capable token.
-  - *Seed data*: a published release (enrolment tokens), a variant node (SKU create), an active non-SR user (route
-    assignment, device OTP, user scope), a cluster without outlets, an open zone-day (web-entry route-day), a valid
-    print template and memo number, an AMO route for the daily-tracking action.
-  - *Harness*: `POST /v1/media/upload` is multipart; the harness sends JSON. Delta answers 304 when nothing changed;
-    the seeded SR bundle has no paged section.
+- **E: 63 -> 0 (lane/lead-contract, after the lead's go, 2026-10-17).** Every operation the production wiring serves is
+  validated on at least one success answer. How (all in the harness, `ContractConformanceTest.FX` and the opt-in
+  `ApiWorld(conformance = true)` seed):
+  - *Chained ids*: an operation runs after its producers (`Fx.after`) and reads what their answers created
+    (`Fx.capture`): outlet request create, verify, approve; content, rubric, survey and tutorial PATCH on the created id;
+    route-assignment end on the created cover (the run no longer ends sr1001's seeded primary); enrolment token revoke
+    and enrol; feedback triage; task cancel; price decision after the publish; delta after the bundle.
+  - *Seed rows no served operation creates*: a second outlet request, an export job, a risk signal, yesterday's
+    route-day and the dw dimensions, a pending C3 config change, a published SR release, a throwaway AMO with a zone
+    scope, a tutorial asset, quarantine items (a held duplicate of the paper memo with its line, one to discard, one
+    resolved for the delta), a stored photo, 501 tasks over the page threshold (set to its floor, 500).
+  - *Devices and auth*: the seeded SR phone carries a real P-256 key (`ApiWorld.phoneKey`), so batch, push token and
+    refresh are proven with their device proofs (the scope-leak and sync-fault harnesses send batch proofs too); a proof
+    phone for policy, nonce and status; a dev-token enrolment with a self-built attestation chain; bind with an unbound
+    SR, phone and an admin-issued OTP; MFA enrol and verify for dmo1001 (DMO is MFA-required in this world only).
+  - *Blobs*: `Wiring.production(blobPorts = ...)` (tests only) takes an in-memory store, so the SAS, upload and read
+    paths answer 2xx; production is unchanged (Azure when ARON_BLOB_ACCOUNT is set, else 503).
+  - *Code defect found on the way*: `POST /v1/admin/enrolment-tokens` sent unset optional QR provisioning extras as JSON
+    null (contract: optional, not nullable; the setup wizard could read "null"). Fixed in backend devices with a test.
+  - The report (`backend/app/build/contract-conformance.txt`) lists each caller's refusal under any operation without a
+    2xx, so a new gap is a read away.
