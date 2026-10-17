@@ -186,6 +186,7 @@ class MainActivity : ComponentActivity() {
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                                 // the dashboard origin from the build config (aron.webBaseUrl); empty until it is configured
                                 webOrigin = BuildConfig.WEB_BASE_URL.ifEmpty { null },
+                                leave = remember(s.user.userId) { TsoReadModels(components, databases).leave(s.user.userId) },
                             ) }
                             }
                         }

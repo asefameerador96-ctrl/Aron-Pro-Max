@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tso_leave_title">Leave</string>
+    <string name="tso_leave_empty">No leave applications yet</string>
+    <string name="tso_leave_empty_hint">Applications you send appear here with the decision of your DMO.</string>
+    <string name="tso_leave_error">Could not load your leave list</string>
+    <string name="tso_retry">Try again</string>
+    <string name="tso_leave_period">%1$s to %2$s</string>
+    <string name="tso_leave_days">%1$s days</string>
+    <string name="tso_leave_days_one">1 day</string>
+    <string name="tso_leave_type_casual">Casual leave</string>
+    <string name="tso_leave_type_sick">Sick leave</string>
+    <string name="tso_leave_type_earn">Earned leave</string>
+    <string name="tso_leave_status_pending">%1$s approval pending</string>
+    <string name="tso_leave_status_approved">Approved by %1$s</string>
+    <string name="tso_leave_status_rejected">Rejected by %1$s</string>
+    <string name="tso_leave_not_sent">Not sent yet</string>
+    <string name="tso_as_of">As of %1$s</string>
+    <string name="tso_offline_cached">Offline: showing the last list</string>
+</resources>

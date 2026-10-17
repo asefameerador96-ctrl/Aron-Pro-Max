@@ -64,6 +64,8 @@ fun TsoApp(
     onSync: (() -> Unit)? = null,
     /** The web dashboard origin (scheme and host, no path) for the Device OTP page; null shows the path alone. */
     webOrigin: String? = null,
+    /** F-TSO-008: the leave list source; null shows the placeholder (previews and tests). */
+    leave: com.aktcl.aron.feature.tso.leave.LeaveSource? = null,
 ) {
     var screen by rememberSaveable { mutableStateOf(TsoScreen.HOME) }
     BackHandler(enabled = screen != TsoScreen.HOME) { screen = TsoScreen.HOME }
@@ -82,10 +84,17 @@ fun TsoApp(
                 sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
             )
             TsoScreen.DEVICE_OTP -> RoleDeviceOtpContent(onBack = { screen = TsoScreen.HOME }, webOrigin = webOrigin)
-            else -> {
-                val tile = tiles.first { it.id == s.tileId }
-                RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = { screen = TsoScreen.HOME }, syncedAt = syncedAt)
-            }
+            TsoScreen.LEAVE -> if (leave != null) {
+                val state = remember(leave) { com.aktcl.aron.feature.tso.leave.LeaveListState(leave) }
+                com.aktcl.aron.feature.tso.leave.LeaveListScreen(state, onBack = { screen = TsoScreen.HOME })
+            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
+            else -> TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
         }
     }
+}
+
+@Composable
+private fun TsoPlaceholderFor(s: TsoScreen, tiles: List<RoleTile>, syncedAt: String?, onBack: () -> Unit) {
+    val tile = tiles.first { it.id == s.tileId }
+    RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = onBack, syncedAt = syncedAt)
 }

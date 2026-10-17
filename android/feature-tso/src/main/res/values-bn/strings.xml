@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tso_leave_title">ছুটি</string>
+    <string name="tso_leave_empty">এখনো কোনো ছুটির আবেদন নেই</string>
+    <string name="tso_leave_empty_hint">আপনার পাঠানো আবেদন ডিএমও-র সিদ্ধান্তসহ এখানে দেখা যাবে।</string>
+    <string name="tso_leave_error">ছুটির তালিকা আনা যায়নি</string>
+    <string name="tso_retry">আবার চেষ্টা করুন</string>
+    <string name="tso_leave_period">%1$s থেকে %2$s</string>
+    <string name="tso_leave_days">%1$s দিন</string>
+    <string name="tso_leave_days_one">১ দিন</string>
+    <string name="tso_leave_type_casual">নৈমিত্তিক ছুটি</string>
+    <string name="tso_leave_type_sick">অসুস্থতাজনিত ছুটি</string>
+    <string name="tso_leave_type_earn">অর্জিত ছুটি</string>
+    <string name="tso_leave_status_pending">%1$s অনুমোদনের অপেক্ষায়</string>
+    <string name="tso_leave_status_approved">%1$s অনুমোদন করেছেন</string>
+    <string name="tso_leave_status_rejected">%1$s বাতিল করেছেন</string>
+    <string name="tso_leave_not_sent">এখনো পাঠানো হয়নি</string>
+    <string name="tso_as_of">%1$s পর্যন্ত</string>
+    <string name="tso_offline_cached">অফলাইন: শেষ তালিকা দেখানো হচ্ছে</string>
+</resources>
