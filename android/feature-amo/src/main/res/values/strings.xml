@@ -206,4 +206,14 @@
     <string name="amo_task_pick_outlet">Choose the shop</string>
     <string name="amo_task_failed">Could not save the task. Try again.</string>
     <string name="amo_task_rejected">Not accepted by the office system</string>
+    <string name="amo_unit_stick">sticks</string>
+    <string name="amo_unit_piece">pieces</string>
+    <string name="amo_unit_dozen">dozens</string>
+    <string name="amo_stock_empty">No SR stock yet</string>
+    <string name="amo_stock_empty_hint">The stock your SRs lifted today shows up here.</string>
+    <string name="amo_stock_none_today">This SR has no stock today.</string>
+    <string name="amo_stock_by_sku">Lifted today</string>
+    <string name="amo_stock_line">Sold %1$s · Left %2$s</string>
+    <string name="amo_stock_totals">Lifted per category</string>
+    <string name="amo_stock_other">Other</string>
 </resources>

@@ -508,6 +508,9 @@ class AmoDay(
         return com.aktcl.aron.core.map.MapSettings.of(cfg("cfg.map.provider"), cfg("cfg.map.tile_cache_mb")?.toIntOrNull())
     }
 
+    suspend fun skuInfo(): Map<Long, com.aktcl.aron.feature.amo.SkuInfo> =
+        db.referenceDao().activeSkus().associate { it.skuId to com.aktcl.aron.feature.amo.SkuInfo(it.name, it.nameBn, it.categoryCode) }
+
     // ---- Task Delegation (F-AMO-018/019)
 
     suspend fun teamSrs(): List<com.aktcl.aron.feature.amo.TeamSr> = com.aktcl.aron.feature.amo.TaskDelegation.team(runCatching { reference.section("supervisor") }.getOrNull())

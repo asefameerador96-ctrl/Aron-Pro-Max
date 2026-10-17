@@ -206,4 +206,14 @@
     <string name="amo_task_pick_outlet">দোকান বেছে নিন</string>
     <string name="amo_task_failed">কাজ সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
     <string name="amo_task_rejected">অফিস সিস্টেম গ্রহণ করেনি</string>
+    <string name="amo_unit_stick">শলাকা</string>
+    <string name="amo_unit_piece">পিস</string>
+    <string name="amo_unit_dozen">ডজন</string>
+    <string name="amo_stock_empty">এখনও এসআরের স্টক নেই</string>
+    <string name="amo_stock_empty_hint">আজ আপনার এসআররা যে স্টক তুলেছেন তা এখানে দেখা যাবে।</string>
+    <string name="amo_stock_none_today">আজ এই এসআরের কোনো স্টক নেই।</string>
+    <string name="amo_stock_by_sku">আজ তোলা স্টক</string>
+    <string name="amo_stock_line">বিক্রি %1$s · বাকি %2$s</string>
+    <string name="amo_stock_totals">ক্যাটাগরি অনুযায়ী তোলা স্টক</string>
+    <string name="amo_stock_other">অন্যান্য</string>
 </resources>

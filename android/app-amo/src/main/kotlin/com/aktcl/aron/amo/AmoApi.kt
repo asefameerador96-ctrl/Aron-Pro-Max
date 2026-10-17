@@ -26,6 +26,9 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
     /** `GET /v1/team/locations` (F-API-023): the last synced fix of each SR of the zone. */
     suspend fun teamLocations(businessDate: String): AmoFetch = get("/v1/team/locations", "team_loc", mapOf("business_date" to businessDate))
 
+    /** `GET /v1/team/stock` (F-API-024): issued, sold, returned and current stock per SR and SKU for [businessDate]. */
+    suspend fun teamStock(businessDate: String): AmoFetch = get("/v1/team/stock", "team_stock_$businessDate", mapOf("business_date" to businessDate))
+
     /** `GET /v1/tasks` created from [fromDate] on (F-API-026), all pages up to a few; the caller keeps the ones it assigned. */
     suspend fun tasks(fromDate: String): AmoFetch {
         val first = get("/v1/tasks", null, mapOf("from" to fromDate, "limit" to "200"))
