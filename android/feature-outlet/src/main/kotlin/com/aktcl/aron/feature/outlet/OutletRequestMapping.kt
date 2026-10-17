@@ -26,7 +26,7 @@ fun OutletRequestDraft.toEntities(meta: CaptureMeta, fix: FixReading, fixUuid: S
             OutletRequestKind.INFO -> { name?.let { put("name", it) }; ownerName?.let { put("owner_name", it) }; contactNumber?.let { put("contact_number", it) } }
             OutletRequestKind.CLOSE -> put("close_reason_code", closeReasonCode ?: "shop_closed")
             OutletRequestKind.CLUSTER -> clusterId?.let { put("cluster_id", it) }
-            OutletRequestKind.LOCATION -> if (fix.isOk) { put("lat", fix.lat!!); put("lng", fix.lng!!) }
+            OutletRequestKind.LOCATION -> if (pointLat != null && pointLng != null) { put("lat", pointLat); put("lng", pointLng) } else if (fix.isOk) { put("lat", fix.lat!!); put("lng", fix.lng!!) }
             OutletRequestKind.ROUTE_ADD -> Unit
         }
     }
