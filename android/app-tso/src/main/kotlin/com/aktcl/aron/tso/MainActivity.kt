@@ -99,10 +99,13 @@ class MainActivity : ComponentActivity() {
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
         setContent {
-            var sunlight by remember { mutableStateOf(false) }
+            // Before sign-in the sun switch is a device-level choice (no user yet); a signed-in user has their own.
+            val devicePref = remember { SunlightPreference(applicationContext, "device") }
+            var sunlight by remember { mutableStateOf(devicePref.enabled) }
             val state by components.session.state.collectAsStateWithLifecycle()
             // The login is the dark navy kit theme (F-TSO-001); the signed-in day keeps the Calm Glass light theme.
-            val loggedOut = state == SessionState.LoggedOut
+            val loggedOut = state !is SessionState.Active // Restoring too: the dark page is the splash of a logged-out phone
+            LaunchedEffect(loggedOut) { if (loggedOut) sunlight = devicePref.enabled }
             androidx.compose.runtime.SideEffect {
                 val needsLight = tsoLoginNeedsLightBarIcons(loggedOut, sunlight)
                 androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply { isAppearanceLightStatusBars = !needsLight; isAppearanceLightNavigationBars = !needsLight }
@@ -117,10 +120,11 @@ class MainActivity : ComponentActivity() {
                             submit = deviceEnrolment::submit,
                             appTitle = stringResource(R.string.app_name),
                             onLanguageSelect = onLanguageSelect,
+                            sunlight = sunlight, onSunlight = { on -> sunlight = on; devicePref.enabled = on },
                         ) { onEnrol ->
                             // The bind step (OTP from /device-otp) follows the first login of an enrolled phone.
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
-                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol)
+                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, sunlight = sunlight, onSunlight = { on -> sunlight = on; devicePref.enabled = on })
                         }
                         is SessionState.Active -> {
                             // F-SYS-022: TSO is refused while anything is unsent, then wipes this user's data.
