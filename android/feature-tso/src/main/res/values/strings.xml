@@ -17,4 +17,26 @@
     <string name="tso_leave_not_sent">Not sent yet</string>
     <string name="tso_as_of">As of %1$s</string>
     <string name="tso_offline_cached">Offline: showing the last list</string>
+    <string name="tso_leave_apply_title">Apply for leave</string>
+    <string name="tso_leave_apply">Apply</string>
+    <string name="tso_leave_type">Leave type</string>
+    <string name="tso_leave_from">From date</string>
+    <string name="tso_leave_date_hint">YYYY-MM-DD</string>
+    <string name="tso_leave_days_label">Number of days</string>
+    <string name="tso_leave_days_minus">One day less</string>
+    <string name="tso_leave_days_plus">One day more</string>
+    <string name="tso_leave_until">Last day: %1$s</string>
+    <string name="tso_leave_reason">Reason</string>
+    <string name="tso_leave_send">Send application</string>
+    <string name="tso_leave_done">Done</string>
+    <string name="tso_leave_another">Apply for another</string>
+    <string name="tso_leave_queued">Saved on this phone. It shows as not sent yet until the server has it.</string>
+    <string name="tso_leave_failed">Could not save the application. Try again.</string>
+    <string name="tso_leave_err_type">Choose a leave type</string>
+    <string name="tso_leave_err_date_format">Write the date as YYYY-MM-DD</string>
+    <string name="tso_leave_err_date_past">The start date is too far in the past</string>
+    <string name="tso_leave_err_date_far">The start date is too far ahead</string>
+    <string name="tso_leave_err_days">Days must be between 1 and 365</string>
+    <string name="tso_leave_err_reason_empty">Write a reason</string>
+    <string name="tso_leave_err_reason_long">The reason is too long (500 characters at most)</string>
 </resources>

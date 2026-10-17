@@ -103,6 +103,7 @@ dependencies {
     implementation(project(":android:feature-home"))
     implementation(project(":android:feature-tasks"))
     implementation(project(":android:feature-tso"))
+    implementation(libs.kotlinx.serialization.json) // TsoOutbox builds record payloads
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)

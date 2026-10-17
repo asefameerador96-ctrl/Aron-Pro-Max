@@ -6,7 +6,7 @@ import java.time.LocalDate
 enum class LeaveStatus(val wire: String) {
     PENDING("pending"), APPROVED("approved"), REJECTED("rejected");
 
-    companion object { fun of(wire: String): LeaveStatus = entries.firstOrNull { it.wire == wire } ?: PENDING }
+    companion object { fun of(wire: String): LeaveStatus = entries.firstOrNull { it.wire == wire } ?: PENDING } // lenient lookup for local use; the JSON reader drops unknown statuses
 }
 
 /**
@@ -37,5 +37,5 @@ fun leaveToDate(fromDate: String, days: Int): String = LocalDate.parse(fromDate)
 /** The list a screen shows: server rows plus unsent local ones, a uuid present in both counts once (the server row wins). */
 fun mergeLeave(server: List<LeaveItem>, local: List<LeaveItem>): List<LeaveItem> {
     val seen = server.map { it.leaveUuid }.toSet()
-    return orderLeave(server + local.filter { it.leaveUuid !in seen })
+    return orderLeave((server + local.filter { it.leaveUuid !in seen }).distinctBy { it.leaveUuid })
 }

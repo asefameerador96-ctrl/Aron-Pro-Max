@@ -10,3 +10,6 @@ The TSO app queues these as outbox records like the SR app does (docs/24 s4.2, s
 
 ## Until then
 android-tso builds the screens, validation and ports with a stub marked `// REQUEST: docs/requests/android-tso-record-mapping.md`; the stub keeps the unsent record in memory only, and the row is marked in `docs/status/android-tso.md` as "queue stubbed".
+
+## Update 2026-10-17 (night)
+android-tso now queues its records itself with `app-tso/.../TsoOutbox.kt` (RecordMapping.record with a JsonObject payload, outbox row plus a sync_meta mirror in one Room transaction). The shared DTOs and RecordMapping builders are therefore a nice-to-have, not a blocker. Still wanted from the backend side: the exact required payload members of `feedback`, `visit_plan`, `visit_plan_outlet`, `visit_query` and `final_submit` are read from `contract/slices/schemas/`.

@@ -19,7 +19,7 @@ import java.util.TimeZone
  * the user's encrypted database (`sync_meta`, key `tso.cache.*`), so it is wiped with the database at logout (F-SYS-022)
  * and a screen opens offline with "as of hh:mm". Never throws: an offline or refused call returns null.
  */
-class TsoReadModels(private val components: SessionComponents, private val databases: UserDatabases) {
+class TsoReadModels(private val components: SessionComponents, private val databases: UserDatabases, private val outbox: TsoOutbox? = null) {
     private val client: AronApiClient get() = components.apiClient
 
     private fun asOfNow(): String =
@@ -51,15 +51,40 @@ class TsoReadModels(private val components: SessionComponents, private val datab
             return LeaveJson.parsePage(body)?.let { LeaveSource.Cached(it.items, asOf) }
         }
 
-        // REQUEST: docs/requests/android-tso-record-mapping.md (F-TSO-009: unsent leave applications come from the outbox)
-        override suspend fun unsent() = emptyList<com.aktcl.aron.feature.tso.leave.LeaveItem>()
+        /** The mirror rows written with each queued application (same transaction as the outbox row). */
+        override suspend fun unsent(): List<com.aktcl.aron.feature.tso.leave.LeaveItem> = runCatching {
+            meta(userId).metaWithPrefix(LEAVE_MIRROR).mapNotNull { LeaveJson.parseUnsent(it.value) }
+        }.getOrDefault(emptyList())
 
         override suspend fun refresh(): LeaveSource.Cached? {
             val body = get("/v1/leave") ?: return null
             val page = LeaveJson.parsePage(body) ?: return null
             val asOf = asOfNow()
             cachePut(userId, "leave", LeaveJson.toCache(page.items), asOf)
+            // the server has these: their "not sent yet" mirror rows are done
+            runCatching { page.items.forEach { meta(userId).deleteMeta(LEAVE_MIRROR + it.leaveUuid) } }
             return LeaveSource.Cached(page.items, asOf)
         }
     }
+
+    /** F-TSO-009: saves the application to the outbox and its mirror in one transaction; the sync engine sends it later. */
+    fun leaveQueue(userId: Long): com.aktcl.aron.feature.tso.leave.LeaveQueue = com.aktcl.aron.feature.tso.leave.LeaveQueue { uuid, p ->
+        val box = checkNotNull(outbox) { "no outbox" }
+        val item = com.aktcl.aron.feature.tso.leave.LeaveItem(
+            uuid, p.leaveTypeCode, p.fromDate, com.aktcl.aron.feature.tso.leave.leaveToDate(p.fromDate, p.days), p.days, p.reason,
+            com.aktcl.aron.feature.tso.leave.LeaveStatus.PENDING, sent = false,
+        )
+        box.enqueue(
+            userId, com.aktcl.aron.contract.RecordType.LEAVE_APPLICATION, uuid,
+            kotlinx.serialization.json.buildJsonObject {
+                put("leave_type_code", kotlinx.serialization.json.JsonPrimitive(p.leaveTypeCode))
+                put("from_date", kotlinx.serialization.json.JsonPrimitive(p.fromDate))
+                put("days", kotlinx.serialization.json.JsonPrimitive(p.days))
+                put("reason", kotlinx.serialization.json.JsonPrimitive(p.reason))
+            },
+            mirrorKey = LEAVE_MIRROR + uuid, mirrorValue = LeaveJson.unsentToJson(item),
+        )
+    }
+
+    private companion object { const val LEAVE_MIRROR = "tso.unsent.leave." }
 }

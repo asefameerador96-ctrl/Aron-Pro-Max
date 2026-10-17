@@ -6,8 +6,12 @@
 ## Was in progress
 - F-TSO-001 (T1): dark navy login as the kit Dark mode (`TsoLoginTheme` in feature-tso, wired in `app-tso` MainActivity; status/nav bar icons follow; sunlight overrides dark). Logout dialog and reconciled-only wipe pre-exist (`ShellLogout`, `UnsentItemsDialog`, Settings confirm). Tests green locally. Opus checker running; row goes to the CSV when it reports.
 
-## Next three rows
-F-TSO-008 Leave list, F-TSO-018 My Feedback, F-TSO-028 chrome.
+## Done (cont.)
+- F-TSO-008 leave list (checked by Sonnet, 4 defects fixed). Host: `TsoReadModels` (GET + cache in the encrypted per-user sync_meta, wiped with the DB), `TsoOutbox` (generic durable queue: outbox row + mirror row in one transaction, idempotent by uuid; no shared DTOs needed, payload is a JsonObject). Reuse `TsoOutbox` for every TSO write.
+- F-TSO-009 leave apply built (validation, one uuid per form, queue via TsoOutbox, 'not sent yet' from the mirror); checker pending.
+
+## Next rows
+F-TSO-018 My Feedback, F-TSO-028 chrome, F-TSO-029 feedback list, then Day 5 rows.
 
 ## Traps
 - Local Gradle works online (not `--offline`): `echo sdk.dir=/opt/android-sdk > local.properties` after `tools/android-sdk.sh`; filter the `Picked up JAVA_TOOL_OPTIONS` noise.

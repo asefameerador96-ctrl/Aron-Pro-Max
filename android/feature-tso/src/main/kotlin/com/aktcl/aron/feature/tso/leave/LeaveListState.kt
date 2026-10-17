@@ -23,7 +23,8 @@ interface LeaveSource {
 
 sealed interface LeaveListUi {
     data object Loading : LeaveListUi
-    data class Content(val items: List<LeaveItem>, val asOf: String?, val offlineCached: Boolean) : LeaveListUi
+    /** [refreshing]: the list is the cached one and the online read has not answered yet (its "as of" is the cache's, not now). */
+    data class Content(val items: List<LeaveItem>, val asOf: String?, val offlineCached: Boolean, val refreshing: Boolean = false) : LeaveListUi
     data object Empty : LeaveListUi
     data object Error : LeaveListUi
 }
@@ -36,7 +37,7 @@ class LeaveListState(private val source: LeaveSource) {
     suspend fun load() {
         val cached = runCatching { source.cached() }.getOrNull()
         val local = runCatching { source.unsent() }.getOrDefault(emptyList())
-        if (cached != null) publish(cached, local, offlineCached = false)
+        if (cached != null) publish(cached, local, offlineCached = false, refreshing = true)
         val fresh = runCatching { source.refresh() }.getOrNull()
         when {
             fresh != null -> publish(fresh, local, offlineCached = false)
@@ -46,8 +47,8 @@ class LeaveListState(private val source: LeaveSource) {
         }
     }
 
-    private fun publish(c: LeaveSource.Cached, local: List<LeaveItem>, offlineCached: Boolean) {
+    private fun publish(c: LeaveSource.Cached, local: List<LeaveItem>, offlineCached: Boolean, refreshing: Boolean = false) {
         val merged = mergeLeave(c.items, local)
-        _ui.value = if (merged.isEmpty()) LeaveListUi.Empty else LeaveListUi.Content(merged, c.asOf, offlineCached)
+        _ui.value = if (merged.isEmpty()) LeaveListUi.Empty else LeaveListUi.Content(merged, c.asOf, offlineCached, refreshing)
     }
 }

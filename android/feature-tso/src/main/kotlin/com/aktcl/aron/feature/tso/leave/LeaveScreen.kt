@@ -36,6 +36,7 @@ object LeaveTags {
     const val ERROR = "tso_leave_error"
     const val OFFLINE = "tso_leave_offline"
     const val ASOF = "tso_leave_asof"
+    const val APPLY = "tso_leave_apply"
     fun card(uuid: String) = "tso_leave_card_$uuid"
     fun badge(uuid: String) = "tso_leave_badge_$uuid"
     fun unsent(uuid: String) = "tso_leave_unsent_$uuid"
@@ -43,11 +44,14 @@ object LeaveTags {
 
 /** F-TSO-008: the leave list. Cards show the period, days, reason and a status badge that names the approver role. */
 @Composable
-fun LeaveListScreen(state: LeaveListState, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun LeaveListScreen(state: LeaveListState, onBack: () -> Unit, modifier: Modifier = Modifier, onApply: (() -> Unit)? = null) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val ui by state.ui.collectAsStateWithLifecycle()
     LaunchedEffect(state) { state.load() }
-    AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_leave_title), onBack = onBack) }) {
+    AronScreen(
+        modifier, topBar = { AronTopBar(stringResource(R.string.tso_leave_title), onBack = onBack) },
+        bottomBar = { if (onApply != null) com.aktcl.aron.core.ui.AronBottomBar(primary = com.aktcl.aron.core.ui.AronBarAction(stringResource(R.string.tso_leave_apply), onApply), modifier = Modifier.testTag(LeaveTags.APPLY)) },
+    ) {
         when (val u = ui) {
             LeaveListUi.Loading -> Column(Modifier.fillMaxSize()) { }
             LeaveListUi.Empty -> AronEmptyState(stringResource(R.string.tso_leave_empty), Modifier.testTag(LeaveTags.EMPTY), hint = stringResource(R.string.tso_leave_empty_hint), icon = AronIcons.Leave)

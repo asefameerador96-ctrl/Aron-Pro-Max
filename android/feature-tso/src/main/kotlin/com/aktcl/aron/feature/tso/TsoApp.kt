@@ -66,6 +66,10 @@ fun TsoApp(
     webOrigin: String? = null,
     /** F-TSO-008: the leave list source; null shows the placeholder (previews and tests). */
     leave: com.aktcl.aron.feature.tso.leave.LeaveSource? = null,
+    /** F-TSO-009: queues a leave application; null hides the Apply button. */
+    leaveQueue: com.aktcl.aron.feature.tso.leave.LeaveQueue? = null,
+    /** Dhaka business date `YYYY-MM-DD` from trusted time, for the apply form's date checks. */
+    today: () -> String = { businessDate },
 ) {
     var screen by rememberSaveable { mutableStateOf(TsoScreen.HOME) }
     BackHandler(enabled = screen != TsoScreen.HOME) { screen = TsoScreen.HOME }
@@ -85,8 +89,17 @@ fun TsoApp(
             )
             TsoScreen.DEVICE_OTP -> RoleDeviceOtpContent(onBack = { screen = TsoScreen.HOME }, webOrigin = webOrigin)
             TsoScreen.LEAVE -> if (leave != null) {
-                val state = remember(leave) { com.aktcl.aron.feature.tso.leave.LeaveListState(leave) }
-                com.aktcl.aron.feature.tso.leave.LeaveListScreen(state, onBack = { screen = TsoScreen.HOME })
+                var applying by rememberSaveable { mutableStateOf(false) }
+                // a new list state after an application, so the unsent card shows at once
+                var listEpoch by rememberSaveable { mutableStateOf(0) }
+                val state = remember(leave, listEpoch) { com.aktcl.aron.feature.tso.leave.LeaveListState(leave) }
+                BackHandler(enabled = applying) { applying = false; listEpoch++ }
+                if (applying && leaveQueue != null) {
+                    val apply = remember(leaveQueue) { com.aktcl.aron.feature.tso.leave.LeaveApplyState(leaveQueue, today) }
+                    com.aktcl.aron.feature.tso.leave.LeaveApplyScreen(apply, onBack = { applying = false; listEpoch++ })
+                } else {
+                    com.aktcl.aron.feature.tso.leave.LeaveListScreen(state, onBack = { screen = TsoScreen.HOME }, onApply = if (leaveQueue != null) ({ applying = true }) else null)
+                }
             } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
             else -> TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
         }

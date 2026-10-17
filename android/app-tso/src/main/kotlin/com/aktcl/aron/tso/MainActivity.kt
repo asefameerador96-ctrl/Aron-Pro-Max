@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
+    private val readModels by lazy { TsoReadModels(components, databases, TsoOutbox(applicationContext, components, databases, scheduler)) }
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
@@ -186,7 +187,9 @@ class MainActivity : ComponentActivity() {
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                                 // the dashboard origin from the build config (aron.webBaseUrl); empty until it is configured
                                 webOrigin = BuildConfig.WEB_BASE_URL.ifEmpty { null },
-                                leave = remember(s.user.userId) { TsoReadModels(components, databases).leave(s.user.userId) },
+                                leave = remember(s.user.userId) { readModels.leave(s.user.userId) },
+                                leaveQueue = remember(s.user.userId) { readModels.leaveQueue(s.user.userId) },
+                                today = { components.trustedClock.businessDate().toString() },
                             ) }
                             }
                         }

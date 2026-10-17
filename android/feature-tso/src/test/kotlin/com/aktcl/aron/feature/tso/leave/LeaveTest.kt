@@ -15,6 +15,7 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -156,5 +157,97 @@ class LeaveJsonTest {
         val a = item("a", "2026-10-01", status = LeaveStatus.REJECTED); val b = item("b", "2026-10-02", sent = false)
         val back = LeaveJson.parsePage(LeaveJson.toCache(listOf(a, b)))!!
         assertEquals(listOf(a), back.items)
+    }
+}
+
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [34])
+class LeaveCheckerTest {
+    private fun row(extra: String) = """{"items":[{"leave_uuid":"u1","leave_type_code":"sick","from_date":"2026-10-05","days":2,"to_date":"2026-10-06",$extra}],"next_cursor":null}"""
+
+    @Test fun nullReasonIsDroppedNotShownAsTextNull() {
+        val p = LeaveJson.parsePage(row(""""reason":null,"status":"approved"""")) !!
+        assertTrue(p.items.none { it.reason == "null" })
+    }
+
+    @Test fun unknownStatusRowIsNotShownAsPending() {
+        val p = LeaveJson.parsePage(row(""""reason":"x","status":"cancelled"""")) !!
+        assertTrue(p.items.isEmpty())
+    }
+
+    @Test fun duplicateUuidsAreMergedOnce() {
+        val a = item("a", "2026-10-01")
+        val merged = mergeLeave(listOf(a, a), listOf(item("b", "2026-10-02", sent = false), item("b", "2026-10-02", sent = false)))
+        assertEquals(merged.map { it.leaveUuid }.distinct(), merged.map { it.leaveUuid })
+    }
+
+    @Test fun staleCacheIsNotLabelledFreshWhileRefreshRuns() = runBlocking {
+        val gate = kotlinx.coroutines.CompletableDeferred<LeaveSource.Cached?>()
+        val src = object : LeaveSource {
+            override suspend fun cached() = LeaveSource.Cached(listOf(item("a", "2026-10-01")), "09:00")
+            override suspend fun unsent() = emptyList<LeaveItem>()
+            override suspend fun refresh() = gate.await()
+        }
+        val st = LeaveListState(src)
+        val job = kotlinx.coroutines.GlobalScope.launch { st.load() }
+        kotlinx.coroutines.delay(300)
+        val u = st.ui.value as LeaveListUi.Content
+        gate.complete(null); job.join()
+        assertTrue("cached list must say it is not yet confirmed", u.refreshing || u.offlineCached)
+    }
+}
+
+class LeaveApplyStateTest {
+    private val today = "2026-10-17"
+    private class Q(var fail: Boolean = false) : LeaveQueue {
+        val sent = mutableListOf<Pair<String, LeavePayload>>()
+        override suspend fun submit(uuid: String, payload: LeavePayload): Boolean { if (fail) error("db"); sent += uuid to payload; return true }
+    }
+
+    private fun ok(q: Q) = LeaveApplyState(q, { today }, newUuid = run { var n = 0; { "uuid-${n++}" } })
+
+    @Test fun validation() {
+        fun v(f: LeaveForm) = validateLeave(f, today)
+        assertTrue(v(LeaveForm("casual", today, 1, "x")).isEmpty())
+        assertEquals(listOf(LeaveError.TYPE), v(LeaveForm("holiday", today, 1, "x")))
+        assertEquals(listOf(LeaveError.DATE_FORMAT), v(LeaveForm("casual", "17/10/2026", 1, "x")))
+        assertEquals(listOf(LeaveError.DATE_PAST), v(LeaveForm("casual", "2026-09-01", 1, "x")))
+        assertTrue(v(LeaveForm("sick", "2026-09-16", 1, "x")).isEmpty()) // exactly 31 days back is allowed
+        assertEquals(listOf(LeaveError.DATE_FAR), v(LeaveForm("casual", "2027-11-01", 1, "x")))
+        assertEquals(listOf(LeaveError.DAYS), v(LeaveForm("casual", today, 0, "x")))
+        assertEquals(listOf(LeaveError.DAYS), v(LeaveForm("casual", today, 366, "x")))
+        assertEquals(listOf(LeaveError.REASON_EMPTY), v(LeaveForm("casual", today, 1, "   ")))
+        assertEquals(listOf(LeaveError.REASON_LONG), v(LeaveForm("casual", today, 1, "ক".repeat(501))))
+        assertTrue(v(LeaveForm("casual", today, 1, "ক".repeat(500))).isEmpty())
+    }
+
+    @Test fun invalidFormQueuesNothing() = runBlocking {
+        val q = Q(); val s = ok(q); s.submit()
+        assertTrue(s.result.value is LeaveApplyResult.Invalid); assertTrue(q.sent.isEmpty())
+    }
+
+    @Test fun validFormQueuesOnceWithATrimmedReasonAndTheSameUuidOnRetry() = runBlocking {
+        val q = Q(fail = true); val s = ok(q)
+        s.edit { it.copy(type = "sick", days = 3, reason = "  fever  ") }
+        s.submit(); assertEquals(LeaveApplyResult.Failed, s.result.value)
+        q.fail = false
+        s.submit(); s.submit() // a double tap after success changes nothing
+        assertEquals(1, q.sent.size)
+        assertEquals("uuid-0", q.sent[0].first)
+        assertEquals(LeavePayload("sick", today, 3, "fever"), q.sent[0].second)
+        assertEquals(LeaveApplyResult.Queued, s.result.value)
+    }
+
+    @Test fun newFormGetsANewUuid() = runBlocking {
+        val q = Q(); val s = ok(q)
+        s.edit { it.copy(reason = "a") }; s.submit(); s.startNew()
+        s.edit { it.copy(reason = "b") }; s.submit()
+        assertEquals(listOf("uuid-0", "uuid-1"), q.sent.map { it.first })
+    }
+
+    @Test fun editAfterQueuedIsIgnored() = runBlocking {
+        val q = Q(); val s = ok(q); s.edit { it.copy(reason = "a") }; s.submit()
+        s.edit { it.copy(reason = "changed") }
+        assertEquals("a", s.form.value.reason); assertEquals(LeaveApplyResult.Queued, s.result.value)
     }
 }
