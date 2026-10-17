@@ -403,3 +403,7 @@ rather than rebuilding; delete the salvage branch when absorbed.
   once absorbed onto lane/db.
 - DA-02 note stands: dims are NOT SCD2; backend-reports' ~40 queries read them live. The capture-context
   columns are the bridge. Revisit at the staging gate with the partitioning batch.
+
+## Hardening 2026-10-17
+
+- V0084 `bundle_snapshot.body_gz/scope_version/config_version/change_stamp`, `app.change_stamp` + statement triggers on 19 reference tables (SCALE-03). V0085 `fact_memo_user_date`, `fact_visit_user_date` (DB-04). V0086 retention grants (jobs_rw, worker_rw UPDATE on sync_batch and bundle_snapshot) and the partial index `sync_batch_response_expiry` (DB-01). V0087 `app.mint_server_generation` (DD-02). Dictionary regenerated. Tests: `ProductionReadinessMigrationsTest`, `IndexHygieneTest`, `DbRolesTest`, `DataDictionaryTest` green on the laptop's PostgreSQL 16.

@@ -975,3 +975,9 @@ of guarded properties fail validation.
 | 2026-10-05 | No GitHub concurrency for deploys; an Azure-side wait plus an ancestor check | GitHub cancels pending jobs in a group, which would cancel CI runs |
 | 2026-10-05 | Blob-created events via Event Grid to a storage queue drained by the worker | The contract has no webhook endpoint for it; a queue needs no endpoint validation and is at-least-once |
 | 2026-10-05 | Temporary source-based detection of the missing migrate role and placeholder worker in `deploy.sh` | Keeps push deploys green on Day 1 without hiding the gap (warnings in every run) |
+
+## Hardening 2026-10-17
+
+- OPS-02: worker liveness probe `/health/live` (infra/apps.bicep, period 30 s, 3 failures, 90 s initial delay) and the `workerHeartbeat` log alert; OPS-03 alerts `outboxLag`, `syncSuccess`, `syncRejected`, `retentionBehind` (infra/modules/alerts.bicep, log alerts, off in the TEST profile with `enableLogAlerts = false`). Not deployed: `infra/validate.sh` and a deploy of the hardening branch are the next step; the seeded proof (N-062) after that.
+- DD-02: `infra/scripts/mint-generation.sh` and RB-14 `docs/runbooks/pitr-restore.md`; `drill.sh pitr` now mints on the restored copy and prints `GENERATION MINTED` (HD-09 still waits on the owner's "approved restore drill").
+- SCALE-01: `.github/workflows/load-smoke.yml` (manual) needs the secrets `LOAD_BASE_URL`, `LOAD_USERS`, `LOAD_PASSWORD`.

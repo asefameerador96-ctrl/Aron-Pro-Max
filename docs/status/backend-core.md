@@ -328,3 +328,12 @@ take the tests even if your code differs. The branch also carries three request 
 filed: backend-core-outlet-pin-history.md (backend-admin + db), backend-core-web-client-ip.md
 (web-dashboard + infra), backend-core-login-device-proof.md (contract v1.4: no X-Device-Proof on login).
 File or discard them explicitly, then delete the salvage branch.
+
+## Hardening 2026-10-17 (branch `claude/amazing-kilby-fdc9ab`, audit before-go-live rows)
+
+- SCALE-02 batched ingest: 500 records (100 sale families) in **1,343 statements and 2 savepoints** (was about 7,500 statements and 2,000 savepoints: 12 to 20 statements and 1 to 4 savepoints per record); 500 duplicates in 23 statements and 1 savepoint; one poison row in 500 isolated in 21 savepoints and 9 bisections (D-521 budget 60). `BatchAcceptanceTest` bounds 3 statements per record plus 120. Local PostgreSQL 16 on the laptop (portable, port 5433).
+- SCALE-03 snapshots: a login served from the stored snapshot **23 statements**, a 304 **22**, a build about 40 (plus the full `cfg_value` load). `BundleAcceptanceTest` bounds 30.
+- DB-01/HD-08: `RetentionJob.prune` in the night window; `RetentionJobTest` seeds old rows and proves the chunks, the voided exception and the jobs_rw grants.
+- OPS-02/03: worker heartbeat line a minute, `/health/live` on the worker, api `ingest_minute` line; alerts `workerHeartbeat`, `outboxLag`, `syncSuccess`, `syncRejected`, `retentionBehind` in `infra/modules/alerts.bicep`. **Not yet proved on dev** (N-062 style seeded run; needs a deploy of this branch).
+- SCALE-01: `tools/load/smoke.js` + manual workflow; **no run recorded yet** (needs `LOAD_BASE_URL`, `LOAD_USERS`, `LOAD_PASSWORD` secrets from the owner, or a local API run).
+- Follow-ups: multi-row typed inserts per table (another ~1 statement per record); batch the per-memo device flag and duplicate-suspect reads; the manual ingest (paper backfill) still runs a savepoint per record (at most 200 records, web only); `cfg.sync.max_savepoints_per_tx` is not in the registry (60 applies).

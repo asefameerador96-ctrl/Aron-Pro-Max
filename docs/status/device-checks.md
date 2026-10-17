@@ -274,3 +274,7 @@ two defects outside this lane. The adb path (s10.4 step 5) is the one that works
    several users" (second user / Private Space) and drops the "already set-up" message, which Android raises only for
    non-shell callers; the QR path moved to an appendix. The runbook is about 1,500 words including the four adb blocks (the
    brief's eight required parts plus the review's additions), a little over two printed pages.
+
+## DD-01 (2026-10-17)
+
+- The phone database writer now runs `PRAGMA synchronous = FULL` (`AronDatabase.SynchronousFull`, `SynchronousFullTest` in CI). **Commit-time cost on the lab A06: not measured yet.** Measure with D-PERF-04 (sale save, 300 ms gate): record the median of `recordSale` before and after on the same build; expect a few milliseconds per commit (one extra fsync on eMMC). Do not trade back to NORMAL (PERF-08).
