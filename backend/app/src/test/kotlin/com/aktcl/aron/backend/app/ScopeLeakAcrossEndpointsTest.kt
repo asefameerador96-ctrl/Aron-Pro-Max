@@ -131,8 +131,15 @@ class ScopeLeakAcrossEndpointsTest {
             otherUuids += h.createQuery("SELECT client_uuid::text FROM app.visit WHERE user_id = :u UNION SELECT client_uuid::text FROM app.memo WHERE user_id = :u UNION SELECT client_uuid::text FROM app.due_collection WHERE user_id = :u")
                 .bind("u", other.userId).mapTo(String::class.java).list()
             otherUuids += seedOtherRows(h, other)
-            // Record paths named by uuid (`/v1/outlet-requests/{request_uuid}`) are probed at the other division's row.
-            world.uuidParams["request_uuid"] = otherRequestUuid
+            // Record paths named by uuid or row id are aimed at the other division's rows (the other-path variant).
+            world.otherPathValues["request_uuid"] = otherRequestUuid
+            world.otherPathValues["task_uuid"] = otherTaskUuid
+            for ((param, type) in listOf("leave_uuid" to "leave_application", "exception_uuid" to "day_exception", "feedback_uuid" to "feedback")) {
+                generatedUuids[type]?.let { world.otherPathValues[param] = it }
+            }
+            fun rowId(sql: String) = h.createQuery(sql).mapTo(Long::class.java).findOne().orElse(null)?.toString()
+            rowId("SELECT max(id) FROM app.entry_unlock WHERE reason LIKE 'LKX%'")?.let { world.otherPathValues["unlock_id"] = it }
+            rowId("SELECT max(id) FROM app.dues_adjustment WHERE reason LIKE 'LKX%'")?.let { world.otherPathValues["adjustment_id"] = it }
         }
         check(otherIds.values.all { it.isNotEmpty() } && otherUuids.isNotEmpty()) { "the other division is incomplete: $otherIds, ${otherUuids.size} records" }
         // Ids of the two divisions never coincide per kind, so an id hit is never the caller's own row.
@@ -175,6 +182,7 @@ class ScopeLeakAcrossEndpointsTest {
                 setBody(ByteArrayContent(gz(p.batch(listOf(env))), ContentType.Application.Json))
             }
             val ack = runCatching { Json.parseToJsonElement(r.bodyAsText()).jsonObject["acks"]!!.jsonArray.single().jsonObject }.getOrNull()
+            if (ack?.get("status")?.jsonPrimitive?.content == "accepted") generatedUuids[type] = cu
             out[type] = ack?.let { it["status"]!!.jsonPrimitive.content + (it["code"]?.jsonPrimitive?.content?.let { c -> " $c" } ?: "") } ?: "http ${r.status.value}"
         }
         return out
@@ -189,7 +197,7 @@ class ScopeLeakAcrossEndpointsTest {
         fun uuid() = java.util.UUID.randomUUID().toString()
         val task = uuid(); val request = uuid(); val plan = uuid(); val planOutlet = uuid()
         val entry = uuid(); val directive = uuid(); val adjustment = uuid()
-        otherRequestUuid = request
+        otherRequestUuid = request; otherTaskUuid = task
         val outlet = p.outlets.first()
         val zone = h.createQuery("SELECT zone_id FROM app.outlet WHERE id = :o").bind("o", outlet).mapTo(Long::class.java).one()
         val at = "${day}T04:00:00Z"
@@ -218,6 +226,9 @@ class ScopeLeakAcrossEndpointsTest {
     }
 
     private lateinit var otherRequestUuid: String
+    private lateinit var otherTaskUuid: String
+    /** Client uuids of the generated records the server accepted, by type. */
+    private val generatedUuids = HashMap<String, String>()
 
     /** Logs [p] in and delivers one selling day until every record is acknowledged. */
     private suspend fun HttpClient.sellADay(p: SyncPhone, seed: Int) {
@@ -308,8 +319,9 @@ class ScopeLeakAcrossEndpointsTest {
                     val r = world.call(this, contract, op, c, tokenFor(c), pathIds, query, includeOptionalIds = body, bodyEdit = edit, queryOverrides = pins)
                     if (!retargeted) return // the body names no resource: nothing to learn beyond the own call
                     st.calls++
-                    // A refusal may echo the record uuid the request named (problem `instance`): that is not a leak.
-                    val text = r.bodyAsText().let { t -> if (r.status.value >= 400) world.uuidParams.values.fold(t) { a, u -> a.replace(u, "<asked>") } else t }
+                    // A refusal echoes the asked path in its problem `instance` (the caller's own words): not a leak. Only that
+                    // field is blanked, only on a refusal.
+                    val text = r.bodyAsText().let { t -> if (r.status.value >= 400) t.replace(INSTANCE, "\"instance\":\"<asked>\"") else t }
                     if (variant == "own" && r.status.value in 200..299) st.scopedSuccess.merge(op.key, 1, Int::plus)
                     shows(text, resource)?.let { found += Leak(op.method, shape, c.user, variant, "${r.status.value} $it") }
                     // An aggregate carries no ids: a scoped answer to an other-division selector that equals the national
@@ -338,11 +350,9 @@ class ScopeLeakAcrossEndpointsTest {
                     }
                 }
                 once("own", world.ids)
-                if (world.pathFor(contract, op, world.ids) != world.pathFor(contract, op, world.otherIds)) once("other-path", world.otherIds)
-                for (p in op.parameters.filter { it.where == "query" && !it.required && (it.name in ApiWorld.PARAM_RESOURCE || it.name == "node_id") }) {
-                    val v = if (p.name == "node_id") world.otherIds["zones"] else ApiWorld.PARAM_RESOURCE[p.name]?.let { world.otherIds[it] }
-                    v?.let { once("other-${p.name}", world.ids, selector(op, p.name, it)) }
-                }
+                // The other division's ids (and seeded record uuids) in the path and in every required id query parameter.
+                if (aimed(op)) once("other-path", world.otherIds)
+                for ((name, kind) in selectorsOf(op)) world.otherIds[kind]?.let { once("other-$name", world.ids, selector(op, name, it)) }
                 if (op.requestSchema != null) once("other-body", world.ids, body = true)
                 if (op.parameters.any { it.where == "query" && it.name == "lat" }) once("other-coords", world.ids, pins = otherPin)
             }
@@ -350,10 +360,21 @@ class ScopeLeakAcrossEndpointsTest {
         return found
     }
 
+    /** Optional query selectors that choose a division (name, id kind): resource ids, a node, or a config scope. */
+    private fun selectorsOf(op: ContractModel.Operation): List<Pair<String, String>> = op.parameters.filter { it.where == "query" && !it.required }.mapNotNull { p ->
+        when (p.name) { "node_id", "scope_id" -> p.name to "zones"; else -> ApiWorld.PARAM_RESOURCE[p.name]?.let { p.name to it } }
+    }
+
+    /** True when the other division's ids change the request: in the path, or in a required id query parameter. */
+    private fun aimed(op: ContractModel.Operation): Boolean =
+        world.pathFor(contract, op, world.ids) != world.pathFor(contract, op, world.otherIds) ||
+            op.parameters.any { it.where == "query" && it.required && world.queryValue(it.name, world.ids) != world.queryValue(it.name, world.otherIds) }
+
     private fun isDashboard(op: ContractModel.Operation) = op.method == "GET" && op.parameters.any { it.name == "level" } && op.parameters.any { it.name == "node_id" }
 
     /** The query that selects [id] by [param] (a dashboard's node_id goes with its `level`, others with `node_type`). */
     private fun selector(op: ContractModel.Operation, param: String, id: Long): String {
+        if (param == "scope_id") return "scope_type=zone&scope_id=$id"
         if (param != "node_id") return "$param=$id"
         val names = op.parameters.map { it.name }
         return "node_id=$id" + when { "level" in names -> "&level=zone"; "node_type" in names && op.parameters.none { it.name == "node_type" && it.required } -> "&node_type=zone"; else -> "" }
@@ -384,25 +405,22 @@ class ScopeLeakAcrossEndpointsTest {
         for (c in scoped + national) check(token(c) != null) { "no token for ${c.user}" }
         // The positive control: does the national admin see the other division on this read (own or other ids)?
         for (op in ops.filter { it.method == "GET" }) {
-            val r = world.call(client, contract, op, national, token(national), queryOverrides = ownPin)
-            var sees = shows(r.bodyAsText(), resourceOf(op)) != null
+            // Only a 2xx counts as seeing: a refusal echoes the asked path in its problem `instance`.
+            suspend fun seen(r: io.ktor.client.statement.HttpResponse) = r.status.value in 200..299 && shows(r.bodyAsText(), resourceOf(op)) != null
+            var sees = seen(world.call(client, contract, op, national, token(national), queryOverrides = ownPin))
             if (!sees && op.parameters.any { it.where == "query" && it.name == "lat" }) {
-                sees = shows(world.call(client, contract, op, national, token(national), queryOverrides = otherPin).bodyAsText(), resourceOf(op)) != null
+                sees = seen(world.call(client, contract, op, national, token(national), queryOverrides = otherPin))
             }
-            val requiredIdQuery = op.parameters.any { it.where == "query" && it.required && it.name in ApiWorld.PARAM_RESOURCE }
-            if (!sees && (requiredIdQuery || world.pathFor(contract, op, world.ids) != world.pathFor(contract, op, world.otherIds))) {
-                sees = shows(world.call(client, contract, op, national, token(national), world.otherIds).bodyAsText(), resourceOf(op)) != null
-            }
+            if (!sees && aimed(op)) sees = seen(world.call(client, contract, op, national, token(national), world.otherIds))
             // Reads whose division is chosen by a query selector: the national view of each division, for the aggregate rule.
-            for (p in op.parameters.filter { it.where == "query" && !it.required && (it.name in ApiWorld.PARAM_RESOURCE || it.name == "node_id") }) {
-                val kind = if (p.name == "node_id") "zones" else ApiWorld.PARAM_RESOURCE.getValue(p.name)
+            for ((name, kind) in selectorsOf(op)) {
                 val ownId = world.ids[kind] ?: continue
                 val otherId = world.otherIds[kind] ?: continue
-                val ownR = world.call(client, contract, op, national, token(national), extraQuery = selector(op, p.name, ownId))
-                val otherR = world.call(client, contract, op, national, token(national), extraQuery = selector(op, p.name, otherId))
+                val ownR = world.call(client, contract, op, national, token(national), extraQuery = selector(op, name, ownId))
+                val otherR = world.call(client, contract, op, national, token(national), extraQuery = selector(op, name, otherId))
                 if (ownR.status.value == 200 && otherR.status.value == 200) {
                     val pair = numbers(ownR.bodyAsText()) to numbers(otherR.bodyAsText())
-                    nationalNumbers["${op.key} ${p.name}"] = pair
+                    nationalNumbers["${op.key} $name"] = pair
                     if (pair.second.isNotEmpty() && pair.first != pair.second) sees = true
                 }
             }
@@ -503,6 +521,7 @@ class ScopeLeakAcrossEndpointsTest {
         val SESSION_ENDING = setOf("POST /v1/auth/logout", "POST /v1/auth/change-password")
         val TIMEISH = Regex("(_at|time|generation|version|cursor|_ms|_s|as_of)$")
         /** Record types the other division's phone also sends (generated from their payload schemas). */
+        private val INSTANCE = Regex("\"instance\"\\s*:\\s*\"[^\"]*\"")
         val GENERATED_TYPES = listOf("outlet_change_request", "feedback", "task", "leave_application", "visit_plan", "day_exception", "risk_review", "survey_response", "sale_abort", "app_error")
         val READ_BY_POST = Regex("^(query|search|list|get|preview|check|validate|compute|digest)", RegexOption.IGNORE_CASE)
     }

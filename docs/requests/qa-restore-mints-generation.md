@@ -1,5 +1,12 @@
 # qa → infra (and backend-core): a restore must mint a new server generation, or phones never re-send the lost tail (N-059), 2026-10-17
 
+**Status (lead, 2026-10-17 21:49Z):** open on INT. It is **fixed on the held hardening branch** `claude/amazing-kilby-fdc9ab`
+(da5f3382: V0087 `app.mint_server_generation`, `infra/scripts/mint-generation.sh`, `drill.sh`,
+`docs/runbooks/pitr-restore.md`), which promotes when the owner says "promote hardening". **No second fix:** the
+asks below are already covered there and are kept only as the record.
+`RestoreDrillReconciliationTest` calls `app.mint_server_generation` once V0087 is on INT, so after promotion it proves
+the real function: restore a snapshot, mint, and a phone with the older generation re-sends its tail.
+
 **Finding.** Phones re-send writes a restore lost only when the server generation changes (docs/24 s4.8:
 `X-Server-Generation`, then `GET /v1/sync/generation`, then a re-send of everything acked after `lost_after_utc`).
 Nothing mints that generation today:

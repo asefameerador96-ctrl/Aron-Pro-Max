@@ -6,8 +6,8 @@ GET /v1/admin/config/blast-radius  # global by design: catalogue, configuration 
 GET /v1/admin/config/changes  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/changes/{}  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/keys  # global by design: catalogue, configuration or calendar shared by every division
-GET /v1/admin/config/reach/{}  # global by design: catalogue, configuration or calendar shared by every division
-GET /v1/admin/config/reach/{}/pending  # global by design: catalogue, configuration or calendar shared by every division
+GET /v1/admin/config/reach/{}  # debt (N-061 checker): zone-checked (requireZone) and returns by_zone ids; scoped callers are probed with the other zone_id, but the national control does not see the other division yet
+GET /v1/admin/config/reach/{}/pending  # debt (N-061 checker): zone-checked, returns pending device and user ids; probed with the other zone_id, national control blind
 GET /v1/admin/config/resolve  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/values  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/versions  # global by design: catalogue, configuration or calendar shared by every division
@@ -25,7 +25,7 @@ GET /v1/admin/tutorials  # global by design: catalogue, configuration or calenda
 GET /v1/app/update-check  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/config/delta  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/me  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
-GET /v1/media/{}/read-url  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
+GET /v1/media/{}/read-url  # debt (N-061 checker): reach-filtered (AMO/TSO read photos in their routes or zones); needs an other-division app.media row aimed at media_uuid
 GET /v1/report-exports  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/report-exports/{}  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/reports  # global by design: catalogue, configuration or calendar shared by every division

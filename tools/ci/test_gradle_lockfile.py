@@ -21,7 +21,6 @@ runtimeClasspath - Runtime classpath of source set 'main'.
 |    |         \--- com.fasterxml.jackson.core:jackson-databind:2.18.3 -> 2.22.0 (*)
 |    +--- org.jetbrains.kotlin:kotlin-stdlib:{prefer 2.1.0} -> 2.4.20
 |    +--- org.example:strict:{strictly 1.4}
-|    +--- org.example:missing:1.0 FAILED
 |    \--- org.example:declared-only:2.0 (n)
 \--- org.postgresql:postgresql:42.7.8
 """
@@ -42,6 +41,12 @@ class Modules(unittest.TestCase):
             },
             gradlelock.modules(TREE),
         )
+
+    def test_a_failed_module_or_an_open_range_stops_the_run(self):
+        for bad in ("+--- org.example:missing:1.0 FAILED", "+--- org.example:ranged:{strictly [1.0, 2.0[}", "+--- org.example:plus:1.+"):
+            with self.assertRaises(gradlelock.Unresolved, msg=bad):
+                gradlelock.modules(TREE + bad + "\n")
+        self.assertIn("org.example:ranged:1.4", gradlelock.modules("+--- org.example:ranged:[1.0,2.0) -> 1.4\n"))
 
     def test_writes_a_lockfile_and_refuses_an_empty_tree(self):
         with tempfile.TemporaryDirectory() as d:

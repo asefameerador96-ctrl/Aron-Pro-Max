@@ -156,10 +156,16 @@ class ApiWorld(
         }
     }
 
-    /** The concrete request path of [op] with its parameters filled from [pathIds] (or samples). */
-    /** Path parameters named by a record uuid (`request_uuid`), set by a suite to a row it seeded. */
-    val uuidParams = HashMap<String, String>()
+    /**
+     * Path parameters named by a record uuid or row id (`request_uuid`, `unlock_id`), set by a suite to the other
+     * division's rows: used only when the path is built from [otherIds], so the own call keeps its sample value.
+     */
+    val otherPathValues = HashMap<String, String>()
 
+    /** The value a required query parameter gets for [pathIds] (null when it names no resource). */
+    fun queryValue(name: String, pathIds: Map<String, Long>): String? = paramValue(name, pathIds)
+
+    /** The concrete request path of [op] with its parameters filled from [pathIds] (or samples). */
     fun pathFor(contract: ContractModel, op: ContractModel.Operation, pathIds: Map<String, Long>): String =
         op.path.replace(Regex("\\{([^}]*)}")) { m -> pathValue(contract, op, m.groupValues[1], pathIds) }
 
@@ -173,7 +179,7 @@ class ApiWorld(
 
     private fun pathValue(contract: ContractModel, op: ContractModel.Operation, name: String, pathIds: Map<String, Long>): String {
         paramValue(name, pathIds)?.let { return it }
-        uuidParams[name]?.let { return it }
+        if (pathIds === otherIds) otherPathValues[name]?.let { return it }
         // Reads of /v1/admin/geo/{level}/{id}: the division level, so the harness's two divisions tell the answers apart.
         val geoRead = op.method == "GET" && op.path.startsWith("/v1/admin/geo/")
         if (geoRead && name == "level") return "division"

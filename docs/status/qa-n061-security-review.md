@@ -14,10 +14,10 @@ not the dev API and not the final account. Nothing here logged in to the dev API
 | Scope leaks, every endpoint | **0 leaks**: 952 probe calls on 155 operations, from 4 scoped callers plus the national control. The national control sees the other division on 43 of 78 reads. The other 35 are global or per-caller by design, each listed with its reason; **no debt line is left** | `ScopeLeakAcrossEndpointsTest`, `scope-leak-baseline.txt` (empty), `scope-blind-baseline.txt` |
 | Seeded leak turns the suite red | yes: the national token swapped in for tso1001 on three operations is reported | `aSeededCrossScopeReadIsCaught` |
 | Secrets in the repository | **none**: only test-fixture passwords (listed below) | gitleaks over the whole history in CI; `NoSecretsInRepoTest`; this sweep |
-| Secrets in the APKs | **none** in the SR release build | `tools/ci/apk-security-check.py` |
+| Secrets in the APKs | **none** in a local, unsigned SR build. The CI-built APKs (all three) are not scanned yet; they carry the Maps and Firebase client keys by design | `tools/ci/apk-security-check.py` |
 | Dependencies | **5 High (Jackson 2.22.0, backend)**: ticketed, with a tried fix. The three APKs are clean. Web: CI OSV gate | `tools/ci/gradle-lockfile.py` + osv-scanner + `osv-gate.py` |
-| Tokens and device proof | covered by existing suites, all green | listed below |
-| MASVS-style APK checks | SR release: clean except the missing signature (the key is in CI only). AMO and TSO have no release build yet | `apk-security-check.py`, CI request |
+| Tokens and device proof | covered by existing suites: `backend/app` green locally, the other modules in CI | listed below |
+| MASVS-style APK checks | **partial**: the local SR build is clean except the missing signature. The CI-built SR, AMO and TSO APKs are not scanned yet | `apk-security-check.py`, CI request |
 
 Critical findings: none. High findings: the Jackson advisories, ticketed in `docs/requests/qa-backend-jackson-cves.md`.
 
@@ -84,7 +84,9 @@ Neither is a leak found. Both are recorded as gaps in the proof.
   - web tests: `tso-pass-1` and similar;
   - `MfaTest.kt` `Admin-pass-00001`;
   - backend tests `throwaway-*`;
-  - `PASSWORD = "login_password"` in the Android LoginScreen, which is a resource key.
+  - `PASSWORD = "login_password"` in the Android LoginScreen, which is a resource key;
+  - `ARON_SESSION_SECRET: "e2e-only-session-secret-..."` in `web/playwright.config.ts`, a value used only by the
+    end-to-end tests.
 
   None is a credential of any running system. The signing key, the Maps and Firebase keys and the Azure identity
   live in GitHub secrets only.
@@ -103,21 +105,28 @@ It ran over the `:backend:app` runtime classpath and the SR, AMO and TSO `releas
 - Android release apps: no advisory.
 - CI wiring: `docs/requests/qa-infra-gradle-osv.md` (infra).
 
-## 4. Tokens and device proof (existing suites, green in the full run)
+## 4. Tokens and device proof (existing suites)
 
-- `backend/auth`:
-  - `TokenVerifierTest`: tampered, foreign, wrong-audience and expired tokens are refused.
-  - `LoginTest` (13), `RefreshTest` (10): rotation and reuse detection.
-  - `LoginAbuseTest` and `LoginAbuseCheckerTest`: lockout and rate limits.
-  - `TotpTest`, `SecurityEventsTest`, `AuthReviewTest`, `DeviceGateTest`.
-- `backend/app`:
+`backend/app` ran locally in this review (357 of 357 green). The other modules run in CI on every push; their results
+are on the CI run of the checked head, not in this container.
+
+- **`backend/auth`:**
+  - `TokenVerifierTest.rejectsTamperedForeignWrongAudienceAndExpiredTokens`;
+  - `LoginTest`, `RefreshTest` (rotation and reuse);
+  - `LoginAbuseTest` and `LoginAbuseCheckerTest` (lockout and rate limits);
+  - `TotpTest`, `SecurityEventsTest`, `AuthReviewTest`, and `DeviceGateTest` (auth side).
+- **`backend/platform`:** `N009ReviewTest.guardRejectsMismatchedDeviceId`. A token bound to one device is refused
+  from another `X-Device-Id`; this is the device-binding proof.
+- **`backend/app`:**
+  - `DeviceGateTest`, the enrolment and integrity gate;
   - `MfaTest`;
-  - `DeviceGateTest` (6): a token bound to one device is refused from another `X-Device-Id`;
-  - `BindDeviceTest`, `BindDeviceCheckerTest`, `DeviceOtpTest`, `DeviceOtpRefuteTest`, `DeviceReplaceTest`;
+  - `BindDeviceTest` and `BindDeviceCheckerTest`;
   - `LogoutCheckerTest`.
-- The sync fuzz suite (N-024, 10,000 fault schedules) shows that a replayed or concurrent batch never doubles a row.
+- **`backend/masterdata`:** `DeviceOtpTest`, `DeviceOtpRefuteTest`, `DeviceReplaceTest`.
+- **Sync:** the fuzz suite (N-024, 10,000 fault schedules) shows that a replayed or concurrent batch never doubles a
+  row.
 
-## 5. MASVS-style checks on the APKs
+## 5. MASVS-style checks on the APKs (partial)
 
 `tools/ci/apk-security-check.py` checks each APK:
 - the manifest, read with aapt2: debuggable, allowBackup, cleartext, and exported components without a permission;
@@ -126,10 +135,17 @@ It ran over the `:backend:app` runtime classpath and the SR, AMO and TSO `releas
 
 Its self-test is `tools/ci/test_apk_security.py`.
 
-The SR release build (local, unsigned) passes everything except the missing signature: it is not debuggable, backup is
-off, there is no cleartext traffic, no exported component is unprotected, and it holds no secret. A debug-signed copy
-fails the gate, as it should. AMO and TSO have no release build at this commit, so they are checked when their release
-jobs exist. CI wiring: `docs/requests/qa-apk-security-check.md` (infra).
+**Only the SR app was scanned, and only a local unsigned build without the CI secrets.** It passes everything except
+the missing signature. A debug-signed copy fails the gate, as it should.
+
+**Not done yet, so the APK half of the acceptance is open:**
+- The CI-built SR, AMO and TSO release APKs have not been scanned. That needs the CI step in
+  `docs/requests/qa-apk-security-check.md`.
+- The CI build puts the Google Maps key (`${mapsApiKey}` in each manifest) and the Firebase key (from
+  `google-services.json`) into all three APKs. These are client keys that ship inside every Android app by design, so
+  the check reports them as **info**, not as a secret. Their protection is the restriction by package name and signing
+  certificate in the Google Cloud console. That restriction must be confirmed for both keys; it is an owner console
+  step.
 
 ## Open items
 

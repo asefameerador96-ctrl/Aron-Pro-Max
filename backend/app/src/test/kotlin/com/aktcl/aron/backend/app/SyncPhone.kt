@@ -92,9 +92,9 @@ fun JsonObject.uuid() = this["client_uuid"]!!.jsonPrimitive.content
 fun gz(s: String): ByteArray = ByteArrayOutputStream().also { o -> GZIPOutputStream(o).use { it.write(s.toByteArray()) } }.toByteArray()
 
 /** A batch body of [records] from [p] (device_counts carry the phone's own counts). */
-fun SyncPhone.batch(records: List<JsonObject>, batchUuid: String = UUID.randomUUID().toString()): String = buildJsonObject {
+fun SyncPhone.batch(records: List<JsonObject>, batchUuid: String = UUID.randomUUID().toString(), trigger: String = "manual"): String = buildJsonObject {
     put("batch_uuid", batchUuid); put("device_uuid", deviceUuid); put("schema_version", 1); put("app_version", ApiWorld.APP_VERSION)
-    put("trigger", "manual"); put("sent_at_device", "2027-01-03T04:00:00.000Z"); put("pending_rows", 0)
+    put("trigger", trigger); put("sent_at_device", "2027-01-03T04:00:00.000Z"); put("pending_rows", 0)
     put("time_anchors", JsonArray(emptyList()))
     put("device_counts", buildJsonObject { put(day, buildJsonObject { accepted.forEach { (t, n) -> put(t, n) } }) })
     put("records", JsonArray(records))

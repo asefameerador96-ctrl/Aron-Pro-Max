@@ -46,8 +46,9 @@ import kotlin.test.assertTrue
  * - [aRestoreWithoutANewGenerationLosesTheTail]: the negative control. Without the mint the phones see no change, send
  *   nothing, and the reconciliation reports every row acknowledged after the restore point as missing.
  *
- * Where it runs: local PostgreSQL and CI. The Azure drill (`.github/workflows/drill.yml`, owner approval) is the other
- * half; this test does not touch Azure.
+ * Where it runs: local PostgreSQL and CI. Not covered here: a zone failover or HA promotion (kind `failover`), the
+ * Azure restore itself (`.github/workflows/drill.yml`, owner approval), the re-send jitter and the digest step of
+ * s4.8, and the real Android SyncEngine (device lab). The row's failover half is not evidenced by this test.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RestoreDrillReconciliationTest {
@@ -58,6 +59,7 @@ class RestoreDrillReconciliationTest {
     /** Each drill sells in its own three divisions, so the two drills never share a user, route or outlet. */
     private val tags = mapOf(true to listOf("RSA", "RSB", "RSC"), false to listOf("RSD", "RSE", "RSF"))
     private val restored = mutableListOf<Pair<String, Wiring>>()
+    private val restorePoint = Instant.parse("${day}T04:30:00Z")
 
     @BeforeAll
     fun setUp() { world = ApiWorld(repoRoot, mirrors = tags.values.flatten(), clock = AronClock { now }) }
@@ -75,6 +77,9 @@ class RestoreDrillReconciliationTest {
         val sent = mutableListOf<Sent>()
         var generationSeen: String? = null
         var lastTotals: JsonObject? = null
+        /** Records the phone re-sent after a generation change (each pass), and the statement it acted on. */
+        val resent = mutableListOf<Int>()
+        var statement: JsonObject? = null
     }
 
     private val tables = mapOf(
@@ -85,6 +90,14 @@ class RestoreDrillReconciliationTest {
     @Test
     fun aRestoreWithANewGenerationReconcilesToZeroMissingAndZeroDuplicated() = drill(mint = true) { phones, server, lostTail ->
         assertTrue(lostTail > 0, "the drill must lose a tail to prove anything")
+        // The phones acted on the server's statement, not on a fallback: the first pass re-sent exactly the lost tail.
+        for (ph in phones) {
+            val st = ph.statement ?: error("${ph.p.username} never read a generation statement")
+            assertEquals("pitr", st["kind"]!!.jsonPrimitive.content, st.toString())
+            assertEquals(restorePoint, Instant.parse(st["lost_after_utc"]!!.jsonPrimitive.content), st.toString())
+            assertEquals(restorePoint, Instant.parse(st["restore_point_utc"]!!.jsonPrimitive.content), st.toString())
+        }
+        assertEquals(lostTail, phones.sumOf { it.resent.first() }, "the first re-send is exactly the rows acknowledged after the restore point")
         val problems = phones.flatMap { reconcile(server, it) }
         assertEquals(emptyList(), problems, "after the restore and the re-send")
         for (ph in phones) {
@@ -92,6 +105,8 @@ class RestoreDrillReconciliationTest {
             val money = ph.lastTotals?.get("money")?.jsonObject ?: error("no server_totals for ${p.username}")
             fun m(k: String) = money[k]!!.jsonPrimitive.content.toLong()
             assertEquals(listOf(p.activeMemos, p.gross, p.due, p.collected), listOf(m("active_memo_count"), m("gross_mtk"), m("due_mtk"), m("due_collected_mtk")), "money of ${p.username}")
+            val byType = ph.lastTotals!!["by_type"]!!.jsonObject
+            assertEquals(p.accepted.toMap(), byType.mapValues { it.value.jsonObject["accepted"]!!.jsonPrimitive.content.toInt() }.filterValues { it > 0 }, "accepted per type of ${p.username}")
         }
     }
 
@@ -99,6 +114,7 @@ class RestoreDrillReconciliationTest {
     fun aRestoreWithoutANewGenerationLosesTheTail() = drill(mint = false) { phones, server, lostTail ->
         val missing = phones.sumOf { ph -> reconcile(server, ph).filter { it.startsWith("missing") }.sumOf { it.substringAfter("missing ").substringBefore(" ").toInt() } }
         assertEquals(lostTail, missing, "every row acknowledged after the restore point is reported missing")
+        assertTrue(phones.all { it.resent.isEmpty() }, "no generation change, so no phone re-sent anything")
     }
 
     /**
@@ -111,7 +127,7 @@ class RestoreDrillReconciliationTest {
         val rnd = Random(if (mint) 59 else 590)
         now = Instant.parse("${day}T04:00:00Z")
         withApi(world.wiring) { phones.forEach { signIn(it); deliver(it, it.p.captureDay(rnd)) } }
-        val restorePoint = Instant.parse("${day}T04:30:00Z").also { now = it }
+        now = restorePoint
         val copy = snapshot()
         now = Instant.parse("${day}T05:00:00Z")
         withApi(world.wiring) { phones.forEach { deliver(it, it.p.captureDay(rnd) + it.p.captureDay(rnd)) } }
@@ -138,11 +154,19 @@ class RestoreDrillReconciliationTest {
     // ---- the restore ----------------------------------------------------------------------------------------------
 
     /**
-     * The restore runbook's step after an Azure point-in-time restore (or a failover that may have lost acknowledged
-     * writes): the restored database still names the old generation, so a new one is minted with the restore point as
-     * `lost_after_utc`. Without it no phone re-sends (the negative control).
+     * The restore runbook's step after an Azure point-in-time restore: the restored database still names the old
+     * generation, so a new one is minted with the restore point as `lost_after_utc`. It goes through
+     * `app.mint_server_generation` (V0087, on the hardening branch, promoted with it) when the function exists, else
+     * through the same two statements. Without it no phone re-sends (the negative control).
      */
     private fun mintAfterRestore(c: java.sql.Connection, restorePoint: Instant) {
+        val hasFunction = c.createStatement().use { st -> st.executeQuery("SELECT to_regprocedure('app.mint_server_generation(text,timestamptz,timestamptz,text)') IS NOT NULL").use { it.next(); it.getBoolean(1) } }
+        if (hasFunction) {
+            c.prepareStatement("SELECT app.mint_server_generation('pitr_restore', ?::timestamptz, ?::timestamptz, 'N-059 drill')").use {
+                it.setString(1, restorePoint.toString()); it.setString(2, restorePoint.toString()); it.executeQuery().close()
+            }
+            return
+        }
         c.createStatement().use { it.execute("UPDATE app.server_generation SET is_current = false WHERE is_current") }
         c.prepareStatement("INSERT INTO app.server_generation (generation, kind, started_at, restore_point_utc, lost_after_utc) VALUES (gen_random_uuid(), 'pitr_restore', ?::timestamptz, ?::timestamptz, ?::timestamptz)").use {
             it.setString(1, now.toString()); it.setString(2, restorePoint.toString()); it.setString(3, restorePoint.toString()); it.executeUpdate()
@@ -157,8 +181,15 @@ class RestoreDrillReconciliationTest {
             // TEMPLATE needs the source idle: refuse new connections, end the pools' ones, copy, reopen.
             c.execute("ALTER DATABASE $src WITH ALLOW_CONNECTIONS false")
             try {
-                c.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$src' AND pid <> pg_backend_pid()")
-                c.execute("CREATE DATABASE $name TEMPLATE $src")
+                // A pool may still be reconnecting: end its sessions again and retry while the source is "being accessed".
+                var attempt = 0
+                while (true) {
+                    c.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$src' AND pid <> pg_backend_pid()")
+                    try { c.execute("CREATE DATABASE $name TEMPLATE $src"); break } catch (e: java.sql.SQLException) {
+                        if (e.sqlState != "55006" || ++attempt >= 10) throw e
+                        Thread.sleep(200)
+                    }
+                }
             } finally {
                 c.execute("ALTER DATABASE $src WITH ALLOW_CONNECTIONS true")
             }
@@ -195,7 +226,7 @@ class RestoreDrillReconciliationTest {
             if (pending.isEmpty()) return generation
             val r = post("/v1/sync/batch") {
                 bearerAuth(ph.p.token); header("X-Device-Id", ph.p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
-                setBody(ByteArrayContent(gz(ph.p.batch(pending)), ContentType.Application.Json))
+                setBody(ByteArrayContent(gz(ph.p.batch(pending, trigger = if (resend) "resync" else "manual")), ContentType.Application.Json))
             }
             assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
             generation = r.headers["X-Server-Generation"]
@@ -223,8 +254,14 @@ class RestoreDrillReconciliationTest {
         val g = get("/v1/sync/generation$since") { bearerAuth(ph.p.token); header("X-Device-Id", ph.p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION) }
         assertEquals(HttpStatusCode.OK, g.status, g.bodyAsText())
         val statement = Json.parseToJsonElement(g.bodyAsText()).jsonObject
+        assertEquals(current, statement["generation"]!!.jsonPrimitive.content, "the statement names the generation the header named")
+        if (ph.generationSeen != null) assertEquals(ph.generationSeen, statement["previous_generation"]?.jsonPrimitive?.content, "previous generation since $since")
+        // A new generation without a loss instant would leave the phone guessing: the drill treats it as a failure.
         val lostAfter = listOf("earliest_lost_after_utc", "lost_after_utc").firstNotNullOfOrNull { k -> statement[k]?.takeIf { it != JsonNull }?.jsonPrimitive?.content }
-        val again = ph.sent.filter { lostAfter == null || it.ackedAt > Instant.parse(lostAfter) }.map { it.record }
+            ?: error("generation $current names no lost_after_utc: $statement")
+        ph.statement = statement
+        val again = ph.sent.filter { it.ackedAt > Instant.parse(lostAfter) }.map { it.record }
+        ph.resent += again.size
         if (again.isNotEmpty()) deliver(ph, again, resend = true)
         ph.generationSeen = current
     }
@@ -236,7 +273,7 @@ class RestoreDrillReconciliationTest {
         val p = ph.p
         val out = mutableListOf<String>()
         for ((type, uuids) in p.rows.toSortedMap()) {
-            val (table, col) = tables[type] ?: continue
+            val (table, col) = tables[type] ?: error("unmapped record type $type: add its table to the reconciliation")
             val found = h.createQuery("SELECT $col::text, count(*) FROM $table WHERE $col::text = ANY(:u) GROUP BY 1").bindArray("u", String::class.java, uuids.toList())
                 .map { rs, _ -> rs.getString(1) to rs.getInt(2) }.list().toMap()
             val missing = uuids.count { it !in found }

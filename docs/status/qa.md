@@ -72,8 +72,8 @@
   - Secrets: test fixtures only.
 - **N-059 (T2), local half**: `RestoreDrillReconciliationTest`. A restore copy plus the s4.8 re-send reconciles to 0
   missing and 0 duplicated; the negative control loses the tail. The Sonnet checker is running.
-  - Finding: nothing mints a new server generation after a restore
-    (`docs/requests/qa-restore-mints-generation.md`).
+  - Open on INT, **fixed on hardening da5f3382** (V0087 `app.mint_server_generation`, `mint-generation.sh`,
+    `pitr-restore.md`); it promotes with that branch. The test calls the function once it is on INT.
   - The Azure half needs the owner's phrase in `drill.yml`.
 
 ## Next rows
