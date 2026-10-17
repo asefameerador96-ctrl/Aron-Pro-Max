@@ -70,10 +70,27 @@ class ContractModel private constructor(private val doc: ObjectNode) {
     val allOperations: Collection<Operation> get() = operations.values
 
     /** Validation messages of [instance] against [schema] (a request or response schema node of this contract). */
-    fun validate(schema: JsonNode, instance: JsonNode): List<String> {
+    fun validate(schema: JsonNode, instance: JsonNode): List<String> = messages(schema, instance).map { it.message }
+
+    /**
+     * The distinct errors of [instance] as stable keys `<instance path with indices as *> <keyword>[ <property>]`,
+     * sorted: a baseline of these fails on any NEW error in an operation already known to deviate.
+     */
+    fun errorKeys(schema: JsonNode, instance: JsonNode): List<String> = messages(schema, instance).map { m ->
+        val path = m.instanceLocation.toString().replace(Regex("/\\d+(?=/|$)"), "/*").ifEmpty { "/" }
+        val prop = m.property?.let { " $it" } ?: ""
+        "$path ${m.type}$prop"
+    }.distinct().sorted()
+
+    private fun messages(schema: JsonNode, instance: JsonNode): List<com.networknt.schema.ValidationMessage> {
         val name = synthetic[schema] ?: error("not a request or response schema of the contract")
         val s = compiled.getOrPut(name) { root.getSubSchema(JsonNodePath(PathType.JSON_POINTER).append("components").append("schemas").append(name)) }
-        return s.validate(instance).map { it.message }
+        return s.validate(instance).toList()
+    }
+
+    /** Every 2xx JSON response schema of the contract, with its operation key and status. */
+    fun successSchemas(): List<Triple<String, String, JsonNode>> = operations.values.flatMap { op ->
+        op.responses.filterKeys { it.startsWith("2") }.flatMap { (st, r) -> r.content.filterKeys { it.endsWith("json") }.values.filterNotNull().map { Triple(op.key, st, it) } }
     }
 
     private fun param(p: JsonNode): Parameter {
@@ -95,33 +112,41 @@ class ContractModel private constructor(private val doc: ObjectNode) {
     fun sampleText(schema: JsonNode, name: String): String {
         val s = sample(schema)
         return when {
-            name == "business_date" || name == "date" -> "2027-01-03"
+            name == "business_date" || name == "date" -> TODAY
             s.isTextual -> s.asText()
             else -> s.toString()
         }
     }
 
-    fun sample(schema: JsonNode, depth: Int = 0): JsonNode {
+    /**
+     * A small instance of [schema]: required properties only, plus every optional property whose name passes
+     * [optional]. Dates and timestamps are the harness clock's day (contract examples are often in its past).
+     */
+    fun sample(schema: JsonNode, depth: Int = 0, optional: ((String) -> Boolean)? = null): JsonNode {
         val f = JsonNodeFactory.instance
         val s = deref(schema)
         if (depth > 12) return f.nullNode()
         s.get("const")?.let { return it }
+        when (s.path("format").asText()) {
+            "date" -> return f.textNode(TODAY)
+            "date-time" -> return f.textNode(TODAY + "T04:00:00Z")
+        }
         s.get("examples")?.takeIf { it.isArray && !it.isEmpty }?.let { return it[0] }
         s.get("example")?.let { return it }
         s.get("default")?.let { return it }
         s.get("enum")?.takeIf { it.isArray && !it.isEmpty }?.let { e -> return e.firstOrNull { !it.isNull } ?: e[0] }
         s.get("allOf")?.let { parts ->
             val merged = f.objectNode()
-            parts.forEach { p -> (sample(p, depth + 1) as? ObjectNode)?.let { merged.setAll<JsonNode>(it) } }
-            if (s.has("properties") || s.has("required")) merged.setAll<JsonNode>(objectSample(s, depth) as ObjectNode)
+            parts.forEach { p -> (sample(p, depth + 1, optional) as? ObjectNode)?.let { merged.setAll<JsonNode>(it) } }
+            if (s.has("properties") || s.has("required")) merged.setAll<JsonNode>(objectSample(s, depth, optional) as ObjectNode)
             return merged
         }
-        (s.get("oneOf") ?: s.get("anyOf"))?.let { alts -> return sample(alts.first { deref(it).path("type").asText() != "null" } ?: alts[0], depth + 1) }
+        (s.get("oneOf") ?: s.get("anyOf"))?.let { alts -> return sample(alts.first { deref(it).path("type").asText() != "null" } ?: alts[0], depth + 1, optional) }
         val type = s.get("type")?.let { t -> if (t.isArray) t.map { it.asText() }.firstOrNull { it != "null" } ?: "null" else t.asText() }
             ?: if (s.has("properties") || s.has("required")) "object" else "string"
         return when (type) {
-            "object" -> objectSample(s, depth)
-            "array" -> f.arrayNode().also { a -> repeat(maxOf(1, s.path("minItems").asInt(0)).coerceAtMost(maxOf(1, s.path("maxItems").asInt(1)))) { a.add(sample(s.path("items"), depth + 1)) } }
+            "object" -> objectSample(s, depth, optional)
+            "array" -> f.arrayNode().also { a -> repeat(maxOf(1, s.path("minItems").asInt(0)).coerceAtMost(maxOf(1, s.path("maxItems").asInt(1)))) { a.add(sample(s.path("items"), depth + 1, optional)) } }
             "integer" -> f.numberNode(bound(s).toLong())
             "number" -> f.numberNode(bound(s))
             "boolean" -> f.booleanNode(false)
@@ -136,13 +161,14 @@ class ContractModel private constructor(private val doc: ObjectNode) {
         return if (max != null && min > max) max else min
     }
 
-    private fun objectSample(s: JsonNode, depth: Int): JsonNode {
+    private fun objectSample(s: JsonNode, depth: Int, optional: ((String) -> Boolean)?): JsonNode {
         val o = JsonNodeFactory.instance.objectNode()
         val props = s.path("properties")
         val names = s.path("required").map { it.asText() }.toMutableList()
         val minProps = s.path("minProperties").asInt(0)
         props.fieldNames().asSequence().filter { it !in names }.take(maxOf(0, minProps - names.size)).forEach { names += it }
-        for (n in names) o.set<JsonNode>(n, props.get(n)?.let { sample(it, depth + 1) } ?: JsonNodeFactory.instance.textNode("x"))
+        if (optional != null) props.fieldNames().asSequence().filter { it !in names && optional(it) }.forEach { names += it }
+        for (n in names) o.set<JsonNode>(n, props.get(n)?.let { sample(it, depth + 1, optional) } ?: JsonNodeFactory.instance.textNode("x"))
         return o
     }
 
@@ -151,8 +177,8 @@ class ContractModel private constructor(private val doc: ObjectNode) {
         val max = s.path("maxLength").asInt(Int.MAX_VALUE)
         return when (s.path("format").asText()) {
             "uuid" -> UUID.randomUUID().toString()
-            "date" -> "2027-01-03"
-            "date-time" -> "2027-01-03T04:00:00Z"
+            "date" -> TODAY
+            "date-time" -> TODAY + "T04:00:00Z"
             "email" -> "qa@example.com"
             "uri" -> "https://example.com/qa"
             else -> s.get("pattern")?.asText()?.let { regexSample(it, min) } ?: "a".repeat(min.coerceAtMost(max))
@@ -219,6 +245,8 @@ class ContractModel private constructor(private val doc: ObjectNode) {
 
     companion object {
         const val BASE = "https://aron.invalid/contract/openapi.json"
+        /** The harness clock's business date (ApiWorld). */
+        const val TODAY = ApiWorld.BUSINESS_DATE
         val json = ObjectMapper()
         private val METHODS = setOf("get", "put", "post", "delete", "patch", "head", "options")
 

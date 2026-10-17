@@ -50,6 +50,9 @@ class ApiWorld(
     val wiring: Wiring
 
     init {
+        // The blob issuer reads its account from the process environment, not from Settings: with it set the harness
+        // would call real Azure and its 503 baseline would go stale (checker finding, N-014).
+        check(System.getenv("ARON_BLOB_ACCOUNT").isNullOrEmpty()) { "unset ARON_BLOB_ACCOUNT for the qa harness" }
         val seed = repoRoot.resolve("db/seed").listFiles { f -> f.name.matches(Regex("0\\d_.*\\.sql")) }!!.sortedBy { it.name }
         fresh.dataSource.connection.use { c ->
             seed.forEach { f -> c.createStatement().use { it.execute(f.readText()) } }
@@ -76,7 +79,7 @@ class ApiWorld(
                     "territories" to "SELECT territory_id FROM app.zone WHERE code = '$zone'",
                     "divisions" to "SELECT t.division_id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id WHERE z.code = '$zone'",
                     "skus" to "SELECT min(id) FROM app.sku",
-                    "devices" to (device?.let { "SELECT id FROM app.device WHERE device_uuid = '$it'" } ?: "SELECT NULL::bigint"),
+                    "devices" to (device?.let { "SELECT id FROM app.device WHERE device_uuid = '$it'" } ?: "SELECT NULL::bigint WHERE false"),
                 ).forEach { (k, sql) -> one(sql)?.let { into[k] = it } }
                 into["zone"] = into["zones"] ?: 0
             }
@@ -105,22 +108,31 @@ class ApiWorld(
     }
 
     /**
-     * One call of [op] as [c]: path parameters from [pathIds] (by the segment before the parameter) or a sample, the
-     * required query parameters and headers, a generated body; [extraQuery] is appended as is.
+     * One call of [op] as [c]: path and query parameters that name a resource (`id` after its collection segment,
+     * `*_id`, `node_id`) from [pathIds], other parameters and headers from the contract, a generated body whose
+     * `device_uuid` is the caller's phone, gzipped when the operation requires `Content-Encoding`. [onInvalidBody] gets
+     * the validation messages of a generated body the contract itself rejects; [bodyEdit] may change the body before
+     * it is sent. [extraQuery] is appended as is.
      */
     suspend fun call(
         client: HttpClient, contract: ContractModel, op: ContractModel.Operation, c: Caller, token: String?,
         pathIds: Map<String, Long> = ids, extraQuery: String = "", onInvalidBody: (List<String>) -> Unit = {},
-        bodyEdit: ((com.fasterxml.jackson.databind.JsonNode) -> Unit)? = null,
+        includeOptionalIds: Boolean = false, bodyEdit: ((com.fasterxml.jackson.databind.JsonNode) -> Unit)? = null,
     ): HttpResponse {
-        val path = op.path.replace(Regex("\\{([^}]*)}")) { m -> pathValue(contract, op, m.groupValues[1], pathIds) }
-        val query = (op.parameters.filter { it.where == "query" && it.required }.map { p -> p.name + "=" + URLEncoder.encode(contract.sampleText(p.schema, p.name), "UTF-8") } + listOfNotNull(extraQuery.ifEmpty { null })).joinToString("&")
+        val path = pathFor(contract, op, pathIds)
+        val query = (
+            op.parameters.filter { it.where == "query" && it.required }.map { p -> p.name + "=" + URLEncoder.encode(paramValue(p.name, pathIds) ?: contract.sampleText(p.schema, p.name), "UTF-8") } +
+                listOfNotNull(extraQuery.ifEmpty { null })
+            ).joinToString("&")
         val body = op.requestSchema?.let { s ->
-            val sample = contract.sample(s)
+            val sample = contract.sample(s, optional = if (includeOptionalIds) { n -> ID_FIELD.matches(n) } else null)
             contract.validate(s, sample).takeIf { it.isNotEmpty() }?.let(onInvalidBody)
+            // The device_uuid of a body is the caller's phone (the server checks it against the token).
+            if (c.device != null) (sample as? com.fasterxml.jackson.databind.node.ObjectNode)?.takeIf { it.has("device_uuid") }?.put("device_uuid", c.device)
             bodyEdit?.invoke(sample)
             ContractModel.json.writeValueAsString(sample)
         }
+        val gzip = op.parameters.any { it.where == "header" && it.name == "Content-Encoding" && it.required }
         return client.request(path + if (query.isEmpty()) "" else "?$query") {
             method = HttpMethod.parse(op.method)
             header("X-App-Version", APP_VERSION)
@@ -130,17 +142,32 @@ class ApiWorld(
                 when (p.name) {
                     "X-Device-Id" -> if (c.device == null) header(p.name, SR_PHONE)
                     "If-Match" -> header(p.name, "\"1\"")
-                    "Content-Encoding" -> {}
+                    "Content-Encoding" -> header(p.name, "gzip")
                     else -> header(p.name, contract.sampleText(p.schema, p.name))
                 }
             }
-            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+            if (body != null) {
+                if (gzip) setBody(io.ktor.http.content.ByteArrayContent(gz(body), ContentType.Application.Json))
+                else { contentType(ContentType.Application.Json); setBody(body) }
+            }
         }
     }
 
+    /** The concrete request path of [op] with its parameters filled from [pathIds] (or samples). */
+    fun pathFor(contract: ContractModel, op: ContractModel.Operation, pathIds: Map<String, Long>): String =
+        op.path.replace(Regex("\\{([^}]*)}")) { m -> pathValue(contract, op, m.groupValues[1], pathIds) }
+
+    /** A query or path value that names a resource of [pathIds] (or the clock's business date), else null. */
+    private fun paramValue(name: String, pathIds: Map<String, Long>): String? = when (name) {
+        "business_date", "date" -> BUSINESS_DATE
+        "node_type" -> "zone"
+        "node_id" -> pathIds["zones"]?.toString()
+        else -> PARAM_RESOURCE[name]?.let { pathIds[it]?.toString() }
+    }
+
     private fun pathValue(contract: ContractModel, op: ContractModel.Operation, name: String, pathIds: Map<String, Long>): String {
-        if (name == "device_id") pathIds["devices"]?.let { return it.toString() }
-        if (name == "id" || name == "zone_id") {
+        paramValue(name, pathIds)?.let { return it }
+        if (name == "id") {
             val segs = op.path.split('/')
             pathIds[segs.getOrNull(segs.indexOf("{$name}") - 1)]?.let { return it.toString() }
         }
@@ -149,6 +176,14 @@ class ApiWorld(
     }
 
     companion object {
+        const val BUSINESS_DATE = "2027-01-03"
+        /** Parameter names that carry a resource id, and the [ids] key of that resource. */
+        val PARAM_RESOURCE = mapOf(
+            "outlet_id" to "outlets", "route_id" to "routes", "zone_id" to "zones", "cluster_id" to "clusters", "territory_id" to "territories",
+            "division_id" to "divisions", "user_id" to "users", "sr_user_id" to "users", "device_id" to "devices",
+        )
+        /** Body fields the scope probes fill even when optional (single ids and id lists). */
+        val ID_FIELD = Regex("^[a-z_]*_ids?$")
         const val SR_PHONE = "00000000-0000-4000-8000-000000000001"
         const val THROWAWAY_PHONE = "00000000-0000-4000-8000-000000000009"
         const val APP_VERSION = "1.0.9+9"

@@ -2,7 +2,10 @@ package com.aktcl.aron.backend.app
 
 import io.ktor.client.statement.bodyAsText
 import io.ktor.server.application.plugin
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingRoot
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -52,8 +55,13 @@ class ContractConformanceTest {
     private var validatedBodies = 0
     private val statusSeen = sortedMapOf<Int, Int>()
 
-    data class Finding(val method: String, val shape: String, val status: Int, val kind: String, val detail: String) {
-        val key: String get() = "$method $shape $status $kind"
+    /** Operations that answered 2xx at least once, and every operation called. */
+    private val succeeded = sortedSetOf<String>()
+    private val called = sortedSetOf<String>()
+
+    /** One deviation; [detail] is part of the key for schema and sample errors (a normalised error, see errorKeys). */
+    data class Finding(val method: String, val shape: String, val status: Int, val kind: String, val detail: String, val keyed: Boolean = false) {
+        val key: String get() = "$method $shape $status $kind" + if (keyed) " $detail" else ""
     }
 
     @BeforeAll
@@ -68,28 +76,39 @@ class ContractConformanceTest {
 
     // ---- the run ---------------------------------------------------------------------------------------------------
 
+    /** Served routes the contract does not have. */
+    internal fun notInContract(routes: List<Pair<String, String>>): List<Finding> = routes.filter { (m, p) -> contract.operation(m, p) == null }
+        .map { (m, p) -> Finding(m, ContractModel.shape(p), 0, "not-in-contract", "the route is served but the contract has no such operation") }
+
     private fun runSuite() {
         val out = mutableListOf<Finding>()
         testApplication {
             application { aronApi(world.wiring) }
             startApplication()
             endpoints = ApiWorld.routes(application.plugin(RoutingRoot)).sortedBy { it.second + " " + it.first }
-            for ((m, p) in endpoints) if (contract.operation(m, p) == null) out += Finding(m, ContractModel.shape(p), 0, "not-in-contract", "the route is served but the contract has no such operation")
+            out += notInContract(endpoints)
             val tokens = HashMap<ApiWorld.Caller, String?>()
             suspend fun token(c: ApiWorld.Caller): String? = tokens.getOrPut(c) { world.login(client, c) }
-            suspend fun call(op: ContractModel.Operation, c: ApiWorld.Caller, t: String?) = world.call(client, contract, op, c, t) { problems ->
-                println("ContractConformanceTest: generated body for ${op.key} is not valid (${problems.take(2)}); sent anyway")
-            }.also { checkedCalls++ }
-            // Reads first, then writes; the session-ending operations last, so the tokens live as long as possible.
-            val last = setOf("POST /v1/auth/logout", "POST /v1/auth/change-password")
+            // A caller that cannot log in would silently skip every guarded call.
+            for (c in callers) check(token(c) != null) { "no token for ${c.user}" }
+            suspend fun call(op: ContractModel.Operation, c: ApiWorld.Caller, t: String?) = world.call(
+                client, contract, op, c, t,
+                bodyEdit = FIXTURES[op.key]?.let { f -> { n: com.fasterxml.jackson.databind.JsonNode -> f(n as com.fasterxml.jackson.databind.node.ObjectNode, c, world.password) } },
+            ).also { checkedCalls++ }
+            // Reads first, then writes; the session-ending operations last (change-password before logout).
+            val last = listOf("POST /v1/auth/change-password", "POST /v1/auth/logout")
             val ops = endpoints.mapNotNull { (m, p) -> contract.operation(m, p) }.distinctBy { it.key }
-                .sortedWith(compareBy<ContractModel.Operation>({ it.key in last }, { it.method != "GET" && it.method != "HEAD" }, { it.key }))
+                .sortedWith(compareBy<ContractModel.Operation>({ last.indexOf(it.key) }, { it.method != "GET" && it.method != "HEAD" }, { it.key }))
             for (op in ops) {
+                // The generator's body must satisfy the contract's own request schema (or the schema is unsatisfiable).
+                op.requestSchema?.let { rs -> contract.errorKeys(rs, contract.sample(rs)).forEach { e -> out += Finding(op.method, ContractModel.shape(op.path), 0, "sample-invalid", e, keyed = true) } }
+                called += op.key
                 for (c in if (op.public) callers.take(1) else callers) {
                     var t = if (op.public) null else token(c) ?: continue
                     var r = call(op, c, t)
                     if (!op.public && r.status.value == 401 && op.key !in last) { tokens.remove(c); t = token(c) ?: continue; r = call(op, c, t) }
                     val text = r.bodyAsText()
+                    if (r.status.value in 200..299) succeeded += op.key
                     if (op.key == "GET /v1/me" && c == callers[0] && r.status.value == 200) meBody = text
                     out += check(op, r.status.value, r.headers["Content-Type"], text)
                 }
@@ -98,7 +117,9 @@ class ContractConformanceTest {
         findings = out.distinctBy { it.key }
         File("build").mkdirs()
         File("build/contract-conformance.txt").writeText(
-            "calls=$checkedCalls bodies_validated=$validatedBodies statuses=$statusSeen\n" + findings.joinToString("\n") { "${it.key}  ${it.detail}" } + "\n",
+            "calls=$checkedCalls bodies_validated=$validatedBodies statuses=$statusSeen operations=${called.size} with_2xx=${succeeded.size}\n" +
+                findings.joinToString("\n") { it.key + if (it.keyed) "" else "  " + it.detail } + "\n" +
+                "# operations without any 2xx answer:\n" + (called - succeeded).joinToString("\n") + "\n",
         )
     }
 
@@ -108,16 +129,35 @@ class ContractConformanceTest {
         val shape = ContractModel.shape(op.path)
         val resp = op.responses[status.toString()] ?: op.responses["${status / 100}XX"] ?: op.responses["default"]
             ?: return listOf(Finding(op.method, shape, status, "undeclared-status", body.take(200)))
+        if (op.method == "HEAD") return emptyList()
         val type = contentType?.substringBefore(';')?.trim()?.lowercase()
-        if (body.isEmpty() || op.method == "HEAD") return emptyList()
+        if (body.isEmpty()) {
+            // A declared JSON body that does not come is a deviation too (204 and 304 carry none by definition).
+            return if (status != 204 && status != 304 && resp.content.keys.any { it.endsWith("json") }) listOf(Finding(op.method, shape, status, "empty-body", "declared ${resp.content.keys}")) else emptyList()
+        }
         if (type == null) return listOf(Finding(op.method, shape, status, "no-content-type", body.take(120)))
         if (resp.content.isEmpty()) return listOf(Finding(op.method, shape, status, "undeclared-body", "$type ${body.take(120)}"))
         val schema = resp.content[type] ?: return listOf(Finding(op.method, shape, status, "undeclared-content-type", "$type not in ${resp.content.keys}"))
         if (schema == null || !type.endsWith("json")) return emptyList()
         val node = try { ContractModel.json.readTree(body) } catch (e: Exception) { return listOf(Finding(op.method, shape, status, "invalid-json", body.take(120))) }
         validatedBodies++
-        val errors = contract.validate(schema, node)
-        return if (errors.isEmpty()) emptyList() else listOf(Finding(op.method, shape, status, "schema", errors.take(4).joinToString("; ")))
+        return contract.errorKeys(schema, node).map { Finding(op.method, shape, status, "schema", it, keyed = true) }
+    }
+
+    private fun baseline(name: String): List<String> =
+        javaClass.getResource("/$name")!!.readText().lines().map { it.substringBefore('#').trim() }.filter { it.isNotEmpty() }
+
+    /** Fails with the new and the stale lines of a shrinking baseline. */
+    private fun shrinking(name: String, now: Map<String, String>) {
+        val base = baseline(name)
+        assertEquals(emptyList(), base.groupBy { it }.filter { it.value.size > 1 }.keys.toList(), "duplicate lines in $name")
+        val fresh = now.keys - base.toSet()
+        val stale = base.toSet() - now.keys
+        val msg = buildString {
+            if (fresh.isNotEmpty()) append("new (fix the code or the contract; never add to $name):\n" + fresh.sorted().joinToString("\n") { "  $it  ${now[it]}" } + "\n")
+            if (stale.isNotEmpty()) append("fixed, still listed in $name (remove the lines):\n" + stale.sorted().joinToString("\n") { "  $it" } + "\n")
+        }
+        assertTrue(msg.isEmpty(), msg)
     }
 
     // ---- tests -----------------------------------------------------------------------------------------------------
@@ -127,23 +167,26 @@ class ContractConformanceTest {
         assertTrue(endpoints.size > 100, "only ${endpoints.size} routes found")
         val ops = endpoints.mapNotNull { (m, p) -> contract.operation(m, p) }.distinctBy { it.key }.size
         assertTrue(checkedCalls >= ops, "calls $checkedCalls < operations $ops")
-        // Real successes were validated, not only refusals: every status class the API answers with is present.
-        assertTrue((statusSeen.filterKeys { it in 200..299 }.values.sum()) > 40, "too few 2xx answers: $statusSeen")
+        assertTrue(succeeded.size * 2 > called.size, "fewer than half of the operations answered 2xx: ${succeeded.size} of ${called.size}")
         assertTrue(validatedBodies > ops, "bodies validated $validatedBodies")
+        // The sync paths the field apps live on are validated on their success answer, not only on refusals.
+        assertTrue(listOf("POST /v1/sync/batch", "GET /v1/sync/bundle", "POST /v1/auth/login", "GET /v1/me").all { it in succeeded }, "core operations without a 2xx: ${listOf("POST /v1/sync/batch", "GET /v1/sync/bundle", "POST /v1/auth/login", "GET /v1/me") - succeeded}")
     }
 
     @Test
-    fun everyAnswerConformsToTheContractExceptTheShrinkingBaseline() {
-        val baseline = javaClass.getResource("/contract-conformance-baseline.txt")!!.readText().lines().map { it.substringBefore('#').trim() }.filter { it.isNotEmpty() }
-        assertEquals(emptyList(), baseline.groupBy { it }.filter { it.value.size > 1 }.keys.toList(), "duplicate baseline lines")
-        val now = findings.associateBy { it.key }
-        val fresh = now.keys - baseline.toSet()
-        val stale = baseline.toSet() - now.keys
-        val msg = buildString {
-            if (fresh.isNotEmpty()) append("new contract deviations (fix the code or the contract; never add to the baseline):\n" + fresh.sorted().joinToString("\n") { "  $it  ${now[it]!!.detail}" } + "\n")
-            if (stale.isNotEmpty()) append("fixed deviations still in contract-conformance-baseline.txt (remove them):\n" + stale.sorted().joinToString("\n") { "  $it" } + "\n")
-        }
-        assertTrue(msg.isEmpty(), msg)
+    fun everyAnswerConformsToTheContractExceptTheShrinkingBaseline() =
+        shrinking("contract-conformance-baseline.txt", findings.associate { it.key to (if (it.keyed) "" else it.detail) })
+
+    @Test
+    fun everyOperationAnswersSuccessOnceExceptTheShrinkingList() =
+        shrinking("contract-no-success-baseline.txt", (called - succeeded).associateWith { "never answered 2xx to any caller" })
+
+    @Test
+    fun everySuccessSchemaOfTheContractIsSatisfiable() {
+        // A 2xx schema that rejects even its own generated instance cannot be met by any server (e.g. allOf over a
+        // closed branch). The generator is not perfect, so a line here is a lead for the contract, listed in a baseline.
+        val now = contract.successSchemas().mapNotNull { (k, st, sch) -> contract.errorKeys(sch, contract.sample(sch)).takeIf { it.isNotEmpty() }?.let { "$k $st" to it.take(3).joinToString("; ") } }.toMap()
+        shrinking("contract-unsatisfiable-baseline.txt", now)
     }
 
     @Test
@@ -157,17 +200,36 @@ class ContractConformanceTest {
         val dropped = real.deepCopy().apply { remove(required) }
         assertEquals("schema", check(op, 200, "application/json", dropped.toString()).single().kind, "a dropped required field ($required)")
         val retyped = real.deepCopy().apply { put(required, 12345) }
-        assertEquals("schema", check(op, 200, "application/json", retyped.toString()).single().kind, "a field of the wrong type")
+        assertTrue(check(op, 200, "application/json", retyped.toString()).all { it.kind == "schema" && "/$required" in it.detail }, "a field of the wrong type")
+        assertEquals("empty-body", check(op, 200, "application/json", "").single().kind, "a declared body that does not come")
         val problemOp = contract.operation("POST", "/v1/auth/login")!!
-        assertEquals("schema", check(problemOp, 401, "application/problem+json", """{"type":"about:blank","title":"x","status":401,"code":"ERR_NOT_A_CONTRACT_CODE"}""").single().kind, "a problem code outside ProblemCode")
+        assertTrue(check(problemOp, 401, "application/problem+json", """{"type":"about:blank","title":"x","status":401,"code":"ERR_NOT_A_CONTRACT_CODE"}""").any { it.kind == "schema" && "/code" in it.detail }, "a problem code outside ProblemCode")
+        // A new error on an operation already in the baseline has its own key, so it is not hidden by the old one.
+        assertTrue(check(op, 200, "application/json", dropped.toString()).single().key != check(op, 200, "application/json", retyped.toString()).first().key)
     }
 
     @Test
-    fun aSeededUndeclaredStatusAndAnUnknownRouteAreCaught() {
+    fun aSeededUndeclaredStatusAndAnUnknownRouteAreCaught() = testApplication {
         val op = contract.operation("GET", "/v1/health")!!
         assertEquals("undeclared-status", check(op, 418, "application/json", "{}").single().kind)
-        assertEquals(null, contract.operation("GET", "/v1/qa/not-in-contract"))
-        assertTrue(endpoints.all { (m, p) -> contract.operation(m, p) != null || findings.any { it.kind == "not-in-contract" && it.method == m && it.shape == ContractModel.shape(p) } })
+        // A real extra route on the production routing tree is reported by the same walker and check as the run.
+        application {
+            aronApi(world.wiring)
+            routing { get("/v1/qa/not-in-contract/{id}") { call.respondText("{}") } }
+        }
+        startApplication()
+        val missing = notInContract(ApiWorld.routes(application.plugin(RoutingRoot)))
+        assertTrue(missing.any { it.key == "GET /v1/qa/not-in-contract/{} 0 not-in-contract" }, "the extra route was not reported: ${missing.map { it.key }}")
+    }
+
+    companion object {
+        /** Request bodies a generated sample cannot get right (real credentials), filled per caller. */
+        val FIXTURES: Map<String, (com.fasterxml.jackson.databind.node.ObjectNode, ApiWorld.Caller, String) -> Unit> = mapOf(
+            "POST /v1/auth/login" to { n, c, pw ->
+                n.put("username", c.user); n.put("password", pw); n.put("client", c.client)
+                if (c.device != null) n.put("device_uuid", c.device) else n.remove("device_uuid")
+            },
+        )
     }
 
     /** The SR's real GET /v1/me answer, kept from the run (before the session-ending operations). */
