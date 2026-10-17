@@ -34,6 +34,9 @@ import com.aktcl.aron.core.ui.aronPageBackground
 import com.aktcl.aron.feature.auth.LoginScreen
 import com.aktcl.aron.feature.auth.LoginViewModel
 import com.aktcl.aron.feature.amo.AmoApp
+import com.aktcl.aron.feature.amo.AmoScreen
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import com.aktcl.aron.feature.home.HomePlaceholderViewModel
 import com.aktcl.aron.feature.home.HomeUser
 import dagger.hilt.android.AndroidEntryPoint
@@ -57,6 +60,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
+    @Inject lateinit var fixManager: com.aktcl.aron.core.geo.FixManager
+    @Inject lateinit var deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
 
     /** F-SYS-020: an update check on every resume (throttled to 12 h inside, cached offline). */
@@ -153,6 +158,26 @@ class MainActivity : ComponentActivity() {
                                     com.aktcl.aron.feature.amo.AmoReach.parse(com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(s.user.userId)).section("supervisor"), s.user.userId)
                                 }.getOrDefault(com.aktcl.aron.feature.amo.AmoReach.NONE)
                             }
+                            // F-AMO-003: the day object (attendance first); one per user, restored from Room after a kill.
+                            var day by remember(s.user.userId) { mutableStateOf<AmoDay?>(null) }
+                            LaunchedEffect(s.user.userId) {
+                                val d = AmoDay(s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, deviceRuntime)
+                                runCatching { d.reload(); d.attendance.restore(d.attendanceToday()) }
+                                day = d
+                            }
+                            val dayScope = rememberCoroutineScope()
+                            val screens: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = day?.let { d ->
+                                mapOf<AmoScreen, @Composable (() -> Unit) -> Unit>(
+                                    AmoScreen.ATTENDANCE to { back ->
+                                        val attendance by d.attendance.state.collectAsStateWithLifecycle()
+                                        LaunchedEffect(d) { d.attendance.tick() }
+                                        com.aktcl.aron.feature.amo.AmoAttendance(
+                                            attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
+                                            onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
+                                        )
+                                    },
+                                )
+                            } ?: emptyMap()
                             val updateState by updateShell.state.collectAsStateWithLifecycle()
                             // F-SYS-075: the location notice first.
                             com.aktcl.aron.feature.auth.LocationNoticeGate(
@@ -179,7 +204,7 @@ class MainActivity : ComponentActivity() {
                                 sunlight = sunlight,
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
-                                reach = reach,
+                                reach = reach, screens = screens,
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                             ) }
                             }

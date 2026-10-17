@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.platform.testTag
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
@@ -187,5 +188,24 @@ class AmoAppTest {
         compose.onNode(hasText(context.getString(HomeR.string.set_logout_confirm)) and hasClickAction() and !hasTestTag(HomeTags.LOGOUT)).performClick()
         compose.waitForIdle()
         assertTrue(loggedOut)
+    }
+
+    @Test
+    fun aTileOpensTheScreenTheAppSuppliesAndBackReturnsHome() {
+        val language = AppLanguage.EN
+        val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                AronTheme(language) {
+                    AmoApp(
+                        user, "2026-10-05", BundleStatus.Offline, "0.1.0 (1)", onLanguageSelect = {}, onLogout = {},
+                        screens = mapOf(AmoScreen.ATTENDANCE to { back -> androidx.compose.material3.TextButton(onClick = back, modifier = androidx.compose.ui.Modifier.testTag("amo-att")) { androidx.compose.material3.Text("att") } }),
+                    )
+                }
+            }
+        }
+        compose.onNodeWithText(context.getString(HomeR.string.rh_amo_attendance)).performClick()
+        compose.onNodeWithTag("amo-att").assertIsDisplayed().performClick()
+        compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
     }
 }
