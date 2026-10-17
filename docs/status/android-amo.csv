@@ -23,3 +23,6 @@ F-AMO-049,S,2026-10-17T22:05Z,2026-10-17T22:40Z,35,0,"Correct total: StockAdjust
 F-AMO-006-fix,S,2026-10-17T22:40Z,2026-10-17T23:00Z,20,0,"Sonnet checker on 006/012-015/029: zero-sale memo is not sold, one sale per call, serialised close, zone refresh (D-AMO-SALE-02)"
 F-AMO-030,M,2026-10-17T23:00Z,2026-10-18T00:00Z,60,0,"AMO Sales Submit: fixed reconciliation rows (zero-filled both sides), supervisor_day writer (RoomDaySubmitWriter scope param, test), dues warning from the SR gate, new calls refused once submitted; T1 Opus checker pending"
 F-AMO-030-fix,M,2026-10-18T00:00Z,2026-10-18T00:50Z,50,0,"Opus T1 checker: submit carries no route, a supervisor_day submit locks route-bearing records (RouteDayLock, recordAmo), alreadySubmitted honours a server reopen (submitStands), rows from cfg.sync.reconcile_types with AMO default, Submit blocked while a call is open; request for the reopen delivery filed"
+F-AMO-025,S,2026-10-18T00:50Z,2026-10-18T01:10Z,20,0,"AMO Outlet hub: own New shop (SR request form on the AMO store, no AMO verification step), checker pending"
+F-AMO-026,S,2026-10-18T00:50Z,2026-10-18T01:10Z,0,0,"own Permanent close (open-dues warning from the shared form); checker pending"
+F-AMO-027,S,2026-10-18T00:50Z,2026-10-18T01:10Z,0,0,"own Change information (GEO + photo, confirm, queue); own-requests list; checker pending; DEVICE-PENDING"
