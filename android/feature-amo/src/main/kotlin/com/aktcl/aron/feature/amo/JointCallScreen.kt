@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronEmptyState
+import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAppLanguage
@@ -56,7 +57,7 @@ fun JointCallContent(
                     Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs), verticalAlignment = Alignment.CenterVertically) {
                         (1..5).forEach { n ->
                             val filled = on && n <= state.of(cr.id)
-                            val desc = stringResource(R.string.amo_jc_star, n.toString())
+                            val desc = stringResource(R.string.amo_jc_star, localizedNumber(n.toLong()))
                             Text(
                                 "★", style = MaterialTheme.typography.headlineMedium,
                                 color = if (filled) c.accent else c.textSecondary.copy(alpha = 0.35f),
