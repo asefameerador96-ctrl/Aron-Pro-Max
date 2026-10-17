@@ -146,6 +146,13 @@ class MainActivity : ComponentActivity() {
                             val home by vm.state.collectAsStateWithLifecycle()
                             val sunlightPref = remember(s.user.userId) { SunlightPreference(applicationContext, s.user.userId.toString()) }
                             LaunchedEffect(s.user.userId) { sunlight = sunlightPref.enabled }
+                            // F-AMO-001: the Outlet badge and the menu variant come from the stored supervisor section (local read).
+                            var reach by remember(s.user.userId) { mutableStateOf(com.aktcl.aron.feature.amo.AmoReach.NONE) }
+                            LaunchedEffect(s.user.userId, home.bundle) {
+                                reach = runCatching {
+                                    com.aktcl.aron.feature.amo.AmoReach.parse(com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(s.user.userId)).section("supervisor"), s.user.userId)
+                                }.getOrDefault(com.aktcl.aron.feature.amo.AmoReach.NONE)
+                            }
                             val updateState by updateShell.state.collectAsStateWithLifecycle()
                             // F-SYS-075: the location notice first.
                             com.aktcl.aron.feature.auth.LocationNoticeGate(
@@ -172,6 +179,7 @@ class MainActivity : ComponentActivity() {
                                 sunlight = sunlight,
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
+                                reach = reach,
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                             ) }
                             }

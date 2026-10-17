@@ -17,6 +17,7 @@ dependencies {
     implementation(project(":android:core-common"))
     implementation(project(":android:feature-home"))
     implementation(libs.maps.compose)
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)
     testImplementation(libs.robolectric)
