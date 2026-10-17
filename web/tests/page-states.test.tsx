@@ -20,7 +20,7 @@ describe("page states", () => {
   });
   it("the chart uses the token colour, not a hard-coded one", () => {
     const src = readFileSync("src/components/reports/bar-chart.tsx", "utf8");
-    expect(src).toContain("var(--chart-1)");
+    expect(src).toContain("var(--chart-${");
     expect(src).not.toMatch(/#[0-9a-f]{6}/i);
   });
 });
