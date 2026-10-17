@@ -39,8 +39,16 @@ class TsoReadModels(private val components: SessionComponents, private val datab
         runCatching {
             val dao = meta(userId)
             dao.putMeta(SyncMetaEntity("tso.cache.$key", body)); dao.putMeta(SyncMetaEntity("tso.cache.$key.asof", asOf))
+            dao.putMeta(SyncMetaEntity("tso.cache.$key.ts", components.trustedClock.nowMs().toString()))
         }
     }
+
+    /** The cached body of slow-changing reference reads (routes, a route's outlets) while it is younger than [ttlMs]: the data pack is not spent on every screen open (docs/04). */
+    private suspend fun cacheFresh(userId: Long, key: String, ttlMs: Long): String? = runCatching {
+        val dao = meta(userId)
+        val ts = dao.meta("tso.cache.$key.ts")?.toLongOrNull() ?: return null
+        if (components.trustedClock.nowMs() - ts in 0 until ttlMs) dao.meta("tso.cache.$key") else null
+    }.getOrNull()
 
     private suspend fun get(path: String): String? {
         val r = runCatching { client.call(path = path, auth = CallAuth.Grant(Grant.FULL), build = { get() }, decode = { body, _ -> body }) }.getOrNull()
@@ -161,6 +169,7 @@ class TsoReadModels(private val components: SessionComponents, private val datab
         private val J = com.aktcl.aron.feature.tso.mycall.PlanJson
 
         override suspend fun routes(): List<com.aktcl.aron.feature.tso.mycall.PlanRoute>? {
+            cacheFresh(userId, "routes", REFERENCE_TTL_MS)?.let { c -> J.parseRoutes(c)?.let { return it } }
             val fresh = getPages("/v1/routes")?.map { J.parseRoutes(it) ?: return@map null }
             if (fresh != null && fresh.none { it == null }) {
                 val all = fresh.filterNotNull().flatten().distinctBy { it.id }
@@ -170,6 +179,7 @@ class TsoReadModels(private val components: SessionComponents, private val datab
         }
 
         override suspend fun outlets(routeId: Long): List<com.aktcl.aron.feature.tso.mycall.PlanOutlet>? {
+            cacheFresh(userId, "outlets.$routeId", REFERENCE_TTL_MS)?.let { c -> J.parseOutlets(c)?.let { return it } }
             val fresh = getPages("/v1/outlets?route_id=$routeId")?.map { J.parseOutlets(it) }
             if (fresh != null && fresh.none { it == null }) {
                 val all = fresh.filterNotNull().flatten().distinctBy { it.id }
@@ -379,5 +389,5 @@ class TsoReadModels(private val components: SessionComponents, private val datab
     suspend fun rubric(userId: Long) = com.aktcl.aron.feature.tso.mycall.RubricJson.retailer(runCatching { meta(userId).section("rubrics") }.getOrNull())
     suspend fun taskTypes(userId: Long) = com.aktcl.aron.feature.tso.mycall.TaskTypes.parse(runCatching { meta(userId).section("code_lists") }.getOrNull())
 
-    private companion object { const val PLAN_MIRROR = "tso.unsent.plan."; const val TASK_PENDING = "tso.task.pending."; const val DONE_MIRROR = "tso.visit.done."; const val FEEDBACK_MIRROR = "tso.unsent.feedback."; const val LEAVE_MIRROR = "tso.unsent.leave." }
+    private companion object { const val REFERENCE_TTL_MS = 30L * 60 * 1000; const val PLAN_MIRROR = "tso.unsent.plan."; const val TASK_PENDING = "tso.task.pending."; const val DONE_MIRROR = "tso.visit.done."; const val FEEDBACK_MIRROR = "tso.unsent.feedback."; const val LEAVE_MIRROR = "tso.unsent.leave." }
 }
